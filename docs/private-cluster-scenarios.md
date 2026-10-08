@@ -51,7 +51,7 @@ provided by the inherited transfer path. The Python runner does not invoke the s
 A separate follow-up [offline Scala adapter](cluster-negative-observation.md) can
 compare the saved negative evidence with selected Scala rejection classes. It does
 not change this Python runner's receipt or trigger a live workload; its optional
-real-evidence integration test remains pending.
+real-evidence integration result is recorded below.
 
 ## Verification and integration
 
@@ -129,3 +129,34 @@ for three well-formed matching hashes, retaining every sample and failing after
 at most 40 attempts with 0.25-second spacing (individual queries also remain
 deadline-bounded). Missing, malformed or divergent tips never count as convergence.
 This is startup handling, not transaction rejection.
+
+
+## Completed local packet, 2026-10-08
+
+The third isolated run passed in **131.05 seconds**, within its 360-second workload
+and 600-second overall budgets, and cleanup verified no owned containers or
+networks remained. Evidence is private at `/home/<user>/cardano-scenarios-live3-20261008`.
+Wrong-key returned `MissingVKeyWitnessesUTXOW`; repeated-included and the different-body
+conflict both returned the exact all-inputs-spent `ConwayMempoolFailure`. All three
+receipts passed the paused-state guards. Repeated outputs remained present; conflicting
+outputs were absent. The original positive transfer passed inclusion-byte, witness,
+minimum-output, whole-UTxO and fee-pot checks. Node observations progressed from
+epoch 0 to epoch 2 under Conway ledger protocol 9.0. The inherited positive path
+uses direct producer submission; this is not a relay-only propagation result.
+
+The separate offline Scala adapter then checked the complete saved directory and
+emitted three matching selected-predicate observations, with explicit reference
+layers and `ledgerRuleAgreement: false`. **33 retained-data tests** passed (seven
+negative-observation tests including the opt-in packet, plus 26 transfer regressions).
+These counts are separate from the public 779-test profile. The initial retained
+run passed 32/33 because one historical mutation assumed slot 127; the test now
+derives the changed slot/epoch from checked input. A subsequent test-only field-name
+compile error was corrected before the final 33/33 pass. All logs are preserved
+under `/home/<user>/cardano-scenario-integration-20261008`.
+
+Independent review approved the source corrections, shared startup guard and
+test-only mutation fix. The live packet establishes the recorded local submission
+observations and related selected Scala rejections, not ledger-rule parity,
+invalid-block rejection, signature-rejection coverage, atomic snapshots or
+retained-state node restart. Raw evidence and disposable key material are not
+distributed in Git.

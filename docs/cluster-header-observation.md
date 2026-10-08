@@ -56,3 +56,15 @@ This keeps dependencies one-way. Do not change the existing live transfer receip
 `app/testOnly lab.ClusterHeaderObservationSuite` runs eight public tests using one SHA256-pinned, already-cleared public Amaru header. They cover source/timing/registration mutation, duplicate/fractional JSON, signature result conjunction, real signature mutations, unsupported encoding, body/range mismatch and the distinction between supported observations and predicate success. Public synthetic genesis values establish mechanics only, not real-network registration.
 
 Set `CLUSTER_HEADER_EVIDENCE` to the retained v2 evidence directory to add one explicit private offline pipeline test. It requires both signatures to succeed and derives 129600 slots/KES period and 60 evolutions from the original hashed genesis. No retained corpus or raw private log is committed. Docker tests use an isolated cache/output tree, 2 CPUs and 2 GiB memory; no live cluster is required.
+
+
+### Main integration check, 2026-10-08
+
+After integration as `34fa905`, all eight default tests passed within the full
+787-test public profile. The standalone CLI and the suite with its ninth,
+captured-evidence test also passed against the new scenario packet at
+`/home/<user>/cardano-scenarios-live3-20261008`, mounted read-only. Both signature
+predicates succeeded with source-bound genesis timing and fixture registration;
+full-header and consensus flags remained false. The separate log is
+`/home/<user>/cardano-scenario-integration-20261008/retained-header-tests.log`.
+No raw private evidence was committed.

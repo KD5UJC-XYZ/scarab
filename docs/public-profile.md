@@ -73,3 +73,46 @@ the tracked wrapper and hosted workflow are unchanged. Generated reports, cache,
 commands and logs remain outside Git in
 `/home/<user>/cardano-scenario-integration-20261008`. The owned build container was
 removed. These are offline test results, not live negative reference agreement.
+
+
+### Corrected scenarios and follower follow-up
+
+The reviewed integration `2eda20c098ad2897d770ed471e47e2b9c2b55662` passed
+[hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/37845836096).
+The source-backed mempool correction then passed **779 public Scala tests**
+(app 157; other module counts unchanged), all **25 serial gates**, and 44 Python
+guards in the same bounded offline export. The subsequent Python-only startup
+guard fix passed 46 guards. Integrating the independently reviewed follower launcher
+and four guards brought the final Python discovery result to **50 passed**.
+The existing workflow discovers these files without modification.
+
+The scenario/runtime correction is `41184bd`; the follower follow-ups
+`aeb5b1c` and `1be6fb1` were integrated as `9ed05a2` and `5498fd6`.
+The final retained-data-only mutation fix changes test inputs derived from the
+checked context, not production predicates. Its **33 retained tests** and three
+standalone negative observations passed separately, with read-only evidence,
+network disabled and 2 CPU / 2 GiB container limits. The first retained run's
+32/33 result and an intermediate test-only compile error are preserved, not
+counted as successful runs. See [scenario evidence](private-cluster-scenarios.md)
+and [bounded follower evidence](bounded-follower-live.md). Source/artifact hashes
+identify reviewed bytes; they do not establish reproducible compilation.
+
+
+### Header-context integrated checkpoint
+
+The independently reviewed header-context increment `4af584c` was integrated as
+`34fa905`. The final integrated export passed **787 public Scala tests** (app 165;
+other module counts unchanged), all **25 public serial gates**, and **50 Python
+guards** in one run. The same isolated, network-disabled 2 CPU / 2 GiB setup and
+private build/cache directory were used. Full logs remain outside Git under
+`/home/<user>/cardano-scenario-integration-20261008/final-public-tests.log`.
+
+A separate read-only test of the newly captured scenario packet passed the
+standalone header-observation CLI and **nine header suite tests**, comprising
+eight public regressions and one opt-in captured-evidence case. Both OpCert and
+KES signature predicates passed using timing and fixture registration extracted
+from the original hash-bound genesis. These nine are reported separately and
+overlap eight public tests; they are not added to the 787 public total. The
+separate 33 negative/transfer retained tests remain as reported above. Header
+success still does not establish trusted registration, VRF/leadership, current
+stake/counters, full header validity or consensus validity.

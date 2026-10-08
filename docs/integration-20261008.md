@@ -32,3 +32,28 @@ and local test submissions in the replacement conversation. Public-network
 submissions and real funds remain forbidden. Live results are recorded separately
 in [minimum-output verification](minimum-output.md); authorization itself is not
 test evidence.
+
+
+## Completed replacement-task checkpoint
+
+The authorized isolated minimum-output pair passed: 849070 lovelace included,
+849069 rejected with the required 849070 boundary. The corrected scenario packet
+also passed, followed by the complete offline negative comparison. Final local
+counts are **779 public Scala tests, 25 public gates, 50 Python guards**, and a
+separate **33 retained-data tests**. The independently reviewed follower follow-up
+is integrated, with its bounded acquisition/local injected-disconnect evidence;
+no reference-node crash or mid-packet failure is claimed.
+
+Review of the scenario correction and shared convergence guard was performed by
+`/root/scenario_review`; the reviewed precommit diff against `2eda20c` had SHA-256
+`24cc472b9c53e768201ab9749d5e71c5b09a5d299c6d249b8df53187ebe578d6`.
+The scenario and minimum-output evidence, prior failures, command logs and
+review receipts remain outside Git. All resources owned by these local runs were
+verified removed. Other workers retain their own worktrees and resource ownership.
+
+
+The subsequent reviewed header-context integration (`34fa905`) brings the current
+full public result to **787 Scala tests, 25 gates and 50 Python guards**. Its
+standalone observation on the newly captured packet and all nine header tests
+(eight public plus one opt-in) passed separately. See the latest
+[public verification checkpoint](public-profile.md#header-context-integrated-checkpoint).

@@ -58,8 +58,8 @@ class ClusterTransferEvidenceSuite extends munit.FunSuite:
         "feePerByte" -> "0",
         "feeFixed" -> "1",
         "maxTxSize" -> "100000",
-        "preSlot" -> "128",
-        "preEpoch" -> "1",
+        "preSlot" -> (load.context.preSlot + 1).toString,
+        "preEpoch" -> (load.context.epoch + 1).toString,
         "preHash" -> ("11" * 32),
         "postTipsSha256" -> ("00" * 32),
         "preLedgerSha256" -> ("00" * 32)
@@ -95,7 +95,12 @@ class ClusterTransferEvidenceSuite extends munit.FunSuite:
           "\"txFeePerByte\": 18446744073709551616"
         ),
         ("pre-ledger-state.md", "preLedgerSha256", "\"fees\": 0", "\"fees\": -0"),
-        ("pre-tips.md", "preTipsSha256", "\"slot\": 127", "\"slot\": 128")
+        (
+          "pre-tips.md",
+          "preTipsSha256",
+          s"\"slot\": ${load.context.preSlot}",
+          s"\"slot\": ${load.context.preSlot + 1}"
+        )
       )
     do
       test("reject rehashed JSON source mutation: " + name + " " + replacement) {

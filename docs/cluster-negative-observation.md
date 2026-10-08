@@ -85,3 +85,9 @@ preserves the reference layer and sets `ledgerRuleAgreement: false`: a related
 Scala rejection is not proof that reference LEDGER evaluated or rejected that rule.
 No fallback from an unexpected reference error is permitted. See [source and
 preserved first-run failure](private-cluster-scenarios.md#reference-mempool-distinction).
+
+
+The completed third local packet passed the standalone offline adapter for all
+three scenarios and the opt-in evidence regression. Together with the transfer
+suite, **33 retained-data tests** passed; these are not added to public test counts.
+See [completed packet and preserved failures](private-cluster-scenarios.md#completed-local-packet-2026-10-08).
