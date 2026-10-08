@@ -84,3 +84,20 @@ VRF eligibility and stake/nonce evolution are not checked, and state exports are
 separate non-atomic acquisitions. See [the certificate capture record](private-cluster-certificate.md).
 Validation: 817 public Scala tests, 25 public gates and 66 Python guards; separately
 four optional retained-data checks (11 suite tests including seven public reruns).
+
+
+## Restart helper and native-script diagnostic checkpoint
+
+The reviewed restart-only source packet is integrated, retaining its scoped
+reference relay TERM/recovery evidence and explicit exclusions for Scala recovery,
+atomic snapshots and power-loss durability. Native-script evaluation/witness
+diagnostics are also additive; `credentialBound=false`, and the proposed adapter
+patch remains unapplied. Script-spending and minting admission are not supported
+by this increment. Existing transaction admission and historical source pins are
+unchanged.
+
+Validation passed 829 public Scala tests, 25 public gates and 95 native-inclusive
+Python tests. The compiler-free Java image explicitly skipped native-helper setup;
+the existing Linux compiler exercised that group separately. Docker-call sentinels
+confirmed no container calls during guard execution. See
+[restart scope](private-cluster-restart.md) and [native diagnostic scope](native-script.md).

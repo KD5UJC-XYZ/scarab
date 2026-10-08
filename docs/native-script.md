@@ -146,3 +146,19 @@ are included. `git diff --check` and patch applicability checks passed. Logs are
 ignored worktree-local `.cache/native-tests.log` and
 `.cache/native-integration-tests.log`. Live reference acceptance remains pending
 resource-slot authorization and actual credential/witness-set integration.
+
+
+## Main diagnostic integration
+
+The evaluator packet was cherry-picked as `a8732da`. Its diagnostic adapter patch
+remains unapplied. The existing transfer, interval, inclusion and fee paths and
+legacy Coverage/Balance/RestrictedReplay sources are unchanged. Evaluator results
+retain `credentialBound=false`; no script-spending or minting admission follows.
+Required consumed-credential binding is a separate, not-yet-integrated packet.
+
+Combined main validation passed 829 public Scala tests and 25 public gates. The
+full native-inclusive launcher suite passed 95 tests using the existing Linux C
+compiler, with a Docker-call sentinel proving zero cluster/container calls from
+those tests. The isolated Java image separately ran its available Python guards
+successfully, explicitly skipping native-helper setup because it has no compiler.
+These are offline integration checks, not a live native-script spending result.
