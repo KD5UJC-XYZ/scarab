@@ -61,7 +61,7 @@ object ReferenceParameters:
       )
     catch case NonFatal(e) => Left(s"invalid reference parameters: ${e.getMessage}")
 
-/** Deterministic, effect-free arithmetic-only research adapter. No file/network/provider access.
+/** Deterministic, effect-free fixture-only research adapter. No file/network/provider access.
   * Static gating is intentionally conservative, including unreachable code.
   */
 final class Evaluator(parameters: ReferenceParameters):
@@ -96,25 +96,16 @@ final class Evaluator(parameters: ReferenceParameters):
                   .isInstanceOf[ArithmeticException] =>
               Outcome.EvaluationFailure("divideInteger-zero", spent)
             case e: BuiltinError => Outcome.InternalError(s"unexpected builtin failure: ${e.cause}")
+            case _: scalus.uplc.eval.EvaluationFailure =>
+              Outcome.EvaluationFailure("explicit-error", spent)
             case e: MachineError => Outcome.InternalError(e.getClass.getSimpleName)
             case NonFatal(e) =>
               Outcome.InternalError(s"${e.getClass.getSimpleName}: ${e.getMessage}")
 
 object Evaluator:
-  val supportedBuiltins: Set[String] = Set("addInteger", "divideInteger")
+  val supportedBuiltins: Set[String] =
+    Set("addInteger", "divideInteger", "ifThenElse", "chooseData", "equalsData")
 
-  // Only these exact upstream source/result bytes may reach the Scalus parser.
-  private val admittedHashes: Set[String] = Set(
-    "b8300e6cb277ff498dd80ade14ae9b29c32f542ef937905c2a62fafad232131e",
-    "7d35a9a740f4e5664f41b3933287e4feab8eb7a7a8f770d761e314a6e1214f94",
-    "11b68ddf2da072aea052da5acca4c6724db8a52796f26c9e4b4d31ea41635028",
-    "e4e07510de79300ec2cfacc7249ec7db488ac62989c884ac8fdb1a84a335de93",
-    "81e69608d46a6c63c9a62172969d5a8d0cefba40fa311b19ef33e574cc9d742d",
-    "5266485e73b95c6d69ecb4bf62d187c31a35b149d6ae83dac75343f2d9468063",
-    "6a267026649eecca47aebcc5c00885362918addf02a5995789d954adbfeff934",
-    "bf7b2f9fcd13bd77003c6bde3ae85fadd5f263ee794e481c7a4dbfca472bc2fc",
-    "aef5150da8bf1291729c23734ac5663cdab82eaea75fe0470d3bfb14d68293bd"
-  )
   def parse(source: String): Either[Outcome, Program] =
     if source.length > 65536 then Left(Outcome.InvalidInput("source exceeds research size limit"))
     else
@@ -123,7 +114,7 @@ object Evaluator:
         .digest(source.getBytes(java.nio.charset.StandardCharsets.UTF_8))
         .map(b => f"${b & 0xff}%02x")
         .mkString
-      if !admittedHashes(digest) then
+      if !FixtureRegistry.admittedTermHashes(digest) then
         Left(
           Outcome.Unsupported(
             "unregistered source bytes; only pinned fixture/result bytes are admitted"
@@ -140,14 +131,17 @@ object Evaluator:
         catch case NonFatal(e) => Left(Outcome.InvalidInput(e.getMessage))
 
   private def supportedTerm(term: Term): Boolean = term match
-    case Term.Var(_, _)                     => false
-    case Term.LamAbs(_, _, _)               => false
+    case Term.Var(_, _)                     => true
+    case Term.LamAbs(_, body, _)            => supportedTerm(body)
     case Term.Apply(function, argument, _)  => supportedTerm(function) && supportedTerm(argument)
-    case Term.Force(_, _)                   => false
+    case Term.Force(body, _)                => supportedTerm(body)
     case Term.Delay(_, _)                   => false
     case Term.Const(Constant.Integer(_), _) => true
+    case Term.Const(Constant.Bool(_), _)    => true
+    case Term.Const(Constant.String(_), _)  => true
+    case Term.Const(Constant.Data(_), _)    => true
     case Term.Const(_, _)                   => false
     case Term.Builtin(fun, _) => supportedBuiltins.exists(_.equalsIgnoreCase(fun.toString))
-    case Term.Error(_)        => false
+    case Term.Error(_)        => true
     case Term.Constr(_, _, _) => false
     case Term.Case(_, _, _)   => false

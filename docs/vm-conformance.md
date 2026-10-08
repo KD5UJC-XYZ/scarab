@@ -1,10 +1,10 @@
-# Frozen arithmetic evaluator conformance, 0.2.0
+# Frozen UPLC control-flow and Data conformance
 
 ## Run and scope
 
-Run `./scripts/sbtw 'app/run vm'`. An optional directory argument must contain the same five named upstream fixture triples with byte-identical contents. This is a **fixture-only evaluator harness**, not an arbitrary-script interface. The existing no-argument codec/hash command is unchanged. `--help` lists both modes. Input errors return 2; a computed conformance mismatch returns 1; all matches return 0 (sbt may collapse nonzero exits to 1).
+Run `./scripts/sbtw 'app/runMain lab.Main vm'`. An optional directory argument must contain the same sixteen named upstream fixture triples with byte-identical contents. This is a **fixture-only evaluator harness**, not an arbitrary-script interface. The existing no-argument codec/hash command is unchanged. `--help` lists both modes. Input errors return 2; a computed conformance mismatch returns 1; all matches return 0 (sbt may collapse nonzero exits to 1).
 
-Scalus 1.3.0 evaluates four arithmetic successes and one division-by-zero failure. Success compares alpha-equivalent result terms and exact CPU/memory against upstream precomputed expectations. Every success is evaluated again with exactly its golden budget, CPU minus one, and memory minus one. Exact passes; each independent reduction exhausts. These boundary experiments are local derived tests, not additional official fixtures.
+Scalus 1.3.0 evaluates fourteen successes and two expected failures. The packet includes arithmetic, forced polymorphic conditionals, returned closures, dispatch over all five Data forms, and structural Data equality. It includes an unselected error argument proving the strict evaluation of ifThenElse arguments. Success compares alpha-equivalent result terms and exact CPU/memory against upstream precomputed expectations. Every success is evaluated again with exactly its golden budget, CPU minus one, and memory minus one. Exact passes; each independent reduction exhausts. These boundary experiments are local derived tests, not additional official fixtures.
 
 | Fixture | Upstream result | CPU | Memory |
 |---|---|---:|---:|
@@ -13,8 +13,19 @@ Scalus 1.3.0 evaluates four arithmetic successes and one division-by-zero failur
 | addInteger-uncurried | integer 3 | 181308 | 602 |
 | divideInteger-neg-pos | integer -1 | 212441 | 601 |
 | divideInteger-zero | evaluation failure | not supplied | not supplied |
+| ifThenElse-01 | identity lambda | 204149 | 901 |
+| ifThenElse-02 | nested lambda selecting its inner argument | 204149 | 901 |
+| ifThenElse-03 | integer 42 | 204149 | 901 |
+| ifThenElse-04 | evaluation failure (strict unselected error) | not supplied | not supplied |
+| chooseDataConstr | lambda returning integer 1 | 318475 | 1532 |
+| chooseDataMap | lambda returning string "two" | 318475 | 1532 |
+| chooseDataList | identity lambda | 318475 | 1532 |
+| chooseDataInteger | lambda returning Data I 4 | 318475 | 1532 |
+| chooseDataByteString | lambda returning Data B #05 | 318475 | 1532 |
+| equalsData-01 | boolean True | 1223759 | 601 |
+| equalsData-02 | boolean False | 1223759 | 601 |
 
-The failure budget file literally says `evaluation failure`. Any displayed spent budget for this failure is a Scalus observation, not an upstream numeric golden. The harness specifically recognizes the admitted divideInteger arithmetic exception; unsupported capabilities and internal/backend faults cannot satisfy the expected failure.
+Both failure budget files literally say `evaluation failure`. Any displayed spent budget for these failures is a Scalus observation, not an upstream numeric golden. The harness recognizes the admitted divideInteger arithmetic exception and the CEK explicit-error exception, with the expected failure kind pinned to each source digest; unsupported capabilities and internal/backend faults cannot satisfy the expected failure.
 
 ## Frozen reference configuration and provenance
 
@@ -31,8 +42,91 @@ Immutable per-file source links and SHA-256 values are in [vm-provenance.json](v
 
 `vm` has no Cats Effect dependency or file/report access. Callers provide the fixed parameters and source strings; execution uses a fresh restricting spender with a research ceiling of 10,000,000 CPU / 100,000 memory. Those ceilings are not ledger limits. The application uses Cats Effect blocking file reads and generic `VmFixtureSource[F]`/`VmReportSink[F]` ports, with errors propagated through the effect. No `unsafeRunSync` is used.
 
-All source/result bytes require SHA-256 admission **before Scalus parsing**. The file adapter additionally pins hashes by filename for sources, results and budget files, preventing swapped fixtures or edited expectations from passing as the official set. A post-parse exhaustive AST gate admits integer constants, application, addInteger and divideInteger only. Other terms, crypto, BLS constants, and even unreachable unsupported code are refused as `Unsupported`; arbitrary malformed source is also unregistered, not a tested generic parse-failure surface. Size, budget and trusted admitted parse failures have separate `InvalidInput` outcomes.
+All source/result bytes require SHA-256 admission **before Scalus parsing**. The file adapter additionally pins hashes by filename for sources, results and budget files, preventing swapped fixtures or edited expectations from passing as the official set. A post-parse exhaustive AST gate admits integer/boolean/string/Data constants, variables, lambda abstraction, application, force, explicit error, and addInteger/divideInteger/ifThenElse/chooseData/equalsData only. Delay, constr/case terms, other constant types, other builtins, crypto, BLS constants, and even unreachable unsupported code are refused as `Unsupported`; arbitrary malformed source is also unregistered, not a tested generic parse-failure surface. Size, budget and trusted admitted parse failures have separate `InvalidInput` outcomes.
 
 This conservative admission is deliberate: Scalus BLS constant parsing can invoke its global platform before an injected evaluation provider is reached. A general parser/Flat-decoder security boundary is not implemented. The runtime excludes blst-java and scalus-secp256k1-jni; every platform operation is a typed throwing guard, never fake bytes or `false`. The adapter does not inherit the default native platform. Native-dependent library APIs remain present in the third-party jar and must not be exposed without a separately verified boundary.
 
 `Success`, known `EvaluationFailure`, `BudgetExhausted`, `Unsupported`, `InvalidInput`, and `InternalError` are distinct. The budget-exhausted value is attempted charge, which can exceed the requested limit. Unexpected machine/builtin errors cannot pass failure conformance. No full Plutus corpus, cryptography, script-context construction, V3 Unit-return ledger acceptance, transaction validation, Flat decoding or historical ledger replay is claimed. The VM evaluates terms, not the higher-level script validator that would require a Unit result.
+
+## Pinned implementation audit and capability matrix
+
+The audited artifact remains Scalus 1.3.0; build.sbt and dependency policy are unchanged.
+The adapter calls the explicit PlutusVM constructor with language V3, semantics E,
+reference-E MachineParams, the throwing UnsupportedPlatform, and vanRossemPV.
+It then evaluates a de-Bruijn term with a fresh RestrictingBudgetSpender. This is
+UPLC machine evaluation; it does not call a ledger script validator.
+
+| Capability | Evidence and status |
+|---|---|
+| Arithmetic | Four exact-budget successes and one typed divide-by-zero failure retained |
+| Conditionals and closures | Three exact-budget ifThenElse successes; alpha-equivalent closure comparison; strict error argument failure |
+| Data dispatch | chooseData covers Constr, Map, List, I and B; all five exact budgets |
+| Data equality | Equal and unequal constructor payloads; exact budgets and opposite boolean results |
+| Provider-backed builtins | All rejected by UnsupportedPlatform; none newly admitted |
+| General UPLC parsing / Flat | Unsupported; exact byte hashes checked before parsing |
+| Delay, UPLC constr/case and other language versions | Not admitted or tested |
+| Ledger ScriptContext construction, datum/redeemer resolution, Unit-return acceptance | Not implemented by this adapter |
+| Full transaction validation / historical language-protocol-cost matrix | Not established by this packet |
+
+The pinned [builtin implementation](https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/shared/src/main/scala/scalus/uplc/builtin/Builtins.scala)
+implements ifThenElse with boolean selection, chooseData with a five-way Data match,
+and equalsData with structural equality. These operations do not call a platform provider.
+The pinned [CEK implementation](https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/shared/src/main/scala/scalus/uplc/eval/Cek.scala)
+throws EvaluationFailure specifically when an Error term is evaluated. Other machine
+errors remain InternalError; they cannot satisfy either admitted failure vector.
+
+The stock [JVM provider](https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/jvm/src/main/scala/scalus/uplc/builtin/JVMPlatformSpecific.scala)
+includes Java/JDK/Bouncy Castle hashes and Ed25519, but also native secp256k1 and BLST
+operations. This packet neither enables that provider nor adds a replacement.
+The [parser](https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/shared/src/main/scala/scalus/uplc/UplcParser.scala)
+constructs ordinary Data directly but invokes the global platform for BLS constants;
+the pre-parser byte gate remains mandatory. This is evidence for the admitted
+provider-free fixture paths, not a claim that the full Scalus JVM library is native-free.
+
+FixtureRegistry is the single compiled filename/hash inventory used by both the
+file adapter and the pure parser admission check. Failure sentinel strings are not
+admitted as terms. Unmodified primary fixtures and expectations were fetched from
+the same immutable Plutus commit as the original arithmetic packet. Existing Apache-2.0
+LICENSE and NOTICE files apply; no public-chain/provider corpus or Scalus implementation
+source was added. There are 48 fixture files and 42 derived boundary evaluations
+(three per successful vector), in addition to the normal-ceiling evaluations.
+
+## Reproduction and verification
+
+Use the repository's existing VM command to run all sixteen fixtures. For isolated
+Docker verification, use a private copy of the existing dependency cache and this
+command inside the checkout (do not share a writable cache between runners):
+
+```sh
+docker run --rm --cpus=2 --memory=2g --memory-swap=2g --network=none \
+  --user 1000:1000 -e HOME=/work/local-evidence/home \
+  -e COURSIER_CACHE=/work/local-evidence/cache/coursier \
+  -v /absolute/path/to/isolated-checkout:/work -w /work \
+  cardano-public-v023-check:local \
+  java -XX:ActiveProcessorCount=2 -Xms128m -Xmx1200m \
+  -Dsbt.server.autostart=false \
+  -Dsbt.boot.directory=/work/local-evidence/cache/boot \
+  -Dsbt.global.base=/work/local-evidence/cache/global \
+  -Dsbt.ivy.home=/work/local-evidence/cache/ivy \
+  -Dsbt.override.build.repos=true -Dsbt.repository.config=project/repositories \
+  -Dsbt.supershell=false -jar local-evidence/cache/sbt-launch-1.10.7.jar \
+  scalafmtCheckAll vm/test 'app/testOnly lab.VmCommandSuite'
+(cd fixtures/plutus && sha256sum -c SHA256SUMS)
+```
+
+The runner image used for this packet is
+sha256:ce5dd881ba207fb485aaebd9bb065ac79a808f26ff52467eca938dd064994203
+(the existing Dockerfile.public-check image). Network is disabled for evaluation.
+Fetching immutable licensed source fixtures is separate from evaluation.
+The image/cache are pre-existing local prerequisites, not new host installations.
+
+
+Verification of this increment: 27 VM tests and five VmCommandSuite tests passed,
+scalafmtCheckAll passed, all 48 fixture checksums and all 52 provenance artifact hashes passed, and the explicit-main CLI reported 16/16 matched. Independent read-only
+review found no implementation issues and matched the fixture contents against the
+recorded upstream Git blob IDs, in addition to SHA-256 registry/provenance checks.
+The whole unrelated repository test suite was not rerun for this isolated increment.
+
+The existing app has multiple main classes; the noninteractive CLI invocation must
+select `app/runMain lab.Main vm`. The older `app/run vm` form prompted for a main
+class and failed before evaluation. No shared launcher or build policy was changed.

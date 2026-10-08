@@ -97,6 +97,171 @@
       "path": "fixtures/licenses/plutus-NOTICE.md",
       "sha256": "9e1fe670abe06d2cbdffa2d724765b5e86aa7f65d8eccd34b391a37fbf7bab89",
       "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/NOTICE.md"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-01.uplc",
+      "sha256": "8a2f3d9c019c1bc217efa27e78121c3548ff65b1fe4079ae5f93074c2fe19302",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-01/ifThenElse-01.uplc"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-01.uplc.expected",
+      "sha256": "da037aae79252b847385154e65aa93dcb1b592c3c5dc5cc22a72713fcb08bdf9",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-01/ifThenElse-01.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-01.uplc.budget.expected",
+      "sha256": "dc049164fa1cf933c7c4f7f5e113a553cd8830ad0296c0b1279a14b175f85e35",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-01/ifThenElse-01.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-02.uplc",
+      "sha256": "a55f8afc4a757c4f8bda29293ceaf7b114c0fdc2b8f34f5b489b363efc9de9d2",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-02/ifThenElse-02.uplc"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-02.uplc.expected",
+      "sha256": "4e7ff8d0f4be4ea755b695a701a40852ac3857a364a2ca7291c13944576b898f",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-02/ifThenElse-02.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-02.uplc.budget.expected",
+      "sha256": "dc049164fa1cf933c7c4f7f5e113a553cd8830ad0296c0b1279a14b175f85e35",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-02/ifThenElse-02.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-03.uplc",
+      "sha256": "4ea3dc0ee35da163c7fe80020e1203b8c530fc8f003d2ba601ce49655e0b79f5",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-03/ifThenElse-03.uplc"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-03.uplc.expected",
+      "sha256": "c1fb9506297a30d227af375b146f75fcb67f989f51c6dd4428e25415d3c914dc",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-03/ifThenElse-03.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-03.uplc.budget.expected",
+      "sha256": "dc049164fa1cf933c7c4f7f5e113a553cd8830ad0296c0b1279a14b175f85e35",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-03/ifThenElse-03.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-04.uplc",
+      "sha256": "1a484f94ea4569908098a60dd56178017fff320976c078729382af08c73d3ab3",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-04/ifThenElse-04.uplc"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-04.uplc.expected",
+      "sha256": "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-04/ifThenElse-04.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/ifThenElse-04.uplc.budget.expected",
+      "sha256": "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/ifThenElse/ifThenElse-04/ifThenElse-04.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataConstr.uplc",
+      "sha256": "a7236fe01798135c16d52692cf3be224e6c1e7a3ff4c402020ddb03c509e1a79",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataConstr/chooseDataConstr.uplc"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataConstr.uplc.expected",
+      "sha256": "8ae6ae261220057b2e07bd13b526febeb0b0dc99cbe2bc2da58b4082f2e15384",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataConstr/chooseDataConstr.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataConstr.uplc.budget.expected",
+      "sha256": "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataConstr/chooseDataConstr.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataMap.uplc",
+      "sha256": "23352cb0fabbda3e016af0756e61147c4edb97fb0b8dff24109c19afb93e81cd",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataMap/chooseDataMap.uplc"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataMap.uplc.expected",
+      "sha256": "8cd77cc29863e3fb6b673862bf3d3b71124ffba8c7db59235bc926082f40aff7",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataMap/chooseDataMap.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataMap.uplc.budget.expected",
+      "sha256": "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataMap/chooseDataMap.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataList.uplc",
+      "sha256": "ab171ea661eff3b4d8bb72c97c12bde07ce2ed7a1875ec33f789a1d0812c6904",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataList/chooseDataList.uplc"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataList.uplc.expected",
+      "sha256": "8686c25fcba77460ec5b2ec60ca623c7fecd0713c620c119ab071e32e7edeca8",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataList/chooseDataList.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataList.uplc.budget.expected",
+      "sha256": "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataList/chooseDataList.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataInteger.uplc",
+      "sha256": "abfacf86773bc2b6d89507686b7af6d76846ed3b4e722d365222ea5b746e280c",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataInteger/chooseDataInteger.uplc"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataInteger.uplc.expected",
+      "sha256": "54fcb77ede042596decc2fcac37446f09ca1744967530c3485ed0d415d6b091d",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataInteger/chooseDataInteger.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataInteger.uplc.budget.expected",
+      "sha256": "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataInteger/chooseDataInteger.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataByteString.uplc",
+      "sha256": "479c80c3184aaa9db381b78065d71e20ed41fb72d16ee4f02b337ea0a8931468",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataByteString/chooseDataByteString.uplc"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataByteString.uplc.expected",
+      "sha256": "7fe90fa6e17c6f8d690590e42fc6e3fff7e4b314febdf9999ef0964882ef28d7",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataByteString/chooseDataByteString.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/chooseDataByteString.uplc.budget.expected",
+      "sha256": "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/chooseDataByteString/chooseDataByteString.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/equalsData-01.uplc",
+      "sha256": "a26fea649e2a53a8259b36380a094585f134d6ededb4efc5b5b4b1d1ea765f83",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/equalsData/equalsData-01/equalsData-01.uplc"
+    },
+    {
+      "path": "fixtures/plutus/equalsData-01.uplc.expected",
+      "sha256": "fbbad3b1730817896bb943c6fead056fcf22e35b7eaa19b32175d2085aeab62e",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/equalsData/equalsData-01/equalsData-01.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/equalsData-01.uplc.budget.expected",
+      "sha256": "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/equalsData/equalsData-01/equalsData-01.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/equalsData-02.uplc",
+      "sha256": "5f3fac472cd195735710fa3372983a659bf9817fa445dd5cee4a6a02564721ac",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/equalsData/equalsData-02/equalsData-02.uplc"
+    },
+    {
+      "path": "fixtures/plutus/equalsData-02.uplc.expected",
+      "sha256": "287eae4669ff04a1ecc072ea7a33e241b36d1517fe6e51b8081143a9432ac4a4",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/equalsData/equalsData-02/equalsData-02.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/equalsData-02.uplc.budget.expected",
+      "sha256": "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/equalsData/equalsData-02/equalsData-02.uplc.budget.expected"
     }
   ]
 }

@@ -18,13 +18,7 @@ class EvaluatorSuite extends munit.FunSuite:
       .toOption
       .get
   )
-  private val names = Vector(
-    "addInteger-01",
-    "addInteger-02",
-    "addInteger-uncurried",
-    "divideInteger-neg-pos",
-    "divideInteger-zero"
-  )
+  private val names = FixtureRegistry.names
   private def fixture(name: String): VectorInput = VectorInput(
     name,
     read(s"$name.uplc"),
@@ -36,6 +30,27 @@ class EvaluatorSuite extends munit.FunSuite:
     test(s"official $name result/budget and all budget boundaries") {
       val check = Conformance.check(fixture(name), evaluator).toOption.get
       assert(check.matched, check.detail)
+    }
+  }
+  test("strict ifThenElse evaluates the unselected error argument") {
+    evaluator.evaluate(fixture("ifThenElse-04").source) match
+      case Outcome.EvaluationFailure("explicit-error", _) => ()
+      case other                                          => fail(other.toString)
+    assert(evaluator.evaluate(fixture("ifThenElse-03").source).isInstanceOf[Outcome.Success])
+  }
+  test("closure result and Data equality mismatches cannot pass") {
+    for (source, other) <- Seq(
+        ("ifThenElse-01", "ifThenElse-02"),
+        ("equalsData-01", "equalsData-02"),
+        ("chooseDataConstr", "chooseDataMap")
+      )
+    do
+      val input = fixture(source).copy(expected = fixture(other).expected)
+      assertEquals(Conformance.check(input, evaluator).map(_.matched), Right(false))
+  }
+  test("every registered term rejects byte mutation before parsing") {
+    names.foreach { name =>
+      assert(evaluator.evaluate(fixture(name).source + " ").isInstanceOf[Outcome.Unsupported])
     }
   }
   test("failure is arithmetic, never a Unit-return or ledger validation check") {

@@ -2,7 +2,7 @@
 
 # Cardano Scala Lab 0.23.0
 
-A runnable research prototype for **byte-preserving CBOR and Cardano transaction-ID conformance**. It also runs five pinned Plutus evaluator conformance vectors and bounded handshake/mux source-conformance checks over localhost TCP. It also checks one narrowly scoped Conway PV9 value-conservation predicate and an experimental strict public-input Ed25519 witness predicate. It also composes a bounded, reversible in-memory Conway PV9 ADA-transfer UTxO/fee projection. It also includes a bounded durable interpreter for that research projection. It does not fully validate transactions, run a complete Cardano ledger, sync a chain, or produce blocks.
+A runnable research prototype for **byte-preserving CBOR and Cardano transaction-ID conformance**. It also runs sixteen pinned Plutus evaluator conformance vectors and bounded handshake/mux source-conformance checks over localhost TCP. It also checks one narrowly scoped Conway PV9 value-conservation predicate and an experimental strict public-input Ed25519 witness predicate. It also composes a bounded, reversible in-memory Conway PV9 ADA-transfer UTxO/fee projection. It also includes a bounded durable interpreter for that research projection. It does not fully validate transactions, run a complete Cardano ledger, sync a chain, or produce blocks.
 
 ## Atomic restricted branch candidate
 
@@ -50,7 +50,7 @@ Requires JDK 21, bash, curl, sha256sum, and HTTPS access to Maven Central. Depen
 ```sh
 ./scripts/sbtw check
 ./scripts/sbtw 'app/run'
-./scripts/sbtw 'app/run vm'
+./scripts/sbtw 'app/runMain lab.Main vm'
 ./scripts/sbtw 'app/run network-demo'
 ./scripts/sbtw 'app/run ledger-demo'
 ./scripts/sbtw 'app/run witness-demo'
@@ -81,7 +81,7 @@ The application returns exit 1 for a hash mismatch and 2 for input errors; the s
 - Explicit `Encoder[A]`, `Serde[A]`, and byte-first `Hasher`; Bouncy Castle Java Blake2b with independently parameterized 224/256-bit digests
 - Four-element Conway envelope body extraction; Blake2b-256 over original body bytes
 - `app`: Cats Effect 3 `IOApp`, narrow `FixtureSource[F]`/`ReportSink[F]` ports, pure parsing/checking, structured exit status
-- `vm`: Scalus 1.3.0 arithmetic-only fixture harness, pinned reference-E parameters, typed outcomes, exact result/CPU/memory and budget-boundary checks
+- `vm`: Scalus 1.3.0 arithmetic/control-flow/Data fixture harness, pinned reference-E parameters, typed outcomes, exact result/CPU/memory and budget-boundary checks
 - `network`: pure pinned NtN/NtC handshake and mux SDU codecs/state transitions; CE-owned bounded in-memory and localhost TCP transport adapters, literal fixture scripts and cancellation/timeout tests
 - `ledger`: pure Conway PV9 transfer/mint-only value-conservation predicate, four archived Haskell corpus cases, strict unsupported-context boundary and exact per-asset arithmetic; [scope and evidence](docs/ledger-conservation.md)
 - `core/lab.witness`: public-only strict Ed25519 research candidate, exact-byte body-hash adapter, 2,219 pinned public inputs including eight genuine ledger witnesses; [scope and evidence](docs/witness-verification.md)
@@ -103,7 +103,7 @@ The codec command provides structural codec/hash conformance only. A hash match 
 
 Decoder defaults: 1 MiB input, depth 64, 100,000 items (including string chunks), 1 MiB string bytes. These are research resource bounds, not Cardano consensus limits. Copies of original nested bytes may consume input-size times nesting-depth memory. Caller-supplied limits are trusted configuration; do not lift them indiscriminately for hostile inputs. Fixture index input is limited to 8 MiB.
 
-The VM command accepts only the five vendored fixture names and exact source/result/budget bytes. Even whitespace edits and alternate registered vectors at the wrong filename are rejected. SHA-256 admission happens before parsing, with an exhaustive post-parse capability gate. This avoids parser paths that could touch Scalus's global native BLS backend. It is a fixture harness, not an arbitrary-script evaluator or general native-free parser. Unsupported capabilities never count as ordinary evaluation failures. [VM scope, provenance and limitations](docs/vm-conformance.md).
+The VM command accepts only the sixteen vendored fixture names and exact source/result/budget bytes. Even whitespace edits and alternate registered vectors at the wrong filename are rejected. SHA-256 admission happens before parsing, with an exhaustive post-parse capability gate. This avoids parser paths that could touch Scalus's global native BLS backend. It is a fixture harness, not an arbitrary-script evaluator or general native-free parser. Unsupported capabilities never count as ordinary evaluation failures. [VM scope, provenance and limitations](docs/vm-conformance.md).
 
 Complete script context construction, full transaction/header rules, native-script validation, ledger/consensus transitions, rollback of validated state, staking and block production remain unimplemented. The later sections describe bounded acquisition/storage/protocols and supplied-message crypto research; those narrower implementations do not fill these gaps. Runtime uses Java/Scala artifacts with Scalus native crypto artifacts excluded; see dependency inventory. No DiLF4S source was reused or migrated.
 

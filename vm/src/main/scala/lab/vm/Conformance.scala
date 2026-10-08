@@ -27,8 +27,9 @@ object Conformance:
             ConformanceCheck(
               input.name,
               (outcome match
-                case Outcome.EvaluationFailure("divideInteger-zero", _) => true
-                case _                                                  => false
+                case Outcome.EvaluationFailure(kind, _) =>
+                  FixtureRegistry.failureKinds.get(sha256(input.source)).contains(kind)
+                case _ => false
               ),
               s"expected evaluator failure; actual=$outcome; upstream supplies no failure budget"
             )

@@ -28,30 +28,8 @@ object VerifyVm:
     yield checks.nonEmpty && checks.forall(_.matched)
 
 object VmCommand:
-  private val hashes: Map[String, String] = Map(
-    "addInteger-01.uplc" -> "b8300e6cb277ff498dd80ade14ae9b29c32f542ef937905c2a62fafad232131e",
-    "addInteger-01.uplc.budget.expected" -> "b5a167874a39f3cd8c2d1e7e398b4ede7373ccd93fc579a85361a2480fd6c349",
-    "addInteger-01.uplc.expected" -> "7d35a9a740f4e5664f41b3933287e4feab8eb7a7a8f770d761e314a6e1214f94",
-    "addInteger-02.uplc" -> "11b68ddf2da072aea052da5acca4c6724db8a52796f26c9e4b4d31ea41635028",
-    "addInteger-02.uplc.budget.expected" -> "f1441bb9194ae981f8cf3c72dfbd47caa30a12818970d403ce447a82d57b6901",
-    "addInteger-02.uplc.expected" -> "e4e07510de79300ec2cfacc7249ec7db488ac62989c884ac8fdb1a84a335de93",
-    "addInteger-uncurried.uplc" -> "81e69608d46a6c63c9a62172969d5a8d0cefba40fa311b19ef33e574cc9d742d",
-    "addInteger-uncurried.uplc.budget.expected" -> "b5a167874a39f3cd8c2d1e7e398b4ede7373ccd93fc579a85361a2480fd6c349",
-    "addInteger-uncurried.uplc.expected" -> "5266485e73b95c6d69ecb4bf62d187c31a35b149d6ae83dac75343f2d9468063",
-    "divideInteger-neg-pos.uplc" -> "6a267026649eecca47aebcc5c00885362918addf02a5995789d954adbfeff934",
-    "divideInteger-neg-pos.uplc.budget.expected" -> "93a2a5d7822d522505890ff2ff03a6cc5de72ab25c435fa58343ee8cddf30c8e",
-    "divideInteger-neg-pos.uplc.expected" -> "bf7b2f9fcd13bd77003c6bde3ae85fadd5f263ee794e481c7a4dbfca472bc2fc",
-    "divideInteger-zero.uplc" -> "aef5150da8bf1291729c23734ac5663cdab82eaea75fe0470d3bfb14d68293bd",
-    "divideInteger-zero.uplc.budget.expected" -> "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
-    "divideInteger-zero.uplc.expected" -> "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6"
-  )
-  val names = Vector(
-    "addInteger-01",
-    "addInteger-02",
-    "addInteger-uncurried",
-    "divideInteger-neg-pos",
-    "divideInteger-zero"
-  )
+  private val hashes = FixtureRegistry.hashes
+  val names = FixtureRegistry.names
   def source(directory: Path): VmFixtureSource[IO] = new VmFixtureSource[IO]:
     def load: IO[(ReferenceParameters, Vector[VectorInput])] = IO.blocking(loadFiles(directory))
 

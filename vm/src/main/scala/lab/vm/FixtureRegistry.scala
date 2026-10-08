@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: Apache-2.0
+package lab.vm
+
+/** Byte admission for the licensed upstream fixture packet. No parsing or IO. */
+object FixtureRegistry:
+  val names: Vector[String] = Vector(
+    "addInteger-01",
+    "addInteger-02",
+    "addInteger-uncurried",
+    "divideInteger-neg-pos",
+    "divideInteger-zero",
+    "ifThenElse-01",
+    "ifThenElse-02",
+    "ifThenElse-03",
+    "ifThenElse-04",
+    "chooseDataConstr",
+    "chooseDataMap",
+    "chooseDataList",
+    "chooseDataInteger",
+    "chooseDataByteString",
+    "equalsData-01",
+    "equalsData-02"
+  )
+  val hashes: Map[String, String] = Map(
+    "addInteger-01.uplc" -> "b8300e6cb277ff498dd80ade14ae9b29c32f542ef937905c2a62fafad232131e",
+    "addInteger-01.uplc.budget.expected" -> "b5a167874a39f3cd8c2d1e7e398b4ede7373ccd93fc579a85361a2480fd6c349",
+    "addInteger-01.uplc.expected" -> "7d35a9a740f4e5664f41b3933287e4feab8eb7a7a8f770d761e314a6e1214f94",
+    "addInteger-02.uplc" -> "11b68ddf2da072aea052da5acca4c6724db8a52796f26c9e4b4d31ea41635028",
+    "addInteger-02.uplc.budget.expected" -> "f1441bb9194ae981f8cf3c72dfbd47caa30a12818970d403ce447a82d57b6901",
+    "addInteger-02.uplc.expected" -> "e4e07510de79300ec2cfacc7249ec7db488ac62989c884ac8fdb1a84a335de93",
+    "addInteger-uncurried.uplc" -> "81e69608d46a6c63c9a62172969d5a8d0cefba40fa311b19ef33e574cc9d742d",
+    "addInteger-uncurried.uplc.budget.expected" -> "b5a167874a39f3cd8c2d1e7e398b4ede7373ccd93fc579a85361a2480fd6c349",
+    "addInteger-uncurried.uplc.expected" -> "5266485e73b95c6d69ecb4bf62d187c31a35b149d6ae83dac75343f2d9468063",
+    "divideInteger-neg-pos.uplc" -> "6a267026649eecca47aebcc5c00885362918addf02a5995789d954adbfeff934",
+    "divideInteger-neg-pos.uplc.budget.expected" -> "93a2a5d7822d522505890ff2ff03a6cc5de72ab25c435fa58343ee8cddf30c8e",
+    "divideInteger-neg-pos.uplc.expected" -> "bf7b2f9fcd13bd77003c6bde3ae85fadd5f263ee794e481c7a4dbfca472bc2fc",
+    "divideInteger-zero.uplc" -> "aef5150da8bf1291729c23734ac5663cdab82eaea75fe0470d3bfb14d68293bd",
+    "divideInteger-zero.uplc.budget.expected" -> "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+    "divideInteger-zero.uplc.expected" -> "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+    "ifThenElse-01.uplc" -> "8a2f3d9c019c1bc217efa27e78121c3548ff65b1fe4079ae5f93074c2fe19302",
+    "ifThenElse-01.uplc.expected" -> "da037aae79252b847385154e65aa93dcb1b592c3c5dc5cc22a72713fcb08bdf9",
+    "ifThenElse-01.uplc.budget.expected" -> "dc049164fa1cf933c7c4f7f5e113a553cd8830ad0296c0b1279a14b175f85e35",
+    "ifThenElse-02.uplc" -> "a55f8afc4a757c4f8bda29293ceaf7b114c0fdc2b8f34f5b489b363efc9de9d2",
+    "ifThenElse-02.uplc.expected" -> "4e7ff8d0f4be4ea755b695a701a40852ac3857a364a2ca7291c13944576b898f",
+    "ifThenElse-02.uplc.budget.expected" -> "dc049164fa1cf933c7c4f7f5e113a553cd8830ad0296c0b1279a14b175f85e35",
+    "ifThenElse-03.uplc" -> "4ea3dc0ee35da163c7fe80020e1203b8c530fc8f003d2ba601ce49655e0b79f5",
+    "ifThenElse-03.uplc.expected" -> "c1fb9506297a30d227af375b146f75fcb67f989f51c6dd4428e25415d3c914dc",
+    "ifThenElse-03.uplc.budget.expected" -> "dc049164fa1cf933c7c4f7f5e113a553cd8830ad0296c0b1279a14b175f85e35",
+    "ifThenElse-04.uplc" -> "1a484f94ea4569908098a60dd56178017fff320976c078729382af08c73d3ab3",
+    "ifThenElse-04.uplc.expected" -> "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+    "ifThenElse-04.uplc.budget.expected" -> "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+    "chooseDataConstr.uplc" -> "a7236fe01798135c16d52692cf3be224e6c1e7a3ff4c402020ddb03c509e1a79",
+    "chooseDataConstr.uplc.expected" -> "8ae6ae261220057b2e07bd13b526febeb0b0dc99cbe2bc2da58b4082f2e15384",
+    "chooseDataConstr.uplc.budget.expected" -> "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+    "chooseDataMap.uplc" -> "23352cb0fabbda3e016af0756e61147c4edb97fb0b8dff24109c19afb93e81cd",
+    "chooseDataMap.uplc.expected" -> "8cd77cc29863e3fb6b673862bf3d3b71124ffba8c7db59235bc926082f40aff7",
+    "chooseDataMap.uplc.budget.expected" -> "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+    "chooseDataList.uplc" -> "ab171ea661eff3b4d8bb72c97c12bde07ce2ed7a1875ec33f789a1d0812c6904",
+    "chooseDataList.uplc.expected" -> "8686c25fcba77460ec5b2ec60ca623c7fecd0713c620c119ab071e32e7edeca8",
+    "chooseDataList.uplc.budget.expected" -> "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+    "chooseDataInteger.uplc" -> "abfacf86773bc2b6d89507686b7af6d76846ed3b4e722d365222ea5b746e280c",
+    "chooseDataInteger.uplc.expected" -> "54fcb77ede042596decc2fcac37446f09ca1744967530c3485ed0d415d6b091d",
+    "chooseDataInteger.uplc.budget.expected" -> "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+    "chooseDataByteString.uplc" -> "479c80c3184aaa9db381b78065d71e20ed41fb72d16ee4f02b337ea0a8931468",
+    "chooseDataByteString.uplc.expected" -> "7fe90fa6e17c6f8d690590e42fc6e3fff7e4b314febdf9999ef0964882ef28d7",
+    "chooseDataByteString.uplc.budget.expected" -> "e102bed0250b94db37a77a5406c29586eeeb04ec8514bc4d84a789288666f4ff",
+    "equalsData-01.uplc" -> "a26fea649e2a53a8259b36380a094585f134d6ededb4efc5b5b4b1d1ea765f83",
+    "equalsData-01.uplc.expected" -> "fbbad3b1730817896bb943c6fead056fcf22e35b7eaa19b32175d2085aeab62e",
+    "equalsData-01.uplc.budget.expected" -> "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3",
+    "equalsData-02.uplc" -> "5f3fac472cd195735710fa3372983a659bf9817fa445dd5cee4a6a02564721ac",
+    "equalsData-02.uplc.expected" -> "287eae4669ff04a1ecc072ea7a33e241b36d1517fe6e51b8081143a9432ac4a4",
+    "equalsData-02.uplc.budget.expected" -> "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3"
+  )
+  private[vm] val admittedTermHashes: Set[String] = hashes.collect {
+    case (name, hash)
+        if name.endsWith(".uplc") ||
+          (name.endsWith(".uplc.expected") && !Set(
+            "divideInteger-zero.uplc.expected",
+            "ifThenElse-04.uplc.expected"
+          )(name)) =>
+      hash
+  }.toSet
+  private[vm] val failureKinds: Map[String, String] = Map(
+    hashes("divideInteger-zero.uplc") -> "divideInteger-zero",
+    hashes("ifThenElse-04.uplc") -> "explicit-error"
+  )

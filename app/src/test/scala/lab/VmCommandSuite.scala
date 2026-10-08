@@ -24,8 +24,8 @@ class VmCommandSuite extends munit.FunSuite:
       finally files.close()
       Files.delete(directory)
 
-  test("pinned file adapter loads all five vectors") {
-    assertEquals(VmCommand.loadFiles(original)._2.size, 5)
+  test("pinned file adapter loads all sixteen vectors") {
+    assertEquals(VmCommand.loadFiles(original)._2.size, 16)
   }
   test("swapping complete otherwise valid fixture triples is rejected by filename") {
     withCopy { dir =>
