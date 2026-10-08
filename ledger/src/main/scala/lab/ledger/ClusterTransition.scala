@@ -1,0 +1,528 @@
+// SPDX-License-Identifier: Apache-2.0
+package lab.ledger
+
+import java.nio.charset.StandardCharsets.UTF_8
+import java.security.MessageDigest
+import lab.cbor.{Bytes, Cbor, Node, Value as V}
+import scala.util.control.NonFatal
+
+/** Pure restricted UTxO/fee transition. No observed post-state, consensus, ticking, persistence,
+  * epoch derivation, or full-ledger claim. Caller owns current state and bounded undo history.
+  */
+object ClusterTransition:
+  val ProfileId = "conway-pv9-ada-interval-native-replay-v1"
+  val MaxStateBytes = 1048576
+  val MaxEntries = 4096
+  val MaxRevision = (BigInt(1) << 64) - 1
+  val MaxFees = (BigInt(1) << 128) - 1
+  enum Failure:
+    case Unsupported(detail: String)
+    case DecodeRejected(detail: String)
+    case Malformed(detail: String)
+    case ResourceLimit(detail: String)
+    case Rejected(predicate: NativeSpending.Error)
+    case StaleState(detail: String)
+    case InternalFailure(kind: String)
+  type Checked[A] = Either[Failure, A]
+
+  private def protect[A](body: => Checked[A]): Checked[A] =
+    try body
+    catch
+      case _: NullPointerException => Left(Failure.Malformed("null input"))
+      case NonFatal(error)         => Left(Failure.InternalFailure(error.getClass.getName))
+
+  final class Environment private[ClusterTransition] (
+      val id: Bytes,
+      val genesisDigest: Bytes,
+      val parameterDigest: Bytes,
+      val networkMagic: Long,
+      val epoch: BigInt,
+      val feeParameters: FeeSize.Parameters,
+      val minimumOutputParameters: MinimumOutput.Parameters
+  )
+  final class State private[ClusterTransition] (
+      val environment: Environment,
+      val checkpointId: Bytes,
+      val outputMap: Bytes,
+      val fees: BigInt,
+      val slot: BigInt,
+      val id: Bytes,
+      val revision: BigInt,
+      private[ClusterTransition] val entries: Map[TxIn, Node],
+      private[ClusterTransition] val head: Option[Bytes]
+  ):
+    val profileId = ProfileId
+    val fullLedgerValidated = false
+    def size: Int = entries.size
+
+  final class Candidate private[ClusterTransition] (
+      private[ClusterTransition] val before: State,
+      private[ClusterTransition] val after: State,
+      val originalTransaction: Bytes,
+      val transactionId: Bytes,
+      val fee: BigInt,
+      val minimum: MinimumOutput.Receipt,
+      val nativeAdmission: Option[NativeSpending.Admission],
+      val spent: Set[TxIn],
+      val created: Set[TxIn]
+  ):
+    val profileId = ProfileId
+    val credentialBound = true
+    val fullLedgerValidated = false
+    def outputMap: Bytes = after.outputMap
+    def fees: BigInt = after.fees
+    def slot: BigInt = after.slot
+    def stateId: Bytes = after.id
+
+  /** One bounded prior snapshot; State holds only a head hash, never a recursive undo chain. */
+  final class Undo private[ClusterTransition] (
+      private[ClusterTransition] val before: State,
+      private[ClusterTransition] val afterId: Bytes,
+      private[ClusterTransition] val transitionId: Bytes
+  )
+  final class Applied private[ClusterTransition] (
+      val state: State,
+      val undo: Undo,
+      val candidate: Candidate
+  ):
+    val profileId = ProfileId
+    val credentialBound = true
+    val fullLedgerValidated = false
+
+  private def text(s: String): Bytes = Bytes.fromArray(s.getBytes(UTF_8))
+  private def digest(domain: String, fields: Vector[Bytes]): Bytes =
+    val md = MessageDigest.getInstance("SHA-256")
+    (text(domain) +: fields).foreach { b =>
+      md.update(
+        Array((b.size >>> 24).toByte, (b.size >>> 16).toByte, (b.size >>> 8).toByte, b.size.toByte)
+      )
+      md.update(b.toArray)
+    }
+    Bytes.fromArray(md.digest())
+
+  private def local(error: NativeSpending.Error): Failure = error match
+    case NativeSpending.Error.UnsupportedProfile(reason) => Failure.Unsupported(reason)
+    case NativeSpending.Error.UnsupportedInput(input, reason) =>
+      Failure.Unsupported(s"input $input: $reason")
+    case NativeSpending.Error.WitnessProfileRejected(reason) =>
+      Failure.Unsupported(s"witness profile: $reason")
+    case NativeSpending.Error.DecodeRejected(reason) => Failure.DecodeRejected(reason)
+    case NativeSpending.Error.Malformed(reason)      => Failure.Malformed(reason)
+    case NativeSpending.Error.ResourceLimit(reason)  => Failure.ResourceLimit(reason)
+    case other                                       => Failure.Rejected(other)
+
+  /** Numeric and structural checks only: source/epoch attribution remains caller responsibility. */
+  def environment(
+      genesisDigest: Bytes,
+      parameterDigest: Bytes,
+      networkMagic: Long,
+      epoch: BigInt,
+      major: Int,
+      minor: Int,
+      feePerByte: BigInt,
+      feeFixed: BigInt,
+      maxTxSize: BigInt,
+      coinsPerUTxOByte: BigInt
+  ): Checked[Environment] = protect {
+    for
+      _ <- Either.cond(
+        genesisDigest.size == 32 && parameterDigest.size == 32,
+        (),
+        Failure.Malformed("32-byte context digests required")
+      )
+      _ <- Either.cond(
+        networkMagic > 0 && networkMagic <= 0xffffffffL && major == 9 && minor == 0,
+        (),
+        Failure.Unsupported("private testnet Conway PV9.0 context required")
+      )
+      _ <- Either.cond(
+        epoch >= 0 && epoch <= MaxRevision && maxTxSize > 0,
+        (),
+        Failure.Malformed("epoch/maxTxSize range")
+      )
+      fee <- FeeSize.Parameters
+        .create("Conway", major, feePerByte, feeFixed, maxTxSize)
+        .left
+        .map(e => Failure.Malformed(e.toString))
+      minimum <- MinimumOutput.Parameters
+        .checked("Conway", major, minor, coinsPerUTxOByte)
+        .left
+        .map(Failure.Malformed.apply)
+      id = digest(
+        ProfileId + ":environment",
+        Vector(
+          genesisDigest,
+          parameterDigest,
+          text(networkMagic.toString),
+          text(epoch.toString),
+          text(feePerByte.toString),
+          text(feeFixed.toString),
+          text(maxTxSize.toString),
+          text(coinsPerUTxOByte.toString)
+        )
+      )
+    yield new Environment(id, genesisDigest, parameterDigest, networkMagic, epoch, fee, minimum)
+  }
+
+  def fromContext(
+      context: ClusterTransfer.Context,
+      minimum: MinimumOutput.Parameters
+  ): Checked[Environment] = protect {
+    environment(
+      context.genesisDigest,
+      context.parameterDigest,
+      context.networkMagic,
+      context.epoch,
+      9,
+      0,
+      context.parameters.feePerByte,
+      context.parameters.feeFixed,
+      context.parameters.maxTxSize,
+      minimum.coinsPerUTxOByte
+    )
+  }
+
+  private def head(major: Int, value: Int): Vector[Byte] =
+    if value < 24 then Vector(((major << 5) | value).toByte)
+    else if value <= 255 then Vector(((major << 5) | 24).toByte, value.toByte)
+    else Vector(((major << 5) | 25).toByte, (value >>> 8).toByte, value.toByte)
+
+  /** Canonical map/reference framing; original output spans are copied without re-encoding. */
+  private def encode(entries: Map[TxIn, Node]): Checked[Bytes] =
+    if entries.size > MaxEntries then Left(Failure.ResourceLimit("4096 UTxO entries maximum"))
+    else
+      val size = head(5, entries.size).size.toLong + entries.iterator.map { (ref, out) =>
+        35L + head(0, ref.index.toInt).size + out.original.size
+      }.sum
+      if size > MaxStateBytes then Left(Failure.ResourceLimit("encoded state exceeds 1 MiB"))
+      else
+        val bytes = Vector.newBuilder[Byte]
+        bytes ++= head(5, entries.size)
+        entries.toVector.sortBy((ref, _) => (ref.id.hex, ref.index)).foreach { (ref, out) =>
+          bytes ++= Vector(0x82.toByte, 0x58.toByte, 0x20.toByte)
+          bytes ++= ref.id.value
+          bytes ++= head(0, ref.index.toInt)
+          bytes ++= out.original.value
+        }
+        val raw = Bytes(bytes.result())
+        NativeSpending.decode(raw).left.map(local).map(_ => raw)
+
+  private def state(
+      env: Environment,
+      checkpoint: Bytes,
+      entries: Map[TxIn, Node],
+      fees: BigInt,
+      slot: BigInt,
+      revision: BigInt,
+      top: Option[Bytes]
+  ): Checked[State] =
+    for
+      _ <- Either.cond(
+        fees >= 0 && fees <= MaxFees,
+        (),
+        Failure.ResourceLimit("uint128 fee pot required")
+      )
+      _ <- Either.cond(
+        slot >= 0 && slot <= MaxRevision && revision >= 0 && revision <= MaxRevision,
+        (),
+        Failure.ResourceLimit("uint64 slot/revision required")
+      )
+      raw <- encode(entries)
+      id = digest(
+        ProfileId + ":state",
+        Vector(env.id, checkpoint, raw, text(fees.toString), text(slot.toString))
+      )
+    yield new State(env, checkpoint, raw, fees, slot, id, revision, entries, top)
+
+  def checkpoint(
+      env: Environment,
+      rawUtxo: Bytes,
+      fees: BigInt,
+      slot: BigInt,
+      attributionDigest: Bytes
+  ): Checked[State] = protect {
+    for
+      _ <- Either.cond(
+        attributionDigest.size == 32,
+        (),
+        Failure.Malformed("32-byte checkpoint attribution required")
+      )
+      entries <- NativeSpending.snapshot(rawUtxo).left.map(local)
+      _ <- entries.values.foldLeft[Checked[Unit]](Right(())) { (acc, node) =>
+        for _ <- acc; _ <- NativeSpending.output(node, true).left.map(Failure.Unsupported.apply)
+        yield ()
+      }
+      raw <- encode(entries)
+      id = digest(
+        ProfileId + ":checkpoint",
+        Vector(env.id, attributionDigest, raw, text(fees.toString), text(slot.toString))
+      )
+      result <- state(env, id, entries, fees, slot, 0, None)
+    yield result
+  }
+
+  private def projection(original: Bytes): Checked[(Coverage.Projection, Bytes)] =
+    for
+      root <- NativeSpending.decode(original).left.map(local)
+      raw <- root.value match
+        case V.Arr(Vector(body, _, _, _)) =>
+          body.value match
+            case V.Map(fields) =>
+              val retained = fields.filter((key, _) =>
+                Set[V](V.UInt(0), V.UInt(1), V.UInt(2)).contains(key.value)
+              )
+              Right(
+                Bytes(
+                  Vector(0x84.toByte, 0xa3.toByte) ++ retained.flatMap((k, v) =>
+                    k.original.value ++ v.original.value
+                  ) ++
+                    Vector(0xa0.toByte, 0xf5.toByte, 0xf6.toByte)
+                )
+              )
+            case _ => Left(Failure.Malformed("body map required"))
+        case _ => Left(Failure.Malformed("four-field transaction required"))
+      tx <- Coverage.decode(raw).left.map {
+        case CoverageError.TypedUnsupported(reason) => Failure.Unsupported(reason)
+        case other                                  => Failure.Malformed(other.toString)
+      }
+      _ <- Either.cond(
+        tx.inputs.size <= 128 && tx.outputs.size <= 128,
+        (),
+        Failure.ResourceLimit("128 inputs/outputs maximum")
+      )
+    yield (tx, raw)
+
+  def prepare(before: State, original: Bytes, inclusionSlot: BigInt): Checked[Candidate] = protect {
+    for
+      _ <- Either.cond(
+        before.revision < MaxRevision,
+        (),
+        Failure.ResourceLimit("revision exhausted")
+      )
+      _ <- Either.cond(
+        inclusionSlot >= before.slot && inclusionSlot <= MaxRevision,
+        (),
+        Failure.Unsupported("inclusion slot must be uint64 and nondecreasing")
+      )
+      interval <- ValidityInterval.decode(original).left.map(Failure.Unsupported.apply)
+      valid <- ValidityInterval.atSlot(interval, inclusionSlot).left.map(Failure.Malformed.apply)
+      _ <- Either.cond(
+        valid.satisfied,
+        (),
+        Failure.Rejected(NativeSpending.Error.OutsideValidityInterval)
+      )
+      semantic <- projection(original)
+      (tx, projectedRaw) = semantic
+      missing = tx.inputs -- before.entries.keySet
+      _ <- Either.cond(
+        missing.isEmpty,
+        (),
+        Failure.Rejected(NativeSpending.Error.UnresolvedInputs(missing))
+      )
+      consumed <- tx.inputs.toVector
+        .foldLeft[Checked[Vector[NativeSpending.Output]]](Right(Vector.empty)) { (acc, ref) =>
+          for
+            previous <- acc;
+            out <- NativeSpending
+              .output(before.entries(ref), true)
+              .left
+              .map(Failure.Unsupported.apply)
+          yield previous :+ out
+        }
+      native <-
+        if consumed.exists(_.script) then
+          NativeSpending.check(original, before.outputMap).left.map(local).map(Some(_))
+        else
+          for
+            inspection <- NativeScriptWitnesses.inspect(original).left.map {
+              case "native witness signature rejected" =>
+                Failure.Rejected(NativeSpending.Error.InvalidSignature)
+              case other => Failure.Unsupported(s"witness profile: $other")
+            }
+            extra = inspection.scripts.map(_.hash).toSet
+            _ <- Either.cond(
+              extra.isEmpty,
+              (),
+              Failure.Rejected(NativeSpending.Error.ExtraneousScripts(extra))
+            )
+            missingKeys = consumed.map(_.credential).toSet -- inspection.verifiedKeys.hashes
+            _ <- Either.cond(
+              missingKeys.isEmpty,
+              (),
+              Failure.Rejected(NativeSpending.Error.MissingKeys(missingKeys))
+            )
+          yield None
+      minimum <- MinimumOutput
+        .check(before.environment.minimumOutputParameters, projectedRaw)
+        .left
+        .map(Failure.Unsupported.apply)
+      _ <- Either.cond(
+        minimum.satisfied,
+        (),
+        Failure.Rejected(NativeSpending.Error.MinimumOutputFailed)
+      )
+      total = consumed.map(_.coin).sum
+      produced = tx.outputs.map(_.value.lovelace).sum + tx.fee
+      _ <- Either.cond(
+        total == produced,
+        (),
+        Failure.Rejected(NativeSpending.Error.ValueNotConserved(total, produced))
+      )
+      originalRoot <- NativeSpending.decode(original).left.map(local)
+      witnessBytes <- originalRoot.value match
+        case V.Arr(Vector(_, witnesses, _, _)) => Right(witnesses.original)
+        case _ => Left(Failure.Malformed("four-field transaction required"))
+      size <- FeeSize
+        .componentSize(BigInt(interval.originalBody.size), BigInt(witnessBytes.size))
+        .left
+        .map(e => Failure.ResourceLimit(e.toString))
+      p = before.environment.feeParameters
+      requiredFee = size * p.feePerByte + p.feeFixed
+      _ <- Either.cond(
+        tx.fee >= requiredFee,
+        (),
+        Failure.Rejected(NativeSpending.Error.FeeTooSmall(tx.fee, requiredFee))
+      )
+      _ <- Either.cond(
+        size <= p.maxTxSize,
+        (),
+        Failure.Rejected(NativeSpending.Error.TransactionTooLarge(size, p.maxTxSize))
+      )
+      created <- tx.outputs.zipWithIndex.foldLeft[Checked[Map[TxIn, Node]]](Right(Map.empty)) {
+        case (acc, (out, index)) =>
+          for
+            previous <- acc
+            ref <- TxIn
+              .create(interval.transactionId, BigInt(index))
+              .left
+              .map(e => Failure.Malformed(e.toString))
+            _ <- Either.cond(
+              !before.entries.contains(ref),
+              (),
+              Failure.Rejected(NativeSpending.Error.StateMismatch("output collision"))
+            )
+            node <- NativeSpending.decode(out.original).left.map(local)
+            _ <- NativeSpending.output(node, false).left.map(Failure.Unsupported.apply)
+          yield previous.updated(ref, node)
+      }
+      nextEntries = (before.entries -- tx.inputs) ++ created
+      tentative <- state(
+        before.environment,
+        before.checkpointId,
+        nextEntries,
+        before.fees + tx.fee,
+        inclusionSlot,
+        before.revision + 1,
+        None
+      )
+      transition = digest(
+        ProfileId + ":transition",
+        Vector(
+          before.checkpointId,
+          before.id,
+          text(before.revision.toString),
+          before.head.getOrElse(Bytes.empty),
+          tentative.id,
+          original,
+          text(inclusionSlot.toString)
+        )
+      )
+      after <- state(
+        before.environment,
+        before.checkpointId,
+        nextEntries,
+        tentative.fees,
+        inclusionSlot,
+        tentative.revision,
+        Some(transition)
+      )
+    yield new Candidate(
+      before,
+      after,
+      original,
+      interval.transactionId,
+      tx.fee,
+      minimum,
+      native,
+      tx.inputs,
+      created.keySet
+    )
+  }
+
+  def commit(current: State, candidate: Candidate): Checked[Applied] = protect {
+    val before = candidate.before
+    if current.checkpointId != before.checkpointId || current.environment.id != before.environment.id ||
+      current.id != before.id || current.revision != before.revision || current.head != before.head
+    then
+      Left(
+        Failure.StaleState("candidate belongs to another checkpoint, content, revision, or branch")
+      )
+    else
+      Right(
+        new Applied(
+          candidate.after,
+          new Undo(before, candidate.after.id, candidate.after.head.get),
+          candidate
+        )
+      )
+  }
+
+  def applyTransaction(before: State, original: Bytes, inclusionSlot: BigInt): Checked[Applied] =
+    protect {
+      prepare(before, original, inclusionSlot).flatMap(commit(before, _))
+    }
+
+  def undo(current: State, expectedRevision: BigInt, undo: Undo): Checked[State] = protect {
+    if current.revision != expectedRevision || current.checkpointId != undo.before.checkpointId ||
+      current.id != undo.afterId || current.head != Some(undo.transitionId)
+    then
+      Left(Failure.StaleState("undo belongs to another revision, checkpoint, content, or branch"))
+    else if current.revision == MaxRevision then Left(Failure.ResourceLimit("revision exhausted"))
+    else
+      state(
+        undo.before.environment,
+        undo.before.checkpointId,
+        undo.before.entries,
+        undo.before.fees,
+        undo.before.slot,
+        current.revision + 1,
+        undo.before.head
+      )
+  }
+
+  /** Optional observation check AFTER independent derivation. Created outputs compare semantic
+    * address/coin; untouched outputs compare original bytes. This never changes candidate state.
+    */
+  def compareReference(applied: Applied, observedUtxo: Bytes, observedFees: BigInt): Checked[Unit] =
+    protect {
+      for
+        observed <- NativeSpending.snapshot(observedUtxo).left.map(local)
+        _ <- Either.cond(
+          observed.keySet == applied.state.entries.keySet && observedFees == applied.state.fees,
+          (),
+          Failure.Rejected(
+            NativeSpending.Error.StateMismatch("reference UTxO keys or fee pot differ")
+          )
+        )
+        _ <- observed.toVector.foldLeft[Checked[Unit]](Right(())) { case (acc, (ref, node)) =>
+          for
+            _ <- acc
+            same <-
+              if applied.candidate.created.contains(ref) then
+                for
+                  expected <- NativeSpending
+                    .output(applied.state.entries(ref), false)
+                    .left
+                    .map(Failure.Unsupported.apply)
+                  actual <- NativeSpending.output(node, false).left.map(Failure.Unsupported.apply)
+                yield expected == actual
+              else Right(node.original == applied.state.entries(ref).original)
+            _ <- Either.cond(
+              same,
+              (),
+              Failure.Rejected(NativeSpending.Error.StateMismatch("reference output differs"))
+            )
+          yield ()
+        }
+      yield ()
+    }
