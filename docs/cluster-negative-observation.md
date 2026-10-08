@@ -14,6 +14,23 @@ compares parameter/ledger JSON and tip bracket fields. Changed or malformed evid
 fails closed. Whole ledger JSON equality is deliberately strict; a live run may
 require diagnosing irrelevant reference export differences before relaxing it.
 
+The body transaction ID does not commit to witnesses. The runner therefore records
+SHA-256 of the **complete submitted CBOR** in the separate submission record and
+scenario receipt. It reads those bytes immediately before submission and verifies
+that the transaction file is unchanged afterward. The offline adapter checks the
+saved CBOR against that digest, binds status and separate streams to the named
+submission record, checks the exact command, and rejects path traversal. Replacing
+only witnesses, even if the same body ID and rejection class survive, fails this
+binding. These digests establish consistency within a trusted evidence directory;
+they do not authenticate a directory whose entire contents have been rewritten.
+
+The runner retains the producer pause after the inherited positive `post` snapshot.
+The inherited final resume is deferred until both post-inclusion negatives finish;
+the scenario's outer `finally` always clears the hold and resumes producers, including
+on cancellation or positive-comparison failure. There is no intermediate resume
+and re-pause window. The initial pre-transfer window still resumes normally so the
+valid transaction can be included. No main-owned runner change is required.
+
 It then reuses `ClusterTransfer.compare` with that state as both state arguments.
 Only the exact early failures `missing required witness keys` and `unresolved
 spending inputs` map to selected rejection classes. All other errors are unsupported
@@ -44,6 +61,14 @@ been run because live workloads remain blocked pending direct user approval. Do 
 set this variable to partial or unrelated evidence and interpret skipped integration
 as reference conformance. Test keys, original state, logs and receipts stay outside
 Git; no raw private evidence is distributed.
+
+`ClusterNegativeInspectionSuite` builds complete temporary evidence directories,
+including a passing signed positive transition, using randomly generated keys held
+only in memory. Every fixture first passes the complete `inspect` path. Mutations
+then exercise witness-only replacement, a rewritten scenario digest against an
+unchanged submission record, cross-directory substitution, changed points/UTxO/
+parameters/ledger state, and altered submission paths and commands. These are
+synthetic evidence-binding regressions, not fabricated reference conformance claims.
 
 The scenario lifecycle test still means cancellation then a **fresh harness run**,
 not retained-state reference node recovery. The original scenario commit remains

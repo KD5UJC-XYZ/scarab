@@ -66,12 +66,14 @@ class ClusterNegativeObservationSuite extends munit.FunSuite:
   }
   private val scenario = scenarios.head
   private val receipt =
-    s"""{"scope":"reference-local-submission-observation","returncode":1,"passed":true,"stableStateVerified":true,"singleAcquiredSnapshot":false,"transactionId":"${digest.hex}","expectedReason":"MissingVKeyWitnessesUTXOW","stdout":"","stderr":"MissingVKeyWitnessesUTXOW"}"""
+    s"""{"scope":"reference-local-submission-observation","returncode":1,"passed":true,"stableStateVerified":true,"singleAcquiredSnapshot":false,"transactionId":"${digest.hex}","transactionCborSha256":"${sha256(
+        tx
+      )}","expectedReason":"MissingVKeyWitnessesUTXOW","stdout":"","stderr":"MissingVKeyWitnessesUTXOW"}"""
   private def parsed(text: String) = ReferenceJson.parse(Bytes.fromArray(text.getBytes("UTF-8")))
   test(
     "reference receipt requires exact transaction identity and recognized unsuccessful submission"
   ) {
-    referenceRejection(parsed(receipt), scenario, digest)
+    referenceRejection(parsed(receipt), scenario, digest, tx)
     for (from, to) <- Vector(
         "\"returncode\":1" -> "\"returncode\":0",
         "\"returncode\":1" -> "\"returncode\":1e0",
@@ -83,11 +85,13 @@ class ClusterNegativeObservationSuite extends munit.FunSuite:
       )
     do
       intercept[IllegalArgumentException](
-        referenceRejection(parsed(receipt.replace(from, to)), scenario, digest)
+        referenceRejection(parsed(receipt.replace(from, to)), scenario, digest, tx)
       )
   }
   test("wrong reference class and duplicate fields fail closed") {
-    intercept[IllegalArgumentException](referenceRejection(parsed(receipt), scenarios(1), digest))
+    intercept[IllegalArgumentException](
+      referenceRejection(parsed(receipt), scenarios(1), digest, tx)
+    )
     intercept[IllegalArgumentException](
       parsed(receipt.replace("\"returncode\":1", "\"returncode\":1,\"returncode\":0"))
     )

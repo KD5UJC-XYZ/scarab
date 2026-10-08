@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Controlled submission negatives around the existing real transfer comparison."""
 import argparse
+import hashlib
 import json
 import signal
 import time
@@ -26,6 +27,27 @@ def unchanged(before, after):
 
 class ScenarioRunner(TransferRunner):
     """No shared runner patch: intercept only the first exact transfer submission."""
+    def transaction_bytes(self, path):
+        text = super().execute("cat", path).stdout
+        if len(text) > 4 * 1024 * 1024:
+            raise ValueError("transaction envelope exceeds bound")
+        raw = bytes.fromhex(json.loads(text)["cborHex"])
+        if not raw or len(raw) > 1024 * 1024:
+            raise ValueError("transaction CBOR exceeds bound or is empty")
+        return raw
+
+    def snapshot(self, label):
+        observed = super().snapshot(label)
+        if label == "post" and getattr(self, "scenario_active", False):
+            self.hold_post_pause = True
+        return observed
+
+    def producers(self, action):
+        if action == "CONT" and getattr(self, "hold_post_pause", False):
+            self.save("scenario-continuous-pause.md", "Inherited post-transfer resume deferred until negative scenarios finish.\n")
+            return
+        return super().producers(action)
+
     def execute(self, *args, **kwargs):
         if args[:4] != ("cardano-cli", "conway", "transaction", "submit"):
             return super().execute(*args, **kwargs)
@@ -38,16 +60,28 @@ class ScenarioRunner(TransferRunner):
         label = "scenario-submission-" + str(index)
         checked = kwargs.pop("check", True)
         started = time.monotonic()
+        result = None
+        digest = None
         try:
+            submitted_bytes = self.transaction_bytes(tx_file)
+            digest = hashlib.sha256(submitted_bytes).hexdigest()
             result = super().execute(*args, check=False, **kwargs)
+            unchanged_file = self.transaction_bytes(tx_file) == submitted_bytes
         except BaseException as exc:
-            self.save(label + ".md", {"command": args, "outcome": "process-exception",
+            receipt = {"command": args, "outcome": "process-exception",
                 "exception": type(exc).__name__, "detail": str(exc),
-                "startedMonotonicSeconds": started})
+                "transactionCborSha256": digest, "startedMonotonicSeconds": started}
+            if result is not None:
+                receipt.update(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
+            self.save(label + ".md", receipt)
             raise
         self.save(label + ".md", {"command": args, "returncode": result.returncode,
             "stdout": result.stdout, "stderr": result.stderr,
+            "transactionCborSha256": digest, "transactionFileUnchanged": unchanged_file,
             "startedMonotonicSeconds": started, "completedMonotonicSeconds": time.monotonic()})
+        self.last_submission = {"evidence": label + ".md", "digest": digest}
+        if not unchanged_file:
+            raise ValueError("submitted transaction file changed during submission")
         if checked and result.returncode:
             raise RuntimeError(result.stderr or result.stdout)
         return result
@@ -58,8 +92,9 @@ class ScenarioRunner(TransferRunner):
             "--tx-file", path, "--output-text").stdout.strip()
         if len(txid) != 64 or any(c not in "0123456789abcdef" for c in txid):
             raise ValueError("unexpected scenario transaction ID")
-        envelope = json.loads(self.execute("cat", path).stdout)
-        self.save(label + "-transaction-cbor.md", envelope["cborHex"])
+        transaction = self.transaction_bytes(path)
+        digest = hashlib.sha256(transaction).hexdigest()
+        self.save(label + "-transaction-cbor.md", transaction.hex())
         result = self.execute("cardano-cli", "conway", "transaction", "submit",
             "--tx-file", path, "--testnet-magic", "1082026",
             "--socket-path", "/work/env/socket/node3/sock", check=False)
@@ -68,6 +103,7 @@ class ScenarioRunner(TransferRunner):
         present = [key for key in json.loads(after[1]["utxo"]) if key.split("#")[0] == txid]
         recognized = result.returncode != 0 and reason in result.stdout + result.stderr
         receipt = {"scope": "reference-local-submission-observation", "transactionId": txid,
+            "transactionCborSha256": digest, "submissionEvidence": self.last_submission["evidence"],
             "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr,
             "expectedReason": reason, "recognizedLedgerRejection": recognized,
             "observedOutputs": present, "expectedPreviouslyIncluded": expected_present,
@@ -76,6 +112,8 @@ class ScenarioRunner(TransferRunner):
             "nonInclusionScope": "stable paused-producer observation window only",
             "passed": False, "stableStateVerified": False}
         self.save(label + "-result.md", receipt)
+        if digest != self.last_submission["digest"]:
+            raise ValueError("saved transaction differs from submitted bytes")
         unchanged(before, after)
         receipt["stableStateVerified"] = True
         self.save(label + "-result.md", receipt)
@@ -95,10 +133,14 @@ class ScenarioRunner(TransferRunner):
         self.reject("wrong-key", "/work/scenario-wrong-key.signed", "MissingVKeyWitnessesUTXOW", False)
 
     def scala(self):
-        positive = super().scala()
-        selection = json.loads((self.out / "transfer-selection.md").read_text())
+        self.scenario_active = True
+        self.hold_post_pause = False
         try:
-            self.producers("STOP")
+            positive = super().scala()
+            if not self.hold_post_pause:
+                raise ValueError("post-transfer producer pause was not retained")
+            self.pause_evidence()
+            selection = json.loads((self.out / "transfer-selection.md").read_text())
             repeated = self.reject("repeated-included", "/work/transfer.signed", "BadInputsUTxO", True)
             self.execute("cardano-cli", "conway", "transaction", "build-raw",
                 "--tx-in", selection["input"], "--tx-out",
@@ -113,6 +155,8 @@ class ScenarioRunner(TransferRunner):
             if conflict["transactionId"] == repeated["transactionId"]:
                 raise ValueError("conflicting transaction must have distinct body identity")
         finally:
+            self.hold_post_pause = False
+            self.scenario_active = False
             self.producers("CONT")
         return {"positiveTransfer": positive, "repeated": repeated, "conflict": conflict,
                 "wrongKey": "recognized rejection before valid submission",

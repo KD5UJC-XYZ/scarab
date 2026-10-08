@@ -31,6 +31,12 @@ claim applies only to the paused window before valid submission. Repeated includ
 transactions correctly retain their pre-existing outputs. No bounded observation
 establishes permanent future non-inclusion.
 
+Complete submitted CBOR SHA-256 is recorded in both submission and scenario receipts;
+the file is read immediately before submission and checked unchanged afterward.
+This binds witnesses as well as the body. The post-transfer pause remains held
+continuously through both post-inclusion negatives, with one outer `finally` releasing
+the hold. The initial pause is still released for valid-transaction inclusion.
+
 The rejection classifier deliberately fails if the expected constructor is absent,
 including socket failures and unexpected success. A reference local submission
 rejection is not invalid-block rejection or a full ledger validity result. The

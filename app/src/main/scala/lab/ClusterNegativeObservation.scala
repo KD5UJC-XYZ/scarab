@@ -3,6 +3,7 @@ package lab
 
 import cats.effect.{ExitCode, IO, IOApp}
 import java.nio.file.{Files, Path}
+import java.security.MessageDigest
 import lab.cbor.Bytes
 import lab.ledger.{ClusterTransfer, Coverage}
 
@@ -41,11 +42,14 @@ object ClusterNegativeObservation extends IOApp:
   private def hex(path: Path): Bytes =
     get(Bytes.fromHex(new String(read(path).toArray, "UTF-8").trim))
   private def json(path: Path): ReferenceJson.Json = ReferenceJson.parse(read(path))
+  private[lab] def sha256(raw: Bytes): String =
+    Bytes.fromArray(MessageDigest.getInstance("SHA-256").digest(raw.toArray)).hex
 
   private[lab] def referenceRejection(
       receipt: ReferenceJson.Json,
       scenario: Scenario,
-      transactionId: Bytes
+      transactionId: Bytes,
+      transaction: Bytes
   ): Unit =
     import ReferenceJson.{field, string, uint}
     import ReferenceJson.Json.Lit
@@ -55,6 +59,10 @@ object ClusterNegativeObservation extends IOApp:
     require(field(receipt, "stableStateVerified") == Lit("true"), "stable state unverified")
     require(field(receipt, "singleAcquiredSnapshot") == Lit("false"), "atomic claim unsupported")
     require(string(field(receipt, "transactionId")) == transactionId.hex, "transaction ID differs")
+    require(
+      string(field(receipt, "transactionCborSha256")) == sha256(transaction),
+      "complete submitted transaction digest differs"
+    )
     require(
       string(field(receipt, "expectedReason")) == scenario.reference,
       "reference class differs"
@@ -87,7 +95,48 @@ object ClusterNegativeObservation extends IOApp:
       referenceRejection(
         json(dir.resolve(scenario.label + "-result.md")),
         scenario,
-        decoded.body.hash.bytes
+        decoded.body.hash.bytes,
+        transaction
+      )
+      val receipt = json(dir.resolve(scenario.label + "-result.md"))
+      val evidenceName = ReferenceJson.string(ReferenceJson.field(receipt, "submissionEvidence"))
+      require(
+        evidenceName.matches("scenario-submission-[0-9]{1,6}\\.md"),
+        "invalid submission evidence path"
+      )
+      val submission = json(dir.resolve(evidenceName))
+      for key <- Vector("transactionCborSha256", "returncode", "stdout", "stderr") do
+        require(
+          ReferenceJson.field(submission, key) == ReferenceJson.field(receipt, key),
+          "submission receipt differs: " + key
+        )
+      require(
+        ReferenceJson.field(submission, "transactionFileUnchanged") == ReferenceJson.Json.Lit(
+          "true"
+        ),
+        "submitted file stability unverified"
+      )
+      val txFile = scenario.label match
+        case "wrong-key"         => "/work/scenario-wrong-key.signed"
+        case "repeated-included" => "/work/transfer.signed"
+        case "conflicting-spend" => "/work/scenario-conflict.signed"
+        case _                   => throw new IllegalArgumentException("unknown scenario")
+      val command =
+        ReferenceJson.array(ReferenceJson.field(submission, "command")).map(ReferenceJson.string)
+      require(
+        command == Vector(
+          "cardano-cli",
+          "conway",
+          "transaction",
+          "submit",
+          "--tx-file",
+          txFile,
+          "--testnet-magic",
+          input.context.networkMagic.toString,
+          "--socket-path",
+          "/work/env/socket/node3/sock"
+        ),
+        "submission command differs"
       )
       for phase <- Vector("pre", "post") do
         val prefix = scenario.label + "-" + phase

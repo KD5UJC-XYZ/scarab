@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Scripted process responses exercise production adapters; no live validity claim."""
 import copy
+import hashlib
 import json
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -52,6 +54,9 @@ class ScenarioGuards(unittest.TestCase):
         self.assertEqual(r.records["scenario-submission-0.md"]["stdout"], "diagnostic\n")
         self.assertEqual(r.records["scenario-submission-0.md"]["stderr"], "BadInputsUTxO")
         self.assertEqual(r.records["conflict-transaction-cbor.md"], "deadbeef")
+        self.assertEqual(report["transactionCborSha256"], hashlib.sha256(bytes.fromhex("deadbeef")).hexdigest())
+        self.assertEqual(report["submissionEvidence"], "scenario-submission-0.md")
+        self.assertTrue(r.records[report["submissionEvidence"]]["transactionFileUnchanged"])
 
     def test_transport_failure_or_success_with_reason_is_not_ledger_rejection(self):
         for code, message in [(1, "socket unavailable"), (0, "BadInputsUTxO")]:
@@ -139,14 +144,154 @@ class ScenarioGuards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             r.out = Path(directory)
             (r.out / "transfer-selection.md").write_text("{}")
-            with patch.object(TransferRunner, "scala", return_value={}), \
-                 patch.object(r, "producers") as producers, \
+            def positive():
+                r.producers("STOP")
+                r.snapshot("post")
+                r.producers("CONT")
+                return {}
+            with patch.object(TransferRunner, "scala", side_effect=positive), \
+                 patch.object(TransferRunner, "snapshot", return_value=state()), \
+                 patch.object(TransferRunner, "producers") as producers, \
+                 patch.object(r, "pause_evidence"), \
                  patch.object(r, "reject", side_effect=KeyboardInterrupt()):
+                del r.snapshot
                 with self.assertRaises(KeyboardInterrupt): r.scala()
             self.assertEqual([c.args for c in producers.call_args_list], [("STOP",), ("CONT",)])
+            self.assertFalse(r.hold_post_pause)
+
+    def test_post_snapshot_remains_paused_through_both_negatives(self):
+        r = self.runner()
+        del r.snapshot
+        physical = []
+        observed = []
+        def positive():
+            r.producers("STOP")
+            r.producers("CONT")  # Initial submission window must resume for inclusion.
+            r.producers("STOP")
+            r.snapshot("post")
+            r.producers("CONT")  # Inherited finally; must be deferred.
+            return {}
+        def reject(label, *args):
+            self.assertTrue(r.hold_post_pause)
+            self.assertEqual(physical, ["STOP", "CONT", "STOP"])
+            observed.append(label)
+            return {"transactionId": label}
+        with tempfile.TemporaryDirectory() as directory:
+            r.out = Path(directory)
+            (r.out / "transfer-selection.md").write_text(json.dumps({"input": "spent#0",
+                "destination": "destination", "amount": 10, "changeAddress": "change", "change": 20, "fee": 2}))
+            with patch.object(TransferRunner, "scala", side_effect=positive), \
+                 patch.object(TransferRunner, "snapshot", return_value=state()), \
+                 patch.object(TransferRunner, "producers", side_effect=physical.append), \
+                 patch.object(r, "pause_evidence"), patch.object(r, "execute"), \
+                 patch.object(r, "reject", side_effect=reject):
+                r.scala()
+        self.assertEqual(observed, ["repeated-included", "conflicting-spend"])
+        self.assertEqual(physical, ["STOP", "CONT", "STOP", "CONT"])
+
+    def test_positive_failure_after_post_snapshot_still_releases_pause(self):
+        r = self.runner()
+        del r.snapshot
+        def positive():
+            r.producers("STOP")
+            r.snapshot("post")
+            r.producers("CONT")
+            raise ValueError("positive comparison failed")
+        with patch.object(TransferRunner, "scala", side_effect=positive), \
+             patch.object(TransferRunner, "snapshot", return_value=state()), \
+             patch.object(TransferRunner, "producers") as producers:
+            with self.assertRaisesRegex(ValueError, "positive comparison"):
+                r.scala()
+        self.assertEqual([c.args for c in producers.call_args_list], [("STOP",), ("CONT",)])
+
+    def test_transaction_mutation_during_submission_preserves_receipt_and_fails(self):
+        r = self.runner()
+        with patch.object(r, "transaction_bytes", side_effect=[b"before", b"after"]), \
+             patch.object(TransferRunner, "execute", side_effect=self.process()):
+            with self.assertRaisesRegex(ValueError, "file changed"):
+                r.execute("cardano-cli", "conway", "transaction", "submit", "--tx-file", "/work/negative.signed")
+        receipt = r.records["scenario-submission-0.md"]
+        self.assertFalse(receipt["transactionFileUnchanged"])
+        self.assertEqual(receipt["transactionCborSha256"], hashlib.sha256(b"before").hexdigest())
+        self.assertEqual(receipt["returncode"], 1)
+
+    def test_post_submit_read_failure_retains_completed_process_result(self):
+        r = self.runner()
+        with patch.object(r, "transaction_bytes", side_effect=[b"before", OSError("read failed")]), \
+             patch.object(TransferRunner, "execute", side_effect=self.process()):
+            with self.assertRaises(OSError):
+                r.execute("cardano-cli", "conway", "transaction", "submit", "--tx-file", "/work/negative.signed")
+        receipt = r.records["scenario-submission-0.md"]
+        self.assertEqual(receipt["returncode"], 1)
+        self.assertEqual(receipt["stderr"], "BadInputsUTxO")
+        self.assertEqual(receipt["transactionCborSha256"], hashlib.sha256(b"before").hexdigest())
+
+    def test_saved_bytes_must_match_the_actual_submission_digest(self):
+        r = self.runner()
+        with patch.object(r, "transaction_bytes", side_effect=[b"saved", b"submitted", b"submitted"]), \
+             patch.object(TransferRunner, "execute", side_effect=self.process()):
+            with self.assertRaisesRegex(ValueError, "saved transaction differs"):
+                r.reject("conflict", "/work/conflict.signed", "BadInputsUTxO", False)
+        self.assertFalse(r.records["conflict-result.md"]["passed"])
 
 
 class LifecycleScenarios(unittest.TestCase):
+    def test_actual_transfer_method_keeps_post_pause_until_both_negatives_complete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r = ScenarioRunner(SimpleNamespace(output=directory + "/evidence", scala_repo=directory))
+            r.deadline = time.monotonic() + 360
+            physical = []
+            phases = []
+            params = {"protocolVersion": {"major": 9, "minor": 0}, "txFeePerByte": 1,
+                      "txFeeFixed": 0, "maxTxSize": 16384}
+            def snapshot(label):
+                phases.append((label, tuple(physical)))
+                post = label == "post" or label.startswith(("repeated", "conflicting"))
+                tip = {"hash": "b" * 64 if post else "c" * 64, "slot": 2 if post else 1,
+                       "epoch": 0, "era": "Conway", "slotInEpoch": 2}
+                utxo = {TXID + "#0": {"address": "destination", "value": {"lovelace": 10000000}}} if post else {
+                    "d" * 64 + "#0": {"address": "source", "value": {"lovelace": 50000000}}}
+                ledger = json.dumps({"stateBefore": {"esLState": {"utxoState": {"fees": 200000 if post else 0}}}})
+                outputs = {"utxo": json.dumps(utxo), "parameters": json.dumps(params), "ledger-state": ledger}
+                r.save(label + "-tips.md", json.dumps([tip, tip]))
+                r.save(label + "-ledger-state.md", ledger)
+                return tip, outputs
+            def read(path):
+                if path == "logs/node3/stdout.log":
+                    return "shelleyKESSource = Nothing shelleyVRFFile = Nothing\n"
+                if path == "shelley-genesis.json": return "{}"
+                if path == "node-data/node3/port": return "3003"
+                raise AssertionError(path)
+            def execute(*args, **kwargs):
+                result = SimpleNamespace(stdout="", stderr="", returncode=0)
+                if args[0] == "cat": result.stdout = '{"cborHex":"deadbeef"}'
+                elif "build" in args:
+                    result.stdout = "source" if any("utxo1" in a for a in args) else "destination"
+                elif "txid" in args:
+                    result.stdout = "e" * 64 if "/work/scenario-conflict.signed" in args else TXID
+                elif "submit" in args:
+                    if "/work/scenario-wrong-key.signed" in args:
+                        result.returncode, result.stderr = 1, "MissingVKeyWitnessesUTXOW"
+                    elif getattr(r, "hold_post_pause", False):
+                        result.returncode, result.stderr = 1, "BadInputsUTxO"
+                return result
+            with patch.object(Runner, "scala", return_value={"negotiated": True}), \
+                 patch.object(TransferRunner, "snapshot", side_effect=snapshot), \
+                 patch.object(TransferRunner, "execute", side_effect=execute), \
+                 patch.object(TransferRunner, "producers", side_effect=physical.append), \
+                 patch.object(r, "pause_evidence"), patch.object(r, "read", side_effect=read), \
+                 patch.object(r, "query", return_value={"hash": "c" * 64}), \
+                 patch.object(r, "relay_query", return_value=json.dumps({TXID + "#0": {}})), \
+                 patch.object(r, "docker", return_value=SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+                     "scope": "cluster-transfer-observation", "passed": True, "transactionId": TXID}))):
+                result = r.scala()
+            self.assertEqual(physical, ["STOP", "CONT", "STOP", "CONT"])
+            post_phases = [(label, actions) for label, actions in phases if label.startswith(("repeated", "conflicting"))]
+            self.assertEqual(len(post_phases), 4)
+            self.assertTrue(all(actions == ("STOP", "CONT", "STOP") for _, actions in post_phases))
+            self.assertTrue(result["repeated"]["passed"])
+            self.assertTrue(result["conflict"]["passed"])
+
     def run_script(self, runner, cancel):
         calls = []
         tip_count = 0
