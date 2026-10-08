@@ -126,13 +126,13 @@ class ScenarioGuards(unittest.TestCase):
             else: after[1]["ledger-state"] = after[1]["ledger-state"].replace("200000", "200001")
             with self.assertRaises(ValueError): unchanged(before, after)
 
-    def test_resource_override_only_applies_to_owned_reference_container(self):
+    def test_live_resource_profile_is_inherited_without_reduction(self):
         r = self.runner()
         with patch.object(Runner, "docker") as docker:
             r.docker("run", "-d", "--name", r.name, "--cpus=3", "--memory=6g", "--memory-swap=6g")
-        self.assertIn("--cpus=1", docker.call_args.args)
-        self.assertIn("--memory=1g", docker.call_args.args)
-        self.assertIn("--memory-swap=1g", docker.call_args.args)
+        self.assertIn("--cpus=3", docker.call_args.args)
+        self.assertIn("--memory=6g", docker.call_args.args)
+        self.assertIn("--memory-swap=6g", docker.call_args.args)
 
     def test_post_transfer_cancellation_resumes_producers(self):
         r = self.runner()

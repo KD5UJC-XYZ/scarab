@@ -26,13 +26,6 @@ def unchanged(before, after):
 
 class ScenarioRunner(TransferRunner):
     """No shared runner patch: intercept only the first exact transfer submission."""
-    def docker(self, *args, **kwargs):
-        # Combined reference + transient Scala containers fit 2 CPUs / 2 GiB.
-        if args[:2] == ("run", "-d") and self.name in args:
-            args = tuple({"--cpus=3": "--cpus=1", "--memory=6g": "--memory=1g",
-                          "--memory-swap=6g": "--memory-swap=1g"}.get(a, a) for a in args)
-        return super().docker(*args, **kwargs)
-
     def execute(self, *args, **kwargs):
         if args[:4] != ("cardano-cli", "conway", "transaction", "submit"):
             return super().execute(*args, **kwargs)

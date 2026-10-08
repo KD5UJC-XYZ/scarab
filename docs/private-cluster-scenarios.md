@@ -38,6 +38,11 @@ negative Scala comparison is currently **unsupported by this adapter**; existing
 Scala predicates are not thereby claimed unimplemented. Positive Scala evidence is
 provided by the inherited transfer path. No new Scala code or `unsafeRunSync` is used.
 
+A separate follow-up [offline Scala adapter](cluster-negative-observation.md) can
+compare the saved negative evidence with selected Scala rejection classes. It does
+not change this Python runner's receipt or trigger a live workload; its optional
+real-evidence integration test remains pending.
+
 ## Verification and integration
 
 The public Python discovery command automatically includes the new tests:
@@ -55,12 +60,12 @@ post-transfer scenario and verify producer continuation in `finally`.
 
 No live scenario has been run for this packet. Expected reference rejection
 constructors, post-inclusion repeat behavior, runtime budget and quiescence windows
-still require a granted live resource slot. This subclass reduces the reference
-container to 1 CPU / 1 GiB and leaves the inherited Scala container at 1 CPU / 1 GiB,
-so concurrent scenario containers fit 2 CPUs / 2 GiB. Whether three reference nodes
-can start and progress in that reduced allocation is unverified; resource failure
-must be preserved, not classified as a transaction rejection. Existing preflight
-host-capacity checks remain unchanged.
+still require a granted live resource slot and direct user approval where required.
+The inherited live profile uses 3 CPUs / 6 GiB for the reference container and
+1 CPU / 1 GiB for Scala, fitting the coordinator's known 4 CPU / 7 GiB allocation.
+The 2 CPU / 2 GiB limit applies to isolated offline tests, not a reduced three-node
+live profile. Resource failure must never be classified as transaction rejection.
+Existing preflight host-capacity checks remain unchanged.
 
 After the coordinator grants a live slot and prepares the pinned reference image
 and separate read-only Scala build, the opt-in entry point is:
