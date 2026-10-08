@@ -182,3 +182,21 @@ exact-revision reopen, prefix and successor checks.
 The resource and cleanup bounds are unchanged. This tests abrupt process death
 after acknowledged publication only. It does not interrupt publication or establish
 power-loss durability. The codec, store and follower APIs are unchanged.
+
+
+The single authorized live attempt tested source
+`28ba8845adc8688bffba0929230f43d05e46bf78` and passed in 132.500 seconds. A's
+acknowledged generation 4 checkpoint remained byte-identical after SIGKILL and
+exit 137 (not OOM). Fresh B reopened that exact revision, selected retained slot
+100, fetched successors 110/113 and published generation 8. Retained originals
+increased from two to four, preserving the exact two-original prefix. Independent
+verification reconstructed both checkpoint binaries and checked raw context
+digest recipes. No segment store was used.
+
+The reference cluster advanced block 6 to 69 and epoch 0 to 2 with final
+convergence; cleanup verified no owned containers or networks remained. The
+adapter passed 188 public app tests, formatting checks and 70 Python harness
+tests, plus independent source review before the live attempt. Receipts are
+outside Git in `/home/<user>/cardano-acquisition-abrupt-live1-20261008`; the
+verification directory contains `abrupt-scala.log`, `abrupt-python.log` and
+`abrupt-live1-checked-summary.md`. The previous graceful baseline is preserved.
