@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: Apache-2.0
+package lab.header
+
+import lab.Blake2b
+import lab.cbor.{Bytes, Cbor, Node, Value}
+import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
+import scala.util.control.NonFatal
+
+/** Checked eligibility under explicitly supplied epoch nonce/stake state. Requires an authenticated
+  * certificate-step prefix from the named seed. This never derives consensus nonce/stake evolution.
+  */
+object PraosEligibility:
+  final class Context private[PraosEligibility] (
+      val id: Bytes,
+      val certificates: PraosCertificateState.Context,
+      val seed: PraosCertificateState.State,
+      val epoch: BigInt,
+      val nonce: Vrf.EpochNonce,
+      val active: Leader.Fraction,
+      val stakes: Map[Bytes, Leader.Fraction]
+  )
+  object Context:
+    def checked(
+        certificates: PraosCertificateState.Context,
+        seed: PraosCertificateState.State,
+        epoch: BigInt,
+        epochLength: BigInt,
+        nonce: Vrf.EpochNonce,
+        active: Leader.Fraction,
+        stakes: Map[Bytes, Leader.Fraction],
+        protocolDigest: Bytes
+    ): Either[String, Context] = protect {
+      require(
+        certificates != null && seed != null && certificates.id == seed.contextId,
+        "eligibility certificate context mismatch"
+      )
+      require(
+        epoch != null && epoch >= 0 && epochLength != null && epochLength > 0 &&
+          epochLength <= ((BigInt(1) << 64) - 1),
+        "invalid eligibility epoch"
+      )
+      require(
+        certificates.firstSlot == epoch * epochLength &&
+          certificates.lastSlot == (epoch + 1) * epochLength - 1 &&
+          seed.tip.slot >= certificates.firstSlot && seed.tip.slot <= certificates.lastSlot,
+        "eligibility epoch/window/anchor mismatch"
+      )
+      require(nonce != null && active != null, "missing nonce or active coefficient")
+      get(Leader.check(0, active, active)) // checked coefficient domain, not a leader assertion
+      require(
+        protocolDigest != null && protocolDigest.value != null && protocolDigest.size == 32,
+        "protocol source digest required"
+      )
+      require(
+        stakes != null && stakes.keySet == certificates.registrations.keySet &&
+          stakes.values.forall(_ != null),
+        "stake map must match required pool distribution"
+      )
+      val nonceValue = nonce match
+        case Vrf.NeutralNonce => Value.Null
+        case hash: Vrf.Hash32 => Value.ByteString(hash.bytes)
+      def fraction(f: Leader.Fraction): Value = Value.Arr(
+        Vector(
+          Node(Value.UInt(f.numerator), Bytes.empty),
+          Node(Value.UInt(f.denominator), Bytes.empty)
+        )
+      )
+      val pools = Value.Map(
+        stakes.toVector
+          .sortBy(_._1.hex)
+          .map((k, v) => Node(Value.ByteString(k), Bytes.empty) -> Node(fraction(v), Bytes.empty))
+      )
+      val values = Vector(
+        Value.Text("supplied-praos-eligibility-v1"),
+        Value.ByteString(certificates.id),
+        Value.ByteString(seed.id),
+        Value.ByteString(protocolDigest),
+        Value.UInt(epoch),
+        Value.UInt(epochLength),
+        nonceValue,
+        fraction(active),
+        pools
+      )
+      val id =
+        Blake2b.hash256.hash(get(Cbor.encode(Value.Arr(values.map(v => Node(v, Bytes.empty))))))
+      new Context(id, certificates, seed, epoch, nonce, active, stakes)
+    }
+  final case class HeaderResult(headerHash: Bytes, leaderValue: BigInt, stake: Leader.Fraction)
+  final class Checked private[PraosEligibility] (
+      val contextId: Bytes,
+      val headers: Vector[HeaderResult]
+  ):
+    val suppliedContextEligibilityVerified = true
+    val stateDerivedConsensus = false
+    val referenceRuntimeParity = false
+
+  private def protect[A](body: => A): Either[String, A] =
+    try Right(body)
+    catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
+  private def get[A](e: Either[String, A]): A =
+    e.fold(s => throw new IllegalArgumentException(s), identity)
+  private def arr(n: Node): Vector[Node] = n.value match
+    case Value.Arr(xs) => xs
+    case _             => throw new IllegalArgumentException("array required")
+  private def bytes(n: Node): Bytes = n.value match
+    case Value.ByteString(b) => b
+    case _                   => throw new IllegalArgumentException("bytes required")
+
+  /** Bound to this seed and exact applied prefix, not arbitrary case-class observations. */
+  def check(
+      context: Context,
+      steps: Vector[PraosCertificateState.Applied]
+  ): Either[String, Checked] = protect {
+    require(
+      context != null && steps != null && steps.nonEmpty && steps.size <= 8,
+      "one to eight certificate steps required"
+    )
+    var previous = context.seed.id
+    val results = steps.map { step =>
+      require(
+        step != null && step.before.id == previous &&
+          step.before.contextId == context.certificates.id,
+        "eligibility branch/context mismatch"
+      )
+      val o = step.observation
+      require(
+        o.slot >= context.certificates.firstSlot && o.slot <= context.certificates.lastSlot,
+        "header outside supplied epoch"
+      )
+      val body = arr(get(Cbor.decode(o.originalBody, Cbor.Limits(65536, 8, 64, 65536))))
+      val key = bytes(body(4))
+      require(
+        Blake2b.hash256.hash(key) == context.certificates.registrations(step.issuer),
+        "eligibility VRF key binding mismatch"
+      )
+      val proof = arr(body(5))
+      val input = Vrf.Input
+        .create(Vrf.Slot.fromBigInt(o.slot).toOption.get, context.nonce)
+        .fold(e => throw new IllegalArgumentException(e.toString), identity)
+      val verified = Vrf.verify(input, key, bytes(proof(1)), bytes(proof(0))) match
+        case Vrf.Result.VerifiedCertificate(output) => output
+        case other =>
+          throw new IllegalArgumentException("VRF certificate rejected: " + other.toString)
+      val value = get(Leader.leaderValue(verified))
+      val stake = context.stakes(step.issuer)
+      get(Leader.check(value, stake, context.active)) match
+        case Leader.Decision.Eligible => ()
+        case other =>
+          throw new IllegalArgumentException("VRF leader threshold rejected: " + other.toString)
+      previous = step.after.id
+      HeaderResult(o.originalHeaderHash, value, stake)
+    }
+    new Checked(context.id, results)
+  }
