@@ -68,7 +68,7 @@ batches are never published. Publication errors are fatal and do not enter peer
 reconnect retries. Canceling an acquisition keeps the last completed publication
 available to a fresh store/follower owner.
 
-## Offline evidence and remaining acceptance
+## Offline evidence
 
 The focused suite covers exact-byte save/reopen, stale revisions/context, modified
 payloads with both stale and recomputed digests, truncation and bounds, exclusive
@@ -84,22 +84,16 @@ required; failures remain explicit.
 
 The implementation was tested offline from committed main `a8732da` in a separate
 worktree, with a pinned JDK container restricted to 2 CPUs/2 GiB and no network.
-`scalafmtCheckAll` and all 185 public app tests passed, including the 12 checkpoint
+`scalafmtCheckAll` and all 187 public app tests passed, including the 12 checkpoint
 cases. Independent source review and its requested cancellation/post-install/identity
 test additions completed without remaining blockers. Private build/test receipts
 are under `/home/<user>/cardano-acquisition-checkpoint-verification-20261008`.
-No private fixture corpus, prebuilt native helper or live cluster was needed.
-The broader serial CLI gate runner was not completed: an early invocation lacked
-its generated runtime classpath; that artifact was generated in the successful
-final build, but only the stated app/format checks are claimed for this packet.
-
-The later live acceptance must run one Scala process to acquire and publish, end
-that process, then launch a separate Scala process against the same independently
-identified reference cluster and checkpoint directory. It must prove retained
-candidate selection and successor/fork handling from revalidated disk bytes.
-That live test is not part of this packet and needs review plus a resource slot.
-No Scala live-process recovery, whole-node recovery, ledger recovery, consensus
-validation, signature validation or production crash-safety claim is made here.
+No private fixture corpus, prebuilt native helper or live cluster was needed for
+those tests. All 68 Python harness tests passed. Six relevant public CLI gates also
+passed: network, ChainSync, ChainSync session, BlockFetch, TCP direct range and
+keepalive direct range. The two new CLI rejection cases and mounted atomic
+publication probe passed. These are the stated relevant gates, not a claim that
+every public serial gate was run.
 
 ## Separate-process acceptance adapter
 
@@ -143,3 +137,31 @@ python3 scripts/private_cluster_acquisition_restart.py \
 
 This is graceful A-exit/B-reopen acceptance, not forced JVM termination during
 publication, power-loss recovery, reference restart or ledger recovery.
+
+## Completed bounded live acceptance
+
+The authorized isolated run tested committed source
+`0d0a68b91f8e6a93d44f43c25bae8edcf0030078` against the pinned private reference
+image. It passed in 127.987 seconds within the 420-second workload and 600-second
+overall budgets. Process A (host PID 22383) exited before process B (host PID
+22583) started; their container IDs and JVM nonces were distinct. B reopened A's
+exact independently retained generation-4 revision and published generation 8.
+
+B loaded exactly A's two original header/block byte pairs, selected retained tip
+slot 60, fetched successor slots 64 and 65, and published four originals with the
+two-original prefix unchanged. The upstream context remained fixed while the
+byte-derived acquisition source identity changed. An independent check rebuilt
+both checkpoint binary encodings exactly, verified their revision/file hashes,
+and recomputed the context recipes from the captured raw public configuration.
+The final published file matched the reconstructed B bytes.
+
+The reference cluster continued from block 7 to block 49 and epoch 0 to epoch 2,
+with final convergence. Cleanup verified that the task's containers and network
+were gone. Private receipts remain outside Git in
+`/home/<user>/cardano-acquisition-restart-live1-20261008`; the independently checked
+summary is in the verification directory's `live1-checked-summary.md`.
+
+This demonstrates graceful separate-process disk reopen and successor acquisition
+for the bounded supported window. It does not demonstrate live fork replacement,
+forced termination during publication, power-loss durability, ledger or whole-node
+recovery, consensus validation or signature validation. No segment store was used.
