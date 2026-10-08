@@ -171,17 +171,37 @@ class Runner:
         repo = Path(self.args.scala_repo).resolve()
         port = self.read("node-data/node1/port").strip()
         int(port)
+        scenario = "reference-handshake " + port + " 1082026"
+        evidence_name = "scala-handshake.md"
+        if self.args.capture:
+            anchor = self.query("tip")
+            if anchor.get("era") != "Conway" or not isinstance(anchor.get("slot"), int):
+                raise ValueError("Conway anchor query required")
+            anchor_hash = anchor["hash"]
+            if len(anchor_hash) != 64 or any(c not in "0123456789abcdef" for c in anchor_hash):
+                raise ValueError("invalid queried anchor hash")
+            self.save("capture-anchor.md", json.dumps(anchor, indent=2))
+            scenario = "reference-capture " + port + " 1082026 " + str(anchor["slot"]) + " " + anchor_hash
+            evidence_name = "scala-capture.md"
         # Same isolated network namespace, no host network or published ports; no keys mounted.
         result = self.docker("run", "--rm", "--pull=never", "--name", self.name + "-scala",
             "--network=container:" + self.name, "--cpus=1", "--memory=1g", "--memory-swap=1g", "--pids-limit=128",
             "--cap-drop=ALL", "--security-opt=no-new-privileges", "--user", "1000:1000",
             "--read-only", "--tmpfs", "/tmp:size=64m", "-v", str(repo) + ":/work:ro",
             "-w", "/work", "--entrypoint=/bin/sh", JDK, "-c",
-            'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main reference-handshake ' + port + " 1082026",
-            check=False, timeout=30)
-        self.save("scala-handshake.md", result.stdout + result.stderr)
-        if result.returncode or '"negotiated":true' not in result.stdout:
-            raise ValueError("Scala live handshake failed; see scala-handshake.md")
+            'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main ' + scenario,
+            check=False, timeout=60 if self.args.capture else 30)
+        self.save(evidence_name, result.stdout + result.stderr)
+        if result.returncode:
+            raise ValueError("Scala live scenario failed; see " + evidence_name)
+        records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+        report = records[-1] if records else {}
+        if self.args.capture:
+            if report.get("scope") != "header-block-byte-comparison" or report.get("passed") is not True:
+                raise ValueError("capture comparison evidence missing")
+        elif report.get("negotiated") is not True:
+            raise ValueError("handshake evidence missing")
+        return report
 
     def cleanup(self):
         # Every attempt is independent. A failing receipt write must not precede removals.
@@ -268,8 +288,7 @@ class Runner:
             parameters = self.query("protocol-parameters")
             if parameters["protocolVersion"] != {"major": 9, "minor": 0}:
                 raise ValueError("refusing non-PV9 ledger")
-            if self.args.scala_repo:
-                self.scala()
+            scala_report = self.scala() if self.args.scala_repo else None
             while time.monotonic() < self.deadline - 25:
                 row = [self.query("tip", i) for i in range(1, 4)]
                 rows.append(row)
@@ -286,6 +305,7 @@ class Runner:
             self.save("protocol-parameters.md", "```json\n" + json.dumps(parameters, indent=2) + "\n```")
             result = assess(rows, parameters)
             result["scalaHandshake"] = bool(self.args.scala_repo)
+            result["scalaObservation"] = scala_report
 
         except BaseException as exc:
             error = exc
@@ -326,8 +346,11 @@ def main():
     parser.add_argument("--reference-image", required=True, help="locally prepared verified release image")
     parser.add_argument("--output", required=True, help="new nonsecret evidence directory outside Git")
     parser.add_argument("--seconds", type=int, default=240)
+    parser.add_argument("--capture", action="store_true", help="capture one live successor header and exact block; requires --scala-repo")
     parser.add_argument("--scala-repo", help="optional precompiled repo mounted read-only at /work")
     args = parser.parse_args()
+    if args.capture and not args.scala_repo:
+        parser.error("--capture requires --scala-repo")
     if not 180 <= args.seconds <= 480:
         parser.error("budget must be 180..480 seconds, including preflight (120 seconds reserved within ten minutes)")
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))

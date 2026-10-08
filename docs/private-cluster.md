@@ -40,12 +40,12 @@ Then add `--scala-repo /absolute/checkout` to the launcher. The probe uses the e
 
 The CLI `reference-handshake PORT PRIVATE_NETWORK_MAGIC` fixes its endpoint to `127.0.0.1`, has bounded transport/session deadlines, and does no DNS lookup. The launcher establishes reference image identity; the CLI alone cannot identify the remote software.
 
-Ledger PV9, node software 11.1.3, and wire version 14 are distinct. Header-advertised protocol version has not yet been decoded by this scenario and must not be inferred from any of them.
+Ledger PV9, node software 11.1.3, and wire version 14 are distinct. The handshake-only scenario does not decode header-advertised protocol version. The optional [live capture scenario](reference-capture.md) measures it from original header bytes.
 
 ## Evidence and next scenarios
 
 Evidence includes exact Docker commands, binary/image hashes, actual queried parameters and tips, allowlisted public configuration/genesis, node logs and cleanup checks, all outside Git. The capture list excludes private keys and DBs. Unit tests cover isolation and readiness rejection; they are not substitutes for live reference evidence.
 
-Next increment: capture live headers/blocks with provenance, record header-advertised version, and feed their public bytes into the Scala structural validation path. Fresh-genesis ledger context must be integrated explicitly before comparing transaction acceptance or full replay. Historical restricted replay inputs are not automatically suitable. The untransferred cloud scaffold is unused.
+The optional `--capture` increment records a live header and exact block with provenance and compares original bytes, ancestry and body commitments; see [reference-capture.md](reference-capture.md). Fresh-genesis ledger context must be integrated explicitly before comparing transaction acceptance or full replay. Historical restricted replay inputs are not automatically suitable. The untransferred cloud scaffold is unused.
 
 Each cleanup operation and each verification runs independently with a bounded timeout. The receipt records failures and unknown status; an unresponsive Docker daemon cannot be treated as verified removal. The ten-minute budget is a host orchestration deadline, not a guarantee of daemon responsiveness.
