@@ -130,3 +130,16 @@ not an exact-boundary, complete failure-order, full-ledger or consensus proof.
 Validation: 800 public Scala tests, 25 public gates, 58 Python guards; separately,
 39 retained-data checks. See [the interval evidence record](private-cluster-interval.md)
 for scope, private receipt locations and the preserved initial failed run.
+
+
+## Certificate-state capture checkpoint
+
+The experimental certificate state and dedicated source-bound capture now verify
+OpCert/KES signatures, required pool-to-VRF registration, exact Word64 counter
+transitions, full final counters and every-prefix rollback/reapply over an
+original four-block range (anchor slot 1024 to endpoint slot 1180, epoch 2).
+Observed counters did not change. This remains narrower than full consensus;
+VRF eligibility and stake/nonce evolution are not checked, and state exports are
+separate non-atomic acquisitions. See [the certificate capture record](private-cluster-certificate.md).
+Validation: 817 public Scala tests, 25 public gates and 66 Python guards; separately
+four optional retained-data checks (11 suite tests including seven public reruns).

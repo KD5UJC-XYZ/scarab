@@ -67,3 +67,14 @@ Public core tests use a SHA256-pinned already-cleared signed header (certificate
 Opt-in app tests require `CERTIFICATE_TRANSFER_EVIDENCE` (v2 projection) and `CERTIFICATE_PROTOCOL_EVIDENCE` (original transfer-live3 directory). They pin the original pre/post protocol bytes, compare actual state, restore/reapply, exercise the separately marked synthetic absence fork and reject changed digest/slot bindings. No raw private corpus or keys are committed.
 
 Still outside scope: authenticated snapshot acquisition, VRF eligibility, stake/nonce evolution, registration changes, fork selection, full consensus/header validity, transaction/ledger transitions and exact version-11 malformed-input/crypto acceptance parity. No live cluster was started for this packet.
+
+
+## Subsequent integrated capture
+
+The source packet was cherry-picked as `b825b31` after the interval checkpoint.
+A separate [bounded certificate capture](private-cluster-certificate.md) now
+retains actual anchor-bound counter and pool/VRF exports for a new four-block
+range. Signature/registration checks, final counters and every-prefix
+rollback/reapply passed. Counters remained equal, so the live result does not
+establish increment behavior. The older follower corpus's missing-anchor evidence
+gap remains unchanged; the new observation is its own packet.
