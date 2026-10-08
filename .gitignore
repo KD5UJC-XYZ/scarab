@@ -60,3 +60,7 @@ Thumbs.db
 /docs/dependency-checksums.json
 /docs/restricted-replay-store-source-hashes.json
 /docs/*initial-index-source*.txt
+
+# Disposable Cardano private signing material; public .vkey/.cert fixtures remain allowed
+*.skey
+*.key
