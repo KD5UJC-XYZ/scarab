@@ -100,3 +100,46 @@ candidate selection and successor/fork handling from revalidated disk bytes.
 That live test is not part of this packet and needs review plus a resource slot.
 No Scala live-process recovery, whole-node recovery, ledger recovery, consensus
 validation, signature validation or production crash-safety claim is made here.
+
+## Separate-process acceptance adapter
+
+`scripts/private_cluster_acquisition_restart.py` uses the existing private-cluster
+lifecycle without restarting reference nodes. Its preflight runs the standalone
+`lab.AcquisitionRestartCapture probe` in the pinned JVM image on the actual
+task-owned checkpoint mount. The probe creates, publishes, closes and reopens a
+synthetic checkpoint, requiring atomic replacement and directory force before
+the harness generates a Cardano environment.
+
+The harness reads exact genesis/configuration/topology bytes and reference
+container/image identity directly, builds deterministic digest recipes, and pins
+profile, network magic and a concrete queried anchor. These pins are held outside
+the checkpoint directory and rechecked between process phases and afterward.
+Process A acquires/publishes two originals, emits its revision, exits and is
+observed stopped. That expected revision is saved in a separate host receipt.
+Only then does a new container/JVM process B reopen the same store with that exact
+expected revision and the independently retained context, revalidate the two
+originals and acquire two successors. A reports 0-to-2 and B reports 2-to-4; both
+require the expected retained-tip intersection, with no network reconnect retry.
+
+The evidence includes Docker container IDs, host PIDs/start/finish timestamps,
+JVM process nonces, source/class hashes, independently pinned context, loaded and
+published revisions, exact original prefix/suffix bytes, and stored-file hashes.
+The upstream context stays fixed while the checkpoint's byte-derived source
+identity must change on extension. No segment store is used or silently reused.
+Checkpoint files and all raw logs/bytes remain private outside Git.
+
+Each JVM is limited to 1 CPU/1 GiB alongside the existing 3 CPU/6 GiB reference
+container. The default workload is 420 seconds with a 600-second overall budget.
+The normal final growth/convergence and cleanup receipts remain required. Run only
+with an authorized resource slot, a clean committed isolated checkout and compiled
+runtime classpath:
+
+```sh
+python3 scripts/private_cluster_acquisition_restart.py \
+  --reference-image "$PINNED_REFERENCE_IMAGE" \
+  --scala-repo "$ISOLATED_COMPILED_REPO" \
+  --output "$NEW_PRIVATE_EVIDENCE_DIRECTORY" --seconds 420
+```
+
+This is graceful A-exit/B-reopen acceptance, not forced JVM termination during
+publication, power-loss recovery, reference restart or ledger recovery.
