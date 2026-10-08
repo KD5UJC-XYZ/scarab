@@ -31,6 +31,9 @@ def assess_phases(a, b, context):
 
 
 class AcquisitionRestartRunner(Runner):
+    def await_phase(self, cid, args, label):
+        return "0"
+
     def scala_run(self, args, label, network):
         repo = Path(self.args.scala_repo).resolve()
         command = ('exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" '
@@ -43,15 +46,17 @@ class AcquisitionRestartRunner(Runner):
         try:
             before = json.loads(self.docker("inspect", cid).stdout)[0]
             self.save(label + "-container-before.md", before)
+            expected_status = self.await_phase(cid, args, label)
             status = self.docker("wait", cid, timeout=65).stdout.strip()
             after = json.loads(self.docker("inspect", cid).stdout)[0]
             self.save(label + "-container-after.md", after)
             captured = self.docker("logs", cid)
             logs = captured.stdout + captured.stderr
             self.save(label + ".md", logs)
-            if status != "0" or after["State"]["Running"] or after["State"]["ExitCode"] != 0:
+            if status != expected_status or after["State"]["Running"] or after["State"]["ExitCode"] != int(expected_status):
                 raise ValueError("Scala phase failed or has not exited: " + label)
             records = [json.loads(line) for line in logs.splitlines() if line.startswith("{")]
+            records = [r for r in records if r.get("record") != "acknowledged-hold"]
             return records, {"containerId": cid, "hostPid": before["State"]["Pid"],
                              "startedAt": before["State"]["StartedAt"], "finishedAt": after["State"]["FinishedAt"]}
         finally:
@@ -97,6 +102,7 @@ class AcquisitionRestartRunner(Runner):
         context = {"upstreamSource": source, "genesisDigest": genesis, "profile": PROFILE,
                    "networkMagic": 1082026, "anchor": recipe["anchor"]}
         self.save("independent-context.md", {"recipe": recipe, "genesisRecipe": genesis_recipe, "expected": context})
+        self.phase_context = context
         common = [port, "1082026", str(anchor["slot"]), anchor["hash"], source, genesis]
         rows_a, proc_a = self.scala_run(["a", *common, "-", "-"], "process-a", "container:" + self.name)
         a = rows_a[-1]

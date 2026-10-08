@@ -18,7 +18,8 @@ object AcquisitionRestartCapture extends IOApp:
       context: Context,
       mode: Open,
       target: Int,
-      phase: String
+      phase: String,
+      hold: Boolean
   )
   def options(args: List[String]): Either[String, Options] = args match
     case phase :: port :: magic :: slot :: hash :: source :: genesis :: generation :: digest :: Nil =>
@@ -26,14 +27,21 @@ object AcquisitionRestartCapture extends IOApp:
         parsed <- ReferenceCaptureCommand.options(List(port, magic, slot, hash))
         context <- Context.checked(source, genesis, parsed._2, parsed._3)
         mode <- (phase, generation, digest) match
-          case ("a", "-", "-") => Right(Open.Create)
+          case ("a" | "a-hold", "-", "-") => Right(Open.Create)
           case ("b", g, d) if g.toLongOption.exists(_ >= 0) && lab.fetcher.Digests.valid(d) =>
             Right(Open.Resume(Some(Revision(g.toLong, d))))
           case _ => Left("phase a requires no revision; phase b requires exact expected revision")
-      yield Options(parsed._1, context, mode, if phase == "a" then 2 else 4, phase)
+      yield Options(
+        parsed._1,
+        context,
+        mode,
+        if phase == "b" then 4 else 2,
+        if phase == "b" then "b" else "a",
+        phase == "a-hold"
+      )
     case _ =>
       Left(
-        "usage: lab.AcquisitionRestartCapture a|b PORT MAGIC SLOT HASH SOURCE_SHA GENESIS_SHA GENERATION|- DIGEST|-"
+        "usage: lab.AcquisitionRestartCapture a|a-hold|b PORT MAGIC SLOT HASH SOURCE_SHA GENESIS_SHA GENERATION|- DIGEST|-"
       )
 
   private def pointJson(point: ChainSync.Point): String = point match
@@ -141,6 +149,13 @@ object AcquisitionRestartCapture extends IOApp:
                   opts.context.anchor
                 )},"networkMagic":${opts.context.networkMagic},"ledgerValidated":false,"consensusValidated":false,"segmentStoreReused":false}"""
             )
+            _ <-
+              if opts.hold && complete then
+                IO.println(
+                  s"""{"record":"acknowledged-hold","generation":${after.revision.generation},"digest":"${after.revision.digest}"}"""
+                ) *>
+                  IO.sleep(60.seconds) *> IO.raiseError(new Invalid("acknowledged hold expired"))
+              else IO.unit
           yield if complete then ExitCode.Success else ExitCode(2)
         }
     yield result

@@ -165,3 +165,20 @@ This demonstrates graceful separate-process disk reopen and successor acquisitio
 for the bounded supported window. It does not demonstrate live fork replacement,
 forced termination during publication, power-loss durability, ledger or whole-node
 recovery, consensus validation or signature validation. No segment store was used.
+
+
+## Abrupt death after acknowledged publication adapter
+
+`scripts/private_cluster_acquisition_abrupt.py` preserves the graceful adapter and
+adds a separate acceptance mode. A publishes and verifies its final snapshot,
+emits the exact revision and originals, then holds the store owner for at most 60
+seconds without further writes. Before signaling, the controller independently
+reconstructs the checkpoint bytes against the pinned context, saves its expected
+revision outside the checkpoint mount, and confirms that the owner is running.
+It sends SIGKILL to the immutable owned container ID, requires exit 137 without
+OOM, and verifies that checkpoint bytes stayed unchanged. B then uses the existing
+exact-revision reopen, prefix and successor checks.
+
+The resource and cleanup bounds are unchanged. This tests abrupt process death
+after acknowledged publication only. It does not interrupt publication or establish
+power-loss durability. The codec, store and follower APIs are unchanged.
