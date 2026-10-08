@@ -1,6 +1,6 @@
 # Restricted minimum-output predicate
 
-Local development; paired live admission evidence is pending. This does not establish full transaction or ledger validity.
+The bounded isolated-local pair passed on 2026-10-08: 849070 lovelace was included and 849069 was rejected. This does not establish full transaction or ledger validity.
 
 The `conway-pv9-testnet-ada-minimum-output-v1` profile accepts Conway ledger protocol 9.0 only, scalar ADA outputs with Shelley testnet payment-key address kinds 0/6, and address/value-only array or map outputs. Existing Coverage rejects other body/witness/output fields. The cost must be a positive uint64. The predicate checks every created output including change; collateral, assets, datum and reference scripts are outside this profile.
 
@@ -31,4 +31,39 @@ At cost 4310, a 37-byte enterprise-address array output requires 849070 lovelace
 
 `scripts/private_cluster_minimum_output.py` extends the existing relay-only launcher, with its internal Docker network, temporary generated keys, resource bounds, readiness observations, producer pauses and cleanup. Before submitting, the adapter checks the actual Scala receipts for 37-byte array destination outputs at 849070 and 849069, both thresholds 849070, change increased by exactly one, and unchanged change byte width. Any mismatch stops the scenario. The negative must return an OutputTooSmallUTxO rejection with 849070, and leave the observed UTxO bytes and point unchanged. Then the boundary transaction follows the existing relay admission, inclusion, signature, balance, fee and original-block comparison path. The observations remain separate acquisitions rather than an atomic reference snapshot.
 
-No paired reference run has started: automatic approval review blocked local test submissions under the original no-live-submission instruction. Direct user approval is pending. No admission success is claimed.
+The earlier automatic review blocked local submissions under the original restriction.
+The user subsequently gave direct approval in the replacement conversation for
+disposable test keys, isolated local Docker clusters and local test transactions;
+the execution check permitted the bounded run. No public-network submission or
+real funds were used.
+
+### Paired reference result, 2026-10-08
+
+The verified node 11.1.3 / CLI 11.2.3.0 / testnet 11.1.1 local profile completed in
+227.32 seconds within its 420-second workload and 600-second overall budgets.
+Both destination outputs retained 37-byte array encoding and required 849070
+lovelace at cost 4310. Scala accepted the 849070 output and rejected 849069.
+The reference rejected the latter with `OutputTooSmallUTxO` and threshold 849070;
+the observed whole-UTxO bytes and paused point remained unchanged. The 41-byte
+change output compensated exactly one lovelace and satisfied its 866310 minimum
+in both transactions.
+
+The boundary transaction was submitted through the relay with no direct producer
+fallback, admitted by the relay and a producer, and included in one captured
+original block. Scala checked original transaction inclusion bytes, witness
+signatures, restricted transition/minimum-output predicates, whole-UTxO change,
+and an actual fee-pot increase of 200000 lovelace matching the declared fee.
+Seven other UTxO entries were unchanged. The three-node observation continued
+from epoch 2 to epoch 4 at ledger protocol 9.0 with convergence and block growth.
+This is selected-rule agreement for this pair, not full ledger or header/consensus
+validation, invalid-block rejection, or a proof for all output encodings. State
+exports remain separately acquired, non-atomic observations.
+
+The runtime used an internal Docker network, generated disposable keys held in
+container tmpfs, a read-only tested Scala export, and limits of 3 CPUs / 6 GiB for
+the reference plus 1 CPU / 1 GiB for Scala. Cleanup verified no owned containers
+or networks remained. Raw transactions, state, logs and receipts stay outside Git
+under `/home/<user>/cardano-min-output-live1-20261008`; no keys were exported.
+The tested source is the reviewed scenario integration at `2eda20c`, whose only
+scenario compatibility code change is a synthetic test parameter; the boundary
+launcher and minimum-output production implementation are unchanged.

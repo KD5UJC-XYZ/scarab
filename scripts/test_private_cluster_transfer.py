@@ -4,9 +4,22 @@ import unittest
 import json
 from unittest.mock import patch
 from types import SimpleNamespace
-from private_cluster_transfer import TransferRunner
+from private_cluster_transfer import TransferRunner, converged_tips
 
 class ObservationGuards(unittest.TestCase):
+    def test_origin_relay_tip_waits_until_all_three_nodes_have_matching_hashes(self):
+        point = {"hash": "a" * 64}
+        self.assertFalse(converged_tips([point, point, {"slot": 0}]))
+        self.assertFalse(converged_tips([{}, {}, {}]))
+        self.assertTrue(converged_tips([point, point, point]))
+
+    def test_incomplete_malformed_and_divergent_convergence_samples_are_not_ready(self):
+        point = {"hash": "a" * 64}
+        for tips in [[point, point], [point, point, None],
+                     [point, point, {"hash": "b" * 64}],
+                     [{"hash": "g" * 64}] * 3, [{"hash": None}] * 3]:
+            self.assertFalse(converged_tips(tips))
+
     def runner(self):
         r = object.__new__(TransferRunner)
         r.records = {}

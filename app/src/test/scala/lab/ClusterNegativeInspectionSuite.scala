@@ -117,6 +117,7 @@ class ClusterNegativeInspectionSuite extends munit.FunSuite:
     scenarios.zip(Vector(wrong, tx, conflict)).zipWithIndex.foreach {
       case ((scenario, transaction), index) =>
         val baseline = if scenario.usePost then "post" else "pre"
+        val escapedReference = scenario.reference.replace("\\", "\\\\").replace("\"", "\\\"")
         write(dir, scenario.label + "-transaction-cbor.md", transaction.hex)
         val txFile = Vector(
           "/work/scenario-wrong-key.signed",
@@ -126,7 +127,7 @@ class ClusterNegativeInspectionSuite extends munit.FunSuite:
         val submission = s"scenario-submission-$index.md"
         val fields = s""""transactionCborSha256":"${sha256(
             transaction
-          )}","returncode":1,"stdout":"","stderr":"${scenario.reference}""""
+          )}","returncode":1,"stdout":"","stderr":"${escapedReference}""""
         write(
           dir,
           submission,
@@ -137,7 +138,7 @@ class ClusterNegativeInspectionSuite extends munit.FunSuite:
           scenario.label + "-result.md",
           s"""{$fields,"scope":"reference-local-submission-observation","transactionId":"${txid(
               transaction
-            ).hex}","submissionEvidence":"$submission","passed":true,"stableStateVerified":true,"singleAcquiredSnapshot":false,"expectedReason":"${scenario.reference}"}"""
+            ).hex}","submissionEvidence":"$submission","referenceRejectionLayer":"${scenario.referenceLayer}","recognizedReferenceRejection":true,"recognizedLedgerRejection":${scenario.referenceLayer == "ledger-rule"},"passed":true,"stableStateVerified":true,"singleAcquiredSnapshot":false,"expectedReason":"${escapedReference}"}"""
         )
         for
           phase <- Vector("pre", "post");

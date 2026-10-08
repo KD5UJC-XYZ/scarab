@@ -16,11 +16,25 @@ object ClusterNegativeObservation extends IOApp:
     case UnexpectedAcceptance
     case Unsupported(detail: String)
 
-  final case class Scenario(label: String, reason: Rejection, reference: String, usePost: Boolean)
+  val SpentInputsReference =
+    "ConwayMempoolFailure \"All inputs are spent. Transaction has probably already been included\""
+  final case class Scenario(
+      label: String,
+      reason: Rejection,
+      reference: String,
+      usePost: Boolean,
+      referenceLayer: String = "ledger-rule"
+  )
   val scenarios = Vector(
     Scenario("wrong-key", Rejection.MissingRequiredKeys, "MissingVKeyWitnessesUTXOW", false),
-    Scenario("repeated-included", Rejection.UnresolvedInputs, "BadInputsUTxO", true),
-    Scenario("conflicting-spend", Rejection.UnresolvedInputs, "BadInputsUTxO", true)
+    Scenario(
+      "repeated-included",
+      Rejection.UnresolvedInputs,
+      SpentInputsReference,
+      true,
+      "mempool"
+    ),
+    Scenario("conflicting-spend", Rejection.UnresolvedInputs, SpentInputsReference, true, "mempool")
   )
 
   def classify(result: Either[String, ClusterTransfer.Receipt]): Outcome = result match
@@ -54,6 +68,20 @@ object ClusterNegativeObservation extends IOApp:
     import ReferenceJson.{field, string, uint}
     import ReferenceJson.Json.Lit
     require(string(field(receipt, "scope")) == "reference-local-submission-observation")
+    require(
+      string(field(receipt, "referenceRejectionLayer")) == scenario.referenceLayer,
+      "reference rejection layer differs"
+    )
+    require(
+      field(receipt, "recognizedReferenceRejection") == Lit("true"),
+      "reference class unrecognized"
+    )
+    require(
+      field(receipt, "recognizedLedgerRejection") == Lit(
+        (scenario.referenceLayer == "ledger-rule").toString
+      ),
+      "mempool observation must not claim ledger-rule rejection"
+    )
     require(uint(field(receipt, "returncode")) > 0, "reference submission must fail")
     require(field(receipt, "passed") == Lit("true"), "scenario guards did not pass")
     require(field(receipt, "stableStateVerified") == Lit("true"), "stable state unverified")
@@ -68,8 +96,9 @@ object ClusterNegativeObservation extends IOApp:
       "reference class differs"
     )
     require(
-      (string(field(receipt, "stdout")) + string(field(receipt, "stderr")))
-        .contains(scenario.reference),
+      Vector("stdout", "stderr").exists(key =>
+        string(field(receipt, key)).contains(scenario.reference)
+      ),
       "reference rejection constructor missing"
     )
 
@@ -170,7 +199,10 @@ object ClusterNegativeObservation extends IOApp:
           IO.println(
             rows
               .map { case (label, reason) =>
-                s"""{"scenario":"$label","scalaRejection":"$reason","matched":true,"scope":"offline-selected-negative-predicates","fullLedgerValidated":false,"invalidBlockRejection":false,"referenceSnapshotAtomic":false}"""
+                s"""{"scenario":"$label","scalaRejection":"$reason","matched":true,"referenceRejectionLayer":"${scenarios
+                    .find(_.label == label)
+                    .get
+                    .referenceLayer}","ledgerRuleAgreement":false,"scope":"offline-selected-negative-predicates","fullLedgerValidated":false,"invalidBlockRejection":false,"referenceSnapshotAtomic":false}"""
               }
               .mkString("\n")
           ).as(ExitCode.Success)

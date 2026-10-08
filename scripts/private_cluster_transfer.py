@@ -9,6 +9,15 @@ import time
 from private_cluster import Runner, JDK
 
 
+def converged_tips(tips):
+    """Startup origin tips have no hash; wait for three complete matching points."""
+    if len(tips) != 3 or any(not isinstance(tip, dict) for tip in tips):
+        return False
+    hashes = [tip.get("hash") for tip in tips]
+    return all(isinstance(h, str) and len(h) == 64 and
+               all(c in "0123456789abcdef" for c in h) for h in hashes) and len(set(hashes)) == 1
+
+
 class TransferRunner(Runner):
     transfer_amount = 10000000
 
@@ -106,10 +115,11 @@ class TransferRunner(Runner):
         handshake = super().scala()
         # Confirm three-node convergence before changing only owned process states.
         convergence = []
-        for _ in range(10):
+        for _ in range(40):
             tips = [self.query("tip", i) for i in (1, 2, 3)]
             convergence.append(tips)
-            if len({t["hash"] for t in tips}) == 1:
+            self.save("pre-pause-convergence.md", json.dumps(convergence, indent=2))
+            if converged_tips(tips):
                 break
             time.sleep(0.25)
         else:

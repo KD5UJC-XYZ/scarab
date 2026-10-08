@@ -9,6 +9,9 @@ import time
 from private_cluster_transfer import TransferRunner
 
 
+SPENT_INPUTS_REASON = 'ConwayMempoolFailure "All inputs are spent. Transaction has probably already been included"'
+
+
 def fees(snapshot):
     return json.loads(snapshot[1]["ledger-state"])["stateBefore"]["esLState"]["utxoState"]["fees"]
 
@@ -101,11 +104,14 @@ class ScenarioRunner(TransferRunner):
         # Preserve observed state even when the expected rejection did not happen.
         after = self.snapshot(label + "-post")
         present = [key for key in json.loads(after[1]["utxo"]) if key.split("#")[0] == txid]
-        recognized = result.returncode != 0 and reason in result.stdout + result.stderr
+        layer = "mempool" if reason == SPENT_INPUTS_REASON else "ledger-rule"
+        recognized = result.returncode != 0 and any(reason in stream for stream in (result.stdout, result.stderr))
         receipt = {"scope": "reference-local-submission-observation", "transactionId": txid,
             "transactionCborSha256": digest, "submissionEvidence": self.last_submission["evidence"],
             "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr,
-            "expectedReason": reason, "recognizedLedgerRejection": recognized,
+            "expectedReason": reason, "referenceRejectionLayer": layer,
+            "recognizedReferenceRejection": recognized,
+            "recognizedLedgerRejection": recognized and layer == "ledger-rule",
             "observedOutputs": present, "expectedPreviouslyIncluded": expected_present,
             "singleAcquiredSnapshot": False, "invalidBlockRejection": "unsupported",
             "scalaNegativeComparison": "unsupported", "fullLedgerValidity": "unsupported",
@@ -120,7 +126,7 @@ class ScenarioRunner(TransferRunner):
         if bool(present) != expected_present:
             raise ValueError("unexpected scenario output presence")
         if not recognized:
-            raise ValueError("expected ledger rejection missing: " + label)
+            raise ValueError("expected reference rejection missing: " + label)
         receipt["passed"] = True
         self.save(label + "-result.md", receipt)
         return receipt
@@ -141,7 +147,7 @@ class ScenarioRunner(TransferRunner):
                 raise ValueError("post-transfer producer pause was not retained")
             self.pause_evidence()
             selection = json.loads((self.out / "transfer-selection.md").read_text())
-            repeated = self.reject("repeated-included", "/work/transfer.signed", "BadInputsUTxO", True)
+            repeated = self.reject("repeated-included", "/work/transfer.signed", SPENT_INPUTS_REASON, True)
             self.execute("cardano-cli", "conway", "transaction", "build-raw",
                 "--tx-in", selection["input"], "--tx-out",
                 selection["destination"] + "+" + str(selection["amount"]), "--tx-out",
@@ -151,7 +157,7 @@ class ScenarioRunner(TransferRunner):
                 "--tx-body-file", "/work/scenario-conflict.body", "--signing-key-file",
                 "/work/env/utxo-keys/utxo1/utxo.skey", "--testnet-magic", "1082026",
                 "--out-file", "/work/scenario-conflict.signed")
-            conflict = self.reject("conflicting-spend", "/work/scenario-conflict.signed", "BadInputsUTxO", False)
+            conflict = self.reject("conflicting-spend", "/work/scenario-conflict.signed", SPENT_INPUTS_REASON, False)
             if conflict["transactionId"] == repeated["transactionId"]:
                 raise ValueError("conflicting transaction must have distinct body identity")
         finally:

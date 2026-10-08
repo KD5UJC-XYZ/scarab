@@ -66,7 +66,7 @@ class ClusterNegativeObservationSuite extends munit.FunSuite:
   }
   private val scenario = scenarios.head
   private val receipt =
-    s"""{"scope":"reference-local-submission-observation","returncode":1,"passed":true,"stableStateVerified":true,"singleAcquiredSnapshot":false,"transactionId":"${digest.hex}","transactionCborSha256":"${sha256(
+    s"""{"scope":"reference-local-submission-observation","referenceRejectionLayer":"ledger-rule","recognizedReferenceRejection":true,"recognizedLedgerRejection":true,"returncode":1,"passed":true,"stableStateVerified":true,"singleAcquiredSnapshot":false,"transactionId":"${digest.hex}","transactionCborSha256":"${sha256(
         tx
       )}","expectedReason":"MissingVKeyWitnessesUTXOW","stdout":"","stderr":"MissingVKeyWitnessesUTXOW"}"""
   private def parsed(text: String) = ReferenceJson.parse(Bytes.fromArray(text.getBytes("UTF-8")))
@@ -95,6 +95,25 @@ class ClusterNegativeObservationSuite extends munit.FunSuite:
     intercept[IllegalArgumentException](
       parsed(receipt.replace("\"returncode\":1", "\"returncode\":1,\"returncode\":0"))
     )
+  }
+  test("mempool reference requires exact reason and cannot claim ledger-rule rejection") {
+    val mempool = scenarios(1)
+    val escaped = SpentInputsReference.replace("\\", "\\\\").replace("\"", "\\\"")
+    val text = receipt
+      .replace("MissingVKeyWitnessesUTXOW", escaped)
+      .replace("ledger-rule", "mempool")
+      .replace("\"recognizedLedgerRejection\":true", "\"recognizedLedgerRejection\":false")
+    referenceRejection(parsed(text), mempool, digest, tx)
+    for altered <- Vector(
+        text.replace("\"recognizedLedgerRejection\":false", "\"recognizedLedgerRejection\":true"),
+        text.replace("mempool", "ledger-rule"),
+        text.replace("All inputs are spent.", "Other failure."),
+        text.replace(
+          "\"recognizedReferenceRejection\":true",
+          "\"recognizedReferenceRejection\":false"
+        )
+      )
+    do intercept[IllegalArgumentException](referenceRejection(parsed(altered), mempool, digest, tx))
   }
   sys.env.get("CLUSTER_NEGATIVE_EVIDENCE").foreach { directory =>
     test("opt-in original reference negatives agree with selected Scala rejection classes") {

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from private_cluster import Runner
 from private_cluster_transfer import TransferRunner
-from private_cluster_scenarios import ScenarioRunner, unchanged
+from private_cluster_scenarios import ScenarioRunner, unchanged, SPENT_INPUTS_REASON
 
 TXID = "a" * 64
 
@@ -62,9 +62,28 @@ class ScenarioGuards(unittest.TestCase):
         for code, message in [(1, "socket unavailable"), (0, "BadInputsUTxO")]:
             r = self.runner()
             with patch.object(TransferRunner, "execute", side_effect=self.process(code, message)):
-                with self.assertRaisesRegex(ValueError, "expected ledger rejection"):
+                with self.assertRaisesRegex(ValueError, "expected reference rejection"):
                     r.reject("conflict", "/work/conflict.signed", "BadInputsUTxO", False)
             self.assertFalse(r.records["conflict-result.md"]["recognizedLedgerRejection"])
+            self.assertFalse(r.records["conflict-result.md"]["passed"])
+
+    def test_spent_input_mempool_rejection_is_not_ledger_rule_agreement(self):
+        r = self.runner()
+        with patch.object(TransferRunner, "execute", side_effect=self.process(stderr=SPENT_INPUTS_REASON)):
+            report = r.reject("conflict", "/work/conflict.signed", SPENT_INPUTS_REASON, False)
+        self.assertTrue(report["passed"])
+        self.assertTrue(report["recognizedReferenceRejection"])
+        self.assertFalse(report["recognizedLedgerRejection"])
+        self.assertEqual(report["referenceRejectionLayer"], "mempool")
+
+    def test_other_mempool_errors_ledger_errors_and_split_streams_fail_closed(self):
+        for stdout, stderr in [("", 'ConwayMempoolFailure "other failure"'),
+                               ("", "BadInputsUTxO"),
+                               ("ConwayMempoolFailure ", SPENT_INPUTS_REASON.split(" ", 1)[1])]:
+            r = self.runner()
+            with patch.object(TransferRunner, "execute", side_effect=self.process(stderr=stderr, stdout=stdout)):
+                with self.assertRaisesRegex(ValueError, "expected reference rejection"):
+                    r.reject("conflict", "/work/conflict.signed", SPENT_INPUTS_REASON, False)
             self.assertFalse(r.records["conflict-result.md"]["passed"])
 
     def test_wrong_key_uses_second_disposable_key_and_same_body(self):
@@ -273,7 +292,7 @@ class LifecycleScenarios(unittest.TestCase):
                     if "/work/scenario-wrong-key.signed" in args:
                         result.returncode, result.stderr = 1, "MissingVKeyWitnessesUTXOW"
                     elif getattr(r, "hold_post_pause", False):
-                        result.returncode, result.stderr = 1, "BadInputsUTxO"
+                        result.returncode, result.stderr = 1, SPENT_INPUTS_REASON
                 return result
             with patch.object(Runner, "scala", return_value={"negotiated": True}), \
                  patch.object(TransferRunner, "snapshot", side_effect=snapshot), \

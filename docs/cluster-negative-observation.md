@@ -8,7 +8,7 @@ loader from `ClusterTransferCommand` and first requires the original positive
 
 For the three scenarios produced by `private_cluster_scenarios.py`, it checks exact
 transaction identity, the successful Python guard receipt, nonzero reference
-submission status, and the expected reference error constructor. It binds each
+submission status, and the exact expected reference error constructor/message and rejection layer. It binds each
 negative pre/post UTxO CBOR export to the relevant checked positive state and also
 compares parameter/ledger JSON and tip bracket fields. Changed or malformed evidence
 fails closed. Whole ledger JSON equality is deliberately strict; a live run may
@@ -56,8 +56,7 @@ java -XX:ActiveProcessorCount=2 -Xmx1g \
 ```
 
 Default unit tests use synthetic public CBOR and no reference node. Optional
-`CLUSTER_NEGATIVE_EVIDENCE` enables an original-evidence integration test; it has not
-been run because live workloads remain blocked pending direct user approval. Do not
+`CLUSTER_NEGATIVE_EVIDENCE` enables an original-evidence integration test; its live result must be recorded separately after a complete corrected evidence packet passes. Do not
 set this variable to partial or unrelated evidence and interpret skipped integration
 as reference conformance. Test keys, original state, logs and receipts stay outside
 Git; no raw private evidence is distributed.
@@ -73,3 +72,16 @@ synthetic evidence-binding regressions, not fabricated reference conformance cla
 The scenario lifecycle test still means cancellation then a **fresh harness run**,
 not retained-state reference node recovery. The original scenario commit remains
 immutable; this follow-up also restores the inherited live resource allocation.
+
+
+## Mempool versus selected Scala rejection
+
+The two post-inclusion scenarios require the exact all-inputs-spent
+`ConwayMempoolFailure` observation, with `referenceRejectionLayer: "mempool"` and
+`recognizedLedgerRejection: false`. Wrong-key evidence remains explicitly a
+`MissingVKeyWitnessesUTXOW` observation with layer `ledger-rule`; it demonstrates
+missing required-key coverage, not an invalid-signature experiment. The output
+preserves the reference layer and sets `ledgerRuleAgreement: false`: a related
+Scala rejection is not proof that reference LEDGER evaluated or rejected that rule.
+No fallback from an unexpected reference error is permitted. See [source and
+preserved first-run failure](private-cluster-scenarios.md#reference-mempool-distinction).
