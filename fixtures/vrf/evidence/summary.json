@@ -1,0 +1,19 @@
+{
+  "rows": 2048,
+  "results": {
+    "VALID": 3,
+    "INVALID": 2018,
+    "MALFORMED": 27
+  },
+  "mismatches": [],
+  "helper_rows": 3426,
+  "helper_categories": {
+    "d": 612,
+    "u": 519,
+    "e": 240,
+    "t": 2055
+  },
+  "helper_mismatches": [],
+  "additional_direct_rows": 2338,
+  "additional_mismatches": []
+}

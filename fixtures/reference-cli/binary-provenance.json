@@ -1,0 +1,5 @@
+{
+  "archive_sha256": "530fb99986fbdccc46f9ee0dd86cabb1393b015feac9173cb731d89fa748365f",
+  "member": "./bin/cardano-cli",
+  "binary_sha256": "0ac45e874599fac4ee6ca4fd9602c0ddb9854a62be5f365dfa425eff9f4bd0ed"
+}

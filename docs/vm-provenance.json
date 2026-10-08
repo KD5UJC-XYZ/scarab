@@ -1,0 +1,102 @@
+{
+  "plutusCommit": "ac40fae4dea9dcad51b38a9c5c48148655cb13a2",
+  "scalusCommit": "31531c14d4e556fb38c984d702ee60dd82b6453f",
+  "oracleExecutedHere": false,
+  "artifacts": [
+    {
+      "path": "fixtures/plutus/addInteger-01.uplc",
+      "sha256": "b8300e6cb277ff498dd80ade14ae9b29c32f542ef937905c2a62fafad232131e",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-01/addInteger-01.uplc"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-01.uplc.budget.expected",
+      "sha256": "b5a167874a39f3cd8c2d1e7e398b4ede7373ccd93fc579a85361a2480fd6c349",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-01/addInteger-01.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-01.uplc.expected",
+      "sha256": "7d35a9a740f4e5664f41b3933287e4feab8eb7a7a8f770d761e314a6e1214f94",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-01/addInteger-01.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-02.uplc",
+      "sha256": "11b68ddf2da072aea052da5acca4c6724db8a52796f26c9e4b4d31ea41635028",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-02/addInteger-02.uplc"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-02.uplc.budget.expected",
+      "sha256": "f1441bb9194ae981f8cf3c72dfbd47caa30a12818970d403ce447a82d57b6901",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-02/addInteger-02.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-02.uplc.expected",
+      "sha256": "e4e07510de79300ec2cfacc7249ec7db488ac62989c884ac8fdb1a84a335de93",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-02/addInteger-02.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-uncurried.uplc",
+      "sha256": "81e69608d46a6c63c9a62172969d5a8d0cefba40fa311b19ef33e574cc9d742d",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-uncurried/addInteger-uncurried.uplc"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-uncurried.uplc.budget.expected",
+      "sha256": "b5a167874a39f3cd8c2d1e7e398b4ede7373ccd93fc579a85361a2480fd6c349",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-uncurried/addInteger-uncurried.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/addInteger-uncurried.uplc.expected",
+      "sha256": "5266485e73b95c6d69ecb4bf62d187c31a35b149d6ae83dac75343f2d9468063",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/addInteger/addInteger-uncurried/addInteger-uncurried.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/divideInteger-neg-pos.uplc",
+      "sha256": "6a267026649eecca47aebcc5c00885362918addf02a5995789d954adbfeff934",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/divideInteger/divideInteger-neg-pos/divideInteger-neg-pos.uplc"
+    },
+    {
+      "path": "fixtures/plutus/divideInteger-neg-pos.uplc.budget.expected",
+      "sha256": "93a2a5d7822d522505890ff2ff03a6cc5de72ab25c435fa58343ee8cddf30c8e",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/divideInteger/divideInteger-neg-pos/divideInteger-neg-pos.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/divideInteger-neg-pos.uplc.expected",
+      "sha256": "bf7b2f9fcd13bd77003c6bde3ae85fadd5f263ee794e481c7a4dbfca472bc2fc",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/divideInteger/divideInteger-neg-pos/divideInteger-neg-pos.uplc.expected"
+    },
+    {
+      "path": "fixtures/plutus/divideInteger-zero.uplc",
+      "sha256": "aef5150da8bf1291729c23734ac5663cdab82eaea75fe0470d3bfb14d68293bd",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/divideInteger/divideInteger-zero/divideInteger-zero.uplc"
+    },
+    {
+      "path": "fixtures/plutus/divideInteger-zero.uplc.budget.expected",
+      "sha256": "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/divideInteger/divideInteger-zero/divideInteger-zero.uplc.budget.expected"
+    },
+    {
+      "path": "fixtures/plutus/divideInteger-zero.uplc.expected",
+      "sha256": "6e65f86795277da87aed702f8927a83314ad4b846fc1f8e833cb563c5879b7b6",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/plutus-conformance/test-cases/uplc/evaluation/builtin/semantics/divideInteger/divideInteger-zero/divideInteger-zero.uplc.expected"
+    },
+    {
+      "path": "vm/src/main/resources/plutus-reference-e/builtinCostModelE.json",
+      "sha256": "56abe89beca140e9e9bbb7f573829397a3021d6340e22f868406dc4c10df83f9",
+      "url": "https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/shared/src/main/resources/builtinCostModelE.json"
+    },
+    {
+      "path": "vm/src/main/resources/plutus-reference-e/cekMachineCostsE.json",
+      "sha256": "37b37d3c544b9fad73a112af2c8d8a9116f8639ea6b2e879f20bfafa0529a051",
+      "url": "https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/shared/src/main/resources/cekMachineCostsE.json"
+    },
+    {
+      "path": "fixtures/licenses/plutus-LICENSE.md",
+      "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/LICENSE.md"
+    },
+    {
+      "path": "fixtures/licenses/plutus-NOTICE.md",
+      "sha256": "9e1fe670abe06d2cbdffa2d724765b5e86aa7f65d8eccd34b391a37fbf7bab89",
+      "url": "https://github.com/IntersectMBO/plutus/blob/ac40fae4dea9dcad51b38a9c5c48148655cb13a2/NOTICE.md"
+    }
+  ]
+}

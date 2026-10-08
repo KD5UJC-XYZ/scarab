@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+version=1.10.7
+sha=3cca02818047327a83efde776103a1ef92f76f72c062badbbb062499a3270c07
+cache="${LAB_CACHE_DIR:-$PWD/.cache}/cardano-scala-lab"
+mkdir -p "$cache"
+jar="$cache/sbt-launch-$version.jar"
+if [ ! -f "$jar" ]; then
+  curl --fail --location --proto '=https' "https://repo.maven.apache.org/maven2/org/scala-sbt/sbt-launch/$version/sbt-launch-$version.jar" -o "$jar"
+fi
+printf '%s  %s\n' "$sha" "$jar" | sha256sum --check --status
+export XDG_RUNTIME_DIR="$cache/run"
+mkdir -p "$XDG_RUNTIME_DIR"
+export COURSIER_CACHE="$cache/coursier"
+exec java -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="$cache/global" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount=4 -Xms256m -Xmx2g -Dsbt.override.build.repos=true -Dsbt.repository.config=project/repositories -Dsbt.supershell=false -jar "$jar" "$@"

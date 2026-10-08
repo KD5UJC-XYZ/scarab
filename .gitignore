@@ -1,0 +1,62 @@
+target/
+.bsp/
+.metals/
+.idea/
+*.class
+
+.cache/
+
+__pycache__/
+*.pyc
+
+# Routine local execution output (not licensed fixture vectors)
+*.log
+/docs/*-rerun-artifacts/
+/docs/*-diagnostics/
+/docs/*-diagnostic/
+
+# Local handoff archives, exports, credentials and private cluster state
+/setup/
+/local-evidence/
+/private-corpus/
+/cluster-state/
+/cluster-credentials/
+/.local-cluster/
+*.bundle
+.env
+.env.local
+.env.*.local
+
+# Additional local editor/OS and build metadata
+.bloop/
+.vscode/
+.bsp/
+.scala-build/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Private corpus obtained separately; never publish via this export
+/fixtures/chain-fetch/
+/fixtures/post-byron/
+/fixtures/body-commitment/
+/fixtures/block-evidence/
+/core/src/test/resources/historical-index/
+/core/src/test/resources/post-byron/
+/core/src/test/resources/body-commitment/
+/core/src/test/resources/block-evidence/
+
+# Generated diagnostic receipts; deliberate fixture/provenance JSON remains tracked
+/docs/cli-*-verification.json
+/docs/*artifacts*.json
+/docs/*diagnostic*.json
+/docs/*host-summary*.json
+/docs/*host-samples*.json
+/docs/*initial-snapshot*.json
+
+# Generated dependency reports and historical diagnostic snapshots
+/docs/runtime-dependencies.json
+/docs/dependency-checksums.json
+/docs/restricted-replay-store-source-hashes.json
+/docs/*initial-index-source*.txt

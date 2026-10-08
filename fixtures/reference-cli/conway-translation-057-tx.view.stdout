@@ -1,0 +1,1247 @@
+{
+    "auxiliary scripts": "(StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"a31c7227c7c88c3128cd5028d9c69f9a3c0c6b7d8988a5512680c533\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"2859d5becc30b7da4b9326c229bf9cc906d2ce8400f9d8f67ad51198\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"d03501c9fcdd39666ee1e7f81f92801ad330aed23c087c4bb70414b4070f049b\"),MkTimelock TimelockTimeExpire (SlotNo 845350) (blake2b_256: SafeHash \"d62e4b7dddd6f4d02fd70ef74274c2926bd20a8cedb581e921ee7fe636577978\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"ebf2316c3b810471aea92ff08ae8a791a3b8e910f463e5d71a1e7356\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"a9470aa83674ab0675a15a33a7cf4ae5f7e61de97818cc5bcc7c4797\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"7fe5ec5818e30fd970f2239b1ce803db09cebd2a68c1ef82e64c2c8e\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"65244f27e06e0cedc0e12d0832977e9cf31607f879dc7afb393ff1c09c70aec5\"),MkTimelock TimelockTimeStart (SlotNo 4339692) (blake2b_256: SafeHash \"8952b426f430004ecea5e4b637360d99315ba03b14d79e2ce4ef198d3fb1d00f\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"6dc159583b1e0d1d87dbbeb6ae631b5b33b06e422ed9cb775e112fd1\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"e1c250239105dc86370924a039a4400d23eba7b33f305b6d5012ef21\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"407be41271e765d1e4cfa613571d85eb464f7280590982ab3d83bdac1140bd36\"),MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 3 (StrictSeq {fromStrict = fromList [MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"9835815e1c5399187b2aeb82542609ec801f4779bc09f192b02acda1\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"e51a820ec024a633c014b99f095a8215fd9c542453abb98c2fef2a81\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"846e1ac9bb3d6362ccf6924e48e8561c56154d2a259507da27b574ca\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"fa4631deefb90a916cf3f46fa0639c410f67a2b04c2d85c851ab7ff1\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"06c4d3460f7e794e9e70b9c8427c5b8aa6ac6aee90550cc0c117be3a\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"5070fbe2ca62e7d850a4b47d7f51463517f607b61e535f45bad49bea\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"488e8be6b50cb1b8ba6d03f8c9db7826471329a9af939ef8d1c66ad0\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"1440ac9e2ef902ce4be3ad9bc9233fbe03f70d005d0d18cd5188814d\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 4 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"e9e1e613b322cd6e852347803bd17588514215c1f5190fec02f85690\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"5174255b6898fde05480b029eed69590f9df6546153f73809ee26da1\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"fbb99c1d818472101dcad64eff203b5a2a4b0cb6ae16281fefb7f1a1\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"b84c2c3bd73993b8ce60a8c90bd9b58e01fd67e2b7ec08717584d18d\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"d9fbf67304c309f99e586f334d7fd1cefcd28e6546e4b4708bd5634b\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"50173a7debe5d3bb3f35e7620a93925722d0789b7b3a98cad582a15f\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"098b49e3ff9308a1ac0f60e5a99e33b9f2e951278235a9bf7e182eff\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"db9a7c7473cf1e13c007a8160eb16fe578bc1e9989597dcec645d604\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"d033466119d168019586172f409d6615df57a6c72d43cdb326bac341\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"5aaf7f84f97074f678f4cfde8d9c5b11dacf85384b9eed6a16af116ffefbbec6\")]},fromList [(PlutusV1,\"RQEAACYB\" :| [\"RgEAACIAEQ==\"]),(PlutusV2,\"RgEAACIAEQ==\" :| [])])",
+    "certificates": null,
+    "collateral inputs": [
+        "09fe4142145c8b4a5758811eb9d84a91cc1d9fd06a562467ef9d1e5f2cedf7b4#17853",
+        "106a85f0f78d91e2775c32f2f008c16e6d9d77d182f7c6261561afd75ab963cc#24217",
+        "19e546506da85fc0c2b9ef48a297b1ec595e0e811dec03d1a2865311ce989b8d#16818",
+        "245337bf88555962d9bfb5937974f45327eb0da6c174f7dc935c63a435e08ac6#8996",
+        "27c948e322c46e0fdf1e7269fac6965b90222ed8ad0ec67a02a4305ce5e12473#14326",
+        "6136ccf58f2ed1fca5c313619580a243f8e324871de23d4116703ddd5567e6e7#29156",
+        "62b417e62f6f303aeddaad746338fe859e4cfc480f05db79311d039e3cc182f9#26606",
+        "6a7a568bdc88686751ad6d45da56f6ad03afcef70558ce1abea747a21d28ca66#11623",
+        "6d86a985b52782443a64d9fa512974ddea2b42845f8b20f448a60cc5c497804e#13445",
+        "73379b3eb204fdbb7a5d51e226d95f08292a4a516e064b0c15b212946c613ef9#7297",
+        "8a58f65c9a202dc01764aa1093a1143ca3aac209815b416cbab6e61f0dbf5b91#25235",
+        "921808dd8effecfbeaea3bc51271a4c3392405b1f89f47a6c0e5da03182ac371#15505",
+        "95d19d85b68989547966ace6ddcf7ccb066c1221b7de9f6b1fc302a9d176f255#32574",
+        "a124c77933ab9bc4ec28ff45dccee43d73dbba467e45c18f2281f568f41e3bf7#7442",
+        "a28b0d808c27c2ae8a853fa64cea9c2a02110b7addd5303649fe0a43190b04aa#31441",
+        "a74f8e8cd3fadfd57d47619d3ae0163b478703814c63bedbe8a0045f9c2c3065#4133",
+        "a8f48e451bc4ad83a0eb8ed8347808afedb74f1ef4476cf3fc7bbd3fea05ef79#4262",
+        "abf67d1d190aba0250229c1c4d745a22c80334bb23009e61a2e8bb7b2e9efb80#15807",
+        "c63fa72d4193cd511a1ba2e19359742c7c12cb8f9a68101e3b67c55002868caa#1386",
+        "ede9eabb1f89186129e16a1abc8f6f215e1e3d8396abb3b46eba0e47b8f3c821#3555",
+        "f17e7e9aadb300b3681686c911b5ebdaf7a1fc75ecaec0c1405f98b4569c89d1#19854",
+        "f1d9306d7cb16db28ad313fe3c96d92943fa588279d35b51d0d8356825d59a9f#29889",
+        "fcb871c7d0b8a471f0b6462b2497fc0333368eda8433cd41f5d54d50b2780937#11599"
+    ],
+    "currentTreasuryValue": null,
+    "datums": [
+        {
+            "datum": "I (-2)",
+            "datum hash": "0268be9dbd0446eaa217e1dec8f399249305e551d7fc1437dd84521f74aa621c"
+        },
+        {
+            "datum": "Map [(Map [],B \"6\"),(Map [(I (-3),B \"\\237\\150\\164\"),(List [],Map [(I 4,I (-5)),(I (-3),B \"\"),(B \"\\196k\\169\\153\",I (-1))]),(B \"d\\250\\148\\STX\",Map [(B \"\\215\\233\\237X\",I (-1)),(I (-2),B \"\\195\")]),(List [B \"\\174&\",I 2],Map [(I (-2),B \"\\151\\206\\248\\225\")])],Constr 4 [Map [],I 1,I (-4),List []]),(B \"j\\DC4\",Map [(Constr 3 [I 4],Map [(I 0,B \"[\\EM\\156\\US\"),(B \"\\ENQ\",I (-4)),(I 2,I 5),(B \"\\161\",I (-1)),(B \"\",I 4)]),(B \"\\203J\\201@\",Constr 0 [I (-4),B \"\\175\",B \"\\135\\162\",B \"\"]),(Map [(I 2,B \"\\145\\203\"),(I 4,I 3)],List [I (-1),B \"`\\146\",B \"0\\r,\"]),(List [B \"\",B \"\\STX\",B \"\\156\\236\\233\"],Constr 3 [B \"AM\",B \"\",I (-3),B \"[\\151\"])]),(Map [(List [I 5,I (-2),B \"\"],Constr 1 []),(I (-2),List [I (-2),I (-2),B \"\",I (-2)]),(Constr 5 [I 2,B \"\\152\\&4+\"],Constr 2 [I 1,I 4,I 5,I 4]),(B \"\\149\\SUB\",Map [(B \"\",I (-3))]),(Constr 5 [B \"\\EOT\\187\\DC2F\",B \"\\SYN\",I (-4)],List [])],Map [(Map [(B \"\",I (-1)),(B \"\\171\",B \"\"),(B \"\\198W\",B \"\\188\\152\\171\\&8\"),(I (-2),B \"\\DC1H\")],List [B \"\\233\\135@\\159\",I (-3),I (-3)]),(B \"\",Constr 5 [I 5,B \"\\ETB\",I (-3),B \"\",B \"\\SOHr\"]),(I (-1),B \"\"),(Constr 4 [B \"\\255\\249\\136\\&3\",I 4,I (-5),I (-1)],Constr 0 [B \"/\\255\\211\\207\",I (-2),I 2,I 3,B \"\\160\"])])]",
+            "datum hash": "145a008a3c640513ed67d2554cd9e9564f97fd5309e2fdb515650d5735802427"
+        },
+        {
+            "datum": "List [List [List []],Map [(Constr 5 [B \"\",I 0,I 1,B \"\\177WK\",I 1],Constr 1 [B \"\\178\\241\",B \"\\SUB{\\133I\"]),(Constr 3 [],Map [(I 5,I 2)])],Map [(Map [(B \"\\147\\250\\240\",B \">\\159\"),(I 3,B \"\\231w\\198\"),(I (-1),I (-1)),(I (-3),I (-3)),(I (-1),B \",Tm\")],I 3),(List [B \"\",B \"7v\",I 3,B \"\\232\\221\\243\\140\"],Map []),(I 5,B \"\\242\\&0\\202\\f\"),(List [],List []),(List [I 4,I 1,I (-4),B \"\",B \"\\239\\215\\SUBT\"],I (-2))],B \"\\128\\&3\",List [Map [(B \"\\225\\210g\",I (-1)),(I (-3),B \"\\SO\\149d\"),(I (-5),I 3)],Map [],Constr 2 [I 5,I 4]]]",
+            "datum hash": "19e76851b6e7fe87605ac65fedd1e4e87ae52234d92cd33310ca794fc8109370"
+        },
+        {
+            "datum": "Map [(B \"S\",I 0),(Constr 4 [Constr 3 [I 1,I (-1)],B \"\\224\\161\\229\\249\",Map [(I 2,B \"\\203O\\209\"),(B \"\",B \"\\247T\\RS\\197\"),(I (-5),I 3)],Map [(I 5,B \"\\187\\170\\159\"),(I (-5),B \"\\136\\163\"),(B \"\",I (-5)),(B \"\",B \"\"),(B \"\\218\",B \"\\142I\\128\")],Constr 3 [B \"@i\\154\",I (-1)]],Map [(Constr 2 [I 4,B \"\\ETB!\\219\"],Constr 5 [I (-5),B \"|\\SUB\",I 1]),(I (-5),List [B \"\",B \"8\\US\\NAK\",B \"sq\\142\\199\"]),(Map [(I 5,B \"\\DC1k\\249\\&8\"),(I (-2),B \":\"),(B \"\\ETX\\185-\",I 0),(B \"5z>l\",I (-3)),(B \"\\233A\\ACK\",B \"\")],B \"\\184v\"),(List [I 4,B \"\"],B \"]\\204A\"),(Constr 3 [B \"\\162\\236\",I 3,B \"\\174\\ACK\",I (-3)],Constr 4 [B \"\\EM\\152\\153\\&6\",B \"\\USN\",I 5,I 5])]),(I 3,B \"\\216\\247\"),(List [Constr 1 [B \"\\252\",I (-2),I (-4),B \"\\135H\\215u\"],List []],List []),(List [Map [],Map [(I (-5),B \"\")]],I (-3))]",
+            "datum hash": "24c094887a6d7d61afdbe94068686aa09070c5bc9410f4e79157902a415e3c89"
+        },
+        {
+            "datum": "List [Constr 1 [List [],B \"\\135&\",B \"\",B \"\"],List [List [I (-3),I (-5),B \"\\197\\205\\223\\&7\",B \"V\\240\",B \"q\\230\\b\\DC3\"],List [B \"'j\",I 4],List [B \"\\171=\",I 1,I 4],Constr 5 [B \"\",I (-3),I 3,I 0,I 1],B \"Q\"],List [B \"r\\153\\f\"],Map [],List [Map [(I 3,B \"[\\f\"),(B \"U\",I (-1)),(B \"(\\230\",B \"\\DC3\"),(I 3,B \"\\173\\165g\")],B \"\",B \"\\163\",List [B \"\",B \"q 6.\"]]]",
+            "datum hash": "2a0d9dc63fe8c01400f2bbc9317ce7ba16c8601f2d9370088d90fb7fc6765816"
+        },
+        {
+            "datum": "Map [(List [Constr 5 [I (-1),I 2,I (-3),B \"\\196\\130\\DC1l\"],B \"\",List [I 2,B \"Bw\\131\\181\"]],I 2),(Constr 2 [Constr 5 [I (-1),B \"\\209\\196\",I 2],List [],I 0,Map [(B \"1\\197\",I (-1)),(B \"\",B \"\\188\\CAN\"),(B \"\\217\\220\",I (-3)),(B \"\",B \"\")],B \"\\192r\"],B \"N\\211\\240\\201\"),(I 2,Constr 3 [B \"@\\213\",Map [(I 0,I 3)],List [B \"\\236\\254\",B \"A\\134~\",B \"\\a\",B \"e\\244\",B \"\\154<\"],I (-4)])]",
+            "datum hash": "2bf856d555e65596e863c1769447e0ceaa42d49d259133b16abe37a00a1d8698"
+        },
+        {
+            "datum": "B \"\"",
+            "datum hash": "39df024ac52722fe8ae4c1a8740e4c5624a38c3820e504a059aae8728421f8bd"
+        },
+        {
+            "datum": "Constr 3 [List [I (-5),List [],I 4],Constr 2 [],List [Constr 0 [B \"\\214\\176\\198\\252\",B \"K5\\134\\137\",B \"\\203\\129Q\",I 4,I 5]],I (-3),I 2]",
+            "datum hash": "4bbc69878ae136fbc2108ad1fcf4fc15add0150549330affce89849a267843ec"
+        },
+        {
+            "datum": "Constr 1 [I (-2),B \"Q\\200\\rp\",B \"M\\254K\\228\",List [Map [(B \"\\138=\",I 5)],I 0,Map [],Constr 4 [B \"r\\\\s^\",B \"\",B \"\\v}\\146\"],B \"\"],I (-3)]",
+            "datum hash": "51a2e40fb9cfa9c4152bed48bc7978d31d4c632f270fe47f9d19aa88dd38518b"
+        },
+        {
+            "datum": "I 4",
+            "datum hash": "642206314f534b29ad297d82440a5f9f210e30ca5ced805a587ca402de927342"
+        },
+        {
+            "datum": "Map [(B \"-\\169\",Map [(I 5,Constr 1 [B \"\\253\\216\",B \"\\ETXB\",I 3,I (-1)]),(List [I 1,B \"}\\207\",B \"\\230v\\192\\171\",I 2],Map []),(Constr 1 [],Map [(I (-4),I (-3)),(B \"\\176\",B \"~\\139\")])]),(B \"\",B \"1\"),(Map [(Constr 1 [],I (-3))],I 0),(List [List [],B \"\",Constr 1 [B \"\\b\\146\\164\",I 4,I (-3),B \"\\DC3(l\",B \"\"]],List [I (-3),B \"\",B \"\\128\\199\",List [I (-3),B \"\",B \"j\\132\",I 5,B \"\\214|\"]])]",
+            "datum hash": "78f16c3711be948666a19200177a2b572c94eb6c37ba2dbb5ce7fbd22981b010"
+        },
+        {
+            "datum": "Map [(List [Constr 2 [B \"4\\167\\135\",B \"&h\\145e\",B \"\\201u\\164y\"]],Constr 3 []),(Map [(Constr 3 [I (-1),B \"\\172$j\\DLE\"],List [B \"\\160.\\ETX\\195\",I 2,B \"u\\n\\172\"]),(List [I 1,B \"\\210\\b\"],Constr 1 [I 5,B \"h\\166;\",I 5,B \"\\252\\&4\\ENQ\\159\"])],B \"\\140h\")]",
+            "datum hash": "7affe4c7ea59f664266b1ac5a1e0e54437f06522518ca26298924ae00d37b384"
+        },
+        {
+            "datum": "List [B \"\\254\",Map [(Constr 4 [I (-3),I 1],Constr 5 [B \"\",B \"\\155\"]),(B \"\\214\\151\\233\\199\",B \"\\DC1\"),(Map [(I (-3),B \"\"),(I (-2),I (-2))],I 1),(Map [(B \"\\NUL1\",I 2),(B \"\\245R'\\\"\",I 5),(I 0,I 0),(B \"\",B \"B+\")],Constr 3 [I 5,B \"\\244\",B \"\\NAK\\192\\193\",I (-3),B \"\"]),(Constr 0 [],I 2)],List [I 2],Map [],Map [(Constr 0 [B \"\\180\",I 0,I 1],List []),(Constr 3 [],I (-1)),(B \"\\136\\SYN\\\\t\",B \"\\218\\202\\&4\"),(B \"\",Map [(B \",\\219/\\215\",I (-3)),(B \"\\224U\",B \"\"),(I (-1),I (-5)),(I (-2),I (-4))])]]",
+            "datum hash": "7d6f3e3944974d7be3dff8f1d6e0b5b2c34ef9fc0a6a2a3e6afd582cb27f2121"
+        },
+        {
+            "datum": "B \"\\185\\130\\US\"",
+            "datum hash": "7d9208680aa867ac4d0c991242ec4951378f985bd01866d2a1aa2bc43409169a"
+        },
+        {
+            "datum": "Constr 0 []",
+            "datum hash": "923918e403bf43c34b4ef6b48eb2ee04babed17320d8d1b9ff9ad086e86f44ec"
+        },
+        {
+            "datum": "Constr 4 [List [I (-4),List [I 4],Constr 5 [I 5,B \"I\",I 5],Constr 1 [B \"\",B \"n1\"]],Map [(Constr 3 [B \"\\f\"],I (-2))]]",
+            "datum hash": "96516f91bdcecc853a663ddaf514bdfef863e83d7dd89303570cbb64ffec0025"
+        },
+        {
+            "datum": "Map [(List [Map [],List [I 5,B \"\\239\\253o\\141\",I (-5),B \"\",I 2]],Map [(List [B \"\\146\\227E\\205\"],I (-3))]),(List [Constr 0 [I 3,B \"S \\186\\253\",B \"^\",B \"2\"]],I (-1)),(List [Constr 3 [B \"\\227\\DC3\\220\",B \"p\"]],B \"\\ENQ\\240\\214\\226\"),(I (-3),I (-3))]",
+            "datum hash": "a68af67b73c1690f970d7fb35e018d773f14c601370aa2564aa5db0e64d314f4"
+        },
+        {
+            "datum": "I (-1)",
+            "datum hash": "ae85d245a3d00bfde01f59f3c4fe0b4bfae1cb37e9cf91929eadcea4985711de"
+        },
+        {
+            "datum": "B \"\\250`\"",
+            "datum hash": "b08ad857ad49544a85321a86ade3b5fe87465601005156c1659047dd8ad31127"
+        },
+        {
+            "datum": "B \"\\203\\141\\EM\"",
+            "datum hash": "b3cec4fd2f27e811587ca622bdf0602510e3f7f90c9ba11bb88b2bcd04edbdd6"
+        },
+        {
+            "datum": "I 2",
+            "datum hash": "bb30a42c1e62f0afda5f0a4e8a562f7a13a24cea00ee81917b86b89e801314aa"
+        },
+        {
+            "datum": "Map []",
+            "datum hash": "d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6c"
+        },
+        {
+            "datum": "Constr 1 [List [Map [(I (-3),B \"\")]],Map [(I (-2),Constr 0 []),(List [B \"\\aA\\252\\212\",B \"\\152\\170\",B \"\\183\\195\\209\",I (-3),B \"h\"],Constr 2 [B \"\\154\",B \"j~\",B \"+X\"]),(B \"'\\FS\\218\",B \"~\"),(Constr 0 [B \"K\\154?\",I (-5),I (-1),B \"\\CAN\\254\\ETBR\"],Constr 5 [I 4,I (-2),I 4,B \"R\\199\",I 0]),(List [I 5,I 3,I (-1),I 1],B \"\\242\\144\\225\\179\")],Map [(Constr 0 [I 3,B \"\\241\\179\\225\"],Constr 3 [B \"\",B \"wv\\135\",I (-2),I (-2),B \"\\149\\158\"]),(Map [(B \"\\DC2\\140z\",B \"\\136\\SOH\"),(B \"c\\247\",I 3),(I (-3),B \"\\147{\"),(B \"\\GS\\214\",B \"\\185\\r\\196\"),(I (-3),B \"\\190\\201\\132\")],List []),(B \"=o\\144\",List []),(Map [(B \"[\\252\\155\\240\",I (-2)),(B \"\\ACK\",B \"\\199q\\230\"),(I (-1),B \"\\196)\"),(B \"\",I 4)],Constr 1 [I (-2),I (-1),B \"\",I (-1),I 1])]]",
+            "datum hash": "e4ba048272097aeb81a5f27a782ed45dd48d976b15b117ae827be86bc30bfe57"
+        },
+        {
+            "datum": "I 3",
+            "datum hash": "e88bd757ad5b9bedf372d8d3f0cf6c962a469db61a265f6418e1ffed86da29ec"
+        },
+        {
+            "datum": "List [I 0,Map [(I (-4),Map [])],B \"*\\DC4\\219\",Constr 0 [Map [(I (-2),B \"\\209\\171\\206\"),(I (-4),B \"\\141\\167\\177\"),(B \"\\145P\",B \"\"),(I 1,I (-3))],Map [],List [B \"\\218\\215\\179V\",I 1,B \"\"],I (-4),List []]]",
+            "datum hash": "ea5a841e95d98ea467754bcd86d7ba126f5330e250d4d0ea8251f7984ba5bc07"
+        },
+        {
+            "datum": "I (-5)",
+            "datum hash": "f63498b4ae65be466e4a71878971b9c524458996450b0ff8262cddf3f0d99229"
+        },
+        {
+            "datum": "Map [(B \"tf\\224\\175\",I (-1))]",
+            "datum hash": "fa83a6da0492786a2bdefd1476e75738b899bacca2b90712988fa098449d9f06"
+        },
+        {
+            "datum": "I 5",
+            "datum hash": "fb3d635c7cb573d1b9e9bff4a64ab4f25190d29b6fd8db94c605a218a23fa9ad"
+        }
+    ],
+    "era": "Conway",
+    "fee": "4 Lovelace",
+    "governance actions": [],
+    "inputs": [
+        "06455ab5572a141d2becccdfbf97dce4bfc916eec02c3c9a2141ac0cad383c8e#16588",
+        "1361e3877aa887eeef3f056f60aa911bd6b1bf95b9677e7e896bd9c8e6cddbea#12031",
+        "4fa5517339122455b015296945e9bb131585dc09e2a1285d02fdb260756b6c67#30365",
+        "59c32ff9b17ffa31ec28cff21ce89096ce57bf9ca24e45ba00e656f6a73e7272#9385",
+        "806b37e8a0427313ec35fe99f2d785846b88bba1ea415f55e39488c308a8d36c#18187",
+        "be100a0f0e3fea92d5bee30082aa529fd32d79b1d67e6c81151c3f3e135af48f#647",
+        "d9e0ad2447569e3aefa9cedc9b3ab6699ad1c2968d8f461c1287ef9b002d87da#20846",
+        "ed6187ebda77931227756434b2dafe88daa8bb2eee2f00ad6638e295addbd5a6#32462",
+        "ef4478bed71a3e9ff9eff97cd40c4da86fa8bdfbbf7fe9ec5348aaccc2866fb2#19370",
+        "fecd5f389fdc459b36644526df8bac9ea930c136ff08731aaa4e3b0fbf014648#5851"
+    ],
+    "metadata": {
+        "10191193": [
+            [
+                [
+                    "9",
+                    "$F",
+                    "󷏮f",
+                    "[0x4b, 0x11, 0x96]"
+                ],
+                []
+            ],
+            [
+                "[0xe0, 0xd9, 0x48, 0xdc]",
+                27
+            ],
+            [
+                [
+                    [
+                        "[0x3d, 0xe2, 0xe4, 0x8c]",
+                        -2
+                    ],
+                    [
+                        "[0x9b, 0xe8, 0x93, 0x16]",
+                        "=룬l"
+                    ]
+                ],
+                "\u0016\u001d"
+            ],
+            [
+                [
+                    [
+                        "?",
+                        "[]"
+                    ],
+                    [
+                        "[0x99, 0x9b]",
+                        "[0xb3, 0x5a, 0xc8]"
+                    ]
+                ],
+                "\u001f"
+            ]
+        ],
+        "10709417": [
+            [
+                5,
+                "`"
+            ],
+            [
+                [
+                    "E"
+                ],
+                1
+            ],
+            [
+                5,
+                "[0xc5, 0xf9, 0x16, 0x2d, 0x5e, 0x3f, 0x1b, 0x8f, 0xf2, 0x78, 0x35, 0xb2, 0xbb, 0xca, 0x28, 0xa0, 0xe9, 0x20, 0x64, 0xc6]"
+            ],
+            [
+                [
+                    "[0x75, 0x9c]",
+                    3,
+                    "[0x9e, 0x30, 0x30]"
+                ],
+                [
+                    [
+                        "} \u0016",
+                        "~(|`Zp\u0010~@􋌄_fB"
+                    ],
+                    [
+                        "󷃣\u0018]S\u0011",
+                        "[0xb9, 0x6e, 0xb0, 0x9d, 0xc9, 0x89, 0x0f]"
+                    ],
+                    [
+                        "[0x8d]",
+                        "[0x19, 0x1a, 0xbb, 0x29, 0x88, 0x25, 0x72, 0x61, 0x0d, 0xe6, 0x12, 0x51, 0xbd, 0xea, 0x72, 0x77, 0x9b, 0x59, 0x82, 0x83, 0xe9, 0x2a]"
+                    ],
+                    [
+                        "[0x14, 0x8d, 0x56, 0x57]",
+                        "[0x1a, 0x7d, 0xbe, 0x52, 0xf3, 0xbd, 0x4b, 0xbd, 0x1e, 0x6e]"
+                    ],
+                    [
+                        "\u0011~!",
+                        "[0x38, 0x05, 0x2d, 0x3d, 0xf7, 0xcc, 0x65, 0x9f, 0x6c, 0x4b, 0xba, 0x18, 0xd5, 0x8b, 0x6b, 0x8f, 0x26]"
+                    ]
+                ]
+            ]
+        ],
+        "10779194": "[0x67, 0x34, 0x6d, 0xe0, 0x15, 0x4d, 0xad, 0xc8, 0x3d, 0xab, 0xed, 0x5e, 0x54, 0x5c, 0x86, 0xb3, 0xfd, 0xca, 0xf9, 0xda, 0x36, 0x17, 0x49, 0x1f, 0x34, 0xc0, 0x07, 0xa5, 0xd8]",
+        "11196092": "n􊣧\\􆋷(o)󵟴'󳝞q\u000b􃧊",
+        "11493073": -29,
+        "12653509": "\u0018󾝯M\u0008PXN6%킾羶𫧕wd\u001fn\u0017\u0016􄣨𡶹*",
+        "13302171": "[0x3f, 0x82, 0x97, 0x67, 0xbc, 0x84, 0x38]",
+        "13370451": [
+            [],
+            [],
+            "[0x43, 0x05, 0x56, 0x8e]",
+            ")󾽩",
+            "[]"
+        ],
+        "13490350": "%𗪸Yc#Ni𝙲󺋋\u001fv5p󷙛?/m*nW\u0001\u0005",
+        "13578270": [
+            [
+                [
+                    "[0x7f, 0x08, 0x0a]",
+                    "[]"
+                ],
+                [
+                    "[0x4a, 0x1c, 0x1a]",
+                    "\u0015%"
+                ]
+            ]
+        ],
+        "13768942": [
+            [
+                "[0xdf, 0xfc]",
+                [
+                    [
+                        3,
+                        0
+                    ],
+                    [
+                        -5,
+                        "[0x3b, 0xe9, 0x6e, 0xe6, 0xec, 0xde, 0x5b, 0x2a, 0xbb, 0x03, 0x4a, 0x07, 0x40, 0xf9, 0xb7, 0x49, 0x7d, 0x58]"
+                    ],
+                    [
+                        1,
+                        -3
+                    ],
+                    [
+                        "[0x20]",
+                        "\u00089󶸃S\u001f𦺍S4🗣D󼄽s=\u0003"
+                    ],
+                    [
+                        "[0xc0, 0x6d, 0x10]",
+                        "􎂪rpw􀗦QA\u0002x\u0001긤r5O󶻒V\u0010<\u0017\u00162o𰈖o"
+                    ]
+                ]
+            ],
+            [
+                [
+                    "[0xd4, 0xeb]",
+                    "",
+                    "[0x5b, 0xbc, 0x41, 0x11]"
+                ],
+                4
+            ],
+            [
+                "[0xab, 0xb2, 0x60, 0x6a]",
+                [
+                    [
+                        "",
+                        23
+                    ],
+                    [
+                        2,
+                        -30
+                    ]
+                ]
+            ],
+            [
+                "[]",
+                [
+                    [
+                        "[]",
+                        "\u000e!𨑍Z@\u0007~\u000b󿽞CqT㹱&+yK󰦋\r\u001a\u0019/\u0008⠕z"
+                    ],
+                    [
+                        "[0x7f]",
+                        "[0xcf, 0x4f, 0xb1, 0x46, 0xd4, 0x20, 0x64]"
+                    ],
+                    [
+                        -3,
+                        "[0x48, 0xb3, 0xd1, 0x6a, 0x59, 0x69, 0x83, 0x26, 0x4c, 0x84]"
+                    ],
+                    [
+                        "[0x58, 0x10]",
+                        3
+                    ]
+                ]
+            ]
+        ],
+        "13772954": [
+            [
+                [
+                    4
+                ],
+                "[0xe3, 0x50, 0xb9, 0xf7, 0x1b, 0x38, 0xaa, 0xd2, 0x12, 0x3f, 0x06, 0xaa, 0xc9]"
+            ],
+            [
+                "8~",
+                "\u0003𰣫f𦪡"
+            ],
+            [
+                1,
+                [
+                    "\u001alx󾯶J",
+                    "[0x22, 0xe6, 0xf6]"
+                ]
+            ],
+            [
+                "\"hZ댏",
+                []
+            ]
+        ],
+        "13992463": "[0xfb, 0x3a, 0x7d, 0xdb, 0x95, 0xa4, 0xb6, 0xa9, 0x01, 0xd0]",
+        "14136062": "*\u001d𩲣𦞕)􈋧^땩",
+        "3446934": [
+            [
+                [
+                    [
+                        1,
+                        ""
+                    ],
+                    [
+                        -2,
+                        "$B󹴐"
+                    ],
+                    [
+                        "[0x70, 0x0d]",
+                        "[0x54, 0xee, 0xaf]"
+                    ]
+                ],
+                [
+                    5,
+                    "h",
+                    "[0xbd]",
+                    5
+                ]
+            ],
+            [
+                "[0x7a, 0xb3, 0x8f, 0xc4]",
+                [
+                    "u;G=",
+                    -5
+                ]
+            ],
+            [
+                "",
+                " \r:𝙶h~a\u0010"
+            ]
+        ],
+        "3555272": [
+            [
+                [
+                    "[0x5e, 0xb0, 0xe0, 0xe3]",
+                    "[0x96, 0x44]"
+                ],
+                [
+                    "[]",
+                    "[0xa9]"
+                ],
+                [
+                    "[0xe6, 0xf0, 0x78]",
+                    "𭓵\u0017o\u0002"
+                ],
+                [
+                    "X+y󻵺󰿶",
+                    "[0xd1, 0x0b, 0x99, 0xf8]"
+                ],
+                [
+                    "[0xd2, 0x47]",
+                    "g"
+                ]
+            ],
+            "𲃬\u0012m<1",
+            [],
+            [
+                "㈵SX",
+                "I󻕎",
+                "[]"
+            ],
+            "F"
+        ],
+        "4948263": "[0xc1, 0xd5]",
+        "5280508": [
+            [
+                "󼟦QT𭵂􄜡",
+                [
+                    [
+                        4,
+                        "[0x57, 0x02, 0xde, 0x44, 0x60, 0xb7, 0x33]"
+                    ],
+                    [
+                        1,
+                        "󲮐~S|"
+                    ]
+                ]
+            ],
+            [
+                "[0x91]",
+                [
+                    -5,
+                    "[0x5d, 0xbc, 0x19, 0x21]",
+                    "[0xeb]"
+                ]
+            ],
+            [
+                [
+                    "[0xd6]",
+                    "\u0002j\u0015B",
+                    4
+                ],
+                "[0x0a, 0xc5, 0x2e, 0x63, 0x33, 0x66]"
+            ],
+            [
+                "",
+                [
+                    "`\u0012Y\u0006\u001a",
+                    "[]",
+                    "[]",
+                    "X\u00191",
+                    "[]"
+                ]
+            ]
+        ],
+        "5567206": "[0x69, 0x19, 0xd2, 0xa3, 0x2a, 0xb5, 0xae, 0x10, 0xf1, 0xd2, 0xf5, 0x7a, 0xa3, 0xd2, 0x62, 0x55, 0x34, 0xed, 0xfd]",
+        "5674628": [
+            [
+                [],
+                "[0xb1, 0x97, 0x81, 0xb2, 0xe1, 0x87, 0x0d, 0x5c, 0x63, 0x1d, 0x3e, 0x30, 0x41, 0x21, 0x34, 0x78, 0x88, 0x3f, 0x09, 0xa5, 0x9b, 0x3a, 0x88, 0xe8, 0x4e, 0x5b, 0xc0, 0xd1]"
+            ],
+            [
+                "[0xb6, 0x47]",
+                [
+                    [
+                        "\u0014-\u0006",
+                        "[0x26, 0x67, 0x6f, 0x60, 0xaa, 0x56, 0x01, 0xd9, 0xc6, 0xb8, 0x5b, 0xf2, 0x35]"
+                    ],
+                    [
+                        "[]",
+                        "\u001c8@~/,\r\u0015gM"
+                    ],
+                    [
+                        "󼸴P7",
+                        "[0x88, 0x89, 0x58, 0x1a, 0x70, 0xe5, 0xe0, 0x0d, 0x05, 0x86, 0xe1, 0x31, 0x59, 0xe2, 0x2d, 0x9e, 0x70, 0xc7]"
+                    ],
+                    [
+                        "[0xb1, 0xc6]",
+                        11
+                    ]
+                ]
+            ],
+            [
+                "[0x22, 0x3c, 0x25, 0xc7]",
+                [
+                    [
+                        2,
+                        ">\t󽈵𮲏𪍃d]T@%𗆙X6􂝔w团h_D\u0004􇕆@b[{"
+                    ],
+                    [
+                        "",
+                        22
+                    ],
+                    [
+                        "",
+                        -10
+                    ],
+                    [
+                        "S",
+                        20
+                    ]
+                ]
+            ],
+            [
+                "[0xd5]",
+                16
+            ],
+            [
+                1,
+                [
+                    [
+                        "4X\u00021",
+                        17
+                    ]
+                ]
+            ]
+        ],
+        "6569246": [],
+        "6696567": "[0xf7, 0x11, 0xa2, 0x2e, 0x98, 0xbf, 0x0c, 0x26, 0x5b, 0xd7, 0x8e, 0x1c, 0x66, 0x80, 0x1f, 0xe6, 0x24, 0x94, 0x2f, 0x8b, 0xa1, 0xf3, 0x03, 0xeb, 0xa1, 0xc3]",
+        "6887526": [],
+        "7265479": -16,
+        "8031564": -14,
+        "88560": [],
+        "9139938": [
+            [
+                -5,
+                [
+                    "𬴒jn",
+                    4
+                ]
+            ]
+        ]
+    },
+    "mint": {
+        "policy 00d06bb1c46b569b42e4b20219e34b3ec7872fac2d71841db9e8e6b5": {
+            "asset e014e5cb66f949a4": -905258841480652437
+        }
+    },
+    "outputs": [
+        {
+            "address": "addr1qxrr5jrz2u78vgz0w736km62wzlz2vj4yy98e240k8auxe0wcxc8kdc5uwt8fmeae2p4rxq38hc335gnle6ze4x805tsza0a49",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 2,
+                "policy 2a4713b7552f1bc2cda1c420f2535be16d911a2a90e5d16fd335c10b": {
+                    "asset 9b6b32c6aa1da6f971a88392bd4a1ab80fb3a31f16589c010b6815": 7640365788968642883
+                }
+            },
+            "datum": "51b45131ff2d817f2a66989a2ca1d0021f7e17eb36dcb4e14ed97ae6952a7d9c",
+            "network": "Mainnet",
+            "payment credential key hash": "863a4862573c76204f77a3ab6f4a70be253255210a7caaafb1fbc365",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "450100002601",
+                        "description": "",
+                        "type": "PlutusScriptV3"
+                    },
+                    "scriptLanguage": "PlutusScriptLanguage PlutusScriptV3"
+                }
+            },
+            "stake reference": {
+                "stake credential key hash": "eec1b07b3714e39674ef3dca835198113df118d113fe742cd4c77d17"
+            }
+        },
+        {
+            "address": "addr_test1qz5ka5x336crj7nkem9elskjrr5gwe9fj5fc8va54hz8pes5e6g2a6pmp6hj67dt0mffav8suyhd5tekf5amtvzweh4spdn6aj",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 6079744415704464727,
+                "policy 2d725128406dc832eb74c4709aca0512499b3c7b17e00d7cb2e6d1b1": {
+                    "asset 71521c702f88abcfc3b1": 413331933652715468
+                }
+            },
+            "datum": null,
+            "network": "Testnet",
+            "payment credential key hash": "a96ed0d18eb0397a76cecb9fc2d218e88764a9951383b3b4adc470e6",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "8200581c3fd54215b0db07098af26040d4a25177a6750bfa389049fa3a0e2739",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": {
+                "stake credential key hash": "14ce90aee83b0eaf2d79ab7ed29eb0f0e12eda2f364d3bb5b04ecdeb"
+            }
+        },
+        {
+            "address": "addr1z9rpevyw2qj50crq7my4jk972jrh4sa0zrns0s0ltzugm2y4gk06vwd5kk3z7r6nl0jak30kx23r0pyfvq6ndrhhgsesyzm4du",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 2,
+                "policy 68ed5309ad160c88efd3d0863e67b24b3114fcfa4923619fde05448e": {
+                    "asset 142debd2ce7f445fb824c4164cb8c078abe0e88fb61c": 883368938321318453
+                },
+                "policy d23c0918c52fe50ffdeaa26eb00f842bacb9cc77eda2a4abe41f5387": {
+                    "asset 8b4bcfc00b830e21": 1
+                }
+            },
+            "datum": "740c0fdc7f7d1b636306fc6151b44b259a9822a6309c7117f89055eb3beb7df9",
+            "network": "Mainnet",
+            "payment credential script hash": "461cb08e502547e060f6c95958be54877ac3af10e707c1ff58b88da8",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "8201838200581cbd5b63c3788d3c6222e27dfc41577150574fad14db555d1e0726d2138200581c4dfef247451f1041b285509194ed0332b5cc8888b79c61dbd99299eb8200581cb51c03cb8398d8258878f4563e1a36fb0f7167143b85b6d39db9e503",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": {
+                "stake credential key hash": "95459fa639b4b5a22f0f53fbe5db45f632a23784896035368ef74433"
+            }
+        },
+        {
+            "address": "addr_test1xrsq8hpg6z5h8wyw6e4qdkx6qa0hckytl7ftyqgzcccvz2tf05rtsu9qwvvnqf3xn58zu4ajhzk73jfaqmrzrmlxqthsqvnhlq",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 1,
+                "policy b0c53e2bf180858da4b64eb5598c5615bba7d723d2b604a83b7f9165": {
+                    "asset 086454bae1810921804c": 1,
+                    "asset 43b55dd52f6ed2257c85f98e8a6a4ae52a9a4f": 7610140630061134189
+                }
+            },
+            "datum": null,
+            "network": "Testnet",
+            "payment credential script hash": "e003dc28d0a973b88ed66a06d8da075f7c588bff92b20102c630c129",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "8201828200581c6f6055b39e4e51117c7cecba671ba127efd78542199df61878161b4c8200581c9b07af30f88f08a9b0565d46d0b52813c649e03c25c1dbefd5b182be",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": {
+                "stake credential script hash": "697d06b870a073193026269d0e2e57b2b8ade8c93d06c621efe602ef"
+            }
+        },
+        {
+            "address": "addr_test1zrnq9tzau83t9ew87wsvup0gx3lvltpmdnw8rhxxtfd8509xxmd7pc3zuaquzlwfm60k6wp2yqk9rkl6rzueafh8vums63024r",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 2,
+                "policy 72fa9cc7dda459056b4cd3f3a269e3ab905c0e2b6f313aa34ae95fcb": {
+                    "asset d9df945e46efbb635cd147b47b754f116ec33549ae6c26a1": 1
+                }
+            },
+            "datum": null,
+            "network": "Testnet",
+            "payment credential script hash": "e602ac5de1e2b2e5c7f3a0ce05e8347ecfac3b6cdc71dcc65a5a7a3c",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "82041a0041f398",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": {
+                "stake credential key hash": "a636dbe0e222e741c17dc9de9f6d382a202c51dbfa18b99ea6e76737"
+            }
+        },
+        {
+            "address": "addr1w9cau63an89my8j4shra5r8sl8zp0eeuedaddy4fxzrp45qy3z87y",
+            "address era": "Shelley",
+            "amount": {
+                "policy 2e12c5e499e0521b13837391beed1248a2e36117370662ee75918b56": {
+                    "asset 39 (9)": 1
+                },
+                "policy 4a5dede599afd5d3ef135beb93b0269eb372b6ec6753e15fdd51ec39": {
+                    "asset 32 (2)": 306595830778751970
+                }
+            },
+            "datum": null,
+            "network": "Mainnet",
+            "payment credential script hash": "71de6a3d99cbb21e5585c7da0cf0f9c417e73ccb7ad692a930861ad0",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "82041a00c4f56d",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": null
+        },
+        {
+            "address": "addr_test1zrzlh8lje2eah5hdkk30crvz7u5wz7wyqyf33hre8f4elthxfldmwul7j3ukw5yw8rtju09u0c0kjds2a5magwxxazlsr4d85a",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 6263037442210891499,
+                "policy 105a8f1bb56444cacc86378c95421aceeb326b0fb7743e493eb82fd5": {
+                    "asset b837a8dbfbd7b435": 1551832711809849767,
+                    "asset cd2735e24e9a73b91333ff9b5f7588ba787cd893cb7d856117754da75fd61e": 5260719620481337610
+                },
+                "policy 2e12c5e499e0521b13837391beed1248a2e36117370662ee75918b56": {
+                    "asset 31 (1)": 2,
+                    "asset 39 (9)": 1
+                }
+            },
+            "datum": {
+                "list": [
+                    {
+                        "list": [
+                            {
+                                "constructor": 1,
+                                "fields": [
+                                    {
+                                        "int": -2
+                                    },
+                                    {
+                                        "int": 3
+                                    },
+                                    {
+                                        "int": 3
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "bytes": ""
+                    },
+                    {
+                        "map": [
+                            {
+                                "k": {
+                                    "bytes": "ee5863"
+                                },
+                                "v": {
+                                    "list": []
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "8342"
+                                },
+                                "v": {
+                                    "constructor": 2,
+                                    "fields": [
+                                        {
+                                            "int": 4
+                                        },
+                                        {
+                                            "bytes": "b76b0758"
+                                        },
+                                        {
+                                            "bytes": "b33931"
+                                        },
+                                        {
+                                            "int": -2
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "k": {
+                                    "int": 5
+                                },
+                                "v": {
+                                    "int": -1
+                                }
+                            },
+                            {
+                                "k": {
+                                    "list": [
+                                        {
+                                            "int": 4
+                                        },
+                                        {
+                                            "bytes": "22"
+                                        },
+                                        {
+                                            "bytes": ""
+                                        },
+                                        {
+                                            "int": 1
+                                        }
+                                    ]
+                                },
+                                "v": {
+                                    "bytes": "cc"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "network": "Testnet",
+            "payment credential script hash": "c5fb9ff2cab3dbd2edb5a2fc0d82f728e179c4011318dc793a6b9fae",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "82041a007f5ec4",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": {
+                "stake credential key hash": "e64fdbb773fe947967508e38d72e3cbc7e1f69360aed37d438c6e8bf"
+            }
+        },
+        {
+            "address": "addr1yy89q5lhp7hp2jmk3rxxh5c9fy8emnated4g2nlu8cj8w298re5whqnrlzyj9jws9kx4wlrt0hnxxt90g5xd25y38wrqxag33u",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 89407768063043759,
+                "policy 2e12c5e499e0521b13837391beed1248a2e36117370662ee75918b56": {
+                    "asset 96e2bcd8091100e64124e26f78616c2f14dcaba15ca4674fc7ca1ac7e9": 6229328964038403921
+                }
+            },
+            "datum": {
+                "int": -3
+            },
+            "network": "Mainnet",
+            "payment credential key hash": "0e5053f70fae154b7688cc6bd305490f9dcfabcb6a854ffc3e247728",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "82051a00553981",
+                        "description": "",
+                        "type": "SimpleScript"
+                    },
+                    "scriptLanguage": "SimpleScriptLanguage"
+                }
+            },
+            "stake reference": {
+                "stake credential script hash": "a71e68eb8263f88922c9d02d8d577c6b7de6632caf450cd550913b86"
+            }
+        },
+        {
+            "address": "addr_test1qr3x9xywypksjx2wdjmvmcghe4cn7w9l64ueam7vsf56hx0ktv7qtawne7e6z4kmp7q5pemvh4e5gysfqtv450ljgwtqtuxu5g",
+            "address era": "Shelley",
+            "amount": {
+                "policy 2db8410d969b6ad6b6969703c77ebf6c44061aa51c5d6ceba46557e2": {
+                    "asset 39 (9)": 2
+                },
+                "policy 2e12c5e499e0521b13837391beed1248a2e36117370662ee75918b56": {
+                    "asset 36 (6)": 6841789494414841530,
+                    "asset 8759add9dd": 6719557230569247280
+                }
+            },
+            "datum": null,
+            "network": "Testnet",
+            "payment credential key hash": "e262988e206d09194e6cb6cde117cd713f38bfd5799eefcc8269ab99",
+            "reference script": null,
+            "stake reference": {
+                "stake credential key hash": "f65b3c05f5d3cfb3a156db0f8140e76cbd7344120902d95a3ff24396"
+            }
+        }
+    ],
+    "redeemers": [],
+    "reference inputs": [
+        "0de100ef81fef54687cb2878d5c6edb8b53372039703092baf6bc3a217104c03#4042",
+        "12154034e7dec9acc892e8636426668dcfbc9e6149b26971b7b33ee89f4b469a#16042",
+        "22b96c7bf3080e124c54fa594ec1e8225fea4ab4114701c39891c4352b98e0fd#32211",
+        "2ede20f3de2003bcf254882e34773e7278f10fc8efbe6e66c98e475dc067a5d6#13810",
+        "34db25d3629ec17a9a8ee24d42874bfd70b7e764bed8eb7c4a211c84e2a86cca#22883",
+        "499ec4e03c9ff4e61c3553db5fa66f83debe24c9d0cc9a35a3c4b819cc240ede#22602",
+        "4e1c40a6368dbdb6d40feea4ec0dc9a49b5c7918852142b21f26ebc90c232dee#18880",
+        "4f4738893abec939f461466d806b6d39f2136050d9c17b5a762466f516eaebe0#22052",
+        "5cb0e95e7968ca5ec75f0699734b6eed9a6b58e77a550d66827000e20a2ca474#18172",
+        "7d76a213119c59440ce9c91d9c4b7f59f6eb6b64f4cd5c4871ebe4af31ce3bb3#6235",
+        "85fbfe23a170f4e186902c58f02e123899dde8b2b49b8c5a389bebd8cbdf6d01#3928",
+        "927457532ef363c6afc933949d51ad0f5276418c7d26e054098e44095e3bdeb4#17423",
+        "9513539b3eadc30f88edfaf415df68df34d32e29d62bd3097fd155edf18f887e#31584",
+        "99b5333d0a6030c5d7c126452c92d278f4791f68da767bfdbb57bfe080dd5703#31580",
+        "9b57459a9b6a1709ba5c341e25fe49b824bc8a7ad17310817a8bfb7d8e0d5067#8101",
+        "9f61c74402b299a5ec4241071f0794a1a2065a6bc86f2d13df0163f5d284eb4d#30870",
+        "a2d3b37e2e284b2d0dd00e66b0370bbbaff409bc44e5841933c88fc048f9ae58#23224",
+        "ae151fcf8374372c18162b708fbadd5c389e07c8236c222f7c85328f3c8f4232#21946",
+        "b33aba56ba34f230d4fffb726feb992abc6bd93eef1183c293ebecd96134175d#23539",
+        "c5f712a46b7e826a34518b4cc8c23ec7cbbb08570ca9c046673f943542741314#31217",
+        "cca7d7740d37fee5434996aa50884a6132055e7f6ce7fe9d1dc4244f013b288d#31583",
+        "d39e538658387aa5a9d533a35b4fc1863411882558124d2b1a881ce182c58b58#20663",
+        "e4f753061ed1cde04d5d0545b74553920c9ba6952c10c2d611fc86aaebe4768a#378",
+        "f16c952d6486ce8e43f6baef993bd01f26ab7c5c916424b773022b81469c05f9#11856",
+        "f1b7d762ec53944e12826f70a5f828d9e1fe219929bfc9fcf59a801c73a73783#17648",
+        "f2592dae94938b702f681c2107c716a27574be8ab0cd5a885a7928b8df693748#13227",
+        "fe8e9f356306778ab184539d5b7284dad4cb1524b8b6d566db1926e33a01927f#19193"
+    ],
+    "required signers (payment key hashes needed for scripts)": [
+        "0010a1812e838ab1145f840f26ce7f75470aa26a866dadd1a0a35bc4",
+        "0192b2712bef5949ca3ead97cbf9562b09c211fd3c84dd276c37d208",
+        "0b01fdc1b208242009f688257dd4d2dfb66b99304c3d311c38763802",
+        "1c639c572b78482ad062fdc0344daf1a48ebc8c2e8c3dd312849f728",
+        "33a5fa654d0dfe841bdf82b2acba4ac675371466be99ecef5ce5a24a",
+        "5ba18020bf8b2b093ed741247b2c3e4dd2e89ee278560e41f6337016",
+        "6bf3b381758e2a386e56291932230f5155ef39a3e2be440b2e113760",
+        "782064e1e85c4daaf8bb4600a24778e03cda879adc7eeef0bafdaa66",
+        "8780abe2924544e87ce8827675f03477630587d2798d700ef5579461",
+        "8df98263e129fb6f2120e16f2cc2e910fff82f310389a22db17fcf2e",
+        "a6e463a1d4aebecbfd47c18b5a44ee95fae90f39fd34ed76baa045df",
+        "aea13c2728161ff36dd67946792cb0464c89b4aa4347515343e63e2e",
+        "af9f8e0462cdfaf2d69c817cd5aafc52bdf1b215bfef8af80816f73d",
+        "b22b47ab73d6ea9cbddbced8486ab361a31740e696f0e5fa93db571a",
+        "c108ce84da47245473bd30a2dc27aeb8f346dae19ef5fdc8e2dccb4c",
+        "c1feea33f4a595065031257c98fbe5fe5fcdf032ee5dc241aa3b200b",
+        "cb4a63944b8e59aa67d4d36ab7b533e13a0bd424fb87a95684103598",
+        "dcba3efbccbfeaada932c6fcc336e94bebc5f4a338c387cf4654cd89",
+        "e56ccd153f6c8c579dd4660a501c663acfdb91e2129a22de620d4f08",
+        "e6c6e9d64389eae324a18d737824d3d5e34471f10518a5bfa6cf5028",
+        "f841facce9f20de3507d4c4c3d1df9333f966c85cdbf9cb28d527e83"
+    ],
+    "return collateral": {
+        "address": "addr_test1xr9ge6vs5twl2gyslkh0sgp75jt9qrhenfm933clufspt83g9kac8fue26cpwl8ygnhpd9ul0y70ate6hz7qwxze63vs6sedyr",
+        "address era": "Shelley",
+        "amount": {
+            "lovelace": 1648180743760293455,
+            "policy 4a1c412d8e2b3015a7fb7d382808fb7cb721bf93a56e8bb6661cdebe": {
+                "asset eeaf1e87f6973706061e530521e482a590abab4570": 8237456602911991319
+            },
+            "policy f1bcd7d3692697699c8f40e96b121fdb05bd5aace9db864b14387bc7": {
+                "asset c28920b2374011b4a2fdcdb7eb77aea2898e2e3df7d8": 2
+            }
+        },
+        "datum": null,
+        "network": "Testnet",
+        "payment credential script hash": "ca8ce990a2ddf52090fdaef8203ea496500ef99a7658c71fe260159e",
+        "reference script": {
+            "referenceScript": {
+                "script": {
+                    "cborHex": "82051a008afd0f",
+                    "description": "",
+                    "type": "SimpleScript"
+                },
+                "scriptLanguage": "SimpleScriptLanguage"
+            }
+        },
+        "stake reference": {
+            "stake credential script hash": "282dbb83a79956b0177ce444ee16979f793cfeaf3ab8bc071859d459"
+        }
+    },
+    "scripts": [
+        {
+            "script data": {
+                "plutus version": "PlutusV2",
+                "script": "46450100002261",
+                "type": "plutus"
+            },
+            "script hash": "03d9bf874aa50cb845f4dcf011a223ed4b1ccd51b485990baa79d676"
+        },
+        {
+            "script data": {
+                "script": "(AllOf (AnyOf (AllOf (Signature KeyHash {unKeyHash = \"1fee16e815f65760e43eb82cb5c0d62ad1febe0c681a82d9e85f585d\"}) (Signature KeyHash {unKeyHash = \"d4f3b6f75e9b4511a004da231d57b625abf4ba85e99ac27c1b98bb25\"}) (Signature KeyHash {unKeyHash = \"954f8a9830894429dec8eaa38af4a66a630d38a5cac747f65706981f\"}) (Signature KeyHash {unKeyHash = \"e38716a8ba9572565507e06615d6bcc5e2b8e235ac5d277e12efdd95\"}) ) (MOf 0 ) (Signature KeyHash {unKeyHash = \"95c4e75e7d9595f56fec1c2b501ad055d7897d5da917b83bf3c359a3\"}) ) )",
+                "type": "native"
+            },
+            "script hash": "1f5803d67e3fd52489257081958c9f8e1dce32102992b0a03a7c4d7a"
+        },
+        {
+            "script data": {
+                "script": "(Signature KeyHash {unKeyHash = \"2abb69d76aa8d219b0ce17fd759d09800472144d25898d80cf25c8af\"})",
+                "type": "native"
+            },
+            "script hash": "2786edba67d5c23b7a5e0608588d9f317642225c498aa302f37fdd4f"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 14705385)",
+                "type": "native"
+            },
+            "script hash": "28d6a3dfd28aeaac9eff32f5c16767be7072f10a7c3b927fde6dfb6b"
+        },
+        {
+            "script data": {
+                "script": "(AnyOf (MOf 0 (Signature KeyHash {unKeyHash = \"30d53dbdbf0891bdd6b8017608de723a6c12c7897d47d0a1f2e9ea23\"}) ) (MOf 0 ) (AllOf ) )",
+                "type": "native"
+            },
+            "script hash": "41b917d7cb34991b914ee6d92ea078deef7d77d8ed2b307305b773af"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 8509252)",
+                "type": "native"
+            },
+            "script hash": "44b23d974b9c959c1aecea9924c17c2f7a6cf7222671c4011c33396d"
+        },
+        {
+            "script data": {
+                "script": "(Expire < 2081628)",
+                "type": "native"
+            },
+            "script hash": "4b1844723af68dbe10eb018d0b332c7a21ea22dae2f71562705b4025"
+        },
+        {
+            "script data": {
+                "plutus version": "PlutusV3",
+                "script": "46450100002261",
+                "type": "plutus"
+            },
+            "script hash": "5f72646032e20af96d866273fd4c7f8ab72343201123716784ef3fed"
+        },
+        {
+            "script data": {
+                "script": "(MOf 2 (Signature KeyHash {unKeyHash = \"cbeeba6e74978ec2daa85a9c63b2e135c5ca2147574656c113149b09\"}) (AllOf ) (Signature KeyHash {unKeyHash = \"3b4f3259c7f67bd93e09d8766b0ee55a3a31593499a0f6beb3f5788e\"}) )",
+                "type": "native"
+            },
+            "script hash": "60cb404e9cd6d941f907d90267a335157d7d7bdcaad8546353840460"
+        },
+        {
+            "script data": {
+                "script": "(AnyOf (Signature KeyHash {unKeyHash = \"78facf2be9b82ed9f6f0fa343aa6521dff86d34324ecd54865b775d1\"}) )",
+                "type": "native"
+            },
+            "script hash": "74a3190fa7f706ac1dba7dda4416cdf1a1fde6cdb65ab960cf56ebad"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 718317)",
+                "type": "native"
+            },
+            "script hash": "8e11f448f2bc0d7b17f3878e38a78c15e864ab87e385039f393023d4"
+        },
+        {
+            "script data": {
+                "script": "(MOf 0 (Signature KeyHash {unKeyHash = \"e6df080622400ee73ba2d1d0a16153208c737d9831eb0eaba8f6ea12\"}) )",
+                "type": "native"
+            },
+            "script hash": "9950f6fc5f1e6bd6416a954ccd060035a5fcacd1df0c0696b106ecc9"
+        },
+        {
+            "script data": {
+                "plutus version": "PlutusV1",
+                "script": "4746010000220011",
+                "type": "plutus"
+            },
+            "script hash": "c370d10724c6b5a2448af41238e024ad470c0139da7f4b8527a47d74"
+        },
+        {
+            "script data": {
+                "script": "(Expire < 1903365)",
+                "type": "native"
+            },
+            "script hash": "cdcd8876da20e6bd0aabcc0f5f2fd0d217246b0e63794b33cc6ee8af"
+        },
+        {
+            "script data": {
+                "script": "(AllOf )",
+                "type": "native"
+            },
+            "script hash": "d441227553a0f1a965fee7d60a0f724b368dd1bddbc208730fccebcf"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 11318511)",
+                "type": "native"
+            },
+            "script hash": "e64833db73b5ea83f2cf7eabc79dfce0c7399c4b926a8d0e10c26101"
+        },
+        {
+            "script data": {
+                "script": "(AllOf (Signature KeyHash {unKeyHash = \"538687aa5a6143486b24e367c202aed3a22ffa10eaace015a6b692dd\"}) (AnyOf (Signature KeyHash {unKeyHash = \"6448ffbc12a1c191e6481c0ca70a2c023a057b1b29648154fca22d5b\"}) (AnyOf (Signature KeyHash {unKeyHash = \"f3c327de1291fb25376bdbb7f912f75225fd85816d40a8cece052e5e\"}) ) (AllOf (Signature KeyHash {unKeyHash = \"e3b8edf2e82524425596855bf1bcb128a8d2ab16ae98dd40b83cf23f\"}) (Signature KeyHash {unKeyHash = \"96abf507301293b95b9eed2cd91d1a21129072da426f0c3dffdfded4\"}) ) ) (Signature KeyHash {unKeyHash = \"63c2e7571926d05b35ac0444888dad3c5e3547a4fb3cdf1177b27884\"}) (MOf 0 (AnyOf (Signature KeyHash {unKeyHash = \"15d4a9c920679a5872e357422d83e682675f450f158f42be383dd05c\"}) ) (Signature KeyHash {unKeyHash = \"b72028e9e84149deec21bdb12aad616c0d5216df98750dd6b146f2f2\"}) (Signature KeyHash {unKeyHash = \"1193a0cadeeb0b1ebeb842a2865a2329351df497f396c3cdde3e8af6\"}) ) )",
+                "type": "native"
+            },
+            "script hash": "ee6a44e63b926f92d3dd5b6d13fb82cd9e7b035db5b0361a1a13a075"
+        },
+        {
+            "script data": {
+                "script": "(AnyOf (MOf 0 ) (AllOf (AllOf (Signature KeyHash {unKeyHash = \"7599c9d95f24cd1b7abff23d7a1da10a19f50bb0161c5372bef24e78\"}) (Signature KeyHash {unKeyHash = \"fde9f6c8f1864c851e54d910b98da9fa988118c0d58a766fbe83dd2a\"}) (Signature KeyHash {unKeyHash = \"d0426a49cc9be787e9f5b20770c4006f07f17b2efe10675ff2011205\"}) ) (Signature KeyHash {unKeyHash = \"77134e3c9ca051970cc427a8ae98fad86eeabb29e75c08920d822517\"}) (AllOf (Signature KeyHash {unKeyHash = \"57f988037655b81276f18229db0436e2b6fba16633a53bf05a9412cc\"}) ) ) (AnyOf (MOf 0 ) (AllOf (Signature KeyHash {unKeyHash = \"3e761b449f7c083b089ddd13fac423fe749b135733e4dfc5c4c1163d\"}) (Signature KeyHash {unKeyHash = \"40071ddb871924cb3f924d8327487b2f6cb617dea0b102684e962a55\"}) (Signature KeyHash {unKeyHash = \"9ec464cb650562601713cfda15c9314e7648f381aad4229e2c322502\"}) (Signature KeyHash {unKeyHash = \"baa46d14c4febed7b12d6814f25743db96bc4feb959469e5328cfcbc\"}) ) ) )",
+                "type": "native"
+            },
+            "script hash": "ef3f8efd90dcccf6768bdb0a1467d5684bfdd90405a7bbbd6844508a"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 11833263)",
+                "type": "native"
+            },
+            "script hash": "f5dde65548a1d2db2a8204fe2ec0f06581a94e0456f36538919fa77a"
+        },
+        {
+            "script data": {
+                "plutus version": "PlutusV3",
+                "script": "484701000022220011",
+                "type": "plutus"
+            },
+            "script hash": "f630ed7a34084de8bd767d21f345c42e35b5a25165e5aba335c33766"
+        }
+    ],
+    "total collateral": 445685,
+    "treasuryDonation": 0,
+    "validity range": {
+        "lower bound": 1,
+        "upper bound": 2
+    },
+    "voters": {},
+    "withdrawals": null,
+    "witnesses": [
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"749b498ca04aa28e7aa4d0a276dcd1ad81475e8cb19c2d6458083724ee598c1f\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"2f31122cfe2e80d8008ff74d09988d292e741cf1d313d92dba4ebb2814dc53ad6b80d166f1c10266d946f5a12406d8f588bf4102513ebd12880c153f39c23daf\"), bwChainCode = ChainCode [0x2b, 0xe4, 0xf1, 0xbd, 0xe8], bwAttributes = [0xc2, 0x87, 0x84, 0x20, 0xdf, 0xa2, 0x9d, 0xe5, 0x76]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"43ba3a927cb26087ae8cf5174ad4923f963f412a582101929d308bcf5c30fcd8\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"7309db0e6b6f12a7a372b24363fba9ec51b1968a6d89870abf7be4b9266d78b8d9df5d07e0d8df0686f77d694ec875ecceb0bbe808c3e117b4b0fb2c927429ce\"), bwChainCode = ChainCode [0x8f, 0xb9, 0x31, 0xc7, 0x35, 0xde, 0xed, 0x88, 0x47, 0x56, 0x16, 0x9e, 0x40, 0xd8, 0x63, 0x2d, 0x4d, 0x43, 0xc0, 0x35, 0x19, 0x8d, 0xc8, 0xcb, 0xfc, 0x3b, 0x96, 0xfc], bwAttributes = [0x90, 0xca, 0x2d, 0xd9, 0x6e, 0x0b, 0xa1, 0x59, 0x73, 0x43, 0xbe, 0x57, 0x2d, 0xdd, 0x0a, 0x22, 0x88, 0x51, 0xdc]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"f7a50c20621ca7a3481060f94b4da817643abbbb134fa654fcfbd9c4fcb0675e\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"c6bf3e61b795399fb40d53f5d7ae7b300eda4081593d7b0e2e4acf08800a1c4e3bd4dcd597b03f7f66d37755eee7703ccabb730ef4bba19f01fa6b2d3a64b894\"), bwChainCode = ChainCode [0x0f, 0xb3, 0xe9, 0xa1, 0x6f, 0xf7, 0x3e], bwAttributes = [0x65, 0xa0, 0xe5]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"4ac3276db81e8b6f6a048912f68f2e4300c22b3732b7e36aa9f6bd1b3272a2c6\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"a9e4d187119ff7d79d00093110cd231c8da8d3398329092e409468b2c39580945884e15572af4b6502fd98dcb6a073db1a61455ab07d05a5d5567969126f470a\"), bwChainCode = ChainCode [0xea, 0xdc, 0x69, 0x55, 0xf8, 0x27, 0xf3, 0x56, 0x96, 0x6a, 0xe6, 0x85, 0x41, 0x0f, 0x75, 0xa5, 0x50, 0x0a, 0x2a, 0x45], bwAttributes = [0xcd, 0x8c, 0xda, 0x05, 0xee, 0x25, 0xf5, 0x8e, 0x77, 0x30, 0x89, 0xa1, 0x60, 0xb6, 0x90, 0x15, 0x54]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"3823f343e5fa859aaec656897955657ab64775aa81d7e9807578daa42b942c59\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"c9c8ae686ff95bec640481742a1f9c566949d4dfbe09b0a9e551af9becace99dfa5a0679ddab90b541f675557fcacc8eb8fa3a98416ed48679219d5bc9c554b2\"), bwChainCode = ChainCode [0xf2, 0x4b, 0x3a, 0x64, 0xbf, 0x26, 0x88, 0x74, 0x44, 0x38, 0x15, 0x5c, 0x7a, 0xfc, 0xcf, 0x18, 0x98, 0x9e, 0x40, 0xe0, 0xfb], bwAttributes = [0x8b, 0xac, 0x07, 0xb1, 0x91, 0x03, 0x66, 0xc0, 0x01, 0xb8, 0xbf, 0xdd, 0x5f, 0xdf]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"2edc2a0c0f9704226b55c9a4a9271a8a6578acc71ccd054bebdfc29797ce3ba1\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"0454b51607c3d276fa85d165fcab74626ae8e9b1ba1e86079f5cd00a91331a6ab5f3c7d24d8dc0fb98bda0dab495ea57ce3f7d6d07d2d24a5b11361ccc1cbe74\"), bwChainCode = ChainCode [], bwAttributes = [0x35, 0x13, 0x19, 0x99, 0x93, 0x29, 0xeb, 0xa4, 0x66, 0xba, 0x83, 0x87, 0x33, 0x6b, 0x49, 0xfb, 0x26, 0xec, 0x93, 0x68]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"69988f6c624f0549521e70b511a296b9263275194c6c5651c9ca944986658b5e\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"5546c86fa35d908305b46831397fa84313824177c6329c20c338991d9a8a67da8d8c922ea0439e211cee94942c0f921fd220f2c61a3abc2864d41425705ceef4\"), bwChainCode = ChainCode [0x39, 0x0e, 0x9a, 0x30, 0x03, 0x14, 0xf2, 0xe3, 0x56, 0xe7, 0xa0, 0x13, 0x97, 0x7e, 0x7f, 0x19, 0xac, 0xca, 0xe7], bwAttributes = [0x7e, 0x8c, 0x4b, 0xae, 0x4b, 0xc5]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"cf76ba1781273df7d4c85b4accabe5f75b93d7e292e0a4b934dd56b713002b64\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"1b0d3bc8426670fe63013db9446f6880019bb0cbe9e8bc7b2942ecf3bd3a766fd0206ce259d6a2aaf603145fe7e6bcca1bcb26fb4655714b56769977a12275a8\"), bwChainCode = ChainCode [0xaf, 0xe6, 0x76, 0xc8, 0x13, 0xfb, 0x4f, 0x5e, 0x2c, 0xbd, 0xe7, 0x30, 0xd0], bwAttributes = [0x2e, 0x44, 0x19, 0x7f, 0x75, 0x4d, 0xf8, 0x55]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"eed9f131523df93724848923d1f24c10e54b5bbafd4e25ef86d54c1c8ff9c7e6\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"5228e3e7cdaea0df693ea1c9a64eee9dedf1b69371892fb2d6f8969d6b3b3259463f21bbb3e7c6364d72ada58209af796e2a903b6b97cab25ea3a94b023f80ad\"), bwChainCode = ChainCode [0xe5, 0x9c, 0x95, 0x02, 0xbf, 0x21, 0xee, 0x27, 0x9f, 0x82, 0x9a, 0xd3, 0x8b, 0x28, 0x09, 0xd9], bwAttributes = [0x2d, 0x83, 0x73, 0x49, 0x22, 0xb0, 0x34]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"37bd0e9bb09b15c43062f6893515570e0aaafac432c93c10c31c2eb10a60714c\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"98a0e76b6640e75fb42bb3453c88bfc595b622486d80081794dde10ad5d9f0506975d3cc9b380e1c288ccbf2fd8da6b574f0b309f981647f2d02ff419b393527\"), bwChainCode = ChainCode [0xb0], bwAttributes = [0x22]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"b9d3489ef41a58ca9a3a9994d59643aa34d2dd6eb6c97b8a1d27d79fd2bbbe2c\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"4be904386602c7001ee3f85ed5a460a1b45848c926ed0b4860af81de4f07ec917c3b45178c28f21d85a7e95e8360ae3e175cc36375ddd8e341a0c463100964e0\"), bwChainCode = ChainCode [0x08, 0x81, 0x11, 0xdb, 0x56, 0x53, 0x6e, 0x4c, 0x5c, 0xfa, 0xd2, 0xa7, 0xa1, 0xf4, 0xec, 0x3e], bwAttributes = [0x64]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"2a11a0283ec6ea0515129f61926155e6cefac3fd2e2ad3da2e9c4000d5f3cfa9\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"2c9b68e97e87631ba86287e8f0ca7b0052c201d501b316c41ccc74eaa126e4d0aa24d1077fd001e2f354f74c692223d75b69996e329f44fde0bcc6680c8d4d3d\"), bwChainCode = ChainCode [0x20, 0x01, 0x05, 0xd1, 0x0f, 0x9a, 0x08, 0xdd, 0xfc], bwAttributes = [0xd9, 0x9d, 0x8d, 0xea, 0x30, 0x90, 0x4e, 0x52, 0xe0, 0x39, 0x0a, 0xf7, 0x64, 0x16, 0x5e, 0x0a, 0x17, 0x89, 0x92, 0xce, 0xe3, 0xd7, 0x9b, 0xa6, 0x59, 0xea, 0x5f]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"994f6de4aa67600795df4f651ae1ac637dfcb69f50c93752855b70c48c97f90e\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"de5c75b9f6a95eefa8c69e36565b1132e34707b4de9482f1d3deb9314abbe5fcad91f64c55a31725fb17476db5e06793996cb766897399ac61e66046ae6e791e\"), bwChainCode = ChainCode [0x09, 0x9e, 0x37, 0x69, 0x1d], bwAttributes = [0xfc]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"00d74dc215bcedaf1737a44cfac6bc029b21f9114bb2d0227d5692d3bf559455\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"b803d189fcad34acb3895c8218725b4414eada861d2964d14ebe2ee0706405b386b2e131598ca63e18ebc625309f638132ba6da09cb471936e07c94fcebffa7f\"), bwChainCode = ChainCode [0x73, 0xac, 0xfc, 0xd8, 0x70, 0x82, 0x60, 0xec, 0xce, 0x9f, 0x55, 0xbb, 0xd1, 0xc8, 0xe8, 0xb3, 0x28, 0x7d, 0x0d], bwAttributes = [0xaf, 0xa5, 0x55, 0x38, 0x8e, 0xb9, 0xdd, 0x94, 0x94, 0x78, 0x3b, 0x6d, 0xe2, 0x71, 0x1c, 0x4b, 0x65, 0xb5, 0x27, 0x0b]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"c2f057c999243d419bd8482d11a19b7571387bd13b316de90f665136573c1eaf\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"a75a7ea9e86a76ea25bd239e6b6551b018633e5bce2170602bf857f9fd01507233f47652b5de61149876f32b01abf7181ba9d4cdefd164ce4a5af63eed4fb26b\"), bwChainCode = ChainCode [0x3c, 0xc8, 0x15, 0x95, 0xa2, 0x47, 0x06, 0x2b, 0x28, 0x5e, 0x2c, 0x3b, 0x96, 0x3f, 0xa6, 0x07, 0x92, 0x71, 0x0f, 0x74, 0x5c, 0x14, 0x26, 0xfb, 0xcb, 0x3b], bwAttributes = [0x03, 0xea, 0xca, 0x02, 0xdb, 0xed]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"0d12df7959bca65d8296ae8f01ec92c4dfd35c16dfb00644397ed44df2ce05f2\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"0deb9ab3a6c3b2b8c198c4dd3ac13d6690cf5967cd51478820c3ffcd31ed8b8fb005d515086471e79f5020decafbcdc51b13f0eed8f32a7b5e3753108ac65583\"), bwChainCode = ChainCode [0x4f, 0x8c, 0xad, 0xa7, 0xcc], bwAttributes = [0x7d, 0x41, 0x09, 0x30, 0x78, 0x9f, 0xad, 0x54, 0xbe, 0x34, 0x9d, 0x43, 0x77, 0x16, 0x10, 0x95, 0xf0, 0x09, 0x68, 0xc3, 0x8a, 0xb2, 0xcb, 0x1d]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"a5c70178095c44071bbd850f3ec21b90ad5a5272c2a94ad2968fe03f5305a589\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"1bda82cb40f676803fd2b12e225a9569617c3ebfb210e51ad3fd197e9b2ad28480dc9e0be202bffd9b514ca43b384d25ed46c0d66ef31e5f36cd9897a6aedea2\"), bwChainCode = ChainCode [0xb4], bwAttributes = [0xf5, 0xe3, 0x5b, 0xf2, 0x9e, 0x62, 0xe9, 0x12, 0xb9, 0x82, 0x8a, 0xe9, 0xe4, 0x33, 0x08, 0x9b, 0x72]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"3bcd1e20b992f119873414f8987e47df3a7a360723df1a8e142f80dbad69ebe5\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"f79cf285078d6c4529078431bae4507b3f145a43479547913209693ee5452acc5e630ea8ffa44cdc2fa656b4a5c22bb2cd48aac8e780e4b1a42ba99626d51b1d\"), bwChainCode = ChainCode [0x0a, 0xa8, 0x71, 0xc8], bwAttributes = [0x83, 0xf0, 0x3e, 0xfd, 0x29, 0xb0, 0x1f, 0xc9, 0x8a, 0x3c, 0xbe, 0x8b, 0xb4]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"29f1bbd854eab7c3866f2f0cec53e01623481fb2784371ff0d9bcf0b4e91523a\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"67ee25e69499fc7315602b0ca4753be336bd25883806514a6eea728951ab7ba210f0fd01a350ac7ef9180c48f2e2cc4e6e41a43f4f2d381ea45821658bf99b6a\"), bwChainCode = ChainCode [0x30, 0x95, 0xa4, 0x15, 0x0d, 0x39, 0xd9, 0x3d, 0x3a, 0x90, 0x6b, 0x0c, 0xc8, 0xb0, 0xcf, 0xb3, 0x06, 0xef], bwAttributes = [0xce, 0x67, 0xac, 0x43, 0x81, 0x05, 0x1c, 0xd7, 0xab, 0x82, 0xf9, 0x90, 0xfe, 0x2a, 0xd1, 0xbb, 0xb1, 0x10, 0x6b, 0xce]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"a9a1c5ce687dc30e95ccb0ece4d4850ac8370782d40809aadae71044a6ed9fe0\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"aa2fd06a330177a6c4fd97c677217fadf550060f95661f7ed2179f2dd0f84c3855f8ca488b200a2d243d0050d64c67011240bd189ca349559c000ef1d3b1af10\"), bwChainCode = ChainCode [0x15, 0xdd, 0x03, 0x72, 0xaa, 0xe6, 0x26, 0x27, 0x71, 0x0e, 0x5d, 0xe5, 0xc6, 0xfe, 0x1e, 0xc6, 0xcc, 0xf9], bwAttributes = [0xe4, 0x58, 0x6a, 0x5d, 0xd1, 0xf1, 0x93, 0x1e, 0x45, 0x03, 0x08, 0x58, 0xd8, 0x63, 0x40, 0xcd, 0xba, 0xf5, 0xf7]}"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"89b6f66328a51b4ab21d6f89483b32ea4b218d2db7f0dceefe976481422e1523\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"8c9b5ae660b290a298693b1e3ddbc10b2687af39e70d27c6db91bc7ac2a19c4a35a7f5cc3c007a73ab4cc577f8260fe3d00f8cd6483c379fc49f6be3f0d662d7\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"d764dc31d56acf5b3698bcb1f8034c4fd1f6c5c57fa60ddaba4c05e05a88541f\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"d293509db37c714dd1bd484e9f595ced54e83bb1fef68b3586916e776184ac2d317a00905a94c90b82c89f5073df3e15f25f2543fec8eede4c4e0bcf19572d51\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"552452485278fad78b2939de3967dcacbb87e1154417f8cbd8161e64981089af\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"1b678a4888a42b45c18cde019aa2cf4c941a0e73ce001ca03b8211bdfe33c34e9d09a227a2275591f47cf1a601a18d6d334af975ab7fc6747732bad4d4c2a7ec\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"1927fbcaf66b0b4d3a5a44420bacfe302aaf6abb10fad3306aaef683a8ac79c0\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"e235549f27402cb68e64b387eb323c0e7438f7438e86d2539788b77038c9d92f5bf97bc85e025e42d5b0b13b9b563edd25d9717993797143922e3bce9758ae44\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"532ecaee26cf9968f6d5e6c1a7b0d5765088df60866635775f6fff7c5c9e9cf4\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"d1d19501f26f14c5151b74d85960c7877fb71d477d01421873674ee0751e5527406f959fcdce6802f1d32e3dbe3bcfa0cc1f73c246dabafdd1f34cf951bcd0f3\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"803991547e5c01c6f63ace89b0711cb651ad867433ef5435a0ac47c999fd0d7e\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"43b7c329de610228d325b4c216b62cad73017231d83bd08a70e4d3301c3d4bb9d0784a95fa9235f79b251a360d6b9889b30d60816979eee5d00f9eb707f9d14b\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"372ac4ee332a310e6b303719bce9ca2e71ced6a300c7a30adbab07b5e3ed809f\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"9be1e7d89f97dff6420906282ae0cd63d7361b94708adfe03cb0370bfaf0701ac62cd5680a47899e839433908a95a7c8cbff9f555daddb309cc92e9491e63b23\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"576b46de27a5bd47499fad45247f8d7542fbee9ae1e1d3d83f62c3368d2c54f8\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"db75a94e7a0ccd285b56bcd45e4d95083095d626076c24afc67fe8d7b6324b4027f4eafb7739aa72af6a3440432eab1ecc9c0b6e6b05ae2de20193177d29ad82\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"1bfc5ac1f37688e2e3f11947f6c388dc13e33b9772cf13e2668d47ad46550c59\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"1c57b94f95fc19816a7f03d45d2b628eb43f4dc8e363bd17687ce7e5e1c6d51f2d1f5216621318014e11307d940daa18c7f6a4142207104cb2eba4ffa8df6f47\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"83837f819564ac9f2f6af7b6f5660d31bdf5f337eaede74f0bfdeb2ff935252f\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"fe250233dcb5eec6bd27e443436b290587bd8b475c804d33e7fe86847bec6386489efb2a8cba6b88c6425df4506a67fa766c2bd3bead348dfa691a0e08727890\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"ea74ceca5058131b353df13e658b53c786c6de06b81cfb4609a28567c9bfa9ec\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"84728d7e0c206939387281a1e1d548cc76faa25544daef4b40e77a8d6fa6640f5094e6c01c42ee1051e2abe8a3b5150c12436a9f82d974d6c2b0fd13005abef4\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"05cb1f487fa4196dd37cd1e6ee765d6977201e94c2c2fdc06fa049d53980733f\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"efd18f11dcd537b14b7ea3b4303fa5e5ba21f9ca3ac3ae247a9a5ba2894e181b601f430352662e8f8af4e539f10c9df945b564dd481e9046b9fbeab020e1e803\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"0e08be2976336b530ca25960f31d6ffe40e5708574ae17236eee3e6ab5e65ab7\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"5a5ff8b196edfb07aa2755ddc547b60af39722066ca386a7bc2bdd8d096465b8bc32ddb9ad10cf24c407427ca759761b97efa0dc634c7e71cdad2478c6d7d1b2\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"9f19511dd020b3b06b89d9d05336d1fccb883152b6d60d78b48a3e78989bd0ba\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"118bd9f3a09f1218e17aed3930a5fe77aeb1e33091da85c964b01d5c0c07a3c0bd26eb3f898c75a7d0cb8042d389cdf3a3daf0cf29d759be12cf43c1048bacf6\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"ca90f9de6174121cbab3cd80a1200b32a93ca60bb47c2353665ee9b54e46bfd4\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"be3021fd379f90bbd2477e45b8f686e73e1a87f317750517af48a8b12816340c8078d5ce9c1185b2137ceb7c94d1861296a2f5782a897d2ac9ea5d6e5573020c\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"e53b4d2d2429590359425cff1217e1902974523265ebba777672ee13b53a3e37\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"4f126e23c939f8d8f483f6212b1a9f1016f05d4cfff4f98bc62fa141814b2c92ae25a8cb8fa4e3191770cbd8a20b5d90c921002d3ff91dd79f8dfb6058dea84d\")"
+        }
+    ]
+}

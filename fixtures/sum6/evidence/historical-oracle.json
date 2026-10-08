@@ -1,0 +1,17 @@
+{
+  "description": "Source-derived Python tree plus pinned native Ed25519 leaf; no independent full KES oracle or JVM execution.",
+  "original_research_corpus_sha256": "834385fe78e2985c666a0f33a516355bae0204229af338ca482b432fd8665608",
+  "native_leaf": {
+    "sha256": "76b41125c867878a1b0cfe64dde580872f61ca4cc6fae06223e902e3e803b24f",
+    "source_revision": "dbb48cce5429cb6585c9034f002568964f1ce567",
+    "symbol": "crypto_sign_ed25519_verify_detached"
+  },
+  "accepted": 4,
+  "rejected": 17332,
+  "native_leaf_calls": 3752,
+  "authentic_relative_periods": [
+    28,
+    29,
+    35
+  ]
+}

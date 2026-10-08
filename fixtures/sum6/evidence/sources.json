@@ -1,0 +1,64 @@
+[
+  {
+    "file": "preprod_70070331.cbor",
+    "sha256": "a0bd5600bb96ff965fbaa72d9c3d2692e7aecc3c3948a4b816263069782ed902",
+    "url": "https://raw.githubusercontent.com/pragma-org/amaru/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-consensus/tests/data/headers/preprod_70070331.cbor",
+    "slot": 70070331,
+    "start_period": 505,
+    "relative_period": 35
+  },
+  {
+    "file": "preprod_70070379.cbor",
+    "sha256": "91c7021b612c2ee0ca6e0c074870cf5b2cf44d841c1dde51ace597e011273261",
+    "url": "https://raw.githubusercontent.com/pragma-org/amaru/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-consensus/tests/data/headers/preprod_70070379.cbor",
+    "slot": 70070379,
+    "start_period": 511,
+    "relative_period": 29
+  },
+  {
+    "file": "preprod_70070426.cbor",
+    "sha256": "620a8f9ae54e5ec1dc1d369a8f6d045b4bf5bd3d04b81ba5be597a5088a45e0d",
+    "url": "https://raw.githubusercontent.com/pragma-org/amaru/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-consensus/tests/data/headers/preprod_70070426.cbor",
+    "slot": 70070426,
+    "start_period": 505,
+    "relative_period": 35
+  },
+  {
+    "file": "preprod_70070464.cbor",
+    "sha256": "ab5f2b6479634a0a014b7c39adb9583fc4228fd67932dace32bdf0172fbc417a",
+    "url": "https://raw.githubusercontent.com/pragma-org/amaru/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-consensus/tests/data/headers/preprod_70070464.cbor",
+    "slot": 70070464,
+    "start_period": 512,
+    "relative_period": 28
+  },
+  {
+    "file": "KES-Sum.hs",
+    "sha256": "1eb91a77e5b6c69784bba864c2709d3a14b75260f8c3555593c62db95f6548cc",
+    "url": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/060819b59c184b951a54e3c563304983c53a3eac/cardano-crypto-class/src/Cardano/Crypto/KES/Sum.hs"
+  },
+  {
+    "file": "KES-Single.hs",
+    "sha256": "77acfdb7d4e42b7227f72b2b8ad3c3488a11e5c542ed52ceedce8f8c2c3026ab",
+    "url": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/060819b59c184b951a54e3c563304983c53a3eac/cardano-crypto-class/src/Cardano/Crypto/KES/Single.hs"
+  },
+  {
+    "file": "KES-Class.hs",
+    "sha256": "f2bac8aa25465486221fadc3047624cadd20f8ddfb041394742aadc6c2a6c789",
+    "url": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/060819b59c184b951a54e3c563304983c53a3eac/cardano-crypto-class/src/Cardano/Crypto/KES/Class.hs"
+  },
+  {
+    "file": "cardano-base-target-LICENSE",
+    "sha256": "69ce94606a661fa3290eeaca21f3f9ad7d73dc985ffa346a1104704548f72d93",
+    "url": "https://raw.githubusercontent.com/IntersectMBO/cardano-base/060819b59c184b951a54e3c563304983c53a3eac/LICENSE"
+  },
+  {
+    "file": "amaru-consensus-parameters.rs",
+    "sha256": "ba3246b395c6b86508ffd205228e8699d1a997ab2efdcb9a8c71186fbf216cb7",
+    "url": "https://raw.githubusercontent.com/pragma-org/amaru/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-kernel/src/cardano/consensus_parameters.rs"
+  },
+  {
+    "file": "amaru-global-parameters.rs",
+    "sha256": "e50fe5f3354fe0fb20961e0d5c1712f41192243466524f5020eb854a287844f6",
+    "url": "https://raw.githubusercontent.com/pragma-org/amaru/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-kernel/src/cardano/global_parameters.rs"
+  }
+]

@@ -1,0 +1,84 @@
+{
+  "amaru_commit": "34a453005bcaaf837ee73bd996b99eab8ef92961",
+  "archive": {
+    "file": "../ledger/upstream/vectors.tar.gz",
+    "member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXOW/MissingVKeyWitnessesUTXOW",
+    "sha256": "33de88ffd3fe1f82326704056264bfcbd62231079e1f88b67fc60eb74da10e40",
+    "url": "https://github.com/rrruko/cardano-blueprint/blob/1b230262024a992cfb9e9bc47970fd3fafca8dac/src/ledger/conformance-test-vectors/vectors.tar.gz"
+  },
+  "blueprint_commit": "1b230262024a992cfb9e9bc47970fd3fafca8dac",
+  "expectation_evidence": {
+    "archive": "Actual LEDGER success boolean",
+    "assertion_file": "upstream/generator-UtxowSpec.hs",
+    "assertion_sha256": "9643941f4b04d597c3478e86b2498ad65c26292a95bc1aee2bf45524db7f5b3d",
+    "assertion_url": "https://github.com/SundaeSwap-finance/cardano-ledger-conformance-tests/blob/dc8494b30741824fcd2ff90d8b4755bfdc10b03d/eras/shelley/impl/testlib/Test/Cardano/Ledger/Shelley/Imp/UtxowSpec.hs#L64-L77",
+    "diagnostics": "Independently reconstructed missing hashes, not separately stored golden failure payloads",
+    "failure_assertion": "https://github.com/SundaeSwap-finance/cardano-ledger-conformance-tests/blob/dc8494b30741824fcd2ff90d8b4755bfdc10b03d/eras/shelley/impl/testlib/Test/Cardano/Ledger/Shelley/ImpTest.hs#L1193-L1217",
+    "failure_family": "MissingVKeyWitnessesUTXOW",
+    "instrumentation_file": "../ledger/upstream/amaru-fork-ShelleyImpTest.hs",
+    "instrumentation_sha256": "34c4138d24c9742a9963520f45e6c88b803c1743956b799832a8f358de8b4a42",
+    "success_instrumentation": "https://github.com/SundaeSwap-finance/cardano-ledger-conformance-tests/blob/dc8494b30741824fcd2ff90d8b4755bfdc10b03d/eras/shelley/impl/testlib/Test/Cardano/Ledger/Shelley/ImpTest.hs#L1165-L1170"
+  },
+  "generator_commit": "dc8494b30741824fcd2ff90d8b4755bfdc10b03d",
+  "licenses": [
+    {
+      "file": "../licenses/amaru-LICENSE",
+      "sha256": "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b",
+      "url": "https://github.com/pragma-org/amaru/blob/34a453005bcaaf837ee73bd996b99eab8ef92961/LICENSE"
+    },
+    {
+      "file": "../licenses/blueprint-conformance-LICENSE",
+      "sha256": "5bdd73433593173b55328fdc4cc01e826597e73cf52f93388a0ee786d39067cf",
+      "url": "https://github.com/rrruko/cardano-blueprint/blob/1b230262024a992cfb9e9bc47970fd3fafca8dac/LICENSE"
+    },
+    {
+      "file": "../licenses/cardano-ledger-conformance-LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "url": "https://github.com/SundaeSwap-finance/cardano-ledger-conformance-tests/blob/dc8494b30741824fcd2ff90d8b4755bfdc10b03d/LICENSE"
+    },
+    {
+      "file": "../licenses/cardano-ledger-conformance-NOTICE",
+      "sha256": "58721f8b6ca67f0fcbe1cd739b384fec3126a35f7d79951aedaa2bc3863a3162",
+      "url": "https://github.com/SundaeSwap-finance/cardano-ledger-conformance-tests/blob/dc8494b30741824fcd2ff90d8b4755bfdc10b03d/NOTICE"
+    }
+  ],
+  "limitations": [
+    "Archived PV9, not fresh target-release full ledger conformance",
+    "Final-state check is full UTxO addresses and values only",
+    "Required signer field 14 and absent/empty input negatives are not genuine corpus goldens"
+  ],
+  "original_haskell_tests_rerun": false,
+  "protocol_evidence": {
+    "current_parameter_sha256": "23a62c9e17bfb1c9755134f173e29e7ff87f9991a84b5bb40ec177b262647633",
+    "file": "../ledger/raw/pparams.cbor",
+    "initial_and_final_parameter_hash_path": [
+      3,
+      1,
+      1,
+      3,
+      3
+    ],
+    "protocol_version": [
+      9,
+      0
+    ],
+    "protocol_version_index": 12,
+    "record_length": 31
+  },
+  "public_oracles": {
+    "bundled_node_version": "11.1.3",
+    "cli_git_revision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "cli_sha256": "0ac45e874599fac4ee6ca4fd9602c0ddb9854a62be5f365dfa425eff9f4bd0ed",
+    "cli_version": "11.2.3.0",
+    "evidence": "Archived public-only key-hash and signature checks; binaries omitted; not rerun by projector",
+    "sodium_library_sha256": "76b41125c867878a1b0cfe64dde580872f61ca4cc6fae06223e902e3e803b24f",
+    "sodium_source_commit": "dbb48cce5429cb6585c9034f002568964f1ce567"
+  },
+  "raw_sequence": {
+    "file": "raw/missing-vkey.cbor",
+    "sha256": "3f63e5d5235c06cf8332ed5f154cecc3248fc0c630cf58969afb515b6115d2a1",
+    "size": 2174
+  },
+  "schema_version": 1,
+  "scope": "Closed Conway PV9 transfer required-payment-key witness coverage"
+}

@@ -1,0 +1,71 @@
+[
+  {
+    "event": 1,
+    "argv": [
+      "conway",
+      "transaction",
+      "calculate-min-fee",
+      "--tx-body-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/fee-size-probe/transfer-event-1.json",
+      "--protocol-params-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/fee-size-probe/pparams.json",
+      "--witness-count",
+      "0",
+      "--byron-witness-count",
+      "0",
+      "--reference-script-size",
+      "0",
+      "--output-json"
+    ],
+    "exit_code": 0,
+    "stdout": "{\n    \"fee\": 167041\n}\n",
+    "stderr": "",
+    "interpretation": "estimateMinFeeTx fixed-point estimator with zero additional witnesses, not actual-byte predicate validation"
+  },
+  {
+    "event": 2,
+    "argv": [
+      "conway",
+      "transaction",
+      "calculate-min-fee",
+      "--tx-body-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/fee-size-probe/transfer-event-2.json",
+      "--protocol-params-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/fee-size-probe/pparams.json",
+      "--witness-count",
+      "0",
+      "--byron-witness-count",
+      "0",
+      "--reference-script-size",
+      "0",
+      "--output-json"
+    ],
+    "exit_code": 0,
+    "stdout": "{\n    \"fee\": 173069\n}\n",
+    "stderr": "",
+    "interpretation": "estimateMinFeeTx fixed-point estimator with zero additional witnesses, not actual-byte predicate validation"
+  },
+  {
+    "event": "1-wide-fee",
+    "argv": [
+      "conway",
+      "transaction",
+      "calculate-min-fee",
+      "--tx-body-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/fee-size-probe/transfer-event-1-wide-fee.json",
+      "--protocol-params-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/fee-size-probe/pparams.json",
+      "--witness-count",
+      "0",
+      "--byron-witness-count",
+      "0",
+      "--reference-script-size",
+      "0",
+      "--output-json"
+    ],
+    "exit_code": 0,
+    "stdout": "{\n    \"fee\": 167041\n}\n",
+    "stderr": "",
+    "interpretation": "estimateMinFeeTx fixed-point estimator with zero additional witnesses, not actual-byte predicate validation"
+  }
+]

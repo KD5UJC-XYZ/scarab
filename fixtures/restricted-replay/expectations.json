@@ -1,0 +1,152 @@
+{
+  "schema": "restricted-replay-test-expectations-v1",
+  "scope": "Archived output bytes/outcomes and separately source-derived fee arithmetic; no fresh Haskell execution.",
+  "traces": [
+    {
+      "events": [
+        {
+          "archived_whole_ledger_success": true,
+          "body_byte_range_in_transaction": [
+            1,
+            157
+          ],
+          "event_index": 1,
+          "expected_local_stage": "applied",
+          "source_byte_range": [
+            1567,
+            1833
+          ],
+          "source_derived_supplied_fee": "167041",
+          "transaction_id": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27",
+          "transaction_sha256": "8435826b0bf402ea445d8c4f1289b3bfe46e4e8e57a458c06fb903d9a6ca7ab8"
+        },
+        {
+          "archived_whole_ledger_success": false,
+          "body_byte_range_in_transaction": [
+            1,
+            193
+          ],
+          "event_index": 2,
+          "expected_local_stage": "balance",
+          "source_byte_range": [
+            1844,
+            2247
+          ],
+          "source_derived_supplied_fee": "173069",
+          "transaction_id": "3a14b5a5195ba1bca58d8e6609b8e301439fd0b5c77a700cad6cc393b00a676f",
+          "transaction_sha256": "9e6e88bb88277c13b6e411ecbc305b397d8431c5f61c31304f18fd66ef134d87"
+        }
+      ],
+      "exact_final_output_comparison": true,
+      "failure_source_file": "fixtures/ledger/upstream/amaru-fork-ShelleyUtxoSpec.hs",
+      "failure_source_sha256": "25724216d08356d839849bc9f4a58f2435dc9060181850a494876bcf15cd874a",
+      "final_utxo": [
+        {
+          "input": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27:0",
+          "output_cbor_hex": "82581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480",
+          "output_sha256": "4ff9305780c88d176d7147f2931c5161bce17ad0247b1c5b5a25d5c54e54e6d1",
+          "source_byte_range": [
+            814,
+            851
+          ],
+          "source_file": "fixtures/ledger/raw/shelley.cbor"
+        },
+        {
+          "input": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27:1",
+          "output_cbor_hex": "825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff",
+          "output_sha256": "fa7ad5f127dc7aa54c443ae536b541ce1ad70c8c8cb372c2dbdb937200329f20",
+          "source_byte_range": [
+            887,
+            956
+          ],
+          "source_file": "fixtures/ledger/raw/shelley.cbor"
+        }
+      ],
+      "raw_state_cell_observation": {
+        "final": "167041",
+        "initial": "0",
+        "path": "[state][3][1][1][2]",
+        "semantics": "unclassified; not an independently established fee-pot golden"
+      },
+      "source_derived_fee_accumulator": {
+        "after_rejection": "167041",
+        "after_setup": "167041",
+        "origin": "0"
+      },
+      "trace": "value-conservation"
+    },
+    {
+      "events": [
+        {
+          "archived_whole_ledger_success": true,
+          "body_byte_range_in_transaction": [
+            1,
+            157
+          ],
+          "event_index": 1,
+          "expected_local_stage": "applied",
+          "source_byte_range": [
+            1567,
+            1833
+          ],
+          "source_derived_supplied_fee": "167041",
+          "transaction_id": "ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba",
+          "transaction_sha256": "68efb43e8912ac53b387b89a8a181d1286ad8597c1e96f65c858c83a6cf3cf89"
+        },
+        {
+          "archived_whole_ledger_success": false,
+          "body_byte_range_in_transaction": [
+            1,
+            156
+          ],
+          "event_index": 2,
+          "expected_local_stage": "coverage",
+          "source_byte_range": [
+            1844,
+            2109
+          ],
+          "source_derived_supplied_fee": "171441",
+          "transaction_id": "5ebc5e877dc72a9505dfa54c7d6e5b94d820bf1345db3d957b8f8b140efa46a9",
+          "transaction_sha256": "ec192bb372150c07cea2b06412d8f0bfd3347c5a476d8dbfcde1e0e2ce1734f6"
+        }
+      ],
+      "exact_final_output_comparison": true,
+      "failure_source_file": "fixtures/coverage/upstream/generator-UtxowSpec.hs",
+      "failure_source_sha256": "9643941f4b04d597c3478e86b2498ad65c26292a95bc1aee2bf45524db7f5b3d",
+      "final_utxo": [
+        {
+          "input": "ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba:0",
+          "output_cbor_hex": "82581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a000cf4ae",
+          "output_sha256": "0ccad597333f66cac27d65034a2a289c454588353c5dbc546c6ff5b5f9ddc57f",
+          "source_byte_range": [
+            814,
+            851
+          ],
+          "source_file": "fixtures/coverage/raw/missing-vkey.cbor"
+        },
+        {
+          "input": "ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba:1",
+          "output_cbor_hex": "825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6d4fed1",
+          "output_sha256": "1aa99fba416f88a9108c5c39de25dca3150fd403e2ebf0c61c1798e4d32aec02",
+          "source_byte_range": [
+            887,
+            956
+          ],
+          "source_file": "fixtures/coverage/raw/missing-vkey.cbor"
+        }
+      ],
+      "raw_state_cell_observation": {
+        "final": "167041",
+        "initial": "0",
+        "path": "[state][3][1][1][2]",
+        "semantics": "unclassified; not an independently established fee-pot golden"
+      },
+      "source_derived_fee_accumulator": {
+        "after_rejection": "167041",
+        "after_setup": "167041",
+        "origin": "0"
+      },
+      "trace": "missing-vkey"
+    }
+  ]
+}

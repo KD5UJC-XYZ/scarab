@@ -1,0 +1,34 @@
+[
+  {
+    "file": "preprod_70070426.cbor",
+    "sha256": "620a8f9ae54e5ec1dc1d369a8f6d045b4bf5bd3d04b81ba5be597a5088a45e0d",
+    "slot": 70070426,
+    "epoch": 166,
+    "nonce": "b2853ec951e7ed91b674a47c8276189f414e22b19d61d9da0ac7490801e4bf0d",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "afa092fe6166ec155d6c3e0279fb072bc30729561b19f8bf4a4ce9ea836b478a2e977b48b78bb3e96beada2185e4aadc5e380d33f72b507132f6eb3aa20e29780599f75a8dd68a41cbc76f9640d6d50b",
+    "claimed": "ca51a38e1f18f970001d0d7ccca44f6be38a988a709981b69ba498ca96884181f242756650461391873df49856b8f9d2ac5a77ea579d0df5584a1651d4a37647",
+    "alpha": "2eb2b421c861609c2418ea4a386b5754a97887a5abd964674c539326d8c22cde",
+    "native_rc": 0,
+    "native_output": "ca51a38e1f18f970001d0d7ccca44f6be38a988a709981b69ba498ca96884181f242756650461391873df49856b8f9d2ac5a77ea579d0df5584a1651d4a37647",
+    "claim_matches": true,
+    "nonce_source": "amaru-store.rs",
+    "historical_chain_inclusion_authenticated": false
+  },
+  {
+    "file": "preprod_70070464.cbor",
+    "sha256": "ab5f2b6479634a0a014b7c39adb9583fc4228fd67932dace32bdf0172fbc417a",
+    "slot": 70070464,
+    "epoch": 166,
+    "nonce": "b2853ec951e7ed91b674a47c8276189f414e22b19d61d9da0ac7490801e4bf0d",
+    "pk": "511fc79e3c4d44316fd7e16d7fbb20f55093cf6e3cd749f0f6cb328ee8cd270e",
+    "proof": "e74079fda7deb76c625557433fe214befa14a624af1e8a7a735f3e54f80cbd4a7b8d8a1ca4d16335dda7607c7afdd30e1c17fb3f795a1ff56a63b2b86aaf7fc5b5919f6f2d73394167f4bc31e6539709",
+    "claimed": "6c70db814ab6cbe7623b0316a4b82ec99ad94600777efe985bcb19d959c48d87e60b40f2fe58abdcf5563321176de0cc1a3e21e5041894b0cf22213decf476b4",
+    "alpha": "d5c47199e35dd104984eab6148f09cf715b95c99258abb975aa01f2ad55c9e5e",
+    "native_rc": 0,
+    "native_output": "6c70db814ab6cbe7623b0316a4b82ec99ad94600777efe985bcb19d959c48d87e60b40f2fe58abdcf5563321176de0cc1a3e21e5041894b0cf22213decf476b4",
+    "claim_matches": true,
+    "nonce_source": "amaru-store.rs",
+    "historical_chain_inclusion_authenticated": false
+  }
+]

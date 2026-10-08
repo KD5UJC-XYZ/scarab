@@ -1,0 +1,164 @@
+{
+  "archive_sha256": "33de88ffd3fe1f82326704056264bfcbd62231079e1f88b67fc60eb74da10e40",
+  "events": [
+    {
+      "archived_whole_ledger_success": true,
+      "component_ranges": {
+        "body": [
+          1,
+          157
+        ],
+        "witnesses": [
+          157,
+          264
+        ]
+      },
+      "name": "transfer-event-1",
+      "produced_outputs": [
+        {
+          "output_cbor_hex": "82581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480",
+          "output_sha256": "4ff9305780c88d176d7147f2931c5161bce17ad0247b1c5b5a25d5c54e54e6d1",
+          "ref": "0",
+          "source_byte_range": [
+            45,
+            82
+          ],
+          "source_file": "fixtures/fee-size/transfer-event-1.cbor"
+        },
+        {
+          "output_cbor_hex": "825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff",
+          "output_sha256": "fa7ad5f127dc7aa54c443ae536b541ce1ad70c8c8cb372c2dbdb937200329f20",
+          "ref": "1",
+          "source_byte_range": [
+            82,
+            151
+          ],
+          "source_file": "fixtures/fee-size/transfer-event-1.cbor"
+        }
+      ],
+      "resolved_inputs": [
+        {
+          "output_cbor_hex": "82581d6088028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f1b009fdf42f6e48000",
+          "output_sha256": "0fe8bf7bb69f52650afa654d71bf6a42bd037430943a96fdbde75782e7e31ca1",
+          "ref": "03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314:0",
+          "source_byte_range": [
+            138,
+            179
+          ],
+          "source_file": "fixtures/ledger/raw/shelley.cbor"
+        }
+      ],
+      "size_encoding_hex": "83a300d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff021a00028c81a100d90102818258204000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf95840a0b11efe92f7966c024e6bcba13ff638acf15fd8f97c5c9f14a114496f88de223e72eb0978a5037ba787e9d2fa6006538557c6a162fdc8b4f265a0b0971c1e07f6",
+      "source_derived_fee_pass": true,
+      "source_derived_minimum_fee": "167041",
+      "source_derived_size": 265,
+      "source_derived_size_pass": true,
+      "supplied_fee": "167041",
+      "transaction_sha256": "8435826b0bf402ea445d8c4f1289b3bfe46e4e8e57a458c06fb903d9a6ca7ab8",
+      "transaction_source_range": [
+        1567,
+        1833
+      ]
+    },
+    {
+      "archived_whole_ledger_success": false,
+      "component_ranges": {
+        "body": [
+          1,
+          193
+        ],
+        "witnesses": [
+          193,
+          401
+        ]
+      },
+      "name": "transfer-event-2",
+      "produced_outputs": [
+        {
+          "output_cbor_hex": "82581d60de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f5985931a000cf4b1",
+          "output_sha256": "409023f00cefcd01d5f03d32e57ed588686e202dcd12bb2386f14dc5ad9f89f2",
+          "ref": "0",
+          "source_byte_range": [
+            81,
+            118
+          ],
+          "source_file": "fixtures/fee-size/transfer-event-2.cbor"
+        },
+        {
+          "output_cbor_hex": "82583900f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b39765cf5454f586d19c04689bcccbd17f1bc0a4ce904dc6aea476ca8ac41b009fdf42f6d25ac4",
+          "output_sha256": "f501202169e58a19ae336e1d135abdc1f394d86636f6fc17a858e5c8d975e483",
+          "ref": "1",
+          "source_byte_range": [
+            118,
+            187
+          ],
+          "source_file": "fixtures/fee-size/transfer-event-2.cbor"
+        }
+      ],
+      "resolved_inputs": [
+        {
+          "output_cbor_hex": "82581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480",
+          "output_sha256": "4ff9305780c88d176d7147f2931c5161bce17ad0247b1c5b5a25d5c54e54e6d1",
+          "ref": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27:0",
+          "source_byte_range": [
+            45,
+            82
+          ],
+          "source_file": "fixtures/fee-size/transfer-event-1.cbor"
+        },
+        {
+          "output_cbor_hex": "825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff",
+          "output_sha256": "fa7ad5f127dc7aa54c443ae536b541ce1ad70c8c8cb372c2dbdb937200329f20",
+          "ref": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27:1",
+          "source_byte_range": [
+            82,
+            151
+          ],
+          "source_file": "fixtures/fee-size/transfer-event-1.cbor"
+        }
+      ],
+      "size_encoding_hex": "83a300d90102828258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27008258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc2701018282581d60de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f5985931a000cf4b182583900f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b39765cf5454f586d19c04689bcccbd17f1bc0a4ce904dc6aea476ca8ac41b009fdf42f6d25ac4021a0002a40da100d901028282582009075a20a84d1debc77944b276451cab29683802c5c79e5b76968d2e03d9b1c458404bfb041f4b4fad474d74c68fbfa79bc7426c4418b99cad4f90c9f865a6706029346918a75f0d30c006a1a013be35c3705e75c12004196e96da94db7926dff109825820856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad671571035840c6b492a9f8e59b197e9b118a9df20980085030bdfd6372a09e7ebe053cd9756b1879c7c448e95db4e770f5d2eeefeec28e08b0966d34601d9ebc9c5d0dccd40cf6",
+      "source_derived_fee_pass": true,
+      "source_derived_minimum_fee": "173069",
+      "source_derived_size": 402,
+      "source_derived_size_pass": true,
+      "supplied_fee": "173069",
+      "transaction_sha256": "9e6e88bb88277c13b6e411ecbc305b397d8431c5f61c31304f18fd66ef134d87",
+      "transaction_source_range": [
+        1844,
+        2247
+      ]
+    }
+  ],
+  "final_utxo": [
+    {
+      "output_cbor_hex": "82581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480",
+      "output_sha256": "4ff9305780c88d176d7147f2931c5161bce17ad0247b1c5b5a25d5c54e54e6d1",
+      "ref": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27:0",
+      "source_byte_range": [
+        814,
+        851
+      ],
+      "source_file": "fixtures/ledger/raw/shelley.cbor"
+    },
+    {
+      "output_cbor_hex": "825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff",
+      "output_sha256": "fa7ad5f127dc7aa54c443ae536b541ce1ad70c8c8cb372c2dbdb937200329f20",
+      "ref": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27:1",
+      "source_byte_range": [
+        887,
+        956
+      ],
+      "source_file": "fixtures/ledger/raw/shelley.cbor"
+    }
+  ],
+  "final_utxo_exact_bytes_equal": true,
+  "member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+  "parameters": {
+    "fee_fixed": "155381",
+    "fee_per_byte": "44",
+    "max_tx_size": "16384"
+  },
+  "parameters_sha256": "23a62c9e17bfb1c9755134f173e29e7ff87f9991a84b5bb40ec177b262647633",
+  "sequence_sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123"
+}

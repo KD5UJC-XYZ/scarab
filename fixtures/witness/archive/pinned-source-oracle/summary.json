@@ -1,0 +1,17 @@
+{
+  "total": 2219,
+  "native_calls": 2207,
+  "malformed_excluded": 12,
+  "ledger_witnesses": 8,
+  "ledger_verified": 8,
+  "version": "1.0.18",
+  "system_divergences": [],
+  "strict_divergences": [],
+  "bc_divergences": [
+    "speccheck-2",
+    "speccheck-4",
+    "speccheck-5"
+  ],
+  "accepted": 1121,
+  "rejected": 1086
+}

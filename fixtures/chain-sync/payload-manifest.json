@@ -1,0 +1,73 @@
+{
+  "repository": "https://github.com/IntersectMBO/ouroboros-consensus",
+  "commit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "license": "Apache-2.0",
+  "referenceRuntimeRun": false,
+  "files": [
+    {
+      "path": "ouroboros-consensus-cardano/golden/cardano/CardanoNodeToNodeVersion2/Header_Conway",
+      "bytes": 856,
+      "sha256": "e0f58468d294102df59a77bf13631ed14c3f92e91b6f610a40f5d9729a7eb932",
+      "gitBlobSha1": "0f8b86ceeda08e2904a4d1cff44165a1c625f639",
+      "verifiedAgainstPinnedTree": true,
+      "source": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-cardano/golden/cardano/CardanoNodeToNodeVersion2/Header_Conway",
+      "localPath": "ntn-header-conway.cbor",
+      "classification": "upstream-typed-serialization-example",
+      "cardanoPayloadValidated": false
+    },
+    {
+      "path": "ouroboros-consensus-cardano/golden/cardano/CardanoNodeToNodeVersion2/SerialisedHeader_Conway",
+      "bytes": 13,
+      "sha256": "10f389fcd2771f1f3033ddae41b3fda1c22a36f88b63bb53670855c828dd6a4b",
+      "gitBlobSha1": "9225aa4174ae46440f3c277e23bb51598ed5858a",
+      "verifiedAgainstPinnedTree": true,
+      "source": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-cardano/golden/cardano/CardanoNodeToNodeVersion2/SerialisedHeader_Conway",
+      "localPath": "ntn-placeholder-header.cbor",
+      "classification": "upstream-serialization-envelope-placeholder",
+      "cardanoPayloadValidated": false
+    },
+    {
+      "path": "ouroboros-consensus-cardano/golden/cardano/QueryVersion2/CardanoNodeToClientVersion12/Block_Conway",
+      "bytes": 7807,
+      "sha256": "eb451bb8134942ff8afbcd1e87cedd282197b865d8a3637e41cf158ad7e34548",
+      "gitBlobSha1": "8ece780c1ac3aeb92906dbad6758090fc379e6aa",
+      "verifiedAgainstPinnedTree": true,
+      "source": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-cardano/golden/cardano/QueryVersion2/CardanoNodeToClientVersion12/Block_Conway",
+      "localPath": "ntc-block-conway.cbor",
+      "classification": "upstream-typed-serialization-example",
+      "cardanoPayloadValidated": false
+    },
+    {
+      "path": "ouroboros-consensus-cardano/golden/cardano/QueryVersion2/CardanoNodeToClientVersion12/SerialisedBlock_Conway",
+      "bytes": 18,
+      "sha256": "eed2bfd687a284ffe2637f788193be37b504214a4e1a61c27f199e2a73885be9",
+      "gitBlobSha1": "6a5024d0dcfc9fe5f4a275b39cd9f3dfaf09f362",
+      "verifiedAgainstPinnedTree": true,
+      "source": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus-cardano/golden/cardano/QueryVersion2/CardanoNodeToClientVersion12/SerialisedBlock_Conway",
+      "localPath": "ntc-placeholder-block.cbor",
+      "classification": "upstream-serialization-envelope-placeholder",
+      "cardanoPayloadValidated": false
+    }
+  ],
+  "wholeChainSyncTranscript": false,
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "bytes": 10174,
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "gitBlobSha1": "f433b1a53f5b830a205fd2df78e2b34974656c7b",
+      "verifiedAgainstPinnedTree": true,
+      "source": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/LICENSE",
+      "localPath": "ouroboros-consensus-LICENSE"
+    },
+    {
+      "path": "NOTICE",
+      "bytes": 625,
+      "sha256": "1ffd62f46edfb71f5989c5cee9127919c176fc0ce5ae91e6d5652ab26150b168",
+      "gitBlobSha1": "cd9fe00ebb16730d03699cded5668883b28c651f",
+      "verifiedAgainstPinnedTree": true,
+      "source": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/NOTICE",
+      "localPath": "ouroboros-consensus-NOTICE"
+    }
+  ]
+}

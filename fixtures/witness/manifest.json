@@ -1,0 +1,547 @@
+{
+  "archived_observations": {
+    "bc": {
+      "artifact": "org.bouncycastle:bcprov-jdk18on:1.85.2",
+      "artifact_sha256": "986b0fb92ec10e0c66b43e036ce0077e6150cfaecd1db9fb92b56672e157afe5",
+      "artifact_url": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2.jar",
+      "columns": [
+        "id",
+        "raw_verify",
+        "public_key_full_subgroup",
+        "R_full_subgroup"
+      ],
+      "malformed_rows": "id and MalformedLength only",
+      "results": "archive/bc-results.tsv",
+      "runner": "archive/Verify.scala",
+      "source_artifact_sha256": "b37ac84b1d5435ab7b8d166c16ab9f75e09f68f8ec50479bae433939b241b03f",
+      "source_artifact_url": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcprov-jdk18on/1.85.2/bcprov-jdk18on-1.85.2-sources.jar",
+      "strict_disagreement_ids": [
+        "speccheck-2",
+        "speccheck-4",
+        "speccheck-5"
+      ],
+      "warning": "Cofactored raw verifier differs from intended source-profile; full subgroup checking would overreject accepted mixed-order speccheck-3."
+    },
+    "original_extractor_sha256": "6286c3828c174e83beaf5459f8f13c769cdcc602ab45dfca6bdf01037556dae1",
+    "original_results_json_sha256": "3bc0fab952d45108f11f569edb4dda3b3ebf0368505105236e21207470c6bf3f",
+    "original_vectors_json_sha256": "c9cbe16bc930c541fa45df129d5ae99606a0095c045b9d2c7974aab9abffb23e",
+    "rerun_by_projector": false,
+    "research_date_utc": "2026-10-08",
+    "strict_prototype": {
+      "artifact": "com.weavechain:curve25519-elisabeth:0.1.3",
+      "artifact_sha256": "256048db6904c00832ab6045c624c69844d7617f719e3cd446691257aab8ffcb",
+      "artifact_url": "https://repo.maven.apache.org/maven2/com/weavechain/curve25519-elisabeth/0.1.3/curve25519-elisabeth-0.1.3.jar",
+      "earlier_git_audit_commit_not_matching_artifact": "51d65293890efc56293839bfe376c4000e47526a",
+      "known_prototype_limitation": "Archived broad IllegalArgumentException catch is diagnostic prototype behavior, not the narrowed integrated research composition contract.",
+      "reproducible_binary_build_established": false,
+      "results": "archive/strict-results.tsv",
+      "runner": "archive/StrictVerify.scala",
+      "runner_is_historical_not_runtime": true,
+      "runtime_native_libraries_required": false,
+      "source_artifact_differs_materially_from_git_audit": true,
+      "source_artifact_sha256": "6259b983a6368c4a39eb39f3db1e78193ba9b82da5d7ec6ea42ccc5514328dda",
+      "source_artifact_url": "https://repo.maven.apache.org/maven2/com/weavechain/curve25519-elisabeth/0.1.3/curve25519-elisabeth-0.1.3-sources.jar"
+    },
+    "system_sodium": {
+      "binary_sha256": "85e2e494494f4f50c4b6d2b4ae90e885da1bfdefd52c4cc5767fd10abff62505",
+      "binary_vendored": false,
+      "cardano_fork_binary_equivalence_established": false,
+      "known_source_commit": null,
+      "method": "Only version query and public detached verification; malformed inputs not passed to native verifier. No sodium_init, signing, secret-key operations, node startup or native build.",
+      "native_provenance_gap": "Preexisting recognized system oracle, not established as the Cardano fork, not a reproducible build of known source, and compilation flags unknown. Pinned fork open.c equals official 1.0.18 open.c, but helpers/full binary/flags equivalence remains unproven.",
+      "original_path": "/lib/x86_64-linux-gnu/libsodium.so.23",
+      "package_manager_provenance_established": false,
+      "results": "archive/system-sodium-results.tsv",
+      "version": "1.0.18"
+    }
+  },
+  "counts": {
+    "accepted_ledger_witnesses": 3,
+    "fixed_size": 2207,
+    "ledger_witnesses": 8,
+    "malformed_signature_length": 12,
+    "rejected_ledger_signature_observations": 5,
+    "sodium_S_plus_L": 1024,
+    "sodium_known_answers": 1024,
+    "speccheck": 12,
+    "wycheproof": 151
+  },
+  "derived_artifacts": {
+    "ledger-witnesses.json": {
+      "bytes": 25345,
+      "sha256": "a0876770218e9f947b19c47be72ff26ca741a1148fd375cc573f3078aacdf4c8"
+    },
+    "ledger-witnesses.tsv": {
+      "bytes": 11512,
+      "sha256": "eb8a8ae0c0731ef24e03789dcc26c314cdada4298a6555aa69f484ff544c2d3f"
+    },
+    "projection.json": {
+      "bytes": 1225418,
+      "sha256": "3b5343cf39249fa96ce4e1182a47697e993b28dba498763b255623c810b226e7"
+    },
+    "status.tsv": {
+      "bytes": 201126,
+      "sha256": "f5b22e990b28f1bff90ef2304f3a1d19e1ba40d85e984bcf08a869cffbf44934"
+    },
+    "vectors.tsv": {
+      "bytes": 2576058,
+      "sha256": "f79f0a87efbd99ebe159c18211497f6b0d282e7946f1839216dc31bbf99ef918"
+    }
+  },
+  "expectation_policy": {
+    "archival_target_observations": "Speccheck and 5 signatures in ledger-rejected transactions have source_expected=unknown.",
+    "derivation": "For fixed-size rows expected_result is derived explicitly from archived system_sodium after checking strict agreement and source expectations when present; not generated by running this repository candidate.",
+    "fresh_run_claim": false,
+    "independent_source_assertions": "Sodium and Wycheproof true/false plus 3 accepted-ledger setup signatures.",
+    "malformed_lengths": "12 Wycheproof signatures produce typed input errors before any cryptography; native result is not run, never false."
+  },
+  "expected_result_counts": {
+    "MalformedSignatureLength": 12,
+    "SignatureRejected": 1086,
+    "SignatureVerified": 1121
+  },
+  "gates_remaining": [
+    "Establish official shipped Cardano native verifier compiler/build flags/binary linkage; local exact-source non-COMPAT oracle now passes the preserved public corpus.",
+    "Review new arithmetic composition and source-artifact correspondence.",
+    "No audit, whole-byte-space proof, full witness validation or consensus-equivalence claim."
+  ],
+  "ledger": {
+    "accepted_witness_source_expectation": "3 witnesses in genuine accepted Haskell ledger setup transactions support signature success.",
+    "amaru_commit": "34a453005bcaaf837ee73bd996b99eab8ef92961",
+    "amaru_import_commit": "8b1ded2333675ae34be34b7ab4da5f323c4bc3cb",
+    "blueprint_commit": "1b230262024a992cfb9e9bc47970fd3fafca8dac",
+    "fresh_target_release_fixtures": false,
+    "haskell_generator_commit": "dc8494b30741824fcd2ff90d8b4755bfdc10b03d",
+    "message": "BLAKE2b-256 of original transaction-body CBOR byte slice, 32 raw hash bytes; plain Ed25519, not Ed25519ph or encoded hash/body CBOR",
+    "original_blueprint_archive_sha256": "33de88ffd3fe1f82326704056264bfcbd62231079e1f88b67fc60eb74da10e40",
+    "original_haskell_tests_rerun": false,
+    "protocol_version": [
+      9,
+      0
+    ],
+    "provenance_chain": "Existing fixtures/ledger/provenance.json and preserved original archive; witness subset copies byte-identical two original sequences here.",
+    "rejected_transaction_signature_expectation": "5 signatures in rejected transactions are archived native/JVM differential observations, not separately stored Haskell signature goldens. false ledger success is not false signature validity.",
+    "source_event_shape": "[0, txBytes, expectedLedgerSuccessBoolean, slot]",
+    "source_files": [
+      {
+        "input": "inputs/shelley.cbor",
+        "sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123",
+        "url": "https://github.com/pragma-org/amaru/blob/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-ledger/tests/data/rules-conformance/eras/shelley/fail-utxo-valuenotconservedutxo/0"
+      },
+      {
+        "input": "inputs/mary.cbor",
+        "sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2",
+        "url": "https://github.com/pragma-org/amaru/blob/34a453005bcaaf837ee73bd996b99eab8ef92961/crates/amaru-ledger/tests/data/rules-conformance/eras/mary/fail-utxo-valuenotconservedutxo/0"
+      }
+    ]
+  },
+  "licenses": [
+    {
+      "file": "licenses/amaru-LICENSE",
+      "sha256": "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b"
+    },
+    {
+      "file": "licenses/blueprint-conformance-LICENSE",
+      "sha256": "5bdd73433593173b55328fdc4cc01e826597e73cf52f93388a0ee786d39067cf"
+    },
+    {
+      "file": "licenses/bouncycastle-LICENSE.md",
+      "sha256": "0e01f1549c9022f406392ac2947d32223b7c2e977d21ea2f8c182fdeb4dae5fd"
+    },
+    {
+      "file": "licenses/cardano-base-LICENSE",
+      "sha256": "69ce94606a661fa3290eeaca21f3f9ad7d73dc985ffa346a1104704548f72d93"
+    },
+    {
+      "file": "licenses/cardano-ledger-conformance-LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "file": "licenses/cardano-ledger-conformance-NOTICE",
+      "sha256": "58721f8b6ca67f0fcbe1cd739b384fec3126a35f7d79951aedaa2bc3863a3162"
+    },
+    {
+      "file": "licenses/cardano-node-LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "file": "licenses/elisabeth-LICENSE",
+      "sha256": "f8c5d5965fdae0556691dc621e84ca0c4c526ebd748a3f993f03116ff9f94c2f"
+    },
+    {
+      "file": "licenses/sodium-LICENSE",
+      "sha256": "dea1855c9809f3faf22aa4a1fba20ec8af5a5587f23115012e5b98279cedc4af"
+    },
+    {
+      "file": "licenses/speccheck-LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "file": "licenses/wycheproof-LICENSE",
+      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+    }
+  ],
+  "pinned_source_oracle": {
+    "ED25519_COMPAT_defined": false,
+    "compiler": "gcc (Debian 14.2.0-19) 14.2.0",
+    "expectation_changes": "None. Historical system/BC/strict status columns and fixed corpus hashes are unchanged. New evidence cross-checks their results independently.",
+    "native_binary_vendored": false,
+    "non_COMPAT_preprocessed_branch_verified": true,
+    "official_shipped_node_compiler_flags_established": false,
+    "provenance": "archive/pinned-source-oracle/provenance.json",
+    "report": "archive/pinned-source-oracle/report.md",
+    "reproducible_native_binary_build_across_platforms_claimed": false,
+    "requested_CFLAGS": "-O2 -g0 -UED25519_COMPAT",
+    "result_counts": {
+      "accepted": 1121,
+      "bc_divergences": [
+        "speccheck-2",
+        "speccheck-4",
+        "speccheck-5"
+      ],
+      "ledger_verified": 8,
+      "ledger_witnesses": 8,
+      "malformed_excluded": 12,
+      "native_calls": 2207,
+      "rejected": 1086,
+      "strict_divergences": [],
+      "system_divergences": [],
+      "total": 2219,
+      "version": "1.0.18"
+    },
+    "results": "archive/pinned-source-oracle/results.json",
+    "runner_scope": "Archived research runner refers to separately retained original research workspace. It is not run or imported by the offline projector; no native binary or upstream secret tables are included here.",
+    "runtime_native_dependency": false,
+    "self_built_library_sha256": "76b41125c867878a1b0cfe64dde580872f61ca4cc6fae06223e902e3e803b24f",
+    "shipped_release_binary_equivalence": false,
+    "source_archive_sha256": "e4f29ae3c16037e484bb69e3fa22a5565c42adf497f8f88e61ff8d9486ab863e",
+    "source_archive_url": "https://codeload.github.com/IntersectMBO/libsodium/tar.gz/dbb48cce5429cb6585c9034f002568964f1ce567",
+    "source_archive_vendored": false,
+    "source_commit": "dbb48cce5429cb6585c9034f002568964f1ce567",
+    "source_files_unchanged_from_archive": 611,
+    "source_oracle_gate_closed": true,
+    "status": "Executed separate isolated exact-source non-COMPAT public-verification oracle; not shipped-node binary proof",
+    "summary": "archive/pinned-source-oracle/summary.json"
+  },
+  "public_only_policy": {
+    "bounded_reads": 8000000,
+    "network_or_native_execution_by_projector": false,
+    "signing_or_key_generation_invoked": false,
+    "upstream_sources_executed": false,
+    "vendored_seed_or_private_key_tables": false
+  },
+  "reproducibility": {
+    "default": "python3 scripts/project-witness-fixtures.py --check",
+    "external_packages_required": false,
+    "offline_inputs_all_vendored": true,
+    "optional_original_source": "python3 scripts/project-witness-fixtures.py --check --sodium-source /outside/repository/sign.c",
+    "original_source_fetch": "Separate, optional, exact pinned raw URL; never part of offline check; keep seed-bearing source outside the deliverable."
+  },
+  "schema_version": 1,
+  "schemas": {
+    "ledger-witnesses.tsv": {
+      "columns": [
+        "id",
+        "transaction_hex",
+        "witness_index",
+        "body_hex",
+        "body_hash"
+      ],
+      "header": false
+    },
+    "offsets": "zero-based half-open [start,end), explicitly qualified as original sequence or transaction payload offsets",
+    "status.tsv": {
+      "columns": [
+        "id",
+        "source_expected",
+        "expected_kind",
+        "expected_result",
+        "system_sodium",
+        "bc_raw",
+        "strict_archived"
+      ],
+      "header": true,
+      "jvm_malformed": "MalformedLength",
+      "native_not_run": "NotRunMalformedLength",
+      "source_expected": [
+        "true",
+        "false",
+        "unknown"
+      ]
+    },
+    "vectors.tsv": {
+      "columns": [
+        "id",
+        "public_key_hex",
+        "signature_hex",
+        "message_hex"
+      ],
+      "encoding": "ASCII TSV; empty message is an empty trailing fourth column",
+      "header": false
+    }
+  },
+  "scope": "Experimental strict public-input Ed25519 source-profile fixture evidence, not complete witness validation or release-binary compatibility",
+  "sodium_known_answers": {
+    "S_plus_L_assertion_source_lines": [
+      1049,
+      1060,
+      1103,
+      1114
+    ],
+    "commit": "dbb48cce5429cb6585c9034f002568964f1ce567",
+    "known_answer_source_lines": [
+      1082,
+      1102
+    ],
+    "mutation": "Add L to little-endian S exactly as add_l/non-ED25519_COMPAT assertion; retain original R/public key/message",
+    "public_projection": "inputs/sodium-public.json",
+    "public_projection_sha256": "f87e83f0f22dc39b89cd2657f270f381ad629c6ab06459294ed9a8a466ea4653",
+    "repository": "https://github.com/IntersectMBO/libsodium",
+    "source_bytes": 2777963,
+    "source_executed": false,
+    "source_hash_checked_before_parsing": true,
+    "source_not_vendored_reason": "Contains published secret-seed tables. Only public key, signature and message are retained.",
+    "source_path": "test/default/sign.c",
+    "source_sha256": "fa3f37d292782694d721a218d0adf2b7de633552d41bbdc1d0ae0a708e32a21d",
+    "source_url": "https://raw.githubusercontent.com/IntersectMBO/libsodium/dbb48cce5429cb6585c9034f002568964f1ce567/test/default/sign.c"
+  },
+  "speccheck": {
+    "commit": "65519336fda78a3d016e947df6d82848aca0c9da",
+    "expectation": "Published adversarial public inputs with no universal verdict. Native target-profile observation determines this corpus expectation.",
+    "historical_results": "provenance/speccheck-historical-results.md",
+    "historical_results_limitation": "Historical BC column is not BC 1.85.2; archived current BC results are separate.",
+    "input": "inputs/speccheck-cases.json",
+    "repository": "https://github.com/novifinancial/ed25519-speccheck",
+    "sha256": "08e47a36d9aead288664930505584f353fff113ab854f2800db1e4f5b3540450",
+    "source_path": "cases.json"
+  },
+  "target": {
+    "base_prior_audit_commit": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+    "base_release_Ed25519_byte_identical_to_prior_review": true,
+    "cardano_base_release_commit": "060819b59c184b951a54e3c563304983c53a3eac",
+    "cardano_crypto_class_version": "2.5.1.0",
+    "cardano_ledger_commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "cardano_sodium_commit": "dbb48cce5429cb6585c9034f002568964f1ce567",
+    "intended_build_profile": "ED25519_COMPAT disabled; locally built exact-source oracle confirms this profile, but actual shipped target release flags and native binary linkage remain unestablished",
+    "node_commit": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "node_flake_lock": "provenance/node-flake.lock",
+    "node_release": "11.1.3",
+    "node_release_metadata": "provenance/node-release.json",
+    "node_release_url": "https://github.com/IntersectMBO/cardano-node/releases/tag/11.1.3",
+    "source_review": [
+      {
+        "commit": "060819b59c184b951a54e3c563304983c53a3eac",
+        "path": "cardano-crypto-class/src/Cardano/Crypto/DSIGN/Ed25519.hs",
+        "repository": "cardano-base",
+        "research_filename": "target-Ed25519.hs",
+        "sha256": "e1d3d42f5c4e77e2ab0cbad58462f47cff6e4c355af920c606d057e32d6b3c72",
+        "url": "https://github.com/IntersectMBO/cardano-base/blob/060819b59c184b951a54e3c563304983c53a3eac/cardano-crypto-class/src/Cardano/Crypto/DSIGN/Ed25519.hs",
+        "vendored": false
+      },
+      {
+        "commit": "060819b59c184b951a54e3c563304983c53a3eac",
+        "path": "cardano-crypto-class/src/Cardano/Crypto/DSIGN/Class.hs",
+        "repository": "cardano-base",
+        "research_filename": "target-DSIGN-Class.hs",
+        "sha256": "4cc8b0929394b05b474319a4c86d36068947990434668adbe6b55380ad52f0f4",
+        "url": "https://github.com/IntersectMBO/cardano-base/blob/060819b59c184b951a54e3c563304983c53a3eac/cardano-crypto-class/src/Cardano/Crypto/DSIGN/Class.hs",
+        "vendored": false
+      },
+      {
+        "commit": "060819b59c184b951a54e3c563304983c53a3eac",
+        "path": "cardano-crypto-class/src/Cardano/Crypto/Hash/Class.hs",
+        "repository": "cardano-base",
+        "research_filename": "target-Hash-Class.hs",
+        "sha256": "4eeedf08680e4e4363348d987acca883965e8309527761550358172cd536f311",
+        "url": "https://github.com/IntersectMBO/cardano-base/blob/060819b59c184b951a54e3c563304983c53a3eac/cardano-crypto-class/src/Cardano/Crypto/Hash/Class.hs",
+        "vendored": false
+      },
+      {
+        "commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+        "path": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+        "repository": "cardano-ledger",
+        "research_filename": "target-Utxow.hs",
+        "sha256": "3f0f21023373beb1f07bed83cd21ad172902237ba0808d357147568636760a90",
+        "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+        "vendored": false
+      },
+      {
+        "commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+        "path": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+        "repository": "cardano-ledger",
+        "research_filename": "target-State-UTxO.hs",
+        "sha256": "f4872c2b689b7349a0703da5417ff389472739b564af94f60ad6b5234aaa2a26",
+        "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+        "vendored": false
+      },
+      {
+        "commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+        "path": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Internal.hs",
+        "repository": "cardano-ledger",
+        "research_filename": "target-Keys-Internal.hs",
+        "sha256": "8b1ba627d4f52da0a979ad11ad1920119add243530ef64c996ab60a09635841f",
+        "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Internal.hs",
+        "vendored": false
+      },
+      {
+        "commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+        "path": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+        "repository": "cardano-ledger",
+        "research_filename": "target-WitVKey.hs",
+        "sha256": "dfa5643aa3f042e2b743e52a009fa62dcdba0a572c0858abba479907e60afcd5",
+        "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+        "vendored": false
+      }
+    ]
+  },
+  "total_rows": 2219,
+  "vendored_source_and_archive_files": [
+    {
+      "bytes": 2742,
+      "file": "inputs/mary.cbor",
+      "sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2"
+    },
+    {
+      "bytes": 2330,
+      "file": "inputs/shelley.cbor",
+      "sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123"
+    },
+    {
+      "bytes": 1346477,
+      "file": "inputs/sodium-public.json",
+      "sha256": "f87e83f0f22dc39b89cd2657f270f381ad629c6ab06459294ed9a8a466ea4653"
+    },
+    {
+      "bytes": 3589,
+      "file": "inputs/speccheck-cases.json",
+      "sha256": "08e47a36d9aead288664930505584f353fff113ab854f2800db1e4f5b3540450"
+    },
+    {
+      "bytes": 126699,
+      "file": "inputs/wycheproof-ed25519.json",
+      "sha256": "752d2ea7d7c6cf4736381b6cbacb61f8182b126ab7cd9b058f00c50084975536"
+    },
+    {
+      "bytes": 1345,
+      "file": "archive/StrictVerify.scala",
+      "sha256": "b718a13959d1104a0e653ab752ab9d4b1a26d99fd7ef8f6a080d017d3aeb0605"
+    },
+    {
+      "bytes": 624,
+      "file": "archive/Verify.scala",
+      "sha256": "1a3583f08dbf87d89bc07c688ca74f3f23dae738faca2f87a746f47632d392d2"
+    },
+    {
+      "bytes": 74766,
+      "file": "archive/bc-results.tsv",
+      "sha256": "2343a0aaaeddde496d9ce58c46bcbb43cf0d42ff2f523b7a3e89d60f858a9d92"
+    },
+    {
+      "bytes": 3841,
+      "file": "archive/pinned-source-oracle/provenance.json",
+      "sha256": "59e5963c74173151eec575b4faa0fda71ad6e7caa59e768dfbcb3e3da0c0a57e"
+    },
+    {
+      "bytes": 3785,
+      "file": "archive/pinned-source-oracle/record_provenance.py",
+      "sha256": "4625327e932d7951d1669815ab72c209efaedd1d31576e0862fba67ad5439e02"
+    },
+    {
+      "bytes": 9214,
+      "file": "archive/pinned-source-oracle/report.md",
+      "sha256": "d33fa883c330e81196a28323f8fa7fb3520ac40fc69aea4c18a972ea03479c96"
+    },
+    {
+      "bytes": 599066,
+      "file": "archive/pinned-source-oracle/results.json",
+      "sha256": "af45f40dcfe8e6bb670904c35067b3f581c0d7bdf6b7b63a8599eb4a1cfaf7d3"
+    },
+    {
+      "bytes": 1500,
+      "file": "archive/pinned-source-oracle/sha256.json",
+      "sha256": "263705beb788bbd2804e54ddca0688a87dab05ad26402e982b72e970d623ca1f"
+    },
+    {
+      "bytes": 69223,
+      "file": "archive/pinned-source-oracle/source-sha256.json",
+      "sha256": "0f683b9dbfc6d62c8a62d1bf86fee32ec341bb90fe97f63674f17a684736c936"
+    },
+    {
+      "bytes": 323,
+      "file": "archive/pinned-source-oracle/summary.json",
+      "sha256": "e5479f49ef77bc88867782d1eaef266c1c9f711cbd853a79abe754ad1e96da44"
+    },
+    {
+      "bytes": 2699,
+      "file": "archive/pinned-source-oracle/verify-compile-command.txt",
+      "sha256": "5851fdcd23af3f6b09c2b378e54c2f4d6d30cd20d0ed994eb7554436b7674c8f"
+    },
+    {
+      "bytes": 46581,
+      "file": "archive/pinned-source-oracle/verify-preprocessor-macros.txt",
+      "sha256": "549c031f12ff252718d5f668cabeed8de53f8c810df441635a2b62e7bd634f95"
+    },
+    {
+      "bytes": 3232,
+      "file": "archive/pinned-source-oracle/verify_public.py",
+      "sha256": "d186571652e645d81fbb98290a28bf2c76c4dc73b51a169bb2562a0a4534e514"
+    },
+    {
+      "bytes": 52642,
+      "file": "archive/strict-results.tsv",
+      "sha256": "8a56009372dbf3efeb7ae0c042c81b58fe55e3a9506921214668063750af4430"
+    },
+    {
+      "bytes": 52714,
+      "file": "archive/system-sodium-results.tsv",
+      "sha256": "0e43a064aec030a12d8e4ed94f60542a6100fd4a623bfce53a283b2ff6969dde"
+    },
+    {
+      "bytes": 2638,
+      "file": "provenance/libsodium-1.0.18-open.c",
+      "sha256": "2b345bf78695844262832eb14d0655da3a815024db0d437791142ee3b34b062d"
+    },
+    {
+      "bytes": 49927,
+      "file": "provenance/node-flake.lock",
+      "sha256": "6e2682f1ab84e0f87722dceea68d9582a1a96a21054ffc7eb75b9e415788c5e2"
+    },
+    {
+      "bytes": 38081,
+      "file": "provenance/node-release.json",
+      "sha256": "91f6a9efb2e279f32633c4e98b6a57a7bbb90e44a70fb36fb0b8c61281234197"
+    },
+    {
+      "bytes": 2638,
+      "file": "provenance/sodium-open.c",
+      "sha256": "2b345bf78695844262832eb14d0655da3a815024db0d437791142ee3b34b062d"
+    },
+    {
+      "bytes": 1188,
+      "file": "provenance/speccheck-historical-results.md",
+      "sha256": "308324876f18d49c5c0a58446a87df96dd6a2ba82f6730ef3fee458b8329b172"
+    }
+  ],
+  "wycheproof": {
+    "all_151_cases_retained": true,
+    "commit": "12fd3aaf33eb5fa1f52e026912ee00c054f9d984",
+    "input": "inputs/wycheproof-ed25519.json",
+    "malformed_case_ids": [
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41
+    ],
+    "repository": "https://github.com/C2SP/wycheproof",
+    "sha256": "752d2ea7d7c6cf4736381b6cbacb61f8182b126ab7cd9b058f00c50084975536",
+    "source_path": "testvectors_v1/ed25519_test.json"
+  }
+}

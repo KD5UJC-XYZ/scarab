@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "purpose": "strict short-lived NtN14 source/profile basis, not relay interoperability evidence",
+  "ouroborosNetworkCommit": "c45735a56c567fa977969173d18943bac6bb3821",
+  "externalEndpointExecutedHere": false,
+  "keepAliveImplemented": false,
+  "generalMuxDispatcher": false,
+  "license": "Apache-2.0",
+  "sources": [
+    {
+      "path": "sources/Version.hs",
+      "upstreamPath": "cardano-diffusion/api/lib/Cardano/Network/NodeToNode/Version.hs",
+      "bytes": 9370,
+      "sha256": "1ccc88a7021796afb82bee98dbafeedfef48fc1bdb668aa49e26bbc53f3fc1d3"
+    },
+    {
+      "path": "sources/KeepAlive-Codec.hs",
+      "upstreamPath": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Codec.hs",
+      "bytes": 5179,
+      "sha256": "e3c875f3b6437970d3f66a2e9764c1333a6f6071d7fa47bdc88989b51e65682c"
+    },
+    {
+      "path": "sources/KeepAlive-Type.hs",
+      "upstreamPath": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/KeepAlive/Type.hs",
+      "bytes": 3796,
+      "sha256": "09e7badb5c91de4df14d1fb4c18d6ca6e115f05de44e0513bcadd0a09fca8465"
+    },
+    {
+      "path": "sources/KeepAlive.hs",
+      "upstreamPath": "ouroboros-network/lib/Ouroboros/Network/KeepAlive.hs",
+      "bytes": 3756,
+      "sha256": "25cab992ba9af0aeb878aacd5b07f17c0b7f7b6b57bb40afe8a9feefa9f0cc39"
+    }
+  ],
+  "licenses": [
+    {
+      "path": "../../licenses/ouroboros-network-LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": "../../licenses/ouroboros-network-NOTICE",
+      "sha256": "671fc969e0e6a4059bf756154e4dad04e91b7972068998c7e6336e5513df8699"
+    },
+    {
+      "path": "../../licenses/cardano-diffusion-NOTICE",
+      "sha256": "b6e5f44b3a4a3b6cd25a7818a758e4479ac1c5703ee153b742e05ab26ff22a4d"
+    }
+  ]
+}

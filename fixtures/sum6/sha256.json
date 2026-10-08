@@ -1,0 +1,16 @@
+{
+  "evidence/KES-Class.hs": "f2bac8aa25465486221fadc3047624cadd20f8ddfb041394742aadc6c2a6c789",
+  "evidence/KES-Single.hs": "77acfdb7d4e42b7227f72b2b8ad3c3488a11e5c542ed52ceedce8f8c2c3026ab",
+  "evidence/KES-Sum.hs": "1eb91a77e5b6c69784bba864c2709d3a14b75260f8c3555593c62db95f6548cc",
+  "evidence/amaru-consensus-parameters.rs": "ba3246b395c6b86508ffd205228e8699d1a997ab2efdcb9a8c71186fbf216cb7",
+  "evidence/amaru-global-parameters.rs": "e50fe5f3354fe0fb20961e0d5c1712f41192243466524f5020eb854a287844f6",
+  "evidence/cardano-base-target-LICENSE": "69ce94606a661fa3290eeaca21f3f9ad7d73dc985ffa346a1104704548f72d93",
+  "evidence/historical-oracle.json": "bfa48664890d01a712cef230ec669c6e811f7cae79b59ffb3751dd4c55a0e927",
+  "evidence/preprod_70070331.cbor": "a0bd5600bb96ff965fbaa72d9c3d2692e7aecc3c3948a4b816263069782ed902",
+  "evidence/preprod_70070379.cbor": "91c7021b612c2ee0ca6e0c074870cf5b2cf44d841c1dde51ace597e011273261",
+  "evidence/preprod_70070426.cbor": "620a8f9ae54e5ec1dc1d369a8f6d045b4bf5bd3d04b81ba5be597a5088a45e0d",
+  "evidence/preprod_70070464.cbor": "ab5f2b6479634a0a014b7c39adb9583fc4228fd67932dace32bdf0172fbc417a",
+  "evidence/sources.json": "48d6a11e6757481fa17bedef11a18792394b425de9b92d0e0c9a7375e2870a1f",
+  "observations.tsv": "64772bfcad32d3958cb9851d7ce0ff0f05a91f1dd961cccbe111c10af7acb774",
+  "originals.tsv": "fb4925760c498bfc5569c69f848a56226698b056d11cc3f358d08ca2ecb5dde4"
+}

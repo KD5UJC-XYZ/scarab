@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "networkCommit": "c45735a56c567fa977969173d18943bac6bb3821",
+  "consensusCommit": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+  "upstreamRuntimeExecuted": false,
+  "files": [
+    {
+      "path": "fixtures/network/block-fetch/batch-done.hex",
+      "bytes": 5,
+      "sha256": "13aeb2098a26e9fe90e1dc9b59a7526d9d425c1620a3d9d07b514da7c6944b96",
+      "wireBytes": 2,
+      "wireSha256": "b8aa8c1e3b7597cd09410468c2d70dcc83a8cb1c3663fd1b2a4b4290daba16d7",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/network/block-fetch/client-done.hex",
+      "bytes": 5,
+      "sha256": "8cff9323d96e474da90fc73d4ed23c1b3519d8c1c077459506845540164d1c35",
+      "wireBytes": 2,
+      "wireSha256": "ac38783f6a3b2fe3b579718d6ba8493a456d800665b4433a0e7c823cff90a603",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/network/block-fetch/conway-block-source-derived.hex",
+      "bytes": 15619,
+      "sha256": "e3f5af2806f66e5853b2f79635f773ab7789eafe37aa4c5d050e9e01ab1520d4",
+      "wireBytes": 7809,
+      "wireSha256": "ccf88f406ce7085c3425e8cb63f94c59697c386d8920650b8f8f9b042f4b0d43",
+      "kind": "source-derived envelope around upstream Conway golden"
+    },
+    {
+      "path": "fixtures/network/block-fetch/no-blocks.hex",
+      "bytes": 5,
+      "sha256": "0301f9aa0c6bd75af26bace9738a7882ce20876bbcfb81315c8e08aa9e3fedc1",
+      "wireBytes": 2,
+      "wireSha256": "9ab801dcef11b73fbe8e3f6a5724152b3079cd8cabb4446e060d5ca55bd30865",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/network/block-fetch/request-origin.hex",
+      "bytes": 9,
+      "sha256": "82e0737148f8ed99073c39c866131684dfcec3f6bdf68ba5f0c908cb15a7fd98",
+      "wireBytes": 4,
+      "wireSha256": "3510d537a3a301739cad5db00710d31dd68f0e5b188d9ab8282aa42f37d42be0",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/network/block-fetch/request-slot1-zero32.hex",
+      "bytes": 149,
+      "sha256": "b7190cee3c3bea000505a8aee55b1a3bc9c807e034d757225c390b155bdeaa18",
+      "wireBytes": 74,
+      "wireSha256": "de38168b8034ad0c70290c95501fb02896584131853aa89de5285adb154c49c1",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/network/block-fetch/sources/Block.hs",
+      "bytes": 17714,
+      "sha256": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+      "kind": "retained pinned Apache-2.0 source authority",
+      "sourceUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/api/lib/Ouroboros/Network/Block.hs"
+    },
+    {
+      "path": "fixtures/network/block-fetch/sources/Codec.hs",
+      "bytes": 7023,
+      "sha256": "812427f9cd4a8204b2f479c5aa5a1ff019f324d1a99a1709616d482a46f9d39c",
+      "kind": "retained pinned Apache-2.0 source authority",
+      "sourceUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Codec.hs"
+    },
+    {
+      "path": "fixtures/network/block-fetch/sources/Limits.hs",
+      "bytes": 3669,
+      "sha256": "85d22f3f9af5c94c5dc67897860a10a1432a02a4574b6c4ad0c9cc5394b04a36",
+      "kind": "retained pinned Apache-2.0 source authority",
+      "sourceUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs"
+    },
+    {
+      "path": "fixtures/network/block-fetch/sources/Type.hs",
+      "bytes": 3604,
+      "sha256": "d4418295585030812da3137147efbaa70ca34981a70c48631a6878749e6796d3",
+      "kind": "retained pinned Apache-2.0 source authority",
+      "sourceUrl": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/BlockFetch/Type.hs"
+    },
+    {
+      "path": "fixtures/network/block-fetch/sources/consensus-server.hs",
+      "bytes": 5368,
+      "sha256": "d8dc5172c88fc68ca8113f5a1857b4519a74088eaa9424f7182a30534ddeea36",
+      "kind": "retained pinned Apache-2.0 source authority",
+      "sourceUrl": "https://github.com/IntersectMBO/ouroboros-consensus/blob/82ecba329d7d054340bf707d44fe6e9ac27cec40/ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/Server.hs"
+    },
+    {
+      "path": "fixtures/network/block-fetch/start-batch.hex",
+      "bytes": 5,
+      "sha256": "9b82f217858a941d6569abf4dce51e16fc9046bddee1ca26dad061efa6e62275",
+      "wireBytes": 2,
+      "wireSha256": "e30f7e51e257e9f7da46b7cfb9174bf9ae2d238491fa07e9f85e2915bfa4d829",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/network/block-fetch/toy-block.hex",
+      "bytes": 13,
+      "sha256": "c335730e6f6538cdeedec007827f89777eac5b1dd28146b52e75c670b03c0a44",
+      "wireBytes": 6,
+      "wireSha256": "d749b5941387466325775c37eb0bddbf473fd94a6416d7b400add581ad893f3d",
+      "kind": "source-derived synthetic encoder literal"
+    },
+    {
+      "path": "fixtures/licenses/block-fetch-consensus-LICENSE",
+      "bytes": 10174,
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "kind": "license or notice"
+    },
+    {
+      "path": "fixtures/licenses/block-fetch-consensus-NOTICE",
+      "bytes": 625,
+      "sha256": "1ffd62f46edfb71f5989c5cee9127919c176fc0ce5ae91e6d5652ab26150b168",
+      "kind": "license or notice"
+    },
+    {
+      "path": "fixtures/licenses/block-fetch-network-LICENSE",
+      "bytes": 10174,
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "kind": "license or notice"
+    },
+    {
+      "path": "fixtures/licenses/block-fetch-network-NOTICE",
+      "bytes": 624,
+      "sha256": "671fc969e0e6a4059bf756154e4dad04e91b7972068998c7e6336e5513df8699",
+      "kind": "license or notice"
+    }
+  ]
+}

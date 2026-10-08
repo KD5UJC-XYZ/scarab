@@ -1,0 +1,59 @@
+[
+  {
+    "file": "target-Alonzo-Tx.hs",
+    "sha256": "d4ebeaa8cb9269a4a3b88420b8f66474c0370b6a440a4b44e9ddff884fed0ed7",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs"
+  },
+  {
+    "file": "target-Conway-Tx.hs",
+    "sha256": "4dee4c3e717bb21721729afc008b49a39a2f9fcd8fb661e0436a5e6e494521ff",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs"
+  },
+  {
+    "file": "target-Conway-UTxO.hs",
+    "sha256": "11d7c614cfdc16aff2c7f0e1d6f6b553657c298de08afa631b5173eb7dcd04be",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs"
+  },
+  {
+    "file": "target-Conway-PParams.hs",
+    "sha256": "ba8712e61f23f067988b7d585194321a954ccedea2191df65e7d72f736db26ab",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs"
+  },
+  {
+    "file": "target-Shelley-Tx.hs",
+    "sha256": "8cc7205b51bfc2822ba294ee7a22b23fb4dbd71e886b9f6f7328ac789411373f",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/shelley/impl/src/Cardano/Ledger/Shelley/Tx.hs"
+  },
+  {
+    "file": "target-MemoBytes.hs",
+    "sha256": "e71b3061adb037a5df3654c47b589fe09fba8a18b9e0431e0317f2b4ff5a9f0b",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes.hs"
+  },
+  {
+    "file": "target-MemoBytes-Internal.hs",
+    "sha256": "78254f49dfbfa96694bc238e3a7daf9509200d9de8890b913554eee3da4c1da7",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-core/src/Cardano/Ledger/MemoBytes/Internal.hs"
+  },
+  {
+    "file": "target-Tools.hs",
+    "sha256": "a09bb19df2a8397be679809f3fb38e889b4ce3cea67dcab77eef9cdfabf2cc15",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-core/src/Cardano/Ledger/Tools.hs"
+  },
+  {
+    "file": "target-Api-Tx.hs",
+    "sha256": "9b0ed77360556bdec389a8eb5727953425f6140af5f547297f920e000279fd76",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/libs/cardano-ledger-api/src/Cardano/Ledger/Api/Tx.hs"
+  },
+  {
+    "file": "../licenses/target-LICENSE",
+    "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+    "url": "https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/LICENSE"
+  },
+  {
+    "file": "api-Fee.hs",
+    "sha256": "416d59c784cde146e793ac757d7c2f8ff7ecfeea414a516a9e92f5001e0b84f2",
+    "revision": "7a4de3f5e2510af7d2a819183333f2655e3b002d",
+    "git_blob_sha1": "692113827b32878a7ef3871df76425af7a62de44",
+    "url": "https://api.github.com/repos/IntersectMBO/cardano-api/git/blobs/692113827b32878a7ef3871df76425af7a62de44"
+  }
+]

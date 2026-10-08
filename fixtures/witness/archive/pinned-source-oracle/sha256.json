@@ -1,0 +1,18 @@
+{
+  "source.tar.gz": "e4f29ae3c16037e484bb69e3fa22a5565c42adf497f8f88e61ff8d9486ab863e",
+  "source-sha256.json": "0f683b9dbfc6d62c8a62d1bf86fee32ec341bb90fe97f63674f17a684736c936",
+  "provenance.json": "59e5963c74173151eec575b4faa0fda71ad6e7caa59e768dfbcb3e3da0c0a57e",
+  "verify_public.py": "d186571652e645d81fbb98290a28bf2c76c4dc73b51a169bb2562a0a4534e514",
+  "record_provenance.py": "4625327e932d7951d1669815ab72c209efaedd1d31576e0862fba67ad5439e02",
+  "results.json": "af45f40dcfe8e6bb670904c35067b3f581c0d7bdf6b7b63a8599eb4a1cfaf7d3",
+  "summary.json": "e5479f49ef77bc88867782d1eaef266c1c9f711cbd853a79abe754ad1e96da44",
+  "configure.log": "ae6a71c2cb592f2b60948f81451d4f76a82030397ab80b750ffa58dc947764ed",
+  "build.log": "066f33507cefe16984ef992310726455baddd1c03b7d40313da8728907037330",
+  "build/config.log": "0a279356f012feb1de8fd5dde9976186e12938d812ee4787561bf6b56200404c",
+  "build/config.status": "c7cd70b3b806414e7973e196d1124feacd0c55c808aefe5ff1f44c19f350cb5a",
+  "build/src/libsodium/Makefile": "ebf3de2455b1a371b607ee25f4f23af3712d020aca2c5b696cf3aa2133ebe83f",
+  "verify-compile-command.txt": "5851fdcd23af3f6b09c2b378e54c2f4d6d30cd20d0ed994eb7554436b7674c8f",
+  "verify-preprocessor-macros.txt": "549c031f12ff252718d5f668cabeed8de53f8c810df441635a2b62e7bd634f95",
+  "verify-preprocessed.c": "0dd409f20df0104d290fd7195989a54324062ef2334e061d31a23a0a2c6f7928",
+  "build/src/libsodium/.libs/libsodium.so.23.3.0": "76b41125c867878a1b0cfe64dde580872f61ca4cc6fae06223e902e3e803b24f"
+}

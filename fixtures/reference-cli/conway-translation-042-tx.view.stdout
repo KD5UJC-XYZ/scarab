@@ -1,0 +1,1367 @@
+{
+    "auxiliary scripts": "(StrictSeq {fromStrict = fromList [MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 2 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"0e2c20e8d2b86e0bb3dded8cabf23411375870f899c4149defb066cd\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"e69761625a7f6ed811a3c2ad1a264df73366f57af701895a211aa501\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"1df16875c10c339445a5f3374e40320be2fec72bd8e450bd54dd13ce\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"16b2b9716b9ac7b2bdc4cc550e50232683e840f370e19ee9b62ad6f6\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"897d4f4fcf69bc0fa27ce8887c3fdcad712ab4bf2add1ed7373fe961\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"67440d8f4ec3825749238b2d2f2e762fcbe99aa580e1b94fc236c586\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"dc7eb50628024b789d6ee6ac84296e76bc5192dac4442684b144935b776aacf6\"),MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"8dac3827d79b5c4b4101213ed58e072deac9ee9aa83768cbd6ed9910\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 2 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"5490b3a30c301ffc2faa9dfd72712a5f813fc03fd3874e63add8b62a\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"1f87782c6d3b1d2fe0b712edbe29e086658b06b4508ef74f1946fda2\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"f401520ee5f2701c26636b000273dc4ecb1097d06b908d698827f3fc\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"ebd432e702b5a10252e24f9e753ea63b8d417a41f2116038fbd11b70\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"9035f048402942c613d2d01f9992b33b93550078605afc5852958fda\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"2d43af4b18bc14d81dd829b4d80aa33127660f21cd236708d0eae649\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"a720a0d0711eecf72537c8997d3c9583008cfda2e811b846c29b220b\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"990997c11b5b20db5338e5b8f347dedaaa3fd5c91a2983e5750bbecd\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"d14d0dac676c2e33a26aa0013391389552c580550795e8087a5c5944\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"5212756b47680616dbcf84b7784266588e4b89be142dccfb4b5d68ea\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"be83e2f2e7d862e62103ef8935ba8999c29ce15607098b43f890cfba\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"00bb2b175aab14bc0e63f57712ed00ca21af54f39f19a15e292424dc\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"43824476f7fad70e8ac3a8169a2f04e02977621cffe3f8de8af7dc72\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"3f1ab3c95d21c2e7a3bae1b6f3f247d91ea2833940574b76b4cdc62e\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"906da324d1d88df626498a7b8715932833ce19a50e989376b36ef621\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"c750bed39cc95dbe62bdd26a8aa6a8572cf50306c97916e3ccf07450\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"5fef7accf8dda0d585e4820c0f3a9c4a24c2a6ea4f1c27914da61e5c\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"05c38d4459251350d47218a54d61e127017db46176a1ee3df6bd937c\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"4159a733c638647c8e241a1f7831647221c85fbf01b5f6a2c089e7086949e00a\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"8a72081384f17863a38b6f284b9d7c9c13de09801fdc5fbe668445df\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"84bafa91dd5539621ba8508242958f4de761d5469d427be90f942015\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"459c409ec4001804c68e7916f2e0c4abd9be7f0aec161ce2f8b98db5\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 1 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"d549921754745b6871c14a5bf79da3b3ab652d30a07956d2f5d02595\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"b5f9050c01b6a8e9af81e1890d03c7e24c73271651d49d86d1f320e80124a60e\"),MkTimelock TimelockTimeStart (SlotNo 9854675) (blake2b_256: SafeHash \"3b4bcd52679911724fa2c30de31f5c234f70a6ee84bdd0140bc9641fb7655d03\"),MkTimelock TimelockTimeStart (SlotNo 16295471) (blake2b_256: SafeHash \"3531b57d2e53ddbd3a61886fb08956876166d9849f648987b0115129f2ca2d7a\"),MkTimelock TimelockTimeStart (SlotNo 1299583) (blake2b_256: SafeHash \"730bc57025232d1758514b82c35afe8b5d7c55a8398c4d72e02ea0af67fa756a\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"d7e44b6bbf84550f704178bd9c1900f2b7936e8ed79081cbf4f9b240\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAllOf (StrictSeq {fromStrict = fromList []}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"21a3995ba23733bf520a701c6b7ecaf720f6ef86aed4e28c7f16295bce22cd60\"),MkTimelock TimelockMOf 2 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"df37887dd76ea060e0342741916c81b8e29a9fe04b2b7b6a910f83ab\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"b0b0fb08c590ce85223bc1576216fc836ee5d1974722d8c902476347\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"69d54e7d6d647b2956e836ac966be6516d7d8e3e5ef7d4138bffc270\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"7ccb28ccceb283dcf1692531137339754ded85825e3cf32ff328a060\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockMOf 0 (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"8b02dc2078ef50d096e5776f89660176bddd455704d9ddde9efbef72\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"4a1a3079b72db4a57f0490cc1a33fed9199eb56084d28db51d4222ae\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"8613edcd8e3c161a8115c8b23b4a26b7df25d5d796a52932936d402d\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"ac0f8b6e788d9e40ed03f9b56d8c7b80a2d98024be57c04a01ef3038\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"726a72af0ee347372a3a9d9f58fc26b680af849f9554c50790b5e3f5\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"9e3c4bf2dddcb1e47107da2142021072e5502d7a86a7eeba783c3f96\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockAnyOf (StrictSeq {fromStrict = fromList [MkTimelock TimelockSignature (KeyHash {unKeyHash = \"89cbebe258a772b7f7ba35d6004dca64170d85a5ea18449c7439e183\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"7b15e557c574a86bcca03a09218ec22ab83b9d5a47ac533a25326bc4\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"d4170114db562ab42aa1610bff96dbdbf4887928eb7da8df48b5052c\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"f3fa413e3e9be70fc01df114fe82e1585e9971b54ba87306764117d1\"}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0000000000000000000000000000000000000000000000000000000000000000\")]}) (blake2b_256: SafeHash \"0018586ffc52e9c0197fd2850659b71dd91781c6225f63a896699df3277653b0\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"b9912bdbb82f02a7be6945e6e5ecb6952448280cce658c90475a66b3\"}) (blake2b_256: SafeHash \"c5a55ae99a8b124d189fe78dd1871605b35aec7e58dace2e26ebc84887da5bb7\"),MkTimelock TimelockTimeExpire (SlotNo 2713557) (blake2b_256: SafeHash \"4ef04adb0872181b5df8b7bd0060ab378ec2b923008ddb9611e522ce960531a6\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"509d6d29ad61c3248a34e30533d947a8355c61668952bde9343cae75\"}) (blake2b_256: SafeHash \"a52eefb6e6bb325e2752eab558abd4474ddd8fb00733506be366d5d1fe9bad9a\"),MkTimelock TimelockTimeExpire (SlotNo 13231535) (blake2b_256: SafeHash \"8c3617474c73e38d0c817f2aa51c604622a6c72dc68e46db4e362723d7ac7fce\"),MkTimelock TimelockTimeExpire (SlotNo 1113100) (blake2b_256: SafeHash \"15bb09b2fe944015c9f4849f1d0580b7452c7c357b17525e23d2a2260836aef3\"),MkTimelock TimelockSignature (KeyHash {unKeyHash = \"91ec23914a278321238caa6cd9242bbb5b469ee8488304e49e2ff0d8\"}) (blake2b_256: SafeHash \"08fba38ee097d01696516d3899e1807618a9c92a1f4ce60dca81f5e688e609ed\")]},fromList [(PlutusV2,\"RwEAACIgAQE=\" :| [\"RQEAACYB\",\"RgEAACImAQ==\",\"RQEAACYB\"])])",
+    "certificates": [
+        {
+            "Stake address deregistration": {
+                "stake credential": {
+                    "keyHash": "66428a368a895dcad17e5747e32d53ab3814c58f4df0e849bd9bf3fe"
+                }
+            }
+        },
+        {
+            "Stake address registration": {
+                "deposit": 484471,
+                "stake credential": {
+                    "keyHash": "aa2a5a0fc8c14891f3ad1e62559a447d9666b82e9435d34aaccf334d"
+                }
+            }
+        },
+        {
+            "Constitutional committee cold key resignation": {
+                "cold key hash": "3bae156fbeb89fb162c8efbf5b4cf8aef80f3dcdd6149d74eb51afa9"
+            }
+        }
+    ],
+    "collateral inputs": [
+        "191c14a73689fee187ae7f4ae21f5b370cecc9d9960879621f1844a0d9cc7bcb#10853",
+        "1c82c4f01ebb1b6a1842581079bc50cf60aebf0bd5b6ad3c65113303823c91b6#4314",
+        "2488aa73c1553900a2dc5e78d958089a9b96bccd343d5c0b209b131194b75884#22086",
+        "51623cbf00c35045722f32a3a6f3f9766c7a2e5efb304c3e5da3fec3ace8eddc#13282",
+        "5cb42cbab5a22b30bad7f52659f4711c1f2502170262633ecfce1f87c4203b94#30621",
+        "6591addc8b48cc7df78d525da05c0a0898bf1c7538167b2e6cd572aa1c6e0a48#19118",
+        "91687ef0f16f5de25f1f0291d5097da1d1d8ae488437c086ae5f82951466f465#24061",
+        "91f754b2a64cf8c9b31a9bfb449c273af5db3b518de707dd3b1088ff0db8ea0d#27780",
+        "b7cdd48e562a7d6d4838ee8ae53b1f2ebd894a7a0755eda4c6f4b2d04abb74e4#30354",
+        "d79807314fe02d7dcd83822b0d8193d938216ef077f5b4aefa61322976dede46#27369"
+    ],
+    "currentTreasuryValue": 6,
+    "datums": [
+        {
+            "datum": "I (-2)",
+            "datum hash": "0268be9dbd0446eaa217e1dec8f399249305e551d7fc1437dd84521f74aa621c"
+        },
+        {
+            "datum": "I 0",
+            "datum hash": "03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314"
+        },
+        {
+            "datum": "List [B \"\\203\"]",
+            "datum hash": "10846fb9131690b750f40a096824b262054ff54b97c49cb6821c6dfba74f06d2"
+        },
+        {
+            "datum": "List [Map [(Constr 4 [I 2],B \"p\\253\"),(List [B \"\\196\",B \"\"],I 3),(I (-2),B \"\\177\\221\")],I 4,List [I 0,List [I 0,B \"\",B \"k\\248)\"],Constr 5 [I 3],Map [(I (-5),B \"\\183\\133\\199\"),(B \"\\172\\SO\\200\\166\",I (-5)),(I 4,I (-1))]],I 0,I 5]",
+            "datum hash": "10af5d195965fbe858a6fb244c73c00cd64329805e5625fce88a4c0dc90ce857"
+        },
+        {
+            "datum": "B \"u#\"",
+            "datum hash": "34b8c59d5056759b25018f5852fecc30e5f9a673428e487db39033f13d777c65"
+        },
+        {
+            "datum": "Constr 4 []",
+            "datum hash": "4edbec644b7ff68b96e254d6cc71d2aee111b4f3e9f93f94d6674580aab29300"
+        },
+        {
+            "datum": "B \"\\135\"",
+            "datum hash": "71930d64452f6257d563ac6e93e9a1f9c997eac01ad9c0c2d582c747687152da"
+        },
+        {
+            "datum": "List [List [I 2,List [I 2,B \"t\\170\"],Map [(I (-5),B \"o\"),(I (-5),I 1),(B \"NA\\t\",I (-4))]],Map [(I (-3),B \"\\199\"),(B \"i{\\SUB\",Constr 3 [I 2,B \"\"]),(Constr 2 [I 0,B \"\\148\\232\",B \"\\194\",I 0,B \"\\DC3\\145\\169\"],List [I 1,B \"\\245\",I (-2)]),(B \"\\228\\191\",I 2),(B \"\\146^\\175\",Map [(B \"P\",B \"\\RS\\EOT\\189A\"),(I 2,I 3),(I 4,B \"lJ\\173\")])],Map [(Map [(B \"\\128\\221\",I (-1)),(B \"\\197\",I 0),(I (-3),I 1)],I (-2)),(I 5,B \"xpP\\255\")]]",
+            "datum hash": "81ce95cb5d4a3a7f128ef252b5075a2df4f175be579aecaac4a6214a69410544"
+        },
+        {
+            "datum": "I (-3)",
+            "datum hash": "95c3003a78585e0db8c9496f6deef4de0ff000994b8534cd66d4fe96bb21ddd3"
+        },
+        {
+            "datum": "Constr 0 [B \"\",B \"\",Constr 3 [I 1,Map [(I (-1),B \"\\234\\246\"),(I (-2),I 4)],I 5],I (-1),Constr 5 []]",
+            "datum hash": "9c68f8d2d005724ce44b94f4443d18871fdd57c7f1752f9109405168b647a28a"
+        },
+        {
+            "datum": "Constr 2 [Map [(I (-3),B \"\\128\"),(B \"\",Constr 3 [I 1,I (-3)])],Constr 4 [Constr 0 [B \"\\177\\232\",I 0],B \"h\",Map [(I 3,B \"\\194\"),(I 2,B \"exS\"),(I (-1),B \"\"),(I 5,I 5),(B \"\\231\\228\\178@\",B \"\")]],Constr 2 [B \"\"],Map [(B \"\",List [I 4,B \"\\SYN\"]),(Constr 3 [B \"\",B \"\"],B \"w8\"),(B \"\\ACK\\212\",Map [(I (-3),B \"\")]),(List [I (-4)],I 1)],I 2]",
+            "datum hash": "a62b3a11cb7ba201d74901046f5d6cc7cbe0d9fdfb5e9e5a0d380bcaf84a1885"
+        },
+        {
+            "datum": "Constr 1 [List [Constr 4 [],List [B \"nl\",B \"$I\",I (-3),I 0,B \"%:\"],List [B \"D\\f/\",B \"{\\230\\139\"],B \"pt\"],Constr 2 [I (-3),B \"K\\147\"],B \"k\",Map [(Map [(B \"\\167\\200\",B \"Rq\\144\"),(I 3,B \"+\")],List [B \"G\\168\"]),(I 5,B \"\")],Constr 4 [Constr 4 [I (-1),I 1,B \"\\213\\213\\180\",I 0],Constr 0 [B \"\\216\\232#\\180\"],Constr 3 [B \"\\ACKj]L\",B \"N\",I 2,I 1,B \"\\246\"],I 3,I 1]]",
+            "datum hash": "b6166dab4de25179b1a0c5db7278894a0dcf7323c7860c48daa839456e2867e1"
+        },
+        {
+            "datum": "I 2",
+            "datum hash": "bb30a42c1e62f0afda5f0a4e8a562f7a13a24cea00ee81917b86b89e801314aa"
+        },
+        {
+            "datum": "B \"\\216F\"",
+            "datum hash": "bdf83692ccf088bceade6aa99696be7cc524d38f99b5b52abc39b27555049736"
+        },
+        {
+            "datum": "Map []",
+            "datum hash": "d36a2619a672494604e11bb447cbcf5231e9f2ba25c2169177edc941bd50ad6c"
+        },
+        {
+            "datum": "Map [(B \"\\173\\v\\149\\210\",B \"\\167\\150\\139\\DC3\"),(B \"H\\164\\226\",Map [(List [I 3,B \"\\174\\250\",B \"\\SYN\"],B \"\\140_\")])]",
+            "datum hash": "defdcf5a29b50f333c4d6074d3cc40e7edaaf7a88e3022671d69907d18e7a318"
+        },
+        {
+            "datum": "List [List [Constr 3 [B \"\"],Constr 2 [B \"}\\152\\243\\158\",B \"Sz\\vh\"],Constr 1 [I (-5)],List [B \"\\141U\\130u\",I 4,I (-2)]]]",
+            "datum hash": "e0b9d4befb7a1fdf5ac8fd924bb026a983d23ed911669de681aa1b25955fc204"
+        },
+        {
+            "datum": "B \"\\142\"",
+            "datum hash": "e3febd7cac3adfd9979dff3c1fefbf9427afa86b892f0558c58a168b2a32bf82"
+        },
+        {
+            "datum": "Constr 5 [I 3]",
+            "datum hash": "ef350a3d15e42b86a936d41bd92e0161f22618edead4235715ae2c0b805ca8c7"
+        },
+        {
+            "datum": "I (-5)",
+            "datum hash": "f63498b4ae65be466e4a71878971b9c524458996450b0ff8262cddf3f0d99229"
+        },
+        {
+            "datum": "I 5",
+            "datum hash": "fb3d635c7cb573d1b9e9bff4a64ab4f25190d29b6fd8db94c605a218a23fa9ad"
+        }
+    ],
+    "era": "Conway",
+    "fee": "19 Lovelace",
+    "governance actions": [
+        {
+            "anchor": {
+                "dataHash": "80610aaca452134c8838006e1129597a847b92fc32608e5e78d718fbfc87f383",
+                "url": "https://ebUJdkvoYbkcqDs7guW7sRGbtsZ.com"
+            },
+            "deposit": 416259,
+            "governance action": {
+                "contents": [
+                    null,
+                    {
+                        "collateralPercentage": 18435,
+                        "committeeMinSize": 9053,
+                        "costModels": {
+                            "PlutusV1": [
+                                -11145673,
+                                -3073356,
+                                2302384,
+                                3650219,
+                                -14952686,
+                                -14736066,
+                                1532521,
+                                15136618,
+                                -503716,
+                                8048290,
+                                1148667,
+                                -14245912,
+                                -6434863,
+                                -1352886,
+                                -8268865,
+                                5747454,
+                                -10313532,
+                                -4532107,
+                                -4947822,
+                                -11152495,
+                                16132275,
+                                5749371,
+                                14444544,
+                                -4872223,
+                                -3132079,
+                                5919862,
+                                -111853,
+                                -10968083,
+                                -4723228,
+                                -14548858,
+                                9301396,
+                                -14518847,
+                                5392433,
+                                -13550263,
+                                -1392590,
+                                -473233,
+                                -1039655,
+                                15473528,
+                                -6352021,
+                                -12685757,
+                                -3350806,
+                                -12600701,
+                                -14806334,
+                                4823136,
+                                -10832522,
+                                -6982401,
+                                1509098,
+                                1609056,
+                                -1145248,
+                                -5339273,
+                                15403220,
+                                -1866802,
+                                10602692,
+                                12433076,
+                                15906020,
+                                14256479,
+                                -9629076,
+                                2738448,
+                                15206478,
+                                -9593185,
+                                1863937,
+                                -4453412,
+                                9768381,
+                                5395114,
+                                -55462,
+                                15670469,
+                                15497791,
+                                2174967,
+                                -10354289,
+                                -15543891,
+                                -857941,
+                                -3533974,
+                                -4697151,
+                                429502,
+                                1949744,
+                                -4660208,
+                                -2706719,
+                                -1184888,
+                                15122738,
+                                972328,
+                                -14917450,
+                                -6694640,
+                                11939852,
+                                -2373436,
+                                2103899,
+                                -7756902,
+                                13145833,
+                                -12025669,
+                                -5714670,
+                                16256805,
+                                -11526949,
+                                -14959739,
+                                -16107701,
+                                -1395105,
+                                3836344,
+                                -11009610,
+                                1740438,
+                                -4204335,
+                                -8859548,
+                                -1708460,
+                                -12259628,
+                                -13715260,
+                                817429,
+                                15146641,
+                                -92608,
+                                14451071,
+                                -8829546,
+                                7288647,
+                                -4714689,
+                                -10445189,
+                                -9024642,
+                                8532353,
+                                -11117983,
+                                6242410,
+                                -5943829,
+                                9019120,
+                                -10016913,
+                                8551947,
+                                -16132828,
+                                -1131394,
+                                -16461225,
+                                -7687752,
+                                -5232608,
+                                -7362303,
+                                -12171806,
+                                14691718,
+                                7547168,
+                                -5890393,
+                                -8009726,
+                                12445303,
+                                9622971,
+                                -11048295,
+                                5416724,
+                                -1010589,
+                                -4718215,
+                                -11074793,
+                                -8181760,
+                                11414759,
+                                11321077,
+                                -6815981,
+                                -6573718,
+                                -14397449,
+                                9793666,
+                                -13611659,
+                                -55273,
+                                -11457188,
+                                -6404070,
+                                -1817158,
+                                14894658,
+                                13320629,
+                                12710504,
+                                -11557340,
+                                -5826995,
+                                5088440,
+                                16281025,
+                                -5056514,
+                                976842,
+                                -8671083,
+                                11818733,
+                                -15906020,
+                                -7157900,
+                                -13584525,
+                                -14059453,
+                                -3189091,
+                                -10947916,
+                                -3869933
+                            ],
+                            "PlutusV4": [
+                                -10280080,
+                                -4345529,
+                                13760791,
+                                -4237626,
+                                8212048,
+                                15469276,
+                                16673717,
+                                -8753426,
+                                6916860,
+                                -3086680,
+                                8381507,
+                                7345473,
+                                -490263,
+                                -4215743,
+                                -7332484,
+                                4686372,
+                                13860375,
+                                -10405957,
+                                -8923823,
+                                -1551587,
+                                7538501,
+                                -2054813,
+                                14800606,
+                                -4570253,
+                                -13932695,
+                                12741587,
+                                -16215647,
+                                14276205,
+                                14711441,
+                                -11652717,
+                                -9404861,
+                                -4201715,
+                                -607847,
+                                -2903119,
+                                9503373,
+                                12135267,
+                                13136030,
+                                -11951310,
+                                13369377,
+                                1863386,
+                                -12392063,
+                                6446164,
+                                1564642,
+                                -8782060,
+                                -12559939,
+                                -1276979,
+                                13584712,
+                                -7026592,
+                                13483324,
+                                -3294265,
+                                -12728516,
+                                -10909152,
+                                16273542,
+                                -12578228,
+                                -12473433,
+                                -10733852,
+                                -5897493,
+                                -7551389,
+                                -13099600,
+                                528402,
+                                16530951,
+                                12843487,
+                                -12111899,
+                                -3132906,
+                                1152240,
+                                -575182,
+                                7457504,
+                                15015294,
+                                -13295116,
+                                -7483290,
+                                8018441,
+                                10854065,
+                                -4868828,
+                                -820817,
+                                7282373,
+                                10920608,
+                                5711527,
+                                11346242,
+                                -5409098,
+                                9015117,
+                                -8929405,
+                                15153869,
+                                2687345,
+                                -12197992,
+                                -13007103,
+                                -13922419,
+                                3789775,
+                                12102697,
+                                -11595371,
+                                -5821524,
+                                -9542561,
+                                -12193781,
+                                9543457,
+                                15570912,
+                                -12727997,
+                                -13980110,
+                                3109181,
+                                8013345,
+                                9407506,
+                                -13711348,
+                                -659541,
+                                -12290054,
+                                3406553,
+                                542928,
+                                14500848,
+                                -10953481,
+                                11020908,
+                                10520009,
+                                -6606555,
+                                -2913062,
+                                15341330,
+                                3885410,
+                                9826718,
+                                -15137720,
+                                -9736767,
+                                5520591,
+                                -11868254,
+                                -13917171,
+                                -6662728,
+                                684021,
+                                -6471235,
+                                -8232397,
+                                -11011000,
+                                4463745,
+                                3601271,
+                                12996212,
+                                3434184,
+                                -10307355,
+                                -15796775,
+                                7500089,
+                                10730749,
+                                6534253,
+                                15992097,
+                                7312440,
+                                10828868,
+                                15124777,
+                                2977888,
+                                -4286282,
+                                -8850190,
+                                -6638733,
+                                -16470374,
+                                7085639,
+                                16246458,
+                                -12667480,
+                                -14722762,
+                                9394908,
+                                -14198762,
+                                11337237,
+                                10285911,
+                                3536681,
+                                -10270847,
+                                266937,
+                                -8262743,
+                                -2980156,
+                                8020267,
+                                11313510,
+                                1482868,
+                                -3195461,
+                                16486607,
+                                8694314,
+                                -12524813,
+                                -3746863,
+                                2520208,
+                                6088811,
+                                16658166,
+                                15770054,
+                                1384963,
+                                -2955546,
+                                14808787,
+                                -10139017,
+                                -16125516,
+                                -9186557,
+                                -13452672,
+                                -1835685,
+                                7238767,
+                                -4706333,
+                                2424381,
+                                -16717916,
+                                13323482,
+                                13922159,
+                                -298910,
+                                3457992,
+                                8691588,
+                                -10070319,
+                                10365088,
+                                -5955732,
+                                3294433,
+                                14013911,
+                                7698564,
+                                10028115,
+                                224078,
+                                -10949975,
+                                595358,
+                                639383,
+                                -617259,
+                                -10339976,
+                                3678585,
+                                -14648399,
+                                -11499449,
+                                -8527730,
+                                -10836529,
+                                -5572662,
+                                11774805,
+                                -4353470,
+                                11028232,
+                                4348103,
+                                10457560,
+                                -14048588,
+                                2752839,
+                                3768468,
+                                2353078,
+                                -7924446,
+                                10073438,
+                                -11950174,
+                                7746361,
+                                11228913,
+                                4014180,
+                                -6214097,
+                                -8777464,
+                                -12416774,
+                                6161657,
+                                1803615,
+                                -1297553,
+                                -8243589,
+                                -1691499,
+                                12158151,
+                                -9296256,
+                                13306451,
+                                -15787838,
+                                16062175,
+                                -5667422
+                            ],
+                            "Unknown": {
+                                "143": [
+                                    15936431,
+                                    15653098,
+                                    -8589761,
+                                    13626712,
+                                    12217269,
+                                    16236458,
+                                    5037222,
+                                    14206002,
+                                    8895338,
+                                    -1180671,
+                                    -771314,
+                                    -5301969
+                                ]
+                            }
+                        },
+                        "dRepDeposit": 6,
+                        "dRepVotingThresholds": {
+                            "committeeNoConfidence": 2.4779137719108232e-2,
+                            "committeeNormal": 0.23869690412,
+                            "hardForkInitiation": 0,
+                            "motionNoConfidence": 0.38250474467019,
+                            "ppEconomicGroup": 0.76088641186107289,
+                            "ppGovGroup": 0.3994787084465809,
+                            "ppNetworkGroup": 0.9932862274902,
+                            "ppTechnicalGroup": {
+                                "denominator": 2000000000000000000,
+                                "numerator": 1415304265662256429
+                            },
+                            "treasuryWithdrawal": 0.85,
+                            "updateToConstitution": 0.311000794627
+                        },
+                        "executionUnitPrices": {
+                            "priceMemory": 1.295604489863934032e14,
+                            "priceSteps": 6.500363284268353284e17
+                        },
+                        "govActionDeposit": 10,
+                        "maxBlockBodySize": 12231,
+                        "maxBlockExecutionUnits": {
+                            "memory": 4572482704671474668,
+                            "steps": 8527410090985206635
+                        },
+                        "maxBlockHeaderSize": 13229,
+                        "maxCollateralInputs": 836,
+                        "maxTxExecutionUnits": {
+                            "memory": 766467571754055419,
+                            "steps": 1188534795990280210
+                        },
+                        "maxTxSize": 18108,
+                        "maxValueSize": 19621,
+                        "minFeeRefScriptCostPerByte": 8.76696773955556339e15,
+                        "minPoolCost": 14,
+                        "monetaryExpansion": 0.480275509698815,
+                        "poolRetireMaxEpoch": 3563,
+                        "stakeAddressDeposit": 8,
+                        "stakePoolDeposit": 27,
+                        "stakePoolTargetNum": 16251,
+                        "treasuryCut": 0.7331626076583509,
+                        "txFeeFixed": 256777,
+                        "txFeePerByte": 17
+                    },
+                    "8651623d9ae3bca55e7d3c2b64411ed9a97958247f6349209b5b59e9"
+                ],
+                "tag": "ParameterChange"
+            },
+            "return address": {
+                "credential": {
+                    "keyHash": "111a8993649903c49db45898c921c9ba747fc9cf93c91915ef729320"
+                },
+                "network": "Testnet"
+            }
+        },
+        {
+            "anchor": {
+                "dataHash": "4d324ec0152139b909606319c47406b663abf0dde869ac4d54548415a3d67ba7",
+                "url": "https://yxcFz.OeG.com"
+            },
+            "deposit": 11,
+            "governance action": {
+                "contents": [
+                    {
+                        "govActionIx": 11042,
+                        "txId": "2de11aabe38cc37d60108a233697fc75f1c1f51816942f31895f2cb53447e993"
+                    },
+                    {
+                        "collateralPercentage": 27657,
+                        "committeeMaxTermLength": 14792,
+                        "committeeMinSize": 4431,
+                        "dRepActivity": 28402,
+                        "dRepVotingThresholds": {
+                            "committeeNoConfidence": 0.89188,
+                            "committeeNormal": 0.414,
+                            "hardForkInitiation": 0.67912180951615001,
+                            "motionNoConfidence": 1.3192000504921e-2,
+                            "ppEconomicGroup": 0.960083919,
+                            "ppGovGroup": 0.647784550342,
+                            "ppNetworkGroup": 0.25897013945187,
+                            "ppTechnicalGroup": 0.492178699,
+                            "treasuryWithdrawal": 0.4677668900984836,
+                            "updateToConstitution": 0.50720330429613068
+                        },
+                        "executionUnitPrices": {
+                            "priceMemory": 8.672738150542300551e7,
+                            "priceSteps": 3.055530040897746748e9
+                        },
+                        "govActionDeposit": 16,
+                        "govActionLifetime": 16490,
+                        "maxBlockBodySize": 14165,
+                        "maxBlockExecutionUnits": {
+                            "memory": 8971099412809783578,
+                            "steps": 1225440774588426883
+                        },
+                        "maxBlockHeaderSize": 4644,
+                        "maxTxSize": 21459,
+                        "minFeeRefScriptCostPerByte": {
+                            "denominator": 2000000000000000000,
+                            "numerator": 1156788898762556379
+                        },
+                        "minPoolCost": 128040,
+                        "monetaryExpansion": 0.400091053,
+                        "poolPledgeInfluence": 7.341969209183166263e10,
+                        "poolVotingThresholds": {
+                            "committeeNoConfidence": 0.316752,
+                            "committeeNormal": 1,
+                            "hardForkInitiation": 1,
+                            "motionNoConfidence": 0.7305411604,
+                            "ppSecurityGroup": 0.81493
+                        },
+                        "stakeAddressDeposit": 29,
+                        "stakePoolDeposit": 14,
+                        "stakePoolTargetNum": 19071,
+                        "txFeeFixed": 15,
+                        "utxoCostPerByte": 431835
+                    },
+                    "258478d2ca7ac762f7c6a6269bd72e7662e26398f047d22261f4437e"
+                ],
+                "tag": "ParameterChange"
+            },
+            "return address": {
+                "credential": {
+                    "scriptHash": "eb1d8594b71267d36c2dbf2288dcef1a6f4287c9c8f115b169c133e9"
+                },
+                "network": "Testnet"
+            }
+        },
+        {
+            "anchor": {
+                "dataHash": "763ceabee374ec6c82d754203685eee34df7932875ecd120953f7d17d7b01155",
+                "url": "https://qxS.com"
+            },
+            "deposit": 23,
+            "governance action": {
+                "tag": "InfoAction"
+            },
+            "return address": {
+                "credential": {
+                    "scriptHash": "20d1d5b61f0492425eb24f907ee27c25511f9a008797a52a4c37419c"
+                },
+                "network": "Testnet"
+            }
+        },
+        {
+            "anchor": {
+                "dataHash": "6af7bc8cbcea05eaee0ca239594ad46d4d0eb09f66c9f68c966c596634e0dad9",
+                "url": "https://aBFNyuiS2xk5Jvw.com"
+            },
+            "deposit": 570184,
+            "governance action": {
+                "contents": [
+                    null,
+                    {
+                        "anchor": {
+                            "dataHash": "cfc300a3c2cc5bc3ea2df00ac48ed0375c7741b138e22a50903ac04a1ea7eb1e",
+                            "url": "https://e1E71BqIQZWVjg9N.EhL-u9nYEeWaKuRACB.com"
+                        },
+                        "script": "5a7a689c03630f87a758c428d11100391d0c83330b3794bd1832df89"
+                    }
+                ],
+                "tag": "NewConstitution"
+            },
+            "return address": {
+                "credential": {
+                    "scriptHash": "0b5cfd0690ec880f618eae8c5293c1a45a20d2e695b18e7122b9541c"
+                },
+                "network": "Mainnet"
+            }
+        },
+        {
+            "anchor": {
+                "dataHash": "c66fcd8ff3f0d79a723b788689baed0f06e5b092b06b0a277a1098c179df7bf5",
+                "url": "https://IdLtm.7361vXEw818B.com"
+            },
+            "deposit": 30,
+            "governance action": {
+                "contents": [
+                    {
+                        "govActionIx": 31428,
+                        "txId": "a01bdb5f87e8d6d70b825002d38f6f4c8d43bb37bc2e96b52be699880dad462b"
+                    },
+                    {
+                        "major": 2,
+                        "minor": 23
+                    }
+                ],
+                "tag": "HardForkInitiation"
+            },
+            "return address": {
+                "credential": {
+                    "scriptHash": "a4e6f0b91fcf3f125a9d06cba24a85859e6bb1e275f3b968d2c347d3"
+                },
+                "network": "Mainnet"
+            }
+        },
+        {
+            "anchor": {
+                "dataHash": "f7e961ccfc9e63296684faebd3cd3394bbbf89989f2fb55ffbdc516fb4af9869",
+                "url": "https://33rGDKdlwzdg9HxKOLqgPvmjDu7hdlPkzuIpsjnZ.com"
+            },
+            "deposit": 0,
+            "governance action": {
+                "contents": [
+                    {
+                        "govActionIx": 28232,
+                        "txId": "f1773c18023a54010028701fe04b34f1b116ab6320903b7663176ada5a81f0b4"
+                    },
+                    {
+                        "major": 2,
+                        "minor": 7
+                    }
+                ],
+                "tag": "HardForkInitiation"
+            },
+            "return address": {
+                "credential": {
+                    "scriptHash": "8ccf8dc16e99a47ea20559a1eecfbe8fd29a8eb1afec86fb4cf5a5fb"
+                },
+                "network": "Testnet"
+            }
+        }
+    ],
+    "inputs": [
+        "032193c50ef35ced257af0617a9613d9a282997874e02de7b771e58bcbd84003#9093",
+        "0f68a3a3fcfedbf4b096e5b99c2baeccde332c71b59e6500456a374fc374f6dd#11027",
+        "19dcff76c661f8a290fb7f30a91ef011c3c67cfb3ccff5ffb9072f23e161fdfe#11472",
+        "2010fceb87ba7cf33947407a8eaf2eb47dfb32628f50b4dab046e0280f33b932#11888",
+        "245d8109c138bb03ba85ff57c1a212a9ba93fe932e9fbf22432b411d036083fa#19954",
+        "262363be3ce2c618231128e5e8468dd77a7719edba45f6c40b797aada6d12479#30644",
+        "2cba9f1537ece834cd205bd025eb3cc0536578ee83b6408314743ab87735e996#31046",
+        "2fce35f6c8e16ec3b2fcf018f394853b4ea5865bbbec32bc13c95bd45e1f82dc#18270",
+        "3a47c550ebb7b81b91bace053dea244cd7cb50429beef6e8ebc9511af0ddf243#26639",
+        "4ee9f74da5d421641792ccd26898b8901f407eb88602049699366d2b858bb151#12354",
+        "6d1c5dd3c7ed1cc3c3acf91662e7160a140309d4b0de899a091675a10a3aa6c5#8478",
+        "70430919503431e0d7f8e84b8037a116ca4db5c693165964342b49d8635a2bda#13033",
+        "7a525c6e329fb50107b2ff0c578c63114ade114ae1c9e57af20df233ecbc38d7#3499",
+        "7de9736e52e0a50bdd9c8be6c743a5042aff5d4a869dbbfd1f13b2a0438b6135#18419",
+        "8f80118358e8513b1dcb20697beab4f035f3506621529bc38184c3971926e976#15133",
+        "b3baa4674314a88bcfa07b52b4215a695d8aa69f96056db145fcba2e4106f210#3186",
+        "b467d5aad39ed40d3ea30cb507f71e537964ad86c8ec3c75ad87a0bb208442aa#19358",
+        "c1845e1d246d418efe4ccbabac5dcacd1fa04ac2a9337171d987d3c87d6f9256#25639",
+        "c60c47756d0720c48d1b30d2f33102ff5a81f267cf4a758bd380ad1c92a1ee63#10038",
+        "e09e6b74617d1ce057f4a79e53649a20b1ac9eef183b2c8ee353339c5b9e59e7#26458",
+        "e1219ffb6388026b54d718de46550e25f59d756899ddaf9c1ee387d88033f221#27240",
+        "e869ed1966becca4a1a0121c60f4678dfc270a35f79938e9e1afc2068a0080d6#1722",
+        "f1dcd92a5f200065300d734c71683237eb3e58accc468c6a624920ea8226657e#23346",
+        "ff62f8a08b186d8bf5fde841092513ab8e478fceb9b26ec137e5d9f5e853e0af#3304"
+    ],
+    "metadata": {
+        "2062685": "^H}'9-𐢧\tx~h秡\u0006\u0018k",
+        "4292724": -14,
+        "8902257": [
+            [
+                [
+                    [
+                        "",
+                        "[]"
+                    ],
+                    [
+                        5,
+                        "𬊷"
+                    ]
+                ],
+                20
+            ],
+            [
+                4,
+                []
+            ],
+            [
+                [
+                    [
+                        "[]",
+                        4
+                    ],
+                    [
+                        "[0x6a]",
+                        0
+                    ],
+                    [
+                        "[0xb3, 0xc2, 0x15, 0x8f]",
+                        -2
+                    ],
+                    [
+                        0,
+                        "[]"
+                    ]
+                ],
+                [
+                    [
+                        "𦟕*",
+                        "R"
+                    ]
+                ]
+            ],
+            [
+                5,
+                "[0x35, 0x91, 0x4e, 0x62, 0x6f, 0xfe, 0xd6, 0xa7, 0xa7, 0x4c, 0x35, 0x6b, 0x6d, 0x50, 0xb5, 0xd1, 0xb8, 0x4d, 0xcd, 0x34, 0x2f, 0x74, 0x8b, 0xe3, 0x8e, 0x00, 0xfc, 0x69, 0x26]"
+            ]
+        ]
+    },
+    "mint": {
+        "policy 4d50a11e297e7783383bf06dd6e4e481230323bd96cd8b8d9ee3888d": {
+            "asset a50ba249b62c9bd2838e4ef5ed5d722831ad22fe8c8c981803ae": 552332319639385487
+        },
+        "policy a4875f8023d8528d8de8863e97270421f9be2a6493211f4681fe4644": {
+            "asset 0022fee9a05f36dd7fb00d85b18ba5c873e8fc21eea4": -2460151246833500809
+        }
+    },
+    "outputs": [
+        {
+            "address": "addr1qxap5r6x6qxtg3h6579cpjk7tlj48q7h0eepeufcjdrv0j39hm284c3w36jm9tz2pn7mx6nd3fffs8t38j7kprrksspqq36f92",
+            "address era": "Shelley",
+            "amount": {
+                "lovelace": 1928751009827156622,
+                "policy 4d50a11e297e7783383bf06dd6e4e481230323bd96cd8b8d9ee3888d": {
+                    "asset 31 (1)": 2038185755786038070
+                }
+            },
+            "datum": null,
+            "network": "Mainnet",
+            "payment credential key hash": "ba1a0f46d00cb446faa78b80cade5fe55383d77e721cf1389346c7ca",
+            "reference script": {
+                "referenceScript": {
+                    "script": {
+                        "cborHex": "450100002261",
+                        "description": "",
+                        "type": "PlutusScriptV3"
+                    },
+                    "scriptLanguage": "PlutusScriptLanguage PlutusScriptV3"
+                }
+            },
+            "stake reference": {
+                "stake credential key hash": "25bed47ae22e8ea5b2ac4a0cfdb36a6d8a52981d713cbd608c768402"
+            }
+        }
+    ],
+    "redeemers": [
+        {
+            "purpose": {
+                "spending script witnessed input": "032193c50ef35ced257af0617a9613d9a282997874e02de7b771e58bcbd84003#9093"
+            },
+            "redeemer": {
+                "data": "I 1",
+                "execution units": {
+                    "memory": 6736430226184981224,
+                    "steps": 2136055903621899075
+                }
+            }
+        }
+    ],
+    "reference inputs": [
+        "23ffb7f5a6a9685946fcbb8131e2cb711afb43355177274af3c85cdded7c298d#12891",
+        "34b30e67c1af481f7be37122e60b563a48f34e6ec3b510487aa08eb6d185aab2#21718",
+        "34b88536001501a31d7250d79b8815821229613693529bfca02f6862cf4e59aa#32134",
+        "3d9b3076060ce5c5457ac5a911b880c8680dba4c78158c1a0f3ec5446718ad3e#16927",
+        "538e43db729a5373f2c5135327dc46288053868efc3096dca6e2289077afcad4#23140",
+        "5a68201a4d84b61aaf00e7c37e52be719f378f3583850db8198dd78dc6f1b1d3#6813",
+        "5d564d62582c175c76399af1c67f3c36aae2cf0530fdfa80e70651202f15dd49#23802",
+        "79a058d8161b7ce9058e2adbea7f95d5b491cc8c7cba168331efe9d762723f11#21886",
+        "8eb4f0c059e52708813a0f782f99e3ce37d16f75ae0abad099b61e384f2188b3#29671",
+        "a5e5534136548c1a884b4dca635bec39b7c04e332b625460d31da6e82f87331c#26528",
+        "b9769d5fcaa5bcf543d069a706c5db4ad2e82ffb80ee4b02597d508b83254f76#6365",
+        "c92b621c4d3ac5b76bfbfde2bd53ebc75d07f823c018f616da8cfd0b89dc9fa0#23508",
+        "c9394ace9adab8d1cf86967ea3005f5fdf6c4b6b1e30c715fd403e6ab2d41194#28155",
+        "d4181977f0a4e77d3fc2b50ef85d1055af45c8579de92581752e89b7b0319bf6#23344",
+        "e939515ff8d8ff59cf4870f0dc2a3af0bcf2eacef5de4500517cd8ee57545c86#30559",
+        "eeaf58d8f0417b803a52e7bcb21b3b13bd55bed9cb13adb2c6b3bffa2740e793#1486",
+        "f9ee9f96ac6f4d96b4bf9aaedbeba88327037592297c8c8a8a2f5cdffd443d7c#19470",
+        "fc8a2e1e0820ec4a23c00a1756656e815cfe23977e5e3ceea93f1653eeb1dc64#20136"
+    ],
+    "required signers (payment key hashes needed for scripts)": [
+        "188147f914f6bcc3eab9525a446066c465d627253fb7cecccea0df9b",
+        "1cf9732d84b424db0ef8b4dc3aabbc3d4513ff267462359f1ea5e2c8",
+        "2199e4b02d0c6f1612f3fc4645fcb1bc0f80d0e6dc5a8da13b50f4f4",
+        "27ee3055a08cfd861eb290e88b4dcbebfdf731532d91d4912bb1cb6f",
+        "370badd13c3d98a45fb7181bbe41895a3f785a457c9a5ab1dcc383af",
+        "3d78408c5f9f9ce972922421afd95dfb5f84c18d9a0732de2062bef5",
+        "4b2acfe72365d7dd14ace4e4c4bced83aa1d714fb78dbc69ffc29539",
+        "4dfa01c76f4ecee75b595c15947b6880f91544a0560e844744c15190",
+        "55927a861535c5128b4df11541b298fd360509fac5ec12eb59ef68eb",
+        "59481320aaf4496719e6afba3a5474167ba6d8c950ecfebda727b705",
+        "595a1e0f0565a1e7f81dcb47357117be8d3808d6556b2dfc8de79eb1",
+        "5f5d9db6a21c62c8797d637f6063a59572f1745439c291234d88f0d0",
+        "80bc8dd9770a72fb44511a5eb7027678005f2c9cdbd136409d7705f7",
+        "978e8744460875f0f6184b946b4d57401e48133d4b0547b80c0c8208",
+        "9e4df1b865fdf653b55bf78805cc97fe0de41e47660af93c60322202",
+        "a467d2b11d4484e8aa265d4b6c3e333f5dfc08563ed8e150ac943616",
+        "b5aa56e3239eee7e99f1f308c052a8ed3c613ab29305ec5053733314",
+        "c2930464914879a27a89a3455223d0c53d730dfe34f03886900f6dd4",
+        "c6a69c94811da336998a0904420d8a1d4709a173e60c86970d28bc05",
+        "d4ad7f57f9e1610ddee454301513c66efeaf47f94d63f07a606169ba",
+        "dc6b6c433643a1e7a75791ddfe02870f2a9dc25ad3ddcdb780caec77",
+        "e1fde5b9ddb494d8e39e64d5fd6b65e850c3c4c88ee93963652b579f",
+        "e3a22926f7c4b335b66148f299debb73bcbdfc6a086f480e74e8b3eb",
+        "edb6582ee30b1dbf8c3859f2282c46012ab91137ce37d2efa6f9899f",
+        "ee37137c3febc18e0d61e32717e068b3414e7e7b85684b050680daca",
+        "faa9b36022171e44d442774cd2af8e785be8b4349a2fa59e15c84737"
+    ],
+    "return collateral": {
+        "address": "2RhQhCGqYPDpAceqZARyCoswZWQsaZYrkRXBpZVGyzXhaLvEFYx6Y5jNAKdVif3PfGRZrakkfYRGTv5rcmhbKZvcSzMC5rGY5XhqUiySpvrZNu",
+        "address era": "Byron",
+        "amount": {
+            "policy 3cfa73456137e35bf910a567bf19294a5b280ac85525e2a53df95600": {
+                "asset de3b70e9a01101a55f": 2
+            },
+            "policy 98402e61bc72a2b6b1c24ac4a792285d60f5edfe6f45917b6d090ac8": {
+                "asset 33 (3)": 4750076947841874382,
+                "asset 4a9d1921d0a1adfbbf7d979e8be8ce080ccaa97137da26": 3385246941606292340
+            }
+        }
+    },
+    "scripts": [
+        {
+            "script data": {
+                "plutus version": "PlutusV2",
+                "script": "46450100002261",
+                "type": "plutus"
+            },
+            "script hash": "03d9bf874aa50cb845f4dcf011a223ed4b1ccd51b485990baa79d676"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 9932145)",
+                "type": "native"
+            },
+            "script hash": "15317cfe89bca75ebccfacbac4cd59cac2367b3e3b34fbd66266fb14"
+        },
+        {
+            "script data": {
+                "script": "(MOf 4 (AnyOf (AnyOf ) (Signature KeyHash {unKeyHash = \"5b4ed1f08ecb65017f463dc5d74748a53839e35d0f5897e8f39fa31f\"}) ) (AllOf (AnyOf ) (AnyOf (Signature KeyHash {unKeyHash = \"a1506b01da774d6818a22355e8ee880f1edb7c7b8dd57789823ccb36\"}) (Signature KeyHash {unKeyHash = \"795971262441395e20899d6bacbe07928fa1ded71bfe7f66fe5c2f4e\"}) ) ) (AnyOf (Signature KeyHash {unKeyHash = \"5b1c72ff0fa3da2ecdbc40e2bb1a5223df110d6d5a7b094d0c15015a\"}) (AllOf (Signature KeyHash {unKeyHash = \"7fb38b4af7cf082cf0fff700c84ff5d1ef056695d044e2138a5122d7\"}) ) (AllOf (Signature KeyHash {unKeyHash = \"99c67b61b850a7edf09ee605fbf1ad8c2a0f434b0597f4124b55c2db\"}) ) (MOf 1 (Signature KeyHash {unKeyHash = \"8ce7c374d702cdd626ba9306d87ea003d696c4a660eff1e63060b414\"}) ) ) (AllOf (AllOf ) ) )",
+                "type": "native"
+            },
+            "script hash": "169deb6e429e594adf18cbfb658f4ccd28b44aabf9f6dac93d7c2f00"
+        },
+        {
+            "script data": {
+                "script": "(AnyOf (AllOf ) (AllOf (Signature KeyHash {unKeyHash = \"cf35d596eef928e3e6e70e88ea3fde25531e058ee97c28b3bee1529d\"}) (MOf 0 ) (AnyOf (Signature KeyHash {unKeyHash = \"d9efa12ec1005a25fbf58771f0b3f5c02d74a2bdf18259c0a4d861af\"}) (Signature KeyHash {unKeyHash = \"08b63e5e1ee6bfe93231939935752922855e85eb9206e8490f57f679\"}) (Signature KeyHash {unKeyHash = \"845cb78d790e9d6961fe45c0437bb316bc284ab4087f17a5359ff141\"}) ) ) (Signature KeyHash {unKeyHash = \"d611044a18ad0a4d527e27dad7ed1da3f3cdb96b9b5e8d84763b8d40\"}) (AllOf ) )",
+                "type": "native"
+            },
+            "script hash": "1ea315cea031e68f682df2bbbc053e354981b353327b51e80a950de0"
+        },
+        {
+            "script data": {
+                "script": "(Expire < 6576862)",
+                "type": "native"
+            },
+            "script hash": "24d9cef06c0c85a96bf6e9ec187527b708bb07242b8fbee05af4148a"
+        },
+        {
+            "script data": {
+                "script": "(MOf 2 (MOf 0 (AnyOf ) (AnyOf ) ) (AllOf ) (Signature KeyHash {unKeyHash = \"e94edfb730122c915924f56d396b326f59f2f7f36794a5b7e9742945\"}) )",
+                "type": "native"
+            },
+            "script hash": "44a83b3d62b95a3000b15cf487977282efa124343729685bcea0d4bb"
+        },
+        {
+            "script data": {
+                "plutus version": "PlutusV2",
+                "script": "4746010000222601",
+                "type": "plutus"
+            },
+            "script hash": "51936f3c98a04b6609aa9b5c832ba1182cf43a58e534fcc05db09d69"
+        },
+        {
+            "script data": {
+                "script": "(AnyOf )",
+                "type": "native"
+            },
+            "script hash": "52dc3d43b6d2465e96109ce75ab61abe5e9c1d8a3c9ce6ff8a3af528"
+        },
+        {
+            "script data": {
+                "script": "(Signature KeyHash {unKeyHash = \"6fad72c2689883260031077a40ad4d2a6b9a5496ddf0caab66e3024c\"})",
+                "type": "native"
+            },
+            "script hash": "5eaba97be7ad35aa7ae0a62d9245d002b09ac989e8607c82a798de4e"
+        },
+        {
+            "script data": {
+                "plutus version": "PlutusV3",
+                "script": "46450100002261",
+                "type": "plutus"
+            },
+            "script hash": "5f72646032e20af96d866273fd4c7f8ab72343201123716784ef3fed"
+        },
+        {
+            "script data": {
+                "script": "(AnyOf (Signature KeyHash {unKeyHash = \"3eb503180668a881053b00c0efeef18e65d599312ea9c265f260324a\"}) )",
+                "type": "native"
+            },
+            "script hash": "80afd99ef0e4b209ec30b07c387b56dc5255ba8c4fd49386be796dbb"
+        },
+        {
+            "script data": {
+                "script": "(AllOf (AllOf ) (MOf 0 ) (Signature KeyHash {unKeyHash = \"0bfea854d9a2bd4b999cadd321347ff4ef224294612cf276c00700fe\"}) (Signature KeyHash {unKeyHash = \"396596865f53b7f555ed30aac0288c7085cc35fc6af50e02050e297c\"}) )",
+                "type": "native"
+            },
+            "script hash": "95a1a9c173c424bdff945e1fa9060291440b4b53cc41c2a956d21657"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 10812922)",
+                "type": "native"
+            },
+            "script hash": "9890761fd860a9a903c2ead4daa951a52842bcac1bda7a4cba4ea581"
+        },
+        {
+            "script data": {
+                "script": "(MOf 2 (AnyOf (AnyOf ) (MOf 3 (Signature KeyHash {unKeyHash = \"785e506c6d42d3ad5d3dd45718c08432dffcbdb1d10b9703dd6f8682\"}) (Signature KeyHash {unKeyHash = \"96289c05f5769fc3e1dae011067115e7c807147a402664838170b096\"}) (Signature KeyHash {unKeyHash = \"f4fe7fc7d67e850aba868d2ffc25ad0c8902cf10764b410d06144b18\"}) ) ) (MOf 1 (MOf 1 (Signature KeyHash {unKeyHash = \"ade6708c33a716f927cf874a4c0f00dbf2d0e1294b4e85e7877a1806\"}) (Signature KeyHash {unKeyHash = \"af64173e9368680c31ba1e3dc1ce1508466dbf7ab37727bf4bd207e4\"}) ) (AnyOf (Signature KeyHash {unKeyHash = \"884200d9110aab90488dc6a0e0ea0ee6ea3c52fc3776c1dea5845996\"}) (Signature KeyHash {unKeyHash = \"46bad449b8ed8c1510e4bc02515cee386d51501ccf4ddcaf1e8bac8a\"}) (Signature KeyHash {unKeyHash = \"968a20061d7c492ce843a9ebdc0c548d5c1d20efec32a802577fa8dc\"}) (Signature KeyHash {unKeyHash = \"b3d62997d4907349f504a2773c834a543f1907077b3c0059bb82fad6\"}) ) ) )",
+                "type": "native"
+            },
+            "script hash": "9b7a9cc8006b9a2f4f730ffc951a747223c27388ee8413ebc14491a7"
+        },
+        {
+            "script data": {
+                "script": "(Signature KeyHash {unKeyHash = \"ed402a14dbff83aa7e48fb391bad034329e5c91c2303dbd001d6ee22\"})",
+                "type": "native"
+            },
+            "script hash": "a198e9a6c01faa39f45f8e306c0e4199d769df51fd1b2756c853b04a"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 12019514)",
+                "type": "native"
+            },
+            "script hash": "a7af550ee6d626aa7ee5639ef5ec9dcdf595676c825128b8a38efc36"
+        },
+        {
+            "script data": {
+                "script": "(MOf 0 (MOf 0 ) )",
+                "type": "native"
+            },
+            "script hash": "ad3c305984fcd847607011ef04ff802263f0aeb898d0b1662baa6ce2"
+        },
+        {
+            "script data": {
+                "plutus version": "PlutusV1",
+                "script": "4746010000220011",
+                "type": "plutus"
+            },
+            "script hash": "c370d10724c6b5a2448af41238e024ad470c0139da7f4b8527a47d74"
+        },
+        {
+            "script data": {
+                "script": "(Expire < 6366822)",
+                "type": "native"
+            },
+            "script hash": "cfb4e380d4984f92bbd622b910ef0af732ebfd9fd868b4a160e7f0e4"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 4720092)",
+                "type": "native"
+            },
+            "script hash": "d1c75ac74e6f03c6fd2dcdbe560b00f4a593b7be1c8f836776d8a99c"
+        },
+        {
+            "script data": {
+                "script": "(Start >= 14950412)",
+                "type": "native"
+            },
+            "script hash": "d430602c1f1e1b4d8dd3ac32521e551e2156c9743e205706bf51d828"
+        },
+        {
+            "script data": {
+                "script": "(MOf 1 (MOf 1 (AllOf (Signature KeyHash {unKeyHash = \"9cfed286e0f8f8736168665348b6fe8810b98bb4afd020e3919378ce\"}) (Signature KeyHash {unKeyHash = \"a4bc39e6353d8654d6e548542d5f87dc10772f529728be1e66cf77f3\"}) (Signature KeyHash {unKeyHash = \"bac0c50f5ba67dadfa9017c506ca76692ad6404dbb8e23b80ac38e9e\"}) (Signature KeyHash {unKeyHash = \"7c91672c9b12fd1e06907ef247a686b4fe51d6c408dea025f9558cbb\"}) ) (AllOf ) (AnyOf (Signature KeyHash {unKeyHash = \"400db9a892aca4fd788acdf8c560dc61a2f81445ac3094b8c9441ca6\"}) (Signature KeyHash {unKeyHash = \"4ff75cfbe99d504d6a27ac7ddb9c97ecca8a54a1f5e812d7226f9dba\"}) ) (MOf 1 (Signature KeyHash {unKeyHash = \"b4bc8632c5289af7a1ded6d78437a9606706532588e9f2dacf302342\"}) (Signature KeyHash {unKeyHash = \"ffe798a7923ba8e938dc9e2d16b98343fb9f679b7633ebe14ccd22c3\"}) (Signature KeyHash {unKeyHash = \"d0932625f3e98ef212f75aa43f4ec9169c84aa5a9279f9babb7228ae\"}) ) ) (Signature KeyHash {unKeyHash = \"10cb2221c901df25581d14527b3ae1057dab24076d323ac6479ab338\"}) (AnyOf (Signature KeyHash {unKeyHash = \"292ffa47c09781f0bc3011d19b93440ef724e0a38299b730a1f2ebad\"}) ) (AllOf (AnyOf (Signature KeyHash {unKeyHash = \"d22edc50b39b6f3c223ba216f4d5b9e78534e79259019fe1c484c020\"}) ) ) )",
+                "type": "native"
+            },
+            "script hash": "f8c588c3310be74f87db3a7e2a6c9d24989145ccb2824642d12fd962"
+        }
+    ],
+    "total collateral": 499525,
+    "treasuryDonation": 14,
+    "validity range": {
+        "lower bound": 2,
+        "upper bound": null
+    },
+    "voters": {},
+    "withdrawals": [
+        {
+            "address": "stake_test17qjdm8tskq9ehz73rt9f2t7ku47zkcjx00ehz44ap3fv05q6z8yrd",
+            "amount": "2 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "24dd9d70b00b9b8bd11aca952fd6e57c2b62467bf37156bd0c52c7d0"
+        },
+        {
+            "address": "stake_test17qn9gq42y7cacwyn90qktkve6w294q7v80xt2zdt9kk9smga4n5vw",
+            "amount": "3 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "265402aa27b1dc38932bc165d999d3945a83cc3bccb509ab2dac586d"
+        },
+        {
+            "address": "stake_test17q7vcev58arfzlxy6qxh3wfw25q05s5efakp0ghh07n2qmglq4ndp",
+            "amount": "249498 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "3ccc65943f46917cc4d00d78b92e5500fa42994f6c17a2f77fa6a06d"
+        },
+        {
+            "address": "stake_test17pz38g6e45laevt7s9sch9hlzj7gtqpyaj8g3hwc27ksm6s8epfme",
+            "amount": "523683 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "4513a359ad3fdcb17e81618b96ff14bc858024ec8e88ddd857ad0dea"
+        },
+        {
+            "address": "stake_test17zy7xvxy80nrrtsftqaykjs9sr4fr593sl6wz9acw85g6mq8dwzh3",
+            "amount": "966747 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "89e330c43be631ae09583a4b4a0580ea91d0b187f4e117b871e88d6c"
+        },
+        {
+            "address": "stake_test17z5gvp7rthnfcz6wxctthe50ketp2klplz0wvdpwlxeap4selsd26",
+            "amount": "10 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "a88607c35de69c0b4e3616bbe68fb656155be1f89ee6342ef9b3d0d6"
+        },
+        {
+            "address": "stake_test17rgt6h70xw40dm6xw2p86927nk5g4l2z6ymxsankrx3e5ys7d5wsj",
+            "amount": "436988 Lovelace",
+            "network": "Testnet",
+            "stake credential script hash": "d0bd5fcf33aaf6ef4672827d155e9da88afd42d13668767619a39a12"
+        },
+        {
+            "address": "stake_test1uq9mvcc30c5pa9g2h8fwejglgc5vzvsgeuee20dhge0epjqw8sevr",
+            "amount": "760497 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "0bb663117e281e950ab9d2ecc91f4628c13208cf33953db7465f90c8"
+        },
+        {
+            "address": "stake_test1uq3arfe55697tcny3nc95x44ylhjtmderlcktwmmrtlcvzq868hqz",
+            "amount": "947121 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "23d1a734a68be5e2648cf05a1ab527ef25edb91ff165bb7b1aff8608"
+        },
+        {
+            "address": "stake_test1upgtjnvgfayvmusmkx6sxmxx3kjpanv8j65wupnkwww6d0cyd0cck",
+            "amount": "995958 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "50b94d884f48cdf21bb1b5036cc68da41ecd8796a8ee0676739da6bf"
+        },
+        {
+            "address": "stake_test1upd0wvsw8vd5eh57s6q5zhhwqju7rcmlkw9lk78v5adlppqsvpwh2",
+            "amount": "24 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "5af7320e3b1b4cde9e8681415eee04b9e1e37fb38bfb78eca75bf084"
+        },
+        {
+            "address": "stake_test1uzw8z6g8r3z99kff82ce6aa3hadmm54a853nn2g9qp6pu8sdalv84",
+            "amount": "183487 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "9c7169071c4452d9293ab19d77b1bf5bbdd2bd3d2339a90500741e1e"
+        },
+        {
+            "address": "stake_test1uzw8uvmrtwrw22vkc90tvfm6myk8gd9wjqa27reqfm7lknsd9g77s",
+            "amount": "541673 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "9c7e33635b86e52996c15eb6277ad92c7434ae903aaf0f204efdfb4e"
+        },
+        {
+            "address": "stake_test1urt5fn66kf6wpmcyyc3kglcgge2mfqh06j2aa339nurqd5cd6y9we",
+            "amount": "12 Lovelace",
+            "network": "Testnet",
+            "stake credential key hash": "d744cf5ab274e0ef042623647f084655b482efd495dec6259f0606d3"
+        },
+        {
+            "address": "stake17y2a2r5kutkq27nr58kyfpv3gy5c0h88xpf0namkr6fjf2g6z7sqf",
+            "amount": "624051 Lovelace",
+            "network": "Mainnet",
+            "stake credential script hash": "15d50e96e2ec057a63a1ec448591412987dce73052f9f7761e9324a9"
+        },
+        {
+            "address": "stake17xr3m8e9swq6vtwwhpsgjd52wal5sqxsg3pz8kxg3hlvg9qk2k7rc",
+            "amount": "0 Lovelace",
+            "network": "Mainnet",
+            "stake credential script hash": "871d9f258381a62dceb86089368a777f4800d0444223d8c88dfec414"
+        },
+        {
+            "address": "stake17xg7sxfkqujpdx5vpnnvgkyqcyjtuf4svcutem04e03m96g2432hp",
+            "amount": "381163 Lovelace",
+            "network": "Mainnet",
+            "stake credential script hash": "91e819360724169a8c0ce6c45880c124be26b06638bcedf5cbe3b2e9"
+        },
+        {
+            "address": "stake178d8eywd40zw0lmcaluc6kyvt0hvfd78g4ty4r5935uncpc7qxv6g",
+            "amount": "377729 Lovelace",
+            "network": "Mainnet",
+            "stake credential script hash": "da7c91cdabc4e7ff78eff98d588c5beec4b7c745564a8e858d393c07"
+        },
+        {
+            "address": "stake1uymgqd9sn7jamfc8w48qr4p47yyldv4cp62fctyltaegsng8w7t0y",
+            "amount": "96680 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "368034b09fa5dda707754e01d435f109f6b2b80e949c2c9f5f72884d"
+        },
+        {
+            "address": "stake1uylw3lp6es9wm37mfl5t9dyjzzk3rzta0tgajls0twf5lgq7mxqsm",
+            "amount": "18 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "3ee8fc3acc0aedc7db4fe8b2b49210ad11897d7ad1d97e0f5b934fa0"
+        },
+        {
+            "address": "stake1u9q6er7g04wktjgy9nesu5llznxyz3l5u7dmrt75z5pxxzce3nzyu",
+            "amount": "30 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "41ac8fc87d5d65c9042cf30e53ff14cc4147f4e79bb1afd41502630b"
+        },
+        {
+            "address": "stake1u9xyf2dtkvugupjsw5dhv3teyqa4rtl9vtcpm5hw3389yugk2vaav",
+            "amount": "15 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "4c44a9abb3388e0650751b764579203b51afe562f01dd2ee8c4e5271"
+        },
+        {
+            "address": "stake1u9fnmgqsq87uxjjsysntg4ftwqeekf08345jatrtr984pmg2c7tru",
+            "amount": "18 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "533da01001fdc34a502426b4552b70339b25e78d692eac6b194f50ed"
+        },
+        {
+            "address": "stake1uxfg3dl8g2rfz5h4ez28vyc0vegcqe0h4u268jfnvu008mq9fdzfg",
+            "amount": "28 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "9288b7e742869152f5c89476130f66518065f7af15a3c933671ef3ec"
+        },
+        {
+            "address": "stake1uxtc82d8k3e96eltq0ctamc8tkmxv2ldzqp08e620vd87gcgp2a77",
+            "amount": "955634 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "9783a9a7b4725d67eb03f0beef075db6662bed1002f3e74a7b1a7f23"
+        },
+        {
+            "address": "stake1uxvgp0yvkhx60j3jcgq9rcpns08vvv7sy33qjacp7e2wsss8rf9c7",
+            "amount": "901106 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "9880bc8cb5cda7ca32c20051e03383cec633d02462097701f654e842"
+        },
+        {
+            "address": "stake1uxmdhhwgr2zcmv4ryluz5dpx2t06gwwjdwhe5lth5m645ygez78jg",
+            "amount": "11 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "b6dbddc81a858db2a327f82a342652dfa439d26baf9a7d77a6f55a11"
+        },
+        {
+            "address": "stake1u8qvgzwfus9nmaddr35tcwhuq3e7yfz9rnwpq2qfrlshfmq4qum6r",
+            "amount": "265759 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "c0c409c9e40b3df5ad1c68bc3afc0473e224451cdc1028091fe174ec"
+        },
+        {
+            "address": "stake1u8q4trkph80493me45hhj8y3fwdx2wz6qr2eeuxm3menhvgpyeyq9",
+            "amount": "30 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "c1558ec1b9df52c779ad2f791c914b9a65385a00d59cf0db8ef33bb1"
+        },
+        {
+            "address": "stake1u88dav8pfgh60qmmfzhf42pe3lyh4vz5qp6pu2kyen098ecn8vu3h",
+            "amount": "7 Lovelace",
+            "network": "Mainnet",
+            "stake credential key hash": "cedeb0e14a2fa7837b48ae9aa8398fc97ab05400741e2ac4ccde53e7"
+        }
+    ],
+    "witnesses": [
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"49830e81eed8f4e10f9ab03f39ffe7078aced2df2fb476360c2a685e28fc346d\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"5836ee6ce23e53122bb3ebfe95c073bd0cd8634c33dc0ab64b5a4376980dcfab758330e66430dd171a7fcf408aa919eccdb9f440b76c6b2bfe376724c4499b73\"), bwChainCode = ChainCode [0x35, 0xc6, 0x06, 0xd0, 0x0d, 0x6a, 0xb3, 0x37, 0x8f, 0xe6, 0x7d, 0x81, 0xca, 0xe3, 0x1b, 0x62, 0x81], bwAttributes = [0x9b, 0x36, 0xd2, 0x5a, 0x58, 0x2c, 0x6f, 0x13, 0x5b, 0x4e, 0x20, 0x19, 0xac, 0xf3, 0x31, 0x5e, 0x79, 0xf9, 0x59, 0x52, 0xd4, 0x10, 0x1c, 0x52, 0xed]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"eed3d587e4fb29e038cce831286c67ada8fdeec9f3c592f33e3485d770248e38\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"a35dadac4e4ec16476b0ff842a5509ec897eda92864317edae2920239dd642bc73f024a2aa6d56d6a6231f9f046f762c60a7f2664e596e62af801ec6be883961\"), bwChainCode = ChainCode [0xd6, 0x33, 0xa1, 0xd5, 0x70, 0x83, 0xae, 0x3c, 0xab, 0xab, 0x66, 0xa0, 0x75, 0x88, 0x0c, 0x94, 0x92, 0xbc, 0xad, 0xa6, 0xd7, 0x37, 0x53], bwAttributes = [0x65, 0xeb]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"5d846f6fa168c6c10225a153d4f1e50176ac8dfae16da7bddc69a21a74f30344\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"ee414394cae8b121847f841af5908f96a2a9eff54dd00dfd60feff10550752439795033c7986465c6d33c9ddc531ec255be0a66862f905f34158202376720f70\"), bwChainCode = ChainCode [0xbe, 0xf9, 0x64, 0x88, 0x54, 0x32, 0x82, 0xfe, 0x42, 0x0c, 0xd2, 0xfb], bwAttributes = [0x3d]}"
+        },
+        {
+            "bootstrap witness": "BootstrapWitness {bwKey = VKey (VerKeyEd25519DSIGN \"3a6f19213aac4b17f7eab944f8d001e0b8197032ceec341f7f6efe8a0667616a\"), bwSignature = SignedDSIGN (SigEd25519DSIGN \"20a34a9e760ea53d60130be98428fc0c2bd21e71fc62a5b0aa46b5c340add4d71299aa2956a7642f2df6de62d0b037deba4c2e1e32bcca5331f2f43cabefb183\"), bwChainCode = ChainCode [], bwAttributes = [0x1b, 0x7a, 0x1b, 0x69, 0x36]}"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"c8e76d342f5f2534d8ea66f2133a10c0607b2f796c63050f6719e01a19adcc14\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"29f6b57225d09500403a8535912f8ff5c90ee7a850fd6dc76c4f4354e78b8e64b5c6b0603e2c069d02a264435e1d6df8d3a9de2944ea2f48a302db8cf84046af\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"378da3fd576eef16decba6abe0d941f620badd8cbd595088929497b9a629c951\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"2ec0cfcf098ce4699995e464c543530c108abf104b869f62a0766f141a76f0fae0086c318ade633dceeebc444560e98915d2102ee59925c159d3f4045253b884\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"97ee3973d007f68c1db0071a4fbe0f1e2990907afd8e2136d26df5955a383d9a\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"a26adbd64cff13886959719ed58cab2a8bc375db59c238b7d1b6570782b52263041eb1e85fef607521e3a6920850eeebf275a1e9a867119e8ed68d12dafa002e\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"4ddc6f748c8e3bb9f1fc4bc99b02fdf3914ec943aa5f1954945a883c15c12fa2\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"b6936904467cba5fdfad551fda9d4aaab54f3de0753f398914748ee599bfc1be81b03a0e5e9183ab87dd4b28702712ef53e991cca7f3e46412f7da716d8b9210\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"47d7d343e27c64456cf867bfcb0ed9cdc75ce89dbb6917cd412daf08a2b8f88c\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"81f135f082cf2ff8e56209416dbdf8828759f81c158f0de35297d6e9a0386b513b4dec6cc3d7ce358ce4959e015119d3c40280bb5c2b6ed465bbd9f3d2ee8d08\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"7e7acdf8abcb08c9bc9d5a340ab1b00087b30109bb27267cc91ad98c2391c5a0\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"f7d301744029df27bd90f2bcd1a5e143adf64d483f3bbbb94df4e766e3e4f4e82eb78ee396c7e6a54ba48bf0a6d3b493b7bee84c4487f4035c734a447fbb68af\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"b14a6f29ae292cfb3c7a9c9c6bfc41a3e95e28773259b8a99b07bb6a4c3a2fc6\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"4481f7728cfde99ef96b3383c124a86a69305db746188fe667d06b6ea80c24adf956973371f12610e7c6d67d9feb7185cd89934bee59dd73fa4a6efd92b29b45\")"
+        },
+        {
+            "key": "VKey (VerKeyEd25519DSIGN \"d2a0df9196e027c4b62697df3ea18facbb76fe2d8c5c8c0456093fa1e401a589\")",
+            "signature": "SignedDSIGN (SigEd25519DSIGN \"c3b3779a391b6f262782d445a84b416f6cbb958a0cfa0da7e54346a35b711249bd5e3f7df3cdd75cee5468674b36965504251f2e7224f649870899645d428bb2\")"
+        }
+    ]
+}

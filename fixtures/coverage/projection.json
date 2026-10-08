@@ -1,0 +1,146 @@
+[
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXOW/MissingVKeyWitnessesUTXOW",
+    "body_cbor_hex": "a300d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a000cf4ae825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6d4fed1021a00028c81",
+    "body_fields": [
+      0,
+      1,
+      2
+    ],
+    "body_range": [
+      1568,
+      1724
+    ],
+    "diagnostic_evidence": "Reconstructed hashes; archive stores LEDGER boolean, not serialized failure payload",
+    "epoch": "899",
+    "era": "Conway",
+    "event_index": 1,
+    "expected_coverage_pass": true,
+    "expected_provided_signatures_verify": true,
+    "missing_key_hashes": [],
+    "name": "conway-pv9-missing-vkey-accept",
+    "needed_key_hashes": [
+      "88028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f"
+    ],
+    "protocol_version": [
+      9,
+      0
+    ],
+    "provided_witnesses": [
+      {
+        "key_hash_blake2b224": "88028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f",
+        "public_key_hex": "4000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf9",
+        "signature_hex": "80e5695bc04a2d589c249ae1c64d6f5867e8301eb653277593788cb777d58b04015f4ffbdcff8ca0596d71fe2743318a644b5e734bca02b504957c7217f4d90b"
+      }
+    ],
+    "resolved_inputs": [
+      {
+        "address_hex": "6088028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f",
+        "input": "03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314:0",
+        "output_cbor_hex": "82581d6088028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f1b009fdf42f6e48000",
+        "output_range": [
+          138,
+          179
+        ],
+        "payment_key_hash": "88028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f",
+        "value": {
+          "lovelace": "45000000000000000"
+        }
+      }
+    ],
+    "resolved_inputs_cbor_hex": "a182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c1113140082581d6088028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f1b009fdf42f6e48000",
+    "signature_evidence": "Archived separate public-only pinned-sodium check, not rerun by this projector",
+    "slot": "3883681",
+    "source_ledger_expected_success": true,
+    "source_sha256": "3f63e5d5235c06cf8332ed5f154cecc3248fc0c630cf58969afb515b6115d2a1",
+    "transaction_range": [
+      1567,
+      1833
+    ],
+    "tx_cbor_hex": "84a300d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a000cf4ae825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6d4fed1021a00028c81a100d90102818258204000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf9584080e5695bc04a2d589c249ae1c64d6f5867e8301eb653277593788cb777d58b04015f4ffbdcff8ca0596d71fe2743318a644b5e734bca02b504957c7217f4d90bf5f6",
+    "txid_blake2b256": "ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba",
+    "witness_fields": [
+      0
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXOW/MissingVKeyWitnessesUTXOW",
+    "body_cbor_hex": "a300d9010282825820ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba00825820ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba01018182583900de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f598593f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b3971b009fdf42f6df55ce021a00029db1",
+    "body_fields": [
+      0,
+      1,
+      2
+    ],
+    "body_range": [
+      1845,
+      2000
+    ],
+    "diagnostic_evidence": "Reconstructed hashes; archive stores LEDGER boolean, not serialized failure payload",
+    "epoch": "899",
+    "era": "Conway",
+    "event_index": 2,
+    "expected_coverage_pass": false,
+    "expected_provided_signatures_verify": true,
+    "missing_key_hashes": [
+      "3c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b"
+    ],
+    "name": "conway-pv9-missing-vkey-reject",
+    "needed_key_hashes": [
+      "3c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b",
+      "6b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67ddd"
+    ],
+    "protocol_version": [
+      9,
+      0
+    ],
+    "provided_witnesses": [
+      {
+        "key_hash_blake2b224": "6b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67ddd",
+        "public_key_hex": "856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad67157103",
+        "signature_hex": "723f1d06772149962f4f1c9c9e229caaab330297687988af60e006466baca2485b75ca63c528216f15fca8750b4e07320e3943cfc6f1a28c24f266c1a685cc0b"
+      }
+    ],
+    "resolved_inputs": [
+      {
+        "address_hex": "603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b",
+        "input": "ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba:0",
+        "output_cbor_hex": "82581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a000cf4ae",
+        "output_range": [
+          1612,
+          1649
+        ],
+        "payment_key_hash": "3c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b",
+        "value": {
+          "lovelace": "849070"
+        }
+      },
+      {
+        "address_hex": "006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b29",
+        "input": "ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba:1",
+        "output_cbor_hex": "825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6d4fed1",
+        "output_range": [
+          1649,
+          1718
+        ],
+        "payment_key_hash": "6b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67ddd",
+        "value": {
+          "lovelace": "44999999998983889"
+        }
+      }
+    ],
+    "resolved_inputs_cbor_hex": "a2825820ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba0082581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a000cf4ae825820ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba01825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6d4fed1",
+    "signature_evidence": "Archived separate public-only pinned-sodium check, not rerun by this projector",
+    "slot": "3883681",
+    "source_ledger_expected_success": false,
+    "source_sha256": "3f63e5d5235c06cf8332ed5f154cecc3248fc0c630cf58969afb515b6115d2a1",
+    "transaction_range": [
+      1844,
+      2109
+    ],
+    "tx_cbor_hex": "84a300d9010282825820ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba00825820ca29138778b7927b8e6cc3ba5fbcbac4bb20c52618e1d0d32b50504bbab3e1ba01018182583900de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f598593f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b3971b009fdf42f6df55ce021a00029db1a100d9010281825820856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad671571035840723f1d06772149962f4f1c9c9e229caaab330297687988af60e006466baca2485b75ca63c528216f15fca8750b4e07320e3943cfc6f1a28c24f266c1a685cc0bf5f6",
+    "txid_blake2b256": "5ebc5e877dc72a9505dfa54c7d6e5b94d820bf1345db3d957b8f8b140efa46a9",
+    "witness_fields": [
+      0
+    ]
+  }
+]

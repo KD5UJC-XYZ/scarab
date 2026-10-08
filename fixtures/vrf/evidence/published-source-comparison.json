@@ -1,0 +1,65 @@
+[
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/VrfResult.java",
+    "publishedSha256": "aacb245d627432a4e2b1916b041d49099017d3af9af415e62df3b2009ee58421",
+    "sourceSha256": "aacb245d627432a4e2b1916b041d49099017d3af9af415e62df3b2009ee58421",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/VrfException.java",
+    "publishedSha256": "f8596e65cff427cd12ac4257773886248c5aacd239877e85c1cb101589861460",
+    "sourceSha256": "f8596e65cff427cd12ac4257773886248c5aacd239877e85c1cb101589861460",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/cardano/CardanoLeaderCheck.java",
+    "publishedSha256": "4fc1d627dcce2d5cc41d48153786a66902388c3e2d853ea03f3df2e94103fe83",
+    "sourceSha256": "4fc1d627dcce2d5cc41d48153786a66902388c3e2d853ea03f3df2e94103fe83",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/cardano/CardanoVrfInput.java",
+    "publishedSha256": "79eaa74c72fba18ebecf3a84f661f0d602521f31e693989b1e74649be6170eae",
+    "sourceSha256": "79eaa74c72fba18ebecf3a84f661f0d602521f31e693989b1e74649be6170eae",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/VrfVerifier.java",
+    "publishedSha256": "6fb949bed7a1aa5654957d955efb2af56f6e64531d6e0c4a23d04cc4133c627b",
+    "sourceSha256": "6fb949bed7a1aa5654957d955efb2af56f6e64531d6e0c4a23d04cc4133c627b",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/bc/Ed25519Point.java",
+    "publishedSha256": "9cfe2de572e301ff232da6505d8b4cbba5b1a9491ab944ae79aaf06b45973efa",
+    "sourceSha256": "9cfe2de572e301ff232da6505d8b4cbba5b1a9491ab944ae79aaf06b45973efa",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/bc/VrfUtil.java",
+    "publishedSha256": "47ae545620373a3b7a064161a55718dd6a2330d586a30318604f942ea725fd9d",
+    "sourceSha256": "47ae545620373a3b7a064161a55718dd6a2330d586a30318604f942ea725fd9d",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/bc/BcVrfVerifier.java",
+    "publishedSha256": "0f026040d334c5394d521504e8c48743e154c2108ff4f976b1ab409bc2850b8e",
+    "sourceSha256": "0f026040d334c5394d521504e8c48743e154c2108ff4f976b1ab409bc2850b8e",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  },
+  {
+    "path": "com/bloxbean/cardano/client/crypto/vrf/EcVrfVerifier.java",
+    "publishedSha256": "3cc334dea89b809afb92ea45cf61861cfbc2def25afe7bb4ce7f0ae6fa71b8db",
+    "sourceSha256": "3cc334dea89b809afb92ea45cf61861cfbc2def25afe7bb4ce7f0ae6fa71b8db",
+    "byteEqual": true,
+    "newlineNormalizedEqual": true
+  }
+]

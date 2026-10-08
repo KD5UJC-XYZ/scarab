@@ -1,0 +1,36 @@
+[
+  {
+    "event": 1,
+    "args": [
+      "/workspace/scratch/d9c93156c9bd/cardano-research/reference-runtime/offline/cardano-cli",
+      "address",
+      "key-hash",
+      "--payment-verification-key-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/transfer-coverage-probe/event-1-witness-0.vkey"
+    ],
+    "exit_code": 0,
+    "stdout": "88028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f\n",
+    "stderr": "",
+    "expected_blake2b224": "88028438394946279f9ed8d66d718679b82f26b75391cb6df8107c8f",
+    "matches": true,
+    "pinned_sodium_rc": 0,
+    "signature_verified": true
+  },
+  {
+    "event": 2,
+    "args": [
+      "/workspace/scratch/d9c93156c9bd/cardano-research/reference-runtime/offline/cardano-cli",
+      "address",
+      "key-hash",
+      "--payment-verification-key-file",
+      "/workspace/scratch/d9c93156c9bd/cardano-research/transfer-coverage-probe/event-2-witness-0.vkey"
+    ],
+    "exit_code": 0,
+    "stdout": "6b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67ddd\n",
+    "stderr": "",
+    "expected_blake2b224": "6b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67ddd",
+    "matches": true,
+    "pinned_sodium_rc": 0,
+    "signature_verified": true
+  }
+]

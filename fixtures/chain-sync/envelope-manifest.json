@@ -1,0 +1,107 @@
+{
+  "networkCommit": "c45735a56c567fa977969173d18943bac6bb3821",
+  "scalusNodeCommit": "79a056d0db66eae034d0aa0120f4566bce7d298b",
+  "sources": [
+    {
+      "path": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+      "sha256": "ba2c582fa0e4ae02f26c0e9f412da8a6ce3384599a76f55c671f7a916a8c3fb1",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs"
+    },
+    {
+      "path": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs",
+      "sha256": "10da5113837e7e7276f6be20eec97289e64704f0a6937d707bcefb8af005e955",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs"
+    },
+    {
+      "path": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+      "sha256": "83e93f9be5a5bf30600c4d5257f8527bd06adc22d5f92bcc83165a479982a822",
+      "url": "https://github.com/IntersectMBO/ouroboros-network/blob/c45735a56c567fa977969173d18943bac6bb3821/ouroboros-network/api/lib/Ouroboros/Network/Block.hs"
+    }
+  ],
+  "manualGoldenSource": "https://github.com/scalus3/scalus-node/blob/79a056d0db66eae034d0aa0120f4566bce7d298b/scalus-cardano-network/shared/src/test/scala/scalus/cardano/network/chainsync/ChainSyncMessageSuite.scala",
+  "fixtures": [
+    {
+      "id": "request-next",
+      "hex": "8100",
+      "sha256": "9037f92bc91fdcc764a89d9144c341d887ffc83351cc8cf0530555c89920a47d",
+      "startState": "Idle",
+      "sender": "Client",
+      "endState": "NextCanAwait",
+      "classification": "upstream-manual-golden"
+    },
+    {
+      "id": "await-reply",
+      "hex": "8101",
+      "sha256": "ac38783f6a3b2fe3b579718d6ba8493a456d800665b4433a0e7c823cff90a603",
+      "startState": "NextCanAwait",
+      "sender": "Server",
+      "endState": "NextMustReply",
+      "classification": "upstream-manual-golden"
+    },
+    {
+      "id": "done",
+      "hex": "8107",
+      "sha256": "8b59b58bc827052cf9e09597ac7684b7e0c855ee7848316b4c70763455587517",
+      "startState": "Idle",
+      "sender": "Client",
+      "endState": "Done",
+      "classification": "upstream-manual-golden"
+    },
+    {
+      "id": "find-empty",
+      "hex": "820480",
+      "sha256": "557f9ed2018e33506544da0da47b0a222664a7878601e6c0bc09679f002baad7",
+      "startState": "Idle",
+      "sender": "Client",
+      "endState": "Intersect",
+      "classification": "source-derived"
+    },
+    {
+      "id": "find-origin",
+      "hex": "82049f80ff",
+      "sha256": "99f7e68543fdfd47537c26fe67d6659bdb63c7a41bdf7792625f4a44cc8acf4e",
+      "startState": "Idle",
+      "sender": "Client",
+      "endState": "Intersect",
+      "classification": "source-derived"
+    },
+    {
+      "id": "find-origin-definite",
+      "hex": "82048180",
+      "sha256": "685dc9e5b0375c9600f52c1799d547392ebb301e27dc18b1a16a865c2f942f3e",
+      "startState": "Idle",
+      "sender": "Client",
+      "endState": "Intersect",
+      "classification": "source-derived-accepted-decoder-form"
+    },
+    {
+      "id": "intersect-origin",
+      "hex": "830580828000",
+      "sha256": "97bf7068830d3931a9057d36acd84f3ba465a6c20e5bd10c8a595eec76d67f83",
+      "startState": "Intersect",
+      "sender": "Server",
+      "endState": "Idle",
+      "classification": "source-derived"
+    },
+    {
+      "id": "intersect-missing",
+      "hex": "8206828000",
+      "sha256": "0c48783f14dae058555f5f760f6dc56234fb61e4d138af790032e652195c5e80",
+      "startState": "Intersect",
+      "sender": "Server",
+      "endState": "Idle",
+      "classification": "source-derived"
+    },
+    {
+      "id": "rollback-origin",
+      "hex": "830380828000",
+      "sha256": "8889b7c98c559e4431c6c90526a5e7041eef2ad957a37eef6cfea7cb31a5e320",
+      "startState": "NextCanAwait",
+      "sender": "Server",
+      "endState": "Idle",
+      "classification": "source-derived"
+    }
+  ],
+  "referenceRuntimeRun": false,
+  "wholeChainSyncTranscript": false
+}

@@ -1,0 +1,178 @@
+[
+  {
+    "slot": 70070331,
+    "case": "original",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "6f6ce291f2aa2c68729aa1c30e8d225e3154aa8678f34e0dedad9f69f5ecd8d9",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": 0,
+    "native_output": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "certified_ok": true
+  },
+  {
+    "slot": 70070331,
+    "case": "wrong-slot",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "1f58a69e8da030773397d9a5bd15845f3c066fba85bbd1ef040b0d6d7c576243",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070331,
+    "case": "little-endian-slot",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "040fd6bdbe205da821ae9ba9fe41f19284fae8f3ca3ef510a8c13402975cc405",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070331,
+    "case": "neutral-nonce",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "2aeb19463b8455f6050c51b90af72404105697e6df36e2125a8faaa9258a10c1",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070331,
+    "case": "wrong-nonce",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "a7002ef2f44bfb1383f6deba72eabb3d7cb5b9663465b9ae91f048de78a91549",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070331,
+    "case": "proof-bit",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b69f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "6f6ce291f2aa2c68729aa1c30e8d225e3154aa8678f34e0dedad9f69f5ecd8d9",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070331,
+    "case": "key-bit",
+    "pk": "3897f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "6f6ce291f2aa2c68729aa1c30e8d225e3154aa8678f34e0dedad9f69f5ecd8d9",
+    "claimed": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070331,
+    "case": "claim-bit",
+    "pk": "3997f8cde4ebadc8993fb0e73c88a7058ec089a6311cc1f930388b9114fc3c99",
+    "proof": "b79f2b0ae56a4d0ad6540f9ad656322f7ad7cc37b44317796a0152b5ea42827bb20792111042e5bdddccba6389b4cfa8ae79cfdfa89cddcfb2e9319034f2a8f41cc258d5dab2f50dff9be7d1529b7603",
+    "alpha": "6f6ce291f2aa2c68729aa1c30e8d225e3154aa8678f34e0dedad9f69f5ecd8d9",
+    "claimed": "53ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "native_rc": 0,
+    "native_output": "52ab0463edbd060fb2e293300f5b627b05954deeb852ac345c519c43591f9cfe59ee996295aaad630c0ad5cdd5246e0b86781441d07f645721650a6e08c0afbe",
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "original",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "20809039e5571feec5f322ea62131aeebf7ff862e1d09ae21d680bafc3b7cd70",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": 0,
+    "native_output": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "certified_ok": true
+  },
+  {
+    "slot": 70070379,
+    "case": "wrong-slot",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "75ac9cd8b9082c4c545dc58b2591c0fe53e925e870700851890afa065240ee79",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "little-endian-slot",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "2c261d31f9b949bd36157de0b204af486cbec512994c92fc0f91cace7ab23728",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "neutral-nonce",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "3a28f9317be22acb73ed1d8cbb1f9a73b1edda0ea4483ab89eca8f08fa87dcd0",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "wrong-nonce",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "f674d8c1f0debeb57d82011a0433cda36a07709a52f0a2e1112f0104a0f69d6b",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "proof-bit",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "83727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "20809039e5571feec5f322ea62131aeebf7ff862e1d09ae21d680bafc3b7cd70",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "key-bit",
+    "pk": "36d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "20809039e5571feec5f322ea62131aeebf7ff862e1d09ae21d680bafc3b7cd70",
+    "claimed": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": -1,
+    "native_output": null,
+    "certified_ok": false
+  },
+  {
+    "slot": 70070379,
+    "case": "claim-bit",
+    "pk": "37d6147adbf2907948d66f9e4751774bbe9d6c4ad562ce04ef66f0fc1e7ac301",
+    "proof": "82727ea8891dfd982008f87e24947dbbe635fb915e7e623e8c2adfc5c830be6c85f00d1dc854616c7e6c7a1df1327673ecdb7c504e61d67780e0193516023011c42117da91ed804141d34ac2ea56f603",
+    "alpha": "20809039e5571feec5f322ea62131aeebf7ff862e1d09ae21d680bafc3b7cd70",
+    "claimed": "2350ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "native_rc": 0,
+    "native_output": "2250ec058c8b342cd553a5d9894d279bd4da9849146fa73adf9327289543b691ccaf4db88acd83f602e5f4c6d3dc3f1479e00a4c03a3ad3a258a47625739d776",
+    "certified_ok": false
+  }
+]

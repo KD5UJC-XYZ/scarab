@@ -1,0 +1,71 @@
+{
+  "archive_sha256": "33de88ffd3fe1f82326704056264bfcbd62231079e1f88b67fc60eb74da10e40",
+  "decoder_sha256": "40902e603d51b07395b1df1ae661fe486c68ed5d20904032c0d2b93e4cee7ade",
+  "initial_epoch": "899",
+  "initial_slot": "3883680",
+  "initial_utxo_sha256": "3403e98e8bbdb656b05ce8082a78a0c60670ed2466696a494c5eff5b7a834896",
+  "parameters_sha256": "23a62c9e17bfb1c9755134f173e29e7ff87f9991a84b5bb40ec177b262647633",
+  "research_slot": "3883681",
+  "schema": "restricted-replay-attribution-v1",
+  "scope": "Archived transaction traces, not Cardano blocks; tick recorded but not executed.",
+  "traces": [
+    {
+      "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+      "final_utxo_range": [
+        777,
+        956
+      ],
+      "initial_utxo_range": [
+        101,
+        179
+      ],
+      "recorded_tick": {
+        "execution": "RecordedButNotExecuted",
+        "kind": 1,
+        "value": 1
+      },
+      "source_file": "fixtures/ledger/raw/shelley.cbor",
+      "source_sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123",
+      "trace": "value-conservation",
+      "transaction_ranges": [
+        [
+          1567,
+          1833
+        ],
+        [
+          1844,
+          2247
+        ]
+      ]
+    },
+    {
+      "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXOW/MissingVKeyWitnessesUTXOW",
+      "final_utxo_range": [
+        777,
+        956
+      ],
+      "initial_utxo_range": [
+        101,
+        179
+      ],
+      "recorded_tick": {
+        "execution": "RecordedButNotExecuted",
+        "kind": 1,
+        "value": 1
+      },
+      "source_file": "fixtures/coverage/raw/missing-vkey.cbor",
+      "source_sha256": "3f63e5d5235c06cf8332ed5f154cecc3248fc0c630cf58969afb515b6115d2a1",
+      "trace": "missing-vkey",
+      "transaction_ranges": [
+        [
+          1567,
+          1833
+        ],
+        [
+          1844,
+          2109
+        ]
+      ]
+    }
+  ]
+}

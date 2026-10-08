@@ -1,0 +1,113 @@
+{
+  "source_commit": "226b002d5b5e83e24355f8a28ab214f3259eabda",
+  "source_path": "eras/conway/impl/golden/translations.cbor",
+  "source_sha256": "5d02c08e392f135fa56ed3177d1987ef0d90f8274f9f37d450d4f4d1d4c9cc7a",
+  "byte_ranges": "zero-based half-open offsets in uncompressed corpus",
+  "records": [
+    {
+      "case_index": 44,
+      "language": "PlutusV1",
+      "protocol_major": 10,
+      "expected_txid": "ffa3e217dec2cec2f5d4f9ec60dce862332454c65dd1cab08d796ca8f2951355",
+      "txid_corpus_byte_range": [
+        2310526,
+        2310562
+      ],
+      "txid_encoding_hex": "82005820ffa3e217dec2cec2f5d4f9ec60dce862332454c65dd1cab08d796ca8f2951355",
+      "artifacts": [
+        {
+          "path": "raw/conway-translation-044-body.cbor",
+          "kind": "transaction-body",
+          "bytes": 3790,
+          "sha256": "203d7fac2ca3899cfe6755b9da92b409fa3cf8c606fc82cfe845af17d6039e65",
+          "corpus_byte_range": [
+            2288078,
+            2291868
+          ],
+          "indefinite_container_count": 2
+        },
+        {
+          "path": "raw/conway-translation-044-tx.cbor",
+          "kind": "transaction-envelope",
+          "bytes": 16022,
+          "sha256": "144f5d30f36cb6acd1a625ea83700eadf240efe56575901f015de148a68023f9",
+          "corpus_byte_range": [
+            2288077,
+            2304099
+          ],
+          "indefinite_container_count": 89
+        }
+      ]
+    },
+    {
+      "case_index": 57,
+      "language": "PlutusV2",
+      "protocol_major": 10,
+      "expected_txid": "c2b1815ec5ffbcafb810a857dc18a035884949ac34fc14d04df545f469d6cd17",
+      "txid_corpus_byte_range": [
+        3251697,
+        3251733
+      ],
+      "txid_encoding_hex": "82005820c2b1815ec5ffbcafb810a857dc18a035884949ac34fc14d04df545f469d6cd17",
+      "artifacts": [
+        {
+          "path": "raw/conway-translation-057-body.cbor",
+          "kind": "transaction-body",
+          "bytes": 4956,
+          "sha256": "5a48e86d97046c3ce222567065a51e21e8b980ab03b9c2c9cdd584652fa3c56d",
+          "corpus_byte_range": [
+            3222300,
+            3227256
+          ],
+          "indefinite_container_count": 1
+        },
+        {
+          "path": "raw/conway-translation-057-tx.cbor",
+          "kind": "transaction-envelope",
+          "bytes": 13813,
+          "sha256": "f7de225b2238cb780df5966c6da28aef04b054b42e46ba11793bdb1e07da1602",
+          "corpus_byte_range": [
+            3222299,
+            3236112
+          ],
+          "indefinite_container_count": 107
+        }
+      ]
+    },
+    {
+      "case_index": 42,
+      "language": "PlutusV3",
+      "protocol_major": 10,
+      "expected_txid": "d39e160bd2cc34dbdf270f5a956fb1f663385eb9c5e900534c4ed937b331e080",
+      "txid_corpus_byte_range": [
+        2238263,
+        2238299
+      ],
+      "txid_encoding_hex": "82005820d39e160bd2cc34dbdf270f5a956fb1f663385eb9c5e900534c4ed937b331e080",
+      "artifacts": [
+        {
+          "path": "raw/conway-translation-042-body.cbor",
+          "kind": "transaction-body",
+          "bytes": 8567,
+          "sha256": "cd3ab723529dfa1464407d8724736251d75ec486888b3ad14d0f7b48fb188659",
+          "corpus_byte_range": [
+            2209656,
+            2218223
+          ],
+          "indefinite_container_count": 5
+        },
+        {
+          "path": "raw/conway-translation-042-tx.cbor",
+          "kind": "transaction-envelope",
+          "bytes": 13658,
+          "sha256": "d1b4df89945fb662225bb330d1c00ab6785cbfa7c51f78a974112b17865beb4b",
+          "corpus_byte_range": [
+            2209655,
+            2223313
+          ],
+          "indefinite_container_count": 46
+        }
+      ]
+    }
+  ]
+}

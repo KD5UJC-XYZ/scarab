@@ -1,0 +1,530 @@
+[
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a300d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff021a00028c81",
+    "body_hash_blake2b256": "0e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27",
+    "body_range_in_source": [
+      1568,
+      1724
+    ],
+    "body_range_in_transaction": [
+      1,
+      157
+    ],
+    "era": "Conway",
+    "event_index": 1,
+    "event_range_in_source": [
+      1562,
+      1839
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-shelley-fixture-event-1-witness-0",
+    "input": "inputs/shelley.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "4000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf9",
+    "public_key_payload_range_in_source": [
+      1733,
+      1765
+    ],
+    "public_key_payload_range_in_transaction": [
+      166,
+      198
+    ],
+    "signature_expected_source": "Signature expectation supported by accepted Haskell ledger setup transaction.",
+    "signature_hex": "a0b11efe92f7966c024e6bcba13ff638acf15fd8f97c5c9f14a114496f88de223e72eb0978a5037ba787e9d2fa6006538557c6a162fdc8b4f265a0b0971c1e07",
+    "signature_payload_range_in_source": [
+      1767,
+      1831
+    ],
+    "signature_payload_range_in_transaction": [
+      200,
+      264
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": true,
+    "source_sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123",
+    "transaction_cbor_wrapper_range_in_source": [
+      1564,
+      1833
+    ],
+    "transaction_range_in_source": [
+      1567,
+      1833
+    ],
+    "tx_cbor_hex": "84a300d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d603c875ce0f647bdcc64b70e62814680fbd939f8faf0203b98236ede7b1a001e8480825839006b75eafbb349012d6335c7200d3c6fbb1f06752e84ee485c0ec67dddff928028261617cca82ee74f3fb38b51d720b0a0125eb9b469184b291b009fdf42f6c36eff021a00028c81a100d90102818258204000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf95840a0b11efe92f7966c024e6bcba13ff638acf15fd8f97c5c9f14a114496f88de223e72eb0978a5037ba787e9d2fa6006538557c6a162fdc8b4f265a0b0971c1e07f5f6",
+    "witness_index": 0,
+    "witness_range_in_source": [
+      1730,
+      1831
+    ],
+    "witness_range_in_transaction": [
+      163,
+      264
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a300d90102828258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27008258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc2701018282581d60de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f5985931a000cf4b182583900f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b39765cf5454f586d19c04689bcccbd17f1bc0a4ce904dc6aea476ca8ac41b009fdf42f6d25ac4021a0002a40d",
+    "body_hash_blake2b256": "3a14b5a5195ba1bca58d8e6609b8e301439fd0b5c77a700cad6cc393b00a676f",
+    "body_range_in_source": [
+      1845,
+      2037
+    ],
+    "body_range_in_transaction": [
+      1,
+      193
+    ],
+    "era": "Conway",
+    "event_index": 2,
+    "event_range_in_source": [
+      1839,
+      2253
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-shelley-fixture-event-2-witness-0",
+    "input": "inputs/shelley.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "09075a20a84d1debc77944b276451cab29683802c5c79e5b76968d2e03d9b1c4",
+    "public_key_payload_range_in_source": [
+      2046,
+      2078
+    ],
+    "public_key_payload_range_in_transaction": [
+      202,
+      234
+    ],
+    "signature_expected_source": "No separately stored Haskell signature golden; true is archived public-only differential observation, not the false transaction verdict.",
+    "signature_hex": "4bfb041f4b4fad474d74c68fbfa79bc7426c4418b99cad4f90c9f865a6706029346918a75f0d30c006a1a013be35c3705e75c12004196e96da94db7926dff109",
+    "signature_payload_range_in_source": [
+      2080,
+      2144
+    ],
+    "signature_payload_range_in_transaction": [
+      236,
+      300
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": false,
+    "source_sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123",
+    "transaction_cbor_wrapper_range_in_source": [
+      1841,
+      2247
+    ],
+    "transaction_range_in_source": [
+      1844,
+      2247
+    ],
+    "tx_cbor_hex": "84a300d90102828258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27008258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc2701018282581d60de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f5985931a000cf4b182583900f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b39765cf5454f586d19c04689bcccbd17f1bc0a4ce904dc6aea476ca8ac41b009fdf42f6d25ac4021a0002a40da100d901028282582009075a20a84d1debc77944b276451cab29683802c5c79e5b76968d2e03d9b1c458404bfb041f4b4fad474d74c68fbfa79bc7426c4418b99cad4f90c9f865a6706029346918a75f0d30c006a1a013be35c3705e75c12004196e96da94db7926dff109825820856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad671571035840c6b492a9f8e59b197e9b118a9df20980085030bdfd6372a09e7ebe053cd9756b1879c7c448e95db4e770f5d2eeefeec28e08b0966d34601d9ebc9c5d0dccd40cf5f6",
+    "witness_index": 0,
+    "witness_range_in_source": [
+      2043,
+      2144
+    ],
+    "witness_range_in_transaction": [
+      199,
+      300
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/ShelleyImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a300d90102828258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27008258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc2701018282581d60de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f5985931a000cf4b182583900f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b39765cf5454f586d19c04689bcccbd17f1bc0a4ce904dc6aea476ca8ac41b009fdf42f6d25ac4021a0002a40d",
+    "body_hash_blake2b256": "3a14b5a5195ba1bca58d8e6609b8e301439fd0b5c77a700cad6cc393b00a676f",
+    "body_range_in_source": [
+      1845,
+      2037
+    ],
+    "body_range_in_transaction": [
+      1,
+      193
+    ],
+    "era": "Conway",
+    "event_index": 2,
+    "event_range_in_source": [
+      1839,
+      2253
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-shelley-fixture-event-2-witness-1",
+    "input": "inputs/shelley.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad67157103",
+    "public_key_payload_range_in_source": [
+      2147,
+      2179
+    ],
+    "public_key_payload_range_in_transaction": [
+      303,
+      335
+    ],
+    "signature_expected_source": "No separately stored Haskell signature golden; true is archived public-only differential observation, not the false transaction verdict.",
+    "signature_hex": "c6b492a9f8e59b197e9b118a9df20980085030bdfd6372a09e7ebe053cd9756b1879c7c448e95db4e770f5d2eeefeec28e08b0966d34601d9ebc9c5d0dccd40c",
+    "signature_payload_range_in_source": [
+      2181,
+      2245
+    ],
+    "signature_payload_range_in_transaction": [
+      337,
+      401
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": false,
+    "source_sha256": "e29fa93400521ce6b15b357a25ed61afdc81e8fd18cd15ebbc29f16e30019123",
+    "transaction_cbor_wrapper_range_in_source": [
+      1841,
+      2247
+    ],
+    "transaction_range_in_source": [
+      1844,
+      2247
+    ],
+    "tx_cbor_hex": "84a300d90102828258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc27008258200e3ba3acb9ce949517baa0ab8bfaa0f7d47339d5e48270c9097bc3fba169fc2701018282581d60de556b5920d6f9bf5eb6320c6e31849a318d0fd88b34c3447f5985931a000cf4b182583900f1e760111aba8c48f249d58250062f5baf3d163350f2d3f55ec7b39765cf5454f586d19c04689bcccbd17f1bc0a4ce904dc6aea476ca8ac41b009fdf42f6d25ac4021a0002a40da100d901028282582009075a20a84d1debc77944b276451cab29683802c5c79e5b76968d2e03d9b1c458404bfb041f4b4fad474d74c68fbfa79bc7426c4418b99cad4f90c9f865a6706029346918a75f0d30c006a1a013be35c3705e75c12004196e96da94db7926dff109825820856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad671571035840c6b492a9f8e59b197e9b118a9df20980085030bdfd6372a09e7ebe053cd9756b1879c7c448e95db4e770f5d2eeefeec28e08b0966d34601d9ebc9c5d0dccd40cf5f6",
+    "witness_index": 1,
+    "witness_range_in_source": [
+      2144,
+      2245
+    ],
+    "witness_range_in_transaction": [
+      300,
+      401
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/MaryImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a400d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d600d1758373b83349e1bd30a4edd018db916c96a6732eb4cf0e8e45088821a000fd976a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a149746573744173736574018258390063a987cc26105ad68bbea99069449c75170a606d7032d010115cdc132378536f2143f3cf71d4e14e63de8d8164dd0feb65df501fb34a21eb1b009fdf42f6d1f331021a0002b35909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657401",
+    "body_hash_blake2b256": "6c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be",
+    "body_range_in_source": [
+      1612,
+      1856
+    ],
+    "body_range_in_transaction": [
+      1,
+      245
+    ],
+    "era": "Conway",
+    "event_index": 1,
+    "event_range_in_source": [
+      1606,
+      2109
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-value-fixture-event-1-witness-0",
+    "input": "inputs/mary.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "3d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f640",
+    "public_key_payload_range_in_source": [
+      1865,
+      1897
+    ],
+    "public_key_payload_range_in_transaction": [
+      254,
+      286
+    ],
+    "signature_expected_source": "Signature expectation supported by accepted Haskell ledger setup transaction.",
+    "signature_hex": "6238a71d77eadce5eb9e0ee4f3d43c700f372d9b7acb225519fd31114af6a47931440f174ad04aad417e3bee8b691359a03605fdb40c2d97b893ec34eef82706",
+    "signature_payload_range_in_source": [
+      1899,
+      1963
+    ],
+    "signature_payload_range_in_transaction": [
+      288,
+      352
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": true,
+    "source_sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2",
+    "transaction_cbor_wrapper_range_in_source": [
+      1608,
+      2103
+    ],
+    "transaction_range_in_source": [
+      1611,
+      2103
+    ],
+    "tx_cbor_hex": "84a400d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d600d1758373b83349e1bd30a4edd018db916c96a6732eb4cf0e8e45088821a000fd976a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a149746573744173736574018258390063a987cc26105ad68bbea99069449c75170a606d7032d010115cdc132378536f2143f3cf71d4e14e63de8d8164dd0feb65df501fb34a21eb1b009fdf42f6d1f331021a0002b35909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657401a200d90102828258203d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f64058406238a71d77eadce5eb9e0ee4f3d43c700f372d9b7acb225519fd31114af6a47931440f174ad04aad417e3bee8b691359a03605fdb40c2d97b893ec34eef827068258204000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf95840326219a623008dbf23ecc15c43ca2170cd6bd022c7020a9a00a336a17f50806aa026f94db1b8074901344dcff5dd6df91f4ead6a49e80e9278bf4f93c390560901d90102818200581c45954d0d96cc011d49413c32037fafc30ba872902c2faea62ab0898df5f6",
+    "witness_index": 0,
+    "witness_range_in_source": [
+      1862,
+      1963
+    ],
+    "witness_range_in_transaction": [
+      251,
+      352
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/MaryImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a400d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d600d1758373b83349e1bd30a4edd018db916c96a6732eb4cf0e8e45088821a000fd976a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a149746573744173736574018258390063a987cc26105ad68bbea99069449c75170a606d7032d010115cdc132378536f2143f3cf71d4e14e63de8d8164dd0feb65df501fb34a21eb1b009fdf42f6d1f331021a0002b35909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657401",
+    "body_hash_blake2b256": "6c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be",
+    "body_range_in_source": [
+      1612,
+      1856
+    ],
+    "body_range_in_transaction": [
+      1,
+      245
+    ],
+    "era": "Conway",
+    "event_index": 1,
+    "event_range_in_source": [
+      1606,
+      2109
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-value-fixture-event-1-witness-1",
+    "input": "inputs/mary.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "4000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf9",
+    "public_key_payload_range_in_source": [
+      1966,
+      1998
+    ],
+    "public_key_payload_range_in_transaction": [
+      355,
+      387
+    ],
+    "signature_expected_source": "Signature expectation supported by accepted Haskell ledger setup transaction.",
+    "signature_hex": "326219a623008dbf23ecc15c43ca2170cd6bd022c7020a9a00a336a17f50806aa026f94db1b8074901344dcff5dd6df91f4ead6a49e80e9278bf4f93c3905609",
+    "signature_payload_range_in_source": [
+      2000,
+      2064
+    ],
+    "signature_payload_range_in_transaction": [
+      389,
+      453
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": true,
+    "source_sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2",
+    "transaction_cbor_wrapper_range_in_source": [
+      1608,
+      2103
+    ],
+    "transaction_range_in_source": [
+      1611,
+      2103
+    ],
+    "tx_cbor_hex": "84a400d901028182582003170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c11131400018282581d600d1758373b83349e1bd30a4edd018db916c96a6732eb4cf0e8e45088821a000fd976a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a149746573744173736574018258390063a987cc26105ad68bbea99069449c75170a606d7032d010115cdc132378536f2143f3cf71d4e14e63de8d8164dd0feb65df501fb34a21eb1b009fdf42f6d1f331021a0002b35909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657401a200d90102828258203d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f64058406238a71d77eadce5eb9e0ee4f3d43c700f372d9b7acb225519fd31114af6a47931440f174ad04aad417e3bee8b691359a03605fdb40c2d97b893ec34eef827068258204000cb1414760fd0995428ee2f4552c1d98d39c63a0a5bf087b5c89ccbd4bcf95840326219a623008dbf23ecc15c43ca2170cd6bd022c7020a9a00a336a17f50806aa026f94db1b8074901344dcff5dd6df91f4ead6a49e80e9278bf4f93c390560901d90102818200581c45954d0d96cc011d49413c32037fafc30ba872902c2faea62ab0898df5f6",
+    "witness_index": 1,
+    "witness_range_in_source": [
+      1963,
+      2064
+    ],
+    "witness_range_in_transaction": [
+      352,
+      453
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/MaryImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a400d90102828258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be008258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be01018182583900c878f514f886ad922de323e170ef1aa170efc430de977d647db9dd7c5de95560e03d492908115c8cc00143db7c17a22165dac9b60872a6a71b009fdf42f6df0fae021a0002bcf909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657421",
+    "body_hash_blake2b256": "b41e0266261e2365c640095fd630703fc8b751b99e0d64971c99d0c23c6c812d",
+    "body_range_in_source": [
+      2115,
+      2314
+    ],
+    "body_range_in_transaction": [
+      1,
+      200
+    ],
+    "era": "Conway",
+    "event_index": 2,
+    "event_range_in_source": [
+      2109,
+      2668
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-value-fixture-event-2-witness-0",
+    "input": "inputs/mary.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "54ba748ab012218007ebe5f5c1fab31d6ca92fcfa41212324de35fbda3a37e23",
+    "public_key_payload_range_in_source": [
+      2323,
+      2355
+    ],
+    "public_key_payload_range_in_transaction": [
+      209,
+      241
+    ],
+    "signature_expected_source": "No separately stored Haskell signature golden; true is archived public-only differential observation, not the false transaction verdict.",
+    "signature_hex": "adda57355eb349de4841ca7d644513ec7afcc38e50cce501a85615eab99203d69a09792e3b3079183cbe16de77e27c6c74db7897e353746033e22f7a6a87f70c",
+    "signature_payload_range_in_source": [
+      2357,
+      2421
+    ],
+    "signature_payload_range_in_transaction": [
+      243,
+      307
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": false,
+    "source_sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2",
+    "transaction_cbor_wrapper_range_in_source": [
+      2111,
+      2662
+    ],
+    "transaction_range_in_source": [
+      2114,
+      2662
+    ],
+    "tx_cbor_hex": "84a400d90102828258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be008258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be01018182583900c878f514f886ad922de323e170ef1aa170efc430de977d647db9dd7c5de95560e03d492908115c8cc00143db7c17a22165dac9b60872a6a71b009fdf42f6df0fae021a0002bcf909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657421a200d901028382582054ba748ab012218007ebe5f5c1fab31d6ca92fcfa41212324de35fbda3a37e235840adda57355eb349de4841ca7d644513ec7afcc38e50cce501a85615eab99203d69a09792e3b3079183cbe16de77e27c6c74db7897e353746033e22f7a6a87f70c8258203d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f64058401e7d3107de746dcf01cfef35fefbbb66d620c4e855d3b7e6864d3fdb52ab587f52045e12f9342fe4b0e39487c764417ee5275cbc050fda09f7b91331883b3c0582582030af706ae482e784f2ccce8066b8fd26f78866ff2c2d8083eff0bf358a5f7426584074c4f7650ad2ef3785acf27ad3208143c28d233bd2639e8ff189eda57a5af76a4395a5135f34d8ea3b916cdabb702a788608d913f0f6f0028acfe092e0ee6c0901d90102818200581c45954d0d96cc011d49413c32037fafc30ba872902c2faea62ab0898df5f6",
+    "witness_index": 0,
+    "witness_range_in_source": [
+      2320,
+      2421
+    ],
+    "witness_range_in_transaction": [
+      206,
+      307
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/MaryImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a400d90102828258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be008258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be01018182583900c878f514f886ad922de323e170ef1aa170efc430de977d647db9dd7c5de95560e03d492908115c8cc00143db7c17a22165dac9b60872a6a71b009fdf42f6df0fae021a0002bcf909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657421",
+    "body_hash_blake2b256": "b41e0266261e2365c640095fd630703fc8b751b99e0d64971c99d0c23c6c812d",
+    "body_range_in_source": [
+      2115,
+      2314
+    ],
+    "body_range_in_transaction": [
+      1,
+      200
+    ],
+    "era": "Conway",
+    "event_index": 2,
+    "event_range_in_source": [
+      2109,
+      2668
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-value-fixture-event-2-witness-1",
+    "input": "inputs/mary.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "3d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f640",
+    "public_key_payload_range_in_source": [
+      2424,
+      2456
+    ],
+    "public_key_payload_range_in_transaction": [
+      310,
+      342
+    ],
+    "signature_expected_source": "No separately stored Haskell signature golden; true is archived public-only differential observation, not the false transaction verdict.",
+    "signature_hex": "1e7d3107de746dcf01cfef35fefbbb66d620c4e855d3b7e6864d3fdb52ab587f52045e12f9342fe4b0e39487c764417ee5275cbc050fda09f7b91331883b3c05",
+    "signature_payload_range_in_source": [
+      2458,
+      2522
+    ],
+    "signature_payload_range_in_transaction": [
+      344,
+      408
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": false,
+    "source_sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2",
+    "transaction_cbor_wrapper_range_in_source": [
+      2111,
+      2662
+    ],
+    "transaction_range_in_source": [
+      2114,
+      2662
+    ],
+    "tx_cbor_hex": "84a400d90102828258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be008258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be01018182583900c878f514f886ad922de323e170ef1aa170efc430de977d647db9dd7c5de95560e03d492908115c8cc00143db7c17a22165dac9b60872a6a71b009fdf42f6df0fae021a0002bcf909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657421a200d901028382582054ba748ab012218007ebe5f5c1fab31d6ca92fcfa41212324de35fbda3a37e235840adda57355eb349de4841ca7d644513ec7afcc38e50cce501a85615eab99203d69a09792e3b3079183cbe16de77e27c6c74db7897e353746033e22f7a6a87f70c8258203d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f64058401e7d3107de746dcf01cfef35fefbbb66d620c4e855d3b7e6864d3fdb52ab587f52045e12f9342fe4b0e39487c764417ee5275cbc050fda09f7b91331883b3c0582582030af706ae482e784f2ccce8066b8fd26f78866ff2c2d8083eff0bf358a5f7426584074c4f7650ad2ef3785acf27ad3208143c28d233bd2639e8ff189eda57a5af76a4395a5135f34d8ea3b916cdabb702a788608d913f0f6f0028acfe092e0ee6c0901d90102818200581c45954d0d96cc011d49413c32037fafc30ba872902c2faea62ab0898df5f6",
+    "witness_index": 1,
+    "witness_range_in_source": [
+      2421,
+      2522
+    ],
+    "witness_range_in_transaction": [
+      307,
+      408
+    ]
+  },
+  {
+    "archive_member": "eras/conway/impl/dump/Conway/Imp/MaryImpSpec/UTXO/ShelleyUtxoPredFailure/ValueNotConservedUTxO",
+    "body_cbor_hex": "a400d90102828258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be008258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be01018182583900c878f514f886ad922de323e170ef1aa170efc430de977d647db9dd7c5de95560e03d492908115c8cc00143db7c17a22165dac9b60872a6a71b009fdf42f6df0fae021a0002bcf909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657421",
+    "body_hash_blake2b256": "b41e0266261e2365c640095fd630703fc8b751b99e0d64971c99d0c23c6c812d",
+    "body_range_in_source": [
+      2115,
+      2314
+    ],
+    "body_range_in_transaction": [
+      1,
+      200
+    ],
+    "era": "Conway",
+    "event_index": 2,
+    "event_range_in_source": [
+      2109,
+      2668
+    ],
+    "expected_witness_result": "SignatureVerified",
+    "id": "amaru-value-fixture-event-2-witness-2",
+    "input": "inputs/mary.cbor",
+    "protocol_version": [
+      9,
+      0
+    ],
+    "public_key_hex": "30af706ae482e784f2ccce8066b8fd26f78866ff2c2d8083eff0bf358a5f7426",
+    "public_key_payload_range_in_source": [
+      2525,
+      2557
+    ],
+    "public_key_payload_range_in_transaction": [
+      411,
+      443
+    ],
+    "signature_expected_source": "No separately stored Haskell signature golden; true is archived public-only differential observation, not the false transaction verdict.",
+    "signature_hex": "74c4f7650ad2ef3785acf27ad3208143c28d233bd2639e8ff189eda57a5af76a4395a5135f34d8ea3b916cdabb702a788608d913f0f6f0028acfe092e0ee6c09",
+    "signature_payload_range_in_source": [
+      2559,
+      2623
+    ],
+    "signature_payload_range_in_transaction": [
+      445,
+      509
+    ],
+    "slot": "3883681",
+    "source_ledger_expected_success": false,
+    "source_sha256": "e4229e5189a03c0489b3f64ece510812a61cd3a3853ee50e19f5587965385ab2",
+    "transaction_cbor_wrapper_range_in_source": [
+      2111,
+      2662
+    ],
+    "transaction_range_in_source": [
+      2114,
+      2662
+    ],
+    "tx_cbor_hex": "84a400d90102828258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be008258206c1a1296e86d23b4a497a015733f8123075769b5f15216e290bd405f4ff790be01018182583900c878f514f886ad922de323e170ef1aa170efc430de977d647db9dd7c5de95560e03d492908115c8cc00143db7c17a22165dac9b60872a6a71b009fdf42f6df0fae021a0002bcf909a1581c82b474fbbd69ac8febb44cca8901df25b8dbbb5996bed398ec1c6b76a14974657374417373657421a200d901028382582054ba748ab012218007ebe5f5c1fab31d6ca92fcfa41212324de35fbda3a37e235840adda57355eb349de4841ca7d644513ec7afcc38e50cce501a85615eab99203d69a09792e3b3079183cbe16de77e27c6c74db7897e353746033e22f7a6a87f70c8258203d4db2f14bdefb330cdae2e53017414b30db41452d3c6088e06db36970e3f64058401e7d3107de746dcf01cfef35fefbbb66d620c4e855d3b7e6864d3fdb52ab587f52045e12f9342fe4b0e39487c764417ee5275cbc050fda09f7b91331883b3c0582582030af706ae482e784f2ccce8066b8fd26f78866ff2c2d8083eff0bf358a5f7426584074c4f7650ad2ef3785acf27ad3208143c28d233bd2639e8ff189eda57a5af76a4395a5135f34d8ea3b916cdabb702a788608d913f0f6f0028acfe092e0ee6c0901d90102818200581c45954d0d96cc011d49413c32037fafc30ba872902c2faea62ab0898df5f6",
+    "witness_index": 2,
+    "witness_range_in_source": [
+      2522,
+      2623
+    ],
+    "witness_range_in_transaction": [
+      408,
+      509
+    ]
+  }
+]

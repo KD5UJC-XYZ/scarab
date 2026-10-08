@@ -1,0 +1,59 @@
+# Preserve upstream notice bytes verbatim, including their trailing spaces.
+fixtures/licenses/plutus-NOTICE.md -whitespace
+# Keep every hash-pinned witness input and archival observation byte-identical.
+fixtures/witness/** -text
+# Empty message columns require trailing tabs; upstream notices and compiler output are verbatim.
+fixtures/witness/vectors.tsv -whitespace
+fixtures/witness/licenses/cardano-base-LICENSE -whitespace
+fixtures/witness/archive/pinned-source-oracle/verify-preprocessor-macros.txt -whitespace
+# Preserve immutable public VRF evidence; empty alpha columns require final tabs.
+fixtures/vrf/** -text
+fixtures/vrf/*.tsv -whitespace
+fixtures/vrf/licenses/BC-LICENSE -whitespace
+# Public Praos fixture/source pins retain exact upstream bytes and notice endings.
+fixtures/praos/** -text
+fixtures/praos/evidence/consensus-NOTICE -whitespace
+# Preserve pinned BlockFetch sources, fixture wire files and upstream notices verbatim.
+fixtures/network/block-fetch/** -text
+fixtures/licenses/block-fetch-* -text
+fixtures/network/block-fetch/sources/Limits.hs -whitespace
+fixtures/licenses/block-fetch-*-NOTICE -whitespace
+
+# Preserve retained post-Byron source/data/license bytes and upstream whitespace.
+fixtures/post-byron/** -text -whitespace
+core/src/test/resources/post-byron/** -text
+# Keep pinned KeepAlive protocol/source/license bytes verbatim.
+fixtures/network/keepalive-direct-range/** -text
+fixtures/network/keepalive-direct-range/sources/Limits.hs -whitespace
+# Preserve pinned public Sum6 sources/fixtures and original license whitespace.
+fixtures/sum6/** -text
+fixtures/sum6/evidence/cardano-base-target-LICENSE -whitespace
+
+# Preserve original body commitment inputs, pinned sources and independent tables.
+fixtures/body-commitment/** -text
+core/src/test/resources/body-commitment/** -text
+# The empty malformed-CBOR vector has a literal empty final TSV field.
+fixtures/body-commitment/edges.tsv whitespace=-blank-at-eol
+core/src/test/resources/body-commitment/edges.tsv whitespace=-blank-at-eol
+
+# Preserve exact block-evidence originals, source pins and binary identity tables.
+fixtures/block-evidence/** -text
+core/src/test/resources/block-evidence/** -text
+# This retained explorer response has original trailing spaces; its SHA-256 is provenance.
+fixtures/block-evidence/source/preprod-explorer.json -whitespace
+
+# Preserve exact restricted-replay transaction, checkpoint and evidence bytes.
+fixtures/restricted-replay/** -text
+# Preserve text dependencies whose exact bytes identify the restricted-replay profile/projector.
+ledger/src/main/scala/lab/ledger/Coverage.scala -text
+ledger/src/main/scala/lab/ledger/Balance.scala -text
+ledger/src/main/scala/lab/ledger/FeeSize.scala -text
+core/src/main/scala/lab/witness/CardanoWitness.scala -text
+core/src/main/scala/lab/witness/StrictEd25519.scala -text
+core/src/main/scala/lab/cbor/Cbor.scala -text
+scripts/project-ledger-fixtures.py -text
+fixtures/ledger/upstream/amaru-fork-ShelleyUtxoSpec.hs -text
+fixtures/coverage/upstream/generator-UtxowSpec.hs -text
+
+# Preserve the original JVM thread dump, including its diagnostic whitespace.
+docs/restricted-replay-store-cli-diagnostic/duplicate.stdout -text -whitespace

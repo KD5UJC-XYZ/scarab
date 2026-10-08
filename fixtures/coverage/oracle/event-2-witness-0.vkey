@@ -1,0 +1,5 @@
+{
+  "type": "PaymentVerificationKeyShelley_ed25519",
+  "description": "Published Haskell fixture public verification key",
+  "cborHex": "5820856d50d5103ad04957da7135586cb0dc3a48c31aa78bbfff51f249ad67157103"
+}
