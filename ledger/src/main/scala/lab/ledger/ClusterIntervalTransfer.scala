@@ -6,7 +6,7 @@ import lab.chain.{CardanoBlockIndex, CardanoBodyCommitment}
 
 /** Opt-in extension of the cluster transfer comparison; historical profiles remain closed. */
 object ClusterIntervalTransfer:
-  val ProfileId = "conway-pv9-cluster-ada-interval-transition-v1"
+  val ProfileId = "conway-pv9-cluster-derived-key-comparison-v1"
   final class Bound private[ClusterIntervalTransfer] (
       val interval: ValidityInterval.Receipt,
       val blockHash: Bytes,
@@ -109,10 +109,38 @@ object ClusterIntervalTransfer:
       original: Bytes,
       blocks: Vector[Bytes]
   ): Either[String, Receipt] =
+    def error(f: ClusterTransition.Failure): String = f match
+      case ClusterTransition.Failure.Rejected(NativeSpending.Error.OutsideValidityInterval) =>
+        "OutsideValidityIntervalUTxO"
+      case other => other.toString
     for
       bound <- bind(context, original, blocks)
       _ <- Either.cond(bound.interval.satisfied, (), "OutsideValidityIntervalUTxO")
-      outputs <- MinimumOutput.checkIntervalTransfer(minimum, original)
-      _ <- Either.cond(outputs.satisfied, (), "minimum output predicate failed")
-      transfer <- ClusterTransfer.compareIntervalTransfer(context, pre, post, original)
-    yield Receipt(bound, outputs, transfer)
+      env <- ClusterTransition.fromContext(context, minimum).left.map(error)
+      before <- ClusterTransition
+        .checkpoint(env, pre, context.feesBefore, context.preSlot, context.preHash)
+        .left
+        .map(error)
+      applied <- ClusterTransition
+        .applyTransaction(before, original, bound.interval.slot)
+        .left
+        .map(error)
+      _ <- Either.cond(
+        applied.candidate.nativeAdmission.isEmpty,
+        (),
+        "key-only comparison profile required"
+      )
+      _ <- ClusterTransition.compareReference(applied, post, context.feesAfter).left.map(error)
+      tx = applied.candidate
+    yield Receipt(
+      bound,
+      tx.minimum,
+      ClusterTransfer.Receipt(
+        tx.transactionId,
+        tx.fee,
+        applied.state.fees - before.fees,
+        tx.spent,
+        tx.created,
+        before.size - tx.spent.size
+      )
+    )

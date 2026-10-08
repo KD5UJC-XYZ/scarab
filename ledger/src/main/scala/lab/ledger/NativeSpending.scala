@@ -12,6 +12,7 @@ object NativeSpending:
     case UnsupportedProfile(detail: String)
     case DecodeRejected(detail: String)
     case Malformed(detail: String)
+    case InternalFailure(kind: String)
     case ResourceLimit(detail: String)
     case UnsupportedInput(input: TxIn, detail: String)
     case UnresolvedInputs(inputs: Set[TxIn])

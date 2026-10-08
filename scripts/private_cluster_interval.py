@@ -9,7 +9,7 @@ from private_cluster_transfer import TransferRunner
 from private_cluster_scenarios import ScenarioRunner
 from private_cluster_relay import RelayRunner
 
-PROFILE = "conway-pv9-cluster-ada-interval-transition-v1"
+PROFILE = "conway-pv9-cluster-derived-key-comparison-v1"
 MAX_SLOT = (1 << 64) - 1
 
 

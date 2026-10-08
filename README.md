@@ -4,6 +4,16 @@
 
 A runnable research prototype for **byte-preserving CBOR and Cardano transaction-ID conformance**. It also runs five pinned Plutus evaluator conformance vectors and bounded handshake/mux source-conformance checks over localhost TCP. It also checks one narrowly scoped Conway PV9 value-conservation predicate and an experimental strict public-input Ed25519 witness predicate. It also composes a bounded, reversible in-memory Conway PV9 ADA-transfer UTxO/fee projection. It also includes a bounded durable interpreter for that research projection. It does not fully validate transactions, run a complete Cardano ledger, sync a chain, or produce blocks.
 
+## Atomic restricted branch candidate
+
+The new [coherent branch API](docs/coherent-branch.md) prepares original-byte
+acquisition, certificate/KES, supplied-state eligibility and independent UTxO/fee
+transition as one atomic in-memory tuple, with revision-fenced rollback. This is
+a one-block/supplied-epoch research profile, not full ledger or consensus validity.
+The old reference snapshot contains unsupported Byron outputs; its historical
+receipt remains unchanged. Positive coordinator unit coverage uses explicitly
+synthetic supplied state, with a real supported-checkpoint scenario still pending.
+
 ## Opt-in local reference testing
 
 The local Docker harness now exercises a verified Cardano node 11.1.3: real Scala NtN14 handshake, ChainSync/BlockFetch capture, and a restricted ADA-transfer comparison against original reference inclusion bytes, whole-UTxO changes and actual fee-pot exports. A separate relay-only scenario observes hot/full-duplex peers and transaction-ID requests after the configured startup delay before submitting through the relay. It uses disposable private-cluster keys, an internal Docker network and bounded cleanup; no public peers or real funds. See [setup and resource contract](docs/private-cluster.md), [byte capture](docs/reference-capture.md), and [transfer/context/relay scope](docs/private-cluster-transfer.md).

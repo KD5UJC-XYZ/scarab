@@ -160,3 +160,19 @@ Python tests. The compiler-free Java image explicitly skipped native-helper setu
 the existing Linux compiler exercised that group separately. Docker-call sentinels
 confirmed no container calls during guard execution. See
 [restart scope](private-cluster-restart.md) and [native diagnostic scope](native-script.md).
+
+
+## Coherent branch and independent transition checkpoint
+
+The supplied-state eligibility, credential-bound native library and pure
+`ClusterTransition` are integrated with a new atomic one-block coordinator.
+Comparison adapters derive state independently before optional reference
+post-state comparison. Their narrower whole-checkpoint restrictions explicitly
+reject the retained interval capture's Byron leftovers; historical receipts are
+not relabelled. No positive end-to-end reference acceptance is claimed.
+
+Validation: 883 public Scala tests, 25 public gates and 95 native-inclusive Python
+tests passed. The compiler-free Docker image ran 93 Python tests with one native
+setup skip; the host's existing compiler ran all 95 under a Docker-call sentinel
+with no container calls. Separate opt-in suites passed 26 checks: six public
+reruns and 20 retained/synthetic checks. See [the exact contract and test scope](coherent-branch.md).

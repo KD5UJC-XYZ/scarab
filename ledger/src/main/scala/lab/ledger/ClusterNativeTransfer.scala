@@ -6,7 +6,7 @@ import lab.cbor.Bytes
 /** Captured, restricted ADA native-script spending comparison, not consensus/full ledger validity.
   */
 object ClusterNativeTransfer:
-  val ProfileId = "conway-pv9-cluster-ada-native-transition-v1"
+  val ProfileId = "conway-pv9-cluster-derived-native-comparison-v1"
   import NativeSpending.Error
   import NativeSpending.Error.*
   final class Receipt private[ClusterNativeTransfer] (
@@ -32,79 +32,42 @@ object ClusterNativeTransfer:
       original: Bytes,
       blocks: Vector[Bytes]
   ): Either[Error, Receipt] =
+    def error(f: ClusterTransition.Failure): Error = f match
+      case ClusterTransition.Failure.Unsupported(reason)    => UnsupportedProfile(reason)
+      case ClusterTransition.Failure.DecodeRejected(reason) => DecodeRejected(reason)
+      case ClusterTransition.Failure.Malformed(reason)      => Malformed(reason)
+      case ClusterTransition.Failure.ResourceLimit(reason)  => ResourceLimit(reason)
+      case ClusterTransition.Failure.Rejected(predicate)    => predicate
+      case ClusterTransition.Failure.InternalFailure(kind) =>
+        InternalFailure(kind)
+      case ClusterTransition.Failure.StaleState(reason) =>
+        StateMismatch(s"local stale transition: $reason")
     for
       bound <- ClusterIntervalTransfer
         .bind(context, original, blocks)
         .left
         .map(CaptureRejected.apply)
       _ <- Either.cond(bound.interval.satisfied, (), OutsideValidityInterval)
-      admission <- NativeSpending.check(original, pre)
-      tx = admission.projection
-      minimum <- MinimumOutput
-        .check(parameters, admission.semanticEnvelope)
+      env <- ClusterTransition.fromContext(context, parameters).left.map(error)
+      before <- ClusterTransition
+        .checkpoint(env, pre, context.feesBefore, context.preSlot, context.preHash)
         .left
-        .map(UnsupportedProfile.apply)
-      _ <- Either.cond(minimum.satisfied, (), MinimumOutputFailed)
-      produced = tx.outputs.map(_.value.lovelace).sum + tx.fee
-      _ <- Either.cond(
-        admission.consumedCoin == produced,
-        (),
-        ValueNotConserved(admission.consumedCoin, produced)
+        .map(error)
+      applied <- ClusterTransition
+        .applyTransaction(before, original, bound.interval.slot)
+        .left
+        .map(error)
+      admission <- applied.candidate.nativeAdmission.toRight(
+        UnsupportedProfile("at least one enterprise native-script input required")
       )
-      requiredFee = admission.memoSize * context.parameters.feePerByte + context.parameters.feeFixed
-      _ <- Either.cond(tx.fee >= requiredFee, (), FeeTooSmall(tx.fee, requiredFee))
-      _ <- Either.cond(
-        admission.memoSize <= context.parameters.maxTxSize,
-        (),
-        TransactionTooLarge(admission.memoSize, context.parameters.maxTxSize)
-      )
-      before <- NativeSpending.snapshot(pre)
-      after <- NativeSpending.snapshot(post)
-      created <- tx.outputs.zipWithIndex.foldLeft[Either[Error, Map[TxIn, Coverage.Output]]](
-        Right(Map.empty)
-      ) { case (acc, (out, index)) =>
-        for
-          previous <- acc
-          input <- TxIn
-            .create(admission.interval.transactionId, BigInt(index))
-            .left
-            .map(e => Malformed(e.toString))
-          _ <- Either.cond(!before.contains(input), (), StateMismatch("created output collision"))
-        yield previous.updated(input, out)
-      }
-      _ <- Either.cond(
-        after.keySet == (before.keySet -- tx.inputs) ++ created.keySet,
-        (),
-        StateMismatch("UTxO reference delta differs")
-      )
-      _ <- Either.cond(
-        (before.keySet -- tx.inputs).forall(ref => before(ref).original == after(ref).original),
-        (),
-        StateMismatch("untouched output bytes changed")
-      )
-      _ <- created.toVector.foldLeft[Either[Error, Unit]](Right(())) {
-        case (acc, (ref, expected)) =>
-          for
-            _ <- acc
-            observed <- NativeSpending.output(after(ref), false).left.map(StateMismatch.apply)
-            _ <- Either.cond(
-              observed.address == expected.address && observed.coin == expected.value.lovelace,
-              (),
-              StateMismatch("created output address/value differs")
-            )
-          yield ()
-      }
-      _ <- Either.cond(
-        context.feesAfter - context.feesBefore == tx.fee,
-        (),
-        StateMismatch("fee-pot delta differs")
-      )
+      _ <- ClusterTransition.compareReference(applied, post, context.feesAfter).left.map(error)
+      tx = applied.candidate
     yield new Receipt(
       bound,
       admission,
-      minimum,
+      tx.minimum,
       tx.fee,
-      tx.inputs,
-      created.keySet,
-      before.size - tx.inputs.size
+      tx.spent,
+      tx.created,
+      before.size - tx.spent.size
     )

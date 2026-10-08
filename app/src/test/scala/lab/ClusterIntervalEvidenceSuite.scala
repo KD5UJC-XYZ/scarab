@@ -24,12 +24,7 @@ class ClusterIntervalEvidenceSuite extends munit.FunSuite:
     def load = ClusterTransferCommand.load(dir)
     def blocks =
       get(ClusterHeaderObservation.captures(dir.resolve("scala-transfer.md"))).map(_.block)
-    def compare =
-      val in = load
-      get(
-        ClusterIntervalTransfer
-          .compare(in.context, in.minimumOutputParameters, in.pre, in.post, in.tx, blocks)
-      )
+    def inclusion = get(ClusterIntervalTransfer.bind(load.context, load.tx, blocks))
     def retainedFields(original: Bytes): Vector[(Bytes, Bytes)] =
       val root = get(Cbor.decode(original))
       val body = root.value match
@@ -42,28 +37,35 @@ class ClusterIntervalEvidenceSuite extends munit.FunSuite:
             .map((key, value) => (key.original, value.original))
         case _ => fail("body map required")
 
-    test("captured interval transfer binds original bytes to the actual containing slot") {
-      val receipt = compare
+    test(
+      "historical interval original inclusion still binds; narrower whole checkpoint is Unsupported"
+    ) {
       val expected = field(json("interval-plan.md"), "positive")
-      assertEquals(receipt.profileId, ClusterIntervalTransfer.ProfileId)
-      assertEquals(receipt.bound.interval.interval.lower, bound(expected, "lower"))
-      assertEquals(receipt.bound.interval.interval.upper, bound(expected, "upper"))
-      assert(receipt.bound.interval.satisfied)
+      assertEquals(inclusion.interval.interval.lower, bound(expected, "lower"))
+      assertEquals(inclusion.interval.interval.upper, bound(expected, "upper"))
+      assert(inclusion.interval.satisfied)
+      val in = load
       assertEquals(
-        receipt.transfer.transactionId,
-        get(ValidityInterval.decode(load.tx)).transactionId
+        ClusterIntervalTransfer
+          .compare(in.context, in.minimumOutputParameters, in.pre, in.post, in.tx, blocks),
+        Left("Unsupported(unsupported payment address kind/network/length)")
       )
-      assertEquals(receipt.transfer.observedFeePotDelta, BigInt(200000))
-      assert(!receipt.fullLedgerValidated && !receipt.referenceSnapshotAtomic)
     }
-    test("applied command receipt reports the outer profile and exact derived inclusion slot") {
-      val expected = compare
+    test(
+      "historical command receipt retains its original profile and original inclusion identity"
+    ) {
       val receipt = json("interval-inclusion.md")
-      assertEquals(string(field(receipt, "profile")), ClusterIntervalTransfer.ProfileId)
+      assertEquals(
+        string(field(receipt, "profile")),
+        "conway-pv9-cluster-ada-interval-transition-v1"
+      )
       assertEquals(string(field(receipt, "slotSource")), "containing-block")
-      assertEquals(uint(field(receipt, "slot")), expected.bound.interval.slot)
-      assertEquals(string(field(receipt, "blockHash")), expected.bound.blockHash.hex)
-      assertEquals(string(field(receipt, "transactionId")), expected.transfer.transactionId.hex)
+      assertEquals(uint(field(receipt, "slot")), inclusion.interval.slot)
+      assertEquals(string(field(receipt, "blockHash")), inclusion.blockHash.hex)
+      assertEquals(
+        string(field(receipt, "transactionId")),
+        get(ValidityInterval.decode(load.tx)).transactionId.hex
+      )
       assertEquals(field(receipt, "satisfied"), Lit("true"))
       assertEquals(field(receipt, "fullLedgerValidated"), Lit("false"))
     }

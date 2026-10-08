@@ -4,6 +4,7 @@ package lab
 import java.nio.file.{Files, Path}
 import lab.cbor.Bytes
 import lab.header.PraosEligibility
+import lab.header.PraosCertificateState as Certificate
 import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 import scala.util.control.NonFatal
 
@@ -65,12 +66,44 @@ object PraosEligibilityContext:
   ): Either[String, Prepared] = checked {
     val certificates =
       get(CertificateBranch.loadTransfer(directory, protocolState, expectedProtocolSha256))
-    val genesis =
-      json(read(directory.resolve("transfer-genesis.md")), certificates.context.genesisDigest)
-    val ledger =
-      json(read(directory.resolve("pre-ledger-state.md")), certificates.context.registrationDigest)
-    val protocol = json(protocolState, expectedProtocolSha256)
+    get(
+      fromBoundSources(
+        certificates,
+        read(directory.resolve("transfer-genesis.md")),
+        read(directory.resolve("pre-ledger-state.md")),
+        protocolState,
+        expectedProtocolSha256
+      )
+    )
+  }
+
+  /** Shared pre-only parser; every original source is rehashed against its supplied binding. */
+  private[lab] def fromBoundSources(
+      certificates: CertificateBranch.Prepared,
+      genesisBytes: Bytes,
+      ledgerBytes: Bytes,
+      protocolBytes: Bytes,
+      protocolDigest: Bytes
+  ): Either[String, Prepared] = checked {
+    val genesis = json(genesisBytes, certificates.context.genesisDigest)
+    val ledger = json(ledgerBytes, certificates.context.registrationDigest)
+    val protocol = json(protocolBytes, protocolDigest)
     import ReferenceJson.{field, uint}
+    require(
+      uint(field(protocol, "lastSlot")) == certificates.seed.tip.slot,
+      "protocol seed slot mismatch"
+    )
+    val counters = field(protocol, "oCertCounters") match
+      case ReferenceJson.Json.Obj(values) =>
+        values.map { (key, value) =>
+          val id = get(Bytes.fromHex(key))
+          require(id.size == 28 && id.hex == key, "canonical pool hash required")
+          id -> uint(value)
+        }
+      case _ => throw new IllegalArgumentException("protocol counters required")
+    val rebuilt =
+      get(Certificate.seed(certificates.context, certificates.seed.tip, counters, protocolDigest))
+    require(rebuilt.id == certificates.seed.id, "protocol certificate seed mismatch")
     val nonce = field(protocol, "epochNonce") match
       case ReferenceJson.Json.Lit("null") => Vrf.NeutralNonce
       case ReferenceJson.Json.Str(text)   => Vrf.Hash32.fromBytes(hash(text)).toOption.get
@@ -100,7 +133,7 @@ object PraosEligibilityContext:
         nonce,
         coefficient(field(genesis, "activeSlotsCoeff")),
         stakes,
-        expectedProtocolSha256
+        protocolDigest
       )
     )
     Prepared(context, certificates)
