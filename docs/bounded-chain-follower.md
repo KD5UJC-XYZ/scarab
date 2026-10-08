@@ -92,8 +92,10 @@ Tests run on dev-host in `cardano-public-v023-check:local`, with network disable
 2 CPUs, 2 GiB container memory, 256 PIDs, `ActiveProcessorCount=2`, and a 1,200 MiB
 JVM heap. Dependencies are copied into this worktree's ignored `.cache`, not written
 through the main checkout's cache. No host installation or public network fetch is
-needed. No live cluster run is claimed for this increment; that resource slot and
-integration acceptance remain with the parent task.
+needed. The initial increment was unit-tested only. Subsequent approved
+[live adapter acceptance](bounded-follower-live.md) captured four blocks with an
+injected local disconnect and retained-tip reintersection; its narrower claims
+and original source commit are recorded separately.
 
 On 2026-10-08, `scalafmtCheckAll` and **78 tests** passed: 17 new follower tests,
 four existing reference-capture tests, 52 network-runtime tests, and five fetcher

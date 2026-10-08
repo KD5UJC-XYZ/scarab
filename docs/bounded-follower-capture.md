@@ -23,7 +23,9 @@ For the private Docker cluster, use the established reference-capture container
 network namespace so loopback addresses the reference node. The parent owns the
 cluster resource slot, image verification, anchor query, execution deadline,
 outside-Git evidence redirection and cleanup. This adapter generates no keys and
-starts no Docker containers. It has not been run live in this packet.
+starts no Docker containers. A subsequent approved live run passed through the new
+`scripts/private_cluster_follower.py` subclass of the existing launcher; see
+[live acceptance](bounded-follower-live.md).
 
 ## Exercise and evidence
 
@@ -74,7 +76,8 @@ combined adapter/follower run passed all four then-current adapter tests plus th
 17 follower tests. The fifth regression specifically verifies selected anchor
 fallback and the resulting trimmed candidate offer. Independent read-only review
 found no blocking defect; its evidence findings were addressed with selected-point
-records, reasons and counters. No live reference result is claimed.
+records, reasons and counters. These unit results remain separate from the
+subsequent [live reference acceptance](bounded-follower-live.md).
 
 JUnit receipt: `app/target/test-reports/TEST-lab.BoundedFollowerCaptureSuite.xml`.
 The underlying follower receipt remains
