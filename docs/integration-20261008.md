@@ -14,3 +14,21 @@ Both runs used local Linux Docker, network disabled, 4 CPUs, 4 GiB memory/swap c
 - Follower checkpoints describe acquired candidate bytes, not an adopted ledger tip. Freeze an immutable checkpoint before creating a store/replay source: extensions and forks both change source identity. Its adapter injects a local exception after intersection; it does not simulate a mid-packet failure or reference-node crash. No live follower result is claimed.
 - Header `Right` means an observation was produced. Check OpCert and KES results individually; rejection can occur inside Right. Genesis/registration context is supplied, with VRF, stake, nonce, counters, leadership and consensus still unchecked. Retained positive signatures do not prove crypto acceptance-set parity.
 - No new live workload, public peer connection, key creation, transaction submission or public push occurred during this integration. The last hosted-green public revision remains cec73075948a696cfe76313f80df0138535305f2; these integrated commits have only local acceptance so far.
+
+
+## Subsequent scenario integration
+
+The earlier checkpoint above is historical. Hosted CI subsequently passed at
+`db88afbd2b7d86517d8d4f0f5176ca650d3a369a`. The separately reviewed scenario chain is
+now integrated, with **778 Scala tests, 25 public gates and 42 Python guards** passing
+offline; see [the public verification record](public-profile.md#scenario-integration-acceptance-2026-10-08).
+The negative adapter observes missing required-key coverage or unresolved inputs;
+it does not establish invalid-signature or invalid-block rejection. State snapshots
+remain non-atomic. Cancellation/restart tests mean a fresh harness run, not recovery
+of a retained reference-node database.
+
+The user directly approved disposable local keys, isolated local Docker clusters
+and local test submissions in the replacement conversation. Public-network
+submissions and real funds remain forbidden. Live results are recorded separately
+in [minimum-output verification](minimum-output.md); authorization itself is not
+test evidence.

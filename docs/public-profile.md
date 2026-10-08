@@ -43,3 +43,33 @@ The run used the existing inspected Python/JDK test image derived from pinned Te
 ## Integrated local profile
 
 The reviewed follower/header/minimum-output integration passed 764 public Scala tests, all 25 public gates and 24 Python guards locally. A separate 28-test retained-data run is not part of public CI. See [the integration checkpoint](integration-20261008.md) for exact revisions, resource bounds and remaining live-evidence limits. This does not update the hosted-green revision reported above.
+
+
+## Scenario integration acceptance, 2026-10-08
+
+The follower/header/minimum-output revision `db88afbd2b7d86517d8d4f0f5176ca650d3a369a`
+passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/37843955860).
+The next local scenario integration passed **778 public Scala tests**, all **25
+public serial gates**, and **42 Python guards**. Module counts are core 197, VM 13,
+network 100, network-runtime 52, ledger 105, ledger-runtime 150, fetcher 5, app 156.
+This includes 14 synthetic negative-observation tests, nine of which exercise
+complete evidence directories. Optional captured-reference and private-corpus tests
+were not enabled or counted. The existing CI Python discovery already includes
+`test_private_cluster_scenarios.py`; no workflow modification was needed.
+
+The reviewed scenario chain `1d785a1`, `81208bf`, `34c360c` was cherry-picked as
+`7ea4a46`, `216906e`, `2ba824a`. One integration fixture adjustment adds
+`utxoCostPerByte: 4310`, required by the current source-bound context loader; the
+parameter hash is calculated from the complete fixture. A separate source review
+approved the integration and this adjustment before publication.
+
+Local acceptance used a fresh Git source export plus that fixture adjustment,
+an independently copied cache, and the existing inspected JDK/Python image
+`sha256:ce5dd881ba207fb485aaebd9bb065ac79a808f26ff52467eca938dd064994203`.
+Docker limits were 2 CPUs, 2 GiB memory/swap and 512 PIDs, with network disabled,
+read-only container root, user 1000, dropped capabilities and no-new-privileges.
+Only the exported wrapper was reduced to a 1 GiB heap and two active processors;
+the tracked wrapper and hosted workflow are unchanged. Generated reports, cache,
+commands and logs remain outside Git in
+`/home/<user>/cardano-scenario-integration-20261008`. The owned build container was
+removed. These are offline test results, not live negative reference agreement.

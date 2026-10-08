@@ -42,7 +42,7 @@ including socket failures and unexpected success. A reference local submission
 rejection is not invalid-block rejection or a full ledger validity result. The
 negative Scala comparison is currently **unsupported by this adapter**; existing
 Scala predicates are not thereby claimed unimplemented. Positive Scala evidence is
-provided by the inherited transfer path. No new Scala code or `unsafeRunSync` is used.
+provided by the inherited transfer path. The Python runner does not invoke the separate negative Scala adapter; no `unsafeRunSync` is used.
 
 A separate follow-up [offline Scala adapter](cluster-negative-observation.md) can
 compare the saved negative evidence with selected Scala rejection classes. It does
@@ -87,5 +87,7 @@ All inherited local Docker endpoint, internal network, image verification and
 cleanup checks remain active. Keys stay in the ephemeral container; logs, original
 transactions and state evidence remain outside Git and must not be published as
 raw private evidence. No host installations, shared cache mutation, production
-keys, public network traffic, or push is needed. Integration consists only of the
-three new files; no shared-file patch is necessary.
+keys, public network traffic, or push is needed. The reviewed scenario chain adds seven scenario-specific files. Integration with
+the minimum-output context loader adds `utxoCostPerByte` to the synthetic evidence
+parameters; source hashes are computed from those complete parameters. The
+existing public CI discovery includes the scenario guards without a workflow change.

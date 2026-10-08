@@ -62,7 +62,7 @@ class ClusterNegativeInspectionSuite extends munit.FunSuite:
     val post = raw(map(arr(bs(txid(tx)), number(0)) -> output(10000000)))
     val genesis = """{"networkMagic":1082026,"networkId":"Testnet"}"""
     val parameters =
-      """{"protocolVersion":{"major":9,"minor":0},"txFeePerByte":1,"txFeeFixed":0,"maxTxSize":16384}"""
+      """{"protocolVersion":{"major":9,"minor":0},"txFeePerByte":1,"txFeeFixed":0,"maxTxSize":16384,"utxoCostPerByte":4310}"""
     def ledger(fees: Int) =
       s"""{"lastEpoch":0,"stateBefore":{"esLState":{"utxoState":{"fees":$fees}}}}"""
     val preHash = "01" * 32
