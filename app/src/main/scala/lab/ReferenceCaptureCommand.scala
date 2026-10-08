@@ -92,7 +92,13 @@ object ReferenceCaptureCommand:
       _ <- Either.cond(body.bodyCommitmentMatched, (), "body commitment mismatch")
     yield s"""{"scope":"header-block-byte-comparison","passed":true,"era":"conway","slot":${h.slot},"blockNo":${h.blockNo},"headerHash":"${h.hash.hex}","parentHash":"${h.parent.hex}","rawBlockSha256":"${indexed.rawSha256.hex}","headerProtocolVersion":{"major":${h.major},"minor":${h.minor}},"originalHeaderBytesMatched":true,"parentMatched":true,"bodySizeMatched":true,"bodyHashMatched":true,"declaredBodySize":${body.declaredSize},"actualBodySize":${body.actualSize},"signaturesChecked":false,"ledgerConformance":false}"""
 
-  private def nextHeader(peer: NumericPeer, magic: Long, anchor: ChainSync.Point): IO[Header] =
+  def headersThrough(
+      peer: NumericPeer,
+      magic: Long,
+      anchor: ChainSync.Point,
+      stopAt: Option[ChainSync.Point],
+      maxHeaders: Int = 8
+  ): IO[Vector[Header]] =
     checked(TcpLimits.checked()).flatMap { limits =>
       AsyncTcpTransport
         .resource[IO](peer, limits)
@@ -118,6 +124,18 @@ object ReferenceCaptureCommand:
                 case other =>
                   IO.raiseError(new IllegalStateException(s"expected successor header: $other"))
               }
+              def collect(found: Vector[Header]): IO[Vector[Header]] =
+                if found.size >= maxHeaders || maxHeaders < 1 || maxHeaders > 8 then
+                  IO.raiseError(new IllegalStateException("header range exceeds eight-block bound"))
+                else
+                  session.send(ChainSync.Message.RequestNext) *> forward(found.isEmpty).flatMap {
+                    h =>
+                      checked(ChainSync.UInt64.from(h.slot)).flatMap { slot =>
+                        val point = ChainSync.Point.Block(slot, h.hash)
+                        if stopAt.isEmpty || stopAt.contains(point) then IO.pure(found :+ h)
+                        else collect(found :+ h)
+                      }
+                  }
               for
                 negotiated <- session.negotiate(Handshake.defaultNodeToNode(magic))
                 _ <- IO.raiseUnless(
@@ -128,8 +146,7 @@ object ReferenceCaptureCommand:
                 _ <- intersection match
                   case ChainSync.Message.IntersectFound(point, _) if point == anchor => IO.unit
                   case _ => IO.raiseError(new IllegalStateException("anchor not found"))
-                _ <- session.send(ChainSync.Message.RequestNext)
-                h <- forward(true)
+                h <- collect(Vector.empty)
                 _ <- session.done
               yield h
             }
@@ -137,7 +154,7 @@ object ReferenceCaptureCommand:
         .timeout(25.seconds)
     }
 
-  private def exactBlock(peer: NumericPeer, magic: Long, h: Header): IO[Bytes] =
+  def exactBlock(peer: NumericPeer, magic: Long, h: Header): IO[Bytes] =
     for
       limits <- checked(TcpLimits.checked())
       slot <- checked(ChainSync.UInt64.from(h.slot))
@@ -218,7 +235,8 @@ object ReferenceCaptureCommand:
     checked(options(args))
       .flatMap { case (peer, magic, anchor) =>
         (for
-          h <- nextHeader(peer, magic, anchor)
+          headers <- headersThrough(peer, magic, anchor, None, 1)
+          h = headers.head
           _ <- IO.println(
             s"""{"record":"header","envelopeHex":"${h.envelope.hex}","headerHex":"${h.raw.hex}","headerHash":"${h.hash.hex}","headerProtocolVersion":{"major":${h.major},"minor":${h.minor}}}"""
           )
