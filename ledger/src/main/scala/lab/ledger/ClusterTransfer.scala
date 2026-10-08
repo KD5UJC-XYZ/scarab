@@ -119,9 +119,28 @@ object ClusterTransfer:
     }))
 
   def compare(context: Context, pre: Bytes, post: Bytes, original: Bytes): Either[String, Receipt] =
+    compareProfile(context, pre, post, original, false)
+
+  private[ledger] def compareIntervalTransfer(
+      context: Context,
+      pre: Bytes,
+      post: Bytes,
+      original: Bytes
+  ): Either[String, Receipt] =
+    compareProfile(context, pre, post, original, true)
+
+  private def compareProfile(
+      context: Context,
+      pre: Bytes,
+      post: Bytes,
+      original: Bytes,
+      interval: Boolean
+  ): Either[String, Receipt] =
     for
       _ <- bounded(original)
-      tx <- Coverage.decode(original).left.map(_.toString)
+      tx <- (if interval then IntervalProjection.coverage(original)
+             else Coverage.decode(original)).left.map(_.toString)
+      exactBody <- (if interval then IntervalProjection.body(original) else Right(tx.body))
       before <- entries(pre)
       after <- entries(post)
       _ <- Either.cond(tx.inputs.subsetOf(before.keySet), (), "unresolved spending inputs")
@@ -139,7 +158,7 @@ object ClusterTransfer:
       _ <- tx.witnesses.foldLeft[Either[String, Unit]](Right(())) { (acc, witness) =>
         for
           _ <- acc
-          result <- CardanoWitness.verifyVKeyWitness(tx.body, witness).left.map(_.toString)
+          result <- CardanoWitness.verifyVKeyWitness(exactBody, witness).left.map(_.toString)
           _ <- Either.cond(
             result == VerificationResult.SignatureVerified,
             (),
@@ -147,7 +166,8 @@ object ClusterTransfer:
           )
         yield ()
       }
-      body <- Balance.decode(original).left.map(_.toString)
+      body <- (if interval then IntervalProjection.balance(original)
+               else Balance.decode(original)).left.map(_.toString)
       balance <- Balance
         .check("Conway", 9, selected.view.mapValues(_.value).toMap, body)
         .left
@@ -158,7 +178,9 @@ object ClusterTransfer:
         "value not conserved"
       )
       feeContext <- FeeSize.Context.decode(context.parameters, selectedRaw).left.map(_.toString)
-      feeSize <- FeeSize.checkTransferFeeAndSize(feeContext, tx).left.map(_.toString)
+      feeSize <-
+        (if interval then IntervalProjection.feeSize(context.parameters, exactBody.bytes, tx)
+         else FeeSize.checkTransferFeeAndSize(feeContext, tx)).left.map(_.toString)
       _ <- Either.cond(
         feeSize.fee.isInstanceOf[FeePredicate.Satisfied] &&
           feeSize.size.isInstanceOf[SizePredicate.Satisfied],
@@ -170,7 +192,7 @@ object ClusterTransfer:
       ) { case (acc, (output, i)) =>
         for
           out <- acc
-          ref <- TxIn.create(tx.body.hash.bytes, BigInt(i)).left.map(_.toString)
+          ref <- TxIn.create(exactBody.hash.bytes, BigInt(i)).left.map(_.toString)
           _ <- Either.cond(!before.contains(ref), (), "output collision")
         yield out.updated(ref, output)
       }
@@ -199,7 +221,7 @@ object ClusterTransfer:
         "observed reference fee-pot delta differs"
       )
     yield Receipt(
-      tx.body.hash.bytes,
+      exactBody.hash.bytes,
       tx.fee,
       context.feesAfter - context.feesBefore,
       tx.inputs,

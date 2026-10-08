@@ -28,9 +28,23 @@ object MinimumOutput:
     def satisfied: Boolean = outputs.forall(_.satisfied)
 
   def check(parameters: Parameters, original: Bytes): Either[String, Receipt] =
+    checkProfile(parameters, original, false)
+
+  private[ledger] def checkIntervalTransfer(
+      parameters: Parameters,
+      original: Bytes
+  ): Either[String, Receipt] =
+    checkProfile(parameters, original, true)
+
+  private def checkProfile(
+      parameters: Parameters,
+      original: Bytes,
+      interval: Boolean
+  ): Either[String, Receipt] =
     for
       _ <- Cbor.decode(original, Cbor.Limits(1048576, 16, 65536, 1048576))
-      tx <- Coverage.decode(original).left.map(_.toString)
+      tx <- (if interval then IntervalProjection.coverage(original)
+             else Coverage.decode(original)).left.map(_.toString)
       _ <- Either.cond(
         tx.outputs.nonEmpty,
         (),
