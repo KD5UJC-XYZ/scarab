@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import lab.cbor.{Bytes, Cbor, Node, Value}
-import lab.ledger.{ClusterTransfer, Coverage, MinimumOutput}
+import lab.ledger.{ClusterIntervalTransfer, ClusterTransfer, Coverage, MinimumOutput}
 import lab.network.ChainSync
 import scala.concurrent.duration.*
 
@@ -230,15 +230,27 @@ object ClusterTransferCommand:
               s"""{"record":"transfer-range-block","headerEnvelopeHex":"${h.envelope.hex}","rawBlockHex":"${raw.hex}"}"""
             )
         }
-        _ <- IO.blocking {
-          checkInclusion(in.tx, blocks)
-        }
-        minimum <- checked(MinimumOutput.check(in.minimumOutputParameters, in.tx))
-        _ <- checked(Either.cond(minimum.satisfied, (), "minimum output predicate failed"))
-        _ <- IO.println(MinimumOutputCommand.render(minimum))
-        receipt <- checked(ClusterTransfer.compare(in.context, in.pre, in.post, in.tx))
+        intervalTransfer <- checked(
+          ClusterIntervalTransfer.compare(
+            in.context,
+            in.minimumOutputParameters,
+            in.pre,
+            in.post,
+            in.tx,
+            blocks
+          )
+        )
+        receipt = intervalTransfer.transfer
+        _ <- IO.println(MinimumOutputCommand.render(intervalTransfer.minimum))
         _ <- IO.println(
-          s"""{"scope":"cluster-transfer-observation","profile":"${receipt.profileId}","passed":true,"transactionId":"${receipt.transactionId.hex}","fee":${receipt.fee},"observedFeePotDelta":${receipt.observedFeePotDelta},"untouchedUtxoEntries":${receipt.untouchedEntries},"capturedBlocks":${blocks.size},"contextSha256":"${in.manifestDigest.hex}","ledgerProtocolVersion":"9.0","referenceSnapshotAtomic":false,"originalTransactionInclusionMatched":true,"witnessSignaturesChecked":true,"minimumOutputsChecked":true,"headerSignaturesChecked":false,"fullLedgerValidated":false}"""
+          s"""{"record":"transaction-validity-interval","profile":"${intervalTransfer.profileId}","slot":${intervalTransfer.bound.interval.slot},"slotSource":"containing-block","lower":${intervalTransfer.bound.interval.interval.lower
+              .fold("null")(_.toString)},"upper":${intervalTransfer.bound.interval.interval.upper
+              .fold("null")(
+                _.toString
+              )},"blockHash":"${intervalTransfer.bound.blockHash.hex}","transactionId":"${receipt.transactionId.hex}","satisfied":true,"fullLedgerValidated":false}"""
+        )
+        _ <- IO.println(
+          s"""{"scope":"cluster-transfer-observation","profile":"${intervalTransfer.profileId}","passed":true,"transactionId":"${receipt.transactionId.hex}","fee":${receipt.fee},"observedFeePotDelta":${receipt.observedFeePotDelta},"untouchedUtxoEntries":${receipt.untouchedEntries},"capturedBlocks":${blocks.size},"contextSha256":"${in.manifestDigest.hex}","ledgerProtocolVersion":"9.0","referenceSnapshotAtomic":false,"originalTransactionInclusionMatched":true,"witnessSignaturesChecked":true,"minimumOutputsChecked":true,"validityIntervalChecked":true,"headerSignaturesChecked":false,"fullLedgerValidated":false}"""
         )
       yield ExitCode.Success)
         .timeout(60.seconds)

@@ -64,14 +64,21 @@ features are rejected, not silently treated as validated.
 
 ## Integration and verification
 
-`validity-interval-integration.patch` is a small **unapplied** proposal for the
-parent-owned `ClusterTransferCommand.scala`. It routes the capture comparison
-through the new explicit profile and emits the actual inclusion slot and block
-hash. Applying it changes the command's reported profile; the integration owner
-must select this opt-in deliberately. The existing legacy library APIs stay
-unchanged. Patch applicability was checked against base
-`2eda20c098ad2897d770ed471e47e2b9c2b55662`; command integration is not included in
-this packet's compiled sources.
+The source packet's `validity-interval-integration.patch` is retained as a historical
+integration proposal. It has now been applied to `ClusterTransferCommand.scala`;
+do not apply it again to current main. The command replaces its previous separate
+inclusion/minimum/transfer path with the explicit interval composition and reports
+the outer interval-transition profile, the original containing-block slot/hash,
+decoded bounds, and `validityIntervalChecked: true`. The old public library APIs
+remain closed to interval fields. The legacy Coverage, Balance and RestrictedReplay
+source files remain byte-identical to the preceding checkpoint. The source packet
+was cherry-picked as `e451196`; the subsequent command/harness integration has its
+own verification and review record.
+
+The optional [isolated local interval scenario](private-cluster-interval.md) observes
+an accepted interval-bearing transaction and separated expired/not-yet-valid
+submission failures. It does not infer the reference mempool evaluation slot from
+the paused chain tip, nor claim a live exact-boundary or complete failure-order proof.
 
 The new suite covers boundary grids, absent/extreme bounds, malformed/duplicate
 fields, truncation, original non-minimal encoding identity, signed composition,
@@ -80,15 +87,15 @@ mutation, and incomplete/reversed/oversized captured ranges. A signed transfer
 included at slot 20 with upper bound 21 passes even when the post snapshot is at
 slot 30, exercising actual inclusion-slot binding.
 
-Tests run offline in the existing Docker image with two CPUs, 2 GiB memory, a
-1200 MiB JVM heap, and this worktree's private cache. No live cluster, network
-fetch, shared-cache write, production keys, host install, or push is performed.
+The source packet was tested offline in the existing Docker image with two CPUs, 2 GiB memory, a
+1200 MiB JVM heap, and this worktree's private cache. That source-packet check performed no live cluster run, network
+fetch, shared-cache write, production-key use, host install or push.
 
-Final offline result: `scalafmtAll scalafmtCheckAll ledger/test app/test` passed:
+Source-packet offline result before command integration: `scalafmtAll scalafmtCheckAll ledger/test app/test` passed:
 118 ledger tests (13 interval tests), 156 app/dependency tests. Historical replay
 source-pin and behavior tests passed unchanged. `git diff --check` and
 `git apply --check docs/validity-interval-integration.patch` passed. Independent
 read-only review found no blocking production issue after the pinned-source
 refactor; its requested original-size boundary regression is included. Test log:
-worktree-local ignored `.cache/interval-tests.log`. Live node acceptance and
-application integration remain for the integration owner and resource slot.
+worktree-local ignored `.cache/interval-tests.log`. That packet result did not include applied-command or live-reference acceptance;
+subsequent integration evidence is recorded separately.

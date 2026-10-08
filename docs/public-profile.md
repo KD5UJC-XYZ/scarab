@@ -116,3 +116,17 @@ overlap eight public tests; they are not added to the 787 public total. The
 separate 33 negative/transfer retained tests remain as reported above. Header
 success still does not establish trusted registration, VRF/leadership, current
 stake/counters, full header validity or consensus validity.
+
+
+## Applied validity-interval checkpoint
+
+The command now uses the explicit
+`conway-pv9-cluster-ada-interval-transition-v1` composition, including the actual
+containing-block slot and original unstripped identity/signatures/fee sizing.
+Legacy Coverage, Balance and RestrictedReplay source remains unchanged. The
+isolated reference run accepted an interval-bearing transaction at slot 1281
+within `[928, 2028)` and rejected separated expired/not-yet-valid bodies. This is
+not an exact-boundary, complete failure-order, full-ledger or consensus proof.
+Validation: 800 public Scala tests, 25 public gates, 58 Python guards; separately,
+39 retained-data checks. See [the interval evidence record](private-cluster-interval.md)
+for scope, private receipt locations and the preserved initial failed run.

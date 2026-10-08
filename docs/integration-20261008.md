@@ -57,3 +57,17 @@ full public result to **787 Scala tests, 25 gates and 50 Python guards**. Its
 standalone observation on the newly captured packet and all nine header tests
 (eight public plus one opt-in) passed separately. See the latest
 [public verification checkpoint](public-profile.md#header-context-integrated-checkpoint).
+
+
+## Applied validity-interval checkpoint
+
+The command now uses the explicit
+`conway-pv9-cluster-ada-interval-transition-v1` composition, including the actual
+containing-block slot and original unstripped identity/signatures/fee sizing.
+Legacy Coverage, Balance and RestrictedReplay source remains unchanged. The
+isolated reference run accepted an interval-bearing transaction at slot 1281
+within `[928, 2028)` and rejected separated expired/not-yet-valid bodies. This is
+not an exact-boundary, complete failure-order, full-ledger or consensus proof.
+Validation: 800 public Scala tests, 25 public gates, 58 Python guards; separately,
+39 retained-data checks. See [the interval evidence record](private-cluster-interval.md)
+for scope, private receipt locations and the preserved initial failed run.
