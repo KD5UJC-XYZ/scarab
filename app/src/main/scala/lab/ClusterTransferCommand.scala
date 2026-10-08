@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import lab.cbor.{Bytes, Cbor, Node, Value}
-import lab.ledger.{ClusterTransfer, Coverage}
+import lab.ledger.{ClusterTransfer, Coverage, MinimumOutput}
 import lab.network.ChainSync
 import scala.concurrent.duration.*
 
@@ -36,7 +36,8 @@ object ClusterTransferCommand:
       tx: Bytes,
       prePoint: ChainSync.Point,
       postPoint: ChainSync.Point,
-      manifestDigest: Bytes
+      manifestDigest: Bytes,
+      minimumOutputParameters: MinimumOutput.Parameters
   )
   def load(dir: Path): Input =
     val manifest = read(dir.resolve("transfer-context.md"), 8192)
@@ -166,7 +167,8 @@ object ClusterTransferCommand:
       hex(dir.resolve("signed-transaction-cbor.md")),
       ChainSync.Point.Block(get(ChainSync.UInt64.from(context.preSlot)), context.preHash),
       ChainSync.Point.Block(get(ChainSync.UInt64.from(context.postSlot)), context.postHash),
-      sha(manifest)
+      sha(manifest),
+      MinimumOutputCommand.parameters(params)
     )
 
   def checkInclusion(original: Bytes, blocks: Vector[Bytes]): Unit =
@@ -231,9 +233,12 @@ object ClusterTransferCommand:
         _ <- IO.blocking {
           checkInclusion(in.tx, blocks)
         }
+        minimum <- checked(MinimumOutput.check(in.minimumOutputParameters, in.tx))
+        _ <- checked(Either.cond(minimum.satisfied, (), "minimum output predicate failed"))
+        _ <- IO.println(MinimumOutputCommand.render(minimum))
         receipt <- checked(ClusterTransfer.compare(in.context, in.pre, in.post, in.tx))
         _ <- IO.println(
-          s"""{"scope":"cluster-transfer-observation","profile":"${receipt.profileId}","passed":true,"transactionId":"${receipt.transactionId.hex}","fee":${receipt.fee},"observedFeePotDelta":${receipt.observedFeePotDelta},"untouchedUtxoEntries":${receipt.untouchedEntries},"capturedBlocks":${blocks.size},"contextSha256":"${in.manifestDigest.hex}","ledgerProtocolVersion":"9.0","referenceSnapshotAtomic":false,"originalTransactionInclusionMatched":true,"witnessSignaturesChecked":true,"headerSignaturesChecked":false,"fullLedgerValidated":false}"""
+          s"""{"scope":"cluster-transfer-observation","profile":"${receipt.profileId}","passed":true,"transactionId":"${receipt.transactionId.hex}","fee":${receipt.fee},"observedFeePotDelta":${receipt.observedFeePotDelta},"untouchedUtxoEntries":${receipt.untouchedEntries},"capturedBlocks":${blocks.size},"contextSha256":"${in.manifestDigest.hex}","ledgerProtocolVersion":"9.0","referenceSnapshotAtomic":false,"originalTransactionInclusionMatched":true,"witnessSignaturesChecked":true,"minimumOutputsChecked":true,"headerSignaturesChecked":false,"fullLedgerValidated":false}"""
         )
       yield ExitCode.Success)
         .timeout(60.seconds)

@@ -10,6 +10,11 @@ from private_cluster import Runner, JDK
 
 
 class TransferRunner(Runner):
+    transfer_amount = 10000000
+
+    def before_submit(self):
+        pass
+
     def execute(self, *args, **kwargs):
         if args and args[0] == "/bin/sh" and len(args) == 3 and "cardano-testnet create-env" in args[2]:
             args = (args[0], args[1], args[2].replace("--num-pool-nodes 3", "--nodes spo,spo,relay"))
@@ -135,7 +140,7 @@ class TransferRunner(Runner):
             txin, value = selected[0]
             if set(value["value"]) != {"lovelace"}:
                 raise ValueError("ADA-only source UTxO required")
-            amount, fee = 10000000, 200000
+            amount, fee = self.transfer_amount, 200000
             change = value["value"]["lovelace"] - amount - fee
             if change < amount:
                 raise ValueError("insufficient disposable source value")
@@ -155,6 +160,7 @@ class TransferRunner(Runner):
             self.save("transfer-selection.md", json.dumps({"input": txin, "sourceValue": value,
                 "destination": addresses[1], "amount": amount, "changeAddress": addresses[0],
                 "change": change, "fee": fee, "transactionId": txid}, indent=2))
+            self.before_submit()
             submitted = self.execute("cardano-cli", "conway", "transaction", "submit",
                 "--tx-file", "/work/transfer.signed", "--testnet-magic", "1082026",
                 "--socket-path", "/work/env/socket/node3/sock")
