@@ -12,6 +12,8 @@ import scala.concurrent.duration.*
 /** Bounded Conway byte acquisition, never a consensus/ledger tip. */
 object BoundedChainFollower:
   final class Invalid(message: String) extends RuntimeException(message)
+  final class PublicationFailed(cause: Throwable)
+      extends RuntimeException("acquisition checkpoint publication failed; reopen required", cause)
   final case class Policy(
       target: Int = 4,
       maxEvents: Int = 64,
@@ -121,12 +123,18 @@ object BoundedChainFollower:
       state: Ref[F, Checkpoint],
       gate: Semaphore[F],
       peer: Resource[F, Peer[F]],
-      policy: Policy
+      policy: Policy,
+      publish: Checkpoint => F[Unit]
   ):
     private val F = Async[F]
     def checkpoint: F[Checkpoint] = state.get
     private def check[A](value: Either[String, A]): F[A] =
       F.fromEither(value.leftMap(new Invalid(_)))
+    private def commit(next: Checkpoint): F[Unit] =
+      F.uncancelable(_ =>
+        publish(next).handleErrorWith(error => F.raiseError(new PublicationFailed(error))) *>
+          state.set(next)
+      )
 
     /** Serialized, cancelable invocation. Checked progress remains readable after cancellation. */
     def run: F[Outcome] = gate.permit.use { _ =>
@@ -151,7 +159,7 @@ object BoundedChainFollower:
                     F.raiseUnless(allowed)(new Invalid("event budget")) *> p.next.flatMap {
                       case Event.Await => loop
                       case Event.Backward(point) =>
-                        check(current.rollback(point)).flatMap(state.set) *> loop
+                        check(current.rollback(point)).flatMap(commit) *> loop
                       case Event.Forward(envelope) =>
                         charge(envelope.size) *> check(ReferenceCaptureCommand.header(envelope))
                           .flatMap { h =>
@@ -173,7 +181,7 @@ object BoundedChainFollower:
                                     append(current, Original(envelope, raw))
                                   )
                                 )
-                                .flatMap(state.set) *> loop
+                                .flatMap(commit) *> loop
                           }
                     }
                   }
@@ -181,14 +189,15 @@ object BoundedChainFollower:
             state.get.flatMap { current =>
               p.intersect(current.candidates)
                 .flatMap(point => check(current.rollback(point)))
-                .flatMap(state.set) *> loop
+                .flatMap(commit) *> loop
             }
           }
           def attempt(left: Int): F[Outcome] =
             session.as("targetReached").flatMap(outcome).handleErrorWith {
-              case e: Invalid    => outcome(e.getMessage)
-              case _ if left > 0 => attempt(left - 1)
-              case _             => outcome("peerFailure")
+              case e: PublicationFailed => F.raiseError(e)
+              case e: Invalid           => outcome(e.getMessage)
+              case _ if left > 0        => attempt(left - 1)
+              case _                    => outcome("peerFailure")
             }
           F.timeoutTo(attempt(policy.reconnects), policy.duration, outcome("timeBudget"))
         }
@@ -200,11 +209,38 @@ object BoundedChainFollower:
       peer: Resource[F, Peer[F]],
       policy: Policy = Policy()
   ): Resource[F, Follower[F]] =
+    withPublication(initial, peer, policy, _ => Async[F].unit)
+
+  /** A fresh owner reopens/revalidates the store before offering intersection candidates. */
+  def persistedResource[F[_]: Async](
+      store: AcquisitionCheckpointStore[F],
+      peer: Resource[F, Peer[F]],
+      policy: Policy = Policy()
+  ): Resource[F, Follower[F]] =
+    Resource.eval(store.snapshot).flatMap { saved =>
+      Resource.eval(Ref.of[F, AcquisitionCheckpoint.Revision](saved.revision)).flatMap { revision =>
+        withPublication(
+          saved.checkpoint,
+          peer,
+          policy,
+          next =>
+            revision.get.flatMap(store.save(_, next)).flatMap(saved => revision.set(saved.revision))
+        )
+      }
+    }
+
+  private def withPublication[F[_]: Async](
+      initial: Checkpoint,
+      peer: Resource[F, Peer[F]],
+      policy: Policy,
+      publish: Checkpoint => F[Unit]
+  ): Resource[F, Follower[F]] =
     Resource.eval(
       Async[F].raiseUnless(policy.valid && initial.size <= policy.target)(
         new Invalid("invalid follower policy/checkpoint")
       ) *>
-        (Ref.of[F, Checkpoint](initial), Semaphore[F](1)).mapN(new Follower(_, _, peer, policy))
+        (Ref.of[F, Checkpoint](initial), Semaphore[F](1))
+          .mapN(new Follower(_, _, peer, policy, publish))
     )
 
   /** Transport injection supports scripted peers and owned AsyncTcpTransport resources alike. */
