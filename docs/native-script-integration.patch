@@ -1,0 +1,61 @@
+diff --git a/ledger/src/main/scala/lab/ledger/ClusterIntervalTransfer.scala b/ledger/src/main/scala/lab/ledger/ClusterIntervalTransfer.scala
+index c46d719..28bca5a 100644
+--- a/ledger/src/main/scala/lab/ledger/ClusterIntervalTransfer.scala
++++ b/ledger/src/main/scala/lab/ledger/ClusterIntervalTransfer.scala
+@@ -116,3 +116,20 @@ object ClusterIntervalTransfer:
+       _ <- Either.cond(outputs.satisfied, (), "minimum output predicate failed")
+       transfer <- ClusterTransfer.compareIntervalTransfer(context, pre, post, original)
+     yield Receipt(bound, outputs, transfer)
++
++  /** Opt-in preparation for detached native-script predicates. The existing transfer profile still
++    * rejects script credentials/witness fields; this does not admit script spending. Witness crypto
++    * is repeated to construct an unforgeable, exact-body-bound key set.
++    */
++  def compareWithVerifiedKeys(
++      context: ClusterTransfer.Context,
++      minimum: MinimumOutput.Parameters,
++      pre: Bytes,
++      post: Bytes,
++      original: Bytes,
++      blocks: Vector[Bytes]
++  ): Either[String, (Receipt, NativeScript.VerifiedKeys)] =
++    for
++      receipt <- compare(context, minimum, pre, post, original, blocks)
++      witnesses <- NativeScriptWitnesses.inspect(original)
++    yield (receipt, witnesses.verifiedKeys)
+diff --git a/ledger/src/test/scala/lab/ledger/ValidityIntervalSuite.scala b/ledger/src/test/scala/lab/ledger/ValidityIntervalSuite.scala
+index 2b2b04b..928ae78 100644
+--- a/ledger/src/test/scala/lab/ledger/ValidityIntervalSuite.scala
++++ b/ledger/src/test/scala/lab/ledger/ValidityIntervalSuite.scala
+@@ -172,6 +172,31 @@ class ValidityIntervalSuite extends munit.FunSuite:
+     assertEquals(result.profileId, ClusterIntervalTransfer.ProfileId)
+     assert(!result.fullLedgerValidated)
+     assert(!ValidityInterval.check(original, 30).toOption.get.satisfied)
++    val (prepared, verifiedKeys) = ClusterIntervalTransfer
++      .compareWithVerifiedKeys(context(range), minimum, pre, post(original), original, range)
++      .toOption
++      .get
++    assertEquals(verifiedKeys.originalBody, prepared.bound.interval.interval.originalBody)
++    val detached = NativeScript
++      .decode(
++        raw(
++          arr(
++            u(1),
++            arr(
++              arr(u(0), bs(Blake2b.hash224.hash(public))),
++              arr(u(4), u(20)),
++              arr(u(5), u(21))
++            )
++          )
++        )
++      )
++      .toOption
++      .get
++    val predicate =
++      NativeScript.evaluate(detached, verifiedKeys, prepared.bound.interval.interval).toOption.get
++    assert(predicate.satisfied)
++    assert(!predicate.credentialBound && !predicate.fullLedgerValidated)
++
+   }
+   test("interval rejection precedes minimum-output and state-delta checks in new profile") {
+     val original = tx(Vector(3 -> u(20)), sign = true)
