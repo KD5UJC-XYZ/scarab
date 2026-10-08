@@ -1,0 +1,27 @@
+diff --git a/app/src/main/scala/lab/ClusterTransferCommand.scala b/app/src/main/scala/lab/ClusterTransferCommand.scala
+index 8a4e73c..8ce88a1 100644
+--- a/app/src/main/scala/lab/ClusterTransferCommand.scala
++++ b/app/src/main/scala/lab/ClusterTransferCommand.scala
+@@ -203,6 +203,22 @@ object ClusterTransferCommand:
+       "included transaction ID mismatch"
+     )
+
++  /** Explicit native-spending comparison for a caller that already acquired this command's checked
++    * context and original block range. Does not change legacy CLI dispatch.
++    */
++  def compareNative(
++      in: Input,
++      blocks: Vector[Bytes]
++  ): Either[lab.ledger.NativeSpending.Error, lab.ledger.ClusterNativeTransfer.Receipt] =
++    lab.ledger.ClusterNativeTransfer.compare(
++      in.context,
++      in.minimumOutputParameters,
++      in.pre,
++      in.post,
++      in.tx,
++      blocks
++    )
++
+   def run(args: List[String]): IO[ExitCode] = args match
+     case List(port, directory) =>
+       (for
