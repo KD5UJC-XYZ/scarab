@@ -1,0 +1,45 @@
+name: Public profile
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-profile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out public source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up tested JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10'
+          check-latest: false
+          overwrite-settings: false
+      - name: Report toolchain
+        run: |
+          java -version
+          python3 --version
+      - name: Compile and test public Scala profile
+        run: bash scripts/sbtw check app/runtimeClasspathFile
+      - name: Run explicit public serial gates
+        run: python3 scripts/check-public-gates.py
+      - name: Test local launcher guards without Docker workloads
+        run: python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'

@@ -18,7 +18,7 @@ python3 scripts/check-public-gates.py
 python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
 ```
 
-The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.
+The proposed [public CI workflow](.github/workflows/public-profile.yml) runs these commands on pull requests and main pushes with pinned actions/JDK and read-only permissions; see [verification status](docs/public-profile.md). The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.
 
 Version 0.23 adds a separate Cats Effect-owned, all-JVM local replay store with atomic head publication, checked restart reconstruction, rollback and owner/session revision fencing. Original bytes and the pure profile remain unchanged. The final durable module passes 150 tests together, and its complete direct-JVM CLI gate passes all 19 cases. All 1,294 project tests and 31 scripts have passing coverage across preserved runs with disclosed timing failures; no clean uninterrupted aggregate/script pass is claimed. Fresh-archive acceptance remains pending. [Verification history](docs/restricted-replay-store-verification.md). It requires a trusted dedicated directory and does not claim hardware power-loss guarantees. See the [store contract and CLI](docs/restricted-replay-store.md).
 

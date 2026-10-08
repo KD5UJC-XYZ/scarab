@@ -19,3 +19,23 @@ Passed 711 tests in 50 suites: core 189, VM 13, network 100, network-runtime 52,
 All 12 optional private suites compiled separately, but none ran. The sbt opt-in and six private Python gates reject absent/empty corpus with explicit failure. An initial lowercase sbt configuration invocation was rejected; the verified slash spelling is `PrivateCorpus`. An initial directory-only guard was strengthened to reject empty corpus directories too. These corrections did not change public production/test behavior.
 
 Build: pinned official Temurin JDK 21.0.11, sbt 1.10.7, Scala 3.3.8; 4 CPU / 4 GiB / 512 PID container limits. Python gates ran network-disabled in a local-only image derived from that base. Build/dependency resolution preceded offline gate execution. No private cluster or public Cardano peer was contacted. No image was published.
+
+## Proposed public CI workflow
+
+`.github/workflows/public-profile.yml` runs one Ubuntu 24.04 job on pull requests and pushes to main. It pins official checkout/setup-java actions to immutable commits and Temurin to `21.0.11+10`, then uses the repository's SHA-pinned sbt 1.10.7 wrapper. Permissions are `contents: read`, checkout does not persist credentials, the job has a 20-minute timeout, and newer runs cancel older runs for the same PR/ref. There are no secrets, private-corpus downloads, live reference clusters, artifact publishing or deployment steps. The hosted OS image is an Ubuntu version label, not an immutable machine-image digest.
+
+The job runs the public Scala check/runtime-classpath task, the explicit 25-gate runner, and Python launcher guard discovery. Guard tests do not launch Docker. `CLUSTER_TRANSFER_EVIDENCE` is not set, so the 26 opt-in captured-reference tests are not counted as executed. The six standalone JSON-reader tests remain in the default public profile.
+
+```sh
+bash scripts/sbtw check app/runtimeClasspathFile
+python3 scripts/check-public-gates.py
+python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+```
+
+Public Maven access is needed on a cold hosted runner. The workflow initially uses no dependency cache action. Local verification uses the existing inspected dependency cache with networking disabled in a fresh public source export; that does not establish fresh online resolution. The workflow must pass independent review before publication; local YAML structure checks do not replace an actual GitHub Actions run.
+
+### Local CI-command acceptance, 2026-10-08
+
+A fresh public export of `99106992d39b3f48c8b5d7c7835260af246e5ff6` plus the proposed workflow passed the exact command sequence: **726 Scala tests**, all **25 public serial gates**, and **21 Python launcher guards**. Module counts: core 189, VM 13, network 100, network-runtime 52, ledger 99, ledger-runtime 150, fetcher 5, app 118. Zero failures/errors. The 26 opt-in captured-reference tests and the private corpus suites were not run or counted. A separate mocked failure at public gate 3 propagated its nonzero result and prevented subsequent gates and the success summary.
+
+The run used the existing inspected Python/JDK test image derived from pinned Temurin 21.0.11+10, with 4 CPUs, 4 GiB memory, 512 PIDs and network disabled. Dependencies came from the existing ignored cache. Generated gate reports/logs stayed in the separate export, and the owned test container was removed. Local evidence remains outside Git at `/home/<user>/cardano-ci-public-check-20261008`. Hosted GitHub Actions execution is still pending workflow review/publication; no hosted pass is claimed.
