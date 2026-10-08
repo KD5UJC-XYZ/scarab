@@ -52,8 +52,15 @@ class TransferRunner(Runner):
     def snapshot(self, label):
         paused = [self.pause_evidence()]
         tips = []
+        tip_originals = []
+        def observe_tip():
+            original = self.relay_query("tip")
+            value = json.loads(original)
+            self.save(label + "-tip-original-" + str(len(tip_originals)) + ".md", original)
+            tip_originals.append(original)
+            return value
         for _ in range(3):
-            tips.append(self.query("tip")); time.sleep(0.25)
+            tips.append(observe_tip()); time.sleep(0.25)
         if len({t["hash"] for t in tips}) != 1:
             raise ValueError("relay did not quiesce after producer pause")
         before = tips[-1]
@@ -67,10 +74,10 @@ class TransferRunner(Runner):
             text = self.relay_query(kind, *options)
             self.save(label + "-" + name + ".md", text)
             outputs[name] = text
-            tips.append(self.query("tip"))
+            tips.append(observe_tip())
             paused.append(self.pause_evidence())
         self.save(label + "-producer-brackets.md", json.dumps(paused, indent=2))
-        self.save(label + "-tips.md", json.dumps(tips, indent=2))
+        self.save(label + "-tips.md", "[" + ",".join(tip_originals) + "]")
         if any((t["hash"], t["slot"], t["era"], t["epoch"]) !=
                (before["hash"], before["slot"], before["era"], before["epoch"]) for t in tips):
             raise ValueError("tip changed across bracketed state queries")
@@ -80,7 +87,17 @@ class TransferRunner(Runner):
             "limitation": "Separate CLI acquisitions; identical tip observations do not constitute a single atomic query session."}, indent=2))
         return before, outputs
 
+    def prepare_transfer(self):
+        pass
+
+    def submit_producer(self):
+        direct = self.execute("cardano-cli", "conway", "transaction", "submit",
+            "--tx-file", "/work/transfer.signed", "--testnet-magic", "1082026",
+            "--socket-path", "/work/env/socket/node1/sock")
+        self.save("producer-submission.md", direct.stdout + direct.stderr)
+
     def scala(self):
+        self.prepare_transfer()
         handshake = super().scala()
         # Confirm three-node convergence before changing only owned process states.
         convergence = []
@@ -145,15 +162,13 @@ class TransferRunner(Runner):
         finally:
             self.producers("CONT")
         # Direct producer submission isolates ledger/inclusion from relay TxSubmission propagation.
-        direct = self.execute("cardano-cli", "conway", "transaction", "submit",
-            "--tx-file", "/work/transfer.signed", "--testnet-magic", "1082026",
-            "--socket-path", "/work/env/socket/node1/sock")
-        self.save("producer-submission.md", direct.stdout + direct.stderr)
+        self.submit_producer()
         inclusion_deadline = min(self.deadline - 50, time.monotonic() + 25)
         observations = []
         while time.monotonic() < inclusion_deadline:
             observed = json.loads(self.relay_query("utxo", "--tx-in", txid + "#0", "--output-json"))
-            observations.append({"tip": self.query("tip"), "outputPresent": bool(observed)})
+            observations.append({"tip": self.query("tip"), "outputPresent": bool(observed),
+                                 "observedUnixSeconds": time.time(), "observedMonotonicSeconds": time.monotonic()})
             self.save("inclusion-observations.md", json.dumps(observations, indent=2))
             if observed:
                 break
@@ -171,7 +186,7 @@ class TransferRunner(Runner):
             self.save("fee-pot-observation.md", json.dumps({"exporter": "cardano-cli conway query ledger-state",
                 "field": "stateBefore.esLState.utxoState.fees", "before": fees_before, "after": fees_after,
                 "observedDelta": fees_after - fees_before, "declaredTransactionFee": fee}, indent=2))
-            fields = {"format": "conway-pv9-cluster-ada-transition-v1",
+            fields = {"format": "conway-pv9-cluster-context-v2",
                 "genesisSha256": hashlib.sha256(genesis.encode()).hexdigest(),
                 "parametersSha256": hashlib.sha256(before["parameters"].encode()).hexdigest(),
                 "networkMagic": 1082026, "major": params["protocolVersion"]["major"],
@@ -180,6 +195,9 @@ class TransferRunner(Runner):
                 "feePerByte": params["txFeePerByte"], "feeFixed": params["txFeeFixed"],
                 "maxTxSize": params["maxTxSize"], "feesBefore": fees_before, "feesAfter": fees_after,
                 "binding": "paused-producer-tip-brackets"}
+            for key, name in [("preTipsSha256", "pre-tips.md"), ("postTipsSha256", "post-tips.md"),
+                              ("preLedgerSha256", "pre-ledger-state.md"), ("postLedgerSha256", "post-ledger-state.md")]:
+                fields[key] = hashlib.sha256((self.out / name).read_bytes()).hexdigest()
             self.save("transfer-context.md", "".join(str(k) + "\t" + str(v) + "\n" for k, v in fields.items()))
             port = str(int(self.read("node-data/node3/port").strip()))
             result = self.docker("run", "--rm", "--pull=never", "--name", self.name + "-scala",

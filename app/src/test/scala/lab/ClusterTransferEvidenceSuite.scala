@@ -19,7 +19,11 @@ class ClusterTransferEvidenceSuite extends munit.FunSuite:
         "post-parameters.md",
         "pre-utxo-cbor.md",
         "post-utxo-cbor.md",
-        "signed-transaction-cbor.md"
+        "signed-transaction-cbor.md",
+        "pre-tips.md",
+        "post-tips.md",
+        "pre-ledger-state.md",
+        "post-ledger-state.md"
       )
       try
         names.foreach(n => Files.copy(dir.resolve(n), tmp.resolve(n)))
@@ -49,7 +53,16 @@ class ClusterTransferEvidenceSuite extends munit.FunSuite:
         "postSlot" -> "0",
         "genesisSha256" -> ("00" * 32),
         "parametersSha256" -> ("00" * 32),
-        "binding" -> "atomic"
+        "binding" -> "atomic",
+        "networkMagic" -> "1082027",
+        "feePerByte" -> "0",
+        "feeFixed" -> "1",
+        "maxTxSize" -> "100000",
+        "preSlot" -> "128",
+        "preEpoch" -> "1",
+        "preHash" -> ("11" * 32),
+        "postTipsSha256" -> ("00" * 32),
+        "preLedgerSha256" -> ("00" * 32)
       )
     do
       test("reject context mutation: " + field) {
@@ -59,10 +72,60 @@ class ClusterTransferEvidenceSuite extends munit.FunSuite:
       }
     test("reject actual fee-pot observation mutation") {
       changed("feesAfter", "200001") { p =>
-        val in = ClusterTransferCommand.load(p)
-        assert(ClusterTransfer.compare(in.context, in.pre, in.post, in.tx).isLeft)
+        intercept[IllegalArgumentException](ClusterTransferCommand.load(p))
       }
     }
+    for (name, digestKey, oldValue, replacement) <- Vector(
+        (
+          "pre-parameters.md",
+          "parametersSha256",
+          "\"txFeePerByte\": 1",
+          "\"txFeePerByte\": 1e0"
+        ),
+        (
+          "pre-parameters.md",
+          "parametersSha256",
+          "\"txFeePerByte\": 1",
+          "\"txFeePerByte\": 1, \"txFeePerByte\": 1"
+        ),
+        (
+          "pre-parameters.md",
+          "parametersSha256",
+          "\"txFeePerByte\": 1",
+          "\"txFeePerByte\": 18446744073709551616"
+        ),
+        ("pre-ledger-state.md", "preLedgerSha256", "\"fees\": 0", "\"fees\": -0"),
+        ("pre-tips.md", "preTipsSha256", "\"slot\": 127", "\"slot\": 128")
+      )
+    do
+      test("reject rehashed JSON source mutation: " + name + " " + replacement) {
+        changed("format", ClusterTransferCommand.ContextFormat) { p =>
+          val original = Files.readString(p.resolve(name))
+          assert(original.contains(oldValue))
+          val mutated = original.replaceFirst(
+            java.util.regex.Pattern.quote(oldValue),
+            java.util.regex.Matcher.quoteReplacement(replacement)
+          )
+          Files.writeString(p.resolve(name), mutated)
+          if name == "pre-parameters.md" then
+            Files.writeString(p.resolve("post-parameters.md"), mutated)
+          val digest = java.security.MessageDigest
+            .getInstance("SHA-256")
+            .digest(mutated.getBytes("UTF-8"))
+            .map(b => f"${b & 255}%02x")
+            .mkString
+          val manifest = Files.readString(p.resolve("transfer-context.md"))
+          Files.writeString(
+            p.resolve("transfer-context.md"),
+            manifest.linesIterator
+              .map { line =>
+                if line.startsWith(digestKey + "\t") then digestKey + "\t" + digest else line
+              }
+              .mkString("\n") + "\n"
+          )
+          intercept[IllegalArgumentException](ClusterTransferCommand.load(p))
+        }
+      }
     test("reject missing UTxO transition and truncated signed transaction") {
       val in = load
       assert(ClusterTransfer.compare(in.context, in.pre, in.pre, in.tx).isLeft)

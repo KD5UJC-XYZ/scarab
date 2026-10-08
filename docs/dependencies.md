@@ -18,3 +18,5 @@ localhost TCP uses JDK asynchronous channels. No FS2, JNI, storage or competing
 Future-based application runtime was imported for networking.
 
 The 0.5.0 strict witness candidate uses only the published curve arithmetic artifact (no transitive dependencies in its Maven POM), not the git-head revision from the earlier roadmap review. Full source/binary pins and native-oracle limitations are in [witness scope](witness-verification.md) and [provenance](witness-provenance.md). Its complete MIT, CC0/eddsa-java and BSD-3-Clause curve25519-dalek notices are in fixtures/witness/licenses/elisabeth-LICENSE. No signing/timing guarantee or binary reproducible-build claim is made.
+
+The private-cluster v2 reference JSON projection uses the bounded app-local `ReferenceJson` reader. It adds no dependency and does not call JSON APIs from accidental transitive artifacts.

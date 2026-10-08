@@ -4,6 +4,22 @@
 
 A runnable research prototype for **byte-preserving CBOR and Cardano transaction-ID conformance**. It also runs five pinned Plutus evaluator conformance vectors and bounded handshake/mux source-conformance checks over localhost TCP. It also checks one narrowly scoped Conway PV9 value-conservation predicate and an experimental strict public-input Ed25519 witness predicate. It also composes a bounded, reversible in-memory Conway PV9 ADA-transfer UTxO/fee projection. It also includes a bounded durable interpreter for that research projection. It does not fully validate transactions, run a complete Cardano ledger, sync a chain, or produce blocks.
 
+## Opt-in local reference testing
+
+The local Docker harness now exercises a verified Cardano node 11.1.3: real Scala NtN14 handshake, ChainSync/BlockFetch capture, and a restricted ADA-transfer comparison against original reference inclusion bytes, whole-UTxO changes and actual fee-pot exports. A separate relay-only scenario observes hot/full-duplex peers and transaction-ID requests after the configured startup delay before submitting through the relay. It uses disposable private-cluster keys, an internal Docker network and bounded cleanup; no public peers or real funds. See [setup and resource contract](docs/private-cluster.md), [byte capture](docs/reference-capture.md), and [transfer/context/relay scope](docs/private-cluster-transfer.md).
+
+Scala checks v2 context numerics directly against hashed reference JSON, with duplicate-field and numeric-form rejection. State queries are still separately acquired under observed quiescence, not atomic. Header signatures, consensus/leadership, complete minimum-output checks and full ledger validity remain outside this scenario. Historical RestrictedReplay profiles are unchanged. The latest affected regression passed 295 Scala tests and 21 Python guards; this is not a replacement full-public-suite count. Real-reference evidence tests are opt-in and their captured files are not distributed in Git.
+
+Public acceptance remains:
+
+```sh
+bash scripts/sbtw check app/runtimeClasspathFile
+python3 scripts/check-public-gates.py
+python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+```
+
+The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.
+
 Version 0.23 adds a separate Cats Effect-owned, all-JVM local replay store with atomic head publication, checked restart reconstruction, rollback and owner/session revision fencing. Original bytes and the pure profile remain unchanged. The final durable module passes 150 tests together, and its complete direct-JVM CLI gate passes all 19 cases. All 1,294 project tests and 31 scripts have passing coverage across preserved runs with disclosed timing failures; no clean uninterrupted aggregate/script pass is claimed. Fresh-archive acceptance remains pending. [Verification history](docs/restricted-replay-store-verification.md). It requires a trusted dedicated directory and does not claim hardware power-loss guarantees. See the [store contract and CLI](docs/restricted-replay-store.md).
 
 Version 0.22.1 caches UTxO sorting keys once per entry after a fresh-archive boundary test exposed avoidable repeated work. Original limits, failure priority, output/state identities and profile remain unchanged. The default check also precompiles all seven test modules and serializes test tasks/suites under the unchanged APC4/2GiB runner. One scripted-budget test now separates a five-second virtual watchdog from real filesystem checks under the existing MUnit guard. The final normal check passes 1,142 tests and the replay projector/CLI gates pass; fresh-archive/full-serial acceptance remains separate. See [preserved failure, diagnosis and acceptance](docs/restricted-replay-sort-key-fix.md).
@@ -33,6 +49,7 @@ Requires JDK 21, bash, curl, sha256sum, and HTTPS access to Maven Central. Depen
 ./scripts/sbtw 'app/run praos-demo'
 ./scripts/sbtw 'app/run opcert-demo'
 ./scripts/sbtw 'app/run sum6-demo'
+# The following historical evidence examples require their separately supplied corpus files.
 ./scripts/sbtw 'app/run body-commitment fixtures/body-commitment/blocks/mainnet-conway-0.cbor'
 ./scripts/sbtw 'app/run block-evidence fixtures/block-evidence/blocks/original-08.cbor fixtures/block-evidence/contexts/original-08.cbor.tsv'
 # This genuine accepted-then-rejected trace intentionally returns exit 1

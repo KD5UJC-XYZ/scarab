@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Observation guards only; these tests do not claim reference interoperability."""
 import unittest
+import json
 from unittest.mock import patch
 from types import SimpleNamespace
 from private_cluster_transfer import TransferRunner
@@ -12,7 +13,7 @@ class ObservationGuards(unittest.TestCase):
         r.save = lambda name, text: r.records.update({name: text})
         r.pause_evidence = lambda: [{"state": "T"}, {"state": "T"}]
         r.query = lambda *args: {"hash": "point", "slot": 1, "era": "Conway", "epoch": 0}
-        r.relay_query = lambda *args: "{}"
+        r.relay_query = lambda *args: json.dumps(r.query("tip")) if args[0] == "tip" else "{}"
         return r
 
     @patch("private_cluster_transfer.time.sleep")
@@ -22,6 +23,8 @@ class ObservationGuards(unittest.TestCase):
         self.assertEqual(len(outputs), 5)
         self.assertIn('"singleAcquiredSnapshot": false', r.records["pre-binding.md"])
         self.assertIn("pre-producer-brackets.md", r.records)
+        originals = [r.records[f"pre-tip-original-{i}.md"] for i in range(8)]
+        self.assertEqual(r.records["pre-tips.md"], "[" + ",".join(originals) + "]")
 
     @patch("private_cluster_transfer.time.sleep")
     def test_tip_change_during_queries_rejected(self, _):
