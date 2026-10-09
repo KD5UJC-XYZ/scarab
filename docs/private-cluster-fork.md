@@ -23,13 +23,36 @@ exists: empty Byron allocations, Shelley PV9 and **epochLength 1000**. Slot leng
 remains 0.1 seconds, k=5 and f=0.05; the derived nonce stabilization window remains
 ceil(4k/f)=400 slots. Effective/genesis hashes are retained and rechecked at the end.
 This is a proposed longer-epoch fixture requiring integration review before launch.
-Common C is taken early in epoch one. UTC clocks are bracketed with a one-second
-margin, checked against genesis systemStart, and must leave 26 seconds before fork
-setup, 18 before A and 9 before B. The forging loop deadline is three seconds before the
-calculated boundary; this does not guarantee that the process has exited by then.
-Graceful exit and same-epoch captured headers remain mandatory acceptance checks. This is a bounded attempt, not a guarantee of leader slots.
+Common C is taken from equal Conway tips at epoch one or later. There is no
+arbitrary first-25-slots leader window: it has no protocol or nonce justification.
+UTC clocks are bracketed with a one-second margin and checked against genesis
+systemStart. Admission requires at least 58 seconds of real epoch headroom:
+20 seconds to freeze/query C and prepare transactions, 35 for both branches, and
+3 seconds of stop margin. This measures current UTC, not the age of a frozen tip.
+Later stage guards must still leave 26 seconds before fork
+setup, 18 before A and 9 before B. The forging loop deadline is three seconds
+before the calculated boundary; this does not guarantee that the process has
+exited by then. Graceful exit and same-epoch captured headers remain mandatory
+acceptance checks. This is a bounded attempt, not a guarantee of leader slots.
 The keyless endpoints and later JVM phases can remain frozen across a wall-clock
 epoch boundary; all accepted branch headers must belong to C's epoch.
+
+Admission also requires sufficient **remaining** case time. It reserves 20 seconds
+for preparation, 35 for forging/freezing, 10 for complete endpoint oracles and 5 for
+final pin checks. The remaining time is divided equally among Scala A, Scala B
+and the auditor, capped at 45 seconds each and requiring at least 15 each. Thus
+admission needs at least 115 seconds remaining. Absolute cumulative deadlines
+enforce those reservations; a slow early stage cannot consume the later stage's
+reserve. Early completion can leave additional time for a later stage, still under
+its 45-second cap and the unchanged 240-second overall limit. These are explicit
+attempt budgets, not guaranteed production or JVM completion times.
+
+For live2's first common block at slot 1064, the recorded clock pair implies about
+117 seconds of remaining case time and over 90 seconds of epoch headroom. That
+fits the budget at roughly 15.7 seconds per JVM phase; it failed only the former
+arbitrary 25-slot guard. A later observation with less than 115 seconds remaining
+rejects before freezing C even if its epoch headroom remains ample. Genesis,
+nonce stabilization parameters, suffix counts and same-epoch checks are unchanged.
 
 Ordinary durable capacity is fixed at **8**, with no capacity CLI override. Actual
 suffix lengths must satisfy 1 <= nA <= 2 and nA < nB <= 4. Scala A creates the

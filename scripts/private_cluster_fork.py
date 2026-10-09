@@ -3,6 +3,7 @@
 """Isolated peer-selected fork acceptance candidate. No execution without --execute and reviewed pins."""
 import argparse
 import copy
+from contextlib import contextmanager
 import datetime
 import hashlib
 import json
@@ -25,6 +26,12 @@ LABEL = 'lab.cardano-fork.owner'
 CAPACITY = 8
 PORTS = {1: 5301, 2: 5302}
 EPOCH_SLOTS = 1000
+PREPARE_SECONDS = 20
+FORGE_SECONDS = 35
+ORACLE_SECONDS = 10
+FINAL_SECONDS = 5
+MIN_JVM_SECONDS = 15
+EPOCH_STOP_MARGIN = 3
 FORGING_FLAGS = ('--shelley-kes-key','--shelley-vrf-key','--shelley-operational-certificate',
                  '--delegation-certificate','--signing-key')
 HEX = re.compile('[0-9a-f]{64}\\Z')
@@ -64,6 +71,21 @@ def startup_deadlines(genesis, utc_now, monotonic_now, case_deadline):
                 socketDeadline=min(case_deadline,planned+10),
                 genesisStartUtc=start.timestamp(),observedUtc=utc_now,
                 observedMonotonic=monotonic_now,caseDeadline=case_deadline)
+
+def anchor_budget(proof, monotonic_now, case_deadline):
+    """Admit only a same-epoch attempt with reserved bounded downstream stages."""
+    require(all(type(t) in (int,float) and math.isfinite(t) for t in (monotonic_now,case_deadline,proof['secondsRemaining'])),'finite anchor budget required')
+    require(proof['secondsRemaining']>=PREPARE_SECONDS+FORGE_SECONDS+EPOCH_STOP_MARGIN,'insufficient epoch budget for preparation and both branches')
+    remaining=case_deadline-monotonic_now
+    fixed=PREPARE_SECONDS+FORGE_SECONDS+ORACLE_SECONDS+FINAL_SECONDS
+    jvm=min(45,(remaining-fixed)/3)
+    require(jvm>=MIN_JVM_SECONDS,'insufficient case budget for preparation, branches, oracles and three JVM phases')
+    durations=dict(prepare=PREPARE_SECONDS,forge=FORGE_SECONDS,oracles=ORACLE_SECONDS,a=jvm,b=jvm,audit=jvm,final=FINAL_SECONDS)
+    end=monotonic_now; stages={}
+    for name,duration in durations.items():
+        end=min(case_deadline,end+duration); stages[name]=end
+    return dict(admittedAt=monotonic_now,caseDeadline=case_deadline,remainingCaseSeconds=remaining,
+                epochSecondsRemaining=proof['secondsRemaining'],durations=durations,deadlines=stages)
 
 def retained_receipts(directory, requirements):
     originals={}
@@ -192,6 +214,15 @@ class ForkRunner(CoherentRunner):
         self.owner=self.name; self.containers={}; self.active={}; self.serial=0; self.topologies={}
         self.endpoint='unix:///var/run/docker.sock'; self.started=time.monotonic(); self.deadline=self.started+240
         self.repo=Path(args.scala_repo).resolve(); self.network_attempted=False
+
+    @contextmanager
+    def stage(self,name):
+        prior=self.deadline; self.deadline=min(prior,self.timing['deadlines'][name])
+        try:
+            require(time.monotonic()<self.deadline,'stage budget exhausted: '+name)
+            yield
+            require(time.monotonic()<=self.deadline,'stage budget exceeded: '+name)
+        finally: self.deadline=prior
 
     def docker(self,*args,data=None,check=True,timeout=10,limit=4*1024*1024):
         remaining=self.deadline-time.monotonic(); require(remaining>0,'case deadline')
@@ -353,11 +384,15 @@ class ForkRunner(CoherentRunner):
             self.write_json(f'node-data/node{node}/topology.json',value)
         self.save('resource-profile.json',dict(referenceCpus=2,referenceMemoryGiB=2,maxReferenceProcesses=2,nodeRtsCapabilities=1,nodeHeapMiB=512,scalaCpus=1,scalaMemoryGiB=1,totalSeconds=240,cleanupSeconds=30,discovery=False,relayStarted=False))
 
-    def clock(self,minimum):
+    def utc_proof(self,anchor,minimum,label):
         before=time.time(); raw=self.execute('date','-u','+%s.%N').stdout.strip(); after=time.time()
         require(re.fullmatch(r'[0-9]+\.[0-9]{9}',raw),'container UTC clock precision required')
-        proof=epoch_headroom(self.genesis,self.anchor,before,after,float(raw),minimum)
-        self.save('utc-headroom-'+str(self.serial)+'-'+str(minimum)+'.json',proof)
+        proof=epoch_headroom(self.genesis,anchor,before,after,float(raw),minimum)
+        self.save('utc-headroom-'+label+'.json',proof)
+        return proof
+
+    def clock(self,minimum):
+        proof=self.utc_proof(self.anchor,minimum,str(self.serial)+'-'+str(minimum))
         self.forge_deadline=min(self.deadline,time.monotonic()+proof['secondsRemaining']-3)
 
     def common_anchor(self):
@@ -365,9 +400,18 @@ class ForkRunner(CoherentRunner):
         until=min(self.deadline,time.monotonic()+125)
         while time.monotonic()<until:
             a,b=self.tip(1),self.tip(2)
-            if a.get('hash')==b.get('hash') and a.get('block',0)>0 and a.get('epoch',0)>=1 and 1<=a.get('slotInEpoch',501)<=25: break
+            if same_tip(a,b) and a.get('era')=='Conway' and a.get('block',0)>0 and a.get('epoch',0)>=1:
+                proof=self.utc_proof(a,PREPARE_SECONDS+FORGE_SECONDS+EPOCH_STOP_MARGIN,'anchor-admission')
+                self.timing=anchor_budget(proof,time.monotonic(),self.deadline)
+                self.save('anchor-timing-plan.json',dict(candidate=a,**self.timing))
+                break
             time.sleep(.1)
-        else: raise TimeoutError('early common chain readiness')
+        else: raise TimeoutError('common chain readiness within case budget')
+        with self.stage('prepare'):
+            self.freeze_anchor()
+            self.transactions()
+
+    def freeze_anchor(self):
         self.stop_node(1); self.stop_node(2); self.start_node(1,False); self.start_node(2,False)
         until=min(self.deadline,time.monotonic()+8)
         while time.monotonic()<until:
@@ -429,6 +473,7 @@ class ForkRunner(CoherentRunner):
             if branch=='a': self.n_a=count
             else: self.n_b=count
             self.endpoints[branch]=frozen
+    def oracles(self):
         for branch,node in (('a',1),('b',2)):
             directory=self.out/('branch-'+branch); directory.mkdir(mode=0o700)
             observed=self.snapshot(node,directory,'post'); require(same_tip(observed,self.endpoints[branch]),'frozen branch endpoint moved')
@@ -534,14 +579,18 @@ class ForkRunner(CoherentRunner):
     def run(self):
         result=dict(passed=False,peerSelectedReplacement=True,independentChainSelection=False,powerLossRecovery=False,singleAcquiredSnapshot=False)
         try:
-            self.setup(); self.common_anchor(); self.transactions(); self.fork()
+            self.setup(); self.common_anchor()
+            with self.stage('forge'): self.fork()
+            with self.stage('oracles'): self.oracles()
             for name in ('checkpoint','receipts-a','receipts-b','resume'): (self.out/name).mkdir(mode=0o700)
-            a,first=self.scala_phase('a'); b,last=self.scala_phase('b',first['receiptSha256'])
+            with self.stage('a'): a,first=self.scala_phase('a')
+            with self.stage('b'): b,last=self.scala_phase('b',first['receiptSha256'])
             require(first['events']+last['events']<=128 and first['returnedBytes']+last['returnedBytes']<=33554432,'combined Scala resource counters')
-            result['audit']=self.audit(a,b)
+            with self.stage('audit'): result['audit']=self.audit(a,b)
             require(result['audit'].get('passed') is True and result['audit'].get('receiptBytesVerified') is True,'fork evidence and original receipts must pass')
-            require({name:sha(self.read(name).encode()) for name in self.genesis_pins}==self.genesis_pins,'genesis changed')
-            verify_build(self.repo,Path(self.args.source_pin),self.args.source_pin_sha256)
+            with self.stage('final'):
+                require({name:sha(self.read(name).encode()) for name in self.genesis_pins}==self.genesis_pins,'genesis changed')
+                verify_build(self.repo,Path(self.args.source_pin),self.args.source_pin_sha256)
             require(time.monotonic()<=self.deadline,'case deadline exceeded')
         except BaseException as error:
             result['error']=type(error).__name__+': '+str(error)

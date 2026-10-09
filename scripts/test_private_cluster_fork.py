@@ -12,6 +12,55 @@ from unittest.mock import patch
 import private_cluster_fork as f
 
 class ForkControllerTests(unittest.TestCase):
+    def test_slot_1064_admitted_by_actual_epoch_and_case_budget(self):
+        start=1700000000
+        genesis=dict(systemStart=datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),epochLength=1000,slotLength=.1,securityParam=5,activeSlotsCoeff=.05)
+        anchor=dict(epoch=1,slot=1064)
+        proof=f.epoch_headroom(genesis,anchor,start+106.4,start+106.5,start+106.45,58)
+        plan=f.anchor_budget(proof,123,240)
+        self.assertAlmostEqual(plan['durations']['a'],47/3)
+        self.assertGreater(plan['epochSecondsRemaining'],90)
+        self.assertLessEqual(plan['deadlines']['final'],240)
+        self.assertAlmostEqual(sum(plan['durations'].values()),117)
+
+    def test_anchor_rejects_insufficient_case_or_real_epoch_headroom(self):
+        for epoch,now in ((57.99,120),(90,125.01),(90,240)):
+            with self.assertRaises(ValueError): f.anchor_budget(dict(secondsRemaining=epoch),now,240)
+        plan=f.anchor_budget(dict(secondsRemaining=58),125,240)
+        self.assertEqual(plan['durations']['a'],15)
+        self.assertEqual(plan['deadlines']['final'],240)
+        start=1700000000
+        genesis=dict(systemStart=datetime.datetime.fromtimestamp(start,datetime.timezone.utc).isoformat(),epochLength=1000,slotLength=.1,securityParam=5,activeSlotsCoeff=.05)
+        for utc in (start+145,start+201):
+            with self.assertRaises(ValueError): f.epoch_headroom(genesis,dict(epoch=1,slot=1064),utc,utc,utc,58)
+
+    def test_stage_deadlines_preserve_downstream_reservations_and_case(self):
+        runner=f.ForkRunner.__new__(f.ForkRunner); runner.deadline=240
+        runner.timing=f.anchor_budget(dict(secondsRemaining=90),123,240)
+        with patch.object(f.time,'monotonic',return_value=140):
+            with runner.stage('prepare'): self.assertEqual(runner.deadline,143)
+        self.assertEqual(runner.deadline,240)
+        with patch.object(f.time,'monotonic',return_value=143):
+            with self.assertRaises(ValueError):
+                with runner.stage('prepare'): self.fail('expired stage was entered')
+        self.assertEqual(runner.deadline,240)
+        with patch.object(f.time,'monotonic',side_effect=[140,144]):
+            with self.assertRaises(ValueError):
+                with runner.stage('prepare'): pass
+        self.assertEqual(runner.deadline,240)
+
+    def test_common_anchor_uses_budget_not_slot_window_before_freeze(self):
+        for now,accepted in ((123,True),(126,False)):
+            runner=f.ForkRunner.__new__(f.ForkRunner); runner.deadline=240
+            runner.start_node=lambda *a:None; runner.save=lambda *a:None
+            runner.tip=lambda _:dict(hash='a'*64,slot=1064,slotInEpoch=64,epoch=1,block=10,era='Conway')
+            runner.utc_proof=lambda *a:dict(secondsRemaining=92)
+            with patch.object(f.time,'monotonic',return_value=now), patch.object(runner,'freeze_anchor') as freeze, patch.object(runner,'transactions') as transactions:
+                if accepted:
+                    runner.common_anchor(); freeze.assert_called_once(); transactions.assert_called_once()
+                else:
+                    with self.assertRaisesRegex(ValueError,'insufficient case budget'): runner.common_anchor()
+                    freeze.assert_not_called(); transactions.assert_not_called()
     def test_future_genesis_readiness_does_not_extend_process_deadline(self):
         genesis=dict(systemStart='2026-10-09T07:21:35Z')
         now=datetime.datetime(2026,10,9,7,21,23,tzinfo=datetime.timezone.utc).timestamp()
