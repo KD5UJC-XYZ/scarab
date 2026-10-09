@@ -96,6 +96,13 @@ validate content while preserving those IDs, rather than retaining an unbounded 
 Do not assume existing v2 revision-minus-depth parity if later work adds separate mutation
 events. Aggregate memory/serialized limits need measurement before any such format.
 
+Future v3 recovery also needs bounded historical-freeze provenance for starts
+**within the retained suffix**, not only for a freeze already present at the
+anchor. Ordinary replay must create a fresh freeze identity at its current
+revision. Restore may preserve authenticated historical identities only after
+validating that provenance; deterministic re-execution alone does not grant that
+authority. No v3 encoding, restore or durable admission is implemented here.
+
 Next increment must select the unpublished reward/SNAP result into the owned stake and
 ledger environment, verify successor headers with old-mark leadership and derived epoch
 nonce, accept the block before counting its issuer, and retain a whole-tuple undo receipt.
