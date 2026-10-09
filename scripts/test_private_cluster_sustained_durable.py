@@ -6,7 +6,13 @@ import hashlib
 import json
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+import os
+import signal
+import subprocess
+import tempfile
+import time
+from unittest.mock import patch, Mock
+from types import SimpleNamespace
 import private_cluster_sustained_durable as m
 
 CONTEXT="aa"*32
@@ -180,5 +186,143 @@ class SustainedDurableTests(unittest.TestCase):
         for raw in (b'{"x":1,"x":2}',b'{"x":NaN}',b'\xff',b'{}'*5000):
             with self.assertRaises((ValueError,UnicodeError)): m.parse(raw,8192)
         self.assertEqual(m.records('{"x":1}\n{"partial":'),[{"x":1}])
+
+
+class EndpointFreezeTests(unittest.TestCase):
+    def hint(self,height=96):
+        return json.dumps(dict(ns="ChainDB.AddBlockEvent.AddedToCurrentChain",data=dict(kind="AddedToCurrentChain",
+            newSuffixSelectView=dict(blockNo=height,slotNo=1887),newtip="ab"*32+"@1887"))).encode()
+
+    def test_exact_hint_is_only_accepted_with_frozen_same_epoch_query(self):
+        hint=m.endpoint_hint(self.hint(),96)
+        tip=dict(hint,era="Conway",epoch=3)
+        m.endpoint_tip(tip,hint,dict(epoch=3))
+        for key,value in (("block",97),("slot",1888),("hash","cd"*32),("epoch",4),("block",True)):
+            with self.subTest(key=key,value=value), self.assertRaises(ValueError):
+                m.endpoint_tip(dict(tip,**{key:value}),hint,dict(epoch=3))
+
+    def test_hint_rejects_overshoot_missing_malformed_duplicate_and_byte_overrun(self):
+        for raw in (self.hint(97),self.hint(95),b"{}",b"{",self.hint().replace(b'96',b'true'),
+                    self.hint().replace(b'"blockNo": 96',b'"blockNo":96,"blockNo":96'),b" "*65537):
+            with self.subTest(raw=raw[:50]), self.assertRaises((ValueError,TypeError)):
+                m.endpoint_hint(raw,96)
+
+    def test_owned_paused_identity_rejects_foreign_reused_or_running_process(self):
+        stat="10 (cardano-node) "+" ".join(["T"]+["0"]*18+["99"])
+        command="/opt/reference/bin/cardano-node\0run\0--database-path\0/work/env/node-data/node1/db\0"
+        identity=m.producer_identity(10,stat,command,1)
+        self.assertEqual(identity["startTicks"],"99")
+        self.assertEqual(identity["commandSha256"],hashlib.sha256(command.encode()).hexdigest())
+        for pid,st,cmd,node in ((11,stat,command,1),(10,stat.replace(") T", ") R"),command,1),
+                              (10,stat,command,2),(10,stat,command.replace("cardano-node","other"),1)):
+            with self.assertRaises(ValueError): m.producer_identity(pid,st,cmd,node)
+
+    def test_pause_budget_uses_container_elapsed_not_clock_origin(self):
+        self.assertEqual(m.endpoint_deadline(50,[900000,904000],100),64)
+        self.assertEqual(m.endpoint_deadline(50,[900000,904000],60),60)
+        for sample in ([1,20001],[10,9],[True,2],[1],[-1,2]):
+            with self.assertRaises(ValueError): m.endpoint_deadline(50,sample,100)
+
+    def runner(self):
+        r=object.__new__(m.SustainedDurableRunner); r.deadline=100; r.online_deadline=100
+        r.save=Mock(); r.pause_evidence=Mock(); r.query=Mock(return_value=dict(block=96,slot=1887,hash="ab"*32,era="Conway",epoch=3))
+        return r
+
+    def test_frozen_query_precedes_body_and_deadline_restores_after_body_error(self):
+        r=self.runner(); order=[]
+        def execute(*args,**kw):
+            order.append("clock" if args[0]=="/bin/sh" else "hint")
+            return SimpleNamespace(stdout="1000\n5.00\n" if args[0]=="/bin/sh" else self.hint().decode())
+        r.execute=execute
+        r.query.side_effect=lambda *_: (order.append("query") or dict(block=96,slot=1887,hash="ab"*32,era="Conway",epoch=3))
+        with patch.object(m.time,"monotonic",return_value=50):
+            with self.assertRaisesRegex(RuntimeError,"body"):
+                with r.frozen_endpoint(dict(block=84,epoch=3)):
+                    self.assertEqual(order,["clock","hint","query"])
+                    self.assertEqual(r.deadline,64)
+                    raise RuntimeError("body")
+        self.assertEqual(r.deadline,100)
+
+    def test_partial_pause_or_failed_watcher_never_enters_body(self):
+        for status in ("done 95\n","1000\n21.00\n"):
+            r=self.runner(); r.execute=Mock(return_value=SimpleNamespace(stdout=status))
+            with patch.object(m.time,"monotonic",return_value=50), self.assertRaises(ValueError):
+                with r.frozen_endpoint(dict(block=84,epoch=3)): self.fail("must not enter")
+            r.query.assert_not_called()
+        r=self.runner(); r.execute=Mock(side_effect=[SimpleNamespace(stdout="1000\n2.00\n"),SimpleNamespace(stdout=self.hint().decode())])
+        r.pause_evidence.side_effect=ValueError("partial pause")
+        with patch.object(m.time,"monotonic",return_value=50), self.assertRaisesRegex(ValueError,"partial pause"):
+            with r.frozen_endpoint(dict(block=84,epoch=3)): self.fail("must not enter")
+
+    def test_release_failure_still_attempts_both_identity_bound_resumes(self):
+        r=self.runner(); r.endpoint_armed=True
+        r.endpoint_identities=[dict(pid=i,startTicks="99",commandSha256="ab"*32) for i in (10,11)]
+        def execute(*args,**kw):
+            if args[0]=="touch": raise RuntimeError("release write")
+            return SimpleNamespace(returncode=0)
+        r.execute=Mock(side_effect=execute)
+        with self.assertRaisesRegex(RuntimeError,"release write"): r.release_endpoint()
+        calls=r.execute.call_args_list
+        self.assertEqual(len(calls),3)
+        self.assertEqual([call.args[4] for call in calls[1:]],["10","11"])
+        self.assertTrue(all("kill -CONT" in call.args[2] for call in calls[1:]))
+
+
+@unittest.skipUnless(os.name=="posix" and Path("/proc/uptime").exists(),"Linux shell/process smoke")
+class EndpointShellTests(unittest.TestCase):
+    def smoke(self,mode):
+        # Synthetic children only. No reference process, key, DB, socket or Docker.
+        children=[]; watcher=None
+        with tempfile.TemporaryDirectory(prefix="v2-watch-test-") as directory:
+            base=Path(directory)/"endpoint"; log=Path(directory)/"relay.log"; log.write_text("")
+            script=m.ENDPOINT_WATCH.replace("/work/v2-endpoint",str(base)).replace("/work/env/logs/node3/stdout.log",str(log))
+            if mode=="partial": script=script.replace('kill -STOP "$p1" "$p2"','kill -STOP "$p1"; exit 97')
+            if mode=="watchdog": script=script.replace("frozen + 19000","frozen + 200")
+            args=["96"]
+            def state(child): return Path(f"/proc/{child.pid}/stat").read_text().rsplit(") ",1)[1].split()
+            def wait_for(predicate):
+                until=time.monotonic()+3
+                while time.monotonic()<until:
+                    if predicate(): return
+                    time.sleep(.005)
+                self.fail("bounded synthetic watcher wait")
+            try:
+                for _ in range(2):
+                    child=subprocess.Popen(["sleep","10"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    children.append(child); os.kill(child.pid,signal.SIGSTOP)
+                    wait_for(lambda:state(child)[0]=="T")
+                    args += [str(child.pid),state(child)[19],hashlib.sha256(Path(f"/proc/{child.pid}/cmdline").read_bytes()).hexdigest()]
+                args.append("1")
+                with (Path(directory)/"watcher.out").open("wb") as output:
+                    watcher=subprocess.Popen(["/bin/sh","-c",script,"endpoint-test",*args],stdout=output,stderr=output)
+                    wait_for(lambda:Path(str(base)+".armed").exists())
+                    for child in children: os.kill(child.pid,signal.SIGCONT)
+                    if mode!="missing":
+                        event=dict(ns="ChainDB.AddBlockEvent.AddedToCurrentChain",data=dict(kind="AddedToCurrentChain",
+                            newSuffixSelectView=dict(blockNo=96,slotNo=1887),newtip="ab"*32+"@1887"))
+                        with log.open("a") as stream: stream.write(json.dumps(event,separators=(",",":"))+"\n"); stream.flush()
+                    if mode in ("normal","watchdog"):
+                        wait_for(lambda:Path(str(base)+".frozen").exists())
+                        self.assertTrue(all(state(child)[0]=="T" for child in children))
+                        m.endpoint_hint(Path(str(base)+".hint").read_bytes(),96)
+                        if mode=="normal": Path(str(base)+".release").touch()
+                    code=watcher.wait(timeout=3)
+                self.assertEqual(code,{"normal":0,"missing":94,"partial":97,"watchdog":96}[mode])
+                self.assertEqual(Path(str(base)+".done").read_text(),str(code)+"\n")
+                self.assertTrue(all(state(child)[0]!="T" for child in children))
+                self.assertFalse(Path(f"/proc/{watcher.pid}").exists())
+                self.assertLess((Path(directory)/"watcher.out").stat().st_size,4096)
+            finally:
+                if watcher is not None and watcher.poll() is None:
+                    watcher.terminate(); watcher.wait(timeout=2)
+                for child in children:
+                    if child.poll() is None:
+                        os.kill(child.pid,signal.SIGCONT); child.terminate()
+                    child.wait(timeout=2)
+
+    def test_real_shell_exact_trigger_stop_both_release_and_exit(self): self.smoke("normal")
+    def test_real_shell_missing_trigger_times_out_without_orphans(self): self.smoke("missing")
+    def test_real_shell_partial_stop_trap_resumes_both(self): self.smoke("partial")
+    def test_real_shell_watchdog_resumes_when_controller_does_not_release(self): self.smoke("watchdog")
 
 if __name__=="__main__": unittest.main()

@@ -68,8 +68,25 @@ retained2. Compaction changes claim/generation without changing ledger revision.
 
 ## Final independent reference comparison
 
-Pause at B's exact target point and capture full post oracle plus raw ledger CBOR
-within the existing bracket; resume before audit work. Verify reference instance,
+Before releasing B's submission pause, arm a bounded reference-side watcher for the
+predeclared absolute height `pre.block + 12`. A 64 KiB bounded relay ChainDB log tail
+is only a stop hint. The watcher checks both existing producer PID/start-time/command
+identities, stops both in one call, then the controller queries the frozen relay and
+requires the exact same-epoch height, hash and slot. Only then does it await B's
+terminal result and capture full post oracle plus raw ledger CBOR. The unchanged
+exact-point comparison also binds B's complete result. This is not a deterministic
+forging ceiling: any overshoot, malformed/missing hint, partial pause, identity
+mismatch or deadline failure rejects the run; the target is never extended.
+
+The watcher starts its container-monotonic pause clock
+before STOP and begins auto-resume cleanup at 19 seconds, reserving time within the
+20-second bound. The controller reserves two seconds for release and verifies the
+actual STOP-to-CONT duration. Production waiting stays within the existing online budget.
+The controller conservatively derives the remaining pause allowance from an elapsed
+container-clock sample, without equating host and container clock origins. A release/
+done handshake and independent identity-checked finally path resume both producers,
+including failure paths. There is no unbounded tail child or FIFO. Resume before audit
+work and the inherited epoch-growth observations. Verify reference instance,
 configuration and all genesis hashes again. Preserve original raw process logs.
 
 Concatenate exactly seed2+A7+B3 original capture rows, and only B's finalized

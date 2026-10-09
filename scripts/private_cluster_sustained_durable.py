@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Prepared bounded same-epoch v2 compaction/graceful-resume acceptance; never runs on import."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -295,6 +296,107 @@ def receipt(raw, expected_hash, row, expected_binding):
     checked_claim(value["claim"],row,expected_binding)
     return value
 
+# This local watcher only supplies a stop hint. The frozen node query and the
+# unchanged exact_tip check remain authoritative. No deterministic forging cap.
+ENDPOINT_WATCH = r"""
+set -eu
+base=/work/v2-endpoint
+target=$1; p1=$2; t1=$3; h1=$4; p2=$5; t2=$6; h2=$7; wait_s=$8
+clock() {
+  IFS=' ' read -r up rest < /proc/uptime
+  whole=${up%.*}; fraction=${up#*.}
+  case "$whole:$fraction" in *[!0-9:]*|:*) return 1;; esac
+  test "${#fraction}" = 2 || return 1
+  printf '%s\n' "$((whole * 1000 + (1$fraction - 100) * 10))"
+}
+same() {
+  test -r /proc/$1/stat && test -r /proc/$1/cmdline || return 1
+  test "$(cut -d ' ' -f22 /proc/$1/stat)" = "$2" || return 1
+  test "$(sha256sum /proc/$1/cmdline | cut -d ' ' -f1)" = "$3"
+}
+cleanup() {
+  rc=$?; trap - EXIT HUP INT TERM; set +e
+  same "$p1" "$t1" "$h1" && kill -CONT "$p1"; a=$?
+  same "$p2" "$t2" "$h2" && kill -CONT "$p2"; b=$?
+  test "$a" = 0 && test "$b" = 0 || rc=91
+  clock > "$base.released"
+  printf '%s\n' "$rc" > "$base.done"
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 92' HUP INT TERM
+same "$p1" "$t1" "$h1"; same "$p2" "$t2" "$h2"
+printf '%s %s\n' "$$" "$(cut -d ' ' -f22 /proc/$$/stat)" > "$base.owner"
+start=$(clock); until_ms=$((start + wait_s * 1000))
+printf 'armed\n' > "$base.armed"
+while :; do
+  test ! -e "$base.release" || exit 93
+  now=$(clock); test "$now" -lt "$until_ms" || exit 94
+  # A bounded tail avoids an unbounded tail -f child, FIFO, queue or log read.
+  # Only complete JSON-looking event lines are hints; Python strictly parses
+  # the selected original line after STOP and rejects malformed fields.
+  tail -c 65536 /work/env/logs/node3/stdout.log > "$base.tail"
+  last=
+  while IFS= read -r line; do
+    case "$line" in
+      \{*'"ns":"ChainDB.AddBlockEvent.AddedToCurrentChain"'*\}) last=$line;;
+    esac
+  done < "$base.tail"
+  if test -n "$last"; then
+    printf '%s\n' "$last" > "$base.hint.tmp"
+    height=${last#*'"blockNo":'}; height=${height%%,*}
+    case "$height" in ''|*[!0-9]*) exit 95;; esac
+    if test "$height" -ge "$target"; then
+      same "$p1" "$t1" "$h1"; same "$p2" "$t2" "$h2"
+      frozen=$(clock)
+      kill -STOP "$p1" "$p2"
+      test "$(cut -d ' ' -f3 /proc/$p1/stat)" = T
+      test "$(cut -d ' ' -f3 /proc/$p2/stat)" = T
+      cp "$base.hint.tmp" "$base.hint"
+      printf '%s\n' "$frozen" > "$base.frozen"
+      while test ! -e "$base.release"; do
+        now=$(clock); test "$now" -lt "$((frozen + 19000))" || exit 96
+        sleep .02
+      done
+      exit 0
+    fi
+  fi
+  sleep .02
+done
+"""
+
+def endpoint_hint(raw, target):
+    row=parse(raw,65536)
+    require(row.get("ns")=="ChainDB.AddBlockEvent.AddedToCurrentChain", "endpoint ChainDB hint namespace")
+    data=row.get("data",{}); view=data.get("newSuffixSelectView",{})
+    require(data.get("kind")=="AddedToCurrentChain" and type(view.get("blockNo")) is int
+            and view["blockNo"]==target, "endpoint hint overshot or malformed height")
+    slot=view.get("slotNo"); tip=data.get("newtip","").split("@")
+    require(type(slot) is int and slot>=0 and len(tip)==2 and digest(tip[0]) and tip[1]==str(slot),
+            "endpoint hint exact point")
+    return dict(block=target,slot=slot,hash=tip[0])
+
+def endpoint_tip(tip, hint, pre):
+    require(tip.get("era")=="Conway" and type(tip.get("epoch")) is int and tip["epoch"]==pre["epoch"]
+            and all(type(tip.get(k)) is type(v) and tip[k]==v for k,v in hint.items()),
+            "frozen reference endpoint differs; no target extension")
+
+def producer_identity(pid, stat, command, node):
+    require(type(pid) is int and pid>1 and stat.startswith(str(pid)+" (cardano-node) "), "owned producer PID")
+    parts=stat.rsplit(") ",1)[1].split(); args=command.rstrip("\0").split("\0")
+    require(len(parts)>=20 and parts[0]=="T" and parts[19].isdigit(), "paused producer start identity")
+    require(args and Path(args[0]).name=="cardano-node" and "--database-path" in args
+            and args[args.index("--database-path")+1]==f"/work/env/node-data/node{node}/db", "owned producer arguments")
+    return dict(pid=pid,startTicks=parts[19],commandSha256=hashlib.sha256(command.encode()).hexdigest())
+
+def endpoint_deadline(request_started, sample, deadline):
+    require(type(sample) is list and len(sample)==2 and all(type(x) is int and x>=0 for x in sample)
+            and sample[0]<=sample[1]<sample[0]+20000, "reference pause expired or invalid monotonic sample")
+    # Both numbers come from container /proc/uptime. Host request start is a
+    # conservative origin; no cross-OS monotonic-clock equality is assumed.
+    return min(deadline,request_started+18-(sample[1]-sample[0])/1000)
+
+
 class SustainedDurableRunner(DurableNodeRunner):
     def preflight(self):
         self.source_pin=verify_source_build(self.args.scala_repo,self.args.source_pin,self.args.source_pin_sha256)
@@ -377,6 +479,106 @@ class SustainedDurableRunner(DurableNodeRunner):
                 and tip["block"]-pre["block"]==depth and tip["block"]==out["blockNo"]
                 and {"hash":tip["hash"],"slot":tip["slot"]}==out["scopedAppliedTip"],"exact same-epoch endpoint; no extension")
 
+    def arm_endpoint(self,pre):
+        require(not getattr(self,"endpoint_armed",False),"endpoint watcher is one-shot")
+        target=pre["block"]+12
+        current=self.query("tip")
+        require(current.get("epoch")==pre["epoch"] and current.get("block",target)<target,
+                "endpoint must still be future before watcher arm")
+        identities=[]
+        for node in (1,2):
+            pid=int(self.read(f"logs/node{node}/node.pid").strip())
+            identities.append(producer_identity(pid,self.execute("cat",f"/proc/{pid}/stat").stdout,
+                self.execute("cat",f"/proc/{pid}/cmdline").stdout,node))
+        remaining=min(20,int(min(self.endpoint_case_deadline,self.online_deadline)-time.monotonic()))
+        require(remaining>0,"online time remains for bounded endpoint watcher")
+        self.save("v2-endpoint-plan.md",dict(targetBlock=target,identities=identities,waitSeconds=remaining,
+            pauseSeconds=20,logHintOnly=True,deterministicCeiling=False))
+        args=[str(target)]
+        for identity in identities: args += [str(identity["pid"]),identity["startTicks"],identity["commandSha256"]]
+        args.append(str(remaining))
+        self.endpoint_identities=identities
+        self.endpoint_armed=True
+        self.docker("exec","-d",self.name,"/bin/sh","-c",ENDPOINT_WATCH,"endpoint-watch",*args,timeout=2)
+        until=min(self.deadline,self.online_deadline,time.monotonic()+2)
+        while time.monotonic()<until:
+            result=self.execute("cat","/work/v2-endpoint.armed",check=False,timeout=1)
+            if result.returncode==0 and result.stdout=="armed\n": return
+            time.sleep(.02)
+        raise TimeoutError("endpoint watcher not armed before producers resume")
+
+    @contextmanager
+    def frozen_endpoint(self,pre):
+        previous=self.deadline
+        until=min(previous,self.online_deadline,time.monotonic()+20)
+        try:
+            while time.monotonic()<until:
+                started=time.monotonic()
+                status=self.execute("/bin/sh","-c",
+                    'if test -e /work/v2-endpoint.done; then printf "done "; cat /work/v2-endpoint.done; '
+                    'elif test -e /work/v2-endpoint.frozen; then cat /work/v2-endpoint.frozen; '
+                    "cut -d ' ' -f1 /proc/uptime; fi",timeout=1).stdout
+                require(not status.startswith("done"),"endpoint watcher failed before frozen observation: "+status.strip())
+                if status.strip():
+                    values=status.split(); require(len(values)==2,"bounded endpoint clock sample")
+                    sample=[int(values[0]),int(float(values[1])*1000)]
+                    self.deadline=endpoint_deadline(started,sample,min(previous,self.online_deadline))
+                    break
+                time.sleep(.02)
+            else: raise TimeoutError("reference endpoint trigger absent")
+            raw=self.execute("head","-c","65537","/work/v2-endpoint.hint",timeout=1).stdout.encode()
+            hint=endpoint_hint(raw,pre["block"]+12)
+            self.save("v2-endpoint-trigger.md",raw.decode())
+            self.pause_evidence()
+            tip=self.query("tip"); endpoint_tip(tip,hint,pre)
+            self.save("v2-endpoint-frozen-tip.md",tip)
+            yield tip
+            require(time.monotonic()<self.deadline,"actual reference pause exceeded twenty seconds")
+            self.pause_evidence()
+        finally:
+            self.deadline=previous
+
+    def release_endpoint(self):
+        if not getattr(self,"endpoint_armed",False): return
+        try:
+            self.execute("touch","/work/v2-endpoint.release",timeout=1)
+            owner=self.execute("cat","/work/v2-endpoint.owner",timeout=1).stdout.split()
+            require(len(owner)==2 and all(x.isdigit() for x in owner),"owned watcher process identity")
+            until=time.monotonic()+2
+            done=None
+            while time.monotonic()<until:
+                result=self.execute("cat","/work/v2-endpoint.done",check=False,timeout=1)
+                if result.returncode==0: done=result.stdout
+                process=self.execute("cat","/proc/"+owner[0]+"/stat",check=False,timeout=1)
+                # A reused PID also means the original watcher is gone; never
+                # signal it. The cleanup marker alone is not exit evidence.
+                gone=process.returncode!=0 or process.stdout.rsplit(") ",1)[1].split()[19]!=owner[1]
+                if done is not None and gone:
+                    timing=self.execute("/bin/sh","-c",
+                        'if test -e /work/v2-endpoint.frozen; then cat /work/v2-endpoint.frozen /work/v2-endpoint.released; fi',timeout=1).stdout.split()
+                    elapsed=None if not timing else int(timing[1])-int(timing[0])
+                    self.save("v2-endpoint-release.md",dict(exitCode=done.strip(),resumeAttempted=True,pauseMilliseconds=elapsed,
+                        watcherPid=int(owner[0]),watcherStartTicks=owner[1],originalWatcherGone=True))
+                    require(elapsed is None or 0<=elapsed<20000,"actual reference pause exceeded twenty seconds including resume")
+                    require(done=="0\n","endpoint watcher failed; producers resume attempted")
+                    return
+                time.sleep(.02)
+            raise TimeoutError("bounded endpoint watcher did not exit after cleanup")
+        finally:
+            # Independent finally path: attempt BOTH still-owned identities even
+            # when the watcher failed halfway through STOP or the release read.
+            failures=[]
+            for identity in self.endpoint_identities:
+                try:
+                    result=self.execute("/bin/sh","-c",
+                        "test \"$(cut -d ' ' -f22 /proc/$1/stat)\" = \"$2\" && "
+                        "test \"$(sha256sum /proc/$1/cmdline | cut -d ' ' -f1)\" = \"$3\" && kill -CONT \"$1\"",
+                        "endpoint-finally",str(identity["pid"]),identity["startTicks"],identity["commandSha256"],
+                        check=False,timeout=1)
+                    if result.returncode: failures.append(identity["pid"])
+                except Exception: failures.append(identity["pid"])
+            require(not failures,"owned producer final resume failed: "+str(failures))
+
     def live_sequence(self):
         self.identities={}; self.used_events=0; self.used_bytes=0
         for name in ("checkpoint","journal","receipts-a","receipts-b"): (self.out/name).mkdir(mode=0o700)
@@ -428,22 +630,27 @@ class SustainedDurableRunner(DurableNodeRunner):
             retained=one(a_rows,"node-state")["projection"]["anchor"]
             checked_bootstrap(b_rows,supplied,{"hash":retained["hash"],"slot":decimal(retained["slot"])})
             require(not any((self.out/"receipts-b").iterdir()), "journal-loaded readiness creates no diagnostic acknowledgment")
-        with self.paused("submission"):
-            for i,s in enumerate(pair):
-                result=self.execute("cardano-cli","conway","transaction","submit","--tx-file",s["signedPath"],"--testnet-magic","1082026","--socket-path","/work/env/socket/node3/sock",timeout=3)
-                self.save("v2-submission-"+str(i)+".md",result.stdout+result.stderr)
-            until=min(self.deadline,time.monotonic()+2)
-            while time.monotonic()<until:
-                rows=events(self.read("logs/node3/stdout.log"))
-                admitted={s["transactionId"]:[e for e in rows if e["ns"]=="Mempool.AddedTx" and e.get("data",{}).get("tx",{}).get("txid") in (s["transactionId"],s["transactionId"][:8])] for s in pair}
-                self.save("v2-relay-admissions.md",admitted)
-                if all(admitted.values()): break
-                time.sleep(.1)
-            else: raise ValueError("pair relay admissions required")
-        b_rows,(_,_,b)=self.phase_wait(lambda p:p[2] is not None,20,"B target twelve")
-        with self.paused("post"):
-            post,after=self.snapshot("post"); self.exact_tip(post,b,pre,12)
-            require(before["parameters"]==after["parameters"],"parameter endpoints changed")
+        self.endpoint_case_deadline=self.deadline
+        try:
+            with self.paused("submission"):
+                for i,s in enumerate(pair):
+                    result=self.execute("cardano-cli","conway","transaction","submit","--tx-file",s["signedPath"],"--testnet-magic","1082026","--socket-path","/work/env/socket/node3/sock",timeout=3)
+                    self.save("v2-submission-"+str(i)+".md",result.stdout+result.stderr)
+                until=min(self.deadline,time.monotonic()+2)
+                while time.monotonic()<until:
+                    rows=events(self.read("logs/node3/stdout.log"))
+                    admitted={s["transactionId"]:[e for e in rows if e["ns"]=="Mempool.AddedTx" and e.get("data",{}).get("tx",{}).get("txid") in (s["transactionId"],s["transactionId"][:8])] for s in pair}
+                    self.save("v2-relay-admissions.md",admitted)
+                    if all(admitted.values()): break
+                    time.sleep(.1)
+                else: raise ValueError("pair relay admissions required")
+                self.arm_endpoint(pre)
+            with self.frozen_endpoint(pre):
+                b_rows,(_,_,b)=self.phase_wait(lambda p:p[2] is not None,20,"B target twelve after reference freeze")
+                post,after=self.snapshot("post"); self.exact_tip(post,b,pre,12)
+                require(before["parameters"]==after["parameters"],"parameter endpoints changed")
+        finally:
+            self.release_endpoint()
         self.finish_phase(); self.retain_v2(b_rows,"b")
         require(time.monotonic()<=self.online_deadline,"combined online time bound")
         require(self.read("configuration.yaml").encode()==self.reference_configuration and
