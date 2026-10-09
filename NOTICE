@@ -103,3 +103,12 @@ to apply:
 The existing fixtures/ledger and fixtures/coverage provenance is retained. No new
 upstream runtime code or dependency was added. Extraction/evidence details:
 docs/restricted-replay.md.
+
+
+Synthetic reward differential: reference/synthetic-reward-diff contains newly
+written Apache-2.0 harness/schema/validator source using the named Cardano ledger
+APIs. The cases, hand-derived expectations and exact self-generated native result
+under app/src/test/resources/synthetic-reward are synthetic data under this
+project's Apache-2.0 license. Native dependency source/binaries and captured-chain
+corpora are not redistributed. See native-provenance.json for exact source,
+input/output/binary identities and finite evidence limits.

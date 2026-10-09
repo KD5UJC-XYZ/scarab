@@ -1,0 +1,28 @@
+cabal-version: 3.0
+name: synthetic-reward-diff
+version: 0.0.0
+build-type: Simple
+license: Apache-2.0
+license-file: LICENSE
+synopsis: Finite synthetic Conway reward differential reference
+
+executable synthetic-reward-diff
+  main-is: Main.hs
+  default-language: GHC2021
+  ghc-options: -O0
+  build-depends: base == 4.18.3.0,
+    aeson == 2.2.5.0,
+    bytestring == 0.11.5.4,
+    containers == 0.6.7,
+    data-default == 0.8.0.2,
+    microlens == 0.5.0.0,
+    transformers == 0.6.1.0,
+    time == 1.12.2,
+    vector-map == 1.2.1.0,
+    small-steps == 1.1.4.0,
+    cardano-slotting == 0.2.2.0,
+    cardano-crypto-class == 2.5.1.0,
+    cardano-ledger-core == 1.21.0.0,
+    cardano-ledger-shelley == 1.19.0.1,
+    cardano-ledger-conway == 1.23.0.0,
+    cardano-ledger-binary == 1.9.1.0

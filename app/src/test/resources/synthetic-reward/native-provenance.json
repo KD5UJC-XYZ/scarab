@@ -1,0 +1,59 @@
+{
+  "attemptReportSHA256": "843e9371739dd23a570838bf9dbc284a6e93a7182091dea2968fd1b5be932098",
+  "binarySHA256": "f5955e17c89e95a8f41a451f4d771b1dd4a767ee7eff35c1d8e86b91e6425abf",
+  "cabal": "3.16",
+  "caseCount": 11,
+  "classification": "self-generated synthetic native output; no captured chain or private keys",
+  "directPackages": {
+    "aeson": "2.2.5.0",
+    "base": "4.18.3.0",
+    "bytestring": "0.11.5.4",
+    "cardano-crypto-class": "2.5.1.0",
+    "cardano-ledger-binary": "1.9.1.0",
+    "cardano-ledger-conway": "1.23.0.0",
+    "cardano-ledger-core": "1.21.0.0",
+    "cardano-ledger-shelley": "1.19.0.1",
+    "cardano-slotting": "0.2.2.0",
+    "containers": "0.6.7",
+    "data-default": "0.8.0.2",
+    "microlens": "0.5.0.0",
+    "small-steps": "1.1.4.0",
+    "time": "1.12.2",
+    "transformers": "0.6.1.0",
+    "vector-map": "1.2.1.0"
+  },
+  "executionRecordSHA256": "615afebfc7acf150d972227e7c93d1577e816957f601fadb0afc790967b5c199",
+  "generationImage": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c",
+  "generationInvocation": [
+    "synthetic-reward-diff",
+    "cases.json"
+  ],
+  "ghc": "9.6.7",
+  "initialProbes": 11,
+  "inputSHA256": "14d229647bcf67312d5979b4632d137c23177ac3dcf20356963b6cf193e97fb9",
+  "invocationNote": "Portable spelling of the recorded binary invocation; exact build/launch commands retained privately",
+  "license": "Apache-2.0",
+  "limits": [
+    "finite synthetic monetary/progression agreement only",
+    "rho=tau=a0=0 and nOpt=k=1",
+    "no valid-chain or native snapshot provenance",
+    "no general reward parity, events, non-myopic, full RUPD/NEWEPOCH or runtime epoch claim"
+  ],
+  "nativeMainSHA256": "0852605d2644fb855709fa5d895dd8baced1a1e756f9821fa39ceab2a51a58ca",
+  "nativeSourceCommit": "3c8a83dd7ad92e91135adef91cb7bfe25d0f81d0",
+  "originalNativeCabalSHA256": "282cf3d5346ee1658315b5f306b934bd5773f1fb8ff4ad1f4e839a2c92f65aff",
+  "packagingChange": "Apache-2.0 license metadata and synopsis only; executable source unchanged",
+  "phaseCounts": {
+    "Absent": 4,
+    "Complete": 12,
+    "Pulsing": 17
+  },
+  "poolProjections": 20,
+  "publishedCabalSHA256": "ab784b5f3a603528785cd47bfffb57f33bf78571674b94eaf27272a9b73ea1ef",
+  "registrationApplications": 1,
+  "resultBytes": 38557,
+  "resultSHA256": "a1eb9842d864eb318723ae29792ba9aaf4d31410ae9f420ac51529c5507ddb74",
+  "scalaHarnessCommit": "54f310d72434328708408953a15c61873172d176",
+  "schema": "synthetic-reward-native-provenance-v1",
+  "stepCount": 33
+}

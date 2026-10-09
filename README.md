@@ -45,6 +45,12 @@ calculation in bounded chunks from supplied frozen inputs. Native input admissio
 branch ancestry, native execution parity, events, non-myopic updates and runtime
 epoch publication remain unproved or excluded.
 
+The [recorded native differential](docs/synthetic-reward-native-comparison.md)
+now shows exact monetary/progression agreement for eleven synthetic cases and
+33 steps. A pinned self-generated native golden runs in the public test suite;
+no native compiler or captured-chain input is required. This finite result does
+not establish general reward parity, valid-chain history or runtime epoch safety.
+
 ## Opt-in local reference testing
 
 The local Docker harness now exercises a verified Cardano node 11.1.3: real Scala NtN14 handshake, ChainSync/BlockFetch capture, and a restricted ADA-transfer comparison against original reference inclusion bytes, whole-UTxO changes and actual fee-pot exports. A separate relay-only scenario observes hot/full-duplex peers and transaction-ID requests after the configured startup delay before submitting through the relay. It uses disposable private-cluster keys, an internal Docker network and bounded cleanup; no public peers or real funds. See [setup and resource contract](docs/private-cluster.md), [byte capture](docs/reference-capture.md), and [transfer/context/relay scope](docs/private-cluster-transfer.md).

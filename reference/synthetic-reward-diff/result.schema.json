@@ -1,0 +1,457 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "synthetic-reward-result-v1"
+    },
+    "inputSha256": {
+      "const": "14d229647bcf67312d5979b4632d137c23177ac3dcf20356963b6cf193e97fb9"
+    },
+    "producer": {
+      "type": "string",
+      "enum": [
+        "native",
+        "scala",
+        "synthetic-expectation"
+      ]
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/case"
+      },
+      "maxItems": 32
+    }
+  },
+  "required": [
+    "schema",
+    "inputSha256",
+    "producer",
+    "cases"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "uint": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "ratio": {
+      "type": "object",
+      "properties": {
+        "n": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "d": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      },
+      "required": [
+        "n",
+        "d"
+      ],
+      "additionalProperties": false
+    },
+    "balance": {
+      "type": "object",
+      "properties": {
+        "credential": {
+          "type": "string",
+          "pattern": "^(script|key):[0-9a-f]{56}$"
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        }
+      },
+      "required": [
+        "credential",
+        "amount"
+      ],
+      "additionalProperties": false
+    },
+    "reward": {
+      "type": "object",
+      "properties": {
+        "credential": {
+          "type": "string",
+          "pattern": "^(script|key):[0-9a-f]{56}$"
+        },
+        "kind": {
+          "enum": [
+            "member",
+            "leader"
+          ],
+          "type": "string"
+        },
+        "pool": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{56}$"
+        },
+        "amount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        }
+      },
+      "required": [
+        "credential",
+        "kind",
+        "pool",
+        "amount"
+      ],
+      "additionalProperties": false
+    },
+    "pool": {
+      "type": "object",
+      "properties": {
+        "pool": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{56}$"
+        },
+        "sigma": {
+          "$ref": "#/$defs/ratio"
+        },
+        "poolPot": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "blocks": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "leader": {
+          "$ref": "#/$defs/reward"
+        },
+        "snapshot": {
+          "type": "object",
+          "properties": {
+            "stake": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "ownerStake": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "owners": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{56}$"
+              },
+              "maxItems": 16
+            },
+            "pledge": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "cost": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "margin": {
+              "$ref": "#/$defs/ratio"
+            },
+            "rewardAccount": {
+              "type": "string",
+              "pattern": "^(script|key):[0-9a-f]{56}$"
+            }
+          },
+          "required": [
+            "stake",
+            "ownerStake",
+            "owners",
+            "pledge",
+            "cost",
+            "margin",
+            "rewardAccount"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "pool",
+        "sigma",
+        "poolPot",
+        "blocks",
+        "leader",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "initial": {
+      "type": "object",
+      "properties": {
+        "chunk": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "allocation": {
+          "type": "object",
+          "properties": {
+            "fees": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "deltaR1": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "deltaT1": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "rewardPot": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "circulation": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            }
+          },
+          "required": [
+            "fees",
+            "deltaR1",
+            "deltaT1",
+            "rewardPot",
+            "circulation"
+          ],
+          "additionalProperties": false
+        },
+        "pools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pool"
+          },
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "chunk",
+        "allocation",
+        "pools"
+      ],
+      "additionalProperties": false
+    },
+    "complete": {
+      "type": "object",
+      "properties": {
+        "rewards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reward"
+          },
+          "maxItems": 16
+        },
+        "deltaT": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]*)$"
+        },
+        "deltaR": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]*)$"
+        },
+        "deltaF": {
+          "type": "string",
+          "pattern": "^(0|-?[1-9][0-9]*)$"
+        }
+      },
+      "required": [
+        "rewards",
+        "deltaT",
+        "deltaR",
+        "deltaF"
+      ],
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "Absent",
+            "Pulsing",
+            "Complete"
+          ]
+        },
+        "remaining": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "credential": {
+                    "type": "string",
+                    "pattern": "^(script|key):[0-9a-f]{56}$"
+                  },
+                  "pool": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{56}$"
+                  },
+                  "stake": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)$"
+                  }
+                },
+                "required": [
+                  "credential",
+                  "pool",
+                  "stake"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 16
+            }
+          ]
+        },
+        "members": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/reward"
+              },
+              "maxItems": 16
+            }
+          ]
+        },
+        "complete": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/complete"
+            }
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "phase",
+        "remaining",
+        "members",
+        "complete"
+      ],
+      "additionalProperties": false
+    },
+    "application": {
+      "type": "object",
+      "properties": {
+        "registered": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reward"
+          },
+          "maxItems": 16
+        },
+        "unregistered": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reward"
+          },
+          "maxItems": 16
+        },
+        "credited": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/balance"
+          },
+          "maxItems": 16
+        },
+        "totalUnregistered": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)$"
+        },
+        "pots": {
+          "type": "object",
+          "properties": {
+            "treasury": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "reserves": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "fees": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            }
+          },
+          "required": [
+            "treasury",
+            "reserves",
+            "fees"
+          ],
+          "additionalProperties": false
+        },
+        "balances": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/balance"
+          },
+          "maxItems": 16
+        }
+      },
+      "required": [
+        "registered",
+        "unregistered",
+        "credited",
+        "totalUnregistered",
+        "pots",
+        "balances"
+      ],
+      "additionalProperties": false
+    },
+    "case": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "initial": {
+          "$ref": "#/$defs/initial"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          },
+          "maxItems": 32
+        },
+        "application": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/application"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "initial",
+        "steps",
+        "application"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
