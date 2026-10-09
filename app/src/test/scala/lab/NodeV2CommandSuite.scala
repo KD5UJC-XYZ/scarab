@@ -541,6 +541,25 @@ class NodeV2CommandSuite extends munit.FunSuite:
           assertEquals(lines.count(record(_) == "node-fence-ready"), 1)
           assertEquals(lines.count(record(_) == "node-fence-ack"), 1)
           assertEquals(record(lines.last), "node-fence-ack")
+          val ready = lines.find(record(_) == "node-fence-ready").get
+          val readyProjection = field(ready, "projection")
+          assertEquals(ReferenceJson.field(readyProjection, "tupleId"), field(ready, "stateId"))
+          assertEquals(ReferenceJson.field(readyProjection, "contextId"), field(ready, "contextId"))
+          val projectedTip = ReferenceJson.field(readyProjection, "appliedTip")
+          val reportedTip = field(ready, "scopedAppliedTip")
+          assertEquals(
+            ReferenceJson.field(projectedTip, "hash"),
+            ReferenceJson.field(reportedTip, "hash")
+          )
+          assertEquals(
+            ReferenceJson.string(ReferenceJson.field(projectedTip, "slot")),
+            ReferenceJson.uint(ReferenceJson.field(reportedTip, "slot")).toString
+          )
+          if report.config.completionFence.get.phase == "B" then
+            assertEquals(
+              readyProjection,
+              field(lines.find(record(_) == "node-loaded").get, "projection")
+            )
           val ack = lines.last
           val projection = ValidatedRestartCapture.canonical(
             ValidatedRestartCapture.projection(report.outcome.snapshot.state)

@@ -940,11 +940,13 @@ object NodeCommand:
         if label == "fence-ready" then
           config.completionFence.traverse_ { f =>
             current.get.flatMap(_.snapshot).flatMap { initial =>
-              output(
-                s"""{"record":"node-fence-ready","fenceId":"${f.id}","phase":"${f.phase}","minimumDepth":${f.minimum},"maximumDepth":${config.blocks},${observed(
-                    initial
-                  )}}"""
-              )
+              IO(checkedProjection(initial.state)).flatMap { projection =>
+                output(
+                  s"""{"record":"node-fence-ready","fenceId":"${f.id}","phase":"${f.phase}","minimumDepth":${f.minimum},"maximumDepth":${config.blocks},${observed(
+                      initial
+                    )},"projection":$projection}"""
+                )
+              }
             }
           }
         else if label == "after-publish" then
