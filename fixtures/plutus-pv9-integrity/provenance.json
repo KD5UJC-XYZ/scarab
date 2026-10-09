@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "classification": "original synthetic integrity equality vectors; not script or ledger validity",
+  "license": "Apache-2.0; original synthetic packets and source, no public-chain/provider corpus",
+  "baseProvenance": "../plutus-pv9-reference/provenance.json",
+  "translatorProvenance": "../plutus-pv9-translator/provenance.json",
+  "helperSha256": "c16fa1a554134b0d406078ec44e9075d105c882d851be8312d833a9fa1d31294",
+  "compiledSources": {
+    "Main.hs": "7de704aa6e8eb428e4eb1a69cd36f5d405c70b33288e3ac6f257a022faaf9927",
+    "reference-context-exporter.cabal": "d724de1d124b906ec74f5e83de9dbde1ebecd1455752649b33d4b7df60ec6f33",
+    "Kernel.hs": "44238b581d848c670986c7c9aa2257cd9c8e2e80ab10d8da46012ab63ed87ee2",
+    "cabal.project.freeze": "0a1a1434459db5e2ee532c84dcd4289e075aff50a2def8ca69777122a38e6724",
+    "cabal.project": "1f654ff6b5a38069af34f848786907ae1e34a3d54a0371ab90cbfadde5f90ded"
+  },
+  "vectorsSha256": "4b1be784e31e2e399106a72c86f5ffd49342df45e5820031b47dcd02b835edaf",
+  "inputManifest": {
+    "inputSha256": "34c919917a56e47200aacfbcc233f29c152182531d092ad45c2a17ce97a20418",
+    "helperSha256": "c16fa1a554134b0d406078ec44e9075d105c882d851be8312d833a9fa1d31294",
+    "verifierSha256": "938b01e1ea5b5bff2d275540d9096572c692b177c479f22c2c7d4499783b9771"
+  },
+  "decodedCases": 28,
+  "observedMatches": 23,
+  "observedMismatches": 5,
+  "malformedRejections": 2,
+  "original18DistinctPreimages": 3,
+  "languageViewBytes": 690,
+  "languageViewSha256": "ffe1bc3154b74e81cf05b3482361a11b0e23bdc158ac38d64eb62e942969ca1d",
+  "externalPlanUnitsUnchanged": 379,
+  "dockerImage": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c",
+  "network": "none",
+  "cpus": 2,
+  "memoryBytes": 2147483648,
+  "memorySwapBytes": 2147483648,
+  "scriptEvaluationPerformed": false,
+  "fullLedgerValidation": false,
+  "distributedSources": {
+    "Kernel.hs": "44238b581d848c670986c7c9aa2257cd9c8e2e80ab10d8da46012ab63ed87ee2",
+    "Main.hs": "7de704aa6e8eb428e4eb1a69cd36f5d405c70b33288e3ac6f257a022faaf9927",
+    "cabal.project": "1f654ff6b5a38069af34f848786907ae1e34a3d54a0371ab90cbfadde5f90ded",
+    "cabal.project.freeze": "0a1a1434459db5e2ee532c84dcd4289e075aff50a2def8ca69777122a38e6724",
+    "evaluate.py": "cec4999d89c0b42e297b6ecfb2f7eb1c8b10ce380c523789293c4540a775ce46",
+    "mutations.py": "3f6bc2a62c115a53bcb65bcad9be23a083d8aca168ff5243da98fb429f84860f",
+    "prepare.py": "c660f58c34938c8a20ee8f0d4e7f3b0773558c1df213feefd51a44b849104c31",
+    "reference-context-exporter.cabal": "7328aefc0fe6b7cace109c6b678103133e184d1a4831b45b0148afc73edb1d50",
+    "verify_packet.py": "938b01e1ea5b5bff2d275540d9096572c692b177c479f22c2c7d4499783b9771"
+  },
+  "upstreamRuleArchives": [
+    {
+      "name": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "sourceSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+      "cabalSha256": "bdf63322c66120e39c32190adc6b10ac40c93d901bb3a8f24be8c141c2275a15",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-alonzo-1.16.0.0.cabal",
+      "length": 2126266,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-alonzo-1.16.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-babbage",
+      "version": "1.14.0.0",
+      "sourceSha256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d",
+      "cabalSha256": "83b0161ea86cfdb7d3de895352194a43265d333aa1438972502e495f0eaa9252",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-babbage-1.14.0.0.cabal",
+      "length": 2661288,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-babbage-1.14.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "sourceSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "cabalSha256": "d7c532bded90313c3a392dae334a5fd72a777a93f7ac9bbbed553bcf207956c0",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-conway-1.23.0.0.cabal",
+      "length": 4753608,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-conway-1.23.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "sourceSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "cabalSha256": "9194b2884d9b9f76aa70d2071392f6ea815b2b8e4fe62452dfe5ec16d47cdf33",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-core-1.21.0.0.cabal",
+      "length": 184361,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-core-1.21.0.0.tar.gz"
+    }
+  ],
+  "inspectedRuleFiles": {
+    "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/Tx.hs": "d4ebeaa8cb9269a4a3b88420b8f66474c0370b6a440a4b44e9ddff884fed0ed7",
+    "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/PParams.hs": "5c494a8339bacbbc3ca0537b7f31527074afdad64f6743a19386158caaa307f1",
+    "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/TxWits.hs": "d905a1b5f7fbc11686b1efab5dbb76f9dc8462567959340a21d2611ad72ea2dc",
+    "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs": "0f9a909a61ad2bad4ad8d316c9942a9b7e624ecc10311c0eb5ed131ed576947b",
+    "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo.hs": "a39fc608f6acd4386016ee6c737a85d21de4d146dc087f842f7ca6aecfbe7176",
+    "cardano-ledger-babbage-1.14.0.0/src/Cardano/Ledger/Babbage/Rules/Utxow.hs": "fed6595957ba9e00a61f11e3a998c98eef0d1ba0d37112a0bff1f074c21d369f",
+    "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Rules/Utxow.hs": "9665191c99e81d09b824b43d232a61e7756e284ea045343e07163b814926822d",
+    "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Plutus/Language.hs": "5ee74482bea100e7ccbfcb277fcd78d6e3ce1232e9e891b06903c87f5b2c0aed",
+    "cardano-ledger-core-1.21.0.0/internal/Cardano/Ledger/Internal/Definition/Era.hs": "40d8dd92eb954ddfa4e2311c6387216139fd1cbc25e935a197968016e4bdef1b",
+    "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Hashes.hs": "0bf9227a0f8144c7ee9bc89c13dc936990a768322ed1af858079cc9401aef966"
+  },
+  "distributionNormalization": {
+    "reference-context-exporter.cabal": "One redundant trailing blank line removed from the distributed package manifest; compiledSources records original build bytes separately. No semantic/dependency change."
+  }
+}

@@ -107,11 +107,25 @@ object ProfileTranslator:
       c(0, high.fold(c(2))(finite), c(if high.isDefined then 0 else 1))
     )
 
+  private[vm] final case class ParsedProfile(
+      context: Data,
+      redeemerOriginal: Bytes,
+      suppliedCommitment: Option[Bytes]
+  )
+
   def translate(
       tx: Bytes,
       parameters: Bytes,
       entries: Vector[(Bytes, Bytes)]
-  ): Either[String, Data] =
+  ): Either[String, Data] = parseProfile(tx, parameters, entries, false).map(_.context)
+
+  // Only the integrity diagnostic may omit body key11. Normal translation still requires it.
+  private[vm] def parseProfile(
+      tx: Bytes,
+      parameters: Bytes,
+      entries: Vector[(Bytes, Bytes)],
+      allowAbsentCommitment: Boolean
+  ): Either[String, ParsedProfile] =
     try
       check(tx.size <= 65536 && parameters.size <= 65536, "packet size bound")
       check(
@@ -129,8 +143,9 @@ object ProfileTranslator:
         wrapper(2).value == Value.Bool(true) && wrapper(3).value == Value.Null,
         "unsupported validity or auxiliary wrapper"
       )
-      val body = fields(wrapper(0), Set(0, 1, 2, 3, 8, 11, 13), Set(0, 1, 2, 11, 13))
-      bytes(body(11), 32) // integrity commitment shape only; never recompute or claim validity
+      val requiredBody = if allowAbsentCommitment then Set(0, 1, 2, 13) else Set(0, 1, 2, 11, 13)
+      val body = fields(wrapper(0), Set(0, 1, 2, 3, 8, 11, 13), requiredBody)
+      val suppliedCommitment = body.get(11).map(bytes(_, 32))
       val inputs = refs(body(0), 2); val collateral = refs(body(13), 1)
       check(!inputs.contains(collateral.head), "collateral overlaps ordinary input")
       val pre = entries.map((a, b) => ref(decode(a, 128)) -> output(decode(b, 4096)))
@@ -193,5 +208,11 @@ object ProfileTranslator:
         none,
         none
       )
-      Right(c(0, info, redeemer, c(1, own.data, c(0, ownOutput.datum.get))))
+      Right(
+        ParsedProfile(
+          c(0, info, redeemer, c(1, own.data, c(0, ownOutput.datum.get))),
+          witnesses(5).original,
+          suppliedCommitment
+        )
+      )
     catch case Rejected(reason) => Left(reason)

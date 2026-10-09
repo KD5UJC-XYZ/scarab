@@ -39,3 +39,5 @@ Validation:27 translator tests (18 complete differential cases, inventory,8 base
 Commands: `translator/test`, `vm/test`, `show translator/Test/fullClasspath`, `show translator/Compile/sources`, `scalafmtCheckAll`. Use existing cached sbt1.10.7/Java21 image, `--network=none --read-only --cpus=2 --memory=2g --memory-swap=2g`, private cache/output, JVM `-XX:ActiveProcessorCount=2 -Xmx1200m`. The test project intentionally requires explicit invocation and is not part of root/app runtime aggregation.
 
 The public GitHub Actions workflow explicitly runs `translator/test` as a separate step. The root production aggregate and app/runtime dependency graph remain unchanged.
+
+The separate test-only [integrity equality diagnostic](INTEGRITY.md) now checks the commitment without changing translation admission or claiming full ledger validation.
