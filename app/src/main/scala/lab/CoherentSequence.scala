@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab
 
-import cats.effect.{Ref, Sync}
+import cats.effect.{Async, Ref, Sync}
 import cats.syntax.all.*
 import lab.cbor.Bytes
 import lab.header.{
@@ -340,6 +340,69 @@ object CoherentSequence:
         CoherentSequence.rollback(owner, current, fence, target) match
           case Right((next, result)) => (next, Right(result))
           case Left(error)           => (current, Left(error))
+    }
+
+  /** Internal full replay. No partially replayed runtime or foreign capabilities escape. */
+  private[lab] def recover[F[_]: Async](
+      context: SequenceInput.Context,
+      maxBlocks: Int,
+      revision: BigInt,
+      originals: Vector[BoundedChainFollower.Original],
+      expectedId: Bytes,
+      between: String => F[Unit]
+  ): F[Result[Runtime[F]]] =
+    val F = Async[F]
+    def stage[A](body: => Result[A]): F[Result[A]] =
+      F.cede *> between("checked-stage") *> F.delay(protect(body))
+    stage {
+      for
+        _ <- Either.cond(
+          maxBlocks >= 1 && maxBlocks <= MaxBlocks && originals.size <= maxBlocks &&
+            revision >= originals.size && revision <= Ledger.MaxRevision &&
+            (revision - originals.size) % 2 == 0,
+          (),
+          Failure.Rejected("recovery", "bounds/revision parity")
+        )
+        initial <- seed(context) // Must validate the NORMAL revision-zero seed first.
+        anchor <- ledger(Ledger.recoveryAnchor(initial.ledger, revision - originals.size))
+      yield new State(initial.contextId, initial.certificates, initial.nonces, None, anchor)
+    }.flatMap {
+      case Left(error) => F.pure(Left(error))
+      case Right(initial) =>
+        for
+          owner <- F.delay(new Object())
+          cell <- Ref.of[F, Cell](Cell(initial, Vector.empty))
+          runtime = new Runtime(context, maxBlocks, owner, cell)
+          replayed <- originals.foldLeft(F.pure[Result[Unit]](Right(()))) { (acc, original) =>
+            acc.flatMap {
+              case Left(error) => F.pure(Left(error))
+              case Right(_) =>
+                stage(
+                  SequenceInput.block(original).left.map(e => Failure.Rejected("input", e.toString))
+                ).flatMap {
+                  case Left(error) => F.pure(Left(error))
+                  case Right(block) =>
+                    (F.cede *> between("prepare") *> runtime.prepare(block)).flatMap {
+                      case Left(error) => F.pure(Left(error))
+                      case Right(candidate) =>
+                        F.cede *> between("publish") *> runtime
+                          .publish(candidate)
+                          .map(_.map(_ => ()))
+                    }
+                }
+            }
+          }
+          result <- replayed match
+            case Left(error) => F.pure[Result[Runtime[F]]](Left(error))
+            case Right(_) =>
+              F.cede *> between("verify") *> runtime.snapshot.map { saved =>
+                Either.cond(
+                  saved.state.id == expectedId && saved.state.revision == revision,
+                  runtime,
+                  Failure.Rejected("recovery", "replayed tuple/revision mismatch")
+                )
+              }
+        yield result
     }
 
   def create[F[_]: Sync](

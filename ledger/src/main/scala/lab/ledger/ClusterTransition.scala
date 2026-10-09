@@ -289,6 +289,22 @@ object ClusterTransition:
     yield result
   }
 
+  /** Recovery-only supplied anchor bridge. This confers no applied-state authority. */
+  private[lab] def recoveryAnchor(anchor: State, offset: BigInt): Checked[State] = protect {
+    if anchor.revision != 0 || anchor.head.nonEmpty then
+      Left(Failure.StaleState("recovery requires a fresh supplied anchor"))
+    else
+      state(
+        anchor.environment,
+        anchor.checkpointId,
+        anchor.entries,
+        anchor.fees,
+        anchor.slot,
+        offset,
+        None
+      )
+  }
+
   private def projection(original: Bytes): Checked[(Coverage.Projection, Bytes)] =
     for
       root <- NativeSpending.decode(original).left.map(local)
