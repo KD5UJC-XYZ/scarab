@@ -1,6 +1,6 @@
 # Running the bounded private validator
 
-`node` is the ordinary launch path for the current in-memory validator. It loads
+`node` is the ordinary launch path for the current restricted validator. It loads
 the source-bound bootstrap before opening a peer and does not wait for a reference
 post-oracle or generate keys/transactions. Use it inside the approved isolated
 local Docker development network with access to the reference peer through
@@ -44,7 +44,7 @@ describes why this bounded run stopped; neither means caught up or fully validat
 Owned peer/transport resources are managed by Cats Effect. Cancellation waits for
 resource finalization; cleanup failures cannot be reported as a successful run.
 Status-output failure is terminal. Output delivery itself is not durable evidence
-of publication. Durable storage and sustained windows remain separate milestones;
+of publication. Bounded durable storage and sustained volatile windows remain separate modes;
 see [the implementation plan](private-node-milestones.md).
 
 ## Sustained volatile mode
@@ -57,9 +57,8 @@ reports total depth, retained blocks, compacted blocks and derived-anchor identi
 separately. It remains same-epoch and bounded by cumulative event/byte/time budgets.
 
 `--mode sustained-durable` is rejected explicitly: checkpoint v1 cannot store a
-derived anchor, including an empty suffix. `bounded-durable` is also unavailable
-until the separate backend seam is wired. These modes never fall back to volatile
-execution. Unknown or duplicate flags still fail before I/O.
+derived anchor, including an empty suffix. No unsupported durable combination
+falls back to volatile execution. Unknown or duplicate flags still fail before I/O.
 
 Explicit `--audit true` records every acquired original header/block pair and a
 complete token-free final state projection. It is off by default. Audit output
@@ -71,3 +70,42 @@ See [the 12-block operational acceptance plan](private-node-acceptance.md) for
 the exact planned configuration, resource limits and comparison requirements.
 The reviewed twelve-block same-epoch case passed; its exact scope and hashes are
 recorded in that acceptance document. Sustained durable mode remains unsupported.
+
+
+## Bounded durable create and resume — integration under review
+
+The following interface is being integrated and has not yet passed ordinary-node
+live restart acceptance. Existing retained-file restart evidence is separate.
+
+Select `--mode bounded-durable` and supply `--store-action create` or `resume`,
+`--store` for the checkpoint directory, `--receipts` for a separate private
+receipt directory, and `--expected-context` for the independently retained
+64-character lowercase context commitment. The usual profile, bootstrap and peer
+flags remain mandatory. Paths must be absolute and normalized; receipt authority
+must be external to the checkpoint store. The bounded capacity is eight, and
+`--blocks` names cumulative depth from the supplied anchor, including the prefix
+restored during resume. A target already reached requires no peer connection.
+
+Resume also requires `--resume-receipt` and `--resume-sha256`, selecting one exact
+acknowledged receipt by path and independently retained SHA-256. The implementation
+does not discover authority from the store or fall back to a different generation.
+Retain the original receipt bytes privately. Pending records are a separate format
+and cannot authorize resume; an output line is not itself a durable receipt.
+
+Recovered state starts `loaded-verified`. A no-op intersection or rollback keeps
+that classification and generation. Only a successfully returned storage
+acknowledgement permits a new acknowledged receipt. If storing that receipt fails,
+the node stops with the actual confirmed state and an explicit stale-external-
+receipt qualification. It never reports an older artifact as the current receipt.
+
+After a storage failure, status uses only the cached last-confirmed state and
+preserves its possibly-older-than-disk qualification. That cache may represent a
+loaded checkpoint rather than a new acknowledgement. The runner does not query
+the failed backend, retry the publication or continue acquiring blocks. Cleanup
+failure is reported separately even when storage failure is the primary reason.
+
+The backend is acquired and checked before the peer, and remains owned until the
+peer is released. Resume verifies context, original replay and stored capacity.
+This mode has no anchor compaction and makes no power-loss, live-fork, epoch-
+transition, full-ledger or full-consensus claim. Keep checkpoint files, receipts,
+raw captures and reference cluster data outside Git.

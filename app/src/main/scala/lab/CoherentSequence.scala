@@ -436,6 +436,7 @@ object CoherentSequence:
       recorderDeadline: scala.concurrent.duration.FiniteDuration,
       observe: DurablePhase => F[Unit]
   )(using F: Async[F]):
+    private[lab] val capacity: Int = runtime.maxBlocks
     import cats.effect.syntax.all.*
     private def active: F[Session] = session.get.flatMap { current =>
       F.raiseUnless(current.health == Health.Active)(

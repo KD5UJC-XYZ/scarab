@@ -66,9 +66,12 @@ class NodeCommandSuite extends munit.FunSuite:
     ): Resource[IO, NodeCommand.Engine] =
       Resource.make(CoherentSequence.create[IO](context).map(get(_)))(_ => release).map { runtime =>
         new NodeCommand.Engine:
-          def snapshot = runtime.snapshot
+          def snapshot = runtime.snapshot.map(s => NodeCommand.EngineView(s.state))
           def run = if failRun then IO.raiseError(new IllegalStateException("engine run failed"))
-          else snapshot.map(s => Outcome(s, reason, 0, 0L, 0))
+          else
+            snapshot.map(s =>
+              NodeCommand.EngineOutcome(s, NodeCommand.Ending.Completed(reason), 0, 0L, 0)
+            )
       }
   // Public context is synthetic and used only for anchor/fence behavior; no header is invented.
   private def syntheticContext: SequenceInput.Context =
@@ -104,7 +107,9 @@ class NodeCommandSuite extends munit.FunSuite:
     assert(c.policy.valid)
     assertEquals(NodeCommand.NetworkMagic, 1082026L)
     assert(
-      compileErrors("new lab.NodeCommand.Config(null,null,1,1,1,1,1L,0,null,8,false)").nonEmpty
+      compileErrors(
+        "new lab.NodeCommand.Config(null,null,1,1,1,1,1L,0,null,8,false,None,None,None,None,None,None)"
+      ).nonEmpty
     )
     assert(compileErrors("val c: lab.NodeCommand.Config = null; c.copy()").nonEmpty)
   }
@@ -185,7 +190,7 @@ class NodeCommandSuite extends munit.FunSuite:
         .swap
         .toOption
         .get
-        .contains("not integrated")
+        .contains("expected context required")
     )
   }
   test("sustained target twelve cannot be fabricated from an unvalidated synthetic anchor") {
@@ -418,8 +423,8 @@ class NodeCommandSuite extends munit.FunSuite:
     NodeCommand
       .execute(config(), syntheticContext, noPeer, _ => IO.unit, engine(Stop.TargetReached))
       .map {
-        case Left(NodeCommand.Failure("engine", "Internal", _)) => ()
-        case other                                              => fail(other.toString)
+        case Left(NodeCommand.Failure("engine", "Internal", _, _, _, _, _, _)) => ()
+        case other => fail(other.toString)
       }
       .unsafeToFuture()
   }
@@ -429,8 +434,12 @@ class NodeCommandSuite extends munit.FunSuite:
       engine(Stop.EventBudget, failRun = true)
     ).traverse_ { factory =>
       NodeCommand.execute(config(), syntheticContext, noPeer, _ => IO.unit, factory).map {
-        case Left(NodeCommand.Failure("engine-resource", "Internal", _)) => ()
-        case other                                                       => fail(other.toString)
+        case Left(NodeCommand.Failure("engine-resource", "Internal", _, _, _, _, _, _)) => ()
+        case Right(report) =>
+          assert(report.outcome.reason.isInstanceOf[Stop.CleanupFailed])
+          assert(report.outcome.cleanupFailure.nonEmpty)
+          assertEquals(NodeCommand.exitCode(report).code, 2)
+        case other => fail(other.toString)
       }
     }.unsafeToFuture()
   }
@@ -443,8 +452,8 @@ class NodeCommandSuite extends munit.FunSuite:
         _ => IO.raiseError(new IllegalStateException("output failed"))
       )
       .map {
-        case Left(NodeCommand.Failure("output", "Rejected", _)) => ()
-        case other                                              => fail(other.toString)
+        case Left(NodeCommand.Failure("output", "Rejected", _, _, _, _, _, _)) => ()
+        case other => fail(other.toString)
       }
       .unsafeToFuture()
   }
@@ -592,6 +601,240 @@ class NodeCommandSuite extends munit.FunSuite:
     assertEquals(field(rendered, "scopedTargetReached"), ReferenceJson.Json.Lit("false"))
   }
 
+  private def durableArgs(base: Path, c: SequenceInput.Context): List[String] = List(
+    "--mode",
+    "bounded-durable",
+    "--store-action",
+    "create",
+    "--store",
+    base.resolve("store").toString,
+    "--receipts",
+    base.resolve("receipts").toString,
+    "--expected-context",
+    c.id.hex,
+    "--blocks",
+    "1",
+    "--events",
+    "1"
+  )
+  private def durableConfig(base: Path, c: SequenceInput.Context) =
+    get(NodeCommand.Config.parse(required ++ durableArgs(base, c)))
+
+  test("durable configuration requires explicit external pinned resume authority before I/O") {
+    val c = syntheticContext
+    val args = durableArgs(Path.of("/explicit-durable-test"), c)
+    assertEquals(get(NodeCommand.Config.parse(required ++ args)).rollbackCapacity, 8)
+    val resumed = args.updated(args.indexOf("create"), "resume") ++ List(
+      "--resume-receipt",
+      "/external-receipt.json",
+      "--resume-sha256",
+      "12" * 32
+    )
+    assert(NodeCommand.Config.parse(required ++ resumed).isRight)
+    Vector(
+      args.updated(args.indexOf("create"), "resume"),
+      args ++ List("--resume-receipt", "/external-receipt.json"),
+      args ++ List("--rollback-capacity", "8"),
+      args.updated(args.indexOf(c.id.hex), "AB" * 32),
+      args.updated(
+        args.indexOf("/explicit-durable-test/receipts"),
+        "/explicit-durable-test/store/receipt"
+      ),
+      args.updated(args.indexOf("/explicit-durable-test/store"), "/explicit-durable-test/../store"),
+      args.updated(args.indexOf("bounded-durable"), "bounded-volatile"),
+      resumed.updated(resumed.indexOf("12" * 32), "bad")
+    ).foreach(extra => assert(NodeCommand.Config.parse(required ++ extra).isLeft))
+  }
+
+  test("durable mode rejects an injected volatile engine before peer acquisition") {
+    val c = syntheticContext
+    NodeCommand
+      .execute(
+        durableConfig(Path.of("/not-opened"), c),
+        c,
+        noPeer,
+        _ => IO.unit,
+        engine(Stop.EventBudget)
+      )
+      .map { result =>
+        assert(result.isLeft)
+        assertEquals(
+          field(NodeCommand.renderFailure(result.swap.toOption.get), "durable"),
+          ReferenceJson.Json.Lit("true")
+        )
+      }
+      .unsafeToFuture()
+  }
+
+  test("durable create acknowledgment and loaded no-op resume remain distinct") {
+    val c = syntheticContext
+    val base = Files.createTempDirectory("node-durable-confirmations-")
+    val settings = durableConfig(base, c)
+    (for
+      firstFactory <- NodeCommand.factoryFor(settings, c)
+      first <- NodeCommand.execute(
+        settings,
+        c,
+        scripted(List(IO.pure(Event.Await)), anchor(c)),
+        _ => IO.unit,
+        firstFactory
+      )
+      firstReport = get(first)
+      receipt = firstReport.outcome.snapshot.receipt.get
+      resumeArgs = durableArgs(base, c)
+        .updated(3, "resume")
+        .updated(7, base.resolve("receipts-b").toString) ++ List(
+        "--resume-receipt",
+        receipt.path,
+        "--resume-sha256",
+        receipt.sha256
+      )
+      resumed = get(NodeCommand.Config.parse(required ++ resumeArgs))
+      factory <- NodeCommand.factoryFor(resumed, c)
+      logs <- Ref.of[IO, Vector[String]](Vector.empty)
+      second <- NodeCommand.execute(
+        resumed,
+        c,
+        Resource
+          .eval(logs.get.map { lines =>
+            assertEquals(lines.map(record), Vector("node-bootstrap", "node-loaded"))
+          })
+          .flatMap(_ => scripted(List(IO.pure(Event.Await)), anchor(c))),
+        line => logs.update(_ :+ line),
+        factory
+      )
+      lines <- logs.get
+    yield
+      assertEquals(firstReport.outcome.snapshot.confirmation, NodeCommand.Confirmation.Acknowledged)
+      assertEquals(firstReport.outcome.snapshot.confirmedGeneration, Some(0L))
+      val out = get(second).outcome
+      assertEquals(out.snapshot.confirmation, NodeCommand.Confirmation.LoadedVerified)
+      assertEquals(out.snapshot.confirmedGeneration, Some(0L))
+      assertEquals(out.snapshot.receipt, Some(receipt))
+      assertEquals(out.snapshot.state.id, firstReport.outcome.snapshot.state.id)
+      assert(!Files.exists(base.resolve("receipts-b")))
+      assertEquals(
+        field(lines(1), "projection"),
+        ValidatedRestartCapture.projection(out.snapshot.state)
+      )
+      assertEquals(field(lines.last, "confirmation"), ReferenceJson.Json.Str("loaded-verified"))
+    ).unsafeToFuture()
+  }
+
+  test("independent expected context mismatch stops before creating checkpoint files") {
+    val c = syntheticContext
+    val base = Files.createTempDirectory("node-context-mismatch-")
+    val args = durableArgs(base, c).map(v => if v == c.id.hex then "12" * 32 else v)
+    NodeCommand
+      .factoryFor(get(NodeCommand.Config.parse(required ++ args)), c)
+      .attempt
+      .map { out =>
+        assert(out.isLeft)
+        assert(!Files.exists(base.resolve("store")))
+        assert(!Files.exists(base.resolve("receipts")))
+      }
+      .unsafeToFuture()
+  }
+
+  test(
+    "failed acknowledgment receipt preserves actual acknowledged state without a peer or stale reference"
+  ) {
+    val c = syntheticContext
+    val base = Files.createTempDirectory("node-ack-sink-failure-")
+    val settings = durableConfig(base, c)
+    (for
+      factory <- NodeCommand.factoryFor(
+        settings,
+        c,
+        Some(_ => IO.raiseError(new IllegalStateException("private sink detail")))
+      )
+      result <- NodeCommand.execute(settings, c, noPeer, _ => IO.unit, factory)
+    yield
+      val failure = result.swap.toOption.get
+      assertEquals(failure.kind, "ReceiptFailure")
+      assert(failure.externalReceiptStale)
+      assert(!failure.potentiallyOlderThanDisk)
+      assertEquals(failure.lastConfirmed.get.confirmation, NodeCommand.Confirmation.Acknowledged)
+      assertEquals(failure.lastConfirmed.get.confirmedGeneration, Some(0L))
+      assertEquals(failure.lastConfirmed.get.receipt, None)
+      assert(!NodeCommand.renderFailure(failure).contains("private sink detail"))
+    ).unsafeToFuture()
+  }
+
+  test("cached storage failure retains cleanup uncertainty and suppresses final audit projection") {
+    val c = syntheticContext
+    val settings = get(
+      NodeCommand.Config.parse(
+        required ++ durableArgs(Path.of("/unused-storage"), c) ++ List("--audit", "true")
+      )
+    )
+    val factory = new NodeCommand.EngineFactory:
+      def resource(
+          context: SequenceInput.Context,
+          peer: Resource[IO, Peer[IO]],
+          policy: Policy,
+          hook: String => IO[Unit]
+      ) =
+        Resource.eval(CoherentSequence.create[IO](context).map(get(_))).map { runtime =>
+          new NodeCommand.Engine:
+            def snapshot = runtime.snapshot.map(s =>
+              NodeCommand.EngineView(
+                s.state,
+                NodeCommand.Confirmation.Acknowledged,
+                Some(0L),
+                Some(NodeCommand.ReceiptReference("/explicit-test-receipt", "12" * 32))
+              )
+            )
+            def run = snapshot.map(v =>
+              NodeCommand.EngineOutcome(
+                v,
+                NodeCommand.Ending.StorageFailure(true),
+                0,
+                0L,
+                0,
+                Some(Stop.CleanupFailed("separate cleanup failure"))
+              )
+            )
+        }
+    (for
+      logs <- Ref.of[IO, Vector[String]](Vector.empty)
+      result <- NodeCommand.execute(settings, c, noPeer, line => logs.update(_ :+ line), factory)
+      lines <- logs.get
+    yield
+      val report = get(result)
+      val rendered = NodeCommand.render(report)
+      assertEquals(NodeCommand.exitCode(report).code, 2)
+      assertEquals(field(rendered, "typedStop"), ReferenceJson.Json.Str("StorageFailure"))
+      assertEquals(field(rendered, "potentiallyOlderThanDisk"), ReferenceJson.Json.Lit("true"))
+      assertEquals(field(rendered, "cleanupFailure"), ReferenceJson.Json.Str("CleanupFailed"))
+      assertEquals(field(rendered, "peerResourcesFinalized"), ReferenceJson.Json.Lit("false"))
+      assert(!lines.exists(record(_) == "node-state"))
+    ).unsafeToFuture()
+  }
+
+  test("durable cancellation metadata never labels the execution volatile") {
+    (Deferred[IO, Unit], Ref.of[IO, Vector[String]](Vector.empty)).tupled
+      .flatMap { (entered, logs) =>
+        for
+          fiber <- NodeCommand
+            .withCancellationStatus(
+              entered.complete(()).void *> IO.never[Unit],
+              line => logs.update(_ :+ line),
+              durableRequested = true
+            )
+            .start
+          _ <- entered.get
+          _ <- fiber.cancel
+          lines <- logs.get
+        yield
+          assertEquals(lines.size, 1)
+          assertEquals(field(lines.head, "durable"), ReferenceJson.Json.Lit("true"))
+          assertEquals(field(lines.head, "inMemory"), ReferenceJson.Json.Lit("false"))
+          assertEquals(field(lines.head, "stateAvailable"), ReferenceJson.Json.Lit("false"))
+      }
+      .unsafeToFuture()
+  }
+
   sys.env.get("COHERENT_SEQUENCE_EVIDENCE").foreach { location =>
     val directory = Path.of(location)
     def context = get(SequenceInput.load(directory))
@@ -604,6 +847,52 @@ class NodeCommandSuite extends munit.FunSuite:
       get(CoherentSequenceCommand.captures(Bytes.fromArray(bytes)))
     def forwards(os: Vector[Original]) = os.toList.map(o => IO.pure(Event.Forward(o.envelope)))
     def fetch(os: Vector[Original])(p: ChainSync.Point) = IO(os.find(point(_) == p).get.block)
+    test(
+      "retained durable resume at cumulative target opens no peer and writes no new acknowledgment"
+    ) {
+      val c = context; val os = originals.take(1)
+      val base = Files.createTempDirectory("node-retained-durable-")
+      val settings = durableConfig(base, c)
+      (for
+        factory <- NodeCommand.factoryFor(settings, c)
+        first <- NodeCommand.execute(
+          settings,
+          c,
+          scripted(forwards(os), anchor(c), fetch(os)),
+          _ => IO.unit,
+          factory
+        )
+        a = get(first)
+        receipt = a.outcome.snapshot.receipt.get
+        resumed = get(
+          NodeCommand.Config.parse(
+            required ++ durableArgs(base, c)
+              .updated(3, "resume")
+              .updated(7, base.resolve("receipts-b").toString) ++ List(
+              "--resume-receipt",
+              receipt.path,
+              "--resume-sha256",
+              receipt.sha256
+            )
+          )
+        )
+        factoryB <- NodeCommand.factoryFor(resumed, c)
+        second <- NodeCommand.execute(resumed, c, noPeer, _ => IO.unit, factoryB)
+      yield
+        val b = get(second)
+        assertEquals(a.outcome.reason, Stop.TargetReached)
+        assertEquals(b.outcome.reason, Stop.TargetReached)
+        assertEquals(b.peerOpens, 0)
+        assertEquals(b.outcome.snapshot.confirmation, NodeCommand.Confirmation.LoadedVerified)
+        assertEquals(b.outcome.snapshot.receipt, Some(receipt))
+        assertEquals(b.outcome.snapshot.confirmedGeneration, a.outcome.snapshot.confirmedGeneration)
+        assertEquals(
+          ValidatedRestartCapture.projection(b.outcome.snapshot.state),
+          ValidatedRestartCapture.projection(a.outcome.snapshot.state)
+        )
+        assert(!Files.exists(base.resolve("receipts-b")))
+      ).unsafeToFuture()
+    }
     test(
       "retained node publishes source-bound originals with separate download cursors and no oracle"
     ) {
@@ -737,10 +1026,18 @@ class NodeCommandSuite extends munit.FunSuite:
             ) =
               Resource.eval(CoherentSequence.create[IO](ctx).map(get(_))).map { runtime =>
                 new NodeCommand.Engine:
-                  def snapshot = runtime.snapshot
+                  def snapshot = runtime.snapshot.map(s => NodeCommand.EngineView(s.state))
                   def run = p.use { peer =>
                     peer.intersect(Vector(anchor(ctx))) *> peer.next *> peer.fetch(anchor(ctx)) *>
-                      snapshot.map(s => Outcome(s, Stop.EventBudget, 1, 0L, 0))
+                      snapshot.map(s =>
+                        NodeCommand.EngineOutcome(
+                          s,
+                          NodeCommand.Ending.Completed(Stop.EventBudget),
+                          1,
+                          0L,
+                          0
+                        )
+                      )
                   }
               }
           val source =
@@ -756,8 +1053,8 @@ class NodeCommandSuite extends munit.FunSuite:
             count <- fetched.get
           yield
             result match
-              case Left(NodeCommand.Failure("fetch", "Rejected", _)) => ()
-              case other                                             => fail(other.toString)
+              case Left(NodeCommand.Failure("fetch", "Rejected", _, _, _, _, _, _)) => ()
+              case other => fail(other.toString)
             assertEquals(count, 0)
         }
         .unsafeToFuture()

@@ -37,11 +37,12 @@ follow-up run is authorized by this plan.
 ## 3. Durable restart and fork handling — separate worker
 
 Adapt the reviewed durable coordinator behind the node engine boundary, preserving
-atomic publication and exact checkpoint identity. The existing offline restart
-adapter and source/classpath/input pin are preparation, not restart evidence.
-Accept graceful restart only after separately granted retained-input execution;
-process-kill/write-interruption and live competing-fork cases require their own
-evidence. Distinguish retained rollback, outside-window rejection and unsupported
+atomic publication and exact checkpoint identity. The separate retained-input graceful and post-acknowledgement SIGKILL cases
+passed at the e7d1e6f source pin; see the acceptance record for their exact scope.
+They do not demonstrate live network continuation. The next integrated case must
+run the ordinary node in explicit bounded durable create/resume modes and show
+newly acquired live blocks after strict recovery of an externally pinned receipt.
+Live competing-fork and write-interruption cases still require their own evidence. Distinguish retained rollback, outside-window rejection and unsupported
 fork handling. No power-loss claim follows from ordinary close/reopen tests.
 
 ## 4. Epoch continuity — later milestone
@@ -84,18 +85,19 @@ The separate durable worker's backend seam sits beneath this engine boundary:
 `snapshot`, `prepare`, `publish` and `rollbackTo`, with opaque candidates and
 immutable snapshots that distinguish volatile state from acknowledged durable
 state. The durable backend owns expected tokens and delegates to `DurableRuntime`.
-Storage failure terminates using its cached last acknowledged state; neither the
-node nor the engine may recover status by reading a poisoned backend. The node
+Storage failure terminates using its cached last confirmed state, which may be
+only loaded-verified and may be older than disk. Neither the node nor the engine
+may recover status by reading a poisoned backend. The node
 does not implement this backend or convert status identifiers into authority.
 
-The sustained worker proposes `Runtime.advanceAnchor(fence, through)` returning
+The integrated sustained runtime provides `advanceAnchor(fence, through)` returning
 an atomic `Snapshot`, plus state `compactedBlocks`, `derivedAnchorId` and
 `depth = compactedBlocks + retained originals`. Compaction through the current tip
 retains a checked applied tip. Opt-in `Policy(advanceWindow = true,
 rollbackCapacity = 1..8)` leaves existing bounded defaults unchanged. Rebound
 receipts and constant-size provenance commit the checked boundary while retaining
-the original context identity. These are worker integration requirements, not
-capabilities of the current node command.
+the original context identity. These capabilities are integrated in the sustained volatile node command;
+they are not available through the bounded durable backend.
 
 `ValidatedCheckpoint` v1 must reject every derived-anchor state, including an
 empty retained suffix. There is no durable compaction API. Sustained volatile and
@@ -110,3 +112,34 @@ continues while CI runs; check it at natural checkpoints and fix actual failures
 Keep caches/output private per worker. Preserve failed attempts and all existing
 private evidence. Public commits contain reviewed source and scoped summaries,
 never keys, raw provider exports or cluster state.
+
+
+## Bounded durable integration in progress
+
+The approved session-bound `ValidatorTransitions` backend is integrated. The
+runner and CLI adaptation remain under focused implementation and review; this
+section is a plan, not a live restart acceptance claim.
+
+Use explicit create/resume selection, a checkpoint store, a private receipt
+directory and the expected context commitment. Resume additionally selects one
+bounded acknowledged receipt by exact path and SHA-256; it never discovers a
+token from disk or falls back to another checkpoint. Pending-token records are
+separate from returned acknowledgements. Loaded-verified recovery and no-op
+rollback cannot manufacture a new acknowledgement. Receipt write failure is
+terminal and does not justify retrying a publication.
+
+The bounded durable runner verifies context and restored capacity before opening
+a peer. Its target is cumulative chain depth rather than publication revision.
+A target already reached requires no peer. It owns the backend outside the peer
+lifetime and keeps opaque views/prepared candidates private. Ordinary status
+contains confirmation classification and token-free state; explicit private
+receipt artifacts carry restart authority.
+
+The proposed live case ends process A at depth two, pins its returned receipt,
+then starts process B with that exact receipt and requires new live continuation
+to cumulative depth four in the same epoch. The next independently reviewed
+capture plan includes raw serialized ledger state, matching tip and protocol/
+configuration evidence inside an existing stable paused bracket and deadline.
+JSON `possibleRewardUpdate: null` cannot establish an absent reward update.
+No extra pause, deadline extension or retrospective alteration of the completed
+twelve-block evidence follows from this plan.

@@ -67,6 +67,9 @@ private[lab] object ValidatorTransitions:
       failed: Ref[F, Option[StorageFailure]],
       closed: Ref[F, Boolean]
   )(using F: Async[F]):
+    val capacity: Int = owned match
+      case Owned.Memory(runtime)  => runtime.maxBlocks
+      case Owned.Durable(runtime) => runtime.capacity
     private val durable = owned match
       case Owned.Durable(_) => true
       case _                => false

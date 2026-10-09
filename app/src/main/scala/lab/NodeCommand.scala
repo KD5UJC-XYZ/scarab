@@ -26,7 +26,13 @@ object NodeCommand:
       val reconnects: Int,
       val mode: String,
       val rollbackCapacity: Int,
-      val audit: Boolean
+      val audit: Boolean,
+      val storeAction: Option[String],
+      val store: Option[Path],
+      val receipts: Option[Path],
+      val expectedContext: Option[Bytes],
+      val resumeReceipt: Option[Path],
+      val resumeSha256: Option[Bytes]
   ):
     def policy: BoundedValidatorRunner.Policy = BoundedValidatorRunner.Policy(
       target = blocks,
@@ -49,14 +55,20 @@ object NodeCommand:
       "--reconnects",
       "--mode",
       "--rollback-capacity",
-      "--audit"
+      "--audit",
+      "--store-action",
+      "--store",
+      "--receipts",
+      "--expected-context",
+      "--resume-receipt",
+      "--resume-sha256"
     )
 
     /** Entire grammar and all bounds are checked before any filesystem or socket operation. */
     def parse(args: List[String]): Either[String, Config] =
       try
         require(
-          args != null && args.nonEmpty && args.size <= 22 && args.size % 2 == 0,
+          args != null && args.nonEmpty && args.size <= 34 && args.size % 2 == 0,
           "expected flag/value pairs"
         )
         require(
@@ -107,12 +119,63 @@ object NodeCommand:
               "unsupported sustained-durable combination: checkpoint v1 cannot encode derived anchors"
             )
           case "bounded-durable" =>
-            throw new IllegalArgumentException("bounded-durable is not integrated")
+            require(
+              !fields.contains("--rollback-capacity"),
+              "bounded-durable requires fixed capacity8"
+            )
           case _ => throw new IllegalArgumentException("unsupported node mode")
         val audit = fields.getOrElse("--audit", "false") match
           case "true"  => true
           case "false" => false
           case _       => throw new IllegalArgumentException("--audit requires true or false")
+        val durableFields = Set(
+          "--store-action",
+          "--store",
+          "--receipts",
+          "--expected-context",
+          "--resume-receipt",
+          "--resume-sha256"
+        )
+        def hash(name: String): Bytes =
+          val value = fields(name)
+          require(value.matches("[0-9a-f]{64}"), "canonical 32-byte hash required: " + name)
+          Bytes.fromHex(value).toOption.get
+        val storage = if mode != "bounded-durable" then
+          require(!fields.keySet.exists(durableFields), "storage flags require bounded-durable")
+          (None, None, None, None, None, None)
+        else
+          require(
+            Set("--store-action", "--store", "--receipts", "--expected-context").subsetOf(
+              fields.keySet
+            ),
+            "durable store action/path, external receipts and expected context required"
+          )
+          val action = fields("--store-action")
+          require(Set("create", "resume")(action), "store action must be create or resume")
+          val input = if action == "resume" then
+            require(
+              fields.contains("--resume-receipt") && fields.contains("--resume-sha256"),
+              "resume requires explicit receipt path and SHA256"
+            )
+            (Some(Path.of(fields("--resume-receipt"))), Some(hash("--resume-sha256")))
+          else
+            require(
+              !fields.contains("--resume-receipt") && !fields.contains("--resume-sha256"),
+              "create cannot accept resume authority"
+            )
+            (None, None)
+          val root = Path.of(fields("--store")); val receipts = Path.of(fields("--receipts"))
+          NodeDurableReceipts
+            .validatePaths(root, receipts, input._1)
+            .fold(s => throw new IllegalArgumentException(s), identity)
+          (
+            Some(action),
+            Some(root),
+            Some(receipts),
+            Some(hash("--expected-context")),
+            input._1,
+            input._2
+          )
         val port = integer("--port", "0")
         require(port >= 1 && port <= 65535, "port range 1..65535")
         val config = new Config(
@@ -126,7 +189,13 @@ object NodeCommand:
           integer("--reconnects", "0"),
           mode,
           integer("--rollback-capacity", "8"),
-          audit
+          audit,
+          storage._1,
+          storage._2,
+          storage._3,
+          storage._4,
+          storage._5,
+          storage._6
         )
         require(
           config.policy.valid,
@@ -136,15 +205,50 @@ object NodeCommand:
       catch
         case NonFatal(e) => Left(Option(e.getMessage).getOrElse("invalid configuration").take(1024))
 
+  enum Confirmation:
+    case Volatile, LoadedVerified, Acknowledged
+  final case class ReceiptReference(path: String, sha256: String)
+  final case class EngineView(
+      state: CoherentSequence.State,
+      confirmation: Confirmation = Confirmation.Volatile,
+      confirmedGeneration: Option[Long] = None,
+      receipt: Option[ReceiptReference] = None
+  )
+  enum Ending:
+    case Completed(reason: BoundedValidatorRunner.Stop)
+    case StorageFailure(potentiallyOlderThanDisk: Boolean)
+    case ReceiptFailure
+  final case class EngineOutcome(
+      snapshot: EngineView,
+      ending: Ending,
+      events: Int,
+      returnedBytes: Long,
+      reconnects: Int,
+      cleanupFailure: Option[BoundedValidatorRunner.Stop] = None
+  ):
+    /** Compatibility accessor for volatile callers; rendering always inspects ending too. */
+    def reason: BoundedValidatorRunner.Stop = ending match
+      case Ending.Completed(reason) => reason
+      case Ending.StorageFailure(_) =>
+        BoundedValidatorRunner.Stop.Internal("storage failure: cached confirmation only")
+      case Ending.ReceiptFailure =>
+        BoundedValidatorRunner.Stop.Internal("external acknowledged receipt unavailable")
+  object EngineOutcome:
+    def volatile(out: BoundedValidatorRunner.Outcome): EngineOutcome =
+      EngineOutcome(
+        EngineView(out.snapshot.state),
+        Ending.Completed(out.reason),
+        out.events,
+        out.returnedBytes,
+        out.reconnects
+      )
   trait Engine:
-    def snapshot: IO[CoherentSequence.Snapshot]
-    def run: IO[BoundedValidatorRunner.Outcome]
+    def snapshot: IO[EngineView]
+    def run: IO[EngineOutcome]
   trait EngineFactory:
     /** Hooks run synchronously after the named atomic transition and AFTER releasing any
-      * nonreentrant publication gate: Engine.snapshot must be callable from a hook without
-      * deadlock. They receive no mutation authority. Resource acquisition must not invoke hooks
-      * before returning the Engine to its caller. The caller awaits run inside this Resource's use
-      * scope.
+      * nonreentrant publication gate. Snapshot must be callable without deadlock. Acquisition must
+      * not invoke hooks before returning the Engine. The caller awaits run inside use.
       */
     def resource(
         context: SequenceInput.Context,
@@ -162,18 +266,170 @@ object NodeCommand:
       BoundedValidatorRunner.resourceObserved[IO](context, peer, policy, onTransition).map {
         runner =>
           new Engine:
-            def snapshot = runner.snapshot
-            def run = runner.run
+            def snapshot = runner.snapshot.map(s => EngineView(s.state))
+            def run = runner.run.map(EngineOutcome.volatile)
       }
 
-  final case class Failure(stage: String, kind: String, detail: String)
+  final case class Failure(
+      stage: String,
+      kind: String,
+      detail: String,
+      lastConfirmed: Option[EngineView] = None,
+      potentiallyOlderThanDisk: Boolean = false,
+      externalReceiptStale: Boolean = false,
+      durableRequested: Boolean = false,
+      cleanupFailure: Option[String] = None
+  )
   private final case class Abort(failure: Failure) extends RuntimeException
+  private final case class ReceiptFailed(view: EngineView)
+      extends RuntimeException("acknowledged state has no confirmed external receipt")
   final class Report private[NodeCommand] (
       val config: Config,
-      val outcome: BoundedValidatorRunner.Outcome,
+      val outcome: EngineOutcome,
       val peerOpens: Int,
       val peerCloses: Int
   )
+
+  /** Explicit resume authority is checked before acquiring the checkpoint backend or any peer. */
+  private[lab] def factoryFor(
+      config: Config,
+      context: SequenceInput.Context,
+      acknowledge: Option[ValidatedCheckpoint.Token => IO[NodeDurableReceipts.Reference]] = None
+  ): IO[EngineFactory] =
+    if config.mode != "bounded-durable" then IO.pure(defaultFactory)
+    else
+      val expected = config.expectedContext.get
+      val root = config.store.get; val receipts = config.receipts.get
+      for
+        _ <- IO.raiseUnless(context.id == expected)(
+          Abort(
+            Failure(
+              "bootstrap",
+              "Rejected",
+              "independent context mismatch",
+              durableRequested = true
+            )
+          )
+        )
+        loaded <-
+          if config.storeAction.contains("resume") then
+            NodeDurableReceipts
+              .load(config.resumeReceipt.get, config.resumeSha256.get, expected, root)
+              .map(Some(_))
+          else IO.pure(None)
+      yield new EngineFactory:
+        def resource(
+            c: SequenceInput.Context,
+            peer: Resource[IO, BoundedChainFollower.Peer[IO]],
+            policy: BoundedValidatorRunner.Policy,
+            onTransition: String => IO[Unit]
+        ): Resource[IO, Engine] =
+          val record = (tokens: CoherentSequence.PendingTokens) =>
+            NodeDurableReceipts.recordPending(receipts, root, tokens)
+          val backend = loaded match
+            case None => ValidatorTransitions.durableCreate[IO](root, c, 8, 2.seconds, record)
+            case Some(input) =>
+              ValidatorTransitions
+                .durableResume[IO](root, expected, input.token, 20.seconds, 2.seconds, record)
+          for
+            saved <- Resource.eval(
+              Ref.of[IO, Option[(ValidatedCheckpoint.Token, NodeDurableReceipts.Reference)]](
+                loaded.map(v => v.token -> v.reference)
+              )
+            )
+            receiptFailure <- Resource.eval(Ref.of[IO, Option[EngineView]](None))
+            runner <- DurableValidatorRunner.resource[IO](c, backend, peer, policy, onTransition)
+          yield new Engine:
+            def metadata(r: NodeDurableReceipts.Reference) =
+              ReceiptReference(r.path.toString, r.sha256.hex)
+            def mapped(
+                value: ValidatorTransitions.ConfirmedState,
+                mayRecord: Boolean
+            ): IO[EngineView] =
+              val (kind, token) = value.confirmation match
+                case ValidatorTransitions.Confirmation.Volatile => (Confirmation.Volatile, None)
+                case ValidatorTransitions.Confirmation.LoadedVerified(t) =>
+                  (Confirmation.LoadedVerified, Some(t))
+                case ValidatorTransitions.Confirmation.Acknowledged(t) =>
+                  (Confirmation.Acknowledged, Some(t))
+              val base = EngineView(value.state, kind, token.map(_.generation))
+              saved.get.flatMap { existing =>
+                existing.filter(pair => token.contains(pair._1)) match
+                  case Some((_, reference)) =>
+                    IO.pure(base.copy(receipt = Some(metadata(reference))))
+                  case None if kind == Confirmation.Acknowledged && mayRecord =>
+                    acknowledge
+                      .fold(NodeDurableReceipts.recordAcknowledged(receipts, root, token.get))(
+                        _(token.get)
+                      )
+                      .timeout(2.seconds)
+                      .flatMap(r =>
+                        saved.set(Some(token.get -> r)).as(base.copy(receipt = Some(metadata(r))))
+                      )
+                      .handleErrorWith(_ =>
+                        receiptFailure.set(Some(base)) *> IO.raiseError(ReceiptFailed(base))
+                      )
+                  case _ => IO.pure(base)
+              }
+            def snapshot: IO[EngineView] = receiptFailure.get.flatMap {
+              case Some(view) => IO.raiseError(ReceiptFailed(view))
+              case None       => runner.snapshot.flatMap(mapped(_, true))
+            }
+            def run: IO[EngineOutcome] = runner.run.flatMap { out =>
+              receiptFailure.get.flatMap {
+                case Some(view) =>
+                  IO.pure(
+                    EngineOutcome(
+                      view,
+                      Ending.ReceiptFailure,
+                      out.events,
+                      out.returnedBytes,
+                      out.reconnects,
+                      out.cleanupFailure
+                    )
+                  )
+                case None =>
+                  out.reason match
+                    case DurableValidatorRunner.Stop.StorageFailure(older) =>
+                      mapped(out.confirmed, false).map(v =>
+                        EngineOutcome(
+                          v,
+                          Ending.StorageFailure(older),
+                          out.events,
+                          out.returnedBytes,
+                          out.reconnects,
+                          out.cleanupFailure
+                        )
+                      )
+                    case DurableValidatorRunner.Stop.Completed(reason) =>
+                      mapped(out.confirmed, true)
+                        .map(v =>
+                          EngineOutcome(
+                            v,
+                            Ending.Completed(reason),
+                            out.events,
+                            out.returnedBytes,
+                            out.reconnects,
+                            out.cleanupFailure
+                          )
+                        )
+                        .handleErrorWith {
+                          case ReceiptFailed(view) =>
+                            IO.pure(
+                              EngineOutcome(
+                                view,
+                                Ending.ReceiptFailure,
+                                out.events,
+                                out.returnedBytes,
+                                out.reconnects,
+                                out.cleanupFailure
+                              )
+                            )
+                          case other => IO.raiseError(other)
+                        }
+              }
+            }
+
   private def quote(s: String): String = "\"" + s.flatMap {
     case '"'          => "\\\""
     case '\\'         => "\\\\"
@@ -190,8 +446,19 @@ object NodeCommand:
     s""""contextId":"${s.contextId.hex}","stateId":"${s.id.hex}","revision":${s.revision},"depth":${s.depth},"compactedBlocks":${s.compactedBlocks},"derivedAnchorId":$derived,"retainedBlocks":${s.acquisition.size},"scopedAppliedTip":${point(
         s.scopedAppliedTip
       )},"blockNo":${s.certificates.state.tip.blockNo}"""
-  private val claims =
-    "\"bounded\":true,\"inMemory\":true,\"adaOnly\":true,\"nativeScriptsSupported\":true,\"plutusSupported\":false,\"bootstrapValidated\":false,\"fullLedgerValidated\":false,\"consensusValidated\":false,\"stateDerivedConsensus\":false,\"durable\":false"
+  private def observed(v: EngineView): String =
+    val status = v.confirmation match
+      case Confirmation.Volatile       => "volatile"
+      case Confirmation.LoadedVerified => "loaded-verified"
+      case Confirmation.Acknowledged   => "acknowledged"
+    val generation = v.confirmedGeneration.fold("null")(_.toString)
+    val receiptPath = v.receipt.fold("null")(r => quote(r.path))
+    val receiptHash = v.receipt.fold("null")(r => quote(r.sha256))
+    state(
+      v.state
+    ) + s""", "confirmation":"$status","confirmedGeneration":$generation,"receiptPath":$receiptPath,"receiptSha256":$receiptHash"""
+  private def claims(durable: Boolean = false): String =
+    s""""bounded":true,"inMemory":${!durable},"adaOnly":true,"nativeScriptsSupported":true,"plutusSupported":false,"bootstrapValidated":false,"fullLedgerValidated":false,"consensusValidated":false,"stateDerivedConsensus":false,"durable":$durable"""
   private[lab] def classification(reason: BoundedValidatorRunner.Stop): (String, String, Boolean) =
     import BoundedValidatorRunner.Stop
     reason match
@@ -207,30 +474,52 @@ object NodeCommand:
       case Stop.Internal(_)           => ("Internal", "failed", false)
       case Stop.OutsideRetainedWindow => ("OutsideRetainedWindow", "failed", false)
       case Stop.AlreadyRun            => ("AlreadyRun", "failed", false)
-  def exitCode(report: Report): ExitCode =
-    if classification(report.outcome.reason)._3 then ExitCode.Success else ExitCode(2)
+  def exitCode(report: Report): ExitCode = report.outcome.ending match
+    case Ending.Completed(reason)
+        if classification(reason)._3 && report.outcome.cleanupFailure.isEmpty =>
+      ExitCode.Success
+    case _ => ExitCode(2)
   def render(report: Report): String =
     val out = report.outcome
-    val (kind, status, _) = classification(out.reason)
-    s"""{"scope":"bounded-node-outcome","profile":${quote(
-        report.config.profile
-      )},"mode":${quote(
+    val (kind, status, _) = out.ending match
+      case Ending.Completed(reason) => classification(reason)
+      case Ending.StorageFailure(_) => ("StorageFailure", "failed", false)
+      case Ending.ReceiptFailure    => ("ReceiptFailure", "failed", false)
+    val older = out.ending match
+      case Ending.StorageFailure(value) => value
+      case _                            => false
+    val cleanup = out.cleanupFailure.fold("null")(s => quote(classification(s)._1))
+    s"""{"scope":"bounded-node-outcome","profile":${quote(report.config.profile)},"mode":${quote(
         report.config.mode
       )},"rollbackCapacity":${report.config.rollbackCapacity},"auditEnabled":${report.config.audit},"networkMagic":$NetworkMagic,"stopped":true,"typedStop":${quote(
         kind
       )},"status":${quote(
         status
-      )},"budgetStop":${status == "budget-stopped"},"scopedTargetReached":${out.reason == BoundedValidatorRunner.Stop.TargetReached},"caughtUp":false,"reason":${quote(
-        out.reason.toString.take(1024)
-      )},${state(
-        out.snapshot.state
-      )},"events":${out.events},"returnedBytes":${out.returnedBytes},"reconnects":${out.reconnects},"peerOpens":${report.peerOpens},"peerCloses":${report.peerCloses},"peerResourcesFinalized":${report.peerOpens == report.peerCloses},$claims}"""
+      )},"budgetStop":${status == "budget-stopped"},"scopedTargetReached":${out.ending == Ending
+        .Completed(BoundedValidatorRunner.Stop.TargetReached)},"caughtUp":false,${observed(
+        out.snapshot
+      )},"potentiallyOlderThanDisk":$older,"externalReceiptStale":${out.ending == Ending.ReceiptFailure},"cleanupFailure":$cleanup,"events":${out.events},"returnedBytes":${out.returnedBytes},"reconnects":${out.reconnects},"peerOpens":${report.peerOpens},"peerCloses":${report.peerCloses},"peerResourcesFinalized":${report.peerOpens == report.peerCloses && out.cleanupFailure.isEmpty},${claims(
+        report.config.mode == "bounded-durable"
+      )}}"""
   def renderFailure(failure: Failure): String =
+    val stateFields = failure.lastConfirmed.fold("\"stateAvailable\":false")(v =>
+      "\"stateAvailable\":true," + observed(v)
+    )
+    val cleanup = failure.cleanupFailure.fold("null")(quote)
     s"""{"scope":"bounded-node-outcome","stopped":true,"typedStop":${quote(
         failure.kind
       )},"status":"failed","stage":${quote(failure.stage)},"detail":${quote(
         failure.detail.take(1024)
-      )},"caughtUp":false,"scopedTargetReached":false,$claims}"""
+      )},$stateFields,"potentiallyOlderThanDisk":${failure.potentiallyOlderThanDisk},"externalReceiptStale":${failure.externalReceiptStale},"cleanupFailure":$cleanup,"caughtUp":false,"scopedTargetReached":false,${claims(
+        failure.durableRequested
+      )}}"""
+
+  private def modeMatches(config: Config, view: EngineView, requireReceipt: Boolean): Boolean =
+    if config.mode == "bounded-durable" then
+      view.confirmation != Confirmation.Volatile && view.confirmedGeneration.exists(_ >= 0) &&
+      (!requireReceipt || view.receipt.nonEmpty) && view.state.compactedBlocks == 0 && view.state.derivedAnchorId.isEmpty
+    else
+      view.confirmation == Confirmation.Volatile && view.confirmedGeneration.isEmpty && view.receipt.isEmpty
 
   /** Small engine boundary: no concrete runner state, private receipts, or authority tokens escape.
     * Peer operations and progress output remain serial and backpressured by the engine owner.
@@ -251,12 +540,14 @@ object NodeCommand:
       initialIntersection <- Ref.of[IO, Boolean](true)
       pendingHeader <- Ref.of[IO, Option[(ChainSync.Point, Bytes)]](None)
       auditBytes <- Ref.of[IO, Long](0L)
+      carriedOutcome <- Ref.of[IO, Option[EngineOutcome]](None)
+      carriedFailure <- Ref.of[IO, Option[Failure]](None)
 
       download = (phase: String, cursor: Option[ChainSync.Point], size: Int) =>
         current.get.flatMap(_.snapshot).flatMap { s =>
           output(s"""{"record":"node-download","phase":${quote(phase)},"downloadCursor":${point(
               cursor
-            )},"payloadBytes":$size,"downloadIsApplied":false,${state(s.state)}}""")
+            )},"payloadBytes":$size,"downloadIsApplied":false,${observed(s)}}""")
         }
       owned = Resource
         .makeFull[IO, (BoundedChainFollower.Peer[IO], IO[Unit])](poll =>
@@ -334,57 +625,155 @@ object NodeCommand:
               val block = SequenceInput
                 .block(s.state.acquisition.originals.last)
                 .fold(f => throw Abort(Failure("applied", "Internal", f.toString)), identity)
-              output(s"""{"record":"node-applied",${state(
-                  s.state
-                )},"transactionCount":${block.transactionMemos.size},$claims}""")
+              output(s"""{"record":"node-applied",${observed(
+                  s
+                )},"transactionCount":${block.transactionMemos.size},${claims(
+                  config.mode == "bounded-durable"
+                )}}""")
             }
         else if label == "after-anchor-advance" then
           current.get
             .flatMap(_.snapshot)
-            .flatMap(s => output(s"""{"record":"node-anchor-advance",${state(s.state)},$claims}"""))
+            .flatMap(s =>
+              output(s"""{"record":"node-anchor-advance",${observed(s)},${claims(
+                  config.mode == "bounded-durable"
+                )}}""")
+            )
         else if label == "after-rollback" then
           initialIntersection.getAndSet(false).flatMap { first =>
             current.get
               .flatMap(_.snapshot)
               .flatMap(s =>
-                output(s"""{"record":"node-rollback","initialIntersection":$first,${state(
-                    s.state
-                  )},$claims}""")
+                output(s"""{"record":"node-rollback","initialIntersection":$first,${observed(
+                    s
+                  )},${claims(config.mode == "bounded-durable")}}""")
               )
           }
         else IO.unit
-      outcome <- factory.resource(context, traced, config.policy, transition).use { engine =>
-        for
-          _ <- current.complete(engine)
-          initial <- engine.snapshot
-          _ <- IO.raiseUnless(initial.state.contextId == context.id)(
-            Abort(Failure("engine", "Internal", "foreign bootstrap context"))
-          )
-          _ <- output(s"""{"record":"node-bootstrap","profile":${quote(
-              config.profile
-            )},"mode":${quote(
-              config.mode
-            )},"rollbackCapacity":${config.rollbackCapacity},"auditEnabled":${config.audit},"networkMagic":$NetworkMagic,"sourceBound":true,"suppliedAnchor":${point(
-              Some(initial.state.acquisition.anchor)
-            )},${state(initial.state)},$claims}""")
-          out <- engine.run
-        yield out
-      }
+      session <- factory
+        .resource(context, traced, config.policy, transition)
+        .use { engine =>
+          val action = for
+            _ <- current.complete(engine)
+            initial <- engine.snapshot
+            _ <- IO.raiseUnless(
+              initial.state.contextId == context.id && modeMatches(config, initial, true)
+            )(
+              Abort(
+                Failure(
+                  "engine",
+                  "Internal",
+                  "bootstrap context or confirmation differs from requested mode"
+                )
+              )
+            )
+            _ <- output(s"""{"record":"node-bootstrap","profile":${quote(
+                config.profile
+              )},"mode":${quote(
+                config.mode
+              )},"rollbackCapacity":${config.rollbackCapacity},"auditEnabled":${config.audit},"networkMagic":$NetworkMagic,"sourceBound":true,"suppliedAnchor":${point(
+                Some(initial.state.acquisition.anchor)
+              )},${observed(
+                initial
+              )},"potentiallyOlderThanDisk":false,"externalReceiptStale":false,${claims(
+                config.mode == "bounded-durable"
+              )}}""")
+            _ <-
+              if initial.confirmation == Confirmation.LoadedVerified then
+                IO {
+                  val projection = ValidatedRestartCapture.canonical(
+                    ValidatedRestartCapture.projection(initial.state)
+                  )
+                  require(
+                    projection
+                      .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                      .length <= 16 * 1024 * 1024,
+                    "loaded projection bound"
+                  )
+                  s"""{"record":"node-loaded",${observed(
+                      initial
+                    )},"projection":$projection,"potentiallyOlderThanDisk":false,"externalReceiptStale":false,${claims(
+                      true
+                    )}}"""
+                }.flatMap(output)
+              else IO.unit
+            out <- engine.run
+            _ <- carriedOutcome.set(Some(out))
+          yield out
+          action.handleErrorWith {
+            case ReceiptFailed(view) =>
+              val failure = Failure(
+                "receipt",
+                "ReceiptFailure",
+                "acknowledged state has no confirmed external receipt",
+                Some(view),
+                externalReceiptStale = true,
+                durableRequested = true
+              )
+              carriedFailure.set(Some(failure)) *> IO.raiseError(Abort(failure))
+            case error => IO.raiseError(error)
+          }
+        }
+        .attempt
+      outcome <- session match
+        case Right(out) => IO.pure(out)
+        case Left(error) =>
+          (carriedOutcome.get, carriedFailure.get).tupled.flatMap {
+            case (Some(out), _) =>
+              val cleanup =
+                BoundedValidatorRunner.Stop.CleanupFailed("engine resource finalization failed")
+              val ending = out.ending match
+                case Ending.Completed(_) => Ending.Completed(cleanup)
+                case uncertain           => uncertain
+              IO.pure(out.copy(ending = ending, cleanupFailure = Some(cleanup)))
+            case (_, Some(failure)) =>
+              IO.raiseError(
+                Abort(
+                  failure.copy(cleanupFailure =
+                    if error.isInstanceOf[Abort] then None
+                    else Some("engine resource finalization failed")
+                  )
+                )
+              )
+            case _ => IO.raiseError(error)
+          }
       opens <- opened.get; closes <- closed.get
-      _ <- IO.raiseUnless(outcome.snapshot.state.contextId == context.id)(
-        Abort(Failure("engine", "Internal", "foreign result context"))
+      _ <- IO.raiseUnless(
+        outcome.snapshot.state.contextId == context.id && modeMatches(
+          config,
+          outcome.snapshot,
+          outcome.ending.isInstanceOf[Ending.Completed]
+        )
+      )(
+        Abort(
+          Failure(
+            "engine",
+            "Internal",
+            "result context or confirmation differs from requested mode"
+          )
+        )
       )
       _ <- IO.raiseUnless(
-        outcome.reason != BoundedValidatorRunner.Stop.TargetReached || outcome.snapshot.state.depth >= config.blocks
+        outcome.ending != Ending.Completed(
+          BoundedValidatorRunner.Stop.TargetReached
+        ) || outcome.snapshot.state.depth >= config.blocks
       )(Abort(Failure("engine", "Internal", "target result lacks requested scoped prefix")))
       effective =
         if opens == closes then outcome
         else
-          outcome.copy(reason =
+          val cleanup =
             BoundedValidatorRunner.Stop.CleanupFailed("peer resource finalization incomplete")
+          val ending = outcome.ending match
+            case Ending.Completed(_) => Ending.Completed(cleanup)
+            case uncertain           => uncertain
+          outcome.copy(
+            ending = ending,
+            cleanupFailure = outcome.cleanupFailure.orElse(Some(cleanup))
           )
       _ <-
-        if config.audit && opens == closes then
+        if config.audit && opens == closes && effective.cleanupFailure.isEmpty && effective.ending
+            .isInstanceOf[Ending.Completed]
+        then
           IO(NodeAuditCommand.stateRecord(effective.snapshot.state)).flatMap { record =>
             IO.raiseUnless(
               record.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 16 * 1024 * 1024
@@ -395,17 +784,36 @@ object NodeCommand:
         else IO.unit
     yield new Report(config, effective, opens, closes)
     work.attempt.map {
-      case Right(report)        => Right(report)
-      case Left(Abort(failure)) => Left(failure)
-      case Left(error)          => Left(Failure("engine-resource", "Internal", detail(error)))
+      case Right(report) => Right(report)
+      case Left(Abort(failure)) =>
+        Left(
+          failure.copy(durableRequested =
+            failure.durableRequested || config.mode == "bounded-durable"
+          )
+        )
+      case Left(error) =>
+        Left(
+          Failure(
+            "engine-resource",
+            "Internal",
+            if config.mode == "bounded-durable" then "durable engine terminated" else detail(error),
+            durableRequested = config.mode == "bounded-durable"
+          )
+        )
     }
 
-  private[lab] def withCancellationStatus[A](work: IO[A], emit: String => IO[Unit]): IO[A] =
+  private[lab] def withCancellationStatus[A](
+      work: IO[A],
+      emit: String => IO[Unit],
+      durableRequested: Boolean = false
+  ): IO[A] =
     // This outer finalizer runs after lexical engine/peer cleanup. It never reads potentially
     // poisoned engine state and makes no successful-finalization claim when cleanup failed.
     work.onCancel(
       emit(
-        s"""{"scope":"bounded-node-outcome","stopped":true,"typedStop":"Cancelled","status":"cancelled","stateAvailable":false,"caughtUp":false,"scopedTargetReached":false,$claims}"""
+        s"""{"scope":"bounded-node-outcome","stopped":true,"typedStop":"Cancelled","status":"cancelled","stateAvailable":false,"caughtUp":false,"scopedTargetReached":false,${claims(
+            durableRequested
+          )}}"""
       ).timeout(1.second).attempt.void
     )
 
@@ -438,19 +846,35 @@ object NodeCommand:
           NetworkMagic,
           30.seconds
         )
-        result <- execute(config, context, peer, IO.println)
+        factory <- factoryFor(config, context)
+        result <- execute(config, context, peer, IO.println, factory)
       yield result
       withCancellationStatus(
         work
-          .timeout((config.seconds + 15).seconds)
+          .timeout((config.seconds + (if config.mode == "bounded-durable" then 40 else 15)).seconds)
           .handleError {
-            case Abort(failure) => Left(failure)
-            case error          => Left(Failure("command", "Internal", detail(error)))
+            case Abort(failure) =>
+              Left(
+                failure.copy(durableRequested =
+                  failure.durableRequested || config.mode == "bounded-durable"
+                )
+              )
+            case error =>
+              Left(
+                Failure(
+                  "command",
+                  "Internal",
+                  if config.mode == "bounded-durable" then "durable command terminated"
+                  else detail(error),
+                  durableRequested = config.mode == "bounded-durable"
+                )
+              )
           }
           .flatMap {
             case Right(report) => IO.println(render(report)).as(exitCode(report))
             case Left(failure) => IO.println(renderFailure(failure)).as(ExitCode(2))
           }
           .handleError(_ => ExitCode(2)),
-        IO.println
+        IO.println,
+        config.mode == "bounded-durable"
       )
