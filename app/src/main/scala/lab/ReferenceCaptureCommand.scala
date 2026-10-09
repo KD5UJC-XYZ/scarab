@@ -109,7 +109,8 @@ object ReferenceCaptureCommand:
       magic: Long,
       anchor: ChainSync.Point,
       stopAt: Option[ChainSync.Point],
-      maxHeaders: Int
+      maxHeaders: Int,
+      observe: (Int, Int) => IO[Unit] = (_, _) => IO.unit
   ): IO[Vector[Header]] =
     if maxHeaders < 1 || maxHeaders > 16 then
       IO.raiseError(new IllegalArgumentException("observation range exceeds sixteen-block bound"))
@@ -129,7 +130,13 @@ object ReferenceCaptureCommand:
                 ConnectionSession.Config(maxSduPayload = 65535, maxChunkBytes = 65543)
               )
               .use { session =>
-                def forward(allowAlignment: Boolean): IO[Header] = session.receive.flatMap {
+                def receive = session.receive.flatTap { message =>
+                  val bytes = message match
+                    case ChainSync.Message.RollForward(payload, _) => payload.bytes.size
+                    case _                                         => 0
+                  observe(1, bytes)
+                }
+                def forward(allowAlignment: Boolean): IO[Header] = receive.flatMap {
                   case ChainSync.Message.AwaitReply              => forward(allowAlignment)
                   case ChainSync.Message.RollForward(payload, _) => checked(header(payload.bytes))
                   case ChainSync.Message.RollBackward(point, _)
@@ -159,7 +166,7 @@ object ReferenceCaptureCommand:
                     negotiated == Handshake.Result.Negotiated(14, Handshake.Data(magic))
                   )(new IllegalStateException("unexpected negotiation"))
                   _ <- session.send(ChainSync.Message.FindIntersect(Vector(anchor)))
-                  intersection <- session.receive
+                  intersection <- receive
                   _ <- intersection match
                     case ChainSync.Message.IntersectFound(point, _) if point == anchor => IO.unit
                     case _ => IO.raiseError(new IllegalStateException("anchor not found"))
@@ -171,7 +178,12 @@ object ReferenceCaptureCommand:
           .timeout(25.seconds)
       }
 
-  def exactBlock(peer: NumericPeer, magic: Long, h: Header): IO[Bytes] =
+  def exactBlock(
+      peer: NumericPeer,
+      magic: Long,
+      h: Header,
+      observe: (Int, Int) => IO[Unit] = (_, _) => IO.unit
+  ): IO[Bytes] =
     for
       limits <- checked(TcpLimits.checked())
       slot <- checked(ChainSync.UInt64.from(h.slot))
@@ -192,14 +204,22 @@ object ReferenceCaptureCommand:
                 _ <- session.negotiate(Handshake.Data(magic))
                 _ <- session.request(CardanoBlockFetch.InclusiveRange.single(point))
                 start <- session.receive
+                _ <- observe(1, 0)
                 _ <- IO.raiseUnless(start == BlockFetch.Message.StartBatch)(
                   new IllegalStateException("expected StartBatch")
                 )
                 message <- session.receive
+                _ <- observe(
+                  1,
+                  message match
+                    case BlockFetch.Message.Block(block) => block.bytes.size
+                    case _                               => 0
+                )
                 raw <- message match
                   case BlockFetch.Message.Block(block) => IO.pure(block.bytes)
                   case _ => IO.raiseError(new IllegalStateException("expected one block"))
                 end <- session.receive
+                _ <- observe(1, 0)
                 _ <- IO.raiseUnless(end == BlockFetch.Message.BatchDone)(
                   new IllegalStateException("expected exact one-block batch")
                 )
