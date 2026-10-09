@@ -126,6 +126,24 @@ class CoherentSequenceSuite extends munit.FunSuite:
     ).unsafeToFuture()
   }
 
+  test("anchor advancement checks ownership and leaves seed unchanged on no-op or rejection") {
+    val context = syntheticContext
+    (for
+      a <- CoherentSequence.create[IO](context).map(get(_))
+      b <- CoherentSequence.create[IO](context).map(get(_))
+      before <- a.snapshot
+      foreign <- b.advanceAnchor(before.fence, before.state.acquisition.anchor)
+      outside <- a.advanceAnchor(before.fence, ChainSync.Point.Origin)
+      noop <- a.advanceAnchor(before.fence, before.state.acquisition.anchor).map(get(_))
+    yield
+      assertEquals(foreign, Left(CoherentSequence.Failure.ForeignFence))
+      assertEquals(outside, Left(CoherentSequence.Failure.OutsideRetainedWindow))
+      unchanged(before.state, noop.state)
+      assertEquals(noop.state.compactedBlocks, BigInt(0))
+      assertEquals(noop.state.derivedAnchorId, None)
+    ).unsafeToFuture()
+  }
+
   sys.env.get("SEQUENCE_FREEZE_EVIDENCE").foreach { location =>
     val directory = Path.of(location)
     // Explicitly synthetic complete empty ledger. The freeze capture exported no UTxO state;
@@ -147,6 +165,86 @@ class CoherentSequenceSuite extends munit.FunSuite:
       assertEquals(result.size, 2)
       assert(result.forall(_.transactionMemos.isEmpty))
       result
+    test("derived anchor rebases retained undo and cannot escape through checkpoint v1") {
+      val c = context; val bs = blocks
+      (for
+        runtime <- CoherentSequence.create[IO](c, 2).map(get(_))
+        seed <- runtime.snapshot
+        first <- runtime.prepare(bs.head).map(get(_)).flatMap(runtime.publish).map(get(_))
+        oldCandidate <- runtime.prepare(bs(1)).map(get(_))
+        second <- runtime.publish(oldCandidate).map(get(_))
+        before <- runtime.snapshot
+        compact <- runtime.advanceAnchor(before.fence, first.state.acquisition.tip).map(get(_))
+        staleFence <- runtime.advanceAnchor(before.fence, second.state.acquisition.tip)
+        staleCandidate <- runtime.publish(oldCandidate)
+        outside <- runtime.rollbackTo(compact.fence, seed.state.acquisition.anchor)
+        restored <- runtime.rollbackTo(compact.fence, first.state.acquisition.tip).map(get(_))
+        repeated <- (1 to 12).toVector.traverse_ { _ =>
+          runtime.prepare(bs(1)).map(get(_)).flatMap(runtime.publish).map(get(_)) *>
+            runtime.snapshot
+              .flatMap(s => runtime.rollbackTo(s.fence, first.state.acquisition.tip))
+              .map(get(_))
+        }
+        last <- runtime.snapshot
+        replay <- runtime.prepare(bs(1)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        tip <- runtime.snapshot
+        empty <- runtime.advanceAnchor(tip.fence, tip.state.acquisition.tip).map(get(_))
+      yield
+        assertEquals(compact.state.depth, BigInt(2))
+        assertEquals(compact.state.compactedBlocks, BigInt(1))
+        assertEquals(compact.state.acquisition.originals, Vector(bs(1).original))
+        assertEquals(compact.state.revision, before.state.revision)
+        assertEquals(compact.state.nonces.id, second.state.nonces.id)
+        assertEquals(compact.state.ledger.id, second.state.ledger.id)
+        assertEquals(compact.state.certificates.state.id, second.state.certificates.state.id)
+        assertEquals(compact.state.contextId, c.id)
+        assertEquals(staleFence, Left(CoherentSequence.Failure.StaleFence))
+        assertEquals(staleCandidate, Left(CoherentSequence.Failure.StaleCandidate))
+        assertEquals(outside, Left(CoherentSequence.Failure.OutsideRetainedWindow))
+        assertEquals(restored.state.nonces.id, first.state.nonces.id)
+        assertEquals(restored.state.ledger.id, first.state.ledger.id)
+        assertEquals(restored.state.certificates.state.id, first.state.certificates.state.id)
+        assertEquals(restored.state.scopedAppliedTip, Some(first.state.acquisition.tip))
+        assertEquals(last.state.id, restored.state.id)
+        assertEquals(last.state.revision, restored.state.revision + 24)
+        assertEquals(replay.state.nonces.id, second.state.nonces.id)
+        assertEquals(empty.state.acquisition.size, 0)
+        assertEquals(empty.state.depth, BigInt(2))
+        assertEquals(empty.state.scopedAppliedTip, Some(second.state.acquisition.tip))
+        assertEquals(empty.state.certificates.steps.size, 0)
+        assert(empty.state.derivedAnchorId != compact.state.derivedAnchorId)
+        Vector(compact, restored, empty).foreach { snap =>
+          assert(
+            ValidatedCheckpoint
+              .encode(c, snap, Bytes(Vector.fill(32)(1.toByte)), 0, 2)
+              .left
+              .toOption
+              .exists(_.contains("compacted"))
+          )
+        }
+      ).unsafeToFuture()
+    }
+    test("compacting through tip frees capacity without replacing checked nonce or ledger seeds") {
+      val bs = blocks
+      (for
+        runtime <- CoherentSequence.create[IO](context, 2).map(get(_))
+        first <- runtime.prepare(bs.head).map(get(_)).flatMap(runtime.publish).map(get(_))
+        before <- runtime.snapshot
+        pending <- runtime.prepare(bs(1)).map(get(_))
+        compact <- runtime.advanceAnchor(before.fence, before.state.acquisition.tip).map(get(_))
+        stale <- runtime.publish(pending)
+        second <- runtime.prepare(bs(1)).map(get(_)).flatMap(runtime.publish).map(get(_))
+      yield
+        assertEquals(stale, Left(CoherentSequence.Failure.StaleCandidate))
+        assertEquals(compact.state.nonces.id, first.state.nonces.id)
+        assertEquals(compact.state.ledger.id, first.state.ledger.id)
+        assertEquals(compact.state.certificates.initial.id, first.state.certificates.state.id)
+        assertEquals(second.state.depth, BigInt(2))
+        assertEquals(second.state.acquisition.size, 1)
+        assertEquals(second.state.nonces.certificateStateId, second.state.certificates.state.id)
+        assertEquals(second.state.nonces.lastSlot, second.state.ledger.slot)
+      ).unsafeToFuture()
+    }
     test(
       "synthetic ledger with two real originals rolls back every prefix and reproduces content with newer revisions"
     ) {

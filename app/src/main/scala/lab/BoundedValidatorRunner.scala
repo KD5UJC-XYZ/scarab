@@ -24,10 +24,15 @@ object BoundedValidatorRunner:
       maxEvents: Int = 64,
       reconnects: Int = 2,
       maxBytes: Long = 32L * 1024 * 1024,
-      duration: FiniteDuration = 60.seconds
+      duration: FiniteDuration = 60.seconds,
+      advanceWindow: Boolean = false,
+      rollbackCapacity: Int = CoherentSequence.MaxBlocks
   ):
     def valid: Boolean =
-      BoundedChainFollower.Policy(target, maxEvents, reconnects, maxBytes, duration).valid
+      target >= 1 && target <= (if advanceWindow then 256 else rollbackCapacity) &&
+        rollbackCapacity >= 1 && rollbackCapacity <= CoherentSequence.MaxBlocks &&
+        maxEvents >= target &&
+        BoundedChainFollower.Policy(1, maxEvents, reconnects, maxBytes, duration).valid
 
   enum Stop:
     case TargetReached, EventBudget, ByteBudget, TimeBudget, AlreadyRun
@@ -117,6 +122,14 @@ object BoundedValidatorRunner:
             case None =>
               ReferenceCaptureCommand.header(envelope).leftMap(Stop.Rejected("header", _))
         }
+    private def makeRoom: F[Unit] = snapshot.flatMap { current =>
+      if policy.advanceWindow && current.state.acquisition.size == runtime.maxBlocks then
+        // Explicit rolling availability policy; dropping one checked prefix is not finality.
+        val oldest = current.state.acquisition.candidates.dropRight(1).last
+        runtime.advanceAnchor(current.fence, oldest).flatMap(checked).void *>
+          between("after-anchor-advance")
+      else F.unit
+    }
     private def forward(p: Peer[F], envelope: Bytes): F[Unit] =
       for
         _ <- charge(envelope.size, 65535)
@@ -152,13 +165,14 @@ object BoundedValidatorRunner:
             )
           )
         _ <- F.cede *> between("before-prepare")
+        _ <- makeRoom
         candidate <- runtime.prepare(block).flatMap(checked)
         _ <- F.cede *> between("before-publish")
         _ <- runtime.publish(candidate).flatMap(checked)
         _ <- between("after-publish")
       yield ()
     private def loop(p: Peer[F]): F[Stop] = snapshot.flatMap { s =>
-      if s.state.acquisition.size >= policy.target then F.pure(Stop.TargetReached)
+      if s.state.depth >= policy.target then F.pure(Stop.TargetReached)
       else
         events.modify(n => if n < policy.maxEvents then (n + 1, true) else (n, false)).flatMap {
           case false => F.pure(Stop.EventBudget)
@@ -239,7 +253,7 @@ object BoundedValidatorRunner:
     for
       _ <- F.raiseUnless(policy.valid)(new IllegalArgumentException("invalid runner policy"))
       runtime <- CoherentSequence
-        .create[F](context)
+        .create[F](context, policy.rollbackCapacity)
         .flatMap(r => F.fromEither(r.leftMap(f => Halt(sequenceFailure(f)))))
       started <- Ref.of[F, Boolean](false)
       events <- Ref.of[F, Int](0)

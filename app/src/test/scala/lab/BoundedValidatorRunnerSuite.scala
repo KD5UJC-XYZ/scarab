@@ -496,6 +496,57 @@ class BoundedValidatorRunnerSuite extends munit.FunSuite:
       }
     def bytes(os: Vector[Original]): Long = os.map(o => o.envelope.size.toLong + o.block.size).sum
 
+    test("cancellation after anchor advancement preserves checked tuple and releases peer") {
+      val c = context; val os = originals
+      val peer = scripted(events(os.map(o => Event.Forward(o.envelope))*), anchor(c), fetch(os))
+      baseline(c, os.take(1))
+        .flatMap { first =>
+          BoundedValidatorRunner
+            .resourceObserved[IO](
+              c,
+              peer,
+              Policy(target = os.size, advanceWindow = true, rollbackCapacity = 1),
+              stage => if stage == "after-anchor-advance" then IO.canceled else IO.unit
+            )
+            .use { runner =>
+              for
+                fiber <- runner.run.start
+                result <- fiber.join
+                current <- runner.snapshot
+              yield
+                assert(result.isCanceled)
+                assertEquals(current.state.acquisition.size, 0)
+                assertEquals(current.state.compactedBlocks, BigInt(1))
+                assertEquals(current.state.scopedAppliedTip, first.state.scopedAppliedTip)
+                assertEquals(current.state.revision, first.state.revision)
+                assertEquals(current.state.nonces.id, first.state.nonces.id)
+                assertEquals(current.state.certificates.state.id, first.state.certificates.state.id)
+                assertEquals(current.state.ledger.id, first.state.ledger.id)
+            }
+        }
+        .unsafeToFuture()
+    }
+    test("opt-in rolling runner keeps one receipt across a longer checked sequence") {
+      val c = context; val os = originals
+      assert(os.size >= 2)
+      val peer = scripted(events(os.map(o => Event.Forward(o.envelope))*), anchor(c), fetch(os))
+      BoundedValidatorRunner
+        .resource[IO](c, peer, Policy(target = os.size, advanceWindow = true, rollbackCapacity = 1))
+        .use { runner =>
+          runner.run.map { out =>
+            assertEquals(out.reason, Stop.TargetReached)
+            assertEquals(out.snapshot.state.depth, BigInt(os.size))
+            assertEquals(out.snapshot.state.acquisition.size, 1)
+            assertEquals(out.snapshot.state.compactedBlocks, BigInt(os.size - 1))
+            assertEquals(
+              out.snapshot.state.nonces.certificateStateId,
+              out.snapshot.state.certificates.state.id
+            )
+            assertEquals(out.snapshot.state.nonces.lastSlot, out.snapshot.state.ledger.slot)
+          }
+        }
+        .unsafeToFuture()
+    }
     test(
       "retained synthetically shifted next-epoch header rejects before fetch and preserves anchor"
     ) {

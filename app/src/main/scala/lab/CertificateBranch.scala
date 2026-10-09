@@ -78,6 +78,19 @@ object CertificateBranch:
     new Branch(acquisition, branch.initial, restored, branch.steps.take(keep))
   }
 
+  /** Discard only a checked prefix; never manufacture a new supplied certificate seed. */
+  private[lab] def advanceAnchor(branch: Branch, to: ChainSync.Point): Either[String, Branch] =
+    checked {
+      val drop =
+        if to == branch.acquisition.anchor then 0
+        else branch.steps.indexWhere(s => point(s.after.tip) == to) + 1
+      require(drop > 0 || to == branch.acquisition.anchor, "anchor outside certificate window")
+      val initial = if drop == 0 then branch.initial else branch.steps(drop - 1).after
+      val acquisition =
+        get(BoundedChainFollower.checked(to, branch.acquisition.originals.drop(drop)))
+      new Branch(acquisition, initial, branch.state, branch.steps.drop(drop))
+    }
+
   private def read(path: Path): Bytes =
     val in = Files.newInputStream(path)
     val raw =

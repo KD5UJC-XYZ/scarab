@@ -55,6 +55,10 @@ object ValidatedCheckpoint:
   ): Either[String, (Bytes, Token)] = protect {
     val state = snapshot.state
     guard(context.id == state.contextId, "context mismatch")
+    guard(
+      state.compactedBlocks == 0 && state.derivedAnchorId.isEmpty,
+      "checkpoint v1 cannot recover a compacted derived anchor"
+    )
     guard(storeId.size == 32 && generation >= 0, "store/generation bounds")
     valid(capacity, state.revision, state.acquisition.size)
     val buffer = new ByteArrayOutputStream()

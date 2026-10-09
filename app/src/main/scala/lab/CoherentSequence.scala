@@ -14,9 +14,8 @@ import lab.network.ChainSync
 import lab.vrf.PraosVrfCertificate as Vrf
 import scala.util.control.NonFatal
 
-/** Up to eight independently checked same-epoch originals after an explicit supplied context. One
-  * Ref owns both the complete tuple and every retained undo. No downloaded checkpoint loader,
-  * implicit reanchor, eviction, durable publication or full-consensus claim is provided.
+/** A checked same-epoch tuple and at most eight retained rollback receipts. Explicit fenced
+  * compaction advances a derived anchor, not consensus finality or supplied snapshot authority.
   */
 object CoherentSequence:
   val ProfileId = "conway-pv9-header11-2-derived-nonce-bounded-sequence-v1"
@@ -38,12 +37,17 @@ object CoherentSequence:
       val certificates: CertificateBranch.Branch,
       val nonces: Nonces.State,
       val eligibility: Option[PraosEligibility.Checked],
-      val ledger: Ledger.State
+      val ledger: Ledger.State,
+      val compactedBlocks: BigInt = 0,
+      val derivedAnchorId: Option[Bytes] = None
   ):
     def acquisition: BoundedChainFollower.Checkpoint = certificates.acquisition
     def revision: BigInt = ledger.revision
+
+    /** Current branch depth from the original supplied anchor, not a lifetime event counter. */
+    val depth: BigInt = compactedBlocks + acquisition.size
     val scopedAppliedTip: Option[ChainSync.Point] =
-      Option.when(acquisition.size > 0)(acquisition.tip)
+      Option.when(depth > 0)(acquisition.tip)
     val id: Bytes = digest(
       "state",
       Vector(
@@ -53,7 +57,7 @@ object CoherentSequence:
         nonces.id,
         eligibility.fold(Bytes.empty)(_.contextId),
         ledger.id
-      )
+      ) ++ derivedAnchorId.toVector.flatMap(id => Vector(raw(compactedBlocks.toString), id))
     )
     val fullLedgerValidated = false
     val consensusValidated = false
@@ -249,7 +253,9 @@ object CoherentSequence:
           candidate.certificates,
           candidate.nonce.after,
           Some(candidate.eligibility),
-          block.state
+          block.state,
+          current.compactedBlocks,
+          current.derivedAnchorId
         )
         val owned =
           OwnedReceipt(current, state.id, candidate.certificate, candidate.nonce, block.undo)
@@ -279,7 +285,9 @@ object CoherentSequence:
         certificates,
         nonces,
         owned.before.eligibility,
-        restoredLedger
+        restoredLedger,
+        current.compactedBlocks,
+        current.derivedAnchorId
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -319,6 +327,58 @@ object CoherentSequence:
             }
   }
 
+  /** Rebind every retained receipt, without retaining a reference to discarded history. The
+    * provenance digest commits to the already checked boundary tuple and its prior provenance.
+    * Compaction does not change the ledger revision; changed state IDs invalidate old fences.
+    */
+  private def advanceAnchor(
+      owner: AnyRef,
+      cell: Cell,
+      fence: Fence,
+      through: ChainSync.Point
+  ): Result[(Cell, Snapshot)] = protect {
+    val current = cell.state
+    if !(fence.owner eq owner) then Left(Failure.ForeignFence)
+    else if fence.stateId != current.id || fence.revision != current.revision then
+      Left(Failure.StaleFence)
+    else if through == current.acquisition.anchor then Right((cell, snapshot(owner, current)))
+    else
+      val drop = cell.receipts.indexWhere(r => point(r.certificate.after.tip) == through) + 1
+      if drop == 0 then Left(Failure.OutsideRetainedWindow)
+      else
+        val count = current.compactedBlocks + drop
+        if count > Ledger.MaxRevision then Left(Failure.RevisionExhausted)
+        else
+          val boundary = if drop == cell.receipts.size then current else cell.receipts(drop).before
+          val provenance =
+            digest("derived-window-anchor-v1", Vector(boundary.id, raw(count.toString)))
+          def rebase(state: State): Result[State] =
+            checked(
+              "certificate-anchor",
+              CertificateBranch.advanceAnchor(state.certificates, through)
+            )
+              .map(branch =>
+                new State(
+                  state.contextId,
+                  branch,
+                  state.nonces,
+                  state.eligibility,
+                  state.ledger,
+                  count,
+                  Some(provenance)
+                )
+              )
+          for
+            tip <- rebase(current)
+            retained <- cell.receipts.drop(drop).traverse(r => rebase(r.before).map(r -> _))
+          yield
+            val receipts = retained.zipWithIndex.map { case ((old, before), i) =>
+              val after = retained.lift(i + 1).fold(tip)(_._2)
+              OwnedReceipt(before, after.id, old.certificate, old.nonce, old.ledger)
+            }
+            (Cell(tip, receipts), snapshot(owner, tip))
+  }
+
   final class Runtime[F[_]] private[CoherentSequence] (
       private[CoherentSequence] val context: SequenceInput.Context,
       val maxBlocks: Int,
@@ -326,6 +386,16 @@ object CoherentSequence:
       private[CoherentSequence] val cell: Ref[F, Cell]
   )(using F: Sync[F]):
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
+
+    /** Explicit availability policy: rollback before `through` becomes unavailable. This is not
+      * finality. Existing durable checkpoint v1 deliberately cannot serialize this state.
+      */
+    def advanceAnchor(fence: Fence, through: ChainSync.Point): F[Result[Snapshot]] = cell.modify {
+      current =>
+        CoherentSequence.advanceAnchor(owner, current, fence, through) match
+          case Right((next, result)) => (next, Right(result))
+          case Left(error)           => (current, Left(error))
+    }
     def prepare(block: SequenceInput.Block): F[Result[Candidate]] =
       cell.get.flatMap(c =>
         F.delay(CoherentSequence.prepare(owner, context, maxBlocks, c.state, block))

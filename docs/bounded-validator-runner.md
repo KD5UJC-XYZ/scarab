@@ -21,7 +21,8 @@ tip. Empty and multi-transaction blocks use the same atomic publication path.
 Backward events use a fresh snapshot fence and the existing whole-tuple rollback.
 Reconnect offers only the current validated retained points through the supplied
 anchor, rolls back the selected offered point, and revalidates all successors.
-Origin/unoffered/outside-window points stop; no eviction or implicit reanchor.
+Origin/unoffered/outside-window points stop. Explicit opt-in window advancement is
+described in [coherent-window.md](coherent-window.md); the default never evicts.
 The scope remains one supplied epoch, at most eight retained blocks, and zero
 through sixteen supported transactions per block. Full-ledger and consensus
 validation flags remain false. No wider transaction support is introduced.
@@ -30,7 +31,7 @@ validation flags remain false. No wider transaction support is introduced.
 
 `Outcome` includes an authoritative final coordinator snapshot, typed `Stop`, event
 attempt count, returned byte count and reconnect count. TargetReached means the
-configured retained target was reached; it is not a caught-up or consensus claim.
+configured branch-depth target was reached; it is not a caught-up or consensus claim.
 Unsupported, rejected, internal, peer, cleanup and budget stops remain distinct.
 Stale/foreign capabilities, revision exhaustion, coordinator internal errors and
 undo invariant failures stop internally rather than reconnecting.
@@ -55,7 +56,8 @@ bytes per envelope and 1 MiB per block. An injected Peer must enforce its own bo
 allocation/transport decoding; this runner cannot prevent an oversized allocation
 already made by an arbitrary peer implementation.
 
-The whole run has a positive cooperative work deadline <=120 seconds; target1–8, events up to256,
+The whole run has a positive cooperative work deadline <=120 seconds; target1–8 by default
+(up to256 with explicit window advancement), events up to256,
 reconnects0–4 and cumulative returned bytes up to64MiB. Reaching the target stops
 before another RequestNext. Rollback never refunds work budgets. AwaitReply and
 timeouts are never reported as caught-up success.
