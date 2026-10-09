@@ -99,8 +99,7 @@ with empty fresh stake. The existing stake suite remains unchanged.
 Sources are retained primary excerpts pinned to ledger commit
 `f649f9751074d2ab3de033fc3912f29c9862c1f5`: Conway `Rules/NewEpoch.hs`, Shelley
 `Rules/Tick.hs`, `Rules/Rupd.hs`, `Rules/Snap.hs`, Shelley `Rewards.hs`, and core
-`Rewards.hs`. The local source/checksum bundle is
-`/home/<user>/cardano-epoch-continuity-design-20261009`.
+`Rewards.hs`. The source excerpts and checksum bundle remain in private evidence storage.
 
 Only focused offline Docker tests run, limited to two CPUs and 2 GiB with a
 private worktree cache. No live fixture, native conserving-fixture capture,

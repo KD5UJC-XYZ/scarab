@@ -195,3 +195,30 @@ Python guards. Separate opt-in suites passed 37 tests: 14 public reruns and
 23 retained/synthetic checks, including the authentic positive observation and
 oracle-ordering negatives. No full-ledger, consensus or atomic-snapshot claim.
 See [the exact fixture contract and evidence](private-cluster-coherent.md).
+
+
+## Stake and boundary foundation checkpoint, 2026-10-09
+
+Reviewed source `21e377b4389fa38e97f7b42ebc1c3ff6c145d7ac` passed one batched
+offline public regression: **1,177 Scala tests**, **63 translator tests**, all
+**25 public serial gates**, **306 executed Python launcher tests** (308 collected,
+two optional retained-data skips), and **28 checkpoint guards**. Public module
+counts are core 219, VM 47, network 100, network-runtime 52, ledger 194,
+ledger-runtime 150, fetcher 5 and app 410. Retained stake cases were not enabled
+in this public run. A separate final integration check passed **29 focused tests**
+with read-only private inputs, including the synthetic nonzero-stake publication
+and exact undo case and eight pure boundary cases. The earlier focused durable
+check passed all 58 unique selected tests after correcting an oversized retained
+fixture selection; its initial 21 fixture-loading failures remain preserved.
+
+The batch used a fresh Git source export, private copied dependency/build caches,
+the existing pinned JDK/Python image, network disabled and 2 CPU / 2 GiB limits.
+It completed in 140.16 seconds with owned-container cleanup confirmed. All source
+hashes were checked; subsequent publication edits only clarify documentation and
+record these results. This is offline local acceptance, not a hosted-CI result.
+
+The [stake coordinator](atomic-stake-coordinator.md) remains opt-in and in-memory;
+both checkpoint codecs reject stake-bearing state. The
+[boundary preview](conway-epoch-boundary-preview.md) is synthetic and cannot publish
+runtime state. Unknown/pulsing phases fail closed. No epoch runtime enablement,
+native reward parity, branch-ancestry proof or new live acceptance is claimed.
