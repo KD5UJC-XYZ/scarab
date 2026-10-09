@@ -41,6 +41,12 @@ it is not silently discarded or sent to an invented destination. Pool membership
 registration, delegation and deposits do not change. Key and script credentials
 with identical hashes remain separate accounts.
 
+Conservation alone does not establish native reward calculation. For example, the
+synthetic test supplies snapshot fees of 8 and `deltaFees = -5`; the pinned native
+reward calculation uses the negative snapshot fees for that delta. This preview
+deliberately validates supplied effects without implementing that calculation.
+`syntheticComplete` compatibility checks also do not prove branch ancestry.
+
 Only after applying the effect does a narrow package-private
 `ConwayStake.previewRotationAfterRewards` build fresh mark with post-reward
 balances and the post-reward fee pot. It reuses `previewRotation`, never mutates

@@ -25,6 +25,16 @@ receipt remains unchanged. The explicit [fresh-genesis reference fixture](docs/p
 now demonstrates one positive complete-state coordinator transition and atomic
 rollback/reapply. Separate synthetic unit tests retain their original attribution.
 
+## Stake and epoch foundations
+
+The [atomic stake coordinator](docs/atomic-stake-coordinator.md) adds opt-in
+in-memory stake publication and exact rollback alongside the checked ledger tuple.
+Both durable checkpoint formats reject stake-bearing state. The separate
+[boundary preview](docs/conway-epoch-boundary-preview.md) checks synthetic reward
+effects before snapshot rotation and preserves pre-transition leadership inputs.
+It has no runtime publication operation. Same-epoch runtime guards remain;
+neither foundation establishes native reward parity or runnable epoch transitions.
+
 ## Opt-in local reference testing
 
 The local Docker harness now exercises a verified Cardano node 11.1.3: real Scala NtN14 handshake, ChainSync/BlockFetch capture, and a restricted ADA-transfer comparison against original reference inclusion bytes, whole-UTxO changes and actual fee-pot exports. A separate relay-only scenario observes hot/full-duplex peers and transaction-ID requests after the configured startup delay before submitting through the relay. It uses disposable private-cluster keys, an internal Docker network and bounded cleanup; no public peers or real funds. See [setup and resource contract](docs/private-cluster.md), [byte capture](docs/reference-capture.md), and [transfer/context/relay scope](docs/private-cluster-transfer.md).

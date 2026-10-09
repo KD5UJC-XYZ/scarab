@@ -48,6 +48,15 @@ nonce evolution and protocol changes before extending the same-epoch profile.
 Accept only with independent reference comparisons across those transitions and
 explicit negative cases. Endpoint equality never proves continuous invariants.
 
+Reviewed foundations now include [atomic in-memory stake publication and undo](atomic-stake-coordinator.md)
+and an [unpublished pure boundary preview](conway-epoch-boundary-preview.md).
+The preview accepts explicitly supplied synthetic reward effects, rotates snapshots
+after reward application, and retains old-mark leadership and pre-tick reward inputs.
+Unknown and pulsing reward phases fail closed. These are partial foundations:
+runtime epoch guards and stake-bearing checkpoint rejection remain. Native reward
+calculation, admitted branch ancestry and complete epoch-state transitions still
+require their own implementation and conformance evidence.
+
 ## Worker interface and ownership
 
 The runnable-node lane owns `NodeCommand`, its suite, `Main` dispatch and this plan.
