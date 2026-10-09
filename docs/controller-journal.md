@@ -99,7 +99,7 @@ unsupported atomic replacement, exact predecessor checks, stale concurrent
 callbacks, cancellation/close ordering and staging non-promotion. The focused
 Docker run also executes `ControllerReducerSuite`.
 
-Validation passed all 24 focused tests (10 adapter and 14 reducer) in an offline
+Validation passed all 26 focused tests (12 adapter and 14 reducer) in an offline
 Docker container limited to 2 CPUs and 2 GiB, using a private worktree cache.
 `scalafmtAll` and the staged diff check passed. Independent source review
 verified the complete-claim duplicate and parent-directory-force fixes and
@@ -112,3 +112,8 @@ local crash recovery: hostile writers, privileged filesystem tampering, rollback
 of both persistence domains and arbitrary forged evidence are outside scope.
 No new dependencies, security settings, main/runtime wiring, migration execution,
 supervisor orchestration, or live-run behavior are introduced.
+
+The adapter follow-up additionally tests FIFO lock, primary and staging paths in
+both Create and Resume, and an explicit Create retry after directory creation
+succeeded but parent force failed. A trusted `Faults.forceParent` hook exercises
+that boundary; normal behavior still performs the real parent-directory force.

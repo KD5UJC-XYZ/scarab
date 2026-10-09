@@ -29,6 +29,7 @@ object LocalControllerJournal:
     case BeforeOpen, Opened, WriteChunk, Written, BeforeFileForce, FileForced,
       FileClosed, BeforeReplace, Replaced, BeforeDirectoryForce, DirectoryForced
   trait Faults:
+    def forceParent(path: Path): Unit = sync(path)
     def at(phase: Phase): Unit = ()
     def write(channel: FileChannel, buffer: ByteBuffer): Int = channel.write(buffer)
     def replace(from: Path, to: Path): Unit =
@@ -145,10 +146,9 @@ object LocalControllerJournal:
       require(mode == Mode.Create, "journal directory missing")
       try Files.createDirectory(root)
       catch case _: FileAlreadyExistsException => ()
-      sync(root.getParent)
     require(Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS), "journal directory required")
     // Also repairs an earlier explicit Create that created the directory but failed parent force.
-    if mode == Mode.Create then sync(root.getParent)
+    if mode == Mode.Create then faults.forceParent(root.getParent)
     val p = noLinks(root.resolve("lock"))
     val exists = Files.exists(p, LinkOption.NOFOLLOW_LINKS)
     require(!exists || Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS), "lock type")

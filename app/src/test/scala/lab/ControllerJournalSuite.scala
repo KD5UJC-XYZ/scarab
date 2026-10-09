@@ -408,3 +408,50 @@ class ControllerJournalSuite extends munit.FunSuite:
       }
       .unsafeToFuture()
   }
+
+  test("FIFO lock primary and staging entries are rejected before any stream open") {
+    Vector("lock", "controller.bin", "controller.tmp")
+      .traverse_ { name =>
+        Vector(Mode.Create, Mode.Resume).traverse_ { mode =>
+          temp.use { b =>
+            for
+              _ <- IO.blocking {
+                val root = Path.of(b.root); Files.createDirectory(root)
+                if name != "lock" then Files.createFile(root.resolve("lock"))
+                val process = new ProcessBuilder("mkfifo", root.resolve(name).toString).start()
+                assert(process.waitFor(5, TimeUnit.SECONDS), "mkfifo timeout")
+                assertEquals(process.exitValue(), 0)
+              }
+              result <- resource(b, mode).use(_ => IO.unit).attempt.timeout(2.seconds)
+              _ = assert(result.isLeft, s"FIFO $name / $mode")
+            yield ()
+          }
+        }
+      }
+      .unsafeToFuture()
+  }
+  test("explicit Create retries parent force after prior directory creation failed to force") {
+    temp
+      .use { b =>
+        val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+        val faults = new Faults:
+          override def forceParent(path: Path): Unit =
+            if calls.incrementAndGet() == 1 then
+              throw new java.io.IOException("parent force failed")
+            else super.forceParent(path)
+        for
+          first <- resource(b, faults = faults).use(_ => IO.unit).attempt
+          _ = assert(first.isLeft)
+          _ = assert(Files.isDirectory(Path.of(b.root)))
+          _ = assert(!Files.exists(Path.of(b.root).resolve("controller.bin")))
+          _ <- resource(b, faults = faults).use(
+            _.snapshot.map(i => assertEquals(i.journal.revision, 0L))
+          )
+          _ = assertEquals(calls.get(), 2)
+          _ <- resource(b, Mode.Resume, 91).use(
+            _.snapshot.map(i => assertEquals(i.journal.selection, Selection.Dormant(b.store)))
+          )
+        yield ()
+      }
+      .unsafeToFuture()
+  }
