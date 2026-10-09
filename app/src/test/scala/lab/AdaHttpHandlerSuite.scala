@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import lab.cbor.Bytes
 import lab.header.PraosCertificateState.Point
 import lab.ledger.{AdaAdmission, AdaPool, ClusterTransition, NativeSpending}
-import lab.submission.{SignedTransaction, StatePin}
+import lab.submission.{AdmissionProfile, SignedTransaction, StatePin}
 import ReferenceJson.{Json as J, field, string, uint}
 
 class AdaHttpHandlerSuite extends munit.FunSuite:
@@ -202,4 +202,39 @@ class AdaHttpHandlerSuite extends munit.FunSuite:
         yield ()
       }
       .unsafeToFuture()
+  }
+
+  test("native response profile is fixed for success, unknown, rejection and unavailable") {
+    val profile = AdmissionProfile.NativeScript
+    val render = new AdaHttpHandler.Representation(profile)
+    val nativePin = StatePin
+      .checked(
+        pin.ownerId,
+        pin.generation,
+        pin.point,
+        pin.coherentStateId,
+        pin.ledgerStateId,
+        pin.environmentId,
+        pin.validationSlot,
+        profile.id
+      )
+      .toOption
+      .get
+    val nativeReceipt = AdaPool.Receipt(b(9), b(10), nativePin, profile)
+    val responses = Vector(
+      render.resultResponse(AdaSubmissionService.Result.Accepted(nativeReceipt)),
+      render.resultResponse(
+        AdaSubmissionService.Result.Rejected(AdaAdmission.Failure.Unsupported("closed profile"))
+      ),
+      render.resultResponse(AdaSubmissionService.Result.Unavailable),
+      render.statusResponse(b(9), None),
+      render.statusResponse(b(9), Some(AdaPool.Status.Included(nativePin))),
+      render.snapshotResponse(
+        AdaSubmissionService.Snapshot(nativePin, Vector.empty, false, false, 0, 0)
+      )
+    )
+    responses.foreach { response =>
+      assertEquals(string(field(json(response), "profileId")), profile.id)
+      assert(!response.json.contains(AdmissionProfile.AdaVkey.id))
+    }
   }

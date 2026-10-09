@@ -96,18 +96,24 @@ class AdaSubmissionServiceSuite extends munit.FunSuite:
         (if scripts.nonEmpty then Vector(hex("01"), array(scripts)) else Vector.empty)
     cat(hex("84"), b, cat(hex("bf"), Bytes(fields.flatMap(_.value)), hex("ff")), hex("f5f6"))
 
-  private def view(generation: Int = 0): AdmissionView =
-    val ledger = initial()
+  private def view(
+      generation: Int = 0,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey,
+      slot: BigInt = 20
+  ): AdmissionView =
+    val seed = initial(nativeInput = profile == AdmissionProfile.NativeScript)
+    val ledger =
+      R.checkpoint(seed.environment, seed.outputMap, seed.fees, slot, digest).toOption.get
     val pin = StatePin
       .checked(
         digest,
         generation,
-        Point(digest, 20, generation),
+        Point(digest, slot, generation),
         digest,
         ledger.id,
         ledger.environment.id,
         ledger.slot,
-        StatePin.Profile
+        profile.id
       )
       .toOption
       .get
@@ -131,22 +137,30 @@ class AdaSubmissionServiceSuite extends munit.FunSuite:
         service: AdaSubmissionService[IO],
         generation: Int,
         included: Set[Bytes] = Set.empty,
-        kind: StateChangeKind = StateChangeKind.Published
+        kind: StateChangeKind = StateChangeKind.Published,
+        slot: BigInt = 20
     ): IO[Unit] =
       gate.permit.use(_ =>
         IO.uncancelable(_ =>
-          cell.set(view(generation)) *> service.changed(
-            AdmissionStateChange(
-              view(generation),
-              kind,
-              included.toVector.map(id => IncludedTransaction(id, None, None))
+          cell.get.flatMap { previous =>
+            val next = view(generation, AdmissionProfile.fromId(previous.pin.profileId).get, slot)
+            cell.set(next) *> service.changed(
+              AdmissionStateChange(
+                next,
+                kind,
+                included.toVector.map(id => IncludedTransaction(id, None, None))
+              )
             )
-          )
+          }
         )
       )
     def close(service: AdaSubmissionService[IO]): IO[Unit] = gate.permit.use(_ => service.closed)
-  private def owner(before: IO[Unit] = IO.unit): IO[Owner] =
-    (Ref.of[IO, AdmissionView](view()), Semaphore[IO](1)).mapN(new Owner(_, _, before))
+  private def owner(
+      before: IO[Unit] = IO.unit,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): IO[Owner] =
+    (Ref.of[IO, AdmissionView](view(profile = profile)), Semaphore[IO](1))
+      .mapN(new Owner(_, _, before))
   private def submit(s: AdaSubmissionService[IO], bytes: Bytes): IO[AdaSubmissionService.Result] =
     s.request.use(_.get.submit(bytes))
   private def ready(s: AdaSubmissionService[IO]): IO[Unit] =
@@ -290,4 +304,44 @@ class AdaSubmissionServiceSuite extends munit.FunSuite:
         }
       }
     yield ()).unsafeToFuture()
+  }
+
+  test("native admission and generation rebuild use the same opt-in profile") {
+    val original = tx(scripts = Vector(native))
+    val id = SignedTransaction.checked(original).toOption.get.transactionId
+    (for
+      o <- owner(profile = AdmissionProfile.NativeScript)
+      _ <- AdaSubmissionService.resource[IO](o).use { s =>
+        for
+          accepted <- submit(s, original)
+          _ = accepted match
+            case AdaSubmissionService.Result.Accepted(receipt) =>
+              assertEquals(receipt.profileId, AdmissionProfile.NativeScript.id)
+              assertEquals(receipt.pin.profileId, receipt.profileId)
+            case other => fail(other.toString)
+          _ <- o.move(s, 1)
+          _ <- ready(s)
+          snapshot <- s.snapshot
+          _ = assertEquals(snapshot.pin.generation, BigInt(1))
+          _ = assertEquals(snapshot.eligible.map(_.original), Vector(original))
+          duplicate <- submit(s, original)
+          _ = assert(duplicate.isInstanceOf[AdaSubmissionService.Result.AlreadyPresent])
+          _ <- o.move(s, 2, slot = 30)
+          _ <- ready(s)
+          expired <- s.snapshot
+          status <- s.status(id)
+          _ = assertEquals(expired.size, 0)
+          _ = status match
+            case Some(AdaPool.Status.Dropped(AdaPool.Drop.Validation(_))) => ()
+            case other                                                    => fail(other.toString)
+        yield ()
+      }
+      ada <- owner()
+      _ <- AdaSubmissionService.resource[IO](ada).use { s =>
+        submit(s, original).map { result =>
+          assertEquals(s.profile, AdmissionProfile.AdaVkey)
+          assert(result.isInstanceOf[AdaSubmissionService.Result.Rejected])
+        }
+      }
+    yield ()).timeout(10.seconds).unsafeToFuture()
   }

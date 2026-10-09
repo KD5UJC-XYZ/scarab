@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import java.nio.file.{Files, Path, StandardOpenOption as Open, StandardCopyOption as Copy}
 import java.time.Instant
 import lab.cbor.Bytes
+import lab.submission.AdmissionProfile
 import lab.header.PraosCertificateState.Point
 import lab.network.{AsyncTcpTransport, TcpLimits}
 import ReferenceJson.{Json as J, field, string, uint}
@@ -71,7 +72,11 @@ object NativeLiveBoundaryMain extends IOApp:
       name -> b
     }
     (originals, rows.map((name, row) => name -> hash(field(row, "sha256"))))
-  private[lab] def initial(root: Path, pin: String): NativeLedgerV2.Checked =
+  private[lab] def initial(
+      root: Path,
+      pin: String,
+      admissionProfile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): NativeLedgerV2.Checked =
     val raw = read(root.resolve("adapter-inputs.json"), 16384)
     require(pin.matches("[0-9a-f]{64}") && sha(raw).hex == pin, "independent initial manifest pin")
     val j = ReferenceJson.parse(raw)
@@ -83,7 +88,7 @@ object NativeLiveBoundaryMain extends IOApp:
     )
     val anchor = point(field(j, "point"))
     val (raws, pins) = inputs(root, obj(field(j, "inputs")), NativeLedgerV2.InputNames)
-    val joined = get(NativeLedgerV2.decode(raws, pins, anchor))
+    val joined = get(NativeLedgerV2.decode(raws, pins, anchor, admissionProfile))
     require(
       anchor.slot < 300 && joined.ledger.globals.geometry.epochLength == 1000,
       "proven early epoch-zero profile"

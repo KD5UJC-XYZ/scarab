@@ -441,3 +441,39 @@ class SubmissionOwnerSuite extends munit.FunSuite:
       }
       .unsafeToFuture()
   }
+
+  test("opt-in native owner keeps its profile across publication and fences an ADA pin") {
+    SubmissionOwner
+      .resource[IO](F.runtime, AdmissionProfile.NativeScript)
+      .use { owner =>
+        for
+          _ <- owner.attach(observer())
+          before <- owner.current
+          p = before.pin
+          ada = get(
+            StatePin.checked(
+              p.ownerId,
+              p.generation,
+              p.point,
+              p.coherentStateId,
+              p.ledgerStateId,
+              p.environmentId,
+              p.validationSlot,
+              AdmissionProfile.AdaVkey.id
+            )
+          )
+          called <- Ref.of[IO, Boolean](false)
+          stale <- owner.withCurrent(ada)(called.set(true))
+          didCall <- called.get
+          _ = assertEquals(stale, Left(p))
+          _ = assert(!didCall)
+          _ = assertEquals(owner.profile, AdmissionProfile.NativeScript)
+          _ = assertEquals(p.profileId, AdmissionProfile.NativeScript.id)
+          _ <- publish(owner, 0)
+          after <- owner.current
+          _ = assertEquals(after.pin.profileId, p.profileId)
+          _ = assertEquals(after.pin.generation, p.generation + 1)
+        yield ()
+      }
+      .unsafeToFuture()
+  }

@@ -62,3 +62,29 @@ object ScopedAdmission:
       view.slot,
       prepared.nativeAdmission
     )
+
+  /** NativeAdmission.Checked is private-constructor evidence from the same pure transition path. */
+  private[ledger] def bindNative[P](
+      pin: P,
+      view: ClusterTransition.State,
+      checked: NativeAdmission.Checked
+  ): Either[Failure, Candidate[P]] =
+    if view == null || checked == null || checked.profileId != AdmissionProfile.NativeScript.id ||
+      checked.ledgerStateId != view.id || checked.environmentId != view.environment.id ||
+      checked.validationSlot != view.slot
+    then Left(Failure.Unsupported("native admission receipt does not match ledger view"))
+    else
+      Right(
+        new Candidate(
+          checked.transaction,
+          pin,
+          AdmissionProfile.NativeScript,
+          checked.spent,
+          checked.fee,
+          checked.minimumOutput,
+          checked.ledgerStateId,
+          checked.environmentId,
+          checked.validationSlot,
+          Some(checked.native)
+        )
+      )

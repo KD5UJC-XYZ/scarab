@@ -2,7 +2,7 @@
 package lab.ledger
 
 import lab.cbor.Bytes
-import lab.submission.SignedTransaction
+import lab.submission.{AdmissionProfile, SignedTransaction}
 
 /** Immutable pool transitions. The app installs every returned State under the SAME gate as chain
   * publication. Validation/revalidation runs outside that gate. P must be the full immutable
@@ -27,31 +27,38 @@ object AdaPool:
     case Capacity
   enum Drop:
     case Expired, Removed, Shutdown, Conflict
-    case Validation(error: AdaAdmission.Failure)
+    case Validation(error: ScopedAdmission.Failure)
   enum Outcome[+P]:
     case Accepted(receipt: Receipt[P])
     case AlreadyPresent(receipt: Receipt[P])
     case Rejected(reason: Rejection)
     case Retry(currentPin: P)
     case Unavailable
-  final case class Receipt[+P](transactionId: Bytes, envelopeSHA256: Bytes, pin: P):
-    val profileId = AdaAdmission.ProfileId
+  final case class Receipt[+P](
+      transactionId: Bytes,
+      envelopeSHA256: Bytes,
+      pin: P,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ):
+    val profileId = profile.id
     val volatile = true
     val fullLedgerValidated = false
   enum Status[+P]:
     case Pending(receipt: Receipt[P], eligible: Boolean)
     case Included(pin: P)
     case Dropped(reason: Drop)
-  private final case class Entry[P](candidate: AdaAdmission.Candidate[P], admittedAt: Long):
+  private final case class Entry[P](candidate: ScopedAdmission.Candidate[P], admittedAt: Long):
     def receipt = Receipt(
       candidate.transaction.transactionId,
       candidate.transaction.envelopeSHA256,
-      candidate.pin
+      candidate.pin,
+      candidate.profile
     )
   private final case class History[P](id: Bytes, status: Status[P], at: Long)
 
   final class State[P] private[AdaPool] (
       val pin: P,
+      val profile: AdmissionProfile,
       val limits: Limits,
       private[AdaPool] val entries: Vector[Entry[P]],
       private[AdaPool] val history: Vector[History[P]],
@@ -80,8 +87,13 @@ object AdaPool:
       else
         entries.filter(e => now - e.admittedAt < limits.retentionNanos).map(_.candidate.transaction)
 
-  def empty[P](pin: P, limits: Limits = Limits()): State[P] =
-    new State(pin, limits, Vector.empty, Vector.empty, false, false, None)
+  def empty[P](
+      pin: P,
+      limits: Limits = Limits(),
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): State[P] =
+    require(profile != null, "explicit pool profile required")
+    new State(pin, profile, limits, Vector.empty, Vector.empty, false, false, None)
   private def updated[P](
       s: State[P],
       entries: Vector[Entry[P]],
@@ -90,6 +102,7 @@ object AdaPool:
   ): State[P] =
     new State(
       s.pin,
+      s.profile,
       s.limits,
       entries,
       history.filter(h => now - h.at < s.limits.retentionNanos).takeRight(s.limits.maxHistory),
@@ -111,13 +124,13 @@ object AdaPool:
   /** Compare-and-reserve linearization point, called under the owner's mutation gate. */
   def admit[P](
       previous: State[P],
-      candidate: AdaAdmission.Candidate[P],
+      candidate: ScopedAdmission.Candidate[P],
       now: Long
   ): (State[P], Outcome[P]) =
     val s = expire(previous, now)
     val tx = candidate.transaction
     if candidate.pin != s.pin then (s, Outcome.Retry(s.pin))
-    else if s.closed || s.rebuilding then (s, Outcome.Unavailable)
+    else if candidate.profile != s.profile || s.closed || s.rebuilding then (s, Outcome.Unavailable)
     else
       s.entries.find(_.candidate.transaction.transactionId == tx.transactionId) match
         case Some(existing) =>
@@ -148,12 +161,15 @@ object AdaPool:
 
   final class Rebuild[P] private[AdaPool] (
       val pin: P,
+      val profile: AdmissionProfile,
       private[AdaPool] val token: Object,
       private[AdaPool] val originals: Vector[Entry[P]]
   )
   final class Rebuilt[P] private[AdaPool] (
       private[AdaPool] val work: Rebuild[P],
-      private[AdaPool] val results: Vector[Either[AdaAdmission.Failure, AdaAdmission.Candidate[P]]]
+      private[AdaPool] val results: Vector[
+        Either[ScopedAdmission.Failure, ScopedAdmission.Candidate[P]]
+      ]
   )
 
   /** included IDs must come from an applied follower block at newPin. Never relay events. */
@@ -172,6 +188,7 @@ object AdaPool:
     val token = new Object
     val next = new State(
       newPin,
+      s.profile,
       s.limits,
       kept,
       history.takeRight(s.limits.maxHistory),
@@ -179,22 +196,23 @@ object AdaPool:
       s.closed,
       Some(token)
     )
-    (next, new Rebuild(newPin, token, kept))
+    (next, new Rebuild(newPin, s.profile, token, kept))
 
   /** Bounded by at most 64 entries, preserving original admission order. No state publication. */
   def revalidate[P](work: Rebuild[P], view: ClusterTransition.State): Rebuilt[P] =
     new Rebuilt(
       work,
       work.originals.map(e =>
-        AdaAdmission.prepare(work.pin, view, e.candidate.transaction.original)
+        AdmissionValidation.prepare(work.profile, work.pin, view, e.candidate.transaction.original)
       )
     )
 
   def finish[P](previous: State[P], result: Rebuilt[P], now: Long): (State[P], Boolean) =
     val s = expire(previous, now)
-    if s.closed || !s.rebuilding || s.pin != result.work.pin || !s.rebuildToken.contains(
-        result.work.token
-      )
+    if s.closed || !s.rebuilding || s.profile != result.work.profile || s.pin != result.work.pin || !s.rebuildToken
+        .contains(
+          result.work.token
+        )
     then (s, false)
     else
       var kept = Vector.empty[Entry[P]]
@@ -204,6 +222,16 @@ object AdaPool:
         val id = old.candidate.transaction.transactionId
         if s.entries.exists(_.candidate.transaction.transactionId == id) then
           checked match
+            case Right(candidate) if candidate.profile != s.profile || candidate.pin != s.pin =>
+              history :+= History(
+                id,
+                Status.Dropped(
+                  Drop.Validation(
+                    ScopedAdmission.Failure.Unsupported("rebuild candidate profile or pin mismatch")
+                  )
+                ),
+                now
+              )
             case Right(candidate) if (candidate.spent intersect reservations).isEmpty =>
               kept :+= Entry(candidate, old.admittedAt)
               reservations ++= candidate.spent
@@ -214,7 +242,16 @@ object AdaPool:
               history :+= History(id, Status.Dropped(drop), now)
       }
       val next =
-        new State(s.pin, s.limits, kept, history.takeRight(s.limits.maxHistory), false, false, None)
+        new State(
+          s.pin,
+          s.profile,
+          s.limits,
+          kept,
+          history.takeRight(s.limits.maxHistory),
+          false,
+          false,
+          None
+        )
       (next, true)
 
   /** Invalidate orphaned inclusion summaries after rollback; never resurrect originals. */
@@ -224,7 +261,16 @@ object AdaPool:
         case Status.Included(pin) => orphaned(pin)
         case _                    => false
     )
-    new State(s.pin, s.limits, s.entries, history, s.rebuilding, s.closed, s.rebuildToken)
+    new State(
+      s.pin,
+      s.profile,
+      s.limits,
+      s.entries,
+      history,
+      s.rebuilding,
+      s.closed,
+      s.rebuildToken
+    )
 
   def shutdown[P](s: State[P], now: Long): State[P] =
     val history = s.history ++ s.entries.map(e =>
@@ -232,6 +278,7 @@ object AdaPool:
     )
     new State(
       s.pin,
+      s.profile,
       s.limits,
       Vector.empty,
       history.takeRight(s.limits.maxHistory),

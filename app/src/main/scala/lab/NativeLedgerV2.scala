@@ -5,6 +5,7 @@ import lab.cbor.{Bytes, Cbor, Node, Value as V}
 import lab.header.{PraosCertificateState as Certificate, PraosNonceEvolution as Nonces}
 import lab.vrf.PraosVrfCertificate as Vrf
 import scala.util.control.NonFatal
+import lab.submission.AdmissionProfile
 
 /** Source-bound v2 diagnostic join. This constructs no admitted state, runner or checkpoint. */
 private[lab] object NativeLedgerV2:
@@ -175,8 +176,10 @@ private[lab] object NativeLedgerV2:
   def decode(
       originals: Map[String, Bytes],
       expectedPins: Map[String, Bytes],
-      anchor: Certificate.Point
+      anchor: Certificate.Point,
+      admissionProfile: AdmissionProfile = AdmissionProfile.AdaVkey
   ): Either[String, Checked] = checked {
+    require(admissionProfile != null, "explicit admission profile required")
     require(
       originals != null && expectedPins != null && originals.keySet == InputNames && expectedPins.keySet == InputNames,
       "v2 exact packet/projection/genesis input set"
@@ -194,7 +197,8 @@ private[lab] object NativeLedgerV2:
         originals.filter((name, _) => NativeEpochComponents.Names(name)),
         expectedPins.filter((name, _) => NativeEpochComponents.Names(name)),
         anchor,
-        acquisition
+        acquisition,
+        admissionProfile
       )
     )
     val selected =

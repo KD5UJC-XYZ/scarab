@@ -4,6 +4,7 @@ package lab
 import lab.cbor.{Bytes, Cbor, Node, Value as V}
 import lab.ledger.{ConwayStake as S, ConwayNonMyopic as N, ConwayEpochBoundary as B}
 import lab.header.PraosCertificateState.Point
+import lab.submission.AdmissionProfile
 import ReferenceJson.{Json as J, field, string, uint as ju}
 import scala.util.control.NonFatal
 
@@ -112,8 +113,21 @@ private[lab] object NativeEpochComponents:
       "component source point mismatch"
     )
 
-  /** Field projection only, not admission: UTxOState[2] is fees; [5] is donations. The full decoder
-    * separately requires both to be zero for the supported profile.
+  /** Exact original MemPack span from the existing bounded full epoch-seed layout. */
+  private[lab] def mempackUtxo(seed: Bytes): Either[String, Bytes] = checked {
+    require(
+      seed != null && seed.value != null && seed.size > 0 && seed.size <= MaxBytes,
+      "epoch seed byte bound"
+    )
+    val full = arr(get(Cbor.decode(seed, Limits)), 7)
+    val epoch = arr(full(3), 4)
+    val ledger = arr(epoch(1), 2)
+    arr(ledger(1), 6)(0).original
+  }
+
+  /** Field projection only, not admission: UTxOState[2] is fees; [5] is donations. Default
+    * bootstrap requires both to be zero. Explicit NativeScript bootstrap permits bounded fees under
+    * fee-inclusive supply conservation; donations remain zero.
     */
   private[lab] def projectedPots(
       chainAccount: Node,
@@ -138,7 +152,8 @@ private[lab] object NativeEpochComponents:
       originals: Map[String, Bytes],
       expectedPins: Map[String, Bytes],
       anchor: Point,
-      acquisition: NativeProtocolBootstrap.Acquisition
+      acquisition: NativeProtocolBootstrap.Acquisition,
+      admissionProfile: AdmissionProfile = AdmissionProfile.AdaVkey
   ): Either[String, Checked] = checked {
     require(
       acquisition != null && originals != null && expectedPins != null &&
@@ -153,15 +168,17 @@ private[lab] object NativeEpochComponents:
         "v2 component original splice: " + name
       )
     }
-    get(decodeBound(originals, expectedPins, anchor, Some(acquisition)))
+    get(decodeBound(originals, expectedPins, anchor, Some(acquisition), admissionProfile))
   }
 
   private def decodeBound(
       originals: Map[String, Bytes],
       expectedPins: Map[String, Bytes],
       anchor: Point,
-      acquisition: Option[NativeProtocolBootstrap.Acquisition]
+      acquisition: Option[NativeProtocolBootstrap.Acquisition],
+      admissionProfile: AdmissionProfile = AdmissionProfile.AdaVkey
   ): Either[String, Checked] = checked {
+    require(admissionProfile != null, "explicit admission profile required")
     require(
       originals != null && expectedPins != null && originals.keySet == Names && expectedPins.keySet == Names,
       "exact component source set"
@@ -315,7 +332,11 @@ private[lab] object NativeEpochComponents:
     val identityRecipe = acquisition.fold(recipe)(a =>
       "native-components-v2\n" + recipe + "acquisition=" + a.id.hex + "\n"
     )
-    val id = sha(Bytes.fromArray(identityRecipe.getBytes("US-ASCII")))
+    val profileRecipe = admissionProfile match
+      case AdmissionProfile.AdaVkey => identityRecipe
+      case AdmissionProfile.NativeScript =>
+        identityRecipe + "bootstrap-profile=" + admissionProfile.id + "\n"
+    val id = sha(Bytes.fromArray(profileRecipe.getBytes("US-ASCII")))
     Vector(ps(2), ps(3), delegation(1)).foreach(emptyMap)
     val ir = arr(delegation(3), 4); emptyMap(ir(0)); emptyMap(ir(1)); zero(ir(2)); zero(ir(3))
     // Current genesis delegations are retained, not mislabeled as pending effects.
@@ -428,11 +449,13 @@ private[lab] object NativeEpochComponents:
     }.toMap
     val previous = counts(fs(1)); val current = counts(fs(2));
     require(previous.isEmpty, "early previous counts must be empty")
-    val chain = arr(es(0), 2); zero(chain(0)); zero(us(1)); zero(us(2)); zero(us(5))
+    val chain = arr(es(0), 2); zero(chain(0)); zero(us(1)); zero(us(5))
+    val fees = uint(us(2))
+    if admissionProfile == AdmissionProfile.AdaVkey then zero(us(2))
     val outputs = get(S.decodeUtxo(originals("original-whole-utxo.cbor")))
     val utxoCoin = outputs.values.map(_.coin).sum; val reserves = uint(chain(1));
     val supply = parameters.globals.maxSupply
-    require(utxoCoin + reserves == supply, "independent coin supply mismatch")
+    require(utxoCoin + reserves + fees == supply, "independent coin supply mismatch")
     emptyMap(nm(0)); zero(nm(1)); val nonMyopic = get(N.state(Map.empty, uint(nm(1))))
     require(
       components("rewardState").hex == "80" && fs(4).original.hex == "80",

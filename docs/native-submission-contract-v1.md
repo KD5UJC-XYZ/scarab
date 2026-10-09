@@ -1,7 +1,9 @@
 # Native-script submission contract v1
 
-Status: shared interfaces frozen for parallel implementation. Native ingress and
-live acceptance are pending. Existing ADA-only admission remains the default.
+Status: native ingress is implemented and the signature-only isolated acceptance
+case passed. See [implementation and evidence](native-submission-implementation.md).
+Existing ADA-only admission remains the default; wider native reference matrices
+and exact-slot negative-oracle agreement remain pending.
 The executable remains Test-only and app-private, with loopback ingress and a
 volatile pool; this is not a production node API or full ledger validator.
 
@@ -35,6 +37,10 @@ Candidate has a private constructor and exposes `transaction`, `pin`, `profile`,
 `nativeAdmission: Option[NativeSpending.Admission]` and `fullLedgerValidated=false`.
 It exposes no post-state. `checked` calls ClusterTransition.prepare once, checks
 whether script credentials match the selected profile and constructs receipts.
+The imported pure worker also provides `NativeAdmission.check(view, original)`
+with private-constructor `Checked` evidence. Native `prepare` binds that receipt
+through `ScopedAdmission.bindNative(pin, view, checked)`, which verifies its
+ledger/environment/slot/profile bindings and does not repeat ledger validation.
 Call it only after the complete profile whitelist. Never construct a candidate
 directly, duplicate validation, or commit a hypothetical chain state.
 
@@ -59,8 +65,10 @@ object NativeAdmission:
 Use SignedTransaction.checked first. Enforce body keys {0,1,2,3,8}, witness keys
 {0,1}, true validity/null auxiliary data, confirmed coin-only inputs, at least
 one enterprise script input (kind7), optional key inputs (kinds0/6), and only
-key-payment outputs (kinds0/6), all testnet. Then call
-`ScopedAdmission.checked(AdmissionProfile.NativeScript, pin, view, identity)`.
+key-payment outputs (kinds0/6), all testnet. The final adapter may either call
+`ScopedAdmission.checked(AdmissionProfile.NativeScript, pin, view, identity)`
+after the whitelist, or bind the existing validated `Checked` receipt as above.
+It must not perform ledger validation twice.
 Reuse native predicate/witness/credential validation through ClusterTransition.
 Plutus, mint/multiasset, datum, reference inputs/scripts, collateral, governance,
 certificates, withdrawals, auxiliary data and required-signers remain unsupported.
@@ -98,3 +106,34 @@ follower inclusion, original body/witness comparison, pool removal, held-state
 exact endpoint comparison and owned cleanup. Script-output creation and Plutus
 remain separate later profiles. Disposable isolated local tests only: no public
 network transactions, real funds, new credentials or unrelated container changes.
+
+## Test-only executable hooks for fixture integration
+
+Main owns these existing Test-only classes. `lab.AdaSubmissionMain` keeps the five
+existing arguments and accepts an optional sixth `PROFILE_ID`; the external
+`lab.AdaSubmissionClientMain` keeps its three existing arguments and accepts an
+optional fourth `PROFILE_ID`. Omission selects the unchanged ADA profile. Native
+fixtures must pass `isolated-conway-pv9-ada-native-v1` to both and put that value
+in `submission/descriptor.json` as `profileId`. The bootstrap-ready, client result
+and final Scala result carry that profile; the final result additionally records
+`nativeScriptSubmission=true`. Existing ADA result schema names and coin-only
+submission flags remain compatible. Native controllers must verify the profile
+and native flag explicitly, not infer native acceptance from the ADA flags.
+
+The controller still owns bounded execution, exact namespace/network and resource
+checks, original-span comparisons and cleanup. No live allocation is implied by
+these hooks; main coordinates the single live slot through the parent.
+
+## Funded initial-state accounting
+
+The native fixture starts from a confirmed script UTxO created by a separate,
+one-use reference-only funding phase. Explicit `AdmissionProfile.NativeScript`
+bootstrap permits bounded fees and checks `UTxO coin + reserves + fees = supply`.
+Treasury, deposits and donations retain the initial profile's zero restrictions.
+The default ADA bootstrap still requires zero fees and preserves its identity
+recipe. Native bootstrap has a distinct profile-bound identity. All original
+source, acquisition, governance and complete-state checks remain in force.
+
+The public CLI fixture accepts `inlineDatumRaw` only when absent or JSON null,
+matching CLI 11.2.3.0's coin-only output representation. Any non-null value remains
+unsupported; this does not enable inline datums.

@@ -336,6 +336,10 @@ def controller_type(live):
             self.docker("start", cid)
             return cid
 
+        def prepare_initial(self, tip):
+            """Optional fixture preparation before the exact initial acquisition."""
+            return tip
+
         def lifecycle(self, approval):
             self.exchange.mkdir(mode=0o700)
             shutil.copytree(approval.evidence, self.out / "fixture")
@@ -372,6 +376,10 @@ def controller_type(live):
                     break
                 time.sleep(0.2)
             require(live.process.same_tip(a, b) and a["epoch"] == 0 and 0 < a["slot"] < 300, "frozen initial point")
+            a = self.prepare_initial(a)
+            require(live.process.same_tip(a, self.tip(1)) and live.process.same_tip(a, self.tip(2)) and
+                    a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 300,
+                    "prepared frozen initial point")
             self.initial = point(dict(slot=a["slot"], blockNo=a["block"], hash=a["hash"]))
             packet, acquisition = self.capture(self.initial, "initial")
             require(live.process.same_tip(a, self.tip(1)) and live.process.same_tip(a, self.tip(2)), "initial bracket moved")

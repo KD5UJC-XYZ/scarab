@@ -6,13 +6,14 @@ import cats.effect.std.{Queue, Semaphore}
 import cats.syntax.all.*
 import scala.concurrent.duration.*
 import lab.cbor.Bytes
-import lab.ledger.{AdaAdmission, AdaPool}
+import lab.ledger.{AdmissionValidation, ScopedAdmission, AdaPool}
 import lab.ledger.runtime.AdaIngressBudget
 import lab.submission.*
 
 /** Volatile, scoped ADA pool. The supplied owner is the only chain mutation authority. */
 private[lab] final class AdaSubmissionService[F[_]] private (
     owner: AdmissionState[F],
+    val profile: AdmissionProfile,
     pool: Ref[F, AdaPool.State[StatePin]],
     budget: AdaIngressBudget[F],
     validations: Semaphore[F],
@@ -42,34 +43,41 @@ private[lab] final class AdaSubmissionService[F[_]] private (
   private def admit(original: Bytes): F[Result] =
     (for
       view <- owner.current
-      available <- guarded(s => F.pure(!s.closed && !s.rebuilding))
+      available <- guarded(s =>
+        F.pure(
+          !s.closed && !s.rebuilding && s.profile == profile && s.pin.profileId == profile.id && view.pin.profileId == profile.id
+        )
+      )
       result <-
         if !available then F.pure(Result.Unavailable)
         else
           validations.permit.use { _ =>
-            F.cede *> F.delay(AdaAdmission.prepare(view.pin, view.ledger, original)).flatMap {
-              case Left(error) => F.pure(Result.Rejected(error))
-              case Right(candidate) =>
-                if candidate.ledgerStateId != view.pin.ledgerStateId ||
-                  candidate.environmentId != view.pin.environmentId ||
-                  candidate.validationSlot != view.pin.validationSlot || candidate.pin != view.pin
-                then F.pure(Result.Unavailable)
-                else
-                  owner
-                    .withCurrent(view.pin)(
-                      F.monotonic
-                        .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
-                    )
-                    .map {
-                      case Left(pin)                                => Result.Retry(pin)
-                      case Right(AdaPool.Outcome.Accepted(receipt)) => Result.Accepted(receipt)
-                      case Right(AdaPool.Outcome.AlreadyPresent(receipt)) =>
-                        Result.AlreadyPresent(receipt)
-                      case Right(AdaPool.Outcome.Rejected(reason)) => Result.PoolRejected(reason)
-                      case Right(AdaPool.Outcome.Retry(pin))       => Result.Retry(pin)
-                      case Right(AdaPool.Outcome.Unavailable)      => Result.Unavailable
-                    }
-            }
+            F.cede *> F
+              .delay(AdmissionValidation.prepare(profile, view.pin, view.ledger, original))
+              .flatMap {
+                case Left(error) => F.pure(Result.Rejected(error))
+                case Right(candidate) =>
+                  if candidate.profile != profile || view.pin.profileId != profile.id ||
+                    candidate.ledgerStateId != view.pin.ledgerStateId ||
+                    candidate.environmentId != view.pin.environmentId ||
+                    candidate.validationSlot != view.pin.validationSlot || candidate.pin != view.pin
+                  then F.pure(Result.Unavailable)
+                  else
+                    owner
+                      .withCurrent(view.pin)(
+                        F.monotonic
+                          .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
+                      )
+                      .map {
+                        case Left(pin)                                => Result.Retry(pin)
+                        case Right(AdaPool.Outcome.Accepted(receipt)) => Result.Accepted(receipt)
+                        case Right(AdaPool.Outcome.AlreadyPresent(receipt)) =>
+                          Result.AlreadyPresent(receipt)
+                        case Right(AdaPool.Outcome.Rejected(reason)) => Result.PoolRejected(reason)
+                        case Right(AdaPool.Outcome.Retry(pin))       => Result.Retry(pin)
+                        case Right(AdaPool.Outcome.Unavailable)      => Result.Unavailable
+                      }
+              }
           }
     yield result).handleErrorWith {
       case _: AdmissionState.Unavailable => F.pure(Result.Unavailable)
@@ -78,7 +86,9 @@ private[lab] final class AdaSubmissionService[F[_]] private (
 
   /** Called under the owner gate; no validation, fiber joining, or owner re-entry here. */
   def changed(change: AdmissionStateChange): F[Unit] =
-    F.monotonic.flatMap { now =>
+    F.raiseUnless(change.view.pin.profileId == profile.id)(
+      new IllegalStateException("owner profile changed")
+    ) *> F.monotonic.flatMap { now =>
       pool
         .modify { old =>
           val base = change.kind match
@@ -152,7 +162,7 @@ private[lab] object AdaSubmissionService:
   enum Result:
     case Accepted(receipt: AdaPool.Receipt[StatePin])
     case AlreadyPresent(receipt: AdaPool.Receipt[StatePin])
-    case Rejected(error: AdaAdmission.Failure)
+    case Rejected(error: ScopedAdmission.Failure)
     case PoolRejected(reason: AdaPool.Rejection)
     case Retry(currentPin: StatePin)
     case Unavailable
@@ -183,7 +193,15 @@ private[lab] object AdaSubmissionService:
   ): Resource[F, AdaSubmissionService[F]] =
     for
       initial <- Resource.eval(owner.current)
-      pool <- Resource.eval(Ref.of[F, AdaPool.State[StatePin]](AdaPool.empty(initial.pin, limits)))
+      profile <- Resource.eval(
+        Async[F].fromOption(
+          AdmissionProfile.fromId(initial.pin.profileId),
+          new IllegalArgumentException("unsupported owner profile")
+        )
+      )
+      pool <- Resource.eval(
+        Ref.of[F, AdaPool.State[StatePin]](AdaPool.empty(initial.pin, limits, profile))
+      )
       budget <- Resource.eval(AdaIngressBudget.create[F]())
       validations <- Resource.eval(Semaphore[F](2))
       pending <- Resource.eval(Ref.of[F, Option[(AdmissionView, AdaPool.Rebuild[StatePin])]](None))
@@ -195,7 +213,7 @@ private[lab] object AdaSubmissionService:
       )
       service <- Resource.make(
         Async[F].pure(
-          new AdaSubmissionService(owner, pool, budget, validations, pending, wake, relay)
+          new AdaSubmissionService(owner, profile, pool, budget, validations, pending, wake, relay)
         )
       )(_.stop)
       _ <- Resource

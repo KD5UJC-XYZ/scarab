@@ -97,8 +97,11 @@ class AdaAdmissionRelaySuite extends munit.FunSuite:
         (if scripts.nonEmpty then Vector(hex("01"), array(scripts)) else Vector.empty)
     cat(hex("9f"), b, cat(hex("bf"), Bytes(fields.flatMap(_.value)), hex("ff")), hex("f5f6ff"))
 
-  private def view(generation: Int = 0): AdmissionView =
-    val ledger = initial()
+  private def view(
+      generation: Int = 0,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): AdmissionView =
+    val ledger = initial(nativeInput = profile == AdmissionProfile.NativeScript)
     val pin = StatePin
       .checked(
         digest,
@@ -108,7 +111,7 @@ class AdaAdmissionRelaySuite extends munit.FunSuite:
         ledger.id,
         ledger.environment.id,
         ledger.slot,
-        StatePin.Profile
+        profile.id
       )
       .toOption
       .get
@@ -146,8 +149,12 @@ class AdaAdmissionRelaySuite extends munit.FunSuite:
         )
       )
     def close(service: AdaSubmissionService[IO]): IO[Unit] = gate.permit.use(_ => service.closed)
-  private def owner(before: IO[Unit] = IO.unit): IO[Owner] =
-    (Ref.of[IO, AdmissionView](view()), Semaphore[IO](1)).mapN(new Owner(_, _, before))
+  private def owner(
+      before: IO[Unit] = IO.unit,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): IO[Owner] =
+    (Ref.of[IO, AdmissionView](view(profile = profile)), Semaphore[IO](1))
+      .mapN(new Owner(_, _, before))
   private def submit(s: AdaSubmissionService[IO], bytes: Bytes): IO[AdaSubmissionService.Result] =
     s.request.use(_.get.submit(bytes))
   private def ready(s: AdaSubmissionService[IO]): IO[Unit] =
@@ -262,4 +269,98 @@ class AdaAdmissionRelaySuite extends munit.FunSuite:
         yield ()
       }
     yield ()).unsafeToFuture()
+  }
+
+  private def httpPost(port: Int, original: Bytes): IO[(Int, ReferenceJson.Json)] = IO.blocking {
+    val socket = new java.net.Socket()
+    try
+      socket.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000)
+      socket.setSoTimeout(3000)
+      val headers =
+        s"POST /v1/transactions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/cbor\r\nContent-Length: ${original.size}\r\nConnection: close\r\n\r\n"
+      socket.getOutputStream.write(headers.getBytes(java.nio.charset.StandardCharsets.US_ASCII))
+      socket.getOutputStream.write(original.toArray)
+      socket.getOutputStream.flush()
+      val response =
+        new String(socket.getInputStream.readNBytes(16384), java.nio.charset.StandardCharsets.UTF_8)
+      val split = response.indexOf("\r\n\r\n")
+      require(split >= 0, "HTTP response framing")
+      val status = response.takeWhile(_ != '\r').split(" ")(1).toInt
+      (
+        status,
+        ReferenceJson.parse(
+          Bytes.fromArray(
+            response.substring(split + 4).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          )
+        )
+      )
+    finally socket.close()
+  }
+
+  test("native original crosses actual HTTP into a profile-bound exact-byte relay lease") {
+    val original = tx(scripts = Vector(native))
+    val identity = SignedTransaction.checked(original).toOption.get
+    (for
+      o <- owner(profile = AdmissionProfile.NativeScript)
+      before <- o.current
+      _ <- AdaSubmissionService.resource[IO](o).use { service =>
+        AdaHttp.server(AdaHttpHandler(service)).use { api =>
+          for
+            reply <- httpPost(api.port, original)
+            _ = assertEquals(reply._1, 202)
+            _ = assertEquals(
+              ReferenceJson.string(ReferenceJson.field(reply._2, "profileId")),
+              AdmissionProfile.NativeScript.id
+            )
+            _ = assertEquals(
+              ReferenceJson.string(ReferenceJson.field(reply._2, "receipt", "pin", "profileId")),
+              AdmissionProfile.NativeScript.id
+            )
+            duplicate <- httpPost(api.port, original)
+            _ = assertEquals(duplicate._1, 200)
+            _ <- service.relaySource.acquireBatch(RelayLimits()).use { lease =>
+              for
+                leased <- lease.original(identity.transactionId)
+                _ = assertEquals(leased, Some(original))
+                _ = assertEquals(
+                  lease.offers.head.advertisedSize,
+                  TxSubmission2.advertisedSize(original.size).toOption.get
+                )
+                wire = TxSubmission2
+                  .encode(
+                    TxSubmission2.State.Txs,
+                    ChainSync.Role.Client,
+                    TxSubmission2.Message.ReplyTxs(Vector(leased.get))
+                  )
+                  .toOption
+                  .get
+                _ = assertEquals(
+                  TxSubmission2.decode(TxSubmission2.State.Txs, ChainSync.Role.Client, wire),
+                  Right(TxSubmission2.Message.ReplyTxs(Vector(original)))
+                )
+                retained = SignedTransaction.checked(leased.get).toOption.get
+                _ = assertEquals(retained.originalBody, identity.originalBody)
+                _ = assertEquals(retained.originalWitnesses, identity.originalWitnesses)
+              yield ()
+            }
+            after <- o.current
+            _ = assertEquals(after.pin, before.pin)
+            _ = assertEquals(after.ledger.id, before.ledger.id)
+          yield ()
+        }
+      }
+      ada <- owner()
+      _ <- AdaSubmissionService.resource[IO](ada).use { service =>
+        AdaHttp.server(AdaHttpHandler(service)).use { api =>
+          httpPost(api.port, original).map { reply =>
+            assertEquals(reply._1, 422)
+            assertEquals(ReferenceJson.string(ReferenceJson.field(reply._2, "code")), "Unsupported")
+            assertEquals(
+              ReferenceJson.string(ReferenceJson.field(reply._2, "profileId")),
+              AdmissionProfile.AdaVkey.id
+            )
+          }
+        }
+      }
+    yield ()).timeout(10.seconds).unsafeToFuture()
   }

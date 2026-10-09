@@ -6,6 +6,15 @@ A runnable research prototype for **byte-preserving CBOR and Cardano transaction
 
 ## Ordinary local node milestones
 
+The app-private [Scala transaction ingress](docs/scala-transaction-ingress-roadmap.md)
+now has isolated ADA-vkey and opt-in native-script acceptance evidence. The
+[native signature-script case](docs/native-submission-implementation.md) passed
+Scala HTTP admission, TxSubmission2 relay, follower inclusion and an exact native
+endpoint comparison across epoch 1. This remains a Test-only loopback API with a
+bounded volatile pool; it does not establish a production node or full ledger
+and consensus validation.
+
+
 The [bounded durable fork acceptance](docs/private-cluster-fork.md) now demonstrates
 graceful process handoff, exact receipt resume, a nonempty rollback to a shared
 anchor, and following a peer-selected replacement branch with complete supported
@@ -148,7 +157,7 @@ Decoder defaults: 1 MiB input, depth 64, 100,000 items (including string chunks)
 
 The VM command accepts only the eighteen vendored fixture names and exact source/result/budget bytes. Even whitespace edits and alternate registered vectors at the wrong filename are rejected. SHA-256 admission happens before parsing, with an exhaustive post-parse capability gate. This avoids parser paths that could touch Scalus's global native BLS backend. It is a fixture harness, not an arbitrary-script evaluator or general native-free parser. Unsupported capabilities never count as ordinary evaluation failures. [VM scope, provenance and limitations](docs/vm-conformance.md).
 
-Complete script context construction, full transaction/header rules, native-script validation, ledger/consensus transitions, rollback of validated state, staking and block production remain unimplemented. The later sections describe bounded acquisition/storage/protocols and supplied-message crypto research; those narrower implementations do not fill these gaps. Runtime uses Java/Scala artifacts with Scalus native crypto artifacts excluded; see dependency inventory. No DiLF4S source was reused or migrated.
+Complete script context construction, full transaction/header rules, general native-script ledger validation, complete ledger/consensus transitions, rollback of validated state, staking and block production remain unimplemented. The later sections describe bounded acquisition/storage/protocols and supplied-message crypto research; those narrower implementations do not fill these gaps. Runtime uses Java/Scala artifacts with Scalus native crypto artifacts excluded; see dependency inventory. No DiLF4S source was reused or migrated.
 
 See [network conformance and local simulation](docs/network-conformance.md) for exact version sets, resource limits, provenance and remaining reference-runtime gate. No real Cardano node was contacted.
 

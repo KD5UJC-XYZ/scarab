@@ -33,16 +33,35 @@ object AdaSubmissionMain extends IOApp:
 
   private def work(args: List[String]): IO[Unit] =
     require(
-      args.size == 5,
-      "INITIAL_DIRECTORY INITIAL_MANIFEST_SHA256 PORT MAGIC EXCHANGE_DIRECTORY"
+      args.size == 5 || args.size == 6,
+      "INITIAL_DIRECTORY INITIAL_MANIFEST_SHA256 PORT MAGIC EXCHANGE_DIRECTORY [PROFILE_ID]"
     )
     val root = Path.of(args(4))
+    val admissionProfile = AdmissionProfile
+      .fromId(args.lift(5).getOrElse(AdmissionProfile.AdaVkey.id))
+      .getOrElse(throw new IllegalArgumentException("unsupported admission profile"))
     for
-      joined <- IO.blocking(initial(Path.of(args(0)), args(1)))
+      joined <- IO.blocking(initial(Path.of(args(0)), args(1), admissionProfile))
       descriptor <- IO.blocking(
         ReferenceJson.parse(read(root.resolve("submission/descriptor.json"), 16384))
       )
       expectedId <- IO(hash(field(descriptor, "transactionId")))
+      _ <- IO {
+        descriptor match
+          case J.Obj(values) =>
+            if admissionProfile == AdmissionProfile.NativeScript then
+              require(
+                values.get("profileId").contains(text(admissionProfile.id)),
+                "native descriptor profile required"
+              )
+            else
+              values
+                .get("profileId")
+                .foreach(v =>
+                  require(v == text(admissionProfile.id), "descriptor profile mismatch")
+                )
+          case _ => throw new IllegalArgumentException("descriptor object required")
+      }
       context <- IO(get(SequenceInput.fromNativeDiagnostic(joined, joined.id)))
       epoch = joined.ledger.epochComponents
       profile <- IO(
@@ -102,7 +121,7 @@ object AdaSubmissionMain extends IOApp:
       )
       peers = BoundedChainFollower.sessions[IO](connection, options._2)
       _ <- IO.blocking(java.nio.file.Files.createDirectory(root.resolve("originals")))
-      _ <- SubmissionOwner.resource(fresh).use { owner =>
+      _ <- SubmissionOwner.resource(fresh, admissionProfile).use { owner =>
         AdaSubmissionService.resource(owner).use { service =>
           val observer = new AdmissionStateObserver[IO]:
             def changed(change: AdmissionStateChange): IO[Unit] =
@@ -193,7 +212,8 @@ object AdaSubmissionMain extends IOApp:
                   "sourceJoinId" -> text(joined.id.hex),
                   "boundaryUnixMillis" -> num(boundaryMillis),
                   "networkMagic" -> num(joined.acquisition.networkMagic),
-                  "apiPort" -> num(api.port)
+                  "apiPort" -> num(api.port),
+                  "profileId" -> text(admissionProfile.id)
                 )
               )
               peerRaw <- awaitFile(root.resolve("peer-ready.json"), 16384)
@@ -237,6 +257,7 @@ object AdaSubmissionMain extends IOApp:
               _ <- IO(
                 require(
                   field(client, "passed") == J.Lit("true") &&
+                    string(field(client, "profileId")) == admissionProfile.id &&
                     hash(field(client, "transactionId")) == expectedId,
                   "external API client result"
                 )
@@ -328,6 +349,10 @@ object AdaSubmissionMain extends IOApp:
                     "representedProtocolEqual" -> bool(protocol.representedProtocolFieldsEqual),
                     "normalizedGovernanceEqual" -> bool(governance.normalizedSerializationEqual),
                     "adaSubmission" -> bool(true),
+                    "profileId" -> text(admissionProfile.id),
+                    "nativeScriptSubmission" -> bool(
+                      admissionProfile == AdmissionProfile.NativeScript
+                    ),
                     "adaSubmittedViaHttp" -> bool(true),
                     "adaIncluded" -> bool(true),
                     "ingress" -> text("scala-http"),
@@ -365,7 +390,7 @@ object AdaSubmissionMain extends IOApp:
     .handleErrorWith { error =>
       val message = Option(error.getMessage).getOrElse(error.getClass.getName).take(4096)
       val failure =
-        if args.size == 5 then
+        if args.size == 5 || args.size == 6 then
           save(
             Path.of(args(4)).resolve("failure.json"),
             record(

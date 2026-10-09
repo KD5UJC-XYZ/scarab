@@ -6,7 +6,9 @@ TxSubmission2 relay are implemented for `isolated-conway-pv9-ada-vkey-v1`.
 See [implementation and acceptance evidence](ada-submission-implementation.md),
 including the explicit zero reference initialization-delay setting. General
 public-node admission, default-delay interoperability and full ledger/consensus
-validation remain unproved. Native-script and Plutus ingress are next.
+validation remain unproved. The opt-in native-script signature-only acceptance
+case has also passed; see [native implementation and evidence](native-submission-implementation.md).
+Wider native reference agreement and a separately versioned Plutus profile remain next.
 
 ## Sequence
 
@@ -17,10 +19,11 @@ validation remain unproved. Native-script and Plutus ingress are next.
    validation, store accepted transactions in a bounded volatile pool, relay with
    Scala TxSubmission2, and observe reference inclusion through the Scala follower.
    Remove included transactions from the pool.
-3. Next: extend the same API first to a bounded native-script profile, with
-   reference agreement for valid and invalid witness/validity combinations. Keep
-   unsupported combinations explicit and preserve generation fencing, original
-   byte identity, reservation and relay limits.
+3. Implemented: the bounded native-script profile uses the same API, generation
+   fencing, original bytes, reservations and relay limits. Its isolated
+   signature-only positive passed inclusion and exact endpoint comparison. Next:
+   extend reference agreement across valid and invalid witness/validity
+   combinations, with authoritative evaluation-slot evidence for negatives.
 4. Then add a separately versioned Plutus profile using Scalus and reference
    conformance tests for phase-one/phase-two, budgets, contexts and collateral.
    The same Scala API remains the ingress; each profile requires its own isolated
@@ -70,4 +73,4 @@ All integration scenarios use disposable keys and isolated local Docker clusters
 No real funds, production keys or public-network submissions are part of these
 milestones.
 
-The initial shared worker boundary is implemented in [ADA submission contract v1](ada-submission-contract-v1.md). Restricted ADA acceptance evidence is recorded; script-profile implementation and reference agreement remain pending.
+The initial shared worker boundary is implemented in [ADA submission contract v1](ada-submission-contract-v1.md). Restricted ADA and native signature-script acceptance evidence is recorded; wider native reference agreement and Plutus remain pending.

@@ -4,7 +4,7 @@ package lab.ledger
 import java.security.{KeyPairGenerator, Signature}
 import lab.Blake2b
 import lab.cbor.{Bytes, Cbor, Node, Value as V}
-import lab.submission.SignedTransaction
+import lab.submission.{AdmissionProfile, SignedTransaction}
 
 class AdaAdmissionPoolSuite extends munit.FunSuite:
   private val R = ClusterTransition
@@ -311,4 +311,38 @@ class AdaAdmissionPoolSuite extends munit.FunSuite:
           ) =>
         ()
       case other => fail(other.toString)
+  }
+
+  test("equal generic pins cannot admit a candidate from a different pool profile") {
+    val ada = AdaAdmission.prepare(0, initial(), tx()).toOption.get
+    val nativeCandidate = NativeAdmission
+      .prepare(0, initial(nativeInput = true), tx(scripts = Vector(native)))
+      .toOption
+      .get
+    val nativePool = AdaPool.empty(0, profile = AdmissionProfile.NativeScript)
+    val rejectedAda = AdaPool.admit(nativePool, ada, 0)
+    assertEquals(rejectedAda._2, AdaPool.Outcome.Unavailable)
+    assertEquals(rejectedAda._1.size, 0)
+    val rejectedNative = AdaPool.admit(AdaPool.empty(0), nativeCandidate, 0)
+    assertEquals(rejectedNative._2, AdaPool.Outcome.Unavailable)
+    assertEquals(rejectedNative._1.reserved, Set.empty[TxIn])
+    val accepted = AdaPool.admit(nativePool, nativeCandidate, 0)
+    accepted._2 match
+      case AdaPool.Outcome.Accepted(receipt) =>
+        assertEquals(receipt.profileId, AdmissionProfile.NativeScript.id)
+      case other => fail(other.toString)
+  }
+
+  test("native checked receipt cannot be rebound to a different immutable ledger view") {
+    val nativeView = initial(nativeInput = true)
+    val checked = NativeAdmission.check(nativeView, tx(scripts = Vector(native))).toOption.get
+    assert(ScopedAdmission.bindNative(0, initial(), checked).isLeft)
+    assert(
+      ScopedAdmission.bindNative(0, initial(nativeInput = true, fees = 700001), checked).isLeft
+    )
+    val bound = ScopedAdmission.bindNative(0, nativeView, checked).toOption.get
+    assertEquals(bound.ledgerStateId, nativeView.id)
+    assertEquals(bound.transaction.original, checked.transaction.original)
+    assertEquals(bound.nativeAdmission, Some(checked.native))
+    assertEquals(bound.profile, AdmissionProfile.NativeScript)
   }

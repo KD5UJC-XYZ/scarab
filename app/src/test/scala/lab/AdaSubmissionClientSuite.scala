@@ -4,7 +4,7 @@ package lab
 import lab.cbor.Bytes
 import lab.header.PraosCertificateState.Point
 import lab.ledger.AdaPool
-import lab.submission.StatePin
+import lab.submission.{AdmissionProfile, StatePin}
 import ReferenceJson.{Json as J}
 
 class AdaSubmissionClientSuite extends munit.FunSuite:
@@ -96,4 +96,31 @@ class AdaSubmissionClientSuite extends munit.FunSuite:
     val parsed = ReferenceJson.parse(encoded)
     assertEquals(ReferenceJson.field(parsed, "passed"), J.Lit("false"))
     assertEquals(ReferenceJson.field(parsed, "failureType"), J.Str("ClientEvidenceLimit"))
+  }
+
+  test("native client requires matching outer and complete-pin profiles") {
+    val profile = AdmissionProfile.NativeScript
+    val nativePin = StatePin
+      .checked(
+        pin.ownerId,
+        pin.generation,
+        pin.point,
+        pin.coherentStateId,
+        pin.ledgerStateId,
+        pin.environmentId,
+        pin.validationSlot,
+        profile.id
+      )
+      .toOption
+      .get
+    val render = new AdaHttpHandler.Representation(profile)
+    val response = render.statusResponse(transactionId, Some(AdaPool.Status.Included(nativePin)))
+    AdaSubmissionClientMain.validateIncluded(200, json(response), transactionId, profile)
+    intercept[IllegalArgumentException] {
+      AdaSubmissionClientMain.validateIncluded(200, json(response), transactionId)
+    }
+    val mismatched = render.statusResponse(transactionId, Some(AdaPool.Status.Included(pin)))
+    intercept[IllegalArgumentException] {
+      AdaSubmissionClientMain.validateIncluded(200, json(mismatched), transactionId, profile)
+    }
   }

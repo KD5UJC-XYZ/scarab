@@ -16,6 +16,7 @@ import lab.submission.*
 private[lab] final class SubmissionOwner[F[_]] private (
     runtime: CoherentDriver[F],
     ownerId: Bytes,
+    val profile: AdmissionProfile,
     generation: Ref[F, BigInt],
     lifecycle: Ref[F, SubmissionOwner.Lifecycle[F]],
     gate: Semaphore[F]
@@ -77,7 +78,7 @@ private[lab] final class SubmissionOwner[F[_]] private (
           state.ledger.id,
           state.ledger.environment.id,
           state.ledger.slot,
-          StatePin.Profile
+          profile.id
         )
         .leftMap(new IllegalStateException(_))
     )
@@ -152,18 +153,23 @@ private[lab] object SubmissionOwner:
     case Closed()
 
   def resource[F[_]: Async](
-      freshRuntime: F[CoherentSequence.Runtime[F]]
+      freshRuntime: F[CoherentSequence.Runtime[F]],
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
   ): Resource[F, SubmissionOwner[F]] =
-    resourceAt(freshRuntime, BigInt(0))
+    resourceAt(freshRuntime, BigInt(0), profile)
 
   /** Nonzero generation is exposed only for package-local exhaustion tests, never persisted state.
     */
   private[lab] def resourceAt[F[_]: Async](
       freshRuntime: F[CoherentSequence.Runtime[F]],
-      initialGeneration: BigInt
+      initialGeneration: BigInt,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
   ): Resource[F, SubmissionOwner[F]] =
     val F = Async[F]
     Resource.make(for
+      _ <- F.raiseUnless(profile != null)(
+        new IllegalArgumentException("explicit admission profile required")
+      )
       _ <- F.raiseUnless(initialGeneration >= 0 && initialGeneration <= StatePin.MaxUInt64)(
         new IllegalArgumentException("uint64 initial generation required")
       )
@@ -176,4 +182,4 @@ private[lab] object SubmissionOwner:
       counter <- Ref.of[F, BigInt](initialGeneration)
       lifecycle <- Ref.of[F, Lifecycle[F]](Lifecycle.Initializing())
       gate <- Semaphore[F](1)
-    yield new SubmissionOwner(runtime, owner, counter, lifecycle, gate))(_.close)
+    yield new SubmissionOwner(runtime, owner, profile, counter, lifecycle, gate))(_.close)

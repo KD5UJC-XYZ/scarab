@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path, StandardOpenOption as Open}
 import java.time.Duration
 import java.util.concurrent.{ArrayBlockingQueue, ThreadPoolExecutor, TimeUnit}
 import lab.cbor.Bytes
-import lab.submission.{SignedTransaction, StatePin}
+import lab.submission.{AdmissionProfile, SignedTransaction, StatePin}
 import ReferenceJson.{Json as J, field, string, uint}
 import scala.concurrent.duration.*
 
@@ -28,7 +28,7 @@ object AdaSubmissionClientMain extends IOApp:
   private def hash(j: J): Unit = require(string(j).matches("[0-9a-f]{64}"), "invalid hash")
   private def boundedUInt(j: J): Unit =
     require(uint(j) <= StatePin.MaxUInt64, "uint64 overflow")
-  private def pin(j: J): Unit =
+  private def pin(j: J, profile: AdmissionProfile): Unit =
     require(
       objectKeys(j) == Set(
         "ownerId",
@@ -46,7 +46,7 @@ object AdaSubmissionClientMain extends IOApp:
       hash(field(j, k))
     )
     Vector("generation", "validationSlot").foreach(k => boundedUInt(field(j, k)))
-    requireField(j, "profileId", text(StatePin.Profile))
+    requireField(j, "profileId", text(profile.id))
     val point = field(j, "point")
     require(
       objectKeys(point) == Set("slot", "blockNo", "hash"),
@@ -55,12 +55,17 @@ object AdaSubmissionClientMain extends IOApp:
     hash(field(point, "hash"))
     boundedUInt(field(point, "slot"))
     boundedUInt(field(point, "blockNo"))
-  private def scoped(j: J): Unit =
-    requireField(j, "profileId", text(StatePin.Profile))
+  private def scoped(j: J, profile: AdmissionProfile): Unit =
+    requireField(j, "profileId", text(profile.id))
     requireField(j, "fullLedgerValidated", flag(false))
     requireField(j, "volatile", flag(true))
-  private def receipt(j: J, transaction: SignedTransaction, pendingOnly: Boolean = true): Unit =
-    scoped(j)
+  private def receipt(
+      j: J,
+      transaction: SignedTransaction,
+      pendingOnly: Boolean = true,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): Unit =
+    scoped(j, profile)
     if pendingOnly then requireField(j, "status", text("pending"))
     else
       require(
@@ -72,17 +77,22 @@ object AdaSubmissionClientMain extends IOApp:
     requireField(value, "envelopeSHA256", text(transaction.envelopeSHA256.hex))
     requireField(value, "volatile", flag(true))
     requireField(value, "fullLedgerValidated", flag(false))
-    pin(field(value, "pin"))
+    pin(field(value, "pin"), profile)
 
   /** Shared by the live client and an actual-handler schema regression. */
-  private[lab] def validateIncluded(status: Int, json: J, transactionId: Bytes): Unit =
+  private[lab] def validateIncluded(
+      status: Int,
+      json: J,
+      transactionId: Bytes,
+      profile: AdmissionProfile = AdmissionProfile.AdaVkey
+  ): Unit =
     require(status == 200, "included HTTP status")
-    scoped(json)
+    scoped(json, profile)
     requireField(json, "code", text("Included"))
     requireField(json, "transactionId", text(transactionId.hex))
     requireField(json, "status", text("included"))
     requireField(json, "submittedEnvelopeByteEqualityVerified", flag(false))
-    pin(field(json, "pin"))
+    pin(field(json, "pin"), profile)
 
   private def read(path: Path): IO[Bytes] = IO.blocking {
     val stream = Files.newInputStream(path)
@@ -241,7 +251,12 @@ object AdaSubmissionClientMain extends IOApp:
             }
         }
       }
-  private def exercise(port: Int, input: Path, observations: Ref[IO, Vector[J]]): IO[J] =
+  private def exercise(
+      port: Int,
+      input: Path,
+      observations: Ref[IO, Vector[J]],
+      profile: AdmissionProfile
+  ): IO[J] =
     for
       raw <- read(input)
       transaction <- IO.fromEither(
@@ -275,7 +290,7 @@ object AdaSubmissionClientMain extends IOApp:
           call("status", "/v1/transactions/" + transaction.transactionId.hex, None).flatMap {
             reply =>
               IO {
-                scoped(reply.json)
+                scoped(reply.json, profile)
                 val code = string(field(reply.json, "code"))
                 require(
                   code == "Included" || code == "Pending" || code == "Unavailable",
@@ -285,13 +300,14 @@ object AdaSubmissionClientMain extends IOApp:
               }.flatMap {
                 case "Included" =>
                   IO {
-                    validateIncluded(reply.status, reply.json, transaction.transactionId)
+                    validateIncluded(reply.status, reply.json, transaction.transactionId, profile)
                     reply
                   }
                 case "Pending" =>
-                  IO(receipt(reply.json, transaction, pendingOnly = false)) *> IO.sleep(
-                    500.millis
-                  ) *> IO.defer(included)
+                  IO(receipt(reply.json, transaction, pendingOnly = false, profile = profile)) *> IO
+                    .sleep(
+                      500.millis
+                    ) *> IO.defer(included)
                 case _ => IO.sleep(500.millis) *> IO.defer(included)
               }
           }
@@ -300,21 +316,21 @@ object AdaSubmissionClientMain extends IOApp:
           _ <- IO {
             require(negative.status == 400, "malformed HTTP status")
             requireField(negative.json, "code", text("DecodeRejected"))
-            scoped(negative.json)
+            scoped(negative.json, profile)
           }
           accepted <- stablePost("admission", raw).timeout(10.seconds)
           _ <- IO {
             require(accepted.status == 202, "initial acceptance required")
             requireField(accepted.json, "code", text("Accepted"))
-            receipt(accepted.json, transaction)
+            receipt(accepted.json, transaction, profile = profile)
           }
           duplicate <- call("exactDuplicate", "/v1/transactions", Some(raw))
           _ <- IO {
-            scoped(duplicate.json)
+            scoped(duplicate.json, profile)
             val code = string(field(duplicate.json, "code"))
             if code == "AlreadyPresent" then
               require(duplicate.status == 200, "duplicate HTTP status")
-              receipt(duplicate.json, transaction)
+              receipt(duplicate.json, transaction, profile = profile)
             else
               require(
                 Set("Unavailable", "StaleState", "Rejected", "Unsupported").contains(code),
@@ -352,7 +368,7 @@ object AdaSubmissionClientMain extends IOApp:
           "ingress" -> text("scala-http"),
           "volatile" -> flag(true),
           "fullLedgerValidated" -> flag(false),
-          "profileId" -> text(StatePin.Profile),
+          "profileId" -> text(profile.id),
           "malformedRejected" -> flag(true),
           "duplicateAlreadyPresent" -> flag(
             string(field(duplicate.json, "code")) == "AlreadyPresent"
@@ -366,14 +382,17 @@ object AdaSubmissionClientMain extends IOApp:
     yield result
 
   def run(args: List[String]): IO[ExitCode] = args match
-    case portText :: inputText :: outputText :: Nil =>
+    case portText :: inputText :: outputText :: profileArgs if profileArgs.size <= 1 =>
       for
         observations <- Ref.of[IO, Vector[J]](Vector.empty)
         output <- IO(Path.of(outputText))
         outcome <- (for
+          profile <- IO.fromOption(
+            AdmissionProfile.fromId(profileArgs.headOption.getOrElse(AdmissionProfile.AdaVkey.id))
+          )(new IllegalArgumentException("unsupported admission profile"))
           port <- IO(portText.toInt)
           _ <- IO(require(port > 0 && port <= 65535, "loopback port range"))
-          value <- exercise(port, Path.of(inputText), observations).timeout(60.seconds)
+          value <- exercise(port, Path.of(inputText), observations, profile).timeout(60.seconds)
         yield value).attempt
         exit <- outcome match
           case Right(value) =>
@@ -397,5 +416,7 @@ object AdaSubmissionClientMain extends IOApp:
       yield exit
     case _ =>
       IO.raiseError(
-        new IllegalArgumentException("expected apiPort transaction.cbor client-result.json")
+        new IllegalArgumentException(
+          "expected apiPort transaction.cbor client-result.json [PROFILE_ID]"
+        )
       )
