@@ -304,6 +304,10 @@ object LocalDerivedCheckpoint:
   ): Either[String, Publication] = protect {
     val a = owned.anchor; val s = owned.current; val c = owned.context
     require(
+      a.stake.isEmpty && s.stake.isEmpty,
+      "stake tuple requires a complete stake checkpoint codec"
+    )
+    require(
       s.compactedBlocks > 0 && a.acquisition.size == 0 &&
         a.acquisition.tip == s.acquisition.anchor && a.contextId == c.id &&
         a.compactedBlocks == s.compactedBlocks && a.derivedAnchorId == s.derivedAnchorId,

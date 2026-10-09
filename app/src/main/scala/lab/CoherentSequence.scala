@@ -9,7 +9,7 @@ import lab.header.{
   PraosEligibility,
   PraosNonceEvolution as Nonces
 }
-import lab.ledger.ClusterTransition as Ledger
+import lab.ledger.{ClusterTransition as Ledger, ConwayStake as Stake}
 import lab.network.ChainSync
 import lab.vrf.PraosVrfCertificate as Vrf
 import scala.util.control.NonFatal
@@ -40,8 +40,10 @@ object CoherentSequence:
       val ledger: Ledger.State,
       val compactedBlocks: BigInt = 0,
       val derivedAnchorId: Option[Bytes] = None,
-      val trustedLocalPrefix: Boolean = false
+      val trustedLocalPrefix: Boolean = false,
+      private[CoherentSequence] val stakeBinding: Option[(Stake.Owner, Stake.State)] = None
   ):
+    def stake: Option[Stake.State] = stakeBinding.map(_._2)
     def acquisition: BoundedChainFollower.Checkpoint = certificates.acquisition
     def revision: BigInt = ledger.revision
 
@@ -58,7 +60,9 @@ object CoherentSequence:
         nonces.id,
         eligibility.fold(Bytes.empty)(_.contextId),
         ledger.id
-      ) ++ derivedAnchorId.toVector.flatMap(id => Vector(raw(compactedBlocks.toString), id))
+      ) ++ stake.toVector.map(_.id) ++ derivedAnchorId.toVector.flatMap(id =>
+        Vector(raw(compactedBlocks.toString), id)
+      )
     )
     val fullLedgerValidated = false
     val consensusValidated = false
@@ -77,7 +81,8 @@ object CoherentSequence:
       private[CoherentSequence] val certificate: Certificate.Applied,
       private[CoherentSequence] val nonce: Nonces.Applied,
       private[CoherentSequence] val eligibility: PraosEligibility.Checked,
-      private[CoherentSequence] val ledger: Ledger.BlockCandidate
+      private[CoherentSequence] val ledger: Ledger.BlockCandidate,
+      private[CoherentSequence] val stake: Option[Stake.Candidate]
   )
   final class Applied private[CoherentSequence] (
       val state: State,
@@ -219,7 +224,20 @@ object CoherentSequence:
           block.header.slot
         )
       )
-    yield new Candidate(owner, current, block, certificates, certificate, nonce, eligible, pending)
+      stake <- current.stakeBinding.traverse { (stakeOwner, state) =>
+        checked("stake", Stake.prepare(stakeOwner, state, current.ledger, pending))
+      }
+    yield new Candidate(
+      owner,
+      current,
+      block,
+      certificates,
+      certificate,
+      nonce,
+      eligible,
+      pending,
+      stake
+    )
   }
   private def bindings(current: State, c: Candidate): Boolean =
     c.certificates.acquisition.originals == (current.acquisition.originals :+ c.block.original) &&
@@ -248,7 +266,20 @@ object CoherentSequence:
       cell.receipts.size >= maxBlocks || !bindings(current, candidate)
     then Left(Failure.StaleCandidate)
     else
-      ledger(Ledger.commitBlock(current.ledger, candidate.ledger)).map { block =>
+      for
+        block <- ledger(Ledger.commitBlock(current.ledger, candidate.ledger))
+        stake <- current.stakeBinding.traverse { (stakeOwner, before) =>
+          for
+            proposed <- candidate.stake.toRight(Failure.Rejected("stake", "missing candidate"))
+            after <- checked("stake", Stake.select(stakeOwner, before, proposed))
+            _ <- Either.cond(
+              after.ledgerId == block.state.id && after.revision == block.state.revision,
+              (),
+              Failure.Rejected("stake", "ledger publication mismatch")
+            )
+          yield (stakeOwner, after)
+        }
+      yield
         val state = new State(
           current.contextId,
           candidate.certificates,
@@ -257,7 +288,8 @@ object CoherentSequence:
           block.state,
           current.compactedBlocks,
           current.derivedAnchorId,
-          current.trustedLocalPrefix
+          current.trustedLocalPrefix,
+          stake
         )
         val owned =
           OwnedReceipt(current, state.id, candidate.certificate, candidate.nonce, block.undo)
@@ -265,7 +297,6 @@ object CoherentSequence:
           Cell(state, cell.receipts :+ owned),
           new Applied(state, block, candidate.certificate, candidate.nonce)
         )
-      }
   }
 
   private def restore(current: State, owned: OwnedReceipt): Result[State] = protect {
@@ -282,6 +313,10 @@ object CoherentSequence:
       )
       nonces <- checked("nonce-undo", Nonces.undo(current.nonces, owned.nonce))
       restoredLedger <- ledger(Ledger.undo(current.ledger, current.revision, owned.ledger))
+      stake <- owned.before.stakeBinding.traverse { (stakeOwner, before) =>
+        checked("stake-undo", Stake.rebindAfterUndo(stakeOwner, before, restoredLedger))
+          .map(stakeOwner -> _)
+      }
       restored = new State(
         current.contextId,
         certificates,
@@ -290,7 +325,8 @@ object CoherentSequence:
         restoredLedger,
         current.compactedBlocks,
         current.derivedAnchorId,
-        current.trustedLocalPrefix
+        current.trustedLocalPrefix,
+        stake
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -369,7 +405,8 @@ object CoherentSequence:
                   state.ledger,
                   count,
                   Some(provenance),
-                  state.trustedLocalPrefix
+                  state.trustedLocalPrefix,
+                  state.stakeBinding
                 )
               )
           for
@@ -940,6 +977,64 @@ object CoherentSequence:
           Left(Failure.Unsupported("window", "capacity must be 1..8"))
         else seed(context)
       }
+      .flatMap {
+        case Left(error) => Sync[F].pure(Left(error))
+        case Right(initial) =>
+          for
+            owner <- Sync[F].delay(new Object())
+            cell <- Ref.of[F, Cell](Cell(initial, Vector.empty))
+          yield Right(new Runtime(context, maxBlocks, owner, cell))
+      }
+
+  /** Opt-in atomic stake projection. Fixed registrations/reward balances, same epoch only. No
+    * durable codec currently serializes this enlarged tuple.
+    */
+  def createWithStake[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      maxBlocks: Int = MaxBlocks
+  ): F[Result[Runtime[F]]] =
+    Sync[F]
+      .delay(protect {
+        for
+          _ <- Either.cond(
+            maxBlocks >= 1 && maxBlocks <= MaxBlocks,
+            (),
+            Failure.Unsupported("window", "capacity must be 1..8")
+          )
+          initial <- seed(context)
+          _ <- Either.cond(
+            prepared.context.epochLength == context.nonces.context.epochLength,
+            (),
+            Failure.Rejected("stake", "epoch geometry mismatch")
+          )
+          sourceUtxo <- checked(
+            "stake-source",
+            Bytes.fromHex(new String(context.originals("pre-utxo-cbor.md").toArray, "UTF-8").trim)
+          )
+          sourceId = ClusterHeaderObservation.sha256(
+            Bytes(
+              context
+                .sourcePins("preLedgerSha256")
+                .value ++ ClusterHeaderObservation.sha256(sourceUtxo).value
+            )
+          )
+          _ <- Either.cond(
+            prepared.utxo == sourceUtxo && prepared.sourceId == sourceId,
+            (),
+            Failure.Rejected("stake-source", "stake seed differs from pinned coordinator sources")
+          )
+          stakeOwner = Stake.owner()
+          stake <- checked("stake-seed", prepared.attach(stakeOwner, initial.ledger))
+        yield new State(
+          initial.contextId,
+          initial.certificates,
+          initial.nonces,
+          initial.eligibility,
+          initial.ledger,
+          stakeBinding = Some(stakeOwner -> stake)
+        )
+      })
       .flatMap {
         case Left(error) => Sync[F].pure(Left(error))
         case Right(initial) =>

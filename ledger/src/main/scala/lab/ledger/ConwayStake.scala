@@ -391,6 +391,39 @@ object ConwayStake:
     candidate.after
   }
 
+  /** Coordinator-owned undo: preserve semantic identity while rebinding the increasing ledger
+    * revision. The coordinator must first verify its whole-tuple receipt and apply ledger undo.
+    */
+  private[lab] def rebindAfterUndo(
+      owner: Owner,
+      before: State,
+      ledger: ClusterTransition.State
+  ): Either[String, State] = protect {
+    require(
+      owner != null && before != null && (owner eq before.owner) && ledger != null &&
+        ledger.id == before.ledgerId && ledger.slot == before.slot &&
+        ledger.environment.epoch == before.epoch && ledger.revision > before.revision,
+      "stake undo ledger/owner/revision mismatch"
+    )
+    val utxo = get(decodeUtxo(ledger.outputMap))
+    require(
+      utxo == before.utxo && totals(utxo.values) == before.instantaneous,
+      "stake undo content mismatch"
+    )
+    new State(
+      owner,
+      before.context,
+      before.id,
+      ledger.id,
+      ledger.revision,
+      ledger.slot,
+      before.epoch,
+      utxo,
+      before.instantaneous,
+      before.snapshots
+    )
+  }
+
   /** SNAP algebra only, not NEWEPOCH: reward/governance/pool effects have not been applied. */
   def previewRotation(
       owner: Owner,

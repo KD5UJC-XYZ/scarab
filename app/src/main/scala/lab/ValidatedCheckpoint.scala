@@ -54,6 +54,7 @@ object ValidatedCheckpoint:
       capacity: Int
   ): Either[String, (Bytes, Token)] = protect {
     val state = snapshot.state
+    require(state.stake.isEmpty, "stake tuple requires a complete stake checkpoint codec")
     guard(context.id == state.contextId, "context mismatch")
     guard(
       state.compactedBlocks == 0 && state.derivedAnchorId.isEmpty,

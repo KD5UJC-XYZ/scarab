@@ -1,6 +1,6 @@
 # Checked Conway stake and snapshot slice
 
-This is an additive pure module for the fixed-registration private Conway profile, not an epoch validator. Existing same-epoch runtime guards and all legacy adapters remain unchanged. No node command, follower retention or durability interfaces are modified.
+This is a pure module for the fixed-registration private Conway profile, not an epoch validator. The opt-in [atomic coordinator integration](atomic-stake-coordinator.md) now publishes this projection with the coherent tuple. Existing same-epoch runtime guards and all legacy adapters remain unchanged. No node command or CLI enables it; existing checkpoint codecs reject the enlarged tuple.
 
 ## APIs and ownership
 
