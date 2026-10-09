@@ -92,10 +92,21 @@ SHA-256 `524ee25bdbefa44d169b76a697bdc4c1588216290b715b15120d652a61a35499`;
 keys, databases and raw evidence remain private. Separate seed-admission evidence and review
 are still required before considering runtime integration.
 
-Recovery integration is held for original-byte payload accounting and historical
-scalar preflight fixes plus review. The proposed opaque in-memory handoff is
-reference-dependent; it is not a byte codec, disk recovery or durable controller
-authentication.
+Recovery remains a separate pending integration slice after review approved
+original-byte payload accounting and historical scalar preflight fixes. The
+proposed opaque in-memory handoff is reference-dependent and budgets existing
+objects, not decoder allocation or JVM heap use. It is not serialization,
+disk/crash recovery or durable controller authentication.
+
+The zero-deposit fixture uses epoch length 500, k=5 and f=1/20, giving native
+randomness window 400. It cannot satisfy the current `2 * window < epochLength`
+guard. Its genesis checks remain valid, but it cannot enter this synthetic timing
+profile; neither relaxing the guard nor substituting synthetic window 100 is
+admitted. A first bounded ephemeral crossing is a separate priority from durable
+restart and requires reviewed longer-epoch geometry, unsupported-effect checks,
+point-bound protocol/nonce/opcert bootstrap inputs and complete seed admission
+before any new runtime profile. Diagnostic-only seed projection work does not
+provide that admission.
 
 ## Worker interface and ownership
 

@@ -337,3 +337,25 @@ Tests used an isolated copied build/cache in network-disabled Docker with
 only this verification prose changed afterward. No live cluster, denied genesis
 fixture, key generation or native rebuild was used. These are local targeted
 results, not a hosted-CI result or runtime epoch-safety claim.
+
+
+## Recorded native boundary projection, 2026-10-09
+
+The [finite native boundary comparison](synthetic-boundary-differential.md) now
+has a hash-pinned golden in the default app suite. All seven cases match every
+declared field and array after changing only the root producer label. Scala
+output is byte-for-byte identical to its independently prepared pre-native output.
+
+Integration passed 40 targeted tests (30 ledger, ten app), formatting and the
+explicit native-golden comparison command. The default public regression passed
+1233 Scala tests, 63 restricted translator tests and all 25 public gates, plus
+the launcher and checkpoint Python guards. Optional retained-input checks remain
+outside this fixture-free default run. Containers used private caches/outputs,
+network none, two CPUs and 2 GiB with verified owned cleanup. No live cluster or
+native executable was launched for integration.
+
+Scala composes pure APIs and attaches pre-tick reward computation to boundary
+projection. This comparison does not exercise the coherent successor coordinator,
+full-block validation, cryptography, governance/non-myopic fields, rollback or
+persistence. Runtime guards and checkpoint refusals are unchanged. Hosted CI is
+tracked separately from these local results.

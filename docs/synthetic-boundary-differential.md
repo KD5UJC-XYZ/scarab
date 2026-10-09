@@ -78,7 +78,8 @@ Both checks used network-disabled containers limited to two CPUs and 2 GiB,
 private caches/outputs, and verified owned cleanup. No private fixtures were
 mounted, and no retained-fixture tests ran in these checks.
 
-Recovery remains separate: the proposed reference-dependent opaque in-memory
-handoff is held for original-byte accounting and historical-scalar preflight
-fixes and review. It is not a byte codec, disk recovery or durable controller
-authentication.
+Recovery remains a separate integration slice. Review approved its original-byte
+accounting and historical-scalar preflight fixes; integration is pending. Its
+reference-dependent opaque in-memory handoff budgets existing objects, not decoder
+allocation or JVM heap use. It is not serialization, disk/crash recovery or durable
+controller authentication.
