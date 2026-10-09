@@ -72,9 +72,7 @@ object PraosNonceSnapshot:
       protocolSha256: Bytes
   ): Either[String, Prepared] = checked {
     require(certificates != null && seed != null, "nonce certificate context required")
-    val genesis = source(genesisBytes, certificates.genesisDigest)
     val snapshot = get(parse(protocolBytes, protocolSha256))
-    require(snapshot.lastSlot == seed.tip.slot, "nonce snapshot anchor slot mismatch")
     val counters = ReferenceJson.field(source(protocolBytes, protocolSha256), "oCertCounters") match
       case ReferenceJson.Json.Obj(values) =>
         values.map { (key, value) =>
@@ -83,6 +81,25 @@ object PraosNonceSnapshot:
           hash -> ReferenceJson.uint(value)
         }
       case _ => throw new IllegalArgumentException("nonce counter map required")
+    get(bindDecoded(certificates, seed, genesisBytes, snapshot, counters, protocolSha256))
+  }
+
+  /** Shared checked binding for already decoded protocol fields. The caller must bind the original
+    * protocol digest to its acquisition evidence; matching fields alone do not prove that
+    * provenance. JSON parsing retains its previous optional-previous-epoch semantics.
+    */
+  private[lab] def bindDecoded(
+      certificates: Certificate.Context,
+      seed: Certificate.State,
+      genesisBytes: Bytes,
+      snapshot: Snapshot,
+      counters: Map[Bytes, BigInt],
+      protocolSha256: Bytes
+  ): Either[String, Prepared] = checked {
+    require(certificates != null && seed != null, "nonce certificate context required")
+    require(snapshot != null && counters != null, "decoded nonce snapshot/counters required")
+    val genesis = source(genesisBytes, certificates.genesisDigest)
+    require(snapshot.lastSlot == seed.tip.slot, "nonce snapshot anchor slot mismatch")
     require(counters == seed.counters, "nonce/certificate counter snapshot mismatch")
     import ReferenceJson.{field, uint}
     val (n, d) = coefficient(field(genesis, "activeSlotsCoeff"))
