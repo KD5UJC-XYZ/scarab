@@ -50,9 +50,23 @@ def fixture():
                   "depth":end["depth"],"compactedBlocks":"0","derivedAnchorId":None},
                  dict(observed(end),scope="bounded-node-outcome",typedStop="TargetReached",
                       scopedTargetReached=True,peerResourcesFinalized=True,cleanupFailure=None,
-                      potentiallyOlderThanDisk=False,externalReceiptStale=False,peerOpens=1,peerCloses=1,reconnects=0)]
+                      potentiallyOlderThanDisk=False,externalReceiptStale=False,peerOpens=1,peerCloses=1,reconnects=0,events=len(prefixes))]
         return rows
     return phase("a", c,c,[a],[anchor]), phase("b",a,rolled,[b1,b2],r["offeredB"]), r, receipts
+
+
+def add_protocol_noop(rows, anchor):
+    initial = next(row for row in rows if row.get("record") == "node-rollback")
+    announced = {k: copy.deepcopy(v) for k,v in initial.items()
+                 if k not in ("record", "initialIntersection", "projection")}
+    announced.update(record="node-download", phase="rollback-announced", downloadCursor=copy.deepcopy(anchor),
+                     downloadIsApplied=False, payloadBytes=0)
+    extra = copy.deepcopy(initial)
+    extra["initialIntersection"] = False
+    i = rows.index(initial) + 1
+    rows[i:i] = [announced, extra]
+    rows[-1]["events"] += 1
+    return announced, extra
 
 
 class ForkAuditTests(unittest.TestCase):
@@ -61,6 +75,67 @@ class ForkAuditTests(unittest.TestCase):
         summary = audit_evidence(a,b,r)
         self.assertFalse(summary["receiptBytesVerified"])
         self.assertTrue(audit_receipts(summary,receipts)["receiptBytesVerified"])
+
+    def test_one_exact_protocol_noop_in_either_or_both_phases_keeps_every_receipt(self):
+        for phases in (("a",), ("b",), ("a", "b")):
+            a,b,r,receipts = fixture()
+            before = len(audit_evidence(a,b,r)["requiredReceipts"])
+            for name in phases: add_protocol_noop(a if name == "a" else b, r["anchor"])
+            summary = audit_evidence(a,b,r)
+            self.assertEqual(summary["protocolNoopRollbacks"], {"a":int("a" in phases), "b":int("b" in phases)})
+            self.assertEqual(summary["rollbackRecordsChecked"], 2 + len(phases))
+            self.assertEqual(len(summary["requiredReceipts"]), before + 2*len(phases))
+            self.assertTrue(audit_receipts(summary,receipts)["receiptBytesVerified"])
+
+    def test_additional_rollback_must_be_exact_acknowledged_noop_in_each_phase(self):
+        for phase in ("a", "b"):
+            for field,value in (("revision",99),("confirmedGeneration",99),("depth",1),
+                                ("stateId","f"*64),("confirmation","loaded-verified"),
+                                ("receiptPath","/different/receipt.json"),("receiptSha256","f"*64),
+                                ("initialIntersection",True),("initialIntersection",0),
+                                ("projection",{}),("projectionOmitted",False),
+                                ("scopedAppliedTip",{"hash":"f"*64,"slot":8}),
+                                ("potentiallyOlderThanDisk",True),("compactedBlocks",False)):
+                a,b,r,_ = fixture(); rows = a if phase == "a" else b
+                _,extra = add_protocol_noop(rows,r["anchor"]); extra[field] = value
+                with self.subTest(phase=phase,field=field),self.assertRaises(ValueError): audit_evidence(a,b,r)
+
+    def test_noop_announcement_cannot_be_missing_orphan_changed_unconfirmed_or_repeated(self):
+        for change in ("missing", "orphan", "second", "point", "applied", "payload", "confirmation", "receipt", "generation", "state"):
+            a,b,r,_ = fixture(); announced,extra = add_protocol_noop(b,r["anchor"])
+            if change == "missing": b.remove(announced)
+            elif change == "orphan": b.remove(extra)
+            elif change == "second": add_protocol_noop(b,r["anchor"])
+            elif change == "point": announced["downloadCursor"] = r["offeredB"][0]
+            elif change == "applied": announced["downloadIsApplied"] = True
+            elif change == "payload": announced["payloadBytes"] = 1
+            elif change == "confirmation": announced["confirmation"] = "loaded-verified"
+            elif change == "receipt": announced["receiptSha256"] = "f"*64
+            elif change == "generation": announced["confirmedGeneration"] += 1
+            else: announced["stateId"] = "f"*64
+            with self.subTest(change=change),self.assertRaises(ValueError): audit_evidence(a,b,r)
+
+    def test_noop_pair_must_precede_forward_announcement_fetch_and_publication(self):
+        for change in ("before-initial", "separated", "after-announced", "after-fetched", "after-capture", "after-applied"):
+            a,b,r,_ = fixture(); announced,extra = add_protocol_noop(b,r["anchor"])
+            if change == "before-initial":
+                b.remove(announced); b.remove(extra)
+                i = next(i for i,row in enumerate(b) if row.get("record") == "node-rollback")
+                b[i:i] = [announced,extra]
+            elif change == "separated": b.insert(b.index(extra), {"record":"unrelated"})
+            elif change in ("after-announced", "after-fetched"):
+                b.insert(b.index(announced), {"record":"node-download", "phase":change.removeprefix("after-")})
+            else:
+                b.remove(announced); b.remove(extra)
+                name = "transfer-range-block" if change == "after-capture" else "node-applied"
+                i = next(i for i,row in enumerate(b) if row.get("record") == name)
+                b[i+1:i+1] = [announced,extra]
+            with self.subTest(change=change),self.assertRaises(ValueError): audit_evidence(a,b,r)
+
+    def test_noop_event_budget_is_bounded_and_accounts_for_extra_protocol_event(self):
+        for events in (2, 65, True, "3"):
+            a,b,r,_ = fixture(); add_protocol_noop(b,r["anchor"]); b[-1]["events"] = events
+            with self.subTest(events=events),self.assertRaises(ValueError): audit_evidence(a,b,r)
 
     def test_missing_nonempty_rollback_or_acknowledgement(self):
         for change in ("remove", "noop", "volatile", "projection", "generation", "omitted", "omittedFalse"):
@@ -111,7 +186,7 @@ class ForkAuditTests(unittest.TestCase):
 
     def test_target_cleanup_failure_and_capacity_override_reject(self):
         for field,value in (("typedStop","TimeBudget"),("peerResourcesFinalized",False),
-                            ("cleanupFailure","failed"),("potentiallyOlderThanDisk",True)):
+                            ("cleanupFailure","failed"),("potentiallyOlderThanDisk",True),("compactedBlocks",False)):
             a,b,r,_ = fixture(); b[-1][field] = value
             with self.subTest(field=field),self.assertRaises(ValueError): audit_evidence(a,b,r)
         a,b,r,_ = fixture(); a[0]["rollbackCapacity"] = 4

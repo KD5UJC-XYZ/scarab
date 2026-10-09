@@ -40,6 +40,12 @@ def decimal(v):
     return int(v)
 
 
+def exact(left, right):
+    # JSON's booleans and numbers are distinct even though Python equates False/0.
+    return json.dumps(left, sort_keys=True, separators=(",", ":"), allow_nan=False) == json.dumps(
+        right, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
 def one(rows, name, scope=False):
     selected = [x for x in rows if x.get("scope" if scope else "record") == name]
     require(len(selected) == 1, "unique " + name + " required")
@@ -99,7 +105,11 @@ def audit_evidence(a_records, b_records, checked_report):
         observed(bootstrap, initial, initial_confirmation)
         offered = one(rows, "node-intersection-offered")
         selected = one(rows, "node-intersection-selected")
-        rollback = one(rows, "node-rollback")
+        rollbacks = [row for row in rows if row.get("record") == "node-rollback"]
+        # This acceptance covers one handshake rollback notification after the selected
+        # intersection, not arbitrary rollback streams or a second fork transition.
+        require(1 <= len(rollbacks) <= 2, "one initial rollback and at most one protocol no-op")
+        rollback = rollbacks[0]
         require(offered.get("offeredPoints") == candidates and selected.get("selectedPoint") == r["anchor"]
                 and selected.get("offeredMatch") is True, "actual offered candidates and selected C")
         require(all(row.get("acquisitionOnly") is True and row.get("appliedClaim") is False
@@ -111,6 +121,34 @@ def audit_evidence(a_records, b_records, checked_report):
         observed(rollback, rollback_state, "acknowledged")
         require("projectionOmitted" not in rollback and rollback.get("projection") == rollback_state["projection"],
                 "post-ack complete rollback projection without omission marker")
+        announced_rollbacks = [row for row in rows if row.get("record") == "node-download"
+                               and row.get("phase") == "rollback-announced"]
+        extras = rollbacks[1:]
+        require(len(announced_rollbacks) == len(extras), "all additional rollbacks require exactly one announcement")
+        activity = [i for i, row in enumerate(rows)
+                    if row.get("record") in ("transfer-range-block", "node-applied")
+                    or (row.get("record") == "node-download" and row.get("phase") in ("announced", "fetched"))]
+        require(activity, "branch acquisition required")
+        first_forward = min(activity)
+        require(rows.index(rollback) < first_forward, "initial checked rollback before forward acquisition")
+        for announced, extra in zip(announced_rollbacks, extras):
+            require(extra.get("initialIntersection") is False,
+                    "additional rollback must not claim initial intersection")
+            require(exact({k: v for k, v in extra.items() if k != "initialIntersection"},
+                          {k: v for k, v in rollback.items() if k != "initialIntersection"}),
+                    "additional rollback must preserve complete acknowledged row and receipt")
+            require(rows.index(rollback) < rows.index(announced)
+                    and rows.index(announced) + 1 == rows.index(extra) < first_forward,
+                    "paired protocol no-op before any forward announcement or fetch")
+            require(announced.get("downloadCursor") == r["anchor"]
+                    and announced.get("downloadIsApplied") is False
+                    and integer(announced.get("payloadBytes")) == 0,
+                    "protocol no-op must announce C without applied claim or payload")
+            observed(announced, rollback_state, "acknowledged")
+            observed(extra, rollback_state, "acknowledged")
+            transport_fields = {"record", "phase", "downloadCursor", "downloadIsApplied", "payloadBytes"}
+            require(all(key in rollback and exact(value, rollback[key]) for key, value in announced.items()
+                        if key not in transport_fields), "announcement must preserve current acknowledged state")
         if label == "b":
             loaded = one(rows, "node-loaded")
             observed(loaded, r["aState"], "loaded-verified")
@@ -140,12 +178,16 @@ def audit_evidence(a_records, b_records, checked_report):
                 and terminal.get("reconnects") == 0, "clean exact target and peer finalization")
         require(rows.index(applied[-1]) < rows.index(state_row) < rows.index(terminal)
                 and rows[-1] is terminal, "complete finalization ordering")
-        return rollback
+        require(len(prefixes) + len(extras) <= integer(terminal.get("events")) <= 64,
+                "bounded event count covers every forward and protocol no-op")
+        return len(extras)
 
-    phase(a_records, "a", r["anchorState"], r["aPrefixes"], r["aState"], "acknowledged", [r["anchor"]])
-    phase(b_records, "b", r["aState"], r["bPrefixes"], r["bState"], "loaded-verified", r["offeredB"])
+    a_noops = phase(a_records, "a", r["anchorState"], r["aPrefixes"], r["aState"], "acknowledged", [r["anchor"]])
+    b_noops = phase(b_records, "b", r["aState"], r["bPrefixes"], r["bState"], "loaded-verified", r["offeredB"])
     return {"scope": "fork-trace-audit", "passed": True, "receiptBytesVerified": False,
             "nA": a, "nB": b, "requiredReceipts": required,
+            "protocolNoopRollbacks": {"a": a_noops, "b": b_noops},
+            "rollbackRecordsChecked": 2 + a_noops + b_noops,
             "followingPeerSelectedBranch": True, "independentChainSelection": False}
 
 
