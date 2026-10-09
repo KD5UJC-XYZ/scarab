@@ -320,10 +320,10 @@ object CoherentSequence:
   }
 
   final class Runtime[F[_]] private[CoherentSequence] (
-      context: SequenceInput.Context,
+      private[CoherentSequence] val context: SequenceInput.Context,
       val maxBlocks: Int,
-      owner: AnyRef,
-      cell: Ref[F, Cell]
+      private[CoherentSequence] val owner: AnyRef,
+      private[CoherentSequence] val cell: Ref[F, Cell]
   )(using F: Sync[F]):
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
     def prepare(block: SequenceInput.Block): F[Result[Candidate]] =
@@ -341,6 +341,252 @@ object CoherentSequence:
           case Right((next, result)) => (next, Right(result))
           case Left(error)           => (current, Left(error))
     }
+
+  enum DurablePhase:
+    case Publishing, Recorded, BeforeDisk, AfterDisk, BeforeMemory, AfterMemory,
+      BeforeAcknowledgement, AcknowledgementPrepared
+  final case class PendingTokens(
+      previous: Option[ValidatedCheckpoint.Token],
+      next: ValidatedCheckpoint.Token
+  )
+  final case class DurableSnapshot(snapshot: Snapshot, token: ValidatedCheckpoint.Token)
+  final case class Acknowledged[A](value: A, token: ValidatedCheckpoint.Token)
+  final class DurableFailure(message: String) extends RuntimeException(message)
+  private enum Health:
+    case Active, Publishing, Poisoned, Closed
+  private final case class Session(health: Health, token: Option[ValidatedCheckpoint.Token])
+
+  /** The facade is the only mutation interface exported by durable factories. */
+  final class DurableRuntime[F[_]] private[CoherentSequence] (
+      runtime: Runtime[F],
+      disk: NioValidatedCheckpointStore.Disk,
+      session: Ref[F, Session],
+      gate: cats.effect.std.Semaphore[F],
+      record: PendingTokens => F[Unit],
+      recorderDeadline: scala.concurrent.duration.FiniteDuration,
+      observe: DurablePhase => F[Unit]
+  )(using F: Async[F]):
+    import cats.effect.syntax.all.*
+    private def active: F[Session] = session.get.flatMap { current =>
+      F.raiseUnless(current.health == Health.Active)(
+        new DurableFailure("durable runtime closed or poisoned")
+      ).as(current)
+    }
+    private def poison: F[Unit] = session.update(_.copy(health = Health.Poisoned))
+    private def encoded(
+        state: State,
+        id: Bytes,
+        generation: Long
+    ): F[(Bytes, ValidatedCheckpoint.Token)] =
+      F.fromEither(
+        ValidatedCheckpoint
+          .encode(
+            runtime.context,
+            CoherentSequence.snapshot(runtime.owner, state),
+            id,
+            generation,
+            runtime.maxBlocks
+          )
+          .left
+          .map(new DurableFailure(_))
+      )
+    private def runRecorder(tokens: PendingTokens): F[Unit] = F.uncancelable { poll =>
+      F.start(F.defer(record(tokens))).flatMap { fiber =>
+        // Never wait for an uncooperative recorder's cancellation while holding the owner lock.
+        poll(fiber.join.timeout(recorderDeadline))
+          .guaranteeCase {
+            case cats.effect.Outcome.Succeeded(_) => F.unit
+            case _                                => F.start(fiber.cancel).void
+          }
+          .flatMap {
+            case cats.effect.Outcome.Succeeded(result) => result
+            case cats.effect.Outcome.Errored(error)    => F.raiseError(error)
+            case cats.effect.Outcome.Canceled() =>
+              F.raiseError(new DurableFailure("recorder canceled"))
+          }
+      }
+    }
+    private def install[A](
+        previous: Option[ValidatedCheckpoint.Token],
+        next: Cell,
+        image: (Bytes, ValidatedCheckpoint.Token),
+        result: A
+    ): F[Acknowledged[A]] =
+      val (raw, token) = image
+      F.uncancelable { poll =>
+        val publication =
+          session.update(_.copy(health = Health.Publishing)) *>
+            observe(DurablePhase.Publishing) *>
+            // The recorder runs cancelably with a deadline BEFORE any filesystem mutation.
+            poll(runRecorder(PendingTokens(previous, token))) *>
+            observe(DurablePhase.Recorded) *> observe(DurablePhase.BeforeDisk) *>
+            F.blocking(disk.install(previous, raw, token)) *> observe(DurablePhase.AfterDisk) *>
+            observe(DurablePhase.BeforeMemory) *> runtime.cell.set(next) *>
+            observe(DurablePhase.AfterMemory) *> observe(DurablePhase.BeforeAcknowledgement) *>
+            F.delay(Acknowledged(result, token)).flatMap { acknowledgement =>
+              observe(DurablePhase.AcknowledgementPrepared) *>
+                session.set(Session(Health.Active, Some(token))).as(acknowledgement)
+            }
+        publication.onCancel(poison).handleErrorWith(error => poison *> F.raiseError(error))
+      }
+    private[CoherentSequence] def initialize: F[Unit] = gate.permit.use { _ =>
+      for
+        current <- runtime.cell.get
+        id <- F.delay {
+          val bytes = new Array[Byte](32)
+          new java.security.SecureRandom().nextBytes(bytes)
+          Bytes.fromArray(bytes)
+        }
+        image <- encoded(current.state, id, 0)
+        _ <- install(None, current, image, ())
+      yield ()
+    }
+    def snapshot: F[DurableSnapshot] = gate.permit.use { _ =>
+      active.flatMap(s => runtime.snapshot.map(value => DurableSnapshot(value, s.token.get)))
+    }
+    def prepare(block: SequenceInput.Block): F[Result[Candidate]] = gate.permit.use { _ =>
+      active *> runtime.prepare(block)
+    }
+    private def mutate[A](
+        expected: ValidatedCheckpoint.Token
+    )(transition: Cell => Result[(Cell, A)]): F[Result[Acknowledged[A]]] = gate.permit.use { _ =>
+      active.flatMap { status =>
+        if status.token != Some(expected) then
+          F.pure(Left(Failure.Rejected("publication", "stale expected token")))
+        else
+          runtime.cell.get.flatMap { before =>
+            F.delay(protect(transition(before))).flatMap {
+              case Left(error) => F.pure(Left(error))
+              case Right((next, result)) if next eq before =>
+                F.pure(Right(Acknowledged(result, expected)))
+              case Right((next, result)) =>
+                if expected.generation == Long.MaxValue then
+                  F.pure(Left(Failure.Rejected("publication", "generation exhausted")))
+                else
+                  encoded(next.state, expected.storeId, expected.generation + 1)
+                    .flatMap(image => install(Some(expected), next, image, result))
+                    .map(Right(_))
+            }
+          }
+      }
+    }
+    def publish(
+        candidate: Candidate,
+        expected: ValidatedCheckpoint.Token
+    ): F[Result[Acknowledged[Applied]]] =
+      mutate(expected)(before =>
+        CoherentSequence.publish(runtime.owner, runtime.maxBlocks, before, candidate)
+      )
+    def rollbackTo(
+        fence: Fence,
+        target: ChainSync.Point,
+        expected: ValidatedCheckpoint.Token
+    ): F[Result[Acknowledged[Snapshot]]] =
+      mutate(expected)(before => CoherentSequence.rollback(runtime.owner, before, fence, target))
+
+    /** Close shares the mutation gate; FileLock is released only after publication finishes. */
+    def close: F[Unit] = F.uncancelable { _ =>
+      gate.permit.use { _ =>
+        session.update(_.copy(health = Health.Closed)) *> F.blocking(disk.close())
+      }
+    }
+
+  private[lab] def durableResource[F[_]: Async](
+      root: java.nio.file.Path,
+      context: Option[SequenceInput.Context],
+      expectedContext: Bytes,
+      expected: Option[ValidatedCheckpoint.Token],
+      capacity: Int,
+      recoveryDeadline: scala.concurrent.duration.FiniteDuration,
+      recorderDeadline: scala.concurrent.duration.FiniteDuration,
+      record: PendingTokens => F[Unit],
+      faults: NioValidatedCheckpointStore.Faults,
+      observe: DurablePhase => F[Unit]
+  ): cats.effect.Resource[F, DurableRuntime[F]] =
+    val F = Async[F]
+    def fromResult[A](value: Result[A]): F[A] =
+      F.fromEither(value.left.map(e => new DurableFailure(e.toString)))
+    val mode =
+      if expected.isEmpty then NioValidatedCheckpointStore.Mode.Create
+      else NioValidatedCheckpointStore.Mode.Resume
+    cats.effect.Resource.eval(
+      F.raiseUnless(
+        recorderDeadline.length > 0 && recorderDeadline <= scala.concurrent.duration
+          .Duration(30, "seconds") && recoveryDeadline.length > 0
+      )(new DurableFailure("positive recorder/recovery deadline required"))
+    ) *>
+      NioValidatedCheckpointStore.resource[F](root, mode, faults).flatMap { disk =>
+        val build = for
+          runtime <- expected match
+            case None =>
+              context match
+                case Some(c) if c.id == expectedContext =>
+                  create[F](c, capacity).flatMap(fromResult)
+                case _ => F.raiseError[Runtime[F]](new DurableFailure("create context required"))
+            case Some(token) =>
+              F.blocking(disk.read(expectedContext, token))
+                .flatMap { raw =>
+                  ValidatedCheckpoint
+                    .recover[F](raw, expectedContext, token, recoveryDeadline)
+                    .flatMap(result => F.fromEither(result.left.map(new DurableFailure(_))))
+                }
+                .flatTap(_ => F.blocking(disk.discardStagingAfterRecovery()))
+          status <- Ref.of[F, Session](Session(Health.Active, expected))
+          gate <- cats.effect.std.Semaphore[F](1)
+          facade = new DurableRuntime(
+            runtime,
+            disk,
+            status,
+            gate,
+            record,
+            recorderDeadline,
+            observe
+          )
+          _ <- if expected.isEmpty then facade.initialize else F.unit
+        yield facade
+        cats.effect.Resource.makeFull[F, DurableRuntime[F]](poll => poll(build))(_.close)
+      }
+
+  def durableCreate[F[_]: Async](
+      root: java.nio.file.Path,
+      context: SequenceInput.Context,
+      capacity: Int,
+      recorderDeadline: scala.concurrent.duration.FiniteDuration,
+      record: PendingTokens => F[Unit]
+  ): cats.effect.Resource[F, DurableRuntime[F]] =
+    durableResource(
+      root,
+      Some(context),
+      context.id,
+      None,
+      capacity,
+      recorderDeadline,
+      recorderDeadline,
+      record,
+      NioValidatedCheckpointStore.NoFaults,
+      _ => Async[F].unit
+    )
+
+  def durableResume[F[_]: Async](
+      root: java.nio.file.Path,
+      expectedContext: Bytes,
+      expected: ValidatedCheckpoint.Token,
+      recoveryDeadline: scala.concurrent.duration.FiniteDuration,
+      recorderDeadline: scala.concurrent.duration.FiniteDuration,
+      record: PendingTokens => F[Unit]
+  ): cats.effect.Resource[F, DurableRuntime[F]] =
+    durableResource(
+      root,
+      None,
+      expectedContext,
+      Some(expected),
+      MaxBlocks,
+      recoveryDeadline,
+      recorderDeadline,
+      record,
+      NioValidatedCheckpointStore.NoFaults,
+      _ => Async[F].unit
+    )
 
   /** Internal full replay. No partially replayed runtime or foreign capabilities escape. */
   private[lab] def recover[F[_]: Async](
