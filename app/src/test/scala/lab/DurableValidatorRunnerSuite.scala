@@ -66,7 +66,7 @@ class DurableValidatorRunnerSuite extends munit.FunSuite:
         }
     }
 
-  test("sustained durable and invalid policies reject before backend or peer acquisition") {
+  test("sustained V2 requires backend inspection; invalid policies reject before acquisition") {
     Ref
       .of[IO, Int](0)
       .flatMap { touched =>
@@ -87,7 +87,7 @@ class DurableValidatorRunnerSuite extends munit.FunSuite:
             .attempt
           n <- touched.get
         yield
-          assert(a.isLeft); assert(b.isLeft); assert(c.isLeft); assertEquals(n, 0)
+          assert(a.isLeft); assert(b.isLeft); assert(c.isLeft); assertEquals(n, 1)
       }
       .unsafeToFuture()
   }

@@ -161,7 +161,7 @@ class NodeCommandSuite extends munit.FunSuite:
     assert(upper.policy.valid)
     assertEquals(upper.policy.target, 256)
   }
-  test("unintegrated durable modes and incomplete sustained configurations fail closed") {
+  test("incomplete durable and sustained configurations fail closed") {
     val sustained = List("--mode", "sustained-volatile", "--blocks", "12")
     Vector(
       List("--mode", "sustained-durable"),
@@ -194,7 +194,7 @@ class NodeCommandSuite extends munit.FunSuite:
         .swap
         .toOption
         .get
-        .contains("checkpoint v1")
+        .contains("explicit --rollback-capacity")
     )
     assert(
       NodeCommand.Config

@@ -7,11 +7,11 @@ locked checkpoint writer, and one private coherent runtime. Its package-private
 prepared candidates are opaque and tied to that session. No raw runtime,
 controller, accepted authority, disk handle or proposed cell escapes.
 
-This packet does **not** wire `ValidatorTransitions`, either runner, the ordinary
-node or the CLI. Their existing v1 confirmation and telemetry paths remain
-unchanged. The combined session is the tested backend for the next narrow
-integration patch, which must introduce distinct v2 full-claim confirmations.
-It must not squeeze a v2 token into the existing v1 token path.
+The ordinary `sustained-durable` mode now connects this backend through
+`ValidatorTransitions` and `DurableValidatorRunner`, with distinct v2 full-claim
+confirmations and explicit create/resume configuration. Existing v1 confirmation
+paths remain unchanged; v2 claims never enter the v1 token path. See
+[private-node.md](private-node.md) for configuration and diagnostic receipts.
 
 ## Fixed authority and launch policy
 
@@ -86,7 +86,7 @@ reply. Pure rejected transitions leave the current view unchanged.
 Compaction uses this entire protocol and advances checkpoint generation even
 when ledger revision is unchanged. True no-ops retain the same view and generation.
 Rollback remains limited to the retained checked window, not a finality claim.
-The future runner adapter must fetch/parse, durably make room, then prepare the
+The sustained runner fetches/parses, durably makes room, then prepares the
 next block; compaction and that block are separate durable transactions.
 
 Mutation persistence is masked until a known outcome. Cancellation may suppress
@@ -97,7 +97,7 @@ after physical release. A poisoned journal may retain an unresolved lease; it
 does not prevent physically closing the writer or justify a fabricated receipt.
 Blocked filesystem calls may delay cancellation/close rather than losing ownership.
 
-## Validation and remaining integration
+## Validation and integration limits
 
 Focused tests cover version/policy rejection without retagging, missing initial
 locks, explicit bootstrap checks, publish/rollback/compaction across repeated
@@ -137,9 +137,8 @@ existing bounded timeout; production entry points supply a no-op observer.
 The acceptance run used the same offline Docker limits and private cache policy
 as the baseline. Independent read-only review found no blocking issue.
 
-Tests use existing signed private capture evidence mounted read-only. No live
-node, network fetch, process spawning or migration execution runs. The only
-remaining product integration is the runner/backend confirmation adapter and
-later explicit ordinary-node configuration; this packet changes no telemetry or
-CLI behavior. Test hooks are trusted instrumentation, not an external
-supervisor interface.
+Tests use existing signed private capture evidence mounted read-only. The
+ordinary-node wiring passed 144 focused Scala tests, including 23 new adapter,
+runner and CLI tests. This is offline validation: sustained-durable live
+acceptance, process-kill and hardware power-loss experiments have not run.
+Test hooks are trusted instrumentation, not an external supervisor interface.

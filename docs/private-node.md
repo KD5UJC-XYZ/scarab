@@ -56,9 +56,9 @@ advances a checked in-memory anchor before the retained window fills. Status
 reports total depth, retained blocks, compacted blocks and derived-anchor identity
 separately. It remains same-epoch and bounded by cumulative event/byte/time budgets.
 
-`--mode sustained-durable` is rejected explicitly: checkpoint v1 cannot store a
-derived anchor, including an empty suffix. No unsupported durable combination
-falls back to volatile execution. Unknown or duplicate flags still fail before I/O.
+Checkpoint v1 cannot store a derived anchor. Sustained durable execution uses the
+separate v2 mode described below; it never migrates or falls back to a v1 or volatile
+store. Unknown or duplicate flags still fail before I/O.
 
 Explicit `--audit true` records every acquired original header/block pair and a
 complete token-free final state projection. It is off by default. Audit output
@@ -69,7 +69,7 @@ them to the committed state. Node execution never reads the post-oracle.
 See [the 12-block operational acceptance plan](private-node-acceptance.md) for
 the exact planned configuration, resource limits and comparison requirements.
 The reviewed twelve-block same-epoch case passed; its exact scope and hashes are
-recorded in that acceptance document. Sustained durable mode remains unsupported.
+recorded in that acceptance document. The sustained durable CLI below is a separate milestone and does not inherit that live acceptance claim.
 
 
 ## Bounded durable create and resume
@@ -156,4 +156,64 @@ For the planned bounded fork acceptance, retain `node-loaded` proving restored A
 the actual offered/selected pair proving C was selected, and the acknowledged
 `node-rollback` projection proving checked rollback to C before B adoption. This
 telemetry alone is not live-fork acceptance, canonical-chain selection, or full
-ledger/consensus validation. Capacity remains eight; v2 primitives remain unwired.
+ledger/consensus validation. This bounded v1 acceptance retains capacity eight; the v2 mode below is separate.
+
+
+## Sustained durable v2 create and resume
+
+`--mode sustained-durable` uses the reviewed combined local v2 journal/checkpoint
+owner in one trusted process. Supply explicit `--blocks` (9..256),
+`--rollback-capacity` (1..8), `--store-action create|resume`, `--store`, `--journal`,
+`--receipts`, `--store-id` and `--expected-context`, in addition to the normal
+profile/bootstrap/port flags. The three directories must be absolute, normalized,
+pairwise separate and non-nested. Store ID and context are independently supplied
+lowercase 32-byte hex values. The binding uses the exact reviewed profile, v2
+format/authority and `in-process-resource-v1` launch policy. Cumulative time,
+events and bytes retain the existing node bounds.
+
+Create additionally requires `--seed-capture`, `--seed-sha256`, `--compact-slot`
+and `--compact-hash`. The capture is an external bounded regular file containing
+only 1..8 `transfer-range-block` original records, no more than the requested
+capacity. It is read through its exact independent SHA-256; the compaction point
+must belong to that supplied nonempty prefix. The combined owner replays the
+complete prefix through the existing validation pipeline before publishing a
+derived checkpoint. This is not admission of an arbitrary downloaded checkpoint.
+Seed files cannot reside inside the journal, checkpoint or receipt directories.
+
+Resume uses only the exact separately persisted controller journal binding and
+its full claim. Seed flags and v1 `--resume-receipt`/`--resume-sha256` are forbidden.
+There is no bootstrap fallback, checkpoint scanning for authority, older-generation
+selection or v1 migration. Keep the journal independently persisted from the
+checkpoint data. Loss of either domain is not repaired by an exported receipt.
+
+`node-bootstrap.suppliedAnchor` always names the original source-bound context
+anchor. `retainedAnchor` names the current window anchor; v2 compaction makes them
+different. Seed file, pin, record-parsing and compact-point membership checks
+reject before checkpoint or journal acquisition. Semantic seed replay occurs
+inside the combined backend after its owned resources are acquired; those
+failures are not classified as pre-acquisition seed rejections.
+
+V2 state rows include `storageVersion: "v2"`, the actual `trustedLocalPrefix`
+qualification, `fullClaim` and `storageBinding`. The full claim includes every
+token, format, profile, authority, anchor-state ID, final-state ID, compacted count
+and revision field. The derived-anchor provenance digest and anchor-state ID are
+different commitments. Status does not make either into new resume authority.
+`v2-loaded-verified` reports the journal-selected full claim and `node-loaded`
+projection before any peer event; it has no newly manufactured acknowledged file.
+No-op rollback preserves that classification. A successful publication or anchor
+advance becomes `v2-acknowledged`; anchor advancement can change generation and
+claim while leaving ledger revision unchanged.
+
+Acknowledged v2 exports use separate immutable `node-v2-acknowledged-v1` files,
+with full claim, exact binding, capacity and `diagnosticOnly: true`. They are
+forced to disk before reporting their path/SHA and never select a resumed state.
+The controller journal independently authorizes that state. Export failure stops
+with the actual carried acknowledgment and `externalReceiptStale: true`; storage
+failure uses only cached confirmation with its possibly-older-than-disk qualifier.
+Audit-enabled v2 rollback uses the same bounded full projection and omission rules
+as v1. Cleanup errors remain separate; no poisoned backend is queried for output.
+
+This CLI wiring has no live acceptance, power-loss, malicious-writer, cross-epoch,
+full-ledger or full-consensus claim. Its trusted-process model excludes rollback
+of both independent storage domains. Keep all journals, checkpoints, seed captures
+and diagnostic receipts outside Git.

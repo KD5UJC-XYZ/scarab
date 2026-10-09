@@ -29,8 +29,9 @@ adapter does not claim to detect repeated IDs across arbitrary historic starts.
 
 The controller offers `submit`, `submitBytes`, and a diagnostic `snapshot`.
 Results contain the durable journal, reducer reply, and external effects that a
-future trusted adapter must execute. A returned snapshot is data, not a runtime
-or authority capability. This slice provides no `ControllerAuthority` instance.
+trusted `CombinedLocalV2` adapter executes within one process. A returned
+snapshot is data, not a runtime or authority capability. The journal alone
+provides no `ControllerAuthority` instance.
 
 ## Bounded journal and message codecs
 

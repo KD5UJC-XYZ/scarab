@@ -7,7 +7,7 @@ import cats.effect.syntax.all.*
 import lab.cbor.{Bytes, Cbor, Value}
 import lab.network.ChainSync
 
-/** Bounded durable runner; only cached confirmations are used for terminal reporting. */
+/** Durable runner; only cached confirmations are used for terminal reporting. */
 private[lab] object DurableValidatorRunner:
   import BoundedChainFollower.{Event, Original, Peer}
   import BoundedValidatorRunner.{Policy, Stop as RunnerStop, Unavailable}
@@ -103,6 +103,15 @@ private[lab] object DurableValidatorRunner:
             case None =>
               ReferenceCaptureCommand.header(envelope).leftMap(RunnerStop.Rejected("header", _))
         }
+    private def makeRoom: F[Unit] = view.flatMap { current =>
+      if policy.advanceWindow && current.state.acquisition.size == backend.capacity then
+        // This is a separate acknowledged durable transition, not block publication or finality.
+        // A later preparation rejection leaves this committed compaction visible.
+        val oldest = current.state.acquisition.candidates.dropRight(1).last
+        mutation(backend.advanceAnchor(current, oldest)).flatMap(checked).void *>
+          between("after-anchor-advance")
+      else F.unit
+    }
     private def forward(p: Peer[F], envelope: Bytes): F[Unit] =
       for
         _ <- charge(envelope.size, 65535)
@@ -138,6 +147,7 @@ private[lab] object DurableValidatorRunner:
             )
           )
         _ <- F.cede *> between("before-prepare")
+        _ <- makeRoom
         before <- view
         candidate <- operation(backend.prepare(before, block)).flatMap(checked)
         _ <- F.cede *> between("before-publish")
@@ -243,8 +253,14 @@ private[lab] object DurableValidatorRunner:
     Resource
       .eval(
         F.raiseUnless(
-          policy.valid && !policy.advanceWindow && policy.target <= policy.rollbackCapacity
-        )(new IllegalArgumentException("bounded durable policy required; compaction unsupported"))
+          policy.valid &&
+            (if policy.advanceWindow then policy.target >= 9
+             else policy.target <= policy.rollbackCapacity)
+        )(
+          new IllegalArgumentException(
+            "bounded durable or sustained V2 target 9..256 policy required"
+          )
+        )
       )
       .flatMap { _ =>
         backend.flatMap { owned =>
@@ -253,8 +269,13 @@ private[lab] object DurableValidatorRunner:
               initial <- owned.snapshot
               _ <- F.raiseUnless(
                 owned.capacity == policy.rollbackCapacity && initial.state.contextId == context.id &&
-                  initial.confirmation.tokenOption.nonEmpty && initial.state.derivedAnchorId.isEmpty &&
-                  initial.state.compactedBlocks == 0 && initial.state.depth <= policy.rollbackCapacity
+                  (if policy.advanceWindow then
+                     owned.supportsCompaction && initial.confirmation.fullClaimOption.nonEmpty &&
+                     initial.state.derivedAnchorId.nonEmpty && initial.state.compactedBlocks > 0 &&
+                     initial.state.acquisition.size <= policy.rollbackCapacity
+                   else
+                     initial.confirmation.tokenOption.nonEmpty && initial.state.derivedAnchorId.isEmpty &&
+                     initial.state.compactedBlocks == 0 && initial.state.depth <= policy.rollbackCapacity)
               )(new IllegalArgumentException("durable backend context/capacity/profile mismatch"))
               started <- Ref.of[F, Boolean](false)
               events <- Ref.of[F, Int](0)

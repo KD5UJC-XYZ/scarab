@@ -15,6 +15,13 @@ import scala.util.control.NonFatal
 object NodeCommand:
   val Profile = CoherentSequence.ProfileId
   val NetworkMagic = 1082026L
+  final case class V2Settings(
+      journal: Path,
+      storeId: Bytes,
+      seedCapture: Option[Path],
+      seedSha256: Option[Bytes],
+      compactThrough: Option[ChainSync.Point]
+  )
   final class Config private[NodeCommand] (
       val profile: String,
       val bootstrap: Path,
@@ -32,15 +39,17 @@ object NodeCommand:
       val receipts: Option[Path],
       val expectedContext: Option[Bytes],
       val resumeReceipt: Option[Path],
-      val resumeSha256: Option[Bytes]
+      val resumeSha256: Option[Bytes],
+      val v2: Option[V2Settings]
   ):
+    def durable: Boolean = mode == "bounded-durable" || mode == "sustained-durable"
     def policy: BoundedValidatorRunner.Policy = BoundedValidatorRunner.Policy(
       target = blocks,
       maxEvents = events,
       reconnects = reconnects,
       maxBytes = bytes,
       duration = seconds.seconds,
-      advanceWindow = mode == "sustained-volatile",
+      advanceWindow = mode == "sustained-volatile" || mode == "sustained-durable",
       rollbackCapacity = rollbackCapacity
     )
   object Config:
@@ -61,14 +70,20 @@ object NodeCommand:
       "--receipts",
       "--expected-context",
       "--resume-receipt",
-      "--resume-sha256"
+      "--resume-sha256",
+      "--journal",
+      "--store-id",
+      "--seed-capture",
+      "--seed-sha256",
+      "--compact-slot",
+      "--compact-hash"
     )
 
     /** Entire grammar and all bounds are checked before any filesystem or socket operation. */
     def parse(args: List[String]): Either[String, Config] =
       try
         require(
-          args != null && args.nonEmpty && args.size <= 34 && args.size % 2 == 0,
+          args != null && args.nonEmpty && args.size <= 46 && args.size % 2 == 0,
           "expected flag/value pairs"
         )
         require(
@@ -105,18 +120,14 @@ object NodeCommand:
               !fields.contains("--rollback-capacity"),
               "--rollback-capacity requires sustained-volatile"
             )
-          case "sustained-volatile" =>
+          case "sustained-volatile" | "sustained-durable" =>
             require(
               fields.contains("--rollback-capacity"),
-              "sustained-volatile requires explicit --rollback-capacity 1..8"
+              "sustained mode requires explicit --rollback-capacity 1..8"
             )
             require(
               fields.contains("--blocks") && integer("--blocks", "0") > 8,
-              "sustained-volatile requires explicit --blocks 9..256"
-            )
-          case "sustained-durable" =>
-            throw new IllegalArgumentException(
-              "unsupported sustained-durable combination: checkpoint v1 cannot encode derived anchors"
+              "sustained mode requires explicit --blocks 9..256"
             )
           case "bounded-durable" =>
             require(
@@ -140,7 +151,7 @@ object NodeCommand:
           val value = fields(name)
           require(value.matches("[0-9a-f]{64}"), "canonical 32-byte hash required: " + name)
           Bytes.fromHex(value).toOption.get
-        val storage = if mode != "bounded-durable" then
+        val storage = if mode != "bounded-durable" && mode != "sustained-durable" then
           require(!fields.keySet.exists(durableFields), "storage flags require bounded-durable")
           (None, None, None, None, None, None)
         else
@@ -152,7 +163,13 @@ object NodeCommand:
           )
           val action = fields("--store-action")
           require(Set("create", "resume")(action), "store action must be create or resume")
-          val input = if action == "resume" then
+          val input = if mode == "sustained-durable" then
+            require(
+              !fields.contains("--resume-receipt") && !fields.contains("--resume-sha256"),
+              "v2 journal is authority; v1 receipt flags forbidden"
+            )
+            (None, None)
+          else if action == "resume" then
             require(
               fields.contains("--resume-receipt") && fields.contains("--resume-sha256"),
               "resume requires explicit receipt path and SHA256"
@@ -176,6 +193,46 @@ object NodeCommand:
             input._1,
             input._2
           )
+        val v2Fields = Set(
+          "--journal",
+          "--store-id",
+          "--seed-capture",
+          "--seed-sha256",
+          "--compact-slot",
+          "--compact-hash"
+        )
+        val v2 = if mode != "sustained-durable" then
+          require(!fields.keySet.exists(v2Fields), "v2 flags require sustained-durable")
+          None
+        else
+          require(
+            Set("--journal", "--store-id").subsetOf(fields.keySet),
+            "v2 journal and independent store-id required"
+          )
+          val seedFlags = Set("--seed-capture", "--seed-sha256", "--compact-slot", "--compact-hash")
+          val seed = if storage._1.contains("create") then
+            require(
+              seedFlags.subsetOf(fields.keySet),
+              "v2 create requires pinned nonempty seed capture and explicit compact point"
+            )
+            val slotText = fields("--compact-slot")
+            require(slotText.matches("0|[1-9][0-9]{0,19}"), "canonical compact slot required")
+            val slot = ChainSync.UInt64
+              .from(BigInt(slotText))
+              .fold(e => throw new IllegalArgumentException(e), identity)
+            (
+              Some(Path.of(fields("--seed-capture"))),
+              Some(hash("--seed-sha256")),
+              Some(ChainSync.Point.Block(slot, hash("--compact-hash")))
+            )
+          else
+            require(!fields.keySet.exists(seedFlags), "v2 resume forbids seed fallback")
+            (None, None, None)
+          val journal = Path.of(fields("--journal"))
+          NodeV2Receipts
+            .validatePaths(storage._2.get, journal, storage._3.get, seed._1)
+            .fold(e => throw new IllegalArgumentException(e), identity)
+          Some(V2Settings(journal, hash("--store-id"), seed._1, seed._2, seed._3))
         val port = integer("--port", "0")
         require(port >= 1 && port <= 65535, "port range 1..65535")
         val config = new Config(
@@ -195,7 +252,8 @@ object NodeCommand:
           storage._3,
           storage._4,
           storage._5,
-          storage._6
+          storage._6,
+          v2
         )
         require(
           config.policy.valid,
@@ -206,13 +264,15 @@ object NodeCommand:
         case NonFatal(e) => Left(Option(e.getMessage).getOrElse("invalid configuration").take(1024))
 
   enum Confirmation:
-    case Volatile, LoadedVerified, Acknowledged
+    case Volatile, LoadedVerified, Acknowledged, V2LoadedVerified, V2Acknowledged
   final case class ReceiptReference(path: String, sha256: String)
   final case class EngineView(
       state: CoherentSequence.State,
       confirmation: Confirmation = Confirmation.Volatile,
       confirmedGeneration: Option[Long] = None,
-      receipt: Option[ReceiptReference] = None
+      receipt: Option[ReceiptReference] = None,
+      fullClaim: Option[LocalDerivedCheckpoint.Claim] = None,
+      binding: Option[ControllerJournalCodec.Binding] = None
   )
   enum Ending:
     case Completed(reason: BoundedValidatorRunner.Stop)
@@ -296,7 +356,8 @@ object NodeCommand:
       context: SequenceInput.Context,
       acknowledge: Option[ValidatedCheckpoint.Token => IO[NodeDurableReceipts.Reference]] = None
   ): IO[EngineFactory] =
-    if config.mode != "bounded-durable" then IO.pure(defaultFactory)
+    if config.mode == "sustained-durable" then v2FactoryFor(config, context)
+    else if !config.durable then IO.pure(defaultFactory)
     else
       val expected = config.expectedContext.get
       val root = config.store.get; val receipts = config.receipts.get
@@ -352,6 +413,7 @@ object NodeCommand:
                   (Confirmation.LoadedVerified, Some(t))
                 case ValidatorTransitions.Confirmation.Acknowledged(t) =>
                   (Confirmation.Acknowledged, Some(t))
+                case _ => throw new IllegalStateException("v1 factory received v2 confirmation")
               val base = EngineView(value.state, kind, token.map(_.generation))
               saved.get.flatMap { existing =>
                 existing.filter(pair => token.contains(pair._1)) match
@@ -430,6 +492,152 @@ object NodeCommand:
               }
             }
 
+  private[lab] def v2Binding(config: Config): ControllerJournalCodec.Binding =
+    val settings = config.v2.get
+    ControllerJournalCodec.Binding(
+      settings.journal.toString,
+      config.store.get.toString,
+      ControllerReducer.Store(
+        ControllerReducer.Id(settings.storeId.hex),
+        ControllerReducer.Id(config.expectedContext.get.hex)
+      )
+    )
+
+  private[lab] def v2FactoryFor(
+      config: Config,
+      context: SequenceInput.Context,
+      acknowledge: Option[LocalDerivedCheckpoint.Claim => IO[NodeV2Receipts.Reference]] = None
+  ): IO[EngineFactory] =
+    val settings = config.v2.get
+    val binding = v2Binding(config)
+    val combined = CombinedLocalV2.Config(binding, config.rollbackCapacity, 20.seconds)
+    for
+      _ <- IO.raiseUnless(context.id == config.expectedContext.get)(
+        Abort(
+          Failure("bootstrap", "Rejected", "independent context mismatch", durableRequested = true)
+        )
+      )
+      seed <-
+        if config.storeAction.contains("create") then
+          NodeV2Receipts
+            .seed(
+              settings.seedCapture.get,
+              settings.seedSha256.get,
+              context,
+              settings.compactThrough.get
+            )
+            .handleErrorWith(_ =>
+              IO.raiseError(
+                Abort(
+                  Failure(
+                    "seed",
+                    "Rejected",
+                    "invalid bounded seed capture, pin or compact point",
+                    durableRequested = true
+                  )
+                )
+              )
+            )
+            .map(Some(_))
+        else IO.pure(None)
+      _ <- IO.raiseUnless(seed.forall(_.originals.size <= config.rollbackCapacity))(
+        Abort(
+          Failure("seed", "Rejected", "seed exceeds retained capacity", durableRequested = true)
+        )
+      )
+    yield new EngineFactory:
+      def resource(
+          c: SequenceInput.Context,
+          peer: Resource[IO, BoundedChainFollower.Peer[IO]],
+          policy: BoundedValidatorRunner.Policy,
+          onTransition: String => IO[Unit]
+      ): Resource[IO, Engine] =
+        val backend = seed match
+          case Some(value) => ValidatorTransitions.combinedCreate[IO](combined, value)
+          case None        => ValidatorTransitions.combinedResume[IO](combined)
+        for
+          saved <- Resource.eval(
+            Ref.of[IO, Option[(LocalDerivedCheckpoint.Claim, NodeV2Receipts.Reference)]](None)
+          )
+          receiptFailure <- Resource.eval(Ref.of[IO, Option[EngineView]](None))
+          runner <- DurableValidatorRunner.resource[IO](c, backend, peer, policy, onTransition)
+        yield new Engine:
+          def mapped(
+              value: ValidatorTransitions.ConfirmedState,
+              mayRecord: Boolean
+          ): IO[EngineView] =
+            val (kind, claim) = value.confirmation match
+              case ValidatorTransitions.Confirmation.V2LoadedVerified(claim) =>
+                (Confirmation.V2LoadedVerified, claim)
+              case ValidatorTransitions.Confirmation.V2Acknowledged(claim) =>
+                (Confirmation.V2Acknowledged, claim)
+              case _ => throw new IllegalStateException("v2 factory received non-v2 confirmation")
+            val base = EngineView(
+              value.state,
+              kind,
+              Some(claim.token.generation),
+              fullClaim = Some(claim),
+              binding = Some(binding)
+            )
+            saved.get.flatMap {
+              case Some((previous, reference)) if previous == claim =>
+                IO.pure(
+                  base.copy(receipt =
+                    Some(ReceiptReference(reference.path.toString, reference.sha256.hex))
+                  )
+                )
+              case _ if kind == Confirmation.V2Acknowledged && mayRecord =>
+                acknowledge
+                  .fold(
+                    NodeV2Receipts
+                      .record(config.receipts.get, binding, config.rollbackCapacity, claim)
+                  )(_(claim))
+                  .timeout(2.seconds)
+                  .flatMap { reference =>
+                    saved
+                      .set(Some(claim -> reference))
+                      .as(
+                        base.copy(receipt =
+                          Some(ReceiptReference(reference.path.toString, reference.sha256.hex))
+                        )
+                      )
+                  }
+                  .handleErrorWith(_ =>
+                    receiptFailure.set(Some(base)) *> IO.raiseError(ReceiptFailed(base))
+                  )
+              case _ =>
+                IO.pure(base) // LoadedVerified never manufactures a new acknowledged export.
+            }
+          def snapshot: IO[EngineView] = receiptFailure.get.flatMap {
+            case Some(view) => IO.raiseError(ReceiptFailed(view))
+            case None       => runner.snapshot.flatMap(mapped(_, true))
+          }
+          def run: IO[EngineOutcome] = runner.run.flatMap { out =>
+            def outcome(view: EngineView, ending: Ending) =
+              EngineOutcome(
+                view,
+                ending,
+                out.events,
+                out.returnedBytes,
+                out.reconnects,
+                out.cleanupFailure
+              )
+            out.reason match
+              case DurableValidatorRunner.Stop.StorageFailure(older) =>
+                mapped(out.confirmed, false).map(v => outcome(v, Ending.StorageFailure(older)))
+              case DurableValidatorRunner.Stop.Completed(reason) =>
+                receiptFailure.get.flatMap {
+                  case Some(view) => IO.pure(outcome(view, Ending.ReceiptFailure))
+                  case None =>
+                    mapped(out.confirmed, true)
+                      .map(v => outcome(v, Ending.Completed(reason)))
+                      .handleErrorWith {
+                        case ReceiptFailed(view) => IO.pure(outcome(view, Ending.ReceiptFailure))
+                        case other               => IO.raiseError(other)
+                      }
+                }
+          }
+
   private def quote(s: String): String = "\"" + s.flatMap {
     case '"'          => "\\\""
     case '\\'         => "\\\\"
@@ -458,15 +666,27 @@ object NodeCommand:
       )},"blockNo":${s.certificates.state.tip.blockNo}"""
   private def observed(v: EngineView): String =
     val status = v.confirmation match
-      case Confirmation.Volatile       => "volatile"
-      case Confirmation.LoadedVerified => "loaded-verified"
-      case Confirmation.Acknowledged   => "acknowledged"
+      case Confirmation.Volatile         => "volatile"
+      case Confirmation.LoadedVerified   => "loaded-verified"
+      case Confirmation.Acknowledged     => "acknowledged"
+      case Confirmation.V2LoadedVerified => "v2-loaded-verified"
+      case Confirmation.V2Acknowledged   => "v2-acknowledged"
     val generation = v.confirmedGeneration.fold("null")(_.toString)
     val receiptPath = v.receipt.fold("null")(r => quote(r.path))
     val receiptHash = v.receipt.fold("null")(r => quote(r.sha256))
+    val storage = v.fullClaim match
+      case Some(claim) =>
+        s""", "storageVersion":"v2","trustedLocalPrefix":${v.state.trustedLocalPrefix},"fullClaim":${ValidatedRestartCapture
+            .canonical(NodeV2Receipts.claimJson(claim))},"storageBinding":${v.binding.fold("null")(
+            b => ValidatedRestartCapture.canonical(NodeV2Receipts.bindingJson(b))
+          )}"""
+      case None =>
+        s""", "storageVersion":${
+            if v.confirmation == Confirmation.Volatile then "null" else "\"v1\""
+          },"trustedLocalPrefix":false"""
     state(
       v.state
-    ) + s""", "confirmation":"$status","confirmedGeneration":$generation,"receiptPath":$receiptPath,"receiptSha256":$receiptHash"""
+    ) + s""", "confirmation":"$status","confirmedGeneration":$generation,"receiptPath":$receiptPath,"receiptSha256":$receiptHash$storage"""
   private def claims(durable: Boolean = false): String =
     s""""bounded":true,"inMemory":${!durable},"adaOnly":true,"nativeScriptsSupported":true,"plutusSupported":false,"bootstrapValidated":false,"fullLedgerValidated":false,"consensusValidated":false,"stateDerivedConsensus":false,"durable":$durable"""
   private[lab] def classification(reason: BoundedValidatorRunner.Stop): (String, String, Boolean) =
@@ -509,7 +729,7 @@ object NodeCommand:
         .Completed(BoundedValidatorRunner.Stop.TargetReached)},"caughtUp":false,${observed(
         out.snapshot
       )},"potentiallyOlderThanDisk":$older,"externalReceiptStale":${out.ending == Ending.ReceiptFailure},"cleanupFailure":$cleanup,"events":${out.events},"returnedBytes":${out.returnedBytes},"reconnects":${out.reconnects},"peerOpens":${report.peerOpens},"peerCloses":${report.peerCloses},"peerResourcesFinalized":${report.peerOpens == report.peerCloses && out.cleanupFailure.isEmpty},${claims(
-        report.config.mode == "bounded-durable"
+        report.config.durable
       )}}"""
   def renderFailure(failure: Failure): String =
     val stateFields = failure.lastConfirmed.fold("\"stateAvailable\":false")(v =>
@@ -525,11 +745,26 @@ object NodeCommand:
       )}}"""
 
   private def modeMatches(config: Config, view: EngineView, requireReceipt: Boolean): Boolean =
-    if config.mode == "bounded-durable" then
-      view.confirmation != Confirmation.Volatile && view.confirmedGeneration.exists(_ >= 0) &&
-      (!requireReceipt || view.receipt.nonEmpty) && view.state.compactedBlocks == 0 && view.state.derivedAnchorId.isEmpty
+    if config.mode == "sustained-durable" then
+      val c = view.fullClaim
+      Set(Confirmation.V2LoadedVerified, Confirmation.V2Acknowledged)(view.confirmation) &&
+      c.exists(claim =>
+        claim.token.contextId == view.state.contextId && claim.token.storeId == config.v2.get.storeId &&
+          claim.format == LocalDerivedCheckpoint.Format && claim.profile == Profile && claim.authority == LocalDerivedCheckpoint.Authority &&
+          claim.token.sessionId.size == 32 && claim.token.digest.size == 32 && claim.token.generation >= 0 &&
+          claim.finalId == view.state.id && claim.revision == view.state.revision &&
+          claim.compactedBlocks == view.state.compactedBlocks && view.state.derivedAnchorId.nonEmpty && claim.anchorId.size == 32 &&
+          view.confirmedGeneration.contains(claim.token.generation)
+      ) &&
+      view.binding.contains(v2Binding(config)) &&
+      (!requireReceipt || view.confirmation == Confirmation.V2LoadedVerified || view.receipt.nonEmpty)
+    else if config.mode == "bounded-durable" then
+      Set(Confirmation.LoadedVerified, Confirmation.Acknowledged)(
+        view.confirmation
+      ) && view.confirmedGeneration.exists(_ >= 0) &&
+      (!requireReceipt || view.receipt.nonEmpty) && view.state.compactedBlocks == 0 && view.state.derivedAnchorId.isEmpty && view.fullClaim.isEmpty && view.binding.isEmpty
     else
-      view.confirmation == Confirmation.Volatile && view.confirmedGeneration.isEmpty && view.receipt.isEmpty
+      view.confirmation == Confirmation.Volatile && view.confirmedGeneration.isEmpty && view.receipt.isEmpty && view.fullClaim.isEmpty && view.binding.isEmpty
 
   /** Small engine boundary: no concrete runner state, private receipts, or authority tokens escape.
     * Peer operations and progress output remain serial and backpressured by the engine owner.
@@ -654,7 +889,7 @@ object NodeCommand:
               output(s"""{"record":"node-applied",${observed(
                   s
                 )},"transactionCount":${block.transactionMemos.size},${claims(
-                  config.mode == "bounded-durable"
+                  config.durable
                 )}}""")
             }
         else if label == "after-anchor-advance" then
@@ -662,7 +897,7 @@ object NodeCommand:
             .flatMap(_.snapshot)
             .flatMap(s =>
               output(s"""{"record":"node-anchor-advance",${observed(s)},${claims(
-                  config.mode == "bounded-durable"
+                  config.durable
                 )}}""")
             )
         else if label == "after-rollback" then
@@ -671,7 +906,7 @@ object NodeCommand:
               .flatMap(_.snapshot)
               .flatMap { s =>
                 val projection =
-                  if config.mode != "bounded-durable" || !config.audit then IO.pure("")
+                  if !config.durable || !config.audit then IO.pure("")
                   else
                     IO(checkedProjection(s.state)).flatMap { value =>
                       val size = value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
@@ -684,7 +919,7 @@ object NodeCommand:
                 projection.flatMap { extra =>
                   output(s"""{"record":"node-rollback","initialIntersection":$first,${observed(
                       s
-                    )}$extra,${claims(config.mode == "bounded-durable")}}""")
+                    )}$extra,${claims(config.durable)}}""")
                 }
               }
           }
@@ -711,14 +946,20 @@ object NodeCommand:
               )},"mode":${quote(
                 config.mode
               )},"rollbackCapacity":${config.rollbackCapacity},"auditEnabled":${config.audit},"networkMagic":$NetworkMagic,"sourceBound":true,"suppliedAnchor":${point(
-                Some(initial.state.acquisition.anchor)
-              )},${observed(
+                Some(
+                  ChainSync.Point.Block(
+                    ChainSync.UInt64.from(context.certificateSeed.tip.slot).toOption.get,
+                    context.certificateSeed.tip.hash
+                  )
+                )
+              )},"retainedAnchor":${point(Some(initial.state.acquisition.anchor))},${observed(
                 initial
               )},"potentiallyOlderThanDisk":false,"externalReceiptStale":false,${claims(
-                config.mode == "bounded-durable"
+                config.durable
               )}}""")
             _ <-
-              if initial.confirmation == Confirmation.LoadedVerified then
+              if initial.confirmation == Confirmation.LoadedVerified || initial.confirmation == Confirmation.V2LoadedVerified
+              then
                 IO {
                   val projection = checkedProjection(initial.state)
                   s"""{"record":"node-loaded",${observed(
@@ -818,17 +1059,15 @@ object NodeCommand:
       case Right(report) => Right(report)
       case Left(Abort(failure)) =>
         Left(
-          failure.copy(durableRequested =
-            failure.durableRequested || config.mode == "bounded-durable"
-          )
+          failure.copy(durableRequested = failure.durableRequested || config.durable)
         )
       case Left(error) =>
         Left(
           Failure(
             "engine-resource",
             "Internal",
-            if config.mode == "bounded-durable" then "durable engine terminated" else detail(error),
-            durableRequested = config.mode == "bounded-durable"
+            if config.durable then "durable engine terminated" else detail(error),
+            durableRequested = config.durable
           )
         )
     }
@@ -882,22 +1121,20 @@ object NodeCommand:
       yield result
       withCancellationStatus(
         work
-          .timeout((config.seconds + (if config.mode == "bounded-durable" then 40 else 15)).seconds)
+          .timeout((config.seconds + (if config.durable then 40 else 15)).seconds)
           .handleError {
             case Abort(failure) =>
               Left(
-                failure.copy(durableRequested =
-                  failure.durableRequested || config.mode == "bounded-durable"
-                )
+                failure.copy(durableRequested = failure.durableRequested || config.durable)
               )
             case error =>
               Left(
                 Failure(
                   "command",
                   "Internal",
-                  if config.mode == "bounded-durable" then "durable command terminated"
+                  if config.durable then "durable command terminated"
                   else detail(error),
-                  durableRequested = config.mode == "bounded-durable"
+                  durableRequested = config.durable
                 )
               )
           }
@@ -907,5 +1144,5 @@ object NodeCommand:
           }
           .handleError(_ => ExitCode(2)),
         IO.println,
-        config.mode == "bounded-durable"
+        config.durable
       )

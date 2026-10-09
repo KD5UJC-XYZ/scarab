@@ -20,10 +20,40 @@ private[lab] object ValidatorTransitions:
     case Volatile
     case LoadedVerified(token: Token)
     case Acknowledged(token: Token)
+    case V2LoadedVerified(claim: LocalDerivedCheckpoint.Claim)
+    case V2Acknowledged(claim: LocalDerivedCheckpoint.Claim)
+    def fullClaimOption: Option[LocalDerivedCheckpoint.Claim] = this match
+      case V2LoadedVerified(claim) => Some(claim)
+      case V2Acknowledged(claim)   => Some(claim)
+      case _                       => None
+    def isDurable: Boolean = this != Volatile
     def tokenOption: Option[Token] = this match
-      case Volatile              => None
-      case LoadedVerified(token) => Some(token)
-      case Acknowledged(token)   => Some(token)
+      case Volatile                                => None
+      case LoadedVerified(token)                   => Some(token)
+      case Acknowledged(token)                     => Some(token)
+      case V2LoadedVerified(_) | V2Acknowledged(_) => None
+
+  private enum HeldView:
+    case Native(snapshot: Sequence.Snapshot)
+    case Combined(view: CombinedLocalV2.View)
+    def state: Sequence.State = this match
+      case Native(snapshot) => snapshot.state
+      case Combined(view)   => view.state
+    def native: Sequence.Snapshot = this match
+      case Native(snapshot) => snapshot
+      case _                => throw new IllegalStateException("wrong adapter view variant")
+    def combined: CombinedLocalV2.View = this match
+      case Combined(view) => view
+      case _              => throw new IllegalStateException("wrong adapter view variant")
+  private enum HeldCandidate:
+    case Native(candidate: Sequence.Candidate)
+    case Combined(candidate: CombinedLocalV2.Prepared)
+    def native: Sequence.Candidate = this match
+      case Native(candidate) => candidate
+      case _                 => throw new IllegalStateException("wrong adapter candidate variant")
+    def combined: CombinedLocalV2.Prepared = this match
+      case Combined(candidate) => candidate
+      case _                   => throw new IllegalStateException("wrong adapter candidate variant")
 
   final class ConfirmedState private[ValidatorTransitions] (
       val state: Sequence.State,
@@ -31,7 +61,7 @@ private[lab] object ValidatorTransitions:
   )
   final class View private[ValidatorTransitions] (
       private[ValidatorTransitions] val owner: AnyRef,
-      private[ValidatorTransitions] val underlying: Sequence.Snapshot,
+      private[ValidatorTransitions] val underlying: HeldView,
       val confirmed: ConfirmedState
   ):
     def state: Sequence.State = confirmed.state
@@ -40,7 +70,7 @@ private[lab] object ValidatorTransitions:
   final class Prepared private[ValidatorTransitions] (
       private[ValidatorTransitions] val owner: AnyRef,
       private[ValidatorTransitions] val before: View,
-      private[ValidatorTransitions] val candidate: Sequence.Candidate
+      private[ValidatorTransitions] val candidate: HeldCandidate
   )
   enum Rejection:
     case ForeignSession, StaleView
@@ -57,6 +87,7 @@ private[lab] object ValidatorTransitions:
   private enum Owned[F[_]]:
     case Memory(runtime: Sequence.Runtime[F])
     case Durable(runtime: Sequence.DurableRuntime[F])
+    case Combined(session: CombinedLocalV2.Session[F])
 
   final class Backend[F[_]] private[ValidatorTransitions] (
       owned: Owned[F],
@@ -68,11 +99,15 @@ private[lab] object ValidatorTransitions:
       closed: Ref[F, Boolean]
   )(using F: Async[F]):
     val capacity: Int = owned match
-      case Owned.Memory(runtime)  => runtime.maxBlocks
-      case Owned.Durable(runtime) => runtime.capacity
+      case Owned.Memory(runtime)   => runtime.maxBlocks
+      case Owned.Durable(runtime)  => runtime.capacity
+      case Owned.Combined(session) => session.capacity
+    val supportsCompaction: Boolean = owned match
+      case Owned.Combined(_) => true
+      case _                 => false
     private val durable = owned match
-      case Owned.Durable(_) => true
-      case _                => false
+      case Owned.Memory(_) => false
+      case _               => true
 
     /** Safe after terminal storage failure. This may be older than disk; never a fresh query. */
     def lastConfirmed: F[ConfirmedState] = confirmed.get
@@ -91,7 +126,7 @@ private[lab] object ValidatorTransitions:
       active *> work.handleErrorWith(e => terminate(e).flatMap(F.raiseError))
     }
     private def check(expected: View): F[Result[Unit]] =
-      if expected.owner ne owner then F.pure(Left(Rejection.ForeignSession))
+      if expected == null || (expected.owner ne owner) then F.pure(Left(Rejection.ForeignSession))
       else view.get.map(current => Either.cond(current eq expected, (), Rejection.StaleView))
     def snapshot: F[View] = locked(view.get)
 
@@ -99,16 +134,38 @@ private[lab] object ValidatorTransitions:
       check(expected).flatMap {
         case Left(error) => F.pure(Left(error))
         case Right(_) =>
-          val prepare = owned match
-            case Owned.Memory(runtime)  => runtime.prepare(block)
-            case Owned.Durable(runtime) => runtime.prepare(block)
+          val prepare: F[Sequence.Result[HeldCandidate]] = owned match
+            case Owned.Memory(runtime) =>
+              runtime.prepare(block).map(_.map(HeldCandidate.Native.apply))
+            case Owned.Durable(runtime) =>
+              runtime.prepare(block).map(_.map(HeldCandidate.Native.apply))
+            case Owned.Combined(session) =>
+              session
+                .prepare(expected.underlying.combined, block)
+                .map(_.map(HeldCandidate.Combined.apply))
           prepare.map(_.leftMap(Rejection.Validation.apply).map(new Prepared(owner, expected, _)))
       }
     }
-    private def install(snapshot: Sequence.Snapshot, status: Confirmation): F[View] =
+    private def installHeld(snapshot: HeldView, status: Confirmation): F[View] =
       val receipt = new ConfirmedState(snapshot.state, status)
       val next = new View(owner, snapshot, receipt)
       confirmed.set(receipt) *> view.set(next).as(next)
+    private def install(snapshot: Sequence.Snapshot, status: Confirmation): F[View] =
+      installHeld(HeldView.Native(snapshot), status)
+    private def installCombined(
+        expected: View,
+        result: Sequence.Result[CombinedLocalV2.View]
+    ): F[Result[View]] = result match
+      case Left(error) => F.pure(Left(Rejection.Validation(error)))
+      case Right(saved) if expected.confirmation.fullClaimOption.contains(saved.claim) =>
+        F.raiseUnless(
+          saved.state.id == expected.state.id && saved.state.revision == expected.state.revision
+        )(
+          new IllegalStateException("unchanged full claim with changed state")
+        ) *> F.pure(Right(expected))
+      case Right(saved) =>
+        installHeld(HeldView.Combined(saved), Confirmation.V2Acknowledged(saved.claim))
+          .map(Right(_))
     private def mutation[A](operation: F[A])(finish: A => F[Result[View]]): F[Result[View]] =
       F.uncancelable { poll =>
         poll(operation <* F.cede)
@@ -116,14 +173,14 @@ private[lab] object ValidatorTransitions:
           .flatMap(finish)
       }
     def publish(prepared: Prepared): F[Result[View]] = locked {
-      if prepared.owner ne owner then F.pure(Left(Rejection.ForeignSession))
+      if prepared == null || (prepared.owner ne owner) then F.pure(Left(Rejection.ForeignSession))
       else
         check(prepared.before).flatMap {
           case Left(error) => F.pure(Left(error))
           case Right(_) =>
             owned match
               case Owned.Memory(runtime) =>
-                mutation(runtime.publish(prepared.candidate)) {
+                mutation(runtime.publish(prepared.candidate.native)) {
                   case Left(error) => F.pure(Left(Rejection.Validation(error)))
                   case Right(applied) =>
                     confirmed.set(new ConfirmedState(applied.state, Confirmation.Volatile)) *>
@@ -131,7 +188,10 @@ private[lab] object ValidatorTransitions:
                 }
               case Owned.Durable(runtime) =>
                 mutation(
-                  runtime.publish(prepared.candidate, prepared.before.confirmation.tokenOption.get)
+                  runtime.publish(
+                    prepared.candidate.native,
+                    prepared.before.confirmation.tokenOption.get
+                  )
                 ) {
                   case Left(error) => F.pure(Left(Rejection.Validation(error)))
                   case Right(ack) =>
@@ -145,6 +205,10 @@ private[lab] object ValidatorTransitions:
                           install(saved.snapshot, status).map(Right(_))
                       }
                 }
+              case Owned.Combined(session) =>
+                mutation(session.publish(prepared.candidate.combined))(
+                  installCombined(prepared.before, _)
+                )
         }
     }
     def rollbackTo(expected: View, target: ChainSync.Point): F[Result[View]] = locked {
@@ -153,7 +217,7 @@ private[lab] object ValidatorTransitions:
         case Right(_) =>
           owned match
             case Owned.Memory(runtime) =>
-              mutation(runtime.rollbackTo(expected.underlying.fence, target)) {
+              mutation(runtime.rollbackTo(expected.underlying.native.fence, target)) {
                 case Left(error) => F.pure(Left(Rejection.Validation(error)))
                 case Right(saved) if saved.state.revision == expected.state.revision =>
                   F.pure(Right(expected))
@@ -162,7 +226,7 @@ private[lab] object ValidatorTransitions:
             case Owned.Durable(runtime) =>
               mutation(
                 runtime.rollbackTo(
-                  expected.underlying.fence,
+                  expected.underlying.native.fence,
                   target,
                   expected.confirmation.tokenOption.get
                 )
@@ -176,6 +240,31 @@ private[lab] object ValidatorTransitions:
                 case Right(ack) =>
                   install(ack.value, Confirmation.Acknowledged(ack.token)).map(Right(_))
               }
+            case Owned.Combined(session) =>
+              mutation(session.rollbackTo(expected.underlying.combined, target))(
+                installCombined(expected, _)
+              )
+      }
+    }
+
+    /** Compaction is available only on the combined v2 durable backend. */
+    def advanceAnchor(expected: View, through: ChainSync.Point): F[Result[View]] = locked {
+      check(expected).flatMap {
+        case Left(error) => F.pure(Left(error))
+        case Right(_) =>
+          owned match
+            case Owned.Combined(session) =>
+              mutation(session.advanceAnchor(expected.underlying.combined, through))(
+                installCombined(expected, _)
+              )
+            case _ =>
+              F.pure(
+                Left(
+                  Rejection.Validation(
+                    Sequence.Failure.Unsupported("compaction", "combined local v2 backend required")
+                  )
+                )
+              )
       }
     }
     private[ValidatorTransitions] def close: F[Unit] = F.uncancelable { _ =>
@@ -187,11 +276,19 @@ private[lab] object ValidatorTransitions:
     Resource.make {
       for
         initial <- owned match
-          case Owned.Memory(runtime) => runtime.snapshot.map(_ -> Confirmation.Volatile)
+          case Owned.Memory(runtime) =>
+            runtime.snapshot.map(s => (HeldView.Native(s): HeldView) -> Confirmation.Volatile)
           case Owned.Durable(runtime) =>
             runtime.snapshot.map(s =>
-              s.snapshot -> (if loaded then Confirmation.LoadedVerified(s.token)
-                             else Confirmation.Acknowledged(s.token))
+              (HeldView.Native(s.snapshot): HeldView) -> (if loaded then
+                                                            Confirmation.LoadedVerified(s.token)
+                                                          else Confirmation.Acknowledged(s.token))
+            )
+          case Owned.Combined(session) =>
+            session.snapshot.map(s =>
+              (HeldView.Combined(s): HeldView) -> (if loaded then
+                                                     Confirmation.V2LoadedVerified(s.claim)
+                                                   else Confirmation.V2Acknowledged(s.claim))
             )
         owner <- F.delay(new Object())
         receipt = new ConfirmedState(initial._1.state, initial._2)
@@ -261,3 +358,27 @@ private[lab] object ValidatorTransitions:
         observe
       )
       .flatMap(runtime => wrap(Owned.Durable(runtime), false))
+
+  def combinedCreate[F[_]: Async](
+      config: CombinedLocalV2.Config,
+      seed: CombinedLocalV2.Bootstrap
+  ): Resource[F, Backend[F]] =
+    CombinedLocalV2.create[F](config, seed).flatMap(session => wrap(Owned.Combined(session), false))
+  def combinedResume[F[_]: Async](config: CombinedLocalV2.Config): Resource[F, Backend[F]] =
+    CombinedLocalV2.resume[F](config).flatMap(session => wrap(Owned.Combined(session), true))
+
+  /** Labels-only adapter tests; no combined session or mutation authority escapes. */
+  private[lab] def combinedObserved[F[_]: Async](
+      config: CombinedLocalV2.Config,
+      seed: Option[CombinedLocalV2.Bootstrap],
+      observe: CombinedLocalV2.Phase => F[Unit]
+  ): Resource[F, Backend[F]] =
+    CombinedLocalV2
+      .observed[F](
+        config,
+        seed,
+        LocalControllerJournal.NoFaults,
+        NioLocalDerivedCheckpointStore.NoFaults,
+        observe
+      )
+      .flatMap(session => wrap(Owned.Combined(session), seed.isEmpty))
