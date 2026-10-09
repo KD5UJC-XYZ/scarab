@@ -1,8 +1,8 @@
-# Competing-branch durable rollback candidate
+# Competing-branch durable rollback acceptance
 
 This opt-in acceptance controller uses the ordinary `lab.Main node --mode bounded-durable`
-runtime and the integrated audited intersection/rollback hooks. It is implemented and
-offline-tested; it has **not passed a live fork acceptance**. Main owns integration,
+runtime and the integrated audited intersection/rollback hooks. One bounded local
+fork acceptance passed on 2026-10-09, as scoped below. Main owns integration,
 the fresh source/classes pin and the runtime resource grant. Do not launch from an
 uncommitted checkout or reuse another run's evidence directory.
 
@@ -22,7 +22,7 @@ Fresh genesis changes are verified against the generated originals before any DB
 exists: empty Byron allocations, Shelley PV9 and **epochLength 1000**. Slot length
 remains 0.1 seconds, k=5 and f=0.05; the derived nonce stabilization window remains
 ceil(4k/f)=400 slots. Effective/genesis hashes are retained and rechecked at the end.
-This is a proposed longer-epoch fixture requiring integration review before launch.
+This longer-epoch fixture was explicitly reviewed for the bounded local attempt.
 Common C is taken from equal Conway tips at epoch one or later. There is no
 arbitrary first-25-slots leader window: it has no protocol or nonce justification.
 UTC clocks are bracketed with a one-second margin and checked against genesis
@@ -127,3 +127,35 @@ exact bounded evidence and cleanup result and does not retry with wider limits.
 Offline scripted-process tests exercise output/timeout termination, PID identity,
 keyless roles, UTC boundary guards, branch bounds, fixed CLI, immutable receipt
 mapping and owned cleanup. They are not substitutes for the real fork acceptance.
+
+
+## Observed local acceptance (2026-10-09)
+
+The fourth fresh attempt passed on source `5d7e88dbd3784832de00043bebdbd37c842e18d8`
+in 153.796 seconds, including the final live genesis and source/classpath checks.
+Common C was block 48, slot 1028, epoch 1. A contained one block, ending at slot
+1123; B contained two blocks, ending at slot 1207. Their distinct transactions
+spent the same C input. Reference endpoint projections and original block bytes
+matched the separate checked Scala replay.
+
+Process A acknowledged generation 1 and exited. Distinct process B loaded that
+exact state, selected C from the actual offered points, acknowledged the nonempty
+undo at revision/generation 2/2, and applied B through revision/generation 4/4.
+Every immutable receipt was verified across generations 0 through 4. Each phase
+also received one peer-announced no-op rollback to C before forward acquisition;
+the auditor checks its complete unchanged row, projection and receipt instead of
+discarding it. Both node processes and the separate Scala auditor exited cleanly.
+All four owned containers and the internal network were removed and verified
+absent, with no cleanup or evidence-collection errors.
+
+The first three failed attempts remain preserved: initial future-genesis readiness,
+an overly narrow anchor-slot guard, and the auditor's single-rollback assumption.
+The third attempt's corrected offline reanalysis is separate from its failed live
+result; it did not retroactively complete skipped final live checks.
+
+This demonstrates following a peer-selected competing branch with bounded durable
+undo under graceful process handoff. It does not demonstrate independent chain
+selection, power-loss recovery, epoch transitions, full ledger/consensus validity,
+or sustained-durable v2 compaction. Reference queries remain separate acquisitions
+under observed quiescence. Raw evidence, keys, stores and cluster data stay outside
+Git. Further runs require a fresh reviewed pin and an explicit bounded live grant.

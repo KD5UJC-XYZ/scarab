@@ -4,6 +4,18 @@
 
 A runnable research prototype for **byte-preserving CBOR and Cardano transaction-ID conformance**. It also runs eighteen pinned Plutus evaluator conformance vectors and bounded handshake/mux source-conformance checks over localhost TCP. It also checks one narrowly scoped Conway PV9 value-conservation predicate and an experimental strict public-input Ed25519 witness predicate. It also composes a bounded, reversible in-memory Conway PV9 ADA-transfer UTxO/fee projection. It also includes a bounded durable interpreter for that research projection. It does not fully validate transactions, run a complete Cardano ledger, sync a chain, or produce blocks.
 
+## Ordinary local node milestones
+
+The [bounded durable fork acceptance](docs/private-cluster-fork.md) now demonstrates
+graceful process handoff, exact receipt resume, a nonempty rollback to a shared
+anchor, and following a peer-selected replacement branch with complete supported
+reference-state comparison. It is a local, same-epoch research profile; it does
+not establish independent chain selection or full ledger/consensus validation.
+
+The separate [sustained-durable v2 mode](docs/private-node.md#sustained-durable-v2-create-and-resume)
+uses journal-bound full claims and acknowledged anchor compaction. Its wiring has
+144 focused passing Scala tests; live v2 acceptance remains a separate milestone.
+
 ## Atomic restricted branch candidate
 
 The new [coherent branch API](docs/coherent-branch.md) prepares original-byte

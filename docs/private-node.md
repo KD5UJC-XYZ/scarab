@@ -107,8 +107,10 @@ failure is reported separately even when storage failure is the primary reason.
 
 The backend is acquired and checked before the peer, and remains owned until the
 peer is released. Resume verifies context, original replay and stored capacity.
-This mode has no anchor compaction and makes no power-loss, live-fork, epoch-
-transition, full-ledger or full-consensus claim. Keep checkpoint files, receipts,
+This mode has no anchor compaction. The separately reviewed
+[local fork acceptance](private-cluster-fork.md) demonstrates peer-selected bounded
+undo and graceful handoff, not power-loss recovery, epoch transitions, full-ledger
+or full-consensus validity. Keep checkpoint files, receipts,
 raw captures and reference cluster data outside Git.
 
 
@@ -152,7 +154,7 @@ that bound terminates the audited execution. Rollback projections have a separat
 No projection is added to volatile or audit-disabled rollback rows. Output failure
 remains terminal and does not authorize continued acquisition or a receipt retry.
 
-For the planned bounded fork acceptance, retain `node-loaded` proving restored A,
+For the bounded fork acceptance, retain `node-loaded` proving restored A,
 the actual offered/selected pair proving C was selected, and the acknowledged
 `node-rollback` projection proving checked rollback to C before B adoption. This
 telemetry alone is not live-fork acceptance, canonical-chain selection, or full
