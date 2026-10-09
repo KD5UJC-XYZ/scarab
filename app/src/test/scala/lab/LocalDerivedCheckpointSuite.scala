@@ -14,8 +14,8 @@ class LocalDerivedCheckpointSuite extends munit.FunSuite:
   private def get[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private def hash(n: Int): Bytes = Bytes(Vector.fill(32)(n.toByte))
 
-  /** TEST ONLY: stands in for a controller-retained exact record outside the writer process.
-    * Deliberately accepting mutated fixtures below tests structural checks, not prefix proof.
+  /** TEST ONLY: stands in for a separately persisted controller exact record. Deliberately
+    * accepting mutated fixtures below tests structural checks, not prefix proof.
     */
   private final class TestOnlyController(record: Local.Claim) extends Local.ControllerAuthority[IO]:
     def authorize(claim: Local.Claim): IO[Either[String, Unit]] =

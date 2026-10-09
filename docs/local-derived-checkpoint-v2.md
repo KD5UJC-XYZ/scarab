@@ -6,10 +6,12 @@ the discarded prefix, consensus finality, chain selection or a new supplied
 snapshot. Full-ledger and consensus flags remain false.
 
 Trust is in prior execution by the reviewed local writer and a controller-retained
-publication record outside that writer process. A compromised writer, privileged
-tampering, or restoring both domains to an older point is excluded. No credentials,
-security configuration, NIO storage, runner defaults or live cluster behavior are
-added here. Existing `ValidatedCheckpoint` v1 remains unchanged, including its
+exact publication record in a separate persistence domain. Controller and writer
+may be private roles within one trusted process; no process isolation is claimed.
+A compromised process, privileged tampering, or restoring both domains to an older
+point is excluded. The pure codec changes no credentials or security configuration.
+See `combined-local-v2.md` for the local durable backend; ordinary runner defaults
+and live cluster behavior remain unchanged. Existing `ValidatedCheckpoint` v1 remains unchanged, including its
 rejection of compacted states.
 
 ## API and authority
@@ -19,7 +21,7 @@ coherent cell and produces a `LocalDerivedCheckpoint.Publication`. Its construct
 is private; the export cannot mix an anchor and suffix from different cell reads.
 It requires a compacted state with `compactedBlocks > 0`. Export is only a pure
 image operation: no durable acknowledgement, disk freshness or controller approval
-is implied. The future durable facade must gate export against concurrent mutation.
+is implied. The combined durable facade uses a private proposed-cell export under its gate.
 
 `decode(bytes)` returns an `UntrustedEnvelope`. A self-checksum is just corruption
 detection. The claim binds the whole-image digest, store, context, issuer session,
@@ -29,16 +31,17 @@ untrusted values, never recovery capabilities.
 
 `ControllerAuthority[F].authorize(claim)` is an explicit external-policy boundary.
 `accept(envelope, controller)` issues a privately constructed `AcceptedAuthority`
-only after that policy accepts the exact claim. **No production controller policy
-is supplied.** Tests use a visibly named `TestOnlyController` with an exact retained
+only after that policy accepts the exact claim. The combined local facade supplies a private exact-registry policy scoped to one
+requested verification under the store lock. The pure codec itself supplies no
+policy. Tests use a visibly named `TestOnlyController` with an exact retained
 record. A policy that merely accepts a checkpoint's own checksum is incorrect.
 
 `recover(bytes, expectedContext, Some(authority), deadline)` requires that same
 accepted claim before it can construct an internal authorized image. Missing,
 foreign or changed authority fails. Accepted capabilities are reusable and do not
 expire/revoke themselves: the pure module neither consults a global latest token
-nor claims anti-rollback protection. The future session facade must reauthorize
-each resume against current controller state and must not cache an acceptance
+nor claims anti-rollback protection. The combined session facade reauthorizes
+each resume against current controller state and does not cache an acceptance
 across a store/session/generation change. Scala constructor/package visibility is
 an API misuse barrier, not isolation from adversarial code in the process.
 
@@ -89,8 +92,7 @@ trailing data are checked. Aggregate limits apply even when individual fields fi
 
 These are required integration contracts, **not implemented by the pure codec**:
 
-1. Retain an explicit active-store selection and writer session/lease epoch outside
-   the writer. Identify each publication attempt by a unique operation ID, exact
+1. Retain an explicit active-store selection and writer session/lease epoch in separately persisted controller state. Identify each publication attempt by a unique operation ID, exact
    predecessor token, successor token, store, context and issuing session. Bind
    the full successor claim, not just generation or ledger revision.
 2. Record pending publication with controller-side compare-and-set against the
@@ -98,7 +100,7 @@ These are required integration contracts, **not implemented by the pure codec**:
    acknowledgement while recording the permitted pending successor. Reject a
    callback whose predecessor, operation, store or session is obsolete.
 3. Apply the existing recorder-before-disk, staged write/fsync, atomic replacement,
-   directory fsync, memory publication, then acknowledgement protocol. Compaction
+   directory fsync, verification, controller acknowledgement, then memory publication protocol. Compaction
    has its own durable generation even though its ledger revision is unchanged.
 4. Acknowledge by compare-and-set of that exact pending operation/successor. A
    delayed recorder from a canceled/timed-out attempt must never overwrite a newer

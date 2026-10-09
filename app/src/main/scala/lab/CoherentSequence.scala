@@ -391,12 +391,66 @@ object CoherentSequence:
       val capacity: Int
   )
 
+  /** Private proposed cell; only its original runtime can export/install it. */
+  private[lab] final class LocalPlan private[CoherentSequence] (
+      private[CoherentSequence] val owner: AnyRef,
+      private[CoherentSequence] val before: Cell,
+      private[CoherentSequence] val next: Cell,
+      val snapshot: Snapshot
+  ):
+    val changed: Boolean = !(before eq next)
+
   final class Runtime[F[_]] private[CoherentSequence] (
       private[CoherentSequence] val context: SequenceInput.Context,
       val maxBlocks: Int,
       private[CoherentSequence] val owner: AnyRef,
       private[CoherentSequence] val cell: Ref[F, Cell]
   )(using F: Sync[F]):
+    private def localPlan(transition: Cell => Result[Cell]): F[Result[LocalPlan]] =
+      cell.get.flatMap(before =>
+        F.delay(protect(transition(before)))
+          .map(
+            _.map(next =>
+              new LocalPlan(owner, before, next, CoherentSequence.snapshot(owner, next.state))
+            )
+          )
+      )
+    private[lab] def planLocalPublish(candidate: Candidate): F[Result[LocalPlan]] =
+      localPlan(before => CoherentSequence.publish(owner, maxBlocks, before, candidate).map(_._1))
+    private[lab] def planLocalRollback(
+        fence: Fence,
+        target: ChainSync.Point
+    ): F[Result[LocalPlan]] =
+      localPlan(before => CoherentSequence.rollback(owner, before, fence, target).map(_._1))
+    private[lab] def planLocalAnchor(fence: Fence, through: ChainSync.Point): F[Result[LocalPlan]] =
+      localPlan(before => CoherentSequence.advanceAnchor(owner, before, fence, through).map(_._1))
+    private[lab] def exportLocalPlan(
+        plan: LocalPlan,
+        storeId: Bytes,
+        sessionId: Bytes,
+        generation: Long
+    ): F[Either[String, LocalDerivedCheckpoint.Publication]] = cell.get.flatMap { current =>
+      if (plan.owner ne owner) || (plan.before ne current) then
+        F.pure(Left("foreign or stale local plan"))
+      else
+        F.delay {
+          val anchor = plan.next.receipts.headOption.fold(plan.next.state)(_.before)
+          LocalDerivedCheckpoint.encodeOwned(
+            new OwnedLocalExport(context, anchor, plan.next.state, maxBlocks),
+            storeId,
+            sessionId,
+            generation
+          )
+        }
+    }
+    private[lab] def installLocalPlan(plan: LocalPlan): F[Unit] = cell
+      .modify { current =>
+        if (plan.owner ne owner) || (plan.before ne current) then
+          (current, Left(new IllegalStateException("foreign or stale local plan")))
+        else (plan.next, Right(()))
+      }
+      .flatMap(F.fromEither)
+
     /** Pure image export; no NIO publication, controller acceptance, or durability is implied. */
     def exportLocalCheckpoint(
         storeId: Bytes,

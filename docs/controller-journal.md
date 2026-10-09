@@ -1,9 +1,8 @@
 # Single-store local controller journal
 
 `LocalControllerJournal` persists the approved `ControllerReducer` for one local
-controller and one configured checkpoint store. It is deliberately unwired:
-there is no node launcher, supervisor, checkpoint installer, runtime recovery
-entry point, or live cluster action here. It supports eventual durable node
+controller and one configured checkpoint store. It is consumed by the package-private `CombinedLocalV2` backend.
+There is no ordinary node/CLI wiring, external supervisor or live cluster action here. It supports eventual durable node
 integration by making reducer force acknowledgements correspond to actual local
 filesystem persistence. It does not turn acquired bytes into ledger validation.
 
@@ -17,7 +16,9 @@ journal-directory and checkpoint-directory paths, store ID, context ID, profile,
 format and authority. Paths must not overlap. Symlink components are rejected.
 The adapter compares this supplied binding with the complete persisted binding
 on every load. The binding cannot be changed by a reducer message. Only the
-reviewed v2 format, profile and crash-recovery authority are accepted.
+reviewed v2 format, profile and crash-recovery authority are accepted. Journal
+format `controller-journal-v2` additionally pins `in-process-resource-v1`; unmarked
+or different-policy journals are rejected without adoption or retagging.
 
 `LocalControllerJournal.resource[F]` uses `Async` and owns a lifetime OS file lock.
 `Create` explicitly writes a new Dormant journal; it rejects a published or staged

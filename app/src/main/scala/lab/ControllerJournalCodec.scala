@@ -13,13 +13,15 @@ import LocalDerivedCheckpoint.{Claim as FullClaim, Token}
 object ControllerJournalCodec:
   val MaxBytes = 32768
   val MaxClaims = 6
+  val LaunchPolicy = "in-process-resource-v1"
   final case class Binding(
       root: String,
       checkpoint: String,
       store: Store,
       profile: String = CoherentSequence.ProfileId,
       format: String = LocalDerivedCheckpoint.Format,
-      authority: String = LocalDerivedCheckpoint.Authority
+      authority: String = LocalDerivedCheckpoint.Authority,
+      launchPolicy: String = LaunchPolicy
   )
   final case class Image(binding: Binding, journal: Journal, claims: Vector[FullClaim])
   final case class Message(input: Input, claims: Vector[FullClaim] = Vector.empty)
@@ -56,7 +58,7 @@ object ControllerJournalCodec:
     require(!r.startsWith(c) && !c.startsWith(r), "overlapping journal/store paths")
     require(
       b.profile == CoherentSequence.ProfileId && b.format == LocalDerivedCheckpoint.Format &&
-        b.authority == LocalDerivedCheckpoint.Authority,
+        b.authority == LocalDerivedCheckpoint.Authority && b.launchPolicy == LaunchPolicy,
       "profile/format/authority"
     )
   private def full(c: FullClaim): Unit =
@@ -254,17 +256,26 @@ object ControllerJournalCodec:
     require(ClusterHeaderObservation.sha256(p) == Bytes(b.value.takeRight(32)), "checksum")
     val r = new Reader(p); require(r.text(64) == magic, "format tag"); r
   def encode(i: Image): Either[String, Bytes] = checked {
-    get(validate(i)); val w = new Writer; w.text("controller-journal-v1", 64)
+    get(validate(i)); val w = new Writer; w.text("controller-journal-v2", 64)
     val b = i.binding
     w.text(b.root, 4096); w.text(b.checkpoint, 4096); putStore(w, b.store)
-    w.text(b.profile, 128); w.text(b.format, 128); w.text(b.authority, 128)
+    w.text(b.profile, 128); w.text(b.format, 128); w.text(b.authority, 128);
+    w.text(b.launchPolicy, 128)
     putJournal(w, i.journal); claims(w, i.claims.sortBy(c => project(c).toString), MaxClaims);
     seal(w)
   }
   def decode(b: Bytes, expected: Binding): Either[String, Image] = checked {
-    binding(expected); val r = reader(b, "controller-journal-v1")
+    binding(expected); val r = reader(b, "controller-journal-v2")
     val actual =
-      Binding(r.text(4096), r.text(4096), readStore(r), r.text(128), r.text(128), r.text(128))
+      Binding(
+        r.text(4096),
+        r.text(4096),
+        readStore(r),
+        r.text(128),
+        r.text(128),
+        r.text(128),
+        r.text(128)
+      )
     require(actual == expected, "immutable binding mismatch")
     val i = Image(actual, readJournal(r), claims(r, MaxClaims)); r.end(); get(validate(i))
     require(get(encode(i)) == b, "noncanonical journal"); i

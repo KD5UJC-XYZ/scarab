@@ -15,9 +15,11 @@ import lab.ledger.ClusterTransition as Ledger
 import scala.concurrent.duration.*
 import scala.util.control.NonFatal
 
-/** Research crash-recovery format. Parsing/checksums confer no prefix authority. A controller
-  * outside the writer process must explicitly accept its exact publication claim. Compromised
-  * writers, privileged tampering and rollback of both domains are excluded.
+/** Research crash-recovery format. Parsing/checksums confer no prefix authority. A separately
+  * persisted controller claim must explicitly authorize its exact publication. Controller and
+  * writer may be private roles within one trusted process; no process isolation or protection from
+  * compromised code or rollback of both domains is supplied. Compromised writers, privileged
+  * tampering and rollback of both domains are excluded.
   */
 object LocalDerivedCheckpoint:
   val Format = "restricted-local-derived-checkpoint-v2"
