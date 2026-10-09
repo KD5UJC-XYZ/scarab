@@ -105,6 +105,41 @@ class NodeV2CommandSuite extends munit.FunSuite:
     )
       .foreach(v => assert(NodeCommand.Config.parse(v).isLeft, v.toString))
   }
+  test("fence CLI bounds reject partial flags, wrong phase, range and reconnects") {
+    val base = Path.of("/explicit-v2")
+    val flags = List(
+      "--completion-fence",
+      "/explicit-fence",
+      "--fence-id",
+      "a" * 64,
+      "--fence-phase",
+      "A",
+      "--minimum-depth",
+      "9"
+    )
+    val a = args(base, "create") ++ seedFlags ++ flags
+    assert(NodeCommand.Config.parse(a).isRight)
+    Vector(
+      args(base, "create") ++ seedFlags ++ List("--fence-id", "a" * 64),
+      update(a, "--completion-fence", "relative"),
+      update(a, "--fence-id", "A" * 64),
+      update(a, "--fence-phase", "B"),
+      update(a, "--minimum-depth", "8"),
+      update(a, "--minimum-depth", "10"),
+      update(a, "--blocks", "13"),
+      a ++ List("--events", "129"),
+      a ++ List("--bytes", "33554433"),
+      a ++ List("--reconnects", "1")
+    ).foreach(v => assert(NodeCommand.Config.parse(v).isLeft, v.toString))
+    val b = update(args(base), "--blocks", "16") ++ update(
+      update(flags, "--fence-phase", "B"),
+      "--minimum-depth",
+      "12"
+    )
+    assert(NodeCommand.Config.parse(b).isRight)
+    assert(NodeCommand.Config.parse(update(b, "--blocks", "17")).isLeft)
+    assert(NodeCommand.Config.parse(update(b, "--minimum-depth", "11")).isLeft)
+  }
   private val claim = LocalDerivedCheckpoint.Claim(
     LocalDerivedCheckpoint.Token(hex("11" * 32), hex("22" * 32), hex("33" * 32), 7, hex("44" * 32)),
     LocalDerivedCheckpoint.Format,
@@ -170,7 +205,13 @@ class NodeV2CommandSuite extends munit.FunSuite:
         ).mkString("\n") + "\n"
       )
       val path = base.resolve("seed.md"); Files.write(path, bytes.toArray); path
-    def createConfig(base: Path, c: SequenceInput.Context, os: Vector[Original], target: Int = 9) =
+    def createConfig(
+        base: Path,
+        c: SequenceInput.Context,
+        os: Vector[Original],
+        target: Int = 9,
+        extra: List[String] = Nil
+    ) =
       val seed = seedFile(base, os)
       val p = point(os.head)
       get(
@@ -190,7 +231,7 @@ class NodeV2CommandSuite extends munit.FunSuite:
             get(SequenceInput.block(os.head)).header.hash.hex,
             "--audit",
             "true"
-          )
+          ) ++ extra
         )
       )
     def peer(os: Vector[Original], intersection: ChainSync.Point): Resource[IO, Peer[IO]] =
@@ -418,4 +459,98 @@ class NodeV2CommandSuite extends munit.FunSuite:
         assertEquals(failure.lastConfirmed.get.receipt, None)
       ).unsafeToFuture()
     }
+    test("fenced A and B ACK only after close, bind exact state and preserve loaded prefix") {
+      val c = context; val os = originals
+      val base = Files.createTempDirectory("node-v2-fenced-").toRealPath()
+      def flags(phase: String, minimum: Int) = List(
+        "--completion-fence",
+        base.resolve(s"fence-$phase").toString,
+        "--fence-id",
+        (if phase == "A" then "a" else "b") * 64,
+        "--fence-phase",
+        phase,
+        "--minimum-depth",
+        minimum.toString
+      )
+      def publish(phase: String, depth: Int) = IO.blocking {
+        val h = get(ReferenceCaptureCommand.header(os(depth - 1).envelope))
+        val id = (if phase == "A" then "a" else "b") * 64
+        val text =
+          s"version=live-completion-fence-v1\nfenceId=$id\nphase=$phase\ncontextId=${c.id.hex}\ndepth=$depth\nblockNo=${h.blockNo}\nslot=${h.slot}\nhash=${h.hash.hex}\n"
+        val tmp = base.resolve(s"staged-$phase")
+        Files.writeString(tmp, text)
+        Files.move(tmp, base.resolve(s"fence-$phase"), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        ()
+      }
+      val aConfig = createConfig(base, c, os.take(2), 12, flags("A", 9))
+      val bConfig = get(
+        NodeCommand.Config.parse(
+          update(update(args(base), "--expected-context", c.id.hex), "--blocks", "16") ++ flags(
+            "B",
+            12
+          ) ++ List("--audit", "true")
+        )
+      )
+      def run(config: NodeCommand.Config, phase: String, from: Int, depth: Int) =
+        for
+          logs <- Ref.of[IO, Vector[String]](Vector.empty)
+          closed <- Ref.of[IO, Boolean](false)
+          factory <- NodeCommand.factoryFor(config, c)
+          owned = Resource
+            .make(IO.unit)(_ => closed.set(true))
+            .flatMap(_ => peer(os.drop(from), point(os(from - 1))))
+          result <- NodeCommand.execute(
+            config,
+            c,
+            owned,
+            line =>
+              logs.update(_ :+ line) *>
+                (if record(line) == "node-fence-ready" then publish(phase, depth)
+                 else if record(line) == "node-fence-ack" then
+                   closed.get.flatMap(v => IO(assert(v))) *>
+                     ValidatorTransitions
+                       .combinedResume[IO](
+                         CombinedLocalV2.Config(
+                           NodeCommand.v2Binding(config),
+                           2,
+                           scala.concurrent.duration.DurationInt(20).seconds
+                         )
+                       )
+                       .use { backend =>
+                         backend.snapshot
+                           .flatMap(value => IO(assertEquals(value.state.depth, BigInt(depth))))
+                       }
+                 else IO.unit),
+            factory
+          )
+          lines <- logs.get
+        yield (get(result), lines)
+      (for
+        a <- run(aConfig, "A", 2, 9)
+        b <- run(bConfig, "B", 9, 12)
+      yield
+        assertEquals(a._1.outcome.reason, Stop.TargetReached)
+        assertEquals(b._1.outcome.reason, Stop.TargetReached)
+        assertEquals(a._1.outcome.snapshot.state.depth, BigInt(9))
+        assertEquals(b._1.outcome.snapshot.state.depth, BigInt(12))
+        assertEquals(
+          field(b._2.find(record(_) == "node-loaded").get, "fullClaim"),
+          field(a._2.find(record(_) == "node-fence-ack").get, "fullClaim")
+        )
+        Vector(a, b).foreach { (report, lines) =>
+          assertEquals(lines.count(record(_) == "node-fence-ready"), 1)
+          assertEquals(lines.count(record(_) == "node-fence-ack"), 1)
+          assertEquals(record(lines.last), "node-fence-ack")
+          val ack = lines.last
+          val projection = ValidatedRestartCapture.canonical(
+            ValidatedRestartCapture.projection(report.outcome.snapshot.state)
+          )
+          assertEquals(
+            ReferenceJson.string(field(ack, "projectionSha256")),
+            CompletionFence.sha256(projection.getBytes("UTF-8"))
+          )
+        }
+      ).unsafeToFuture()
+    }
+
   }

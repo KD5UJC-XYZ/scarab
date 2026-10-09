@@ -22,7 +22,8 @@ private[lab] object DurableValidatorRunner:
       events: Int,
       returnedBytes: Long,
       reconnects: Int,
-      cleanupFailure: Option[RunnerStop] = None
+      cleanupFailure: Option[RunnerStop] = None,
+      fence: Option[CompletionFence.Accepted] = None
   )
   private final case class Uncertain(confirmed: ConfirmedState, potentiallyOlderThanDisk: Boolean)
   private final case class Halt(reason: RunnerStop) extends RuntimeException
@@ -41,7 +42,8 @@ private[lab] object DurableValidatorRunner:
       retries: Ref[F, Int],
       cleanup: Ref[F, Option[RunnerStop]],
       uncertain: Ref[F, Option[Uncertain]],
-      between: String => F[Unit]
+      between: String => F[Unit],
+      fence: Option[CompletionFence.Control[F]]
   ):
     private val F = Async[F]
 
@@ -147,25 +149,84 @@ private[lab] object DurableValidatorRunner:
             )
           )
         _ <- F.cede *> between("before-prepare")
+        _ <- forwardFence(h, point, current.state)
         _ <- makeRoom
         before <- view
         candidate <- operation(backend.prepare(before, block)).flatMap(checked)
         _ <- F.cede *> between("before-publish")
+        _ <- forwardFence(h, point, before.state)
         _ <- mutation(backend.publish(candidate)).flatMap(checked)
         _ <- between("after-publish")
       yield ()
-    private def loop(p: Peer[F]): F[RunnerStop] = view.flatMap { s =>
-      if s.state.depth >= policy.target then F.pure(RunnerStop.TargetReached)
-      else
-        events.modify(n => if n < policy.maxEvents then (n + 1, true) else (n, false)).flatMap {
-          case false => F.pure(RunnerStop.EventBudget)
-          case true =>
-            wire(p.next).flatMap {
-              case Event.Await             => loop(p)
-              case Event.Backward(point)   => rollback(point) *> loop(p)
-              case Event.Forward(envelope) => forward(p, envelope) *> loop(p)
-            }
+    private def fenceCheck(a: CompletionFence.Accepted, s: CoherentSequence.State): F[Unit] =
+      if CompletionFence.admissible(a.target, s, context) then F.unit
+      else stop(RunnerStop.Rejected("fence", "older, forked or context/depth/point mismatch"))
+    private def forwardFence(
+        h: ReferenceCaptureCommand.Header,
+        point: ChainSync.Point,
+        state: CoherentSequence.State
+    ): F[Unit] = fence.traverse_(_.read.flatMap {
+      case Some(a) =>
+        fenceCheck(a, state) *>
+          (if h.blockNo > a.target.blockNo || h.slot > a.target.slot ||
+             (h.blockNo == a.target.blockNo && point != a.target.point)
+           then stop(RunnerStop.Rejected("fence", "publication exceeds or forks completion point"))
+           else F.unit)
+      case None => F.unit
+    })
+    private def nextOrFence(
+        p: Peer[F],
+        control: CompletionFence.Control[F],
+        state: CoherentSequence.State
+    ): F[Option[Event]] =
+      // If the fence wins while RequestNext is blocked, retain that request when catch-up is
+      // needed. Never cancel and reissue a partially progressed mini-protocol request.
+      F.uncancelable { poll =>
+        poll(F.racePair(wire(p.next), control.await)).flatMap {
+          case Left((event, waiting)) =>
+            poll(event.embedNever.map(Some(_))).guarantee(waiting.cancel)
+          case Right((pending, declared)) =>
+            poll(declared.embedNever.flatMap { a =>
+              fenceCheck(a, state) *>
+                (if CompletionFence.matches(a.target, state) then pending.cancel.as(None)
+                 else pending.joinWithNever.map(Some(_)))
+            }).guarantee(pending.cancel)
         }
+      }
+    private def loop(p: Peer[F]): F[RunnerStop] = view.flatMap { s =>
+      val decision: F[Boolean] = fence match
+        case None => F.pure(s.state.depth >= policy.target)
+        case Some(control) =>
+          val declared =
+            if s.state.depth >= policy.target then control.await.map(Some(_)) else control.read
+          declared.flatMap {
+            case None    => F.pure(false)
+            case Some(a) => fenceCheck(a, s.state).as(CompletionFence.matches(a.target, s.state))
+          }
+      decision.flatMap {
+        case true => F.pure(RunnerStop.TargetReached)
+        case false =>
+          events.modify(n => if n < policy.maxEvents then (n + 1, true) else (n, false)).flatMap {
+            case false => F.pure(RunnerStop.EventBudget)
+            case true =>
+              val next = fence match
+                case None => wire(p.next).map(Some(_))
+                case Some(control) =>
+                  control.read.flatMap {
+                    case Some(a) =>
+                      fenceCheck(a, s.state) *>
+                        (if CompletionFence.matches(a.target, s.state) then F.pure(None)
+                         else wire(p.next).map(Some(_)))
+                    case None => nextOrFence(p, control, s.state)
+                  }
+              next.flatMap {
+                case None                          => loop(p)
+                case Some(Event.Await)             => loop(p)
+                case Some(Event.Backward(point))   => rollback(point) *> loop(p)
+                case Some(Event.Forward(envelope)) => forward(p, envelope) *> loop(p)
+              }
+          }
+      }
     }
     private def session: F[RunnerStop] = F.uncancelable { poll =>
       // allocated remains cancelable; Resource itself releases any partially acquired resources.
@@ -178,8 +239,12 @@ private[lab] object DurableValidatorRunner:
             offered = s.state.acquisition.candidates
             selected <- wire(p.intersect(offered))
             _ <-
-              if offered.contains(selected) then rollback(selected)
+              if offered.contains(
+                  selected
+                ) && (fence.isEmpty || selected == s.state.acquisition.tip)
+              then rollback(selected)
               else stop(RunnerStop.OutsideRetainedWindow)
+            _ <- if fence.nonEmpty then between("fence-ready") else F.unit
             result <- loop(p)
           yield result
           poll(work).guarantee(release.handleErrorWith { e =>
@@ -235,10 +300,25 @@ private[lab] object DurableValidatorRunner:
       case true => outcome(RunnerStop.AlreadyRun)
       case false =>
         val work = snapshot.flatMap { cached =>
-          if cached.state.depth >= policy.target then F.pure(RunnerStop.TargetReached)
+          if fence.isEmpty && cached.state.depth >= policy.target then
+            F.pure(RunnerStop.TargetReached)
           else attempt
         }
-        F.timeoutTo(work, policy.duration, F.pure(RunnerStop.TimeBudget)).flatMap(outcome)
+        F.timeoutTo(work, policy.duration, F.pure(RunnerStop.TimeBudget)).flatMap(outcome).flatMap {
+          out =>
+            if out.reason != Stop.Completed(RunnerStop.TargetReached) then F.pure(out)
+            else
+              fence.fold(F.pure(out))(_.read.flatMap {
+                case Some(a) if CompletionFence.matches(a.target, out.confirmed.state) =>
+                  F.pure(out.copy(fence = Some(a)))
+                case _ =>
+                  F.pure(
+                    out.copy(reason =
+                      Stop.Completed(RunnerStop.Rejected("fence", "missing exact completion fence"))
+                    )
+                  )
+              })
+        }
     }
 
   /** Policy validation precedes backend acquisition; backend verification precedes any peer IO. */
@@ -247,13 +327,18 @@ private[lab] object DurableValidatorRunner:
       backend: Resource[F, Backend[F]],
       peer: Resource[F, Peer[F]],
       policy: Policy,
-      between: String => F[Unit]
+      between: String => F[Unit],
+      fence: Option[CompletionFence.Control[F]] = None
   ): Resource[F, Runner[F]] =
     val F = Async[F]
     Resource
       .eval(
         F.raiseUnless(
-          policy.valid &&
+          policy.valid && fence.forall(c =>
+            policy.advanceWindow && policy.target <= 16 &&
+              policy.maxEvents <= 128 && policy.maxBytes <= 32L * 1024 * 1024 &&
+              c.settings.minimum >= 9 && c.settings.minimum <= policy.target
+          ) &&
             (if policy.advanceWindow then policy.target >= 9
              else policy.target <= policy.rollbackCapacity)
         )(
@@ -277,6 +362,13 @@ private[lab] object DurableValidatorRunner:
                      initial.confirmation.tokenOption.nonEmpty && initial.state.derivedAnchorId.isEmpty &&
                      initial.state.compactedBlocks == 0 && initial.state.depth <= policy.rollbackCapacity)
               )(new IllegalArgumentException("durable backend context/capacity/profile mismatch"))
+              _ <- F.raiseUnless(
+                fence.forall(c =>
+                  initial.state.depth < c.settings.minimum && (c.settings.phase != "B" || initial.state.depth + 3 <= c.settings.minimum)
+                )
+              )(
+                new IllegalArgumentException("fence requires new blocks after initial state")
+              )
               started <- Ref.of[F, Boolean](false)
               events <- Ref.of[F, Int](0)
               bytes <- Ref.of[F, Long](0L)
@@ -294,7 +386,8 @@ private[lab] object DurableValidatorRunner:
               retries,
               cleanup,
               uncertain,
-              between
+              between,
+              fence
             )
           }
         }

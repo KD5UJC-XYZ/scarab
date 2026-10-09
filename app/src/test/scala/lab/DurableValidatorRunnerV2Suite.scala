@@ -322,4 +322,363 @@ class DurableValidatorRunnerV2Suite extends munit.FunSuite:
         }
         .unsafeToFuture()
     }
+    def fenceControl(
+        c: SequenceInput.Context,
+        os: Vector[Original],
+        depth: Int,
+        signal: cats.effect.Deferred[IO, Unit]
+    ): CompletionFence.Control[IO] =
+      val h = get(ReferenceCaptureCommand.header(os(depth - 1).envelope))
+      val target =
+        CompletionFence.Target("a" * 64, "A", c.id.hex, depth, h.blockNo, h.slot, h.hash.hex)
+      val a = CompletionFence.Accepted(target, "b" * 64, "test")
+      new CompletionFence.Control[IO]:
+        val settings = CompletionFence.Settings(Path.of("/tmp/not-used"), "a" * 64, "A", 9)
+        def read = signal.tryGet.map(_.map(_ => a))
+        def await = signal.get.as(a)
+        def verify(value: CompletionFence.Accepted) = IO(assertEquals(value, a))
+
+    test("fence arrival interrupts blocked AwaitNext at exact point and closes peer") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            blocked <- cats.effect.Deferred[IO, Unit]
+            closed <- Ref.of[IO, Int](0)
+            cursor <- Ref.of[IO, Int](3)
+            peer = Resource
+              .make(IO.unit)(_ => closed.update(_ + 1))
+              .as(new Peer[IO]:
+                def intersect(offered: Vector[ChainSync.Point]) = IO.pure(offered.head)
+                def next = cursor.getAndUpdate(_ + 1).flatMap { n =>
+                  if n < 9 then IO.pure(Event.Forward(os(n).envelope))
+                  else blocked.complete(()).void *> IO.never[Event]
+                }
+                def fetch(p: ChainSync.Point) = IO(os.find(o => point(o) == p).get.block))
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                peer,
+                policy(),
+                _ => IO.unit,
+                Some(fenceControl(c, os, 9, declared))
+              )
+              .use { runner =>
+                for
+                  f <- runner.run.start
+                  _ <- blocked.get.timeout(10.seconds)
+                  _ <- declared.complete(())
+                  result <- f.joinWithNever.timeout(5.seconds)
+                yield result
+              }
+            count <- closed.get
+          yield
+            assertEquals(out.reason, Stop.Completed(RunnerStop.TargetReached))
+            assertEquals(out.confirmed.state.depth, BigInt(9))
+            assert(out.fence.nonEmpty)
+            assertEquals(count, 1)
+        }
+        .unsafeToFuture()
+    }
+    test("fence known before catchup excludes immediately available successor") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            _ <- declared.complete(())
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                source(os.drop(3)),
+                policy(),
+                _ => IO.unit,
+                Some(fenceControl(c, os, 9, declared))
+              )
+              .use(_.run)
+          yield
+            assertEquals(out.reason, Stop.Completed(RunnerStop.TargetReached))
+            assertEquals(out.confirmed.state.depth, BigInt(9))
+            assertEquals(out.events, 6)
+        }
+        .unsafeToFuture()
+    }
+    test("hard numeric maximum without fence never succeeds; cancellation closes peer") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            reached <- cats.effect.Deferred[IO, Unit]
+            closed <- Ref.of[IO, Int](0)
+            published <- Ref.of[IO, Int](0)
+            peer = Resource
+              .make(IO.unit)(_ => closed.update(_ + 1))
+              .flatMap(_ => source(os.drop(3)))
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                peer,
+                policy(),
+                label =>
+                  if label == "after-publish" then
+                    published
+                      .updateAndGet(_ + 1)
+                      .flatMap(n => if n == 9 then reached.complete(()).void else IO.unit)
+                  else IO.unit,
+                Some(fenceControl(c, os, 12, declared))
+              )
+              .use { runner =>
+                for
+                  f <- runner.run.start
+                  _ <- reached.get
+                  _ <- f.cancel
+                  result <- f.join
+                yield result
+              }
+            count <- closed.get
+          yield
+            assert(out.isCanceled)
+            assertEquals(count, 1)
+        }
+        .unsafeToFuture()
+    }
+
+    test("matching fence arriving between loop reads never issues another RequestNext") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            _ <- declared.complete(())
+            published <- Ref.of[IO, Int](0)
+            reads <- Ref.of[IO, Int](0)
+            base = fenceControl(c, os, 9, declared)
+            control = new CompletionFence.Control[IO]:
+              val settings = base.settings
+              def read = published.get.flatMap(n =>
+                if n < 6 then IO.pure(None)
+                else
+                  reads
+                    .getAndUpdate(_ + 1)
+                    .flatMap(i => if i == 0 then IO.pure(None) else base.read)
+              )
+              def await = IO.never[CompletionFence.Accepted]
+              def verify(a: CompletionFence.Accepted) = base.verify(a)
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                source(os.drop(3)),
+                policy(),
+                label => if label == "after-publish" then published.update(_ + 1) else IO.unit,
+                Some(control)
+              )
+              .use(_.run)
+              .timeout(10.seconds)
+          yield
+            assertEquals(out.reason, Stop.Completed(RunnerStop.TargetReached))
+            assertEquals(out.confirmed.state.depth, BigInt(9))
+            assertEquals(
+              out.returnedBytes,
+              os.slice(3, 9).map(o => o.envelope.size.toLong + o.block.size).sum
+            )
+        }
+        .unsafeToFuture()
+    }
+    test("declaration before publication rejects successor and preserves prior compaction") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            attempts <- Ref.of[IO, Int](0)
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                source(os.drop(3)),
+                policy(),
+                label =>
+                  if label == "before-publish" then
+                    attempts
+                      .updateAndGet(_ + 1)
+                      .flatMap(n => if n == 7 then declared.complete(()).void else IO.unit)
+                  else IO.unit,
+                Some(fenceControl(c, os, 9, declared))
+              )
+              .use(_.run)
+            resumed <- combinedResume[IO](config(dir, c)).use(_.snapshot)
+          yield
+            assert(out.reason match
+              case Stop.Completed(RunnerStop.Rejected("fence", _)) => true
+              case _                                               => false)
+            assertEquals(out.confirmed.state.depth, BigInt(9))
+            assertEquals(out.confirmed.state.compactedBlocks, BigInt(7))
+            assertEquals(resumed.state.id, out.confirmed.state.id)
+            assertEquals(out.fence, None)
+        }
+        .unsafeToFuture()
+    }
+    test("older declaration after publication rejects without rollback or retarget") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            applied <- Ref.of[IO, Int](0)
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                source(os.drop(3)),
+                policy(),
+                label =>
+                  if label == "after-publish" then
+                    applied
+                      .updateAndGet(_ + 1)
+                      .flatMap(n => if n == 7 then declared.complete(()).void else IO.unit)
+                  else IO.unit,
+                Some(fenceControl(c, os, 9, declared))
+              )
+              .use(_.run)
+          yield
+            assert(out.reason match
+              case Stop.Completed(RunnerStop.Rejected("fence", _)) => true
+              case _                                               => false)
+            assertEquals(out.confirmed.state.depth, BigInt(10))
+            assertEquals(out.fence, None)
+        }
+        .unsafeToFuture()
+    }
+    test("forked completion point fails before publishing conflicting final block") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            declared <- cats.effect.Deferred[IO, Unit]
+            _ <- declared.complete(())
+            base = fenceControl(c, os, 9, declared)
+            control = new CompletionFence.Control[IO]:
+              val settings = base.settings
+              def change(a: CompletionFence.Accepted) =
+                a.copy(target = a.target.copy(hash = "0" * 64))
+              def read = base.read.map(_.map(change))
+              def await = base.await.map(change)
+              def verify(a: CompletionFence.Accepted) = IO.unit
+            out <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                source(os.drop(3)),
+                policy(),
+                _ => IO.unit,
+                Some(control)
+              )
+              .use(_.run)
+          yield
+            assert(out.reason match
+              case Stop.Completed(RunnerStop.Rejected("fence", _)) => true
+              case _                                               => false)
+            assertEquals(out.confirmed.state.depth, BigInt(8))
+            assertEquals(out.fence, None)
+        }
+        .unsafeToFuture()
+    }
+    test("unreachable fence and event/byte limits cannot produce completion acknowledgment") {
+      Vector("time", "events", "bytes")
+        .traverse_ { which =>
+          temporary.use { dir =>
+            val c = context; val os = originals
+            for
+              declared <- cats.effect.Deferred[IO, Unit]
+              _ <- declared.complete(())
+              p = which match
+                case "time"   => policy().copy(duration = 300.millis)
+                case "events" => policy().copy(maxEvents = 12)
+                case _        => policy().copy(maxBytes = 1)
+              peer =
+                if which == "time" then
+                  Resource.pure[IO, Peer[IO]](new Peer[IO]:
+                    def intersect(offered: Vector[ChainSync.Point]) = IO.pure(offered.head)
+                    def next = IO.never[Event]
+                    def fetch(p: ChainSync.Point) = IO.never[Bytes])
+                else if which == "events" then source(Vector.empty)
+                else source(os.drop(3))
+              out <- DurableValidatorRunner
+                .resource[IO](
+                  c,
+                  combinedCreate[IO](config(dir, c), seed(c, os)),
+                  peer,
+                  p,
+                  _ => IO.unit,
+                  Some(fenceControl(c, os, 12, declared))
+                )
+                .use(_.run)
+            yield
+              val expected = which match
+                case "time"   => RunnerStop.TimeBudget
+                case "events" => RunnerStop.EventBudget
+                case _        => RunnerStop.ByteBudget
+              assertEquals(out.reason, Stop.Completed(expected))
+              assertEquals(out.fence, None)
+          }
+        }
+        .unsafeToFuture()
+    }
+
+    test("controller cancellation settles both blocked fence and RequestNext fibers before close") {
+      temporary
+        .use { dir =>
+          val c = context; val os = originals
+          for
+            reading <- cats.effect.Deferred[IO, Unit]
+            watching <- cats.effect.Deferred[IO, Unit]
+            canceled <- Ref.of[IO, Set[String]](Set.empty)
+            closed <- Ref.of[IO, Boolean](false)
+            control = new CompletionFence.Control[IO]:
+              val settings = CompletionFence.Settings(Path.of("/tmp/not-used"), "a" * 64, "A", 9)
+              def read = IO.pure(None)
+              def await = (watching.complete(()).void *> IO.never[CompletionFence.Accepted])
+                .onCancel(canceled.update(_ + "watch"))
+              def verify(a: CompletionFence.Accepted) = IO.unit
+            peer = Resource
+              .make(IO.unit)(_ =>
+                canceled.get.flatMap(v => IO(assertEquals(v, Set("next", "watch")))) *> closed
+                  .set(true)
+              )
+              .as(new Peer[IO]:
+                def intersect(offered: Vector[ChainSync.Point]) = IO.pure(offered.head)
+                def next = (reading.complete(()).void *> IO.never[Event])
+                  .onCancel(canceled.update(_ + "next"))
+                def fetch(p: ChainSync.Point) = IO.never[Bytes])
+            result <- DurableValidatorRunner
+              .resource[IO](
+                c,
+                combinedCreate[IO](config(dir, c), seed(c, os)),
+                peer,
+                policy(),
+                _ => IO.unit,
+                Some(control)
+              )
+              .use { runner =>
+                for
+                  f <- runner.run.start
+                  _ <- reading.get *> watching.get
+                  _ <- f.cancel.timeout(2.seconds)
+                  result <- f.join
+                yield result
+              }
+            done <- closed.get
+          yield
+            assert(result.isCanceled)
+            assert(done)
+        }
+        .unsafeToFuture()
+    }
+
   }

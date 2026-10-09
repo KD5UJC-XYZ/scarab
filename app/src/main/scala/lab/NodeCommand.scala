@@ -40,7 +40,8 @@ object NodeCommand:
       val expectedContext: Option[Bytes],
       val resumeReceipt: Option[Path],
       val resumeSha256: Option[Bytes],
-      val v2: Option[V2Settings]
+      val v2: Option[V2Settings],
+      val completionFence: Option[CompletionFence.Settings]
   ):
     def durable: Boolean = mode == "bounded-durable" || mode == "sustained-durable"
     def policy: BoundedValidatorRunner.Policy = BoundedValidatorRunner.Policy(
@@ -76,14 +77,18 @@ object NodeCommand:
       "--seed-capture",
       "--seed-sha256",
       "--compact-slot",
-      "--compact-hash"
+      "--compact-hash",
+      "--completion-fence",
+      "--fence-id",
+      "--fence-phase",
+      "--minimum-depth"
     )
 
     /** Entire grammar and all bounds are checked before any filesystem or socket operation. */
     def parse(args: List[String]): Either[String, Config] =
       try
         require(
-          args != null && args.nonEmpty && args.size <= 46 && args.size % 2 == 0,
+          args != null && args.nonEmpty && args.size <= 54 && args.size % 2 == 0,
           "expected flag/value pairs"
         )
         require(
@@ -233,6 +238,52 @@ object NodeCommand:
             .validatePaths(storage._2.get, journal, storage._3.get, seed._1)
             .fold(e => throw new IllegalArgumentException(e), identity)
           Some(V2Settings(journal, hash("--store-id"), seed._1, seed._2, seed._3))
+        val fenceFields =
+          Set("--completion-fence", "--fence-id", "--fence-phase", "--minimum-depth")
+        val completionFence =
+          if !fields.keySet.exists(fenceFields) then None
+          else
+            require(
+              mode == "sustained-durable" && fenceFields.subsetOf(fields.keySet),
+              "complete fence flags require sustained-durable"
+            )
+            require(
+              fields("--fence-id").matches("[0-9a-f]{64}") && Set("A", "B")(
+                fields("--fence-phase")
+              ),
+              "fence identity and phase"
+            )
+            val path = Path.of(fields("--completion-fence"))
+            require(
+              path.isAbsolute && path.normalize == path,
+              "absolute normalized fence path required"
+            )
+            val minimum = integer("--minimum-depth", "0")
+            val maximum = integer("--blocks", "0")
+            require(
+              minimum >= 9 && minimum <= maximum && maximum <= 16 &&
+                integer("--events", "64") <= 128 && number(
+                  "--bytes",
+                  (32L * 1024 * 1024).toString
+                ) <= 32L * 1024 * 1024,
+              "fenced depth 9..16, events <=128, bytes <=32MiB"
+            )
+            require(
+              (fields("--fence-phase") == "A") == storage._1.contains("create"),
+              "fence phase/action mismatch"
+            )
+            require(
+              (fields("--fence-phase") match
+                case "A" => minimum == 9 && maximum <= 12
+                case "B" => minimum >= 12
+                case _   => false
+              ),
+              "fence phase bounds"
+            )
+            require(integer("--reconnects", "0") == 0, "fenced readiness is single-session")
+            Some(
+              CompletionFence.Settings(path, fields("--fence-id"), fields("--fence-phase"), minimum)
+            )
         val port = integer("--port", "0")
         require(port >= 1 && port <= 65535, "port range 1..65535")
         val config = new Config(
@@ -253,7 +304,8 @@ object NodeCommand:
           storage._4,
           storage._5,
           storage._6,
-          v2
+          v2,
+          completionFence
         )
         require(
           config.policy.valid,
@@ -284,7 +336,8 @@ object NodeCommand:
       events: Int,
       returnedBytes: Long,
       reconnects: Int,
-      cleanupFailure: Option[BoundedValidatorRunner.Stop] = None
+      cleanupFailure: Option[BoundedValidatorRunner.Stop] = None,
+      completion: Option[(CompletionFence.Control[IO], CompletionFence.Accepted)] = None
   ):
     /** Compatibility accessor for volatile callers; rendering always inspects ending too. */
     def reason: BoundedValidatorRunner.Stop = ending match
@@ -560,7 +613,11 @@ object NodeCommand:
             Ref.of[IO, Option[(LocalDerivedCheckpoint.Claim, NodeV2Receipts.Reference)]](None)
           )
           receiptFailure <- Resource.eval(Ref.of[IO, Option[EngineView]](None))
-          runner <- DurableValidatorRunner.resource[IO](c, backend, peer, policy, onTransition)
+          fence <- Resource.eval(
+            config.completionFence.traverse(CompletionFence.create[IO](_, c.id.hex, config.blocks))
+          )
+          runner <- DurableValidatorRunner
+            .resource[IO](c, backend, peer, policy, onTransition, fence)
         yield new Engine:
           def mapped(
               value: ValidatorTransitions.ConfirmedState,
@@ -620,7 +677,8 @@ object NodeCommand:
                 out.events,
                 out.returnedBytes,
                 out.reconnects,
-                out.cleanupFailure
+                out.cleanupFailure,
+                fence.flatMap(control => out.fence.map(control -> _))
               )
             out.reason match
               case DurableValidatorRunner.Stop.StorageFailure(older) =>
@@ -879,7 +937,17 @@ object NodeCommand:
           }
       }
       transition = (label: String) =>
-        if label == "after-publish" then
+        if label == "fence-ready" then
+          config.completionFence.traverse_ { f =>
+            current.get.flatMap(_.snapshot).flatMap { initial =>
+              output(
+                s"""{"record":"node-fence-ready","fenceId":"${f.id}","phase":"${f.phase}","minimumDepth":${f.minimum},"maximumDepth":${config.blocks},${observed(
+                    initial
+                  )}}"""
+              )
+            }
+          }
+        else if label == "after-publish" then
           current.get
             .flatMap(_.snapshot)
             .flatMap { s =>
@@ -1028,7 +1096,10 @@ object NodeCommand:
       _ <- IO.raiseUnless(
         outcome.ending != Ending.Completed(
           BoundedValidatorRunner.Stop.TargetReached
-        ) || outcome.snapshot.state.depth >= config.blocks
+        ) || (if config.completionFence.nonEmpty then
+                outcome.completion
+                  .exists((_, a) => CompletionFence.matches(a.target, outcome.snapshot.state))
+              else outcome.snapshot.state.depth >= config.blocks)
       )(Abort(Failure("engine", "Internal", "target result lacks requested scoped prefix")))
       effective =
         if opens == closes then outcome
@@ -1052,6 +1123,22 @@ object NodeCommand:
             )(
               Abort(Failure("audit", "Rejected", "final projection exceeds 16 MiB bound"))
             ) *> output(record)
+          }
+        else IO.unit
+      _ <-
+        if effective.ending == Ending.Completed(BoundedValidatorRunner.Stop.TargetReached) &&
+          effective.cleanupFailure.isEmpty && opens == closes
+        then
+          effective.completion.traverse_ { (control, accepted) =>
+            control.verify(accepted) *> IO {
+              val t = accepted.target
+              val projection = checkedProjection(effective.snapshot.state)
+              val digest =
+                CompletionFence.sha256(projection.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+              s"""{"record":"node-fence-ack","fenceId":"${t.id}","phase":"${t.phase}","fenceSha256":"${accepted.sha256}","slot":${t.slot},"hash":"${t.hash}","projectionSha256":"$digest","resourcesFinalized":true,${observed(
+                  effective.snapshot
+                )}}"""
+            }.flatMap(output)
           }
         else IO.unit
     yield new Report(config, effective, opens, closes)
