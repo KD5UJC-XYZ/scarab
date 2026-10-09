@@ -7,30 +7,30 @@ import lab.ledger.ConwayEmptyGovernance as G
 import ReferenceJson.Json as J
 
 /** Entirely generated bounded native-shaped inputs; no retained capture or native oracle. */
-class NativeLedgerSeedSuite extends munit.FunSuite:
-  private def get[A](v: Either[?, A]): A = v.fold(e => fail(e.toString), identity)
-  private def n(v: V): Node = Node(v, Bytes.empty)
-  private def a(vs: V*): V = V.Arr(vs.toVector.map(n))
-  private def m(rows: (V, V)*): V = V.Map(rows.toVector.map((k, v) => n(k) -> n(v)))
-  private def set(vs: V*): V = V.Tag(258, n(a(vs*)))
-  private def bytes(size: Int, value: Int): Bytes = Bytes(Vector.fill(size)(value.toByte))
-  private def b(size: Int, value: Int): V = V.ByteString(bytes(size, value))
-  private def credential(value: Int): V = a(V.UInt(0), b(28, value))
-  private def ratio(num: BigInt, den: BigInt): V = V.Tag(30, n(a(V.UInt(num), V.UInt(den))))
-  private def raw(v: V): Bytes = get(Cbor.encode(v))
-  private def sha(v: Bytes): Bytes = ClusterHeaderObservation.sha256(v)
-  private def text(s: String): Bytes = Bytes.fromArray(s.getBytes("UTF-8"))
-  private def json(j: J): Bytes = SyntheticRewardProjection.encode(j)
-  private def obj(fields: (String, J)*): J.Obj = J.Obj(fields.toMap)
-  private def at(node: Node, path: Vector[Int]): Node = path.foldLeft(node) { (at, index) =>
+private[lab] trait NativeLedgerSeedFixtures extends munit.FunSuite:
+  protected def get[A](v: Either[?, A]): A = v.fold(e => fail(e.toString), identity)
+  protected def n(v: V): Node = Node(v, Bytes.empty)
+  protected def a(vs: V*): V = V.Arr(vs.toVector.map(n))
+  protected def m(rows: (V, V)*): V = V.Map(rows.toVector.map((k, v) => n(k) -> n(v)))
+  protected def set(vs: V*): V = V.Tag(258, n(a(vs*)))
+  protected def bytes(size: Int, value: Int): Bytes = Bytes(Vector.fill(size)(value.toByte))
+  protected def b(size: Int, value: Int): V = V.ByteString(bytes(size, value))
+  protected def credential(value: Int): V = a(V.UInt(0), b(28, value))
+  protected def ratio(num: BigInt, den: BigInt): V = V.Tag(30, n(a(V.UInt(num), V.UInt(den))))
+  protected def raw(v: V): Bytes = get(Cbor.encode(v))
+  protected def sha(v: Bytes): Bytes = ClusterHeaderObservation.sha256(v)
+  protected def text(s: String): Bytes = Bytes.fromArray(s.getBytes("UTF-8"))
+  protected def json(j: J): Bytes = SyntheticRewardProjection.encode(j)
+  protected def obj(fields: (String, J)*): J.Obj = J.Obj(fields.toMap)
+  protected def at(node: Node, path: Vector[Int]): Node = path.foldLeft(node) { (at, index) =>
     at.value.asInstanceOf[V.Arr].value(index)
   }
-  private def change(v: V, path: Vector[Int], value: V): V =
+  protected def change(v: V, path: Vector[Int], value: V): V =
     if path.isEmpty then value
     else
       val fields = v.asInstanceOf[V.Arr].value
       V.Arr(fields.updated(path.head, n(change(fields(path.head).value, path.tail, value))))
-  private val paths = Map(
+  protected val paths = Map(
     "accounts" -> Vector(3, 1, 0, 2, 0),
     "certificateState" -> Vector(3, 1, 0),
     "chainAccountState" -> Vector(3, 0),
@@ -67,16 +67,16 @@ class NativeLedgerSeedSuite extends munit.FunSuite:
     "snapshots" -> Vector(3, 2),
     "votingState" -> Vector(3, 1, 0, 0)
   )
-  private val baseParameters = get(Cbor.decode(NativeSeedParameterFixtures.previous)).value
-  private val newModels = m(V.UInt(1) -> a(Vector.fill(175)(V.UInt(0))*))
-  private final case class Bundle(
+  protected val baseParameters = get(Cbor.decode(NativeSeedParameterFixtures.previous)).value
+  protected val newModels = m(V.UInt(1) -> a(Vector.fill(175)(V.UInt(0))*))
+  protected final case class Bundle(
       epoch: NativeEpochComponents.Checked,
       governance: NativeGovernanceComponents.Checked,
       globals: GovernanceGlobals.Checked
   ):
     def join = NativeLedgerSeed.bind(epoch, governance, globals, epoch.point, epoch.id)
 
-  private def bundle(
+  protected def bundle(
       voteOffset: Int = 0,
       poolVrf: Int = 3,
       coin: Int = 100,
@@ -272,6 +272,7 @@ class NativeLedgerSeedSuite extends munit.FunSuite:
     )
     Bundle(epoch, gov, globals)
 
+class NativeLedgerSeedSuite extends NativeLedgerSeedFixtures:
   test("checked ledger-side join preserves one generated source and all four temporal originals") {
     val b = bundle()
     val joined = get(b.join)

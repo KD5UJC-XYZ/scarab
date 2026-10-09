@@ -43,7 +43,8 @@ private[lab] object NativeEpochComponents:
       val previousBlocks: Map[Bytes, BigInt],
       val currentBlocks: Map[Bytes, BigInt],
       val nonMyopic: N.State,
-      val reward: Absent
+      val reward: Absent,
+      val protocolAcquisitionId: Option[Bytes]
   ):
     val rewardSeedAdmission = false
     val runtimeImport = false
@@ -128,6 +129,38 @@ private[lab] object NativeEpochComponents:
       originals: Map[String, Bytes],
       expectedPins: Map[String, Bytes],
       anchor: Point
+  ): Either[String, Checked] = decodeBound(originals, expectedPins, anchor, None)
+
+  /** The v2 records remain byte-for-byte originals. The separately checked acquisition binds
+    * protocol, verifier and receipt sources; it supplies no runtime admission capability.
+    */
+  def decodeV2(
+      originals: Map[String, Bytes],
+      expectedPins: Map[String, Bytes],
+      anchor: Point,
+      acquisition: NativeProtocolBootstrap.Acquisition
+  ): Either[String, Checked] = checked {
+    require(
+      acquisition != null && originals != null && expectedPins != null &&
+        originals.keySet == Names && expectedPins.keySet == Names &&
+        acquisition.anchor == anchor,
+      "v2 component acquisition/source/point required"
+    )
+    (Names intersect NativeProtocolBootstrap.InputNames).foreach { name =>
+      require(
+        originals(name) == acquisition.originals(name) &&
+          expectedPins(name) == acquisition.sourcePins(name),
+        "v2 component original splice: " + name
+      )
+    }
+    get(decodeBound(originals, expectedPins, anchor, Some(acquisition)))
+  }
+
+  private def decodeBound(
+      originals: Map[String, Bytes],
+      expectedPins: Map[String, Bytes],
+      anchor: Point,
+      acquisition: Option[NativeProtocolBootstrap.Acquisition]
   ): Either[String, Checked] = checked {
     require(
       originals != null && expectedPins != null && originals.keySet == Names && expectedPins.keySet == Names,
@@ -148,10 +181,14 @@ private[lab] object NativeEpochComponents:
     }
     def json(name: String) = ReferenceJson.parse(originals(name))
     val capture = json("capture.json"); val request = json("request.json")
+    val schema = if acquisition.isDefined then BigInt(2) else BigInt(1)
+    val kind =
+      if acquisition.isDefined then "single-acquire-native-protocol-payloads"
+      else "single-acquire-native-payloads"
     require(
-      ju(field(capture, "schema")) == 1 && ju(field(request, "schema")) == 1 &&
-        string(field(capture, "kind")) == "single-acquire-native-payloads",
-      "v1 diagnostic source contract"
+      ju(field(capture, "schema")) == schema && ju(field(request, "schema")) == schema &&
+        string(field(capture, "kind")) == kind,
+      "versioned diagnostic source contract"
     )
     point(field(request, "point"), anchor)
     Vector("requestedPoint", "acquiredPoint", "finalPoint").foreach(k =>
@@ -275,7 +312,10 @@ private[lab] object NativeEpochComponents:
         "\n",
         s"\n${anchor.slot}:${anchor.hash.hex}:${anchor.blockNo}\n"
       )
-    val id = sha(Bytes.fromArray(recipe.getBytes("US-ASCII")))
+    val identityRecipe = acquisition.fold(recipe)(a =>
+      "native-components-v2\n" + recipe + "acquisition=" + a.id.hex + "\n"
+    )
+    val id = sha(Bytes.fromArray(identityRecipe.getBytes("US-ASCII")))
     Vector(ps(2), ps(3), delegation(1)).foreach(emptyMap)
     val ir = arr(delegation(3), 4); emptyMap(ir(0)); emptyMap(ir(1)); zero(ir(2)); zero(ir(3))
     // Current genesis delegations are retained, not mislabeled as pending effects.
@@ -441,6 +481,7 @@ private[lab] object NativeEpochComponents:
       previous,
       current,
       nonMyopic,
-      reward
+      reward,
+      acquisition.map(_.id)
     )
   }
