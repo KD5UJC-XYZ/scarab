@@ -622,6 +622,47 @@ object ClusterTransition:
     compareOutputs(applied.state, applied.candidate.created, observedUtxo, observedFees)
   }
 
+  /** Compare only after deriving a continuous bounded sequence. Outputs created anywhere in this
+    * sequence compare semantically if still unspent; checkpoint survivors retain exact bytes.
+    * Receipt continuity includes revision and private branch head, not merely content identity.
+    */
+  def compareBlockSequenceReference(
+      applied: Vector[BlockApplied],
+      observedUtxo: Bytes,
+      observedFees: BigInt
+  ): Checked[Unit] = protect {
+    for
+      _ <- Either.cond(
+        applied.nonEmpty && applied.size <= 8,
+        (),
+        Failure.ResourceLimit("reference comparison requires 1 through 8 block receipts")
+      )
+      created <- applied.foldLeft[Checked[(Option[State], Set[TxIn])]](
+        Right((None, Set.empty))
+      ) { (acc, receipt) =>
+        for
+          prior <- acc
+          (previous, surviving) = prior
+          before = receipt.candidate.before
+          _ <- Either.cond(
+            previous.forall { state =>
+              state.checkpointId == before.checkpointId && state.environment.id == before.environment.id &&
+              state.id == before.id && state.revision == before.revision && state.head == before.head
+            },
+            (),
+            Failure.StaleState(
+              "block receipt sequence has discontinuous checkpoint, content, revision, or branch"
+            )
+          )
+        yield (
+          Some(receipt.state),
+          (surviving intersect receipt.state.entries.keySet) ++ receipt.candidate.created
+        )
+      }
+      _ <- compareOutputs(applied.last.state, created._2, observedUtxo, observedFees)
+    yield ()
+  }
+
   def undo(current: State, expectedRevision: BigInt, undo: Undo): Checked[State] = protect {
     if current.revision != expectedRevision || current.checkpointId != undo.before.checkpointId ||
       current.id != undo.afterId || current.head != Some(undo.transitionId)

@@ -584,3 +584,99 @@ class ClusterTransitionSuite extends munit.FunSuite:
         .isInstanceOf[R.Failure.ResourceLimit]
     )
   }
+
+  test(
+    "sequence oracle accepts canonical earlier creations but preserves checkpoint output spans"
+  ) {
+    val before = initial(nonminimal = true)
+    val wider = hex(body().hex.replace("1a0039fbc0", "1b000000000039fbc0"))
+    val first = R.applyBlock(before, headerA, Vector(tx(wider)), 20).toOption.get
+    val last = R.applyBlock(first.state, headerB, Vector.empty, 21).toOption.get
+    val canonical = hex(last.state.outputMap.hex.replace("1b000000000039fbc0", "1a0039fbc0"))
+    assertNotEquals(canonical, last.state.outputMap)
+    assert(R.compareBlockReference(last, canonical, last.state.fees).isLeft)
+    assert(R.compareBlockSequenceReference(Vector(first, last), canonical, last.state.fees).isRight)
+    val altered = hex(canonical.hex.replace("1a00895440", "1b0000000000895440"))
+    assert(R.compareBlockSequenceReference(Vector(first, last), altered, last.state.fees).isLeft)
+    assert(
+      R.compareBlockSequenceReference(Vector(first, last), canonical, last.state.fees + 1).isLeft
+    )
+  }
+
+  test("sequence oracle tracks intra and inter block spends without retaining spent creations") {
+    val before = initial()
+    val firstBody = body()
+    val secondBody = body(Vector(arr(bs(Blake2b.hash256.hash(firstBody)), u(0))), 3600000)
+    val first =
+      R.applyBlock(before, headerA, Vector(tx(firstBody), tx(secondBody)), 20).toOption.get
+    val thirdBody = body(Vector(arr(bs(Blake2b.hash256.hash(secondBody)), u(0))), 3400000)
+    val widerThird = hex(thirdBody.hex.replace("1a0033e140", "1b000000000033e140"))
+    val second = R.applyBlock(first.state, headerB, Vector(tx(widerThird)), 21).toOption.get
+    val last = R.applyBlock(second.state, headerA, Vector.empty, 22).toOption.get
+    val canonical = hex(last.state.outputMap.hex.replace("1b000000000033e140", "1a0033e140"))
+    assertNotEquals(canonical, last.state.outputMap)
+    assert(
+      R.compareBlockSequenceReference(Vector(first, second, last), canonical, last.state.fees)
+        .isRight
+    )
+    assertEquals(last.state.size, 2)
+    assert(
+      R.compareBlockSequenceReference(
+        Vector(first, second, last),
+        first.state.outputMap,
+        last.state.fees
+      ).isLeft
+    )
+  }
+
+  test("sequence oracle rejects reordered gapped foreign branch and rollback revision receipts") {
+    val before = initial()
+    val a = R.applyBlock(before, headerA, Vector.empty, 20).toOption.get
+    val b = R.applyBlock(a.state, headerB, Vector.empty, 21).toOption.get
+    val c = R.applyBlock(b.state, headerA, Vector.empty, 22).toOption.get
+    def rejected(receipts: Vector[R.BlockApplied]) =
+      assert(R.compareBlockSequenceReference(receipts, c.state.outputMap, c.state.fees).isLeft)
+    rejected(Vector(b, a, c))
+    rejected(Vector(a, c))
+    val fork = R.applyBlock(before, headerB, Vector.empty, 20).toOption.get
+    assertEquals(fork.state.id, a.state.id)
+    rejected(Vector(fork, b, c))
+    val foreign = R
+      .checkpoint(before.environment, before.outputMap, before.fees, before.slot, headerB)
+      .toOption
+      .get
+    val foreignA = R.applyBlock(foreign, headerA, Vector.empty, 20).toOption.get
+    rejected(Vector(foreignA, b, c))
+    val restored = R.undo(b.state, b.state.revision, b.undo).toOption.get
+    val newB = R.applyBlock(restored, headerB, Vector.empty, 21).toOption.get
+    assertEquals(newB.state.id, b.state.id)
+    rejected(Vector(a, newB))
+  }
+
+  test("sequence oracle checks one through eight receipts and malformed boundaries") {
+    val first = R.applyBlock(initial(), headerA, Vector.empty, 20).toOption.get
+    val eight = (21 to 27).foldLeft(Vector(first)) { (acc, slot) =>
+      acc :+ R.applyBlock(acc.last.state, headerA, Vector.empty, slot).toOption.get
+    }
+    assert(
+      R.compareBlockSequenceReference(Vector(first), first.state.outputMap, first.state.fees)
+        .isRight
+    )
+    assert(
+      R.compareBlockSequenceReference(eight, eight.last.state.outputMap, eight.last.state.fees)
+        .isRight
+    )
+    assert(
+      R.compareBlockSequenceReference(eight :+ eight.last, first.state.outputMap, first.state.fees)
+        .isLeft
+    )
+    assert(
+      R.compareBlockSequenceReference(Vector.empty, first.state.outputMap, first.state.fees).isLeft
+    )
+    assert(R.compareBlockSequenceReference(null, first.state.outputMap, first.state.fees).isLeft)
+    assert(
+      R.compareBlockSequenceReference(Vector(null), first.state.outputMap, first.state.fees).isLeft
+    )
+    assert(R.compareBlockSequenceReference(Vector(first), Bytes(null), first.state.fees).isLeft)
+    assert(R.compareBlockSequenceReference(Vector(first), first.state.outputMap, null).isLeft)
+  }

@@ -59,8 +59,9 @@ undo authority. The per-block reference adapter checks derived state afterward:
 that block's surviving created outputs semantically, untouched before-state
 outputs byte-for-byte, plus the full output key set and fee pot. It is not a
 complete sequence oracle: using only the last block receipt can conservatively
-reject a prior block's created output whose reference encoding differs. No
-whole-sequence reference-comparison API is exposed by this batch.
+reject a prior block's created output whose reference encoding differs. The
+initial offline checkpoint exposed only this per-block adapter. The separate
+full-sequence adapter described below tracks cumulative surviving creations.
 
 ## Rollback authority
 
@@ -81,7 +82,7 @@ replaces the Ref and stack. Current-tip rollback is an explicit no-op; its fence
 remains valid. Stale fences and pre-rollback candidates remain stale after
 reapplication. There is no history eviction, implicit reanchor or persistence.
 
-## Offline evidence and remaining limits
+## Original offline checkpoint and remaining limits
 
 Public synthetic ledger tests cover dependent transactions, late rejection,
 empty blocks, competing header/order identities, rollback and reapplication.
@@ -98,7 +99,7 @@ Praos-header generator is available, so successful switching between two valid
 consensus branches remains untested. Ledger-level competing synthetic branches
 and coordinator rejection of mutated originals are separate claims.
 
-No new cluster is launched by this offline batch. The smallest proposed live
+No new cluster was launched by the initial offline checkpoint. The smallest proposed live
 follow-up uses one fresh supported isolated cluster and a bounded same-epoch
 window: capture the full pre-state, admit two independent supported key
 transactions, retain every original through a post-state containing at least one
@@ -136,3 +137,9 @@ ceiling from a legitimate fresh checkpoint is infeasible for a bounded test;
 no constructor bypass or production test hook was introduced to manufacture it.
 The sixteen-dependent-transaction test verifies one externally visible block
 revision, while overflow and late transaction failures remain checked errors.
+
+
+The [full-sequence reference observation](private-cluster-sequence.md) adds a
+continuous receipt-chain comparator that tracks surviving creations across all
+blocks. Its live grouping and endpoint claims are reported separately from the
+original offline sequence checkpoint described above.
