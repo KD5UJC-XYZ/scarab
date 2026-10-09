@@ -424,6 +424,41 @@ object ConwayStake:
     )
   }
 
+  private[ledger] def snapshotIdentity(s: Snapshot): Bytes =
+    hash(Profile + ":snapshot:" + snapshotText(s) + ":" + s.total)
+
+  /** Only the boundary preview may supply post-reward balances. No altered State escapes. */
+  private[ledger] def previewRotationAfterRewards(
+      owner: Owner,
+      state: State,
+      headerHash: Bytes,
+      slot: BigInt,
+      fees: BigInt,
+      balances: Map[Credential, BigInt]
+  ): Either[String, Rotation] = protect {
+    require(
+      owner != null && state != null && (owner eq state.owner) && balances != null &&
+        balances.keySet == state.context.accounts.keySet && balances.values.forall(coin),
+      "post-reward fixed account domain/bounds"
+    )
+    val accounts = state.context.accounts.map((c, a) => c -> a.copy(balance = balances(c)))
+    val post =
+      get(context(state.context.id, state.context.epochLength, accounts, state.context.pools))
+    val unpublished = new State(
+      owner,
+      post,
+      state.id,
+      state.ledgerId,
+      state.revision,
+      state.slot,
+      state.epoch,
+      state.utxo,
+      state.instantaneous,
+      state.snapshots
+    )
+    get(previewRotation(owner, unpublished, headerHash, slot, fees))
+  }
+
   /** SNAP algebra only, not NEWEPOCH: reward/governance/pool effects have not been applied. */
   def previewRotation(
       owner: Owner,
