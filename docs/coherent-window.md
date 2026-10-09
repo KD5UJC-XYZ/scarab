@@ -66,5 +66,17 @@ with `SEQUENCE_FREEZE_EVIDENCE=/freeze` and
 `cardano-nonce-freeze-live1-20261009` and `cardano-live-runner-live2-20261009`
 directories mounted read-only. Docker used no network, two CPUs, 2 GiB memory,
 and a worktree-private build/cache. `scalafmtAll` and `git diff --check` passed.
-No greater-than-eight-distinct-block or multi-receipt-after-compaction live result
-is claimed by this packet.
+No greater-than-eight-distinct-block live result is claimed by this packet.
+
+Follow-up multi-receipt test: set `COHERENT_WINDOW_EVIDENCE` to a complete
+source-bound sequence directory containing at least three linked original signed
+blocks, then run `app/testOnly lab.CoherentSequenceSuite`. This separate variable
+preserves compatibility with older two-block `COHERENT_SEQUENCE_EVIDENCE` fixtures.
+The existing four-block `cardano-live-runner-live2-20261009` capture supplied the
+first three originals without mutation. The test compacts through block one,
+checks an intermediate rollback, rolls back across both retained receipts,
+reapplies, compacts through block two, and rolls back/reapplies again. It checks
+certificate, nonce, eligibility and ledger content, every revision, retained
+originals and history-dependent state identities. The focused suite passed **18
+tests**, including the freeze fixture tests, in the same offline bounded Docker
+environment. This is retained-source testing; it launches no new live cluster.

@@ -536,3 +536,88 @@ class CoherentSequenceSuite extends munit.FunSuite:
       ).unsafeToFuture()
     }
   }
+
+  sys.env.get("COHERENT_WINDOW_EVIDENCE").foreach { location =>
+    test(
+      "three original signed blocks survive rollback across two rebased receipts and recompaction"
+    ) {
+      val directory = Path.of(location)
+      val context = get(SequenceInput.load(directory))
+      val originals =
+        get(CoherentSequenceCommand.captures(read(directory.resolve("scala-sequence-capture.md"))))
+      assert(
+        originals.size >= 3,
+        "multi-receipt test requires at least three linked signed originals"
+      )
+      val blocks = originals.take(3).map(o => get(SequenceInput.block(o)))
+      def tuple(actual: CoherentSequence.State, expected: CoherentSequence.State, revision: Int)
+          : Unit =
+        assertEquals(actual.contextId, expected.contextId)
+        assertEquals(actual.certificates.state.id, expected.certificates.state.id)
+        assertEquals(actual.certificates.state.counters, expected.certificates.state.counters)
+        assertEquals(actual.nonces.id, expected.nonces.id)
+        assertEquals(actual.nonces.fields, expected.nonces.fields)
+        assertEquals(actual.nonces.certificateStateId, actual.certificates.state.id)
+        assertEquals(
+          actual.eligibility.map(e => (e.contextId, e.headers)),
+          expected.eligibility.map(e => (e.contextId, e.headers))
+        )
+        assertEquals(actual.ledger.id, expected.ledger.id)
+        assertEquals(actual.ledger.outputMap, expected.ledger.outputMap)
+        assertEquals(actual.ledger.fees, expected.ledger.fees)
+        assertEquals(actual.ledger.slot, expected.ledger.slot)
+        assertEquals(actual.nonces.lastSlot, actual.ledger.slot)
+        assertEquals(actual.scopedAppliedTip, expected.scopedAppliedTip)
+        assertEquals(actual.revision, BigInt(revision))
+        assert(!actual.fullLedgerValidated && !actual.consensusValidated)
+      (for
+        runtime <- CoherentSequence.create[IO](context, 3).map(get(_))
+        first <- runtime.prepare(blocks(0)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        second <- runtime.prepare(blocks(1)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        third <- runtime.prepare(blocks(2)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        before <- runtime.snapshot
+        compact <- runtime.advanceAnchor(before.fence, first.state.acquisition.tip).map(get(_))
+        middle <- runtime.rollbackTo(compact.fence, second.state.acquisition.tip).map(get(_))
+        againThird <- runtime.prepare(blocks(2)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        tip <- runtime.snapshot
+        anchor <- runtime.rollbackTo(tip.fence, first.state.acquisition.tip).map(get(_))
+        replaySecond <- runtime.prepare(blocks(1)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        replayThird <- runtime.prepare(blocks(2)).map(get(_)).flatMap(runtime.publish).map(get(_))
+        replayTip <- runtime.snapshot
+        compactAgain <- runtime
+          .advanceAnchor(replayTip.fence, second.state.acquisition.tip)
+          .map(get(_))
+        secondAnchor <- runtime
+          .rollbackTo(compactAgain.fence, second.state.acquisition.tip)
+          .map(get(_))
+        finalThird <- runtime.prepare(blocks(2)).map(get(_)).flatMap(runtime.publish).map(get(_))
+      yield
+        tuple(compact.state, third.state, 3)
+        tuple(middle.state, second.state, 4)
+        tuple(againThird.state, third.state, 5)
+        tuple(anchor.state, first.state, 7)
+        tuple(replaySecond.state, second.state, 8)
+        tuple(replayThird.state, third.state, 9)
+        tuple(compactAgain.state, third.state, 9)
+        tuple(secondAnchor.state, second.state, 10)
+        tuple(finalThird.state, third.state, 11)
+        assertEquals(compact.state.acquisition.originals, originals.slice(1, 3))
+        assertEquals(compact.state.certificates.steps.size, 2)
+        assertEquals(compact.state.certificates.initial.id, first.state.certificates.state.id)
+        assertEquals(middle.state.acquisition.originals, originals.slice(1, 2))
+        assertEquals(anchor.state.acquisition.originals, Vector.empty)
+        assertEquals(anchor.state.depth, BigInt(1))
+        assertEquals(anchor.state.scopedAppliedTip, Some(first.state.acquisition.tip))
+        assertEquals(replayThird.state.id, compact.state.id)
+        assert(compact.state.id != third.state.id, "compaction changes history-dependent identity")
+        assertEquals(compactAgain.state.compactedBlocks, BigInt(2))
+        assertEquals(compactAgain.state.acquisition.originals, originals.slice(2, 3))
+        assertEquals(compactAgain.state.certificates.initial.id, second.state.certificates.state.id)
+        assert(compactAgain.state.derivedAnchorId != compact.state.derivedAnchorId)
+        assert(compactAgain.state.id != compact.state.id)
+        assertEquals(secondAnchor.state.acquisition.size, 0)
+        assertEquals(secondAnchor.state.depth, BigInt(2))
+        assertEquals(finalThird.state.id, compactAgain.state.id)
+      ).unsafeToFuture()
+    }
+  }
