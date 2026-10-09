@@ -222,3 +222,28 @@ both checkpoint codecs reject stake-bearing state. The
 [boundary preview](conway-epoch-boundary-preview.md) is synthetic and cannot publish
 runtime state. Unknown/pulsing phases fail closed. No epoch runtime enablement,
 native reward parity, branch-ancestry proof or new live acceptance is claimed.
+
+
+## Supplied reward pipeline checkpoint, 2026-10-09
+
+Reviewed source `36c964e2f591405dd2d3b74383c70a913290b973` passed one combined
+offline public regression: **1,194 Scala tests**, **63 translator tests**, all
+**25 public serial gates**, **306 executed Python launcher tests** (308 collected,
+two optional retained-data skips), and **28 checkpoint guards**. Module counts
+are core 219, VM 47, network 100, network-runtime 52, ledger 211, ledger-runtime
+150, fetcher 5 and app 410. A separate retained-input integration check passed
+**46 focused tests**: 29 pure ledger cases and 17 retained-enabled application
+cases. Retained inputs were not mounted in the public regression.
+
+The batch combines [reward-start allocation](conway-reward-start.md),
+[completion equations](conway-reward-completion.md), and
+[application-time recipient filtering](conway-reward-application.md). It uses
+checked supplied parameter/global projections and supplied member/leader rewards.
+Native input admission, branch ancestry, per-pool/member entitlement, pulser
+execution, non-myopic updates and runtime epoch publication remain excluded.
+Same-epoch runtime guards and stake-bearing checkpoint rejection are unchanged.
+
+Tests used a fresh Git source export, private copied caches, the existing pinned
+JDK/Python image, networking disabled and 2 CPU / 2 GiB limits. Owned-container
+cleanup was verified. Source hashes remained unchanged; the subsequent edit
+only records verification here. These are local results, not a hosted-CI claim.
