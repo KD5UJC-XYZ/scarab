@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "license": "Apache-2.0; original synthetic inputs and generator; no provider/public-chain corpus",
+  "baseProvenance": "../plutus-pv9-reference/provenance.json",
+  "referenceHelperSha256": "56d799416990b24bd5caae96d2dc43814c969e0c0aab0b81774c1e39c2f6f0ca",
+  "generatorSha256": "9e30c29861da738ace0932b1551be3023fe72149029006bfb6dd8fdeb20bf126",
+  "generatorSources": {
+    "VariantBuilder.hs": "79461445634aa763b4ad4cc6992f971a70942752528ef946f51982d2fe6ff899",
+    "executable-stanza.cabal.txt": "7bf9d3a5650658b0ac68bbbcb79bd17e409b38bf29362ff07bbf03b9e46b109d",
+    "VariantMain.hs": "9a38e435326771b34482d5a42fd328dbb57e476b58f1a3441bad39ef45e7d6d4"
+  },
+  "compiledSources": {
+    "VariantBuilder.hs": "79461445634aa763b4ad4cc6992f971a70942752528ef946f51982d2fe6ff899",
+    "reference-context-exporter.cabal": "c2ccdd0b8edc097d5b051169dce1b374d05c46ad2853d7c30cd1a19b367d1d77",
+    "cabal.project.freeze": "0a1a1434459db5e2ee532c84dcd4289e075aff50a2def8ca69777122a38e6724",
+    "cabal.project": "1f654ff6b5a38069af34f848786907ae1e34a3d54a0371ab90cbfadde5f90ded",
+    "VariantMain.hs": "9a38e435326771b34482d5a42fd328dbb57e476b58f1a3441bad39ef45e7d6d4",
+    "PacketBuilder.hs": "07048aeaed301f18a3c74553edbabf3a617fbbb6d08db305902f0d70b6e73b4c"
+  },
+  "vectorsSha256": "0dec4d1a3ed7695d9c0aac7dc85f48bfbeee774455e2216a1e31f54f288d59c4",
+  "cases": 18,
+  "observedReferenceSuccesses": 11,
+  "observedReferenceCekUnclassified": 7,
+  "baselineTransactionIdentical": true,
+  "externalPlanUnitsUnchanged": 379,
+  "network": "none",
+  "cpus": 2,
+  "memoryBytes": 2147483648,
+  "swapTotalBytes": 2147483648,
+  "fullLedgerValidation": false,
+  "counting": false,
+  "nativeReferenceMachinery": "same previously reviewed external Haskell toolchain and native dependencies; no new Scala dependency/provider",
+  "upstreamTranslationArchives": [
+    {
+      "name": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "sourceSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+      "cabalSha256": "bdf63322c66120e39c32190adc6b10ac40c93d901bb3a8f24be8c141c2275a15",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-alonzo-1.16.0.0.cabal",
+      "length": 2126266,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-alonzo-1.16.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-babbage",
+      "version": "1.14.0.0",
+      "sourceSha256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d",
+      "cabalSha256": "83b0161ea86cfdb7d3de895352194a43265d333aa1438972502e495f0eaa9252",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-babbage-1.14.0.0.cabal",
+      "length": 2661288,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-babbage-1.14.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "sourceSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "cabalSha256": "d7c532bded90313c3a392dae334a5fd72a777a93f7ac9bbbed553bcf207956c0",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-conway-1.23.0.0.cabal",
+      "length": 4753608,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-conway-1.23.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "sourceSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "cabalSha256": "9194b2884d9b9f76aa70d2071392f6ea815b2b8e4fe62452dfe5ec16d47cdf33",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-core-1.21.0.0.cabal",
+      "length": 184361,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-core-1.21.0.0.tar.gz"
+    },
+    {
+      "name": "plutus-ledger-api",
+      "version": "1.70.0.0",
+      "sourceSha256": "cfe92ab6b76f71946ee12a73e78218b8b14d2d66baa9f6daaa48804aa2f33c1b",
+      "cabalSha256": "6eb90181174b6ebdee35fada434f35dab8ae3b924118a4cb40fc6fb17558b203",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "plutus-ledger-api-1.70.0.0.cabal",
+      "length": 184106,
+      "url": "https://chap.intersectmbo.org/package/plutus-ledger-api-1.70.0.0.tar.gz"
+    }
+  ]
+}

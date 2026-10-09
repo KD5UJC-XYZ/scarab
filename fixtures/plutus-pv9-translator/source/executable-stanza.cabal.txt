@@ -1,0 +1,19 @@
+executable translator-variants
+  other-modules: PacketBuilder, VariantBuilder
+  main-is: VariantMain.hs
+  default-language: Haskell2010
+  build-depends:
+    base >=4.18 && <4.19,
+    aeson,
+    bytestring,
+    containers,
+    text,
+    time,
+    serialise,
+    microlens,
+    cardano-ledger-conway ==1.23.0.0,
+    cardano-ledger-alonzo ==1.16.0.0,
+    cardano-ledger-core ==1.21.0.0,
+    cardano-ledger-binary ==1.9.1.0,
+    cardano-slotting ==0.2.2.0,
+    plutus-ledger-api ==1.70.0.0

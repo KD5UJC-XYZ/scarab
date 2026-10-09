@@ -100,3 +100,9 @@ addCommandAlias(
 )
 
 addCommandAlias("checkPrivateCorpus", ";core/requirePrivateCorpus;core/PrivateCorpus/test;fetcher/PrivateCorpus/test;app/PrivateCorpus/test")
+
+// Offline differential translator: all implementation lives in Test, never app/runtime.
+lazy val translator = project.in(file("translator")).dependsOn(core, vm).settings(
+  libraryDependencies += "org.scalameta" %% "munit" % "1.0.2" % Test,
+  Test / parallelExecution := false
+)
