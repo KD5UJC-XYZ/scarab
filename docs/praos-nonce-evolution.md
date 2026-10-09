@@ -65,3 +65,10 @@ The offline retained slot127-to-slot199 interval contains one checked header. Ap
 The retained differential interval does not exercise candidate updates or an actual epoch tick. Next capture should retain two to eight contiguous headers plus before/after protocol states, first around candidate stabilization and then around an epoch boundary; because slots are sparse, use the first actual headers on either side, not an assumed boundary-slot block. Compare all exported fields and lastSlot, verify each proof under the ticked nonce, roll back each receipt to the exact anchor, and reapply. A later snapshot exposing previousEpochNonce or a pinned CBOR decoder would allow checking that presently omitted field. This is a proposed capture only: no new live node was started for this packet.
 
 Passing source-derived synthetic rules and this one-header differential does not close binary/package provenance, adversarial cryptographic acceptance, snapshot authentication, stake evolution or full consensus.
+
+
+The subsequent [same-epoch candidate-freeze capture](private-cluster-nonce-freeze.md)
+now demonstrates a real candidate update at slot 555 and freezing at slot 674 from
+pre-anchor 513, all in epoch 1, with complete originals and paired rollback/reapply.
+This adds boundary evidence within an epoch; the actual epoch tick and per-epoch
+registration/stake context remain untested by that capture.

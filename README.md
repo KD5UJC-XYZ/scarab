@@ -205,3 +205,10 @@ complete prestate, original included body/witness bytes and the reference fee po
 Three separate rejected witness variants have exact-byte diagnostics and valid
 controls. Funding is reference-only setup; this remains restricted ADA native
 spending, not full ledger/consensus or Plutus validation.
+
+
+The [same-epoch nonce freeze observation](docs/private-cluster-nonce-freeze.md)
+derives candidate/evolving nonce changes from a pinned pre-anchor and complete
+original headers, compares independent poststate, and checks rollback/reapply.
+It establishes scoped nonce/VRF evidence, not leadership, epoch rotation, derived
+registration continuity or full consensus.

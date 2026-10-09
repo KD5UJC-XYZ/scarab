@@ -93,29 +93,33 @@ object ClusterHeaderObservation extends IOApp:
     bindGenesis(read(directory.resolve("transfer-genesis.md")), input.context)
   }
 
-  def captures(path: Path): Either[String, Vector[Capture]] = checked {
-    val text =
-      StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(read(path).toArray)).toString
-    text.linesIterator
-      .filter(_.nonEmpty)
-      .flatMap { line =>
-        val record = ReferenceJson.parse(Bytes.fromArray(line.getBytes(StandardCharsets.UTF_8)))
-        record match
-          case ReferenceJson.Json.Obj(fields)
-              if fields.get("record").contains(ReferenceJson.Json.Str("transfer-range-block")) =>
-            import ReferenceJson.{field, string}
-            Some(
-              Capture(
-                get(Bytes.fromHex(string(field(record, "headerEnvelopeHex")))),
-                get(Bytes.fromHex(string(field(record, "rawBlockHex"))))
+  def captures(path: Path): Either[String, Vector[Capture]] = capturesBounded(path, 8)
+
+  private[lab] def capturesBounded(path: Path, maximum: Int): Either[String, Vector[Capture]] =
+    checked {
+      require(maximum >= 1 && maximum <= 16, "capture reader bound must be one to sixteen")
+      val text =
+        StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(read(path).toArray)).toString
+      text.linesIterator
+        .filter(_.nonEmpty)
+        .flatMap { line =>
+          val record = ReferenceJson.parse(Bytes.fromArray(line.getBytes(StandardCharsets.UTF_8)))
+          record match
+            case ReferenceJson.Json.Obj(fields)
+                if fields.get("record").contains(ReferenceJson.Json.Str("transfer-range-block")) =>
+              import ReferenceJson.{field, string}
+              Some(
+                Capture(
+                  get(Bytes.fromHex(string(field(record, "headerEnvelopeHex")))),
+                  get(Bytes.fromHex(string(field(record, "rawBlockHex"))))
+                )
               )
-            )
-          case _ => None
-      }
-      .toVector match
-      case found if found.nonEmpty && found.size <= 8 => found
-      case _ => throw new IllegalArgumentException("one to eight captured blocks required")
-  }
+            case _ => None
+        }
+        .toVector match
+        case found if found.nonEmpty && found.size <= maximum => found
+        case _ => throw new IllegalArgumentException(s"one to $maximum captured blocks required")
+    }
 
   private[lab] def predicatesSucceeded(
       opcert: OperationalCertificate.Result,

@@ -99,60 +99,77 @@ object ReferenceCaptureCommand:
       stopAt: Option[ChainSync.Point],
       maxHeaders: Int = 8
   ): IO[Vector[Header]] =
-    checked(TcpLimits.checked()).flatMap { limits =>
-      AsyncTcpTransport
-        .resource[IO](peer, limits)
-        .use { transport =>
-          val deadlines =
-            SessionDeadlines[IO](5.seconds, 5.seconds, 5.seconds, IO.pure(Some(15.seconds)))
-          ConnectionSession
-            .resource[IO, ChainSyncFixtures.OpaqueNtNHeaderFixture](
-              transport,
-              ConnectionSession.NtN14,
-              ChainSync.Role.Client,
-              deadlines,
-              ConnectionSession.Config(maxSduPayload = 65535, maxChunkBytes = 65543)
-            )
-            .use { session =>
-              def forward(allowAlignment: Boolean): IO[Header] = session.receive.flatMap {
-                case ChainSync.Message.AwaitReply              => forward(allowAlignment)
-                case ChainSync.Message.RollForward(payload, _) => checked(header(payload.bytes))
-                case ChainSync.Message.RollBackward(point, _)
-                    if allowAlignment && point == anchor =>
-                  IO.println("{\"record\":\"intersection-alignment\",\"matchedAnchor\":true}") *>
-                    session.send(ChainSync.Message.RequestNext) *> forward(false)
-                case other =>
-                  IO.raiseError(new IllegalStateException(s"expected successor header: $other"))
+    if maxHeaders < 1 || maxHeaders > 8 then
+      IO.raiseError(new IllegalArgumentException("header range exceeds eight-block bound"))
+    else headersThroughBounded(peer, magic, anchor, stopAt, maxHeaders)
+
+  /** Separate observation bound; persisted acquisition checkpoints remain limited to eight. */
+  private[lab] def headersThroughBounded(
+      peer: NumericPeer,
+      magic: Long,
+      anchor: ChainSync.Point,
+      stopAt: Option[ChainSync.Point],
+      maxHeaders: Int
+  ): IO[Vector[Header]] =
+    if maxHeaders < 1 || maxHeaders > 16 then
+      IO.raiseError(new IllegalArgumentException("observation range exceeds sixteen-block bound"))
+    else
+      checked(TcpLimits.checked()).flatMap { limits =>
+        AsyncTcpTransport
+          .resource[IO](peer, limits)
+          .use { transport =>
+            val deadlines =
+              SessionDeadlines[IO](5.seconds, 5.seconds, 5.seconds, IO.pure(Some(15.seconds)))
+            ConnectionSession
+              .resource[IO, ChainSyncFixtures.OpaqueNtNHeaderFixture](
+                transport,
+                ConnectionSession.NtN14,
+                ChainSync.Role.Client,
+                deadlines,
+                ConnectionSession.Config(maxSduPayload = 65535, maxChunkBytes = 65543)
+              )
+              .use { session =>
+                def forward(allowAlignment: Boolean): IO[Header] = session.receive.flatMap {
+                  case ChainSync.Message.AwaitReply              => forward(allowAlignment)
+                  case ChainSync.Message.RollForward(payload, _) => checked(header(payload.bytes))
+                  case ChainSync.Message.RollBackward(point, _)
+                      if allowAlignment && point == anchor =>
+                    IO.println("{\"record\":\"intersection-alignment\",\"matchedAnchor\":true}") *>
+                      session.send(ChainSync.Message.RequestNext) *> forward(false)
+                  case other =>
+                    IO.raiseError(new IllegalStateException(s"expected successor header: $other"))
+                }
+                def collect(found: Vector[Header]): IO[Vector[Header]] =
+                  if found.size >= maxHeaders then
+                    IO.raiseError(
+                      new IllegalStateException("header range exceeds explicit observation bound")
+                    )
+                  else
+                    session.send(ChainSync.Message.RequestNext) *> forward(found.isEmpty).flatMap {
+                      h =>
+                        checked(ChainSync.UInt64.from(h.slot)).flatMap { slot =>
+                          val point = ChainSync.Point.Block(slot, h.hash)
+                          if stopAt.isEmpty || stopAt.contains(point) then IO.pure(found :+ h)
+                          else collect(found :+ h)
+                        }
+                    }
+                for
+                  negotiated <- session.negotiate(Handshake.defaultNodeToNode(magic))
+                  _ <- IO.raiseUnless(
+                    negotiated == Handshake.Result.Negotiated(14, Handshake.Data(magic))
+                  )(new IllegalStateException("unexpected negotiation"))
+                  _ <- session.send(ChainSync.Message.FindIntersect(Vector(anchor)))
+                  intersection <- session.receive
+                  _ <- intersection match
+                    case ChainSync.Message.IntersectFound(point, _) if point == anchor => IO.unit
+                    case _ => IO.raiseError(new IllegalStateException("anchor not found"))
+                  h <- collect(Vector.empty)
+                  _ <- session.done
+                yield h
               }
-              def collect(found: Vector[Header]): IO[Vector[Header]] =
-                if found.size >= maxHeaders || maxHeaders < 1 || maxHeaders > 8 then
-                  IO.raiseError(new IllegalStateException("header range exceeds eight-block bound"))
-                else
-                  session.send(ChainSync.Message.RequestNext) *> forward(found.isEmpty).flatMap {
-                    h =>
-                      checked(ChainSync.UInt64.from(h.slot)).flatMap { slot =>
-                        val point = ChainSync.Point.Block(slot, h.hash)
-                        if stopAt.isEmpty || stopAt.contains(point) then IO.pure(found :+ h)
-                        else collect(found :+ h)
-                      }
-                  }
-              for
-                negotiated <- session.negotiate(Handshake.defaultNodeToNode(magic))
-                _ <- IO.raiseUnless(
-                  negotiated == Handshake.Result.Negotiated(14, Handshake.Data(magic))
-                )(new IllegalStateException("unexpected negotiation"))
-                _ <- session.send(ChainSync.Message.FindIntersect(Vector(anchor)))
-                intersection <- session.receive
-                _ <- intersection match
-                  case ChainSync.Message.IntersectFound(point, _) if point == anchor => IO.unit
-                  case _ => IO.raiseError(new IllegalStateException("anchor not found"))
-                h <- collect(Vector.empty)
-                _ <- session.done
-              yield h
-            }
-        }
-        .timeout(25.seconds)
-    }
+          }
+          .timeout(25.seconds)
+      }
 
   def exactBlock(peer: NumericPeer, magic: Long, h: Header): IO[Bytes] =
     for
