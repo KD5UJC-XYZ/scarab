@@ -62,8 +62,8 @@ object ReferenceParameters:
       )
     catch case NonFatal(e) => Left(s"invalid reference parameters: ${e.getMessage}")
 
-/** Deterministic, effect-free fixture-only research adapter. No file/network access.
-  * Static gating is intentionally conservative, including unreachable code.
+/** Deterministic, effect-free fixture-only research adapter. No file/network access. Static gating
+  * is intentionally conservative, including unreachable code.
   */
 final class Evaluator private[vm] (
     parameters: ReferenceParameters,
