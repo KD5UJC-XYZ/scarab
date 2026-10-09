@@ -112,3 +112,6 @@ under app/src/test/resources/synthetic-reward are synthetic data under this
 project's Apache-2.0 license. Native dependency source/binaries and captured-chain
 corpora are not redistributed. See native-provenance.json for exact source,
 input/output/binary identities and finite evidence limits.
+
+
+Synthetic empty-governance differential: reference/empty-governance-diff contains original Apache-2.0 native harness source using Cardano ledger APIs. Its finite synthetic cases and recorded golden share this project license. Dependency source/binaries and captured-chain data are not redistributed. See docs/empty-governance-differential.md for provenance and limits.

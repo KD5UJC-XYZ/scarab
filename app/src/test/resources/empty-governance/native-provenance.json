@@ -1,0 +1,56 @@
+{
+  "acceptedCases": 12,
+  "binarySHA256": "5956e512cd53e8c72fce8ffb227dff7a019bdfd92ef00aad406c131dbfc98f29",
+  "classification": "self-generated finite synthetic data; no captured chain, keys or provider corpus",
+  "executedNativeSourceSHA256": "6f956d1d3fecc192efdb5f7af4a4a3e76d6d1234ac8b764595a11e7e32e57ea4",
+  "executedScalaSources": {
+    "app/src/test/resources/empty-governance/cases.json": "2f94d8b6d04ad338e41cff69961a39c121619305730b533b9626f4d6c2349b64",
+    "app/src/test/scala/lab/EmptyGovernanceDifferentialSuite.scala": "22d39dc70d9dc866e34c58ea4fd1cb760362a1549fa8ae9469cd9adc820949e3",
+    "app/src/test/scala/lab/EmptyGovernanceProjection.scala": "d1a5d939e58a14ac2a0863f0e448f657aa00deef746a360bc7446b77efb75b98",
+    "ledger/src/main/scala/lab/ledger/ConwayEmptyGovernance.scala": "2686104d22194690c77fb30610af5d05a781997c6f2b0da5cb9951c2fb5df7fe"
+  },
+  "executionProvenanceSHA256": "4fca821b608e9236f391e48682808b48c5379fac61e3f9bc9333c894be9d7f02",
+  "image": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c",
+  "inputSHA256": "2f94d8b6d04ad338e41cff69961a39c121619305730b533b9626f4d6c2349b64",
+  "license": "Apache-2.0",
+  "limits": [
+    "Finite supplied-state normalized projection only",
+    "Three profile tags are rejected before native NEWEPOCH, not STS rejection evidence",
+    "Test-only finite DRep completion is separate from production fresh-construction model",
+    "No general governance, full PParams decoder, live cursor, state admission, coordinator or runtime claim"
+  ],
+  "nativeSuccessRecordSHA256": "1866a74e62720801896272e4e71754eb6df2cc778c1316141b5945ea80e023c3",
+  "normalization": "Remove root producer only; retain every other field and array order",
+  "profileRoutingCases": 3,
+  "publishedSourceFiles": {
+    "app/src/test/resources/empty-governance/cases.json": "2f94d8b6d04ad338e41cff69961a39c121619305730b533b9626f4d6c2349b64",
+    "app/src/test/scala/lab/EmptyGovernanceDifferentialSuite.scala": "16082711a85f5cabff5416f663708191c4d354f367cf3cc481803f023279a4b3",
+    "app/src/test/scala/lab/EmptyGovernanceProjection.scala": "efeec5ea82afbc552ca8735ae57c09fc4f169bbe8b89a6835511b4619354fa88",
+    "ledger/src/main/scala/lab/ledger/ConwayEmptyGovernance.scala": "2686104d22194690c77fb30610af5d05a781997c6f2b0da5cb9951c2fb5df7fe",
+    "ledger/src/test/resources/empty-governance/source-pins.json": "1e8ff57807b746f5bf1f47cbf7f0ebf7da0b3c81f78d53e145523efd02daa509",
+    "ledger/src/test/scala/lab/ledger/ConwayEmptyGovernanceSuite.scala": "44e0bb8bb5894775aa0a14d12ecf79a1d84b986912828443542c13f900c00cd1",
+    "reference/empty-governance-diff/BoundaryMain.hs": "5cf8b69abd453b158b3a59483feb5c33ddf48618b7142e33e78925b2be448751",
+    "reference/empty-governance-diff/GovernanceMain.hs": "6f956d1d3fecc192efdb5f7af4a4a3e76d6d1234ac8b764595a11e7e32e57ea4",
+    "reference/empty-governance-diff/cases.json": "2f94d8b6d04ad338e41cff69961a39c121619305730b533b9626f4d6c2349b64",
+    "reference/empty-governance-diff/empty-governance-diff.cabal": "1bc737e1d8baaef551c48c6f570e7e9e7e40846ebb9c8501df79480ed042219e",
+    "reference/synthetic-reward-diff/Main.hs": "0852605d2644fb855709fa5d895dd8baced1a1e756f9821fa39ceab2a51a58ca"
+  },
+  "resultBytes": 73816,
+  "resultSHA256": "df3cda77eba7238b36631890d3fb2f17e979b3277b9db1dbd1e239f7587bed05",
+  "review": "Independent audit verified all 15 cases, recorded source pins, 235-package closure and owned cleanup. Binary identity is receipt-backed after cleanup. Pre-format executed Scala hashes are retained; formatting did not change computation.",
+  "scalaResultSHA256": "1b8c233ff9dc585f03740d37875fef5d3a0788568fab815acce47b1245fb4b3b",
+  "schema": "empty-governance-native-provenance-v1",
+  "workerCommit": "7f6c32dc77b738dd9903f413b7ed5225768d4852",
+  "workerSourceFiles": {
+    "app/src/test/resources/empty-governance/cases.json": "2f94d8b6d04ad338e41cff69961a39c121619305730b533b9626f4d6c2349b64",
+    "app/src/test/scala/lab/EmptyGovernanceDifferentialSuite.scala": "8b8199a21d784fd36bd7e81ac569b93b001a247132ead4222695db522fe7d789",
+    "app/src/test/scala/lab/EmptyGovernanceProjection.scala": "efeec5ea82afbc552ca8735ae57c09fc4f169bbe8b89a6835511b4619354fa88",
+    "ledger/src/main/scala/lab/ledger/ConwayEmptyGovernance.scala": "2686104d22194690c77fb30610af5d05a781997c6f2b0da5cb9951c2fb5df7fe",
+    "ledger/src/test/resources/empty-governance/source-pins.json": "1e8ff57807b746f5bf1f47cbf7f0ebf7da0b3c81f78d53e145523efd02daa509",
+    "ledger/src/test/scala/lab/ledger/ConwayEmptyGovernanceSuite.scala": "44e0bb8bb5894775aa0a14d12ecf79a1d84b986912828443542c13f900c00cd1",
+    "reference/empty-governance-diff/BoundaryMain.hs": "5cf8b69abd453b158b3a59483feb5c33ddf48618b7142e33e78925b2be448751",
+    "reference/empty-governance-diff/GovernanceMain.hs": "6f956d1d3fecc192efdb5f7af4a4a3e76d6d1234ac8b764595a11e7e32e57ea4",
+    "reference/empty-governance-diff/cases.json": "2f94d8b6d04ad338e41cff69961a39c121619305730b533b9626f4d6c2349b64",
+    "reference/empty-governance-diff/empty-governance-diff.cabal": "1bc737e1d8baaef551c48c6f570e7e9e7e40846ebb9c8501df79480ed042219e"
+  }
+}

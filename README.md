@@ -279,3 +279,6 @@ and consensus validation remain outside this experimental profile.
 The [recorded synthetic native boundary comparison](docs/synthetic-boundary-differential.md)
 covers seven finite pure-API monetary/stake/count/timing cases. It does not prove
 coherent successor coordinator behavior, full-block validation or recovery.
+
+
+The [finite empty-governance differential](docs/empty-governance-differential.md) adds 12 positive normalized cases and three profile-routing checks. It is standalone and does not enable runtime epoch admission.

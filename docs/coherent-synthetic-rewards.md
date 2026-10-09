@@ -186,3 +186,6 @@ formats continue rejecting the enlarged tuple.
 The follow-up [bounded recovery model](synthetic-recovery-model.md) supports internal
 controller-authorized opaque handoff with historical boundary/freeze provenance. It
 does not add durable serialization or relax the runtime/CLI validation limits.
+
+
+The standalone [empty-governance comparison](empty-governance-differential.md) now covers finite normalized synthetic cases. It is not wired into this coordinator; full supplied-state provenance and remaining automatic effects are still required.
