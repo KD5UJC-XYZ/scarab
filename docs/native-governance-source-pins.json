@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "sources": [
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance.hs",
+      "memberSHA256": "1761313ddee85dd7fa743f8a8acc34126d76e8582c6e23e7f5d9bca74300ff71"
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+      "memberSHA256": "c0e5c984d28c69ff024e9f3d950284c7fd122ff22703279b744141d9720fcf97"
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+      "memberSHA256": "71c15610d3e8d4117132c1279827f9caa77564ad0ca46876194f065099fa54bc"
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+      "memberSHA256": "a7b56cacf6fb38a13291cde2914fb06e12549e82b52002e43e2d24e6fdfe4ebe"
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/Account.hs",
+      "memberSHA256": "4272c5fb2ce78568112bf33c5354c59d20c20768b93783987bde6f1a8519d0d8"
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/CertState.hs",
+      "memberSHA256": "0f62f1ef6a5127af44a32f807ee19677572c194279af1ec2e496cc4c34fc9d1c"
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/VState.hs",
+      "memberSHA256": "5910a94d51eb6320edb0b52037a204a46809bfc29bdab1e5e2134b0656155d0c"
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/DRep.hs",
+      "memberSHA256": "3dc4edcaf8b406f1281120dcae306b41bde22d1aee68585bd06a3d3729fbcb6b"
+    },
+    {
+      "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+      "archiveSHA256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce",
+      "member": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/LedgerState/Types.hs",
+      "memberSHA256": "f619314d1e920cfd3dc154474c5d06f486a8f6f0655061f6b26d71d99e848440"
+    }
+  ]
+}
