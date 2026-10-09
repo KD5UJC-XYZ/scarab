@@ -176,3 +176,22 @@ tests passed. The compiler-free Docker image ran 93 Python tests with one native
 setup skip; the host's existing compiler ran all 95 under a Docker-call sentinel
 with no container calls. Separate opt-in suites passed 26 checks: six public
 reruns and 20 retained/synthetic checks. See [the exact contract and test scope](coherent-branch.md).
+
+
+## Positive complete-state coordinator reference checkpoint
+
+An explicit fresh private genesis profile omits Byron allocations before any
+database is created, preserving all generated Shelley funds/staking. The original
+Byron-containing capture still returns Unsupported. The new complete unfiltered
+reference pre-state has six outputs. One original block/transaction passes the
+coordinator, independently derives UTxO/fees, matches the external post-state and
+verifies atomic full-tuple rollback/reapply with stale-operation fencing.
+
+The live run passed in 226.836 seconds with complete owned-resource cleanup.
+Generated, pre-start configured and operational genesis bytes remain separately
+attributed; the reference launcher's timestamp adjustments are explicitly recorded.
+Validation passed 891 public Scala tests, 25 public gates and 102 compiler-inclusive
+Python guards. Separate opt-in suites passed 37 tests: 14 public reruns and
+23 retained/synthetic checks, including the authentic positive observation and
+oracle-ordering negatives. No full-ledger, consensus or atomic-snapshot claim.
+See [the exact fixture contract and evidence](private-cluster-coherent.md).

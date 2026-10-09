@@ -242,6 +242,10 @@ class Runner:
                 attempts.append({"command": tail, "error": str(exc)})
         self.save("watchdog.md", json.dumps(attempts, indent=2))
 
+    def prepare_genesis(self):
+        """Optional explicit fixture setup after generation, before any node starts."""
+        pass
+
     def run(self):
         started = time.monotonic()
         self.overall_deadline = started + 600
@@ -267,6 +271,7 @@ class Runner:
                 "--entrypoint=/bin/sh", self.image, "-c", "umask 077; sleep " + str(max(1, int(self.deadline - time.monotonic()))))
             r = self.execute("/bin/sh", "-c", "umask 077; cardano-testnet create-env --num-pool-nodes 3 --testnet-magic 1082026 --output /work/env", timeout=60)
             self.save("create-env.md", r.stdout + r.stderr)
+            self.prepare_genesis()
             g, c, ts = profile(json.loads(self.read("shelley-genesis.json")),
                 json.loads(self.read("configuration.yaml")),
                 [json.loads(self.read(f"node-data/node{i}/topology.json")) for i in range(1, 4)])

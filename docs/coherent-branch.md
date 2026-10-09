@@ -53,7 +53,9 @@ Those tests exercise competing publication, rollback/reapply, stale receipts,
 cancellation before publication, changed source attribution and unchanged state
 on eligibility/ledger rejection. They are unit tests, not reference acceptance
 or full original post-state agreement. Raw private evidence stays outside Git.
-A supported whole-checkpoint reference capture remains pending.
+A later [explicit fresh-genesis fixture](private-cluster-coherent.md) now supplies
+one supported complete reference checkpoint and positive coordinator scenario;
+the old capture and synthetic test attribution remain unchanged.
 
 The applied comparison adapters now derive ledger state first and compare the
 post-state only afterwards. Their narrower profiles are

@@ -11,8 +11,9 @@ acquisition, certificate/KES, supplied-state eligibility and independent UTxO/fe
 transition as one atomic in-memory tuple, with revision-fenced rollback. This is
 a one-block/supplied-epoch research profile, not full ledger or consensus validity.
 The old reference snapshot contains unsupported Byron outputs; its historical
-receipt remains unchanged. Positive coordinator unit coverage uses explicitly
-synthetic supplied state, with a real supported-checkpoint scenario still pending.
+receipt remains unchanged. The explicit [fresh-genesis reference fixture](docs/private-cluster-coherent.md)
+now demonstrates one positive complete-state coordinator transition and atomic
+rollback/reapply. Separate synthetic unit tests retain their original attribution.
 
 ## Opt-in local reference testing
 
