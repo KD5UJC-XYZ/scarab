@@ -36,8 +36,7 @@ deltaT + deltaR + deltaF + sumRewards = 0
 
 This follows `completeRupd` in pinned
 [PulsingReward.hs](https://github.com/IntersectMBO/cardano-ledger/blob/f649f9751074d2ab3de033fc3912f29c9862c1f5/eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/PulsingReward.hs).
-The retained local excerpt and checksum index are in
-`/home/<user>/cardano-epoch-continuity-design-20261009`. The preceding source
+The retained source excerpt and checksum index remain in private evidence storage. The preceding source
 allocation sets the available reward pot after the treasury allocation. Native
 completion also updates non-myopic state and reward events; this module does not.
 

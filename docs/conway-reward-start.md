@@ -32,9 +32,10 @@ Coin/count inputs and aggregate outputs are bounded to unsigned 64-bit values.
 Intermediate rational products use arbitrary precision and are bounded in size
 by the checked inputs. No loop depends on coin or slot magnitudes.
 
-The retained local source excerpt is
-`/home/<user>/cardano-epoch-continuity-design-20261009/eras_shelley_impl_src_Cardano_Ledger_Shelley_LedgerState_PulsingReward.hs.md`,
-SHA256 `d351328c783e33552f73ee6cb7435fb5b08e0df9eaab28415990786e00cb3f4e`.
+The retained private excerpt records the original Haskell source SHA256 as
+`d351328c783e33552f73ee6cb7435fb5b08e0df9eaab28415990786e00cb3f4e`.
+Its Markdown wrapper is a different file, with SHA256
+`18a8d13cd5aa2d7c6c2663cdca5e4e6bd495e39ff1292254a3e3455db1c47e16`.
 This is source-grounded arithmetic, not a native execution parity result.
 
 ## Checked supplied input boundary

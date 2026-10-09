@@ -35,6 +35,13 @@ effects before snapshot rotation and preserves pre-transition leadership inputs.
 It has no runtime publication operation. Same-epoch runtime guards remain;
 neither foundation establishes native reward parity or runnable epoch transitions.
 
+The pure reward pipeline now composes [supplied-projection reward-start allocation](docs/conway-reward-start.md),
+[completion equations](docs/conway-reward-completion.md), and
+[application-time recipient filtering](docs/conway-reward-application.md).
+Member and leader reward amounts are still supplied. Native input admission,
+branch ancestry, entitlement, pulser execution and runtime publication remain
+outside these operations.
+
 ## Opt-in local reference testing
 
 The local Docker harness now exercises a verified Cardano node 11.1.3: real Scala NtN14 handshake, ChainSync/BlockFetch capture, and a restricted ADA-transfer comparison against original reference inclusion bytes, whole-UTxO changes and actual fee-pot exports. A separate relay-only scenario observes hot/full-duplex peers and transaction-ID requests after the configured startup delay before submitting through the relay. It uses disposable private-cluster keys, an internal Docker network and bounded cleanup; no public peers or real funds. See [setup and resource contract](docs/private-cluster.md), [byte capture](docs/reference-capture.md), and [transfer/context/relay scope](docs/private-cluster-transfer.md).

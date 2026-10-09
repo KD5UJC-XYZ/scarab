@@ -57,6 +57,12 @@ runtime epoch guards and stake-bearing checkpoint rejection remain. Native rewar
 calculation, admitted branch ancestry and complete epoch-state transitions still
 require their own implementation and conformance evidence.
 
+The next pure foundation composes checked supplied parameter/global projections
+into [reward-start allocation](conway-reward-start.md), derives completion deltas,
+then applies supplied reward results using application-time registration and
+treasury routing. These algebra checks do not admit native inputs, calculate
+per-pool/member entitlement, progress a pulser or enable runtime epoch transitions.
+
 ## Worker interface and ownership
 
 The runnable-node lane owns `NodeCommand`, its suite, `Main` dispatch and this plan.
