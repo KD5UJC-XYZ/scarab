@@ -124,7 +124,7 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
       effect(
         B.Deltas(0, -1, 0),
         Map(S.Credential(false, bytes(99, 28)) -> Set(B.Reward(B.RewardKind.Member, pool, 1)))
-      ).isLeft
+      ).isRight
     )
     assert(
       effect(
@@ -134,7 +134,7 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
         )
       ).isLeft
     )
-    assert(effect(B.Deltas(0, 0, 0), Map(key -> Set.empty)).isLeft)
+    assert(effect(B.Deltas(0, 0, 0), Map(key -> Set.empty)).isRight)
     assert(
       effect(B.Deltas(0, 0, 0), Map(key -> Set(B.Reward(B.RewardKind.Member, pool, -1)))).isLeft
     )
@@ -287,4 +287,45 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
     assert(p.id != f.preview.id)
     assertEquals(p.rotation.beforeId, f.nextStake.id)
     assertEquals(p.rotation.beforeRevision, f.nextStake.revision)
+  }
+
+  test("application-time registration after freeze drives filtering and post-reward SNAP") {
+    val f = new Fixture
+    val newlyRegistered = S.Credential(false, bytes(50, 28))
+    val accounts = Map(script -> f.accounts(script), newlyRegistered -> S.Account(0, 2, Some(pool)))
+    val pools = f.pools.updated(pool, f.pools(pool).copy(delegators = Set(script, newlyRegistered)))
+    val application = get(S.context(bytes(51), 500, accounts, pools))
+    val c = get(
+      B.contextAtApplication(
+        f.owner,
+        f.stakeOwner,
+        bytes(52),
+        f.nextStake,
+        application,
+        f.pots,
+        f.current.previousBlocks,
+        f.current.currentBlocks
+      )
+    )
+    val signal = get(B.signal(f.owner, c, bytes(13), 500))
+    val rewards = f.rewards.updated(newlyRegistered, Set(B.Reward(B.RewardKind.Member, pool, 2)))
+    val complete = get(B.syntheticComplete(f.owner, c, f.frozen, B.Deltas(3, -12, -5), rewards))
+    val p = get(B.preview(f.owner, c, signal, B.RewardPhase.Completed(complete)))
+    assert(f.frozen.registeredAccounts.contains(key))
+    assert(!f.frozen.registeredAccounts.contains(newlyRegistered))
+    assertEquals(complete.applied.unregisteredCredentials, Set(key))
+    assertEquals(complete.applied.totalUnregistered, BigInt(8))
+    assertEquals(complete.applied.credited, Map(script -> BigInt(4), newlyRegistered -> BigInt(2)))
+    assertEquals(p.pots.treasury, BigInt(111)); assertEquals(p.pots.fees, BigInt(45))
+    assert(!p.balances.contains(key))
+    assertEquals(p.rotation.snapshots.mark.active(script).coin, BigInt(11))
+    assertEquals(p.rotation.snapshots.mark.active(newlyRegistered).coin, BigInt(2))
+    assert(!p.rotation.snapshots.mark.active.contains(key))
+    assert(p.rotation.leadership eq f.snapshots.mark)
+    assert(p.rewardApplication.contains(complete.applied))
+    assert(f.state.context.accounts.contains(key))
+    assert(B.preview(f.owner, c, f.signal, B.RewardPhase.Completed(complete)).isLeft)
+    assert(B.preview(f.owner, c, signal, B.RewardPhase.Completed(f.complete)).isLeft)
+    assert(c.id != f.current.id)
+    assert(!p.published && !p.epochTransitionValidated)
   }

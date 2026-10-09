@@ -36,10 +36,13 @@ The complete-effect constructor requires exact conservation:
 conservation again after application to bounded account balances and pots. Reward
 entries with equal type and pool cannot differ only by amount: the pinned Haskell
 `Reward` ordering identifies set entries by type and pool. PV9 aggregation sums
-the accepted set. Digest ordering is internal and is not native Haskell serialization or ordering. Unregistered-recipient redistribution is explicitly unsupported;
-it is not silently discarded or sent to an invented destination. Pool membership,
-registration, delegation and deposits do not change. Key and script credentials
-with identical hashes remain separate accounts.
+the accepted set. Digest ordering is internal and is not native Haskell encoding
+or ordering. The [PV9 application follow-up](conway-reward-application.md) now
+partitions recipients by application-time registration, credits registered
+accounts and routes unregistered amounts to treasury. The supplied application
+view may differ from the frozen registration view; this preview does not validate
+the intervening account transitions. Key and script credentials with identical
+hashes remain separate accounts.
 
 Conservation alone does not establish native reward calculation. For example, the
 synthetic test supplies snapshot fees of 8 and `deltaFees = -5`; the pinned native
@@ -67,7 +70,7 @@ previous parameter bytes, reserves, maximum supply, previous issuer counts and
 registered accounts. It also records the observed start slot, stability window,
 epoch and source tuple identity in its digest. Bounded original previous-parameter
 bytes remain opaque: no reward parameter semantics are inferred. Frozen values
-are not reconstructed from the later boundary's balances or rotated counts.
+are not reconstructed from the later boundary's balances or rotated counts. Application uses the separate current account view, not this frozen membership.
 
 Timing follows the pinned RUPD inequalities: at or before first-slot plus the
 window is too early; after that through first-slot plus twice the window starts

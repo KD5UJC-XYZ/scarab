@@ -27,6 +27,7 @@ object ConwayEpochBoundary:
       private[ConwayEpochBoundary] val stakeOwner: Stake.Owner,
       val tupleId: Bytes,
       val stake: Stake.State,
+      val application: Stake.Context,
       val pots: Pots,
       val previousBlocks: Map[Bytes, BigInt],
       val currentBlocks: Map[Bytes, BigInt],
@@ -52,7 +53,7 @@ object ConwayEpochBoundary:
     val go = start.stake.snapshots.go
     val snapshotFees = start.stake.snapshots.fees
     val previousBlocks = start.previousBlocks
-    val registeredAccounts = start.stake.context.accounts
+    val registeredAccounts = start.application.accounts
     val reserves = start.pots.reserves
     val maxSupply = start.pots.maxSupply
   final class Absence private[ConwayEpochBoundary] (
@@ -66,10 +67,11 @@ object ConwayEpochBoundary:
       val frozen: Frozen,
       val deltas: Deltas,
       val rewards: Map[Stake.Credential, Set[Reward]],
-      val balances: Map[Stake.Credential, BigInt],
-      val pots: Pots,
+      val applied: ConwayRewardApplication.Applied,
       val id: Bytes
   ):
+    val balances = applied.balances
+    val pots = applied.pots
     val nativeMonetaryValidated = false
   enum RewardPhase:
     case Unknown
@@ -83,6 +85,7 @@ object ConwayEpochBoundary:
       val pots: Pots,
       val rotation: Stake.Rotation,
       val rewardIdentity: Bytes,
+      val rewardApplication: Option[ConwayRewardApplication.Applied],
       val id: Bytes
   ):
     val previousBlocks = before.currentBlocks
@@ -103,7 +106,6 @@ object ConwayEpochBoundary:
     Blake2b.hash256.hash(Bytes.fromArray((Profile + "\n" + s).getBytes("UTF-8")))
   private def width(b: Bytes, n: Int) = b != null && b.value != null && b.size == n
   private def coin(n: BigInt) = n != null && n >= 0 && n <= Max
-  private def signed(n: BigInt) = n != null && n >= -Max && n <= Max
   private def own(o: Owner, c: Context): Unit =
     require(o != null && c != null && (o eq c.owner), "foreign boundary context")
   private def counts(m: Map[Bytes, BigInt]): Unit =
@@ -132,7 +134,42 @@ object ConwayEpochBoundary:
       previousBlocks: Map[Bytes, BigInt],
       currentBlocks: Map[Bytes, BigInt]
   ): Either[String, Context] = checked {
-    require(o != null && width(tupleId, 32) && state != null, "boundary context shape")
+    require(state != null, "boundary context shape")
+    get(
+      contextAtApplication(
+        o,
+        stakeOwner,
+        tupleId,
+        state,
+        state.context,
+        pots,
+        previousBlocks,
+        currentBlocks
+      )
+    )
+  }
+
+  /** Explicit supplied application-time account view, not validation of registration changes. */
+  def contextAtApplication(
+      o: Owner,
+      stakeOwner: Stake.Owner,
+      tupleId: Bytes,
+      state: Stake.State,
+      application: Stake.Context,
+      pots: Pots,
+      previousBlocks: Map[Bytes, BigInt],
+      currentBlocks: Map[Bytes, BigInt]
+  ): Either[String, Context] = checked {
+    require(
+      o != null && width(tupleId, 32) && state != null && application != null,
+      "boundary context shape"
+    )
+    require(
+      application.epochLength == state.context.epochLength &&
+        application.pools.map((p, v) => p -> v.copy(delegators = Set.empty)) ==
+        state.context.pools.map((p, v) => p -> v.copy(delegators = Set.empty)),
+      "application pool parameters/epoch geometry changed"
+    )
     validPots(pots); counts(previousBlocks); counts(currentBlocks)
     require(
       state.epoch < Max && (state.epoch + 1) * state.context.epochLength <= Max,
@@ -140,17 +177,19 @@ object ConwayEpochBoundary:
     )
     // Reuse the opaque stake owner's existing check; this creates only an unpublished rotation.
     get(
-      Stake.previewRotation(
+      Stake.previewRotationAfterRewards(
         stakeOwner,
         state,
         tupleId,
         (state.epoch + 1) * state.context.epochLength,
-        pots.fees
+        pots.fees,
+        application.accounts.map((c, a) => c -> a.balance),
+        application
       )
     )
-    val held = state.utxo.values.map(_.coin).sum + state.context.accounts.values
+    val held = state.utxo.values.map(_.coin).sum + application.accounts.values
       .map(a => a.balance + a.deposit)
-      .sum + state.context.pools.values.map(_.deposit).sum
+      .sum + application.pools.values.map(_.deposit).sum
     require(
       held + pots.treasury + pots.reserves + pots.fees <= pots.maxSupply,
       "tracked supply exceeds maximum"
@@ -160,11 +199,12 @@ object ConwayEpochBoundary:
       stakeOwner,
       tupleId,
       state,
+      application,
       pots,
       previousBlocks,
       currentBlocks,
       hash(
-        s"context:${tupleId.hex}:${state.id.hex}:${state.revision}:$pots:${countText(previousBlocks)}:${countText(currentBlocks)}"
+        s"context:${tupleId.hex}:${state.id.hex}:${state.revision}:${application.id.hex}:$pots:${countText(previousBlocks)}:${countText(currentBlocks)}"
       )
     )
   }
@@ -255,76 +295,19 @@ object ConwayEpochBoundary:
         frozen.previousBlocks == c.previousBlocks,
       "foreign/stale frozen reward environment"
     )
-    require(
-      deltas != null && Vector(deltas.treasury, deltas.reserves, deltas.fees).forall(signed),
-      "signed delta bounds"
-    )
-    require(
-      rewards != null && rewards.size <= 4096 && rewards.values.forall(_ != null) &&
-        rewards.values.map(_.size.toLong).sum <= 4096,
-      "reward set bound"
-    )
-    rewards.foreach { (credential, rs) =>
-      require(
-        c.stake.context.accounts.contains(credential),
-        "unregistered reward redistribution unsupported"
-      )
-      require(
-        rs.nonEmpty && rs.forall(r =>
-          r != null && r.kind != null && width(r.pool, 28) &&
-            c.stake.context.pools.contains(r.pool) && coin(r.amount)
-        ),
-        "reward shape/pool"
-      )
-      // Haskell Reward Ord identifies entries by type and pool, not amount.
-      require(rs.map(r => (r.kind, r.pool)).size == rs.size, "duplicate reward type/pool")
-    }
-    val totals = rewards.map((c, rs) => c -> rs.toVector.map(_.amount).sum)
-    val total = totals.values.sum
-    require(
-      coin(total) && deltas.treasury + deltas.reserves + deltas.fees + total == 0,
-      "reward conservation"
-    )
-    val balances = c.stake.context.accounts.map((credential, a) =>
-      credential -> (a.balance + totals.getOrElse(credential, BigInt(0)))
-    )
-    require(
-      balances.values.forall(coin) && balances.values.sum <= Max,
-      "post reward balance bounds"
-    )
-    val pots = c.pots.copy(
-      treasury = c.pots.treasury + deltas.treasury,
-      reserves = c.pots.reserves + deltas.reserves,
-      fees = c.pots.fees + deltas.fees
-    )
-    validPots(pots)
-    val oldTotal = c.pots.treasury + c.pots.reserves + c.pots.fees + c.stake.context.accounts.values
-      .map(_.balance)
-      .sum
-    require(
-      pots.treasury + pots.reserves + pots.fees + balances.values.sum == oldTotal,
-      "application conservation"
-    )
-    val rs = rewards.toVector
-      .sortBy(_._1.key)
-      .map { (c, set) =>
-        c.key + ":" + set.toVector
-          .sortBy(r => (r.kind.ordinal, r.pool.hex))
-          .map(r => s"${r.kind}:${r.pool.hex}:${r.amount}")
-          .mkString("|")
-      }
-      .mkString("\n")
+    val applied =
+      get(ConwayRewardApplication.applyPv9(c.application.accounts, c.pots, deltas, rewards))
     new Complete(
       o,
       c.id,
       frozen,
       deltas,
       rewards,
-      balances,
-      pots,
-      hash(s"effect:${c.id.hex}:${frozen.id.hex}:$deltas:$rs")
+      applied,
+      hash(s"effect:${c.id.hex}:${frozen.id.hex}:${applied.id.hex}")
     )
   }
+
   def preview(
       o: Owner,
       current: Context,
@@ -337,7 +320,7 @@ object ConwayEpochBoundary:
         next.beforeRevision == current.stake.revision,
       "stale/foreign boundary signal"
     )
-    val (balances, pots, rewardId) = rewards match
+    val (balances, pots, rewardId, applicationResult) = rewards match
       case RewardPhase.Unknown =>
         throw new IllegalArgumentException("unknown reward phase unsupported")
       case RewardPhase.Pulsing(_) =>
@@ -348,16 +331,17 @@ object ConwayEpochBoundary:
           "stale/foreign absence evidence"
         )
         (
-          current.stake.context.accounts.map((c, a) => c -> a.balance),
+          current.application.accounts.map((c, a) => c -> a.balance),
           current.pots,
-          hash(s"absent:${a.evidenceId.hex}")
+          hash(s"absent:${a.evidenceId.hex}"),
+          None
         )
       case RewardPhase.Completed(e) =>
         require(
           e != null && (e.owner eq o) && e.contextId == current.id,
           "stale/foreign complete reward effect"
         )
-        (e.balances, e.pots, e.id)
+        (e.balances, e.pots, e.id, Some(e.applied))
     val rotation = get(
       Stake.previewRotationAfterRewards(
         current.stakeOwner,
@@ -365,12 +349,13 @@ object ConwayEpochBoundary:
         next.headerHash,
         next.slot,
         pots.fees,
-        balances
+        balances,
+        current.application
       )
     )
     val identity = hash(
       s"preview:${current.id.hex}:${next.headerHash.hex}:${next.slot}:${rewardId.hex}:$pots:${balanceText(balances)}:" +
         s"${Stake.snapshotIdentity(rotation.snapshots.mark).hex}:${Stake.snapshotIdentity(rotation.snapshots.set).hex}:${Stake.snapshotIdentity(rotation.snapshots.go).hex}"
     )
-    new Preview(current, next, balances, pots, rotation, rewardId, identity)
+    new Preview(current, next, balances, pots, rotation, rewardId, applicationResult, identity)
   }

@@ -434,16 +434,18 @@ object ConwayStake:
       headerHash: Bytes,
       slot: BigInt,
       fees: BigInt,
-      balances: Map[Credential, BigInt]
+      balances: Map[Credential, BigInt],
+      application: Context
   ): Either[String, Rotation] = protect {
     require(
       owner != null && state != null && (owner eq state.owner) && balances != null &&
-        balances.keySet == state.context.accounts.keySet && balances.values.forall(coin),
-      "post-reward fixed account domain/bounds"
+        application != null && application.epochLength == state.context.epochLength &&
+        balances.keySet == application.accounts.keySet && balances.values.forall(coin),
+      "post-reward application account domain/bounds"
     )
-    val accounts = state.context.accounts.map((c, a) => c -> a.copy(balance = balances(c)))
+    val accounts = application.accounts.map((c, a) => c -> a.copy(balance = balances(c)))
     val post =
-      get(context(state.context.id, state.context.epochLength, accounts, state.context.pools))
+      get(context(application.id, application.epochLength, accounts, application.pools))
     val unpublished = new State(
       owner,
       post,
