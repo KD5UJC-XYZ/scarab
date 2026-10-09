@@ -186,6 +186,77 @@ object ConwayEmptyGovernance:
     require(get(Cbor.encode(canonical(decoded.value))) == raw, "canonical payload required")
     new Payload(raw)
   }
+
+  /** Exact native parameter envelope exception: only cost-model integer arrays may use the native
+    * indefinite array encoding. Every other byte remains canonical; originals are retained.
+    */
+  private[lab] def parameterPayloadWithNativeCostArrays(raw: Bytes): Either[String, Payload] =
+    checked {
+      require(
+        raw != null && raw.size > 0 && raw.size <= MaxPayloadBytes,
+        "parameter payload byte bound"
+      )
+      val root = get(Cbor.decode(raw, Cbor.Limits(MaxPayloadBytes, 16, 8192, MaxPayloadBytes)))
+      val fields = root.value match
+        case V.Arr(xs) if xs.size == 31 => xs
+        case _ => throw new IllegalArgumentException("complete 31-field parameter array required")
+      val pv9 = fields(12).value match
+        case V.Arr(version) => version.map(_.value) == Vector(V.UInt(9), V.UInt(0))
+        case _              => false
+      require(pv9, "parameter protocol version 9.0 required")
+      val models = fields(15).value match
+        case V.Map(xs) => xs
+        case _         => throw new IllegalArgumentException("cost model map required")
+      require(models.size <= 3, "cost model language bound")
+      var prior = -1
+      val modelBytes = models.flatMap { (key, value) =>
+        val language = key.value match
+          case V.UInt(n) if n >= 0 && n <= 2 => n.toInt
+          case _ => throw new IllegalArgumentException("known cost model language required")
+        require(language > prior, "cost model key ordering/duplicates")
+        prior = language
+        require(key.original == get(Cbor.encode(key.value)), "canonical cost model key required")
+        val coefficients = value.value match
+          case V.Arr(xs) => xs
+          case _         => throw new IllegalArgumentException("cost model integer array required")
+        require(
+          coefficients.size == Vector(166, 175, 251)(language),
+          "cost model coefficient count"
+        )
+        coefficients.foreach { n =>
+          val signed = n.value match
+            case V.UInt(v) => v
+            case V.NInt(v) => v
+            case _         => throw new IllegalArgumentException("cost model integer required")
+          require(
+            signed >= -(BigInt(1) << 63) && signed < (BigInt(1) << 63),
+            "cost model signed64 range"
+          )
+          require(n.original == get(Cbor.encode(n.value)), "minimal cost model integer required")
+        }
+        val definite = get(Cbor.encode(V.Arr(coefficients.map(n => node(n.value)))))
+        val indefinite =
+          Bytes(Vector(0x9f.toByte) ++ coefficients.flatMap(_.original.value) :+ 0xff.toByte)
+        require(
+          value.original == definite || value.original == indefinite,
+          "cost model array envelope"
+        )
+        key.original.value ++ value.original.value
+      }
+      val expectedMap = Bytes(Vector((0xa0 + models.size).toByte) ++ modelBytes)
+      require(fields(15).original == expectedMap, "canonical cost model map envelope required")
+      fields.zipWithIndex.foreach { (field, index) =>
+        if index != 15 then
+          require(
+            field.original == get(Cbor.encode(canonical(field.value))),
+            "canonical parameter field required"
+          )
+      }
+      val expectedRoot = Bytes(Vector(0x98.toByte, 0x1f.toByte) ++ fields.flatMap(_.original.value))
+      require(raw == expectedRoot, "canonical parameter root envelope required")
+      new Payload(raw)
+    }
+
   private def same(a: Payload, b: Payload): Boolean =
     a != null && b != null && a.original == b.original
 
@@ -248,6 +319,21 @@ object ConwayEmptyGovernance:
       roots.keySet == Purpose.values.toSet && roots.values.forall(_.forall(action)),
       "all four proposal roots required"
     )
+
+  /** Narrow audited temporal mismatch: complete PV9 records differing only in cost models. Detailed
+    * model-language/arity validation belongs to the typed parameter bridge.
+    */
+  private def historicalCostModelRole(previous: Payload, current: Payload): Boolean =
+    (Cbor.decode(previous.original).map(_.value), Cbor.decode(current.original).map(_.value)) match
+      case (Right(V.Arr(old)), Right(V.Arr(now))) if old.size == 31 && now.size == 31 =>
+        val pv9 = old(12).value match
+          case V.Arr(version) => version.map(_.value) == Vector(V.UInt(9), V.UInt(0))
+          case _              => false
+        val models = (old(15).value, now(15).value) match
+          case (V.Map(_), V.Map(_)) => old(15).original != now(15).original
+          case _                    => false
+        pv9 && models && (0 until 31).forall(i => i == 15 || old(i).original == now(i).original)
+      case _ => false
 
   /** Caller supplies post-reward/SNAP inputs; this models only the declared empty EPOCH slice. */
   def applyBoundary(input: Input, successorEpoch: BigInt): Either[String, Applied] = checked {
@@ -333,9 +419,16 @@ object ConwayEmptyGovernance:
           "old completed distribution fields"
         )
         val e = ratify.enact
+        // Conway Epoch installs nextEpochPParams from the OUTER GovState, not ensCurPParams.
+        // Core Governance's NoPParamsUpdate selects outer current and copies it to previous.
+        // Accept this explicit historical role without rewriting the completed EnactState.
+        val supportedCurrentRole = same(e.current, input.parameters.current) ||
+          (input.parameters.future == FutureParameters.NoUpdate &&
+            same(e.current, input.parameters.previous) &&
+            historicalCostModelRole(input.parameters.previous, input.parameters.current))
         require(
           e.committee == input.committee && e.constitution == input.constitution &&
-            same(e.current, input.parameters.current) && same(
+            supportedCurrentRole && same(
               e.previous,
               input.parameters.previous
             ) &&

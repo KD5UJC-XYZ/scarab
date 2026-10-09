@@ -26,7 +26,13 @@ roles have distinct expected source hashes and an ordered combined identity. Fie
 outside the selected projection remain byte-bound and shape-checked; full parameter
 validity is not claimed. Cost models must be explicitly empty in this first finite
 profile. A different protocol version, noncanonical encoding, duplicate map keys,
-out-of-range or unsupported field shape, and nonempty cost models reject.
+out-of-range or unsupported field shape reject. The audited-role increment now accepts
+empty cost models or recognized initial language arrays (V1/V2/V3: 166/175/251 signed
+Int64 entries), preserving every original field span. Unknown languages and other lengths
+remain outside this narrower profile; native PV9 decoding is more permissive.
+A parameter-specific constructor additionally preserves the native indefinite cost-vector
+array form while retaining canonical checks everywhere else; the generic payload
+constructor remains unchanged.
 
 `checkProjections` compares the decoded values with the existing ledger/reward objects.
 A caller cannot establish this check merely by supplying matching hashes or canonical
@@ -124,7 +130,10 @@ cache, network disabled, 2 CPU and 2 GiB; owned container cleanup was verified.
 All eleven archived native source pins were rechecked without native execution.
 
 The shared parameter decoder remains single-source. The supported payload profile
-requires empty cost models and its explicit canonical CBOR subset; typed Globals
+requires the explicit bounded cost-model and canonical CBOR subset; typed Globals
 uses supplied fixed epochs from slot zero, not arbitrary native EpochInfo callbacks.
 No coordinator composition, native payload parity, seed admission or runtime/CLI
 activation is included in this publication.
+
+See [audited parameter roles](audited-governance-roles.md) for the later cost-model
+and narrowly supported historical enactment increment.

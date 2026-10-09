@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "nativeExecution": "not performed",
+  "cases": [
+    {
+      "id": "exact-current",
+      "before": {
+        "outerCurrent": "C",
+        "outerPrevious": "P",
+        "completedCurrent": "C",
+        "completedPrevious": "P"
+      },
+      "after": {
+        "outerCurrent": "C",
+        "outerPrevious": "C",
+        "completedCurrent": "C",
+        "completedPrevious": "C"
+      },
+      "future": "PotentialNone"
+    },
+    {
+      "id": "previous-costs-only",
+      "before": {
+        "outerCurrent": "C",
+        "outerPrevious": "P",
+        "completedCurrent": "P",
+        "completedPrevious": "P"
+      },
+      "after": {
+        "outerCurrent": "C",
+        "outerPrevious": "C",
+        "completedCurrent": "C",
+        "completedPrevious": "C"
+      },
+      "future": "PotentialNone"
+    },
+    {
+      "id": "reject-non-cost-change",
+      "status": "profile-rejected",
+      "nativeSTSExecuted": false
+    }
+  ],
+  "symbols": {
+    "P": "pinned external previous full parameter original: V1/V3",
+    "C": "pinned external current full parameter original: V1/V2/V3"
+  },
+  "expectedDifferentTopLevelFields": [
+    15
+  ]
+}

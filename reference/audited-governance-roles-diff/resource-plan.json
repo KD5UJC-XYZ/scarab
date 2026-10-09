@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "status": "source-only; parent review required before execution",
+  "network": "none",
+  "cpus": 2,
+  "memory": "2GiB",
+  "pidsLimit": 128,
+  "wallTimeoutSeconds": 600,
+  "nativeCaseTimeoutSeconds": 60,
+  "nativeOutputLimitBytes": 262144,
+  "concurrency": 1,
+  "build": "offline GHC9.6.7/Cabal using existing pinned16-direct-dependency closure copied to private build cache; no shared cache writes",
+  "mounts": [
+    "repository source read-only",
+    "external prepared parameter directory read-only",
+    "isolated build/cache/output directory read-write"
+  ],
+  "forbidden": [
+    "native execution before review",
+    "network fetch",
+    "host installation",
+    "shared cache writes",
+    "live cluster access",
+    "writing audited bundle",
+    "checking audited source components into Git"
+  ],
+  "cleanup": "remove only explicitly created isolated build/container state after resolved-path review; preserve evidence outputs outside Git"
+}

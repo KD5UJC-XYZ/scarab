@@ -11,6 +11,19 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
   private def bytes(n: Int, size: Int = 32) = Bytes(Vector.fill(size)(n.toByte))
   private def cred(n: Int) = S.Credential(false, bytes(n, 28))
   private def payload(n: Int) = get(G.payload(get(Cbor.encode(V.UInt(n)))))
+  private def record(languages: Vector[Int], changedField: Option[Int] = None): G.Payload =
+    val fields = Vector.tabulate[V](31) { n =>
+      if changedField.contains(n) then V.UInt(999)
+      else if n == 12 then V.Arr(Vector(Node(V.UInt(9), Bytes.empty), Node(V.UInt(0), Bytes.empty)))
+      else if n == 15 then
+        V.Map(
+          languages.map(language =>
+            Node(V.UInt(language), Bytes.empty) -> Node(V.Arr(Vector.empty), Bytes.empty)
+          )
+        )
+      else V.UInt(n)
+    }
+    get(G.payload(get(Cbor.encode(V.Arr(fields.map(Node(_, Bytes.empty)))))))
   private val max = (BigInt(1) << 64) - 1
   private val pool = bytes(60, 28)
   private val anchor = G.Anchor("https://example.invalid/governance", bytes(61))
@@ -107,6 +120,111 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
       a.syntheticOnly && !a.nativePayloadsValidated && !a.nativeEquivalent && !a.epochTransitionValidated && !a.published
     )
   }
+  // Source: Conway Epoch.hs nextEpochPParams/curPParams assignment; core State/Governance.hs
+  // nextEpochPParams fallback for NoPParamsUpdate. Payloads stay opaque in this algebra.
+  test("NoUpdate selects outer current while retaining old enactment previous-epoch payload") {
+    val previous = record(Vector(0, 2)) // V1/V3 historical payload
+    val current = record(Vector(0, 1, 2)) // outer current adds V2
+    val base =
+      fixture().copy(parameters = G.Parameters(current, previous, G.FutureParameters.NoUpdate))
+    val historical = changedRatify(base)(r =>
+      r.copy(enact = r.enact.copy(current = previous, previous = previous))
+    )
+    val applied = get(G.applyBoundary(historical, 10))
+    assert(applied.before eq historical)
+    val retained = applied.before.oldDRep match
+      case G.OldDRep.Complete(_, r) => r.enact
+      case _                        => fail("completed historical state required")
+    assert(retained.current eq previous)
+    assert(retained.previous eq previous)
+    assertEquals(retained.current.original, previous.original)
+    assert(retained.current.original != current.original)
+    assert(applied.parameters.current eq current)
+    assert(applied.parameters.previous eq current)
+    assert(applied.fresh.enact.current eq current)
+    assert(applied.fresh.enact.previous eq current)
+    val alreadyCurrent =
+      changedRatify(historical)(r => r.copy(enact = r.enact.copy(current = current)))
+    val other = get(G.applyBoundary(alreadyCurrent, 10))
+    assertEquals(other.parameters, applied.parameters)
+    assert(other.id != applied.id) // Same output parameters cannot erase historical identity.
+  }
+
+  test("historical enactment role stays narrow and preserves every omitted-effect guard") {
+    val previous = record(Vector(0, 2))
+    val current = record(Vector(0, 1, 2))
+    val base =
+      fixture().copy(parameters = G.Parameters(current, previous, G.FutureParameters.NoUpdate))
+    val historical = changedRatify(base)(r =>
+      r.copy(enact = r.enact.copy(current = previous, previous = previous))
+    )
+    assert(G.applyBoundary(historical, 10).isRight)
+    val invalid = Vector(
+      historical.copy(parameters =
+        historical.parameters.copy(current = record(Vector(0, 1, 2), Some(0)))
+      ),
+      historical.copy(parameters =
+        historical.parameters.copy(current = record(Vector(0, 1, 2), Some(12)))
+      ),
+      historical.copy(parameters =
+        historical.parameters.copy(current = record(Vector(0, 1, 2), Some(15)))
+      ),
+      historical.copy(parameters = historical.parameters.copy(current = payload(1))),
+      historical.copy(parameters =
+        historical.parameters.copy(future = G.FutureParameters.PotentialNone)
+      ),
+      historical.copy(parameters =
+        historical.parameters.copy(future = G.FutureParameters.Pending(payload(9)))
+      ),
+      changedRatify(historical)(r => r.copy(enact = r.enact.copy(current = payload(9)))),
+      changedRatify(historical)(r =>
+        r.copy(enact = r.enact.copy(previous = base.parameters.current))
+      ),
+      changedRatify(historical)(r => r.copy(enact = r.enact.copy(treasury = 1))),
+      changedRatify(historical)(r =>
+        r.copy(enact = r.enact.copy(withdrawals = Map(cred(1) -> BigInt(1))))
+      ),
+      changedRatify(historical)(r => r.copy(delayed = true)),
+      historical.copy(donations = 1)
+    )
+    invalid.foreach(i => assert(G.applyBoundary(i, 10).isLeft))
+  }
+
+  test("native cost array exception preserves exact originals and rejects malformed envelopes") {
+    val fields = get(Cbor.decode(record(Vector.empty).original)).value match
+      case V.Arr(xs) => xs.map(_.original)
+      case _         => fail("record fixture")
+    def envelope(model: Vector[Byte], suffix: Vector[Byte] = Vector.empty): Bytes =
+      val costMap = Bytes(Vector(0xa1.toByte, 0.toByte) ++ model)
+      Bytes(
+        Vector(0x98.toByte, 0x1f.toByte) ++ fields.updated(15, costMap).flatMap(_.value) ++ suffix
+      )
+    val native = Vector(0x9f.toByte) ++ Vector.fill(166)(0.toByte) :+ 0xff.toByte
+    val raw = envelope(native)
+    val checked = get(G.parameterPayloadWithNativeCostArrays(raw))
+    assertEquals(checked.original, raw)
+    assert(G.payload(raw).isLeft)
+    val definite = get(Cbor.encode(V.Arr(Vector.fill(166)(Node(V.UInt(0), Bytes.empty))))).value
+    assertEquals(
+      get(G.parameterPayloadWithNativeCostArrays(envelope(definite))).original,
+      envelope(definite)
+    )
+    val malformed = Vector(
+      envelope(native.dropRight(1)),
+      envelope(native, Vector(0xff.toByte)),
+      envelope(Vector(0x9f.toByte) ++ Vector.fill(165)(0.toByte) :+ 0xff.toByte),
+      envelope(Vector(0x9f.toByte) ++ Vector.fill(167)(0.toByte) :+ 0xff.toByte),
+      envelope(
+        Vector(0x9f.toByte, 0x18.toByte, 0.toByte) ++ Vector.fill(165)(0.toByte) :+ 0xff.toByte
+      ),
+      envelope(
+        Vector(0x9f.toByte) ++ get(Cbor.encode(V.UInt(BigInt(1) << 63))).value ++
+          Vector.fill(165)(0.toByte) :+ 0xff.toByte
+      )
+    )
+    malformed.foreach(b => assert(G.parameterPayloadWithNativeCostArrays(b).isLeft))
+  }
+
   test("fresh pulse size floors with minimum one and dormant progresses even with no accounts") {
     for (count, chunk) <- Vector(0 -> 1, 3 -> 1, 7 -> 1, 8 -> 2, 9 -> 2, 11 -> 2) do
       val i = fixture(count); val a = get(G.applyBoundary(i, 10))

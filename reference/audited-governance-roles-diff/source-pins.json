@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "pinnedArchives": [
+    {
+      "package": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+      "memberSHA256": "b0512e261b41eb4908949ecf7fdcde2d749718a3100c7854f70f8226ccee1005",
+      "lines": [
+        317,
+        325
+      ]
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/Governance.hs",
+      "memberSHA256": "e836e80dabae53177e4f4aa8e7f5fb51b3e5b3a6276d0ba98d11fadc327ebcae",
+      "lines": [
+        111,
+        139
+      ]
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Plutus/CostModels.hs",
+      "memberSHA256": "5fd2ab01dabc4a7998b46f1bce8a8db2ddd89912fc6d680416d5f9d5a1becf47",
+      "lines": []
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Plutus/Language.hs",
+      "memberSHA256": "5ee74482bea100e7ccbfcb277fcd78d6e3ce1232e9e891b06903c87f5b2c0aed",
+      "lines": []
+    },
+    {
+      "package": "cardano-ledger-binary",
+      "version": "1.9.1.0",
+      "archiveSHA256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "member": "cardano-ledger-binary-1.9.1.0/src/Cardano/Ledger/Binary/Encoding/EncCBOR.hs",
+      "memberSHA256": "4d71b5a323d88f766e6e7d4f33202c9371e1b426b77e68fd5760ef50191f70ba",
+      "lines": []
+    },
+    {
+      "package": "cardano-ledger-binary",
+      "version": "1.9.1.0",
+      "archiveSHA256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "member": "cardano-ledger-binary-1.9.1.0/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+      "memberSHA256": "3c6f222efddd43995afa425a18a748d35ca8f629799d5d2a362629db4bd50b47",
+      "lines": [
+        493,
+        508
+      ]
+    }
+  ],
+  "localHarness": {
+    "reference/empty-governance-diff/GovernanceMain.hs": "6f956d1d3fecc192efdb5f7af4a4a3e76d6d1234ac8b764595a11e7e32e57ea4",
+    "reference/empty-governance-diff/BoundaryMain.hs": "5cf8b69abd453b158b3a59483feb5c33ddf48618b7142e33e78925b2be448751",
+    "reference/synthetic-reward-diff/Main.hs": "0852605d2644fb855709fa5d895dd8baced1a1e756f9821fa39ceab2a51a58ca"
+  },
+  "externalProjectionSHA256": "19bff89f7dfd13f54312ba3cb6dfcad46ebb8b69d347221df0d2965948b49dc7",
+  "previousParameterSHA256": "0f6d70064c39fb492af2f456aa87e3ce44195bb791da4a74a54d507bb01899ef",
+  "currentParameterSHA256": "75146abbc571a0a633ea1b62dc34d4e0c85164f29a1492ecf20f1929070d9600"
+}
