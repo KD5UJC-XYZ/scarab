@@ -1,18 +1,30 @@
 # Scala transaction ingress milestones
 
-This is a planned extension after the restricted live boundary follower. It is
-not a claim that the repository currently has a transaction API, mempool,
-LocalTxSubmission client or TxSubmission2 relay.
+The restricted live boundary follower and isolated ADA submission milestones
+have passed. The app-private loopback API, bounded volatile pool and Scala
+TxSubmission2 relay are implemented for `isolated-conway-pv9-ada-vkey-v1`.
+See [implementation and acceptance evidence](ada-submission-implementation.md),
+including the explicit zero reference initialization-delay setting. General
+public-node admission, default-delay interoperability and full ledger/consensus
+validation remain unproved. Native-script and Plutus ingress are next.
 
 ## Sequence
 
-1. Complete the live follower with an exact-point native endpoint comparison.
-2. Accept ADA transactions through a Scala-owned API, apply explicitly scoped
+1. Completed within the restricted profile: live follower with an exact-point
+   native endpoint comparison.
+2. Completed within the isolated ADA profile: accept transactions through a
+   Scala-owned API, apply explicitly scoped
    validation, store accepted transactions in a bounded volatile pool, relay with
    Scala TxSubmission2, and observe reference inclusion through the Scala follower.
    Remove included transactions from the pool.
-3. Extend the same API to supported native-script and Plutus transactions using
-   Scalus and reference conformance tests. The API remains the ingress.
+3. Next: extend the same API first to a bounded native-script profile, with
+   reference agreement for valid and invalid witness/validity combinations. Keep
+   unsupported combinations explicit and preserve generation fencing, original
+   byte identity, reservation and relay limits.
+4. Then add a separately versioned Plutus profile using Scalus and reference
+   conformance tests for phase-one/phase-two, budgets, contexts and collateral.
+   The same Scala API remains the ingress; each profile requires its own isolated
+   admission, relay, inclusion and endpoint evidence.
 
 Forwarding an API request to a reference CLI is not the Scala admission, pool or
 relay milestone. API acceptance, peer delivery and chain inclusion are separate
@@ -58,4 +70,4 @@ All integration scenarios use disposable keys and isolated local Docker clusters
 No real funds, production keys or public-network submissions are part of these
 milestones.
 
-The initial shared worker boundary is frozen in [ADA submission contract v1](ada-submission-contract-v1.md). Implementation and conformance evidence remain pending.
+The initial shared worker boundary is implemented in [ADA submission contract v1](ada-submission-contract-v1.md). Restricted ADA acceptance evidence is recorded; script-profile implementation and reference agreement remain pending.
