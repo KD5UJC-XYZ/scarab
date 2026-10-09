@@ -247,3 +247,32 @@ Tests used a fresh Git source export, private copied caches, the existing pinned
 JDK/Python image, networking disabled and 2 CPU / 2 GiB limits. Owned-container
 cleanup was verified. Source hashes remained unchanged; the subsequent edit
 only records verification here. These are local results, not a hosted-CI claim.
+
+
+## Pure monetary pulser checkpoint, 2026-10-09
+
+Reviewed source `01165450445ed0f66f38ee6a7db1c5a3fa7d5397` passed one combined
+offline public regression: **1,218 Scala tests**, **63 translator tests**, all
+**25 public serial gates**, **306 executed Python launcher tests** (308 collected,
+two optional retained-data skips), and **28 checkpoint guards**. Module counts
+are core 219, VM 47, network 100, network-runtime 52, ledger 235, ledger-runtime
+150, fetcher 5 and app 410. A separate retained-input integration check passed
+**70 focused tests**: 53 pure ledger cases and 17 retained-enabled application
+cases. Private inputs were not mounted in the public regression.
+
+This batch adds [pool/leader calculation](conway-pool-reward.md),
+[member distribution](conway-member-rewards.md), and the
+[immutable monetary pulser](conway-reward-pulser.md). Tests cover native
+script-before-key traversal, bounded chunks, exhaustion checked before work,
+delayed completion after the final chunk, forced completion, opaque progress,
+and application-time registration. Monotonic signals are a stricter local API;
+old immutable states remain replayable. The supplied frozen snapshots and scoped
+parameter/global projections are not native admission or ancestry evidence.
+Native execution parity, full RUPD, events, non-myopic updates and runtime epoch
+publication remain excluded. Runtime and checkpoint guards are unchanged.
+
+The batch used a fresh Git export, private copied caches, the existing pinned
+JDK/Python image, networking disabled and 2 CPU / 2 GiB limits. Owned cleanup
+was confirmed and source hashes were checked. The subsequent edit only records
+verification here. These are local results, not a hosted-CI claim. The next
+evidence priority is a separately reviewed offline native differential.
