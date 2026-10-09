@@ -46,9 +46,12 @@ object ConwayEpochBoundary:
       val observedSlot: BigInt,
       val window: BigInt,
       val previousParameters: Bytes,
-      val id: Bytes
+      val id: Bytes,
+      val rewardParameters: Option[ConwayRewardStart.Parameters] = None,
+      val rewardGlobals: Option[ConwayRewardStart.Globals] = None
   ):
     val epoch = start.stake.epoch
+    val epochLength = start.stake.context.epochLength
     val preTickTupleId = start.tupleId
     val go = start.stake.snapshots.go
     val snapshotFees = start.stake.snapshots.fees
@@ -267,6 +270,34 @@ object ConwayEpochBoundary:
       hash(
         s"frozen:${preTick.id.hex}:$observedSlot:$window:${Blake2b.hash256.hash(previousParameters).hex}"
       )
+    )
+  }
+
+  /** Scoped checked parameter/global bytes are bound at freezing, never supplied at calculation. */
+  def freezeForAllocation(
+      o: Owner,
+      preTick: Context,
+      observedSlot: BigInt,
+      window: BigInt,
+      parameters: ConwayRewardStart.Parameters,
+      globals: ConwayRewardStart.Globals
+  ): Either[String, Frozen] = checked {
+    own(o, preTick)
+    require(
+      parameters != null && globals != null &&
+        globals.epochLength == preTick.stake.context.epochLength && globals.maxSupply == preTick.pots.maxSupply,
+      "reward-start globals differ from frozen context"
+    )
+    val base = get(freeze(o, preTick, observedSlot, window, parameters.original))
+    new Frozen(
+      o,
+      preTick,
+      observedSlot,
+      window,
+      parameters.original,
+      hash(s"allocation-frozen:${base.id.hex}:${parameters.id.hex}:${globals.id.hex}"),
+      Some(parameters),
+      Some(globals)
     )
   }
 

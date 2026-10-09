@@ -14,8 +14,11 @@ prove branch ancestry, or replace non-myopic state.
 - Reward pot plus treasury allocation equals snapshot fees plus reserve
   contribution, with bounded aggregate arithmetic.
 
-These are consistency checks on **supplied** allocation values. The source's
-rho/tau/eta calculations and original pulser inputs have not been reconstructed.
+These are consistency checks on **supplied** allocation values.
+[ConwayRewardStart](conway-reward-start.md) can now derive those values from
+checked parameter/global projections bound to the frozen identity, using the
+source's exact rho/tau/eta allocation equations. Native input admission and
+pulser reconstruction remain outside both constructors.
 
 `complete` binds the checked input identity, accepts at most one typed member
 reward per credential plus typed leader reward sets, and combines them with the

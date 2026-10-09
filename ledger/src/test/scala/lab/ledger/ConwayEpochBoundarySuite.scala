@@ -452,3 +452,240 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
     val py = get(B.preview(f.owner, f.current, f.signal, B.RewardPhase.Completed(ey)))
     assert(px.id != py.id)
   }
+
+  private def startParameters(
+      rn: BigInt = 1,
+      rd: BigInt = 10,
+      tn: BigInt = 1,
+      td: BigInt = 5,
+      major: BigInt = 9
+  ): Bytes =
+    get(
+      Cbor.encode(
+        V.Arr(
+          Vector(
+            n(V.Text(ConwayRewardStart.ParameterFormat)),
+            n(V.UInt(major)),
+            n(V.UInt(0)),
+            n(V.UInt(rn)),
+            n(V.UInt(rd)),
+            n(V.UInt(tn)),
+            n(V.UInt(td))
+          )
+        )
+      )
+    )
+  private def startGlobals(
+      an: BigInt = 1,
+      ad: BigInt = 20,
+      epoch: BigInt = 500,
+      supply: BigInt = 5000
+  ): Bytes =
+    get(
+      Cbor.encode(
+        V.Arr(
+          Vector(
+            n(V.Text(ConwayRewardStart.GlobalFormat)),
+            n(V.UInt(epoch)),
+            n(V.UInt(an)),
+            n(V.UInt(ad)),
+            n(V.UInt(supply))
+          )
+        )
+      )
+    )
+  private def allocationFrozen(
+      f: Fixture,
+      produced: BigInt,
+      parameters: Bytes = startParameters(),
+      globals: Bytes = startGlobals()
+  ): B.Frozen =
+    val previous = if produced == 0 then Map.empty[Bytes, BigInt] else Map(pool -> produced)
+    val context = get(
+      B.context(
+        f.owner,
+        f.stakeOwner,
+        bytes(71),
+        f.state,
+        f.pots,
+        previous,
+        Map(pool -> BigInt(999))
+      )
+    )
+    get(
+      B.freezeForAllocation(
+        f.owner,
+        context,
+        110,
+        100,
+        get(ConwayRewardStart.decodeParameters(parameters)),
+        get(ConwayRewardStart.decodeGlobals(globals))
+      )
+    )
+
+  test("reward start zero production and exact floors use previous blocks and snapshot fees") {
+    val f = new Fixture
+    val zero = allocationFrozen(f, 0)
+    val z = get(ConwayRewardStart.calculate(zero, zero.id))
+    assertEquals(z.expectedBlocks, BigInt(25)); assertEquals(z.blocksMade, BigInt(0))
+    assertEquals(z.performance.numerator, BigInt(0));
+    assertEquals(z.performance.denominator, BigInt(1))
+    assertEquals(z.deltaR1, BigInt(0)); assertEquals(z.grossPot, BigInt(8))
+    assertEquals(z.treasuryDelta, BigInt(1)); assertEquals(z.rewardPot, BigInt(7))
+    val frozen = allocationFrozen(f, 7, startParameters(2, 7, 2, 3), startGlobals(2, 3))
+    val a = get(ConwayRewardStart.calculate(frozen, frozen.id))
+    assertEquals(a.expectedBlocks, BigInt(333)); assertEquals(a.blocksMade, BigInt(7))
+    assertEquals(a.performance.numerator, BigInt(7));
+    assertEquals(a.performance.denominator, BigInt(333))
+    assertEquals(a.deltaR1, BigInt(6)); assertEquals(a.grossPot, BigInt(14))
+    assertEquals(a.treasuryDelta, BigInt(9)); assertEquals(a.rewardPot, BigInt(5))
+    assertEquals(frozen.rewardParameters.get.decentralization, S.Ratio(0, 1))
+  }
+  test("reward start caps performance at one without discarding the exact raw ratio") {
+    val f = new Fixture
+    val at = allocationFrozen(f, 25, startParameters(1, 3, 1, 3))
+    val over = allocationFrozen(f, 50, startParameters(1, 3, 1, 3))
+    val a = get(ConwayRewardStart.calculate(at, at.id));
+    val b = get(ConwayRewardStart.calculate(over, over.id))
+    assertEquals(b.performance.numerator, BigInt(2));
+    assertEquals(b.performance.denominator, BigInt(1))
+    assertEquals(b.cappedPerformance.numerator, BigInt(1));
+    assertEquals(b.cappedPerformance.denominator, BigInt(1))
+    assertEquals(a.deltaR1, BigInt(333)); assertEquals(a.treasuryDelta, BigInt(113));
+    assertEquals(a.rewardPot, BigInt(228))
+    assertEquals(a.deltaR1, b.deltaR1); assertEquals(a.rewardPot, b.rewardPot); assert(a.id != b.id)
+  }
+  test(
+    "reward-start checked byte codecs reject denominator, range, profile and canonicality errors"
+  ) {
+    assert(ConwayRewardStart.decodeParameters(startParameters(1, 0)).isLeft)
+    assert(ConwayRewardStart.decodeParameters(startParameters(2, 1)).isLeft)
+    assert(ConwayRewardStart.decodeParameters(startParameters(2, 4)).isLeft)
+    assert(ConwayRewardStart.decodeParameters(startParameters(major = 10)).isLeft)
+    assert(ConwayRewardStart.decodeGlobals(startGlobals(0, 1)).isLeft)
+    assert(ConwayRewardStart.decodeGlobals(startGlobals(1, 0)).isLeft)
+    assert(ConwayRewardStart.decodeGlobals(startGlobals(epoch = 0)).isLeft)
+    assert(ConwayRewardStart.decodeGlobals(startGlobals(supply = 0)).isLeft)
+    val raw = startParameters()
+    val noncanonical = Bytes(Vector(0x98.toByte, 7.toByte) ++ raw.value.tail)
+    assert(ConwayRewardStart.decodeParameters(noncanonical).isLeft)
+    assert(ConwayRewardStart.decodeParameters(Bytes(raw.value :+ 0.toByte)).isLeft)
+    assert(ConwayRewardStart.decodeParameters(Bytes(Vector.fill(1025)(0.toByte))).isLeft)
+  }
+  test("allocation requires checked parameters and globals frozen with exact context identity") {
+    val f = new Fixture
+    assert(ConwayRewardStart.calculate(f.frozen, f.frozen.id).isLeft)
+    val parameters = get(ConwayRewardStart.decodeParameters(startParameters()))
+    assert(
+      B.freezeForAllocation(
+        f.owner,
+        f.start,
+        110,
+        100,
+        parameters,
+        get(ConwayRewardStart.decodeGlobals(startGlobals(epoch = 501)))
+      ).isLeft
+    )
+    assert(
+      B.freezeForAllocation(
+        f.owner,
+        f.start,
+        110,
+        100,
+        parameters,
+        get(ConwayRewardStart.decodeGlobals(startGlobals(supply = 6000)))
+      ).isLeft
+    )
+    val frozen = allocationFrozen(f, 0)
+    assert(ConwayRewardStart.calculate(frozen, bytes(99)).isLeft)
+    val different = allocationFrozen(f, 0, globals = startGlobals(1, 25))
+    assert(frozen.id != different.id)
+    assert(
+      get(ConwayRewardStart.calculate(frozen, frozen.id)).id != get(
+        ConwayRewardStart.calculate(different, different.id)
+      ).id
+    )
+    val zeroExpected = allocationFrozen(f, 0, globals = startGlobals(1, 1000))
+    assert(ConwayRewardStart.calculate(zeroExpected, zeroExpected.id).isLeft)
+  }
+  test("reward-start exact large-coin arithmetic rejects gross-pot overflow") {
+    val f = new Fixture
+    val p = get(ConwayRewardStart.decodeParameters(startParameters(1, 3, 1, 3)))
+    val globals = get(ConwayRewardStart.decodeGlobals(startGlobals(supply = max)))
+    val pots = f.pots.copy(reserves = max - 2000, maxSupply = max)
+    val c = get(
+      B.context(f.owner, f.stakeOwner, bytes(72), f.state, pots, Map(pool -> BigInt(25)), Map.empty)
+    )
+    val frozen = get(B.freezeForAllocation(f.owner, c, 110, 100, p, globals))
+    val a = get(ConwayRewardStart.calculate(frozen, frozen.id))
+    assertEquals(a.deltaR1, (max - 2000) / 3)
+    assertEquals(a.treasuryDelta, (8 + (max - 2000) / 3) / 3)
+    val excessive = get(
+      S.seed(
+        f.stakeOwner,
+        f.context,
+        f.ledger,
+        pin,
+        get(S.recompute(f.raw)),
+        f.snapshots.copy(fees = max)
+      )
+    )
+    val badContext = get(
+      B.context(
+        f.owner,
+        f.stakeOwner,
+        bytes(73),
+        excessive,
+        f.pots,
+        Map(pool -> BigInt(25)),
+        Map.empty
+      )
+    )
+    val badFrozen = get(
+      B.freezeForAllocation(
+        f.owner,
+        badContext,
+        110,
+        100,
+        p,
+        get(ConwayRewardStart.decodeGlobals(startGlobals()))
+      )
+    )
+    assert(ConwayRewardStart.calculate(badFrozen, badFrozen.id).isLeft)
+  }
+  test("derived reward-start allocation composes into completion and unpublished SNAP preview") {
+    val f = new Fixture
+    val frozen = get(
+      B.freezeForAllocation(
+        f.owner,
+        f.start,
+        110,
+        100,
+        get(ConwayRewardStart.decodeParameters(startParameters())),
+        get(ConwayRewardStart.decodeGlobals(startGlobals()))
+      )
+    )
+    val allocation = get(ConwayRewardStart.calculate(frozen, frozen.id))
+    assertEquals(allocation.expectedBlocks, BigInt(25)); assertEquals(allocation.deltaR1, BigInt(8))
+    assertEquals(allocation.treasuryDelta, BigInt(3));
+    assertEquals(allocation.rewardPot, BigInt(13))
+    val inputs = allocation.completionInputs
+    val completed = get(
+      ConwayRewardCompletion.complete(
+        inputs,
+        inputs.id,
+        Map(key -> B.Reward(B.RewardKind.Member, pool, 2)),
+        Map(script -> Set(B.Reward(B.RewardKind.Leader, pool, 3)))
+      )
+    )
+    assertEquals(completed.deltas, B.Deltas(3, 0, -8))
+    val effect = get(B.completeFromFrozen(f.owner, f.current, completed))
+    val preview = get(B.preview(f.owner, f.current, f.signal, B.RewardPhase.Completed(effect)))
+    assertEquals(preview.pots, B.Pots(103, 1000, 42, 5000))
+    assertEquals(preview.balances(key), BigInt(7));
+    assertEquals(preview.balances(script), BigInt(10))
+    assert(
+      !allocation.nativeSeedAdmitted && !allocation.entitlementCalculated && !allocation.pulserExecuted && !allocation.published
+    )
+    assert(!preview.published && !preview.epochTransitionValidated)
+  }
