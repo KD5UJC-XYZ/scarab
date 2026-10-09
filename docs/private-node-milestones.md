@@ -34,14 +34,14 @@ fixtures. The separately reviewed twelve-block volatile case has now passed; see
 [the operational acceptance record](private-node-acceptance.md). No automatic
 follow-up run is authorized by this plan.
 
-## 3. Durable restart and fork handling — separate worker
+## 3. Bounded durable restart — first live case passed
 
 Adapt the reviewed durable coordinator behind the node engine boundary, preserving
 atomic publication and exact checkpoint identity. The separate retained-input graceful and post-acknowledgement SIGKILL cases
 passed at the e7d1e6f source pin; see the acceptance record for their exact scope.
-They do not demonstrate live network continuation. The next integrated case must
-run the ordinary node in explicit bounded durable create/resume modes and show
-newly acquired live blocks after strict recovery of an externally pinned receipt.
+They do not demonstrate live network continuation. The ordinary-node create/resume case now demonstrates newly acquired live blocks
+after strict recovery of an externally pinned receipt; its four-block scope is
+recorded in the acceptance document.
 Live competing-fork and write-interruption cases still require their own evidence. Distinguish retained rollback, outside-window rejection and unsupported
 fork handling. No power-loss claim follows from ordinary close/reopen tests.
 
@@ -114,11 +114,11 @@ private evidence. Public commits contain reviewed source and scoped summaries,
 never keys, raw provider exports or cluster state.
 
 
-## Bounded durable integration in progress
+## Bounded durable integration
 
-The approved session-bound `ValidatorTransitions` backend is integrated. The
-runner and CLI adaptation remain under focused implementation and review; this
-section is a plan, not a live restart acceptance claim.
+The approved session-bound `ValidatorTransitions` backend, runner and CLI are
+integrated. The independently reviewed bounded graceful restart case passed;
+this does not extend the durable format to compacted anchors.
 
 Use explicit create/resume selection, a checkpoint store, a private receipt
 directory and the expected context commitment. Resume additionally selects one
@@ -135,11 +135,12 @@ lifetime and keeps opaque views/prepared candidates private. Ordinary status
 contains confirmation classification and token-free state; explicit private
 receipt artifacts carry restart authority.
 
-The proposed live case ends process A at depth two, pins its returned receipt,
-then starts process B with that exact receipt and requires new live continuation
-to cumulative depth four in the same epoch. The next independently reviewed
-capture plan includes raw serialized ledger state, matching tip and protocol/
-configuration evidence inside an existing stable paused bracket and deadline.
+The reviewed live case ended process A at depth two, pinned its returned receipt,
+then started process B with that exact receipt and verified new live continuation
+to cumulative depth four in the same epoch. It also captured raw serialized ledger
+state with matching tip and protocol/configuration evidence inside stable paused
+brackets and their existing deadlines. Native epoch-decoder compatibility remains
+a separate check.
 JSON `possibleRewardUpdate: null` cannot establish an absent reward update.
 No extra pause, deadline extension or retrospective alteration of the completed
 twelve-block evidence follows from this plan.

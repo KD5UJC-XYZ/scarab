@@ -72,10 +72,11 @@ The reviewed twelve-block same-epoch case passed; its exact scope and hashes are
 recorded in that acceptance document. Sustained durable mode remains unsupported.
 
 
-## Bounded durable create and resume — integration under review
+## Bounded durable create and resume
 
-The following interface is being integrated and has not yet passed ordinary-node
-live restart acceptance. Existing retained-file restart evidence is separate.
+The reviewed isolated case passed ordinary-node graceful restart and new live
+continuation through four blocks. See the acceptance record for its exact source,
+receipts and limits. Existing retained-file process-kill evidence remains separate.
 
 Select `--mode bounded-durable` and supply `--store-action create` or `resume`,
 `--store` for the checkpoint directory, `--receipts` for a separate private

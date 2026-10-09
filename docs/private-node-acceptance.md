@@ -164,3 +164,52 @@ the matching integration directory. No automatic retry followed. A transport
 fix must pass synthetic binary-copy checks and independent review before a fresh,
 separately pinned invocation. This failure does not alter the accepted twelve-
 block volatile result or the separate retained-file restart evidence above.
+
+
+## Bounded durable follow-up — passed
+
+The separately reviewed follow-up at source
+`99f37c1e2d739736880b113d623b89b211025d6b` passed. The narrow binary export fix
+passed 172 launcher guards (one native-dependent class skipped) and two synthetic
+binary probes. All 1,712 compiled entries remained identical to the fully tested
+Scala milestone; no ledger, runner or checkpoint semantics changed for the fix.
+
+The supplied anchor was block 66, slot 1505, epoch 3. Process A acknowledged two
+empty live blocks and exited successfully at revision/generation 2. A separately
+retained, hash-pinned receipt selected the exact checkpoint for process B. B loaded
+the identical complete state at generation 2, kept that classification through its
+no-op intersection, then acknowledged two newly acquired live blocks through
+revision/generation 4. The transaction pair appeared in block 70 (the fourth new
+block); the other three blocks were empty. Final slot was 1769, still in epoch 3.
+
+Independent evidence review verified both receipt hashes, checkpoint payload and
+trailer digests, 15 input/oracle pins, exact original bytes, complete final state,
+five nonce fields, counters, whole UTxO 6→8 with four untouched outputs, and
+400,000 lovelace in fees. The unknown previous-epoch nonce was not compared.
+Both processes exited 0 without OOM; each peer opened and closed once. Total
+attempt and cleanup elapsed 279.247 seconds. Pre/restart/post pauses were
+7.980/2.903/5.696 seconds. No task-owned containers or networks remained.
+
+Private evidence is `/home/<user>/cardano-node-durable-live2-20261009`. The original
+failed attempt, its source/classpath pin, and its build remain preserved. The
+successful source/classpath pin is `attempt2-source-classpath-pin.json` in the
+matching integration directory, SHA-256
+`1d82d504590bc1e878d2997015461e020f4b2543d074d64332ff22d36f2b4aec`.
+The four-original capture SHA-256 is `71dc64fb41e2cb528fdca427dd8a88852d32278c7e8b034053a3574c8b7fd245`.
+
+The raw pre ledger export is 11858 bytes, SHA-256
+`37c805e549e69ccfb9caed93af678a85b9dc982e949e9e9f1c03e269912b0716`; post is 11892 bytes, SHA-256
+`2ade2f22e2e050f624e9f41a5124f5347f4c66a666a7f1c505c94b586a4ee655`. Original bytes are hash-bound to the executed CLI and
+stable paused tip brackets; each is one complete CBOR item. Native epoch-exporter
+compatibility remains untested here. The retained attribution addendum clarifies
+that `sourceCliCommit` in the original receipts was the query source examined
+(`eac27b8…`), not a verified build-source assertion. The actual CLI embedded
+revision is `938cba990357ae7c4b7f95c8f75dd9d31174bbeb`, with binary SHA-256
+`0ac45e874599fac4ee6ca4fd9602c0ddb9854a62be5f365dfa425eff9f4bd0ed`.
+Future receipts use `examinedQuerySourceCommit` to make that distinction explicit.
+
+This is bounded graceful durable restart plus live continuation. It does not show
+power-loss recovery, live competing forks, epoch transitions, durable compaction,
+full ledger validation or full consensus. The outer reference growth observation
+continued into later epochs; the validated four-block window stayed in epoch 3.
+State exports remain separate acquisitions under observed quiescence.

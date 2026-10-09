@@ -92,7 +92,7 @@ qualification. JSON possibleRewardUpdate:null is not evidence of absent reward s
 
 Installed CLI help was checked offline in the pinned reference image: command elapsed about
 0.30 seconds, network none, no node socket. Help confirms output-text/out-file flags; this
-is not a runtime query-duration guarantee. Pinned CLI source eac27b8b0437a80cea2152917850aadea5749d90
+is not a runtime query-duration guarantee. Examined query source eac27b8b0437a80cea2152917850aadea5749d90
 Query/Run.hs ledgerStateAsTextByteString returns unSerialised bytes unchanged. Raw compatibility
 with the independently built native epoch exporter remains to be checked against this new
 capture. Preserve the evidence; no exporter/epoch-stake integration in this milestone.
@@ -446,7 +446,7 @@ class DurableNodeRunner(LiveRunner):
         receipt=raw_export_provenance(label,raw,tips,outputs["protocol-state"].encode(),self.reference_configuration,
             max(0,20-(self.deadline-time.monotonic())),True)
         receipt.update(referenceImage=self.image,cliSha256=self.cli_sha256,cliVersion=self.cli_version,
-            sourceCliCommit="eac27b8b0437a80cea2152917850aadea5749d90",referenceContainerId=self.reference_id,
+            examinedQuerySourceCommit="eac27b8b0437a80cea2152917850aadea5749d90",referenceContainerId=self.reference_id,
             genesisSha256=self.genesis_hashes,rawPath=str(destination),binaryExport=export,
             beforeTipSha256=hashlib.sha256(before_raw.encode()).hexdigest(),afterTipSha256=hashlib.sha256(after_raw.encode()).hexdigest())
         self.save(label+"-ledger-raw-provenance.md",receipt)
