@@ -275,3 +275,7 @@ composition to empty blocks and up to sixteen supported transactions per block,
 with runtime-owned rollback history for at most eight same-epoch successors.
 Supplied anchors remain distinct from locally scoped applied tips; full ledger
 and consensus validation remain outside this experimental profile.
+
+The [recorded synthetic native boundary comparison](docs/synthetic-boundary-differential.md)
+covers seven finite pure-API monetary/stake/count/timing cases. It does not prove
+coherent successor coordinator behavior, full-block validation or recovery.

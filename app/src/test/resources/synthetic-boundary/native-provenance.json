@@ -1,0 +1,24 @@
+{
+  "binarySHA256": "a4b2db0247b166af479d5b2530550426afba864c7a5d576f22c2e07b2ade5187",
+  "caseCount": 7,
+  "classification": "self-generated deterministic synthetic output; no captured chain, keys or provider corpus",
+  "comparison": "all declared fields and array order equal after changing root producer only; unchanged pre-native Scala output",
+  "comparisonLogSHA256": "391ebb39b3f7b7d68b449b3d7573f4994232c46fb42a38504ac798fa9e5bb47b",
+  "generationImage": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c",
+  "inputSHA256": "b3dc3877984319078273937888395c51354dd293442005c9830c10ff3d36fc06",
+  "license": "Apache-2.0",
+  "limits": [
+    "pure boundary monetary/stake/count/timing projections only",
+    "Scala attaches pre-tick reward computation to pure boundary projection",
+    "no coherent successor coordinator, full-block validation, cryptography, governance/non-myopic equality, rollback or persistence",
+    "producer label alone is not authentication; original execution evidence retained privately"
+  ],
+  "nativeAttemptReportSHA256": "a10951fea8ceb3b0f78ad2356a4134cac164f7a51e0e5b9b448229ab142b0af9",
+  "nativeSourceCommit": "d3ab6dd276ae582733395f3f1db87bad4028649d",
+  "nativeSuccessRecordSHA256": "3930fdd8de8e110b7ca8f7a68a318fb91d8c6e0dd09ba543b83d4a0337fe4a0a",
+  "resultBytes": 131377,
+  "resultSHA256": "0398f64618fe0d16377d8ff8bc9cd65991e6333ca03407c119b6b64e3dea5ed5",
+  "scalaHarnessCommit": "fe07b5b8f2926d1daf7b44fc46bff0fb97c16da7",
+  "scalaResultSHA256": "c8bf5b2548142558e4bcef4027dbf9d0066cd556218f6c85a452332b5bb563e5",
+  "schema": "synthetic-boundary-native-provenance-v1"
+}

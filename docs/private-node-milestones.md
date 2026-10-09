@@ -64,16 +64,38 @@ The [immutable monetary pulser](conway-reward-pulser.md) shares this arithmetic
 and exposes bounded progress, delayed completion after exhaustion and forced
 completion. Its strict monotonic signal API is a local restriction; old immutable
 states remain replayable. Native provenance/parity, events, non-myopic updates
-and runtime epoch transitions remain outside this milestone. The next evidence
-priority is an offline native differential, not further pure abstractions.
+and runtime epoch transitions remain outside this milestone. The finite [recorded native reward comparison](synthetic-reward-native-comparison.md)
+and [native boundary comparison](synthetic-boundary-differential.md) now provide
+separate synthetic projection evidence. Runtime admission and omitted-effect
+validation remain outstanding.
 
 The [internal synthetic successor-block path](synthetic-successor-block.md)
 checks boundary-plus-block composition and atomic rollback under explicit omitted
 effect assumptions. It is package-private and tested with deliberately synthetic
-anchor geometry, not native boundary/valid-chain evidence. Public epoch guards
+anchor geometry. The separate native boundary differential compares pure APIs;
+it does not validate this coordinator or establish valid-chain evidence. Public epoch guards
 and checkpoint refusals remain. Future recovery needs authenticated historical
 boundary and freeze provenance plus measured aggregate limits; it cannot infer
 historical component identities from final revision minus retained depth.
+
+A separate isolated zero-deposit genesis fixture passed its checked native
+invariants at epoch 0, block 1, slot 36. Cleanup verified that its exact containers
+were absent. Independent persistence review found no restricted-result blocker:
+the manifest and all 29 input hashes, seven integration sources, 13 ledger sources,
+three binaries, effective genesis/configuration and original single-acquire CBOR
+matched. All 11 necessary native invariants passed, with full consumption and
+roundtrip equality. Provenance is local evidence binding, not native-checker
+attestation. The reported 31.930493-second duration comes from execution output;
+it was not independently audited in retained receipts. This is fixture evidence only: `rewardSeedAdmission`, `runtimeImport`, `monetaryParity`
+and `productiveRewardsProved` remain false. The private manifest is pinned by
+SHA-256 `524ee25bdbefa44d169b76a697bdc4c1588216290b715b15120d652a61a35499`;
+keys, databases and raw evidence remain private. Separate seed-admission evidence and review
+are still required before considering runtime integration.
+
+Recovery integration is held for original-byte payload accounting and historical
+scalar preflight fixes plus review. The proposed opaque in-memory handoff is
+reference-dependent; it is not a byte codec, disk recovery or durable controller
+authentication.
 
 ## Worker interface and ownership
 

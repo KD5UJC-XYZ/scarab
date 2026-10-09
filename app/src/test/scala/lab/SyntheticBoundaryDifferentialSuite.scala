@@ -23,7 +23,7 @@ class SyntheticBoundaryDifferentialSuite extends munit.FunSuite:
     J.Obj(j.asInstanceOf[J.Obj].fields.updated("producer", str("synthetic-expectation")))
   )
 
-  test("exact seven-case input is pinned; no native result is present or consumed") {
+  test("exact seven-case input is pinned; relabelled Scala checks comparator mechanics only") {
     assertEquals(sha256(input), InputHash)
     assertEquals(decodeInput(input, InputHash).size, 7)
     assertEquals(f(result, "producer"), str("scala"))
@@ -32,6 +32,20 @@ class SyntheticBoundaryDifferentialSuite extends munit.FunSuite:
       Vector.empty
     )
     intercept[IllegalArgumentException](compare(input, InputHash, synthetic(result), "native"))
+  }
+  test("recorded native boundary golden matches unchanged finite Scala projections") {
+    val in = getClass.getResourceAsStream("/synthetic-boundary/native-result.json")
+    require(in != null, "missing curated native golden")
+    val native =
+      try Bytes.fromArray(in.readAllBytes())
+      finally in.close()
+    assertEquals(sha256(native), "0398f64618fe0d16377d8ff8bc9cd65991e6333ca03407c119b6b64e3dea5ed5")
+    assertEquals(
+      sha256(encode(result)),
+      "c8bf5b2548142558e4bcef4027dbf9d0066cd556218f6c85a452332b5bb563e5"
+    )
+    assertEquals(compare(input, InputHash, native, "native"), Vector.empty)
+    intercept[IllegalArgumentException](compare(input, InputHash, native, "synthetic-expectation"))
   }
   test("actual successor slots retain timing edges and pre-tick RUPD provenance") {
     val expected = Map(
