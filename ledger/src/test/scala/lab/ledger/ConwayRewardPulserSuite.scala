@@ -241,3 +241,26 @@ class ConwayRewardPulserSuite extends munit.FunSuite:
     intercept[IllegalArgumentException](other.finish(finished))
     assertEquals(work.finish(finished).id, get(f.distribution()).id)
   }
+
+  test("exact successor completion drains owned prefixes without inventing an in-epoch signal") {
+    val f = new Fixture()
+    val initial = get(start(f))
+    val partial = get(P.pulse(initial, initial.id, 120))
+    val expected = get(f.distribution()).completed
+    val exhausted = (1 to 3).foldLeft(initial) { (p, n) => get(P.pulse(p, p.id, 110 + n)) }
+    assertEquals(exhausted.remaining, 0)
+    assertEquals(exhausted.phase, P.Phase.Pulsing)
+    for before <- Vector(initial, partial, exhausted) do
+      val completed = get(P.completeAtBoundary(before, before.id, 500))
+      assertEquals(completed.completion.get.completed.id, expected.id)
+      assertEquals(completed.slot, BigInt(500))
+      assertEquals(completed.revision, before.revision + 1)
+      assertEquals(completed.frozenId, before.frozenId)
+      assertEquals(completed.allocationId, before.allocationId)
+      assert(P.completeAtBoundary(before, bytes(90), 500).isLeft)
+      assert(P.completeAtBoundary(before, before.id, 499).isLeft)
+      assert(P.completeAtBoundary(before, before.id, 1000).isLeft)
+      assert(P.completeAtBoundary(completed, completed.id, 500).isLeft)
+    assertEquals(initial.processed, 0)
+    assert(initial.completion.isEmpty)
+  }

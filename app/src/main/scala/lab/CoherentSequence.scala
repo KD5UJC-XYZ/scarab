@@ -9,7 +9,14 @@ import lab.header.{
   PraosEligibility,
   PraosNonceEvolution as Nonces
 }
-import lab.ledger.{ClusterTransition as Ledger, ConwayStake as Stake}
+import lab.ledger.{
+  ClusterTransition as Ledger,
+  ConwayStake as Stake,
+  ConwayEpochBoundary as Boundary,
+  ConwayRewardStart as RewardStart,
+  ConwayRewardPulser as Pulser,
+  ConwayPoolReward as PoolReward
+}
 import lab.network.ChainSync
 import lab.vrf.PraosVrfCertificate as Vrf
 import scala.util.control.NonFatal
@@ -41,9 +48,11 @@ object CoherentSequence:
       val compactedBlocks: BigInt = 0,
       val derivedAnchorId: Option[Bytes] = None,
       val trustedLocalPrefix: Boolean = false,
-      private[CoherentSequence] val stakeBinding: Option[(Stake.Owner, Stake.State)] = None
+      private[CoherentSequence] val stakeBinding: Option[(Stake.Owner, Stake.State)] = None,
+      private[CoherentSequence] val rewardBinding: Option[SyntheticRewards] = None
   ):
     def stake: Option[Stake.State] = stakeBinding.map(_._2)
+    def syntheticRewards: Option[SyntheticRewards] = rewardBinding
     def acquisition: BoundedChainFollower.Checkpoint = certificates.acquisition
     def revision: BigInt = ledger.revision
 
@@ -60,9 +69,8 @@ object CoherentSequence:
         nonces.id,
         eligibility.fold(Bytes.empty)(_.contextId),
         ledger.id
-      ) ++ stake.toVector.map(_.id) ++ derivedAnchorId.toVector.flatMap(id =>
-        Vector(raw(compactedBlocks.toString), id)
-      )
+      ) ++ stake.toVector.map(_.id) ++ rewardBinding.toVector.map(_.id) ++ derivedAnchorId.toVector
+        .flatMap(id => Vector(raw(compactedBlocks.toString), id))
     )
     val fullLedgerValidated = false
     val consensusValidated = false
@@ -82,7 +90,8 @@ object CoherentSequence:
       private[CoherentSequence] val nonce: Nonces.Applied,
       private[CoherentSequence] val eligibility: PraosEligibility.Checked,
       private[CoherentSequence] val ledger: Ledger.BlockCandidate,
-      private[CoherentSequence] val stake: Option[Stake.Candidate]
+      private[CoherentSequence] val stake: Option[Stake.Candidate],
+      private[CoherentSequence] val rewards: Option[SyntheticRewards]
   )
   final class Applied private[CoherentSequence] (
       val state: State,
@@ -102,6 +111,250 @@ object CoherentSequence:
       ledger: Ledger.Undo
   )
   private final case class Cell(state: State, receipts: Vector[OwnedReceipt])
+
+  /** Explicit assertions for a synthetic no-effect model, not extracted native state. No defaults:
+    * absence is unknown and rejected. These effects are neither implemented nor carried forward.
+    */
+  final class SyntheticRewardProfile private[CoherentSequence] (
+      val parameters: RewardStart.Parameters,
+      val globals: RewardStart.Globals,
+      val window: BigInt,
+      val id: Bytes
+  )
+  def syntheticRewardProfile(
+      parameters: RewardStart.Parameters,
+      globals: RewardStart.Globals,
+      window: BigInt,
+      poolReaping: Option[Boolean],
+      refunds: Option[BigInt],
+      governance: Option[Boolean],
+      enactment: Option[Boolean],
+      donations: Option[BigInt],
+      parameterRollover: Option[Boolean],
+      nonMyopic: Option[Boolean]
+  ): Result[SyntheticRewardProfile] = protect {
+    Either
+      .cond(
+        parameters != null && parameters.pool.isDefined && globals != null &&
+          globals.securityParameter.isDefined && window != null && window > 0 &&
+          2 * window < globals.epochLength &&
+          poolReaping.contains(false) && refunds.contains(BigInt(0)) &&
+          governance.contains(false) && enactment.contains(false) && donations.contains(
+            BigInt(0)
+          ) &&
+          parameterRollover.contains(false) && nonMyopic.contains(false),
+        (),
+        Failure.Unsupported(
+          "synthetic-rewards",
+          "explicit no-effect assertions and bounded checked reward inputs required"
+        )
+      )
+      .map(_ =>
+        new SyntheticRewardProfile(
+          parameters,
+          globals,
+          window,
+          digest("synthetic-no-effects-v1", Vector(parameters.id, globals.id, raw(window.toString)))
+        )
+      )
+  }
+
+  /** Opaque branch-owned reward state. Frozen holds a bounded pre-tick capsule, never a State or
+    * receipt chain. Only accepted block candidates can install progression in the coordinator.
+    */
+  final class SyntheticRewards private[CoherentSequence] (
+      private[CoherentSequence] val owner: Boundary.Owner,
+      val profile: SyntheticRewardProfile,
+      val pots: Boundary.Pots,
+      val previousBlocks: Map[Bytes, BigInt],
+      val currentBlocks: Map[Bytes, BigInt],
+      val frozen: Option[Boundary.Frozen],
+      val pulser: Option[Pulser.State],
+      val origin: Bytes
+  ):
+    val id: Bytes = digest(
+      "owned-synthetic-rewards-v1",
+      Vector(
+        profile.id,
+        origin,
+        raw(pots.toString),
+        countIdentity(previousBlocks),
+        countIdentity(currentBlocks)
+      ) ++
+        frozen.toVector.map(_.id) ++ pulser.toVector.map(_.id)
+    )
+    val syntheticOnly = true
+    val epochTransitionValidated = false
+
+  final class SyntheticSuccessor private[CoherentSequence] (
+      private[CoherentSequence] val owner: AnyRef,
+      private[CoherentSequence] val before: State,
+      val preview: Boundary.Preview,
+      val completedPulser: Option[Pulser.State],
+      val id: Bytes
+  ):
+    val published = false
+    val headerAndBlockChecked = false
+    val epochTransitionValidated = false
+
+  private def countIdentity(counts: Map[Bytes, BigInt]): Bytes =
+    digest("counts", counts.toVector.sortBy(_._1.hex).flatMap((p, n) => Vector(p, raw(n.toString))))
+
+  private def rewardContext(current: State, rewards: SyntheticRewards): Result[Boundary.Context] =
+    current.stakeBinding.toRight(Failure.Rejected("synthetic-rewards", "stake required")).flatMap {
+      (owner, stake) =>
+        checked(
+          "synthetic-rewards",
+          Boundary.context(
+            rewards.owner,
+            owner,
+            current.id,
+            stake,
+            rewards.pots,
+            rewards.previousBlocks,
+            rewards.currentBlocks
+          )
+        )
+    }
+
+  private def prepareRewards(current: State, slot: BigInt): Result[Option[SyntheticRewards]] =
+    current.rewardBinding.traverse { rewards =>
+      for
+        env <- rewardContext(current, rewards)
+        timing <- checked(
+          "synthetic-rewards",
+          Boundary.rewardTiming(
+            env.stake.epoch * env.stake.context.epochLength,
+            rewards.profile.window,
+            slot
+          )
+        )
+        next <- rewards.pulser match
+          case Some(p) =>
+            val step =
+              if timing == Boundary.Timing.ForceCompletion then Pulser.force(p, p.id, slot)
+              else Pulser.pulse(p, p.id, slot)
+            checked("synthetic-rewards", step).map(p => (rewards.frozen, Some(p)))
+          case None if timing == Boundary.Timing.TooEarly => Right((None, None))
+          case None =>
+            for
+              frozen <- checked(
+                "synthetic-rewards",
+                Boundary.freezeForAllocation(
+                  rewards.owner,
+                  env,
+                  slot,
+                  rewards.profile.window,
+                  rewards.profile.parameters,
+                  rewards.profile.globals
+                )
+              )
+              allocation <- checked("synthetic-rewards", RewardStart.calculate(frozen, frozen.id))
+              pools <- frozen.go.pools.keys.toVector.traverse { pool =>
+                checked(
+                  "synthetic-rewards",
+                  PoolReward.calculate(frozen, frozen.id, allocation, allocation.id, pool)
+                ).map(pool -> _)
+              }
+              pulser <- checked(
+                "synthetic-rewards",
+                Pulser.start(frozen, frozen.id, allocation, allocation.id, pools.toMap)
+              )
+            yield (Some(frozen), Some(pulser))
+      yield new SyntheticRewards(
+        rewards.owner,
+        rewards.profile,
+        rewards.pots,
+        rewards.previousBlocks,
+        rewards.currentBlocks,
+        next._1,
+        next._2,
+        rewards.origin
+      )
+    }
+
+  private def acceptRewards(
+      current: State,
+      proposed: Option[SyntheticRewards],
+      block: Ledger.BlockApplied,
+      issuer: Bytes
+  ): Result[Option[SyntheticRewards]] =
+    current.rewardBinding.traverse { before =>
+      for
+        next <- proposed.toRight(Failure.Rejected("synthetic-rewards", "missing owned progress"))
+        _ <- Either.cond(
+          (next.owner eq before.owner) && (next.profile eq before.profile),
+          (),
+          Failure.Rejected("synthetic-rewards", "foreign progress")
+        )
+        counts = next.currentBlocks.updated(
+          issuer,
+          next.currentBlocks.getOrElse(issuer, BigInt(0)) + 1
+        )
+        _ <- Either.cond(
+          counts.size <= 4096 && counts.values.sum <= Ledger.MaxRevision,
+          (),
+          Failure.Unsupported("synthetic-rewards", "block count capacity")
+        )
+      yield new SyntheticRewards(
+        next.owner,
+        next.profile,
+        next.pots.copy(fees = block.state.fees),
+        next.previousBlocks,
+        counts,
+        next.frozen,
+        next.pulser,
+        next.origin
+      )
+    }
+
+  private def successor(
+      owner: AnyRef,
+      current: State,
+      fence: Fence,
+      headerHash: Bytes,
+      slot: BigInt
+  ): Result[SyntheticSuccessor] = protect {
+    for
+      _ <- Either.cond(fence.owner eq owner, (), Failure.ForeignFence)
+      _ <- Either.cond(
+        fence.stateId == current.id && fence.revision == current.revision,
+        (),
+        Failure.StaleFence
+      )
+      rewards <- current.rewardBinding.toRight(
+        Failure.Unsupported("synthetic-rewards", "profile not enabled")
+      )
+      env <- rewardContext(current, rewards)
+      signal <- checked(
+        "synthetic-successor",
+        Boundary.signal(rewards.owner, env, headerHash, slot)
+      )
+      completed <- rewards.pulser.traverse(p =>
+        checked("synthetic-successor", Pulser.completeAtBoundary(p, p.id, slot))
+      )
+      phase <- completed match
+        case Some(p) =>
+          checked(
+            "synthetic-successor",
+            Boundary.completeFromFrozen(rewards.owner, env, p.completion.get.completed)
+          ).map(Boundary.RewardPhase.Completed(_))
+        case None =>
+          checked("synthetic-successor", Boundary.suppliedAbsent(rewards.owner, env, rewards.id))
+            .map(Boundary.RewardPhase.Absent(_))
+      preview <- checked("synthetic-successor", Boundary.preview(rewards.owner, env, signal, phase))
+    yield new SyntheticSuccessor(
+      owner,
+      current,
+      preview,
+      completed,
+      digest(
+        "synthetic-successor-v1",
+        Vector(current.id, raw(current.revision.toString), preview.id) ++
+          completed.toVector.map(_.id)
+      )
+    )
+  }
 
   private def raw(s: String): Bytes = Bytes.fromArray(s.getBytes("UTF-8"))
   private def digest(domain: String, fields: Vector[Bytes]): Bytes =
@@ -227,6 +480,7 @@ object CoherentSequence:
       stake <- current.stakeBinding.traverse { (stakeOwner, state) =>
         checked("stake", Stake.prepare(stakeOwner, state, current.ledger, pending))
       }
+      rewards <- prepareRewards(current, block.header.slot)
     yield new Candidate(
       owner,
       current,
@@ -236,7 +490,8 @@ object CoherentSequence:
       nonce,
       eligible,
       pending,
-      stake
+      stake,
+      rewards
     )
   }
   private def bindings(current: State, c: Candidate): Boolean =
@@ -279,6 +534,7 @@ object CoherentSequence:
             )
           yield (stakeOwner, after)
         }
+        rewards <- acceptRewards(current, candidate.rewards, block, candidate.certificate.issuer)
       yield
         val state = new State(
           current.contextId,
@@ -289,7 +545,8 @@ object CoherentSequence:
           current.compactedBlocks,
           current.derivedAnchorId,
           current.trustedLocalPrefix,
-          stake
+          stake,
+          rewards
         )
         val owned =
           OwnedReceipt(current, state.id, candidate.certificate, candidate.nonce, block.undo)
@@ -326,7 +583,8 @@ object CoherentSequence:
         current.compactedBlocks,
         current.derivedAnchorId,
         current.trustedLocalPrefix,
-        stake
+        stake,
+        owned.before.rewardBinding
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -406,7 +664,8 @@ object CoherentSequence:
                   count,
                   Some(provenance),
                   state.trustedLocalPrefix,
-                  state.stakeBinding
+                  state.stakeBinding,
+                  state.rewardBinding
                 )
               )
           for
@@ -505,6 +764,23 @@ object CoherentSequence:
       )
     }
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
+
+    /** Pure successor subrules only. No header, nonce, ledger or epoch publication path exists. */
+    def prepareSyntheticSuccessor(
+        fence: Fence,
+        headerHash: Bytes,
+        slot: BigInt
+    ): F[Result[SyntheticSuccessor]] =
+      cell.get.flatMap(c => F.delay(successor(owner, c.state, fence, headerHash, slot)))
+    def checkSyntheticSuccessor(candidate: SyntheticSuccessor): F[Result[Unit]] = cell.get.map {
+      c =>
+        if candidate == null then
+          Left(Failure.Rejected("synthetic-successor", "candidate required"))
+        else if candidate.owner ne owner then Left(Failure.ForeignCandidate)
+        else if candidate.before.id != c.state.id || candidate.before.revision != c.state.revision
+        then Left(Failure.StaleCandidate)
+        else Right(())
+    }
 
     /** Explicit availability policy: rollback before `through` becomes unavailable. This is not
       * finality. Existing durable checkpoint v1 deliberately cannot serialize this state.
@@ -985,6 +1261,60 @@ object CoherentSequence:
             cell <- Ref.of[F, Cell](Cell(initial, Vector.empty))
           yield Right(new Runtime(context, maxBlocks, owner, cell))
       }
+
+  /** Synthetic absent reward seed is an explicit assertion, never decoded from native JSON. The
+    * profile requires all omitted effects to be explicitly empty. No durability is supported.
+    */
+  def createWithSyntheticRewards[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      profile: SyntheticRewardProfile,
+      pots: Boundary.Pots,
+      previousBlocks: Map[Bytes, BigInt],
+      currentBlocks: Map[Bytes, BigInt],
+      absentEvidence: Bytes,
+      maxBlocks: Int = MaxBlocks
+  ): F[Result[Runtime[F]]] = createWithStake[F](context, prepared, maxBlocks).flatMap {
+    case Left(error) => Sync[F].pure(Left(error))
+    case Right(runtime) =>
+      runtime.cell.modify { cell =>
+        val result = protect {
+          val initial = cell.state
+          for
+            _ <- Either.cond(
+              profile != null && pots != null &&
+                profile.globals.epochLength == context.nonces.context.epochLength &&
+                profile.globals.maxSupply == pots.maxSupply && pots.fees == initial.ledger.fees &&
+                absentEvidence != null && absentEvidence.size == 32,
+              (),
+              Failure.Rejected("synthetic-rewards", "seed geometry/pots/explicit absence assertion")
+            )
+            rewards = new SyntheticRewards(
+              Boundary.owner(),
+              profile,
+              pots,
+              previousBlocks,
+              currentBlocks,
+              None,
+              None,
+              digest("synthetic-absent-origin", Vector(initial.id, absentEvidence))
+            )
+            _ <- rewardContext(initial, rewards)
+          yield new State(
+            initial.contextId,
+            initial.certificates,
+            initial.nonces,
+            initial.eligibility,
+            initial.ledger,
+            stakeBinding = initial.stakeBinding,
+            rewardBinding = Some(rewards)
+          )
+        }
+        result match
+          case Left(error)  => (cell, Left(error))
+          case Right(state) => (Cell(state, Vector.empty), Right(runtime))
+      }
+  }
 
   /** Opt-in atomic stake projection. Fixed registrations/reward balances, same epoch only. No
     * durable codec currently serializes this enlarged tuple.

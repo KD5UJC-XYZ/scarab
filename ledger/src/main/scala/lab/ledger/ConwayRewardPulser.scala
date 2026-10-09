@@ -125,3 +125,17 @@ object ConwayRewardPulser:
     transition(s, expectedId, slot, false)
   def force(s: State, expectedId: Bytes, slot: BigInt): Either[String, State] =
     transition(s, expectedId, slot, true)
+
+  /** NEWEPOCH completion subrule for an exact successor signal. This does not publish an epoch or
+    * authenticate ancestry; the enclosing coordinator must own the predecessor and receipt.
+    */
+  def completeAtBoundary(s: State, expectedId: Bytes, slot: BigInt): Either[String, State] =
+    checked {
+      require(s != null && s.id == expectedId, "pulser state identity mismatch")
+      require(
+        slot != null && slot > s.slot && slot <= Max && s.revision < Max &&
+          slot / s.work.frozen.epochLength == s.work.frozen.epoch + 1,
+        "exact successor completion signal required"
+      )
+      progress(s, slot, true)
+    }
