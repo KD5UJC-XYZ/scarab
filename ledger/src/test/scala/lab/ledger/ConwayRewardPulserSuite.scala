@@ -166,6 +166,33 @@ class ConwayRewardPulserSuite extends munit.FunSuite:
     val again = get(P.pulse(done, done.id, 115)); assertEquals(again.completion.get.id, whole.id)
     assertEquals(again.processed, 5)
   }
+  test("reference-free cursor content cannot reconstruct historical signal-chain identity") {
+    val f = new Fixture
+    val initial = get(start(f))
+    val firstA = get(P.pulse(initial, initial.id, 111))
+    val firstB = get(P.pulse(initial, initial.id, 112))
+    val a = get(P.force(firstA, firstA.id, 201))
+    val b = get(P.force(firstB, firstB.id, 201))
+    assertEquals(a.frozenId, b.frozenId)
+    assertEquals(a.allocationId, b.allocationId)
+    assertEquals(a.securityParameter, b.securityParameter)
+    assertEquals(a.traversal, b.traversal)
+    assertEquals(a.pulseSize, b.pulseSize)
+    assertEquals(a.processed, b.processed)
+    assertEquals(a.members, b.members)
+    assertEquals(a.phase, b.phase)
+    assertEquals(a.slot, b.slot)
+    assertEquals(a.revision, b.revision)
+    assertEquals(a.completion.get.id, b.completion.get.id)
+    assertEquals(a.completion.get.completed.rewards, b.completion.get.completed.rewards)
+    assertNotEquals(a.id, b.id)
+    // Even identical subsequent input preserves the lost historical distinction.
+    assertNotEquals(get(P.force(a, a.id, 202)).id, get(P.force(b, b.id, 202)).id)
+    // Supplying the missing original signal transcript does reproduce each identity.
+    val replayA = get(P.pulse(get(start(f)), initial.id, 111))
+    assertEquals(get(P.force(replayA, replayA.id, 201)).id, a.id)
+  }
+
   test("force from initial or partial work equals whole result; late start forces immediately") {
     val f = new Fixture; val s = get(start(f)); val partial = get(P.pulse(s, s.id, 111))
     val forced = get(P.force(s, s.id, 201)); val resumed = get(P.force(partial, partial.id, 201))

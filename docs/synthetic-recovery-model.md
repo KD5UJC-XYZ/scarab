@@ -90,3 +90,7 @@ A future durable format must explicitly encode and authenticate all historical/f
 attribution and prove import validation; opaque provenance here does not solve that.
 No v3 bytes, filesystem durability, CLI relaxation or native boundary equivalence is
 included. Independent read-only review approved this scope after the focused fixes.
+
+The [reference-free codec audit](synthetic-recovery-codec-blocker.md) records the
+missing historical identity evidence that blocks converting this opaque handoff into
+checked-content exact-ID import after arbitrary compaction.
