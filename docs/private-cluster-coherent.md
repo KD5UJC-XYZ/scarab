@@ -35,11 +35,13 @@ Stable producer-paused tip brackets remain separate non-atomic acquisitions.
 The transfer uses only the relay. A pre-only directory contains nine exact pinned
 sources for `BranchInput`; no post-state enters candidate construction. The
 offline `coherent-branch INPUT ORACLE` command publishes independently before
-reading a separate four-source pinned post-state oracle. It then compares UTxO,
-fees, complete certificate counters, tip and epoch; checks full-tuple rollback
+reading a separate four-source pinned post-state oracle. The v2 coordinator also
+composes derived nonce state and compares all five exported nonce fields. It
+compares UTxO, fees, complete certificate counters, tip and epoch; checks full-tuple rollback
 and reapply at revisions 0→1→2→3; and rejects stale candidates/undo receipts.
 The observer runs without network access. Full ledger/consensus validation,
-atomic snapshots, epoch/nonce/stake derivation and durability remain unclaimed.
+atomic snapshots, epoch/stake derivation and durability remain unclaimed. The
+initial nonce snapshot is supplied; its same-epoch successor is derived in v2.
 
 The inherited owned-resource watchdog caps the live run at 540 seconds plus cleanup
 within 600 seconds, with 3 CPUs/6 GiB for reference nodes and 1 CPU/1 GiB for Scala. No public
@@ -90,3 +92,9 @@ under a Docker-call sentinel. Separate opt-in suites passed 37 tests (14 public
 reruns and 23 retained/synthetic checks), including authentic positive replay,
 missing-oracle rejection after publication, and the unchanged Byron checkpoint
 returning Unsupported before a missing oracle is read.
+
+
+The later [atomic nonce composition](coherent-branch.md#atomic-nonce-composition-v2)
+reuses these unchanged retained originals for offline one-block verification.
+Its new v2 receipt is a fresh offline computation, not a rewritten historical
+live receipt. No new cluster or transaction is needed for that integration.

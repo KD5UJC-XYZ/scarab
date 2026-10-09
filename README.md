@@ -219,3 +219,10 @@ derives one real epoch tick from pre-anchor nonce state and every original heade
 It compares reference exports and restores unknown fields on rollback. Verification
 uses explicitly supplied keys; registration continuity, stake evolution, leadership
 and full consensus remain outside this profile.
+
+
+The [atomic coordinator](docs/coherent-branch.md) now includes nonce state in the
+same immutable publication/undo tuple as acquisition, certificates, eligibility
+and the restricted ledger. Its one-block same-epoch profile derives eligibility's
+nonce from the checked transition and retains the supplied stake/context limits.
+Bounded multi-block advancement and durable validated-state storage remain separate.

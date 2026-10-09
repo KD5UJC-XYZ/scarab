@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import lab.cbor.Bytes
 import lab.header.PraosCertificateState as Certificate
+import lab.header.PraosNonceEvolution as Nonces
 import lab.ledger.ClusterTransition as Ledger
 import scala.util.control.NonFatal
 
@@ -29,6 +30,7 @@ object CoherentBranchCommand:
       counters: Map[Bytes, BigInt],
       tip: Certificate.Point,
       epoch: BigInt,
+      nonces: PraosNonceSnapshot.Snapshot,
       manifestDigest: Bytes
   )
   final class Report private[CoherentBranchCommand] (
@@ -39,7 +41,11 @@ object CoherentBranchCommand:
       val headerSha256: Bytes,
       val initialStateId: Bytes,
       val finalStateId: Bytes,
-      val oracleManifestSha256: Bytes
+      val oracleManifestSha256: Bytes,
+      val initialNonceStateId: Bytes,
+      val finalNonceStateId: Bytes,
+      val previousEpochNonceCompared: Boolean,
+      val previousEpochNonceKnown: Boolean
   )
   private def text(b: Bytes): String =
     StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(b.toArray)).toString
@@ -85,6 +91,12 @@ object CoherentBranchCommand:
         )
       }
       import ReferenceJson.{field, uint, string, array}
+      val nonceSnapshot = get(
+        PraosNonceSnapshot.parse(
+          originals("post-protocol-state.md"),
+          hash(fields("postProtocolSha256"), 32)
+        )
+      )
       val protocol = ReferenceJson.parse(originals("post-protocol-state.md"))
       val ledger = ReferenceJson.parse(originals("post-ledger-state.md"))
       val tips = array(ReferenceJson.parse(originals("post-tips.md")))
@@ -117,10 +129,25 @@ object CoherentBranchCommand:
           counters,
           tip,
           epoch,
+          nonceSnapshot,
           ClusterHeaderObservation.sha256(manifest)
         )
       )
     catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
+
+  /** Comparison only: never repairs or replaces independently published nonce state. */
+  private[lab] def compareNonces(
+      derived: Nonces.State,
+      observed: PraosNonceSnapshot.Snapshot
+  ): Either[String, Boolean] =
+    if observed.lastSlot != derived.lastSlot ||
+      observed.fields.copy(previousEpoch = None) != derived.fields.copy(previousEpoch = None)
+    then Left("five nonce fields or lastSlot mismatch")
+    else
+      (observed.fields.previousEpoch, derived.fields.previousEpoch) match
+        case (Some(a), Some(b)) if a != b => Left("known previous epoch nonce mismatch")
+        case (Some(_), Some(_))           => Right(true)
+        case _                            => Right(false)
 
   private def loadOracle(directory: Path): Oracle =
     get(
@@ -146,6 +173,9 @@ object CoherentBranchCommand:
       a.certificates.state.id == b.certificates.state.id &&
       a.certificates.state.tip == b.certificates.state.tip &&
       a.certificates.state.counters == b.certificates.state.counters &&
+      a.nonces.id == b.nonces.id && a.nonces.contextId == b.nonces.contextId &&
+      a.nonces.certificateStateId == b.nonces.certificateStateId &&
+      a.nonces.lastSlot == b.nonces.lastSlot && a.nonces.fields == b.nonces.fields &&
       a.eligibility.map(e => (e.contextId, e.headers)) == b.eligibility.map(e =>
         (e.contextId, e.headers)
       ) &&
@@ -174,7 +204,19 @@ object CoherentBranchCommand:
       oracle <- IO.blocking(loadOracle(oracleDirectory)).adaptError { case NonFatal(e) =>
         Stop(Failure.Rejected("oracle", Option(e.getMessage).getOrElse(e.getClass.getName)))
       }
+      nonceCompared <- IO.fromEither(
+        compareNonces(accepted.state.nonces, oracle.nonces).left.map(detail =>
+          Stop(Failure.Rejected("oracle-nonce", detail))
+        )
+      )
       _ <- IO {
+        require(
+          accepted.state.nonces.certificateStateId == accepted.state.certificates.state.id &&
+            accepted.state.nonces.lastSlot == accepted.state.ledger.slot &&
+            accepted.nonceObservation.before.id == before.nonces.id &&
+            accepted.nonceObservation.after.id == accepted.state.nonces.id,
+          "published nonce/certificate/ledger tuple mismatch"
+        )
         require(
           sameTuple(before, prepared) && before.revision == 0 && prepared.revision == 0,
           "prepare published state"
@@ -229,7 +271,11 @@ object CoherentBranchCommand:
       ClusterHeaderObservation.sha256(input.header.raw),
       before.id,
       accepted.state.id,
-      oracle.manifestDigest
+      oracle.manifestDigest,
+      before.nonces.id,
+      accepted.state.nonces.id,
+      nonceCompared,
+      accepted.state.nonces.fields.previousEpoch.nonEmpty
     )
     work.attempt.map {
       case Right(report)       => Right(report)
@@ -250,7 +296,7 @@ object CoherentBranchCommand:
     case c            => c.toString
   } + "\""
   def render(r: Report): String =
-    s"""{"profile":"${CoherentBranch.ProfileId}","scopedSuccess":true,"inputId":"${r.inputId.hex}","transactionId":"${r.transactionId.hex}","originalTransactionSha256":"${r.transactionSha256.hex}","headerHash":"${r.headerHash.hex}","originalHeaderSha256":"${r.headerSha256.hex}","initialStateId":"${r.initialStateId.hex}","finalStateId":"${r.finalStateId.hex}","oracleManifestSha256":"${r.oracleManifestSha256.hex}","independentStateDerived":true,"referencePostStateMatched":true,"wholeTupleRollbackReapply":true,"revisions":[0,1,2,3],"fullLedgerValidated":false,"consensusValidated":false,"authenticatedSnapshot":false,"referenceSnapshotAtomic":false}"""
+    s"""{"profile":"${CoherentBranch.ProfileId}","scopedSuccess":true,"inputId":"${r.inputId.hex}","transactionId":"${r.transactionId.hex}","originalTransactionSha256":"${r.transactionSha256.hex}","headerHash":"${r.headerHash.hex}","originalHeaderSha256":"${r.headerSha256.hex}","initialStateId":"${r.initialStateId.hex}","finalStateId":"${r.finalStateId.hex}","oracleManifestSha256":"${r.oracleManifestSha256.hex}","independentStateDerived":true,"referencePostStateMatched":true,"wholeTupleRollbackReapply":true,"nonceStateDerived":true,"eligibilityNonceFromDerivedState":true,"fiveNonceFieldsMatched":true,"initialNonceStateId":"${r.initialNonceStateId.hex}","finalNonceStateId":"${r.finalNonceStateId.hex}","previousEpochNonceCompared":${r.previousEpochNonceCompared},"previousEpochNonceKnown":${r.previousEpochNonceKnown},"epochTickChecked":false,"revisions":[0,1,2,3],"fullLedgerValidated":false,"consensusValidated":false,"authenticatedSnapshot":false,"referenceSnapshotAtomic":false}"""
   private def renderFailure(failure: Failure): String =
     val (kind, stage, detail) = failure match
       case Failure.Unsupported(s, d) => ("Unsupported", s, d)
