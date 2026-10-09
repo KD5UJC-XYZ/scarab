@@ -178,3 +178,38 @@ Native-script and then Plutus support extend this same API with new explicit
 profile versions. Scalus/reference agreement, phase-one/phase-two checks, budgets,
 collateral, datums/redeemers and reference scripts remain future work described
 in [the roadmap](scala-transaction-ingress-roadmap.md).
+
+## Shared implementation checkpoint
+
+The integration owner now supplies the core models in `lab.submission`.
+`SignedTransaction.checked` has typed `InputLimit`, `DecodeRejected(detail)`
+and `MalformedShape(detail)` failures. It also exposes unchanged
+`originalWitnesses`, `originalAuxiliary` and structural `isValid`; none
+confers signature or ledger validation. Parsing additionally bounds depth to 32
+and item count to 16,384.
+
+The shared effectful boundary lives in
+`ledger-runtime/src/main/scala/lab/submission/AdmissionState.scala`:
+
+```scala
+trait AdmissionState[F[_]]:
+  def current: F[AdmissionView]
+  def withCurrent[A](expected: StatePin)(commit: F[A]): F[Either[StatePin, A]]
+
+trait AdmissionStateObserver[F[_]]:
+  def changed(change: AdmissionStateChange): F[Unit]
+  def closed: F[Unit]
+```
+
+`AdmissionView.checked(pin, ledger)` binds the ledger/environment identities
+and validation slot. `AdmissionStateChange` carries the view, a Published,
+RolledBack, AnchorMoved or Reset kind, and included body IDs with optional
+original body/witness spans. The observer runs under the mutation gate and must
+only invalidate/update bounded memory and enqueue revalidation; it must not
+re-enter the owner or await validation. `withCurrent` callbacks have the same
+bounded in-memory, non-reentrant restriction.
+
+The app's internal `CoherentDriver` lets follower execution use the admission
+owner facade without receiving its raw runtime. Shared models/interfaces are
+implemented and tested; the generation owner, pool, API and relay implementation
+remain integration work in progress.

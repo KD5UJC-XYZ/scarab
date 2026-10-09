@@ -51,7 +51,7 @@ private[lab] object EphemeralStreaming:
     * logical input payload, not aggregate JVM heap consumption.
     */
   def run[F[_]: Async](
-      runtime: CoherentSequence.Runtime[F],
+      runtime: CoherentDriver[F],
       limits: Limits
   )(next: F[Option[Event]]): F[Report] =
     val F = Async[F]

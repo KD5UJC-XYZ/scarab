@@ -1302,7 +1302,8 @@ object CoherentSequence:
       val maxBlocks: Int,
       private[CoherentSequence] val owner: AnyRef,
       private[CoherentSequence] val cell: Ref[F, Cell]
-  )(using F: Sync[F]):
+  )(using F: Sync[F])
+      extends CoherentDriver[F]:
     private def localPlan(transition: Cell => Result[Cell]): F[Result[LocalPlan]] =
       cell.get.flatMap(before =>
         F.delay(protect(transition(before)))
