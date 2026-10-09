@@ -15,6 +15,14 @@ original pre-context files plus their manifest. The controller independently has
 these nine files, derives the context ID, and derives ordered original header and
 block commitments. It records the clean Git commit, pinned JDK image and hashes of
 the resolved runtime classpath files. Pins are checked between and after phases.
+The controller also decodes the retained original block bodies to derive the
+transaction count, summed fees and output-minus-input entry count for each prefix.
+Every A application and B reapplication must increase the fee pot by exactly that
+sum, decrease total UTxO ADA by the same amount, and change entry count by the
+derived delta. Transaction-bearing prefixes must change the whole UTxO bytes;
+empty prefixes must preserve them. The Scala adapter performs equivalent checks
+from the reconstructed original transaction memos. Unchanged transaction effects
+are a failing regression case, including in the scripted successful-process model.
 
 A first proves create/close/strict-resume on a disposable `probe` subdirectory of
 the same checkpoint mount. This is a filesystem compatibility probe, not evidence
@@ -36,6 +44,13 @@ receipt. For kill A, it verifies the same immutable container ID and running hos
 PID, targets that CID with SIGKILL, and requires actual stopped state, exit 137,
 no OOM/error and unchanged checkpoint bytes. A hold expiry fails; it cannot produce
 a graceful success. B can start only after verified A termination has returned.
+Across phases the controller explicitly rejects reused container IDs or adapter
+nonces. Identity receipts retain CID, nonce, namespace PID, host PID and Docker
+StartedAt; termination receipts also retain FinishedAt. Holding/termination must
+match the complete running identity, and B StartedAt must strictly follow A
+FinishedAt, preserving Docker's nanosecond precision. Namespace/host PID reuse by
+itself is allowed only with distinct CID/nonce/start identity. The same timestamp
+ordering applies between the completed probe and A.
 
 B strictly resumes with A's externally retained token and requires complete exact
 state equality, including revision and generation. It rolls back two blocks,
@@ -94,7 +109,11 @@ The Python suite uses scripted processes; it launches no Docker containers.
 It covers strict schema/sequencing, exact restored state, rollback arithmetic,
 receipt force/write failures, immutable kill targets and actual exit checks,
 postkill checkpoint mutation, A-before-B ordering, output bounds, uncertain-create
-cleanup, wrong ownership labels and nonregular/oversized files. Scala tests cover
+cleanup, wrong ownership labels and nonregular/oversized files. Effect regressions
+reject unchanged UTxO/fees, incorrect fee/ADA/entry deltas and mutation in an empty
+prefix. Identity regressions reject repeated IDs/nonces, missing A termination,
+overlapping timestamps and a reused PID with changed start identity. Scala tests cover
 canonical projection encoding, strict expected tokens, exact confirmations and
-failing controller timeouts. Existing durable tests cover retained real sequence
+failing controller timeouts, plus real retained prefix fee/UTxO deltas and failing
+unchanged-effects assertions. Existing durable tests cover retained real sequence
 replay and rollback; no new live acceptance claim follows from these unit tests.

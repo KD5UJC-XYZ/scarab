@@ -17,6 +17,8 @@ import threading
 import time
 import stat
 import uuid
+import datetime
+import calendar
 
 IMAGE = 'eclipse-temurin@sha256:b9142586f9712700c6c9e07adcedfb18608b1a3a056e4001423a3354adfa9d80'
 DOCKER = ['docker', '--host', 'unix:///var/run/docker.sock']
@@ -95,11 +97,111 @@ def bounded_file(path, limit):
     finally:
         os.close(fd)
 
+def cbor(raw):
+    """Bounded structural decoder for independent retained-block/ADA-map assertions."""
+    offset, nodes = 0, 0
+    def take(n):
+        nonlocal offset
+        require(n >= 0 and offset+n <= len(raw), 'truncated CBOR')
+        value=raw[offset:offset+n]; offset+=n; return value
+    def read(depth=0):
+        nonlocal nodes, offset
+        nodes+=1; require(depth<=48 and nodes<=200000, 'CBOR structural bound')
+        byte=take(1)[0]; major, add=byte>>5, byte&31
+        require(add<28 or add==31, 'CBOR additional value')
+        n=add if add<24 else int.from_bytes(take(1 << (add-24)), 'big') if add<=27 else None
+        if major in (0,1):
+            require(n is not None, 'indefinite integer'); return n if major==0 else -1-n
+        if major in (2,3):
+            require(n is not None, 'definite strings required'); value=take(n)
+            return value if major==2 else value.decode('utf-8')
+        if major in (4,5):
+            values=[]
+            if n is None:
+                while offset<len(raw) and raw[offset]!=255: values.append(read(depth+1))
+                require(take(1)==b'\xff','missing break')
+            else:
+                require(n<=200000,'CBOR collection bound')
+                values=[read(depth+1) for _ in range(n*(2 if major==5 else 1))]
+            if major==4:return tuple(values)
+            require(len(values)%2==0,'CBOR map arity'); result={}
+            for key,value in zip(values[::2],values[1::2]):
+                require(key not in result,'duplicate CBOR key'); result[key]=value
+            return result
+        if major==6:
+            require(n is not None,'indefinite tag'); return read(depth+1)
+        require(major==7 and add in (20,21,22),'unsupported CBOR simple value')
+        return {20:False,21:True,22:None}[add]
+    require(len(raw)<=4*1024*1024,'CBOR byte bound')
+    value=read(); require(offset==len(raw),'CBOR trailing bytes'); return value
+
+def block_effect(raw):
+    block=cbor(raw); require(isinstance(block,tuple) and len(block)==2 and block[0]==7,'Conway block required')
+    bodies=block[1][1]; require(isinstance(bodies,tuple) and len(bodies)<=16,'transaction body bound')
+    fees=entries=0
+    for body in bodies:
+        require(isinstance(body,dict) and type(body.get(2)) is int and body[2]>0,'positive transaction fee')
+        require(isinstance(body.get(0),tuple) and body[0] and isinstance(body.get(1),tuple) and body[1],'spending inputs/outputs')
+        fees+=body[2]; entries+=len(body[1])-len(body[0])
+    return dict(transactionCount=len(bodies),feeDelta=fees,entryDelta=entries)
+
+def utxo_stats(encoded):
+    entries=cbor(bytes.fromhex(encoded)); require(isinstance(entries,dict),'UTxO map')
+    coins=[]
+    for output in entries.values():
+        require(isinstance(output,(dict,tuple)),'UTxO output')
+        coin=output[1]; require(type(coin) is int and coin>=0,'ADA-only output value'); coins.append(coin)
+    return len(entries),sum(coins)
+
+def assert_effect(before, after, expected):
+    old,new=before['content']['ledger'],after['content']['ledger']
+    old_count,old_coin=utxo_stats(old['utxoHex']); new_count,new_coin=utxo_stats(new['utxoHex'])
+    require(decimal(new['fees'])-decimal(old['fees'])==expected['feeDelta'],'transaction fee-pot delta')
+    require(new_coin-old_coin == -expected['feeDelta'],'transaction ADA conservation delta')
+    require(new_count-old_count == expected['entryDelta'],'transaction UTxO entry delta')
+    require((new['utxoHex'] != old['utxoHex']) == (expected['transactionCount']>0),'transaction UTxO effects')
+
+def timestamp(value):
+    require(isinstance(value,str),'timestamp string')
+    match=re.fullmatch(r'(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?Z',value)
+    require(match is not None,'Docker UTC timestamp')
+    date=datetime.datetime.strptime(match[1],'%Y-%m-%dT%H:%M:%S')
+    return calendar.timegm(date.timetuple())*10**9+int((match[2] or '').ljust(9,'0'))
+
+class PhaseIdentities:
+    def __init__(self): self.values={}
+    def started(self,phase,cid,record,state):
+        require(phase not in self.values,'duplicate phase identity'); hex64(cid)
+        require(state['Running'] is True and type(state['Pid']) is int and state['Pid']>0,'running process identity')
+        start=timestamp(state['StartedAt'])
+        identity=dict(cid=cid,nonce=record['nonce'],namespacePid=record['pid'],hostPid=state['Pid'],startedAt=state['StartedAt'])
+        for previous in self.values.values():
+            require(cid!=previous['cid'] and record['nonce']!=previous['nonce'],'phase CID/nonce must be distinct')
+        previous_phase='a' if phase=='b' else 'probe' if phase=='a' else None
+        if previous_phase=='a' or previous_phase in self.values:
+            previous=self.values.get(previous_phase)
+            require(previous is not None and 'finishedAt' in previous,'previous phase termination required')
+            require(timestamp(previous['finishedAt']) < start,'previous finish must precede next start')
+            identity['previousFinishedAt']=previous['finishedAt']
+        self.values[phase]=identity
+        return dict(identity)
+    def running(self,phase,cid,state):
+        value=self.values[phase]
+        require(cid==value['cid'] and state['Running'] is True and state['Pid']==value['hostPid'] and state['StartedAt']==value['startedAt'],'complete running identity changed')
+    def finished(self,phase,cid,state):
+        value=self.values[phase]
+        require(cid==value['cid'] and state['StartedAt']==value['startedAt'],'complete termination identity changed')
+        require(timestamp(state['FinishedAt']) > timestamp(value['startedAt']),'finish after start required')
+        value['finishedAt']=state['FinishedAt']
+        return dict(value)
+
 class Protocol:
     """Strict phase automaton; content comparisons deliberately exclude revision/token."""
-    def __init__(self, phase, mode, context, originals, anchors=None):
+    def __init__(self, phase, mode, context, originals, anchors=None, effects=None):
         self.phase, self.mode, self.context = phase, mode, context
         self.originals, self.anchors = originals, anchors if anchors is not None else []
+        self.effects=effects
+        require(phase=='probe' or effects is not None and len(effects)==len(originals) and any(e['transactionCount']==0 for e in effects) and any(e['transactionCount']==2 for e in effects),'independent empty/two-transaction effects required')
         self.sequence, self.index, self.last = 0, 0, None
         self.holding, self.complete = False, False
         self.script = ([('probe', None)] if phase == 'probe' else
@@ -195,7 +297,9 @@ class Protocol:
             value = self.state(record['state'], record['prefix'])
             if self.phase == 'a':
                 require(decimal(value['revision']) == record['prefix'] and decimal(value['token']['generation']) == record['prefix'], 'A revision/generation')
-                if self.last: require(value['token']['storeId'] == self.last['token']['storeId'], 'store changed')
+                if self.last:
+                    require(value['token']['storeId'] == self.last['token']['storeId'], 'store changed')
+                    assert_effect(self.last,value,self.effects[record['prefix']-1])
                 self.anchors.append(value)
             else:
                 prefix = record['prefix']; op = record['operation']
@@ -204,6 +308,7 @@ class Protocol:
                 require(decimal(value['revision']) == decimal(self.last['revision']) + delta, 'revision arithmetic')
                 require(decimal(value['token']['generation']) == decimal(self.last['token']['generation']) + 1, 'generation arithmetic')
                 require(value['token']['storeId'] == self.last['token']['storeId'], 'store changed')
+                if op == 'reapply': assert_effect(self.last,value,self.effects[prefix-1])
             self.last = value
             return f"retained {record['sequence']} {value['token']['digest']}"
         return None
@@ -244,6 +349,7 @@ class Docker:
     def __init__(self, repo, source, mount, receipts, classpath):
         self.repo, self.source, self.mount, self.receipts, self.classpath = repo, source, mount, receipts, classpath
         self.owned, self.clients, self.owners = [], [], []
+        self.identities=PhaseIdentities()
         self.case_deadline = time.monotonic()+120
 
     def command(self, args, timeout=10):
@@ -278,7 +384,7 @@ class Docker:
         process = subprocess.Popen(DOCKER+['start', '-ai', cid], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.clients.append(process); output = Output(process)
         deadline = min(self.case_deadline, time.monotonic()+45)
-        ended, killed, initial_pid = set(), False, None
+        ended, killed = set(), False
         with (self.receipts/f'{phase}-stdout.jsonl').open('xb') as out, (self.receipts/f'{phase}-stderr.txt').open('xb') as err:
             while len(ended) != 2:
                 stream, line = output.next(deadline)
@@ -288,8 +394,8 @@ class Docker:
                 record = parse_record(line); response = protocol.accept(record)
                 if record['record'] == 'process':
                     s = self.inspect(cid); require(s['Running'] is True and s['Pid'] > 0, 'process did not start')
-                    initial_pid = s['Pid']
-                    retain(self.receipts/f'{phase}-identity.json', dict(cid=cid, state=s, record=record))
+                    identity=self.identities.started(phase,cid,record,s)
+                    retain(self.receipts/f'{phase}-identity.json', dict(identity=identity, state=s, record=record))
                 if record['record'] == 'publication':
                     checkpoint = bounded_file(self.mount/'state'/'validated.bin', 40*1024*1024)
                     require(32 < len(checkpoint) <= 40*1024*1024 and sha(checkpoint[:-32]) == checkpoint[-32:].hex() == record['state']['token']['digest'], 'published checkpoint digest')
@@ -297,18 +403,19 @@ class Docker:
                 if response == 'KILL':
                     before = bounded_file(self.mount/'state'/'validated.bin', 40*1024*1024)
                     require(before == checkpoint, 'checkpoint changed since acknowledged publication')
-                    s = self.inspect(cid); require(s['Running'] is True and s['Pid'] == initial_pid, 'kill target changed')
+                    s = self.inspect(cid); self.identities.running(phase,cid,s)
                     self.command(['kill', '--signal=KILL', cid]); killed = True
                 elif response is not None:
                     process.stdin.write((response+'\n').encode('ascii')); process.stdin.flush()
             process.wait(timeout=max(.001, deadline-time.monotonic()))
             require(process.returncode == (137 if killed else 0), 'attached process exit')
         stopped = self.stopped(cid, killed)
+        identity=self.identities.finished(phase,cid,stopped)
         require((protocol.holding and killed) or protocol.complete, 'incomplete protocol')
         if killed:
             require(bounded_file(self.mount/'state'/'validated.bin', 40*1024*1024) == before, 'checkpoint changed after kill')
-            retain(self.receipts/'a-kill-proof.json', dict(cid=cid, stopped=stopped, checkpointSha256=sha(before)))
-        retain(self.receipts/f'{phase}-termination.json', dict(cid=cid, stopped=stopped, killed=killed))
+            retain(self.receipts/'a-kill-proof.json', dict(cid=cid, identity=identity, stopped=stopped, checkpointSha256=sha(before)))
+        retain(self.receipts/f'{phase}-termination.json', dict(cid=cid, identity=identity, stopped=stopped, killed=killed))
 
     def cleanup(self):
         errors = []
@@ -349,22 +456,23 @@ def input_pins(source):
         p = source/name
         values[name] = sha(bounded_file(p, 20*1024*1024))
     context = sha(('coherent-sequence-context-v1\n' + ''.join(k+'='+values[SOURCES[k]]+'\n' for k in sorted(SOURCES))).encode())
-    originals = []
+    originals = []; effects=[]
     for line in bounded_file(source/'scala-sequence-capture.md', 20*1024*1024).splitlines():
         if line.startswith(b'{'):
             row = parse_record(line+b'\n')
             if row.get('record') == 'transfer-range-block':
                 originals.append(dict(headerSha256=sha(bytes.fromhex(row['headerEnvelopeHex'])), blockSha256=sha(bytes.fromhex(row['rawBlockHex']))))
+                effects.append(block_effect(bytes.fromhex(row['rawBlockHex'])))
     require(2 <= len(originals) <= 8, 'retained sequence bound')
-    return values, context, originals
+    return values, context, originals, effects
 
-def run_cases(driver, mode, context, originals, check_pins):
+def run_cases(driver, mode, context, originals, check_pins, effects):
     """B is unreachable until A has returned with verified termination evidence."""
     try:
         driver.phase(Protocol('probe', mode, context, originals)); check_pins()
-        a = Protocol('a', mode, context, originals)
+        a = Protocol('a', mode, context, originals,effects=effects)
         driver.phase(a); check_pins()
-        driver.phase(Protocol('b', mode, context, originals, a.anchors), token_text(a.anchors[-1])); check_pins()
+        driver.phase(Protocol('b', mode, context, originals, a.anchors,effects), token_text(a.anchors[-1])); check_pins()
     finally:
         driver.cleanup()
 
@@ -386,17 +494,17 @@ def main():
         for p in sorted(host.rglob('*')) if host.is_dir() else [host]:
             if p.is_file(): compiled[str(p.relative_to(repo))] = sha(p.read_bytes())
     require(compiled, 'compiled pin required')
-    pins, context, originals = input_pins(source)
+    pins, context, originals,effects = input_pins(source)
     output.mkdir(mode=0o700); receipts = output/'controller'; mount = output/'checkpoint'
     receipts.mkdir(mode=0o700); mount.mkdir(mode=0o700)
-    retain(receipts/'pins.json', dict(commit=commit, image=IMAGE, inputs=pins, context=context, compiled=compiled))
+    retain(receipts/'pins.json', dict(commit=commit, image=IMAGE, inputs=pins, context=context, compiled=compiled, expectedEffects=effects))
     driver = Docker(repo, source, mount, receipts, classpath)
     result = dict(passed=False, mode=args.mode, networkContinuation=False, powerLossRecovery=False)
     def check_pins():
         require(input_pins(source)[0] == pins, 'input changed')
         require(all(sha((repo/p).read_bytes()) == digest for p, digest in compiled.items()), 'compiled artifact changed')
     try:
-        run_cases(driver, args.mode, context, originals, check_pins)
+        run_cases(driver, args.mode, context, originals, check_pins,effects)
         result['passed'] = True
     finally:
         retain(receipts/'result.json', result)

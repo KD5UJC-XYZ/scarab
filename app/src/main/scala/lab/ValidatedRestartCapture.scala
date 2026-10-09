@@ -4,7 +4,7 @@ package lab
 import cats.effect.{IO, IOApp, ExitCode, Ref}
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
-import lab.cbor.Bytes
+import lab.cbor.{Bytes, Cbor, Node, Value}
 import lab.header.PraosNonceEvolution as Nonces
 import lab.network.ChainSync
 import ReferenceJson.Json
@@ -110,6 +110,77 @@ object ValidatedRestartCapture extends IOApp:
         "utxoHex" -> str(s.ledger.outputMap.hex),
         "fees" -> number(s.ledger.fees),
         "slot" -> number(s.ledger.slot)
+      )
+    )
+  private[lab] def checkEffects(
+      before: Bytes,
+      beforeFees: BigInt,
+      after: Bytes,
+      afterFees: BigInt,
+      memos: Vector[Bytes]
+  ): Either[String, Unit] =
+    scala.util
+      .Try {
+        def decode(raw: Bytes): Node =
+          Cbor.decode(raw).fold(e => throw new IllegalArgumentException(e), identity)
+        def array(node: Node): Vector[Node] = node.value match
+          case Value.Arr(values)                   => values
+          case Value.Tag(tag, inner) if tag == 258 => array(inner)
+          case _ => throw new IllegalArgumentException("array expected")
+        def field(node: Node, key: Int): Node = node.value match
+          case Value.Map(values) =>
+            values
+              .collectFirst { case (k, v) if k.value == Value.UInt(BigInt(key)) => v }
+              .getOrElse(throw new IllegalArgumentException("missing body/output field"))
+          case _ => throw new IllegalArgumentException("map expected")
+        def uint(node: Node): BigInt = node.value match
+          case Value.UInt(value) => value
+          case _                 => throw new IllegalArgumentException("ADA uint expected")
+        def stats(raw: Bytes): (Int, BigInt) = decode(raw).value match
+          case Value.Map(values) =>
+            (
+              values.size,
+              values.map { (_, output) =>
+                val coin = output.value match
+                  case Value.Arr(values) => values(1)
+                  case Value.Map(_)      => field(output, 1)
+                  case _                 => throw new IllegalArgumentException("output expected")
+                uint(coin)
+              }.sum
+            )
+          case _ => throw new IllegalArgumentException("UTxO map expected")
+        val effects = memos.map { memo =>
+          val body = array(decode(memo)).head
+          val fee = uint(field(body, 2))
+          val inputs = array(field(body, 0)); val outputs = array(field(body, 1))
+          require(
+            fee > 0 && inputs.nonEmpty && outputs.nonEmpty,
+            "positive spending effects required"
+          )
+          (fee, outputs.size - inputs.size)
+        }
+        val feeDelta = effects.map(_._1).sum
+        val (oldCount, oldCoin) = stats(before); val (newCount, newCoin) = stats(after)
+        require(afterFees - beforeFees == feeDelta, "transaction fee-pot delta")
+        require(newCoin - oldCoin == -feeDelta, "transaction ADA conservation delta")
+        require(newCount - oldCount == effects.map(_._2).sum, "transaction UTxO entry delta")
+        require((before != after) == memos.nonEmpty, "transaction UTxO effects")
+      }
+      .toEither
+      .left
+      .map(e => Option(e.getMessage).getOrElse(e.getClass.getName))
+  private def effects(
+      before: DurableSnapshot,
+      after: DurableSnapshot,
+      block: SequenceInput.Block
+  ): IO[Unit] =
+    checked(
+      checkEffects(
+        before.snapshot.state.ledger.outputMap,
+        before.snapshot.state.ledger.fees,
+        after.snapshot.state.ledger.outputMap,
+        after.snapshot.state.ledger.fees,
+        block.transactionMemos
       )
     )
   private def state(s: DurableSnapshot): Json =
@@ -273,6 +344,7 @@ object ValidatedRestartCapture extends IOApp:
                               _ <- IO.raiseUnless(
                                 saved.token == published.token && saved.snapshot.state.id == published.value.state.id
                               )(new IllegalStateException("publication snapshot mismatch"))
+                              _ <- effects(before, saved, block)
                               result <- ack("apply", index + 1, saved)
                             yield result
                           }
@@ -348,6 +420,7 @@ object ValidatedRestartCapture extends IOApp:
                               _ <- IO.raiseUnless(publication.token == saved.token)(
                                 new IllegalStateException("reapply token mismatch")
                               )
+                              _ <- effects(prior, saved, block)
                               result <- ack("reapply", blocks.size - 1 + index, saved)
                             yield result
                           }

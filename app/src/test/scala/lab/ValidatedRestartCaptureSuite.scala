@@ -5,6 +5,9 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration.*
 import ReferenceJson.Json
+import cats.syntax.all.*
+import lab.cbor.Bytes
+import java.nio.file.{Files, Path}
 
 class ValidatedRestartCaptureSuite extends munit.FunSuite:
   test("canonical nested JSON sorts keys and escapes controller projections") {
@@ -47,4 +50,78 @@ class ValidatedRestartCaptureSuite extends munit.FunSuite:
         assert(result.swap.toOption.get.getMessage.contains("timeout"))
       }
       .unsafeToFuture()
+  }
+
+  sys.env.get("COHERENT_SEQUENCE_EVIDENCE").foreach { location =>
+    test("retained empty and two-transaction prefixes prove fee and whole-UTxO deltas") {
+      def get[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
+      val directory = Path.of(location)
+      val context = get(SequenceInput.load(directory))
+      val originals = get(
+        CoherentSequenceCommand.captures(
+          Bytes.fromArray(Files.readAllBytes(directory.resolve("scala-sequence-capture.md")))
+        )
+      )
+      val blocks = originals.map(o => get(SequenceInput.block(o)))
+      assert(blocks.exists(_.transactionMemos.isEmpty));
+      assert(blocks.exists(_.transactionMemos.size == 2))
+      (for
+        runtime <- CoherentSequence.create[IO](context).map(get(_))
+        _ <- blocks.traverse_ { block =>
+          for
+            before <- runtime.snapshot
+            candidate <- runtime.prepare(block).map(get(_))
+            _ <- runtime.publish(candidate).map(get(_))
+            after <- runtime.snapshot
+          yield
+            val old = before.state.ledger; val next = after.state.ledger
+            assertEquals(
+              ValidatedRestartCapture.checkEffects(
+                old.outputMap,
+                old.fees,
+                next.outputMap,
+                next.fees,
+                block.transactionMemos
+              ),
+              Right(())
+            )
+            if block.transactionMemos.nonEmpty then
+              assertEquals(next.fees - old.fees, BigInt(400000))
+              assert(
+                ValidatedRestartCapture
+                  .checkEffects(
+                    old.outputMap,
+                    old.fees,
+                    old.outputMap,
+                    old.fees,
+                    block.transactionMemos
+                  )
+                  .isLeft
+              )
+              assert(
+                ValidatedRestartCapture
+                  .checkEffects(
+                    old.outputMap,
+                    old.fees,
+                    old.outputMap,
+                    next.fees,
+                    block.transactionMemos
+                  )
+                  .isLeft
+              )
+              assert(
+                ValidatedRestartCapture
+                  .checkEffects(
+                    old.outputMap,
+                    old.fees,
+                    next.outputMap,
+                    next.fees + 1,
+                    block.transactionMemos
+                  )
+                  .isLeft
+              )
+            else assertEquals(next.outputMap, old.outputMap)
+        }
+      yield ()).unsafeToFuture()
+    }
   }
