@@ -2,6 +2,7 @@
 """Readiness guards, not a simulation of successful reference transaction diffusion."""
 import json
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from private_cluster_relay import connectivity, transaction_requests, RelayRunner
@@ -36,6 +37,20 @@ class RelayGuards(unittest.TestCase):
     def test_unexpected_delay_and_future_clock_rejected(self):
         with self.assertRaises(ValueError): connectivity(self.text(delay=0), 1, {2, 3}, 1000)
         with self.assertRaises(ValueError): connectivity(self.text(age=-1), 1, {2, 3}, 1000)
+
+    def test_readiness_clock_sample_follows_all_log_reads(self):
+        r = object.__new__(RelayRunner); r.deadline = 1000
+        reads = []
+        def read(path):
+            if path.endswith("/port"): return path.split("node")[2].split("/")[0]
+            reads.append(path); return "log"
+        r.read = read; r.save = lambda *a: None
+        r.query = lambda *a: {"slotInEpoch": 0}
+        def clock():
+            self.assertEqual(len(reads), 3)
+            return 1000
+        with patch("private_cluster_relay.time.monotonic", return_value=0), patch("private_cluster_relay.time.time", side_effect=clock), patch("private_cluster_relay.connectivity", return_value={"delayElapsed":True}), patch("private_cluster_relay.transaction_requests", return_value={1:[{}]}):
+            r.prepare_transfer()
 
     def test_producer_submission_is_forbidden(self):
         r = object.__new__(RelayRunner)

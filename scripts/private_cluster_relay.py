@@ -102,8 +102,9 @@ class RelayRunner(TransferRunner):
         observations = []
         until = min(self.deadline - 150, time.monotonic() + 150)
         while time.monotonic() < until:
-            now = time.time()
             logs = [self.read(f"logs/node{i}/stdout.log") for i in (1, 2, 3)]
+            # Evaluate event ages after the observed log reads complete.
+            now = time.time()
             connected = [connectivity(logs[i-1], ports[i-1],
                          set(ports) - {ports[i-1]}, now) for i in (1, 2, 3)]
             requests = [transaction_requests(logs[i-1], ports[i-1], set(ports) - {ports[i-1]})

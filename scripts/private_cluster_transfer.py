@@ -20,6 +20,34 @@ def converged_tips(tips):
 
 class TransferRunner(Runner):
     transfer_amount = 10000000
+    comparison_command = "cluster-transfer"
+    comparison_scope = "cluster-transfer-observation"
+
+    def construct_transaction(self, pre, before):
+        utxo = json.loads(before["utxo"])
+        addresses = []
+        for i in (1, 2):
+            addresses.append(self.execute("cardano-cli", "address", "build",
+                "--payment-verification-key-file", f"/work/env/utxo-keys/utxo{i}/utxo.vkey",
+                "--testnet-magic", "1082026").stdout.strip())
+        selected = [(key, value) for key, value in utxo.items() if value["address"] == addresses[0]]
+        if len(selected) != 1:
+            raise ValueError("exactly one disposable source UTxO required")
+        txin, value = selected[0]
+        if set(value["value"]) != {"lovelace"}:
+            raise ValueError("ADA-only source UTxO required")
+        amount, fee = self.transfer_amount, 200000
+        change = value["value"]["lovelace"] - amount - fee
+        if change < amount:
+            raise ValueError("insufficient disposable source value")
+        self.execute("cardano-cli", "conway", "transaction", "build-raw", "--tx-in", txin,
+            "--tx-out", addresses[1] + "+" + str(amount), "--tx-out", addresses[0] + "+" + str(change),
+            "--fee", str(fee), "--out-file", "/work/transfer.body")
+        self.execute("cardano-cli", "conway", "transaction", "sign", "--tx-body-file", "/work/transfer.body",
+            "--signing-key-file", "/work/env/utxo-keys/utxo1/utxo.skey", "--testnet-magic", "1082026",
+            "--out-file", "/work/transfer.signed")
+        return {"input": txin, "sourceValue": value, "destination": addresses[1],
+                "amount": amount, "changeAddress": addresses[0], "change": change, "fee": fee}
 
     def before_submit(self):
         pass
@@ -139,27 +167,8 @@ class TransferRunner(Runner):
             self.save("transfer-genesis.md", genesis)
             params = json.loads(before["parameters"])
             utxo = json.loads(before["utxo"])
-            addresses = []
-            for i in (1, 2):
-                addresses.append(self.execute("cardano-cli", "address", "build",
-                    "--payment-verification-key-file", f"/work/env/utxo-keys/utxo{i}/utxo.vkey",
-                    "--testnet-magic", "1082026").stdout.strip())
-            selected = [(key, value) for key, value in utxo.items() if value["address"] == addresses[0]]
-            if len(selected) != 1:
-                raise ValueError("exactly one disposable source UTxO required")
-            txin, value = selected[0]
-            if set(value["value"]) != {"lovelace"}:
-                raise ValueError("ADA-only source UTxO required")
-            amount, fee = self.transfer_amount, 200000
-            change = value["value"]["lovelace"] - amount - fee
-            if change < amount:
-                raise ValueError("insufficient disposable source value")
-            self.execute("cardano-cli", "conway", "transaction", "build-raw", "--tx-in", txin,
-                "--tx-out", addresses[1] + "+" + str(amount), "--tx-out", addresses[0] + "+" + str(change),
-                "--fee", str(fee), "--out-file", "/work/transfer.body")
-            self.execute("cardano-cli", "conway", "transaction", "sign", "--tx-body-file", "/work/transfer.body",
-                "--signing-key-file", "/work/env/utxo-keys/utxo1/utxo.skey", "--testnet-magic", "1082026",
-                "--out-file", "/work/transfer.signed")
+            selection = self.construct_transaction(pre, before)
+            fee = selection["fee"]
             signed = json.loads(self.execute("cat", "/work/transfer.signed").stdout)
             self.save("signed-transaction-cbor.md", signed["cborHex"])
             txid_result = self.execute("cardano-cli", "conway", "transaction", "txid", "--tx-file", "/work/transfer.signed", "--output-text")
@@ -167,9 +176,7 @@ class TransferRunner(Runner):
             txid = txid_result.stdout.strip()
             if len(txid) != 64 or any(c not in "0123456789abcdef" for c in txid):
                 raise ValueError("unexpected transaction ID")
-            self.save("transfer-selection.md", json.dumps({"input": txin, "sourceValue": value,
-                "destination": addresses[1], "amount": amount, "changeAddress": addresses[0],
-                "change": change, "fee": fee, "transactionId": txid}, indent=2))
+            self.save("transfer-selection.md", dict(selection, transactionId=txid))
             self.before_submit()
             submitted = self.execute("cardano-cli", "conway", "transaction", "submit",
                 "--tx-file", "/work/transfer.signed", "--testnet-magic", "1082026",
@@ -222,14 +229,14 @@ class TransferRunner(Runner):
                 "--user", "1000:1000", "--read-only", "--tmpfs", "/tmp:size=64m",
                 "-v", str(self.args.scala_repo) + ":/work:ro", "-v", str(self.out) + ":/evidence:ro",
                 "-w", "/work", "--entrypoint=/bin/sh", JDK, "-c",
-                'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main cluster-transfer ' + port + " /evidence",
+                'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main ' + self.comparison_command + ' ' + port + " /evidence",
                 check=False, timeout=70)
             self.save("scala-transfer.md", result.stdout + result.stderr)
             if result.returncode:
                 raise ValueError("integrated Scala transfer comparison failed")
             reports = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
             report = reports[-1] if reports else {}
-            if report.get("scope") != "cluster-transfer-observation" or report.get("passed") is not True:
+            if report.get("scope") != self.comparison_scope or report.get("passed") is not True:
                 raise ValueError("integrated transfer receipt missing")
         finally:
             self.producers("CONT")

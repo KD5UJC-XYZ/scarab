@@ -197,3 +197,11 @@ or authenticate a header. The next integration gate is same-block, evidence-type
 ingestion with bound receipts, followed by restricted reversible replay.
 See [API, limits and exact claims](docs/body-commitments.md) and
 [verification status](docs/body-commitment-verification.md).
+
+
+The [funded private native-script scenario](docs/private-cluster-native.md) now
+compares an accepted signature-script spend against an independently derived
+complete prestate, original included body/witness bytes and the reference fee pot.
+Three separate rejected witness variants have exact-byte diagnostics and valid
+controls. Funding is reference-only setup; this remains restricted ADA native
+spending, not full ledger/consensus or Plutus validation.
