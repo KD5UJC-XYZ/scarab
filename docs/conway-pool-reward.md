@@ -129,3 +129,8 @@ No live or blocked fixture, public data fetch, host install or publication.
 
 All 38 focused tests passed (9 pool, 20 boundary/allocation/completion, 5
 application and 4 stake). Formatting and diff checks passed.
+
+[Pure member distribution](conway-member-rewards.md) now derives the complete
+member and leader maps from the same checked frozen go/pool/allocation inputs,
+then uses the existing monetary completion and application path. Native
+provenance, pulser execution and runtime authority remain excluded.

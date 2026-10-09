@@ -66,3 +66,8 @@ Validation passed all 23 focused tests: 14 boundary/completion, 5 application an
 4 stake tests. Formatting and diff checks passed. Independent read-only review
 found no blockers. The test log is `.cache/reward-completion-tests.log`, outside
 Git. No native monetary-parity claim follows from these supplied-input tests.
+
+[Pure member distribution](conway-member-rewards.md) now derives the complete
+member and leader maps from the same checked frozen go/pool/allocation inputs,
+then uses the existing monetary completion and application path. Native
+provenance, pulser execution and runtime authority remain excluded.
