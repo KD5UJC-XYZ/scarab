@@ -760,6 +760,15 @@ class LiveOps:
                 '--socket-path',f'/sockets/node{node}.sock',deadline=end).stdout)
         require(row.get('era')=='Conway' and type(row.get('epoch')) is int,"Conway reference tip")
         Point(row['block'],row['slot'],row['hash']); return row
+    def startup_tip_json(self,node,end):
+        # Only an explicitly absent owned startup socket is retryable. Once it
+        # exists, query, decoding, validation and deadline failures are terminal.
+        require(type(node) is int and node in (1,2,3),"owned startup node")
+        probe=self.docker.exec(self.ref,'test','-S',f'/sockets/node{node}.sock',deadline=end,check=False)
+        require(probe.returncode in (0,1),"startup socket probe failed")
+        if probe.returncode==1: return None
+        return self.tip_json(node,end)
+
     def tip(self,node,end):
         r=self.tip_json(node,end); return Point(r['block'],r['slot'],r['hash'])
     def clock_slot(self):
@@ -859,18 +868,20 @@ class LiveOps:
         self.stage_deadline=until
         history=[]
         while self.clock()<until:
-            try:
-                rows=[self.tip_json(n,until) for n in (1,2,3)]; history.append(rows); history=history[-128:]
-                self.save('bootstrap-tip-history.json',history)
-                if len({r['hash'] for r in rows})==1 and not hasattr(self,'pair'):
-                    self.pair=SequenceRunner.build_pair(self)
-                    require(self.clock()<until,"pre-admission funding setup deadline")
-                    continue
-                if len({r['hash'] for r in rows})==1 and rows[0]['epoch']>=1:
-                    p=Point(rows[0]['block'],rows[0]['slot'],rows[0]['hash'])
-                    if start is None: start=p
-                    if p.block-start.block>=3: break
-            except ValueError: pass
+            rows=[self.startup_tip_json(n,until) for n in (1,2,3)]
+            history.append(rows); history=history[-128:]
+            self.save('bootstrap-tip-history.json',history)
+            if any(row is None for row in rows):
+                time.sleep(.05)
+                continue
+            if len({r['hash'] for r in rows})==1 and not hasattr(self,'pair'):
+                self.pair=SequenceRunner.build_pair(self)
+                require(self.clock()<until,"pre-admission funding setup deadline")
+                continue
+            if len({r['hash'] for r in rows})==1 and rows[0]['epoch']>=1:
+                p=Point(rows[0]['block'],rows[0]['slot'],rows[0]['hash'])
+                if start is None: start=p
+                if p.block-start.block>=3: break
             time.sleep(.05)
         else: raise TimeoutError('bootstrap complete original opportunity')
         seedbarrier=self.roles.change(False,min(until,self.clock()+5)); end=seedbarrier.checked(False)

@@ -367,6 +367,51 @@ class LiveOpsBoundaryTests(unittest.TestCase):
         args=SimpleNamespace(output=str(Path(tmp)/'private'),scala_repo=str(Path(tmp)/'repo'))
         return f.LiveOps(args,clock=clock)
 
+    def test_funding_failure_runs_once_preserves_evidence_and_cleans_up(self):
+        from private_cluster_sequence import SequenceRunner
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp,lambda:10); d.setup=lambda:None
+            d.startup_tip_json=lambda *_:dict(hash=h(5),slot=1001,block=10,epoch=1)
+            calls=[]; d.cleanup=lambda:calls.append('cleanup')
+            def fail(driver):
+                calls.append('funding'); driver.save('partial-funding.json',{'retained':True})
+                raise ValueError('funding/signing failed')
+            with patch.object(SequenceRunner,'build_pair',side_effect=fail) as funding:
+                with self.assertRaisesRegex(ValueError,'funding/signing'): f.run_stages(d)
+                funding.assert_called_once_with(d)
+            self.assertEqual(calls,['funding','cleanup'])
+            self.assertTrue((d.out/'partial-funding.json').is_file())
+
+    def test_malformed_tip_and_funding_deadline_fail_without_retry(self):
+        from private_cluster_sequence import SequenceRunner
+        for failure in ('tip','deadline'):
+            with self.subTest(failure=failure),tempfile.TemporaryDirectory() as tmp:
+                clock=[10.];d=self.driver(tmp,lambda:clock[0]);d.setup=lambda:None
+                calls=[];d.cleanup=lambda:calls.append('cleanup')
+                def tip(*_):
+                    if failure=='tip': raise ValueError('malformed tip')
+                    return dict(hash=h(5),slot=1001,block=10,epoch=1)
+                d.startup_tip_json=tip
+                def funding(_): clock[0]=148.;return []
+                with patch.object(SequenceRunner,'build_pair',side_effect=funding) as build:
+                    with self.assertRaisesRegex(ValueError,'malformed tip|funding setup deadline'):f.run_stages(d)
+                    self.assertEqual(build.call_count,0 if failure=='tip' else 1)
+                self.assertEqual(calls,['cleanup'])
+
+    def test_only_explicit_absent_startup_socket_is_retryable(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp,lambda:10);d.ref=h(1);d.tip_json=Mock(return_value={'valid':'tip'})
+            d.docker=SimpleNamespace(exec=Mock(return_value=SimpleNamespace(returncode=1)))
+            self.assertIsNone(d.startup_tip_json(1,20));d.tip_json.assert_not_called()
+            d.docker.exec.return_value.returncode=0
+            self.assertEqual(d.startup_tip_json(1,20),{'valid':'tip'})
+            d.docker.exec.return_value.returncode=2
+            with self.assertRaisesRegex(ValueError,'socket probe'):d.startup_tip_json(1,20)
+            d.docker.exec.side_effect=ValueError('deadline exhausted')
+            with self.assertRaisesRegex(ValueError,'deadline exhausted'):d.startup_tip_json(1,20)
+
     def records(self,points):
         result=[]
         for p in points:
