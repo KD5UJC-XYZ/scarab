@@ -44,7 +44,22 @@ object ConwayEmptyGovernance:
     case NoUpdate, PotentialNone
     case Pending(payload: Payload)
   final case class Parameters(current: Payload, previous: Payload, future: FutureParameters)
-  final case class Globals(securityParameter: BigInt, original: Payload)
+  sealed trait GlobalsEvidence:
+    def securityParameter: BigInt
+  final case class Globals(securityParameter: BigInt, original: Payload) extends GlobalsEvidence
+
+  /** Explicit supplied fixed-epoch source identity, not a native Globals serialization. */
+  final case class SuppliedFixedGlobals private[ConwayEmptyGovernance] (
+      securityParameter: BigInt,
+      sourceId: Bytes
+  ) extends GlobalsEvidence
+  private[lab] def suppliedFixedGlobals(
+      k: BigInt,
+      sourceId: Bytes
+  ): Either[String, SuppliedFixedGlobals] = checked {
+    require(coin(k) && k > 0 && width(sourceId, 32), "typed fixed globals bounds")
+    new SuppliedFixedGlobals(k, sourceId)
+  }
   final case class Pool(parameters: Payload, deposit: BigInt)
   final case class PoolShare(stake: BigInt, fraction: S.Ratio, vrf: Bytes)
   final case class PoolDistribution(total: BigInt, pools: Map[Bytes, PoolShare])
@@ -100,7 +115,7 @@ object ConwayEmptyGovernance:
       donations: BigInt,
       treasury: BigInt,
       deposits: Deposits,
-      globals: Globals
+      globals: GlobalsEvidence
   )
   final case class FreshPulsing(
       pulseSize: Int,
@@ -115,7 +130,7 @@ object ConwayEmptyGovernance:
       enact: Enact,
       proposals: Vector[ActionId],
       proposalDeposits: Map[S.Credential, BigInt],
-      globals: Globals,
+      globals: GlobalsEvidence,
       stakePools: Map[Bytes, Pool]
   )
   final class Applied private[ConwayEmptyGovernance] (

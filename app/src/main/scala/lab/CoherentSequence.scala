@@ -15,7 +15,9 @@ import lab.ledger.{
   ConwayEpochBoundary as Boundary,
   ConwayRewardStart as RewardStart,
   ConwayRewardPulser as Pulser,
-  ConwayPoolReward as PoolReward
+  ConwayPoolReward as PoolReward,
+  ConwayEmptyGovernance as Governance,
+  ConwayNonMyopic as NonMyopic
 }
 import lab.network.ChainSync
 import lab.vrf.{PraosVrfCertificate as Vrf, PraosLeaderThreshold as Leader}
@@ -51,7 +53,8 @@ object CoherentSequence:
       private[CoherentSequence] val stakeBinding: Option[(Stake.Owner, Stake.State)] = None,
       private[CoherentSequence] val rewardBinding: Option[SyntheticRewards] = None,
       private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None,
-      private[CoherentSequence] val boundaryOrigin: Option[HistoricalBoundary] = None
+      private[CoherentSequence] val boundaryOrigin: Option[HistoricalBoundary] = None,
+      private[lab] val syntheticBoundary: Option[SyntheticBoundaryState.State] = None
   ):
     def stake: Option[Stake.State] = stakeBinding.map(_._2)
     def syntheticRewards: Option[SyntheticRewards] = rewardBinding
@@ -72,7 +75,9 @@ object CoherentSequence:
         eligibility.fold(Bytes.empty)(_.contextId),
         ledger.id
       ) ++ stake.toVector.map(_.id) ++ rewardBinding.toVector.map(_.id) ++ epochBinding.toVector
-        .map(_.id) ++ boundaryOrigin.toVector.map(_.id) ++ derivedAnchorId.toVector
+        .map(_.id) ++ boundaryOrigin.toVector.map(_.id) ++ syntheticBoundary.toVector.map(
+        _.id
+      ) ++ derivedAnchorId.toVector
         .flatMap(id => Vector(raw(compactedBlocks.toString), id))
     )
     val fullLedgerValidated = false
@@ -96,7 +101,8 @@ object CoherentSequence:
       private[CoherentSequence] val stake: Option[Stake.Candidate],
       private[CoherentSequence] val rewards: Option[SyntheticRewards],
       private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None,
-      private[CoherentSequence] val transitionBoundary: Option[HistoricalBoundary] = None
+      private[CoherentSequence] val transitionBoundary: Option[HistoricalBoundary] = None,
+      private[CoherentSequence] val syntheticBoundary: Option[SyntheticBoundaryState.State] = None
   )
   final class Applied private[CoherentSequence] (
       val state: State,
@@ -170,6 +176,10 @@ object CoherentSequence:
   )
 
   private[lab] def recoveryBoundaries(image: RecoveryImage): Vector[HistoricalBoundary] =
+    require(
+      image.states.forall(_.syntheticBoundary.isEmpty),
+      "one-boundary composition has no recovery model"
+    )
     (image.states.flatMap(_.boundaryOrigin) ++ image.records.flatMap(_.boundary)).distinctBy(_.id)
   private[lab] def recoveryCertificateContexts(image: RecoveryImage): Vector[Certificate.Context] =
     (Vector(image.context.certificates) ++ image.states.flatMap(
@@ -210,7 +220,8 @@ object CoherentSequence:
       actual.stakeBinding,
       actual.rewardBinding,
       actual.epochBinding,
-      actual.boundaryOrigin
+      actual.boundaryOrigin,
+      actual.syntheticBoundary
     )
     Either.cond(
       state.id == p.id && state.revision == p.revision && sameRecoveryContent(state, actual),
@@ -344,7 +355,7 @@ object CoherentSequence:
       Either.cond(
         image.capacity >= 1 && image.capacity <= MaxBlocks && n <= image.capacity && image.states.size == n + 1 &&
           image.states.forall(s =>
-            s.contextId == image.context.id && s.stake.isDefined && s.syntheticRewards.isDefined
+            s.contextId == image.context.id && s.stake.isDefined && s.syntheticRewards.isDefined && s.syntheticBoundary.isEmpty
           ) &&
           image.states.head.acquisition.size == 0 && image.states.last.acquisition.size == n &&
           image.states.zipWithIndex.forall((s, i) =>
@@ -400,7 +411,8 @@ object CoherentSequence:
       val parameters: RewardStart.Parameters,
       val globals: RewardStart.Globals,
       val window: BigInt,
-      val id: Bytes
+      val id: Bytes,
+      private[CoherentSequence] val legacyNoEffects: Boolean = true
   )
   def syntheticRewardProfile(
       parameters: RewardStart.Parameters,
@@ -472,6 +484,7 @@ object CoherentSequence:
       private[CoherentSequence] val before: State,
       val preview: Boundary.Preview,
       val completedPulser: Option[Pulser.State],
+      private[CoherentSequence] val completeEffect: Option[Boundary.Complete],
       val id: Bytes
   ):
     val published = false
@@ -667,6 +680,29 @@ object CoherentSequence:
       )
       selected <- checked("successor-stake", Stake.select(stakeOwner, beforeStake, stake))
       rewards <- afterBoundaryRewards(current, preview.preview, selected)
+      boundary <- current.syntheticBoundary.traverse { before =>
+        for
+          applied <- checked(
+            "synthetic-boundary",
+            SyntheticBoundaryState.atBoundary(
+              before,
+              current.syntheticRewards.flatMap(_.frozen),
+              preview.completedPulser,
+              preview.preview,
+              preview.completeEffect
+            )
+          )
+          after <- checked(
+            "synthetic-boundary",
+            SyntheticBoundaryState.afterBoundaryFreeze(
+              before,
+              applied,
+              rewards.flatMap(_.frozen),
+              rewards.flatMap(_.pulser)
+            )
+          )
+        yield after
+      }
     yield new Candidate(
       owner,
       current,
@@ -686,7 +722,8 @@ object CoherentSequence:
           oldNonces,
           current.ledger.environment.id
         )
-      )
+      ),
+      boundary
     )
   }
 
@@ -818,6 +855,14 @@ object CoherentSequence:
       rewards <- current.rewardBinding.toRight(
         Failure.Unsupported("synthetic-rewards", "profile not enabled")
       )
+      _ <- Either.cond(
+        !current.syntheticBoundary.exists(_.boundaryApplied),
+        (),
+        Failure.Unsupported(
+          "synthetic-boundary",
+          "second boundary is outside the composition profile"
+        )
+      )
       env <- rewardContext(current, rewards)
       signal <- checked(
         "synthetic-successor",
@@ -836,11 +881,15 @@ object CoherentSequence:
           checked("synthetic-successor", Boundary.suppliedAbsent(rewards.owner, env, rewards.id))
             .map(Boundary.RewardPhase.Absent(_))
       preview <- checked("synthetic-successor", Boundary.preview(rewards.owner, env, signal, phase))
+      effect = phase match
+        case Boundary.RewardPhase.Completed(value) => Some(value)
+        case _                                     => None
     yield new SyntheticSuccessor(
       owner,
       current,
       preview,
       completed,
+      effect,
       digest(
         "synthetic-successor-v1",
         Vector(current.id, raw(current.revision.toString), preview.id) ++
@@ -985,6 +1034,16 @@ object CoherentSequence:
         checked("stake", Stake.prepare(stakeOwner, state, current.ledger, pending))
       }
       rewards <- prepareRewards(current, block.header.slot)
+      boundary <- current.syntheticBoundary.traverse(b =>
+        checked(
+          "synthetic-boundary-freeze",
+          SyntheticBoundaryState.advanceFreeze(
+            b,
+            rewards.flatMap(_.frozen),
+            rewards.flatMap(_.pulser)
+          )
+        )
+      )
     yield new Candidate(
       owner,
       current,
@@ -996,7 +1055,8 @@ object CoherentSequence:
       pending,
       stake,
       rewards,
-      current.epochBinding
+      current.epochBinding,
+      syntheticBoundary = boundary
     )
   }
   private def bindings(current: State, c: Candidate): Boolean =
@@ -1054,7 +1114,8 @@ object CoherentSequence:
           stake,
           rewards,
           candidate.epochBinding,
-          candidate.transitionBoundary.orElse(current.boundaryOrigin)
+          candidate.transitionBoundary.orElse(current.boundaryOrigin),
+          candidate.syntheticBoundary
         )
         val owned =
           OwnedReceipt(
@@ -1103,7 +1164,8 @@ object CoherentSequence:
         stake,
         owned.before.rewardBinding,
         owned.before.epochBinding,
-        owned.before.boundaryOrigin
+        owned.before.boundaryOrigin,
+        owned.before.syntheticBoundary
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -1186,7 +1248,8 @@ object CoherentSequence:
                   state.stakeBinding,
                   state.rewardBinding,
                   state.epochBinding,
-                  state.boundaryOrigin
+                  state.boundaryOrigin,
+                  state.syntheticBoundary
                 )
               )
           for
@@ -1256,7 +1319,9 @@ object CoherentSequence:
         sessionId: Bytes,
         generation: Long
     ): F[Either[String, LocalDerivedCheckpoint.Publication]] = cell.get.flatMap { current =>
-      if (plan.owner ne owner) || (plan.before ne current) then
+      if plan.next.state.syntheticBoundary.isDefined then
+        F.pure(Left("one-boundary composition has no checkpoint codec"))
+      else if (plan.owner ne owner) || (plan.before ne current) then
         F.pure(Left("foreign or stale local plan"))
       else
         F.delay {
@@ -1284,14 +1349,17 @@ object CoherentSequence:
         generation: Long
     ): F[Either[String, LocalDerivedCheckpoint.Publication]] = cell.get.flatMap { current =>
       val anchor = current.receipts.headOption.fold(current.state)(_.before)
-      F.delay(
-        LocalDerivedCheckpoint.encodeOwned(
-          new OwnedLocalExport(context, anchor, current.state, maxBlocks),
-          storeId,
-          sessionId,
-          generation
+      if current.state.syntheticBoundary.isDefined then
+        F.pure(Left("one-boundary composition has no checkpoint codec"))
+      else
+        F.delay(
+          LocalDerivedCheckpoint.encodeOwned(
+            new OwnedLocalExport(context, anchor, current.state, maxBlocks),
+            storeId,
+            sessionId,
+            generation
+          )
         )
-      )
     }
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
 
@@ -1299,13 +1367,16 @@ object CoherentSequence:
         publicationId: Bytes
     ): F[Either[String, SyntheticRecoveryModel.Envelope]] = cell.get.map { c =>
       val states = c.receipts.map(_.before) :+ c.state
-      val records = c.receipts.zip(c.state.acquisition.originals).map { (r, original) =>
-        RecoveryRecord(original, r.position, r.historicalAfterId, r.boundary)
-      }
-      SyntheticRecoveryModel.prepare(
-        RecoveryImage(context, maxBlocks, states, records),
-        publicationId
-      )
+      if states.exists(_.syntheticBoundary.isDefined) then
+        Left("one-boundary composition has no recovery model")
+      else
+        val records = c.receipts.zip(c.state.acquisition.originals).map { (r, original) =>
+          RecoveryRecord(original, r.position, r.historicalAfterId, r.boundary)
+        }
+        SyntheticRecoveryModel.prepare(
+          RecoveryImage(context, maxBlocks, states, records),
+          publicationId
+        )
     }
 
     /** Internal synthetic profile only; ordinary prepare and the CLI keep their epoch guards. */
@@ -1828,10 +1899,139 @@ object CoherentSequence:
           yield Right(new Runtime(context, maxBlocks, owner, cell))
       }
 
+  private[lab] final class SyntheticBoundaryProfile private[CoherentSequence] (
+      val roles: GovernanceParameterPayload.Roles,
+      val pools: Map[Bytes, GovernancePoolPayload.Checked],
+      val globals: GovernanceGlobals.Checked,
+      val window: BigInt,
+      private[CoherentSequence] val monetary: SyntheticRewardProfile
+  )
+
+  private[lab] def syntheticBoundaryProfile(
+      roles: GovernanceParameterPayload.Roles,
+      pools: Map[Bytes, GovernancePoolPayload.Checked],
+      globals: GovernanceGlobals.Checked,
+      window: BigInt
+  ): Result[SyntheticBoundaryProfile] = protect {
+    for
+      _ <- Either.cond(
+        roles != null && pools != null && globals != null && window != null &&
+          window > 0 && 2 * window < globals.rewardGlobals.epochLength && pools.size <= 4096,
+        (),
+        Failure.Rejected("synthetic-boundary", "typed profile inputs/bounds required")
+      )
+      _ <- checked(
+        "synthetic-boundary",
+        GovernanceParameterPayload.checkRewards(
+          roles.current,
+          roles.previous.rewards
+        )
+      )
+      monetary = new SyntheticRewardProfile(
+        roles.previous.rewards,
+        globals.rewardGlobals,
+        window,
+        digest(
+          "one-boundary-composition-profile-v1",
+          Vector(roles.id, globals.id, raw(window.toString))
+        ),
+        legacyNoEffects = false
+      )
+    yield new SyntheticBoundaryProfile(roles, pools, globals, window, monetary)
+  }
+
+  /** Internal one-boundary synthetic composition; no native admission or persistence support. */
+  private[lab] def createWithSyntheticBoundary[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      profile: SyntheticBoundaryProfile,
+      input: Governance.Input,
+      nonMyopic: NonMyopic.State,
+      pots: Boundary.Pots,
+      previousBlocks: Map[Bytes, BigInt],
+      currentBlocks: Map[Bytes, BigInt],
+      absentEvidence: Bytes,
+      maxBlocks: Int = MaxBlocks
+  ): F[Result[Runtime[F]]] =
+    if profile == null then
+      Sync[F].pure(Left(Failure.Rejected("synthetic-boundary", "profile required")))
+    else
+      createSyntheticRewardSeed[F](
+        context,
+        prepared,
+        profile.monetary,
+        pots,
+        previousBlocks,
+        currentBlocks,
+        absentEvidence,
+        maxBlocks
+      ).flatMap {
+        case Left(error) => Sync[F].pure(Left(error))
+        case Right(runtime) =>
+          runtime.cell.modify { cell =>
+            val initial = cell.state
+            val result = checked(
+              "synthetic-boundary",
+              SyntheticBoundaryState.seed(
+                input,
+                profile.roles,
+                profile.pools,
+                profile.globals,
+                nonMyopic,
+                context,
+                initial.stake.get,
+                pots,
+                profile.monetary.parameters,
+                profile.monetary.globals
+              )
+            ).map(component =>
+              new State(
+                initial.contextId,
+                initial.certificates,
+                initial.nonces,
+                initial.eligibility,
+                initial.ledger,
+                stakeBinding = initial.stakeBinding,
+                rewardBinding = initial.rewardBinding,
+                syntheticBoundary = Some(component)
+              )
+            )
+            result match
+              case Left(error)  => (cell, Left(error))
+              case Right(state) => (Cell(state, Vector.empty), Right(runtime))
+          }
+      }
+
   /** Synthetic absent reward seed is an explicit assertion, never decoded from native JSON. The
     * profile requires all omitted effects to be explicitly empty. No durability is supported.
     */
   def createWithSyntheticRewards[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      profile: SyntheticRewardProfile,
+      pots: Boundary.Pots,
+      previousBlocks: Map[Bytes, BigInt],
+      currentBlocks: Map[Bytes, BigInt],
+      absentEvidence: Bytes,
+      maxBlocks: Int = MaxBlocks
+  ): F[Result[Runtime[F]]] =
+    if profile == null || !profile.legacyNoEffects then
+      Sync[F].pure(
+        Left(Failure.Unsupported("synthetic-rewards", "legacy no-effect profile required"))
+      )
+    else
+      createSyntheticRewardSeed[F](
+        context,
+        prepared,
+        profile,
+        pots,
+        previousBlocks,
+        currentBlocks,
+        absentEvidence,
+        maxBlocks
+      )
+
+  private def createSyntheticRewardSeed[F[_]: Sync](
       context: SequenceInput.Context,
       prepared: ConwayStakeSeed.Prepared,
       profile: SyntheticRewardProfile,

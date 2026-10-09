@@ -71,6 +71,9 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
       ),
       G.Globals(1, payload(4))
     )
+  private def legacyGlobals(i: G.Input): G.Globals = i.globals match
+    case g: G.Globals => g
+    case _            => fail("legacy fixture globals required")
   private def changedRatify(i: G.Input)(f: G.Ratify => G.Ratify): G.Input = i.oldDRep match
     case G.OldDRep.Complete(s, r) => i.copy(oldDRep = G.OldDRep.Complete(s, f(r)))
     case _                        => fail("fixture phase")
@@ -111,7 +114,7 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
     val i = fixture()
     assertEquals(
       get(
-        G.applyBoundary(i.copy(globals = i.globals.copy(securityParameter = max)), 10)
+        G.applyBoundary(i.copy(globals = legacyGlobals(i).copy(securityParameter = max)), 10)
       ).fresh.pulseSize,
       1
     )
@@ -189,7 +192,7 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
       i.copy(epoch = max),
       i.copy(roots = Map.empty),
       i.copy(treasury = -1),
-      i.copy(globals = i.globals.copy(securityParameter = 0)),
+      i.copy(globals = legacyGlobals(i).copy(securityParameter = 0)),
       i.copy(newMarkPoolDistribution = i.newMarkPoolDistribution.copy(total = 101)),
       i.copy(dreps = i.dreps.updated(drep, i.dreps(drep).copy(expiry = -1)))
     ).foreach(x => assert(G.applyBoundary(x, 10).isLeft))
@@ -223,8 +226,10 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
   test("global integer/string and aggregate byte bounds fail before identity construction") {
     val i = fixture()
     assert(
-      G.applyBoundary(i.copy(globals = i.globals.copy(securityParameter = BigInt(1) << 4096)), 10)
-        .isLeft
+      G.applyBoundary(
+        i.copy(globals = legacyGlobals(i).copy(securityParameter = BigInt(1) << 4096)),
+        10
+      ).isLeft
     )
     assert(
       G.applyBoundary(
@@ -258,4 +263,22 @@ class ConwayEmptyGovernanceSuite extends munit.FunSuite:
     assert(G.applyBoundary(i.copy(oldDRep = G.OldDRep.Complete(bad, ratify)), 10).isLeft)
     val good = snapshot.copy(drepDistribution = Map(G.Vote.Credential(cred(66)) -> BigInt(1)))
     assert(G.applyBoundary(i.copy(oldDRep = G.OldDRep.Complete(good, ratify)), 10).isRight)
+  }
+
+  test("typed fixed globals preserve source identity and enforce construction bounds") {
+    assert(G.suppliedFixedGlobals(0, bytes(1)).isLeft)
+    assert(G.suppliedFixedGlobals(-1, bytes(1)).isLeft)
+    assert(G.suppliedFixedGlobals(max + 1, bytes(1)).isLeft)
+    assert(G.suppliedFixedGlobals(1, bytes(1, 31)).isLeft)
+    assert(G.suppliedFixedGlobals(1, null).isLeft)
+    val supplied = get(G.suppliedFixedGlobals(1, bytes(91)))
+    val input = fixture().copy(globals = supplied)
+    val applied = get(G.applyBoundary(input, 10))
+    assertEquals(applied.fresh.globals, input.globals)
+    assertEquals(applied.fresh.globals.securityParameter, BigInt(1))
+    assertEquals(applied.fresh.pulseSize, 1)
+    val other = get(G.suppliedFixedGlobals(1, bytes(92)))
+    assertNotEquals(applied.id, get(G.applyBoundary(input.copy(globals = other), 10)).id)
+    assertNotEquals(applied.id, get(G.applyBoundary(fixture(), 10)).id)
+    assert(!applied.nativePayloadsValidated && !applied.nativeEquivalent)
   }
