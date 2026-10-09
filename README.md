@@ -282,3 +282,6 @@ coherent successor coordinator behavior, full-block validation or recovery.
 
 
 The [finite empty-governance differential](docs/empty-governance-differential.md) adds 12 positive normalized cases and three profile-routing checks. It is standalone and does not enable runtime epoch admission.
+
+
+The [finite non-myopic comparison](docs/conway-non-myopic.md) covers supplied binary32 likelihood completion and empty-go probes. General likelihood generation and runtime ingestion remain unsupported.

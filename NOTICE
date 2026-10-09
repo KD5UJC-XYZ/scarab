@@ -115,3 +115,6 @@ input/output/binary identities and finite evidence limits.
 
 
 Synthetic empty-governance differential: reference/empty-governance-diff contains original Apache-2.0 native harness source using Cardano ledger APIs. Its finite synthetic cases and recorded golden share this project license. Dependency source/binaries and captured-chain data are not redistributed. See docs/empty-governance-differential.md for provenance and limits.
+
+
+Synthetic non-myopic differential: original Apache-2.0 harness, supplied-case data, exact synthetic native JSON and validated TSV are retained under reference/non-myopic-diagnostic and ledger/src/test/resources/non-myopic. Native dependencies, binaries and private execution records are not redistributed. See docs/conway-non-myopic.md.
