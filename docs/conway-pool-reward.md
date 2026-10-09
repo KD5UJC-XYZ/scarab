@@ -103,8 +103,7 @@ checkpoint or runtime guard changes.
 
 ## Evidence and validation
 
-Pinned Markdown-wrapped sources remain in
-`/home/<user>/cardano-epoch-continuity-design-20261009`. For this packet the raw
+Pinned Markdown-wrapped sources remain in private evidence storage. For this packet the raw
 SnapShots.hs extracted from the existing local `cardano-ledger-core-1.21.0.0`
 archive has SHA256
 `1e99f896676bfdf567409b2680927ddd377fc80a78e9b78470c152cae6aab9f7`,

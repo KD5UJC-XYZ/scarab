@@ -35,12 +35,15 @@ effects before snapshot rotation and preserves pre-transition leadership inputs.
 It has no runtime publication operation. Same-epoch runtime guards remain;
 neither foundation establishes native reward parity or runnable epoch transitions.
 
-The pure reward pipeline now composes [supplied-projection reward-start allocation](docs/conway-reward-start.md),
+The pure reward pipeline composes [supplied-projection allocation](docs/conway-reward-start.md),
+[pool/leader calculation](docs/conway-pool-reward.md),
+[member distribution](docs/conway-member-rewards.md),
 [completion equations](docs/conway-reward-completion.md), and
 [application-time recipient filtering](docs/conway-reward-application.md).
-Member and leader reward amounts are still supplied. Native input admission,
-branch ancestry, entitlement, pulser execution and runtime publication remain
-outside these operations.
+An [immutable monetary pulser](docs/conway-reward-pulser.md) advances the same
+calculation in bounded chunks from supplied frozen inputs. Native input admission,
+branch ancestry, native execution parity, events, non-myopic updates and runtime
+epoch publication remain unproved or excluded.
 
 ## Opt-in local reference testing
 

@@ -57,11 +57,15 @@ runtime epoch guards and stake-bearing checkpoint rejection remain. Native rewar
 calculation, admitted branch ancestry and complete epoch-state transitions still
 require their own implementation and conformance evidence.
 
-The next pure foundation composes checked supplied parameter/global projections
-into [reward-start allocation](conway-reward-start.md), derives completion deltas,
-then applies supplied reward results using application-time registration and
-treasury routing. These algebra checks do not admit native inputs, calculate
-per-pool/member entitlement, progress a pulser or enable runtime epoch transitions.
+The pure foundation now composes checked supplied parameter/global projections
+into [reward-start allocation](conway-reward-start.md), pool/leader and member
+calculations, completion deltas and application-time recipient filtering.
+The [immutable monetary pulser](conway-reward-pulser.md) shares this arithmetic
+and exposes bounded progress, delayed completion after exhaustion and forced
+completion. Its strict monotonic signal API is a local restriction; old immutable
+states remain replayable. Native provenance/parity, events, non-myopic updates
+and runtime epoch transitions remain outside this milestone. The next evidence
+priority is an offline native differential, not further pure abstractions.
 
 ## Worker interface and ownership
 
