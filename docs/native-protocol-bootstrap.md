@@ -137,3 +137,19 @@ SHA256 is `1fdc48b9dcbbf51864417617104a9af6eccc8b0ce0ece8ca46a08c04e1344452`.
 This validates the candidate's synthetic decoding, source binding and mutation
 checks; it does not establish native acquisition, native-target compilation or
 cross-language protocol conformance. Execution receipts remain private.
+
+## Standalone integration scope
+
+This adapter compiles against the existing public Scala modules and uses hand-built
+synthetic test inputs. It has no dependency on a native executable, the separate
+native-seed diagnostic candidate, or the unexecuted acquisition helper. The contract
+commit above identifies the reviewed source specification, not a published or
+executed native acquisition. Supplied verifier receipts are checked for shape and
+source consistency; the adapter does not rerun native validation. Unsupported float
+CBOR or governance-adjusted leadership inputs remain rejected; accommodating future
+fixtures would require an explicit separately reviewed coverage change.
+
+Integration passed 41 focused tests (19 core and 22 app), including the independent
+streaming suite, with formatting checks, network disabled and private 2 CPU/2 GiB
+resources. Log SHA256: `a69603c3aefc510db35fc9d7586e8c7618532172b3716597bd1d43510cbd706a`.
+No admission, network, CLI, native execution or runtime wiring was added.
