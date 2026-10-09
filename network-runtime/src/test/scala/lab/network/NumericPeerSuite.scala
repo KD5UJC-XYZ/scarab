@@ -59,3 +59,23 @@ class NumericPeerSuite extends munit.FunSuite:
     assert(TcpLimits.checked(maxChunkBytes = 65544).isLeft)
     assert(TcpLimits.checked(threads = 5).isLeft)
   }
+
+  test("TCP read ceiling is explicit and leaves all default limits unchanged") {
+    val defaults = TcpLimits.checked().toOption.get
+    assertEquals(defaults.connect, 5.seconds)
+    assertEquals(defaults.read, 10.seconds)
+    assertEquals(defaults.write, 5.seconds)
+    assertEquals(defaults.cleanup, 2.seconds)
+    assertEquals(defaults.maxChunkBytes, 65543)
+    assertEquals(defaults.threads, 2)
+    val longRead = TcpLimits.checked(read = 120.seconds).toOption.get
+    assertEquals(longRead.read, 120.seconds)
+    assertEquals(longRead.connect, defaults.connect)
+    assertEquals(longRead.write, defaults.write)
+    assertEquals(longRead.cleanup, defaults.cleanup)
+    assertEquals(longRead.maxChunkBytes, defaults.maxChunkBytes)
+    assertEquals(longRead.threads, defaults.threads)
+    assert(TcpLimits.checked(read = 120.seconds + 1.nanosecond).isLeft)
+    assert(TcpLimits.checked(read = -1.nanosecond).isLeft)
+    assertEquals(TcpLimits.checked(read = 50.millis).toOption.get.read, 50.millis)
+  }

@@ -1,4 +1,4 @@
-# Bounded offline native-source boundary diagnostic
+# Bounded native-source boundary diagnostics
 
 This private integration consumes the checked v2 packet without rewriting original
 request, capture, protocol, epoch, whole-UTxO or seed bytes. It prepares a supplied
@@ -140,10 +140,97 @@ endpoint comparison. Formatting, source/input hash checks and owned-container
 cleanup passed under two CPUs/two GiB, private caches and no network.
 Test log SHA256: `c7c53898f6952561eef23d6e906d7025ec8943c6a8a2830f56c41b62d07116d0`.
 
-This is equality of the represented finite profile after one boundary. It is not
+That offline check establishes equality of the represented finite profile after one boundary. It is not
 full ledger or consensus validation, productive nonempty-go reward validation,
 live streaming, persistence, second-boundary support, or snapshot authentication.
 Nonempty governance actions and original live pulser cursor equality remain
-unsupported. Public runtime admission remains disabled. The next live milestone
-requires real ChainSync/BlockFetch input while the cluster crosses the boundary,
-followed by a separately acquired same-point endpoint comparison.
+unsupported. Public runtime admission remains disabled. The live experiment below separately adds real ChainSync/BlockFetch input and
+a same-point comparison against held network-applied state.
+
+## Live network crossing and held-state endpoint comparison
+
+The test-only `NativeLiveBoundaryMain` now joins a fresh native epoch-zero packet,
+opens real ChainSync/BlockFetch sessions, and applies each original network block
+through the scoped coordinator. It keeps that state object in the same process
+while the controller acquires a separate native endpoint packet. The comparators
+receive that held network-applied state directly; there is no disk-block replay
+step in this live path.
+
+The adapter accepts one initial RollBackward to its exact selected intersection
+as a state-preserving confirmation. Any foreign, repeated or post-forward rollback
+rejects. A forward must extend the applied fullpoint; fetching, original-byte
+checks and publication precede the next pull. Success requires the first applied
+epoch-one block and completed peer/transport resource finalizers.
+
+Evidence records monotonic arrival, fetch and publication-observed offsets plus
+the actual UTC time sampled in each callback. Publication-observed is an upper
+bound on publication time, not an internal publication timestamp. The driver
+requires a pre-boundary publication observation before the UTC epoch boundary
+and the terminal publication observation at or after it.
+
+The successful isolated run used the unchanged 1,000-slot, 100ms-slot, k=5,
+active-slots-coefficient 0.05 profile with one forging node and one non-forging
+peer. Both were keyless during initial capture. The combined container ceiling
+was four CPUs/seven GiB: reference two/three, Scala one/two, and one serial native
+helper one/two. Reference/helper networking was disabled; Scala shared only the
+exact owned reference namespace. No external port or public network was used.
+
+| Evidence | Observed result |
+| --- | --- |
+| Initial point | Slot 75, block 1, `42eebab75c3ce61fc3fb7df3ac187e00ece11b86fa9f7c98ec15e2bcbe6393a1` |
+| Terminal point | Epoch 1, slot 1002, block 29, `8cd1f8c42d216e87dc9a88bd75e9f9c34c1e619dc6cb90e240ac2059bbbdf082` |
+| Applied stream | 28 original blocks, 20 compactions, eight retained |
+| Timing | Terminal publication observed 255.502ms after the UTC boundary |
+| Connections | One ChainSync peer and all 29 TCP transports finalized |
+| Endpoint | Exact-point represented Praos, finite ledger/stake/accounting, installed parameters and normalized empty-proposal governance matched |
+| Controller | Completed in 121.111s with owned-container absence verified |
+
+Network-applied state ID:
+`ec6d5366e43959c4ce4a856dc6e361e160dd0cc9ad024ba2a2de7f07cd482432`.
+Endpoint acquisition ID:
+`c795d946ac4a1745c16aaedc7b6aa98c2fb717dd61d4ba65d57e83b58ee68413`.
+Scala result SHA256:
+`b6a27d6689b0ff0510b223b84119a366fd72bd82d0236fb042464f6af8e6e3ca`.
+Independent original-byte, timing, source/class and cleanup verification SHA256:
+`196c9f535442ae3b2675b1070292cd7c256a89e88806f98a9e8ee9f0ebca37e5`.
+
+Four earlier attempts are retained with cleanup evidence: initial exact-point
+confirmation rejected; post-forward rollback rejected; a quiet single-producer
+interval exceeded the default ten-second TCP read; and frozen startup peers
+temporarily differed by one block. Corrections added the narrow initial no-op,
+selected one producer throughout this monotonic experiment, and bounded keyless
+peer convergence. The private driver explicitly selects a 120-second read ceiling;
+the TCP default remains ten seconds, and the adapter's whole-follow limit remains
+120 seconds. Handshake, block-fetch phase, buffer, thread and cleanup bounds remain.
+
+The final focused run passed **265 Scala tests** (187 app, 25 ledger, 53 transport),
+including ten adapter tests and the existing real short-read timeout/cleanup
+regressions. Its log SHA256 is
+`2aa0dde02e1faab95e132fa656b0a3c940950122857501694e86bdc10866adae`.
+The controller's 11 pure Python guard tests passed and are discovered by the
+existing public CI launcher-test pattern.
+
+### Private execution contract
+
+`scripts/private_cluster_native_boundary.py` defaults to preflight only.
+Execution requires `--execute`, a hash-pinned private support manifest and its
+complete source/runtime closure, a pinned projection binary, the tested Scala
+image and compiled classpath, and separate fresh owned/evidence roots. It does
+not build native binaries, reuse previous cluster roots or silently substitute
+the latest state when exact-point acquisition fails. Raw inputs, captures,
+transaction keys, node databases and logs remain outside Git.
+
+The controller exchanges `bootstrap-ready.json`, `peer-ready.json`,
+`endpoint-request.json` and `endpoint-ready.json` with the Scala Test-only
+entry point. The endpoint request binds `networkAppliedStateId`, source join,
+fullpoint, stream times and closed network resources. The final result retains
+explicit unsupported-domain flags.
+
+This proves one restricted monotonic live crossing and same-point represented
+state equality. It does not establish general ledger admission, full consensus,
+native snapshot authenticity, rollback/reconnect, durable persistence, nonempty
+governance, productive nonempty-go rewards or equality of native live pulser
+cursors. Public runtime admission remains disabled. The next milestones are
+[Scala transaction ingress, ADA relay, then script submission](scala-transaction-ingress-roadmap.md).
+
+Final public validation from a fresh source-only build passed 1,484 Scala tests, 25 serial gates and 347 Python tests (two skipped). Dependency caches alone were reused. Log SHA256: `6f0755996efaa110539881265c0afc2de741b813e2ef8096893e87bc931fb75d`. An earlier reused build contained one stale private-only test and failed on its absent private fixture; that build and failure are retained outside Git.
