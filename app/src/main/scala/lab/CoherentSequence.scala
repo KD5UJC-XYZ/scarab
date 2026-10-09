@@ -50,7 +50,8 @@ object CoherentSequence:
       val trustedLocalPrefix: Boolean = false,
       private[CoherentSequence] val stakeBinding: Option[(Stake.Owner, Stake.State)] = None,
       private[CoherentSequence] val rewardBinding: Option[SyntheticRewards] = None,
-      private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None
+      private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None,
+      private[CoherentSequence] val boundaryOrigin: Option[HistoricalBoundary] = None
   ):
     def stake: Option[Stake.State] = stakeBinding.map(_._2)
     def syntheticRewards: Option[SyntheticRewards] = rewardBinding
@@ -71,7 +72,7 @@ object CoherentSequence:
         eligibility.fold(Bytes.empty)(_.contextId),
         ledger.id
       ) ++ stake.toVector.map(_.id) ++ rewardBinding.toVector.map(_.id) ++ epochBinding.toVector
-        .map(_.id) ++ derivedAnchorId.toVector
+        .map(_.id) ++ boundaryOrigin.toVector.map(_.id) ++ derivedAnchorId.toVector
         .flatMap(id => Vector(raw(compactedBlocks.toString), id))
     )
     val fullLedgerValidated = false
@@ -94,7 +95,8 @@ object CoherentSequence:
       private[CoherentSequence] val ledger: Ledger.BlockCandidate,
       private[CoherentSequence] val stake: Option[Stake.Candidate],
       private[CoherentSequence] val rewards: Option[SyntheticRewards],
-      private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None
+      private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None,
+      private[CoherentSequence] val transitionBoundary: Option[HistoricalBoundary] = None
   )
   final class Applied private[CoherentSequence] (
       val state: State,
@@ -111,9 +113,285 @@ object CoherentSequence:
       afterId: Bytes,
       certificate: Certificate.Applied,
       nonce: Nonces.Applied,
-      ledger: Ledger.Undo
+      ledger: Ledger.Undo,
+      position: HistoricalPosition,
+      historicalAfterId: Bytes,
+      boundary: Option[HistoricalBoundary]
   )
   private final case class Cell(state: State, receipts: Vector[OwnedReceipt])
+
+  /** Historical attribution is kept separately from rebased live tuple identity. No State, Runtime
+    * or receipt chain occurs inside this bounded source capsule.
+    */
+  private[lab] final case class HistoricalPosition(
+      id: Bytes,
+      revision: BigInt,
+      certificates: CertificateBranch.Branch,
+      compactedBlocks: BigInt,
+      derivedAnchorId: Option[Bytes],
+      trustedLocalPrefix: Boolean
+  )
+  private[lab] final class HistoricalBoundary private[CoherentSequence] (
+      val preview: Boundary.Preview,
+      val previousCertificates: Certificate.Context,
+      val previousNonces: Nonces.Context,
+      val previousLedgerEnvironment: Bytes
+  ):
+    val id = digest(
+      "historical-boundary-v1",
+      Vector(
+        preview.id,
+        preview.before.tupleId,
+        raw(preview.before.stake.revision.toString),
+        previousCertificates.id,
+        previousNonces.id,
+        previousLedgerEnvironment
+      )
+    )
+  private[lab] final case class RecoveryRecord(
+      original: BoundedChainFollower.Original,
+      position: HistoricalPosition,
+      historicalAfterId: Bytes,
+      boundary: Option[HistoricalBoundary]
+  )
+  private[lab] final case class RecoveryImage(
+      context: SequenceInput.Context,
+      capacity: Int,
+      states: Vector[State],
+      records: Vector[RecoveryRecord]
+  )
+  private def historicalPosition(state: State): HistoricalPosition = HistoricalPosition(
+    state.id,
+    state.revision,
+    state.certificates,
+    state.compactedBlocks,
+    state.derivedAnchorId,
+    state.trustedLocalPrefix
+  )
+
+  private[lab] def recoveryBoundaries(image: RecoveryImage): Vector[HistoricalBoundary] =
+    (image.states.flatMap(_.boundaryOrigin) ++ image.records.flatMap(_.boundary)).distinctBy(_.id)
+  private[lab] def recoveryCertificateContexts(image: RecoveryImage): Vector[Certificate.Context] =
+    (Vector(image.context.certificates) ++ image.states.flatMap(
+      _.epochBinding.map(_.certificates)
+    ) ++
+      recoveryBoundaries(image).map(_.previousCertificates)).distinctBy(_.id)
+  private[lab] def recoveryStateFields(state: State): Vector[Bytes] = Vector(
+    state.id,
+    raw(state.revision.toString),
+    state.certificates.state.id,
+    state.nonces.id,
+    state.ledger.id,
+    state.stake.get.id,
+    state.syntheticRewards.get.id
+  ) ++
+    state.epochBinding.toVector.map(_.id) ++ state.boundaryOrigin.toVector.map(_.id)
+
+  private def sameRecoveryContent(a: State, b: State): Boolean =
+    a.contextId == b.contextId && a.certificates.state.id == b.certificates.state.id &&
+      a.certificates.state.contextId == b.certificates.state.contextId && a.nonces.id == b.nonces.id &&
+      a.ledger.id == b.ledger.id && a.stake.map(_.id) == b.stake.map(_.id) &&
+      a.syntheticRewards.map(_.id) == b.syntheticRewards.map(_.id) &&
+      a.eligibility.map(_.contextId) == b.eligibility.map(_.contextId) &&
+      a.epochBinding.map(_.id) == b.epochBinding.map(_.id) && a.boundaryOrigin.map(
+        _.id
+      ) == b.boundaryOrigin.map(_.id)
+
+  private def historicalState(actual: State, p: HistoricalPosition): Result[State] = protect {
+    val state = new State(
+      actual.contextId,
+      p.certificates,
+      actual.nonces,
+      actual.eligibility,
+      actual.ledger,
+      p.compactedBlocks,
+      p.derivedAnchorId,
+      p.trustedLocalPrefix,
+      actual.stakeBinding,
+      actual.rewardBinding,
+      actual.epochBinding,
+      actual.boundaryOrigin
+    )
+    Either.cond(
+      state.id == p.id && state.revision == p.revision && sameRecoveryContent(state, actual),
+      state,
+      Failure.Rejected("recovery", "historical predecessor attribution/content mismatch")
+    )
+  }
+
+  /** Controller-authenticated opaque handoff only; not a raw image/identity hydration setter. */
+  private[lab] def hydrateSyntheticRecovery[F[_]: Async](
+      authorized: SyntheticRecoveryModel.Authorized
+  ): F[Result[Runtime[F]]] =
+    val image = authorized.image
+    val F = Async[F]
+    def validate(i: Int): Result[OwnedReceipt] = protect {
+      val record = image.records(i)
+      val actual = image.states(i)
+      val after = image.states(i + 1)
+      val verifierOwner = new Object()
+      for
+        before <- historicalState(actual, record.position)
+        block <- SequenceInput
+          .block(record.original)
+          .left
+          .map(e => Failure.Rejected("recovery-input", e.toString))
+        pending <- record.boundary match
+          case None =>
+            prepare(verifierOwner, image.context, image.capacity, before, block, synthetic = true)
+          case Some(boundary) =>
+            for
+              preview <- successor(
+                verifierOwner,
+                before,
+                snapshot(verifierOwner, before).fence,
+                block.header.hash,
+                block.header.slot
+              )
+              _ <- Either.cond(
+                preview.preview.id == boundary.preview.id && boundary.id == after.boundaryOrigin
+                  .map(_.id)
+                  .getOrElse(Bytes.empty),
+                (),
+                Failure.Rejected("recovery", "historical successor provenance mismatch")
+              )
+              candidate <- prepareSuccessor(
+                verifierOwner,
+                image.context,
+                image.capacity,
+                before,
+                snapshot(verifierOwner, before).fence,
+                preview,
+                block
+              )
+            yield candidate
+        applied <- publish(verifierOwner, image.capacity, Cell(before, Vector.empty), pending)
+        (cell, result) = applied
+        _ <- Either.cond(
+          result.state.id == record.historicalAfterId && sameRecoveryContent(result.state, after) &&
+            result.state.revision <= after.revision,
+          (),
+          Failure.Rejected("recovery", "retained transition or adjacent content mismatch")
+        )
+      yield cell.receipts.head
+    }
+    def cloneBoundary(
+        bo: Boundary.Owner,
+        so: Stake.Owner,
+        b: HistoricalBoundary
+    ): Result[HistoricalBoundary] =
+      for
+        stake <- checked("recovery-stake", Stake.reownForRecovery(so, b.preview.before.stake))
+        preview <- checked(
+          "recovery-boundary",
+          Boundary.reownPreviewForRecovery(bo, so, b.preview, stake)
+        )
+      yield new HistoricalBoundary(
+        preview,
+        b.previousCertificates,
+        b.previousNonces,
+        b.previousLedgerEnvironment
+      )
+    def cloneState(bo: Boundary.Owner, so: Stake.Owner, s: State): Result[State] = protect {
+      for
+        originalStake <- s.stake.toRight(Failure.Rejected("recovery", "stake required"))
+        stake <- checked("recovery-stake", Stake.reownForRecovery(so, originalStake))
+        originalRewards <- s.syntheticRewards.toRight(
+          Failure.Rejected("recovery", "rewards required")
+        )
+        frozen <- originalRewards.frozen.traverse(f =>
+          checked("recovery-frozen", Boundary.reownFrozenForRecovery(bo, so, f))
+        )
+        pulser <- originalRewards.pulser.traverse(p =>
+          frozen
+            .toRight(Failure.Rejected("recovery", "pulser missing frozen"))
+            .flatMap(f => checked("recovery-pulser", Pulser.reownForRecovery(p, f)))
+        )
+        rewards = new SyntheticRewards(
+          bo,
+          originalRewards.profile,
+          originalRewards.pots,
+          originalRewards.previousBlocks,
+          originalRewards.currentBlocks,
+          frozen,
+          pulser,
+          originalRewards.origin
+        )
+        origin <- s.boundaryOrigin.traverse(cloneBoundary(bo, so, _))
+        next = new State(
+          s.contextId,
+          s.certificates,
+          s.nonces,
+          s.eligibility,
+          s.ledger,
+          s.compactedBlocks,
+          s.derivedAnchorId,
+          s.trustedLocalPrefix,
+          Some(so -> stake),
+          Some(rewards),
+          s.epochBinding,
+          origin
+        )
+        _ <- Either.cond(
+          next.id == s.id,
+          (),
+          Failure.Rejected("recovery", "fresh-owner identity mismatch")
+        )
+      yield next
+    }
+    val preflight = protect {
+      val n = image.records.size
+      Either.cond(
+        image.capacity >= 1 && image.capacity <= MaxBlocks && n <= image.capacity && image.states.size == n + 1 &&
+          image.states.forall(s =>
+            s.contextId == image.context.id && s.stake.isDefined && s.syntheticRewards.isDefined
+          ) &&
+          image.states.head.acquisition.size == 0 && image.states.last.acquisition.size == n &&
+          image.states.zipWithIndex.forall((s, i) =>
+            s.acquisition.anchor == image.states.head.acquisition.anchor &&
+              s.acquisition.originals == image.records
+                .take(i)
+                .map(_.original) && s.revision <= image.states.last.revision
+          ),
+        (),
+        Failure.Rejected("recovery", "bounded anchor/retained image linkage")
+      )
+    }
+    preflight match
+      case Left(error) => F.pure(Left(error))
+      case Right(_) =>
+        image.records.indices.toVector.traverse(i => F.cede *> F.delay(validate(i))).flatMap {
+          results =>
+            results.sequence match
+              case Left(error) => F.pure(Left(error))
+              case Right(verified) =>
+                for
+                  bo <- F.delay(Boundary.owner())
+                  so <- F.delay(Stake.owner())
+                  states <- image.states.traverse(s => F.cede *> F.delay(cloneState(bo, so, s)))
+                  boundaries <- image.records
+                    .traverse(r => F.delay(r.boundary.traverse(cloneBoundary(bo, so, _))))
+                  result <- (states.sequence, boundaries.sequence).mapN((_, _)) match
+                    case Left(error) => F.pure(Left(error))
+                    case Right((states, boundaries)) =>
+                      val receipts = verified.zipWithIndex.map { (v, i) =>
+                        OwnedReceipt(
+                          states(i),
+                          states(i + 1).id,
+                          v.certificate,
+                          v.nonce,
+                          v.ledger,
+                          image.records(i).position,
+                          image.records(i).historicalAfterId,
+                          boundaries(i)
+                        )
+                      }
+                      for
+                        owner <- F.delay(new Object())
+                        cell <- Ref.of[F, Cell](Cell(states.last, receipts))
+                      yield Right(new Runtime(image.context, image.capacity, owner, cell))
+                yield result
+        }
 
   /** Explicit assertions for a synthetic no-effect model, not extracted native state. No defaults:
     * absence is unknown and rejected. These effects are neither implemented nor carried forward.
@@ -400,7 +678,15 @@ object CoherentSequence:
       pending,
       Some(stake),
       rewards,
-      Some(new SyntheticEpochContext(nextCertificates, nextNonces, stakes))
+      Some(new SyntheticEpochContext(nextCertificates, nextNonces, stakes)),
+      Some(
+        new HistoricalBoundary(
+          preview.preview,
+          oldCertificates,
+          oldNonces,
+          current.ledger.environment.id
+        )
+      )
     )
   }
 
@@ -767,10 +1053,20 @@ object CoherentSequence:
           current.trustedLocalPrefix,
           stake,
           rewards,
-          candidate.epochBinding
+          candidate.epochBinding,
+          candidate.transitionBoundary.orElse(current.boundaryOrigin)
         )
         val owned =
-          OwnedReceipt(current, state.id, candidate.certificate, candidate.nonce, block.undo)
+          OwnedReceipt(
+            current,
+            state.id,
+            candidate.certificate,
+            candidate.nonce,
+            block.undo,
+            historicalPosition(current),
+            state.id,
+            candidate.transitionBoundary
+          )
         (
           Cell(state, cell.receipts :+ owned),
           new Applied(state, block, candidate.certificate, candidate.nonce)
@@ -806,7 +1102,8 @@ object CoherentSequence:
         current.trustedLocalPrefix,
         stake,
         owned.before.rewardBinding,
-        owned.before.epochBinding
+        owned.before.epochBinding,
+        owned.before.boundaryOrigin
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -888,7 +1185,8 @@ object CoherentSequence:
                   state.trustedLocalPrefix,
                   state.stakeBinding,
                   state.rewardBinding,
-                  state.epochBinding
+                  state.epochBinding,
+                  state.boundaryOrigin
                 )
               )
           for
@@ -897,7 +1195,16 @@ object CoherentSequence:
           yield
             val receipts = retained.zipWithIndex.map { case ((old, before), i) =>
               val after = retained.lift(i + 1).fold(tip)(_._2)
-              OwnedReceipt(before, after.id, old.certificate, old.nonce, old.ledger)
+              OwnedReceipt(
+                before,
+                after.id,
+                old.certificate,
+                old.nonce,
+                old.ledger,
+                old.position,
+                old.historicalAfterId,
+                old.boundary
+              )
             }
             (Cell(tip, receipts), snapshot(owner, tip))
   }
@@ -987,6 +1294,19 @@ object CoherentSequence:
       )
     }
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
+
+    private[lab] def exportSyntheticRecovery(
+        publicationId: Bytes
+    ): F[Either[String, SyntheticRecoveryModel.Envelope]] = cell.get.map { c =>
+      val states = c.receipts.map(_.before) :+ c.state
+      val records = c.receipts.zip(c.state.acquisition.originals).map { (r, original) =>
+        RecoveryRecord(original, r.position, r.historicalAfterId, r.boundary)
+      }
+      SyntheticRecoveryModel.prepare(
+        RecoveryImage(context, maxBlocks, states, records),
+        publicationId
+      )
+    }
 
     /** Internal synthetic profile only; ordinary prepare and the CLI keep their epoch guards. */
     private[lab] def prepareSyntheticSuccessorBlock(

@@ -182,3 +182,7 @@ requirements grants authority to serialized hashes alone. Aggregate byte and
 allocation limits must be measured in addition to existing per-collection bounds.
 There is no recovery seam or wire codec in this packet; both existing checkpoint
 formats continue rejecting the enlarged tuple.
+
+The follow-up [bounded recovery model](synthetic-recovery-model.md) supports internal
+controller-authorized opaque handoff with historical boundary/freeze provenance. It
+does not add durable serialization or relax the runtime/CLI validation limits.

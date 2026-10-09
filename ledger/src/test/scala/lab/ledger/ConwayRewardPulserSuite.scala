@@ -6,6 +6,7 @@ import ConwayStake as S
 import ConwayEpochBoundary as B
 import ConwayRewardStart as R
 import ConwayMemberRewards as M
+import scala.compiletime.testing.typeCheckErrors
 
 class ConwayRewardPulserSuite extends munit.FunSuite:
   private def get[A](e: Either[?, A]): A = e.fold(e => fail(e.toString), identity)
@@ -263,4 +264,89 @@ class ConwayRewardPulserSuite extends munit.FunSuite:
       assert(P.completeAtBoundary(completed, completed.id, 500).isLeft)
     assertEquals(initial.processed, 0)
     assert(initial.completion.isEmpty)
+  }
+
+  test("opaque recovery rebuilds every cursor phase and retains signal-chain identities") {
+    for f <- Vector(
+        new Fixture,
+        new Fixture(fees = 0),
+        new Fixture(empty = true, blocks = Map.empty)
+      )
+    do
+      val initial = get(start(f))
+      val partial = get(P.pulse(initial, initial.id, 111))
+      val exhausted = (1 to 3).foldLeft(initial) { (s, n) => get(P.pulse(s, s.id, 110 + n)) }
+      val completed = get(P.pulse(exhausted, exhausted.id, 114))
+      if !f.go.active.isEmpty then
+        assertEquals(exhausted.phase, P.Phase.Pulsing)
+        assertEquals(exhausted.remaining, 0)
+      val bo = B.owner(); val so = S.owner()
+      val frozen = get(B.reownFrozenForRecovery(bo, so, f.frozen))
+      assert(frozen ne f.frozen)
+      assertEquals(frozen.id, f.frozen.id)
+      val view = B.frozenRecoveryView(frozen)
+      assert(view.calculation.stake ne f.state)
+      assertEquals(view.calculation.stake.id, f.state.id)
+      assertEquals(view.calculation.stake.revision, f.state.revision)
+      assertEquals(view.kind, B.FrozenRecoveryKind.Ordinary)
+      assertEquals(view.applicationBinding, None)
+      assert(B.signal(bo, view.calculation, bytes(88), 500).isRight)
+      assert(B.signal(f.bo, view.calculation, bytes(88), 500).isLeft)
+      val probe = get(ClusterTransition.prepareBlock(f.ledger, bytes(87), Vector.empty, 120))
+      assert(S.prepare(so, view.calculation.stake, f.ledger, probe).isRight)
+      assert(S.prepare(f.so, view.calculation.stake, f.ledger, probe).isLeft)
+      for source <- Vector(initial, partial, exhausted, completed) do
+        val restored = get(P.reownForRecovery(source, frozen))
+        assert(restored ne source)
+        assert(P.frozenForRecovery(restored) eq frozen)
+        assertEquals(restored.id, source.id)
+        assertEquals(restored.slot, source.slot)
+        assertEquals(restored.revision, source.revision)
+        assertEquals(restored.phase, source.phase)
+        assertEquals(restored.traversal, source.traversal)
+        assertEquals(restored.pulseSize, source.pulseSize)
+        assertEquals(restored.processed, source.processed)
+        assertEquals(restored.remaining, source.remaining)
+        assertEquals(restored.members, source.members)
+        assertEquals(restored.completion.map(_.id), source.completion.map(_.id))
+        assertEquals(
+          restored.completion.map(_.completed.rewards),
+          source.completion.map(_.completed.rewards)
+        )
+        val expectedNext = get(P.pulse(source, source.id, source.slot + 1))
+        val actualNext = get(P.pulse(restored, restored.id, restored.slot + 1))
+        assertEquals(actualNext.id, expectedNext.id)
+        assertEquals(actualNext.members, expectedNext.members)
+        assertEquals(actualNext.completion.map(_.id), expectedNext.completion.map(_.id))
+      if f.go.active.nonEmpty then
+        // Prefix counts credentials which never enter the reward map (owners or zero rewards).
+        assert(partial.processed > partial.members.size)
+        if f.state.snapshots.fees == 0 then assert(exhausted.members.isEmpty)
+  }
+
+  test(
+    "opaque recovery rejects substituted frozen inputs and exposes no raw identity constructors"
+  ) {
+    val f = new Fixture; val initial = get(start(f))
+    val foreign = new Fixture(k = Some(BigInt(2)))
+    val frozen = get(B.reownFrozenForRecovery(B.owner(), S.owner(), foreign.frozen))
+    assert(P.reownForRecovery(initial, frozen).isLeft)
+    assert(P.reownForRecovery(initial, null).isLeft)
+    assert(B.reownFrozenForRecovery(null, S.owner(), f.frozen).isLeft)
+    assert(S.reownForRecovery(null, f.state).isLeft)
+    assert(
+      typeCheckErrors(
+        "new lab.ledger.ConwayRewardPulser.State(null, Vector.empty, 1, null, None, BigInt(0), BigInt(0), lab.cbor.Bytes.empty)"
+      ).nonEmpty
+    )
+    assert(
+      typeCheckErrors(
+        "new lab.ledger.ConwayEpochBoundary.Frozen(null, null, BigInt(0), BigInt(1), lab.cbor.Bytes.empty, lab.cbor.Bytes.empty)"
+      ).nonEmpty
+    )
+    assert(
+      typeCheckErrors(
+        "lab.ledger.ConwayRewardPulser.reownForRecovery(null, null, lab.cbor.Bytes.empty)"
+      ).nonEmpty
+    )
   }

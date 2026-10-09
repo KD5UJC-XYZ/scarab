@@ -116,3 +116,7 @@ tests for this increment. `scalafmtAll` and `git diff --check` passed. Independe
 review approved the restricted in-memory synthetic scope with no remaining blockers.
 Local run evidence is `.cache/synthetic-successor-tests.log` and
 `.cache/synthetic-successor-test-report.json`; these ignored files are not repository fixtures.
+
+The follow-up [bounded recovery model](synthetic-recovery-model.md) supports internal
+controller-authorized opaque handoff with historical boundary/freeze provenance. It
+does not add durable serialization or relax the runtime/CLI validation limits.

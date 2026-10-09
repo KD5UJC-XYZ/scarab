@@ -104,6 +104,107 @@ object ConwayEpochBoundary:
     val epochTransitionValidated = false
     val published = false
 
+  private[lab] enum FrozenRecoveryKind:
+    case Ordinary, PostBoundary
+  private[lab] final case class FrozenRecoveryView(
+      calculation: Context,
+      kind: FrozenRecoveryKind,
+      applicationBinding: Option[(BigInt, Bytes, BigInt, Map[Bytes, BigInt])]
+  )
+  private[lab] def frozenRecoveryView(f: Frozen): FrozenRecoveryView =
+    FrozenRecoveryView(
+      f.start,
+      if f.successorApplication.isDefined then FrozenRecoveryKind.PostBoundary
+      else FrozenRecoveryKind.Ordinary,
+      f.successorApplication
+    )
+
+  private def reownContextForRecovery(
+      newOwner: Owner,
+      newStakeOwner: Stake.Owner,
+      source: Context,
+      selectedStake: Stake.State
+  ): Context =
+    require(
+      newOwner != null && newStakeOwner != null && source != null && selectedStake != null,
+      "recovery context owner/source"
+    )
+    val checkedStake = get(Stake.reownForRecovery(newStakeOwner, source.stake))
+    require(
+      selectedStake.id == checkedStake.id && selectedStake.revision == checkedStake.revision &&
+        selectedStake.ledgerId == checkedStake.ledgerId && selectedStake.slot == checkedStake.slot &&
+        selectedStake.epoch == checkedStake.epoch && (selectedStake.context eq checkedStake.context) &&
+        selectedStake.utxo == checkedStake.utxo && selectedStake.instantaneous == checkedStake.instantaneous &&
+        selectedStake.snapshots == checkedStake.snapshots,
+      "recovery context selected stake differs"
+    )
+    require(
+      Stake.recoveryOwnerMatches(newStakeOwner, selectedStake),
+      "recovery selected stake owner"
+    )
+    new Context(
+      newOwner,
+      newStakeOwner,
+      source.tupleId,
+      selectedStake,
+      source.application,
+      source.pots,
+      source.previousBlocks,
+      source.currentBlocks,
+      source.id
+    )
+
+  private[lab] def reownFrozenForRecovery(
+      newOwner: Owner,
+      newStakeOwner: Stake.Owner,
+      source: Frozen
+  ): Either[String, Frozen] = checked {
+    require(source != null, "recovery frozen source")
+    val stake = get(Stake.reownForRecovery(newStakeOwner, source.start.stake))
+    val start = reownContextForRecovery(newOwner, newStakeOwner, source.start, stake)
+    new Frozen(
+      newOwner,
+      start,
+      source.observedSlot,
+      source.window,
+      source.previousParameters,
+      source.id,
+      source.rewardParameters,
+      source.rewardGlobals,
+      source.successorApplication
+    )
+  }
+
+  private[lab] def reownPreviewForRecovery(
+      newOwner: Owner,
+      newStakeOwner: Stake.Owner,
+      source: Preview,
+      selectedBeforeStake: Stake.State
+  ): Either[String, Preview] = checked {
+    require(source != null, "recovery preview source")
+    val before =
+      reownContextForRecovery(newOwner, newStakeOwner, source.before, selectedBeforeStake)
+    val signal = new Signal(
+      newOwner,
+      source.signal.contextId,
+      source.signal.beforeRevision,
+      source.signal.headerHash,
+      source.signal.slot
+    )
+    val rotation =
+      get(Stake.reownRotationForRecovery(newStakeOwner, source.rotation, selectedBeforeStake))
+    new Preview(
+      before,
+      signal,
+      source.balances,
+      source.pots,
+      rotation,
+      source.rewardIdentity,
+      source.rewardApplication,
+      source.id
+    )
+  }
+
   private def checked[A](a: => A): Either[String, A] =
     try Right(a)
     catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))

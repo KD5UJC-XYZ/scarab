@@ -504,6 +504,72 @@ object ConwayStake:
     )
   }
 
+  /** Opaque-source recovery only: enclosing controller authenticates the retained capsule. There is
+    * deliberately no caller-supplied identity or revision.
+    */
+  private[lab] def reownForRecovery(newOwner: Owner, original: State): Either[String, State] =
+    protect {
+      require(
+        newOwner != null && original != null && original.owner != null,
+        "recovery stake owner/source"
+      )
+      require(
+        size(original.id, 32) && size(original.ledgerId, 32) && coin(original.revision) &&
+          coin(original.slot) && original.slot / original.context.epochLength == original.epoch &&
+          original.utxo.size <= 4096 && original.instantaneous == totals(original.utxo.values),
+        "recovery stake geometry/content"
+      )
+      require(coin(original.snapshots.fees), "recovery snapshot fees")
+      Vector(original.snapshots.mark, original.snapshots.set, original.snapshots.go).foreach {
+        snap =>
+          require(
+            snap.active.size <= 4096 && snap.pools.size <= 4096 && coin(snap.total) &&
+              snap.total == snap.active.values.map(_.coin).sum.max(BigInt(1)),
+            "recovery snapshot content"
+          )
+      }
+      new State(
+        newOwner,
+        original.context,
+        original.id,
+        original.ledgerId,
+        original.revision,
+        original.slot,
+        original.epoch,
+        original.utxo,
+        original.instantaneous,
+        original.snapshots
+      )
+    }
+
+  private[ledger] def recoveryOwnerMatches(owner: Owner, state: State): Boolean =
+    owner != null && state != null && (owner eq state.owner)
+
+  private[ledger] def reownRotationForRecovery(
+      newOwner: Owner,
+      original: Rotation,
+      selectedBefore: State
+  ): Either[String, Rotation] = protect {
+    require(
+      newOwner != null && original != null && selectedBefore != null &&
+        (newOwner eq selectedBefore.owner) && original.beforeId == selectedBefore.id &&
+        original.beforeRevision == selectedBefore.revision &&
+        (original.leadership eq selectedBefore.snapshots.mark) &&
+        original.headerSlot > selectedBefore.slot &&
+        original.headerSlot / selectedBefore.context.epochLength == selectedBefore.epoch + 1,
+      "recovery rotation source/before"
+    )
+    new Rotation(
+      newOwner,
+      original.beforeId,
+      original.beforeRevision,
+      original.headerHash,
+      original.headerSlot,
+      original.snapshots,
+      original.leadership
+    )
+  }
+
   private[ledger] def snapshotIdentity(s: Snapshot): Bytes =
     hash(Profile + ":snapshot:" + snapshotText(s) + ":" + s.total)
 
