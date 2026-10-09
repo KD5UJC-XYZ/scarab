@@ -89,6 +89,34 @@ object ClusterTransition:
     val credentialBound = true
     val fullLedgerValidated = false
 
+  /** Transaction memos can be reconstructed from original block components. Internal transaction
+    * candidates never escape this block capability; there is one externally visible revision.
+    */
+  final class BlockCandidate private[ClusterTransition] (
+      private[ClusterTransition] val before: State,
+      private[ClusterTransition] val after: State,
+      val headerHash: Bytes,
+      val transactionMemos: Vector[Bytes],
+      val transactionIds: Vector[Bytes],
+      val created: Set[TxIn]
+  ):
+    val profileId = ProfileId
+    val credentialBound = true
+    val fullLedgerValidated = false
+    def outputMap: Bytes = after.outputMap
+    def fees: BigInt = after.fees
+    def slot: BigInt = after.slot
+    def stateId: Bytes = after.id
+
+  final class BlockApplied private[ClusterTransition] (
+      val state: State,
+      val undo: Undo,
+      val candidate: BlockCandidate
+  ):
+    val profileId = ProfileId
+    val credentialBound = true
+    val fullLedgerValidated = false
+
   private def text(s: String): Bytes = Bytes.fromArray(s.getBytes(UTF_8))
   private def digest(domain: String, fields: Vector[Bytes]): Bytes =
     val md = MessageDigest.getInstance("SHA-256")
@@ -472,6 +500,128 @@ object ClusterTransition:
       prepare(before, original, inclusionSlot).flatMap(commit(before, _))
     }
 
+  /** Restricted block fold: zero through sixteen ordered memos, each at most 64 KiB and at most 1
+    * MiB together. Header/body correspondence and same-epoch context are caller checks. Private
+    * intermediate states reuse the starting revision so a block consumes exactly one revision even
+    * near the uint64 limit; no intermediate candidate or undo escapes.
+    */
+  def prepareBlock(
+      before: State,
+      headerHash: Bytes,
+      transactionMemos: Vector[Bytes],
+      inclusionSlot: BigInt
+  ): Checked[BlockCandidate] = protect {
+    for
+      _ <- Either.cond(headerHash.size == 32, (), Failure.Malformed("32-byte header hash required"))
+      _ <- Either.cond(
+        transactionMemos.size <= 16 && transactionMemos.forall(_.size <= 65536) &&
+          transactionMemos.map(_.size.toLong).sum <= 1048576L,
+        (),
+        Failure.ResourceLimit("block requires at most 16 memos, 64 KiB each and 1 MiB total")
+      )
+      _ <- Either.cond(
+        before.revision < MaxRevision,
+        (),
+        Failure.ResourceLimit("revision exhausted")
+      )
+      _ <- Either.cond(
+        inclusionSlot > before.slot && inclusionSlot <= MaxRevision,
+        (),
+        Failure.Unsupported("block inclusion slot must be uint64 and strictly increasing")
+      )
+      folded <- transactionMemos.foldLeft[Checked[(State, Vector[Bytes], Set[TxIn])]](
+        Right((before, Vector.empty, Set.empty))
+      ) { (acc, memo) =>
+        for
+          prior <- acc
+          (current, ids, created) = prior
+          intermediate <- state(
+            current.environment,
+            current.checkpointId,
+            current.entries,
+            current.fees,
+            current.slot,
+            before.revision,
+            current.head
+          )
+          candidate <- prepare(intermediate, memo, inclusionSlot)
+        yield (
+          candidate.after,
+          ids :+ candidate.transactionId,
+          (created -- candidate.spent) ++ candidate.created
+        )
+      }
+      (last, ids, created) = folded
+      tentative <- state(
+        before.environment,
+        before.checkpointId,
+        last.entries,
+        last.fees,
+        inclusionSlot,
+        before.revision + 1,
+        None
+      )
+      transition = digest(
+        ProfileId + ":block-transition",
+        Vector(
+          before.checkpointId,
+          before.id,
+          text(before.revision.toString),
+          before.head.getOrElse(Bytes.empty),
+          headerHash,
+          text(inclusionSlot.toString),
+          text(transactionMemos.size.toString),
+          tentative.id
+        ) ++ transactionMemos
+      )
+      after <- state(
+        before.environment,
+        before.checkpointId,
+        last.entries,
+        last.fees,
+        inclusionSlot,
+        before.revision + 1,
+        Some(transition)
+      )
+    yield new BlockCandidate(before, after, headerHash, transactionMemos, ids, created)
+  }
+
+  def commitBlock(current: State, candidate: BlockCandidate): Checked[BlockApplied] = protect {
+    val before = candidate.before
+    if current.checkpointId != before.checkpointId || current.environment.id != before.environment.id ||
+      current.id != before.id || current.revision != before.revision || current.head != before.head
+    then
+      Left(Failure.StaleState("block belongs to another checkpoint, content, revision, or branch"))
+    else
+      Right(
+        new BlockApplied(
+          candidate.after,
+          new Undo(before, candidate.after.id, candidate.after.head.get),
+          candidate
+        )
+      )
+  }
+
+  def applyBlock(
+      before: State,
+      headerHash: Bytes,
+      transactionMemos: Vector[Bytes],
+      inclusionSlot: BigInt
+  ): Checked[BlockApplied] = protect {
+    prepareBlock(before, headerHash, transactionMemos, inclusionSlot).flatMap(
+      commitBlock(before, _)
+    )
+  }
+
+  /** The observed map is only an oracle; it cannot change independently derived block state. */
+  def compareBlockReference(
+      applied: BlockApplied,
+      observedUtxo: Bytes,
+      observedFees: BigInt
+  ): Checked[Unit] = protect {
+    compareOutputs(applied.state, applied.candidate.created, observedUtxo, observedFees)
+  }
+
   def undo(current: State, expectedRevision: BigInt, undo: Undo): Checked[State] = protect {
     if current.revision != expectedRevision || current.checkpointId != undo.before.checkpointId ||
       current.id != undo.afterId || current.head != Some(undo.transitionId)
@@ -495,34 +645,42 @@ object ClusterTransition:
     */
   def compareReference(applied: Applied, observedUtxo: Bytes, observedFees: BigInt): Checked[Unit] =
     protect {
-      for
-        observed <- NativeSpending.snapshot(observedUtxo).left.map(local)
-        _ <- Either.cond(
-          observed.keySet == applied.state.entries.keySet && observedFees == applied.state.fees,
-          (),
-          Failure.Rejected(
-            NativeSpending.Error.StateMismatch("reference UTxO keys or fee pot differ")
-          )
-        )
-        _ <- observed.toVector.foldLeft[Checked[Unit]](Right(())) { case (acc, (ref, node)) =>
-          for
-            _ <- acc
-            same <-
-              if applied.candidate.created.contains(ref) then
-                for
-                  expected <- NativeSpending
-                    .output(applied.state.entries(ref), false)
-                    .left
-                    .map(Failure.Unsupported.apply)
-                  actual <- NativeSpending.output(node, false).left.map(Failure.Unsupported.apply)
-                yield expected == actual
-              else Right(node.original == applied.state.entries(ref).original)
-            _ <- Either.cond(
-              same,
-              (),
-              Failure.Rejected(NativeSpending.Error.StateMismatch("reference output differs"))
-            )
-          yield ()
-        }
-      yield ()
+      compareOutputs(applied.state, applied.candidate.created, observedUtxo, observedFees)
     }
+
+  private def compareOutputs(
+      derived: State,
+      created: Set[TxIn],
+      observedUtxo: Bytes,
+      observedFees: BigInt
+  ): Checked[Unit] =
+    for
+      observed <- NativeSpending.snapshot(observedUtxo).left.map(local)
+      _ <- Either.cond(
+        observed.keySet == derived.entries.keySet && observedFees == derived.fees,
+        (),
+        Failure.Rejected(
+          NativeSpending.Error.StateMismatch("reference UTxO keys or fee pot differ")
+        )
+      )
+      _ <- observed.toVector.foldLeft[Checked[Unit]](Right(())) { case (acc, (ref, node)) =>
+        for
+          _ <- acc
+          same <-
+            if created.contains(ref) then
+              for
+                expected <- NativeSpending
+                  .output(derived.entries(ref), false)
+                  .left
+                  .map(Failure.Unsupported.apply)
+                actual <- NativeSpending.output(node, false).left.map(Failure.Unsupported.apply)
+              yield expected == actual
+            else Right(node.original == derived.entries(ref).original)
+          _ <- Either.cond(
+            same,
+            (),
+            Failure.Rejected(NativeSpending.Error.StateMismatch("reference output differs"))
+          )
+        yield ()
+      }
+    yield ()

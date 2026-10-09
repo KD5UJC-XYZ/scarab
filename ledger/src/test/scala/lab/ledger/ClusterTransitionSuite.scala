@@ -426,3 +426,161 @@ class ClusterTransitionSuite extends munit.FunSuite:
     )
     assert(R.undo(second.state, second.state.revision, second.undo).isRight)
   }
+
+  private val headerA = Bytes(Vector.fill(32)(40.toByte))
+  private val headerB = Bytes(Vector.fill(32)(41.toByte))
+
+  test(
+    "block folds dependent native and key transactions with one revision and surviving creations"
+  ) {
+    val before = initial(nativeInput = true)
+    val firstBody = body()
+    val first = tx(firstBody, Vector(native))
+    val ref = arr(bs(Blake2b.hash256.hash(firstBody)), u(0))
+    val second = tx(body(Vector(ref), 3600000))
+    val applied = R.applyBlock(before, headerA, Vector(first, second), 20).toOption.get
+    assertEquals(applied.state.revision, BigInt(1))
+    assertEquals(applied.state.fees, before.fees + 400000)
+    assertEquals(applied.state.size, 2)
+    assertEquals(applied.candidate.transactionIds.size, 2)
+    assertEquals(applied.candidate.created.size, 1)
+    assert(R.compareBlockReference(applied, applied.state.outputMap, applied.state.fees).isRight)
+    val semantic = hex(applied.state.outputMap.hex.replace("1a0036ee80", "1b000000000036ee80"))
+    assert(R.compareBlockReference(applied, semantic, applied.state.fees).isRight)
+    val untouched = hex(applied.state.outputMap.hex.replace("1a00895440", "1b0000000000895440"))
+    assert(R.compareBlockReference(applied, untouched, applied.state.fees).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector(second, first), 20).isLeft)
+  }
+
+  test(
+    "empty blocks preserve UTxO and fees but advance slot revision and distinct header authority"
+  ) {
+    val before = initial(nonminimal = true)
+    val a = R.applyBlock(before, headerA, Vector.empty, 20).toOption.get
+    val b = R.applyBlock(before, headerB, Vector.empty, 20).toOption.get
+    assertEquals(a.state.outputMap, before.outputMap)
+    assertEquals(a.state.fees, before.fees)
+    assertEquals(a.state.slot, BigInt(20))
+    assertEquals(a.state.revision, BigInt(1))
+    assertEquals(a.state.id, b.state.id)
+    assert(R.undo(b.state, b.state.revision, a.undo).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector.empty, before.slot).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector.empty, before.slot - 1).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector.empty, R.MaxRevision + 1).isLeft)
+  }
+
+  test("late block transaction rejection exposes neither intermediate state nor fees") {
+    val before = initial()
+    val original = tx()
+    val bad = tx(body(Vector(arr(bs(Blake2b.hash256.hash(body())), u(0))), 3500000))
+    assert(R.prepareBlock(before, headerA, Vector(original, bad), 20).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector(original, original), 20).isLeft)
+    assertEquals(before.revision, BigInt(0))
+    assertEquals(before.fees, BigInt(700000))
+    assertEquals(before.slot, BigInt(10))
+    assert(R.applyBlock(before, headerA, Vector(original), 20).isRight)
+  }
+
+  test(
+    "block rollback restores earlier heads while fencing old candidates and reapplied receipts"
+  ) {
+    val before = initial()
+    val prepared = R.prepareBlock(before, headerA, Vector(tx()), 20).toOption.get
+    val first = R.commitBlock(before, prepared).toOption.get
+    val second = R.applyBlock(first.state, headerB, Vector.empty, 21).toOption.get
+    assert(R.undo(second.state, second.state.revision, first.undo).isLeft)
+    val one = R.undo(second.state, second.state.revision, second.undo).toOption.get
+    val zero = R.undo(one, one.revision, first.undo).toOption.get
+    assertEquals(zero.id, before.id)
+    assertEquals(zero.revision, BigInt(4))
+    assert(R.commitBlock(zero, prepared).isLeft)
+    val reapplied = R.applyBlock(zero, headerA, Vector(tx()), 20).toOption.get
+    assertEquals(reapplied.state.id, first.state.id)
+    assert(R.undo(reapplied.state, reapplied.state.revision, first.undo).isLeft)
+    assert(R.undo(reapplied.state, first.state.revision, reapplied.undo).isLeft)
+    assert(R.undo(reapplied.state, reapplied.state.revision, reapplied.undo).isRight)
+  }
+
+  test("ordered independent memos with equal final content have different block undo authority") {
+    val before = initial()
+    val a = tx()
+    val b = tx(body(Vector(otherInput), 8800000), signers = Vector(1))
+    val ab = R.applyBlock(before, headerA, Vector(a, b), 20).toOption.get
+    val ba = R.applyBlock(before, headerA, Vector(b, a), 20).toOption.get
+    assertEquals(ab.state.id, ba.state.id)
+    assert(R.undo(ba.state, ba.state.revision, ab.undo).isLeft)
+    val stale = R.prepareBlock(ab.state, headerB, Vector.empty, 21).toOption.get
+    assert(R.commitBlock(ba.state, stale).isLeft)
+  }
+
+  test("block resource and malformed boundaries fail closed") {
+    val before = initial()
+    assert(
+      R.prepareBlock(before, headerA, Vector.fill(17)(Bytes.empty), 20)
+        .left
+        .toOption
+        .get
+        .isInstanceOf[R.Failure.ResourceLimit]
+    )
+    assert(
+      R.prepareBlock(before, headerA, Vector(Bytes(Vector.fill(65537)(0.toByte))), 20)
+        .left
+        .toOption
+        .get
+        .isInstanceOf[R.Failure.ResourceLimit]
+    )
+    assert(R.prepareBlock(before, Bytes.empty, Vector.empty, 20).isLeft)
+    assert(R.prepareBlock(null, headerA, Vector.empty, 20).isLeft)
+    assert(R.prepareBlock(before, null, Vector.empty, 20).isLeft)
+    assert(R.prepareBlock(before, headerA, null, 20).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector(null), 20).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector(Bytes(null)), 20).isLeft)
+    assert(R.prepareBlock(before, headerA, Vector.empty, null).isLeft)
+    val overflow = initial(fees = R.MaxFees)
+    assert(
+      R.prepareBlock(overflow, headerA, Vector(tx()), 20)
+        .left
+        .toOption
+        .get
+        .isInstanceOf[R.Failure.ResourceLimit]
+    )
+    assertEquals(overflow.fees, R.MaxFees)
+    val applied = R.applyBlock(before, headerA, Vector.empty, 20).toOption.get
+    assert(R.commitBlock(before, null).isLeft)
+    assert(R.compareBlockReference(null, before.outputMap, before.fees).isLeft)
+    assert(R.compareBlockReference(applied, before.outputMap, null).isLeft)
+  }
+
+  test("block capabilities have private constructors and no copy or intermediate candidates") {
+    assert(
+      typeCheckErrors(
+        "new lab.ledger.ClusterTransition.BlockCandidate(null,null,null,Vector.empty,Vector.empty,Set.empty)"
+      ).nonEmpty
+    )
+    assert(
+      typeCheckErrors("new lab.ledger.ClusterTransition.BlockApplied(null,null,null)").nonEmpty
+    )
+    val prepared = R.prepareBlock(initial(), headerA, Vector(tx()), 20).toOption.get
+    assert(!prepared.getClass.getMethods.exists(_.getName == "copy"))
+    assert(!prepared.getClass.getMethods.exists(_.getReturnType == classOf[R.Candidate]))
+  }
+
+  test("sixteen dependent transactions consume exactly one external block revision") {
+    val before = initial(env(a = 0, b = 0, cost = 1))
+    val (_, memos) = (1 to 16).foldLeft((input, Vector.empty[Bytes])) { case ((ref, acc), i) =>
+      val b = body(Vector(ref), coin = 4000000 - i, fee = 1)
+      (arr(bs(Blake2b.hash256.hash(b)), u(0)), acc :+ tx(b))
+    }
+    val applied = R.applyBlock(before, headerA, memos, 20).toOption.get
+    assertEquals(applied.state.revision, BigInt(1))
+    assertEquals(applied.state.fees, before.fees + 16)
+    assertEquals(applied.candidate.transactionIds.size, 16)
+    assertEquals(applied.candidate.created.size, 1)
+    assert(
+      R.prepareBlock(before, headerA, memos :+ memos.last, 20)
+        .left
+        .toOption
+        .get
+        .isInstanceOf[R.Failure.ResourceLimit]
+    )
+  }

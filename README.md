@@ -226,3 +226,9 @@ same immutable publication/undo tuple as acquisition, certificates, eligibility
 and the restricted ledger. Its one-block same-epoch profile derives eligibility's
 nonce from the checked transition and retains the supplied stake/context limits.
 Bounded multi-block advancement and durable validated-state storage remain separate.
+
+The [bounded coherent sequence API](docs/coherent-sequence.md) extends atomic
+composition to empty blocks and up to sixteen supported transactions per block,
+with runtime-owned rollback history for at most eight same-epoch successors.
+Supplied anchors remain distinct from locally scoped applied tips; full ledger
+and consensus validation remain outside this experimental profile.
