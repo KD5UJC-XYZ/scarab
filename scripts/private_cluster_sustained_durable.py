@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Prepared bounded same-epoch v2 compaction/graceful-resume acceptance; never runs on import."""
 import argparse
+import datetime
+import math
 from contextlib import contextmanager
 import hashlib
 import json
@@ -381,10 +383,10 @@ def endpoint_tip(tip, hint, pre):
             and all(type(tip.get(k)) is type(v) and tip[k]==v for k,v in hint.items()),
             "frozen reference endpoint differs; no target extension")
 
-def producer_identity(pid, stat, command, node):
+def producer_identity(pid, stat, command, node, paused=True):
     require(type(pid) is int and pid>1 and stat.startswith(str(pid)+" (cardano-node) "), "owned producer PID")
     parts=stat.rsplit(") ",1)[1].split(); args=command.rstrip("\0").split("\0")
-    require(len(parts)>=20 and parts[0]=="T" and parts[19].isdigit(), "paused producer start identity")
+    require(len(parts)>=20 and (parts[0]=="T" if paused else parts[0] not in ("Z","X")) and parts[19].isdigit(), "paused producer start identity")
     require(args and Path(args[0]).name=="cardano-node" and "--database-path" in args
             and args[args.index("--database-path")+1]==f"/work/env/node-data/node{node}/db", "owned producer arguments")
     return dict(pid=pid,startTicks=parts[19],commandSha256=hashlib.sha256(command.encode()).hexdigest())
@@ -397,6 +399,53 @@ def endpoint_deadline(request_started, sample, deadline):
     return min(deadline,request_started+18-(sample[1]-sample[0])/1000)
 
 
+PAUSE_CAPS={"pre":10,"seed-create":5,"restart":5,"submission":4}
+PAUSE_LATER={"pre":14,"seed-create":9,"restart":4,"submission":0}
+PHASE_LATER={"seed":14,"a":9,"b":0}
+READINESS_SECONDS=45
+FIXED_CASE_RESERVE=20+15+65+10+110+25
+
+def readiness_budget(genesis,tips,utc_before,utc_after,container_utc,mono_before,mono_after,case_deadline):
+    require(genesis.get("epochLength")==500 and genesis.get("slotLength")==0.1
+            and genesis.get("securityParam")==5 and genesis.get("activeSlotsCoeff")==0.05,"unchanged fixed genesis geometry")
+    clocks=(utc_before,utc_after,container_utc,mono_before,mono_after,case_deadline)
+    require(all(type(x) in (int,float) and math.isfinite(x) for x in clocks),"finite budget clocks")
+    require(utc_before<=utc_after and mono_before<=mono_after and utc_after-utc_before<=3
+            and abs((utc_after-utc_before)-(mono_after-mono_before))<=1
+            and utc_before-1<=container_utc<=utc_after+1,"bounded UTC/monotonic bracket and skew")
+    require(type(tips) is list and len(tips)==3 and converged_tips(tips),"three converged tips for readiness")
+    tip=tips[-1]
+    require(all(type(tip.get(k)) is int for k in ("epoch","slot","block","slotInEpoch","slotsToEpochEnd"))
+            and tip["era"]=="Conway" and tip["epoch"]>=1 and tip["block"]>0 and digest(tip["hash"])
+            and tip["epoch"]==tip["slot"]//500 and tip["slotInEpoch"]==tip["slot"]%500
+            and tip["slotsToEpochEnd"]==500-tip["slotInEpoch"],"consistent same-epoch readiness tip geometry")
+    start=datetime.datetime.fromisoformat(genesis["systemStart"].replace("Z","+00:00"))
+    require(start.tzinfo is not None,"timezone-qualified genesis systemStart")
+    now=max(utc_after,container_utc); current_slot=math.floor((now-start.timestamp())/0.1)
+    require(current_slot>=0 and current_slot//500==tip["epoch"] and tip["slot"]<=current_slot+10,
+            "fresh wall-clock epoch must match supplied tip")
+    epoch_end=start.timestamp()+(tip["epoch"]+1)*50
+    remaining=epoch_end-now
+    require(remaining>=READINESS_SECONDS,"less than forty-five seconds of current epoch opportunity")
+    freeze=mono_before+remaining-1
+    require(freeze-mono_after>=44,"clock sampling consumed minimum production opportunity")
+    require(case_deadline>=freeze+FIXED_CASE_RESERVE,"insufficient complete case reservation")
+    return dict(epoch=tip["epoch"],epochEndUtc=epoch_end,observedUtc=now,utcBefore=utc_before,utcAfter=utc_after,
+        containerUtc=container_utc,monotonicBefore=mono_before,monotonicAfter=mono_after,
+        remainingEpochSeconds=remaining,productionDeadline=freeze,caseDeadline=case_deadline,
+        onlineDeadline=min(mono_before+ONLINE_SECONDS,freeze+35),postDeadline=freeze+20,
+        preauditDeadline=freeze+35,auditDeadline=freeze+100,finalPinDeadline=freeze+110,
+        fixedCaseReserve=FIXED_CASE_RESERVE,pauseCaps=PAUSE_CAPS,minimumProductionOpportunitySeconds=20,
+        stopMarginSeconds=1,guaranteedBlockArrivals=False,tailGrowthGuaranteed=False)
+
+def stage_deadline(now,previous,cap,absolute):
+    require(all(type(x) in (int,float) and math.isfinite(x) for x in (now,previous,cap,absolute)) and cap>0,
+            "finite positive stage budget")
+    end=min(previous,now+cap,absolute)
+    require(now<end,"cumulative stage budget exhausted")
+    return end
+
+
 class SustainedDurableRunner(DurableNodeRunner):
     def preflight(self):
         self.source_pin=verify_source_build(self.args.scala_repo,self.args.source_pin,self.args.source_pin_sha256)
@@ -407,7 +456,74 @@ class SustainedDurableRunner(DurableNodeRunner):
         # Narrow only the one freshly owned reference run; all Scala limits stay unchanged.
         if args and args[0]=="run" and "--name" in args and args[args.index("--name")+1]==self.name:
             args=tuple({"--cpus=3":"--cpus=2","--memory=6g":"--memory=2g","--memory-swap=6g":"--memory-swap=2g"}.get(x,x) for x in args)
-        return super().docker(*args,**kwargs)
+        if getattr(self,"budget",None) is not None and self.deadline is not None:
+            require(time.monotonic()<self.deadline,"stage expired before Docker operation")
+        result=super().docker(*args,**kwargs)
+        if getattr(self,"budget",None) is not None and self.deadline is not None:
+            require(time.monotonic()<self.deadline,"stage expired during Docker operation")
+        return result
+
+    @contextmanager
+    def budget_stage(self,label,cap,absolute):
+        previous=self.deadline; started=time.monotonic()
+        self.deadline=stage_deadline(started,previous,cap,absolute)
+        end=self.deadline
+        try:
+            yield
+            require(time.monotonic()<=end,"cumulative stage expired: "+label)
+        finally:
+            self.deadline=previous
+            self.save("v2-budget-"+label+".md",dict(started=started,deadline=end,finished=time.monotonic(),
+                cumulativeProductionDeadline=self.budget["productionDeadline"]))
+
+    def signal_owned(self,identities,action):
+        require(action in ("STOP","CONT"),"owned pause signal only")
+        failures=[]; interrupt=None
+        for identity in identities:
+            try:
+                command="test \"$(cut -d ' ' -f22 /proc/$1/stat)\" = \"$2\" && "
+                command+="test \"$(sha256sum /proc/$1/cmdline | cut -d ' ' -f1)\" = \"$3\" && kill -"+action+" \"$1\""
+                if action=="STOP": command+=" && test \"$(cut -d ' ' -f3 /proc/$1/stat)\" = T"
+                previous=self.deadline
+                if action=="CONT": self.deadline=None
+                try:
+                    result=self.execute("/bin/sh","-c",command,"owned-budget-pause",str(identity["pid"]),
+                        identity["startTicks"],identity["commandSha256"],check=False,timeout=1)
+                    if result.returncode: failures.append(identity["pid"])
+                finally:
+                    self.deadline=previous
+            except BaseException as error:
+                if action!="CONT" and not isinstance(error,Exception): raise
+                failures.append(identity["pid"])
+                if not isinstance(error,Exception) and interrupt is None: interrupt=error
+        if interrupt is not None: raise interrupt
+        require(not failures,"owned producer "+action+" failed: "+str(failures))
+
+    @contextmanager
+    def paused(self,label):
+        if getattr(self,"budget",None) is None or label not in PAUSE_CAPS:
+            with super().paused(label): yield
+            return
+        previous=self.deadline; started=time.monotonic(); identities=[]
+        end=stage_deadline(started,previous,PAUSE_CAPS[label],self.budget["productionDeadline"]-PAUSE_LATER[label])
+        self.deadline=end-1
+        try:
+            require(time.monotonic()<self.deadline,"no pause processing allowance")
+            for node in (1,2):
+                pid=int(self.read(f"logs/node{node}/node.pid").strip())
+                identities.append(producer_identity(pid,self.execute("cat",f"/proc/{pid}/stat").stdout,
+                    self.execute("cat",f"/proc/{pid}/cmdline").stdout,node,paused=False))
+            self.signal_owned(identities,"STOP")
+            yield
+        finally:
+            self.deadline=min(self.budget["caseDeadline"],time.monotonic()+1)
+            try:
+                self.signal_owned(identities,"CONT")
+            finally:
+                self.deadline=previous
+                self.save(label+"-pause-timing.md",dict(elapsedSeconds=time.monotonic()-started,
+                    deadline=end,capSeconds=PAUSE_CAPS[label],resumeAttempted=True,singleAcquiredSnapshot=False))
+        require(time.monotonic()<=end,"pause including CONT exceeded cap: "+label)
 
     def observer_logs(self):
         result=self.docker("logs","--tail","2048",self.name+"-scala",check=False,timeout=2)
@@ -420,6 +536,9 @@ class SustainedDurableRunner(DurableNodeRunner):
 
     def start_phase(self,phase,port,seed=None):
         self.phase=phase; self.last_observer_stdout=""; self.observer_attempted=True
+        if getattr(self,"budget",None) is not None:
+            require(time.monotonic()<min(self.deadline,self.budget["productionDeadline"]-PHASE_LATER[phase]),
+                    "phase launch would consume mandatory later processing")
         remaining=int(self.online_deadline-time.monotonic())
         budgets=dict(seconds=min(120,remaining),event_budget=MAX_EVENTS-self.used_events,byte_budget=MAX_BYTES-self.used_bytes)
         command=phase_arguments(phase,port,self.context_id,self.store_id,seed=seed,**budgets)
@@ -438,13 +557,20 @@ class SustainedDurableRunner(DurableNodeRunner):
             require(info["Id"]!=self.identities[prior]["Id"] and self.identities[prior+"-final"]["State"]["FinishedAt"]<info["State"]["StartedAt"],"distinct sequential Scala processes")
 
     def phase_wait(self,predicate,seconds,label):
-        until=min(self.deadline,self.online_deadline,time.monotonic()+seconds)
-        while time.monotonic()<until:
-            rows=self.observer_logs(); current=progress(rows,self.phase,self.context_id,self.expected_binding)
-            if predicate(current): return rows,current
-            require(self.observer_state().get("Running"),"phase exited before "+label)
-            time.sleep(.1)
-        raise TimeoutError("bounded v2 phase wait: "+label)
+        previous=self.deadline
+        reserve=self.budget["productionDeadline"]-PHASE_LATER[self.phase] if getattr(self,"budget",None) is not None and not getattr(self,"endpoint_verified",False) else self.online_deadline
+        until=stage_deadline(time.monotonic(),min(previous,self.online_deadline),seconds,reserve)
+        self.deadline=until
+        try:
+            while time.monotonic()<until:
+                rows=self.observer_logs(); current=progress(rows,self.phase,self.context_id,self.expected_binding)
+                require(time.monotonic()<=until,"phase observation exceeded cumulative deadline")
+                if predicate(current): return rows,current
+                require(self.observer_state().get("Running"),"phase exited before "+label)
+                time.sleep(.1)
+            raise TimeoutError("bounded v2 phase wait: "+label)
+        finally:
+            self.deadline=previous
 
     def finish_phase(self):
         super().finish_phase()
@@ -490,7 +616,7 @@ class SustainedDurableRunner(DurableNodeRunner):
             pid=int(self.read(f"logs/node{node}/node.pid").strip())
             identities.append(producer_identity(pid,self.execute("cat",f"/proc/{pid}/stat").stdout,
                 self.execute("cat",f"/proc/{pid}/cmdline").stdout,node))
-        remaining=min(20,int(min(self.endpoint_case_deadline,self.online_deadline)-time.monotonic()))
+        remaining=min(20,int(min(self.endpoint_case_deadline,self.online_deadline,self.budget["productionDeadline"])-time.monotonic()))
         require(remaining>0,"online time remains for bounded endpoint watcher")
         self.save("v2-endpoint-plan.md",dict(targetBlock=target,identities=identities,waitSeconds=remaining,
             pauseSeconds=20,logHintOnly=True,deterministicCeiling=False))
@@ -510,7 +636,7 @@ class SustainedDurableRunner(DurableNodeRunner):
     @contextmanager
     def frozen_endpoint(self,pre):
         previous=self.deadline
-        until=min(previous,self.online_deadline,time.monotonic()+20)
+        until=min(previous,self.online_deadline,getattr(self,"budget",{}).get("productionDeadline",float("inf")),time.monotonic()+20)
         try:
             while time.monotonic()<until:
                 started=time.monotonic()
@@ -526,11 +652,19 @@ class SustainedDurableRunner(DurableNodeRunner):
                     break
                 time.sleep(.02)
             else: raise TimeoutError("reference endpoint trigger absent")
-            raw=self.execute("head","-c","65537","/work/v2-endpoint.hint",timeout=1).stdout.encode()
-            hint=endpoint_hint(raw,pre["block"]+12)
-            self.save("v2-endpoint-trigger.md",raw.decode())
-            self.pause_evidence()
-            tip=self.query("tip"); endpoint_tip(tip,hint,pre)
+            post_deadline=self.deadline
+            self.deadline=min(post_deadline,getattr(self,"budget",{}).get("productionDeadline",float("inf")))
+            try:
+                raw=self.execute("head","-c","65537","/work/v2-endpoint.hint",timeout=1).stdout.encode()
+                hint=endpoint_hint(raw,pre["block"]+12)
+                self.save("v2-endpoint-trigger.md",raw.decode())
+                self.pause_evidence()
+                tip=self.query("tip"); endpoint_tip(tip,hint,pre)
+                require(time.monotonic()<=getattr(self,"budget",{}).get("productionDeadline",float("inf")),
+                        "authoritative frozen point verified after production deadline")
+            finally:
+                self.deadline=post_deadline
+            self.endpoint_verified=True
             self.save("v2-endpoint-frozen-tip.md",tip)
             yield tip
             require(time.monotonic()<self.deadline,"actual reference pause exceeded twenty seconds")
@@ -567,8 +701,10 @@ class SustainedDurableRunner(DurableNodeRunner):
         finally:
             # Independent finally path: attempt BOTH still-owned identities even
             # when the watcher failed halfway through STOP or the release read.
-            failures=[]
+            failures=[]; interrupt=None
             for identity in self.endpoint_identities:
+                previous=self.deadline
+                self.deadline=None
                 try:
                     result=self.execute("/bin/sh","-c",
                         "test \"$(cut -d ' ' -f22 /proc/$1/stat)\" = \"$2\" && "
@@ -576,7 +712,11 @@ class SustainedDurableRunner(DurableNodeRunner):
                         "endpoint-finally",str(identity["pid"]),identity["startTicks"],identity["commandSha256"],
                         check=False,timeout=1)
                     if result.returncode: failures.append(identity["pid"])
-                except Exception: failures.append(identity["pid"])
+                except BaseException as error:
+                    failures.append(identity["pid"])
+                    if not isinstance(error,Exception) and interrupt is None: interrupt=error
+                finally: self.deadline=previous
+            if interrupt is not None: raise interrupt
             require(not failures,"owned producer final resume failed: "+str(failures))
 
     def live_sequence(self):
@@ -592,17 +732,36 @@ class SustainedDurableRunner(DurableNodeRunner):
         self.cli_version=self.execute("cardano-cli","--version").stdout.strip()
         relay=self.read("logs/node3/stdout.log")
         require("shelleyKESSource = Nothing" in relay and "shelleyVRFFile = Nothing" in relay,"nonproducing relay")
-        until=min(self.deadline-210,time.monotonic()+75)
+        genesis_raw=self.read("shelley-genesis.json"); genesis=parse(genesis_raw.encode())
+        history=[]; until=min(self.deadline-(44+FIXED_CASE_RESERVE),time.monotonic()+75)
         while time.monotonic()<until:
             tips=[self.query("tip",i) for i in (1,2,3)]
-            self.save("v2-readiness.md",tips)
-            if converged_tips(tips) and tips[-1].get("epoch",0)>=1 and 1<=tips[-1].get("slotInEpoch",501)<=30: break
-            time.sleep(.2)
-        else: raise TimeoutError("early same-epoch window unavailable")
-        port=int(self.read("node-data/node3/port")); self.online_deadline=time.monotonic()+ONLINE_SECONDS
+            entry=dict(tips=tips); history.append(entry)
+            require(len(history)<=256,"bounded readiness history exhausted")
+            try:
+                mono_before=time.monotonic(); utc_before=time.time()
+                container_utc=float(self.execute("date","+%s.%N",timeout=1).stdout.strip())
+                utc_after=time.time(); mono_after=time.monotonic()
+                entry.update(utcBefore=utc_before,utcAfter=utc_after,containerUtc=container_utc,
+                    monotonicBefore=mono_before,monotonicAfter=mono_after)
+                proposal=readiness_budget(genesis,tips,utc_before,utc_after,container_utc,mono_before,mono_after,self.deadline)
+                entry["budget"]=proposal
+            except (ValueError,KeyError,TypeError) as error:
+                entry["rejected"]=str(error)
+                self.save("v2-readiness.md",history)
+                time.sleep(.2)
+                continue
+            self.save("v2-readiness.md",history)
+            self.budget=proposal; self.online_deadline=proposal["onlineDeadline"]
+            self.save("v2-budget-plan.md",dict(proposal,genesisSha256=hashlib.sha256(genesis_raw.encode()).hexdigest()))
+            self.deadline=min(self.deadline,self.online_deadline)
+            break
+        else: raise TimeoutError("wall-clock same-epoch opportunity/case budget unavailable")
+        port=int(self.read("node-data/node3/port"))
         with self.paused("pre"):
             pre,before=self.snapshot("pre")
-            require(1<=pre["slotInEpoch"]<=80,"early anchor lost")
+            require(pre["epoch"]==self.budget["epoch"] and pre["slot"]//500==self.budget["epoch"],"admitted pre-anchor epoch changed")
+            require(time.monotonic()<self.budget["productionDeadline"]-14,"pre snapshot consumed later-stage reservation")
             require(all(json.loads(before["utxo"]).get(s["input"])==s["originalInput"] for s in pair),"pair inputs changed")
             self.save("transfer-genesis.md",self.read("shelley-genesis.json"))
             self.manifest("coherent-sequence-context.md","coherent-sequence-context-v1",PRE_PINS)
@@ -651,31 +810,37 @@ class SustainedDurableRunner(DurableNodeRunner):
                 require(before["parameters"]==after["parameters"],"parameter endpoints changed")
         finally:
             self.release_endpoint()
-        self.finish_phase(); self.retain_v2(b_rows,"b")
-        require(time.monotonic()<=self.online_deadline,"combined online time bound")
-        require(self.read("configuration.yaml").encode()==self.reference_configuration and
-                {n:hashlib.sha256(self.read(n).encode()).hexdigest() for n in self.genesis_hashes}==self.genesis_hashes,"reference source identity unchanged")
-        require(parse(self.docker("inspect",self.name).stdout.encode())[0]["Id"]==self.reference_id,"same reference container")
-        capture="".join(line for phase in ("seed","a","b") for line in (self.out/("v2-"+phase+"-stdout.md")).read_text().splitlines(keepends=True)
-                        if json.loads(line).get("record")=="transfer-range-block")
-        require(len(records(capture))==12,"twelve actual originals across distinct processes")
-        self.save("scala-sequence-capture.md",capture)
-        self.save("v2-combined-audit.md",capture+json.dumps(one(b_rows,"node-state"),separators=(",",":"))+"\n")
-        evidence={str(i):[e for e in events(self.read(f"logs/node{i}/stdout.log")) if e["ns"].startswith("Mempool.") or e["ns"].startswith("TxSubmission.")] for i in (1,2,3)}
-        self.save("sequence-pair-admissions.md",pair_admissions(evidence,[s["transactionId"] for s in pair]))
-        self.manifest("coherent-sequence-oracle.pending.md","coherent-sequence-oracle-v1",ORACLE_PINS)
-        require(not (self.out/"coherent-sequence-oracle.md").exists(),"oracle cannot overwrite")
-        (self.out/"coherent-sequence-oracle.pending.md").replace(self.out/"coherent-sequence-oracle.md")
-        self.phase="audit"; self.last_observer_stdout=""; self.observer_attempted=True
-        result=self.docker("run","--rm","--pull=never","--name",self.name+"-scala","--network=none","--cpus=1","--memory=1g","--memory-swap=1g",
-            "--pids-limit=128","--cap-drop=ALL","--security-opt=no-new-privileges","--user","1000:1000","--read-only","--tmpfs","/tmp:size=64m",
-            "-v",str(self.args.scala_repo)+":/work:ro","-v",str(self.out)+":/evidence:ro","-w","/work","--entrypoint=/bin/sh",JDK,"-c",
-            'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main node-audit /evidence /evidence /evidence/v2-combined-audit.md 2 12',check=False,timeout=65)
-        self.observer_attempted=False; self.save("v2-audit-stdout.md",result.stdout); self.save("v2-audit-stderr.md",result.stderr)
-        require(result.returncode==0,"complete offline reference audit failed")
-        report=one(records(result.stdout),"node-audit",True); audit_report(report,b,pair)
-        require(integer(report.get("transactionBlockIndex"),9,11),"pair only in new B continuation")
-        require(exact(verify_source_build(self.args.scala_repo,self.args.source_pin,self.args.source_pin_sha256),self.source_pin),"source/build pin changed")
+        self.deadline=min(self.budget["caseDeadline"],self.online_deadline)
+        with self.budget_stage("preaudit",15,self.budget["preauditDeadline"]):
+            self.finish_phase(); self.retain_v2(b_rows,"b")
+            require(time.monotonic()<=self.online_deadline,"combined online time bound")
+            require(self.read("configuration.yaml").encode()==self.reference_configuration and
+                    {n:hashlib.sha256(self.read(n).encode()).hexdigest() for n in self.genesis_hashes}==self.genesis_hashes,"reference source identity unchanged")
+            require(parse(self.docker("inspect",self.name).stdout.encode())[0]["Id"]==self.reference_id,"same reference container")
+            capture="".join(line for phase in ("seed","a","b") for line in (self.out/("v2-"+phase+"-stdout.md")).read_text().splitlines(keepends=True)
+                            if json.loads(line).get("record")=="transfer-range-block")
+            require(len(records(capture))==12,"twelve actual originals across distinct processes")
+            self.save("scala-sequence-capture.md",capture)
+            self.save("v2-combined-audit.md",capture+json.dumps(one(b_rows,"node-state"),separators=(",",":"))+"\n")
+            evidence={str(i):[e for e in events(self.read(f"logs/node{i}/stdout.log")) if e["ns"].startswith("Mempool.") or e["ns"].startswith("TxSubmission.")] for i in (1,2,3)}
+            self.save("sequence-pair-admissions.md",pair_admissions(evidence,[s["transactionId"] for s in pair]))
+            self.manifest("coherent-sequence-oracle.pending.md","coherent-sequence-oracle-v1",ORACLE_PINS)
+            require(not (self.out/"coherent-sequence-oracle.md").exists(),"oracle cannot overwrite")
+            (self.out/"coherent-sequence-oracle.pending.md").replace(self.out/"coherent-sequence-oracle.md")
+        self.deadline=self.budget["caseDeadline"]
+        with self.budget_stage("audit",65,self.budget["auditDeadline"]):
+            self.phase="audit"; self.last_observer_stdout=""; self.observer_attempted=True
+            result=self.docker("run","--rm","--pull=never","--name",self.name+"-scala","--network=none","--cpus=1","--memory=1g","--memory-swap=1g",
+                "--pids-limit=128","--cap-drop=ALL","--security-opt=no-new-privileges","--user","1000:1000","--read-only","--tmpfs","/tmp:size=64m",
+                "-v",str(self.args.scala_repo)+":/work:ro","-v",str(self.out)+":/evidence:ro","-w","/work","--entrypoint=/bin/sh",JDK,"-c",
+                'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main node-audit /evidence /evidence /evidence/v2-combined-audit.md 2 12',check=False,timeout=65)
+            self.observer_attempted=False; self.save("v2-audit-stdout.md",result.stdout); self.save("v2-audit-stderr.md",result.stderr)
+            require(result.returncode==0,"complete offline reference audit failed")
+            report=one(records(result.stdout),"node-audit",True); audit_report(report,b,pair)
+            require(integer(report.get("transactionBlockIndex"),9,11),"pair only in new B continuation")
+        with self.budget_stage("final-pin",10,self.budget["finalPinDeadline"]):
+            require(exact(verify_source_build(self.args.scala_repo,self.args.source_pin,self.args.source_pin_sha256),self.source_pin),"source/build pin changed")
+        require(self.budget["caseDeadline"]-time.monotonic()>=135,"two-epoch opportunity/poll/final guard reserve consumed")
         return dict(handshake=handshake,sustainedDurableGracefulResume=True,phaseA=a,phaseB=b,independentAudit=report,
                     actualNewLiveContinuation=True,diagnosticReceiptIsResumeAuthority=False,singleAcquiredSnapshot=False,
                     powerLossRecovery=False,liveForkClaim=False,epochTransition=False)

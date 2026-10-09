@@ -21,9 +21,11 @@ The reference owns 2 CPU/2 GiB and the one current Scala process owns 1 CPU/1 Gi
 Seed, A, B and network-none audit execute sequentially. The inherited reviewed
 workload remains420..480 seconds with an absolute600-second cleanup deadline.
 Seed+A+B share120 seconds,128 events and32 MiB returned original bytes; each
-launch gets only the remaining allowance. Pauses remain20 seconds, except the
-relay-only paired submission pause at8 seconds. No target extension or retry
-widens these bounds. An endpoint race, changed epoch, grouping failure, missing
+launch gets only the remaining allowance. The inherited outer pause ceilings are
+20 seconds, or 8 seconds for submission. This case enforces tighter caps including
+cleanup: prestate/seed setup 10 seconds, seed-to-A setup 5 seconds, A-to-B restart
+5 seconds, and paired submission/watcher setup 4 seconds. Frozen poststate work
+retains its separate 20-second bound. No target extension or retry widens these bounds. An endpoint race, changed epoch, grouping failure, missing
 receipt, timeout or uncertain storage result fails the case and preserves evidence.
 
 ## Seed, create and strict journal resume
@@ -60,7 +62,8 @@ current compacted retained anchor. Initial intersection and any supported alignm
 rollback are exact no-ops.
 
 After checked B readiness, submit the prebuilt pair through the nonproducing relay
-inside the separate8-second pause, retaining both admission records. B must apply3
+inside the separate 4-second submission/watcher pause (within the inherited
+8-second outer ceiling), retaining both admission records. B must apply3
 NEW successor blocks, with the pair together in exactly one and the others empty.
 Actual acknowledged successor claims switch to one new B session, with3 further
 compactions and3 publications. Final revision12/generation19, depth12/compacted10/
@@ -105,3 +108,46 @@ not power-loss/process-kill recovery, fork choice, epoch transition, capacity1 r
 operation, full ledger validation or consensus validation. Snapshots remain separate
 non-atomic acquisitions under observed quiescence. Every owned resource must be
 cleaned within the unchanged absolute deadline before a final acceptance claim.
+
+
+### Readiness and cumulative time budget
+
+The unchanged fixture has 500 slots per epoch at 0.1 seconds per slot. Readiness
+uses the current wall clock bracketed against the container clock and pinned
+genesis `systemStart`, rather than requiring a block in slots 1–30. Three converged,
+geometrically consistent Conway tips must belong to the current epoch, with at
+least 45 seconds remaining and at least 44 seconds of usable production allowance
+after charging the entire clock-query bracket. A bounded history retains every considered tip/clock
+sample, rejection reason and the accepted genesis hash and budget.
+
+This is an opportunity budget, not a guarantee of twelve stochastic block arrivals.
+The 45 seconds consist of processing caps of 10 seconds for prestate/seed setup,
+5 for seed-to-A setup, 5 for A-to-B restart and 4 for submission/watcher setup,
+at least 20 seconds of aggregate production opportunity, and a one-second stop
+margin. Unused processing time remains available under the same immutable fence.
+Live1's observed anchor-to-target span was 38.6 seconds, including 15.45 seconds
+of those processing pauses; these observations justify trying the bounded window,
+not widening it after an unsuccessful attempt. The launcher does not regenerate genesis to select a favorable leader schedule.
+
+The production/frozen-point verification deadline is fixed from the monotonic time
+before the fresh UTC query bracket and the epoch end, minus one second. Seed and A
+waits reserve 14 and 9 seconds respectively for subsequent processing. Shortened
+pause caps include identity-checked CONT cleanup, and both producers receive an
+independent resume attempt after errors. Every phase spends the same budget; no
+pause, restart or wait renews it. A late or overshot frozen endpoint is rejected.
+
+Only after the exact endpoint is frozen may the poststate bracket extend beyond
+the wall-clock epoch boundary, within its separate 20-second limit including B
+completion and release. Both producers remain stopped and all authoritative
+tip/ledger points must remain at the exact admitted epoch/endpoint. The shared
+online deadline is `min(admission monotonic start + 120, production deadline + 35)`.
+
+Admission also reserves 245 seconds beyond the production deadline: 20 for frozen
+post work, 15 for finalization/storage retention and pre-audit evidence, 65 for the
+offline audit, 10 for final source-pin verification, 110 for the inherited two-epoch
+growth/polling opportunity, and a 25-second final guard. The 110 seconds are a
+minimum reservation, not a newly imposed maximum on the inherited tail. The minimum complete case
+reservation is therefore 289 seconds. Audit and final-pin work have explicit stage
+fences; inherited epoch growth still has to pass its own checks. Workload 480 seconds,
+absolute cleanup 600 seconds, CPU/memory limits, exact targets and validation scope
+are unchanged. Any spent reservation fails without extending a deadline.

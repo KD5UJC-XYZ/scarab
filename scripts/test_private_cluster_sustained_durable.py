@@ -325,4 +325,131 @@ class EndpointShellTests(unittest.TestCase):
     def test_real_shell_partial_stop_trap_resumes_both(self): self.smoke("partial")
     def test_real_shell_watchdog_resumes_when_controller_does_not_release(self): self.smoke("watchdog")
 
+
+class ReadinessBudgetTests(unittest.TestCase):
+    def inputs(self,relative=42,now=54.2,case=500):
+        genesis=dict(epochLength=500,slotLength=.1,securityParam=5,activeSlotsCoeff=.05,
+                     systemStart="1970-01-01T00:00:00Z")
+        tip=dict(era="Conway",epoch=1,slot=500+relative,slotInEpoch=relative,slotsToEpochEnd=500-relative,
+                 block=20,hash="ab"*32)
+        return [genesis,[copy.deepcopy(tip) for _ in range(3)],now,now,now,100.,100.,case]
+
+    def test_exact_forty_five_and_complete_case_boundary(self):
+        args=self.inputs(now=55,case=389)
+        plan=m.readiness_budget(*args)
+        self.assertEqual(plan["productionDeadline"],144)
+        self.assertEqual(plan["fixedCaseReserve"],245)
+        self.assertEqual(sum(m.PAUSE_CAPS.values())+plan["minimumProductionOpportunitySeconds"]+1,45)
+        self.assertEqual(plan["onlineDeadline"],179)
+        self.assertFalse(plan["guaranteedBlockArrivals"])
+        for index,value in ((3,55.001),(7,388.999)):
+            changed=copy.deepcopy(args); changed[index]=value
+            with self.assertRaises(ValueError): m.readiness_budget(*changed)
+
+    def test_relative_33_34_42_admitted_by_fresh_clock_stale_tip_rejected(self):
+        for relative in (33,34,42):
+            plan=m.readiness_budget(*self.inputs(relative,50+relative/10))
+            self.assertGreater(plan["remainingEpochSeconds"],45)
+            with self.assertRaises(ValueError): m.readiness_budget(*self.inputs(relative,60))
+        with self.assertRaises(ValueError): m.readiness_budget(*self.inputs(42,101))
+
+    def test_geometry_and_nonfinite_or_skewed_clock_rejected(self):
+        args=self.inputs()
+        for key,value in (("epoch",2),("slotInEpoch",43),("slotsToEpochEnd",1),("slot",True)):
+            changed=copy.deepcopy(args)
+            for tip in changed[1]: tip[key]=value
+            with self.assertRaises(ValueError): m.readiness_budget(*changed)
+        for index,value in ((2,float("nan")),(3,53),(4,60),(5,float("inf")),(6,104)):
+            changed=copy.deepcopy(args); changed[index]=value
+            with self.assertRaises(ValueError): m.readiness_budget(*changed)
+
+    def test_query_latency_charged_and_deadline_cannot_reset(self):
+        fast=m.readiness_budget(*self.inputs(relative=30,now=53))
+        slow=self.inputs(relative=30,now=53); slow[3]=54; slow[6]=101
+        plan=m.readiness_budget(*slow)
+        self.assertEqual(plan["productionDeadline"],fast["productionDeadline"]-1)
+        with self.assertRaises(ValueError):
+            m.stage_deadline(131,plan["onlineDeadline"],18,plan["productionDeadline"]-14)
+
+    def test_slow_bracket_cannot_claim_twenty_seconds_of_forging(self):
+        args=self.inputs(now=52); args[3]=55; args[6]=103
+        with self.assertRaisesRegex(ValueError,"minimum production"):
+            m.readiness_budget(*args)
+
+    def test_accumulated_phase_reserves_and_stage_expiry(self):
+        plan=m.readiness_budget(*self.inputs(now=55))
+        self.assertEqual(m.stage_deadline(100,179,18,plan["productionDeadline"]-14),118)
+        self.assertEqual(m.stage_deadline(126,179,40,plan["productionDeadline"]-9),135)
+        self.assertEqual(m.stage_deadline(140,179,20,plan["productionDeadline"]),144)
+        with self.assertRaises(ValueError): m.stage_deadline(144,179,20,144)
+        self.assertEqual(m.stage_deadline(178,179,15,179),179)
+
+    def runner(self):
+        r=object.__new__(m.SustainedDurableRunner); r.deadline=179
+        r.budget=dict(productionDeadline=144,caseDeadline=389); r.save=Mock()
+        r.read=Mock(side_effect=["10","11"])
+        def execute(*args,**kwargs):
+            pid=10 if "/10/" in args[1] else 11; node=pid-9
+            value=(str(pid)+" (cardano-node) "+" ".join(["S"]+["0"]*18+["99"])) if args[1].endswith("stat") else "/opt/reference/bin/cardano-node\0run\0--database-path\0/work/env/node-data/node"+str(node)+"/db\0"
+            return SimpleNamespace(stdout=value)
+        r.execute=execute
+        return r
+
+    def test_pause_cleanup_included_and_outer_deadline_restored(self):
+        r=self.runner(); clock=[100.]; r.signal_owned=Mock()
+        with patch.object(m.time,"monotonic",side_effect=lambda:clock[0]):
+            with r.paused("pre"):
+                self.assertEqual(r.deadline,109)
+                clock[0]=108
+            self.assertEqual(r.deadline,179)
+        self.assertEqual([x.args[1] for x in r.signal_owned.call_args_list],["STOP","CONT"])
+        self.assertEqual(r.save.call_args.args[1]["elapsedSeconds"],8)
+
+    def test_slow_cont_fails_total_cap_and_body_error_still_resumes(self):
+        for body_failure in (False,True):
+            r=self.runner(); clock=[100.]
+            def signal_owned(identities,action):
+                if action=="CONT": clock[0]=111
+            r.signal_owned=Mock(side_effect=signal_owned)
+            with patch.object(m.time,"monotonic",side_effect=lambda:clock[0]):
+                with self.assertRaises((ValueError,RuntimeError)):
+                    with r.paused("pre"):
+                        clock[0]=108
+                        if body_failure: raise RuntimeError("body expired")
+            self.assertEqual(r.deadline,179)
+            self.assertEqual(r.signal_owned.call_args.args[1],"CONT")
+
+    def test_first_cont_failure_still_attempts_second_owned_identity(self):
+        r=self.runner(); r.execute=Mock(side_effect=[RuntimeError("first"),SimpleNamespace(returncode=0)])
+        identities=[dict(pid=i,startTicks="99",commandSha256="ab"*32) for i in (10,11)]
+        with self.assertRaisesRegex(ValueError,"10"): r.signal_owned(identities,"CONT")
+        self.assertEqual(len(r.execute.call_args_list),2)
+
+    def test_expired_business_deadline_does_not_suppress_either_cont(self):
+        r=self.runner(); r.deadline=1
+        observed=[]
+        def execute(*args,**kwargs):
+            observed.append(r.deadline)
+            if len(observed)==1: raise TimeoutError("first cleanup")
+            return SimpleNamespace(returncode=0)
+        r.execute=execute
+        identities=[dict(pid=i,startTicks="99",commandSha256="ab"*32) for i in (10,11)]
+        with self.assertRaises(ValueError): r.signal_owned(identities,"CONT")
+        self.assertEqual(observed,[None,None])
+        self.assertEqual(r.deadline,1)
+
+    def test_interrupt_during_first_cont_preserved_after_second_attempt(self):
+        r=self.runner(); r.execute=Mock(side_effect=[KeyboardInterrupt("cancel"),SimpleNamespace(returncode=0)])
+        identities=[dict(pid=i,startTicks="99",commandSha256="ab"*32) for i in (10,11)]
+        with self.assertRaisesRegex(KeyboardInterrupt,"cancel"): r.signal_owned(identities,"CONT")
+        self.assertEqual(len(r.execute.call_args_list),2)
+        self.assertEqual(r.deadline,179)
+
+    def test_authoritative_frozen_query_after_production_deadline_rejected(self):
+        r=EndpointFreezeTests().runner(); r.budget=dict(productionDeadline=49)
+        r.execute=Mock(return_value=SimpleNamespace(stdout="1000\n2.00\n"))
+        with patch.object(m.time,"monotonic",return_value=50), self.assertRaises(TimeoutError):
+            with r.frozen_endpoint(dict(block=84,epoch=3)): self.fail("late freeze")
+        r.query.assert_not_called()
+
 if __name__=="__main__": unittest.main()
