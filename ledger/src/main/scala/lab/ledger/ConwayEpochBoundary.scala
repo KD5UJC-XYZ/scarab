@@ -48,9 +48,12 @@ object ConwayEpochBoundary:
       val previousParameters: Bytes,
       val id: Bytes,
       val rewardParameters: Option[ConwayRewardStart.Parameters] = None,
-      val rewardGlobals: Option[ConwayRewardStart.Globals] = None
+      val rewardGlobals: Option[ConwayRewardStart.Globals] = None,
+      private[ConwayEpochBoundary] val successorApplication: Option[
+        (BigInt, Bytes, BigInt, Map[Bytes, BigInt])
+      ] = None
   ):
-    val epoch = start.stake.epoch
+    val epoch = successorApplication.fold(start.stake.epoch)(_._1)
     val epochLength = start.stake.context.epochLength
     val preTickTupleId = start.tupleId
     val go = start.stake.snapshots.go
@@ -301,6 +304,49 @@ object ConwayEpochBoundary:
     )
   }
 
+  /** TICK captures the reward environment before NEWEPOCH but RUPD uses the actual signal's epoch
+    * timing. The owned coordinator supplies its selected post-boundary stake; no old frozen cursor
+    * is reused. Only immutable bounded source components survive, never recursive history.
+    */
+  private[lab] def freezeAfterBoundary(
+      o: Owner,
+      preview: Preview,
+      postStake: Stake.State,
+      window: BigInt,
+      parameters: ConwayRewardStart.Parameters,
+      globals: ConwayRewardStart.Globals
+  ): Either[String, Frozen] = checked {
+    require(preview != null && postStake != null, "boundary/post stake required")
+    val pre = preview.preTickRewardEnvironment
+    own(o, pre)
+    val slot = preview.signal.slot
+    require(
+      postStake.epoch == preview.epoch && postStake.slot == slot &&
+        postStake.revision == pre.stake.revision + 1 &&
+        postStake.context.accounts.map((c, a) => c -> a.balance) == preview.balances &&
+        postStake.snapshots == preview.rotation.snapshots && parameters != null && globals != null &&
+        globals.epochLength == pre.stake.context.epochLength && globals.maxSupply == pre.pots.maxSupply,
+      "selected successor stake/reward globals mismatch"
+    )
+    require(
+      get(rewardTiming(preview.epoch * globals.epochLength, window, slot)) != Timing.TooEarly,
+      "post-boundary reward start too early"
+    )
+    new Frozen(
+      o,
+      pre,
+      slot,
+      window,
+      parameters.original,
+      hash(
+        s"post-boundary-frozen:${preview.id.hex}:${postStake.context.id.hex}:$slot:$window:${parameters.id.hex}:${globals.id.hex}"
+      ),
+      Some(parameters),
+      Some(globals),
+      Some((preview.epoch, postStake.context.id, preview.pots.reserves, preview.previousBlocks))
+    )
+  }
+
   /** Explicit synthetic/source assertion only. JSON null is not an absence proof. No importer
     * exists.
     */
@@ -321,10 +367,14 @@ object ConwayEpochBoundary:
     own(o, c)
     require(
       frozen != null && (frozen.owner eq o) && (frozen.start.stakeOwner eq c.stakeOwner) &&
-        frozen.epoch == c.stake.epoch && frozen.start.stake.context.id == c.stake.context.id &&
+        frozen.epoch == c.stake.epoch && frozen.successorApplication.fold(
+          frozen.start.stake.context.id
+        )(_._2) == c.stake.context.id &&
         frozen.start.stake.revision <= c.stake.revision && frozen.observedSlot <= c.stake.slot &&
-        frozen.maxSupply == c.pots.maxSupply && frozen.reserves == c.pots.reserves &&
-        frozen.previousBlocks == c.previousBlocks,
+        frozen.maxSupply == c.pots.maxSupply && frozen.successorApplication.fold(frozen.reserves)(
+          _._3
+        ) == c.pots.reserves &&
+        frozen.successorApplication.fold(frozen.previousBlocks)(_._4) == c.previousBlocks,
       "foreign/stale frozen reward environment"
     )
     val applied =

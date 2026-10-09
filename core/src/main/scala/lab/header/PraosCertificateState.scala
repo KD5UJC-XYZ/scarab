@@ -69,6 +69,28 @@ object PraosCertificateState:
       )
     }
 
+    /** Internal epoch handoff; registration provenance is supplied by the owning coordinator. */
+    private[lab] def checkedSuccessor(
+        previous: Context,
+        registrationDigest: Bytes,
+        registrations: Map[Bytes, Bytes]
+    ): Either[String, Context] = protect {
+      require(previous != null, "previous certificate context required")
+      val length = previous.lastSlot - previous.firstSlot + 1
+      require(previous.firstSlot % length == 0, "unaligned certificate epoch window")
+      get(
+        checked(
+          previous.genesisDigest,
+          registrationDigest,
+          previous.lastSlot + 1,
+          previous.lastSlot + length,
+          previous.slotsPerKesPeriod,
+          previous.maxKesEvolutions,
+          registrations
+        )
+      )
+    }
+
   final class State private[PraosCertificateState] (
       val contextId: Bytes,
       val id: Bytes,
@@ -189,11 +211,45 @@ object PraosCertificateState:
       state: State,
       raw: Bytes,
       expectedHash: Bytes
+  ): Either[String, Applied] = applyInContext(context, context, state, raw, expectedHash, false)
+
+  private[lab] def applySuccessorHeader(
+      previousContext: Context,
+      nextContext: Context,
+      state: State,
+      raw: Bytes,
+      expectedHash: Bytes
+  ): Either[String, Applied] =
+    applyInContext(previousContext, nextContext, state, raw, expectedHash, true)
+
+  private def applyInContext(
+      previousContext: Context,
+      context: Context,
+      state: State,
+      raw: Bytes,
+      expectedHash: Bytes,
+      successor: Boolean
   ): Either[String, Applied] = protect {
     require(
-      context != null && state != null && context.id == state.contextId,
+      previousContext != null && context != null && state != null &&
+        previousContext.id == state.contextId,
       "counter context mismatch"
     )
+    if successor then
+      require(
+        get(
+          Context.checkedSuccessor(
+            previousContext,
+            context.registrationDigest,
+            context.registrations
+          )
+        ).id == context.id,
+        "invalid successor certificate context"
+      )
+      require(
+        state.tip.slot >= previousContext.firstSlot && state.tip.slot <= previousContext.lastSlot,
+        "successor certificate predecessor window"
+      )
     require(size(expectedHash, 32), "header hash width")
     val h = array(get(Cbor.decode(raw, Cbor.Limits(65536, 8, 64, 65536))))
     require(h.size == 2, "header arity")
@@ -241,8 +297,12 @@ object PraosCertificateState:
       context.id,
       digest(
         Vector(
-          Value.Text("certificate-apply"),
-          Value.ByteString(state.id),
+          Value.Text(if successor then "certificate-successor-apply" else "certificate-apply"),
+          Value.ByteString(
+            if successor then
+              digest(Vector(Value.ByteString(state.id), Value.ByteString(context.id)))
+            else state.id
+          ),
           Value.ByteString(point.hash)
         )
       ),

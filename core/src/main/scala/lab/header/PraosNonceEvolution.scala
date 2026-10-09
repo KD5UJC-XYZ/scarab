@@ -66,6 +66,39 @@ object PraosNonceEvolution:
       )
       new Context(id, certificates, epochLength, window)
     }
+    private[lab] def checkedSuccessor(
+        previous: Context,
+        certificates: PraosCertificateState.Context
+    ): Either[String, Context] = protect {
+      require(previous != null && certificates != null, "successor nonce context required")
+      require(
+        get(
+          PraosCertificateState.Context.checkedSuccessor(
+            previous.certificates,
+            certificates.registrationDigest,
+            certificates.registrations
+          )
+        ).id == certificates.id,
+        "successor nonce certificate context mismatch"
+      )
+      require(
+        previous.certificates.firstSlot % previous.epochLength == 0 &&
+          previous.certificates.lastSlot - previous.certificates.firstSlot + 1 == previous.epochLength &&
+          certificates.lastSlot + previous.window <= Max &&
+          certificates.lastSlot + 1 <= Max,
+        "successor nonce geometry/overflow"
+      )
+      val id = digest(
+        Vector(
+          Value.Text("experimental-conway-nonce-successor-v1"),
+          Value.ByteString(previous.id),
+          Value.ByteString(certificates.id),
+          Value.UInt(previous.epochLength),
+          Value.UInt(previous.window)
+        )
+      )
+      new Context(id, certificates, previous.epochLength, previous.window)
+    }
   final class State private[PraosNonceEvolution] (
       val id: Bytes,
       val contextId: Bytes,
@@ -212,13 +245,40 @@ object PraosNonceEvolution:
       context: Context,
       state: State,
       step: PraosCertificateState.Applied
+  ): Either[String, Applied] = applyInContext(context, context, state, step, false)
+
+  private[lab] def applySuccessorHeader(
+      previousContext: Context,
+      nextContext: Context,
+      state: State,
+      step: PraosCertificateState.Applied
+  ): Either[String, Applied] = applyInContext(previousContext, nextContext, state, step, true)
+
+  private def applyInContext(
+      previousContext: Context,
+      context: Context,
+      state: State,
+      step: PraosCertificateState.Applied,
+      successor: Boolean
   ): Either[String, Applied] = protect {
     require(
-      context != null && state != null && step != null && state.contextId == context.id &&
-        step.before.contextId == context.certificates.id && step.before.id == state.certificateStateId &&
-        step.before.tip.slot == state.lastSlot,
+      previousContext != null && context != null && state != null && step != null &&
+        state.contextId == previousContext.id &&
+        step.before.contextId == previousContext.certificates.id && step.before.id == state.certificateStateId &&
+        step.before.tip.slot == state.lastSlot && step.after.contextId == context.certificates.id,
       "nonce branch/context mismatch"
     )
+    if successor then
+      require(
+        get(Context.checkedSuccessor(previousContext, context.certificates)).id == context.id,
+        "invalid successor nonce context"
+      )
+      require(
+        state.lastSlot >= previousContext.certificates.firstSlot &&
+          state.lastSlot <= previousContext.certificates.lastSlot &&
+          step.after.tip.slot >= context.certificates.firstSlot,
+        "successor nonce predecessor/window"
+      )
     val slot = step.after.tip.slot
     require(
       slot > state.lastSlot && slot <= context.certificates.lastSlot,

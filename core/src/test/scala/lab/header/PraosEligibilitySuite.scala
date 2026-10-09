@@ -136,3 +136,56 @@ class PraosEligibilitySuite extends munit.FunSuite:
         .isInstanceOf[Vrf.Result.VerifiedCertificate]
     )
   }
+
+  test(
+    "internal successor authenticates original header and both undo records retain prior context"
+  ) {
+    import PraosCertificateState as C
+    import PraosNonceEvolution as N
+    val length = uint(body(1))
+    val previous =
+      get(C.Context.checked(source, source, 0, length - 1, 129600, 62, cert.registrations))
+    val next = get(C.Context.checkedSuccessor(previous, source, cert.registrations))
+    val before = get(C.seed(previous, anchor, Map(issuer -> uint(arr(body(8))(1))), source))
+    val step = get(C.applySuccessorHeader(previous, next, before, raw, Blake2b.hash256.hash(raw)))
+    assert(step.before eq before)
+    assertEquals(step.after.contextId, next.id)
+    assert(get(C.undo(step.after, step)) eq before)
+    assert(C.applyHeader(next, before, raw, Blake2b.hash256.hash(raw)).isLeft)
+    assert(
+      C.applySuccessorHeader(previous, previous, before, raw, Blake2b.hash256.hash(raw)).isLeft
+    )
+    val checked = get(
+      PraosEligibility.Context
+        .checkedSuccessor(previous, next, before, 1, length, nonce, one, Map(issuer -> one), source)
+    )
+    assert(get(PraosEligibility.check(checked, Vector(step))).freshlyVerified)
+    assert(
+      PraosEligibility.Context
+        .checked(next, before, 1, length, nonce, one, Map(issuer -> one), source)
+        .isLeft
+    )
+    assert(
+      PraosEligibility.Context
+        .checkedSuccessor(previous, next, before, 2, length, nonce, one, Map(issuer -> one), source)
+        .isLeft
+    )
+    val oldNonceContext = get(N.Context.checked(previous, length, 1, 1, 1))
+    val nextNonceContext = get(N.Context.checkedSuccessor(oldNonceContext, next))
+    assertEquals(nextNonceContext.window, oldNonceContext.window)
+    val fields = N.Fields(
+      N.Nonce.Neutral,
+      N.Nonce.Hash(nonce.bytes),
+      N.Nonce.Neutral,
+      None,
+      N.Nonce.Neutral,
+      N.Nonce.Neutral
+    )
+    val oldNonce = get(N.seed(oldNonceContext, before, fields, source))
+    val nonceStep = get(N.applySuccessorHeader(oldNonceContext, nextNonceContext, oldNonce, step))
+    assert(nonceStep.before eq oldNonce)
+    assertEquals(nonceStep.epochNonceUsed, N.Nonce.Hash(nonce.bytes))
+    assert(get(N.undo(nonceStep.after, nonceStep)) eq oldNonce)
+    assert(N.applyHeader(nextNonceContext, oldNonce, step).isLeft)
+    assert(N.Context.checkedSuccessor(oldNonceContext, previous).isLeft)
+  }

@@ -381,6 +381,86 @@ object ConwayStake:
     new Candidate(owner, current.id, current.revision, block.headerHash, block.slot, after)
   }
 
+  /** Internal synthetic successor projection. The enclosing coordinator owns ancestry and
+    * omitted-effect assumptions. Only the existing ledger candidate may supply body changes.
+    */
+  private[lab] def prepareSyntheticSuccessor(
+      owner: Owner,
+      current: State,
+      ledger: ClusterTransition.State,
+      block: ClusterTransition.BlockCandidate,
+      preview: ConwayEpochBoundary.Preview
+  ): Either[String, Candidate] = protect {
+    require(
+      owner != null && current != null && (owner eq current.owner) &&
+        ledger != null && block != null && preview != null &&
+        (preview.before.stake eq current) && current.ledgerId == ledger.id &&
+        current.revision == ledger.revision && current.slot == ledger.slot &&
+        current.epoch == ledger.environment.epoch,
+      "synthetic stake owner/before/revision"
+    )
+    val rotation = preview.rotation
+    require(
+      (rotation.owner eq owner) && rotation.beforeId == current.id &&
+        rotation.beforeRevision == current.revision &&
+        preview.signal.contextId == preview.before.id &&
+        preview.signal.beforeRevision == current.revision &&
+        block.headerHash == preview.signal.headerHash && block.slot == preview.signal.slot &&
+        rotation.headerHash == block.headerHash && rotation.headerSlot == block.slot &&
+        block.syntheticBoundary.contains((preview.id, preview.pots.fees)) &&
+        block.slot > current.slot && block.slot / current.context.epochLength == current.epoch + 1,
+      "synthetic stake boundary/block binding"
+    )
+    val application = preview.before.application
+    require(
+      application.epochLength == current.context.epochLength &&
+        preview.balances.keySet == application.accounts.keySet && preview.balances.values
+          .forall(coin),
+      "synthetic post-reward account domain"
+    )
+    val post = get(
+      context(
+        application.id,
+        application.epochLength,
+        application.accounts.map((c, a) => c -> a.copy(balance = preview.balances(c))),
+        application.pools
+      )
+    )
+    val accepted = get(ClusterTransition.commitBlock(ledger, block)).state
+    require(
+      accepted.environment.epoch == current.epoch + 1 &&
+        accepted.revision == current.revision + 1,
+      "synthetic successor ledger geometry"
+    )
+    val next = get(decodeUtxo(accepted.outputMap))
+    val shared = current.utxo.keySet intersect next.keySet
+    require(shared.forall(k => current.utxo(k) == next(k)), "existing output changed")
+    val spent = totals((current.utxo.keySet -- next.keySet).toVector.map(current.utxo))
+    val created = totals((next.keySet -- current.utxo.keySet).toVector.map(next))
+    val incremental = (current.instantaneous.keySet ++ spent.keySet ++ created.keySet)
+      .map { c =>
+        val n = current.instantaneous.getOrElse(c, BigInt(0)) - spent.getOrElse(c, BigInt(0)) +
+          created.getOrElse(c, BigInt(0))
+        require(coin(n), "stake delta bounds"); c -> n
+      }
+      .filter(_._2 > 0)
+      .toMap
+    require(incremental == totals(next.values), "incremental/full stake mismatch")
+    val after = new State(
+      owner,
+      post,
+      hash(current.id.hex + accepted.id.hex + block.headerHash.hex + preview.id.hex + post.id.hex),
+      accepted.id,
+      accepted.revision,
+      block.slot,
+      current.epoch + 1,
+      next,
+      incremental,
+      rotation.snapshots
+    )
+    new Candidate(owner, current.id, current.revision, block.headerHash, block.slot, after)
+  }
+
   /** Pure candidate selection for an enclosing atomic coordinator. No runtime state is mutated. */
   def select(owner: Owner, current: State, candidate: Candidate): Either[String, State] = protect {
     require(

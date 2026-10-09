@@ -53,13 +53,36 @@ object CertificateBranch:
       branch: Branch,
       original: BoundedChainFollower.Original
   ): Either[String, Branch] =
-    for
-      acquisition <- BoundedChainFollower.checked(
+    checked {
+      val header = get(ReferenceCaptureCommand.header(original.envelope))
+      val step = get(Certificate.applyHeader(context, branch.state, header.raw, header.hash))
+      get(appendStep(branch, original, step))
+    }
+
+  /** Append one authenticated step, retaining exact undo ancestry across context windows. */
+  private[lab] def appendStep(
+      branch: Branch,
+      original: BoundedChainFollower.Original,
+      step: Certificate.Applied
+  ): Either[String, Branch] = checked {
+    require(
+      branch != null && step != null && (step.before eq branch.state),
+      "certificate append predecessor mismatch"
+    )
+    val acquisition = get(
+      BoundedChainFollower.checked(
         branch.acquisition.anchor,
         branch.acquisition.originals :+ original
       )
-      next <- replay(context, branch.initial, acquisition)
-    yield next
+    )
+    val header = get(ReferenceCaptureCommand.header(original.envelope))
+    require(
+      header.hash == step.observation.originalHeaderHash &&
+        point(step.after.tip) == acquisition.tip,
+      "certificate append original identity mismatch"
+    )
+    new Branch(acquisition, branch.initial, step.after, branch.steps :+ step)
+  }
 
   def rollback(branch: Branch, to: ChainSync.Point): Either[String, Branch] = checked {
     val keep =

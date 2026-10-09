@@ -17,7 +17,8 @@ object PraosEligibility:
       val epoch: BigInt,
       val nonce: Vrf.EpochNonce,
       val active: Leader.Fraction,
-      val stakes: Map[Bytes, Leader.Fraction]
+      val stakes: Map[Bytes, Leader.Fraction],
+      private[PraosEligibility] val predecessorContextId: Bytes
   )
   object Context:
     def checked(
@@ -29,9 +30,58 @@ object PraosEligibility:
         active: Leader.Fraction,
         stakes: Map[Bytes, Leader.Fraction],
         protocolDigest: Bytes
+    ): Either[String, Context] =
+      checkedWithPredecessor(
+        certificates,
+        seed,
+        epoch,
+        epochLength,
+        nonce,
+        active,
+        stakes,
+        protocolDigest,
+        certificates,
+        false
+      )
+
+    private[lab] def checkedSuccessor(
+        previousCertificates: PraosCertificateState.Context,
+        certificates: PraosCertificateState.Context,
+        seed: PraosCertificateState.State,
+        epoch: BigInt,
+        epochLength: BigInt,
+        nonce: Vrf.EpochNonce,
+        active: Leader.Fraction,
+        stakes: Map[Bytes, Leader.Fraction],
+        protocolDigest: Bytes
+    ): Either[String, Context] =
+      checkedWithPredecessor(
+        certificates,
+        seed,
+        epoch,
+        epochLength,
+        nonce,
+        active,
+        stakes,
+        protocolDigest,
+        previousCertificates,
+        true
+      )
+
+    private def checkedWithPredecessor(
+        certificates: PraosCertificateState.Context,
+        seed: PraosCertificateState.State,
+        epoch: BigInt,
+        epochLength: BigInt,
+        nonce: Vrf.EpochNonce,
+        active: Leader.Fraction,
+        stakes: Map[Bytes, Leader.Fraction],
+        protocolDigest: Bytes,
+        previous: PraosCertificateState.Context,
+        successor: Boolean
     ): Either[String, Context] = protect {
       require(
-        certificates != null && seed != null && certificates.id == seed.contextId,
+        certificates != null && previous != null && seed != null && previous.id == seed.contextId,
         "eligibility certificate context mismatch"
       )
       require(
@@ -42,9 +92,20 @@ object PraosEligibility:
       require(
         certificates.firstSlot == epoch * epochLength &&
           certificates.lastSlot == (epoch + 1) * epochLength - 1 &&
-          seed.tip.slot >= certificates.firstSlot && seed.tip.slot <= certificates.lastSlot,
+          seed.tip.slot >= previous.firstSlot && seed.tip.slot <= previous.lastSlot,
         "eligibility epoch/window/anchor mismatch"
       )
+      if successor then
+        require(
+          get(
+            PraosCertificateState.Context.checkedSuccessor(
+              previous,
+              certificates.registrationDigest,
+              certificates.registrations
+            )
+          ).id == certificates.id,
+          "invalid successor eligibility certificate context"
+        )
       require(nonce != null && active != null, "missing nonce or active coefficient")
       get(Leader.check(0, active, active)) // checked coefficient domain, not a leader assertion
       require(
@@ -83,7 +144,7 @@ object PraosEligibility:
       )
       val id =
         Blake2b.hash256.hash(get(Cbor.encode(Value.Arr(values.map(v => Node(v, Bytes.empty))))))
-      new Context(id, certificates, seed, epoch, nonce, active, stakes)
+      new Context(id, certificates, seed, epoch, nonce, active, stakes, previous.id)
     }
   final case class HeaderResult(headerHash: Bytes, leaderValue: BigInt, stake: Leader.Fraction)
   final class Checked private[PraosEligibility] (
@@ -157,10 +218,12 @@ object PraosEligibility:
       "one to eight certificate steps required"
     )
     var previous = context.seed.id
-    val results = steps.map { step =>
+    val results = steps.zipWithIndex.map { (step, index) =>
       require(
         step != null && step.before.id == previous &&
-          step.before.contextId == context.certificates.id,
+          step.before.contextId == (if index == 0 then context.predecessorContextId
+                                    else context.certificates.id) &&
+          step.after.contextId == context.certificates.id,
         "eligibility branch/context mismatch"
       )
       val o = step.observation

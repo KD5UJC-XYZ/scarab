@@ -1,11 +1,12 @@
 # Owned synthetic reward candidates in CoherentSequence
 
-This first integration increment attaches bounded reward progression to the existing
-in-memory coordinator. It does **not** admit a cross-epoch block. It creates an
-unpublished successor-epoch candidate so the monetary/SNAP ordering and ownership
-contract can be reviewed independently of header, nonce and ledger environment wiring.
-The CLI same-epoch guard is unchanged; both durable checkpoint formats still reject
-the enlarged stake-bearing tuple. No live cluster or runtime epoch admission is claimed.
+The initial integration increment attached bounded reward progression and unpublished
+successor previews to the existing in-memory coordinator. The subsequent internal
+successor-block path is documented in [synthetic-successor-block.md](synthetic-successor-block.md).
+It selects a checked boundary and actual block together only through package-private
+synthetic APIs. The public prepare/CLI same-epoch guards remain unchanged; both durable
+checkpoint formats still reject the enlarged stake-bearing tuple. There is no live
+cluster, public runtime admission or native epoch-equivalence claim.
 
 ## Explicit synthetic model
 
@@ -60,7 +61,9 @@ current map is empty. The incoming issuer is **not counted**, because no success
 has been accepted. The preview retains its pre-tick reward environment. The distinct
 opaque `SyntheticSuccessor` reports published/headerAndBlockChecked/epochTransitionValidated
 false. `checkSyntheticSuccessor` checks owner and current identity/revision only, never
-header validity. There is intentionally no publish method for this type.
+header validity. This preview type still has no direct publish method. A package-private successor-block
+preparer consumes it with its original fence and exact actual block, verifies header,
+nonce, eligibility and body, and returns the existing whole-tuple Candidate type.
 
 ## Revisions, rollback and compaction
 
@@ -75,8 +78,8 @@ reward capsule exactly, including absent/pulsing/completed phase, frozen origin,
 pots/counts and historical pulser identity. Existing stake undo restores accounts and
 snapshots while rebinding the increased ledger revision; ledger, nonce, certificate and
 context state are restored atomically. Old fences/candidates remain stale after undo.
-Rollback across an admitted epoch is not yet possible because this increment never
-publishes a successor epoch.
+The internal successor-block increment now preserves one receipt spanning boundary and
+block, so its rollback also restores epoch contexts, pre-boundary pots, accounts and SNAP.
 
 A newly started freeze after undo/replay has a different identity because the frozen
 context includes the new revision. This is intentional branch-instance attribution;
@@ -103,11 +106,10 @@ revision. Restore may preserve authenticated historical identities only after
 validating that provenance; deterministic re-execution alone does not grant that
 authority. No v3 encoding, restore or durable admission is implemented here.
 
-Next increment must select the unpublished reward/SNAP result into the owned stake and
-ledger environment, verify successor headers with old-mark leadership and derived epoch
-nonce, accept the block before counting its issuer, and retain a whole-tuple undo receipt.
-It must also correctly schedule post-boundary RUPD using the preserved pre-tick environment.
-This packet intentionally does not loosen those guards.
+The internal successor-block increment implements selection, old-mark header eligibility,
+ticked nonce verification, body checks and one whole-tuple receipt. Post-boundary RUPD
+uses a new clock epoch and the original pre-tick environment at the actual block slot.
+See its separate verification and limitations document; public guards stay in place.
 
 ## Verification
 
@@ -146,3 +148,17 @@ The successor completion seam follows the retained pinned Conway `NewEpoch.hs`
 Pulsing/Complete dispatch (`completeRupd`, then `updateRewards`). This is source-informed
 composition, not a new native boundary differential test. This packet does not change the
 separately recorded finite synthetic monetary comparison claim.
+
+
+### Retained-suffix freeze provenance for future v3
+
+Historical freeze provenance is required for starts **inside the retained suffix**, not
+only the anchor capsule. Freeze identity binds predecessor tuple identity and stake
+revision. Undo raises revision; compaction rewrites predecessor tuple identities while
+preserving the accepted capsule. Consequently ordinary suffix replay can produce different
+freeze, pulser and final tuple identities. A future controller-authenticated restore must
+carry bounded historical freeze inputs for those suffix starts, establish fresh owners,
+validate capsule content and preserve historical identity. Ordinary branch replay remains
+a new freeze. Neither pathway may retain recursive State/receipt history. Required future
+codec tests include an Absent anchor with a retained freeze after undo and after compaction.
+No v3 codec or aggregate allocation measurement is implemented here.

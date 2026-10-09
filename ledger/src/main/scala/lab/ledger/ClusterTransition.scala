@@ -159,7 +159,8 @@ object ClusterTransition:
       val headerHash: Bytes,
       val transactionMemos: Vector[Bytes],
       val transactionIds: Vector[Bytes],
-      val created: Set[TxIn]
+      val created: Set[TxIn],
+      private[ledger] val syntheticBoundary: Option[(Bytes, BigInt)] = None
   ):
     val profileId = ProfileId
     val credentialBound = true
@@ -661,6 +662,65 @@ object ClusterTransition:
         Some(transition)
       )
     yield new BlockCandidate(before, after, headerHash, transactionMemos, ids, created)
+  }
+
+  /** Internal synthetic boundary plus body capability. Parameters remain the same objects; the only
+    * private intermediate changes are epoch and the checked boundary fee pot. One commit/undo
+    * covers boundary and body together, consuming one ledger revision.
+    */
+  private[lab] def prepareSyntheticSuccessorBlock(
+      before: State,
+      expectedEpoch: BigInt,
+      boundaryFees: BigInt,
+      boundaryId: Bytes,
+      headerHash: Bytes,
+      transactionMemos: Vector[Bytes],
+      inclusionSlot: BigInt
+  ): Checked[BlockCandidate] = protect {
+    for
+      _ <- Either.cond(
+        expectedEpoch == before.environment.epoch + 1 && expectedEpoch <= MaxRevision &&
+          boundaryId.size == 32,
+        (),
+        Failure.Malformed("synthetic exact successor epoch/boundary identity")
+      )
+      env = before.environment
+      nextEnvironment = new Environment(
+        digest(
+          ProfileId + ":synthetic-successor-environment",
+          Vector(
+            env.id,
+            before.id,
+            boundaryId,
+            text(expectedEpoch.toString)
+          )
+        ),
+        env.genesisDigest,
+        env.parameterDigest,
+        env.networkMagic,
+        expectedEpoch,
+        env.feeParameters,
+        env.minimumOutputParameters
+      )
+      boundary <- state(
+        nextEnvironment,
+        before.checkpointId,
+        before.entries,
+        boundaryFees,
+        before.slot,
+        before.revision,
+        before.head
+      )
+      block <- prepareBlock(boundary, headerHash, transactionMemos, inclusionSlot)
+    yield new BlockCandidate(
+      before,
+      block.after,
+      headerHash,
+      transactionMemos,
+      block.transactionIds,
+      block.created,
+      Some((boundaryId, boundaryFees))
+    )
   }
 
   def commitBlock(current: State, candidate: BlockCandidate): Checked[BlockApplied] = protect {

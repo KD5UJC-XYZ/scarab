@@ -18,7 +18,7 @@ import lab.ledger.{
   ConwayPoolReward as PoolReward
 }
 import lab.network.ChainSync
-import lab.vrf.PraosVrfCertificate as Vrf
+import lab.vrf.{PraosVrfCertificate as Vrf, PraosLeaderThreshold as Leader}
 import scala.util.control.NonFatal
 
 /** A checked same-epoch tuple and at most eight retained rollback receipts. Explicit fenced
@@ -49,7 +49,8 @@ object CoherentSequence:
       val derivedAnchorId: Option[Bytes] = None,
       val trustedLocalPrefix: Boolean = false,
       private[CoherentSequence] val stakeBinding: Option[(Stake.Owner, Stake.State)] = None,
-      private[CoherentSequence] val rewardBinding: Option[SyntheticRewards] = None
+      private[CoherentSequence] val rewardBinding: Option[SyntheticRewards] = None,
+      private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None
   ):
     def stake: Option[Stake.State] = stakeBinding.map(_._2)
     def syntheticRewards: Option[SyntheticRewards] = rewardBinding
@@ -69,7 +70,8 @@ object CoherentSequence:
         nonces.id,
         eligibility.fold(Bytes.empty)(_.contextId),
         ledger.id
-      ) ++ stake.toVector.map(_.id) ++ rewardBinding.toVector.map(_.id) ++ derivedAnchorId.toVector
+      ) ++ stake.toVector.map(_.id) ++ rewardBinding.toVector.map(_.id) ++ epochBinding.toVector
+        .map(_.id) ++ derivedAnchorId.toVector
         .flatMap(id => Vector(raw(compactedBlocks.toString), id))
     )
     val fullLedgerValidated = false
@@ -91,7 +93,8 @@ object CoherentSequence:
       private[CoherentSequence] val eligibility: PraosEligibility.Checked,
       private[CoherentSequence] val ledger: Ledger.BlockCandidate,
       private[CoherentSequence] val stake: Option[Stake.Candidate],
-      private[CoherentSequence] val rewards: Option[SyntheticRewards]
+      private[CoherentSequence] val rewards: Option[SyntheticRewards],
+      private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None
   )
   final class Applied private[CoherentSequence] (
       val state: State,
@@ -196,6 +199,210 @@ object CoherentSequence:
     val published = false
     val headerAndBlockChecked = false
     val epochTransitionValidated = false
+
+  private final class SyntheticEpochContext(
+      val certificates: Certificate.Context,
+      val nonces: Nonces.Context,
+      val stakes: Map[Bytes, Leader.Fraction]
+  ):
+    val id = digest(
+      "synthetic-epoch-context",
+      Vector(certificates.id, nonces.id) ++
+        stakes.toVector
+          .sortBy(_._1.hex)
+          .flatMap((p, f) => Vector(p, raw(s"${f.numerator}/${f.denominator}")))
+    )
+
+  private def afterBoundaryRewards(
+      current: State,
+      preview: Boundary.Preview,
+      selectedStake: Stake.State
+  ): Result[Option[SyntheticRewards]] =
+    current.rewardBinding.traverse { before =>
+      for
+        timing <- checked(
+          "post-boundary-rupd",
+          Boundary.rewardTiming(
+            preview.epoch * before.profile.globals.epochLength,
+            before.profile.window,
+            preview.signal.slot
+          )
+        )
+        work <-
+          if timing == Boundary.Timing.TooEarly then Right((None, None))
+          else
+            for
+              frozen <- checked(
+                "post-boundary-rupd",
+                Boundary.freezeAfterBoundary(
+                  before.owner,
+                  preview,
+                  selectedStake,
+                  before.profile.window,
+                  before.profile.parameters,
+                  before.profile.globals
+                )
+              )
+              allocation <- checked("post-boundary-rupd", RewardStart.calculate(frozen, frozen.id))
+              pools <- frozen.go.pools.keys.toVector.traverse(p =>
+                checked(
+                  "post-boundary-rupd",
+                  PoolReward.calculate(frozen, frozen.id, allocation, allocation.id, p)
+                ).map(p -> _)
+              )
+              pulser <- checked(
+                "post-boundary-rupd",
+                Pulser.start(frozen, frozen.id, allocation, allocation.id, pools.toMap)
+              )
+            yield (Some(frozen), Some(pulser))
+      yield new SyntheticRewards(
+        before.owner,
+        before.profile,
+        preview.pots,
+        preview.previousBlocks,
+        Map.empty,
+        work._1,
+        work._2,
+        digest(
+          "successor-reward-origin",
+          Vector(before.origin, current.id, raw(current.revision.toString), preview.id)
+        )
+      )
+    }
+
+  private def prepareSuccessor(
+      owner: AnyRef,
+      context: SequenceInput.Context,
+      capacity: Int,
+      current: State,
+      fence: Fence,
+      preview: SyntheticSuccessor,
+      block: SequenceInput.Block
+  ): Result[Candidate] = protect {
+    for
+      _ <- Either.cond(fence.owner eq owner, (), Failure.ForeignFence)
+      _ <- Either.cond(
+        fence.stateId == current.id && fence.revision == current.revision,
+        (),
+        Failure.StaleFence
+      )
+      _ <- Either.cond(preview.owner eq owner, (), Failure.ForeignCandidate)
+      _ <- Either.cond(
+        preview.before.id == current.id && preview.before.revision == current.revision,
+        (),
+        Failure.StaleCandidate
+      )
+      _ <- Either.cond(
+        current.acquisition.size < capacity,
+        (),
+        Failure.Unsupported("window", "retained capacity reached")
+      )
+      _ <- Either.cond(
+        preview.preview.signal.headerHash == block.header.hash && preview.preview.signal.slot == block.header.slot,
+        (),
+        Failure.Rejected("synthetic-successor", "preview/block identity mismatch")
+      )
+      oldCertificates = current.epochBinding.fold(context.certificates)(_.certificates)
+      oldNonces = current.epochBinding.fold(context.nonces.context)(_.nonces)
+      distribution = preview.preview.rotation.leadership.distribution
+      nextCertificates <- checked(
+        "successor-certificate-context",
+        Certificate.Context.checkedSuccessor(
+          oldCertificates,
+          preview.preview.id,
+          distribution.map((p, s) => p -> s.vrf)
+        )
+      )
+      nextNonces <- checked(
+        "successor-nonce-context",
+        Nonces.Context.checkedSuccessor(oldNonces, nextCertificates)
+      )
+      stakes <- distribution.toVector
+        .traverse((p, s) =>
+          checked(
+            "successor-stake",
+            Leader.Fraction.checked(s.ratio.numerator, s.ratio.denominator)
+          ).map(p -> _)
+        )
+        .map(_.toMap)
+      certificate <- checked(
+        "successor-certificate",
+        Certificate.applySuccessorHeader(
+          oldCertificates,
+          nextCertificates,
+          current.certificates.state,
+          block.header.raw,
+          block.header.hash
+        )
+      )
+      certificates <- checked(
+        "successor-acquisition",
+        CertificateBranch.appendStep(current.certificates, block.original, certificate)
+      )
+      nonce <- checked(
+        "successor-nonce",
+        Nonces.applySuccessorHeader(oldNonces, nextNonces, current.nonces, certificate)
+      )
+      epochNonce = nonce.epochNonceUsed match
+        case Nonces.Nonce.Neutral     => Vrf.NeutralNonce
+        case Nonces.Nonce.Hash(bytes) => Vrf.Hash32.fromBytes(bytes).toOption.get
+      eligibilityContext <- checked(
+        "successor-eligibility-context",
+        PraosEligibility.Context.checkedSuccessor(
+          oldCertificates,
+          nextCertificates,
+          current.certificates.state,
+          preview.preview.epoch,
+          oldNonces.epochLength,
+          epochNonce,
+          context.eligibility.active,
+          stakes,
+          preview.preview.id
+        )
+      )
+      eligible <- checked(
+        "successor-eligibility",
+        PraosEligibility.check(eligibilityContext, Vector(certificate))
+      )
+      pending <- ledger(
+        Ledger.prepareSyntheticSuccessorBlock(
+          current.ledger,
+          preview.preview.epoch,
+          preview.preview.pots.fees,
+          preview.preview.id,
+          block.header.hash,
+          block.transactionMemos,
+          block.header.slot
+        )
+      )
+      binding <- current.stakeBinding.toRight(Failure.Rejected("successor-stake", "missing stake"))
+      (stakeOwner, beforeStake) = binding
+      stake <- checked(
+        "successor-stake",
+        Stake.prepareSyntheticSuccessor(
+          stakeOwner,
+          beforeStake,
+          current.ledger,
+          pending,
+          preview.preview
+        )
+      )
+      selected <- checked("successor-stake", Stake.select(stakeOwner, beforeStake, stake))
+      rewards <- afterBoundaryRewards(current, preview.preview, selected)
+    yield new Candidate(
+      owner,
+      current,
+      block,
+      certificates,
+      certificate,
+      nonce,
+      eligible,
+      pending,
+      Some(stake),
+      rewards,
+      Some(new SyntheticEpochContext(nextCertificates, nextNonces, stakes))
+    )
+  }
 
   private def countIdentity(counts: Map[Bytes, BigInt]): Bytes =
     digest("counts", counts.toVector.sortBy(_._1.hex).flatMap((p, n) => Vector(p, raw(n.toString))))
@@ -427,11 +634,22 @@ object CoherentSequence:
       context: SequenceInput.Context,
       maxBlocks: Int,
       current: State,
-      block: SequenceInput.Block
+      block: SequenceInput.Block,
+      synthetic: Boolean = false
   ): Result[Candidate] = protect {
+    val certContext =
+      if synthetic then current.epochBinding.fold(context.certificates)(_.certificates)
+      else context.certificates
+    val nonceContext =
+      if synthetic then current.epochBinding.fold(context.nonces.context)(_.nonces)
+      else context.nonces.context
+    val epoch = if synthetic then current.ledger.environment.epoch else context.epoch
+    val stakes =
+      if synthetic then current.epochBinding.fold(context.eligibility.stakes)(_.stakes)
+      else context.eligibility.stakes
     for
       _ <- Either.cond(
-        block.header.slot / context.nonces.context.epochLength == context.epoch,
+        block.header.slot / nonceContext.epochLength == epoch,
         (),
         Failure.Unsupported("epoch", "same supplied epoch only")
       )
@@ -442,12 +660,12 @@ object CoherentSequence:
       )
       certificates <- checked(
         "certificate",
-        CertificateBranch.append(context.certificates, current.certificates, block.original)
+        CertificateBranch.append(certContext, current.certificates, block.original)
       )
       certificate = certificates.steps.last
       nonce <- checked(
         "nonce",
-        Nonces.applyHeader(context.nonces.context, current.nonces, certificate)
+        Nonces.applyHeader(nonceContext, current.nonces, certificate)
       )
       epochNonce = nonce.epochNonceUsed match
         case Nonces.Nonce.Neutral     => Vrf.NeutralNonce
@@ -455,13 +673,13 @@ object CoherentSequence:
       eligibilityContext <- checked(
         "eligibility-context",
         PraosEligibility.Context.checked(
-          context.certificates,
+          certContext,
           current.certificates.state,
-          context.epoch,
-          context.nonces.context.epochLength,
+          epoch,
+          nonceContext.epochLength,
           epochNonce,
           context.eligibility.active,
-          context.eligibility.stakes,
+          stakes,
           eligibilityAttribution(context, nonce)
         )
       )
@@ -491,7 +709,8 @@ object CoherentSequence:
       eligible,
       pending,
       stake,
-      rewards
+      rewards,
+      current.epochBinding
     )
   }
   private def bindings(current: State, c: Candidate): Boolean =
@@ -502,7 +721,8 @@ object CoherentSequence:
       c.nonce.before.id == current.nonces.id &&
       c.nonce.before.certificateStateId == current.certificates.state.id &&
       c.nonce.after.certificateStateId == c.certificate.after.id &&
-      c.nonce.before.contextId == current.nonces.contextId && c.nonce.after.contextId == current.nonces.contextId &&
+      c.nonce.before.contextId == current.nonces.contextId && c.nonce.after.contextId == c.epochBinding
+        .fold(current.nonces.contextId)(_.nonces.id) &&
       c.certificate.after.tip.hash == c.block.header.hash && c.certificate.after.tip.slot == c.block.header.slot &&
       c.nonce.headerHash == c.block.header.hash && c.nonce.after.lastSlot == c.block.header.slot &&
       c.certificate.observation.originalHeaderHash == c.block.header.hash &&
@@ -546,7 +766,8 @@ object CoherentSequence:
           current.derivedAnchorId,
           current.trustedLocalPrefix,
           stake,
-          rewards
+          rewards,
+          candidate.epochBinding
         )
         val owned =
           OwnedReceipt(current, state.id, candidate.certificate, candidate.nonce, block.undo)
@@ -584,7 +805,8 @@ object CoherentSequence:
         current.derivedAnchorId,
         current.trustedLocalPrefix,
         stake,
-        owned.before.rewardBinding
+        owned.before.rewardBinding,
+        owned.before.epochBinding
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -665,7 +887,8 @@ object CoherentSequence:
                   Some(provenance),
                   state.trustedLocalPrefix,
                   state.stakeBinding,
-                  state.rewardBinding
+                  state.rewardBinding,
+                  state.epochBinding
                 )
               )
           for
@@ -764,6 +987,29 @@ object CoherentSequence:
       )
     }
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
+
+    /** Internal synthetic profile only; ordinary prepare and the CLI keep their epoch guards. */
+    private[lab] def prepareSyntheticSuccessorBlock(
+        fence: Fence,
+        preview: SyntheticSuccessor,
+        block: SequenceInput.Block
+    ): F[Result[Candidate]] = cell.get.flatMap(c =>
+      F.delay(prepareSuccessor(owner, context, maxBlocks, c.state, fence, preview, block))
+    )
+    private[lab] def prepareSyntheticBlock(
+        fence: Fence,
+        block: SequenceInput.Block
+    ): F[Result[Candidate]] =
+      cell.get.flatMap(c =>
+        F.delay(protect {
+          if fence.owner ne owner then Left(Failure.ForeignFence)
+          else if fence.stateId != c.state.id || fence.revision != c.state.revision then
+            Left(Failure.StaleFence)
+          else if c.state.rewardBinding.isEmpty then
+            Left(Failure.Unsupported("synthetic-rewards", "profile not enabled"))
+          else CoherentSequence.prepare(owner, context, maxBlocks, c.state, block, synthetic = true)
+        })
+      )
 
     /** Pure successor subrules only. No header, nonce, ledger or epoch publication path exists. */
     def prepareSyntheticSuccessor(
@@ -1285,6 +1531,10 @@ object CoherentSequence:
               profile != null && pots != null &&
                 profile.globals.epochLength == context.nonces.context.epochLength &&
                 profile.globals.maxSupply == pots.maxSupply && pots.fees == initial.ledger.fees &&
+                profile.globals.activeSlotCoefficient.numerator == context.eligibility.active.numerator &&
+                profile.globals.activeSlotCoefficient.denominator == context.eligibility.active.denominator &&
+                ((4 * profile.globals.securityParameter.get * profile.globals.activeSlotCoefficient.denominator +
+                  profile.globals.activeSlotCoefficient.numerator - 1) / profile.globals.activeSlotCoefficient.numerator) == context.nonces.context.window &&
                 absentEvidence != null && absentEvidence.size == 32,
               (),
               Failure.Rejected("synthetic-rewards", "seed geometry/pots/explicit absence assertion")

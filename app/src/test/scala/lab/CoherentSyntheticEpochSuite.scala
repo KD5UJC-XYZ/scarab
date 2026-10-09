@@ -36,7 +36,7 @@ class CoherentSyntheticEpochSuite extends munit.FunSuite:
         V.UInt(1),
         V.UInt(20),
         V.UInt(BigInt("45000000000000000")),
-        V.UInt(1)
+        V.UInt(5)
       )
     )
   )

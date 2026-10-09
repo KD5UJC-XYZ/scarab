@@ -689,3 +689,79 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
     )
     assert(!preview.published && !preview.epochTransitionValidated)
   }
+
+  test("internal successor body selects post-reward stake once and undo restores original tuple") {
+    val f = new Fixture; val p = f.preview
+    val before = f.accepted.state
+    val block = get(
+      ClusterTransition.prepareSyntheticSuccessorBlock(
+        before,
+        p.epoch,
+        p.pots.fees,
+        p.id,
+        p.signal.headerHash,
+        Vector.empty,
+        p.signal.slot
+      )
+    )
+    val candidate = get(S.prepareSyntheticSuccessor(f.stakeOwner, f.nextStake, before, block, p))
+    val ledger = get(ClusterTransition.commitBlock(before, block))
+    val stake = get(S.select(f.stakeOwner, f.nextStake, candidate))
+    assertEquals(ledger.state.environment.epoch, BigInt(1))
+    assertEquals(ledger.state.fees, BigInt(45))
+    assertEquals(ledger.state.revision, before.revision + 1)
+    assert(ledger.state.environment.feeParameters eq before.environment.feeParameters)
+    assert(
+      ledger.state.environment.minimumOutputParameters eq before.environment.minimumOutputParameters
+    )
+    assertEquals(stake.epoch, BigInt(1))
+    assertEquals(stake.context.accounts(key).balance, BigInt(13))
+    assertEquals(stake.instantaneous, f.nextStake.instantaneous)
+    assert(stake.snapshots eq p.rotation.snapshots)
+    assert(stake.snapshots.set eq f.snapshots.mark)
+    val restored = get(ClusterTransition.undo(ledger.state, ledger.state.revision, ledger.undo))
+    val restoredStake = get(S.rebindAfterUndo(f.stakeOwner, f.nextStake, restored))
+    assertEquals(restored.id, before.id); assertEquals(restored.fees, before.fees)
+    assert(restored.environment eq before.environment)
+    assertEquals(restoredStake.id, f.nextStake.id)
+    assertEquals(restoredStake.context.accounts, f.nextStake.context.accounts)
+    assertEquals(restoredStake.revision, before.revision + 2)
+    assert(ClusterTransition.commitBlock(restored, block).isLeft)
+    assert(S.select(f.stakeOwner, restoredStake, candidate).isLeft)
+  }
+
+  test("internal successor rejects wrong epoch, body, owner, preview, fee and signal bindings") {
+    val f = new Fixture; val p = f.preview; val before = f.accepted.state
+    def block(
+        epoch: BigInt = p.epoch,
+        fees: BigInt = p.pots.fees,
+        id: Bytes = p.id,
+        header: Bytes = p.signal.headerHash,
+        slot: BigInt = p.signal.slot,
+        memos: Vector[Bytes] = Vector.empty
+    ) =
+      ClusterTransition.prepareSyntheticSuccessorBlock(before, epoch, fees, id, header, memos, slot)
+    assert(block(epoch = 0).isLeft); assert(block(epoch = 2).isLeft)
+    assert(block(fees = -1).isLeft); assert(block(id = Bytes.empty).isLeft)
+    assert(block(slot = before.slot).isLeft)
+    assert(block(memos = Vector(Bytes.empty)).isLeft)
+    val valid = get(block())
+    assert(S.prepareSyntheticSuccessor(S.owner(), f.nextStake, before, valid, p).isLeft)
+    val other = new Fixture
+    assert(
+      S.prepareSyntheticSuccessor(f.stakeOwner, f.nextStake, before, valid, other.preview).isLeft
+    )
+    Vector(
+      get(block(fees = p.pots.fees + 1)),
+      get(block(id = bytes(99))),
+      get(block(header = bytes(98))),
+      get(block(slot = p.signal.slot + 1))
+    ).foreach { bad =>
+      assert(S.prepareSyntheticSuccessor(f.stakeOwner, f.nextStake, before, bad, p).isLeft)
+    }
+    val ordinary =
+      get(ClusterTransition.prepareBlock(before, p.signal.headerHash, Vector.empty, p.signal.slot))
+    assert(S.prepareSyntheticSuccessor(f.stakeOwner, f.nextStake, before, ordinary, p).isLeft)
+    assertEquals(before.environment.epoch, BigInt(0)); assertEquals(before.fees, BigInt(50))
+    assertEquals(f.nextStake.context.accounts(key).balance, BigInt(5))
+  }
