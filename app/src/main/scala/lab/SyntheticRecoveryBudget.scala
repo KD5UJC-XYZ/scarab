@@ -16,6 +16,9 @@ import scala.util.control.NonFatal
   * stops at the first exceeded limit.
   */
 private[lab] object SyntheticRecoveryBudget:
+  val MaxEnvelopeBytes = 65535
+  val MaxBlockBytes = 1048576
+  val MaxHistoricalScalarBits = 256
   val MaxEntries = 200000L
   val MaxPayloadBytes = 16L * 1024 * 1024
   final case class Measurement(entries: Long, payloadBytes: Long)
@@ -103,12 +106,17 @@ private[lab] object SyntheticRecoveryBudget:
         // Charge its key and bounded fraction even when this context has no such table.
         add(1, 96)
       }
+    def original(o: BoundedChainFollower.Original): Unit =
+      require(
+        o != null && o.envelope != null && o.block != null &&
+          o.envelope.size <= MaxEnvelopeBytes && o.block.size <= MaxBlockBytes,
+        "recovery original individual byte bounds"
+      )
+      blob(o.envelope); blob(o.block)
     def branch(b: CertificateBranch.Branch): Unit =
       require(b.steps.size <= 8 && b.acquisition.originals.size <= 8, "recovery branch capacity")
       scalar(); certificate(b.initial); certificate(b.state)
-      b.acquisition.originals.foreach { o =>
-        blob(o.envelope); blob(o.block)
-      }
+      b.acquisition.originals.foreach(original)
       b.steps.foreach { s =>
         scalar(); certificate(s.before); certificate(s.after); blob(s.observation.originalBody)
       }
@@ -166,21 +174,23 @@ private[lab] object SyntheticRecoveryBudget:
       states: Vector[CoherentSequence.State],
       branches: Vector[CertificateBranch.Branch],
       boundaries: Vector[Boundary.Preview],
-      certificateContexts: Vector[Certificate.Context]
+      certificateContexts: Vector[Certificate.Context],
+      originals: Vector[BoundedChainFollower.Original] = Vector.empty
   ): Either[String, Measurement] =
     try
       require(
         context != null && states != null && branches != null && boundaries != null &&
-          certificateContexts != null,
+          certificateContexts != null && originals != null,
         "recovery inputs required"
       )
       require(
         states.nonEmpty && states.size <= 9 && branches.size <= 9 &&
-          boundaries.size <= 9 && certificateContexts.size <= 11,
+          boundaries.size <= 9 && certificateContexts.size <= 11 && originals.size <= 8,
         "recovery record capacity"
       )
       val c = new Counter
       c.scalar()
+      originals.foreach(c.original)
       context.originals.foreach { (key, value) =>
         c.add(1, key.length.toLong * 4); c.blob(value)
       }

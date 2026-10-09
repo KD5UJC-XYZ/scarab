@@ -3,7 +3,9 @@
 `SyntheticRecoveryModel` is a package-private authenticated **opaque in-memory handoff**
 for the restricted synthetic successor coordinator. It is not a byte format, disk
 checkpoint, crash recovery implementation, consensus validator or live epoch-admission
-path. Existing durable codecs continue to reject these stake-bearing states. Acquisition
+path. Existing durable codecs continue to reject these stake-bearing states. The exact Envelope object, retained context/ledger/certificate/nonce objects, and
+reference-equality checks make this handoff process-dependent. It cannot be serialized
+and restored in another process. Acquisition
 identity and checked synthetic transitions do not establish full ledger validation.
 
 ## Provenance and authority
@@ -27,7 +29,9 @@ bounded image commitment, context, anchor/final identity, final revision and mea
 payload. A controller must compare that complete claim against independently retained
 authority; accepting any supplied digest is not authentication. Acceptance is tied to
 the exact Envelope object. Authorization is cancelable and defaults to five seconds,
-with a maximum permitted deadline of thirty seconds.
+with a maximum permitted deadline of thirty seconds. Tests use a recording controller
+stub; they establish gate behavior, not a durable authentication mechanism. There is no
+serializable recovery or durable authentication claim.
 
 Restore rechecks the budget/commitment, reconstructs historical predecessors and replays
 each retained original block through existing checked ordinary/successor preparation.
@@ -43,7 +47,11 @@ candidates remain foreign. There is no arbitrary public identity hydration sette
 At most eight retained blocks and nine tuple images are admitted. Accounting stops at
 200,000 logical entries or 16 MiB of logical payload before commitment/hydration work.
 It counts nested owners/delegators, stake/reward maps, snapshots, original bytes, pulser
-projections and historical attribution. Boundary and certificate-context capsules are
+projections and historical attribution. Each retained record's original envelope and block
+is independently charged, even if already reachable from a branch. Before any commitment
+hashing, envelopes are limited to 65,535 bytes and blocks to 1 MiB. Historical revision and
+compacted-block counters must be nonnegative and at most 256 bits before decimal string
+conversion; historical identities must be 32 bytes. Boundary and certificate-context capsules are
 deduplicated by identity; repeated occurrences within supplied roots are charged again.
 This conservative accounting is not a JVM heap-size estimate. Replay/clone loops yield
 between bounded records; underlying pure checks retain their existing collection limits.
@@ -52,18 +60,19 @@ Observed fixture measurements (entries / logical bytes):
 
 | Fixture | Entries | Bytes |
 | --- | ---: | ---: |
-| Absent anchor, early successor | 684 | 161144 |
-| Retained freeze after undo and compaction | 1078 | 222808 |
+| Absent anchor, early successor | 686 | 162874 |
+| Retained freeze after undo and compaction | 1080 | 225012 |
 | Post-boundary Complete anchor | 1045 | 211093 |
-| Post-boundary anchor, mixed-context successor | 2094 | 379146 |
+| Post-boundary anchor, mixed-context successor | 2096 | 381350 |
 
 ## Verification, 2026-10-09
 
-65 tests passed: 32 ledger and 33 app, including nine new recovery tests (two ledger,
-seven app). The app tests cover exact final identity/revision and continued publication,
+66 tests passed: 32 ledger and 34 app, including ten new recovery tests (two ledger,
+eight app). The app tests cover exact final identity/revision and continued publication,
 whole-boundary undo, Absent and ordinary/post-boundary freezes, mixed epoch contexts,
 missing/mutated/substituted provenance and foreign pulser, controller denial/deadline/
-cancellation, and an aggregate nested-membership budget rejection. Ledger tests cover
+cancellation, an aggregate nested-membership budget rejection, oversized substituted record
+originals, oversized historical scalars and the exact incremental record-byte charge. Ledger tests cover
 fresh-owner pulser prefix reconstruction across initial, partial, exhausted and complete
 work, including zero-fee and empty fixtures.
 

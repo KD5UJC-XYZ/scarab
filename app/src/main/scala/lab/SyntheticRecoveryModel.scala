@@ -10,7 +10,9 @@ import scala.concurrent.duration.*
 import scala.util.control.NonFatal
 
 /** Opaque bounded in-memory handoff. This is neither a byte format nor crash recovery. Controller
-  * approval must compare a separately retained exact claim, never trust its digest.
+  * approval must compare a separately retained exact claim, never trust its digest. Retained opaque
+  * objects and exact-envelope reference checks make this process-dependent, not serializable
+  * recovery.
   */
 private[lab] object SyntheticRecoveryModel:
   val Domain = "internal-synthetic-recovery-model-v1"
@@ -94,6 +96,19 @@ private[lab] object SyntheticRecoveryModel:
       image.states.forall(s => s != null && s.stake.isDefined && s.syntheticRewards.isDefined),
       "synthetic stake/reward image required"
     )
+    def boundedScalar(n: BigInt): Boolean =
+      n != null && n >= 0 && n.bitLength <= SyntheticRecoveryBudget.MaxHistoricalScalarBits
+    def identity(b: Bytes): Boolean = b != null && b.size == 32
+    require(
+      image.states.forall(s => boundedScalar(s.revision)) &&
+        image.records.forall(r =>
+          r != null && r.position != null &&
+            boundedScalar(r.position.revision) && boundedScalar(r.position.compactedBlocks) &&
+            identity(r.position.id) && identity(r.historicalAfterId) &&
+            r.position.derivedAnchorId.forall(identity)
+        ),
+      "recovery historical scalar/identity bounds"
+    )
     val boundaries = CoherentSequence.recoveryBoundaries(image)
     val measurement = get(
       SyntheticRecoveryBudget.measure(
@@ -101,7 +116,8 @@ private[lab] object SyntheticRecoveryModel:
         image.states,
         image.records.map(_.position.certificates),
         boundaries.map(_.preview),
-        CoherentSequence.recoveryCertificateContexts(image)
+        CoherentSequence.recoveryCertificateContexts(image),
+        image.records.map(_.original)
       )
     )
     val digest = commitment(image, publicationId, measurement)

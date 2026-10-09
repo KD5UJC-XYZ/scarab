@@ -299,6 +299,62 @@ class SyntheticRecoverySuite extends munit.FunSuite:
       yield ()).unsafeToFuture()
     }
 
+    test("record originals and historical scalars are bounded before commitment") {
+      (for
+        r <- runtime(50)
+        seed <- r.snapshot
+        pending <- candidate(r, seed)
+        _ <- r.publish(pending).map(get(_))
+        envelope <- r.exportSyntheticRecovery(pin).map(get(_))
+        _ = {
+          val record = envelope.image.records.head
+          val tooLargeEnvelope =
+            Bytes(Vector.fill(SyntheticRecoveryBudget.MaxEnvelopeBytes + 1)(0.toByte))
+          val tooLargeBlock =
+            Bytes(Vector.fill(SyntheticRecoveryBudget.MaxBlockBytes + 1)(0.toByte))
+          Vector(
+            record.original.copy(envelope = tooLargeEnvelope),
+            record.original.copy(block = tooLargeBlock)
+          ).foreach { original =>
+            val rejected = SyntheticRecoveryModel.prepare(
+              envelope.image.copy(records = Vector(record.copy(original = original))),
+              pin
+            )
+            assert(rejected.left.toOption.get.contains("individual byte bounds"))
+          }
+          val huge = BigInt(1) << 100000
+          Vector(
+            record.position.copy(revision = huge),
+            record.position.copy(compactedBlocks = huge),
+            record.position.copy(revision = -1)
+          ).foreach { position =>
+            val rejected = SyntheticRecoveryModel.prepare(
+              envelope.image.copy(records = Vector(record.copy(position = position))),
+              pin
+            )
+            assert(rejected.left.toOption.get.contains("historical scalar/identity bounds"))
+          }
+          def measured(originals: Vector[BoundedChainFollower.Original]) = get(
+            SyntheticRecoveryBudget.measure(
+              context,
+              envelope.image.states,
+              Vector.empty,
+              Vector.empty,
+              Vector.empty,
+              originals
+            )
+          )
+          val base = measured(Vector.empty)
+          val charged = measured(Vector(record.original))
+          assertEquals(charged.entries - base.entries, 2L)
+          assertEquals(
+            charged.payloadBytes - base.payloadBytes,
+            record.original.envelope.size.toLong + record.original.block.size.toLong + 16L
+          )
+        }
+      yield ()).unsafeToFuture()
+    }
+
     test("controller rejection, deadline and cancellation expose no recovery capability") {
       (for
         r <- runtime(50)
