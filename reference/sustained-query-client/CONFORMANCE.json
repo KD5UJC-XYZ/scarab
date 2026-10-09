@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "compiledSourceNote": "Final Session change is comment-only; packet/tests are interpreted Python. No further compiled code changes after compile-5.",
+  "compiledSourceNote": "Capture implementation unchanged; added offline project-retained mode only. See separate incremental gate.",
   "binaries": {
     "sustained-query-capture": {
       "path": "/home/<user>/cardano-sustained-point-build-20261009/client-dist/build/x86_64-linux/ghc-9.6.7/sustained-query-client-0.0.0/x/sustained-query-capture/noopt/build/sustained-query-capture/sustained-query-capture",
-      "sha256": "4c7e88aff99f5e2c127cca46aef3efebeb0e680fec0df48cbe45d2997d699d19"
+      "sha256": "d7f828045bfa32cd0f9dfe63044d7d9ae75770ff29721855d477adb712ca1a5a"
     },
     "sustained-query-offline": {
       "path": "/home/<user>/cardano-sustained-point-build-20261009/client-dist/build/x86_64-linux/ghc-9.6.7/sustained-query-client-0.0.0/x/sustained-query-offline/noopt/build/sustained-query-offline/sustained-query-offline",
-      "sha256": "36af196c0d921d2dcb90806ebd5ea0d4678ec18b497e9f8c51ba7b39083f9893"
+      "sha256": "a07e1a7eedcdb422b747a588b7111f6e58e04b3c72d4bcaf9afa5b527af2951f"
     }
   },
   "nativeLibraries": {
@@ -48,20 +48,59 @@
     "Adapter.hs": "17570360469bba9e5d482f9333cf5564019ac3c66f72232a7a029c8eb1688281",
     "PROVENANCE.json": "8dcf3db5e944f44c4af635c6087913642141e06084875e8977d997d9ae7c2e11",
     "Projection.hs": "c47781b0f328b5def4b34430a838b970c9a77909a1741c07945ed811843f131c",
-    "README.md": "a0051230ae5fab6c71503e00f3d9072e0e01d0ae8bcd9dc417c872c434194ed2",
+    "README.md": "e18a01d6fff88c624680ed9e89cbcef7c7e558894a63416c239003a1b3fb76bd",
     "Session.hs": "82dd4623383c31f2b2e571e0b88d3084a3aa054fb8f33a3f8179a8f40de438ae",
     "StrictJson.hs": "224adad66f45b57ef3c8a6c60f821101cc4734a1b5d0ddfef904720959c8a159",
     "Transport.hs": "7b973fb092f383e597895bbf2e0f71ab416694503b0a9660555ea8b101aa75cf",
     "VerifySeed.hs": "1ea82ab7ef36cc7d42df5e9cec8e60af3918a6dbb9964f0ebd56453ef401689c",
     "bounded.py": "b6b71d82d71cfdef3f23ef3129f86bb27e9213cc75c1d50e6b475db9edda5182",
-    "offline/Main.hs": "a68db9398c423076df9dc64c3dc76c778fee416423c86124343f1519ce6ced7c",
+    "offline/Main.hs": "ae1a625b5e4ef9ce9f17167538f382e34f91b1b46c980d9d28fe9cb0d33e57d3",
     "packet.py": "7a550267a1e8bac7391b56185918ebef190fadf1922e7086ee36140e44c4329e",
     "query/Main.hs": "30648312d40c38b0a44217755a5441aa53518c9574e6fe28031e8fd5e0b70ee6",
     "sustained-query-client.cabal": "9b8622d11f9294361ae9be860a4c2a392c5566824eeb01fa89fa127c77a658a9",
-    "test_native.py": "e266e91cae7f87fc1efd3a79a2987204728d41ec329250a3eb6f021c59b9bb14"
+    "test_native.py": "e266e91cae7f87fc1efd3a79a2987204728d41ec329250a3eb6f021c59b9bb14",
+    "test_retained.py": "e682e8e19f34972c8fb562c596b7bd2527d7526e74aa083a35192d2582cb00df"
   },
   "liveCapture": false,
   "fullLedgerValidation": false,
   "monetaryParity": false,
-  "rewardSeedAdmission": false
+  "rewardSeedAdmission": false,
+  "priorBinaries": {
+    "sustained-query-capture": {
+      "path": "/home/<user>/cardano-sustained-point-build-20261009/client-dist/build/x86_64-linux/ghc-9.6.7/sustained-query-client-0.0.0/x/sustained-query-capture/noopt/build/sustained-query-capture/sustained-query-capture",
+      "sha256": "4c7e88aff99f5e2c127cca46aef3efebeb0e680fec0df48cbe45d2997d699d19"
+    },
+    "sustained-query-offline": {
+      "path": "/home/<user>/cardano-sustained-point-build-20261009/client-dist/build/x86_64-linux/ghc-9.6.7/sustained-query-client-0.0.0/x/sustained-query-offline/noopt/build/sustained-query-offline/sustained-query-offline",
+      "sha256": "36af196c0d921d2dcb90806ebd5ea0d4678ec18b497e9f8c51ba7b39083f9893"
+    }
+  },
+  "incrementalCompatibility": {
+    "evidenceRoot": "/home/<user>/cardano-sustained-point-build-20261009/compatibility-gate",
+    "evidenceSHA256": {
+      "budget.json": "0a9e37676d4cdca39e232db4919f9444d953d9649115edd97f41adc1b647e762",
+      "closure-comparison.json": "9fc2c44fc3441f8e71ee600e89d3e8b77b5b0b174896004f5f3caeea18f35711",
+      "compile-1-result.json": "7ff13d51a09c343ec94732d4f1f067e069ef9f573b7be0aab19616a3decbd8a6",
+      "retained-comparison.json": "228759eec860f3c1b4dd28b86190e456243eb6b313ddd65f7f854009fcbfeb77",
+      "native-regression.log": "d4ed2da163c1fa269bca566b5eaa9c528c06f26e899c61e0ae51e9db2dd867ad",
+      "native-regression-result.json": "9b233c960c89153490cd640094ad0173d36bc252ffd6dd41d632567d4536dff7"
+    },
+    "resourceResult": {
+      "cumulativeSeconds": 132.19455003738403,
+      "remainingSeconds": 167.80544996261597,
+      "allocatedBytes": 3062571008,
+      "logicalBytes": 3027272890,
+      "freeBytes": 721529028608,
+      "exitCode": 0,
+      "OOMKilled": false
+    },
+    "retainedNonemptyPools": 2,
+    "completeStakeDistributionEqual": true,
+    "exactVRFsHashesRationals": true,
+    "epochAndFeesEqual": true,
+    "newAcquiredCapture": false,
+    "protocolAndParameters": "synthetic-only-not-compared",
+    "priorGateObservedSeconds": 938.118889093399,
+    "priorAllowanceSeconds": 900
+  }
 }

@@ -17,7 +17,7 @@ import System.Timeout (timeout)
 import System.IO (stdout, hFlush)
 import qualified Adapter as A
 import Transport (captureAt)
-import StrictJson (readInput)
+import StrictJson (readInput, fields, stringAt, hexBytes)
 import System.Environment (getArgs)
 import System.Exit (die)
 import Control.Concurrent
@@ -220,6 +220,14 @@ main = do
   case args of
     ["fixtures"] -> either die writeOutput wireFixtures
     ["capture-cancel"] -> captureCancel
+    ["project-retained"] -> do
+      input <- readInput (4*maxReplyBytes+1024)
+      obj <- either die pure (decodeObject input)
+      either die pure (fields ["epochHex","utxoHex"] obj)
+      epoch <- either die pure (stringAt "epochHex" obj >>= hexBytes maxReplyBytes)
+      utxo <- either die pure (stringAt "utxoHex" obj >>= hexBytes maxReplyBytes)
+      let capture = Capture (pointAt 1505) (At (BlockNo 66)) (pointAt 1505) (At (BlockNo 66)) (LBS.fromStrict epoch) (LBS.fromStrict utxo) nativeProtocol nativeParameters
+      either die writeOutput (projectCapture capture)
     [] -> runCases
     _ -> die "usage: epoch-query-offline [fixtures]"
 

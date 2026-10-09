@@ -27,3 +27,9 @@ Runtime image sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fca
 ## Checks
 
 The typed harness exercises one acquire, refusals, era/point/block errors, all four reply caps, native malformed/trailing input, 4096/4097 UTxO boundary, immediate public-tip advancement and cancellation. Encoded tests exercise actual Transport/mux, exact native queries and original four payloads, nonneutral nonce/counter JSON shape, required parameter/fee fields, exact derived byte publication and public-wrapper cancellation. Native runtime six groups passed at 1CPU/1GiB; private compile closure contains exactly312 unchanged external units. See CONFORMANCE.json for pinned evidence and limits.
+
+## Retained nonempty stake compatibility
+
+The separately bounded incremental gate adds offline project-retained. It decodes retained original epoch/whole-UTxO CBOR through the same native projection and compares supported ledger fields with retained CLI JSON. Full stake distribution equality passed for two nonempty pools, including exact pool hashes, VRF hashes, rational fractions2/3 and1/3, stake totals, epoch and fees. Six UTxO entries were decoded. The test does not manufacture a new acquisition: its protocol and parameters are synthetic placeholders and are explicitly not compared. The retained evidence remains private and is referenced only by digest. The six encoded/process regression groups also passed after this harness-only change.
+
+The earlier gate was observed at938.12seconds against900seconds after idle freeze/report time; no further build/test ran under that expired allowance. The incremental gate has a distinct300-second allowance and preserves the original budget file unchanged.
