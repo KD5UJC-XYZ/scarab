@@ -212,3 +212,10 @@ derives candidate/evolving nonce changes from a pinned pre-anchor and complete
 original headers, compares independent poststate, and checks rollback/reapply.
 It establishes scoped nonce/VRF evidence, not leadership, epoch rotation, derived
 registration continuity or full consensus.
+
+
+The [bounded epoch-rotation observation](docs/private-cluster-nonce-epoch.md)
+derives one real epoch tick from pre-anchor nonce state and every original header.
+It compares reference exports and restores unknown fields on rollback. Verification
+uses explicitly supplied keys; registration continuity, stake evolution, leadership
+and full consensus remain outside this profile.

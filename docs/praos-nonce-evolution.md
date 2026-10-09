@@ -72,3 +72,10 @@ now demonstrates a real candidate update at slot 555 and freezing at slot 674 fr
 pre-anchor 513, all in epoch 1, with complete originals and paired rollback/reapply.
 This adds boundary evidence within an epoch; the actual epoch tick and per-epoch
 registration/stake context remain untested by that capture.
+
+
+The separate [epoch-rotation capture](private-cluster-nonce-epoch.md) now exercises
+one observed tick at slot 1023 using all four original successors from anchor 910
+to 1047. It derives previousEpochNonce from unknown to known at that tick and
+matches five exported fields. Cross-epoch verification uses an explicit supplied
+key-map assumption; registration/stake evolution and leadership remain unproved.
