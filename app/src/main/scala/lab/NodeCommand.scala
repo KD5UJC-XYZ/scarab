@@ -956,9 +956,20 @@ object NodeCommand:
               val block = SequenceInput
                 .block(s.state.acquisition.originals.last)
                 .fold(f => throw Abort(Failure("applied", "Internal", f.toString)), identity)
+              // Memos preserve original body spans; never hash a re-encoding or intended ID.
+              val transactionIds = block.transactionMemos
+                .map { memo =>
+                  TransactionId
+                    .fromEnvelope(memo)
+                    .fold(
+                      detail => throw Abort(Failure("applied", "Internal", detail)),
+                      id => quote(id.hex)
+                    )
+                }
+                .mkString("[", ",", "]")
               output(s"""{"record":"node-applied",${observed(
                   s
-                )},"transactionCount":${block.transactionMemos.size},${claims(
+                )},"transactionCount":${block.transactionMemos.size},"transactionIds":$transactionIds,${claims(
                   config.durable
                 )}}""")
             }

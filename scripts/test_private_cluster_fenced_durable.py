@@ -105,6 +105,8 @@ class FencedProtocolTests(unittest.TestCase):
             self.assertLess(ops.calls.index(phase+"-demote-start2"),ops.calls.index(phase+"-publish"))
             self.assertLess(ops.calls.index(phase+"-ack"),ops.calls.index(phase+"-exit"))
         self.assertLess(ops.calls.index("A-exit"),ops.calls.index("B-ready"))
+        self.assertLess(ops.calls.index("B-upgrade-start2"),ops.calls.index("B-submit"))
+        self.assertLess(ops.calls.index("B-submit"),ops.calls.index("B-minimum"))
         self.assertLess(ops.calls.index("B-exit"),ops.calls.index("query-final"))
 
     def test_immediate_extra_block_at_each_boundary_is_included_before_fence(self):
@@ -290,7 +292,7 @@ class AdapterTests(unittest.TestCase):
         from types import SimpleNamespace
         class Docker:
             def create(self,*a): return h(8)
-            def call(self,*a,**kw): return SimpleNamespace(stdout='0')
+            def call(self,*a,**kw): return SimpleNamespace(stdout='0',stderr='',returncode=0)
             def remove_key(self,*a): raise ValueError('removal failed')
         with tempfile.TemporaryDirectory() as tmp, patch.object(f,'verify_packet') as verify:
             oracle=f.ExactOracle(Docker(),'v','/c','/b','/n',h(1),'sha256:'+h(2),h(3),clock=lambda:0)
@@ -333,7 +335,7 @@ class RuntimeSchemaTests(unittest.TestCase):
     def run_ack(self,rows,store,tmp):
         from types import SimpleNamespace
         class Docker:
-            def call(self,*a,**kw): return SimpleNamespace(stdout='0')
+            def call(self,*a,**kw): return SimpleNamespace(stdout='0',stderr='',returncode=0)
             def remove(self,*a): pass
         runtime=f.RuntimeProcess(Docker(),h(1),tmp,tmp,tmp,CONTEXT,store,clock=lambda:0)
         runtime.processes['A']=h(600)
@@ -412,18 +414,18 @@ class LiveOpsBoundaryTests(unittest.TestCase):
             d.docker.exec.side_effect=ValueError('deadline exhausted')
             with self.assertRaisesRegex(ValueError,'deadline exhausted'):d.startup_tip_json(1,20)
 
-    def records(self,points):
+    def records(self,points,pair=False):
         result=[]
         for p in points:
             result.extend((dict(record='transfer-range-block',headerEnvelopeHex='80',rawBlockHex='80'),
-                           dict(record='node-applied',blockNo=p.block,scopedAppliedTip=dict(slot=p.slot,hash=p.hash),transactionCount=0)))
+                           dict(record='node-applied',blockNo=p.block,scopedAppliedTip=dict(slot=p.slot,hash=p.hash),transactionCount=2 if pair and not result else 0,transactionIds=list(PAIR) if pair and not result else [])))
         return result
 
     def test_b_frozen_point_confirmed_before_deadline_catchup_uses_existing_reservation(self):
         from types import SimpleNamespace
         time=[10.]
         with tempfile.TemporaryDirectory() as tmp:
-            d=self.driver(tmp,lambda:time[0]); d.stage_deadline=20.; d.budget={'exitRetainDeadline':35.}
+            d=self.driver(tmp,lambda:time[0]); d.pair=[dict(transactionId=t) for t in PAIR]; d.stage_deadline=20.; d.budget={'exitRetainDeadline':35.}
             ops,p=FencedProtocolTests().prepared()
             bar,blocks,fid=ops.demote('A',p); p.freeze('A',bar,blocks,fid)
             p.acknowledge('A',ops.await_ack('A',p.fences['A'])); p.exited('A',h(600),0,h(4),h(5))
@@ -435,7 +437,7 @@ class LiveOpsBoundaryTests(unittest.TestCase):
             deadlines=[]
             def rows(phase,deadline):
                 deadlines.append(deadline); time[0]=24.
-                return self.records([b.point for b in new])
+                return self.records([b.point for b in new],pair=True)
             d.runtime=SimpleNamespace(rows=rows)
             result,raw,_=d.demote('B',p)
             self.assertEqual(result,selected); self.assertEqual(len(raw),4); self.assertEqual(deadlines,[35.])
@@ -446,7 +448,7 @@ class LiveOpsBoundaryTests(unittest.TestCase):
         from types import SimpleNamespace
         time=[10.]
         with tempfile.TemporaryDirectory() as tmp:
-            d=self.driver(tmp,lambda:time[0]); d.stage_deadline=80.; d.budget={'exitRetainDeadline':98.}
+            d=self.driver(tmp,lambda:time[0]); d.pair=[dict(transactionId=t) for t in PAIR]; d.stage_deadline=80.; d.budget={'exitRetainDeadline':98.}
             ops,p=FencedProtocolTests().prepared(); new=originals(p.tip,7)
             selected=barrier(p.roles,roles(8,False),new[-1].point)
             d.roles=SimpleNamespace(change=lambda *_:selected); d.verify_reference=lambda *_:None
@@ -473,17 +475,18 @@ class LiveOpsBoundaryTests(unittest.TestCase):
             with self.assertRaises(BaseExceptionGroup): d.cleanup()
             self.assertEqual(calls,['/work/role1.log','/work/role2.log','cleanup'])
 
-    def test_submission_actual_results_retained_before_any_upgrade(self):
+    def test_submission_actual_results_retained_after_active_upgrade(self):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as tmp:
             d=self.driver(tmp,lambda:10); d.stage_deadline=20
-            d.roles=SimpleNamespace(active={1:{'forging':False},2:{'forging':False}})
+            d.roles=SimpleNamespace(active={1:{'forging':True,'pid':123},2:{'forging':True}},identity=lambda *_:dict(startTicks='1'))
+            d.docker=SimpleNamespace(exec=lambda *a,**kw:SimpleNamespace(returncode=0,stdout='',stderr=''))
             d.pair=[dict(transactionId=h(800+i),signedPath='/work/tx'+str(i)) for i in range(2)]
             d.execute=lambda *a,**kw:SimpleNamespace(returncode=0,stdout='accepted\n',stderr='')
-            d.submit_pair(None)
+            d.submit_pair(SimpleNamespace(stage='B-producing'))
             for i in range(2):
                 row=json.loads((d.out/f'submission-{i}.json').read_text())
-                self.assertEqual(row['stdout'],'accepted\n'); self.assertTrue(row['bothProducersKeyless'])
+                self.assertEqual(row['stdout'],'accepted\n'); self.assertTrue(row['bothProducersActive'])
                 self.assertEqual(row['transactionId'],h(800+i))
 
 
@@ -684,3 +687,156 @@ class StartupOriginTests(unittest.TestCase):
         for raw in ('{','[]','null','{"block":0,"block":0}',r'{"block":0,"\u0062lock":0}',
                     '{"block":1e0,"slot":0,"hash":"'+h(1)+'","era":"Conway","epoch":0}'):
             with self.subTest(raw=raw),self.assertRaises(ValueError):f.reference_tip(raw,True)
+
+
+class MarkerInclusionTests(unittest.TestCase):
+    def row(self,depth,ids):
+        return dict(record='node-applied',depth=depth,blockNo=100+depth,
+                    scopedAppliedTip=dict(slot=2000+depth*10,hash=h(depth)),
+                    transactionCount=len(ids),transactionIds=list(ids))
+    def test_only_exact_pair_one_block_either_order_is_eligible(self):
+        for ids in (PAIR,PAIR[::-1]):
+            rows=[self.row(10,()),self.row(11,ids),self.row(12,())]
+            applied,observed,ready=f.applied_transactions(rows,'B',PAIR,True)
+            self.assertTrue(ready);self.assertEqual(observed,[(),ids,()]);self.assertEqual(applied,rows)
+        self.assertFalse(f.applied_transactions([self.row(10,())],'B',PAIR)[2])
+        self.assertFalse(f.applied_transactions([self.row(3,())],'A',PAIR)[2])
+    def test_wrong_split_duplicate_extra_and_missing_telemetry_fail(self):
+        bad=[[self.row(10,(h(1),h(2)))],[self.row(10,(PAIR[0],)),self.row(11,(PAIR[1],))],
+             [self.row(10,(PAIR[0],PAIR[0]))],[self.row(10,PAIR),self.row(11,PAIR)],
+             [self.row(10,PAIR+(h(3),))],[dict(self.row(10,PAIR),transactionCount=0)],
+             [dict(self.row(10,PAIR),transactionIds=None)],[self.row(10,()),self.row(10,())]]
+        for rows in bad:
+            with self.subTest(rows=rows),self.assertRaises(ValueError):f.applied_transactions(rows,'B',PAIR)
+        with self.assertRaises(ValueError):f.applied_transactions([self.row(3,PAIR)],'A',PAIR)
+        with self.assertRaisesRegex(ValueError,'missing'):f.applied_transactions([self.row(10,())],'B',PAIR,True)
+    def driver(self,tmp):
+        from types import SimpleNamespace
+        d=StartupOriginTests().driver(tmp)
+        d.pair=[dict(transactionId=t,signedPath='/work/tx'+str(i)) for i,t in enumerate(PAIR)]
+        d.protocol=SimpleNamespace(anchor=f.Point(100,2000,h(100)),phase_start=9,stage='B-producing')
+        d.stage_deadline=20
+        return d
+    def test_minimum_without_marker_waits_then_exact_pair_allows(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp);d.tip=lambda *_:f.Point(112,2120,h(12))
+            rows=iter([[self.row(10,())],[self.row(10,()),self.row(11,PAIR)]])
+            d.runtime=SimpleNamespace(rows=lambda *_:next(rows))
+            with patch.object(f.time,'sleep') as sleep:d.await_minimum('B',12)
+            sleep.assert_called_once()
+    def test_missing_marker_hard_depth_and_deadline_never_publish(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp);d.tip=lambda *_:f.Point(116,2160,h(16))
+            d.runtime=SimpleNamespace(rows=lambda *_:[self.row(i,()) for i in range(10,17)])
+            with self.assertRaisesRegex(ValueError,'hard phase depth'):d.await_minimum('B',12)
+            d.tip=lambda *_:f.Point(112,2120,h(12));now=[10.];d.clock=lambda:now[0]
+            d.runtime=SimpleNamespace(rows=lambda *_:[self.row(i,()) for i in range(10,13)])
+            with patch.object(f.time,'sleep',side_effect=lambda _:now.__setitem__(0,21)):
+                with self.assertRaisesRegex(TimeoutError,'marker'):d.await_minimum('B',12)
+    def test_active_producer_same_identity_socket_and_once_submission(self):
+        from types import SimpleNamespace
+        for fail in (False,True):
+            with self.subTest(fail=fail),tempfile.TemporaryDirectory() as tmp:
+                d=self.driver(tmp);calls=[];identity=dict(startTicks='123')
+                d.roles=SimpleNamespace(active={1:dict(pid=123,forging=True),2:dict(forging=True)},identity=lambda *_:identity)
+                d.docker=SimpleNamespace(exec=lambda *a,**kw:SimpleNamespace(returncode=0,stdout='',stderr=''))
+                def execute(*args,**kw):
+                    calls.append(args);return SimpleNamespace(returncode=1 if fail else 0,stdout='result',stderr='detail')
+                d.execute=execute
+                if fail:
+                    with self.assertRaisesRegex(ValueError,'submission failed'):d.submit_pair(d.protocol)
+                else:d.submit_pair(d.protocol)
+                self.assertEqual(len(calls),1 if fail else 2)
+                self.assertTrue(all(x[-1]=='/sockets/node1.sock' for x in calls))
+                receipt=json.loads((d.out/'submission-0.json').read_text())
+                self.assertEqual(receipt['producerIdentity'],identity);self.assertTrue(receipt['bothProducersActive'])
+                self.assertEqual(d.stage_deadline,20)
+    def test_submission_rejects_keyless_or_changed_identity_before_cli(self):
+        from types import SimpleNamespace
+        for keyless in (True,False):
+            with tempfile.TemporaryDirectory() as tmp:
+                d=self.driver(tmp);identities=iter([dict(startTicks='1'),dict(startTicks='2')])
+                d.roles=SimpleNamespace(active={1:dict(pid=123,forging=not keyless),2:dict(forging=True)},identity=lambda *_:next(identities))
+                d.docker=SimpleNamespace(exec=lambda *a,**kw:SimpleNamespace(returncode=0,stdout='',stderr=''))
+                with patch.object(d,'execute') as submit:
+                    with self.assertRaises(ValueError):d.submit_pair(d.protocol)
+                    submit.assert_not_called()
+    def test_scala_nonzero_exit_retains_status_and_output_before_failure(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp);removed=[]
+            d.docker=SimpleNamespace(create=lambda *_:h(1),remove_key=lambda *x:removed.append(x),
+                call=lambda op,*a,**kw:SimpleNamespace(returncode=0,stdout='2\n' if op=='wait' else '{"error":"actual Scala failure"}\n',stderr='' if op=='wait' else 'diagnostic'))
+            with self.assertRaisesRegex(ValueError,'Scala subprocess exit0'):d.scala(['node-fence-audit'],'final-audit',20)
+            self.assertEqual(json.loads((d.out/'final-audit-exit.json').read_text())['stdout'],'2\n')
+            self.assertIn('actual Scala failure',(d.out/'final-audit-stdout.md').read_text())
+            self.assertEqual((d.out/'final-audit-stderr.md').read_text(),'diagnostic')
+            self.assertEqual(d.diagnostic_stage,'scala-final-audit');self.assertEqual(len(removed),1)
+
+    def test_retained_empty_live3_trace_cannot_declare_B_fence(self):
+        import os
+        from types import SimpleNamespace
+        from validated_checkpoint_restart import block_effect
+        directory=os.environ.get('ADAPTIVE_MARKER_EMPTY_EVIDENCE')
+        if not directory:self.skipTest('optional retained empty live3 evidence')
+        root=Path(directory)
+        raw=(root/'context/phase-B-stdout.md').read_text()
+        rows=f.log_rows(raw);pair=tuple((root/f'transaction-{i}-id.md').read_text().strip() for i in (0,1))
+        captures=[r for r in rows if r.get('record')=='transfer-range-block']
+        applied=[r for r in rows if r.get('record')=='node-applied']
+        self.assertEqual(len(captures),len(applied));self.assertGreaterEqual(len(applied),3)
+        for capture,row in zip(captures,applied):
+            self.assertEqual(block_effect(bytes.fromhex(capture['rawBlockHex']))['transactionCount'],0)
+            self.assertEqual(row['transactionCount'],0)
+        # Legacy rows lack the additive schema and fail closed unchanged.
+        with self.assertRaisesRegex(ValueError,'identities required'):f.applied_transactions(rows,'B',pair,True)
+        # Mock only the new telemetry seam as [] justified by decoded originals;
+        # preserve retained files. This exercises the missing-marker fence guard.
+        modeled=copy.deepcopy(rows)
+        for row in modeled:
+            if row.get('record')=='node-applied':row['transactionIds']=[]
+        loaded=f.unique_record(rows,'node-loaded');tip=loaded['scopedAppliedTip']
+        final=applied[-1];ftip=final['scopedAppliedTip'];point=f.Point(final['blockNo'],ftip['slot'],ftip['hash'])
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp);d.pair=[dict(transactionId=t) for t in pair]
+            d.budget={'exitRetainDeadline':30};d.verify_reference=lambda *_:None
+            d.roles=SimpleNamespace(change=lambda *_:SimpleNamespace(checked=lambda *_:point))
+            d.runtime=SimpleNamespace(rows=lambda *_:modeled)
+            previous=SimpleNamespace(tip=f.Point(loaded['blockNo'],tip['slot'],tip['hash']))
+            with patch.object(d,'publish') as publish:
+                with self.assertRaisesRegex(ValueError,'marker block missing'):d.demote('B',previous)
+                publish.assert_not_called()
+            self.assertFalse(any(d.control.glob('fence-*')))
+
+    def test_runtime_nonzero_exit_collects_final_rows_before_rejecting(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            calls=[]
+            docker=SimpleNamespace(call=lambda *_a,**_k:SimpleNamespace(stdout='2',stderr='',returncode=0))
+            runtime=f.RuntimeProcess(docker,h(1),tmp,tmp,tmp,CONTEXT,h(2),clock=lambda:0)
+            runtime.processes['B']=h(3);runtime.wait_record=lambda *_:([],{})
+            runtime.rows=lambda *_:calls.append('final logs') or []
+            with self.assertRaisesRegex(ValueError,'graceful exit0'):runtime.acknowledge('B',None,10)
+            self.assertEqual(calls,['final logs'])
+            self.assertEqual(json.loads((Path(tmp)/'phase-B-exit.json').read_text())['stdout'],'2')
+
+    def test_real_unix_socket_owner_guard_without_awk(self):
+        import os,socket,subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            path=str(Path(tmp)/'owned.sock')
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as sock:
+                sock.bind(path);sock.listen(1)
+                script=f.socket_owner_command(os.getpid(),path)
+                self.assertNotIn('awk',script)
+                self.assertEqual(subprocess.run(['/bin/sh','-c',script],capture_output=True,timeout=2).returncode,0)
+                self.assertNotEqual(subprocess.run(['/bin/sh','-c',f.socket_owner_command(2147483647,path)],capture_output=True,timeout=2).returncode,0)
+                self.assertNotEqual(subprocess.run(['/bin/sh','-c',f.socket_owner_command(os.getpid(),path+'-missing')],capture_output=True,timeout=2).returncode,0)
+                # Unlink/rebind leaves two live kernel entries with this path;
+                # ambiguity is terminal even though one inode is owned here.
+                os.unlink(path)
+                with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as duplicate:
+                    duplicate.bind(path)
+                    self.assertNotEqual(subprocess.run(['/bin/sh','-c',script],capture_output=True,timeout=2).returncode,0)
+            self.assertNotEqual(subprocess.run(['/bin/sh','-c',script],capture_output=True,timeout=2).returncode,0)

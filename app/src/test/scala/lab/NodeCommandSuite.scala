@@ -905,6 +905,23 @@ class NodeCommandSuite extends munit.FunSuite:
         finally in.close()
       assert(bytes.length <= 20 * 1024 * 1024)
       get(CoherentSequenceCommand.captures(Bytes.fromArray(bytes)))
+    // Independent telemetry expectation: hash original block body-array spans directly,
+    // without SequenceInput's reconstructed transaction memos or TransactionId.fromEnvelope.
+    def originalBodyIds(original: Original): Vector[String] =
+      def array(node: Node): Vector[Node] = node.value match
+        case Value.Arr(values) => values
+        case _                 => fail("retained Conway array required")
+      val outer = array(get(Cbor.decode(original.block)))
+      val blockFields = array(outer(1))
+      array(blockFields(1)).map(body => Blake2b.hash256.hash(body.original).hex)
+    def checkAppliedTransactions(line: String, original: Original): Unit =
+      val expected = originalBodyIds(original)
+      assertEquals(
+        field(line, "transactionIds"),
+        ReferenceJson.Json.Arr(expected.map(ReferenceJson.Json.Str(_)))
+      )
+      assertEquals(field(line, "transactionCount"), ReferenceJson.Json.Num(expected.size.toString))
+      assertEquals(field(line, "scopedAppliedTip"), pointJson(point(original)))
     def forwards(os: Vector[Original]) = os.toList.map(o => IO.pure(Event.Forward(o.envelope)))
     def fetch(os: Vector[Original])(p: ChainSync.Point) = IO(os.find(point(_) == p).get.block)
     test(
@@ -1068,6 +1085,9 @@ class NodeCommandSuite extends munit.FunSuite:
       "retained node publishes source-bound originals with separate download cursors and no oracle"
     ) {
       val c = context; val os = originals
+      assert(os.exists(o => originalBodyIds(o).isEmpty), "retained empty block required")
+      assert(os.exists(o => originalBodyIds(o).nonEmpty), "retained transaction block required")
+
       Ref
         .of[IO, Vector[String]](Vector.empty)
         .flatMap { logs =>
@@ -1089,6 +1109,8 @@ class NodeCommandSuite extends munit.FunSuite:
             val applied = lines.filter(s => record(s) == "node-applied")
             assertEquals(downloads.size, os.size * 2)
             assertEquals(applied.size, os.size)
+            applied.zip(os).foreach((line, original) => checkAppliedTransactions(line, original))
+
             downloads.grouped(2).zipWithIndex.foreach { (pair, i) =>
               assertEquals(
                 pair.map(s => field(s, "phase")),
@@ -1158,13 +1180,8 @@ class NodeCommandSuite extends munit.FunSuite:
               assertEquals(field(line, "appliedClaim"), ReferenceJson.Json.Lit("false"))
             }
             val applied = lines.filter(line => record(line) == "node-applied")
-            applied.zip(os).foreach { (line, original) =>
-              assertEquals(
-                field(line, "transactionCount"),
-                ReferenceJson.Json
-                  .Num(get(SequenceInput.block(original)).transactionMemos.size.toString)
-              )
-            }
+            assertEquals(applied.size, os.size)
+            applied.zip(os).foreach((line, original) => checkAppliedTransactions(line, original))
             assertEquals(lines.count(line => record(line) == "node-anchor-advance"), os.size - 1)
             assertEquals(record(lines.last), "node-state")
             assertEquals(

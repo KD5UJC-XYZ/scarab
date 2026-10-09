@@ -294,8 +294,8 @@ def run_stages(ops):
             ops.remaining_wire(MAX_EVENTS-protocol.events,MAX_BYTES-protocol.returned_bytes)
             view,clock=ops.start_ready(phase,protocol)
             protocol.ready(phase,view,clock)
-            if phase=="B": ops.submit_pair(protocol)
             protocol.produce(phase,ops.upgrade(phase,protocol))
+            if phase=="B": ops.submit_pair(protocol)
             ops.await_minimum(phase,9 if phase=="A" else protocol.phase_start+3)
             barrier,originals,fence_id=ops.demote(phase,protocol)
             fence=protocol.freeze(phase,barrier,originals,fence_id)
@@ -649,6 +649,43 @@ def normalized_view(row,projection,cid,context,store_id,phase):
     result['cleanupFailure']=row.get('cleanupFailure')
     return result
 
+def socket_owner_command(pid,socket_path='/sockets/node1.sock'):
+    """POSIX shell builtins plus readlink, present in the pinned reference image."""
+    require(type(pid) is int and pid>0,"owned socket PID")
+    require(type(socket_path) is str and socket_path.startswith('/') and not any(c.isspace() for c in socket_path),"exact socket pathname")
+    return ("set -eu; target="+shlex.quote(socket_path)+"; count=0; inode=; "
+        "while read -r num refs proto flags kind state candidate path; do "
+        "if [ \"$path\" = \"$target\" ]; then count=$((count+1)); inode=$candidate; fi; done < /proc/net/unix; "
+        "test \"$count\" -eq 1; case \"$inode\" in ''|*[!0-9]*) exit 1;; esac; "
+        "for fd in /proc/"+str(pid)+"/fd/*; do "
+        "if [ \"$(readlink \"$fd\" 2>/dev/null || true)\" = \"socket:[$inode]\" ]; then exit 0; fi; done; exit 1")
+
+def applied_transactions(rows,phase,pair,require_marker=False):
+    """IDs are Scala observations of accepted original body bytes, not counts.
+
+    This is a controller eligibility guard; the independent final Scala audit
+    still compares original bodies, witnesses, grouping and reference state.
+    """
+    require(phase in ('A','B') and len(pair)==2 and len(set(pair))==2 and all(hex32(x) for x in pair),"two intended marker identities")
+    applied=[r for r in rows if r.get('record')=='node-applied']
+    require(len(applied)<=MAX_DEPTH,"bounded applied marker observations")
+    observed=[]; markers=0; points=set()
+    for row in applied:
+        ids=row.get('transactionIds'); count=row.get('transactionCount')
+        require(type(ids) is list and type(count) is int and count==len(ids)
+                and all(hex32(x) for x in ids),"actual applied transaction identities required")
+        tip=row.get('scopedAppliedTip')
+        require(type(tip) is dict and set(tip)=={'slot','hash'},"applied marker point")
+        point=Point(row.get('blockNo'),tip['slot'],tip['hash'])
+        require(point not in points,"duplicate applied marker point"); points.add(point)
+        if ids:
+            require(phase=='B' and len(ids)==2 and len(set(ids))==2 and set(ids)==set(pair),"only both exact marker IDs in one block")
+            markers+=1
+            require(markers==1,"duplicate marker block")
+        observed.append(tuple(ids))
+    require(not require_marker or markers==1,"exact marker block missing before fence")
+    return applied,observed,markers==1
+
 class RuntimeProcess:
     """One bounded foreground engine in an owned detached container; no restart."""
     def __init__(self,docker,reference,repo,evidence,control,context,store_id,clock=time.monotonic):
@@ -694,7 +731,10 @@ class RuntimeProcess:
             rows=self.rows(phase,deadline); selected=[r for r in rows if r.get('record')==name]
             require(len(selected)<=1,"duplicate lifecycle record")
             if selected: return rows,selected[0]
-            require(self.docker.inspect(self.processes[phase],deadline)['State']['Running'],"runtime exited before "+name)
+            state=self.docker.inspect(self.processes[phase],deadline)['State']
+            if not state['Running']:
+                (self.evidence/('phase-'+phase+'-exit.json')).write_bytes(canonical(dict(exitCode=state.get('ExitCode'),awaitedRecord=name)))
+            require(state['Running'],"runtime exited before "+name)
             time.sleep(.02)
         raise TimeoutError('runtime lifecycle deadline: '+name)
     def ready(self,phase,fence_id,minimum,maximum,deadline):
@@ -714,8 +754,11 @@ class RuntimeProcess:
         # ACK is only usable after actual owned process exit0, final logs and
         # confirmed container removal. No successor process starts beforehand.
         cid=self.processes[phase]
-        require(self.docker.call('wait',cid,deadline=deadline,limit=1024).stdout.strip()=='0',"runtime graceful exit0")
-        rows=self.rows(phase,deadline); ack=unique_record(rows,'node-fence-ack')
+        status=self.docker.call('wait',cid,deadline=deadline,limit=1024)
+        (self.evidence/('phase-'+phase+'-exit.json')).write_bytes(canonical(dict(stdout=status.stdout,stderr=status.stderr,returnCode=status.returncode)))
+        rows=self.rows(phase,deadline)
+        require(status.stdout.strip()=='0',"runtime graceful exit0")
+        ack=unique_record(rows,'node-fence-ack')
         state=unique_record(rows,'node-state'); outcome=unique_record(rows,'bounded-node-outcome',True)
         require(rows.index(state)<rows.index(ack)<rows.index(outcome) and outcome.get('typedStop')=='TargetReached'
                 and outcome.get('peerResourcesFinalized') is True and ack.get('resourcesFinalized') is True
@@ -952,6 +995,7 @@ class LiveOps:
         return binary
     def scala(self,command,name,end,network=False):
         from private_cluster import JDK
+        self.diagnostic_stage='scala-'+name
         cid=None; key='scala-'+name
         try:
             cid=self.docker.create(key,['--network','container:'+self.ref if network else 'none','--cpus','1','--memory','1g','--memory-swap','1g',
@@ -959,9 +1003,11 @@ class LiveOps:
                 '--tmpfs','/tmp:rw,nosuid,nodev,size=64m','--mount','type=bind,src='+str(self.repo)+',dst=/work,readonly',
                 '--mount','type=bind,src='+str(self.out)+',dst=/evidence,readonly','--workdir','/work','--entrypoint','/bin/sh',JDK,'-c',
                 'exec java -XX:ActiveProcessorCount=1 -Xmx512m -cp "$(cat app/target/runtime-classpath.txt)" lab.Main '+shlex.join(command)],end-2)
-            require(self.docker.call('wait',cid,deadline=end-2,limit=1024).stdout.strip()=='0',"bounded Scala subprocess exit0")
+            status=self.docker.call('wait',cid,deadline=end-2,limit=1024)
+            self.save(name+'-exit.json',dict(stdout=status.stdout,stderr=status.stderr,returnCode=status.returncode))
             logs=self.docker.call('logs',cid,deadline=end-1,limit=MAX_BYTES)
             self.save(name+'-stdout.md',logs.stdout); self.save(name+'-stderr.md',logs.stderr)
+            require(status.stdout.strip()=='0',"bounded Scala subprocess exit0")
             return logs.stdout
         finally: self.docker.remove_key(key,end)
     def bootstrap(self):
@@ -1019,6 +1065,7 @@ class LiveOps:
     def wire_totals(self,phase): return self.totals[phase] if phase=='bootstrap' else self.runtime.wire(phase)
     def remaining_wire(self,events,size): self.remaining=(events,size)
     def start_ready(self,phase,p):
+        self.diagnostic_stage=phase+'-runtime-ready'
         self.current=phase; minimum=9 if phase=='A' else len(p.originals)+3; maximum=12 if phase=='A' else 16
         # A create/seed replay and readiness share eight seconds; B load and
         # checked intersection share the handoff's remaining five seconds.
@@ -1037,27 +1084,54 @@ class LiveOps:
         self.verify_reference(end); result=self.roles.change(True,end); self.verify_reference(end)
         return result
     def submit_pair(self,p):
+        self.diagnostic_stage='B-active-producer-submission'
         until=min(self.stage_deadline,self.clock()+3); previous=self.stage_deadline; self.stage_deadline=until
         try:
+            require(p.stage=='B-producing' and all(self.roles.active[n]['forging'] for n in (1,2)),"submission after both producer upgrades")
+            identity=self.roles.identity(1,until); pid=self.roles.active[1]['pid']
+            require(type(pid) is int and pid>0,"owned producer PID")
+            # The replacement removes the old pathname before starting. Wait
+            # only for this owned process's socket, without restarting it.
+            while self.clock()<until:
+                probe=self.docker.exec(self.ref,'test','-S','/sockets/node1.sock',deadline=until,check=False)
+                require(probe.returncode in (0,1),"active producer socket probe")
+                if probe.returncode==0: break
+                time.sleep(.02)
+            else: raise TimeoutError('active producer socket readiness')
+            shell=socket_owner_command(pid)
+            self.docker.exec(self.ref,'/bin/sh','-c',shell,deadline=until)
+            require(self.roles.identity(1,until)==identity,"producer identity before submission")
+            self.save('submission-target-before.json',dict(node=1,socket='/sockets/node1.sock',forging=True,identity=identity))
             for index,row in enumerate(self.pair):
+                self.diagnostic_stage='B-submit-'+str(index)
+                require(self.clock()<until and self.roles.identity(1,until)==identity,"same active producer before each submission")
                 before=self.clock()
                 result=self.execute('cardano-cli','conway','transaction','submit','--tx-file',row['signedPath'],
-                                    '--testnet-magic','1082026','--socket-path','/sockets/node3.sock',check=False)
+                                    '--testnet-magic','1082026','--socket-path','/sockets/node1.sock',check=False)
                 self.save('submission-'+str(index)+'.json',dict(transactionId=row['transactionId'],returnCode=result.returncode,
                     stdout=result.stdout,stderr=result.stderr,startedMonotonic=before,finishedMonotonic=self.clock(),
-                    phase='B',afterCheckedReady=True,bothProducersKeyless=all(not self.roles.active[n]['forging'] for n in (1,2))))
+                    phase='B',afterCheckedReady=True,bothProducersActive=True,producerNode=1,producerSocket='/sockets/node1.sock',producerIdentity=identity))
                 require(result.returncode==0,"original pair submission failed")
-            require(self.clock()<=until,"paired submission budget")
+            after=self.roles.identity(1,until)
+            self.save('submission-target-after.json',dict(node=1,socket='/sockets/node1.sock',forging=True,identity=after))
+            require(after==identity and self.clock()<=until,"paired submission identity and budget")
         finally: self.stage_deadline=previous
     def await_minimum(self,phase,minimum):
         p=self.protocol; ceiling=12 if phase=='A' else 16
+        pair=tuple(x['transactionId'] for x in self.pair)
         while self.clock()<self.stage_deadline:
             tip=self.tip(3,self.stage_deadline); depth=tip.block-p.anchor.block
+            self.diagnostic_stage=phase+'-marker-inclusion'
             require(depth<=ceiling and tip.slot//1000==p.anchor.slot//1000,"hard phase depth/epoch bound")
-            if depth>=minimum: return
-            self.runtime.rows(phase,self.stage_deadline) # bounded observed logs; output failure is terminal
+            rows=self.runtime.rows(phase,self.stage_deadline)
+            applied,_,marker=applied_transactions(rows,phase,pair)
+            require(all(type(r.get('depth')) is int and p.phase_start<r['depth']<=ceiling
+                        and r['blockNo']==p.anchor.block+r['depth'] and r['scopedAppliedTip']['slot']//1000==p.anchor.slot//1000
+                        for r in applied),"bounded phase applied depths")
+            if depth>=minimum and (phase=='A' or marker): return
+            require(depth<ceiling,"marker/minimum unavailable at hard phase depth")
             time.sleep(.02)
-        raise TimeoutError('production opportunity expired')
+        raise TimeoutError('production opportunity expired before marker/minimum')
     def demote(self,phase,p):
         end=min(self.stage_deadline,self.clock()+5)
         self.verify_reference(end); barrier=self.roles.change(False,end); self.verify_reference(end); point=barrier.checked(False)
@@ -1076,13 +1150,14 @@ class LiveOps:
             require(not applied or applied[-1]['blockNo']<=point.block,"runtime beyond frozen point")
             time.sleep(.02)
         else: raise TimeoutError('complete live originals before immutable fence')
+        self.diagnostic_stage=phase+'-frozen-marker-revalidation'
+        applied,observed,_=applied_transactions(rows,phase,tuple(x['transactionId'] for x in self.pair),require_marker=phase=='B')
         captures=[r for r in rows if r.get('record')=='transfer-range-block']
         require(len(captures)==len(applied)==point.block-p.tip.block,"every acquired original has one publication")
         previous=p.tip; originals=[]
-        for raw,row in zip(captures,applied):
+        for raw,row,ids in zip(captures,applied,observed):
             tip=row['scopedAppliedTip']; current=Point(row['blockNo'],tip['slot'],tip['hash'])
-            require(row.get('transactionCount')==0 if phase=='A' else row.get('transactionCount') in (0,2),"bounded original transaction shape")
-            originals.append(Original(current,previous.hash,sha(bytes.fromhex(raw['headerEnvelopeHex'])),sha(bytes.fromhex(raw['rawBlockHex']))))
+            originals.append(Original(current,previous.hash,sha(bytes.fromhex(raw['headerEnvelopeHex'])),sha(bytes.fromhex(raw['rawBlockHex'])),ids))
             previous=current
         self.phase_raw[phase]=captures
         return barrier,originals,self.fence_ids[phase]
@@ -1090,6 +1165,7 @@ class LiveOps:
         publish_fence(self.control/('fence-'+phase),fence)
         require(self.clock()<(self.handoff_deadline if phase=='A' else self.budget['exitRetainDeadline']),"fence publication cumulative deadline")
     def await_ack(self,phase,fence):
+        self.diagnostic_stage=phase+'-runtime-ack-exit'
         until=self.budget['exitRetainDeadline'] if phase=='B' else self.handoff_deadline
         return self.runtime.acknowledge(phase,fence,until)
     def exit_and_retain(self,phase):
@@ -1113,6 +1189,7 @@ class LiveOps:
         require(all(Point(t['block'],t['slot'],t['hash'])==p.tip for t in self.growth[0]),"tail baseline exact final point")
         self.roles.change(True,min(self.budget['tailResumeDeadline'],self.clock()+5))
     def audit(self,p):
+        self.diagnostic_stage='final-audit'
         text=self.scala(['node-fence-audit','/evidence/context','/evidence/oracle','/evidence/all-originals-final-state.md','2',str(len(p.originals))],
                         'final-audit',min(self.budget['tailDeadline'],self.clock()+65))
         report=unique_record(log_rows(text),'node-fence-audit',True)
