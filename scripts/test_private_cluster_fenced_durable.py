@@ -576,7 +576,7 @@ class StartupOriginTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'duplicate'): f.reference_tip('{"era":"Conway","era":"Conway"}',True)
 
     def test_malformed_concrete_fields_are_terminal(self):
-        for field,value in (('block',0),('block',True),('slot',None),('slot',-1),('hash','0'*63),('epoch',True),('epoch',-1)):
+        for field,value in (('block',-1),('block',True),('slot',None),('slot',-1),('hash','0'*63),('epoch',True),('epoch',-1)):
             row=self.concrete();row[field]=value
             with self.subTest(field=field,value=value),self.assertRaises(ValueError): f.reference_tip(json.dumps(row),True)
 
@@ -632,3 +632,55 @@ class StartupOriginTests(unittest.TestCase):
                 funding.assert_called_once_with(d)
             self.assertEqual(clean,[True]);failure=json.loads((d.out/'terminal-diagnostic.json').read_text())
             self.assertEqual(failure['stage'],'bootstrap-funding');self.assertEqual(failure['message'],'funding failed once')
+
+    def test_complete_zero_points_are_concrete_in_both_query_modes(self):
+        # Public synthetic shape matching the pinned CLI origin/block-zero output;
+        # no retained private hash or response bytes are embedded here.
+        for slot in (0,4):
+            row=dict(self.ORIGIN,block=0,slot=slot,hash=h(20),slotInEpoch=slot,slotsToEpochEnd=1000-slot)
+            for startup in (False,True):
+                self.assertEqual(f.reference_tip(json.dumps(row),startup),row)
+            self.assertEqual(f.Point(0,slot,h(20)).block,0)
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp); self.scripted(d,[self.ORIGIN,row])
+            self.assertIsNone(d.startup_tip_json(1,20))
+            self.assertEqual(d.startup_tip_json(1,20),row)
+            kinds=[json.loads(p.read_text())['classification'] for p in sorted(d.tip_directory.glob('*-classification.json'))]
+            self.assertEqual(kinds,['startup-origin','concrete-point'])
+
+    def test_point_and_all_numeric_tip_fields_enforce_uint64(self):
+        for field in ('block','slot','epoch','slotInEpoch','slotsToEpochEnd'):
+            for value in (-1,True,False,0.0,1.5,'0',None,2**64):
+                row=self.concrete();row[field]=value
+                with self.subTest(field=field,value=value),self.assertRaises(ValueError):
+                    f.reference_tip(json.dumps(row),True)
+            row=self.concrete();row[field]=2**64-1
+            self.assertEqual(f.reference_tip(json.dumps(row)),row)
+        for bad in (-1,True,0.0,'0',None,2**64):
+            for block,slot in ((bad,0),(0,bad)):
+                with self.subTest(block=block,slot=slot),self.assertRaises(ValueError):f.Point(block,slot,h(1))
+        self.assertEqual(f.Point(2**64-1,2**64-1,h(1)).slot,2**64-1)
+
+    def test_concrete_official_optional_metadata_and_percentage(self):
+        row=dict(block=0,slot=0,hash=h(1),era='Conway',epoch=0)
+        self.assertEqual(f.reference_tip(json.dumps(row)),row)
+        for value in ('0','0.00','12.34','100','100.00'):
+            full=dict(row,slotInEpoch=0,slotsToEpochEnd=1000,syncProgress=value)
+            self.assertEqual(f.reference_tip(json.dumps(full)),full)
+        for value in ('NaN','Infinity','-0','100.01','1e2','100%',' 0.00','00.00',100,True,None):
+            with self.subTest(value=value),self.assertRaises(ValueError):f.reference_tip(json.dumps(dict(row,syncProgress=value)))
+        for bad in (dict(row,unknown=0),dict(row,era=None),dict(row,era='Babbage')):
+            with self.assertRaises(ValueError):f.reference_tip(json.dumps(bad))
+        for required in ('era','epoch'):
+            with self.assertRaises(ValueError):f.reference_tip(json.dumps({k:v for k,v in row.items() if k!=required}))
+
+    def test_partial_null_hash_and_malformed_json_never_become_origin(self):
+        row=dict(self.ORIGIN,block=0,slot=0,hash=h(1))
+        for missing in ('block','slot','hash'):
+            partial={k:v for k,v in row.items() if k!=missing}
+            with self.subTest(missing=missing),self.assertRaises(ValueError):f.reference_tip(json.dumps(partial),True)
+        for value in (None,False,0,'a'*63,'A'*64,'g'*64):
+            with self.subTest(hash=value),self.assertRaises(ValueError):f.reference_tip(json.dumps(dict(row,hash=value)),True)
+        for raw in ('{','[]','null','{"block":0,"block":0}',r'{"block":0,"\u0062lock":0}',
+                    '{"block":1e0,"slot":0,"hash":"'+h(1)+'","era":"Conway","epoch":0}'):
+            with self.subTest(raw=raw),self.assertRaises(ValueError):f.reference_tip(raw,True)

@@ -29,10 +29,23 @@ def reference_tip(raw,allow_origin=False):
     https://github.com/IntersectMBO/cardano-cli/blob/cardano-cli-11.2.3.0/cardano-cli/src/Cardano/CLI/Type/Output.hs
     Only this fixture's complete genesis metadata is retryable at startup.
     Missing/partial/null point fields are never converted into a concrete tip.
+    A complete point with block or slot zero is concrete, not origin. Optional
+    metadata is scalar-checked; concrete geometry is not inferred here.
     """
     row=strict_json(raw,TIP_RESPONSE_LIMIT)
     require(type(row) is dict,"tip must be a JSON object")
     points={'block','slot','hash'}; present=points & set(row)
+    metadata={'era','epoch','slotInEpoch','slotsToEpochEnd','syncProgress'}
+    require(set(row)<=points|metadata,"unknown reference tip fields")
+    for key in ('epoch','slotInEpoch','slotsToEpochEnd'):
+        if key in row:
+            require(type(row[key]) is int and 0<=row[key]<2**64,"bounded tip metadata: "+key)
+    if 'syncProgress' in row:
+        import re
+        from decimal import Decimal
+        value=row['syncProgress']
+        require(type(value) is str and len(value)<=8 and re.fullmatch(r'(?:0|[1-9][0-9]?|100)(?:\.[0-9]{1,4})?',value) is not None
+                and Decimal(value)<=100,"tip percentage text")
     if not present:
         required={'era','epoch','slotInEpoch','slotsToEpochEnd'}
         require(allow_origin and required<=set(row)<=required|{'syncProgress'},"startup origin metadata fields")
@@ -40,16 +53,10 @@ def reference_tip(raw,allow_origin=False):
                 and type(row['slotInEpoch']) is int and row['slotInEpoch']==0
                 and type(row['slotsToEpochEnd']) is int and row['slotsToEpochEnd']==1000,
                 "startup origin fixture geometry")
-        if 'syncProgress' in row:
-            import re
-            from decimal import Decimal
-            value=row['syncProgress']
-            require(type(value) is str and len(value)<=8 and re.fullmatch(r'(?:0|[1-9][0-9]?|100)(?:\.[0-9]{1,4})?',value) is not None
-                    and Decimal(value)<=100,"startup origin percentage text")
         return None
     require(present==points,"partial tip point fields; missing "+','.join(sorted(points-present)))
     require(row.get('era')=='Conway' and type(row.get('epoch')) is int and 0<=row['epoch']<2**64,"Conway reference tip")
-    require(type(row['block']) is int and 0<row['block']<2**64 and type(row['slot']) is int and 0<=row['slot']<2**64,
+    require(type(row['block']) is int and 0<=row['block']<2**64 and type(row['slot']) is int and 0<=row['slot']<2**64,
             "bounded concrete tip numbers")
     Point(row['block'],row['slot'],row['hash'])
     return row
@@ -71,7 +78,7 @@ class Point:
     slot: int
     hash: str
     def __post_init__(self):
-        require(type(self.block) is int and self.block>0 and type(self.slot) is int and self.slot>=0
+        require(type(self.block) is int and 0<=self.block<2**64 and type(self.slot) is int and 0<=self.slot<2**64
                 and hex32(self.hash),"bounded concrete point")
 
 @dataclass(frozen=True)
