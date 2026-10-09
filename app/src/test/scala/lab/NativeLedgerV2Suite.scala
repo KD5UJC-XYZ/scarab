@@ -282,3 +282,155 @@ class NativeLedgerV2Suite extends NativeLedgerSeedFixtures:
     )
     assert(NativeLedgerV2.decode(null, null, null).isLeft)
   }
+
+  test("native diagnostic context preserves exact ten sources and current ledger parameters") {
+    val packet = fixture(bundle(slot = 1))
+    val joined = get(packet.decoded)
+    val context = get(SequenceInput.fromNativeDiagnostic(joined, joined.id))
+    val epoch = joined.ledger.epochComponents
+    assertEquals(context.originals, packet.originals)
+    assertEquals(context.sourcePins, packet.pins)
+    assertEquals(context.originals.keySet, NativeLedgerV2.InputNames)
+    assertNotEquals(context.id, joined.id)
+    assertNotEquals(context.id, epoch.id)
+    assertEquals(context.wholeUTxO, packet.originals("original-whole-utxo.cbor"))
+    assertEquals(context.stakeSourceId, epoch.stake.sourceId)
+    assertEquals(context.ledger.fees, epoch.pots.fees)
+    assertEquals(context.ledger.slot, packet.anchor.slot)
+    assertEquals(context.ledger.environment.parameterDigest, epoch.parameters.current.sha256)
+    assertEquals(context.ledger.environment.genesisDigest, epoch.parameters.genesisSHA256)
+    assertEquals(context.certificates, joined.protocol.certificates)
+    assertEquals(context.certificateSeed, joined.protocol.certificateSeed)
+    assertEquals(context.certificateSeed.tip, packet.anchor)
+    assertEquals(context.nonces, joined.protocol.nonces)
+    assertEquals(context.eligibility, joined.protocol.eligibility)
+    assertEquals(context.protocolAttributionDigest, packet.pins("original-debug-protocol.cbor"))
+    assert(context.diagnosticOnly && context.suppliedCheckpoint)
+    assert(
+      !context.validatedTip && !context.authenticatedSnapshot && !context.referenceSnapshotAtomic
+    )
+  }
+  test("native diagnostic context rejects a wrong join identity or incompatible geometry") {
+    val joined = get(fixture(bundle(slot = 1)).decoded)
+    assert(SequenceInput.fromNativeDiagnostic(joined, bytes(32, 0)).isLeft)
+    val short = get(fixture(bundle(slot = 1, epochLength = 500)).decoded)
+    assert(SequenceInput.fromNativeDiagnostic(short, short.id).isLeft)
+    assert(SequenceInput.fromNativeDiagnostic(null, joined.id).isLeft)
+  }
+  test("ordinary runtime constructors refuse a native diagnostic context") {
+    import cats.effect.IO
+    import cats.effect.unsafe.implicits.global
+    val joined = get(fixture(bundle(slot = 1)).decoded)
+    val context = get(SequenceInput.fromNativeDiagnostic(joined, joined.id))
+    val epoch = joined.ledger.epochComponents
+    val legacy = get(
+      CoherentSequence.syntheticRewardProfile(
+        epoch.parameters.previous.rewards,
+        epoch.parameters.globals,
+        epoch.parameters.randomnessWindow,
+        Some(false),
+        Some(BigInt(0)),
+        Some(false),
+        Some(false),
+        Some(BigInt(0)),
+        Some(false),
+        Some(false)
+      )
+    )
+    (for
+      ordinary <- CoherentSequence.create[IO](context)
+      stake <- CoherentSequence.createWithStake[IO](context, epoch.stake)
+      rewards <- CoherentSequence.createWithSyntheticRewards[IO](
+        context,
+        epoch.stake,
+        legacy,
+        epoch.pots,
+        Map.empty,
+        Map.empty,
+        epoch.reward.componentSHA256
+      )
+    yield
+      assert(ordinary.left.exists(_.toString.contains("diagnostic")))
+      assert(stake.left.exists(_.toString.contains("diagnostic")))
+      assert(rewards.left.exists(_.toString.contains("diagnostic")))
+    ).unsafeToFuture()
+  }
+  test("internal boundary diagnostic initializes checked components but refuses persistence") {
+    import cats.effect.IO
+    import cats.effect.unsafe.implicits.global
+    val joined = get(fixture(bundle(slot = 1)).decoded)
+    val context = get(SequenceInput.fromNativeDiagnostic(joined, joined.id))
+    val ledger = joined.ledger
+    val epoch = ledger.epochComponents
+    val profile = get(
+      CoherentSequence.syntheticBoundaryProfile(
+        ledger.parameterRoles,
+        ledger.pools,
+        ledger.globals,
+        epoch.parameters.randomnessWindow
+      )
+    )
+    (for
+      created <- CoherentSequence.createWithSyntheticBoundary[IO](
+        context,
+        epoch.stake,
+        profile,
+        ledger.governanceInput,
+        epoch.nonMyopic,
+        epoch.pots,
+        Map.empty,
+        Map.empty,
+        epoch.reward.componentSHA256
+      )
+      runtime = get(created)
+      snapshot <- runtime.snapshot
+      checkpoint <- runtime.exportLocalCheckpoint(bytes(32, 8), bytes(32, 9), 0L)
+      recovery <- runtime.exportSyntheticRecovery(bytes(32, 10))
+    yield
+      val state = snapshot.state
+      assertEquals(state.contextId, context.id)
+      assertEquals(state.certificates.state.tip, joined.point)
+      assertEquals(state.ledger.id, context.ledger.id)
+      assertEquals(state.nonces.id, context.nonces.seed.id)
+      assert(state.stake.nonEmpty && state.syntheticRewards.nonEmpty)
+      val boundary = state.syntheticBoundary.getOrElse(fail("checked boundary component missing"))
+      assertEquals(boundary.roles.id, ledger.parameterRoles.id)
+      assertEquals(boundary.globals.id, ledger.globals.id)
+      assertEquals(boundary.poolPayloads, ledger.pools)
+      assertEquals(boundary.nonMyopic.id, epoch.nonMyopic.id)
+      assertEquals(boundary.governanceInput, ledger.governanceInput)
+      assert(!boundary.boundaryApplied && boundary.syntheticOnly)
+      assert(!boundary.nativeConformance && !boundary.durableImport)
+      assert(!state.fullLedgerValidated && !state.consensusValidated)
+      assert(checkpoint.left.exists(_.contains("no checkpoint codec")))
+      assert(recovery.left.exists(_.contains("no recovery model")))
+    ).unsafeToFuture()
+  }
+
+  test("diagnostic durable creation refuses before acquiring a store or invoking recorder") {
+    import cats.effect.IO
+    import cats.effect.unsafe.implicits.global
+    import java.nio.file.Files
+    import scala.concurrent.duration.*
+    val joined = get(fixture(bundle(slot = 1)).decoded)
+    val context = get(SequenceInput.fromNativeDiagnostic(joined, joined.id))
+    (for
+      parent <- IO.blocking(Files.createTempDirectory("native-diagnostic-no-store-"))
+      _ <- (for
+        result <- CoherentSequence
+          .durableCreate[IO](
+            parent.resolve("store"),
+            context,
+            8,
+            1.second,
+            _ => IO.raiseError(new AssertionError("recorder must not run"))
+          )
+          .use(_ => IO.raiseError(new AssertionError("store must not be acquired")))
+          .attempt
+        _ <- IO {
+          assert(result.left.exists(_.getMessage.contains("diagnostic context")))
+          assert(!Files.exists(parent.resolve("store")))
+        }
+      yield ()).guarantee(IO.blocking(Files.deleteIfExists(parent)).void)
+    yield ()).unsafeToFuture()
+  }

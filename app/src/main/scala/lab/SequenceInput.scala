@@ -36,7 +36,11 @@ object SequenceInput:
       val nonces: PraosNonceSnapshot.Prepared,
       val eligibility: PraosEligibility.Context,
       val ledger: ClusterTransition.State,
-      val epoch: BigInt
+      val epoch: BigInt,
+      private[lab] val wholeUTxO: Bytes,
+      private[lab] val stakeSourceId: Bytes,
+      private[lab] val protocolAttributionDigest: Bytes,
+      private[lab] val diagnosticOnly: Boolean
   ):
     val suppliedCheckpoint = true
     val validatedTip = false
@@ -239,8 +243,110 @@ object SequenceInput:
       )
       val checkpoint =
         ledgerGet(ClusterTransition.checkpoint(environment, preUtxo, fees, anchor.slot, id))
-      new Context(id, original, pins, context, seed, nonces, eligibility.context, checkpoint, epoch)
+      val stakeSourceId = ClusterHeaderObservation.sha256(
+        Bytes(pins("preLedgerSha256").value ++ ClusterHeaderObservation.sha256(preUtxo).value)
+      )
+      new Context(
+        id,
+        original,
+        pins,
+        context,
+        seed,
+        nonces,
+        eligibility.context,
+        checkpoint,
+        epoch,
+        preUtxo,
+        stakeSourceId,
+        pins("preProtocolSha256"),
+        diagnosticOnly = false
+      )
     }
+
+  /** Internal supplied-state diagnostic only; this does not confer native admission. */
+  private[lab] def fromNativeDiagnostic(
+      joined: NativeLedgerV2.Checked,
+      expectedJoinId: Bytes
+  ): Either[Failure, Context] = protect {
+    require(
+      joined != null && expectedJoinId != null && expectedJoinId.value != null &&
+        expectedJoinId.size == 32 && joined.id == expectedJoinId,
+      "native diagnostic expected join identity"
+    )
+    get("native-geometry", NativeLedgerV2.checkCrossingGeometry(joined))
+    val epoch = joined.ledger.epochComponents
+    val globals = joined.ledger.globals
+    val anchor = joined.point
+    require(
+      globals.epoch == 0 && epoch.parameters.epoch == 0 &&
+        anchor.slot >= 0 && anchor.slot < globals.stabilityWindow &&
+        joined.crossingBlockers.isEmpty &&
+        epoch.reward.point == anchor && epoch.reward.bindingId == epoch.id &&
+        epoch.reward.original.hex == "80" &&
+        epoch.reward.componentSHA256 == ClusterHeaderObservation.sha256(epoch.reward.original),
+      "native diagnostic early epoch-zero Absent anchor required"
+    )
+    val originals = epoch.originals ++ joined.protocol.originals
+    val pins = epoch.pins ++ joined.protocol.sourcePins
+    require(
+      originals.keySet == NativeLedgerV2.InputNames && pins.keySet == NativeLedgerV2.InputNames &&
+        originals.forall((name, bytes) => ClusterHeaderObservation.sha256(bytes) == pins(name)),
+      "native diagnostic exact ten original/pin sources"
+    )
+    val utxo = originals("original-whole-utxo.cbor")
+    require(
+      epoch.stake.utxo == utxo && epoch.stake.sourceId == epoch.id,
+      "native diagnostic stake source"
+    )
+    val id = ClusterHeaderObservation.sha256(
+      raw("native-sequence-diagnostic-context-v1\n" + joined.id.hex + "\n")
+    )
+    def ledgerGet[A](result: ClusterTransition.Checked[A]): A =
+      result.fold(
+        {
+          case ClusterTransition.Failure.Unsupported(feature) => unsupported(feature)
+          case other => reject("native-ledger-context", other.toString)
+        },
+        identity
+      )
+    val parameters = epoch.parameters.current
+    require(
+      globals.networkMagic > 0 && globals.networkMagic <= BigInt("ffffffff", 16),
+      "native diagnostic network magic"
+    )
+    val environment = ledgerGet(
+      ClusterTransition.environment(
+        globals.genesisSHA256,
+        parameters.sha256,
+        globals.networkMagic.toLong,
+        globals.epoch,
+        9,
+        0,
+        parameters.feePerByte,
+        parameters.feeFixed,
+        parameters.maxTxSize,
+        parameters.coinsPerUTxOByte
+      )
+    )
+    val checkpoint = ledgerGet(
+      ClusterTransition.checkpoint(environment, utxo, epoch.pots.fees, anchor.slot, id)
+    )
+    new Context(
+      id,
+      originals,
+      pins,
+      joined.protocol.certificates,
+      joined.protocol.certificateSeed,
+      joined.protocol.nonces,
+      joined.protocol.eligibility,
+      checkpoint,
+      globals.epoch,
+      utxo,
+      epoch.stake.sourceId,
+      pins("original-debug-protocol.cbor"),
+      diagnosticOnly = true
+    )
+  }
 
   /** Rebind the exact seven original byte sources; no fabricated snapshots or downloaded tips. */
   def fromInput(input: BranchInput.Checked): Either[Failure, Context] = protect {

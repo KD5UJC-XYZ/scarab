@@ -930,8 +930,16 @@ object CoherentSequence:
   private def snapshot(owner: AnyRef, state: State): Snapshot =
     new Snapshot(state, new Fence(owner, state.id, state.revision))
 
-  private def seed(context: SequenceInput.Context): Result[State] = protect {
+  private def seed(
+      context: SequenceInput.Context,
+      allowDiagnostic: Boolean = false
+  ): Result[State] = protect {
     for
+      _ <- Either.cond(
+        context != null && (!context.diagnosticOnly || allowDiagnostic),
+        (),
+        Failure.Rejected("seed", "diagnostic context requires private synthetic-boundary path")
+      )
       _ <- Either.cond(
         context.nonces.seed.certificateStateId == context.certificateSeed.id &&
           context.nonces.seed.lastSlot == context.certificateSeed.tip.slot &&
@@ -956,7 +964,7 @@ object CoherentSequence:
     digest(
       "derived-eligibility-attribution-v1",
       Vector(
-        context.sourcePins("preProtocolSha256"),
+        context.protocolAttributionDigest,
         context.nonces.context.id,
         nonce.before.id,
         nonce.after.id,
@@ -1613,7 +1621,9 @@ object CoherentSequence:
       if expected.isEmpty then NioValidatedCheckpointStore.Mode.Create
       else NioValidatedCheckpointStore.Mode.Resume
     cats.effect.Resource.eval(
-      F.raiseUnless(
+      F.raiseWhen(context.exists(_.diagnosticOnly))(
+        new DurableFailure("diagnostic context has no durable admission")
+      ) *> F.raiseUnless(
         recorderDeadline.length > 0 && recorderDeadline <= scala.concurrent.duration
           .Duration(30, "seconds") && recoveryDeadline.length > 0
       )(new DurableFailure("positive recorder/recovery deadline required"))
@@ -1964,7 +1974,8 @@ object CoherentSequence:
         previousBlocks,
         currentBlocks,
         absentEvidence,
-        maxBlocks
+        maxBlocks,
+        allowDiagnostic = true
       ).flatMap {
         case Left(error) => Sync[F].pure(Left(error))
         case Right(runtime) =>
@@ -2039,52 +2050,57 @@ object CoherentSequence:
       previousBlocks: Map[Bytes, BigInt],
       currentBlocks: Map[Bytes, BigInt],
       absentEvidence: Bytes,
-      maxBlocks: Int = MaxBlocks
-  ): F[Result[Runtime[F]]] = createWithStake[F](context, prepared, maxBlocks).flatMap {
-    case Left(error) => Sync[F].pure(Left(error))
-    case Right(runtime) =>
-      runtime.cell.modify { cell =>
-        val result = protect {
-          val initial = cell.state
-          for
-            _ <- Either.cond(
-              profile != null && pots != null &&
-                profile.globals.epochLength == context.nonces.context.epochLength &&
-                profile.globals.maxSupply == pots.maxSupply && pots.fees == initial.ledger.fees &&
-                profile.globals.activeSlotCoefficient.numerator == context.eligibility.active.numerator &&
-                profile.globals.activeSlotCoefficient.denominator == context.eligibility.active.denominator &&
-                ((4 * profile.globals.securityParameter.get * profile.globals.activeSlotCoefficient.denominator +
-                  profile.globals.activeSlotCoefficient.numerator - 1) / profile.globals.activeSlotCoefficient.numerator) == context.nonces.context.window &&
-                absentEvidence != null && absentEvidence.size == 32,
-              (),
-              Failure.Rejected("synthetic-rewards", "seed geometry/pots/explicit absence assertion")
+      maxBlocks: Int = MaxBlocks,
+      allowDiagnostic: Boolean = false
+  ): F[Result[Runtime[F]]] =
+    createWithStakeImpl[F](context, prepared, maxBlocks, allowDiagnostic).flatMap {
+      case Left(error) => Sync[F].pure(Left(error))
+      case Right(runtime) =>
+        runtime.cell.modify { cell =>
+          val result = protect {
+            val initial = cell.state
+            for
+              _ <- Either.cond(
+                profile != null && pots != null &&
+                  profile.globals.epochLength == context.nonces.context.epochLength &&
+                  profile.globals.maxSupply == pots.maxSupply && pots.fees == initial.ledger.fees &&
+                  profile.globals.activeSlotCoefficient.numerator == context.eligibility.active.numerator &&
+                  profile.globals.activeSlotCoefficient.denominator == context.eligibility.active.denominator &&
+                  ((4 * profile.globals.securityParameter.get * profile.globals.activeSlotCoefficient.denominator +
+                    profile.globals.activeSlotCoefficient.numerator - 1) / profile.globals.activeSlotCoefficient.numerator) == context.nonces.context.window &&
+                  absentEvidence != null && absentEvidence.size == 32,
+                (),
+                Failure.Rejected(
+                  "synthetic-rewards",
+                  "seed geometry/pots/explicit absence assertion"
+                )
+              )
+              rewards = new SyntheticRewards(
+                Boundary.owner(),
+                profile,
+                pots,
+                previousBlocks,
+                currentBlocks,
+                None,
+                None,
+                digest("synthetic-absent-origin", Vector(initial.id, absentEvidence))
+              )
+              _ <- rewardContext(initial, rewards)
+            yield new State(
+              initial.contextId,
+              initial.certificates,
+              initial.nonces,
+              initial.eligibility,
+              initial.ledger,
+              stakeBinding = initial.stakeBinding,
+              rewardBinding = Some(rewards)
             )
-            rewards = new SyntheticRewards(
-              Boundary.owner(),
-              profile,
-              pots,
-              previousBlocks,
-              currentBlocks,
-              None,
-              None,
-              digest("synthetic-absent-origin", Vector(initial.id, absentEvidence))
-            )
-            _ <- rewardContext(initial, rewards)
-          yield new State(
-            initial.contextId,
-            initial.certificates,
-            initial.nonces,
-            initial.eligibility,
-            initial.ledger,
-            stakeBinding = initial.stakeBinding,
-            rewardBinding = Some(rewards)
-          )
+          }
+          result match
+            case Left(error)  => (cell, Left(error))
+            case Right(state) => (Cell(state, Vector.empty), Right(runtime))
         }
-        result match
-          case Left(error)  => (cell, Left(error))
-          case Right(state) => (Cell(state, Vector.empty), Right(runtime))
-      }
-  }
+    }
 
   /** Opt-in atomic stake projection. Fixed registrations/reward balances, same epoch only. No
     * durable codec currently serializes this enlarged tuple.
@@ -2094,6 +2110,14 @@ object CoherentSequence:
       prepared: ConwayStakeSeed.Prepared,
       maxBlocks: Int = MaxBlocks
   ): F[Result[Runtime[F]]] =
+    createWithStakeImpl[F](context, prepared, maxBlocks, allowDiagnostic = false)
+
+  private def createWithStakeImpl[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      maxBlocks: Int,
+      allowDiagnostic: Boolean
+  ): F[Result[Runtime[F]]] =
     Sync[F]
       .delay(protect {
         for
@@ -2102,23 +2126,14 @@ object CoherentSequence:
             (),
             Failure.Unsupported("window", "capacity must be 1..8")
           )
-          initial <- seed(context)
+          initial <- seed(context, allowDiagnostic)
           _ <- Either.cond(
             prepared.context.epochLength == context.nonces.context.epochLength,
             (),
             Failure.Rejected("stake", "epoch geometry mismatch")
           )
-          sourceUtxo <- checked(
-            "stake-source",
-            Bytes.fromHex(new String(context.originals("pre-utxo-cbor.md").toArray, "UTF-8").trim)
-          )
-          sourceId = ClusterHeaderObservation.sha256(
-            Bytes(
-              context
-                .sourcePins("preLedgerSha256")
-                .value ++ ClusterHeaderObservation.sha256(sourceUtxo).value
-            )
-          )
+          sourceUtxo = context.wholeUTxO
+          sourceId = context.stakeSourceId
           _ <- Either.cond(
             prepared.utxo == sourceUtxo && prepared.sourceId == sourceId,
             (),
