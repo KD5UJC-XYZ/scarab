@@ -39,6 +39,8 @@ jobs:
           python3 --version
       - name: Compile and test public Scala profile
         run: bash scripts/sbtw check app/runtimeClasspathFile
+      - name: Test restricted translator profile
+        run: bash scripts/sbtw translator/test
       - name: Run explicit public serial gates
         run: python3 scripts/check-public-gates.py
       - name: Test local launcher guards without Docker workloads
