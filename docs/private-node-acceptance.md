@@ -140,3 +140,27 @@ pause had finished; no extra pause, command change or deadline extension was add
 That export remains a separate capture task. Future epoch code must not treat
 JSON `possibleRewardUpdate: null` as evidence that reward state is absent; the
 coordinating research is designing a lossless explicit-variant bootstrap.
+
+
+## Separate bounded durable ordinary-node case — first attempt failed
+
+The reviewed create/resume implementation at
+`87c714b701faaeb93da970e666939bd36d74b2b8` passed 89 focused Scala tests,
+16 launcher guards, and formatting. Its integrated offline regression passed
+1,237 Scala tests including retained inputs and the translator, 25 public gates,
+167 launcher Python tests with one native-dependent class skipped, and 28 restart
+guards. These checks do not establish ordinary-node live restart acceptance.
+
+The first reviewed isolated invocation stopped during the pre-state raw ledger
+export. The CLI query and file-size check succeeded, but Docker archive-copy
+reported that the output file was absent. The failure occurred before node A
+started and before either test transaction was submitted. No raw CBOR file was
+retained on the host, so epoch-exporter compatibility remains untested.
+
+The pre-state pause lasted 7.770 seconds. The complete attempt and task-owned
+cleanup took 184.100 seconds, with no containers or networks remaining. Evidence
+is preserved privately at `/home/<user>/cardano-node-durable-live1-20261009` and
+the matching integration directory. No automatic retry followed. A transport
+fix must pass synthetic binary-copy checks and independent review before a fresh,
+separately pinned invocation. This failure does not alter the accepted twelve-
+block volatile result or the separate retained-file restart evidence above.

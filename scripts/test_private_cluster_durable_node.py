@@ -5,9 +5,12 @@ import unittest
 import copy
 import types
 import time
+import tempfile
+import subprocess
+from unittest.mock import patch
 from pathlib import Path
 from private_cluster_durable_node import (acknowledged_receipt,phase_arguments,raw_export_arguments,
-    raw_export_provenance,checked_loaded_state,phase_progress,combined_bounds,remaining_allowance,checkpoint_binding,DurableNodeRunner,PLAN)
+    raw_export_provenance,checked_loaded_state,phase_progress,combined_bounds,remaining_allowance,checkpoint_binding,DurableNodeRunner,PLAN,copy_ledger_binary,binary_export_command)
 
 
 class DurableNodePlanGuards(unittest.TestCase):
@@ -198,6 +201,68 @@ class DurableReviewGuards(unittest.TestCase):
         self.assertTrue(all(deadline==expected for _,deadline in calls))
         self.assertEqual(runner.deadline,expected)
         self.assertFalse(runner.observer_attempted)
+
+
+
+class BinaryExportGuards(unittest.TestCase):
+    def runner(self, directory):
+        runner=types.SimpleNamespace(out=Path(directory),commands=Path(directory)/"commands.md",
+            endpoint="unix:///var/run/docker.sock",name="cardano-private-123456abcdef",deadline=time.monotonic()+2)
+        runner.receipts={}
+        runner.save=lambda name,value:runner.receipts.update({name:dict(value)})
+        return runner
+
+    def transfer(self, runner, data, *, output=None, code=0, timeout=False):
+        def execute(command,**kwargs):
+            self.assertNotIn("text",kwargs); self.assertNotIn("encoding",kwargs)
+            self.assertFalse(kwargs["check"])
+            self.assertGreater(kwargs["timeout"],0); self.assertLessEqual(kwargs["timeout"],2)
+            self.assertEqual(command,binary_export_command(runner.endpoint,runner.name,"/work/pre-ledger-state.cbor"))
+            kwargs["stdout"].write(data if output is None else output)
+            if timeout: raise subprocess.TimeoutExpired(command,kwargs["timeout"])
+            return types.SimpleNamespace(returncode=code)
+        with patch("private_cluster_durable_node.subprocess.run",execute):
+            return copy_ledger_binary(runner,"pre",len(data),hashlib.sha256(data).hexdigest())
+
+    def test_binary_roundtrip_keeps_nul_and_non_utf8_and_pins_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner=self.runner(directory); data=bytes(range(256))+b"\x00\xff\x80"
+            raw,receipt=self.transfer(runner,data)
+            self.assertEqual(raw,data); self.assertEqual((runner.out/"pre-ledger-state.cbor").read_bytes(),data)
+            self.assertTrue(receipt["passed"]); self.assertEqual(receipt["receivedSha256"],hashlib.sha256(data).hexdigest())
+
+    def test_timeout_retains_partial_bytes_and_failed_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner=self.runner(directory)
+            with self.assertRaises(subprocess.TimeoutExpired): self.transfer(runner,b"complete",output=b"partial",timeout=True)
+            self.assertEqual((runner.out/"pre-ledger-state.cbor").read_bytes(),b"partial")
+            receipt=runner.receipts["pre-ledger-binary-export.md"]
+            self.assertFalse(receipt["passed"]); self.assertEqual(receipt["failure"],"TimeoutExpired")
+
+    def test_nonzero_partial_size_hash_and_bound_fail_closed(self):
+        for output,code in ((b"abc",1),(b"ab",0),(b"xyz",0),(b"x"*4194305,0)):
+            with self.subTest(size=len(output),code=code),tempfile.TemporaryDirectory() as directory:
+                runner=self.runner(directory)
+                with self.assertRaises(ValueError): self.transfer(runner,b"abc",output=output,code=code)
+                self.assertFalse(runner.receipts["pre-ledger-binary-export.md"]["passed"])
+
+    def test_expired_deadline_and_remote_oversize_do_not_launch(self):
+        with tempfile.TemporaryDirectory() as directory,patch("private_cluster_durable_node.subprocess.run") as execute:
+            runner=self.runner(directory)
+            with self.assertRaises(ValueError): copy_ledger_binary(runner,"pre",4194305,"a"*64)
+            runner.deadline=time.monotonic()-1
+            with self.assertRaises(ValueError): copy_ledger_binary(runner,"pre",1,"a"*64)
+            execute.assert_not_called()
+
+    def test_fixed_local_command_and_new_file_only(self):
+        for endpoint,name,remote in (("tcp://remote:2375","cardano-private-123456abcdef","/work/pre-ledger-state.cbor"),
+            ("unix:///var/run/docker.sock","unrelated","/work/pre-ledger-state.cbor"),
+            ("unix:///var/run/docker.sock","cardano-private-123456abcdef","/etc/passwd")):
+            with self.assertRaises(ValueError): binary_export_command(endpoint,name,remote)
+        with tempfile.TemporaryDirectory() as directory,patch("private_cluster_durable_node.subprocess.run") as execute:
+            runner=self.runner(directory); path=runner.out/"pre-ledger-state.cbor"; path.write_bytes(b"old")
+            with self.assertRaises(FileExistsError): copy_ledger_binary(runner,"pre",1,"a"*64)
+            self.assertEqual(path.read_bytes(),b"old"); execute.assert_not_called()
 
 
 if __name__=="__main__": unittest.main()

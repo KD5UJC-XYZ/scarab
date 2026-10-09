@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shlex
 import signal
+import subprocess
 import time
 from private_cluster import Runner, JDK
 from private_cluster_coherent import FIXTURE
@@ -82,7 +83,7 @@ actual pair grouping. No audit success means no completed restart acceptance.
 Inside each existing pre/post stopped-producer bracket, query a tip immediately before and
 after `cardano-cli conway query ledger-state --testnet-magic 1082026 --socket-path
 /work/env/socket/node3/sock --output-text --out-file /work/pre-ledger-state.cbor` (post uses
-the post label). Preserve binary via Docker file copy, never stdout UTF-8 conversion. Bound
+the post label). Preserve binary via bounded Docker exec into a newly created binary host file, never stdout UTF-8 conversion. Bound
 the file to 4 MiB, hash exact bytes, and include original tips, protocol export, configuration,
 genesis, CLI binary/version, reference image and command in the private provenance receipt.
 The export must fit the existing pause deadline; late/unsupported/changed-tip results fail,
@@ -304,6 +305,55 @@ def checkpoint_binding(image, token_digest):
             "checkpointTrailerDigest":image[-32:].hex()}
 
 
+def binary_export_command(endpoint, name, remote):
+    require(endpoint=="unix:///var/run/docker.sock", "verified local Docker endpoint required")
+    require(isinstance(name,str) and re.fullmatch(r"cardano-private-[0-9a-f]{12}",name), "owned private container name required")
+    require(remote in ("/work/pre-ledger-state.cbor","/work/post-ledger-state.cbor"), "fixed raw ledger path required")
+    return ["docker","--host",endpoint,"exec",name,"head","-c","4194305","--",remote]
+
+
+def copy_ledger_binary(runner, label, expected_size, expected_sha256):
+    require(label in ("pre","post"), "existing snapshot label required")
+    require(type(expected_size) is int and 0<expected_size<=4194304, "bounded remote ledger size required")
+    require(isinstance(expected_sha256,str) and HEX.fullmatch(expected_sha256), "canonical remote ledger SHA256 required")
+    require(runner.deadline is not None, "active paused snapshot deadline required")
+    remaining=runner.deadline-time.monotonic()
+    require(remaining>0, "raw export pause deadline already exhausted")
+    timeout=min(3.0,remaining)
+    command=binary_export_command(runner.endpoint,runner.name,"/work/"+label+"-ledger-state.cbor")
+    destination=runner.out/(label+"-ledger-state.cbor")
+    error_path=runner.out/(label+"-ledger-binary.stderr")
+    receipt={"command":command,"remoteSizeBeforeCopy":expected_size,"remoteSha256BeforeCopy":expected_sha256,
+        "maximumReturnedBytes":4194305,"timeoutSeconds":timeout,"binaryStdout":True,"tty":False,
+        "destination":str(destination),"passed":False,"returnCode":None}
+    with runner.commands.open("a") as log:
+        log.write("\n```json\n"+json.dumps(command)+"\n```\n")
+    started=time.monotonic()
+    try:
+        # Runner.docker intentionally uses text=True; bypass only that text API for this fixed
+        # bounded export. subprocess.run owns timeout/termination; no detached host process.
+        with destination.open("xb") as binary, error_path.open("xb") as errors:
+            result=subprocess.run(command,stdout=binary,stderr=errors,timeout=timeout,check=False)
+            receipt["returnCode"]=result.returncode
+            binary.flush(); os.fsync(binary.fileno())
+        require(result.returncode==0,"binary Docker exec export failed")
+        require(time.monotonic()<=runner.deadline,"binary export exceeded active pause deadline")
+        size=destination.stat().st_size
+        require(0<size<=4194304 and size==expected_size,"binary export size differs from bounded remote stat")
+        raw=destination.read_bytes()
+        received_hash=hashlib.sha256(raw).hexdigest()
+        require(received_hash==expected_sha256,"binary export differs from remote SHA256")
+        receipt.update(passed=True,receivedBytes=size,receivedSha256=received_hash)
+        return raw,receipt
+    except BaseException as exc:
+        receipt["failure"]=type(exc).__name__
+        raise
+    finally:
+        receipt["elapsedSeconds"]=time.monotonic()-started
+        if destination.exists(): receipt["retainedBytes"]=destination.stat().st_size
+        runner.save(label+"-ledger-binary-export.md",receipt)
+
+
 class DurableNodeRunner(LiveRunner):
     def observer_logs(self):
         result=self.docker("logs","--tail","2000",self.name+"-scala",check=False,timeout=2)
@@ -386,9 +436,9 @@ class DurableNodeRunner(LiveRunner):
         remote=args[-1]
         size=int(self.execute("stat","-c","%s",remote,timeout=2).stdout)
         require(0<size<=4194304,"raw ledger export size bound")
+        remote_hash=self.execute("sha256sum",remote,timeout=2).stdout.split()[0]
         destination=self.out/(label+"-ledger-state.cbor")
-        self.docker("cp",self.name+":"+remote,str(destination),timeout=3)
-        raw=destination.read_bytes(); require(len(raw)==size,"raw file copy length changed")
+        raw,export=copy_ledger_binary(self,label,size,remote_hash)
         after_raw=self.relay_query("tip"); after=json.loads(after_raw); paused=self.pause_evidence()
         self.save(label+"-raw-tip-after.md",after_raw)
         existing=json.loads((self.out/(label+"-tips.md")).read_text())
@@ -397,7 +447,7 @@ class DurableNodeRunner(LiveRunner):
             max(0,20-(self.deadline-time.monotonic())),True)
         receipt.update(referenceImage=self.image,cliSha256=self.cli_sha256,cliVersion=self.cli_version,
             sourceCliCommit="eac27b8b0437a80cea2152917850aadea5749d90",referenceContainerId=self.reference_id,
-            genesisSha256=self.genesis_hashes,rawPath=str(destination),
+            genesisSha256=self.genesis_hashes,rawPath=str(destination),binaryExport=export,
             beforeTipSha256=hashlib.sha256(before_raw.encode()).hexdigest(),afterTipSha256=hashlib.sha256(after_raw.encode()).hexdigest())
         self.save(label+"-ledger-raw-provenance.md",receipt)
         self.save(label+"-raw-producer-bracket.md",paused)
