@@ -97,10 +97,22 @@ Execution used an inspected local `cardano-public-v023-check:local` image,
 read-only container root, private copied build/cache and JVM Xmx1200m. The final
 format/test process took 22.265 seconds; its owned container was confirmed absent
 after cleanup. No captures, live cluster, source downloads or shared cache writes
-were used. Evidence remains outside Git at
-`/home/<user>/cardano-ephemeral-streaming-tests-20261009/evidence-a8f41be1`:
-command, image, test log, receipt and final formatted source hashes.
+were used. Command, image, test log, receipt and final formatted source hashes
+remain in private execution evidence outside Git.
 
 Independent read-only review approved the driver, fixture, tests and scope subject
 to this final run passing. This is focused offline verification, not a full public
 suite result or native/cluster acceptance.
+
+## Integration verification
+
+The integration check passed formatting and all three focused suites: streaming,
+coherent sequence and synthetic epoch coordination. The retained test log SHA256
+is `f65fba8dcb974cde3efb2e16796a4e23a2c33baa3db191da99960fc66e83cc58`. Execution used a private copied cache
+with network disabled, 2 CPU and 2 GiB; owned container cleanup was verified.
+
+Cancellation tests cover a waiting source and source-resource release. Cancellation
+during publication was not injected; masking of publication and accounting was
+verified by source review. The deadline is cooperative, source buffering remains
+the caller's responsibility, and logical byte accounting is not a heap bound.
+No native, network, CLI or transaction-bearing epoch crossing is established.
