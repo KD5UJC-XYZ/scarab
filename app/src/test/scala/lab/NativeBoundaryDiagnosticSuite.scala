@@ -14,6 +14,83 @@ class NativeBoundaryDiagnosticSuite extends NativeLedgerV2AuditedFixture:
     assertEquals(obj(j).keySet, Set("hash", "slot", "blockNo"))
     Point(hash(field(j, "hash")), uint(field(j, "slot")), uint(field(j, "blockNo")))
 
+  private def checkEndpoint(
+      joined: NativeLedgerV2.Checked,
+      state: CoherentSequence.State,
+      terminal: Point,
+      before: CoherentSequence.State
+  ): Unit = sys.env.get("NATIVE_ENDPOINT_BUNDLE").foreach { directory =>
+    val root = Path.of(directory)
+    val raw = read(root.resolve("endpoint-inputs.json"), 16384)
+    assertEquals(
+      sha(raw).hex,
+      sys.env.getOrElse(
+        "NATIVE_ENDPOINT_MANIFEST_SHA256",
+        fail("external endpoint manifest pin required")
+      )
+    )
+    val descriptor = ReferenceJson.parse(raw)
+    assertEquals(
+      obj(descriptor).keySet,
+      Set("schema", "point", "genesisSHA256", "acquisitionResultSHA256", "inputs")
+    )
+    assertEquals(string(field(descriptor, "schema")), "native-endpoint-reviewed-inputs-v1")
+    assertEquals(point(field(descriptor, "point")), terminal)
+    assertEquals(hash(field(descriptor, "genesisSHA256")), joined.ledger.globals.genesisSHA256)
+    val acquisitionResult = read(
+      Path.of(
+        sys.env.getOrElse(
+          "NATIVE_ENDPOINT_ACQUISITION_RESULT",
+          fail("pinned acquisition result required")
+        )
+      ),
+      65536
+    )
+    assertEquals(sha(acquisitionResult), hash(field(descriptor, "acquisitionResultSHA256")))
+    // This verifies the retained attribution bytes, not snapshot authenticity.
+    val inputs = obj(field(descriptor, "inputs"))
+    assertEquals(inputs.keySet, NativeProtocolBootstrap.InputNames)
+    val originals = inputs.map { (name, row) =>
+      assertEquals(obj(row).keySet, Set("sha256", "bytes"))
+      val bytes = read(root.resolve(name), 524288)
+      assertEquals(BigInt(bytes.size), uint(field(row, "bytes")), name)
+      assertEquals(sha(bytes), hash(field(row, "sha256")), name)
+      name -> bytes
+    }
+    val pins = inputs.map((name, row) => name -> hash(field(row, "sha256")))
+    val endpoint = get(NativeProtocolBootstrap.checkAcquisition(originals, pins, terminal))
+    val protocol = get(NativeEndpointProtocol.compare(endpoint, terminal, endpoint.id, state))
+    println(s"NATIVE_ENDPOINT_PROTOCOL_EQUAL=${protocol.protocolSHA256.hex}")
+    val ledger = get(NativeEndpointLedger.compare(endpoint, terminal, endpoint.id, state, joined))
+    val wrongId = Bytes(endpoint.id.value.updated(0, (endpoint.id.value.head ^ 1).toByte))
+    val wrongPoint = terminal.copy(blockNo = terminal.blockNo + 1)
+    assert(NativeEndpointProtocol.compare(endpoint, terminal, wrongId, state).isLeft)
+    assert(NativeEndpointProtocol.compare(endpoint, wrongPoint, endpoint.id, state).isLeft)
+    assert(NativeEndpointLedger.compare(endpoint, terminal, wrongId, state, joined).isLeft)
+    assert(NativeEndpointLedger.compare(endpoint, wrongPoint, endpoint.id, state, joined).isLeft)
+    println(s"NATIVE_ENDPOINT_PROTOCOL_ID=${protocol.acquisitionId.hex}")
+    println("NATIVE_ENDPOINT_LEDGER_DOMAINS=" + ledger.domainsChecked.toVector.sorted.mkString(","))
+    val governance = get(NativeEndpointGovernance.compare(ledger, state))
+    assert(NativeEndpointGovernance.compare(ledger, before).isLeft)
+    assert(
+      governance.normalizedSerializationEqual && !governance.liveCursorEqual &&
+        !governance.fullLedgerEquality && !ledger.fullLedgerEquality
+    )
+    val domains =
+      (ledger.domainsChecked ++ governance.domainsChecked + "praos-eight-payload-fields").toVector.sorted
+    val domainsJson = domains.map(x => "\"" + x + "\"").mkString("[", ",", "]")
+    val unsupportedJson = (ledger.unsupportedDomains ++ Set(
+      "productive-nonempty-go-rewards",
+      "general-consensus-conformance",
+      "native-snapshot-authenticity",
+      "live-streaming",
+      "persistence"
+    )).toVector.sorted.map(x => "\"" + x + "\"").mkString("[", ",", "]")
+    println(
+      s"""NATIVE_ENDPOINT_RESULT={"endpointAcquisitionId":"${endpoint.id.hex}","sourceJoinId":"${joined.id.hex}","replayStateId":"${state.id.hex}","terminalSlot":${terminal.slot},"terminalBlockNo":${terminal.blockNo},"terminalHash":"${terminal.hash.hex}","domainsChecked":$domainsJson,"unsupportedDomains":$unsupportedJson,"representedProtocolEqual":true,"finiteLedgerProfileEqual":true,"normalizedGovernanceEqual":true,"livePulserCursorEqual":false,"nativeConformance":false,"runtimeImport":false,"fullLedgerValidated":false}"""
+    )
+  }
+
   sys.env.get("NATIVE_LINKED_BLOCKS_BUNDLE").foreach { directory =>
     test("pinned original linked blocks cross one scoped supplied native boundary offline") {
       val joined = loadFresh(
@@ -87,6 +164,7 @@ class NativeBoundaryDiagnosticSuite extends NativeLedgerV2AuditedFixture:
             epoch.reward.componentSHA256
           )
           .map(get(_))
+        before <- runtime.snapshot
         queue <- Ref.of[IO, Vector[EphemeralStreaming.Event]](
           linked.blocks.map(EphemeralStreaming.Event.Block.apply)
         )
@@ -100,6 +178,7 @@ class NativeBoundaryDiagnosticSuite extends NativeLedgerV2AuditedFixture:
         _ = assertEquals(state.ledger.environment.epoch, BigInt(1))
         _ = assert(state.syntheticBoundary.exists(_.boundaryApplied))
         _ = assert(state.acquisition.size <= 8)
+        _ = checkEndpoint(joined, state, terminal, before.state)
         _ = println(
           s"""NATIVE_BOUNDARY_RESULT={"sourceJoinId":"${joined.id.hex}","linkedOriginalsId":"${linked.id.hex}","stateId":"${state.id.hex}","acceptedBlocks":${report.counters.acceptedBlocks},"compactions":${report.counters.compactions},"retainedBlocks":${state.acquisition.size},"terminalSlot":${terminal.slot},"terminalBlockNo":${terminal.blockNo},"terminalHash":"${terminal.hash.hex}","epoch":1,"scopedBoundaryApplied":true,"nativeConformance":false,"runtimeImport":false,"fullLedgerValidated":false}"""
         )

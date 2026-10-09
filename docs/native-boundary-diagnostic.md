@@ -81,11 +81,69 @@ input hashes independently rechecked after the successful Scala exit.
 Test log SHA256:
 `d5a3d629f161e2bd8c86161612b4bb9e35b65b4952d1e60c5baeaa568f4d8851`.
 
-This establishes one bounded supplied-state diagnostic replay. It does not compare
-the resulting full state against a native endpoint-state packet. Source
-authentication, full parameter/cost-model validity, original live governance cursor
-recovery and general ledger/consensus conformance remain unproved. A same-point
-native endpoint epoch/UTxO/protocol packet is still needed for a separate native
-post-state comparison. Second boundaries, nonempty-go likelihood generation and
-persistence remain unsupported by this profile. Nothing was published or enabled
-as a production runtime.
+That first checkpoint established bounded supplied-state replay; it had no native
+endpoint comparison. The separate endpoint check below extends the evidence while
+retaining the same runtime restrictions.
+
+## Same-point endpoint comparison
+
+The separate v2 acquisition uses the exact terminal point at epoch 1, slot 1045,
+block 56, hash
+`ef522fc8e82c4daaafb07e6e66a89e2fa4dd09e45dd3b3f069b95b0a4888288b`.
+Its original eight-file packet is externally hash-pinned; the effective genesis
+hash must equal the initial checked join. The opt-in test requires
+`NATIVE_ENDPOINT_BUNDLE`, `NATIVE_ENDPOINT_MANIFEST_SHA256` and
+`NATIVE_ENDPOINT_ACQUISITION_RESULT`. The endpoint manifest contains exactly
+`schema`, `point`, `genesisSHA256`, `acquisitionResultSHA256` and `inputs`;
+its schema is `native-endpoint-reviewed-inputs-v1`. Each input declares exact
+byte count and SHA256. The retained acquisition-result bytes are also hash-checked.
+This is source attribution, not cryptographic snapshot authentication.
+
+Three test-only comparators consume the original endpoint bytes. They do not
+reuse or relax epoch-zero seed admission guards. The checked ledger report has a
+private constructor and binds the exact replay-state ID before governance comparison.
+
+| Domain | Endpoint check |
+| --- | --- |
+| Praos payload | Exact last slot, all six nonce fields, complete certificate-counter map; unknown and Neutral remain distinct |
+| Ledger and stake | Whole coin-only UTxO addresses/values, instantaneous stake, accounts, pools, all mark/set/go metadata and snapshot fees |
+| Accounting | Previous/current issuer counts, treasury, reserves, fees, deposits and donations |
+| Boundary state | Exact Absent reward encoding, absent replay pulser/freeze, empty nonmyopic likelihoods and reward pot, leadership fractions/stakes/VRFs |
+| Historical fields | Bounded shapes and unchanged original bytes for genesis delegations and VRF multiplicity; these are preservation checks, not replay-computed indexes |
+| Parameters | Exact installed post-boundary current/previous bytes, plus the two exact parameter spans in normalized enactment |
+| Governance | Accounts including votes, registrations/delegators, dormancy, committee, constitution, empty proposals/roots, future-parameter tag, completed DRep/pool distributions and empty ratification/enactment |
+
+The native DRep query serializer finishes its pulser. The test therefore compares
+normalized completed serialization for the empty-proposal profile against a fold
+of Scala's fresh pulser inputs. It does not recover or compare the native live
+cursor. Registered DRep credentials accumulate instantaneous stake plus rewards;
+the native fold does not filter registration by expiry. Map/set ordering is
+normalized with duplicate rejection; parameter original spans remain exact.
+The source pins are Conway 1.23.0.0 `DRepPulser.hs`
+`c0e5c984d28c69ff024e9f3d950284c7fd122ff22703279b744141d9720fcf97`,
+core 1.21.0.0 `State/Governance.hs`
+`e836e80dabae53177e4f4aa8e7f5fb51b3e5b3a6276d0ba98d11fadc327ebcae`,
+and binary 1.9.1.0 `Encoding/Encoder.hs`
+`3c6f222efddd43995afa425a18a748d35ca8f629799d5d2a362629db4bd50b47`.
+
+Earlier failed attempts remain in private evidence. A generated test helper first
+failed compilation; a second negative test incorrectly swapped equal rolled-over
+parameters. Actual comparison exposed two comparator assumptions: genesis
+delegations were nonempty but unchanged, and initial parameter provenance roles
+were used where installed post-boundary roles were required. The corrected checks
+preserve exact original-byte equality. No production transition was modified to
+make the endpoint comparison pass.
+
+The final offline run passed **202 Scala tests** (177 app,
+25 ledger), including the actual original-block replay and exact
+endpoint comparison. Formatting, source/input hash checks and owned-container
+cleanup passed under two CPUs/two GiB, private caches and no network.
+Test log SHA256: `c7c53898f6952561eef23d6e906d7025ec8943c6a8a2830f56c41b62d07116d0`.
+
+This is equality of the represented finite profile after one boundary. It is not
+full ledger or consensus validation, productive nonempty-go reward validation,
+live streaming, persistence, second-boundary support, or snapshot authentication.
+Nonempty governance actions and original live pulser cursor equality remain
+unsupported. Public runtime admission remains disabled. The next live milestone
+requires real ChainSync/BlockFetch input while the cluster crosses the boundary,
+followed by a separately acquired same-point endpoint comparison.
