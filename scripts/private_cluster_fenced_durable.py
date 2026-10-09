@@ -16,6 +16,43 @@ CAPACITY=2
 MAX_DEPTH=16
 MAX_EVENTS=128
 MAX_BYTES=32*1024*1024
+TIP_RESPONSE_LIMIT=16*1024
+# Diagnostic storage is separate from the original-wire byte budget. The count
+# covers >8220 worst-case startup queries at137s/50ms across three nodes, plus
+# bounded later queries. Any byte/count overflow is terminal, never eviction.
+TIP_EVIDENCE_LIMIT=16*1024*1024
+TIP_RECORD_LIMIT=16384
+
+def reference_tip(raw,allow_origin=False):
+    """Pinned CLI11.2.3.0 Output.hs197-279 omits ALL point keys at origin.
+
+    https://github.com/IntersectMBO/cardano-cli/blob/cardano-cli-11.2.3.0/cardano-cli/src/Cardano/CLI/Type/Output.hs
+    Only this fixture's complete genesis metadata is retryable at startup.
+    Missing/partial/null point fields are never converted into a concrete tip.
+    """
+    row=strict_json(raw,TIP_RESPONSE_LIMIT)
+    require(type(row) is dict,"tip must be a JSON object")
+    points={'block','slot','hash'}; present=points & set(row)
+    if not present:
+        required={'era','epoch','slotInEpoch','slotsToEpochEnd'}
+        require(allow_origin and required<=set(row)<=required|{'syncProgress'},"startup origin metadata fields")
+        require(row['era']=='Conway' and type(row['epoch']) is int and row['epoch']==0
+                and type(row['slotInEpoch']) is int and row['slotInEpoch']==0
+                and type(row['slotsToEpochEnd']) is int and row['slotsToEpochEnd']==1000,
+                "startup origin fixture geometry")
+        if 'syncProgress' in row:
+            import re
+            from decimal import Decimal
+            value=row['syncProgress']
+            require(type(value) is str and len(value)<=8 and re.fullmatch(r'(?:0|[1-9][0-9]?|100)(?:\.[0-9]{1,4})?',value) is not None
+                    and Decimal(value)<=100,"startup origin percentage text")
+        return None
+    require(present==points,"partial tip point fields; missing "+','.join(sorted(points-present)))
+    require(row.get('era')=='Conway' and type(row.get('epoch')) is int and 0<=row['epoch']<2**64,"Conway reference tip")
+    require(type(row['block']) is int and 0<row['block']<2**64 and type(row['slot']) is int and 0<=row['slot']<2**64,
+            "bounded concrete tip numbers")
+    Point(row['block'],row['slot'],row['hash'])
+    return row
 
 def require(ok,why):
     if not ok: raise ValueError(why)
@@ -266,6 +303,13 @@ def run_stages(ops):
         protocol.audited(ops.audit(protocol))
         ops.verify_two_epoch_growth(protocol)
         return protocol
+    except BaseException as error:
+        recorder=getattr(ops,'record_failure',None)
+        if recorder is not None:
+            try: recorder(getattr(ops,'diagnostic_stage','controller'),error)
+            except BaseException as diagnostic:
+                raise BaseExceptionGroup('controller failure and diagnostic failure',[error,diagnostic])
+        raise
     finally:
         ops.cleanup()
 
@@ -317,10 +361,11 @@ class OwnedDocker:
         require(hex32(owner),"random explicit owner identity")
         self.owner=owner; self.evidence=Path(evidence); self.deadline=absolute_deadline
         self.clock=clock; self.invoke=invoke or bounded_run; self.containers={}; self.volumes=set()
-    def call(self,*args,deadline=None,check=True,data=None,limit=MAX_BYTES):
+    def call(self,*args,deadline=None,check=True,data=None,limit=MAX_BYTES,result_tap=None):
         end=min(self.deadline,deadline if deadline is not None else self.deadline)
         left=end-self.clock(); require(left>0,"owned operation deadline exhausted")
         result=self.invoke(["docker","--host","unix:///var/run/docker.sock",*map(str,args)],left,data,limit)
+        if result_tap is not None: result_tap(result)
         require(self.clock()<=end,"owned operation deadline exceeded")
         if check: require(result.returncode==0,"owned Docker operation failed: "+result.stderr[:256])
         return result
@@ -340,10 +385,10 @@ class OwnedDocker:
         self.containers[key]=cid; self.inspect(cid,deadline)
         self.call("start",cid,deadline=deadline)
         return cid
-    def exec(self,cid,*args,deadline,data=None,check=True):
+    def exec(self,cid,*args,deadline,data=None,check=True,limit=MAX_BYTES,result_tap=None):
         self.inspect(cid,deadline)
         return self.call("exec",*(('-i',) if data is not None else ()),cid,*args,
-                         deadline=deadline,data=data,check=check)
+                         deadline=deadline,data=data,check=check,limit=limit,result_tap=result_tap)
     def remove(self,cid,deadline):
         self.inspect(cid,deadline)
         self.call("rm","--force",cid,deadline=deadline)
@@ -742,6 +787,8 @@ class LiveOps:
         self.store_id=os.urandom(32).hex(); self.fence_ids={phase:os.urandom(32).hex() for phase in ('A','B')}
         self.remaining=(MAX_EVENTS,MAX_BYTES); self.totals={}; self.raw_seed=[]; self.phase_raw={}; self.phase_points={}
         self.roles=None; self.runtime=None; self.ref=None; self.budget=None; self.stage_deadline=self.deadline
+        self.tip_sequence=0; self.tip_evidence_bytes=0; self.last_tip_response=None; self.diagnostic_stage='bootstrap-setup'
+        self.tip_directory=self.out/'tip-observations'; self.tip_directory.mkdir(mode=0o700)
     def save(self,name,value):
         require(Path(name).name==name,"evidence basename")
         (self.out/name).write_text(value if isinstance(value,str) else json.dumps(value,indent=2,allow_nan=False))
@@ -755,19 +802,68 @@ class LiveOps:
     def hashes(self,paths): return {path:self.execute('sha256sum',path).stdout.split()[0] for path in paths}
     def relay_query(self,kind,*args):
         return self.execute('cardano-cli','conway','query',kind,'--testnet-magic','1082026','--socket-path','/sockets/node3.sock',*args).stdout
+    def tip_evidence(self,name,value):
+        raw=canonical(value)
+        require(self.tip_evidence_bytes+len(raw)<=TIP_EVIDENCE_LIMIT,"cumulative tip evidence bound")
+        self.tip_evidence_bytes+=len(raw)
+        with (self.tip_directory/name).open('xb') as stream: stream.write(raw)
+    def record_failure(self,stage,error):
+        # First failure survives all subsequent diagnostic/cleanup failures.
+        path=self.out/'terminal-diagnostic.json'
+        value=dict(stage=stage,exceptionType=type(error).__name__,message=str(error)[:512],
+                   observedMonotonic=self.clock(),tipSequence=self.tip_sequence,lastTipResponse=self.last_tip_response)
+        raw=canonical(value); require(len(raw)<=8192,"terminal diagnostic bound")
+        try:
+            with path.open('xb') as stream: stream.write(raw)
+        except FileExistsError: pass
+    def query_tip(self,node,end,allow_origin):
+        require(type(node) is int and node in (1,2,3),"owned reference tip node")
+        require(self.tip_sequence<TIP_RECORD_LIMIT,"tip response count bound")
+        self.tip_sequence+=1; sequence=self.tip_sequence; began=self.clock()
+        base=f'tip-{sequence:06d}'
+        phase='startup' if allow_origin else 'concrete'
+        self.diagnostic_stage=phase+'-tip-query'
+        retained=False
+        def retain(result):
+            nonlocal retained
+            require(not retained,"one raw result per query")
+            out=result.stdout.encode('utf-8'); err=result.stderr.encode('utf-8')
+            name=base+'-response.json'
+            self.tip_evidence(name,dict(sequence=sequence,node=node,phase=phase,startedMonotonic=began,
+                finishedMonotonic=self.clock(),deadline=end,returnCode=result.returncode,
+                stdout=result.stdout[:TIP_RESPONSE_LIMIT],stderr=result.stderr[:TIP_RESPONSE_LIMIT],
+                stdoutBytes=len(out),stderrBytes=len(err),stdoutSHA256=sha(out),stderrSHA256=sha(err),
+                truncated=len(out)+len(err)>TIP_RESPONSE_LIMIT))
+            self.last_tip_response=str(Path('tip-observations')/name); retained=True
+        try:
+            result=self.docker.exec(self.ref,'cardano-cli','conway','query','tip','--testnet-magic','1082026',
+                '--socket-path',f'/sockets/node{node}.sock',deadline=end,check=False,limit=TIP_RESPONSE_LIMIT,result_tap=retain)
+            # Scripted test peers may return directly; production's tap runs
+            # before OwnedDocker validates elapsed deadline and return code.
+            if not retained: retain(result)
+            require(self.clock()<=end,"tip query deadline exceeded")
+            require(result.returncode==0,"tip query returned nonzero status")
+            require(len(result.stdout.encode())+len(result.stderr.encode())<=TIP_RESPONSE_LIMIT,"tip response byte bound")
+            self.diagnostic_stage=phase+'-tip-parse'
+            row=reference_tip(result.stdout,allow_origin)
+            self.tip_evidence(base+'-classification.json',dict(response=self.last_tip_response,
+                classification='startup-origin' if row is None else 'concrete-point'))
+            return row
+        except BaseException as error:
+            try: self.record_failure(self.diagnostic_stage,error)
+            except BaseException as diagnostic:
+                raise BaseExceptionGroup('tip failure and diagnostic failure',[error,diagnostic])
+            raise
     def tip_json(self,node,end):
-        row=strict_json(self.docker.exec(self.ref,'cardano-cli','conway','query','tip','--testnet-magic','1082026',
-                '--socket-path',f'/sockets/node{node}.sock',deadline=end).stdout)
-        require(row.get('era')=='Conway' and type(row.get('epoch')) is int,"Conway reference tip")
-        Point(row['block'],row['slot'],row['hash']); return row
+        return self.query_tip(node,end,False)
     def startup_tip_json(self,node,end):
-        # Only an explicitly absent owned startup socket is retryable. Once it
-        # exists, query, decoding, validation and deadline failures are terminal.
+        # Retry only an absent owned socket or the pinned complete origin shape.
         require(type(node) is int and node in (1,2,3),"owned startup node")
+        self.diagnostic_stage='startup-socket-probe'
         probe=self.docker.exec(self.ref,'test','-S',f'/sockets/node{node}.sock',deadline=end,check=False)
         require(probe.returncode in (0,1),"startup socket probe failed")
         if probe.returncode==1: return None
-        return self.tip_json(node,end)
+        return self.query_tip(node,end,True)
 
     def tip(self,node,end):
         r=self.tip_json(node,end); return Point(r['block'],r['slot'],r['hash'])
@@ -864,18 +960,21 @@ class LiveOps:
     def bootstrap(self):
         from private_cluster_fence_exports import prepare_context
         from private_cluster_sequence import SequenceRunner
+        self.diagnostic_stage='bootstrap-setup'
         self.setup(); start=None; until=min(self.deadline,self.started+137)
         self.stage_deadline=until
         history=[]
         while self.clock()<until:
             rows=[self.startup_tip_json(n,until) for n in (1,2,3)]
-            history.append(rows); history=history[-128:]
+            if len(history)<128: history.append(rows)
             self.save('bootstrap-tip-history.json',history)
             if any(row is None for row in rows):
                 time.sleep(.05)
                 continue
             if len({r['hash'] for r in rows})==1 and not hasattr(self,'pair'):
+                self.diagnostic_stage='bootstrap-funding'
                 self.pair=SequenceRunner.build_pair(self)
+                self.diagnostic_stage='bootstrap-funding-deadline'
                 require(self.clock()<until,"pre-admission funding setup deadline")
                 continue
             if len({r['hash'] for r in rows})==1 and rows[0]['epoch']>=1:
@@ -883,9 +982,13 @@ class LiveOps:
                 if start is None: start=p
                 if p.block-start.block>=3: break
             time.sleep(.05)
-        else: raise TimeoutError('bootstrap complete original opportunity')
+        else:
+            self.diagnostic_stage='bootstrap-concrete-tip-deadline'
+            raise TimeoutError('bootstrap complete original opportunity')
+        self.diagnostic_stage='bootstrap-keyless-barrier'
         seedbarrier=self.roles.change(False,min(until,self.clock()+5)); end=seedbarrier.checked(False)
         require(3<=end.block-start.block<=8,"bounded bootstrap range including predecessor")
+        self.diagnostic_stage='bootstrap-original-range'
         text=self.scala(['reference-range-capture','5303','1082026',str(start.slot),start.hash,str(end.slot),end.hash,'8',str(MAX_EVENTS),str(MAX_BYTES)],
                         'bootstrap-range',min(until,self.clock()+60),True)
         raw,originals,total=range_capture_rows(text,start,end,8)

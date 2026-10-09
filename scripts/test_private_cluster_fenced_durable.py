@@ -402,9 +402,9 @@ class LiveOpsBoundaryTests(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import Mock
         with tempfile.TemporaryDirectory() as tmp:
-            d=self.driver(tmp,lambda:10);d.ref=h(1);d.tip_json=Mock(return_value={'valid':'tip'})
+            d=self.driver(tmp,lambda:10);d.ref=h(1);d.query_tip=Mock(return_value={'valid':'tip'})
             d.docker=SimpleNamespace(exec=Mock(return_value=SimpleNamespace(returncode=1)))
-            self.assertIsNone(d.startup_tip_json(1,20));d.tip_json.assert_not_called()
+            self.assertIsNone(d.startup_tip_json(1,20));d.query_tip.assert_not_called()
             d.docker.exec.return_value.returncode=0
             self.assertEqual(d.startup_tip_json(1,20),{'valid':'tip'})
             d.docker.exec.return_value.returncode=2
@@ -502,3 +502,133 @@ class ClippedQueryDeadlineTests(unittest.TestCase):
             with self.assertRaises(TimeoutError): oracle.capture(f.Point(5,50,h(5)),Path(tmp)/'packet',28)
             self.assertEqual(docker.calls,[('create',25),('wait',25),('cleanup',28)])
             verify.assert_not_called()
+
+
+class StartupOriginTests(unittest.TestCase):
+    # Authoritative serializer: cardano-cli-11.2.3.0 Type/Output.hs197-279.
+    # Pinned Query/Run.hs maps origin to slot0; this fixture has1000slots/epoch.
+    ORIGIN=dict(era='Conway',epoch=0,slotInEpoch=0,slotsToEpochEnd=1000,syncProgress='0.00')
+    def concrete(self,block=10):
+        return dict(era='Conway',epoch=1,slot=1000+block,hash=h(block),block=block,
+                    slotInEpoch=block,slotsToEpochEnd=1000-block,syncProgress='100.00')
+    def driver(self,tmp,clock=lambda:10):
+        from types import SimpleNamespace
+        d=f.LiveOps(SimpleNamespace(output=str(Path(tmp)/'evidence'),scala_repo=str(Path(tmp)/'repo')),clock=clock)
+        d.ref=h(1); d.setup=lambda:None
+        return d
+    def scripted(self,d,values):
+        from types import SimpleNamespace
+        values=iter(values)
+        def execute(*args,**kwargs):
+            if args[1]=='test': return SimpleNamespace(returncode=0,stdout='',stderr='')
+            value=next(values)
+            result=value if isinstance(value,SimpleNamespace) else SimpleNamespace(returncode=0,stdout=json.dumps(value),stderr='')
+            tap=kwargs.get('result_tap')
+            if tap is not None: tap(result)
+            return result
+        d.docker=SimpleNamespace(exec=execute)
+
+    def test_origin_then_concrete_is_startup_only_and_all_original_responses_remain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp); self.scripted(d,[self.ORIGIN,self.concrete()])
+            self.assertIsNone(d.startup_tip_json(1,20)); self.assertEqual(d.startup_tip_json(1,20),self.concrete())
+            responses=sorted(d.tip_directory.glob('*-response.json'))
+            self.assertEqual(len(responses),2)
+            self.assertEqual(json.loads(json.loads(responses[0].read_text())['stdout']),self.ORIGIN)
+            self.assertEqual(json.loads(json.loads(responses[1].read_text())['stdout']),self.concrete())
+            self.assertIsNone(f.reference_tip(json.dumps({k:v for k,v in self.ORIGIN.items() if k!='syncProgress'}),True))
+            with self.assertRaises(ValueError): f.reference_tip(json.dumps(self.ORIGIN),False)
+
+    def test_origin_never_concrete_has_fixed_deadline_no_funding_and_cleanup(self):
+        from private_cluster_sequence import SequenceRunner
+        from itertools import repeat
+        with tempfile.TemporaryDirectory() as tmp:
+            now=[10.]; d=self.driver(tmp,lambda:now[0]); self.scripted(d,repeat(self.ORIGIN)); clean=[]
+            d.cleanup=lambda:clean.append(True)
+            with patch.object(f.time,'sleep',side_effect=lambda _:now.__setitem__(0,now[0]+50)),patch.object(SequenceRunner,'build_pair') as funding:
+                with self.assertRaisesRegex(TimeoutError,'complete original opportunity'): f.run_stages(d)
+                funding.assert_not_called()
+            self.assertEqual(clean,[True]); self.assertEqual(len(list(d.tip_directory.glob('*-response.json'))),9)
+            failure=json.loads((d.out/'terminal-diagnostic.json').read_text())
+            self.assertEqual(failure['stage'],'bootstrap-concrete-tip-deadline')
+
+    def test_origin_then_concrete_bootstrap_builds_funding_once_then_reaches_barrier(self):
+        from private_cluster_sequence import SequenceRunner
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp); self.scripted(d,[self.ORIGIN]*3+[self.concrete(10)]*6+[self.concrete(13)]*3)
+            clean=[]; d.cleanup=lambda:clean.append(True)
+            d.roles=SimpleNamespace(change=lambda *_:(_ for _ in ()).throw(RuntimeError('stop at test barrier')))
+            with patch.object(f.time,'sleep'),patch.object(SequenceRunner,'build_pair',return_value=[]) as funding:
+                with self.assertRaisesRegex(RuntimeError,'test barrier'): f.run_stages(d)
+                funding.assert_called_once_with(d)
+            self.assertEqual(clean,[True]); self.assertEqual(len(list(d.tip_directory.glob('*-response.json'))),12)
+            self.assertEqual(json.loads((d.out/'terminal-diagnostic.json').read_text())['stage'],'bootstrap-keyless-barrier')
+
+    def test_malformed_origin_shapes_are_terminal_not_startup(self):
+        bad=[{},[],dict(self.ORIGIN,epoch=True),dict(self.ORIGIN,epoch=1),dict(self.ORIGIN,slotInEpoch='0'),
+             dict(self.ORIGIN,slotsToEpochEnd=500),dict(self.ORIGIN,era='Babbage'),dict(self.ORIGIN,unknown=1),
+             dict(self.ORIGIN,block=None),dict(self.ORIGIN,slot=0),dict(self.ORIGIN,hash=h(0)),
+             dict(self.ORIGIN,block=None,slot=None,hash=None)]
+        for sync in ('NaN','inf','-1','100.01','1e2','100%',' 0.00','00.00',101,True,None): bad.append(dict(self.ORIGIN,syncProgress=sync))
+        for value in bad:
+            with self.subTest(value=value),self.assertRaises(ValueError): f.reference_tip(json.dumps(value),True)
+        with self.assertRaisesRegex(ValueError,'duplicate'): f.reference_tip('{"era":"Conway","era":"Conway"}',True)
+
+    def test_malformed_concrete_fields_are_terminal(self):
+        for field,value in (('block',0),('block',True),('slot',None),('slot',-1),('hash','0'*63),('epoch',True),('epoch',-1)):
+            row=self.concrete();row[field]=value
+            with self.subTest(field=field,value=value),self.assertRaises(ValueError): f.reference_tip(json.dumps(row),True)
+
+    def test_nonzero_and_malformed_raw_result_retained_before_validation(self):
+        from types import SimpleNamespace
+        for status,stdout,stderr in ((3,'not-json','actual CLI error'),(0,'{"block":null}','')):
+            with self.subTest(status=status),tempfile.TemporaryDirectory() as tmp:
+                d=self.driver(tmp); self.scripted(d,[SimpleNamespace(returncode=status,stdout=stdout,stderr=stderr)])
+                with self.assertRaises(ValueError): d.startup_tip_json(2,20)
+                response=json.loads(next(d.tip_directory.glob('*-response.json')).read_text())
+                self.assertEqual((response['returnCode'],response['stdout'],response['stderr']),(status,stdout,stderr))
+                failure=json.loads((d.out/'terminal-diagnostic.json').read_text())
+                self.assertEqual(failure['exceptionType'],'ValueError'); self.assertIn('tip-',failure['lastTipResponse'])
+
+    def test_result_tap_runs_before_owned_call_deadline_validation(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            now=[10.]; d=self.driver(tmp,lambda:now[0])
+            def invoke(*_): now[0]=21.;return SimpleNamespace(returncode=0,stdout=json.dumps(self.concrete()),stderr='')
+            d.docker=f.OwnedDocker(h(90),d.out,100,clock=lambda:now[0],invoke=invoke)
+            d.docker.inspect=lambda *_:None
+            with self.assertRaisesRegex(ValueError,'deadline exceeded'): d.tip_json(1,20)
+            self.assertEqual(len(list(d.tip_directory.glob('*-response.json'))),1)
+
+    def test_evidence_write_failure_cannot_skip_cleanup_or_trigger_funding_retry(self):
+        from private_cluster_sequence import SequenceRunner
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp); self.scripted(d,[self.ORIGIN]); calls=[];d.cleanup=lambda:calls.append('cleanup')
+            d.tip_evidence=lambda *_:(_ for _ in ()).throw(OSError('disk full'))
+            d.record_failure=lambda *_:(_ for _ in ()).throw(OSError('diagnostic also full'))
+            with patch.object(SequenceRunner,'build_pair') as funding:
+                with self.assertRaises(BaseExceptionGroup): f.run_stages(d)
+                funding.assert_not_called()
+            self.assertEqual(calls,['cleanup'])
+
+    def test_cumulative_bound_never_overwrites_earliest_response_or_first_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp);self.scripted(d,[self.ORIGIN,self.ORIGIN]);self.assertIsNone(d.startup_tip_json(1,20))
+            earliest=next(d.tip_directory.glob('*-response.json'));saved=earliest.read_bytes()
+            with patch.object(f,'TIP_EVIDENCE_LIMIT',d.tip_evidence_bytes+1):
+                with self.assertRaisesRegex(ValueError,'cumulative'):d.startup_tip_json(1,20)
+            failure=(d.out/'terminal-diagnostic.json').read_bytes()
+            d.record_failure('later-stage',RuntimeError('later exception'))
+            self.assertEqual((d.out/'terminal-diagnostic.json').read_bytes(),failure)
+            self.assertEqual(earliest.read_bytes(),saved)
+
+    def test_funding_exception_stage_is_retained_once_with_cleanup(self):
+        from private_cluster_sequence import SequenceRunner
+        with tempfile.TemporaryDirectory() as tmp:
+            d=self.driver(tmp);self.scripted(d,[self.concrete()]*3);clean=[];d.cleanup=lambda:clean.append(True)
+            with patch.object(SequenceRunner,'build_pair',side_effect=ValueError('funding failed once')) as funding:
+                with self.assertRaisesRegex(ValueError,'funding failed once'):f.run_stages(d)
+                funding.assert_called_once_with(d)
+            self.assertEqual(clean,[True]);failure=json.loads((d.out/'terminal-diagnostic.json').read_text())
+            self.assertEqual(failure['stage'],'bootstrap-funding');self.assertEqual(failure['message'],'funding failed once')
