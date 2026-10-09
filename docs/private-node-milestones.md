@@ -92,11 +92,14 @@ SHA-256 `524ee25bdbefa44d169b76a697bdc4c1588216290b715b15120d652a61a35499`;
 keys, databases and raw evidence remain private. Separate seed-admission evidence and review
 are still required before considering runtime integration.
 
-Recovery remains a separate pending integration slice after review approved
-original-byte payload accounting and historical scalar preflight fixes. The
-proposed opaque in-memory handoff is reference-dependent and budgets existing
-objects, not decoder allocation or JVM heap use. It is not serialization,
-disk/crash recovery or durable controller authentication.
+The [internal opaque recovery handoff](synthetic-recovery-model.md) is integrated
+with original-byte payload accounting and historical scalar preflight. It is
+reference-dependent and budgets existing objects, not decoder allocation or JVM
+heap use. It is not serialization, disk/crash recovery or durable controller
+authentication. The [historical-ID counterexample](synthetic-recovery-codec-blocker.md)
+limits exact implementation-ID reconstruction, not durable recovery generally.
+A future controller-attested semantic anchor can use fresh runtime identities;
+no persistence implementation is required for the first ephemeral crossing.
 
 The zero-deposit fixture uses epoch length 500, k=5 and f=1/20, giving native
 randomness window 400. It cannot satisfy the current `2 * window < epochLength`
@@ -107,6 +110,14 @@ restart and requires reviewed longer-epoch geometry, unsupported-effect checks,
 point-bound protocol/nonce/opcert bootstrap inputs and complete seed admission
 before any new runtime profile. Diagnostic-only seed projection work does not
 provide that admission.
+
+The proposed next geometry is fresh 1000-slot epochs at 0.1 seconds, k=5 and
+f=1/20, with stability window 300 and randomness/reward window 400. Geometry alone
+does not establish admission. Empty proposals still change dormant epochs, DRep
+pulser, future/current/previous parameters and committee bookkeeping; reward
+completion changes non-myopic state even with zero monetary reward. These
+automatic effects must be carried and compared, alongside complete native seed
+projection and point-bound bootstrap inputs, before activating any native runner.
 
 ## Worker interface and ownership
 

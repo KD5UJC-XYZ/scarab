@@ -53,7 +53,8 @@ hashing, envelopes are limited to 65,535 bytes and blocks to 1 MiB. Historical r
 compacted-block counters must be nonnegative and at most 256 bits before decimal string
 conversion; historical identities must be 32 bytes. Boundary and certificate-context capsules are
 deduplicated by identity; repeated occurrences within supplied roots are charged again.
-This conservative accounting is not a JVM heap-size estimate. Replay/clone loops yield
+These limits budget already-existing object graphs. They are not decoder allocation
+limits, serialized-byte admission limits or a JVM heap-size estimate. Replay/clone loops yield
 between bounded records; underlying pure checks retain their existing collection limits.
 
 Observed fixture measurements (entries / logical bytes):
@@ -94,3 +95,9 @@ included. Independent read-only review approved this scope after the focused fix
 The [reference-free codec audit](synthetic-recovery-codec-blocker.md) records the
 missing historical identity evidence that blocks converting this opaque handoff into
 checked-content exact-ID import after arbitrary compaction.
+
+Exact historical implementation-ID reconstruction is a separate unresolved contract,
+not a blocker to durable recovery generally. The recommended future direction is
+a controller-attested semantic anchor with fresh runtime identities and canonical
+content/provenance commitments; old attribution is attested rather than replay
+verification of discarded history. No persistence implementation is added here.

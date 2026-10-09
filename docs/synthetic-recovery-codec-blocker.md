@@ -1,10 +1,22 @@
-# Reference-free recovery: missing historical identity evidence
+# Exact historical implementation-ID recovery: missing evidence
 
 Status, 2026-10-09: blocked before codec implementation. The requested combination is
 bounded import after compaction, exact historical identities, reconstruction from checked
 content, and no arbitrary decoded-ID setter or retained process references. The current
 export lacks required identity preimages. Encoding it canonically cannot recover them.
 No DTO/import capability, codec, disk integration, or runtime admission is claimed here.
+
+This blocks reconstruction of exact historical **implementation IDs** under the
+requested contract, not durable recovery generally. These internal pulser and
+coordinator identity chains are not established Cardano protocol commitments;
+the counterexample is neither a protocol defect nor a monetary discrepancy.
+
+The recommended future design is a controller-attested semantic anchor with fresh
+runtime identities and a canonical content/provenance commitment. Preserve exact
+old implementation IDs only when an explicit compatibility or audit requirement
+demands them. Retained old attribution would be attested evidence, not independent
+replay verification of discarded history. No persistence implementation is needed
+for the first bounded ephemeral crossing; that path remains a separate priority.
 
 ## Executable counterexample
 
