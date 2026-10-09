@@ -26,13 +26,7 @@ original-byte/state continuity survive sustained progress, permitted reconnects
 and retained rollbacks; unsupported epoch transitions stop. Do not infer
 availability from ambiguous protocol failures. The node lane owns no window
 internals and must not loop independent bootstrap sessions to simulate continuity.
-Compaction must preserve derived checked-anchor identity and rebind receipts. The
-current durable format is incompatible with compacted windows until separately
-designed. The integrated live scenario must exceed eight blocks within a
-sufficiently long same-epoch window; do not silently change limits or stitch short
-fixtures. The separately reviewed twelve-block volatile case has now passed; see
-[the operational acceptance record](private-node-acceptance.md). No automatic
-follow-up run is authorized by this plan.
+Compaction must preserve derived checked-anchor identity and rebind receipts. The original bounded durable v1 format remains incompatible with compacted windows. The separate sustained-durable v2 mode provides journal-bound compacted persistence. The integrated live scenario must exceed eight blocks within a sufficiently long same-epoch window; do not silently change limits or stitch short fixtures. The reviewed twelve-block volatile case remains recorded in [the operational acceptance record](private-node-acceptance.md). The separate [adaptive sustained-durable acceptance](adaptive-sustained-acceptance.md) now demonstrates twelve original blocks with capacity two, process A at depth nine, exact full-claim/projection recovery by process B, and live continuation to depth twelve. Its original-body inclusion and complete supported reference-projection checks passed. Later reference-chain growth does not establish Scala epoch continuity. No automatic follow-up run is authorized by this plan.
 
 ## 3. Bounded durable restart — first live case passed
 
@@ -96,13 +90,7 @@ an atomic `Snapshot`, plus state `compactedBlocks`, `derivedAnchorId` and
 retains a checked applied tip. Opt-in `Policy(advanceWindow = true,
 rollbackCapacity = 1..8)` leaves existing bounded defaults unchanged. Rebound
 receipts and constant-size provenance commit the checked boundary while retaining
-the original context identity. These capabilities are integrated in the sustained volatile node command;
-they are not available through the bounded durable backend.
-
-`ValidatedCheckpoint` v1 must reject every derived-anchor state, including an
-empty retained suffix. There is no durable compaction API. Sustained volatile and
-bounded durable demonstrations are separate; a sustained-plus-durable node
-configuration must fail explicitly until compacted persistence is designed.
+the original context identity. These capabilities remain available in the sustained volatile node command. The original bounded durable backend and `ValidatedCheckpoint` v1 still reject derived-anchor state, including an empty retained suffix. The separate sustained-durable v2 path adds acknowledged compaction, a controller journal and exact full-claim recovery; it does not make v1 checkpoints compatible with compacted anchors. The [adaptive acceptance record](adaptive-sustained-acceptance.md) scopes the successful combined sustained and durable case, including graceful process handoff and independent reference comparison. It adds no power-loss guarantee.
 
 ## Integration cadence
 

@@ -12,9 +12,7 @@ anchor, and following a peer-selected replacement branch with complete supported
 reference-state comparison. It is a local, same-epoch research profile; it does
 not establish independent chain selection or full ledger/consensus validation.
 
-The separate [sustained-durable v2 mode](docs/private-node.md#sustained-durable-v2-create-and-resume)
-uses journal-bound full claims and acknowledged anchor compaction. Its wiring has
-144 focused passing Scala tests; live v2 acceptance remains a separate milestone.
+The separate [sustained-durable v2 mode](docs/private-node.md#sustained-durable-v2-create-and-resume) uses journal-bound full claims and acknowledged anchor compaction. Its [adaptive isolated acceptance](docs/adaptive-sustained-acceptance.md) now demonstrates twelve same-epoch original blocks with capacity two, strict A-to-B recovery and continuation, exact transaction-body inclusion, and complete supported reference-projection equality. Later reference-chain growth is a separate observation; Scala epoch transitions, full ledger/consensus validation and monetary-conservation claims remain outside this case.
 
 ## Atomic restricted branch candidate
 
