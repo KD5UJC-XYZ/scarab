@@ -110,3 +110,50 @@ peer is released. Resume verifies context, original replay and stored capacity.
 This mode has no anchor compaction and makes no power-loss, live-fork, epoch-
 transition, full-ledger or full-consensus claim. Keep checkpoint files, receipts,
 raw captures and reference cluster data outside Git.
+
+
+## Intersection and rollback evidence
+
+Every actual peer intersection emits these ordered JSON lines:
+
+- `node-intersection-offered`: `offeredPoints` is the exact ordered vector passed
+  to ChainSync (at most nine points, including the retained anchor).
+- `node-intersection-selected`: `selectedPoint` is the peer's actual return;
+  `offeredMatch` says whether it belongs to that vector. An unoffered selection is
+  recorded before the runner rejects it. A failed intersection has no selected row.
+
+Both rows carry `acquisitionOnly: true` and `appliedClaim: false`. A block point is
+`{"hash":"<lowercase hex>","slot":<JSON integer>}`; Origin is `{"origin":true}`.
+The offered row precedes the call, and the selected row precedes rollback checking.
+Neither proves state installation. Each retry emits a new ordered pair; no offers
+are recomputed from the later state. These small rows do not require `--audit`.
+
+With `--mode bounded-durable --audit true`, `node-rollback` additionally includes
+`projection`, using exactly the canonical full checked-state schema of
+`node-loaded`: context and tuple IDs, anchor/tip/applied tip, original header/block
+hashes, certificate state and counters, nonce state, eligibility and complete
+ledger UTxO CBOR hex/fees/slot/IDs. The existing top-level `revision`, `depth`,
+`stateId`, `confirmation`, `confirmedGeneration`, `receiptPath` and `receiptSha256`
+describe that same snapshot. The projection omits revision internally; use the
+top-level revision. Receipt references are evidence identifiers, not key material.
+
+This row is emitted after rollback returns successfully and the external
+acknowledged receipt has been recorded, before the next acquisition event. A
+nonempty rollback is `acknowledged` with a new generation; an unchanged resume
+intersection remains `loaded-verified` with its original generation. In particular,
+`initialIntersection: true` does not mean no-op: the first selection can roll back
+the loaded A branch to common point C. Compare the loaded and rollback depth/tip,
+revision, generation and full projections to demonstrate removal of A effects.
+
+Each projection is limited to 16 MiB of UTF-8 JSON, as for `node-loaded`; exceeding
+that bound terminates the audited execution. Rollback projections have a separate
+64 MiB cumulative budget. Once a projection would exceed it, the row instead has
+`projectionOmitted: "cumulative-size-bound"`; it is not complete rollback evidence.
+No projection is added to volatile or audit-disabled rollback rows. Output failure
+remains terminal and does not authorize continued acquisition or a receipt retry.
+
+For the planned bounded fork acceptance, retain `node-loaded` proving restored A,
+the actual offered/selected pair proving C was selected, and the acknowledged
+`node-rollback` projection proving checked rollback to C before B adoption. This
+telemetry alone is not live-fork acceptance, canonical-chain selection, or full
+ledger/consensus validation. Capacity remains eight; v2 primitives remain unwired.

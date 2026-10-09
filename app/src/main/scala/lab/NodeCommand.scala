@@ -441,6 +441,16 @@ object NodeCommand:
     case Some(ChainSync.Point.Block(slot, hash)) =>
       s"""{"hash":"${hash.hex}","slot":${slot.value}}"""
     case _ => "null"
+  private def intersectionPoint(p: ChainSync.Point): String = p match
+    case ChainSync.Point.Origin => """{"origin":true}"""
+    case _                      => point(Some(p))
+  private def checkedProjection(s: CoherentSequence.State): String =
+    val projection = ValidatedRestartCapture.canonical(ValidatedRestartCapture.projection(s))
+    require(
+      projection.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 16 * 1024 * 1024,
+      "checked projection bound"
+    )
+    projection
   private def state(s: CoherentSequence.State): String =
     val derived = s.derivedAnchorId.fold("null")(id => quote(id.hex))
     s""""contextId":"${s.contextId.hex}","stateId":"${s.id.hex}","revision":${s.revision},"depth":${s.depth},"compactedBlocks":${s.compactedBlocks},"derivedAnchorId":$derived,"retainedBlocks":${s.acquisition.size},"scopedAppliedTip":${point(
@@ -540,6 +550,7 @@ object NodeCommand:
       initialIntersection <- Ref.of[IO, Boolean](true)
       pendingHeader <- Ref.of[IO, Option[(ChainSync.Point, Bytes)]](None)
       auditBytes <- Ref.of[IO, Long](0L)
+      rollbackProjectionBytes <- Ref.of[IO, Long](0L)
       carriedOutcome <- Ref.of[IO, Option[EngineOutcome]](None)
       carriedFailure <- Ref.of[IO, Option[Failure]](None)
 
@@ -557,7 +568,22 @@ object NodeCommand:
       traced = owned.map { underlying =>
         new BoundedChainFollower.Peer[IO]:
           def intersect(candidates: Vector[ChainSync.Point]) =
-            pendingHeader.set(None) *> underlying.intersect(candidates)
+            pendingHeader.set(None) *>
+              IO.raiseUnless(candidates.size <= 9)(
+                Abort(Failure("intersection", "Internal", "offered point bound"))
+              ) *>
+              output(
+                s"""{"record":"node-intersection-offered","offeredPoints":${candidates
+                    .map(intersectionPoint)
+                    .mkString("[", ",", "]")},"acquisitionOnly":true,"appliedClaim":false}"""
+              ) *> underlying.intersect(candidates).flatTap { selected =>
+                output(
+                  s"""{"record":"node-intersection-selected","selectedPoint":${intersectionPoint(
+                      selected
+                    )},"offeredMatch":${candidates
+                      .contains(selected)},"acquisitionOnly":true,"appliedClaim":false}"""
+                )
+              }
           def next = pendingHeader.get
             .flatMap {
               case Some(_) =>
@@ -643,11 +669,24 @@ object NodeCommand:
           initialIntersection.getAndSet(false).flatMap { first =>
             current.get
               .flatMap(_.snapshot)
-              .flatMap(s =>
-                output(s"""{"record":"node-rollback","initialIntersection":$first,${observed(
-                    s
-                  )},${claims(config.mode == "bounded-durable")}}""")
-              )
+              .flatMap { s =>
+                val projection =
+                  if config.mode != "bounded-durable" || !config.audit then IO.pure("")
+                  else
+                    IO(checkedProjection(s.state)).flatMap { value =>
+                      val size = value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                      rollbackProjectionBytes.modify { used =>
+                        if used + size <= 64L * 1024 * 1024 then
+                          (used + size, s""","projection":$value""")
+                        else (used, ""","projectionOmitted":"cumulative-size-bound"""")
+                      }
+                    }
+                projection.flatMap { extra =>
+                  output(s"""{"record":"node-rollback","initialIntersection":$first,${observed(
+                      s
+                    )}$extra,${claims(config.mode == "bounded-durable")}}""")
+                }
+              }
           }
         else IO.unit
       session <- factory
@@ -681,15 +720,7 @@ object NodeCommand:
             _ <-
               if initial.confirmation == Confirmation.LoadedVerified then
                 IO {
-                  val projection = ValidatedRestartCapture.canonical(
-                    ValidatedRestartCapture.projection(initial.state)
-                  )
-                  require(
-                    projection
-                      .getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                      .length <= 16 * 1024 * 1024,
-                    "loaded projection bound"
-                  )
+                  val projection = checkedProjection(initial.state)
                   s"""{"record":"node-loaded",${observed(
                       initial
                     )},"projection":$projection,"potentiallyOlderThanDisk":false,"externalReceiptStale":false,${claims(

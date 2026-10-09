@@ -50,6 +50,18 @@ class NodeCommandSuite extends munit.FunSuite:
   private def field(line: String, name: String) =
     ReferenceJson.field(ReferenceJson.parse(raw(line)), name)
   private def record(line: String) = ReferenceJson.string(field(line, "record"))
+  private def pointJson(p: ChainSync.Point): ReferenceJson.Json = p match
+    case ChainSync.Point.Origin => ReferenceJson.parse(raw("{\"origin\":true}"))
+    case ChainSync.Point.Block(slot, hash) =>
+      ReferenceJson.parse(raw(s"""{"hash":"${hash.hex}","slot":${slot.value}}"""))
+  private def pointsJson(points: Vector[ChainSync.Point]): ReferenceJson.Json =
+    ReferenceJson.parse(
+      raw(points.map(p => ValidatedRestartCapture.canonical(pointJson(p))).mkString("[", ",", "]"))
+    )
+  private def acquisitionOnly(line: String): Unit =
+    assertEquals(field(line, "acquisitionOnly"), ReferenceJson.Json.Lit("true"))
+    assertEquals(field(line, "appliedClaim"), ReferenceJson.Json.Lit("false"))
+
   private val noPeer =
     Resource.eval(IO.raiseError[Peer[IO]](new AssertionError("unexpected peer acquisition")))
   // Fake engine is used only to exercise typed outcome and resource-boundary handling at an anchor.
@@ -473,14 +485,62 @@ class NodeCommandSuite extends munit.FunSuite:
         yield
           val report = get(result)
           assertEquals(report.outcome.reason, Stop.EventBudget)
-          assertEquals(lines.map(record), Vector("node-bootstrap", "node-rollback"))
+          assertEquals(
+            lines.map(record),
+            Vector(
+              "node-bootstrap",
+              "node-intersection-offered",
+              "node-intersection-selected",
+              "node-rollback"
+            )
+          )
           assertEquals(field(lines.head, "sourceBound"), ReferenceJson.Json.Lit("true"))
           assertEquals(field(lines.head, "scopedAppliedTip"), ReferenceJson.Json.Lit("null"))
-          assertEquals(field(lines(1), "initialIntersection"), ReferenceJson.Json.Lit("true"))
+          assertEquals(field(lines(3), "initialIntersection"), ReferenceJson.Json.Lit("true"))
+          assertEquals(field(lines(1), "offeredPoints"), pointsJson(Vector(anchor(c))))
+          assertEquals(field(lines(2), "selectedPoint"), pointJson(anchor(c)))
+          assertEquals(field(lines(2), "offeredMatch"), ReferenceJson.Json.Lit("true"))
+          lines.slice(1, 3).foreach(acquisitionOnly)
+          assert(
+            !ReferenceJson
+              .parse(raw(lines(3)))
+              .asInstanceOf[ReferenceJson.Json.Obj]
+              .fields
+              .contains("projection")
+          )
           assertEquals(report.peerOpens, 1); assertEquals(report.peerCloses, 1)
       }
       .unsafeToFuture()
   }
+  test(
+    "unoffered actual Origin intersection is reported before rejecting it without next or fetch"
+  ) {
+    val c = syntheticContext
+    (for
+      logs <- Ref.of[IO, Vector[String]](Vector.empty)
+      result <- NodeCommand.execute(
+        config("--blocks", "1"),
+        c,
+        scripted(Nil, ChainSync.Point.Origin),
+        line => logs.update(_ :+ line)
+      )
+      lines <- logs.get
+    yield
+      val report = get(result)
+      assertEquals(report.outcome.reason, Stop.OutsideRetainedWindow)
+      assertEquals(report.outcome.events, 0)
+      assertEquals(report.outcome.snapshot.state.depth, BigInt(0))
+      assertEquals(
+        lines.map(record),
+        Vector("node-bootstrap", "node-intersection-offered", "node-intersection-selected")
+      )
+      assertEquals(field(lines(1), "offeredPoints"), pointsJson(Vector(anchor(c))))
+      assertEquals(field(lines(2), "selectedPoint"), pointJson(ChainSync.Point.Origin))
+      assertEquals(field(lines(2), "offeredMatch"), ReferenceJson.Json.Lit("false"))
+      lines.drop(1).foreach(acquisitionOnly)
+    ).unsafeToFuture()
+  }
+
   test("unsupported era remains typed and no block is fetched") {
     val c = syntheticContext
     val envelope = get(
@@ -847,6 +907,117 @@ class NodeCommandSuite extends munit.FunSuite:
       get(CoherentSequenceCommand.captures(Bytes.fromArray(bytes)))
     def forwards(os: Vector[Original]) = os.toList.map(o => IO.pure(Event.Forward(o.envelope)))
     def fetch(os: Vector[Original])(p: ChainSync.Point) = IO(os.find(point(_) == p).get.block)
+    test(
+      "retained durable resume reports ordered offers and acknowledged full rollback before next event"
+    ) {
+      val c = context; val os = originals.take(2)
+      assertEquals(os.size, 2)
+      assertEquals(os.map(o => get(SequenceInput.block(o)).transactionMemos.size).sum, 2)
+      val base = Files.createTempDirectory("node-intersection-rollback-")
+      def args(target: Int, events: Int) =
+        durableArgs(base, c).updated(11, target.toString).updated(13, events.toString) ++ List(
+          "--audit",
+          "true"
+        )
+      val settings = get(NodeCommand.Config.parse(required ++ args(2, 2)))
+      (for
+        initialRuntime <- CoherentSequence.create[IO](c).map(get(_))
+        initial <- initialRuntime.snapshot
+        factory <- NodeCommand.factoryFor(settings, c)
+        first <- NodeCommand.execute(
+          settings,
+          c,
+          scripted(forwards(os), anchor(c), fetch(os)),
+          _ => IO.unit,
+          factory
+        )
+        a = get(first)
+        receipt = a.outcome.snapshot.receipt.get
+        resumed = get(
+          NodeCommand.Config.parse(
+            required ++ args(3, 3)
+              .updated(3, "resume")
+              .updated(7, base.resolve("receipts-b").toString) ++ List(
+              "--resume-receipt",
+              receipt.path,
+              "--resume-sha256",
+              receipt.sha256
+            )
+          )
+        )
+        factoryB <- NodeCommand.factoryFor(resumed, c)
+        logs <- Ref.of[IO, Vector[String]](Vector.empty)
+        nextCount <- Ref.of[IO, Int](0)
+        peer = Resource.pure[IO, Peer[IO]](new Peer[IO]:
+          def intersect(offered: Vector[ChainSync.Point]) = logs.get.map { lines =>
+            assertEquals(offered, a.outcome.snapshot.state.acquisition.candidates)
+            assertEquals(
+              lines.map(record),
+              Vector("node-bootstrap", "node-loaded", "node-intersection-offered")
+            )
+            assertEquals(
+              field(lines(1), "projection"),
+              ValidatedRestartCapture.projection(a.outcome.snapshot.state)
+            )
+            assertEquals(field(lines(1), "confirmation"), ReferenceJson.Json.Str("loaded-verified"))
+            assertEquals(field(lines.last, "offeredPoints"), pointsJson(offered))
+            anchor(c)
+          }
+          def next = logs.get.flatMap { lines =>
+            IO {
+              val rolled = lines.find(record(_) == "node-rollback").get
+              assertEquals(field(rolled, "confirmation"), ReferenceJson.Json.Str("acknowledged"))
+              assertEquals(
+                field(rolled, "confirmedGeneration"),
+                ReferenceJson.Json.Num((a.outcome.snapshot.confirmedGeneration.get + 1).toString)
+              )
+              assertEquals(
+                field(rolled, "revision"),
+                ReferenceJson.Json.Num((a.outcome.snapshot.state.revision + 2).toString)
+              )
+              assertEquals(field(rolled, "depth"), ReferenceJson.Json.Num("0"))
+              assertEquals(
+                field(rolled, "projection"),
+                ValidatedRestartCapture.projection(initial.state)
+              )
+            } *> nextCount.update(_ + 1).as(Event.Await)
+          }
+          def fetch(p: ChainSync.Point) =
+            IO.raiseError[Bytes](new AssertionError("unexpected fetch during rollback-only resume")))
+        second <- NodeCommand.execute(resumed, c, peer, line => logs.update(_ :+ line), factoryB)
+        lines <- logs.get
+        events <- nextCount.get
+      yield
+        val b = get(second)
+        assertEquals(a.outcome.reason, Stop.TargetReached)
+        assert(a.outcome.snapshot.state.ledger.fees > initial.state.ledger.fees)
+        assertEquals(b.outcome.reason, Stop.EventBudget)
+        assertEquals(events, 3)
+        assertEquals(b.outcome.snapshot.state.ledger.outputMap, initial.state.ledger.outputMap)
+        assertEquals(b.outcome.snapshot.state.ledger.fees, initial.state.ledger.fees)
+        assertEquals(b.outcome.snapshot.state.id, initial.state.id)
+        assertEquals(
+          b.outcome.snapshot.confirmedGeneration,
+          a.outcome.snapshot.confirmedGeneration.map(_ + 1)
+        )
+        assertEquals(b.outcome.snapshot.state.revision, a.outcome.snapshot.state.revision + 2)
+        val selected = lines.find(record(_) == "node-intersection-selected").get
+        assertEquals(field(selected, "selectedPoint"), pointJson(anchor(c)))
+        assertEquals(field(selected, "offeredMatch"), ReferenceJson.Json.Lit("true"))
+        acquisitionOnly(selected)
+        acquisitionOnly(lines.find(record(_) == "node-intersection-offered").get)
+        assertEquals(
+          lines.take(5).map(record),
+          Vector(
+            "node-bootstrap",
+            "node-loaded",
+            "node-intersection-offered",
+            "node-intersection-selected",
+            "node-rollback"
+          )
+        )
+      ).unsafeToFuture()
+    }
     test(
       "retained durable resume at cumulative target opens no peer and writes no new acknowledgment"
     ) {
