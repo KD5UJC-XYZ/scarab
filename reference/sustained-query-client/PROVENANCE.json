@@ -1,0 +1,15 @@
+{
+  "sourceRoot": "/home/<user>/cardano-worktrees/epoch-query-client-20261009/reference/epoch-query-client",
+  "copiedOriginalSHA256": {
+    "Session.hs": "d581a494b9da7505cf5d81fa20ed363f976accbcb5b9e6ea2d9bb42dded6aa0b",
+    "Transport.hs": "7b973fb092f383e597895bbf2e0f71ab416694503b0a9660555ea8b101aa75cf",
+    "StrictJson.hs": "224adad66f45b57ef3c8a6c60f821101cc4734a1b5d0ddfef904720959c8a159",
+    "Adapter.hs": "d4bc62bbc3e9c63bbc16640c5d80cc82fc885c20fdbfc4f2f8cc0dc78062009e",
+    "VerifySeed.hs": "1ea82ab7ef36cc7d42df5e9cec8e60af3918a6dbb9964f0ebd56453ef401689c",
+    "query/Main.hs": "30648312d40c38b0a44217755a5441aa53518c9574e6fe28031e8fd5e0b70ee6",
+    "bounded.py": "e5a48d10565f23cb4258c07745413539b2ccf78f3bfb82bd2a7f0e3e013d7d87",
+    "offline/Main.hs": "0c6d5274d4cce606ce8770e881129024058a130e43691dc60deacf20895e1c17",
+    "test_native.py": "591a09ff247a27cfa3fb92e103a001171d4d3c6634893d18294379d1c77d2670",
+    "packet.py": "2d66ed26aac3c094896602149890791e2904a6fbf296748164a5777aae714f16"
+  }
+}
