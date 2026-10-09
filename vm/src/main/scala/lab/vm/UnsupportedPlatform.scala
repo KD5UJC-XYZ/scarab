@@ -5,7 +5,7 @@ import scalus.uplc.builtin.*
 import scalus.uplc.builtin.bls12_381.*
 private[vm] final class UnsupportedBackend(operation: String) extends RuntimeException(operation)
 
-private[vm] object UnsupportedPlatform extends PlatformSpecific:
+private[vm] trait RejectingPlatform extends PlatformSpecific:
   def sha2_256(bs: ByteString): ByteString = throw new UnsupportedBackend(
     "UnsupportedPlatform:sha2_256"
   )
@@ -105,3 +105,9 @@ private[vm] object UnsupportedPlatform extends PlatformSpecific:
   def appendFile(path: String, bytes: Array[Byte]): Unit = throw new UnsupportedBackend(
     "UnsupportedPlatform:appendFile"
   )
+  override def createDirectories(path: String): Unit =
+    throw new UnsupportedBackend("UnsupportedPlatform:createDirectories")
+  override def fileExists(path: String): Boolean =
+    throw new UnsupportedBackend("UnsupportedPlatform:fileExists")
+
+private[vm] object UnsupportedPlatform extends RejectingPlatform

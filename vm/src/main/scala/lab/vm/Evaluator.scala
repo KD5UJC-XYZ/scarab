@@ -4,6 +4,7 @@ package lab.vm
 import scalus.cardano.ledger.{ExUnits, Language, MajorProtocolVersion}
 import scalus.uplc.*
 import scalus.uplc.eval.*
+import scalus.uplc.builtin.PlatformSpecific
 import scala.util.control.NonFatal
 
 final case class Budget(cpu: Long, memory: Long):
@@ -61,15 +62,20 @@ object ReferenceParameters:
       )
     catch case NonFatal(e) => Left(s"invalid reference parameters: ${e.getMessage}")
 
-/** Deterministic, effect-free fixture-only research adapter. No file/network/provider access.
+/** Deterministic, effect-free fixture-only research adapter. No file/network access.
   * Static gating is intentionally conservative, including unreachable code.
   */
-final class Evaluator(parameters: ReferenceParameters):
+final class Evaluator private[vm] (
+    parameters: ReferenceParameters,
+    platform: PlatformSpecific
+):
+  def this(parameters: ReferenceParameters) = this(parameters, Blake2bPlatform)
+
   private val vm = new PlutusVM(
     Language.PlutusV3,
     parameters.machine,
     BuiltinSemanticsVariant.E,
-    UnsupportedPlatform,
+    platform,
     MajorProtocolVersion.vanRossemPV
   )
 
@@ -104,7 +110,15 @@ final class Evaluator(parameters: ReferenceParameters):
 
 object Evaluator:
   val supportedBuiltins: Set[String] =
-    Set("addInteger", "divideInteger", "ifThenElse", "chooseData", "equalsData")
+    Set(
+      "addInteger",
+      "divideInteger",
+      "ifThenElse",
+      "chooseData",
+      "equalsData",
+      "blake2b_256",
+      "equalsByteString"
+    )
 
   def parse(source: String): Either[Outcome, Program] =
     if source.length > 65536 then Left(Outcome.InvalidInput("source exceeds research size limit"))
@@ -131,16 +145,17 @@ object Evaluator:
         catch case NonFatal(e) => Left(Outcome.InvalidInput(e.getMessage))
 
   private def supportedTerm(term: Term): Boolean = term match
-    case Term.Var(_, _)                     => true
-    case Term.LamAbs(_, body, _)            => supportedTerm(body)
-    case Term.Apply(function, argument, _)  => supportedTerm(function) && supportedTerm(argument)
-    case Term.Force(body, _)                => supportedTerm(body)
-    case Term.Delay(_, _)                   => false
-    case Term.Const(Constant.Integer(_), _) => true
-    case Term.Const(Constant.Bool(_), _)    => true
-    case Term.Const(Constant.String(_), _)  => true
-    case Term.Const(Constant.Data(_), _)    => true
-    case Term.Const(_, _)                   => false
+    case Term.Var(_, _)                        => true
+    case Term.LamAbs(_, body, _)               => supportedTerm(body)
+    case Term.Apply(function, argument, _)     => supportedTerm(function) && supportedTerm(argument)
+    case Term.Force(body, _)                   => supportedTerm(body)
+    case Term.Delay(_, _)                      => false
+    case Term.Const(Constant.Integer(_), _)    => true
+    case Term.Const(Constant.Bool(_), _)       => true
+    case Term.Const(Constant.String(_), _)     => true
+    case Term.Const(Constant.Data(_), _)       => true
+    case Term.Const(Constant.ByteString(_), _) => true
+    case Term.Const(_, _)                      => false
     case Term.Builtin(fun, _) => supportedBuiltins.exists(_.equalsIgnoreCase(fun.toString))
     case Term.Error(_)        => true
     case Term.Constr(_, _, _) => false

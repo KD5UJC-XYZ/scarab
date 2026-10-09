@@ -41,6 +41,8 @@ lazy val core = project.in(file("core")).configs(PrivateCorpus).settings(private
 )
 lazy val vm = project.in(file("vm")).configs(PrivateCorpus).settings(privateCorpusSettings).settings(
   libraryDependencies ++= Seq(
+    // Direct use by the bounded BLAKE2b provider; same version already supplied by Scalus.
+    "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",
     ("org.scalus" %% "scalus" % "1.3.0")
       .exclude("foundation.icon", "blst-java")
       .exclude("org.scalus", "scalus-secp256k1-jni"),

@@ -19,7 +19,9 @@ object FixtureRegistry:
     "chooseDataInteger",
     "chooseDataByteString",
     "equalsData-01",
-    "equalsData-02"
+    "equalsData-02",
+    "blake2b_256-empty",
+    "blake2b_256-length-200"
   )
   val hashes: Map[String, String] = Map(
     "addInteger-01.uplc" -> "b8300e6cb277ff498dd80ade14ae9b29c32f542ef937905c2a62fafad232131e",
@@ -69,7 +71,13 @@ object FixtureRegistry:
     "equalsData-01.uplc.budget.expected" -> "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3",
     "equalsData-02.uplc" -> "5f3fac472cd195735710fa3372983a659bf9817fa445dd5cee4a6a02564721ac",
     "equalsData-02.uplc.expected" -> "287eae4669ff04a1ecc072ea7a33e241b36d1517fe6e51b8081143a9432ac4a4",
-    "equalsData-02.uplc.budget.expected" -> "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3"
+    "equalsData-02.uplc.budget.expected" -> "c2b215b9905084d45cfb82655f4b1c5e635c35acda78c6a0322b0b1d69ba34c3",
+    "blake2b_256-empty.uplc" -> "d6b9c616d0053ed138f82e214b49a6237450ec6282daec5b23d5343439ad7a5f",
+    "blake2b_256-empty.uplc.expected" -> "fbbad3b1730817896bb943c6fead056fcf22e35b7eaa19b32175d2085aeab62e",
+    "blake2b_256-empty.uplc.budget.expected" -> "3f2d0768487bf09066dd41e98f99df68c13ed6bac423c8ec5c69dab8fe23933a",
+    "blake2b_256-length-200.uplc" -> "ad840d328c11d3bceaced7eb1f7c17baea4831abff7618f1abaaf32849e05a9b",
+    "blake2b_256-length-200.uplc.expected" -> "fbbad3b1730817896bb943c6fead056fcf22e35b7eaa19b32175d2085aeab62e",
+    "blake2b_256-length-200.uplc.budget.expected" -> "18ab027d5e716db86587871f0d8d65c8ede29db6fb1f742547282cc9b607da74"
   )
   private[vm] val admittedTermHashes: Set[String] = hashes.collect {
     case (name, hash)

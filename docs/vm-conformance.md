@@ -1,10 +1,10 @@
-# Frozen UPLC control-flow and Data conformance
+# Frozen UPLC control-flow, Data and BLAKE2b conformance
 
 ## Run and scope
 
-Run `./scripts/sbtw 'app/runMain lab.Main vm'`. An optional directory argument must contain the same sixteen named upstream fixture triples with byte-identical contents. This is a **fixture-only evaluator harness**, not an arbitrary-script interface. The existing no-argument codec/hash command is unchanged. `--help` lists both modes. Input errors return 2; a computed conformance mismatch returns 1; all matches return 0 (sbt may collapse nonzero exits to 1).
+Run `./scripts/sbtw 'app/runMain lab.Main vm'`. An optional directory argument must contain the same eighteen named upstream fixture triples with byte-identical contents. This is a **fixture-only evaluator harness**, not an arbitrary-script interface. The existing no-argument codec/hash command is unchanged. `--help` lists both modes. Input errors return 2; a computed conformance mismatch returns 1; all matches return 0 (sbt may collapse nonzero exits to 1).
 
-Scalus 1.3.0 evaluates fourteen successes and two expected failures. The packet includes arithmetic, forced polymorphic conditionals, returned closures, dispatch over all five Data forms, and structural Data equality. It includes an unselected error argument proving the strict evaluation of ifThenElse arguments. Success compares alpha-equivalent result terms and exact CPU/memory against upstream precomputed expectations. Every success is evaluated again with exactly its golden budget, CPU minus one, and memory minus one. Exact passes; each independent reduction exhausts. These boundary experiments are local derived tests, not additional official fixtures.
+Scalus 1.3.0 evaluates sixteen successes and two expected failures. The packet includes arithmetic, forced polymorphic conditionals, returned closures, dispatch over all five Data forms, structural Data equality, and BLAKE2b-256 for empty and 25-byte inputs. It includes an unselected error argument proving the strict evaluation of ifThenElse arguments. Success compares alpha-equivalent result terms and exact CPU/memory against upstream precomputed expectations. Every success is evaluated again with exactly its golden budget, CPU minus one, and memory minus one. Exact passes; each independent reduction exhausts. These boundary experiments are local derived tests, not additional official fixtures.
 
 | Fixture | Upstream result | CPU | Memory |
 |---|---|---:|---:|
@@ -24,6 +24,8 @@ Scalus 1.3.0 evaluates fourteen successes and two expected failures. The packet 
 | chooseDataByteString | lambda returning Data B #05 | 318475 | 1532 |
 | equalsData-01 | boolean True | 1223759 | 601 |
 | equalsData-02 | boolean False | 1223759 | 601 |
+| blake2b_256-empty | boolean True (digest comparison) | 350816 | 805 |
+| blake2b_256-length-200 | boolean True (digest comparison) | 375884 | 805 |
 
 Both failure budget files literally say `evaluation failure`. Any displayed spent budget for these failures is a Scalus observation, not an upstream numeric golden. The harness recognizes the admitted divideInteger arithmetic exception and the CEK explicit-error exception, with the expected failure kind pinned to each source digest; unsupported capabilities and internal/backend faults cannot satisfy the expected failure.
 
@@ -42,17 +44,17 @@ Immutable per-file source links and SHA-256 values are in [vm-provenance.json](v
 
 `vm` has no Cats Effect dependency or file/report access. Callers provide the fixed parameters and source strings; execution uses a fresh restricting spender with a research ceiling of 10,000,000 CPU / 100,000 memory. Those ceilings are not ledger limits. The application uses Cats Effect blocking file reads and generic `VmFixtureSource[F]`/`VmReportSink[F]` ports, with errors propagated through the effect. No `unsafeRunSync` is used.
 
-All source/result bytes require SHA-256 admission **before Scalus parsing**. The file adapter additionally pins hashes by filename for sources, results and budget files, preventing swapped fixtures or edited expectations from passing as the official set. A post-parse exhaustive AST gate admits integer/boolean/string/Data constants, variables, lambda abstraction, application, force, explicit error, and addInteger/divideInteger/ifThenElse/chooseData/equalsData only. Delay, constr/case terms, other constant types, other builtins, crypto, BLS constants, and even unreachable unsupported code are refused as `Unsupported`; arbitrary malformed source is also unregistered, not a tested generic parse-failure surface. Size, budget and trusted admitted parse failures have separate `InvalidInput` outcomes.
+All source/result bytes require SHA-256 admission **before Scalus parsing**. The file adapter additionally pins hashes by filename for sources, results and budget files, preventing swapped fixtures or edited expectations from passing as the official set. A post-parse exhaustive AST gate admits integer/boolean/string/Data/byte-string constants, variables, lambda abstraction, application, force, explicit error, and addInteger/divideInteger/ifThenElse/chooseData/equalsData/blake2b_256/equalsByteString only. Delay, constr/case terms, other constant types, other builtins, unsupported cryptography, BLS constants, and even unreachable unsupported code are refused as `Unsupported`; arbitrary malformed source is also unregistered, not a tested generic parse-failure surface. Size, budget and trusted admitted parse failures have separate `InvalidInput` outcomes.
 
-This conservative admission is deliberate: Scalus BLS constant parsing can invoke its global platform before an injected evaluation provider is reached. A general parser/Flat-decoder security boundary is not implemented. The runtime excludes blst-java and scalus-secp256k1-jni; every platform operation is a typed throwing guard, never fake bytes or `false`. The adapter does not inherit the default native platform. Native-dependent library APIs remain present in the third-party jar and must not be exposed without a separately verified boundary.
+This conservative admission is deliberate: Scalus BLS constant parsing can invoke its global platform before an injected evaluation provider is reached. A general parser/Flat-decoder security boundary is not implemented. The runtime excludes blst-java and scalus-secp256k1-jni; every platform operation except BLAKE2b-256 is a typed throwing guard, never fake bytes or `false`. The adapter does not inherit the default native platform. Native-dependent library APIs remain present in the third-party jar and must not be exposed without a separately verified boundary.
 
-`Success`, known `EvaluationFailure`, `BudgetExhausted`, `Unsupported`, `InvalidInput`, and `InternalError` are distinct. The budget-exhausted value is attempted charge, which can exceed the requested limit. Unexpected machine/builtin errors cannot pass failure conformance. No full Plutus corpus, cryptography, script-context construction, V3 Unit-return ledger acceptance, transaction validation, Flat decoding or historical ledger replay is claimed. The VM evaluates terms, not the higher-level script validator that would require a Unit result.
+`Success`, known `EvaluationFailure`, `BudgetExhausted`, `Unsupported`, `InvalidInput`, and `InternalError` are distinct. The budget-exhausted value is attempted charge, which can exceed the requested limit. Unexpected machine/builtin errors cannot pass failure conformance. No full Plutus corpus, general cryptographic coverage, script-context construction, V3 Unit-return ledger acceptance, transaction validation, Flat decoding or historical ledger replay is claimed. The VM evaluates terms, not the higher-level script validator that would require a Unit result.
 
 ## Pinned implementation audit and capability matrix
 
-The audited artifact remains Scalus 1.3.0; build.sbt and dependency policy are unchanged.
+The audited artifact remains Scalus 1.3.0. build.sbt now declares direct VM use of the already-resolved bcprov-jdk18on 1.85.2; resolved versions and native exclusions are unchanged.
 The adapter calls the explicit PlutusVM constructor with language V3, semantics E,
-reference-E MachineParams, the throwing UnsupportedPlatform, and vanRossemPV.
+reference-E MachineParams, the narrow Blake2bPlatform, and vanRossemPV.
 It then evaluates a de-Bruijn term with a fresh RestrictingBudgetSpender. This is
 UPLC machine evaluation; it does not call a ledger script validator.
 
@@ -62,7 +64,7 @@ UPLC machine evaluation; it does not call a ledger script validator.
 | Conditionals and closures | Three exact-budget ifThenElse successes; alpha-equivalent closure comparison; strict error argument failure |
 | Data dispatch | chooseData covers Constr, Map, List, I and B; all five exact budgets |
 | Data equality | Equal and unequal constructor payloads; exact budgets and opposite boolean results |
-| Provider-backed builtins | All rejected by UnsupportedPlatform; none newly admitted |
+| Provider-backed builtins | Only BLAKE2b-256 is enabled; other hashes, signatures, BLS, modular exponentiation and filesystem operations reject |
 | General UPLC parsing / Flat | Unsupported; exact byte hashes checked before parsing |
 | Delay, UPLC constr/case and other language versions | Not admitted or tested |
 | Ledger ScriptContext construction, datum/redeemer resolution, Unit-return acceptance | Not implemented by this adapter |
@@ -77,23 +79,23 @@ errors remain InternalError; they cannot satisfy either admitted failure vector.
 
 The stock [JVM provider](https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/jvm/src/main/scala/scalus/uplc/builtin/JVMPlatformSpecific.scala)
 includes Java/JDK/Bouncy Castle hashes and Ed25519, but also native secp256k1 and BLST
-operations. This packet neither enables that provider nor adds a replacement.
+operations. This packet injects its own BLAKE2b-only provider, without inheriting or enabling that broad provider.
 The [parser](https://github.com/scalus3/scalus/blob/31531c14d4e556fb38c984d702ee60dd82b6453f/scalus-core/shared/src/main/scala/scalus/uplc/UplcParser.scala)
 constructs ordinary Data directly but invokes the global platform for BLS constants;
 the pre-parser byte gate remains mandatory. This is evidence for the admitted
-provider-free fixture paths, not a claim that the full Scalus JVM library is native-free.
+bounded provider-free and Java BLAKE2b fixture paths, not a claim that the full Scalus JVM library is native-free.
 
 FixtureRegistry is the single compiled filename/hash inventory used by both the
 file adapter and the pure parser admission check. Failure sentinel strings are not
 admitted as terms. Unmodified primary fixtures and expectations were fetched from
 the same immutable Plutus commit as the original arithmetic packet. Existing Apache-2.0
 LICENSE and NOTICE files apply; no public-chain/provider corpus or Scalus implementation
-source was added. There are 48 fixture files and 42 derived boundary evaluations
+source was added. There are 54 fixture files and 48 derived boundary evaluations
 (three per successful vector), in addition to the normal-ceiling evaluations.
 
 ## Reproduction and verification
 
-Use the repository's existing VM command to run all sixteen fixtures. For isolated
+Use the repository's existing VM command to run all eighteen fixtures. For isolated
 Docker verification, use a private copy of the existing dependency cache and this
 command inside the checkout (do not share a writable cache between runners):
 
@@ -121,7 +123,7 @@ Fetching immutable licensed source fixtures is separate from evaluation.
 The image/cache are pre-existing local prerequisites, not new host installations.
 
 
-Verification of this increment: 27 VM tests and five VmCommandSuite tests passed,
+Verification of the previous control-flow/Data increment: 27 VM tests and five VmCommandSuite tests passed,
 scalafmtCheckAll passed, all 48 fixture checksums and all 52 provenance artifact hashes passed, and the explicit-main CLI reported 16/16 matched. Independent read-only
 review found no implementation issues and matched the fixture contents against the
 recorded upstream Git blob IDs, in addition to SHA-256 registry/provenance checks.
@@ -130,3 +132,57 @@ The whole unrelated repository test suite was not rerun for this isolated increm
 The existing app has multiple main classes; the noninteractive CLI invocation must
 select `app/runMain lab.Main vm`. The older `app/run vm` form prompted for a main
 class and failed before evaluation. No shared launcher or build policy was changed.
+
+
+## Narrow BLAKE2b-256 provider increment
+
+Only the two verbatim official BLAKE2b-256 fixture triples are added. Their
+`length-200` name means 200 bits (25 bytes), not 200 bytes. They hash the input
+and use equalsByteString against a literal expected digest, returning True.
+Fixture comments attribute the literals to the BLAKE2 project's b2sum.
+Per-file immutable URLs and hashes are in vm-provenance.json; the six downloaded
+files were additionally matched to Git blob IDs from the pinned upstream tree.
+No reference executable was run and expected outputs were not generated locally.
+
+Blake2bPlatform creates a fresh `Blake2bDigest(256)` for each call, feeds the
+unchanged input bytes, and writes into a fresh 32-byte output. It uses no key,
+salt, personalization, shared digest or global provider registration. This is
+parameterized BLAKE2b-256, not truncated BLAKE2b-512. It uses the existing pure-Java
+Bouncy Castle artifact. SHA2, SHA3, Keccak, BLAKE2b-224, RIPEMD, SHA2-512,
+signatures, BLS and modular exponentiation stay unsupported. SHA3-256 and
+Keccak-256 are distinct algorithms; neither is enabled here.
+
+RejectingPlatform holds the explicit throwing guards shared by the original
+UnsupportedPlatform and the narrow provider. It also overrides the upstream
+fileExists/createDirectories default false/no-op implementations to reject.
+No inherited filesystem operation pretends to succeed.
+
+The public Evaluator constructor selects only Blake2bPlatform. A package-private
+constructor allows tests to inject a throwing provider to verify error boundaries.
+Scalus charges execution budget before calling the provider. Budget exhaustion
+remains BudgetExhausted; typed UnsupportedBackend remains Unsupported; unexpected
+provider exceptions remain InternalError and cannot satisfy an expected script
+failure. The existing source-specific explicit-error and division failures remain
+separate. The provider performs no file/network IO and introduces no effect runtime.
+
+Both reference-E cost files, language, semantics and protocol pins are unchanged.
+The BLAKE2b builtin cost is CPU `201305 + 8356 * x`, memory `4`, where x is input
+byte-string memory usage in eight-byte words with a minimum of one. Official total
+budgets also include CEK and equalsByteString costs. This does not establish
+historical language availability, ledger validation, or full hash conformance.
+
+Validation includes raw fixture digest literals and exact 32-byte widths, empty
+and 25-byte inputs, input preservation, repeated/interleaved calls and independent
+output arrays, all 35 unsupported provider methods, injected provider faults,
+the two new exact-budget checks with six derived budget boundaries, and all
+sixteen previous conformance vectors/native guards. Targeted offline Docker tests
+passed: 33 VM tests plus five VmCommandSuite tests, under 2 CPUs/2 GiB.
+
+Final hash-increment checks: scalafmtCheckAll passed; explicit-main CLI reported
+18/18 matched; all 58 provenance artifact hashes passed. The 21 resolved VM
+dependency jar names/versions matched main's cached VM classpath exactly, and
+archive inspection found neither excluded native artifacts nor bundled .so/.dll/
+.dylib/.jnilib libraries. This scoped archive audit is not a proof about all
+third-party APIs or JDK internals. Independent read-only review found no findings
+and verified all 54 fixture files against their recorded upstream Git blob IDs.
+The unrelated full repository suite was not rerun.

@@ -119,6 +119,27 @@ class EvaluatorSuite extends munit.FunSuite:
       )
     assert(evaluator.evaluate("x" * 65537).isInstanceOf[Outcome.InvalidInput])
   }
+  test("hash provider faults, unsupported capabilities and exhausted budgets remain distinct") {
+    val params = ReferenceParameters
+      .parse(resource("cekMachineCostsE.json"), resource("builtinCostModelE.json"))
+      .toOption
+      .get
+    val source = fixture("blake2b_256-empty")
+    val unsupported = new Evaluator(params, UnsupportedPlatform)
+    assert(unsupported.evaluate(source.source).isInstanceOf[Outcome.Unsupported])
+    val defective = new Evaluator(
+      params,
+      new RejectingPlatform {
+        override def blake2b_256(input: ByteString): ByteString =
+          throw new IllegalStateException("provider defect")
+      }
+    )
+    assert(defective.evaluate(source.source).isInstanceOf[Outcome.InternalError])
+    assert(defective.evaluate(source.source, Budget(0, 0)).isInstanceOf[Outcome.BudgetExhausted])
+    val rejection = source.copy(expected = "evaluation failure", budget = "evaluation failure")
+    assertEquals(Conformance.check(rejection, defective).map(_.matched), Right(false))
+    assertEquals(Conformance.check(rejection, unsupported).map(_.matched), Right(false))
+  }
   test("backend guard is typed and never returns false or dummy hashes") {
     intercept[UnsupportedBackend](UnsupportedPlatform.sha2_256(ByteString.empty))
     intercept[UnsupportedBackend](
