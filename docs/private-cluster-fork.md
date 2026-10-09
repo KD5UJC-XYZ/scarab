@@ -25,8 +25,9 @@ ceil(4k/f)=400 slots. Effective/genesis hashes are retained and rechecked at the
 This is a proposed longer-epoch fixture requiring integration review before launch.
 Common C is taken early in epoch one. UTC clocks are bracketed with a one-second
 margin, checked against genesis systemStart, and must leave 26 seconds before fork
-setup, 18 before A and 9 before B. Forging stops at least three seconds before the
-calculated boundary. This is a bounded attempt, not a guarantee of leader slots.
+setup, 18 before A and 9 before B. The forging loop deadline is three seconds before the
+calculated boundary; this does not guarantee that the process has exited by then.
+Graceful exit and same-epoch captured headers remain mandatory acceptance checks. This is a bounded attempt, not a guarantee of leader slots.
 The keyless endpoints and later JVM phases can remain frozen across a wall-clock
 epoch boundary; all accepted branch headers must belong to C's epoch.
 
