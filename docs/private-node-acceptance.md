@@ -1,6 +1,7 @@
 # Sustained volatile node acceptance plan
 
-This is the integrated operational milestone plan, not a passed live result.
+This records the integrated operational milestone plan and its passing local case
+on 2026-10-09, with the scope and evidence below.
 Use the ordinary `lab.Main node` command and its real argument parser. Keep the
 reference launcher and offline audit separate from node execution; a post-oracle
 must never seed online state. No durable compaction is supported.
@@ -97,3 +98,45 @@ One older raw 310-test adapter log was overwritten by a failed seam run and is
 not retained evidence. Do not cite it as such. The separate 311-test follow-up and
 the reviewed acceptance receipts remain available; the main integration's own
 fresh tests and pins are recorded separately.
+
+## Passed operational case
+
+The reviewed invocation on source `352d09a144aa81aa4f4c324d887572c4cd4f60df`
+completed in 230.145 seconds. It entered through ordinary `lab.Main node` argument
+parsing, started from supplied block 55 at slot 1001, and applied twelve distinct
+blocks 56–67 through slot 1453, all in epoch 2. The second block carried both
+submitted transactions; the other eleven were empty. The node reached its target
+at revision/depth 12, retained four originals and compacted eight. It reported
+25 events, 21,042 returned payload bytes, zero reconnects and one peer opened and
+closed. Eight checked anchor advances preserved cumulative progress.
+
+The separate network-disabled audit matched the complete online projection,
+revision and derived-anchor provenance, exact original capture and transaction
+grouping, and the complete supported reference post-state checks. Independent
+audit derived complete UTxO entries 6→8, preserved four untouched outputs and
+400,000 lovelace in fees. Ledger/protocol checks use pinned JSON projections;
+complete UTxO and original blocks have raw CBOR evidence. The unknown
+previous-epoch nonce was not compared. The outer
+harness completed its epoch-growth observation and removed all owned containers
+and networks. The online twelve-block window itself remained within one epoch.
+No durable compaction, live competing fork, epoch transition, full-ledger or
+full-consensus claim follows from this case.
+
+Capture SHA-256:
+`fb85d71158a9e13d7f0eb4908816e7838a935f9899837719b881ac674460e84c`.
+Ordinary node stdout SHA-256:
+`edd4b8ceee6964dc7a3c1b1c8feabda51b0967830e5c324cf276da17a08a4da2`.
+Source/classpath pin SHA-256:
+`206512653b71bbd7fc4b1ec2da37989e8380c191103e6732edca141e6b61476b`.
+Raw exports, keys, logs and cluster state remain private.
+
+Focused checks passed 101 Scala tests and nine launcher guards. The integrated
+regression passed 1,203 Scala tests including retained-input cases and translator
+tests, 25 public gates, 151 launcher guards (one compiler-dependent class skipped)
+and 28 restart-controller guards. These are separately retained current logs.
+
+The later raw ledger-CBOR side-export request arrived after the existing post
+pause had finished; no extra pause, command change or deadline extension was added.
+That export remains a separate capture task. Future epoch code must not treat
+JSON `possibleRewardUpdate: null` as evidence that reward state is absent; the
+coordinating research is designing a lossless explicit-variant bootstrap.

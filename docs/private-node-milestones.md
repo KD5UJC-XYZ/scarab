@@ -5,7 +5,7 @@ development network. The current profile is supplied, source-bound PV9/header11.
 prestate with supported ADA/native transactions. Unsupported features stop with a
 typed outcome. No milestone below implies full ledger or consensus validation.
 
-## 1. Runnable bounded node — active
+## 1. Runnable bounded node — implemented
 
 Provide `node` with strict explicit profile/bootstrap/loopback-peer configuration,
 resource-owned startup and cancellation, structured progress and terminal status.
@@ -17,7 +17,7 @@ stop is not a caught-up claim. Focused scripted and retained-input tests plus
 source review gate this feature. A reviewed isolated integrated case gates the
 runnable-node milestone.
 
-## 2. Sustained same-epoch operation — separate worker
+## 2. Sustained same-epoch operation — first integrated case passed
 
 Continue validated progress beyond the initial eight-block acceptance window with
 explicit resource, memory and retained-rollback bounds. Define eviction and
@@ -30,7 +30,9 @@ Compaction must preserve derived checked-anchor identity and rebind receipts. Th
 current durable format is incompatible with compacted windows until separately
 designed. The integrated live scenario must exceed eight blocks within a
 sufficiently long same-epoch window; do not silently change limits or stitch short
-fixtures. No such new live run is authorized by this plan.
+fixtures. The separately reviewed twelve-block volatile case has now passed; see
+[the operational acceptance record](private-node-acceptance.md). No automatic
+follow-up run is authorized by this plan.
 
 ## 3. Durable restart and fork handling — separate worker
 

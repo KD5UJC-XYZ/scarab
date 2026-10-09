@@ -69,4 +69,5 @@ them to the committed state. Node execution never reads the post-oracle.
 
 See [the 12-block operational acceptance plan](private-node-acceptance.md) for
 the exact planned configuration, resource limits and comparison requirements.
-This mode's live acceptance result is pending until that reviewed case completes.
+The reviewed twelve-block same-epoch case passed; its exact scope and hashes are
+recorded in that acceptance document. Sustained durable mode remains unsupported.
