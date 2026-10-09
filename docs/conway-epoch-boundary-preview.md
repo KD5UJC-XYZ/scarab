@@ -9,7 +9,8 @@ The existing same-epoch runtime guards remain in force.
 
 `Context` binds an explicit predecessor tuple identity, stake state and revision,
 exclusive owner identity, supplied treasury/reserve/fee pots and maximum supply,
-and previous/current issuer block maps. Pots and counts are bounded unsigned
+and previous/current issuer block maps. Explicit zero block entries are retained
+and identity-bound, since pool rewards distinguish them from missing entries. Pots and counts are bounded unsigned
 integers; tracked balances, account/pool deposits, UTxO and pots cannot exceed the supplied
 maximum. This is a partial tracked-supply check, not a claim that omitted epoch
 state has zero value. `Signal` binds the exact context, revision, incoming header

@@ -256,7 +256,7 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
         bytes(12),
         f.nextStake,
         f.pots,
-        Map(pool -> BigInt(0)),
+        Map(pool -> BigInt(-1)),
         Map.empty
       ).isLeft
     )

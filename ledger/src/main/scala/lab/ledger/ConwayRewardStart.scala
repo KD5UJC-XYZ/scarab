@@ -12,14 +12,20 @@ object ConwayRewardStart:
   val Profile = "conway-pv9-reward-start-allocation-v1"
   val ParameterFormat = "conway-pv9-reward-start-parameters-v1"
   val GlobalFormat = "conway-pv9-reward-start-globals-v1"
+  val PoolParameterFormat = "conway-pv9-reward-pool-parameters-v1"
   private val Max = (BigInt(1) << 64) - 1
   final class Parameters private[ConwayRewardStart] (
       val original: Bytes,
       val rho: S.Ratio,
       val tau: S.Ratio,
-      val id: Bytes
+      val id: Bytes,
+      val pool: Option[PoolParameters] = None
   ):
     val decentralization = S.Ratio(0, 1) // Conway's ppDG getter is constant minBound.
+  final class PoolParameters private[ConwayRewardStart] (
+      val a0: S.Ratio,
+      val nOpt: Int
+  )
   final class Globals private[ConwayRewardStart] (
       val original: Bytes,
       val epochLength: BigInt,
@@ -76,6 +82,22 @@ object ConwayRewardStart:
     val xs = fields(raw, ParameterFormat, 7)
     require(uint(xs(0)) == 9 && uint(xs(1)) == 0, "previous PV9.0 parameters required")
     new Parameters(raw, ratio(xs(2), xs(3)), ratio(xs(4), xs(5)), hash("parameters:" + raw.hex))
+  }
+
+  /** Full scoped reward projection; this is not a native previous-PParams decoder. */
+  def decodePoolParameters(raw: Bytes): Either[String, Parameters] = checked {
+    val xs = fields(raw, PoolParameterFormat, 10)
+    require(uint(xs(0)) == 9 && uint(xs(1)) == 0, "previous PV9.0 parameters required")
+    val a = uint(xs(6)); val d = uint(xs(7)); val k = uint(xs(8))
+    require(d > 0 && a.gcd(d) == 1, "canonical nonnegative a0 rational required")
+    require(k > 0 && k <= 65535, "positive Word16 nOpt required")
+    new Parameters(
+      raw,
+      ratio(xs(2), xs(3)),
+      ratio(xs(4), xs(5)),
+      hash("parameters:" + raw.hex),
+      Some(new PoolParameters(S.Ratio(a, d), k.toInt))
+    )
   }
   def decodeGlobals(raw: Bytes): Either[String, Globals] = checked {
     val xs = fields(raw, GlobalFormat, 5)

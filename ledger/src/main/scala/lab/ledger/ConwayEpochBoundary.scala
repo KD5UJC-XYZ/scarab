@@ -114,9 +114,9 @@ object ConwayEpochBoundary:
     require(o != null && c != null && (o eq c.owner), "foreign boundary context")
   private def counts(m: Map[Bytes, BigInt]): Unit =
     require(
-      m != null && m.size <= 4096 && m.forall((p, n) => width(p, 28) && coin(n) && n > 0) &&
+      m != null && m.size <= 4096 && m.forall((p, n) => width(p, 28) && coin(n)) &&
         m.values.sum <= Max,
-      "block count bounds/canonical entries"
+      "block count bounds"
     )
   private def countText(m: Map[Bytes, BigInt]) =
     m.toVector.sortBy(_._1.hex).map((p, n) => s"${p.hex}:$n").mkString("|")

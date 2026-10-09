@@ -43,7 +43,7 @@ This is source-grounded arithmetic, not a native execution parity result.
 The two decoders accept scoped canonical CBOR projections, **not native PParams
 or genesis CBOR**. Each input is at most 1024 bytes, with bounded CBOR depth,
 items and strings; integers must fit uint64 and unit rationals must be reduced.
-The array schemas are:
+The allocation-only array schemas are:
 
 ```text
 ["conway-pv9-reward-start-parameters-v1", 9, 0, rhoN, rhoD, tauN, tauD]
@@ -64,6 +64,10 @@ the supplied projection, prove it represents the native previous parameters,
 or establish branch ancestry. Native seed admission remains false. The maximum
 supply is bound for context consistency. Security parameter k affects the
 native pulse size, which is outside this allocation-only operation.
+
+The additional [pool reward projection](conway-pool-reward.md) includes a0 and
+nOpt in the original parameter bytes before freezing. It supports the same
+allocation calculation and is required for pure pool entitlement.
 
 ## Composition and limits
 
