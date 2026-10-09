@@ -3,6 +3,7 @@ package lab
 
 import cats.effect.{IO, Ref, Resource, Deferred}
 import cats.effect.unsafe.implicits.global
+import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import lab.cbor.{Bytes, Cbor, Node, Value}
 import lab.network.{ChainSync, ScriptedByteTransport}
@@ -250,7 +251,11 @@ class BoundedChainFollowerSuite extends munit.FunSuite:
   private def wirePoint(p: ChainSync.Point): Value = p match
     case ChainSync.Point.Block(slot, hash) => arr(Value.UInt(slot.value), Value.ByteString(hash))
     case _                                 => arr()
-  private def bytePeer(end: String): Resource[IO, Peer[IO]] =
+  private def bytePeer(
+      end: String,
+      idle: Option[FiniteDuration] = None,
+      afterForward: Boolean = false
+  ): Resource[IO, Peer[IO]] =
     import ScriptedByteTransport.Step.*
     val proposal = Expect(frame(0, hex("8200a10e8402f500f4"), false))
     val accept = Receive(frame(0, hex("83010e8402f500f4")))
@@ -270,6 +275,12 @@ class BoundedChainFollowerSuite extends munit.FunSuite:
       Receive(frame(2, hex("8101"))),
       Receive(frame(2, encode(arr(u(2), Cbor.decode(a.envelope).toOption.get.value, tip))))
     )
+    val continued = chain ++ (if afterForward then
+                                Vector(
+                                  Expect(frame(2, hex("8100"), false)),
+                                  Receive(frame(2, encode(arr(u(3), wirePoint(anchor), tip))))
+                                )
+                              else Vector.empty)
     val one = encode(arr(u(4), Value.Tag(24, n(Value.ByteString(a.block)))))
     val terminal = end match
       case "complete"  => hex("8105")
@@ -288,10 +299,10 @@ class BoundedChainFollowerSuite extends munit.FunSuite:
       Resource.pure[IO, Resource[IO, lab.network.ByteTransport[IO]]](
         Resource
           .eval(opened.getAndUpdate(_ + 1))
-          .flatMap(i => ScriptedByteTransport.resource[IO](if i == 0 then chain else fetch))
+          .flatMap(i => ScriptedByteTransport.resource[IO](if i == 0 then continued else fetch))
       )
     }
-    connection.flatMap(c => sessions(c, 2))
+    connection.flatMap(c => idle.fold(sessions(c, 2))(duration => sessions(c, 2, duration)))
 
   test("real session adapters honor AwaitReply and exact requested block/BatchDone") {
     bytePeer("complete")
@@ -304,6 +315,59 @@ class BoundedChainFollowerSuite extends munit.FunSuite:
       }
       .unsafeToFuture()
   }
+  test("session idle configuration bounds reject before acquiring transport") {
+    val connection = Resource.eval(
+      IO.raiseError[lab.network.ByteTransport[IO]](
+        new AssertionError("invalid idle must not acquire transport")
+      )
+    )
+    List(Duration.Zero, (-1).second, 121.seconds)
+      .traverse_ { idle =>
+        sessions(connection, 2, idle).use(_ => IO.unit).attempt.map { result =>
+          assert(result.swap.toOption.get.isInstanceOf[Invalid])
+        }
+      }
+      .unsafeToFuture()
+  }
+  test("configured idle permits a six-second processing pause; default five seconds expires") {
+    def scenario(idle: Option[FiniteDuration]) =
+      bytePeer("complete", idle, afterForward = true).use { peer =>
+        for
+          _ <- peer.intersect(Vector(anchor))
+          awaiting <- peer.next
+          forward <- peer.next
+          _ <- IO(assertEquals(awaiting, Event.Await))
+          _ <- IO(assertEquals(forward, Event.Forward(a.envelope)))
+          _ <- IO.sleep(6.seconds)
+          result <- peer.next.attempt
+        yield result
+      }
+    TestControl
+      .executeEmbed(for
+        configured <- scenario(Some(30.seconds))
+        default <- scenario(None)
+      yield
+        assertEquals(configured, Right(Event.Backward(anchor)))
+        assert(default.swap.toOption.exists(_.getMessage == "state deadline expired")))
+      .unsafeToFuture()
+  }
+  test("AwaitReply uses must-reply deadline without an early duplicate RequestNext") {
+    TestControl
+      .executeEmbed(
+        bytePeer("complete").use { peer =>
+          for
+            _ <- peer.intersect(Vector(anchor))
+            awaiting <- peer.next
+            _ <- IO.sleep(6.seconds)
+            forward <- peer.next
+          yield
+            assertEquals(awaiting, Event.Await)
+            assertEquals(forward, Event.Forward(a.envelope))
+        }
+      )
+      .unsafeToFuture()
+  }
+
   test("real session adapters reject EOF, extra block and buffered suffix without committing") {
     List("incomplete", "duplicate", "suffix")
       .traverse_(end =>

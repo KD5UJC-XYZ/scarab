@@ -243,15 +243,23 @@ object BoundedChainFollower:
           .mapN(new Follower(_, _, peer, policy, publish))
     )
 
-  /** Transport injection supports scripted peers and owned AsyncTcpTransport resources alike. */
+  /** Transport injection supports scripted peers and owned AsyncTcpTransport resources alike. Idle
+    * bounds local processing between replies and the next request; it does not change handshake,
+    * can-await, must-reply or block-fetch deadlines.
+    */
   def sessions[F[_]: Async](
       connection: Resource[F, ByteTransport[F]],
-      magic: Long
+      magic: Long,
+      idle: FiniteDuration = 5.seconds
   ): Resource[F, Peer[F]] =
     val F = Async[F]
     def invalid[A](message: String): F[A] = F.raiseError(new Invalid(message))
-    val deadlines = SessionDeadlines[F](5.seconds, 5.seconds, 5.seconds, F.pure(Some(120.seconds)))
-    connection
+    val deadlines = SessionDeadlines[F](5.seconds, idle, 5.seconds, F.pure(Some(120.seconds)))
+    Resource.eval(
+      F.raiseUnless(idle > Duration.Zero && idle <= 120.seconds)(
+        new Invalid("session idle deadline must be positive and at most 120 seconds")
+      )
+    ) *> connection
       .flatMap(t =>
         ConnectionSession.resource[F, ChainSyncFixtures.OpaqueNtNHeaderFixture](
           t,
