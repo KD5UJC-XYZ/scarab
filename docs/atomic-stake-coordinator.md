@@ -68,3 +68,10 @@ and 6 existing coherent tests, including the retained three-block window case).
 `scalafmtAll` and `git diff --check` passed. Independent read-only review found
 no blocking issue after the exact-source binding check was added. Evidence log:
 `.cache/atomic-stake-tests.log` outside Git.
+
+A separate coordinator regression changes an existing signed spend's supplied
+input to a base address with the same payment credential and a nonzero synthetic
+stake credential. It verifies the credential's stake disappears only on atomic
+publication and that whole-tuple undo restores the exact amount and identity at
+a higher revision. No new signature or native monetary claim is involved. The
+focused run including this test passed all 21 tests (7 atomic coordinator tests).

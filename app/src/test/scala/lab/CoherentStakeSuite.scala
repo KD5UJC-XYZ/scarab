@@ -5,7 +5,7 @@ import cats.effect.{Deferred, IO}
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
-import lab.cbor.Bytes
+import lab.cbor.{Bytes, Cbor, Node, Value as V}
 import lab.ledger.ConwayStake as Stake
 
 class CoherentStakeSuite extends munit.FunSuite:
@@ -125,6 +125,106 @@ class CoherentStakeSuite extends munit.FunSuite:
         replay <- publish(r, blocks(1))
         _ = check(replay.state)
         _ = assertEquals(replay.state.id, before.state.id)
+      yield ()).unsafeToFuture()
+    }
+
+    test("synthetic signed spend publishes nonzero instantaneous stake loss and undo restores it") {
+      // Explicit supplied synthetic anchor, not native monetary/reference evidence. Reuse the
+      // existing signature and payment credential; only the spent output's stake credential changes.
+      def raw(s: String) = Bytes.fromArray(s.getBytes("UTF-8"))
+      val input = context
+      val signed = blocks.find(_.transactionMemos.nonEmpty).get
+      def arr(n: Node) = n.value.asInstanceOf[V.Arr].value
+      val body =
+        arr(get(Cbor.decode(signed.transactionMemos.head))).head.value.asInstanceOf[V.Map].value
+      val inputs = body.find(_._1.value == V.UInt(0)).get._2
+      val refs = inputs.value match
+        case V.Tag(_, inner) => arr(inner)
+        case _               => arr(inputs)
+      val target = arr(refs.head).map(_.value)
+      val credential = Stake.Credential(false, Bytes(Vector.fill(28)(0xab.toByte)))
+      val entries = get(Cbor.decode(input.ledger.outputMap)).value.asInstanceOf[V.Map].value
+      val changed = entries.map { (key, out) =>
+        if arr(key).map(_.value) != target then key -> out
+        else
+          def replace(a: Node): Node =
+            val bytes = a.value.asInstanceOf[V.ByteString].value
+            val kind = (bytes.value.head & 255) >>> 4
+            assert(kind == 0 || kind == 6)
+            Node(
+              V.ByteString(
+                Bytes(Vector(0.toByte) ++ bytes.value.slice(1, 29) ++ credential.hash.value)
+              ),
+              Bytes.empty
+            )
+          val value = out.value match
+            case V.Arr(xs) => V.Arr(xs.updated(0, replace(xs.head)))
+            case V.Map(xs) =>
+              V.Map(xs.map((k, v) => (k, if k.value == V.UInt(0) then replace(v) else v)))
+            case _ => fail("output shape")
+          key -> Node(value, Bytes.empty)
+      }
+      val utxo = get(Cbor.encode(V.Map(changed)))
+      val totals = get(Stake.recompute(utxo))
+      assert(totals(credential) > 0)
+      import ReferenceJson.Json
+      def replaceJson(j: Json, path: List[String], value: Json): Json = path match
+        case Nil => value
+        case key :: rest =>
+          val fields = j.asInstanceOf[Json.Obj].fields
+          Json.Obj(fields.updated(key, replaceJson(fields(key), rest, value)))
+      def quote(s: String): String = "\"" + s.map(c => f"\\u${c.toInt}%04x").mkString + "\""
+      def render(j: Json): String = j match
+        case Json.Obj(xs) =>
+          xs.toVector.sortBy(_._1).map((k, v) => quote(k) + ":" + render(v)).mkString("{", ",", "}")
+        case Json.Arr(xs) => xs.map(render).mkString("[", ",", "]")
+        case Json.Str(s)  => quote(s)
+        case Json.Num(s)  => s
+        case Json.Lit(s)  => s
+      val json = replaceJson(
+        ReferenceJson.parse(input.originals("pre-ledger-state.md")),
+        List("stateBefore", "esLState", "utxoState", "stake", "credentials"),
+        Json.Obj(totals.map((c, n) => c.key -> Json.Num(n.toString)))
+      )
+      val ledgerBytes = raw(render(json))
+      val files = input.originals
+        .updated("pre-ledger-state.md", ledgerBytes)
+        .updated("pre-utxo-cbor.md", raw(utxo.hex))
+      val manifest = raw(
+        "format\t" + SequenceInput.ProfileId + "\n" + SequenceInput.sources.toVector
+          .sortBy(_._1)
+          .map((key, name) => key + "\t" + ClusterHeaderObservation.sha256(files(name)).hex)
+          .mkString("\n") + "\n"
+      )
+      val synthetic = get(SequenceInput.bind(manifest, files))
+      val stakeSeed = get(
+        ConwayStakeSeed.decode(
+          ledgerBytes,
+          synthetic.sourcePins("preLedgerSha256"),
+          utxo,
+          ClusterHeaderObservation.sha256(utxo),
+          synthetic.nonces.context.epochLength
+        )
+      )
+      (for
+        r <- CoherentSequence.createWithStake[IO](synthetic, stakeSeed, 8).map(get(_))
+        before <- r.snapshot
+        _ = assertEquals(before.state.stake.get.instantaneous(credential), totals(credential))
+        _ <- blocks.takeWhile(_.header.hash != signed.header.hash).traverse_(b => publish(r, b))
+        accepted <- publish(r, signed)
+        _ = check(accepted.state)
+        _ = assert(!accepted.state.stake.get.instantaneous.contains(credential))
+        _ = assert(accepted.state.stake.get.instantaneous != before.state.stake.get.instantaneous)
+        applied <- r.snapshot
+        restored <- r.rollbackTo(applied.fence, before.state.acquisition.tip).map(get(_))
+        _ = check(restored.state)
+        _ = assertEquals(restored.state.id, before.state.id)
+        _ = assertEquals(
+          restored.state.stake.get.instantaneous,
+          before.state.stake.get.instantaneous
+        )
+        _ = assertEquals(restored.state.stake.get.id, before.state.stake.get.id)
+        _ = assert(restored.state.revision > applied.state.revision)
       yield ()).unsafeToFuture()
     }
 
