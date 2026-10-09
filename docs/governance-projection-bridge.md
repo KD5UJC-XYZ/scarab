@@ -108,9 +108,23 @@ copied build/cache and JVM Xmx1200m. Owned-container removal was confirmed. Sour
 archives were read locally; no dependency download, native build, live cluster or
 shared-cache mutation occurred.
 
-External evidence is retained at
-`/home/<user>/cardano-governance-projection-bridge-tests-20261009/evidence-50200355`
-(command, image, full log, receipt and final formatted source hashes).
+Command, image, full log, receipt and final formatted source hashes are retained
+in private execution evidence outside Git.
 `governance-projection-source-pins.json` records the exact archive/member hashes.
 Independent read-only review approved all three bridge components and their finite
 scope. `git diff --check` passed before the local code/test commit.
+
+## Standalone integration verification
+
+Integration passed 77 focused tests and formatting checks, including the bridge,
+reused parameter decoder, existing protocol bootstrap, synthetic epoch guard and
+default node/coverage command safeguards. No native-result fixture was enabled.
+Log SHA256: `794d770e9b1377f17157ea46bd25d356a4e07bb2e5ab20d3027a28fc92798604`. Execution used a private copied
+cache, network disabled, 2 CPU and 2 GiB; owned container cleanup was verified.
+All eleven archived native source pins were rechecked without native execution.
+
+The shared parameter decoder remains single-source. The supported payload profile
+requires empty cost models and its explicit canonical CBOR subset; typed Globals
+uses supplied fixed epochs from slot zero, not arbitrary native EpochInfo callbacks.
+No coordinator composition, native payload parity, seed admission or runtime/CLI
+activation is included in this publication.
