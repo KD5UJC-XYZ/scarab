@@ -102,10 +102,27 @@ expectations, plus legacy test calls after the typed Globals evidence addition. 
 production validation guard was weakened to accommodate those failures. Independent
 source review approved this finite scope, with the final combined run passing.
 
-External evidence is under
-`/home/<user>/cardano-one-boundary-composition-tests-20261009/evidence-f1b1ecf6`:
-command, immutable image identity, log, receipt and final formatted source hashes.
+Command, immutable image identity, log, receipt and final formatted source hashes
+are retained as private execution evidence outside Git.
 The run took 29.874 seconds. Its container used no network, at most two CPUs and 2 GiB
 memory, a private build/cache, and a 285-second deadline. The owned container was
 confirmed removed. No live cluster or new native harness was run. Native encoded-payload
 parity remains untested; recorded finite projected native comparisons do not establish it.
+
+## Main integration verification
+
+The reviewed composition passed 109 focused integration tests (69 app and 40 ledger)
+and `scalafmtCheckAll`, with all seven Scala files unchanged from the approved source.
+This includes the 12 composition tests, adjacent streaming/coordinator/governance
+regressions, and default node/coverage safeguards. Composition tests exercise checkpoint
+and recovery refusals. The separately selected capture-dependent `SyntheticRecoverySuite`
+registered no tests because retained capture inputs were not enabled; it is not counted.
+Log SHA256: `90493d59fb0cd9aae4551d42c3d865ae2192dbce26dc8927650d28bbb7960bd8`. The offline run used
+2 CPU, 2 GiB, a private cache, no network and no private fixture mounts; owned container
+cleanup was confirmed.
+
+This is one supplied synthetic boundary with empty go. Fees 10 yield treasury 2,
+reserves 8 and a non-myopic reward pot of 8; no member-account reward is delivered.
+A second boundary, nonempty go, persistence and recovery remain unsupported. Synthetic
+timing is not authenticated native timing, and this check establishes no live admission
+or native encoded-payload parity.
