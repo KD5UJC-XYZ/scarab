@@ -46,12 +46,22 @@ private[lab] object NativeLiveBoundary:
     * cancellation propagates; peer release is guaranteed by Resource.
     */
   def run[F[_]: Async](
-      runtime: CoherentSequence.Runtime[F],
+      runtime: CoherentDriver[F],
       peer: Resource[F, BoundedChainFollower.Peer[F]],
       initial: Point,
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits = EphemeralStreaming.Limits()
   )(record: Observation => F[Unit]): F[Outcome] =
+    runWhen(runtime, peer, initial, epochLength, limits)(Async[F].pure(true))(record)
+
+  /** Additional completion condition is observed only after a verified network publication. */
+  def runWhen[F[_]: Async](
+      runtime: CoherentDriver[F],
+      peer: Resource[F, BoundedChainFollower.Peer[F]],
+      initial: Point,
+      epochLength: BigInt,
+      limits: EphemeralStreaming.Limits
+  )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
     val F = Async[F]
     def invalid(message: String): F[Unit] = F.raiseError(new IllegalArgumentException(message))
     def checked[A](e: Either[?, A]): F[A] =
@@ -102,95 +112,96 @@ private[lab] object NativeLiveBoundary:
         val owned = peer.evalTap(_ => opens.update(_ + 1)).onFinalize(closes.update(_ + 1))
         val session = owned.use { p =>
           def next: F[Option[EphemeralStreaming.Event]] = F.defer {
-            observeApplication *> runtime.snapshot.flatMap { snapshot =>
-              val state = snapshot.state
-              if state.ledger.environment.epoch == 1 &&
-                state.syntheticBoundary.exists(_.boundaryApplied) &&
-                state.certificates.state.tip.slot / epochLength == 1
-              then
-                observations.get.flatMap { xs =>
-                  if xs.lastOption.exists(o =>
-                      o.applied.nonEmpty && o.announced == state.certificates.state.tip
-                    )
-                  then reached.set(true).as(None)
-                  else invalid("epoch boundary has no published network observation").as(None)
-                }
-              else
-                events
-                  .modify(n => if n < limits.maxEvents then (n + 1, true) else (n, false))
-                  .flatMap(ok =>
-                    F.raiseUnless(ok)(new IllegalArgumentException("network event limit"))
-                  ) *>
-                  p.next.flatMap {
-                    case BoundedChainFollower.Event.Await           => F.cede *> next
-                    case BoundedChainFollower.Event.Backward(point) =>
-                      // A reference peer may confirm its selected intersection with the first
-                      // RollBackward. This exact, once-only no-op changes no runtime state.
-                      initialRollbackAllowed.getAndSet(false).flatMap { allowed =>
-                        if allowed && point == networkPoint(initial) &&
-                          state.certificates.state.tip == initial &&
-                          state.acquisition.tip == networkPoint(initial)
-                        then initialConfirmations.update(_ + 1) *> F.cede *> next
-                        else
-                          val received = point match
-                            case ChainSync.Point.Origin => "origin"
-                            case ChainSync.Point.Block(slot, hash) =>
-                              s"slot=${slot.value},hash=${hash.hex.take(64)}"
-                          val applied = state.certificates.state.tip
-                          invalid(
-                            (s"rollback unsupported in monotonic live profile; received=($received); " +
-                              s"applied=(slot=${applied.slot},blockNo=${applied.blockNo},hash=${applied.hash.hex.take(64)})")
-                              .take(512)
-                          ).as(None)
-                      }
-                    case BoundedChainFollower.Event.Forward(envelope) =>
-                      for
-                        _ <- initialRollbackAllowed.set(false)
-                        arrival <- elapsed
-                        _ <- F.raiseUnless(envelope.size > 0 && envelope.size <= 65535)(
-                          new IllegalArgumentException("header envelope bound")
-                        )
-                        _ <- charge(envelope.size.toLong)
-                        header <- checked(ReferenceCaptureCommand.header(envelope))
-                        previous = state.certificates.state.tip
-                        _ <- F.raiseUnless(
-                          header.parent == previous.hash && header.slot > previous.slot &&
-                            header.blockNo == previous.blockNo + 1
-                        )(
-                          new IllegalArgumentException(
-                            "announcement does not extend applied fullpoint"
-                          )
-                        )
-                        announced = Point(header.hash, header.slot, header.blockNo)
-                        raw <- p.fetch(networkPoint(announced))
-                        fetched <- elapsed
-                        _ <- F.raiseUnless(raw.size > 0 && raw.size <= 1048576)(
-                          new IllegalArgumentException("block size bound")
-                        )
-                        _ <- charge(raw.size.toLong)
-                        _ <- checked(
-                          ReferenceCaptureCommand.compare(header, raw, state.acquisition.tip)
-                        )
-                        original = BoundedChainFollower.Original(envelope, raw)
-                        block <- checked(SequenceInput.block(original))
-                        all <- observations.get
-                        _ <- F.raiseUnless(all.size < limits.maxBlocks)(
-                          new IllegalArgumentException("network block limit")
-                        )
-                        observation = Observation(
-                          all.size,
-                          announced,
-                          original,
-                          sha(envelope),
-                          sha(raw),
-                          arrival,
-                          fetched,
-                          None
-                        )
-                        _ <- observations.update(_ :+ observation)
-                        _ <- record(observation)
-                      yield Some(EphemeralStreaming.Event.Block(block))
+            observeApplication *> (runtime.snapshot, ready).tupled.flatMap {
+              (snapshot, completed) =>
+                val state = snapshot.state
+                if completed && state.ledger.environment.epoch == 1 &&
+                  state.syntheticBoundary.exists(_.boundaryApplied) &&
+                  state.certificates.state.tip.slot / epochLength == 1
+                then
+                  observations.get.flatMap { xs =>
+                    if xs.lastOption.exists(o =>
+                        o.applied.nonEmpty && o.announced == state.certificates.state.tip
+                      )
+                    then reached.set(true).as(None)
+                    else invalid("epoch boundary has no published network observation").as(None)
                   }
+                else
+                  events
+                    .modify(n => if n < limits.maxEvents then (n + 1, true) else (n, false))
+                    .flatMap(ok =>
+                      F.raiseUnless(ok)(new IllegalArgumentException("network event limit"))
+                    ) *>
+                    p.next.flatMap {
+                      case BoundedChainFollower.Event.Await           => F.cede *> next
+                      case BoundedChainFollower.Event.Backward(point) =>
+                        // A reference peer may confirm its selected intersection with the first
+                        // RollBackward. This exact, once-only no-op changes no runtime state.
+                        initialRollbackAllowed.getAndSet(false).flatMap { allowed =>
+                          if allowed && point == networkPoint(initial) &&
+                            state.certificates.state.tip == initial &&
+                            state.acquisition.tip == networkPoint(initial)
+                          then initialConfirmations.update(_ + 1) *> F.cede *> next
+                          else
+                            val received = point match
+                              case ChainSync.Point.Origin => "origin"
+                              case ChainSync.Point.Block(slot, hash) =>
+                                s"slot=${slot.value},hash=${hash.hex.take(64)}"
+                            val applied = state.certificates.state.tip
+                            invalid(
+                              (s"rollback unsupported in monotonic live profile; received=($received); " +
+                                s"applied=(slot=${applied.slot},blockNo=${applied.blockNo},hash=${applied.hash.hex.take(64)})")
+                                .take(512)
+                            ).as(None)
+                        }
+                      case BoundedChainFollower.Event.Forward(envelope) =>
+                        for
+                          _ <- initialRollbackAllowed.set(false)
+                          arrival <- elapsed
+                          _ <- F.raiseUnless(envelope.size > 0 && envelope.size <= 65535)(
+                            new IllegalArgumentException("header envelope bound")
+                          )
+                          _ <- charge(envelope.size.toLong)
+                          header <- checked(ReferenceCaptureCommand.header(envelope))
+                          previous = state.certificates.state.tip
+                          _ <- F.raiseUnless(
+                            header.parent == previous.hash && header.slot > previous.slot &&
+                              header.blockNo == previous.blockNo + 1
+                          )(
+                            new IllegalArgumentException(
+                              "announcement does not extend applied fullpoint"
+                            )
+                          )
+                          announced = Point(header.hash, header.slot, header.blockNo)
+                          raw <- p.fetch(networkPoint(announced))
+                          fetched <- elapsed
+                          _ <- F.raiseUnless(raw.size > 0 && raw.size <= 1048576)(
+                            new IllegalArgumentException("block size bound")
+                          )
+                          _ <- charge(raw.size.toLong)
+                          _ <- checked(
+                            ReferenceCaptureCommand.compare(header, raw, state.acquisition.tip)
+                          )
+                          original = BoundedChainFollower.Original(envelope, raw)
+                          block <- checked(SequenceInput.block(original))
+                          all <- observations.get
+                          _ <- F.raiseUnless(all.size < limits.maxBlocks)(
+                            new IllegalArgumentException("network block limit")
+                          )
+                          observation = Observation(
+                            all.size,
+                            announced,
+                            original,
+                            sha(envelope),
+                            sha(raw),
+                            arrival,
+                            fetched,
+                            None
+                          )
+                          _ <- observations.update(_ :+ observation)
+                          _ <- record(observation)
+                        yield Some(EphemeralStreaming.Event.Block(block))
+                    }
             }
           }
           p.intersect(Vector(networkPoint(initial))).flatMap { found =>

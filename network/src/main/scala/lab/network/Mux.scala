@@ -147,10 +147,32 @@ object Mux:
       protocol: Int,
       maxMessageBytes: Int
   ): Either[String, Vector[Sdu]] =
+    if maxMessageBytes > 65535 then Left("message byte limit exceeded")
+    else
+      segmentProtocolMessage(
+        payload,
+        timestamp,
+        direction,
+        maxPayloadBytes,
+        protocol,
+        maxMessageBytes
+      )
+
+  /** Protocol messages may span SDUs. The SDU limit is still uint16; this ceiling bounds the
+    * aggregate payload before allocating the finite segment vector.
+    */
+  def segmentProtocolMessage(
+      payload: Bytes,
+      timestamp: Long,
+      direction: Direction,
+      maxPayloadBytes: Int,
+      protocol: Int,
+      maxMessageBytes: Int
+  ): Either[String, Vector[Sdu]] =
     for
       _ <- validPayloadLimit(maxPayloadBytes)
       _ <- Either.cond(
-        maxMessageBytes > 0 && maxMessageBytes <= 65535 &&
+        maxMessageBytes > 0 && maxMessageBytes <= 2500000 &&
           payload.size > 0 && payload.size <= maxMessageBytes,
         (),
         "message byte limit exceeded"

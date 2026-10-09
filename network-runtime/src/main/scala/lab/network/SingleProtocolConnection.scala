@@ -164,7 +164,7 @@ final class SingleProtocolConnection[F[_]: Async, S, M <: Product] private (
     F.race(stopped.get.flatMap(fail[A]), io).map(_.merge)
 
   private def write(bytes: Bytes, protocol: Int, max: Int): F[Unit] =
-    checked(Mux.segmentBounded(bytes, 0L, direction, config.maxSduPayload, protocol, max))
+    checked(Mux.segmentProtocolMessage(bytes, 0L, direction, config.maxSduPayload, protocol, max))
       .flatMap(
         _.traverse_(frame =>
           checked(Mux.encode(frame)).flatMap { encoded =>

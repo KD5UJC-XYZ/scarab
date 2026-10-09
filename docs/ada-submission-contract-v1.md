@@ -1,8 +1,10 @@
 # ADA submission contract v1
 
-Status: shared design contract for the next implementation milestone. The API,
-pool and TxSubmission2 implementation do not exist yet. This contract does not
-enable public runtime admission or claim full ledger validation.
+Status: shared contract implemented by the restricted app-private API, pool and
+TxSubmission2 integration. See [implementation and evidence](ada-submission-implementation.md).
+The isolated reference acceptance and exact endpoint checks passed under the
+explicit zero initialization-delay profile documented there. This contract does
+not enable general public runtime admission or claim full ledger validation.
 
 ## Ownership and dependencies
 
@@ -211,5 +213,5 @@ bounded in-memory, non-reentrant restriction.
 
 The app's internal `CoherentDriver` lets follower execution use the admission
 owner facade without receiving its raw runtime. Shared models/interfaces are
-implemented and tested; the generation owner, pool, API and relay implementation
-remain integration work in progress.
+implemented and tested, together with the generation owner, pool, API and relay.
+Live acceptance and exact endpoint comparison remain separate integration gates.

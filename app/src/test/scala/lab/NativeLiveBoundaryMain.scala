@@ -15,47 +15,47 @@ import scala.concurrent.duration.*
   * comparison.
   */
 object NativeLiveBoundaryMain extends IOApp:
-  private def get[A](e: Either[?, A]): A =
+  private[lab] def get[A](e: Either[?, A]): A =
     e.fold(x => throw new IllegalArgumentException(x.toString), identity)
-  private def obj(j: J): Map[String, J] = j match
+  private[lab] def obj(j: J): Map[String, J] = j match
     case J.Obj(values) => values
     case _             => throw new IllegalArgumentException("JSON object required")
-  private def sha(b: Bytes): Bytes = ClusterHeaderObservation.sha256(b)
-  private def hash(j: J): Bytes =
+  private[lab] def sha(b: Bytes): Bytes = ClusterHeaderObservation.sha256(b)
+  private[lab] def hash(j: J): Bytes =
     val s = string(j)
     require(s.matches("[0-9a-f]{64}"), "SHA256/hash spelling")
     get(Bytes.fromHex(s))
-  private def read(path: Path, limit: Int): Bytes =
+  private[lab] def read(path: Path, limit: Int): Bytes =
     val stream = Files.newInputStream(path)
     val data =
       try stream.readNBytes(limit + 1)
       finally stream.close()
     require(data.length <= limit, "input byte bound")
     Bytes.fromArray(data)
-  private def encode(j: J): Bytes = SyntheticRewardProjection.encode(j)
-  private def num(n: BigInt): J = J.Num(n.toString)
-  private def text(s: String): J = J.Str(s)
-  private def bool(v: Boolean): J = J.Lit(v.toString)
-  private def record(fields: (String, J)*): J = J.Obj(fields.toMap)
-  private def point(p: Point): J =
+  private[lab] def encode(j: J): Bytes = SyntheticRewardProjection.encode(j)
+  private[lab] def num(n: BigInt): J = J.Num(n.toString)
+  private[lab] def text(s: String): J = J.Str(s)
+  private[lab] def bool(v: Boolean): J = J.Lit(v.toString)
+  private[lab] def record(fields: (String, J)*): J = J.Obj(fields.toMap)
+  private[lab] def point(p: Point): J =
     record("slot" -> num(p.slot), "blockNo" -> num(p.blockNo), "hash" -> text(p.hash.hex))
-  private def point(j: J): Point =
+  private[lab] def point(j: J): Point =
     require(obj(j).keySet == Set("slot", "blockNo", "hash"), "exact fullpoint fields")
     Point(hash(field(j, "hash")), uint(field(j, "slot")), uint(field(j, "blockNo")))
-  private def save(path: Path, value: J): IO[Unit] = IO.blocking {
+  private[lab] def save(path: Path, value: J): IO[Unit] = IO.blocking {
     require(!Files.exists(path), "evidence already exists")
     val temporary = path.resolveSibling(path.getFileName.toString + ".part")
     Files.write(temporary, encode(value).toArray, Open.CREATE_NEW, Open.WRITE)
     Files.move(temporary, path, Copy.ATOMIC_MOVE)
     ()
   }
-  private def awaitFile(path: Path, limit: Int): IO[Bytes] =
+  private[lab] def awaitFile(path: Path, limit: Int): IO[Bytes] =
     def loop: IO[Bytes] = IO.blocking(Files.exists(path)).flatMap {
       case true  => IO.blocking(read(path, limit))
       case false => IO.sleep(100.millis) *> IO.defer(loop)
     }
     loop.timeout(60.seconds)
-  private def inputs(
+  private[lab] def inputs(
       root: Path,
       rows: Map[String, J],
       names: Set[String]
@@ -71,7 +71,7 @@ object NativeLiveBoundaryMain extends IOApp:
       name -> b
     }
     (originals, rows.map((name, row) => name -> hash(field(row, "sha256"))))
-  private def initial(root: Path, pin: String): NativeLedgerV2.Checked =
+  private[lab] def initial(root: Path, pin: String): NativeLedgerV2.Checked =
     val raw = read(root.resolve("adapter-inputs.json"), 16384)
     require(pin.matches("[0-9a-f]{64}") && sha(raw).hex == pin, "independent initial manifest pin")
     val j = ReferenceJson.parse(raw)
@@ -89,7 +89,7 @@ object NativeLiveBoundaryMain extends IOApp:
       "proven early epoch-zero profile"
     )
     joined
-  private def endpoint(
+  private[lab] def endpoint(
       root: Path,
       ready: J,
       terminal: Point,
@@ -132,7 +132,7 @@ object NativeLiveBoundaryMain extends IOApp:
     val (raws, pins) =
       inputs(root.resolve("endpoint"), obj(field(j, "inputs")), NativeProtocolBootstrap.InputNames)
     get(NativeProtocolBootstrap.checkAcquisition(raws, pins, terminal))
-  private def observation(
+  private[lab] def observation(
       root: Path,
       o: NativeLiveBoundary.Observation,
       observedUnixNanos: Long
@@ -169,7 +169,7 @@ object NativeLiveBoundaryMain extends IOApp:
     )
     ()
   }
-  private def work(args: List[String]): IO[Unit] =
+  private[lab] def work(args: List[String]): IO[Unit] =
     require(
       args.size == 5,
       "INITIAL_DIRECTORY INITIAL_MANIFEST_SHA256 PORT MAGIC EXCHANGE_DIRECTORY"
