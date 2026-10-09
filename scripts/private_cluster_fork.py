@@ -48,6 +48,23 @@ def point(tip): return dict(hash=tip['hash'],slot=tip['slot'])
 def same_tip(a,b):
     return all(a.get(k)==b.get(k) for k in ('hash','slot','block','epoch','era'))
 
+def startup_deadlines(genesis, utc_now, monotonic_now, case_deadline):
+    """Keep process startup at 10s; allow socket readiness 10s after planned genesis.
+
+    Convert the recorded UTC start once to a monotonic deadline. Neither a future
+    genesis nor subsequent wall-clock changes can extend the overall case.
+    """
+    require(all(type(t) in (int,float) and math.isfinite(t) for t in (utc_now,monotonic_now,case_deadline)),'finite startup clocks required')
+    require(case_deadline>monotonic_now,'case deadline exhausted before node launch')
+    start=datetime.datetime.fromisoformat(genesis['systemStart'].replace('Z','+00:00'))
+    require(start.tzinfo is not None,'planned genesis requires timezone')
+    planned=monotonic_now+max(0,start.timestamp()-utc_now)
+    require(planned<case_deadline,'planned genesis cannot start before case deadline')
+    return dict(processDeadline=min(case_deadline,monotonic_now+10),
+                socketDeadline=min(case_deadline,planned+10),
+                genesisStartUtc=start.timestamp(),observedUtc=utc_now,
+                observedMonotonic=monotonic_now,caseDeadline=case_deadline)
+
 def retained_receipts(directory, requirements):
     originals={}
     for item in requirements:
@@ -191,10 +208,10 @@ class ForkRunner(CoherentRunner):
         require(path in ('byron-genesis.json','shelley-genesis.json','configuration.yaml','node-data/node1/topology.json','node-data/node2/topology.json'),'owned fixture path required')
         return self.docker('exec','-i',self.containers['reference'],'/bin/sh','-c','cat > '+shlex.quote('/work/env/'+path),data=json.dumps(obj))
     def read(self,path): return self.execute('head','-c','4194305','--','/work/env/'+path).stdout
-    def query_node(self,node,kind,*options):
+    def query_node(self,node,kind,*options,timeout=4):
         return self.execute('cardano-cli','conway','query',kind,'--testnet-magic','1082026',
-                            '--socket-path',f'/work/env/socket/node{node}/sock',*options,timeout=4).stdout
-    def tip(self,node): return strict_json(self.query_node(node,'tip'))
+                            '--socket-path',f'/work/env/socket/node{node}/sock',*options,timeout=timeout).stdout
+    def tip(self,node,timeout=4): return strict_json(self.query_node(node,'tip',timeout=timeout))
 
     def create_container(self,key,args):
         # Ownership label is registered before create; cleanup resolves uncertain creates by label.
@@ -221,11 +238,13 @@ class ForkRunner(CoherentRunner):
 
     def start_node(self,node,forging):
         require(node not in self.active,'duplicate active node')
+        readiness=startup_deadlines(self.genesis,time.time(),time.monotonic(),self.deadline)
         self.serial+=1; base=f'/work/process-{node}-{self.serial}'; args=node_arguments(node,forging)
+        self.save(f'process-{node}-{self.serial}-readiness.json',readiness)
         socket=f'/work/env/socket/node{node}/sock'
         command='umask 077; mkdir -p '+shlex.quote(str(Path(socket).parent))+'; rm -f -- '+shlex.quote(socket)+'; cd /work/env; '+shlex.join(args)+' > '+base+'.log 2>&1 & p=$!; printf "%s" "$p" > '+base+'.pid; wait "$p"; r=$?; printf "%s" "$r" > '+base+'.exit'
         self.docker('exec','-d',self.containers['reference'],'/bin/sh','-c',command)
-        until=min(self.deadline,time.monotonic()+10)
+        until=readiness['processDeadline']
         while time.monotonic()<until:
             result=self.execute('cat',base+'.pid',check=False)
             if result.returncode==0 and result.stdout.isdigit(): break
@@ -240,9 +259,12 @@ class ForkRunner(CoherentRunner):
         else: raise TimeoutError('owned executable readiness')
         self.active[node]=dict(pid=pid,argv=args,identity=identity,base=base,forging=forging)
         self.save(f'process-{node}-{self.serial}-start.json',dict(identity=identity,forging=forging,container=self.containers['reference']))
+        until=readiness['socketDeadline']
         while time.monotonic()<until:
             try:
-                tip=self.tip(node)
+                remaining=until-time.monotonic()
+                if remaining<=0: raise TimeoutError('node socket readiness')
+                tip=self.tip(node,timeout=min(4,remaining))
                 if tip.get('era')=='Conway': break
             except ValueError: pass
             time.sleep(.1)

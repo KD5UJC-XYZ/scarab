@@ -60,8 +60,14 @@ is reconstructed from the checkpoint or selected by scanning it.
 Reference container: 2 CPUs / 2 GiB, at most two Haskell processes, one RTS capability
 and 512 MiB heap each. Scala/auditor containers: 1 CPU / 1 GiB, sequential. Network
 is internal; Scala shares only the owned reference namespace; audit uses no network.
-Case limit 240 seconds, each Scala phase 45 seconds, cleanup 30 seconds. Image
-root is read-only; all private state lives in fresh tmpfs/evidence directories.
+Case limit 240 seconds, each Scala phase 45 seconds, cleanup 30 seconds. Node
+startup retains a 10-second PID/executable allowance. Socket readiness gets 10
+seconds after the later of launch time and the recorded genesis `systemStart`,
+converted once from UTC to a monotonic deadline and clipped to the unchanged case
+deadline. A future genesis at or beyond that case deadline rejects before launch.
+The recorded readiness budget explains any startup timeout; individual readiness
+queries are capped to the remaining allowance. This does not alter epoch guards.
+Image root is read-only; all private state lives in fresh tmpfs/evidence directories.
 The reviewed image-installed pidfd helper must match an explicit digest. Signals
 bind to the opened process handle and start ticks, never a numeric-PID fallback.
 Owned labels resolve uncertain creates; cleanup rechecks labels and removes only

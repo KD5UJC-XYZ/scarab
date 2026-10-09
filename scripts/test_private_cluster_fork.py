@@ -12,6 +12,66 @@ from unittest.mock import patch
 import private_cluster_fork as f
 
 class ForkControllerTests(unittest.TestCase):
+    def test_future_genesis_readiness_does_not_extend_process_deadline(self):
+        genesis=dict(systemStart='2026-10-09T07:21:35Z')
+        now=datetime.datetime(2026,10,9,7,21,23,tzinfo=datetime.timezone.utc).timestamp()
+        got=f.startup_deadlines(genesis,now,100,300)
+        self.assertEqual(got['processDeadline'],110)
+        self.assertEqual(got['socketDeadline'],122)
+        self.assertEqual(f.startup_deadlines(genesis,now+20,100,300)['socketDeadline'],110)
+
+    def test_startup_clips_to_case_and_rejects_exhausted_budget(self):
+        genesis=dict(systemStart='2026-10-09T07:21:35Z')
+        now=datetime.datetime(2026,10,9,7,21,23,tzinfo=datetime.timezone.utc).timestamp()
+        self.assertEqual(f.startup_deadlines(genesis,now,100,115)['socketDeadline'],115)
+        for deadline in (99,100,111,112):
+            with self.assertRaises(ValueError): f.startup_deadlines(genesis,now,100,deadline)
+        for bad in ('2026-10-09T07:21:35','not-a-time'):
+            with self.assertRaises(ValueError): f.startup_deadlines(dict(systemStart=bad),now,100,300)
+
+    def test_future_genesis_socket_can_become_ready_after_ten_seconds(self):
+        runner=f.ForkRunner.__new__(f.ForkRunner)
+        runner.genesis=dict(systemStart='2026-10-09T07:21:35Z'); runner.deadline=130
+        runner.active={}; runner.serial=0; runner.containers={'reference':'a'*64}
+        runner.save=lambda *a:None; runner.docker=lambda *a,**k:None; runner.node_inventory=lambda:None
+        clock=[100.0]; probes=[]
+        args=f.node_arguments(1,True)
+        def execute(*command,**kwargs):
+            path=command[-1]
+            value='42' if path.endswith('.pid') else '42 (cardano-node) S '+' '.join(['0']*18+['1234']) if path.endswith('/stat') else '\0'.join(args)+'\0'
+            return subprocess.CompletedProcess(command,0,value,'')
+        def tip(node,timeout=4):
+            probes.append((clock[0],timeout))
+            if clock[0]<112: raise ValueError('awaiting genesis')
+            return dict(era='Conway')
+        runner.execute=execute; runner.tip=tip
+        now=datetime.datetime(2026,10,9,7,21,23,tzinfo=datetime.timezone.utc).timestamp()
+        with patch.object(f.time,'time',return_value=now), patch.object(f.time,'monotonic',side_effect=lambda:clock[0]), patch.object(f.time,'sleep',side_effect=lambda seconds:clock.__setitem__(0,clock[0]+seconds)):
+            runner.start_node(1,True)
+        self.assertGreater(probes[-1][0],110)
+        self.assertLess(probes[-1][0],122)
+        self.assertIn(1,runner.active)
+
+    def test_exhausted_case_prevents_node_launch(self):
+        runner=f.ForkRunner.__new__(f.ForkRunner)
+        runner.genesis=dict(systemStart='2026-10-09T07:21:35Z')
+        runner.active={}; runner.deadline=100
+        with patch.object(f.time,'time',return_value=2000000000), patch.object(f.time,'monotonic',return_value=100), patch.object(runner,'docker') as docker:
+            with self.assertRaisesRegex(ValueError,'case deadline exhausted'): runner.start_node(1,True)
+            docker.assert_not_called()
+
+    def test_clock_crossing_socket_deadline_cannot_report_ready(self):
+        runner=f.ForkRunner.__new__(f.ForkRunner)
+        runner.genesis=dict(systemStart='2026-10-09T07:21:35Z'); runner.deadline=130
+        runner.active={}; runner.serial=0; runner.containers={'reference':'a'*64}
+        runner.save=lambda *a:None; runner.docker=lambda *a,**k:None
+        args=f.node_arguments(1,True)
+        results=[subprocess.CompletedProcess([],0,value,'') for value in ('42','42 (cardano-node) S '+' '.join(['0']*18+['1234']),'\0'.join(args)+'\0')]
+        now=datetime.datetime(2026,10,9,7,21,23,tzinfo=datetime.timezone.utc).timestamp()
+        with patch.object(f.time,'time',return_value=now), patch.object(f.time,'monotonic',side_effect=[100,100,100,121.9,122.1]), patch.object(runner,'execute',side_effect=results), patch.object(runner,'tip') as tip, patch.object(runner,'node_inventory') as inventory:
+            with self.assertRaisesRegex(TimeoutError,'node socket readiness'): runner.start_node(1,True)
+            tip.assert_not_called(); inventory.assert_not_called()
+
     def test_process_streams_and_exit_are_preserved(self):
         got=f.bounded_run([sys.executable,'-c','import sys; print("accepted"); print("rejected",file=sys.stderr); sys.exit(7)'],2)
         self.assertEqual((got.returncode,got.stdout,got.stderr),(7,'accepted\n','rejected\n'))
