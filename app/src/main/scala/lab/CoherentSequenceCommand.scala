@@ -117,15 +117,20 @@ object CoherentSequenceCommand:
     }
     new OwnedOracle(originals, pins, sha(manifest))
   }
-  private def loadOracle(directory: Path): Either[Failure, OwnedOracle] = protect("oracle-input") {
-    bindOracle(
-      read(directory.resolve("coherent-sequence-oracle.md"), 8192),
-      sources.values.map(n => n -> read(directory.resolve(n), limit(n))).toMap
-    )
-      .fold(f => throw Stop(f), identity)
-  }
-  private[lab] def captures(bytes: Bytes): Either[Failure, Vector[BoundedChainFollower.Original]] =
+  private[lab] def loadOracle(directory: Path): Either[Failure, OwnedOracle] =
+    protect("oracle-input") {
+      bindOracle(
+        read(directory.resolve("coherent-sequence-oracle.md"), 8192),
+        sources.values.map(n => n -> read(directory.resolve(n), limit(n))).toMap
+      )
+        .fold(f => throw Stop(f), identity)
+    }
+  private[lab] def captures(
+      bytes: Bytes,
+      maxBlocks: Int = 8
+  ): Either[Failure, Vector[BoundedChainFollower.Original]] =
     protect("capture") {
+      require(maxBlocks >= 2 && maxBlocks <= 12, "capture maximum must be 2 through 12")
       require(
         bytes.size > 0 && bytes.size <= limit("scala-sequence-capture.md"),
         "capture byte bound"
@@ -149,8 +154,8 @@ object CoherentSequenceCommand:
           case _ => None
       }
       require(
-        records.size >= 2 && records.size <= 8,
-        "two to eight complete captured originals required"
+        records.size >= 2 && records.size <= maxBlocks,
+        "complete captured original count exceeds explicit bound"
       )
       records
     }
@@ -194,10 +199,11 @@ object CoherentSequenceCommand:
     */
   private[lab] def checkGrouping(
       blocks: Vector[SequenceInput.Block],
-      submittedFiles: Vector[Bytes]
+      submittedFiles: Vector[Bytes],
+      maxBlocks: Int = 8
   ): Either[Failure, Grouping] = protect("inclusion") {
     require(
-      blocks.size >= 2 && blocks.size <= 8 && submittedFiles.size == 2,
+      maxBlocks >= 2 && maxBlocks <= 12 && blocks.size >= 2 && blocks.size <= maxBlocks && submittedFiles.size == 2,
       "bounded two-transaction scenario required"
     )
     val expected = submittedFiles.map(submitted)
@@ -239,10 +245,11 @@ object CoherentSequenceCommand:
         (e.contextId, e.headers)
       ) &&
       a.ledger.id == b.ledger.id && a.ledger.outputMap == b.ledger.outputMap && a.ledger.fees == b.ledger.fees && a.ledger.slot == b.ledger.slot
-  private def compareOracle(
+  private[lab] def compareOracle(
       context: SequenceInput.Context,
       receipts: Vector[CoherentSequence.Applied],
-      owned: OwnedOracle
+      owned: OwnedOracle,
+      maxBlocks: Int = 8
   ): Either[Failure, Boolean] = protect("post-oracle") {
     val state = receipts.last.state
     val (tip, epoch) = endpoint(owned.originals("post-tips.md")).fold(f => throw Stop(f), identity)
@@ -281,7 +288,7 @@ object CoherentSequenceCommand:
     val utxo = get(Bytes.fromHex(text(owned.originals("post-utxo-cbor.md")).trim))
     val fees = uint(field(postLedger, "stateBefore", "esLState", "utxoState", "fees"))
     Ledger
-      .compareBlockSequenceReference(receipts.map(_.ledgerObservation), utxo, fees)
+      .compareBlockSequenceReference(receipts.map(_.ledgerObservation), utxo, fees, maxBlocks)
       .fold(f => throw Stop(Failure.Rejected("post-ledger-oracle", f.toString)), identity)
     previousCompared
   }

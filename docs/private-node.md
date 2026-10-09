@@ -47,8 +47,26 @@ Status-output failure is terminal. Output delivery itself is not durable evidenc
 of publication. Durable storage and sustained windows remain separate milestones;
 see [the implementation plan](private-node-milestones.md).
 
-The current command has no mode, window-compaction or storage-selection switch;
-unknown flags reject before I/O. When these lanes are integrated, sustained
-volatile and bounded durable modes must remain separate. Sustained durable mode
-is unsupported because checkpoint v1 rejects derived-anchor states, even with
-an empty suffix. See the plan for the proposed engine/backend interfaces.
+## Sustained volatile mode
+
+Select `--mode sustained-volatile` with explicit `--blocks` (9..256) and
+`--rollback-capacity` (1..8). The ordinary default remains `bounded-volatile`,
+with at most eight retained blocks and no anchor advancement. Sustained mode
+advances a checked in-memory anchor before the retained window fills. Status
+reports total depth, retained blocks, compacted blocks and derived-anchor identity
+separately. It remains same-epoch and bounded by cumulative event/byte/time budgets.
+
+`--mode sustained-durable` is rejected explicitly: checkpoint v1 cannot store a
+derived anchor, including an empty suffix. `bounded-durable` is also unavailable
+until the separate backend seam is wired. These modes never fall back to volatile
+execution. Unknown or duplicate flags still fail before I/O.
+
+Explicit `--audit true` records every acquired original header/block pair and a
+complete token-free final state projection. It is off by default. Audit output
+contains private reference data and belongs in private evidence storage. Acquisition
+records do not claim application; terminal status and independent replay must bind
+them to the committed state. Node execution never reads the post-oracle.
+
+See [the 12-block operational acceptance plan](private-node-acceptance.md) for
+the exact planned configuration, resource limits and comparison requirements.
+This mode's live acceptance result is pending until that reviewed case completes.

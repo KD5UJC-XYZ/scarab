@@ -645,13 +645,16 @@ object ClusterTransition:
   def compareBlockSequenceReference(
       applied: Vector[BlockApplied],
       observedUtxo: Bytes,
-      observedFees: BigInt
+      observedFees: BigInt,
+      maxBlocks: Int = 8
   ): Checked[Unit] = protect {
     for
       _ <- Either.cond(
-        applied.nonEmpty && applied.size <= 8,
+        maxBlocks >= 1 && maxBlocks <= 12 && applied.nonEmpty && applied.size <= maxBlocks,
         (),
-        Failure.ResourceLimit("reference comparison requires 1 through 8 block receipts")
+        Failure.ResourceLimit(
+          "reference comparison requires receipts within the explicit 1 through 12 bound"
+        )
       )
       created <- applied.foldLeft[Checked[(Option[State], Set[TxIn])]](
         Right((None, Set.empty))

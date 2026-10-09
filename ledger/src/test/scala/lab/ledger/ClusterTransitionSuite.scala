@@ -680,3 +680,32 @@ class ClusterTransitionSuite extends munit.FunSuite:
     assert(R.compareBlockSequenceReference(Vector(first), Bytes(null), first.state.fees).isLeft)
     assert(R.compareBlockSequenceReference(Vector(first), first.state.outputMap, null).isLeft)
   }
+
+  test("explicit twelve receipt audit preserves default bounds and continuity checks") {
+    val first = R.applyBlock(initial(), headerA, Vector.empty, 20).toOption.get
+    val twelve = (21 to 31).foldLeft(Vector(first)) { (acc, slot) =>
+      acc :+ R.applyBlock(acc.last.state, headerA, Vector.empty, slot).toOption.get
+    }
+    val end = twelve.last.state
+    assert(R.compareBlockSequenceReference(twelve, end.outputMap, end.fees).isLeft)
+    assert(R.compareBlockSequenceReference(twelve, end.outputMap, end.fees, 12).isRight)
+    assert(R.compareBlockSequenceReference(twelve, end.outputMap, end.fees + 1, 12).isLeft)
+    assert(
+      R.compareBlockSequenceReference(
+        twelve.drop(1).prepended(twelve(1)),
+        end.outputMap,
+        end.fees,
+        12
+      ).isLeft
+    )
+    Vector(0, 13, Int.MaxValue).foreach { bound =>
+      assert(
+        R.compareBlockSequenceReference(
+          Vector(first),
+          first.state.outputMap,
+          first.state.fees,
+          bound
+        ).isLeft
+      )
+    }
+  }

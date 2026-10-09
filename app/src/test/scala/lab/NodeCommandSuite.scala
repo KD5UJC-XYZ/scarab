@@ -103,8 +103,197 @@ class NodeCommandSuite extends munit.FunSuite:
     assertEquals(c.reconnects, 0)
     assert(c.policy.valid)
     assertEquals(NodeCommand.NetworkMagic, 1082026L)
-    assert(compileErrors("new lab.NodeCommand.Config(null,null,1,1,1,1,1L,0)").nonEmpty)
+    assert(
+      compileErrors("new lab.NodeCommand.Config(null,null,1,1,1,1,1L,0,null,8,false)").nonEmpty
+    )
     assert(compileErrors("val c: lab.NodeCommand.Config = null; c.copy()").nonEmpty)
+  }
+  test("bounded mode preserves defaults and audit is explicitly opt-in") {
+    val normal = config()
+    assertEquals(normal.mode, "bounded-volatile")
+    assertEquals(normal.rollbackCapacity, 8)
+    assertEquals(normal.audit, false)
+    assertEquals(normal.policy.advanceWindow, false)
+    val explicit = config("--mode", "bounded-volatile", "--audit", "true")
+    assertEquals(explicit.policy, normal.policy)
+    assert(explicit.audit)
+  }
+  test("sustained volatile mode requires explicit capacity and maps cumulative policy bounds") {
+    val twelve =
+      config("--mode", "sustained-volatile", "--rollback-capacity", "4", "--blocks", "12")
+    assertEquals(twelve.blocks, 12)
+    assertEquals(twelve.policy.advanceWindow, true)
+    assertEquals(twelve.policy.rollbackCapacity, 4)
+    assertEquals(twelve.events, 64)
+    val upper = config(
+      "--mode",
+      "sustained-volatile",
+      "--rollback-capacity",
+      "1",
+      "--blocks",
+      "256",
+      "--events",
+      "256",
+      "--seconds",
+      "120",
+      "--bytes",
+      "67108864",
+      "--audit",
+      "true"
+    )
+    assert(upper.policy.valid)
+    assertEquals(upper.policy.target, 256)
+  }
+  test("unintegrated durable modes and incomplete sustained configurations fail closed") {
+    val sustained = List("--mode", "sustained-volatile", "--blocks", "12")
+    Vector(
+      List("--mode", "sustained-durable"),
+      List("--mode", "bounded-durable"),
+      List("--mode", "other"),
+      sustained,
+      sustained ++ List("--rollback-capacity", "0"),
+      sustained ++ List("--rollback-capacity", "9"),
+      List("--mode", "sustained-volatile", "--rollback-capacity", "4"),
+      List("--mode", "sustained-volatile", "--rollback-capacity", "4", "--blocks", "8"),
+      List(
+        "--mode",
+        "sustained-volatile",
+        "--rollback-capacity",
+        "4",
+        "--blocks",
+        "257",
+        "--events",
+        "256"
+      ),
+      List("--rollback-capacity", "4"),
+      List("--audit", "yes"),
+      List("--audit", "TRUE"),
+      List("--mode", "bounded-volatile", "--mode", "bounded-volatile")
+    )
+      .foreach(extra => assert(NodeCommand.Config.parse(required ++ extra).isLeft))
+    assert(
+      NodeCommand.Config
+        .parse(required ++ List("--mode", "sustained-durable"))
+        .swap
+        .toOption
+        .get
+        .contains("checkpoint v1")
+    )
+    assert(
+      NodeCommand.Config
+        .parse(required ++ List("--mode", "bounded-durable"))
+        .swap
+        .toOption
+        .get
+        .contains("not integrated")
+    )
+  }
+  test("sustained target twelve cannot be fabricated from an unvalidated synthetic anchor") {
+    val settings = config(
+      "--mode",
+      "sustained-volatile",
+      "--rollback-capacity",
+      "4",
+      "--blocks",
+      "12",
+      "--events",
+      "12"
+    )
+    (for
+      invalid <- NodeCommand.execute(
+        settings,
+        syntheticContext,
+        noPeer,
+        _ => IO.unit,
+        engine(Stop.TargetReached)
+      )
+      exhausted <- NodeCommand.execute(
+        settings,
+        syntheticContext,
+        scripted(List.fill(12)(IO.pure(Event.Await)), anchor(syntheticContext)),
+        _ => IO.unit
+      )
+    yield
+      assert(invalid.isLeft)
+      val report = get(exhausted)
+      assertEquals(report.outcome.reason, Stop.EventBudget)
+      assertEquals(report.outcome.snapshot.state.depth, BigInt(0))
+      assertEquals(
+        field(NodeCommand.render(report), "mode"),
+        ReferenceJson.Json.Str("sustained-volatile")
+      )
+      assertEquals(
+        field(NodeCommand.render(report), "scopedTargetReached"),
+        ReferenceJson.Json.Lit("false")
+      )
+    ).unsafeToFuture()
+  }
+  test("audit state projection is token-free and emitted only after engine finalization") {
+    Ref
+      .of[IO, Boolean](false)
+      .flatMap { released =>
+        val settings = config("--audit", "true")
+        val output = (line: String) =>
+          if record(line) != "node-state" then IO.unit
+          else
+            released.get.flatMap { done =>
+              IO {
+                assert(done)
+                assertEquals(field(line, "depth"), ReferenceJson.Json.Str("0"))
+                assertEquals(field(line, "compactedBlocks"), ReferenceJson.Json.Str("0"))
+                assertEquals(field(line, "derivedAnchorId"), ReferenceJson.Json.Lit("null"))
+                val fields =
+                  ReferenceJson.parse(raw(line)).asInstanceOf[ReferenceJson.Json.Obj].fields
+                assertEquals(
+                  fields.keySet,
+                  Set(
+                    "record",
+                    "projection",
+                    "revision",
+                    "depth",
+                    "compactedBlocks",
+                    "derivedAnchorId"
+                  )
+                )
+              }
+            }
+        NodeCommand
+          .execute(
+            settings,
+            syntheticContext,
+            noPeer,
+            output,
+            engine(Stop.EventBudget, released.set(true))
+          )
+          .map(result => assert(result.isRight))
+      }
+      .unsafeToFuture()
+  }
+  test("audit output failure after cleanup cannot yield a terminal success report") {
+    Ref
+      .of[IO, Boolean](false)
+      .flatMap { released =>
+        val output = (line: String) =>
+          if record(line) == "node-state" then
+            IO.raiseError(new IllegalStateException("audit output failed"))
+          else IO.unit
+        for
+          result <- NodeCommand.execute(
+            config("--audit", "true"),
+            syntheticContext,
+            noPeer,
+            output,
+            engine(Stop.EventBudget, released.set(true))
+          )
+          done <- released.get
+        yield
+          assert(done)
+          assertEquals(
+            result,
+            Left(NodeCommand.Failure("output", "Rejected", "audit output failed"))
+          )
+      }
+      .unsafeToFuture()
   }
   test("all supported explicit upper and lower policy boundaries parse") {
     val lower = config(
@@ -466,6 +655,110 @@ class NodeCommandSuite extends munit.FunSuite:
               ReferenceJson.Json.Lit("false")
             )
             assertEquals(report.peerOpens, report.peerCloses)
+        }
+        .unsafeToFuture()
+    }
+    test(
+      "retained sustained audit retains every fetched original across actual window compaction"
+    ) {
+      val c = context; val os = originals
+      val settings = config(
+        "--mode",
+        "sustained-volatile",
+        "--rollback-capacity",
+        "1",
+        "--blocks",
+        "12",
+        "--audit",
+        "true"
+      )
+      Ref
+        .of[IO, Vector[String]](Vector.empty)
+        .flatMap { logs =>
+          for
+            result <- NodeCommand.execute(
+              settings,
+              c,
+              scripted(forwards(os), anchor(c), fetch(os)),
+              line => logs.update(_ :+ line)
+            )
+            lines <- logs.get
+          yield
+            val report = get(result)
+            // Real retained originals are finite; exhausting this script must not claim target12.
+            assert(report.outcome.reason.isInstanceOf[Stop.PeerFailure])
+            assertEquals(report.outcome.snapshot.state.depth, BigInt(os.size))
+            assertEquals(report.outcome.snapshot.state.compactedBlocks, BigInt(os.size - 1))
+            assertEquals(report.outcome.snapshot.state.acquisition.size, 1)
+            assert(report.outcome.snapshot.state.derivedAnchorId.nonEmpty)
+            val captures = lines.filter(line => record(line) == "transfer-range-block")
+            assertEquals(get(CoherentSequenceCommand.captures(raw(captures.mkString("\n")))), os)
+            captures.foreach { line =>
+              assertEquals(field(line, "acquisitionOnly"), ReferenceJson.Json.Lit("true"))
+              assertEquals(field(line, "appliedClaim"), ReferenceJson.Json.Lit("false"))
+            }
+            val applied = lines.filter(line => record(line) == "node-applied")
+            applied.zip(os).foreach { (line, original) =>
+              assertEquals(
+                field(line, "transactionCount"),
+                ReferenceJson.Json
+                  .Num(get(SequenceInput.block(original)).transactionMemos.size.toString)
+              )
+            }
+            assertEquals(lines.count(line => record(line) == "node-anchor-advance"), os.size - 1)
+            assertEquals(record(lines.last), "node-state")
+            assertEquals(
+              field(lines.last, "projection"),
+              ValidatedRestartCapture.projection(report.outcome.snapshot.state)
+            )
+            assertEquals(field(lines.last, "depth"), ReferenceJson.Json.Str(os.size.toString))
+            assertEquals(
+              field(NodeCommand.render(report), "depth"),
+              ReferenceJson.Json.Num(os.size.toString)
+            )
+            assertEquals(
+              field(NodeCommand.render(report), "scopedTargetReached"),
+              ReferenceJson.Json.Lit("false")
+            )
+        }
+        .unsafeToFuture()
+    }
+    test("audit fetch refuses a point different from the original announced header") {
+      val c = context; val os = originals
+      Ref
+        .of[IO, Int](0)
+        .flatMap { fetched =>
+          val factory = new NodeCommand.EngineFactory:
+            def resource(
+                ctx: SequenceInput.Context,
+                p: Resource[IO, Peer[IO]],
+                policy: Policy,
+                hook: String => IO[Unit]
+            ) =
+              Resource.eval(CoherentSequence.create[IO](ctx).map(get(_))).map { runtime =>
+                new NodeCommand.Engine:
+                  def snapshot = runtime.snapshot
+                  def run = p.use { peer =>
+                    peer.intersect(Vector(anchor(ctx))) *> peer.next *> peer.fetch(anchor(ctx)) *>
+                      snapshot.map(s => Outcome(s, Stop.EventBudget, 1, 0L, 0))
+                  }
+              }
+          val source =
+            scripted(forwards(os.take(1)), anchor(c), _ => fetched.update(_ + 1).as(os.head.block))
+          for
+            result <- NodeCommand.execute(
+              config("--audit", "true"),
+              c,
+              source,
+              _ => IO.unit,
+              factory
+            )
+            count <- fetched.get
+          yield
+            result match
+              case Left(NodeCommand.Failure("fetch", "Rejected", _)) => ()
+              case other                                             => fail(other.toString)
+            assertEquals(count, 0)
         }
         .unsafeToFuture()
     }
