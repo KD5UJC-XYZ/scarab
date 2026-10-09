@@ -114,6 +114,29 @@ disabled, CPU limited to 2, memory to 2 GiB, and build caches private to the
 worktree. Formatting and diff checks passed; independent lifecycle review found
 no blocking issue.
 
+A separate acceptance coverage packet adds four tests (24 tests passed with the
+11 combined lifecycle and 9 codec/recovery tests):
+
+- Directly encoded and forced abrupt-stop fixtures retain unresolved live leases
+  and exact pending operations before the first Resume. Pending A-to-B selects
+  exactly primary A or B. Initial pending absence and staging-only bytes resolve
+  to Dormant and initialization-required without promoting staging or bootstrapping.
+- A verification timeout after checkpoint replacement holds recovery cancellation
+  cleanup open. The mutation cannot return or release journal ownership until
+  cleanup settles; afterward the session is poisoned, its diagnostic claim/state
+  remains unchanged, and strict fresh Resume selects the exact disk successor.
+- Six interrupted anchor-publication phases check independently encoded full
+  claims and state identities, then Resume and publish the next original block
+  against an independent checked runtime.
+
+These abrupt-stop fixtures intentionally open no backend or controller resource
+before Resume, so graceful finalizers cannot rewrite their starting states. They
+model persisted crash cuts; they are not a process-kill or hardware power-loss
+experiment. Recovery instrumentation is a private labels-only hook inside the
+existing bounded timeout; production entry points supply a no-op observer.
+The acceptance run used the same offline Docker limits and private cache policy
+as the baseline. Independent read-only review found no blocking issue.
+
 Tests use existing signed private capture evidence mounted read-only. No live
 node, network fetch, process spawning or migration execution runs. The only
 remaining product integration is the runner/backend confirmation adapter and

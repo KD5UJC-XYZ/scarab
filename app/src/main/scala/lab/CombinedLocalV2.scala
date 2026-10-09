@@ -25,6 +25,10 @@ private[lab] object CombinedLocalV2:
   enum Phase:
     case Reserved, WriterAcquired, Probed, Intent, Checkpoint, Verified, Committed,
       BeforeMemory, Memory, Activated, BeforeWriterClose, WriterClosed
+
+  /** Labels-only hooks; recovery hook runs inside the existing bounded replay timeout. */
+  private final case class Hooks[F[_]](phase: Phase => F[Unit], recovery: String => F[Unit]):
+    def apply(p: Phase): F[Unit] = phase(p)
   final class Failure(message: String) extends RuntimeException(message)
   final class View private[CombinedLocalV2] (
       private[CombinedLocalV2] val owner: AnyRef,
@@ -88,7 +92,7 @@ private[lab] object CombinedLocalV2:
       c: Controller[F],
       writer: Ref[F, Option[Writer[F]]],
       failedFreshAllocation: Ref[F, Boolean],
-      observe: Phase => F[Unit]
+      observe: Hooks[F]
   ): F[Unit] =
     val F = Async[F]
     // Failure to persist retirement does not justify leaving a live writer behind.
@@ -107,7 +111,8 @@ private[lab] object CombinedLocalV2:
       config: Config,
       c: Controller[F],
       disk: NioLocalDerivedCheckpointStore.Disk,
-      effect: Effect
+      effect: Effect,
+      observe: Hooks[F]
   ): F[(Sequence.Runtime[F], FullClaim)] =
     val F = Async[F]
     effect match
@@ -136,11 +141,12 @@ private[lab] object CombinedLocalV2:
             .accept(envelope, authority)
             .flatMap(e => F.delay(get(e)))
           runtime <- LocalDerivedCheckpoint
-            .recover(
+            .recoverObserved(
               bytes,
               raw(config.binding.store.context),
               Some(accepted),
-              config.recoveryDeadline
+              config.recoveryDeadline,
+              observe.recovery
             )
             .flatMap(e => F.delay(get(e)))
           _ <- F.raiseUnless(runtime.maxBlocks == config.capacity)(
@@ -154,7 +160,7 @@ private[lab] object CombinedLocalV2:
       disk: NioLocalDerivedCheckpointStore.Disk,
       previous: Option[FullClaim],
       publication: Publication,
-      observe: Phase => F[Unit]
+      observe: Hooks[F]
   ): F[Unit] =
     val F = Async[F]
     for
@@ -170,7 +176,7 @@ private[lab] object CombinedLocalV2:
       _ <- observe(Phase.Checkpoint)
       installed <- command(c, Command.Installed(op))
       effect <- F.fromOption(installed.effects.headOption, new Failure("verify effect missing"))
-      _ <- verified(config, c, disk, effect)
+      _ <- verified(config, c, disk, effect, observe)
       _ <- observe(Phase.Verified)
       result <- evidence(c, Evidence.Verified(l.epoch, l.session, op.after))
       _ <- F.raiseUnless(result.reply == Reply.Committed(op))(
@@ -190,7 +196,7 @@ private[lab] object CombinedLocalV2:
       closed: Ref[F, Boolean],
       view: Ref[F, View],
       finalizeWriter: F[Unit],
-      observe: Phase => F[Unit]
+      observe: Hooks[F]
   )(using F: Async[F]):
     val capacity: Int = config.capacity
 
@@ -302,7 +308,7 @@ private[lab] object CombinedLocalV2:
       seed: Option[Bootstrap],
       controller: Controller[F],
       faults: NioLocalDerivedCheckpointStore.Faults,
-      observe: Phase => F[Unit]
+      observe: Hooks[F]
   ): Resource[F, Session[F]] =
     val F = Async[F]
     Resource.make(F.uncancelable { _ =>
@@ -388,7 +394,7 @@ private[lab] object CombinedLocalV2:
                 )
                 effect <- F
                   .fromOption(requested.effects.headOption, new Failure("verify not requested"))
-                recovered <- verified(config, controller, disk, effect)
+                recovered <- verified(config, controller, disk, effect, observe)
                 _ <- evidence(
                   controller,
                   Evidence.Verified(l.epoch, l.session, project(recovered._2))
@@ -428,6 +434,16 @@ private[lab] object CombinedLocalV2:
       storeFaults: NioLocalDerivedCheckpointStore.Faults,
       observe: Phase => F[Unit]
   ): Resource[F, Session[F]] =
+    observed(config, seed, journalFaults, storeFaults, observe, _ => Async[F].unit)
+
+  private[lab] def observed[F[_]: Async](
+      config: Config,
+      seed: Option[Bootstrap],
+      journalFaults: LocalControllerJournal.Faults,
+      storeFaults: NioLocalDerivedCheckpointStore.Faults,
+      observe: Phase => F[Unit],
+      recoveryBetween: String => F[Unit]
+  ): Resource[F, Session[F]] =
     val F = Async[F]
     Resource.eval(
       F.delay(
@@ -448,7 +464,7 @@ private[lab] object CombinedLocalV2:
             incarnation,
             journalFaults
           )
-          .flatMap(c => build(config, seed, c, storeFaults, observe))
+          .flatMap(c => build(config, seed, c, storeFaults, Hooks(observe, recoveryBetween)))
       }
   def create[F[_]: Async](config: Config, seed: Bootstrap): Resource[F, Session[F]] =
     observed(
