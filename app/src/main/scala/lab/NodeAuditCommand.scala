@@ -13,6 +13,7 @@ import scala.concurrent.duration.*
 /** Offline audit only: checked forward replay precedes all reference post-state interpretation. */
 object NodeAuditCommand:
   private[lab] val MaxBlocks = 12
+  private[lab] val FenceMaxBlocks = 16
   private val MaxBytes = 20 * 1024 * 1024
   private def raw(s: String): Bytes = Bytes.fromArray(s.getBytes(StandardCharsets.UTF_8))
   private def text(b: Bytes): String =
@@ -60,11 +61,22 @@ object NodeAuditCommand:
       context: SequenceInput.Context,
       blocks: Vector[SequenceInput.Block],
       capacity: Int
+  ): IO[Vector[CoherentSequence.Applied]] = replayWithin(context, blocks, capacity, MaxBlocks)
+  private[lab] def fencedReplay(
+      context: SequenceInput.Context,
+      blocks: Vector[SequenceInput.Block]
+  ): IO[Vector[CoherentSequence.Applied]] =
+    replayWithin(context, blocks, 2, FenceMaxBlocks)
+  private def replayWithin(
+      context: SequenceInput.Context,
+      blocks: Vector[SequenceInput.Block],
+      capacity: Int,
+      ceiling: Int
   ): IO[Vector[CoherentSequence.Applied]] =
     for
       _ <- IO(
         require(
-          capacity >= 1 && capacity <= 8 && blocks.size >= 2 && blocks.size <= MaxBlocks,
+          capacity >= 1 && capacity <= 8 && blocks.size >= 2 && blocks.size <= ceiling,
           "bounded audit capacity/target required"
         )
       )
@@ -96,19 +108,39 @@ object NodeAuditCommand:
       stdout: Bytes,
       capacity: Int,
       target: Int
+  ): IO[Json] = assessWithin(context, owned, stdout, capacity, target, false)
+  private[lab] def fencedAssess(
+      context: SequenceInput.Context,
+      owned: CoherentSequenceCommand.OwnedOracle,
+      stdout: Bytes,
+      target: Int
   ): IO[Json] =
+    assessWithin(context, owned, stdout, 2, target, true)
+  private def assessWithin(
+      context: SequenceInput.Context,
+      owned: CoherentSequenceCommand.OwnedOracle,
+      stdout: Bytes,
+      capacity: Int,
+      target: Int,
+      fenced: Boolean
+  ): IO[Json] =
+    val ceiling = if fenced then FenceMaxBlocks else MaxBlocks
+    def captures(bytes: Bytes) = if fenced then CoherentSequenceCommand.fencedCaptures(bytes)
+    else CoherentSequenceCommand.captures(bytes, MaxBlocks)
     for
       _ <- IO(
         require(
-          target >= 2 && target <= MaxBlocks && capacity >= 1 && capacity <= 8,
+          target >= (if fenced then 12
+                     else
+                       2) && target <= ceiling && capacity >= 1 && capacity <= 8 && (!fenced || capacity == 2),
           "bounded audit arguments required"
         )
       )
       logs <- IO(records(stdout))
       originals <- checked(
-        CoherentSequenceCommand.captures(owned.originals("scala-sequence-capture.md"), MaxBlocks)
+        captures(owned.originals("scala-sequence-capture.md"))
       )
-      onlineOriginals <- checked(CoherentSequenceCommand.captures(stdout, MaxBlocks))
+      onlineOriginals <- checked(captures(stdout))
       _ <- IO(
         require(
           originals == onlineOriginals && originals.size == target,
@@ -126,17 +158,15 @@ object NodeAuditCommand:
           "all originals must remain in supplied epoch"
         )
       }
-      grouping <- checked(
-        CoherentSequenceCommand.checkGrouping(
-          blocks,
-          Vector(
-            owned.originals("signed-transaction-0-cbor.md"),
-            owned.originals("signed-transaction-1-cbor.md")
-          ),
-          MaxBlocks
-        )
+      submitted = Vector(
+        owned.originals("signed-transaction-0-cbor.md"),
+        owned.originals("signed-transaction-1-cbor.md")
       )
-      receipts <- replay(context, blocks, capacity)
+      grouping <- checked(
+        if fenced then CoherentSequenceCommand.fencedGrouping(blocks, submitted)
+        else CoherentSequenceCommand.checkGrouping(blocks, submitted, MaxBlocks)
+      )
+      receipts <- replayWithin(context, blocks, capacity, ceiling)
       state = receipts.last.state
       _ <- IO {
         require(
@@ -148,11 +178,12 @@ object NodeAuditCommand:
       }
       // This is the first interpretation of the pinned reference post-state bytes.
       previousCompared <- checked(
-        CoherentSequenceCommand.compareOracle(context, receipts, owned, MaxBlocks)
+        if fenced then CoherentSequenceCommand.compareFencedOracle(context, receipts, owned)
+        else CoherentSequenceCommand.compareOracle(context, receipts, owned, MaxBlocks)
       )
     yield Json.Obj(
       Map(
-        "scope" -> Json.Str("node-audit"),
+        "scope" -> Json.Str(if fenced then "node-fence-audit" else "node-audit"),
         "passed" -> Json.Lit("true"),
         "capturedBlocks" -> Json.Num(target.toString),
         "transactionCount" -> Json.Num("2"),
@@ -180,31 +211,36 @@ object NodeAuditCommand:
         "durableClaim" -> Json.Lit("false")
       )
     )
-  def run(args: List[String]): IO[ExitCode] =
+  def run(args: List[String]): IO[ExitCode] = runWithin(args, false)
+  def runFenced(args: List[String]): IO[ExitCode] = runWithin(args, true)
+  private[lab] def arguments(capacity: String, target: String, fenced: Boolean): (Int, Int) =
+    require(
+      capacity.matches("[1-8]") && target.matches("[1-9][0-9]?"),
+      "canonical bounded audit integers required"
+    )
+    require(
+      target.toInt >= (if fenced then 12
+                       else 2) && target.toInt <= (if fenced then FenceMaxBlocks
+                                                   else MaxBlocks) && (!fenced || capacity == "2"),
+      "bounded audit profile capacity/target required"
+    )
+    (capacity.toInt, target.toInt)
+  private def runWithin(args: List[String], fenced: Boolean): IO[ExitCode] =
     val work = args match
       case List(context, oracle, stdout, capacity, target) =>
         for
-          limits <- IO {
-            require(
-              capacity.matches("[1-8]") && target.matches("[1-9][0-9]?"),
-              "canonical bounded audit integers required"
-            )
-            require(
-              target.toInt >= 2 && target.toInt <= MaxBlocks,
-              "audit target must be 2 through 12"
-            )
-            (capacity.toInt, target.toInt)
-          }
+          limits <- IO(arguments(capacity, target, fenced))
           source <- IO.blocking(SequenceInput.load(Path.of(context))).flatMap(checked)
           owned <- IO.blocking(CoherentSequenceCommand.loadOracle(Path.of(oracle))).flatMap(checked)
           bytes <- IO.blocking(read(Path.of(stdout)))
-          report <- assess(source, owned, bytes, limits._1, limits._2)
+          report <- assessWithin(source, owned, bytes, limits._1, limits._2, fenced)
           _ <- IO.println(ValidatedRestartCapture.canonical(report))
         yield ExitCode.Success
       case _ =>
         IO.raiseError(
           new IllegalArgumentException(
-            "node-audit CONTEXT_DIR ORACLE_DIR NODE_STDOUT CAPACITY TARGET"
+            (if fenced then "node-fence-audit"
+             else "node-audit") + " CONTEXT_DIR ORACLE_DIR NODE_STDOUT CAPACITY TARGET"
           )
         )
     work.timeout(120.seconds).handleErrorWith { error =>
@@ -212,7 +248,7 @@ object NodeAuditCommand:
         ValidatedRestartCapture.canonical(
           Json.Obj(
             Map(
-              "scope" -> Json.Str("node-audit"),
+              "scope" -> Json.Str(if fenced then "node-fence-audit" else "node-audit"),
               "passed" -> Json.Lit("false"),
               "outcome" -> Json.Str("Rejected"),
               "detail" -> Json.Str(Option(error.getMessage).getOrElse(error.getClass.getName))

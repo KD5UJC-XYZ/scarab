@@ -42,6 +42,75 @@ class NodeAuditCommandSuite extends munit.FunSuite:
       NodeAuditCommand.run(args).map(code => assertEquals(code.code, 2))
     }.unsafeToFuture()
   }
+  test(
+    "fenced profile explicitly accepts sixteen and rejects seventeen without widening legacy bounds"
+  ) {
+    val sixteen = raw(Vector.fill(16)(original).mkString("\n"))
+    assertEquals(get(CoherentSequenceCommand.fencedCaptures(sixteen)).size, 16)
+    assert(
+      CoherentSequenceCommand.fencedCaptures(raw(Vector.fill(17)(original).mkString("\n"))).isLeft
+    )
+    assert(CoherentSequenceCommand.captures(sixteen, 16).isLeft)
+    (12 to 16).foreach(n => assertEquals(NodeAuditCommand.arguments("2", n.toString, true), (2, n)))
+    Vector(("2", "11"), ("2", "17"), ("3", "12"), ("02", "12"), ("2", "012")).foreach {
+      (capacity, target) =>
+        intercept[IllegalArgumentException](NodeAuditCommand.arguments(capacity, target, true))
+    }
+    intercept[IllegalArgumentException](NodeAuditCommand.arguments("2", "13", false))
+  }
+  test("fenced command rejects input limits before opening missing files") {
+    Vector(("2", "17"), ("1", "12"), ("2", "11"))
+      .traverse_ { (capacity, target) =>
+        NodeAuditCommand
+          .runFenced(List("missing", "missing", "missing", capacity, target))
+          .map(code => assertEquals(code.code, 2))
+      }
+      .unsafeToFuture()
+  }
+  sys.env.get("NODE_FENCE_AUDIT_EVIDENCE").foreach { location =>
+    test("retained twelve original blocks independently replay and match entire supported oracle") {
+      val dir = Path.of(location)
+      val c = get(SequenceInput.load(dir)); val os = get(CoherentSequenceCommand.loadOracle(dir))
+      val captured = os.originals("scala-sequence-capture.md")
+      val bs =
+        get(CoherentSequenceCommand.fencedCaptures(captured)).map(o => get(SequenceInput.block(o)))
+      assertEquals(bs.size, 12)
+      val files = Vector(
+        os.originals("signed-transaction-0-cbor.md"),
+        os.originals("signed-transaction-1-cbor.md")
+      )
+      val empty = bs.find(_.transactionMemos.isEmpty).get
+      val pair = bs.find(_.transactionMemos.size == 2).get
+      val sixteen = Vector.fill(15)(empty) :+ pair
+      assert(CoherentSequenceCommand.fencedGrouping(sixteen, files).isRight)
+      assert(CoherentSequenceCommand.fencedGrouping(sixteen :+ empty, files).isLeft)
+      assert(CoherentSequenceCommand.checkGrouping(sixteen, files, 16).isLeft)
+      val work = for
+        receipts <- NodeAuditCommand.fencedReplay(c, bs)
+        state = receipts.last.state
+        stdout = raw(
+          new String(captured.toArray, "UTF-8") + "\n" + NodeAuditCommand.stateRecord(state)
+        )
+        report <- NodeAuditCommand.fencedAssess(c, os, stdout, 12)
+        duplicate <- NodeAuditCommand
+          .fencedAssess(
+            c,
+            os,
+            raw(new String(stdout.toArray, "UTF-8") + "\n" + NodeAuditCommand.stateRecord(state)),
+            12
+          )
+          .attempt
+      yield
+        assertEquals(state.compactedBlocks, BigInt(10))
+        assertEquals(ReferenceJson.field(report, "scope"), Json.Str("node-fence-audit"))
+        Vector("completeProjectionMatched", "referencePostStateMatched")
+          .foreach(k => assertEquals(ReferenceJson.field(report, k), Json.Lit("true")))
+        Vector("fullLedgerValidated", "consensusValidated", "durableClaim")
+          .foreach(k => assertEquals(ReferenceJson.field(report, k), Json.Lit("false")))
+        assert(duplicate.isLeft)
+      work.unsafeToFuture()
+    }
+  }
   sys.env.get("NODE_AUDIT_EVIDENCE").foreach { location =>
     val dir = Path.of(location)
     def context = get(SequenceInput.load(dir))

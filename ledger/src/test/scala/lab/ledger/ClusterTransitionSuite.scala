@@ -709,3 +709,23 @@ class ClusterTransitionSuite extends munit.FunSuite:
       )
     }
   }
+
+  test("explicit fenced sixteen receipt comparison preserves old bounds and checks continuity") {
+    val first = R.applyBlock(initial(), headerA, Vector.empty, 20).toOption.get
+    val sixteen = (21 to 35).foldLeft(Vector(first)) { (acc, slot) =>
+      acc :+ R.applyBlock(acc.last.state, headerA, Vector.empty, slot).toOption.get
+    }
+    val end = sixteen.last.state
+    assert(R.compareFencedBlockSequenceReference(sixteen, end.outputMap, end.fees).isRight)
+    assert(R.compareBlockSequenceReference(sixteen, end.outputMap, end.fees, 16).isLeft)
+    assert(R.compareBlockSequenceReference(sixteen.take(13), end.outputMap, end.fees, 13).isLeft)
+    assert(
+      R.compareFencedBlockSequenceReference(sixteen :+ sixteen.last, end.outputMap, end.fees).isLeft
+    )
+    assert(R.compareFencedBlockSequenceReference(sixteen, end.outputMap, end.fees + 1).isLeft)
+    assert(
+      R.compareFencedBlockSequenceReference(sixteen.updated(1, first), end.outputMap, end.fees)
+        .isLeft
+    )
+    assert(R.compareFencedBlockSequenceReference(Vector.empty, end.outputMap, end.fees).isLeft)
+  }

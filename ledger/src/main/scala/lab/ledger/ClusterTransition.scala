@@ -708,13 +708,30 @@ object ClusterTransition:
       observedUtxo: Bytes,
       observedFees: BigInt,
       maxBlocks: Int = 8
+  ): Checked[Unit] =
+    compareBlockSequenceReferenceWithin(applied, observedUtxo, observedFees, maxBlocks, 12)
+
+  /** Explicit fenced audit profile; does not certify live coordination or durability. */
+  def compareFencedBlockSequenceReference(
+      applied: Vector[BlockApplied],
+      observedUtxo: Bytes,
+      observedFees: BigInt
+  ): Checked[Unit] =
+    compareBlockSequenceReferenceWithin(applied, observedUtxo, observedFees, 16, 16)
+
+  private def compareBlockSequenceReferenceWithin(
+      applied: Vector[BlockApplied],
+      observedUtxo: Bytes,
+      observedFees: BigInt,
+      maxBlocks: Int,
+      ceiling: Int
   ): Checked[Unit] = protect {
     for
       _ <- Either.cond(
-        maxBlocks >= 1 && maxBlocks <= 12 && applied.nonEmpty && applied.size <= maxBlocks,
+        maxBlocks >= 1 && maxBlocks <= ceiling && applied.nonEmpty && applied.size <= maxBlocks,
         (),
         Failure.ResourceLimit(
-          "reference comparison requires receipts within the explicit 1 through 12 bound"
+          s"reference comparison requires receipts within the explicit 1 through $ceiling bound"
         )
       )
       created <- applied.foldLeft[Checked[(Option[State], Set[TxIn])]](

@@ -129,8 +129,18 @@ object CoherentSequenceCommand:
       bytes: Bytes,
       maxBlocks: Int = 8
   ): Either[Failure, Vector[BoundedChainFollower.Original]] =
+    capturesWithin(bytes, maxBlocks, 12)
+  private[lab] def fencedCaptures(
+      bytes: Bytes
+  ): Either[Failure, Vector[BoundedChainFollower.Original]] =
+    capturesWithin(bytes, 16, 16)
+  private def capturesWithin(
+      bytes: Bytes,
+      maxBlocks: Int,
+      ceiling: Int
+  ): Either[Failure, Vector[BoundedChainFollower.Original]] =
     protect("capture") {
-      require(maxBlocks >= 2 && maxBlocks <= 12, "capture maximum must be 2 through 12")
+      require(maxBlocks >= 2 && maxBlocks <= ceiling, s"capture maximum must be 2 through $ceiling")
       require(
         bytes.size > 0 && bytes.size <= limit("scala-sequence-capture.md"),
         "capture byte bound"
@@ -201,9 +211,20 @@ object CoherentSequenceCommand:
       blocks: Vector[SequenceInput.Block],
       submittedFiles: Vector[Bytes],
       maxBlocks: Int = 8
+  ): Either[Failure, Grouping] = checkGroupingWithin(blocks, submittedFiles, maxBlocks, 12)
+  private[lab] def fencedGrouping(
+      blocks: Vector[SequenceInput.Block],
+      submittedFiles: Vector[Bytes]
+  ): Either[Failure, Grouping] =
+    checkGroupingWithin(blocks, submittedFiles, 16, 16)
+  private def checkGroupingWithin(
+      blocks: Vector[SequenceInput.Block],
+      submittedFiles: Vector[Bytes],
+      maxBlocks: Int,
+      ceiling: Int
   ): Either[Failure, Grouping] = protect("inclusion") {
     require(
-      maxBlocks >= 2 && maxBlocks <= 12 && blocks.size >= 2 && blocks.size <= maxBlocks && submittedFiles.size == 2,
+      maxBlocks >= 2 && maxBlocks <= ceiling && blocks.size >= 2 && blocks.size <= maxBlocks && submittedFiles.size == 2,
       "bounded two-transaction scenario required"
     )
     val expected = submittedFiles.map(submitted)
@@ -250,7 +271,25 @@ object CoherentSequenceCommand:
       receipts: Vector[CoherentSequence.Applied],
       owned: OwnedOracle,
       maxBlocks: Int = 8
+  ): Either[Failure, Boolean] = compareOracleWithin(context, receipts, owned, maxBlocks, false)
+  private[lab] def compareFencedOracle(
+      context: SequenceInput.Context,
+      receipts: Vector[CoherentSequence.Applied],
+      owned: OwnedOracle
+  ): Either[Failure, Boolean] =
+    compareOracleWithin(context, receipts, owned, 16, true)
+  private def compareOracleWithin(
+      context: SequenceInput.Context,
+      receipts: Vector[CoherentSequence.Applied],
+      owned: OwnedOracle,
+      maxBlocks: Int,
+      fenced: Boolean
   ): Either[Failure, Boolean] = protect("post-oracle") {
+    require(
+      maxBlocks >= 1 && maxBlocks <= (if fenced then 16
+                                      else 12) && receipts.nonEmpty && receipts.size <= maxBlocks,
+      "bounded oracle receipt sequence required"
+    )
     val state = receipts.last.state
     val (tip, epoch) = endpoint(owned.originals("post-tips.md")).fold(f => throw Stop(f), identity)
     require(
@@ -287,8 +326,16 @@ object CoherentSequenceCommand:
     )
     val utxo = get(Bytes.fromHex(text(owned.originals("post-utxo-cbor.md")).trim))
     val fees = uint(field(postLedger, "stateBefore", "esLState", "utxoState", "fees"))
-    Ledger
-      .compareBlockSequenceReference(receipts.map(_.ledgerObservation), utxo, fees, maxBlocks)
+    (if fenced then
+       Ledger.compareFencedBlockSequenceReference(receipts.map(_.ledgerObservation), utxo, fees)
+     else
+       Ledger.compareBlockSequenceReference(
+         receipts.map(_.ledgerObservation),
+         utxo,
+         fees,
+         maxBlocks
+       )
+    )
       .fold(f => throw Stop(Failure.Rejected("post-ledger-oracle", f.toString)), identity)
     previousCompared
   }
