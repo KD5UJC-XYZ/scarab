@@ -86,6 +86,20 @@ Storage failure terminates using its cached last acknowledged state; neither the
 node nor the engine may recover status by reading a poisoned backend. The node
 does not implement this backend or convert status identifiers into authority.
 
+The sustained worker proposes `Runtime.advanceAnchor(fence, through)` returning
+an atomic `Snapshot`, plus state `compactedBlocks`, `derivedAnchorId` and
+`depth = compactedBlocks + retained originals`. Compaction through the current tip
+retains a checked applied tip. Opt-in `Policy(advanceWindow = true,
+rollbackCapacity = 1..8)` leaves existing bounded defaults unchanged. Rebound
+receipts and constant-size provenance commit the checked boundary while retaining
+the original context identity. These are worker integration requirements, not
+capabilities of the current node command.
+
+`ValidatedCheckpoint` v1 must reject every derived-anchor state, including an
+empty retained suffix. There is no durable compaction API. Sustained volatile and
+bounded durable demonstrations are separate; a sustained-plus-durable node
+configuration must fail explicitly until compacted persistence is designed.
+
 ## Integration cadence
 
 Run focused tests and independent source review per feature. Run full regression,

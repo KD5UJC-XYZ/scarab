@@ -46,3 +46,9 @@ resource finalization; cleanup failures cannot be reported as a successful run.
 Status-output failure is terminal. Output delivery itself is not durable evidence
 of publication. Durable storage and sustained windows remain separate milestones;
 see [the implementation plan](private-node-milestones.md).
+
+The current command has no mode, window-compaction or storage-selection switch;
+unknown flags reject before I/O. When these lanes are integrated, sustained
+volatile and bounded durable modes must remain separate. Sustained durable mode
+is unsupported because checkpoint v1 rejects derived-anchor states, even with
+an empty suffix. See the plan for the proposed engine/backend interfaces.
