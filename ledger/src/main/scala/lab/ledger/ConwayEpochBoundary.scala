@@ -68,7 +68,8 @@ object ConwayEpochBoundary:
       val deltas: Deltas,
       val rewards: Map[Stake.Credential, Set[Reward]],
       val applied: ConwayRewardApplication.Applied,
-      val id: Bytes
+      val id: Bytes,
+      val completionIdentity: Option[Bytes] = None
   ):
     val balances = applied.balances
     val pots = applied.pots
@@ -305,6 +306,27 @@ object ConwayEpochBoundary:
       rewards,
       applied,
       hash(s"effect:${c.id.hex}:${frozen.id.hex}:${applied.id.hex}")
+    )
+  }
+
+  /** Derived monetary completion only; inputs/entitlements remain supplied, not native proof. */
+  def completeFromFrozen(
+      o: Owner,
+      c: Context,
+      completed: ConwayRewardCompletion.Completed
+  ): Either[String, Complete] = checked {
+    require(completed != null, "completion required")
+    val applied =
+      get(syntheticComplete(o, c, completed.inputs.frozen, completed.deltas, completed.rewards))
+    new Complete(
+      o,
+      c.id,
+      completed.inputs.frozen,
+      completed.deltas,
+      completed.rewards,
+      applied.applied,
+      hash(s"derived-completion:${applied.id.hex}:${completed.id.hex}"),
+      Some(completed.id)
     )
   }
 

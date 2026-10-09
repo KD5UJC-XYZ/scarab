@@ -44,9 +44,10 @@ algebra input, not evidence that registration, withdrawal or deposit transitions
 occurred; no changed stake state or runtime context is returned.
 
 The reward-start compatibility check still does not prove branch ancestry.
-`syntheticComplete` still accepts arbitrary **conserving** deltas. Native
-completion must later derive them from frozen inputs, including native
-`deltaF = -snapshotFees`; an earlier synthetic example with snapshot fees 8 and
+`syntheticComplete` still accepts arbitrary **conserving** deltas. The separate [supplied completion constructor](conway-reward-completion.md) now
+derives deltas from explicit frozen allocation inputs, including
+`deltaF = -snapshotFees`. It still does not calculate entitlement or authenticate
+those allocation inputs. An earlier synthetic example with snapshot fees 8 and
 deltaF -5 is not a native completion vector. Non-myopic state, entitlement math,
 pulser progression and the remaining epoch effects are not implemented here.
 

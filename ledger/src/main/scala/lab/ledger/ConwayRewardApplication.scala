@@ -47,6 +47,29 @@ object ConwayRewardApplication:
     }
     .mkString("\n")
 
+  /** Shared PV9 shape/set-identity validation, bounded before aggregation. */
+  private[ledger] def sumChecked(
+      rewards: Map[Stake.Credential, Set[Reward]]
+  ): Either[String, BigInt] = checked {
+    require(
+      rewards != null && rewards.size <= 4096 && rewards.values.forall(_ != null) &&
+        rewards.values.map(_.size.toLong).sum <= 4096,
+      "reward set bound"
+    )
+    rewards.foreach { (c, rs) =>
+      require(
+        credential(c) && rs.forall(r =>
+          r != null && r.kind != null && width(r.pool, 28) && coin(r.amount)
+        ),
+        "reward shape"
+      )
+      require(rs.map(r => (r.kind, r.pool)).size == rs.size, "duplicate reward type/pool")
+    }
+    val total = rewards.values.toVector.flatMap(_.toVector).map(_.amount).sum
+    require(coin(total), "reward aggregate overflow")
+    total
+  }
+
   /** Registration is exactly the application-time account-map domain, never the frozen domain.
     * Unregistered recipients need not refer to a currently registered pool. PV9 ignores no reward.
     */
@@ -75,26 +98,12 @@ object ConwayRewardApplication:
       deltas != null && Vector(deltas.treasury, deltas.reserves, deltas.fees).forall(signed),
       "signed delta bounds"
     )
-    require(
-      rewards != null && rewards.size <= 4096 && rewards.values.forall(_ != null) &&
-        rewards.values.map(_.size.toLong).sum <= 4096,
-      "reward set bound"
-    )
-    rewards.foreach { (c, rs) =>
-      require(
-        credential(c) && rs.forall(r =>
-          r != null && r.kind != null && width(r.pool, 28) && coin(r.amount)
-        ),
-        "reward shape"
-      )
-      require(rs.map(r => (r.kind, r.pool)).size == rs.size, "duplicate reward type/pool")
-    }
+    val total = sumChecked(rewards).fold(s => throw new IllegalArgumentException(s), identity)
     val (registered, unregistered) = rewards.partition((c, _) => accounts.contains(c))
     def aggregate(rs: Map[Stake.Credential, Set[Reward]]) =
       rs.map((c, set) => c -> set.toVector.map(_.amount).sum)
     val credited = aggregate(registered)
     val unregisteredCoin = aggregate(unregistered).values.sum
-    val total = credited.values.sum + unregisteredCoin
     require(
       coin(total) && deltas.treasury + deltas.reserves + deltas.fees + total == 0,
       "reward conservation"

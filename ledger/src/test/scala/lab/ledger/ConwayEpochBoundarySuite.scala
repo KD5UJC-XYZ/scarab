@@ -329,3 +329,126 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
     assert(c.id != f.current.id)
     assert(!p.published && !p.epochTransitionValidated)
   }
+
+  test(
+    "completion derives fee removal and unused reward remainder before account/pot application"
+  ) {
+    val f = new Fixture
+    val inputs = get(ConwayRewardCompletion.checkedInputs(f.frozen, f.frozen.id, 8, 10, 15, 3))
+    val members = Map(key -> B.Reward(B.RewardKind.Member, pool, 8))
+    val leaders = Map(key -> Set(B.Reward(B.RewardKind.Leader, pool, 2)))
+    val completed = get(ConwayRewardCompletion.complete(inputs, inputs.id, members, leaders))
+    assertEquals(completed.totalRewards, BigInt(10)); assertEquals(completed.deltaR2, BigInt(5))
+    assertEquals(completed.deltas, B.Deltas(3, -5, -8))
+    assertEquals(completed.rewards(key), Set(members(key)) ++ leaders(key))
+    val effect = get(B.completeFromFrozen(f.owner, f.current, completed))
+    val p = get(B.preview(f.owner, f.current, f.signal, B.RewardPhase.Completed(effect)))
+    assertEquals(p.pots, B.Pots(103, 995, 42, 5000))
+    assertEquals(p.balances(key), BigInt(15))
+    assertEquals(p.rotation.snapshots.fees, BigInt(42))
+    assert(p.rotation.leadership eq f.snapshots.mark)
+    assert(effect.completionIdentity.contains(completed.id))
+    assert(
+      !completed.nativeEntitlementValidated && !completed.pulserCompleted && !completed.nonMyopicUpdated
+    )
+    assert(!p.published && !p.epochTransitionValidated)
+  }
+  test("completion handles all-unused and fully allocated reward pots without arbitrary deltas") {
+    val f = new Fixture
+    val inputs = get(ConwayRewardCompletion.checkedInputs(f.frozen, f.frozen.id, 8, 10, 15, 3))
+    val empty = get(ConwayRewardCompletion.complete(inputs, inputs.id, Map.empty, Map.empty))
+    assertEquals(empty.deltaR2, BigInt(15)); assertEquals(empty.deltas, B.Deltas(3, 5, -8))
+    val used = get(
+      ConwayRewardCompletion.complete(
+        inputs,
+        inputs.id,
+        Map(key -> B.Reward(B.RewardKind.Member, pool, 12)),
+        Map(script -> Set(B.Reward(B.RewardKind.Leader, pool, 3)))
+      )
+    )
+    assertEquals(used.deltaR2, BigInt(0)); assertEquals(used.deltas, B.Deltas(3, -10, -8))
+    assertEquals(
+      used.deltas.treasury + used.deltas.reserves + used.deltas.fees + used.totalRewards,
+      BigInt(0)
+    )
+  }
+  test("completion rejects stale frozen/input identities, fee mismatch and allocation bounds") {
+    val f = new Fixture
+    def input(fees: BigInt, r: BigInt, pot: BigInt, t: BigInt) =
+      ConwayRewardCompletion.checkedInputs(f.frozen, f.frozen.id, fees, r, pot, t)
+    assert(input(7, 10, 14, 3).isLeft)
+    assert(input(8, 10, 14, 3).isLeft)
+    assert(input(8, 1001, 1006, 3).isLeft)
+    assert(input(8, -1, 4, 3).isLeft)
+    assert(input(8, 10, max + 1, 3).isLeft)
+    assert(ConwayRewardCompletion.checkedInputs(f.frozen, bytes(90), 8, 10, 15, 3).isLeft)
+    val inputs = get(input(8, 10, 15, 3))
+    assert(ConwayRewardCompletion.complete(inputs, bytes(91), Map.empty, Map.empty).isLeft)
+    val result = get(ConwayRewardCompletion.complete(inputs, inputs.id, Map.empty, Map.empty))
+    val lowFees = get(
+      B.context(
+        f.owner,
+        f.stakeOwner,
+        bytes(92),
+        f.nextStake,
+        f.pots.copy(fees = 7),
+        f.current.previousBlocks,
+        f.current.currentBlocks
+      )
+    )
+    assert(B.completeFromFrozen(f.owner, lowFees, result).isLeft)
+    val other = new Fixture
+    assert(B.completeFromFrozen(other.owner, other.current, result).isLeft)
+  }
+  test(
+    "completion checks member/leader roles, duplicate set identities, aggregate limits and overspend"
+  ) {
+    val f = new Fixture
+    val inputs = get(ConwayRewardCompletion.checkedInputs(f.frozen, f.frozen.id, 8, 10, 15, 3))
+    def complete(m: Map[S.Credential, B.Reward], l: Map[S.Credential, Set[B.Reward]]) =
+      ConwayRewardCompletion.complete(inputs, inputs.id, m, l)
+    assert(complete(Map(key -> B.Reward(B.RewardKind.Leader, pool, 1)), Map.empty).isLeft)
+    assert(complete(Map.empty, Map(key -> Set(B.Reward(B.RewardKind.Member, pool, 1)))).isLeft)
+    assert(
+      complete(
+        Map.empty,
+        Map(
+          key -> Set(B.Reward(B.RewardKind.Leader, pool, 1), B.Reward(B.RewardKind.Leader, pool, 2))
+        )
+      ).isLeft
+    )
+    assert(complete(Map(key -> B.Reward(B.RewardKind.Member, pool, 16)), Map.empty).isLeft)
+    assert(
+      complete(
+        Map(key -> B.Reward(B.RewardKind.Member, pool, max)),
+        Map(script -> Set(B.Reward(B.RewardKind.Leader, pool, 1)))
+      ).isLeft
+    )
+    assert(
+      complete(
+        Map(S.Credential(false, Bytes.empty) -> B.Reward(B.RewardKind.Member, pool, 1)),
+        Map.empty
+      ).isLeft
+    )
+  }
+  test("completion identity commits to frozen allocation even when final deltas coincide") {
+    val f = new Fixture
+    val a = get(ConwayRewardCompletion.checkedInputs(f.frozen, f.frozen.id, 8, 10, 15, 3))
+    val b = get(ConwayRewardCompletion.checkedInputs(f.frozen, f.frozen.id, 8, 11, 16, 3))
+    val members = Map(
+      key -> B.Reward(B.RewardKind.Member, pool, 7),
+      script -> B.Reward(B.RewardKind.Member, pool, 3)
+    )
+    val x = get(ConwayRewardCompletion.complete(a, a.id, members, Map.empty))
+    val y = get(ConwayRewardCompletion.complete(b, b.id, members, Map.empty))
+    assertEquals(x.deltas, y.deltas); assert(x.id != y.id)
+    val reordered =
+      get(ConwayRewardCompletion.complete(a, a.id, members.toVector.reverse.toMap, Map.empty))
+    assertEquals(x.id, reordered.id)
+    val ex = get(B.completeFromFrozen(f.owner, f.current, x))
+    val ey = get(B.completeFromFrozen(f.owner, f.current, y))
+    assertEquals(ex.pots, ey.pots); assert(ex.id != ey.id)
+    val px = get(B.preview(f.owner, f.current, f.signal, B.RewardPhase.Completed(ex)))
+    val py = get(B.preview(f.owner, f.current, f.signal, B.RewardPhase.Completed(ey)))
+    assert(px.id != py.id)
+  }
