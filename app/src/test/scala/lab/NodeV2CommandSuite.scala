@@ -542,6 +542,13 @@ class NodeV2CommandSuite extends munit.FunSuite:
           assertEquals(lines.count(record(_) == "node-fence-ack"), 1)
           assertEquals(record(lines.last), "node-fence-ack")
           val ready = lines.find(record(_) == "node-fence-ready").get
+          val phase = report.config.completionFence.get.phase
+          assertEquals(
+            field(ready, "trustedLocalPrefix"),
+            ReferenceJson.Json.Lit((phase == "B").toString)
+          )
+          println(s"FENCE_READY_SCHEMA phase=$phase trustedLocalPrefix=${phase == "B"}")
+
           val readyProjection = field(ready, "projection")
           assertEquals(ReferenceJson.field(readyProjection, "tupleId"), field(ready, "stateId"))
           assertEquals(ReferenceJson.field(readyProjection, "contextId"), field(ready, "contextId"))
