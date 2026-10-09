@@ -177,9 +177,16 @@ private[lab] object NioValidatedCheckpointStore:
       sync(root.getParent)
     requireValid(Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS), "store directory required")
     val path = noLinks(root.resolve("lock"))
-    if mode == Mode.Resume then
-      requireValid(Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS), "lock missing")
+    def checkLockType(): Unit =
+      val exists = Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+      requireValid(
+        !exists || Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS),
+        "existing lock must be a regular file"
+      )
+      requireValid(mode == Mode.Create || exists, "lock missing")
+    checkLockType() // Never open an existing FIFO/device/directory in either mode.
     faults.at(Phase.BeforeLock)
+    checkLockType() // Recheck after any delayed acquisition observer.
     val options: Vector[java.nio.file.OpenOption] =
       if mode == Mode.Create then Vector(O.CREATE, O.WRITE, LinkOption.NOFOLLOW_LINKS)
       else Vector(O.WRITE, LinkOption.NOFOLLOW_LINKS)

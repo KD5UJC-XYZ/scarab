@@ -340,6 +340,42 @@ class DurableCheckpointSuite extends munit.FunSuite:
       yield assert(failed.isLeft && available && Files.exists(root.resolve("validated.tmp")))
     }.unsafeToFuture()
   }
+  test("FIFO lock is rejected before the pre-open barrier in create and resume") {
+    temp { parent =>
+      val root = parent.resolve("store")
+      for
+        _ <- IO.blocking {
+          Files.createDirectory(root)
+          val process = new ProcessBuilder("mkfifo", root.resolve("lock").toString).start()
+          try
+            assert(process.waitFor(5, TimeUnit.SECONDS), "bounded mkfifo did not finish")
+            assertEquals(process.exitValue(), 0)
+          finally if process.isAlive then process.destroyForcibly()
+          val mode =
+            Files.getAttribute(root.resolve("lock"), "unix:mode").asInstanceOf[Integer].intValue()
+          assertEquals(mode & 61440, 4096) // S_IFIFO, not an ordinary-file approximation.
+        }
+        _ <- Vector(Mode.Create, Mode.Resume).traverse_ { mode =>
+          val reachedOpen = new AtomicBoolean(false)
+          val fuse = new Faults:
+            override def at(phase: Phase): Unit = if phase == Phase.BeforeLock then
+              reachedOpen.set(true)
+              // A regressed Create path fails immediately here; it NEVER opens the FIFO.
+              throw new RuntimeException("pre-open regression fuse")
+          NioValidatedCheckpointStore.resource[IO](root, mode, fuse).use(_ => IO.unit).attempt.map {
+            result =>
+              assert(!reachedOpen.get(), mode.toString)
+              assert(
+                result.left.toOption.exists(e =>
+                  e.isInstanceOf[NioValidatedCheckpointStore.Invalid] &&
+                    e.getMessage == "existing lock must be a regular file"
+                )
+              )
+          }
+        }
+      yield ()
+    }.unsafeToFuture()
+  }
   sys.env.get("COHERENT_SEQUENCE_EVIDENCE").foreach { location =>
     def context = get(SequenceInput.load(Path.of(location)))
     def originals = get(
@@ -575,6 +611,129 @@ class DurableCheckpointSuite extends munit.FunSuite:
           }
         }
         .unsafeToFuture()
+    }
+    test(
+      "transaction-bearing durable round trip and two-block rollback rebuild the complete tuple and undo"
+    ) {
+      val c = context; val os = originals
+      val blocks = os.map(o => get(SequenceInput.block(o)))
+      val transactionIndex = blocks.indexWhere(_.transactionMemos.nonEmpty)
+      assert(transactionIndex >= 0)
+      assert(blocks(transactionIndex).transactionMemos.size >= 2)
+      assert(blocks.size >= 2)
+      temp { parent =>
+        val root = parent.resolve("store")
+        for
+          history <- create(root, c).use { runtime =>
+            runtime.snapshot.flatMap { initial =>
+              blocks.foldLeft(IO.pure(Vector(initial))) { (acc, block) =>
+                acc.flatMap { states =>
+                  for
+                    candidate <- runtime.prepare(block).map(get(_))
+                    _ <- runtime.publish(candidate, states.last.token).map(get(_))
+                    next <- runtime.snapshot
+                  yield states :+ next
+                }
+              }
+            }
+          }
+          tip = history.last
+          _ = assert(
+            history(transactionIndex + 1).snapshot.state.ledger.fees > history(
+              transactionIndex
+            ).snapshot.state.ledger.fees
+          )
+          _ = assert(
+            history(transactionIndex + 1).snapshot.state.ledger.outputMap != history(
+              transactionIndex
+            ).snapshot.state.ledger.outputMap
+          )
+          rolled <- resume(root, tip.token).use { runtime =>
+            for
+              restored <- runtime.snapshot
+              _ = unchanged(restored.snapshot.state, tip.snapshot.state)
+              _ = assertEquals(restored.token, tip.token)
+              target = history(blocks.size - 2).snapshot.state.acquisition.tip
+              result <- runtime
+                .rollbackTo(restored.snapshot.fence, target, restored.token)
+                .map(get(_))
+              after <- runtime.snapshot
+              _ = sameContent(after.snapshot.state, history(blocks.size - 2).snapshot.state)
+              _ = assertEquals(after.snapshot.state.revision, tip.snapshot.state.revision + 2)
+              _ = assertEquals(after.token.generation, tip.token.generation + 1)
+              _ = assertEquals(result.token, after.token)
+            yield after
+          }
+          reapplied <- resume(root, rolled.token).use { runtime =>
+            for
+              restored <- runtime.snapshot
+              _ = unchanged(restored.snapshot.state, rolled.snapshot.state)
+              after <- blocks.takeRight(2).foldLeft(IO.pure(restored)) { (acc, block) =>
+                acc.flatMap { before =>
+                  runtime
+                    .prepare(block)
+                    .map(get(_))
+                    .flatMap(candidate => runtime.publish(candidate, before.token))
+                    .map(get(_))
+                    .flatMap(_ => runtime.snapshot)
+                }
+              }
+              _ = sameContent(after.snapshot.state, tip.snapshot.state)
+              _ = assertEquals(after.snapshot.state.revision, tip.snapshot.state.revision + 4)
+              // Exercise rebuilt undo beyond the last two blocks, down to the supplied anchor.
+              result <- runtime
+                .rollbackTo(
+                  after.snapshot.fence,
+                  history.head.snapshot.state.acquisition.anchor,
+                  after.token
+                )
+                .map(get(_))
+              anchor <- runtime.snapshot
+              _ = sameContent(anchor.snapshot.state, history.head.snapshot.state)
+              _ = assertEquals(
+                anchor.snapshot.state.revision,
+                after.snapshot.state.revision + blocks.size
+              )
+              _ = assertEquals(anchor.token.generation, after.token.generation + 1)
+            yield anchor
+          }
+          finalReopen <- resume(root, reapplied.token).use(_.snapshot)
+        yield unchanged(finalReopen.snapshot.state, reapplied.snapshot.state)
+      }.unsafeToFuture()
+    }
+    test(
+      "publication generation exhaustion rejects mutation without poisoning or changing tuple and disk"
+    ) {
+      val c = context
+      temp { parent =>
+        val root = parent.resolve("store")
+        for
+          initial <- create(root, c).use(_.snapshot)
+          image = get(
+            ValidatedCheckpoint.encode(c, initial.snapshot, initial.token.storeId, Long.MaxValue, 8)
+          )
+          // Mutate only the untrusted persisted envelope/token, never a private runtime capability.
+          _ <- IO.blocking(Files.write(root.resolve("validated.bin"), image._1.toArray))
+          _ <- resume(root, image._2).use { runtime =>
+            for
+              before <- runtime.snapshot
+              diskBefore <- bytes(root)
+              candidate <- runtime.prepare(firstBlock).map(get(_))
+              rejected <- runtime.publish(candidate, before.token)
+              after <- runtime.snapshot
+              diskAfter <- bytes(root)
+              noop <- runtime
+                .rollbackTo(after.snapshot.fence, after.snapshot.state.acquisition.tip, after.token)
+                .map(get(_))
+            yield
+              assertEquals(rejected, Left(Failure.Rejected("publication", "generation exhausted")))
+              unchanged(after.snapshot.state, before.snapshot.state)
+              assertEquals(after.token, before.token)
+              assertEquals(diskAfter, diskBefore)
+              assertEquals(noop.token, before.token)
+          }
+        yield ()
+      }.unsafeToFuture()
     }
     test("concurrent candidates CAS once, no-op rollback is stable, rollback/reopen keeps undo") {
       temp { parent =>

@@ -119,3 +119,32 @@ Logs are retained outside Git in
 Earlier compile/test logs are preserved there: exception-handler scoping and an
 OpenOption varargs runtime type mismatch were corrected before the successful run.
 No new cluster, live adapter or process-restart run was performed.
+
+
+## Parent-review follow-up
+
+Parent review withheld integration of the initial slice because Create could open
+an existing nonregular lock path before inventory validation. Both Create and
+Resume now reject an existing FIFO/device/directory lock before FileChannel.open,
+and recheck after the pre-open observer. Post-lock published/staging checks remain
+in place. This does not claim protection against hostile concurrent path replacement.
+The regression creates an actual FIFO with a bounded `mkfifo` process and installs
+a throwing pre-open fuse: a regressed implementation fails the test immediately
+instead of opening the FIFO and hanging masked acquisition.
+
+Additional retained durable tests publish the original transaction-bearing sequence,
+assert transaction-driven fee/UTxO changes, close and strictly reopen, and compare
+the complete tuple. A two-block rollback explicitly advances coordinator revision
+by two and publication generation by one. Another reopen verifies that rolled-back
+tuple, reapplication restores tip content, rebuilt undo returns to the supplied
+anchor, and a final reopen verifies the complete anchor tuple and current revision.
+Generation exhaustion is tested through a separately encoded boundary image: publish
+rejects without poisoning or changing memory/disk, and current-tip rollback remains
+an unchanged-token no-op. No private state constructor is bypassed.
+
+The follow-up passed formatting, 180 ledger tests and 306 application tests,
+including all three added regressions; independent follow-up review passed.
+Exact commands and logs are outside Git in
+`/home/<user>/cardano-validated-durable-followup-20261009`.
+The initial commit, logs and earlier failure evidence remain intact. This remains
+offline evidence, with no integration, live restart or power-loss claim.
