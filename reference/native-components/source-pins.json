@@ -1,0 +1,219 @@
+{
+  "schema": "native-components-source-pins-v1",
+  "scope": "Primary serializer source audit for checked-only early-epoch diagnostic derivation; no runtime import or full-ledger conformance.",
+  "nativeExecutionPerformedForThisAudit": false,
+  "sourceRedistributed": false,
+  "profile": {
+    "protocolVersion": 9,
+    "memPackArchitecture": "x86_64 little-endian fixed Word16/Word64; packed hashes remain raw big-endian bytes",
+    "memPackVersion": "0.2.1.0",
+    "memPackOutputTags": [
+      0,
+      2
+    ],
+    "tag0": "enterprise address only, coin-only compact value",
+    "tag2": "base address only, coin-only compact value",
+    "limits": {
+      "maxEntries": 4096,
+      "maxInputBytes": 524288
+    },
+    "rewardState": "exact absent CBOR80; no frozen capsule reconstructed",
+    "snapshots": "encoded values only; omitted cached totals and mark pool distribution are recomputed",
+    "governance": "serialized governance retained; original live pulser cursor is not recoverable"
+  },
+  "archives": [
+    {
+      "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+      "archiveSha256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce",
+      "archiveBytes": 192822,
+      "members": [
+        {
+          "member": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/LedgerState/Types.hs",
+          "sha256": "f619314d1e920cfd3dc154474c5d06f486a8f6f0655061f6b26d71d99e848440",
+          "bytes": 20315
+        },
+        {
+          "member": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/PoolRank.hs",
+          "sha256": "62f66ab3449f8e4bc9b2b6d5e6b8ef0aeeef23fb0a74ceae451034ec82d0a323",
+          "bytes": 15070
+        }
+      ]
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "archiveBytes": 184361,
+      "members": [
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Address.hs",
+          "sha256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d",
+          "bytes": 35843
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/BaseTypes.hs",
+          "sha256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e",
+          "bytes": 31209
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Coin.hs",
+          "sha256": "fd4fb02a353f0dcaf1e17945fb816993802d0c2b3e51ee674d311b74a7bc4dc0",
+          "bytes": 9086
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Credential.hs",
+          "sha256": "5f452eb975836a9031c7b765face02948dd5fb433fb3f2c33861010ddee0fb36",
+          "bytes": 10928
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/DRep.hs",
+          "sha256": "3dc4edcaf8b406f1281120dcae306b41bde22d1aee68585bd06a3d3729fbcb6b",
+          "bytes": 6805
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/CertState.hs",
+          "sha256": "46d0e571c62bda03c9766b5090c004cf10e512b26760605466cfbb06af3791b9",
+          "bytes": 17780
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/ChainAccount.hs",
+          "sha256": "609cc66511e992970cd917e96cc68549c888e01c9c714827ce48a01df63fb6f4",
+          "bytes": 2728
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/PoolDistr.hs",
+          "sha256": "cee8dace9213af829c54f75e8c24b7e01e029a2e28252209d7842b4a11d702df",
+          "bytes": 5128
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/SnapShots.hs",
+          "sha256": "1e99f896676bfdf567409b2680927ddd377fc80a78e9b78470c152cae6aab9f7",
+          "bytes": 17991
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/Stake.hs",
+          "sha256": "fb2fb46f6e3c2506c77c33e87cb407b1ce038717fc99f040915f7fe46f98ba62",
+          "bytes": 9610
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/StakePool.hs",
+          "sha256": "bf63493aff3bbea614698908595999e5c0b0b23a3c101a4c5bf735b243a0165e",
+          "bytes": 18275
+        },
+        {
+          "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/TxIn.hs",
+          "sha256": "beb3395cb393431af6ae4a07a5759a1f2b25bd588efcd6d07b9b14f025e6fa2a",
+          "bytes": 3694
+        }
+      ]
+    },
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "archiveBytes": 4753608,
+      "members": [
+        {
+          "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance.hs",
+          "sha256": "1761313ddee85dd7fa743f8a8acc34126d76e8582c6e23e7f5d9bca74300ff71",
+          "bytes": 19976
+        },
+        {
+          "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/Account.hs",
+          "sha256": "4272c5fb2ce78568112bf33c5354c59d20c20768b93783987bde6f1a8519d0d8",
+          "bytes": 12983
+        },
+        {
+          "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/CertState.hs",
+          "sha256": "0f62f1ef6a5127af44a32f807ee19677572c194279af1ec2e496cc4c34fc9d1c",
+          "bytes": 6175
+        },
+        {
+          "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/Stake.hs",
+          "sha256": "6ed178f6d0835337fd8eae81ab302183f70b3760a3fd2969e31f3d34e84b3c18",
+          "bytes": 4879
+        },
+        {
+          "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/VState.hs",
+          "sha256": "5910a94d51eb6320edb0b52037a204a46809bfc29bdab1e5e2134b0656155d0c",
+          "bytes": 5564
+        }
+      ]
+    },
+    {
+      "archive": "cardano-ledger-babbage-1.14.0.0.tar.gz",
+      "archiveSha256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d",
+      "archiveBytes": 2661288,
+      "members": [
+        {
+          "member": "cardano-ledger-babbage-1.14.0.0/src/Cardano/Ledger/Babbage/TxOut.hs",
+          "sha256": "64733f20f44ed96e5a7e100ed6cf3ba8a78c75f63e59bb7dc6fb6203f06bf42a",
+          "bytes": 26264
+        }
+      ]
+    },
+    {
+      "archive": "cardano-ledger-alonzo-1.16.0.0.tar.gz",
+      "archiveSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+      "archiveBytes": 2126266,
+      "members": [
+        {
+          "member": "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/TxOut.hs",
+          "sha256": "635feb617bec63114a1504afe82c6535fe1b5c4bf66e0f4ec7c0aea5f4581fae",
+          "bytes": 18021
+        }
+      ]
+    },
+    {
+      "archive": "cardano-ledger-mary-1.11.0.0.tar.gz",
+      "archiveSha256": "24a372f4a65ad16bbab4850a05c0b1357b569ea11e01cedd7b32836124aebffe",
+      "archiveBytes": 37505,
+      "members": [
+        {
+          "member": "cardano-ledger-mary-1.11.0.0/src/Cardano/Ledger/Mary/Value.hs",
+          "sha256": "38ccd686911337f6deb98fa71b7a4c31f8b4967f45a8990dbb984b653311a398",
+          "bytes": 33684
+        }
+      ]
+    },
+    {
+      "archive": "cardano-crypto-class-2.5.1.0.tar.gz",
+      "archiveSha256": "b071c3112545e0633ac81d67e9bc52b3e03c1054073181f724647dc52d166074",
+      "archiveBytes": 133390,
+      "members": [
+        {
+          "member": "cardano-crypto-class-2.5.1.0/src/Cardano/Crypto/Hash/Class.hs",
+          "sha256": "4eeedf08680e4e4363348d987acca883965e8309527761550358172cd536f311",
+          "bytes": 13774
+        },
+        {
+          "member": "cardano-crypto-class-2.5.1.0/src/Cardano/Crypto/PackedBytes/Internal.hs",
+          "sha256": "e20ded2e737b6cddbc13a5a4843ba72274f9afcd1e5d5e7e05da383d4439f2e9",
+          "bytes": 20914
+        }
+      ]
+    },
+    {
+      "archive": "mempack-0.2.1.0.tar.gz",
+      "archiveSha256": "85888b7776da58ee9a7853a0eb40fe7d1ee971f6b93141f6de124e019ac36219",
+      "archiveBytes": 20143,
+      "members": [
+        {
+          "member": "mempack-0.2.1.0/src/Data/MemPack.hs",
+          "sha256": "c568449b2865479ebcf68f61ff460f89e7737ee1d0f2627c370ac806fe77a5fb",
+          "bytes": 50911
+        }
+      ]
+    }
+  ],
+  "originalProjectionHelpers": [
+    {
+      "path": "reference/epoch-query-client/NativeProjection.hs",
+      "sha256": "789f3177ce2e792633970961b94c120b3ded33931aa3ae24c26e3a8223d08d92",
+      "bytes": 13456
+    },
+    {
+      "path": "reference/epoch-query-client/VerifySeed.hs",
+      "sha256": "1ea82ab7ef36cc7d42df5e9cec8e60af3918a6dbb9964f0ebd56453ef401689c",
+      "bytes": 2193
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "schema": "native-components-diagnostic-receipt-v1",
+  "baseCommit": "0944c9eb156c1fc921d14bb0947400a7d2075567",
+  "bundle": "/path/to/reviewed-bundle",
+  "testsPassed": 15,
+  "testsFailed": 0,
+  "testLog": "test-2.log",
+  "command": "command-2.json",
+  "testLogSha256": "a7580288ceb6560498839cc09303de23dfa511758a3a6d916b65d82fc06b57e8",
+  "commandSha256": "2c4e5659c811eef58d972c0184c283c16eff8d0ab0128180bc6280510b14822b",
+  "inputPins": {
+    "capture.json": {
+      "sha256": "fd980008d558df25fe5ef2c25608ff7a6c8fa9bbc2c6635b5a8d07d45049264d",
+      "bytes": 17316
+    },
+    "derived-full-epoch-seed.cbor": {
+      "sha256": "38d8d8fd63e5f92e59ebb8bbdc687029a91435473832a420a1ce79f3cac9e493",
+      "bytes": 8401
+    },
+    "effective-shelley-genesis.json": {
+      "sha256": "c9c11cde61bdd2536c5a328395ba4f873554ba018d9675297e5329a09e9294a9",
+      "bytes": 3999
+    },
+    "native-projection.json": {
+      "sha256": "19bff89f7dfd13f54312ba3cb6dfcad46ebb8b69d347221df0d2965948b49dc7",
+      "bytes": 44694
+    },
+    "original-debug-epoch.cbor": {
+      "sha256": "cb5cc3ae0880788f11d61c2743a6a94a96a391a1c10d83d99938440d82cfbb66",
+      "bytes": 7846
+    },
+    "original-whole-utxo.cbor": {
+      "sha256": "60491cfb55b475224eec61038d6e0e8e5b2cd4add6c2e6d119bc5d11b09a68da",
+      "bytes": 547
+    },
+    "request.json": {
+      "sha256": "848904b0a6c7bef738b72ac8a7f869f5528756f2e327685fb90eae10fb61a4fe",
+      "bytes": 425
+    }
+  },
+  "observed": {
+    "epoch": "0",
+    "pointSlot": "36",
+    "pointHash": "20ff3cd11037c1d5393915aacf08fd1a0b3441b6e8e045d03b2595a808b289fe",
+    "blockNo": "1",
+    "utxoEntries": "6",
+    "utxoCoin": "90000018000000",
+    "reserves": "10000002000000",
+    "maximumSupply": "100000020000000",
+    "markTotal": "45000009000000",
+    "markPoolShares": [
+      "1/3",
+      "2/3"
+    ],
+    "previousBlockMapEmpty": true,
+    "currentBlockCounts": [
+      "2"
+    ],
+    "rewardStateHex": "80",
+    "nonMyopicEmpty": true,
+    "nonMyopicPot": "0"
+  },
+  "scope": {
+    "nativeBuild": false,
+    "liveCapture": false,
+    "capturedCorpusCommitted": false,
+    "admissionCapability": false,
+    "runtimeImport": false,
+    "authenticatedSnapshot": false,
+    "historicalFreezeConstructed": false,
+    "protocolAvailable": false,
+    "fresh1000SlotV2CaptureStillRequired": true
+  },
+  "feesIndexCorrection": {
+    "baseCommit": "93d8c10af7abcaa75843c9d9bc766e5d1e5cd888",
+    "field": "B.Pots.fees",
+    "sourceIndex": "UTxOState[2]",
+    "excludedIndex": "UTxOState[5] donations",
+    "acceptedProfileUnchanged": true,
+    "testsPassed": 16,
+    "testsFailed": 0,
+    "testLog": "test-3.log",
+    "testLogSha256": "74144f07af50b3898d5acbdffc0aee5e86b352b5917ca601175e6020698fd970",
+    "command": "command-3.json",
+    "commandSha256": "923f8a25f516182e435c7a72e44250956959425c021133a09c412ebc324b2cd3",
+    "review": "Independent source review confirmed index mapping and unchanged zero-fees/zero-donations full decoder guards."
+  },
+  "integrationVerification": {
+    "testsPassed": 122,
+    "appTests": 97,
+    "ledgerTests": 25,
+    "auditedBundleChecksEnabled": 5,
+    "testLogSha256": "69d19752efe2e2ccd196e18076d03b378775ff13665ba1acc118c7f776f67ddf",
+    "formattingPassed": true,
+    "sourceArchivesVerified": 8,
+    "sourceMembersVerified": 25,
+    "projectionHelpersVerified": 2,
+    "nativeExecution": false,
+    "admissionCapability": false
+  }
+}

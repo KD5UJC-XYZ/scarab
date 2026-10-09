@@ -31,6 +31,42 @@ object ConwayStakeSeed:
         )
         get(Stake.seed(owner, context, ledger, sourceId, instantaneous, snapshots))
       }
+
+  /** Shared checked constructor for source-decoded components; supplies no admission capability. */
+  private[lab] def checkedComponents(
+      context: Stake.Context,
+      utxo: Bytes,
+      exported: Map[Stake.Credential, BigInt],
+      snapshots: Stake.Snapshots,
+      epoch: BigInt,
+      fees: BigInt,
+      sourceId: Bytes
+  ): Either[String, Prepared] = checked {
+    val max = (BigInt(1) << 64) - 1
+    require(
+      context != null && snapshots != null && sourceId != null && sourceId.size == 32,
+      "checked stake component identity"
+    )
+    require(
+      epoch >= 0 && epoch <= max && fees >= 0 && fees <= max && snapshots.fees >= 0 && snapshots.fees <= max,
+      "checked stake epoch/fee bounds"
+    )
+    require(utxo != null && utxo.size <= 4194304, "checked UTxO bound")
+    val instant = get(Stake.recompute(utxo))
+    require(instant == exported, "whole UTxO/instantaneous component mismatch")
+    Vector(snapshots.mark, snapshots.set, snapshots.go).foreach { snapshot =>
+      require(snapshot != null, "null snapshot")
+      if snapshot.active.isEmpty && snapshot.pools.isEmpty then
+        require(snapshot.total == 1, "empty snapshot sentinel")
+      else
+        val expected = get(Stake.fromActive(context, snapshot.active))
+        require(
+          snapshot.total == expected.total && snapshot.pools == expected.pools,
+          "snapshot/context mismatch"
+        )
+    }
+    new Prepared(context, utxo, instant, snapshots, epoch, fees, sourceId)
+  }
   private def get[A](e: Either[String, A]): A =
     e.fold(s => throw new IllegalArgumentException(s), identity)
   private def checked[A](a: => A): Either[String, A] =
