@@ -359,3 +359,31 @@ projection. This comparison does not exercise the coherent successor coordinator
 full-block validation, cryptography, governance/non-myopic fields, rollback or
 persistence. Runtime guards and checkpoint refusals are unchanged. Hosted CI is
 tracked separately from these local results.
+
+
+## Opaque synthetic recovery handoff, 2026-10-09
+
+The [internal handoff](synthetic-recovery-model.md), its original-byte/scalar
+preflight fixes and the [historical-ID counterexample](synthetic-recovery-codec-blocker.md)
+are integrated. Independent source review confirmed exact worker-source integration,
+unchanged CLI/runner wiring and unchanged checkpoint guards.
+
+Targeted integration passed 130 tests: 33 ledger and 97 app. Coverage includes
+all recovery phases, ordinary and post-boundary frozen provenance, fresh owners,
+continued publication and undo, controller denial/deadline/cancellation, original
+payload/scalar budgets, exact historical signal-chain differences, coordinator
+regressions, the boundary golden and existing durable checkpoint refusals.
+Formatting passed; all 1009 source files remained unchanged during execution.
+The offline container used two CPUs and 2 GiB with private cache/output, read-only
+existing captures and verified owned cleanup. No full local regression or live
+cluster was repeated for this separate slice; hosted CI is recorded separately.
+
+This is a process-dependent opaque handoff authorized against the exact existing
+envelope object. Its limits budget existing objects, not decoder allocations or
+JVM heap use. It supplies no byte codec, disk/crash recovery, durable controller
+authentication or runtime epoch admission. The historical-ID counterexample
+limits one exact-identity contract, not durable recovery generally. A future
+controller-attested semantic anchor may use fresh runtime identities and canonical
+content/provenance commitments; discarded history is not independently replayed.
+The ephemeral crossing path remains separate and requires complete native seed
+admission and automatic governance/non-myopic effects to be carried and compared.
