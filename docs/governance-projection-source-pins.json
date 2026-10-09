@@ -1,0 +1,72 @@
+{
+  "baseCommit": "bdab876cda3f8af9a5a66168b71503f1bad451b9",
+  "reusedNativeSeedParametersCommit": "9152fef5674e2bce9454a1c6bd95127c44acf150",
+  "sources": [
+    {
+      "archive": "cardano-ledger-conway-1.23.0.0.tar.gz",
+      "archiveSHA256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "member": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/PParams.hs",
+      "memberSHA256": "ba8712e61f23f067988b7d585194321a954ccedea2191df65e7d72f736db26ab"
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Core/PParams.hs",
+      "memberSHA256": "4ed40959bb0c4b97dc39303f2f2d3166b0609fc92da7acc79f0e2a38646f7e0a"
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/BaseTypes.hs",
+      "memberSHA256": "0b86d1ecdd5abb0cf89194e7324fe1f62e58214cbd7386a1c50aeaf1c605866e"
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/StakePool.hs",
+      "memberSHA256": "bf63493aff3bbea614698908595999e5c0b0b23a3c101a4c5bf735b243a0165e"
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Address.hs",
+      "memberSHA256": "f2ef8e3cebbe7475676e7466d6fa57a6dfc8495f3bdb0b516d3ae4420b04ec2d"
+    },
+    {
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Credential.hs",
+      "memberSHA256": "5f452eb975836a9031c7b765face02948dd5fb433fb3f2c33861010ddee0fb36"
+    },
+    {
+      "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+      "archiveSHA256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce",
+      "member": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/Genesis.hs",
+      "memberSHA256": "834c21264330a9c8367e4e4b271bcc3ecc9e8084f5bd27bfd27e916968ae8eaa"
+    },
+    {
+      "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+      "archiveSHA256": "cc9d5b415742bc188fb933fae305743a2c1ee6f3ad7fa06fcfa1ac5bd95b59ce",
+      "member": "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/StabilityWindow.hs",
+      "memberSHA256": "9a5b2abdc31a8b951b17b089c0e6364195132f3d58b459175b3f69bade95e9cb"
+    },
+    {
+      "archive": "cardano-ledger-binary-1.9.1.0.tar.gz",
+      "archiveSHA256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "member": "cardano-ledger-binary-1.9.1.0/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+      "memberSHA256": "3c6f222efddd43995afa425a18a748d35ca8f629799d5d2a362629db4bd50b47"
+    },
+    {
+      "archive": "cardano-slotting-0.2.2.0.tar.gz",
+      "archiveSHA256": "3dc2400b28fedbb08f99d2f42d2a59fbdc9259f877ada8c44121e5a8d13a8676",
+      "member": "cardano-slotting-0.2.2.0/src/Cardano/Slotting/EpochInfo/API.hs",
+      "memberSHA256": "ca5b56e88c22f2b2ba15ff19b7fb19d6d3f62df1c91a8324c83ec54e8a33e983"
+    },
+    {
+      "archive": "cardano-slotting-0.2.2.0.tar.gz",
+      "archiveSHA256": "3dc2400b28fedbb08f99d2f42d2a59fbdc9259f877ada8c44121e5a8d13a8676",
+      "member": "cardano-slotting-0.2.2.0/src/Cardano/Slotting/EpochInfo/Impl.hs",
+      "memberSHA256": "f3e4d2ecbea9d9c8c120b8e19f0a359efb7e27e10690a906266677560e64254e"
+    }
+  ]
+}
