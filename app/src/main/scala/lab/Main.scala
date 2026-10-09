@@ -53,8 +53,9 @@ object Verify:
 
 object Main extends IOApp:
   private val usage =
-    "usage: app/run reference-handshake PORT PRIVATE_NETWORK_MAGIC | [fixture-index.tsv] | --help | vm [fixture-directory] | network-demo | network-selftest | ledger-demo | witness-demo | coverage-demo | vrf-demo | fee-size-demo | praos-demo | opcert-demo | sum6-demo | chain-sync-selftest | chain-sync-session-selftest | chain-fetch | chain-fetch-tcp | block-fetch-selftest | body-commitment | block-evidence | restricted-replay | restricted-replay-store"
+    "usage: app/run node --profile PROFILE --bootstrap DIRECTORY --port PORT [BOUNDS] | reference-handshake PORT PRIVATE_NETWORK_MAGIC | [fixture-index.tsv] | --help | vm [fixture-directory] | network-demo | network-selftest | ledger-demo | witness-demo | coverage-demo | vrf-demo | fee-size-demo | praos-demo | opcert-demo | sum6-demo | chain-sync-selftest | chain-sync-session-selftest | chain-fetch | chain-fetch-tcp | block-fetch-selftest | body-commitment | block-evidence | restricted-replay | restricted-replay-store"
   def run(args: List[String]): IO[ExitCode] = args match
+    case "node" :: rest                            => NodeCommand.run(rest)
     case "live-validator" :: rest                  => LiveValidatorCommand.run(rest)
     case "coherent-sequence" :: rest               => CoherentSequenceCommand.run(rest)
     case "nonce-freeze" :: rest                    => NonceFreezeCommand.run(rest)
