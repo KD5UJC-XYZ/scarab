@@ -276,3 +276,36 @@ JDK/Python image, networking disabled and 2 CPU / 2 GiB limits. Owned cleanup
 was confirmed and source hashes were checked. The subsequent edit only records
 verification here. These are local results, not a hosted-CI claim. The next
 evidence priority is a separately reviewed offline native differential.
+
+
+## Recorded synthetic native reward differential, 2026-10-09
+
+Reviewed integration `c09971289bdab48973039f6968ad748585da907d` passed one
+combined offline public regression: **1,223 Scala tests**, **63 translator tests**,
+all **25 public serial gates**, **306 executed Python launcher tests** (308
+collected, two optional retained-data skips), and **28 checkpoint guards**.
+Module counts are core 219, VM 47, network 100, network-runtime 52, ledger 235,
+ledger-runtime 150, fetcher 5 and app 415. The five new default tests include
+the exact hash-pinned native golden and retain the separate hand-derived
+expectation and rejection tests.
+
+Focused integration also passed those five tests, the explicit Test-classpath
+native comparison command with no mismatches, and schema/conservation checks
+for both native and hand-derived files. The emitted Scala projection preserves
+the independently recorded SHA256 `a69664a16302f2113eac02eb305ac9294401fd3b3f85f1a17b436f5a81c0acce`.
+No native executable was rebuilt or rerun during this integration.
+
+The [finite comparison record](synthetic-reward-native-comparison.md) covers
+11 self-generated synthetic cases, 33 steps (4 Absent, 17 Pulsing, 12 Complete),
+11 initial probes, 20 pool projections and one registration application. The
+38,557-byte native golden is unchanged. Licensed native source/schema/validator
+and portable provenance are public; machine-specific launchers, build closures,
+caches, logs and binaries remain private. No captured-chain or provider corpus,
+private keys, production source, build dependency or runtime authority was added.
+
+Tests used a fresh Git export, private copied caches, network-disabled Docker
+and 2 CPU / 2 GiB limits, with no private fixture mounts. Owned cleanup was
+confirmed; source hashes were checked and only this verification prose changed
+after testing. These are local results, not a hosted-CI claim. Finite agreement
+does not prove general reward parity, events/non-myopic equality, valid-chain
+or native snapshot provenance, full RUPD/NEWEPOCH or runtime epoch safety.
