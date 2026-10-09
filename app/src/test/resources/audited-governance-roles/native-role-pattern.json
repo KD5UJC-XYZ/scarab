@@ -1,0 +1,72 @@
+{
+  "schema": "recorded-native-parameter-role-pattern-v1",
+  "sourceResultSHA256": "8bc636e667c89fadefad6f9f5ae5aed72b930d3cfe8268a29bad7acf2293ffd7",
+  "nativeSourceCommit": "7da4ebd71bd13246e90ff079535e128a53aa7ee5",
+  "sourceSchema": "audited-governance-roles-result-v1",
+  "sourceProducer": "native-newepoch-normalized-governance",
+  "symbols": {
+    "P": {
+      "sha256": "0f6d70064c39fb492af2f456aa87e3ce44195bb791da4a74a54d507bb01899ef",
+      "bytes": 1322
+    },
+    "C": {
+      "sha256": "75146abbc571a0a633ea1b62dc34d4e0c85164f29a1492ecf20f1929070d9600",
+      "bytes": 1788
+    }
+  },
+  "cases": [
+    {
+      "afterFuture": "PotentialNone",
+      "id": "exact-current",
+      "nativeSTSExecuted": true,
+      "status": "accepted",
+      "wholeParameterEqualityChecked": true,
+      "before": {
+        "completedCurrent": "C",
+        "completedPrevious": "P",
+        "outerCurrent": "C",
+        "outerPrevious": "P"
+      },
+      "after": {
+        "completedCurrent": "C",
+        "completedPrevious": "C",
+        "outerCurrent": "C",
+        "outerPrevious": "C"
+      }
+    },
+    {
+      "afterFuture": "PotentialNone",
+      "id": "previous-costs-only",
+      "nativeSTSExecuted": true,
+      "status": "accepted",
+      "wholeParameterEqualityChecked": true,
+      "before": {
+        "completedCurrent": "P",
+        "completedPrevious": "P",
+        "outerCurrent": "C",
+        "outerPrevious": "P"
+      },
+      "after": {
+        "completedCurrent": "C",
+        "completedPrevious": "C",
+        "outerCurrent": "C",
+        "outerPrevious": "C"
+      }
+    },
+    {
+      "id": "reject-non-cost-change",
+      "nativeSTSExecuted": false,
+      "reason": "non-cost-parameter-difference",
+      "status": "profile-rejected"
+    }
+  ],
+  "scope": {
+    "nativeFullParameterEqualityObserved": true,
+    "defaultTestUsesGeneratedParameters": true,
+    "defaultTestComparesRolePatternOnly": true,
+    "rawNativeParametersPublished": false,
+    "fullAuditedSeedExecuted": false,
+    "costModelEvaluationContextValidity": false,
+    "runtimeAdmission": false
+  }
+}

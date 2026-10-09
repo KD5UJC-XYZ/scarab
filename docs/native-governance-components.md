@@ -123,7 +123,7 @@ node/coverage safeguards. The source remained byte-identical to the reviewed dec
 the existing parameter decoder remains single-source. Combined log SHA256:
 `365be24e9695b0d7261591382d8ce69e9fd763c99780501793a14fc6f5401932`.
 Private input mounts were read-only, network disabled, 2 CPU/2 GiB and a private
-cache; owned container cleanup was verified. The parameter-role native differential
-remains prepared but unexecuted. These checks do not establish full seed derivation,
+cache; owned container cleanup was verified. That integration left the parameter-role native differential unexecuted; its subsequent
+finite synthetic-epoch result is recorded in [audited governance roles](audited-governance-roles.md#authorized-native-differential-execution). These checks do not establish full seed derivation,
 protocol-state acquisition, native equivalence, evaluation-context validity or runtime
 admission. No raw private bundle or private actual-input harness is published.

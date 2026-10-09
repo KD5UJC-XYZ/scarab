@@ -1,6 +1,6 @@
 # Audited parameter-role differential packet
 
-Source-only packet. Native compilation and execution have **not** been performed. Parent review is required before running the native executable. There is no runtime admission or consensus claim.
+The initially source-only packet was subsequently compiled and executed in the separately reviewed isolated runner. Both positive cases and the explicitly tagged profile-negative case matched unchanged expectations. See [execution evidence and limits](../../docs/audited-governance-roles.md#authorized-native-differential-execution). Further execution still requires a reviewed resource slot. There is no runtime admission or consensus claim.
 
 The packet independently checks the finite distinction at the actual native NEWEPOCH boundary. The supplied outer previous PParams contain V1/V3 cost models; outer current PParams additionally contain V2. Their complete 31-field originals differ only at field 15. The previous-completed case retains `oldEnact.current == outerPrevious` and `oldEnact.previous == outerPrevious`. It does not rewrite that history to outer current to make a profile check pass.
 
@@ -43,6 +43,10 @@ Run the resulting executable in a similarly constrained container with the prepa
 python3 reference/audited-governance-roles-diff/packet.py compare --bundle /path/to/reviewed-bundle --result /path/to/REVIEWED-UNIQUE-roles-output/result.json
 ```
 
-Container/image/cache paths must be selected and reviewed by the parent before execution. `resource-plan.json` records the limits. There is no automatic launcher that bypasses that review. Compilation/API compatibility and native output remain unverified until that run occurs.
+Container/image/cache paths must be selected and reviewed by the parent before execution. `resource-plan.json` records the limits. There is no automatic launcher that bypasses that review. The authorized isolated run is recorded in the linked evidence; these preparation commands do not themselves grant another execution slot.
 
 Pinned native CostModels/Language and binary Encoding sources are also recorded. Encoder.hs lines 493–508 emit native indefinite lists above length 23; the long audited cost-model arrays are therefore intentionally preserved as indefinite originals. This packet does not equate a preferred definite CBOR tree with native canonical encoding.
+
+The original `expected-projection.json` remains the pre-execution symbolic expectation.
+The curated default regression fixture under `app/src/test/resources/audited-governance-roles`
+is derived from the separately verified native output and contains no raw parameter encodings.
