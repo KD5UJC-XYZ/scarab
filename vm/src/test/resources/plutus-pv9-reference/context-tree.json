@@ -1,0 +1,277 @@
+{
+  "constructor": "0",
+  "fields": [
+    {
+      "constructor": "0",
+      "fields": [
+        {
+          "list": [
+            {
+              "constructor": "0",
+              "fields": [
+                {
+                  "constructor": "0",
+                  "fields": [
+                    {
+                      "bytes": "1111111111111111111111111111111111111111111111111111111111111111"
+                    },
+                    {
+                      "integer": "0"
+                    }
+                  ]
+                },
+                {
+                  "constructor": "0",
+                  "fields": [
+                    {
+                      "constructor": "0",
+                      "fields": [
+                        {
+                          "constructor": "1",
+                          "fields": [
+                            {
+                              "bytes": "8b9886254dbd3a8cb4cbd0c4220958463f15e975713dcf9b5005f31f"
+                            }
+                          ]
+                        },
+                        {
+                          "constructor": "1",
+                          "fields": []
+                        }
+                      ]
+                    },
+                    {
+                      "map": [
+                        [
+                          {
+                            "bytes": ""
+                          },
+                          {
+                            "map": [
+                              [
+                                {
+                                  "bytes": ""
+                                },
+                                {
+                                  "integer": "5000000"
+                                }
+                              ]
+                            ]
+                          }
+                        ]
+                      ]
+                    },
+                    {
+                      "constructor": "2",
+                      "fields": [
+                        {
+                          "constructor": "0",
+                          "fields": [
+                            {
+                              "bytes": "22222222222222222222222222222222222222222222222222222222"
+                            },
+                            {
+                              "integer": "2000000"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "constructor": "1",
+                      "fields": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "list": []
+        },
+        {
+          "list": [
+            {
+              "constructor": "0",
+              "fields": [
+                {
+                  "constructor": "0",
+                  "fields": [
+                    {
+                      "constructor": "0",
+                      "fields": [
+                        {
+                          "bytes": "22222222222222222222222222222222222222222222222222222222"
+                        }
+                      ]
+                    },
+                    {
+                      "constructor": "1",
+                      "fields": []
+                    }
+                  ]
+                },
+                {
+                  "map": [
+                    [
+                      {
+                        "bytes": ""
+                      },
+                      {
+                        "map": [
+                          [
+                            {
+                              "bytes": ""
+                            },
+                            {
+                              "integer": "3000000"
+                            }
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "constructor": "0",
+                  "fields": []
+                },
+                {
+                  "constructor": "1",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "integer": "2000000"
+        },
+        {
+          "map": []
+        },
+        {
+          "list": []
+        },
+        {
+          "map": []
+        },
+        {
+          "constructor": "0",
+          "fields": [
+            {
+              "constructor": "0",
+              "fields": [
+                {
+                  "constructor": "0",
+                  "fields": []
+                },
+                {
+                  "constructor": "1",
+                  "fields": []
+                }
+              ]
+            },
+            {
+              "constructor": "0",
+              "fields": [
+                {
+                  "constructor": "2",
+                  "fields": []
+                },
+                {
+                  "constructor": "1",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "list": []
+        },
+        {
+          "map": [
+            [
+              {
+                "constructor": "1",
+                "fields": [
+                  {
+                    "constructor": "0",
+                    "fields": [
+                      {
+                        "bytes": "1111111111111111111111111111111111111111111111111111111111111111"
+                      },
+                      {
+                        "integer": "0"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "integer": "7"
+              }
+            ]
+          ]
+        },
+        {
+          "map": []
+        },
+        {
+          "bytes": "d44e34289b8dd5301d8cd82958acf8e02acfd12a0dd690974294a23c40fafe66"
+        },
+        {
+          "map": []
+        },
+        {
+          "list": []
+        },
+        {
+          "constructor": "1",
+          "fields": []
+        },
+        {
+          "constructor": "1",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "integer": "7"
+    },
+    {
+      "constructor": "1",
+      "fields": [
+        {
+          "constructor": "0",
+          "fields": [
+            {
+              "bytes": "1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            {
+              "integer": "0"
+            }
+          ]
+        },
+        {
+          "constructor": "0",
+          "fields": [
+            {
+              "constructor": "0",
+              "fields": [
+                {
+                  "bytes": "22222222222222222222222222222222222222222222222222222222"
+                },
+                {
+                  "integer": "2000000"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

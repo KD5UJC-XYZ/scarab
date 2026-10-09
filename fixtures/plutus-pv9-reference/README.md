@@ -1,0 +1,23 @@
+# One reference-exported Conway/PV9 spending fixture
+
+This original synthetic fixture proves encoding and evaluator agreement for one exact context/script/model combination. It does not prove general Scala transaction-to-context translation, full ledger validity, live acceptance, or equivalence to a distributed cardano-node binary. Nothing was obtained from a public-chain/provider corpus, wallet, or production key.
+
+`Pv9ReferenceFixture.admit` first bounds and clones four byte arrays, verifies every member SHA-256 and the length-framed tuple SHA-256, and only then parses. It admits only the reviewed 424-byte context, 369-byte script serialization, existing 4153-byte `spend.uplc` and existing 1901-byte frozen model. Arbitrary Data and Flat admission remain closed. The script bytes are compared with Scalus serialization of the pinned source, not parsed as a general Flat input. This helper is not wired into transaction/CLI admission.
+
+The imported context contains the computed script credential and final transaction ID. `SyntheticSpend` uses marker credential `44…44` and transaction ID `33…33`, so it is not byte-identical. Equal budgets would not establish identical-context evidence. Tests compare the complete ordered Data tree and exact CBOR re-encoding before checking evaluation.
+
+## Source and license provenance
+
+All supplied transaction/pre-state data were authored locally for this research packet. `source/PacketBuilder.hs` constructs the spending transaction, inline datum, redeemer, pre-state outputs and full synthetic parameters, then commits script-data integrity before serializing the final transaction. IDs are explicit synthetic bytes. The synthetic schedule is 2020-01-01 UTC, one-second slots and 1000-slot epochs; there is no historical chain anchor. Key signatures and full phase-1/ledger validation are not claimed.
+
+The UPLC source and frozen model are the already reviewed repository resources in `vm/src/main/resources/plutus-pv9/`. Their exact hashes are recorded in `provenance.json`. `source/ExportReviewedSpend.scala` serialized the hash-admitted source using Scalus 1.3.0. The reference V3 deserializer independently accepted its one-CBOR-wrapped Flat payload. Original implementation/source files carry the repository's Apache-2.0 license; the generated synthetic data is distributed with that license. Upstream Scalus, Plutus and cardano-ledger are not vendored here; their exact package versions are recorded.
+
+`source/Kernel.hs` decodes ledger inputs, uses `collectPlutusScriptsWithContext`, converts the collected V3 context with the reference `toData`, and evaluates that same collected object using `evaluatePlutusWithContext`. The source snapshot, Cabal constraints/freeze and input CBOR are included for audit; these are not a toolchain/bootstrap installer. The snapshot preserves preparation-time draft comments verbatim to retain the compiled source hashes; the recorded successful build and evaluation supersede those comments. The original Haskell reference build used pinned native sodium/secp256k1/blst sources. That is external reference machinery and does not change the all-JVM Scala provider policy or runtime dependencies.
+
+## Recorded result and tests
+
+Reference context: 424 bytes, SHA-256 `6b17abecf3fff8cdd91091d48c4245fb946f56fdc8270a9115339f7659689776`. Successful restricting evaluation returns Unit with CPU **19269788**, memory **47600**. The exact consumed limits succeed. CPU-one-below and memory-one-below retain the same collected context and return reference CEK errors; those failures remain **unclassified**, with no inferred consumed budget. No counting API was run. Machine limit overrides do not construct different ledger transactions.
+
+The Scala suite admits and decodes those exact bytes, compares every ordered map pair/constructor/list/integer/byte string against the reference tree, requires identical re-encoding, and checks PV9/V3/C Unit and exact budgets. It checks exact/one-below limits, each context/script byte mutation, model/source mutations, mismatched members, bounds and mutable-buffer isolation. Scala may classify its own one-below failures as BudgetExhausted; this does not relabel the Haskell evidence.
+
+Reference test resources live in `vm/src/test/resources/plutus-pv9-reference/`. Re-run the existing JVM project with `vm/testOnly lab.vm.Pv9ReferenceFixtureSuite` (then `vm/test`). Use the documented isolated runner with cached dependencies, no network, at most 2 CPUs/2 GiB. No private build logs, native libraries, executables or external corpus are committed. `SHA256SUMS` covers the distributable inputs/source/resources; provenance records the reference helper binary hash without redistributing it.

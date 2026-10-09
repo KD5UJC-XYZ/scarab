@@ -1,0 +1,49 @@
+{
+  "contextDataCborSha256": "6b17abecf3fff8cdd91091d48c4245fb946f56fdc8270a9115339f7659689776",
+  "evaluation": {
+    "cpuSteps": "19269788",
+    "memoryUnits": "47600",
+    "status": "v3-validation-success"
+  },
+  "machineLimitExperiments": [
+    {
+      "contextUnchanged": true,
+      "cpuLimit": "19269788",
+      "ledgerTransactionReconstructed": false,
+      "memoryLimit": "47600",
+      "name": "exact-consumed",
+      "result": {
+        "cpuSteps": "19269788",
+        "memoryUnits": "47600",
+        "status": "v3-validation-success"
+      }
+    },
+    {
+      "contextUnchanged": true,
+      "cpuLimit": "19269787",
+      "ledgerTransactionReconstructed": false,
+      "memoryLimit": "47600",
+      "name": "cpu-one-below",
+      "result": {
+        "category": "cek-error-unclassified",
+        "consumedBudget": null,
+        "error": "CekError An error has occurred:\nThe machine terminated part way through evaluation due to overspending the budget.\nThe budget when the machine terminated was:\n({cpu: -1\n| mem: 0})\nNegative numbers indicate the overspent budget; note that this only indicates the budget that was needed for the next step, not to run the program to completion.",
+        "status": "evaluation-error"
+      }
+    },
+    {
+      "contextUnchanged": true,
+      "cpuLimit": "19269788",
+      "ledgerTransactionReconstructed": false,
+      "memoryLimit": "47599",
+      "name": "memory-one-below",
+      "result": {
+        "category": "cek-error-unclassified",
+        "consumedBudget": null,
+        "error": "CekError An error has occurred:\nThe machine terminated part way through evaluation due to overspending the budget.\nThe budget when the machine terminated was:\n({cpu: 0\n| mem: -1})\nNegative numbers indicate the overspent budget; note that this only indicates the budget that was needed for the next step, not to run the program to completion.",
+        "status": "evaluation-error"
+      }
+    }
+  ],
+  "countingEvaluationPerformed": false
+}

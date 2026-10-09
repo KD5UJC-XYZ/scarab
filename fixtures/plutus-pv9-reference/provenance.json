@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "fixture": "reference-conway-pv9-v3-spend-1",
+  "classification": "original synthetic, offline, one-fixture differential evidence",
+  "license": "Apache-2.0; generated data from original synthetic inputs; see repository LICENSE",
+  "historicalChainAnchor": null,
+  "upstream": {
+    "scalus": "1.3.0",
+    "plutusLedgerApi": "1.70.0.0",
+    "ledgerConway": "1.23.0.0",
+    "ledgerCore": "1.21.0.0",
+    "ledgerAlonzo": "1.16.0.0",
+    "ledgerBinary": "1.9.1.0",
+    "ghc": "9.6.7",
+    "cabal": "3.16.0.0"
+  },
+  "referenceCompiler": {
+    "optimization": 0,
+    "jobs": 1,
+    "image": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c"
+  },
+  "nativeReferenceSources": {
+    "sodium": "dbb48cce5429cb6585c9034f002568964f1ce567",
+    "secp256k1": "acf5c55ae6a94e5ca847e07def40427547876101",
+    "blst": "6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c"
+  },
+  "referenceHelperSha256": "56d799416990b24bd5caae96d2dc43814c969e0c0aab0b81774c1e39c2f6f0ca",
+  "contextSha256": "6b17abecf3fff8cdd91091d48c4245fb946f56fdc8270a9115339f7659689776",
+  "contextBytes": 424,
+  "scriptCborSha256": "57fb50f08ffc1222cbe2b652db3dcfed0f714da98f8170cb104aee2bde4070f6",
+  "scriptSourceSha256": "1129132bf56b79e2492e88a096d816d695e28131b29ff7218d2362078146062e",
+  "modelSha256": "6ab455d588e186649a6aae2761fec85ae5a2647cb002a2acb737604f698b21a2",
+  "combinationSha256": "9658c512e9bae5bc7f6ad14eca1c64067d5bb5465d7505abb2a798b70a7417f4",
+  "combinationEncoding": "model, UPLC source, serialized script, context; each raw byte array prefixed by its unsigned 4-byte big-endian length",
+  "successfulRestrictingBudget": {
+    "cpuSteps": "19269788",
+    "memoryUnits": "47600"
+  },
+  "referenceFailureCategory": "cek-error-unclassified",
+  "countingPerformed": false,
+  "fullLedgerValidation": false,
+  "sources": {
+    "BuilderMain.hs": "ddb96311f256ffbb0aaf5e8f4574cbce8862a76cb9b804195624c9973c44bf27",
+    "ExportReviewedSpend.scala": "630d98cdcbc20d319c0d265ed1815cc2f6ee4f1d11d5b2399b1a4ab8d24c8aa6",
+    "Kernel.hs": "06f00a3c9c1bf3b3734e6649c6651e997b91e073625830c5b4444163165ca007",
+    "Main.hs": "7de704aa6e8eb428e4eb1a69cd36f5d405c70b33288e3ac6f257a022faaf9927",
+    "PacketBuilder.hs": "07048aeaed301f18a3c74553edbabf3a617fbbb6d08db305902f0d70b6e73b4c",
+    "cabal.project": "1f654ff6b5a38069af34f848786907ae1e34a3d54a0371ab90cbfadde5f90ded",
+    "cabal.project.freeze": "0a1a1434459db5e2ee532c84dcd4289e075aff50a2def8ca69777122a38e6724",
+    "reference-context-exporter.cabal": "0fde6e47e745ae568c1f020bd95dc838e1097f0062f1c6f5512a82be4ad0ee86"
+  },
+  "inputs": {
+    "input-0.cbor": "33a93a809584daef58fe9c3292ba447cc1736195f44320e9ee1718bf66851d3a",
+    "input-1.cbor": "ee993800e555e392cc607cc53a567f9547d1a6d40bc3caf734e6e3ae56064543",
+    "output-0.cbor": "17a25d609cadeb709d6b16b4d1c1950c00dff259180f098680cc522ee0a2665b",
+    "output-1.cbor": "53930d7c27149ae9e6775a6f43c88729801fb1e9eac7844dab484d869bf5e3cf",
+    "parameters.cbor": "9626e5907d905440a4c5fd119c57b8aa8524f2d0b8e8fe32ef5f33543db2f67b",
+    "reviewed-script.cbor": "57fb50f08ffc1222cbe2b652db3dcfed0f714da98f8170cb104aee2bde4070f6",
+    "transaction.cbor": "f7aee117b022c436d2070683b109d67e7b18eff4279cd02ce35fb813836ea908"
+  },
+  "resources": {
+    "context-tree.json": "ac3afb8c8248be6f7bd4e60c9bb3bbcb2702a2925269c0ef6ddcd16d4ce65694",
+    "context.cbor": "6b17abecf3fff8cdd91091d48c4245fb946f56fdc8270a9115339f7659689776",
+    "reference-result.json": "8f50edfabd884d5c4b168adb0fd3bf532e3b47e49d45ef7034298b55c806b7b4",
+    "script.cbor": "57fb50f08ffc1222cbe2b652db3dcfed0f714da98f8170cb104aee2bde4070f6"
+  },
+  "upstreamArchives": [
+    {
+      "name": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "sourceSha256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+      "cabalSha256": "bdf63322c66120e39c32190adc6b10ac40c93d901bb3a8f24be8c141c2275a15",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-alonzo-1.16.0.0.cabal",
+      "length": 2126266,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-alonzo-1.16.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-binary",
+      "version": "1.9.1.0",
+      "sourceSha256": "05d59229edffc94b8f61273117456601532e23d8656f3076775bbf38e600bb8a",
+      "cabalSha256": "4347bea7c1cb03815835ef0bcab1eb604779154eb9f96ccaa8546c3478bcaf3c",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-binary-1.9.1.0.cabal",
+      "length": 83883,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-binary-1.9.1.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "sourceSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "cabalSha256": "d7c532bded90313c3a392dae334a5fd72a777a93f7ac9bbbed553bcf207956c0",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-conway-1.23.0.0.cabal",
+      "length": 4753608,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-conway-1.23.0.0.tar.gz"
+    },
+    {
+      "name": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "sourceSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "cabalSha256": "9194b2884d9b9f76aa70d2071392f6ea815b2b8e4fe62452dfe5ec16d47cdf33",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "cardano-ledger-core-1.21.0.0.cabal",
+      "length": 184361,
+      "url": "https://chap.intersectmbo.org/package/cardano-ledger-core-1.21.0.0.tar.gz"
+    },
+    {
+      "name": "plutus-core",
+      "version": "1.70.0.0",
+      "sourceSha256": "a8d50fa8dccc7c8b2e5a0afbae01920bace5b1328887471a9c795178d508a907",
+      "cabalSha256": "83f272966c2352f6e6a5aec76ffc3383cff49b99454b8b0934961e833843455f",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "plutus-core-1.70.0.0.cabal",
+      "length": 903743,
+      "url": "https://chap.intersectmbo.org/package/plutus-core-1.70.0.0.tar.gz"
+    },
+    {
+      "name": "plutus-ledger-api",
+      "version": "1.70.0.0",
+      "sourceSha256": "cfe92ab6b76f71946ee12a73e78218b8b14d2d66baa9f6daaa48804aa2f33c1b",
+      "cabalSha256": "6eb90181174b6ebdee35fada434f35dab8ae3b924118a4cb40fc6fb17558b203",
+      "repo": "https://chap.intersectmbo.org/",
+      "revisedCabal": "plutus-ledger-api-1.70.0.0.cabal",
+      "length": 184106,
+      "url": "https://chap.intersectmbo.org/package/plutus-ledger-api-1.70.0.0.tar.gz"
+    }
+  ],
+  "scalusArtifact": {
+    "url": "https://repo.maven.apache.org/maven2/org/scalus/scalus_3/1.3.0/scalus_3-1.3.0.jar",
+    "sha256": "56481b6fde227b8076725b59394b89bfa094b146b0019a4ad00e073245ad78d5",
+    "sourceCommit": "31531c14d4e556fb38c984d702ee60dd82b6453f",
+    "sourceUrl": "https://github.com/scalus3/scalus/tree/31531c14d4e556fb38c984d702ee60dd82b6453f"
+  }
+}
