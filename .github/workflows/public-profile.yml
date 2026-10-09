@@ -44,4 +44,6 @@ jobs:
       - name: Run explicit public serial gates
         run: python3 scripts/check-public-gates.py
       - name: Test local launcher guards without Docker workloads
-        run: python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+          python3 -m unittest discover -s scripts -p 'test_validated_checkpoint_restart.py'
