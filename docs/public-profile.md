@@ -309,3 +309,31 @@ confirmed; source hashes were checked and only this verification prose changed
 after testing. These are local results, not a hosted-CI claim. Finite agreement
 does not prove general reward parity, events/non-myopic equality, valid-chain
 or native snapshot provenance, full RUPD/NEWEPOCH or runtime epoch safety.
+
+
+## Internal synthetic successor integration, 2026-10-09
+
+Reviewed source `54a819fa1511a791a6f194edc44cb4d5d45440a7` passed formatting
+and **183 targeted tests**: 19 core, 68 ledger and 96 application tests. This
+is a focused integration regression, not a new full-local-suite total. It covers
+successor header contexts, ledger/stake selection, owned reward progression,
+atomic boundary-plus-block publication, whole-tuple undo, certificate branches,
+existing v1/v2 checkpoint/recovery and combined lifecycle paths, and the finite
+native monetary golden. Existing captures were mounted read-only; successor
+tests deliberately use synthetic anchor geometry and are not a native boundary
+differential or valid-chain admission proof.
+
+The [internal successor API](synthetic-successor-block.md) remains package-private.
+Public prepare/CLI epoch guards and both stake-bearing checkpoint refusals remain.
+Future recovery requires authenticated historical boundary provenance even when
+rewards remain Absent, historical freezes within retained suffixes, distinct
+ordinary/post-boundary frozen schemas, controller-authorized component identity
+restoration and measured aggregate limits. Final revision minus retained depth
+cannot reconstruct historical revisions. No recovery seam or wire codec is
+part of this integration.
+
+Tests used an isolated copied build/cache in network-disabled Docker with
+2 CPU / 2 GiB limits and verified owned cleanup. All source pins were checked;
+only this verification prose changed afterward. No live cluster, denied genesis
+fixture, key generation or native rebuild was used. These are local targeted
+results, not a hosted-CI result or runtime epoch-safety claim.
