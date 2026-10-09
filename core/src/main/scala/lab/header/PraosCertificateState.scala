@@ -75,6 +75,34 @@ object PraosCertificateState:
       val tip: Point,
       val counters: Map[Bytes, BigInt]
   )
+
+  /** Untrusted serialization fields. Hydration relies on app-level accepted local authority. */
+  private[lab] final case class LocalImage(
+      contextId: Bytes,
+      id: Bytes,
+      tip: Point,
+      counters: Map[Bytes, BigInt]
+  )
+  private[lab] def localImage(state: State): LocalImage =
+    LocalImage(state.contextId, state.id, state.tip, state.counters)
+  private[lab] def trustedRestoreLocal(context: Context, image: LocalImage): Either[String, State] =
+    protect {
+      require(image.contextId == context.id && size(image.id, 32), "local certificate identity")
+      require(
+        size(image.tip.hash, 32) && word(image.tip.slot) && word(image.tip.blockNo),
+        "local certificate point"
+      )
+      require(
+        image.tip.slot >= context.firstSlot && image.tip.slot <= context.lastSlot,
+        "local certificate window"
+      )
+      require(
+        image.counters.size <= 10000 && image.counters.forall((k, v) => size(k, 28) && word(v)),
+        "local certificate counters"
+      )
+      new State(context.id, image.id, image.tip, image.counters)
+    }
+
   final class Applied private[PraosCertificateState] (
       val before: State,
       val after: State,

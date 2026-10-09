@@ -88,11 +88,52 @@ object PraosEligibility:
   final case class HeaderResult(headerHash: Bytes, leaderValue: BigInt, stake: Leader.Fraction)
   final class Checked private[PraosEligibility] (
       val contextId: Bytes,
-      val headers: Vector[HeaderResult]
+      val headers: Vector[HeaderResult],
+      val historicallyTrusted: Boolean = false
   ):
     val suppliedContextEligibilityVerified = true
+    val freshlyVerified = !historicallyTrusted
     val stateDerivedConsensus = false
     val referenceRuntimeParity = false
+
+  private[lab] final case class LocalImage(
+      contextId: Bytes,
+      headerHash: Bytes,
+      leaderValue: BigInt,
+      numerator: BigInt,
+      denominator: BigInt
+  )
+  private[lab] def localImage(value: Checked): Either[String, LocalImage] = protect {
+    require(value.headers.size == 1, "single anchor eligibility result required")
+    val h = value.headers.head
+    LocalImage(value.contextId, h.headerHash, h.leaderValue, h.stake.numerator, h.stake.denominator)
+  }
+
+  /** Historical local attestation, never a fresh anchor VRF/certificate verification. */
+  private[lab] def trustedRestoreLocal(
+      image: LocalImage,
+      anchorHash: Bytes,
+      stakes: Map[Bytes, Leader.Fraction],
+      active: Leader.Fraction
+  ): Either[String, Checked] = protect {
+    require(
+      image.contextId.size == 32 && image.headerHash == anchorHash,
+      "local eligibility binding"
+    )
+    val stake = get(Leader.Fraction.checked(image.numerator, image.denominator))
+    require(
+      stake.numerator == image.numerator && stake.denominator == image.denominator &&
+        stakes.values.exists(f =>
+          f.numerator == stake.numerator && f.denominator == stake.denominator
+        ),
+      "local eligibility stake"
+    )
+    require(
+      get(Leader.check(image.leaderValue, stake, active)) == Leader.Decision.Eligible,
+      "local eligibility threshold consistency"
+    )
+    new Checked(image.contextId, Vector(HeaderResult(anchorHash, image.leaderValue, stake)), true)
+  }
 
   private def protect[A](body: => A): Either[String, A] =
     try Right(body)

@@ -55,6 +55,67 @@ object ClusterTransition:
     val fullLedgerValidated = false
     def size: Int = entries.size
 
+  private[lab] final case class LocalImage(
+      environmentId: Bytes,
+      checkpointId: Bytes,
+      outputMap: Bytes,
+      fees: BigInt,
+      slot: BigInt,
+      id: Bytes,
+      head: Bytes
+  )
+  private[lab] def localImage(value: State): Checked[LocalImage] =
+    value.head
+      .toRight(Failure.Malformed("derived ledger head required"))
+      .map(h =>
+        LocalImage(
+          value.environment.id,
+          value.checkpointId,
+          value.outputMap,
+          value.fees,
+          value.slot,
+          value.id,
+          h
+        )
+      )
+
+  /** Trusted local lineage restoration, distinct from a new supplied checkpoint. */
+  private[lab] def trustedRestoreLocal(
+      env: Environment,
+      originalCheckpointId: Bytes,
+      image: LocalImage,
+      revision: BigInt
+  ): Checked[State] = protect {
+    for
+      _ <- Either.cond(
+        image.environmentId == env.id && image.checkpointId == originalCheckpointId &&
+          image.id.size == 32 && image.head.size == 32,
+        (),
+        Failure.Malformed("local ledger identity")
+      )
+      entries <- NativeSpending.snapshot(image.outputMap).left.map(local)
+      _ <- entries.values.foldLeft[Checked[Unit]](Right(())) { (acc, node) =>
+        acc.flatMap(_ =>
+          NativeSpending.output(node, true).left.map(Failure.Unsupported.apply).map(_ => ())
+        )
+      }
+      restored <- state(
+        env,
+        originalCheckpointId,
+        entries,
+        image.fees,
+        image.slot,
+        revision,
+        Some(image.head)
+      )
+      _ <- Either.cond(
+        restored.id == image.id && restored.outputMap == image.outputMap,
+        (),
+        Failure.Malformed("local ledger content identity/original framing")
+      )
+    yield restored
+  }
+
   final class Candidate private[ClusterTransition] (
       private[ClusterTransition] val before: State,
       private[ClusterTransition] val after: State,

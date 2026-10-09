@@ -73,6 +73,32 @@ object PraosNonceEvolution:
       val lastSlot: BigInt,
       val fields: Fields
   )
+  private[lab] final case class LocalImage(
+      id: Bytes,
+      contextId: Bytes,
+      certificateStateId: Bytes,
+      lastSlot: BigInt,
+      fields: Fields
+  )
+  private[lab] def localImage(state: State): LocalImage =
+    LocalImage(state.id, state.contextId, state.certificateStateId, state.lastSlot, state.fields)
+
+  /** Preserves attested historical IDs; does not verify the discarded prefix. */
+  private[lab] def trustedRestoreLocal(
+      context: Context,
+      certificate: PraosCertificateState.State,
+      image: LocalImage
+  ): Either[String, State] = protect {
+    require(
+      size(image.id, 32) && image.contextId == context.id &&
+        image.certificateStateId == certificate.id && certificate.contextId == context.certificates.id &&
+        word(image.lastSlot) && image.lastSlot == certificate.tip.slot,
+      "local nonce binding"
+    )
+    validate(image.fields)
+    new State(image.id, context.id, certificate.id, image.lastSlot, image.fields)
+  }
+
   final class Applied private[PraosNonceEvolution] (
       val before: State,
       val after: State,

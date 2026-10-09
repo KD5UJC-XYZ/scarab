@@ -39,7 +39,8 @@ object CoherentSequence:
       val eligibility: Option[PraosEligibility.Checked],
       val ledger: Ledger.State,
       val compactedBlocks: BigInt = 0,
-      val derivedAnchorId: Option[Bytes] = None
+      val derivedAnchorId: Option[Bytes] = None,
+      val trustedLocalPrefix: Boolean = false
   ):
     def acquisition: BoundedChainFollower.Checkpoint = certificates.acquisition
     def revision: BigInt = ledger.revision
@@ -255,7 +256,8 @@ object CoherentSequence:
           Some(candidate.eligibility),
           block.state,
           current.compactedBlocks,
-          current.derivedAnchorId
+          current.derivedAnchorId,
+          current.trustedLocalPrefix
         )
         val owned =
           OwnedReceipt(current, state.id, candidate.certificate, candidate.nonce, block.undo)
@@ -287,7 +289,8 @@ object CoherentSequence:
         owned.before.eligibility,
         restoredLedger,
         current.compactedBlocks,
-        current.derivedAnchorId
+        current.derivedAnchorId,
+        current.trustedLocalPrefix
       )
       _ <- Either.cond(
         restored.id == owned.before.id && nonces.certificateStateId == certificates.state.id,
@@ -365,7 +368,8 @@ object CoherentSequence:
                   state.eligibility,
                   state.ledger,
                   count,
-                  Some(provenance)
+                  Some(provenance),
+                  state.trustedLocalPrefix
                 )
               )
           for
@@ -379,12 +383,36 @@ object CoherentSequence:
             (Cell(tip, receipts), snapshot(owner, tip))
   }
 
+  /** Only a single owned-cell read creates this export capability. */
+  private[lab] final class OwnedLocalExport private[CoherentSequence] (
+      val context: SequenceInput.Context,
+      val anchor: State,
+      val current: State,
+      val capacity: Int
+  )
+
   final class Runtime[F[_]] private[CoherentSequence] (
       private[CoherentSequence] val context: SequenceInput.Context,
       val maxBlocks: Int,
       private[CoherentSequence] val owner: AnyRef,
       private[CoherentSequence] val cell: Ref[F, Cell]
   )(using F: Sync[F]):
+    /** Pure image export; no NIO publication, controller acceptance, or durability is implied. */
+    def exportLocalCheckpoint(
+        storeId: Bytes,
+        sessionId: Bytes,
+        generation: Long
+    ): F[Either[String, LocalDerivedCheckpoint.Publication]] = cell.get.flatMap { current =>
+      val anchor = current.receipts.headOption.fold(current.state)(_.before)
+      F.delay(
+        LocalDerivedCheckpoint.encodeOwned(
+          new OwnedLocalExport(context, anchor, current.state, maxBlocks),
+          storeId,
+          sessionId,
+          generation
+        )
+      )
+    }
     def snapshot: F[Snapshot] = cell.get.map(c => CoherentSequence.snapshot(owner, c.state))
 
     /** Explicit availability policy: rollback before `through` becomes unavailable. This is not
@@ -717,6 +745,132 @@ object CoherentSequence:
                   saved.state.id == expectedId && saved.state.revision == revision,
                   runtime,
                   Failure.Rejected("recovery", "replayed tuple/revision mismatch")
+                )
+              }
+        yield result
+    }
+
+  /** The input capability exists only after explicit external controller acceptance. No partial
+    * runtime escapes. Trusted anchor hydration is followed by ordinary checked suffix replay.
+    */
+  private[lab] def trustedRestoreLocal[F[_]: Async](
+      context: SequenceInput.Context,
+      authorized: LocalDerivedCheckpoint.AuthorizedLocalImage,
+      between: String => F[Unit]
+  ): F[Result[Runtime[F]]] =
+    val F = Async[F]
+    val i = authorized.image
+    def stage[A](label: String)(body: => Result[A]): F[Result[A]] =
+      F.cede *> between(label) *> F.delay(protect(body))
+    stage("trusted-anchor") {
+      val a = i.anchor
+      for
+        supplied <- seed(context)
+        _ <- Either.cond(
+          context.id == i.contextId && i.compactedBlocks > 0 &&
+            i.originals.size <= i.capacity && i.capacity >= 1 && i.capacity <= MaxBlocks &&
+            i.revision <= Ledger.MaxRevision && i.compactedBlocks + i.originals.size <= i.revision &&
+            (i.revision - i.compactedBlocks - i.originals.size) % 2 == 0 &&
+            i.provenance.size == 32 &&
+            a.certificate.tip.blockNo == context.certificateSeed.tip.blockNo + i.compactedBlocks &&
+            a.certificate.tip.slot > context.certificateSeed.tip.slot &&
+            a.certificate.tip.slot / context.nonces.context.epochLength == context.epoch,
+          (),
+          Failure.Rejected("local-anchor", "context/depth/revision/point binding")
+        )
+        cert <- checked(
+          "local-certificate",
+          Certificate.trustedRestoreLocal(context.certificates, a.certificate)
+        )
+        nonce <- checked(
+          "local-nonce",
+          Nonces.trustedRestoreLocal(context.nonces.context, cert, a.nonce)
+        )
+        eligible <- checked(
+          "local-eligibility",
+          PraosEligibility.trustedRestoreLocal(
+            a.eligibility,
+            cert.tip.hash,
+            context.eligibility.stakes,
+            context.eligibility.active
+          )
+        )
+        restoredLedger <- ledger(
+          Ledger.trustedRestoreLocal(
+            context.ledger.environment,
+            supplied.ledger.checkpointId,
+            a.ledger,
+            i.revision - i.originals.size
+          )
+        )
+        _ <- Either.cond(
+          restoredLedger.slot == cert.tip.slot,
+          (),
+          Failure.Rejected("local-anchor", "ledger/certificate slot mismatch")
+        )
+        acquisition <- checked(
+          "local-acquisition",
+          BoundedChainFollower.checked(point(cert.tip), Vector.empty)
+        )
+        branch <- checked(
+          "local-certificate",
+          CertificateBranch.replay(context.certificates, cert, acquisition)
+        )
+        anchor = new State(
+          context.id,
+          branch,
+          nonce,
+          Some(eligible),
+          restoredLedger,
+          i.compactedBlocks,
+          Some(i.provenance),
+          true
+        )
+        _ <- Either.cond(
+          anchor.id == a.id,
+          (),
+          Failure.Rejected("local-anchor", "anchor ID mismatch")
+        )
+      yield anchor
+    }.flatMap {
+      case Left(error) => F.pure(Left(error))
+      case Right(anchor) =>
+        for
+          owner <- F.delay(new Object())
+          cell <- Ref.of[F, Cell](Cell(anchor, Vector.empty))
+          runtime = new Runtime(context, i.capacity, owner, cell)
+          replayed <- i.originals.foldLeft(F.pure[Result[Unit]](Right(()))) { (acc, original) =>
+            acc.flatMap {
+              case Left(error) => F.pure(Left(error))
+              case Right(_) =>
+                stage("input")(
+                  SequenceInput.block(original).left.map(e => Failure.Rejected("input", e.toString))
+                ).flatMap {
+                  case Left(error) => F.pure(Left(error))
+                  case Right(block) =>
+                    (F.cede *> between("prepare") *> runtime.prepare(block)).flatMap {
+                      case Left(error) => F.pure(Left(error))
+                      case Right(candidate) =>
+                        F.cede *> between("publish") *> runtime
+                          .publish(candidate)
+                          .map(_.map(_ => ()))
+                    }
+                }
+            }
+          }
+          result <- replayed match
+            case Left(error) => F.pure[Result[Runtime[F]]](Left(error))
+            case Right(_) =>
+              F.cede *> between("verify") *> runtime.snapshot.map { saved =>
+                val state = saved.state
+                Either.cond(
+                  state.id == i.finalId && state.revision == i.revision &&
+                    state.certificates.state.tip == i.finalPoint && state.depth == i.compactedBlocks + i.originals.size &&
+                    state.derivedAnchorId.contains(i.provenance) && state.trustedLocalPrefix &&
+                    state.nonces.certificateStateId == state.certificates.state.id &&
+                    state.nonces.lastSlot == state.ledger.slot,
+                  runtime,
+                  Failure.Rejected("local-recovery", "replayed final tuple mismatch")
                 )
               }
         yield result
