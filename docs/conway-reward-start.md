@@ -95,3 +95,7 @@ Formatting ran with `scalafmtAll`. Docker used the existing local image with no
 network, at most 2 CPUs and 2 GiB, and this worktree's private cache. Log:
 `.cache/reward-start-tests.log` (outside Git). No live cluster, blocked native
 fixture, host installation or public data fetch was performed for testing.
+
+The [scoped pulser globals](conway-reward-pulser.md) additionally bind positive
+security parameter k before freezing. Existing allocation-only globals remain
+supported but cannot authorize the monetary pulser.

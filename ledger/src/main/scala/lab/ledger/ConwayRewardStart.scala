@@ -12,6 +12,7 @@ object ConwayRewardStart:
   val Profile = "conway-pv9-reward-start-allocation-v1"
   val ParameterFormat = "conway-pv9-reward-start-parameters-v1"
   val GlobalFormat = "conway-pv9-reward-start-globals-v1"
+  val PulserGlobalFormat = "conway-pv9-reward-pulser-globals-v1"
   val PoolParameterFormat = "conway-pv9-reward-pool-parameters-v1"
   private val Max = (BigInt(1) << 64) - 1
   final class Parameters private[ConwayRewardStart] (
@@ -31,7 +32,8 @@ object ConwayRewardStart:
       val epochLength: BigInt,
       val activeSlotCoefficient: S.Ratio,
       val maxSupply: BigInt,
-      val id: Bytes
+      val id: Bytes,
+      val securityParameter: Option[BigInt] = None
   )
   final class Fraction private[ConwayRewardStart] (val numerator: BigInt, val denominator: BigInt)
   final class Allocation private[ConwayRewardStart] (
@@ -104,6 +106,18 @@ object ConwayRewardStart:
     val epochLength = uint(xs(0)); val asc = ratio(xs(1), xs(2), true); val maxSupply = uint(xs(3))
     require(epochLength > 0 && maxSupply > 0, "positive epoch length/supply required")
     new Globals(raw, epochLength, asc, maxSupply, hash("globals:" + raw.hex))
+  }
+
+  /** Scoped globals including positive uint64 security parameter, bound before freezing. */
+  def decodePulserGlobals(raw: Bytes): Either[String, Globals] = checked {
+    val xs = fields(raw, PulserGlobalFormat, 6)
+    val epochLength = uint(xs(0)); val asc = ratio(xs(1), xs(2), true)
+    val maxSupply = uint(xs(3)); val k = uint(xs(4))
+    require(
+      epochLength > 0 && maxSupply > 0 && k > 0,
+      "positive epoch length/supply/security parameter required"
+    )
+    new Globals(raw, epochLength, asc, maxSupply, hash("globals:" + raw.hex), Some(k))
   }
   private def fraction(n: BigInt, d: BigInt): Fraction =
     val gcd = n.gcd(d); new Fraction(n / gcd, d / gcd)

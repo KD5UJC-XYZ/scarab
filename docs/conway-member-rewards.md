@@ -114,3 +114,8 @@ paths and raw-source SHA256 checksums are in `.cache/member-rewards-source.json`
 (outside Git). Cached Rewards.hs and PulsingReward.hs hashes match the retained
 pinned source index. No public data fetch, host install, live or blocked fixture
 was used.
+
+The [immutable monetary reward pulser](conway-reward-pulser.md) now advances the
+same member arithmetic through opaque ordered progress. It adds bounded cursor
+transitions only; native parity, events, non-myopic state and runtime authority
+remain excluded.

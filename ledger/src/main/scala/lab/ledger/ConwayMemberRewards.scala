@@ -32,64 +32,58 @@ object ConwayMemberRewards:
   private def hash(s: String): Bytes =
     Blake2b.hash256.hash(Bytes.fromArray((Profile + "\n" + s).getBytes("UTF-8")))
 
-  /** Requires exactly all frozen go-pool results, including ranking-only nonproducers. */
-  def distribute(
-      frozen: B.Frozen,
-      expectedFrozenId: Bytes,
-      allocation: ConwayRewardStart.Allocation,
-      expectedAllocationId: Bytes,
-      pools: Map[Bytes, ConwayPoolReward.Result]
-  ): Either[String, Distribution] =
-    try
+  private[ledger] final class Progress private[ConwayMemberRewards] (
+      private[ConwayMemberRewards] val work: Prepared,
+      val processed: Int,
+      val members: Map[S.Credential, B.Reward]
+  )
+
+  /** Checked shared inputs used by the whole-map and bounded pulser paths. */
+  private[ledger] final class Prepared private[ConwayMemberRewards] (
+      val frozen: B.Frozen,
+      val allocation: ConwayRewardStart.Allocation,
+      val pools: Map[Bytes, ConwayPoolReward.Result]
+  ):
+    val traversal =
+      frozen.go.active.keys.toVector.sortBy(c => (if c.script then 0 else 1, c.hash.hex))
+    val initial = new Progress(this, 0, Map.empty)
+    def advance(progress: Progress, count: Int): Progress =
       require(
-        frozen != null && allocation != null && expectedFrozenId != null &&
-          expectedAllocationId != null && frozen.id == expectedFrozenId &&
-          allocation.id == expectedAllocationId && allocation.frozenId == frozen.id,
-        "member frozen/allocation identity mismatch"
+        progress != null && (progress.work eq this) && count >= 0 && count <= 4096,
+        "foreign progress or batch bound"
       )
-      require(
-        frozen.rewardParameters.flatMap(_.pool).nonEmpty,
-        "checked frozen pool parameters required"
-      )
-      require(
-        pools != null && pools.size <= 4096 && pools.keySet == frozen.go.pools.keySet,
-        "complete frozen go-pool result domain required"
-      )
-      pools.foreach { (id, p) =>
-        require(
-          p != null && p.poolId == id && p.frozenId == frozen.id &&
-            p.allocationId == allocation.id && p.snapshot == frozen.go.pools(id),
-          "pool result identity mismatch"
-        )
+      val end = (progress.processed + count).min(traversal.size)
+      val added = traversal.slice(progress.processed, end).flatMap(c => member(c).map(c -> _)).toMap
+      new Progress(this, end, progress.members ++ added)
+    private def member(credential: S.Credential): Option[B.Reward] =
+      val stake = frozen.go.active(credential)
+      val pool = pools(stake.pool)
+      val isOwner = !credential.script && pool.snapshot.owners.contains(credential.hash)
+      pool.production.flatMap { production =>
+        if isOwner || production.poolReward <= pool.snapshot.cost then None
+        else
+          require(
+            pool.snapshot.coin > 0 && stake.coin <= pool.snapshot.coin,
+            "member/pool stake denominator bound"
+          )
+          val margin = pool.snapshot.margin
+          val amount = ((production.poolReward - pool.snapshot.cost) *
+            (margin.denominator - margin.numerator) * stake.coin) /
+            (margin.denominator * pool.snapshot.coin)
+          require(amount >= 0 && amount <= Max, "member reward coin bound")
+          Option.when(amount > 0)(B.Reward(B.RewardKind.Member, stake.pool, amount))
       }
-      var members = Map.empty[S.Credential, B.Reward]
+    def finish(progress: Progress): Distribution =
+      require(
+        progress != null && (progress.work eq this) && progress.processed == traversal.size,
+        "foreign or incomplete member progress"
+      )
+      val members = progress.members
       var memberTotals = Map.empty[Bytes, BigInt]
-      frozen.go.active.foreach { (credential, stake) =>
-        val pool = pools.getOrElse(
-          stake.pool,
-          throw new IllegalArgumentException("active stake missing frozen go pool")
-        )
-        // PV9 bypasses registration prefiltering. Owners are self-delegated KEY credentials only.
-        val isOwner = !credential.script && pool.snapshot.owners.contains(credential.hash)
-        pool.production.foreach { production =>
-          if !isOwner && production.poolReward > pool.snapshot.cost then
-            require(
-              pool.snapshot.coin > 0 && stake.coin <= pool.snapshot.coin,
-              "member/pool stake denominator bound"
-            )
-            val margin = pool.snapshot.margin
-            // (c / circulation) / (poolStake / circulation) cancels exactly: no extra floor.
-            val amount = ((production.poolReward - pool.snapshot.cost) *
-              (margin.denominator - margin.numerator) * stake.coin) /
-              (margin.denominator * pool.snapshot.coin)
-            require(amount >= 0 && amount <= Max, "member reward coin bound")
-            if amount > 0 then
-              members =
-                members.updated(credential, B.Reward(B.RewardKind.Member, stake.pool, amount))
-              val total = memberTotals.getOrElse(stake.pool, BigInt(0)) + amount
-              require(total <= Max, "member reward aggregate overflow")
-              memberTotals = memberTotals.updated(stake.pool, total)
-        }
+      members.foreach { (_, r) =>
+        val total = memberTotals.getOrElse(r.pool, BigInt(0)) + r.amount
+        require(total <= Max, "member reward aggregate overflow")
+        memberTotals = memberTotals.updated(r.pool, total)
       }
       var leaders = Map.empty[S.Credential, Set[B.Reward]]
       var totals = Map.empty[Bytes, PoolTotals]
@@ -119,16 +113,56 @@ object ConwayMemberRewards:
       val identities = pools.map((id, p) => id -> p.id)
       val poolText =
         identities.toVector.sortBy(_._1.hex).map((k, v) => s"${k.hex}:${v.hex}").mkString("|")
-      Right(
-        new Distribution(
-          frozen.id,
-          allocation.id,
-          identities,
-          members,
-          leaders,
-          totals,
-          completed,
-          hash(s"${frozen.id.hex}:${allocation.id.hex}:$poolText:${completed.id.hex}")
-        )
+      new Distribution(
+        frozen.id,
+        allocation.id,
+        identities,
+        members,
+        leaders,
+        totals,
+        completed,
+        hash(s"${frozen.id.hex}:${allocation.id.hex}:$poolText:${completed.id.hex}")
       )
+
+  private[ledger] def prepare(
+      frozen: B.Frozen,
+      expectedFrozenId: Bytes,
+      allocation: ConwayRewardStart.Allocation,
+      expectedAllocationId: Bytes,
+      pools: Map[Bytes, ConwayPoolReward.Result]
+  ): Prepared =
+    require(
+      frozen != null && allocation != null && expectedFrozenId != null &&
+        expectedAllocationId != null && frozen.id == expectedFrozenId &&
+        allocation.id == expectedAllocationId && allocation.frozenId == frozen.id,
+      "member frozen/allocation identity mismatch"
+    )
+    require(
+      frozen.rewardParameters.flatMap(_.pool).nonEmpty,
+      "checked frozen pool parameters required"
+    )
+    require(
+      pools != null && pools.size <= 4096 && pools.keySet == frozen.go.pools.keySet,
+      "complete frozen go-pool result domain required"
+    )
+    pools.foreach { (id, p) =>
+      require(
+        p != null && p.poolId == id && p.frozenId == frozen.id &&
+          p.allocationId == allocation.id && p.snapshot == frozen.go.pools(id),
+        "pool result identity mismatch"
+      )
+    }
+    new Prepared(frozen, allocation, pools)
+
+  /** Requires exactly all frozen go-pool results, including ranking-only nonproducers. */
+  def distribute(
+      frozen: B.Frozen,
+      expectedFrozenId: Bytes,
+      allocation: ConwayRewardStart.Allocation,
+      expectedAllocationId: Bytes,
+      pools: Map[Bytes, ConwayPoolReward.Result]
+  ): Either[String, Distribution] =
+    try
+      val work = prepare(frozen, expectedFrozenId, allocation, expectedAllocationId, pools)
+      Right(work.finish(work.advance(work.initial, work.traversal.size)))
     catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
