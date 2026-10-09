@@ -72,3 +72,17 @@ class StatePinSuite extends munit.FunSuite:
     assert(checked(profile = "future-profile").isLeft)
     assert(checked(profile = null).isLeft)
   }
+
+  test("closed opt-in profiles remain distinct in the complete pin") {
+    assertEquals(StatePin.Profile, AdmissionProfile.AdaVkey.id)
+    assertEquals(AdmissionProfile.fromId(StatePin.Profile), Some(AdmissionProfile.AdaVkey))
+    assertEquals(
+      AdmissionProfile.fromId(AdmissionProfile.NativeScript.id),
+      Some(AdmissionProfile.NativeScript)
+    )
+    assertEquals(AdmissionProfile.fromId("future-profile"), None)
+    assertEquals(AdmissionProfile.fromId(null), None)
+    val native = get(checked(profile = AdmissionProfile.NativeScript.id))
+    assertNotEquals(native, get(checked()))
+    assertEquals(native.profileId, AdmissionProfile.NativeScript.id)
+  }

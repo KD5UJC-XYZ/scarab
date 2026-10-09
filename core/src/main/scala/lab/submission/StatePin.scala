@@ -37,7 +37,7 @@ final class StatePin private (
     ).hashCode()
 
 object StatePin:
-  val Profile = "isolated-conway-pv9-ada-vkey-v1"
+  val Profile = AdmissionProfile.AdaVkey.id
   val MaxUInt64: BigInt = (BigInt(1) << 64) - 1
   private def hash(value: Bytes): Boolean = value != null && value.value != null && value.size == 32
   private def uint64(value: BigInt): Boolean = value != null && value >= 0 && value <= MaxUInt64
@@ -58,7 +58,7 @@ object StatePin:
       Left("full point requires 32-byte hash and uint64 slot/block number")
     else if !uint64(generation) || !uint64(validationSlot) then
       Left("uint64 generation and validation slot required")
-    else if profileId != Profile then Left("unsupported state pin profile")
+    else if AdmissionProfile.fromId(profileId).isEmpty then Left("unsupported state pin profile")
     else
       Right(
         new StatePin(

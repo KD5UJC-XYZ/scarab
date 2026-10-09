@@ -2,31 +2,18 @@
 package lab.ledger
 
 import lab.cbor.{Bytes, Cbor, Node, Value as V}
-import lab.submission.SignedTransaction
+import lab.submission.{AdmissionProfile, SignedTransaction}
 
 /** Pure scoped validation. P is the integration owner's complete immutable StatePin. The owner must
   * capture (pin, view) under its common mutation gate.
   */
 object AdaAdmission:
-  val ProfileId = "isolated-conway-pv9-ada-vkey-v1"
-  enum Failure:
-    case Identity(error: SignedTransaction.Error)
-    case Unsupported(detail: String)
-    case Ledger(error: ClusterTransition.Failure)
-
-  final case class FeeReceipt(supplied: BigInt, minimum: BigInt, memoBytes: BigInt)
-  final class Candidate[P] private[AdaAdmission] (
-      val transaction: SignedTransaction,
-      val pin: P,
-      val spent: Set[TxIn],
-      val fee: FeeReceipt,
-      val minimumOutput: MinimumOutput.Receipt,
-      val ledgerStateId: Bytes,
-      val environmentId: Bytes,
-      val validationSlot: BigInt
-  ):
-    val profileId = ProfileId
-    val fullLedgerValidated = false
+  val ProfileId = AdmissionProfile.AdaVkey.id
+  type Failure = ScopedAdmission.Failure
+  val Failure = ScopedAdmission.Failure
+  type FeeReceipt = ScopedAdmission.FeeReceipt
+  val FeeReceipt = ScopedAdmission.FeeReceipt
+  type Candidate[P] = ScopedAdmission.Candidate[P]
 
   private def outputs(nodes: Vector[Node]): Either[Failure, Unit] =
     nodes.foldLeft[Either[Failure, Unit]](Right(()))((acc, node) =>
@@ -97,22 +84,5 @@ object AdaAdmission:
         .left
         .map(e => Failure.Unsupported(e.toString))
       _ <- outputs(refs.toVector.flatMap(snapshot.get))
-      prepared <- ClusterTransition
-        .prepare(view, original, view.slot)
-        .left
-        .map(Failure.Ledger.apply)
-      memo <- FeeSize
-        .componentSize(body.original.size, witnesses.original.size)
-        .left
-        .map(e => Failure.Unsupported(e.toString))
-      parameters = view.environment.feeParameters
-    yield new Candidate(
-      identity,
-      pin,
-      prepared.spent,
-      FeeReceipt(prepared.fee, memo * parameters.feePerByte + parameters.feeFixed, memo),
-      prepared.minimum,
-      view.id,
-      view.environment.id,
-      view.slot
-    )
+      candidate <- ScopedAdmission.checked(AdmissionProfile.AdaVkey, pin, view, identity)
+    yield candidate
