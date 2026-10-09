@@ -71,8 +71,12 @@ The persistence contract in [coherent-synthetic-rewards.md](coherent-synthetic-r
 now explicitly covers historical freezes that start **inside retained suffixes**, including
 after undo and compaction. Future controller-authorized restore needs bounded authenticated
 historical inputs and fresh owners while preserving historical identities; ordinary replay
-is a new branch instance. No storage codec, unbounded transcript or aggregate memory claim
-is introduced. Collections remain bounded by their existing 4096-entry limits and retained
+is a new branch instance. Authenticated historical boundary provenance is also required when rewards remain
+Absent. Ordinary and post-boundary frozen inputs need distinct schemas, and
+controller-authorized restoration must validate historical component identities;
+final revision minus retained count cannot reconstruct them. These requirements
+are detailed in the linked coordinator contract. No storage codec, unbounded
+transcript or aggregate memory claim is introduced. Collections remain bounded by their existing 4096-entry limits and retained
 block capacity by eight; aggregate allocations still require measurement.
 
 ## Verification and evidence limits
@@ -97,8 +101,7 @@ These are implementation tests, **not a native boundary differential**.
 Captured coordinator tests require `STAKE_SEQUENCE_EVIDENCE=/evidence` and
 `STAKE_WINDOW_EVIDENCE=/window`; existing sequence compaction tests also use
 `COHERENT_WINDOW_EVIDENCE=/window`. The sources are the existing read-only directories
-`/home/<user>/cardano-sequence-live1-20261009` and
-`/home/<user>/cardano-live-runner-live2-20261009`. No captures are committed. The focused
+the private three-block sequence and four-original short-window captures. No captures are committed. The focused
 commands are:
 
 ```text

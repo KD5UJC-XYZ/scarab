@@ -133,8 +133,8 @@ its null-input and two-retained-suffix follow-ups were addressed and tested.
 The evidence-enabled coordinator suites require **both** `STAKE_SEQUENCE_EVIDENCE` and
 `STAKE_WINDOW_EVIDENCE`; the existing sequence compaction suite uses
 `COHERENT_WINDOW_EVIDENCE`. This run mounted the already captured directories
-`/home/<user>/cardano-sequence-live1-20261009` and
-`/home/<user>/cardano-live-runner-live2-20261009` read-only, respectively. Without the first
+the private three-block sequence capture and the private four-original short-window
+capture read-only, respectively. Without the first
 environment variable only the public synthetic profile test runs in the new coordinator
 suite; the 8 pure pulser tests have no capture dependency. No captures were committed.
 The exact test commands after formatting were:
@@ -162,3 +162,23 @@ validate capsule content and preserve historical identity. Ordinary branch repla
 a new freeze. Neither pathway may retain recursive State/receipt history. Required future
 codec tests include an Absent anchor with a retained freeze after undo and after compaction.
 No v3 codec or aggregate allocation measurement is implemented here.
+
+
+### Historical boundary provenance and restoration limits
+
+Future recovery also needs authenticated historical **boundary** provenance,
+even when the reward phase remains Absent and no freeze was created. Boundary
+selection embeds predecessor identities and revisions into ledger, stake,
+certificate, nonce, epoch-context and reward-origin identities. The final revision
+minus retained block count cannot reconstruct those historical revisions after
+undo and compaction. Ordinary replay creates a new branch instance.
+
+Ordinary frozen inputs and post-boundary frozen inputs need explicit distinct
+schemas: the latter preserve pre-tick calculation inputs while separately binding
+successor application context. A controller-authorized restoration seam would
+need to validate bounded historical inputs and component identities, establish
+fresh owners, and preserve authenticated historical identities. None of these
+requirements grants authority to serialized hashes alone. Aggregate byte and
+allocation limits must be measured in addition to existing per-collection bounds.
+There is no recovery seam or wire codec in this packet; both existing checkpoint
+formats continue rejecting the enlarged tuple.

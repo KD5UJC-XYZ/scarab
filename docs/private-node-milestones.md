@@ -67,6 +67,14 @@ states remain replayable. Native provenance/parity, events, non-myopic updates
 and runtime epoch transitions remain outside this milestone. The next evidence
 priority is an offline native differential, not further pure abstractions.
 
+The [internal synthetic successor-block path](synthetic-successor-block.md)
+checks boundary-plus-block composition and atomic rollback under explicit omitted
+effect assumptions. It is package-private and tested with deliberately synthetic
+anchor geometry, not native boundary/valid-chain evidence. Public epoch guards
+and checkpoint refusals remain. Future recovery needs authenticated historical
+boundary and freeze provenance plus measured aggregate limits; it cannot infer
+historical component identities from final revision minus retained depth.
+
 ## Worker interface and ownership
 
 The runnable-node lane owns `NodeCommand`, its suite, `Main` dispatch and this plan.
