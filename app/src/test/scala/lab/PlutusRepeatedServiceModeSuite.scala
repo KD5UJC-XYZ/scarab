@@ -92,6 +92,21 @@ class PlutusRepeatedServiceModeSuite extends munit.FunSuite:
     intercept[IllegalArgumentException](PlutusServiceRuntime.repeatedDeadline(0, 601))
     intercept[IllegalArgumentException](PlutusServiceRuntime.repeatedDeadline(Long.MaxValue, 1))
   }
+
+  test("only repeated terminal observations use the larger bounded component export") {
+    assertEquals(PlutusServiceRuntime.terminalObservationLimit(None), 1048576)
+    assertEquals(
+      PlutusServiceRuntime.terminalObservationLimit(Some(PlutusServiceCommand.Repeated.Jvm)),
+      2097152
+    )
+    val native = PlutusServiceCommand.options(base ++ mode).toOption.get.repeated
+    assertEquals(
+      PlutusServiceRuntime.terminalObservationLimit(native),
+      RepeatedPlutusTerminal.MaxBytes
+    )
+    assertEquals(PlutusServiceRuntime.MaxTerminalBytes, 1048576)
+    assertEquals(PlutusServiceRuntime.MaxPublicationBytes, 131072)
+  }
   test("streaming long limits require explicit repeated entry and preserve every other bound") {
     val limits =
       EphemeralStreaming.Limits(maxEvents = 4096, maxBlocks = 512, duration = 600.seconds)

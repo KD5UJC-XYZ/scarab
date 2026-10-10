@@ -35,6 +35,20 @@ private[lab] object PlutusServiceRuntime:
     (if attempt == 1 then 1 else if attempt == 2 then 2 else 4) .seconds
   val MaxPublicationBytes = 131072
   val MaxTerminalBytes = 1048576
+  private[lab] def terminalObservationLimit(
+      repeated: Option[PlutusServiceCommand.Repeated]
+  ): Int = repeated.fold(MaxTerminalBytes)(_ => RepeatedPlutusTerminal.MaxBytes)
+
+  private[lab] def terminalObservation(
+      state: CoherentSequence.State,
+      p: StatePin,
+      source: Bytes,
+      manifest: String,
+      repeated: Option[PlutusServiceCommand.Repeated]
+  ): Either[RepeatedPlutusTerminal.Failure, J] = repeated match
+    case None    => Right(terminal(state, p, source, manifest))
+    case Some(_) => RepeatedPlutusTerminal.encode(state, p, source, manifest)
+
   def pin(p: StatePin): J = record(
     "ownerId" -> text(p.ownerId.hex),
     "generation" -> num(p.generation),
@@ -645,7 +659,17 @@ private[lab] object PlutusServiceRuntime:
                 snapshot <- IO.fromEither(
                   frozen.leftMap(_ => new IllegalStateException("terminal state changed"))
                 )
-                terminalValue <- IO(terminal(snapshot.state, view.pin, joined.id, c.manifest))
+                terminalValue <- IO(
+                  get(
+                    terminalObservation(
+                      snapshot.state,
+                      view.pin,
+                      joined.id,
+                      c.manifest,
+                      config.repeated
+                    )
+                  )
+                )
                 _ <- saveOriginal(
                   root.resolve("terminal-output-map.cbor"),
                   snapshot.state.ledger.outputMap
@@ -653,7 +677,7 @@ private[lab] object PlutusServiceRuntime:
                 _ <- boundedSave(
                   root.resolve("terminal-observation.json"),
                   terminalValue,
-                  MaxTerminalBytes
+                  terminalObservationLimit(config.repeated)
                 )
                 rows <- published.get
                 events <- relayEvents.get

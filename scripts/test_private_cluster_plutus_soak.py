@@ -287,6 +287,165 @@ class SoakTests(unittest.TestCase):
             with self.assertRaises(NotImplementedError):soak.execute(None,None,None,None)
             construct.assert_not_called()
 
+    def comparison_evidence(self):
+        terminal=dict(hash=OTHER,slot=6010,blockNo=301)
+        final=pin(terminal,generation=300)
+        endpoint=dict(schema="native-endpoint-ready-v1",manifestSHA256=OTHER,acquisitionResultSHA256=JOIN)
+        transfers=[]
+        for index in (0,1):
+            identity={k:f"{index+1:02x}"*32 for k in ("transactionId","envelopeSHA256","bodySHA256","witnessesSHA256")}
+            transfers.append(dict(identity,spentInput=f"{H}#{2*index}",collateralInput=f"{H}#{2*index+1}"))
+        value={k:True for k in soak.COMPARISON_TRUE_FIELDS}
+        value.update({k:H for k in soak.COMPARISON_HASH_FIELDS})
+        value.update(schema="plutus-repeated-service-endpoint-comparison-v1",terminalPoint=terminal,terminalPin=final,
+                     sourceJoinId=JOIN,initialManifestSHA256=H,endpointManifestSHA256=OTHER,endpointAcquisitionResultSHA256=JOIN,
+                     epoch=6,feesBefore=200000,feesAfter=0,entries=12,fullLedgerValidated=False,restartSupported=False,
+                     transactions=[dict({k:t[k] for k in ("transactionId","envelopeSHA256","bodySHA256","witnessesSHA256")},
+                                        spent=t["spentInput"],collateral=t["collateralInput"]) for t in transfers])
+        return value,transfers,terminal,JOIN,H,copy.deepcopy(final),endpoint
+
+    def test_repeated_comparison_uses_exact_new_schema_and_actual_fee_pots(self):
+        evidence=self.comparison_evidence()
+        self.assertEqual(soak.soak_comparison_result(*evidence),evidence[0])
+        # Successful standalone contract checks cannot authorize a live launch.
+        with self.assertRaises(NotImplementedError):soak.require_comparator()
+        for field in soak.COMPARISON_FIELDS:
+            changed=copy.deepcopy(evidence);del changed[0][field]
+            with self.subTest(missing=field),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        changed=copy.deepcopy(evidence);changed[0]["endpointSnapshotsUnchanged"]=True
+        with self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        changed=copy.deepcopy(evidence);changed[0]["schema"]="plutus-service-endpoint-comparison-v1"
+        with self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+
+    def test_repeated_comparison_rejects_missing_components_and_broader_claims(self):
+        for field in soak.COMPARISON_TRUE_FIELDS:
+            for bad in (False,1,None):
+                changed=self.comparison_evidence();changed[0][field]=bad
+                with self.subTest(field=field,bad=bad),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        for field in ("fullLedgerValidated","restartSupported"):
+            changed=self.comparison_evidence();changed[0][field]=True
+            with self.subTest(field=field),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+
+    def test_repeated_comparison_rejects_foreign_owner_state_and_endpoint_acquisition(self):
+        for field in ("ownerId","coherentStateId","ledgerStateId","environmentId"):
+            changed=self.comparison_evidence();changed[0]["terminalPin"][field]=OTHER
+            with self.subTest(field=field),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        for field in ("sourceJoinId","initialManifestSHA256","endpointManifestSHA256","endpointAcquisitionResultSHA256"):
+            changed=self.comparison_evidence();changed[0][field]="ef"*32
+            with self.subTest(field=field),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        for field in soak.COMPARISON_HASH_FIELDS:
+            changed=self.comparison_evidence();changed[0][field]="AB"*32
+            with self.subTest(hash=field),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        changed=self.comparison_evidence();changed[0]["terminalPoint"]=dict(changed[2],blockNo=302)
+        with self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+
+    def test_repeated_comparison_rejects_invented_epochs_pots_and_transaction_originals(self):
+        for field,bad in (("epoch",0),("epoch",5),("epoch",8),("epoch",True),("feesBefore",-1),
+                          ("feesAfter",True),("feesAfter",2**64),("entries",0),("entries",True),("entries",100001)):
+            changed=self.comparison_evidence();changed[0][field]=bad
+            with self.subTest(field=field,bad=bad),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        for field in ("transactionId","envelopeSHA256","bodySHA256","witnessesSHA256","spent","collateral"):
+            changed=self.comparison_evidence();changed[0]["transactions"][0][field]=OTHER
+            with self.subTest(field=field),self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        changed=self.comparison_evidence();changed[0]["transactions"].reverse()
+        with self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+        changed=self.comparison_evidence();changed[0]["transactions"][1]=changed[0]["transactions"][0]
+        with self.assertRaises(ValueError):soak.soak_comparison_result(*changed)
+
+    def terminal_evidence(self, padding=0):
+        final=pin(dict(hash=OTHER,slot=2010,blockNo=90),generation=89)
+        value=dict(schema="plutus-repeated-service-terminal-observation-v1",diagnosticOnly=True,restartSupported=False,
+                   fullLedgerValidated=False,pin=final,sourceJoinId=JOIN,initialManifestSHA256=H,epoch=2,validationSlot=2010,
+                   outputMapFile="terminal-output-map.cbor",outputMapSHA256=H,componentPadding="x"*padding)
+        return value,copy.deepcopy(final)
+
+    def write_terminal(self, value):
+        raw=restart.encoded(value);(self.root/"terminal-observation.json").write_bytes(raw)
+        return dict(terminalObservationFile="terminal-observation.json",terminalObservationSHA256=restart.digest(raw))
+
+    def test_terminal_reader_accepts_large_repeated_components_with_original_hash(self):
+        value,final=self.terminal_evidence(1100000)
+        result=self.write_terminal(value)
+        self.assertEqual(soak.terminal_observation(self.root,result,final,JOIN,H),value)
+        with self.assertRaises(ValueError):soak.terminal_observation(self.root,dict(result,terminalObservationSHA256=OTHER),final,JOIN,H)
+        value["componentPadding"]="x"*soak.MAX_REPEATED_TERMINAL_BYTES
+        result=self.write_terminal(value)
+        with self.assertRaises(ValueError):soak.terminal_observation(self.root,result,final,JOIN,H)
+
+    def test_terminal_reader_rejects_foreign_pins_legacy_schema_and_unbounded_filenames(self):
+        for field,bad in (("schema","plutus-service-terminal-observation-v1"),("epoch",1),("epoch",True),
+                          ("validationSlot",2011),("sourceJoinId",OTHER),("initialManifestSHA256",OTHER),
+                          ("outputMapFile","../terminal-output-map.cbor"),("outputMapSHA256","not-a-hash"),
+                          ("diagnosticOnly",False),("fullLedgerValidated",True),("restartSupported",True)):
+            value,final=self.terminal_evidence();value[field]=bad;result=self.write_terminal(value)
+            with self.subTest(field=field),self.assertRaises(ValueError):soak.terminal_observation(self.root,result,final,JOIN,H)
+        value,final=self.terminal_evidence();value["pin"]["ownerId"]=OTHER;result=self.write_terminal(value)
+        with self.assertRaises(ValueError):soak.terminal_observation(self.root,result,final,JOIN,H)
+        value,final=self.terminal_evidence();final["generation"]=1;value["pin"]["generation"]=True;result=self.write_terminal(value)
+        with self.assertRaises(ValueError):soak.terminal_observation(self.root,result,final,JOIN,H)
+        value,final=self.terminal_evidence();result=self.write_terminal(value)
+        with self.assertRaises(ValueError):soak.terminal_observation(self.root,dict(result,terminalObservationFile="../terminal-observation.json"),final,JOIN,H)
+        (self.root/"terminal-observation.json").rename(self.root/"other.json")
+        (self.root/"terminal-observation.json").symlink_to(self.root/"other.json")
+        with self.assertRaises(ValueError):soak.terminal_observation(self.root,result,final,JOIN,H)
+
+    def test_serial_comparison_joins_retained_originals_and_cleans_up_after_substitution(self):
+        # Test the actual supervisor callsite. Docker and the independent Scala
+        # comparator are fake boundaries; this is no ledger-parity evidence.
+        for substitute in (False,True):
+            with self.subTest(substitute=substitute):
+                root=self.root/str(substitute);root.mkdir()
+                exchange=root/"exchange";exchange.mkdir()
+                initial=exchange/"initial";initial.mkdir();(initial/"effective-shelley-genesis.json").write_bytes(b"{}")
+                service=exchange/"service-1";service.mkdir()
+                packet=root/"packet";packet.mkdir()
+                for name in soak.base.PACKET_NAMES:(packet/name).write_bytes(b"original fixture")
+                out=root/"out";out.mkdir()
+                value,transfers,terminal,join_id,manifest,final,_=self.comparison_evidence()
+                observation,_=self.terminal_evidence();observation.update(pin=final,epoch=6,validationSlot=6010)
+                output_map=b"original output map";observation["outputMapSHA256"]=restart.digest(output_map)
+                raw=restart.encoded(observation);(service/"terminal-observation.json").write_bytes(raw)
+                (service/"terminal-output-map.cbor").write_bytes(output_map)
+                result=dict(finalPin=final,terminalObservationFile="terminal-observation.json",terminalObservationSHA256=restart.digest(raw))
+                with patch.object(soak.two,"controller_type",return_value=object):kind=soak.controller_type(SimpleNamespace())
+                c=object.__new__(kind);c.client_completed=True;c.containers={"service-1":H,"service-2":OTHER}
+                c.service_roots={"service-1":service};c.exchange=exchange;c.out=out;c.manifest_pin=manifest;c.transfers=transfers
+                c.deadline=soak.time.monotonic()+60
+                c.args=SimpleNamespace(scala_build_root=root/"build",client_classpath_file=root/"classpath",java="java",scala_image="sha256:"+H)
+                c.capture=lambda point,label:(packet,dict(point=point))
+                inspected=[];calls=[]
+                def create(role,args):
+                    self.assertEqual(role,"service-1-oracle");self.assertIn("--network=none",args)
+                    self.assertIn("lab.PlutusRepeatedServiceCompareMain",args)
+                    mounts=[]
+                    for index,argument in enumerate(args):
+                        if argument=="--mount":
+                            fields=dict(part.split("=",1) for part in args[index+1].split(",") if "=" in part)
+                            mounts.append(dict(Type="bind",Source=fields["src"],Destination=fields["dst"],RW="readonly" not in args[index+1]))
+                    inspected.append(dict(Mounts=mounts,State=dict(Running=False,ExitCode=0,OOMKilled=False)))
+                    return JOIN
+                c.create=create;c.owned=lambda cid:inspected[0] if cid==JOIN else dict(State=dict(Running=False))
+                with patch.object(c,"owned",return_value=dict(State=dict(Running=True))):
+                    with self.assertRaises(ValueError):c.compare_service("service-1",terminal,dict(sourceJoinId=join_id),result)
+                self.assertEqual(inspected,[])
+                def docker(*args,**kwargs):
+                    calls.append(args)
+                    if args[:2]==("start","--attach"):
+                        value.update(terminalObservationSHA256=result["terminalObservationSHA256"],outputMapSHA256=observation["outputMapSHA256"],
+                                     endpointManifestSHA256=soak.base.sha(service/"endpoint/endpoint-inputs.json"),
+                                     endpointAcquisitionResultSHA256=soak.base.sha(service/"acquisition-result.json"))
+                        (service/"service-comparison.json").write_bytes(restart.encoded(value))
+                        if substitute:(service/"terminal-output-map.cbor").write_bytes(b"substituted after comparison")
+                    return SimpleNamespace(stdout="",stderr="")
+                c.docker=docker
+                with patch.object(soak.base,"check_resources"),patch.object(soak.single,"checked_classpath",return_value="checked-cp"):
+                    if substitute:
+                        with self.assertRaises(ValueError):c.compare_service("service-1",terminal,dict(sourceJoinId=join_id),result)
+                    else:c.compare_service("service-1",terminal,dict(sourceJoinId=join_id),result)
+                self.assertIn(("rm","--force",JOIN),calls)
+                self.assertTrue((out/"service-1-oracle-cleanup.json").is_file())
+                self.assertEqual((out/"service-1-endpoint-comparison.json").is_file(),not substitute)
+
     def test_explicit_soak_limits_do_not_widen_existing_modes(self):
         for duration in (120,600): soak.soak_limits(duration,512)
         for duration, blocks in ((60,512),(601,512),(120,128),(True,512)):

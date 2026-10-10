@@ -43,13 +43,11 @@ object PlutusServiceCompareMain extends IOApp:
     case J.Lit("null") => N.Nonce.Neutral
     case _             => N.Nonce.Hash(hash(j))
 
-  private[lab] def compareMaps(
+  private[lab] def compareEffects(
       beforeRaw: Bytes,
       actualRaw: Bytes,
       terminalRaw: Bytes,
-      txs: Vector[SignedTransaction],
-      feesBefore: BigInt,
-      feesAfter: BigInt
+      txs: Vector[SignedTransaction]
   ): Vector[J] =
     require(
       txs.size == 2 && txs.map(_.transactionId).distinct.size == 2,
@@ -143,7 +141,6 @@ object PlutusServiceCompareMain extends IOApp:
       collaterals.forall(in => terminal(in).original == before(in).original),
       "terminal collateral original changed"
     )
-    require(feesAfter == feesBefore + 600000, "exact fee pot delta")
     parsed.map { (tx, s, c, _) =>
       record(
         "transactionId" -> text(tx.transactionId.hex),
@@ -154,6 +151,18 @@ object PlutusServiceCompareMain extends IOApp:
         "collateral" -> text(ref(c))
       )
     }
+
+  private[lab] def compareMaps(
+      beforeRaw: Bytes,
+      actualRaw: Bytes,
+      terminalRaw: Bytes,
+      txs: Vector[SignedTransaction],
+      feesBefore: BigInt,
+      feesAfter: BigInt
+  ): Vector[J] =
+    val result = compareEffects(beforeRaw, actualRaw, terminalRaw, txs)
+    require(feesAfter == feesBefore + 600000, "exact fee pot delta")
+    result
 
   private[lab] def compare(args: List[String]): J =
     require(args.size == 7, "INITIAL MANIFESTPIN OUTPUT ENDPOINT_EXCHANGE TX1 TX2 RESULT")

@@ -32,6 +32,18 @@ MAX_CLEANUP = 30
 MAX_TREE_BYTES = 8 * base.GIB
 MAX_LOG_BYTES = 64 * 1024 * 1024
 MAX_FILES = 100000
+MAX_REPEATED_TERMINAL_BYTES = 2 * 1024 * 1024
+COMPARISON_TRUE_FIELDS = frozenset((
+    "completeUtxoEqual", "collateralPreserved", "instantaneousStakeEqual", "snapshotsEqual",
+    "epochComponentsEqual", "governanceEqual", "rewardStateEqual", "nonMyopicRawBitsEqual",
+    "representedProtocolEqual", "diagnosticOnly"))
+COMPARISON_HASH_FIELDS = frozenset((
+    "sourceJoinId", "initialManifestSHA256", "terminalObservationSHA256", "outputMapSHA256",
+    "endpointAcquisitionId", "endpointWholeUtxoSHA256", "endpointManifestSHA256",
+    "endpointAcquisitionResultSHA256"))
+COMPARISON_FIELDS = COMPARISON_TRUE_FIELDS | COMPARISON_HASH_FIELDS | frozenset((
+    "schema", "terminalPoint", "terminalPin", "epoch", "feesBefore", "feesAfter", "entries",
+    "transactions", "fullLedgerValidated", "restartSupported"))
 
 
 def stage_plan(target):
@@ -332,11 +344,74 @@ def repeated_publications(root, result, observed, source, manifest, active_recor
 
 
 def require_comparator():
-    raise NotImplementedError("repeated comparator implementation and reviewed contract are not yet available; no soak launch")
+    raise NotImplementedError("repeated comparator integration awaits compilation, offline verification and independent review; no soak launch")
 
 
-def soak_comparison_result(*_args):
-    require_comparator()
+def terminal_observation(root, result, final_pin, join_id, manifest):
+    """Retain the runtime's exact bounded repeated observation under its terminal pin."""
+    expected = two.pin(final_pin)
+    base.require(result.get("terminalObservationFile") == "terminal-observation.json",
+                 "fixed repeated terminal observation filename")
+    raw = restart.read_exact(root / "terminal-observation.json", MAX_REPEATED_TERMINAL_BYTES)
+    base.require(result.get("terminalObservationSHA256") == restart.digest(raw),
+                 "repeated terminal original bytes")
+    value = base.decode(raw)
+    base.require(isinstance(value, dict), "repeated terminal observation object")
+    observed = two.pin(value.get("pin"), expected["ownerId"])
+    base.require(value.get("schema") == "plutus-repeated-service-terminal-observation-v1" and
+                 value.get("diagnosticOnly") is True and value.get("restartSupported") is False and
+                 value.get("fullLedgerValidated") is False and observed == expected and
+                 value.get("sourceJoinId") == join_id and value.get("initialManifestSHA256") == manifest and
+                 type(value.get("epoch")) is int and value["epoch"] == expected["point"]["slot"]//1000 and
+                 type(value.get("validationSlot")) is int and value["validationSlot"] == expected["validationSlot"] and
+                 value.get("outputMapFile") == "terminal-output-map.cbor" and base.hex64(value.get("outputMapSHA256")),
+                 "terminal exact repeated source, owner, epoch and output binding")
+    return value
+
+
+def soak_comparison_result(value, transfers, terminal, join_id, manifest, final_pin, endpoint_ready):
+    """Check the separate repeated comparator contract; this never enables execution."""
+    base.require(isinstance(value, dict) and set(value) == COMPARISON_FIELDS and
+                 value.get("schema") == "plutus-repeated-service-endpoint-comparison-v1",
+                 "exact repeated endpoint comparison fields")
+    checked = two.pin(value["terminalPin"])
+    expected = two.pin(final_pin)
+    base.require(checked == expected and value["terminalPoint"] == terminal == checked["point"] and
+                 value["sourceJoinId"] == join_id and value["initialManifestSHA256"] == manifest,
+                 "repeated comparison binds full terminal owner state and source")
+    base.require(all(base.hex64(value[k]) for k in COMPARISON_HASH_FIELDS),
+                 "repeated comparison original evidence hashes")
+    base.require(isinstance(endpoint_ready, dict) and set(endpoint_ready) == {
+                 "schema", "manifestSHA256", "acquisitionResultSHA256"} and
+                 endpoint_ready["schema"] == "native-endpoint-ready-v1" and
+                 value["endpointManifestSHA256"] == endpoint_ready["manifestSHA256"] and
+                 value["endpointAcquisitionResultSHA256"] == endpoint_ready["acquisitionResultSHA256"],
+                 "exact independently acquired endpoint manifest and receipt")
+    base.require(all(value[k] is True for k in COMPARISON_TRUE_FIELDS) and
+                 value["fullLedgerValidated"] is False and value["restartSupported"] is False,
+                 "complete repeated diagnostic comparison without broader claims")
+    base.require(type(value["epoch"]) is int and 1 <= value["epoch"] < 8 and
+                 value["epoch"] == terminal["slot"]//1000,
+                 "actual bounded post-boundary terminal epoch")
+    # Boundary reward processing can move fees into snapshots and reward pots.
+    # The comparator checks actual component pots; a same-epoch +600000 delta
+    # would reject valid repeated endpoints or hide an invented terminal pot.
+    base.require(all(type(value[k]) is int and 0 <= value[k] < 2**64
+                 for k in ("feesBefore", "feesAfter")) and
+                 type(value["entries"]) is int and 0 < value["entries"] <= 100000,
+                 "bounded actual fee pots and UTxO count")
+    rows = value["transactions"]
+    identity_fields = ("transactionId", "envelopeSHA256", "bodySHA256", "witnessesSHA256")
+    base.require(isinstance(rows, list) and isinstance(transfers, list) and len(rows) == len(transfers) == 2 and
+                 len({t["transactionId"] for t in transfers}) == 2 and
+                 len({t[k] for t in transfers for k in ("spentInput", "collateralInput")}) == 4,
+                 "two independent oracle transaction originals")
+    for row, transfer in zip(rows, transfers):
+        base.require(isinstance(row, dict) and set(row) == set(identity_fields) | {"spent", "collateral"} and
+                     all(base.hex64(row[k]) and row[k] == transfer[k] for k in identity_fields) and
+                     row["spent"] == transfer["spentInput"] and row["collateral"] == transfer["collateralInput"],
+                     "exact repeated oracle body/witness originals and input pairs")
+    return value
 
 
 def controller_type(live):
@@ -584,8 +659,9 @@ def controller_type(live):
             base.write(root / "endpoint/endpoint-inputs.json", dict(schema="native-endpoint-reviewed-inputs-v1",
                        point=terminal, genesisSHA256=base.sha(initial / "effective-shelley-genesis.json"),
                        acquisitionResultSHA256=acquisition_pin, inputs=base.manifest(root / "endpoint", base.PACKET_NAMES)))
-            base.write(root / "endpoint-ready.json", dict(schema="native-endpoint-ready-v1",
-                       manifestSHA256=base.sha(root / "endpoint/endpoint-inputs.json"), acquisitionResultSHA256=acquisition_pin))
+            endpoint_ready = dict(schema="native-endpoint-ready-v1",
+                                 manifestSHA256=base.sha(root / "endpoint/endpoint-inputs.json"), acquisitionResultSHA256=acquisition_pin)
+            base.write(root / "endpoint-ready.json", endpoint_ready)
             role = phase+"-oracle"
             mounts = [(str(self.args.scala_build_root), "/work", False), (str(initial), "/initial", False),
                       (str(self.exchange / "submission"), "/originals", False), (str(root), "/exchange", True)]
@@ -612,10 +688,16 @@ def controller_type(live):
                 state = self.owned(cid)["State"]
                 base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "oracle completed")
                 value = soak_comparison_result(base.decode(base.read(root / "service-comparison.json", 65536)),
-                                                 self.transfers, terminal, ready["sourceJoinId"], self.manifest_pin)
-                observation = base.decode(base.read(root / "terminal-observation.json", 1048576))
+                                                 self.transfers, terminal, ready["sourceJoinId"], self.manifest_pin,
+                                                 result["finalPin"], endpoint_ready)
+                observation = terminal_observation(root, result, result["finalPin"], ready["sourceJoinId"], self.manifest_pin)
+                output_map = restart.read_exact(root / "terminal-output-map.cbor", 1048576)
                 base.require(value["terminalObservationSHA256"] == result["terminalObservationSHA256"] and
-                             value["outputMapSHA256"] == observation["outputMapSHA256"], "oracle terminal original binding")
+                             value["terminalPin"] == observation["pin"] and
+                             value["outputMapSHA256"] == observation["outputMapSHA256"] == restart.digest(output_map) and
+                             value["endpointManifestSHA256"] == base.sha(root / "endpoint/endpoint-inputs.json") and
+                             value["endpointAcquisitionResultSHA256"] == base.sha(root / "acquisition-result.json"),
+                             "oracle terminal and acquired endpoint original bindings")
                 base.write(self.out / (phase+"-endpoint-comparison.json"), value)
             finally:
                 self.owned(cid)
@@ -652,12 +734,7 @@ def controller_type(live):
                          "bounded terminal successor")
             observed = [dict(tx, includedResponse=dict(pin=tx["publication"]["pin"])) for tx in row["observedTransactions"]]
             repeated_publications(root, result, observed, ready["sourceJoinId"], self.manifest_pin, active_record)
-            base.require(result.get("terminalObservationFile") == "terminal-observation.json" and
-                         result.get("terminalObservationSHA256") == base.sha(root / "terminal-observation.json"), "terminal raw bytes")
-            observation = base.decode(base.read(root / "terminal-observation.json", 1048576))
-            base.require(observation.get("pin") == final_pin and observation.get("sourceJoinId") == ready["sourceJoinId"] and
-                         observation.get("initialManifestSHA256") == self.manifest_pin and observation.get("epoch") == terminal["slot"]//1000,
-                         "terminal exact source/owner/epoch")
+            terminal_observation(root, result, final_pin, ready["sourceJoinId"], self.manifest_pin)
             refs = result.get("evaluationReceipts")
             base.require(isinstance(refs, list) and 1 <= len(refs) <= 128, "bounded endpoint evaluations")
             matches = []

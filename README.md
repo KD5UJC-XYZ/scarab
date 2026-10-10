@@ -98,6 +98,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_valid
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_native_script_submission_fixture.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_submission_fixture.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_service_fixture.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_soak_prerequisites.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_verify_likelihood_postrun.py'
 ```
 
 The [public CI workflow](.github/workflows/public-profile.yml) runs these commands on pull requests and main pushes with pinned actions/JDK and read-only permissions; see [verification status](docs/public-profile.md). The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.

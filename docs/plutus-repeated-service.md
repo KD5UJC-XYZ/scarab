@@ -56,8 +56,10 @@ timeouts and resource acquisition/release failures remain failures, including re
 errors during deadline cancellation. External cancellation propagates; repeated
 cancellation metadata does not claim that resource finalization succeeded.
 
-This service wiring slice does not yet attach the repeated terminal-state serializer and
-independent endpoint comparator. Its offline checks establish configuration, source replay,
-publication binding and failure handling; they do not establish a completed live repeated
-soak or terminal parity. The terminal hook and its independent checks remain an integration
-gate before claiming that evidence.
+The service wiring selects a separate repeated terminal-state export from the frozen final
+owner snapshot, with a 2 MiB observation limit and typed export failures. Existing finite
+terminal/output-map bounds stay unchanged. The supervisor's repeated comparison contract
+checks full owner/source pins and exact independently acquired endpoint evidence. Compilation,
+comparator tests, native endpoint agreement and independent review remain integration gates;
+the launcher still refuses unconditionally. Source wiring and offline supervisor checks do
+not establish a completed live repeated soak or terminal parity.
