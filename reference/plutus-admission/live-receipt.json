@@ -1,0 +1,62 @@
+{
+  "schema": "isolated-plutus-v3-live-receipt-v1",
+  "observedDate": "2026-10-10",
+  "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+  "versions": {
+    "node": "11.1.3",
+    "cli": "11.2.3.0",
+    "testnet": "11.1.1",
+    "scalus": "1.3.0",
+    "ledgerProtocol": "9.0"
+  },
+  "scriptSHA256": "57fb50f08ffc1222cbe2b652db3dcfed0f714da98f8170cb104aee2bde4070f6",
+  "modelSHA256": "6ab455d588e186649a6aae2761fec85ae5a2647cb002a2acb737604f698b21a2",
+  "initialPoint": {
+    "blockNo": 4,
+    "hash": "f26752ac445db7a3ffb5c2d3c5ca2ab757dbbc6d9d6fa391c5807c0bab3c4798",
+    "slot": 292
+  },
+  "inclusionPoint": {
+    "blockNo": 6,
+    "hash": "1d0d156e6f875351d13b489d948e5f91f442c7274845a5ecb2e75d6c37cb7fbe",
+    "slot": 616
+  },
+  "transactionId": "15bb343b488a92852b951e33e483f1098f82202cae241001af026a0de3cb6bf9",
+  "includedBodySHA256": "5366d483a68e4caf6aa63cc16c7fd8c9ff7739f8e52ce3f25cbf0eb5ea49a77b",
+  "includedWitnessesSHA256": "8304998fcafe8454b9183fef6917b2e8c0a27db8a89b3747ed6563c2fa920f9d",
+  "wholeUtxoSHA256": "03d9e83d252297143174855311da0f55dbd4af3cd2f719f6e3308857a8ede2c5",
+  "feesBefore": 200000,
+  "feesAfter": 500000,
+  "feeDelta": 300000,
+  "ingress": "scala-http-pool-txsubmission2",
+  "acquiredDatumMemPackMatched": true,
+  "wholeUtxoSemanticsEqual": true,
+  "instantaneousStakeEqual": true,
+  "collateralPreserved": true,
+  "poolEntryRemoved": true,
+  "sameEpoch": true,
+  "ownedCleanupVerified": true,
+  "fullLedgerValidated": false,
+  "fullEnvelopeEqualityClaimed": false,
+  "governanceCompared": false,
+  "epochCrossingSupported": false,
+  "fundingReferenceOnly": true,
+  "testedSpendCliSubmitted": false,
+  "fundingSnapshotsAtomic": false,
+  "actualRelaySessions": 4,
+  "capturedRelayAttemptCounter": 5,
+  "relayCounterNote": "Captured counter includes the final refused fifth attempt; four sessions actually started.",
+  "privateEvidenceSHA256": {
+    "result.json": "0745503f1519ded7965715b2c5a757c1d3b7b84e27878fbe5e0ef6521cd89a9a",
+    "scala-result.json": "8fc4556186ec07132f2e8cc895f9ed94243d9c86f7d90d6635aadf548cde1c30",
+    "cleanup.json": "f01f2214fa561731656077de90ef80d6ccc741129ba61d7f7983513bbbd805b2",
+    "client-result.json": "5f27f1b02cdca0e72092e87eac6febd712f9c32bb658f59a65c29b0762737522",
+    "plutus-bootstrap-proof.json": "5d007a376bf174585eafa0d972818e6af0cfec67ee8ba3128f2765f609fd18c2",
+    "funding-comparison.json": "b21b8d06b2216bea7e4eed58a096ed00c924f0444e4b406e87af0bd59c2b6e96",
+    "script-reference-comparison.json": "ff4da57a1469ec247ba42b1f45ed205728679a79df4e3e08e458e7e0be11630f"
+  },
+  "initialManifestSHA256": "011751d601004dfe04ca762c84ee3d66897b4c80340b8ec23fb612302b191d00",
+  "retainedInputsManifestSHA256": "648bdc25a2a05b1344ea2405b4dc40d0b6b4c30ec48f5397283ce490a9bcd1cd",
+  "nativeMemPackSource": "reference-derived verified full seed; original debug epoch UTxO map is suppressed",
+  "relayCounterReportingCorrectedAfterCapture": true
+}

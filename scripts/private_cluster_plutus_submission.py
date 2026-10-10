@@ -1,0 +1,483 @@
+#!/usr/bin/env python3
+"""Bounded Plutus V3 HTTP ingress fixture; preflight unless --execute.
+
+Reference submission is restricted to one funding transaction before the native
+bootstrap. The tested spend travels only through Scala HTTP and TxSubmission2.
+"""
+import argparse
+from pathlib import Path
+import signal
+import shutil
+import os
+import time
+
+import private_cluster_ada_submission as ada
+import private_cluster_native_boundary as base
+import plutus_submission_fixture as fixture
+
+
+def frozen_point(tip, ceiling=300):
+    base.require(tip.get("era") == "Conway" and tip.get("epoch") == 0 and
+                 type(tip.get("slot")) is int and 0 < tip["slot"] < ceiling,
+                 "bounded frozen Conway epoch-zero point")
+    return base.point(dict(slot=tip["slot"], blockNo=tip["block"], hash=tip["hash"]))
+
+
+def plutus_receipt(value):
+    base.require(value.get("profileId") == fixture.PROFILE, "explicit Plutus profile receipt")
+    return value
+
+
+
+def same_epoch_request(value, initial, join_id, boundary_ms):
+    base.require(value.get("schema") == "native-live-endpoint-request-v1", "endpoint request schema")
+    terminal = base.point(value["point"])
+    base.require(value.get("epoch") == 0 and initial["slot"] < terminal["slot"] < 1000 and
+                 0 < terminal["blockNo"] - initial["blockNo"] <= 128, "bounded same-epoch successor")
+    base.require(value.get("sourceJoinId") == join_id and base.hex64(value.get("networkAppliedStateId")), "endpoint owner bindings")
+    base.require(value.get("followedAcrossBoundary") is False and value.get("sameEpoch") is True and
+                 all(value.get(k) is True for k in ("peerClosed", "transportClosed")), "same-epoch finalized stream")
+    start, end = value.get("streamStartedUnixMillis"), value.get("streamEndedUnixMillis")
+    base.require(type(start) is int and type(end) is int and start <= end < boundary_ms and
+                 0 <= end - start <= 65000, "same-epoch bounded stream")
+    return terminal
+
+
+def controller_type(live):
+    AdaController = ada.controller_type(live)
+
+    class PlutusController(AdaController):
+        def create(self, phase, tail):
+            if phase == "scala":
+                tail = ["lab.PlutusSubmissionMain" if x == "lab.NativeLiveBoundaryMain" else x for x in tail]
+            if phase == "ada-client":
+                tail = [*tail, fixture.PROFILE]
+            return super().create(phase, tail)
+
+        def proof_helper(self, phase, arguments, output):
+            base.require(phase in ("native-originals", "plutus-spend-originals") and
+                         phase not in self.containers and "scala" not in self.containers,
+                         "serial fixture proof before Scala startup")
+            args = ["--pull=never", "--network=none", "--cpus=1", "--memory=2g", "--memory-swap=2g",
+                    "--pids-limit=256", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
+                    "--user", "1000:1000", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
+                    "--mount", "type=bind,src=" + str(self.args.scala_build_root) + ",dst=/work,readonly",
+                    "--mount", "type=bind,src=" + str(self.exchange) + ",dst=/exchange",
+                    "--entrypoint", self.args.java, self.args.scala_image, "-Xmx512m", "-XX:ActiveProcessorCount=1",
+                    "-cp", self.classpath, "lab.NativeScriptFixtureMain", *arguments]
+            cid = self.create(phase, args)
+            try:
+                observed = self.owned(cid)
+                base.check_resources(observed, "helper", self.args.scala_image, "none")
+                base.require({(m["Source"], m["Destination"], m["RW"]) for m in observed["Mounts"] if m["Type"] == "bind"} ==
+                             {(str(self.args.scala_build_root), "/work", False), (str(self.exchange), "/exchange", True)},
+                             "exact fixture proof mounts")
+                base.write(self.out / (phase + "-inspection.json"), observed)
+                result = self.docker("start", "--attach", cid, timeout=35)
+                (self.out / (phase + ".log")).write_text(result.stdout + result.stderr)
+                state = self.owned(cid)["State"]
+                base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "fixture proof exit")
+                return base.decode(base.read(output, 16384))
+            finally:
+                self.owned(cid)
+                self.docker("rm", "--force", cid)
+                base.require(not self.docker("ps", "-aq", "--no-trunc", "--filter", "id=" + cid).stdout.strip(),
+                             "fixture proof absence")
+                base.write(self.out / (phase + "-cleanup.json"), dict(containerId=cid, absenceVerified=True))
+
+        def snapshot(self, phase, anchor):
+            frozen_point(anchor)
+            roles = self.roles()
+            base.require(set(roles) == {"1", "2"}, "both owned keyless nodes required")
+            utxo_raw = self.query_node(1, "utxo", "--whole-utxo", "--output-json")
+            ledger_raw = self.query_node(1, "ledger-state", "--output-json")
+            base.require(roles == self.roles() and live.process.same_tip(anchor, self.tip(1)) and
+                         live.process.same_tip(anchor, self.tip(2)), "frozen separate query bracket changed")
+            (self.out / (phase + "-utxo.json")).write_text(utxo_raw)
+            (self.out / (phase + "-ledger.json")).write_text(ledger_raw)
+            value = fixture.Snapshot(frozen_point(anchor), base.decode(utxo_raw),
+                                    base.decode(ledger_raw)["stateBefore"]["esLState"]["utxoState"]["fees"]).checked()
+            base.write(self.out / (phase + "-bracket.json"), dict(point=value.full_point, roles=roles,
+                       separateAcquisitions=True, atomicSnapshot=False))
+            return value
+
+        def read_signed(self, path):
+            return ada.signed_bytes(base.decode(self.execute("head", "-c", "131073", "--", path).stdout))
+
+        def retain_signed(self, source, destination):
+            raw = self.execute("head", "-c", "131073", "--", source).stdout.encode()
+            base.require(0 < len(raw) <= 131072, "bounded signed JSON envelope")
+            original = ada.signed_bytes(base.decode(raw))
+            with destination.open("xb") as stream:
+                stream.write(raw)
+            return original
+
+        def prepare_initial(self, anchor):
+            frozen_point(anchor, 100)
+            root = self.exchange / "plutus-fixture"
+            root.mkdir(mode=0o700)
+            before = self.snapshot("funding-before", anchor)
+            keyroot = self.environment / "utxo-keys"
+            addresses = [self.execute("cardano-cli", "address", "build", "--payment-verification-key-file",
+                         str(keyroot / ("utxo" + str(i)) / "utxo.vkey"), "--testnet-magic", str(self.magic)).stdout.strip()
+                         for i in (1, 2)]
+            keyhash = self.execute("cardano-cli", "address", "key-hash", "--payment-verification-key-file",
+                                   str(keyroot / "utxo1/utxo.vkey")).stdout.strip()
+            self.execute("mkdir", "-p", fixture.ROOT + "/keys")
+            self.execute("cardano-cli", "address", "key-gen", "--verification-key-file", fixture.ROOT + "/keys/beneficiary.vkey",
+                         "--signing-key-file", fixture.ROOT + "/keys/beneficiary.skey")
+            keyhash = self.execute("cardano-cli", "address", "key-hash", "--payment-verification-key-file",
+                                   fixture.ROOT + "/keys/beneficiary.vkey").stdout.strip()
+            beneficiary = self.execute("cardano-cli", "address", "build", "--payment-verification-key-file",
+                                       fixture.ROOT + "/keys/beneficiary.vkey", "--testnet-magic", str(self.magic)).stdout.strip()
+            info = base.decode(self.execute("cardano-cli", "address", "info", "--address", beneficiary).stdout)
+            base.require(info.get("base16") == "60" + keyhash, "enterprise beneficiary/collateral address")
+            payload = base.read(self.args.scala_build_root / "vm/src/test/resources/plutus-pv9-reference/script.cbor", 370)
+            self.script = fixture.script_fixture(keyhash, payload)
+            base.write(root / "script.json", self.script["json"])
+            (root / "script.cbor").write_bytes(bytes.fromhex(self.script["originalCborHex"]))
+            base.write(self.out / "script-fixture.json", self.script)
+            self.execute("mkdir", "-p", fixture.ROOT + "/keys")
+            self.execute("cp", "--", str(keyroot / "utxo1/utxo.skey"), fixture.ROOT + "/keys/utxo.skey")
+            self.execute("ln", "-s", str(self.environment / "socket"), fixture.ROOT + "/socket")
+            self.owned(self.containers["reference"])
+            self.docker("exec", "-i", self.containers["reference"], "tee", fixture.SCRIPT,
+                        data=base.read(root / "script.json", 16384))
+            for path, value in ((fixture.DATUM, self.script["datum"]), (fixture.REDEEMER, {"int": 7})):
+                self.docker("exec", "-i", self.containers["reference"], "tee", path, data=base.json.dumps(value).encode())
+            self.query_node(1, "protocol-parameters", "--out-file", fixture.PARAMETERS)
+            address = self.execute("cardano-cli", "address", "build", "--payment-script-file", fixture.SCRIPT,
+                                   "--testnet-magic", str(self.magic)).stdout.strip()
+            info_raw = self.execute("cardano-cli", "address", "info", "--address", address).stdout.encode()
+            base.require(0 < len(info_raw) <= 16384, "bounded address information")
+            with (root / "address-info.json").open("xb") as stream:
+                stream.write(info_raw)
+            info = base.decode(info_raw)
+            reference_hash = self.execute("cardano-cli", "conway", "transaction", "policyid",
+                                          "--script-file", fixture.SCRIPT).stdout.strip()
+            base.require(reference_hash == self.script["scriptHash"], "reference native script hash binding")
+            base.write(self.out / "script-reference-comparison.json", dict(
+                referenceScriptHash=reference_hash, scriptHash=self.script["scriptHash"],
+                addressInfoSHA256=base.sha(root / "address-info.json"), matched=True))
+            script_address = fixture.checked_script_address(self.script, info)
+            self.plan = fixture.funding_plan(before.utxo, addresses[0], script_address, beneficiary, beneficiary, self.script["datum"])
+            self.commands = fixture.commands(self.plan, self.magic, fixture.ROOT + "/keys/utxo.skey")
+            self.execute(*self.commands["fundingBuild"])
+            self.execute(*self.commands["fundingSign"])
+            original = self.retain_signed(fixture.FUNDING, root / "funding.signed.json")
+            (root / "funding.cbor").write_bytes(original)
+            self.funded_txid = self.execute("cardano-cli", "conway", "transaction", "txid", "--tx-file",
+                                           fixture.FUNDING, "--output-text").stdout.strip()
+            identity = self.proof_helper("native-originals", ["originals", "/exchange/plutus-fixture/funding.cbor",
+                                         "/exchange/plutus-fixture/funding-identity.json"], root / "funding-identity.json")
+            base.require(identity.get("transactionId") == self.funded_txid and
+                         identity.get("envelopeSHA256") == fixture.digest(original), "funding Scala original identity")
+            base.require(live.process.same_tip(anchor, self.tip(1)) and live.process.same_tip(anchor, self.tip(2)),
+                         "pre-funding construction bracket moved")
+            # Restart before submission: stopping a producer after submit could
+            # discard its volatile mempool. Node 2 remains keyless throughout.
+            self.stop_node(1)
+            self.stopped.discard(1)
+            self.start_node(1, True)
+            self.funding_gate = fixture.ReferenceSubmissionGate(
+                lambda *argv: super(AdaController, self).execute(*argv), self.magic,
+                fixture.ROOT + "/socket/node1/sock")
+            started = time.monotonic()
+            submitted = self.funding_gate.submit_funding(self.read_signed, fixture.digest(original))
+            base.write(self.out / "funding-submit.json", dict(
+                scope="reference-only-fixture-funding", returncode=submitted.returncode,
+                elapsedSeconds=time.monotonic() - started, attempts=1,
+                originalSHA256=fixture.digest(original), ledgerAcceptanceProven=False))
+            until = min(self.deadline - 150, started + 15)
+            while time.monotonic() < until:
+                utxo = base.decode(self.query_node(1, "utxo", "--whole-utxo", "--output-json"))
+                if self.funded_txid + "#0" in utxo:
+                    break
+                time.sleep(0.2)
+            else:
+                raise TimeoutError("funding inclusion within 15 seconds")
+            elapsed = time.monotonic() - started
+            base.require(elapsed <= 15, "funding inclusion deadline")
+            base.write(self.out / "funding-observation.json", dict(
+                elapsedSeconds=elapsed, maximumSeconds=15, fundedInput=self.funded_txid + "#0",
+                observedInWholeUtxo=True, completeLedgerComparisonProven=False))
+            self.stop_node(1)
+            self.stop_node(2)
+            self.stopped.clear()
+            self.start_node(1, False)
+            self.start_node(2, False)
+            until = min(self.deadline - 150, time.monotonic() + 10)
+            while time.monotonic() < until:
+                a, b = self.tip(1), self.tip(2)
+                if live.process.same_tip(a, b):
+                    break
+                time.sleep(0.2)
+            base.require(live.process.same_tip(a, b), "post-funding keyless convergence")
+            frozen_point(a)
+            after = self.snapshot("funding-after", a)
+            comparison = fixture.funding_comparison(before, after, self.plan, self.funded_txid, original, identity)
+            self.funding_gate.seal_bootstrap(comparison)
+            base.write(self.out / "funding-comparison.json", comparison)
+            self.funding_sealed = True
+            return a
+
+        def construct_transfer(self):
+            base.require(getattr(self, "funding_sealed", False), "confirmed sealed funding before bootstrap")
+            root = self.exchange / "submission"
+            root.mkdir(mode=0o700)
+            before = self.tip(1)
+            base.require(frozen_point(before) == self.initial, "native spend construction anchor")
+            self.execute(*fixture.spend_command(self.plan, self.funded_txid, self.initial))
+            self.execute(*self.commands["spendSign"])
+            raw = self.retain_signed(fixture.SPEND, root / "transaction.signed.json")
+            txid = self.execute("cardano-cli", "conway", "transaction", "txid", "--tx-file", fixture.SPEND,
+                                "--output-text").stdout.strip()
+            base.require(base.hex64(txid) and live.process.same_tip(before, self.tip(1)) and
+                         live.process.same_tip(before, self.tip(2)), "native spend original point bracket")
+            (root / "transaction.cbor").write_bytes(raw)
+            self.transfer = dict(schema="ada-submission-transaction-v1", profileId=fixture.PROFILE,
+                                 transactionId=txid, envelopeSHA256=fixture.digest(raw), bytes=len(raw),
+                                 validityLowerBound=self.initial["slot"], validityUpperBound=999,
+                                 initialPoint=self.initial, networkMagic=self.magic, cliSubmitted=False,
+                                 input=self.funded_txid + "#0", amount=19700000, fee=fixture.FEE)
+            proof = self.proof_helper("plutus-spend-originals", ["originals", "/exchange/submission/transaction.cbor",
+                                     "/exchange/submission/identity.json"], root / "identity.json")
+            base.require(proof.get("transactionId") == txid and proof.get("envelopeSHA256") == fixture.digest(raw),
+                         "tested spend original identity")
+            self.transfer.update(bodySHA256=proof["bodySHA256"], witnessesSHA256=proof["witnessesSHA256"],
+                                 spentInput=self.funded_txid + "#0", collateralInput=self.funded_txid + "#1")
+            # Descriptor is published once, after all original identity bindings.
+            base.write(root / "descriptor.json", self.transfer)
+
+        def run_client(self):
+            super().run_client()
+            plutus_receipt(self.client_receipt)
+
+        def wait_file(self, name, seconds):
+            value = super().wait_file(name, seconds)
+            if name in ("bootstrap-ready.json", "result.json"):
+                plutus_receipt(value)
+            if name == "result.json":
+                base.require(value.get("plutusSubmission") is True, "Plutus final inclusion claim")
+            return value
+
+        def lifecycle(self, approval):
+            root = self.args.owned_root
+            config = self.environment / "configuration.yaml"
+            base.require(root.is_absolute() and root.resolve() == root and
+                         self.environment == root / "environment" and self.environment.resolve() == self.environment and
+                         config.resolve() == config and root in config.parents,
+                         "configuration must belong to the fresh owned fixture")
+            base.require(not self.active, "configuration override before node startup")
+            original = base.read(config)
+            updated, receipt = ada.immediate_tx_submission(original)
+            preserved = self.out / "original-node-configuration.json"
+            with preserved.open("xb") as stream:
+                stream.write(original)
+                stream.flush()
+                os.fsync(stream.fileno())
+            pending = config.with_name("configuration.ada.pending")
+            with pending.open("xb") as stream:
+                stream.write(updated)
+                stream.flush()
+                os.fsync(stream.fileno())
+            base.require(base.read(config) == original, "configuration changed before fixture override")
+            pending.replace(config)
+            base.require(base.read(config) == updated and base.read(preserved) == original,
+                         "configuration override and preservation verification")
+            base.write(self.out / "txsubmission-init-delay.json", dict(receipt,
+                       configurationPath=str(config), originalConfigurationPath=str(preserved)))
+            # The base reads self.configuration from these exact bytes and its
+            # owned process checks continue to enforce configuration identity.
+            return self.same_epoch_lifecycle(approval)
+
+        def same_epoch_lifecycle(self, approval):
+            self.exchange.mkdir(mode=0o700)
+            shutil.copytree(approval.evidence, self.out / "fixture")
+            self.genesis = base.decode(base.read(self.environment / "shelley-genesis.json"))
+            self.boundary_ms = base.future_boundary(self.genesis)
+            self.configuration = self.read("configuration.yaml")
+            self.magic = self.genesis["networkMagic"]
+            for node in (1, 2):
+                port = self.read("node-data/node" + str(node) + "/port").strip()
+                base.require(port.isdigit() and 1 <= int(port) <= 65535, "generated private port")
+                live.process.PORTS[node] = int(port)
+                self.topologies[node] = base.decode(self.read("node-data/node" + str(node) + "/topology.json"))
+            base.require(live.process.PORTS[1] != live.process.PORTS[2], "distinct ports")
+            self.start_node(1, True)
+            self.start_node(2, False)
+            until = min(self.deadline - 150, time.monotonic() + 90)
+            while time.monotonic() < until:
+                a, b = self.tip(1), self.tip(2)
+                if live.process.same_tip(a, b) and a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 300 and a.get("block", 0) > 0:
+                    break
+                time.sleep(0.2)
+            else:
+                raise TimeoutError("fresh common early epoch-zero point")
+            self.stop_node(1)
+            self.stop_node(2)
+            self.start_node(1, False)
+            self.start_node(2, False)
+            # Clean stop can leave the non-forging peer one block behind.
+            # Both restarted nodes are keyless; allow bounded synchronization.
+            until = min(self.deadline - 150, time.monotonic() + 10)
+            while time.monotonic() < until:
+                a, b = self.tip(1), self.tip(2)
+                if live.process.same_tip(a, b):
+                    break
+                time.sleep(0.2)
+            base.require(live.process.same_tip(a, b) and a["epoch"] == 0 and 0 < a["slot"] < 300, "frozen initial point")
+            a = self.prepare_initial(a)
+            base.require(live.process.same_tip(a, self.tip(1)) and live.process.same_tip(a, self.tip(2)) and
+                    a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 300,
+                    "prepared frozen initial point")
+            self.initial = base.point(dict(slot=a["slot"], blockNo=a["block"], hash=a["hash"]))
+            packet, acquisition = self.capture(self.initial, "initial")
+            base.require(live.process.same_tip(a, self.tip(1)) and live.process.same_tip(a, self.tip(2)), "initial bracket moved")
+            base.write(self.out / "initial-acquisition-result.json", acquisition)
+            initial = self.exchange / "initial"
+            shutil.copytree(packet, initial)
+            shutil.copyfile(self.environment / "shelley-genesis.json", initial / "effective-shelley-genesis.json")
+            self.project(initial)
+            descriptor = dict(schema="native-ledger-v2-reviewed-inputs-v1", point=self.initial,
+                              inputs=base.manifest(initial, base.PACKET_NAMES + ("native-projection.json", "effective-shelley-genesis.json")))
+            base.write(initial / "adapter-inputs.json", descriptor)
+            self.start_scala(base.sha(initial / "adapter-inputs.json"))
+            ready = self.wait_file("bootstrap-ready.json", 25)
+            base.require(ready.get("schema") == "native-live-bootstrap-ready-v1" and base.point(ready["point"]) == self.initial,
+                    "bootstrap full point")
+            base.require(base.hex64(ready.get("sourceJoinId")) and ready.get("boundaryUnixMillis") == self.boundary_ms and
+                    ready.get("networkMagic") == self.magic, "bootstrap geometry/bindings")
+            base.require(ready.get("plutusDatumMemPackMatched") is True and
+                         ready.get("fundedInput") == self.funded_txid + "#0" and
+                         ready.get("collateralInput") == self.funded_txid + "#1", "actual datum MemPack bootstrap proof")
+            base.write(self.out / "plutus-bootstrap-proof.json", ready)
+            self.stop_node(1)
+            self.stop_node(2)
+            self.stopped.clear()
+            base.require(time.time_ns() // 1000000 < self.boundary_ms - 5000, "producer restart needs preboundary time")
+            # Keep one active producer after bootstrap so this explicitly
+            # monotonic diagnostic does not claim fork/rollback support.
+            self.start_node(1, True)
+            self.start_node(2, False)
+            resumed = time.time_ns() // 1000000
+            base.require(resumed < self.boundary_ms, "producer restart missed epoch boundary")
+            base.write(self.exchange / "peer-ready.json", dict(schema="native-live-peer-ready-v1",
+                  referenceContainerId=self.containers["reference"], generatedPort=live.process.PORTS[1],
+                  networkMagic=self.magic, producerResumedUnixMillis=resumed))
+            request = self.wait_file("endpoint-request.json", 125)
+            terminal = same_epoch_request(request, self.initial, ready["sourceJoinId"], self.boundary_ms)
+            # Acquire the exact requested historical state immediately from the
+            # running node. Never restart/fallback to latest on AcquireFailure.
+            packet, acquisition = self.capture(terminal, "endpoint")
+            base.write(self.exchange / "acquisition-result.json", acquisition)
+            endpoint = self.exchange / "endpoint"
+            shutil.copytree(packet, endpoint)
+            result_pin = base.sha(self.exchange / "acquisition-result.json")
+            descriptor = dict(schema="native-endpoint-reviewed-inputs-v1", point=terminal,
+                              genesisSHA256=base.sha(initial / "effective-shelley-genesis.json"),
+                              acquisitionResultSHA256=result_pin, inputs=base.manifest(endpoint, base.PACKET_NAMES))
+            base.write(endpoint / "endpoint-inputs.json", descriptor)
+            base.write(self.exchange / "endpoint-ready.json", dict(schema="native-endpoint-ready-v1",
+                  manifestSHA256=base.sha(endpoint / "endpoint-inputs.json"), acquisitionResultSHA256=result_pin))
+            result = self.wait_file("result.json", 30)
+            base.require(result.get("schema") == "plutus-live-same-epoch-result-v1" and result.get("passed") is True and
+                    result.get("initialPoint") == self.initial and result.get("finalPoint") == terminal and
+                    result.get("sourceJoinId") == ready["sourceJoinId"] and result.get("networkAppliedStateId") == request["networkAppliedStateId"], "final live result binding")
+            base.require(all(result.get(k) is True for k in ("resourcesFinalized", "sameEpoch", "endpointCompared",
+                         "wholeUtxoEqual", "instantaneousStakeEqual", "collateralPreserved")), "final result claims")
+            base.require(result.get("spentInput") == self.transfer["spentInput"] and
+                         result.get("collateralInput") == self.transfer["collateralInput"] and
+                         result.get("feeDelta") == fixture.FEE and result.get("governanceCompared") is False,
+                         "same-epoch spend, collateral and exact fee bindings")
+            base.require(all(result.get(k) is False for k in ("fullLedgerValidated", "nativeConformance", "runtimeImport", "livePulserCursorEqual")), "restricted scope")
+            cid = self.containers["scala"]
+            until = min(self.deadline, time.monotonic() + 5)
+            while time.monotonic() < until:
+                state = self.owned(cid)["State"]
+                if not state["Running"]:
+                    break
+                time.sleep(0.1)
+            base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "Scala process completion")
+            base.write(self.out / "scala-result.json", result)
+            self.stop_node(1)
+            self.stop_node(2)
+            self.cleanup()
+            return result
+
+    return PlutusController
+
+
+def execute(live, support, args, classpath):
+    launch = controller_type(live)(support, args, classpath)
+    watchdog = live.DiskWatchdog(args.owned_root)
+    previous = {}
+    def interrupted(signum, _frame):
+        if launch.in_cleanup and signum != signal.SIGALRM:
+            return
+        raise TimeoutError("bounded native operation interrupted")
+    started = time.monotonic()
+    try:
+        previous = {s: signal.signal(s, interrupted) for s in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT, signal.SIGUSR1)}
+        signal.alarm(240)
+        watchdog.start()
+        base.write(launch.out / "invocation.json", dict(schema="plutus-submission-controller-invocation-v1",
+                   supportManifestSHA256=args.support_sha, controllerSHA256=base.sha(Path(__file__)),
+                   baseControllerSHA256=base.sha(Path(base.__file__)), resources=base.RESOURCES,
+                   projectionSHA256=base.PROJECTION_SHA, scalaImage=args.scala_image,
+                   scalaClasspathSHA256=base.sha(args.scala_classpath_file), scalaBuildRoot=str(args.scala_build_root),
+                   operationSeconds=240, cleanupSeconds=30, profileId=fixture.PROFILE,
+                   cliSubmissionAllowed="one-reference-funding-before-bootstrap-only",
+                   testedSpendCliSubmissionAllowed=False, fixturePlannerSHA256=base.sha(Path(fixture.__file__)),
+                   adaControllerSHA256=base.sha(Path(ada.__file__)),
+                   network="reference-none;scala-and-http-client-exact-reference-namespace;capture-none"))
+        base.require(launch.docker("image", "inspect", args.scala_image, "--format", "{{.Id}}").stdout.strip() == args.scala_image,
+                     "Scala image pin")
+        ids = dict(generatorSHA256=live.z.GENERATOR_SHA, launcherSHA256=base.sha(Path(__file__)),
+                   imageId=live.z.REFERENCE_IMAGE, sourceCommit=support["sourceCommit"])
+        result, receipt = live.controller.execute(args.owned_root, ids, launch.generate, launch.lifecycle, on_abort=launch.cleanup)
+        base.write(launch.out / "controller-lifecycle.json", receipt)
+        base.require(launch.cleaned and watchdog.failure is None, "owned cleanup/watchdog")
+        base.require(time.monotonic() - started <= 270, "total deadline")
+        base.write(launch.out / "result.json", dict(schema="plutus-submission-controller-result-v1", passed=True,
+                   exchangeRoot=str(launch.exchange), cleanupVerified=True, elapsedSeconds=time.monotonic() - started,
+                   initialPoint=result["initialPoint"], finalPoint=result["finalPoint"], transactionId=launch.transfer["transactionId"],
+                   scalaResultSHA256=base.sha(launch.out / "scala-result.json"),
+                   clientResultSHA256=base.sha(launch.out / "client-result.json"),
+                   profileId=fixture.PROFILE, fundingComparisonSHA256=base.sha(launch.out / "funding-comparison.json"),
+                   bootstrapProofSHA256=base.sha(launch.out / "plutus-bootstrap-proof.json")))
+    except BaseException as error:
+        if not (launch.out / "failure.json").exists():
+            base.write(launch.out / "failure.json", dict(errorType=type(error).__name__, message=str(error)[:4096]))
+        raise
+    finally:
+        try:
+            launch.cleanup()
+        finally:
+            watchdog.stop()
+            signal.alarm(0)
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("support-manifest", "owned-root", "evidence-root", "scala-build-root", "scala-classpath-file", "projection"):
+        parser.add_argument("--" + name, type=Path, required=True)
+    parser.add_argument("--support-sha", required=True)
+    parser.add_argument("--scala-image", required=True)
+    parser.add_argument("--java", default="java")
+    parser.add_argument("--execute", action="store_true")
+    args = parser.parse_args()
+    live, support, classpath = base.preflight(args)
+    if args.execute:
+        execute(live, support, args, classpath)
+    else:
+        print(base.json.dumps(dict(preflight=True, executed=False, resources=base.RESOURCES,
+                              profileId=fixture.PROFILE,
+                              cliSubmissionAllowed="one-reference-funding-before-bootstrap-only",
+                              testedSpendCliSubmissionAllowed=False), sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

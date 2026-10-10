@@ -53,7 +53,15 @@ private[lab] final class AdaSubmissionService[F[_]] private (
         else
           validations.permit.use { _ =>
             F.cede *> F
-              .delay(AdmissionValidation.prepare(profile, view.pin, view.ledger, original))
+              .delay(
+                AdmissionValidation.prepare(
+                  profile,
+                  view.pin,
+                  view.ledger,
+                  original,
+                  Some(lab.vm.Pv9SubmissionEvaluator)
+                )
+              )
               .flatMap {
                 case Left(error) => F.pure(Result.Rejected(error))
                 case Right(candidate) =>
@@ -117,13 +125,15 @@ private[lab] final class AdaSubmissionService[F[_]] private (
   private def rebuild(view: AdmissionView, work: AdaPool.Rebuild[StatePin]): F[Unit] =
     validations.permit
       .use { _ =>
-        F.cede *> F.delay(AdaPool.revalidate(work, view.ledger)).flatMap { result =>
-          owner
-            .withCurrent(view.pin)(
-              F.monotonic.flatMap(t => pool.update(s => AdaPool.finish(s, result, t.toNanos)._1))
-            )
-            .void
-        }
+        F.cede *> F
+          .delay(AdaPool.revalidate(work, view.ledger, Some(lab.vm.Pv9SubmissionEvaluator)))
+          .flatMap { result =>
+            owner
+              .withCurrent(view.pin)(
+                F.monotonic.flatMap(t => pool.update(s => AdaPool.finish(s, result, t.toNanos)._1))
+              )
+              .void
+          }
       }
       .handleErrorWith {
         case _: AdmissionState.Unavailable => F.unit

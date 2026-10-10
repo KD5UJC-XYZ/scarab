@@ -211,6 +211,30 @@ object ConwayStake:
       ref -> Output(cred, amount(v), n.original)
     }
   }
+
+  /** Opt-in bounded datum projection; every output retains its original bytes. */
+  private[lab] def decodePlutusUtxo(
+      raw: Bytes,
+      networkId: Int
+  ): Either[String, Map[TxIn, Output]] =
+    PlutusOutput
+      .snapshot(raw, networkId)
+      .map(_.outputs.map { (ref, out) =>
+        ref -> Output(out.stakeCredential, out.coin, out.original)
+      })
+
+  private[lab] def recomputePlutus(
+      raw: Bytes,
+      networkId: Int
+  ): Either[String, Map[Credential, BigInt]] =
+    decodePlutusUtxo(raw, networkId).flatMap(m => protect(totals(m.values)))
+
+  // Selection comes only from the checked ledger being projected, never a caller flag.
+  private def decodeLedgerUtxo(ledger: ClusterTransition.State): Either[String, Map[TxIn, Output]] =
+    ledger.environment.plutus.map(_.networkId) match
+      case Some(networkId) => decodePlutusUtxo(ledger.outputMap, networkId)
+      case None            => decodeUtxo(ledger.outputMap)
+
   private def totals(outputs: Iterable[Output]): Map[Credential, BigInt] =
     outputs.foldLeft(Map.empty[Credential, BigInt]) { (m, o) =>
       o.credential.fold(m) { c =>
@@ -312,7 +336,7 @@ object ConwayStake:
         "snapshot/context mismatch"
       )
     }
-    val utxo = get(decodeUtxo(ledger.outputMap)); val instantaneous = totals(utxo.values)
+    val utxo = get(decodeLedgerUtxo(ledger)); val instantaneous = totals(utxo.values)
     require(instantaneous == exported, "whole UTxO/instantaneous export mismatch")
     val id = hash(
       Profile + context.id.hex + ledger.id.hex + sourceDigest.hex + snapshotText(
@@ -352,7 +376,7 @@ object ConwayStake:
       "stake same-epoch slot guard"
     )
     val accepted = get(ClusterTransition.commitBlock(ledger, block))
-    val next = get(decodeUtxo(accepted.state.outputMap))
+    val next = get(decodeLedgerUtxo(accepted.state))
     val shared = current.utxo.keySet intersect next.keySet
     require(shared.forall(k => current.utxo(k) == next(k)), "existing output changed")
     val spent = totals((current.utxo.keySet -- next.keySet).toVector.map(current.utxo))
@@ -399,6 +423,7 @@ object ConwayStake:
         current.epoch == ledger.environment.epoch,
       "synthetic stake owner/before/revision"
     )
+    require(ledger.environment.plutus.isEmpty, "Plutus synthetic stake successor unsupported")
     val rotation = preview.rotation
     require(
       (rotation.owner eq owner) && rotation.beforeId == current.id &&
@@ -432,7 +457,7 @@ object ConwayStake:
         accepted.revision == current.revision + 1,
       "synthetic successor ledger geometry"
     )
-    val next = get(decodeUtxo(accepted.outputMap))
+    val next = get(decodeLedgerUtxo(accepted))
     val shared = current.utxo.keySet intersect next.keySet
     require(shared.forall(k => current.utxo(k) == next(k)), "existing output changed")
     val spent = totals((current.utxo.keySet -- next.keySet).toVector.map(current.utxo))
@@ -485,7 +510,7 @@ object ConwayStake:
         ledger.environment.epoch == before.epoch && ledger.revision > before.revision,
       "stake undo ledger/owner/revision mismatch"
     )
-    val utxo = get(decodeUtxo(ledger.outputMap))
+    val utxo = get(decodeLedgerUtxo(ledger))
     require(
       utxo == before.utxo && totals(utxo.values) == before.instantaneous,
       "stake undo content mismatch"

@@ -12,6 +12,7 @@ object ScopedAdmission:
     case Identity(error: SignedTransaction.Error)
     case Unsupported(detail: String)
     case Ledger(error: ClusterTransition.Failure)
+    case Plutus(error: PlutusAdmission.Failure)
 
   final case class FeeReceipt(supplied: BigInt, minimum: BigInt, memoBytes: BigInt)
   final class Candidate[P] private[ScopedAdmission] (
@@ -24,8 +25,11 @@ object ScopedAdmission:
       val ledgerStateId: Bytes,
       val environmentId: Bytes,
       val validationSlot: BigInt,
-      val nativeAdmission: Option[NativeSpending.Admission]
+      val nativeAdmission: Option[NativeSpending.Admission],
+      val plutusAdmission: Option[PlutusAdmission.Checked] = None
   ):
+    val collateral: Set[TxIn] = plutusAdmission.fold(Set.empty[TxIn])(_.collateral)
+    val dependencies: Set[TxIn] = spent ++ collateral
     val profileId = profile.id
     val fullLedgerValidated = false
 
@@ -86,5 +90,31 @@ object ScopedAdmission:
           checked.environmentId,
           checked.validationSlot,
           Some(checked.native)
+        )
+      )
+
+  private[ledger] def bindPlutus[P](
+      pin: P,
+      view: ClusterTransition.State,
+      checked: PlutusAdmission.Checked
+  ): Either[Failure, Candidate[P]] =
+    if view == null || checked == null || !(checked.prepared.source eq view) ||
+      checked.environmentId != view.environment.id || checked.ledgerStateId != view.id ||
+      checked.validationSlot != view.slot || view.profileId != AdmissionProfile.PlutusV3.id
+    then Left(Failure.Unsupported("Plutus receipt does not bind this confirmed view"))
+    else
+      Right(
+        new Candidate(
+          checked.transaction,
+          pin,
+          AdmissionProfile.PlutusV3,
+          checked.spent,
+          FeeReceipt(checked.fee.suppliedFee, checked.fee.minimumFee, checked.fee.memoBytes),
+          checked.minimumOutput,
+          view.id,
+          view.environment.id,
+          view.slot,
+          None,
+          Some(checked)
         )
       )

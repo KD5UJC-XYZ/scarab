@@ -45,7 +45,8 @@ private[lab] object NativeEpochComponents:
       val currentBlocks: Map[Bytes, BigInt],
       val nonMyopic: N.State,
       val reward: Absent,
-      val protocolAcquisitionId: Option[Bytes]
+      val protocolAcquisitionId: Option[Bytes],
+      val admissionProfile: AdmissionProfile
   ):
     val rewardSeedAdmission = false
     val runtimeImport = false
@@ -307,7 +308,17 @@ private[lab] object NativeEpochComponents:
     locations.foreach((name, n) => same(n, decode(components(name))))
     val whole = decode(originals("original-whole-utxo.cbor"));
     same(whole, decode(components("utxo")))
-    val unpacked = get(NativeCoinUtxoMemPack.decode(us(0).original)); same(whole, decode(unpacked))
+    val plutusNetwork = Option.when(admissionProfile == AdmissionProfile.PlutusV3)(0)
+    val unpacked = plutusNetwork match
+      case Some(network) => get(PlutusCoinUtxoMemPack.decode(us(0).original, network)).utxo
+      case None          => get(NativeCoinUtxoMemPack.decode(us(0).original))
+    same(whole, decode(unpacked))
+    def stakeOutputs(raw: Bytes) = plutusNetwork match
+      case Some(network) => S.decodePlutusUtxo(raw, network)
+      case None          => S.decodeUtxo(raw)
+    def instantaneousFrom(raw: Bytes) = plutusNetwork match
+      case Some(network) => S.recomputePlutus(raw, network)
+      case None          => S.recompute(raw)
     val epoch = uint(fs(0));
     require(epoch == 0 && ju(field(projection, "epoch")) == epoch, "early epoch-zero profile")
     val parameters = get(
@@ -334,7 +345,7 @@ private[lab] object NativeEpochComponents:
     )
     val profileRecipe = admissionProfile match
       case AdmissionProfile.AdaVkey => identityRecipe
-      case AdmissionProfile.NativeScript =>
+      case AdmissionProfile.NativeScript | AdmissionProfile.PlutusV3 =>
         identityRecipe + "bootstrap-profile=" + admissionProfile.id + "\n"
     val id = sha(Bytes.fromArray(profileRecipe.getBytes("US-ASCII")))
     Vector(ps(2), ps(3), delegation(1)).foreach(emptyMap)
@@ -389,7 +400,7 @@ private[lab] object NativeEpochComponents:
     val instantaneous = map(us(4)).map((k, v) => credential(k) -> uint(v)).toMap
     require(instantaneous.values.forall(_ > 0), "instantaneous stake excludes zero entries")
     require(
-      get(S.recompute(originals("original-whole-utxo.cbor"))) == instantaneous,
+      get(instantaneousFrom(originals("original-whole-utxo.cbor"))) == instantaneous,
       "original UTxO/instantaneous mismatch"
     )
     def snapshot(n: Node): S.Snapshot =
@@ -452,7 +463,7 @@ private[lab] object NativeEpochComponents:
     val chain = arr(es(0), 2); zero(chain(0)); zero(us(1)); zero(us(5))
     val fees = uint(us(2))
     if admissionProfile == AdmissionProfile.AdaVkey then zero(us(2))
-    val outputs = get(S.decodeUtxo(originals("original-whole-utxo.cbor")))
+    val outputs = get(stakeOutputs(originals("original-whole-utxo.cbor")))
     val utxoCoin = outputs.values.map(_.coin).sum; val reserves = uint(chain(1));
     val supply = parameters.globals.maxSupply
     require(utxoCoin + reserves + fees == supply, "independent coin supply mismatch")
@@ -481,7 +492,8 @@ private[lab] object NativeEpochComponents:
         S.Snapshots(mark, setSnapshot, goSnapshot, uint(snapshots(3))),
         epoch,
         uint(us(2)),
-        id
+        id,
+        plutusNetwork
       )
     )
     val reward = new Absent(
@@ -505,6 +517,7 @@ private[lab] object NativeEpochComponents:
       current,
       nonMyopic,
       reward,
-      acquisition.map(_.id)
+      acquisition.map(_.id),
+      admissionProfile
     )
   }

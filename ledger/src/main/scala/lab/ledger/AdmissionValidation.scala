@@ -10,7 +10,9 @@ object AdmissionValidation:
       profile: AdmissionProfile,
       pin: P,
       view: ClusterTransition.State,
-      original: Bytes
+      original: Bytes,
+      evaluator: Option[lab.plutus.PlutusExecution.Evaluator] = None
   ): Either[ScopedAdmission.Failure, ScopedAdmission.Candidate[P]] = profile match
     case AdmissionProfile.AdaVkey      => AdaAdmission.prepare(pin, view, original)
     case AdmissionProfile.NativeScript => NativeAdmission.prepare(pin, view, original)
+    case AdmissionProfile.PlutusV3     => PlutusAdmission.prepare(pin, view, original, evaluator)

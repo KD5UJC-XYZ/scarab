@@ -663,7 +663,8 @@ object CoherentSequence:
           preview.preview.id,
           block.header.hash,
           block.transactionMemos,
-          block.header.slot
+          block.header.slot,
+          Some(lab.vm.Pv9SubmissionEvaluator)
         )
       )
       binding <- current.stakeBinding.toRight(Failure.Rejected("successor-stake", "missing stake"))
@@ -1035,7 +1036,8 @@ object CoherentSequence:
           current.ledger,
           block.header.hash,
           block.transactionMemos,
-          block.header.slot
+          block.header.slot,
+          Some(lab.vm.Pv9SubmissionEvaluator)
         )
       )
       stake <- current.stakeBinding.traverse { (stakeOwner, state) =>
@@ -2112,6 +2114,27 @@ object CoherentSequence:
       maxBlocks: Int = MaxBlocks
   ): F[Result[Runtime[F]]] =
     createWithStakeImpl[F](context, prepared, maxBlocks, allowDiagnostic = false)
+
+  /** Internal same-epoch Plutus diagnostic only. No synthetic boundary or persistence capability.
+    */
+  private[lab] def createPlutusDiagnosticWithStake[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      maxBlocks: Int = MaxBlocks
+  ): F[Result[Runtime[F]]] =
+    if context == null || prepared == null || !context.diagnosticOnly ||
+      context.ledger.environment.plutus.isEmpty ||
+      prepared.plutusNetwork != context.ledger.environment.plutus.map(_.networkId)
+    then
+      Sync[F].pure(
+        Left(
+          Failure.Unsupported(
+            "plutus-profile",
+            "matching diagnostic Plutus context and stake seed required"
+          )
+        )
+      )
+    else createWithStakeImpl[F](context, prepared, maxBlocks, allowDiagnostic = true)
 
   private def createWithStakeImpl[F[_]: Sync](
       context: SequenceInput.Context,

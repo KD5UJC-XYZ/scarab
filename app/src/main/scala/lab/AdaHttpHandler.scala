@@ -90,6 +90,28 @@ private[lab] object AdaHttpHandler:
       case ScopedAdmission.Failure.Identity(SignedTransaction.Error.MalformedShape(_)) =>
         failure(400, "MalformedShape", "rejected")
       case ScopedAdmission.Failure.Unsupported(_) => failure(422, "Unsupported", "unsupported")
+      case ScopedAdmission.Failure.Plutus(error) =>
+        import lab.ledger.PlutusAdmission.Failure as P
+        import lab.plutus.PlutusExecution.Failure as E
+        error match
+          case P.Identity(value) => validationFailure(ScopedAdmission.Failure.Identity(value))
+          case P.PhaseOne(value) =>
+            import lab.ledger.PlutusSpending.Failure as S
+            value match
+              case S.Malformed(_)       => failure(400, "MalformedShape", "rejected")
+              case S.Unsupported(_)     => failure(422, "Unsupported", "unsupported")
+              case S.Rejected(_)        => failure(422, "Rejected", "rejected")
+              case S.InternalFailure(_) => failure(503, "InternalFailure", "unavailable")
+          case P.BindingMismatch | P.InternalFailure(_) =>
+            failure(503, "InternalFailure", "unavailable")
+          case P.Execution(value) =>
+            value match
+              case E.MalformedInput(_)  => failure(400, "DecodeRejected", "rejected")
+              case E.Unsupported(_)     => failure(422, "Unsupported", "unsupported")
+              case E.ScriptFailure(_)   => failure(422, "ScriptFailure", "rejected")
+              case E.NonUnitReturn      => failure(422, "NonUnitReturn", "rejected")
+              case E.BudgetExhausted    => failure(422, "BudgetExhausted", "rejected")
+              case E.InternalFailure(_) => failure(503, "InternalFailure", "unavailable")
       case ScopedAdmission.Failure.Ledger(error) =>
         error match
           case ClusterTransition.Failure.Unsupported(_) =>

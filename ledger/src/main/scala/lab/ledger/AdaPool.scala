@@ -69,7 +69,7 @@ object AdaPool:
     def size: Int = entries.size
     def byteSize: Int = entries.map(_.candidate.transaction.byteSize).sum
     def reserved: Set[TxIn] =
-      if rebuilding || closed then Set.empty else entries.flatMap(_.candidate.spent).toSet
+      if rebuilding || closed then Set.empty else entries.flatMap(_.candidate.dependencies).toSet
     def status(id: Bytes, now: Long): Option[Status[P]] =
       entries
         .find(_.candidate.transaction.transactionId == id)
@@ -138,7 +138,7 @@ object AdaPool:
             (s, Outcome.AlreadyPresent(existing.receipt))
           else (s, Outcome.Rejected(Rejection.EnvelopeConflict))
         case None =>
-          val conflicts = candidate.spent intersect s.reserved
+          val conflicts = candidate.dependencies intersect s.reserved
           if conflicts.nonEmpty then (s, Outcome.Rejected(Rejection.InputsReserved(conflicts)))
           else if s.size >= s.limits.maxTransactions || tx.byteSize > s.limits.maxBytes - s.byteSize
           then (s, Outcome.Rejected(Rejection.Capacity))
@@ -199,11 +199,21 @@ object AdaPool:
     (next, new Rebuild(newPin, s.profile, token, kept))
 
   /** Bounded by at most 64 entries, preserving original admission order. No state publication. */
-  def revalidate[P](work: Rebuild[P], view: ClusterTransition.State): Rebuilt[P] =
+  def revalidate[P](
+      work: Rebuild[P],
+      view: ClusterTransition.State,
+      evaluator: Option[lab.plutus.PlutusExecution.Evaluator] = None
+  ): Rebuilt[P] =
     new Rebuilt(
       work,
       work.originals.map(e =>
-        AdmissionValidation.prepare(work.profile, work.pin, view, e.candidate.transaction.original)
+        AdmissionValidation.prepare(
+          work.profile,
+          work.pin,
+          view,
+          e.candidate.transaction.original,
+          evaluator
+        )
       )
     )
 
@@ -232,9 +242,9 @@ object AdaPool:
                 ),
                 now
               )
-            case Right(candidate) if (candidate.spent intersect reservations).isEmpty =>
+            case Right(candidate) if (candidate.dependencies intersect reservations).isEmpty =>
               kept :+= Entry(candidate, old.admittedAt)
-              reservations ++= candidate.spent
+              reservations ++= candidate.dependencies
             case other =>
               val drop = other match
                 case Left(error) => Drop.Validation(error)

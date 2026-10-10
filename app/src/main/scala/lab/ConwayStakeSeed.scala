@@ -14,7 +14,8 @@ object ConwayStakeSeed:
       val snapshots: Stake.Snapshots,
       val epoch: BigInt,
       val fees: BigInt,
-      val sourceId: Bytes
+      val sourceId: Bytes,
+      val plutusNetwork: Option[Int] = None
   ):
     val rewardsDecoded = false
     val donationsKnown = false
@@ -25,8 +26,13 @@ object ConwayStakeSeed:
           ledger != null && ledger.environment.epoch == epoch && ledger.fees == fees,
           "stake ledger epoch/fees mismatch"
         )
+        val actualNetwork = ledger.environment.plutus.map(_.networkId)
+        require(plutusNetwork == actualNetwork, "stake ledger Plutus profile/network mismatch")
+        def decode(raw: Bytes) = actualNetwork match
+          case Some(networkId) => Stake.decodePlutusUtxo(raw, networkId)
+          case None            => Stake.decodeUtxo(raw)
         require(
-          get(Stake.decodeUtxo(ledger.outputMap)) == get(Stake.decodeUtxo(utxo)),
+          get(decode(ledger.outputMap)) == get(decode(utxo)),
           "stake complete ledger UTxO mismatch"
         )
         get(Stake.seed(owner, context, ledger, sourceId, instantaneous, snapshots))
@@ -40,7 +46,8 @@ object ConwayStakeSeed:
       snapshots: Stake.Snapshots,
       epoch: BigInt,
       fees: BigInt,
-      sourceId: Bytes
+      sourceId: Bytes,
+      plutusNetwork: Option[Int] = None
   ): Either[String, Prepared] = checked {
     val max = (BigInt(1) << 64) - 1
     require(
@@ -52,7 +59,13 @@ object ConwayStakeSeed:
       "checked stake epoch/fee bounds"
     )
     require(utxo != null && utxo.size <= 4194304, "checked UTxO bound")
-    val instant = get(Stake.recompute(utxo))
+    require(
+      plutusNetwork != null && plutusNetwork.forall(n => n == 0 || n == 1),
+      "checked stake Plutus network"
+    )
+    val instant = get(plutusNetwork match
+      case Some(networkId) => Stake.recomputePlutus(utxo, networkId)
+      case None            => Stake.recompute(utxo))
     require(instant == exported, "whole UTxO/instantaneous component mismatch")
     Vector(snapshots.mark, snapshots.set, snapshots.go).foreach { snapshot =>
       require(snapshot != null, "null snapshot")
@@ -65,7 +78,7 @@ object ConwayStakeSeed:
           "snapshot/context mismatch"
         )
     }
-    new Prepared(context, utxo, instant, snapshots, epoch, fees, sourceId)
+    new Prepared(context, utxo, instant, snapshots, epoch, fees, sourceId, plutusNetwork)
   }
   private def get[A](e: Either[String, A]): A =
     e.fold(s => throw new IllegalArgumentException(s), identity)

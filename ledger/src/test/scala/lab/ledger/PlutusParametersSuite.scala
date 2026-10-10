@@ -70,3 +70,27 @@ class PlutusParametersSuite extends munit.FunSuite:
     assert(decode(base.dropRight(1)).isLeft)
     assert(PlutusParameters.decode(null, null, null).isLeft)
   }
+
+  test("environment binds actual geometry and rejects mixed parameter/genesis projections") {
+    val parameters = decode(base).fold(fail(_), identity)
+    val genesis = Bytes(Vector.fill(32)(1.toByte))
+    val env = ClusterTransition
+      .environment(genesis, parameters.sourceSHA256, 42, 0, 9, 0, 44, 155381, 16384, 4310)
+      .fold(e => fail(e.toString), identity)
+    val time = PlutusContextInput.SlotTime(1700000000000L, 100, 1, genesis)
+    val first = PlutusEnvironment.bind(env, parameters, time, 0).fold(fail(_), identity)
+    val later = PlutusEnvironment
+      .bind(env, parameters, time.copy(systemStartMillis = 1700000000001L), 0)
+      .fold(fail(_), identity)
+    assertNotEquals(first.id, later.id)
+    assertEquals(first.parameters.sourceSHA256, env.parameterDigest)
+    assert(
+      PlutusEnvironment.bind(env, parameters, time.copy(genesisDigest = Bytes.empty), 0).isLeft
+    )
+    assert(PlutusEnvironment.bind(env, parameters, time.copy(slotLengthDenominator = 0), 0).isLeft)
+    assert(PlutusEnvironment.bind(env, parameters, time, 1).isLeft)
+    val different = ClusterTransition
+      .environment(genesis, parameters.sourceSHA256, 42, 0, 9, 0, 45, 155381, 16384, 4310)
+      .fold(e => fail(e.toString), identity)
+    assert(PlutusEnvironment.bind(different, parameters, time, 0).isLeft)
+  }

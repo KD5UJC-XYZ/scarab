@@ -314,7 +314,7 @@ object SequenceInput:
       globals.networkMagic > 0 && globals.networkMagic <= BigInt("ffffffff", 16),
       "native diagnostic network magic"
     )
-    val environment = ledgerGet(
+    val baseEnvironment = ledgerGet(
       ClusterTransition.environment(
         globals.genesisSHA256,
         parameters.sha256,
@@ -328,6 +328,41 @@ object SequenceInput:
         parameters.coinsPerUTxOByte
       )
     )
+    val environment = epoch.admissionProfile match
+      case lab.submission.AdmissionProfile.PlutusV3 =>
+        val modelStream = Option(getClass.getResourceAsStream("/plutus-pv9/cost-model.json"))
+          .getOrElse(throw new IllegalArgumentException("registered Plutus cost model unavailable"))
+        val model =
+          try Bytes.fromArray(modelStream.readNBytes(16385))
+          finally modelStream.close()
+        val checkedParameters = get(
+          "plutus-parameters",
+          lab.ledger.PlutusParameters.decode(parameters.original, parameters.sha256, model)
+        )
+        val genesis = epoch.parameters.genesisOriginal
+        require(
+          ClusterHeaderObservation.sha256(genesis) == globals.genesisSHA256,
+          "Plutus timing genesis pin"
+        )
+        val start = java.time.Instant.parse(
+          ReferenceJson.string(ReferenceJson.field(ReferenceJson.parse(genesis), "systemStart"))
+        )
+        require(start.getNano % 1000000 == 0, "Plutus system start requires exact milliseconds")
+        val duration = epoch.parameters.slotLength
+        val numerator = duration.numerator * 1000
+        val divisor = numerator.gcd(duration.denominator)
+        val time = lab.ledger.PlutusContextInput.SlotTime(
+          BigInt(start.getEpochSecond) * 1000 + start.getNano / 1000000,
+          numerator / divisor,
+          duration.denominator / divisor,
+          globals.genesisSHA256
+        )
+        val profile = get(
+          "plutus-environment",
+          lab.ledger.PlutusEnvironment.bind(baseEnvironment, checkedParameters, time, 0)
+        )
+        ledgerGet(ClusterTransition.withPlutus(baseEnvironment, profile))
+      case _ => baseEnvironment
     val checkpoint = ledgerGet(
       ClusterTransition.checkpoint(environment, utxo, epoch.pots.fees, anchor.slot, id)
     )

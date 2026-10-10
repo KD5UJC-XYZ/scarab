@@ -258,6 +258,12 @@ Three separate rejected witness variants have exact-byte diagnostics and valid
 controls. Funding is reference-only setup; this remains restricted ADA native
 spending, not full ledger/consensus or Plutus validation.
 
+The opt-in [isolated PV9 Plutus spending profile](docs/plutus-admission.md) composes
+signed-envelope admission, bounded V3 evaluation, collateral-aware pool handling,
+and datum-aware same-epoch state transitions. Its public synthetic tests are
+separate from acquired native snapshot and local-node acceptance evidence.
+
+
 
 The [same-epoch nonce freeze observation](docs/private-cluster-nonce-freeze.md)
 derives candidate/evolving nonce changes from a pinned pre-anchor and complete

@@ -39,7 +39,7 @@ lazy val core = project.in(file("core")).configs(PrivateCorpus).settings(private
     "org.scalameta" %% "munit" % "1.0.2" % Test
   )
 )
-lazy val vm = project.in(file("vm")).configs(PrivateCorpus).settings(privateCorpusSettings).settings(
+lazy val vm = project.in(file("vm")).dependsOn(core).configs(PrivateCorpus).settings(privateCorpusSettings).settings(
   libraryDependencies ++= Seq(
     // Direct use by the bounded BLAKE2b provider; same version already supplied by Scalus.
     "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",

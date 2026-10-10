@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.security.MessageDigest
 import lab.cbor.{Bytes, Cbor, Node, Value as V}
 import scala.util.control.NonFatal
+import lab.plutus.PlutusExecution as PE
 
 /** Pure restricted UTxO/fee transition. No observed post-state, consensus, ticking, persistence,
   * epoch derivation, or full-ledger claim. Caller owns current state and bounded undo history.
@@ -38,7 +39,8 @@ object ClusterTransition:
       val networkMagic: Long,
       val epoch: BigInt,
       val feeParameters: FeeSize.Parameters,
-      val minimumOutputParameters: MinimumOutput.Parameters
+      val minimumOutputParameters: MinimumOutput.Parameters,
+      val plutus: Option[PlutusEnvironment] = None
   )
   final class State private[ClusterTransition] (
       val environment: Environment,
@@ -51,7 +53,7 @@ object ClusterTransition:
       private[ClusterTransition] val entries: Map[TxIn, Node],
       private[ClusterTransition] val head: Option[Bytes]
   ):
-    val profileId = ProfileId
+    val profileId = environment.plutus.fold(ProfileId)(_ => PE.ProfileId)
     val fullLedgerValidated = false
     def size: Int = entries.size
 
@@ -93,12 +95,7 @@ object ClusterTransition:
         (),
         Failure.Malformed("local ledger identity")
       )
-      entries <- NativeSpending.snapshot(image.outputMap).left.map(local)
-      _ <- entries.values.foldLeft[Checked[Unit]](Right(())) { (acc, node) =>
-        acc.flatMap(_ =>
-          NativeSpending.output(node, true).left.map(Failure.Unsupported.apply).map(_ => ())
-        )
-      }
+      entries <- checkedEntries(env, image.outputMap)
       restored <- state(
         env,
         originalCheckpointId,
@@ -125,9 +122,10 @@ object ClusterTransition:
       val minimum: MinimumOutput.Receipt,
       val nativeAdmission: Option[NativeSpending.Admission],
       val spent: Set[TxIn],
-      val created: Set[TxIn]
+      val created: Set[TxIn],
+      val plutusAdmission: Option[PlutusAdmission.Checked] = None
   ):
-    val profileId = ProfileId
+    val profileId = before.profileId
     val credentialBound = true
     val fullLedgerValidated = false
     def outputMap: Bytes = after.outputMap
@@ -146,7 +144,7 @@ object ClusterTransition:
       val undo: Undo,
       val candidate: Candidate
   ):
-    val profileId = ProfileId
+    val profileId = state.profileId
     val credentialBound = true
     val fullLedgerValidated = false
 
@@ -162,7 +160,7 @@ object ClusterTransition:
       val created: Set[TxIn],
       private[ledger] val syntheticBoundary: Option[(Bytes, BigInt)] = None
   ):
-    val profileId = ProfileId
+    val profileId = before.profileId
     val credentialBound = true
     val fullLedgerValidated = false
     def outputMap: Bytes = after.outputMap
@@ -175,7 +173,7 @@ object ClusterTransition:
       val undo: Undo,
       val candidate: BlockCandidate
   ):
-    val profileId = ProfileId
+    val profileId = state.profileId
     val credentialBound = true
     val fullLedgerValidated = false
 
@@ -253,6 +251,43 @@ object ClusterTransition:
       )
     yield new Environment(id, genesisDigest, parameterDigest, networkMagic, epoch, fee, minimum)
   }
+
+  /** Explicit opt-in; parameters/time were bound separately to the base environment. */
+  def withPlutus(env: Environment, profile: PlutusEnvironment): Checked[Environment] = protect {
+    if env.plutus.nonEmpty || profile == null || profile.baseEnvironmentId != env.id then
+      Left(Failure.Malformed("Plutus environment does not bind this base"))
+    else
+      Right(
+        new Environment(
+          profile.id,
+          env.genesisDigest,
+          env.parameterDigest,
+          env.networkMagic,
+          env.epoch,
+          env.feeParameters,
+          env.minimumOutputParameters,
+          Some(profile)
+        )
+      )
+  }
+
+  private def checkedEntries(env: Environment, raw: Bytes): Checked[Map[TxIn, Node]] =
+    for
+      entries <- NativeSpending.snapshot(raw).left.map(local)
+      _ <- env.plutus match
+        case Some(profile) =>
+          PlutusOutput
+            .snapshot(raw, profile.networkId)
+            .left
+            .map(Failure.Unsupported.apply)
+            .map(_ => ())
+        case None =>
+          entries.values.foldLeft[Checked[Unit]](Right(())) { (acc, node) =>
+            acc.flatMap(_ =>
+              NativeSpending.output(node, true).left.map(Failure.Unsupported.apply).map(_ => ())
+            )
+          }
+    yield entries
 
   def fromContext(
       context: ClusterTransfer.Context,
@@ -337,11 +372,7 @@ object ClusterTransition:
         (),
         Failure.Malformed("32-byte checkpoint attribution required")
       )
-      entries <- NativeSpending.snapshot(rawUtxo).left.map(local)
-      _ <- entries.values.foldLeft[Checked[Unit]](Right(())) { (acc, node) =>
-        for _ <- acc; _ <- NativeSpending.output(node, true).left.map(Failure.Unsupported.apply)
-        yield ()
-      }
+      entries <- checkedEntries(env, rawUtxo)
       raw <- encode(entries)
       id = digest(
         ProfileId + ":checkpoint",
@@ -398,7 +429,97 @@ object ClusterTransition:
       )
     yield (tx, raw)
 
-  def prepare(before: State, original: Bytes, inclusionSlot: BigInt): Checked[Candidate] = protect {
+  def prepare(
+      before: State,
+      original: Bytes,
+      inclusionSlot: BigInt,
+      evaluator: Option[PE.Evaluator] = None
+  ): Checked[Candidate] = protect {
+    before.environment.plutus match
+      case None => prepareOrdinary(before, original, inclusionSlot)
+      case Some(profile) =>
+        for
+          vm <- evaluator.toRight(Failure.Unsupported("trusted Plutus evaluator required"))
+          receipt <- PlutusAdmission
+            .check(before, original, profile, vm, inclusionSlot)
+            .left
+            .map(e => Failure.Unsupported(e.toString))
+          candidate <- prepareCheckedPlutus(before, receipt)
+        yield candidate
+  }
+
+  private[ledger] def prepareCheckedPlutus(
+      before: State,
+      receipt: PlutusAdmission.Checked
+  ): Checked[Candidate] = protect {
+    for
+      _ <- Either.cond(
+        receipt != null && (receipt.prepared.source eq before) && receipt.ledgerStateId == before.id &&
+          receipt.environmentId == before.environment.id && receipt.validationSlot >= before.slot &&
+          before.revision < MaxRevision,
+        (),
+        Failure.StaleState("Plutus receipt state/slot mismatch")
+      )
+      ref <- TxIn
+        .create(receipt.transaction.transactionId, 0)
+        .left
+        .map(e => Failure.Malformed(e.toString))
+      _ <- Either.cond(!before.entries.contains(ref), (), Failure.Malformed("output collision"))
+      output <- Cbor.decode(receipt.prepared.payout).left.map(Failure.Malformed.apply)
+      next = (before.entries -- receipt.spent).updated(ref, output)
+      _ <- Either.cond(
+        receipt.collateral.forall(r => next.get(r) == before.entries.get(r)),
+        (),
+        Failure.Malformed("successful transition changed collateral")
+      )
+      tentative <- state(
+        before.environment,
+        before.checkpointId,
+        next,
+        before.fees + receipt.fee.suppliedFee,
+        receipt.validationSlot,
+        before.revision + 1,
+        None
+      )
+      transition = digest(
+        PE.ProfileId + ":transition",
+        Vector(
+          before.id,
+          text(before.revision.toString),
+          before.head.getOrElse(Bytes.empty),
+          tentative.id,
+          receipt.transaction.original,
+          receipt.requestDigest
+        )
+      )
+      after <- state(
+        before.environment,
+        before.checkpointId,
+        next,
+        tentative.fees,
+        tentative.slot,
+        tentative.revision,
+        Some(transition)
+      )
+    yield new Candidate(
+      before,
+      after,
+      receipt.transaction.original,
+      receipt.transaction.transactionId,
+      receipt.fee.suppliedFee,
+      receipt.minimumOutput,
+      None,
+      receipt.spent,
+      Set(ref),
+      Some(receipt)
+    )
+  }
+
+  private def prepareOrdinary(
+      before: State,
+      original: Bytes,
+      inclusionSlot: BigInt
+  ): Checked[Candidate] = protect {
     for
       _ <- Either.cond(
         before.revision < MaxRevision,
@@ -587,7 +708,8 @@ object ClusterTransition:
       before: State,
       headerHash: Bytes,
       transactionMemos: Vector[Bytes],
-      inclusionSlot: BigInt
+      inclusionSlot: BigInt,
+      evaluator: Option[PE.Evaluator] = None
   ): Checked[BlockCandidate] = protect {
     for
       _ <- Either.cond(headerHash.size == 32, (), Failure.Malformed("32-byte header hash required"))
@@ -607,6 +729,17 @@ object ClusterTransition:
         (),
         Failure.Unsupported("block inclusion slot must be uint64 and strictly increasing")
       )
+      _ <- before.environment.plutus match
+        case None => Right(())
+        case Some(profile) =>
+          PlutusFees
+            .checkBlock(
+              profile.parameters.execution,
+              Vector.fill(transactionMemos.size)(PE.ProfileBudget)
+            )
+            .left
+            .map(e => Failure.Unsupported(e.toString))
+            .map(_ => ())
       folded <- transactionMemos.foldLeft[Checked[(State, Vector[Bytes], Set[TxIn])]](
         Right((before, Vector.empty, Set.empty))
       ) { (acc, memo) =>
@@ -622,7 +755,7 @@ object ClusterTransition:
             before.revision,
             current.head
           )
-          candidate <- prepare(intermediate, memo, inclusionSlot)
+          candidate <- prepare(intermediate, memo, inclusionSlot, evaluator)
         yield (
           candidate.after,
           ids :+ candidate.transactionId,
@@ -675,7 +808,8 @@ object ClusterTransition:
       boundaryId: Bytes,
       headerHash: Bytes,
       transactionMemos: Vector[Bytes],
-      inclusionSlot: BigInt
+      inclusionSlot: BigInt,
+      evaluator: Option[PE.Evaluator] = None
   ): Checked[BlockCandidate] = protect {
     for
       _ <- Either.cond(
@@ -683,6 +817,11 @@ object ClusterTransition:
           boundaryId.size == 32,
         (),
         Failure.Malformed("synthetic exact successor epoch/boundary identity")
+      )
+      _ <- Either.cond(
+        before.environment.plutus.isEmpty,
+        (),
+        Failure.Unsupported("Plutus successor parameter/state rebinding is not enabled")
       )
       env = before.environment
       nextEnvironment = new Environment(
@@ -711,7 +850,7 @@ object ClusterTransition:
         before.revision,
         before.head
       )
-      block <- prepareBlock(boundary, headerHash, transactionMemos, inclusionSlot)
+      block <- prepareBlock(boundary, headerHash, transactionMemos, inclusionSlot, evaluator)
     yield new BlockCandidate(
       before,
       block.after,
