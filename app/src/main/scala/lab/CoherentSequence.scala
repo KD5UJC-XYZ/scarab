@@ -2138,6 +2138,62 @@ object CoherentSequence:
       )
     else createWithStakeImpl[F](context, prepared, maxBlocks, allowDiagnostic = true)
 
+  /** Fresh source-validated lineage only. The enclosing restore coordinator authenticates the
+    * publication and replays originals before exposing this runtime. No historical ID is installed.
+    */
+  private[lab] def createPlutusRecoveryWithStake[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      publicationSHA256: Bytes,
+      maxBlocks: Int
+  ): F[Result[Runtime[F]]] =
+    val F = Sync[F]
+    if publicationSHA256 == null || publicationSHA256.size != 32 then
+      F.pure(
+        Left(Failure.Rejected("recovery-publication", "32-byte publication identity required"))
+      )
+    else
+      createPlutusDiagnosticWithStake[F](context, prepared, maxBlocks).flatMap {
+        case Left(error) => F.pure(Left(error))
+        case Right(validated) =>
+          validated.snapshot.flatMap { seedSnapshot =>
+            F.delay(protect {
+              val initial = seedSnapshot.state
+              val attribution = digest(
+                "fresh-plutus-recovery-v1",
+                Vector(context.id, publicationSHA256, raw(java.util.UUID.randomUUID().toString))
+              )
+              for
+                freshLedger <- ledger(
+                  Ledger.checkpoint(
+                    initial.ledger.environment,
+                    initial.ledger.outputMap,
+                    initial.ledger.fees,
+                    initial.ledger.slot,
+                    attribution
+                  )
+                )
+                stakeOwner = Stake.owner()
+                stake <- checked("recovery-stake-seed", prepared.attach(stakeOwner, freshLedger))
+              yield new State(
+                initial.contextId,
+                initial.certificates,
+                initial.nonces,
+                initial.eligibility,
+                freshLedger,
+                stakeBinding = Some(stakeOwner -> stake)
+              )
+            }).flatMap {
+              case Left(error) => F.pure(Left(error))
+              case Right(initial) =>
+                for
+                  owner <- F.delay(new Object())
+                  cell <- Ref.of[F, Cell](Cell(initial, Vector.empty))
+                yield Right(new Runtime(context, maxBlocks, owner, cell))
+            }
+          }
+      }
+
   private def createWithStakeImpl[F[_]: Sync](
       context: SequenceInput.Context,
       prepared: ConwayStakeSeed.Prepared,
