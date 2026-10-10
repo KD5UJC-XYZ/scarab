@@ -591,3 +591,22 @@ Retained log SHA256: `7c52f481b278dcdec399d98f1d67abfe6b077ebfb951c5b2914c6fcd2a
 Gate/Python log SHA256: `d381aa4402e820145c63b94cca56655db283623bcee60fe6e70dcef2baa4d23c`.
 The preceding restart checkpoint `3a8e012` passed
 [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38028658672); this later source requires its own CI result.
+
+
+## Typed admission preparation - 2026-10-10
+
+Exact source `dc2977d652bbe566f6ba1ce52cb428e67f52863c` passed 1,985 public Scala/translator tests, 55 tests in
+the separate retained invocation, 27 public gates and 544 Python tests run
+(542 passed, two skipped). The [functional audit](functional-scala-audit.md#typed-admission-preparation)
+records the production before/after boundary: a Sync-only suspended validator
+returns typed rejection or a checked original view/candidate pair. The existing
+validation permit still covers fenced commit and evidence; cancellation,
+masking, evaluator selection, pure ledger transitions and public responses are
+unchanged. MTL was evaluated and not added to this already-Either two-step path.
+
+Phase log SHA256: `efe4230dc9e0c5c2e6b6f1f2022aaba358933acdcba8ec7cd582b442677e711e`.
+Retained log SHA256: `1b48713f2abd6624d95dfc75f35981db255e0300aa406210b3ff6d01ebd42164`.
+Gate/Python log SHA256: `70f19cc7f625bc02505dc0d51c0096a0aa2cf0f2ff277e6490285585baedf968`.
+The preceding `262b82b` checkpoint passed
+[hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38029208034); this later source requires its own CI result.
+No new live claim follows from this refactor.

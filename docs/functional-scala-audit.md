@@ -22,6 +22,7 @@ The original audit below records its historical baseline and WIP findings. This 
 | Resource composition | Integrated in `4cc59cb`: the actual service publishes its result only after the selected JVM/native generation resource closes. Release failure yields failure status and no success result. |
 | Checked rebuild pairing | Integrated in `0710699`: actual queued work uses a private checked `RebuildContext`, binding the full admission pin and profile. This does not replace the owner fence or pool work token. |
 | HTTP failure policy | Integrated in `4057885`: 15 closed failure outcomes replace arbitrary status/code/category triples in actual HTTP paths. Existing wire bytes, redaction and effect handling remain; this is not a full HTTP/domain migration. |
+| Typed admission preparation | Integrated in `dc2977d`: a Sync-only effect boundary returns typed rejection or a private checked view/candidate pair. The actual service retains the permit through fenced commit and evidence. |
 | Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
 
 Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
@@ -112,6 +113,79 @@ Exact source `40578853389cc85c6253ec70bb3a5e2f704ed8b5` passed 1,978 public Scal
 55-test retained invocation, 27 public gates and 542 Python tests with two skips.
 An initial test-fixture type error is retained separately; production code
 compiled in that attempt. Phase log SHA256: `4d0e8766c7d82a240d136da083b2347c44c208fe90d4b5482ab6ad1107d6e12e`.
+
+### Typed admission preparation
+
+Before `dc2977d`, `AdaSubmissionService.admit` nested pure validation,
+six candidate/view binding comparisons, and owner-fenced commit inside one
+effect callback. The commit code depended on separately captured `view` and
+`candidate` variables. Its rejection and unavailable decisions were mixed with
+that orchestration:
+
+```scala
+F.delay(AdmissionValidation.prepare(...)).flatMap {
+  case Left(error) => F.pure(Result.Rejected(error))
+  case Right(candidate) =>
+    if /* profile, ledger, environment, slot or full pin differs */ then
+      F.pure(Result.Unavailable)
+    else view.pin.commitIfCurrent(/* masked pool update and evidence */)
+}
+```
+
+The actual [preparation boundary](../app/src/main/scala/lab/AdmissionPreparation.scala)
+now suspends that same pure validator with only `Sync[F]`. It composes the
+existing `Either` with one checked binding step, returning
+`F[Either[Failure, Prepared]]`. `Failure.Rejected` retains the original domain
+cause; `BindingMismatch` is distinct. Only successful checks can construct
+`Prepared`, which keeps the exact original candidate and immutable view.
+Unexpected exceptions and cancellation remain in the base effect.
+
+The [service](../app/src/main/scala/lab/AdaSubmissionService.scala) now uses:
+
+```scala
+validations.permit.use { _ =>
+  (F.cede *> AdmissionPreparation.evaluate[F](profile, view)(
+    AdmissionValidation.prepare(/* unchanged arguments */)
+  )).flatMap {
+    case Left(Failure.Rejected(error)) => F.pure(Result.Rejected(error))
+    case Left(Failure.BindingMismatch) => F.pure(Result.Unavailable)
+    case Right(prepared)              => commit(prepared)
+  }
+}
+```
+
+The snippets omit qualifiers/unchanged arguments; source is authoritative.
+`commit` accepts only the checked pair and reuses the existing
+`pin.commitIfCurrent` syntax and explicit `Fence[F]` capability. Prepared data
+cannot supply that authority. The owner read and availability check remain
+before the permit. The yield, suspended validator, binding check, fenced
+uncancelable pool update and evidence observer remain in their original order;
+the permit still spans both preparation and commit. Ledger transitions remain
+pure and unchanged. No extra owner read, retry, fiber, mask or resource exists.
+
+MTL was assessed against the pinned
+[Raise 1.3.1 implementation](https://github.com/typelevel/cats-mtl/blob/v1.3.1/core/src/main/scala/cats/mtl/Raise.scala).
+This two-step path already returns `Either`; adding a local `EitherT`/`Raise`
+interpreter would lift and lower the same domain result without simplifying
+another effectful step. The narrower `Sync` context bound and existing
+`leftMap`/`flatMap` composition are sufficient. No direct MTL dependency, custom
+typeclass instance or artificial algebra law was added. Existing capability and
+domain-law suites remain in the aggregate.
+
+[Seven new tests](../app/src/test/scala/lab/AdaSubmissionServiceSuite.scala) use
+genuine ADA/native candidates, compare the old/new predicate across full-pin
+and ledger/environment/slot drift, preserve original references and rejection
+causes, and verify deferred single evaluation, exception identity and
+cancellation before evaluation. Compile-positive/negative checks require only
+Sync, reject Applicative-only interpretation, prevent unchecked construction
+and distinguish prepared data from fence authority. Existing service, owner
+and evidence race tests retain permit cancellation, stale-pin handling, masked
+persistence and fail-closed behavior.
+
+Exact source `dc2977d652bbe566f6ba1ce52cb428e67f52863c` passed 1,985 public Scala/translator tests, the separate
+55-test retained invocation, 27 public gates and 542 Python tests with two skips.
+Phase log SHA256: `efe4230dc9e0c5c2e6b6f1f2022aaba358933acdcba8ec7cd582b442677e711e`.
+This establishes no new live, multi-epoch or ledger-validation capability.
 
 ### Typed phase composition and resource completion
 
