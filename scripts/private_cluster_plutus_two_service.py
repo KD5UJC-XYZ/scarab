@@ -195,7 +195,13 @@ def controller_type(live):
                 if path.exists():
                     base.require(path.resolve() == path, "service receipt no symlink traversal")
                     return base.decode(base.read(path, 1048576))
-                base.require(self.owned(self.containers[phase])["State"]["Running"], "service exited before receipt")
+                if not self.owned(self.containers[phase])["State"]["Running"]:
+                    # The service can publish and exit while Docker inspection is in flight.
+                    # Re-observe its final files after the stopped state, retaining failure precedence.
+                    base.require(not (root / "failure.json").exists(), "service reported failure")
+                    base.require(path.exists(), "service exited before receipt")
+                    base.require(path.resolve() == path, "service receipt no symlink traversal")
+                    return base.decode(base.read(path, 1048576))
                 time.sleep(0.1)
             raise TimeoutError("bounded two-service readiness")
 

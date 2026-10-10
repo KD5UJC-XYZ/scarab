@@ -47,6 +47,38 @@ def example():
 
 
 class TwoServiceTest(unittest.TestCase):
+    def test_receipt_published_during_stopped_inspection_is_observed(self):
+        kind=c.controller_type(SimpleNamespace(Launcher=object))
+        for name in ('bootstrap-ready.json','result.json'):
+            with self.subTest(name=name),tempfile.TemporaryDirectory() as directory:
+                obj=object.__new__(kind);obj.exchange=Path(directory)
+                root=obj.exchange/'service-1';root.mkdir()
+                obj.containers={'service-1':'owned'};obj.deadline=c.time.monotonic()+10
+                def owned(cid):
+                    self.assertEqual(cid,'owned')
+                    (root/name).write_text('{"observed":true}')
+                    return {'State':{'Running':False}}
+                obj.owned=owned
+                self.assertEqual(obj.wait_service('service-1',name,1),{'observed':True})
+
+    def test_stopped_inspection_keeps_missing_failure_and_symlink_rejections(self):
+        kind=c.controller_type(SimpleNamespace(Launcher=object))
+        for mode in ('missing','failure','symlink','invalid'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as directory:
+                obj=object.__new__(kind);obj.exchange=Path(directory)
+                root=obj.exchange/'service-1';root.mkdir()
+                obj.containers={'service-1':'owned'};obj.deadline=c.time.monotonic()+10
+                def owned(cid):
+                    path=root/'result.json'
+                    if mode=='failure':
+                        path.write_text('{}');(root/'failure.json').write_text('{}')
+                    elif mode=='symlink':
+                        target=obj.exchange/'foreign.json';target.write_text('{}');path.symlink_to(target)
+                    elif mode=='invalid':path.write_text('not json')
+                    return {'State':{'Running':False}}
+                obj.owned=owned
+                with self.assertRaises(ValueError):obj.wait_service('service-1','result.json',1)
+
     def test_exact_aggregate_and_overbudget_rejected(self):
         c.budget()
         self.assertEqual(sum(v[0] for v in c.RESOURCES.values()),4_000_000_000)
