@@ -414,6 +414,26 @@ object ConwayStake:
       ledger: ClusterTransition.State,
       block: ClusterTransition.BlockCandidate,
       preview: ConwayEpochBoundary.Preview
+  ): Either[String, Candidate] =
+    prepareSuccessor(owner, current, ledger, block, preview, None)
+
+  private[lab] def preparePlutusSuccessor(
+      owner: Owner,
+      current: State,
+      ledger: ClusterTransition.State,
+      block: ClusterTransition.BlockCandidate,
+      preview: ConwayEpochBoundary.Preview,
+      binding: PlutusSuccessorBinding.Checked
+  ): Either[String, Candidate] =
+    prepareSuccessor(owner, current, ledger, block, preview, Some(binding))
+
+  private def prepareSuccessor(
+      owner: Owner,
+      current: State,
+      ledger: ClusterTransition.State,
+      block: ClusterTransition.BlockCandidate,
+      preview: ConwayEpochBoundary.Preview,
+      binding: Option[PlutusSuccessorBinding.Checked]
   ): Either[String, Candidate] = protect {
     require(
       owner != null && current != null && (owner eq current.owner) &&
@@ -423,7 +443,13 @@ object ConwayStake:
         current.epoch == ledger.environment.epoch,
       "synthetic stake owner/before/revision"
     )
-    require(ledger.environment.plutus.isEmpty, "Plutus synthetic stake successor unsupported")
+    binding match
+      case None =>
+        require(ledger.environment.plutus.isEmpty, "Plutus synthetic stake successor unsupported")
+      case Some(b) =>
+        val expected = get(PlutusSuccessorBinding.forSource(b, ledger, preview))
+        val accepted = get(ClusterTransition.commitBlock(ledger, block)).state
+        require(accepted.environment eq expected, "foreign Plutus successor environment")
     val rotation = preview.rotation
     require(
       (rotation.owner eq owner) && rotation.beforeId == current.id &&

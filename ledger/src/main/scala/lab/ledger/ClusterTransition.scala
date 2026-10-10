@@ -862,6 +862,50 @@ object ClusterTransition:
     )
   }
 
+  /** Distinct opt-in successor path: one candidate includes checked epoch effects and the body. The
+    * enclosing coordinator remains responsible for complete boundary authorization.
+    */
+  private[lab] def preparePlutusSuccessorBlock(
+      before: State,
+      binding: PlutusSuccessorBinding.Checked,
+      headerHash: Bytes,
+      transactionMemos: Vector[Bytes],
+      inclusionSlot: BigInt,
+      evaluator: Option[PE.Evaluator]
+  ): Checked[BlockCandidate] = protect {
+    for
+      _ <- Either.cond(binding != null, (), Failure.Malformed("successor binding required"))
+      next <- PlutusSuccessorBinding
+        .forSource(binding, before, binding.preview)
+        .left
+        .map(Failure.Malformed.apply)
+      preview = binding.preview
+      _ <- Either.cond(
+        headerHash == preview.signal.headerHash && inclusionSlot == preview.signal.slot,
+        (),
+        Failure.Malformed("successor block/preview fullpoint mismatch")
+      )
+      boundary <- state(
+        next,
+        before.checkpointId,
+        before.entries,
+        preview.pots.fees,
+        before.slot,
+        before.revision,
+        before.head
+      )
+      block <- prepareBlock(boundary, headerHash, transactionMemos, inclusionSlot, evaluator)
+    yield new BlockCandidate(
+      before,
+      block.after,
+      headerHash,
+      transactionMemos,
+      block.transactionIds,
+      block.created,
+      Some((preview.id, preview.pots.fees))
+    )
+  }
+
   def commitBlock(current: State, candidate: BlockCandidate): Checked[BlockApplied] = protect {
     val before = candidate.before
     if current.checkpointId != before.checkpointId || current.environment.id != before.environment.id ||
