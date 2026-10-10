@@ -44,6 +44,14 @@ The pure `pinFor` assembly is used by the owner itself. Both existing `F.fromEit
 
 Validation: formatting and all 42 focused tests passed in the isolated 2-CPU/2-GiB offline build. Four new tests cover actual owner field/reference equivalence, distinct domain/pin/view causes, historical rendering and validation order, and compiler-negative arbitrary-string substitution; the other 38 retain owner/service/evidence/capability regression coverage. Private evidence: `cardano-typed-admission-error-tests-20261010-first/result.json` and `tests.log` (SHA-256 `9333a25d5e7cdc58c12e0b7a54f942036e8159db35ab70e6f4ec3b0f53f60ada`). No live behavior or broader typed-error completion is claimed.
 
+## Compiler-depth follow-on: research runtime phases
+
+The aggregate build at `e7ba7e7` encountered Scala 3.3.8 `StackOverflowError` in posttyper while compiling the large `PlutusResearchRuntime.work` comprehension. A subsequent isolated default-stack incremental build against the preserved failing cache recompiled ten sources successfully before any source change. The failure therefore is not claimed to reproduce deterministically; aggregate/compiler context matters.
+
+The runtime now uses private typed `Bootstrap`, `Followed` and `VerifiedInclusion` records, with ordered preparation, follow, inclusion verification and completion helpers. The existing effect blocks remain in order. Preparation still precedes Ref allocation; the node and HTTP resource scopes are unchanged; the relay background resource is still finalized within follow; `result.json` is still written only after HTTP and node release. No JVM stack increase, runtime limit change, policy relaxation or new live claim accompanies this structural change.
+
+Validation: both the default-stack incremental build and a clean compile of all 114 application sources passed, followed by all 48 existing lifecycle/command/follower/owner/service/evidence/capability checks in each run. Formatting passed. No `-Xss` override was used. Private evidence: `cardano-research-runtime-phase-tests-20261010-clean/result.json` and `tests.log` (SHA-256 `c619954d09ea2012bb5f03ed9ffdc295929bd3d23d6a911d2d054468bb87c11f`); the baseline and first incremental evidence directories retain their separate outcomes. The original aggregate failure remains in `cardano-plutus-service-phase-20261010-eighth/tests.log`. The full integration aggregate remains a separate parent check.
+
 ## Decision and priorities
 
 The code is already functional at important boundaries: pure immutable ledger transitions, private-constructor admission evidence, typed rejection sums, Resource-owned lifetimes, and a single admission/publication gate. Preserve these. The strongest improvement is to make policy and authority visible in types; replacing every match or local mutable variable would not achieve that.
