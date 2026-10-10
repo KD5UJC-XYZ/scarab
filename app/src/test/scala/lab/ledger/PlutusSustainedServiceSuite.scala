@@ -332,7 +332,12 @@ class PlutusSustainedServiceSuite extends munit.FunSuite:
           )
         )
       )
-      observation = lab.PlutusEvaluationEvidence.checked(checked, "admission", "accepted").get
+      observation = lab.PlutusEvaluationEvidence
+        .checked(
+          checked,
+          lab.EvaluationEvent.Admission(lab.EvaluationEvent.AdmissionOutcome.Accepted)
+        )
+        .get
       _ <- cats.effect.Resource
         .make(IO.blocking(Files.createTempDirectory("sustained-cap-test-"))) { root =>
           IO.blocking {

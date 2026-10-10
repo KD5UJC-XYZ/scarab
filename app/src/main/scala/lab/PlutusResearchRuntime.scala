@@ -304,7 +304,8 @@ private[lab] object PlutusResearchRuntime:
               closes <- closed.get
               _ <- IO(
                 require(
-                  outcome.inclusionReached && outcome.reason == "inclusionApplied" &&
+                  outcome.inclusionReached && outcome.stop == PlutusRunPolicy.FollowStop
+                    .Completed(PlutusRunPolicy.CompletionGoal.Inclusion) &&
                     opens == closes && opens > 0,
                   "same-epoch inclusion and transport cleanup"
                 )
@@ -355,7 +356,9 @@ private[lab] object PlutusResearchRuntime:
               evidenceRecords <- session.evidence.records
               acceptedEvidence <- IO.fromOption(
                 evidenceRecords.find(row =>
-                  row.observation.phase == "admission" && row.observation.outcome == "accepted" && row.observation.newlyAdmitted && row.observation.transactionId == expectedId && row.observation.envelopeSHA256 == submitted.envelopeSHA256
+                  row.observation.event == EvaluationEvent.Admission(
+                    EvaluationEvent.AdmissionOutcome.Accepted
+                  ) && row.observation.newlyAdmitted && row.observation.transactionId == expectedId && row.observation.envelopeSHA256 == submitted.envelopeSHA256
                 )
               )(new IllegalStateException("missing accepted evaluation receipt"))
               attempts = events.count(j => string(field(j, "kind")) == "SessionStarted")

@@ -10,7 +10,7 @@ import lab.vm.Pv9SubmissionEvaluator
 import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.signers.Ed25519Signer
 
-import lab.{AdaSubmissionService, PlutusEvaluationEvidence, ReferenceJson}
+import lab.{AdaSubmissionService, PlutusEvaluationEvidence, ReferenceJson, EvaluationEvent}
 import lab.submission.*
 import lab.header.PraosCertificateState.Point
 import cats.effect.{Deferred, IO, Ref, Resource}
@@ -203,7 +203,9 @@ class PlutusEvaluationEvidenceSuite extends munit.FunSuite:
         Some(evaluator)
       )
     )
-    val observation = PlutusEvaluationEvidence.checked(candidate, "admission", "accepted").get
+    val observation = PlutusEvaluationEvidence
+      .checked(candidate, EvaluationEvent.Admission(EvaluationEvent.AdmissionOutcome.Accepted))
+      .get
     assert(observation.execution eq candidate.plutusAdmission.get.execution)
     assert(observation.execution.consumed.memory > 0 && observation.execution.consumed.steps > 0)
     temporary { root =>
@@ -389,7 +391,9 @@ class PlutusEvaluationEvidenceSuite extends munit.FunSuite:
         Some(Pv9SubmissionEvaluator)
       )
     )
-    val observation = PlutusEvaluationEvidence.checked(candidate, "admission", "accepted").get
+    val observation = PlutusEvaluationEvidence
+      .checked(candidate, EvaluationEvent.Admission(EvaluationEvent.AdmissionOutcome.Accepted))
+      .get
     temporary { root =>
       val directory = root.resolve("receipts")
       PlutusEvaluationEvidence.fileObserver[IO](directory, genesis, sha(model)).use { store =>
@@ -435,7 +439,9 @@ class PlutusEvaluationEvidenceSuite extends munit.FunSuite:
         Some(Pv9SubmissionEvaluator)
       )
     )
-    val observation = PlutusEvaluationEvidence.checked(candidate, "admission", "accepted").get
+    val observation = PlutusEvaluationEvidence
+      .checked(candidate, EvaluationEvent.Admission(EvaluationEvent.AdmissionOutcome.Accepted))
+      .get
     temporary { root =>
       val directory = root.resolve("receipts")
       PlutusEvaluationEvidence.fileObserver[IO](directory, genesis, sha(model)).use { store =>
@@ -455,4 +461,67 @@ class PlutusEvaluationEvidenceSuite extends munit.FunSuite:
         yield ()
       }
     }.unsafeToFuture()
+  }
+
+  test(
+    "all seven typed evaluation events preserve exact phase/outcome bytes and newly-admitted semantics"
+  ) {
+    import EvaluationEvent.{AdmissionOutcome as A, RevalidationOutcome as R}
+    val view = admissionView()
+    val candidate = get(
+      AdmissionValidation.prepare(
+        AdmissionProfile.PlutusV3,
+        view.pin,
+        view.ledger,
+        transaction(),
+        Some(Pv9SubmissionEvaluator)
+      )
+    )
+    val cases = Vector(
+      (EvaluationEvent.Admission(A.Accepted), "admission", "accepted", true),
+      (EvaluationEvent.Admission(A.AlreadyPresent), "admission", "already-present", false),
+      (EvaluationEvent.Admission(A.PoolRejected), "admission", "pool-rejected", false),
+      (EvaluationEvent.Admission(A.Retry), "admission", "retry", false),
+      (EvaluationEvent.Admission(A.Unavailable), "admission", "unavailable", false),
+      (EvaluationEvent.Revalidation(R.Retained), "revalidation", "retained", false),
+      (EvaluationEvent.Revalidation(R.Discarded), "revalidation", "discarded", false)
+    )
+    val first = PlutusEvaluationEvidence.checked(candidate, cases.head._1).get
+    val baseline =
+      new String(PlutusEvaluationEvidence.encode(first, genesis, sha(model), 0).toArray, "UTF-8")
+    cases.foreach { (event, phase, outcome, admitted) =>
+      val observed = PlutusEvaluationEvidence.checked(candidate, event).get
+      assert(observed.execution eq candidate.plutusAdmission.get.execution)
+      assertEquals(observed.event, event)
+      assertEquals(
+        (observed.phase, observed.outcome, observed.newlyAdmitted),
+        (phase, outcome, admitted)
+      )
+      val raw = new String(
+        PlutusEvaluationEvidence.encode(observed, genesis, sha(model), 0).toArray,
+        "UTF-8"
+      )
+      val expected = baseline
+        .replace("\"phase\":\"admission\"", s"\"phase\":\"$phase\"")
+        .replace("\"outcome\":\"accepted\"", s"\"outcome\":\"$outcome\"")
+        .replace("\"newlyAdmitted\":true", s"\"newlyAdmitted\":$admitted")
+      assertEquals(raw, expected)
+    }
+  }
+  test("cross-phase outcomes and string phase products cannot compile") {
+    assert(
+      compileErrors(
+        "lab.EvaluationEvent.Admission(lab.EvaluationEvent.RevalidationOutcome.Retained)"
+      ).nonEmpty
+    )
+    assert(
+      compileErrors(
+        "lab.EvaluationEvent.Revalidation(lab.EvaluationEvent.AdmissionOutcome.Accepted)"
+      ).nonEmpty
+    )
+    assert(
+      compileErrors(
+        "lab.PlutusEvaluationEvidence.checked(null, \"admission\", \"retained\")"
+      ).nonEmpty
+    )
   }

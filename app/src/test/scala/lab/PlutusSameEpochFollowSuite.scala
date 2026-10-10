@@ -63,7 +63,12 @@ class PlutusSameEpochFollowSuite extends munit.FunSuite:
           closes <- released.get
           _ = assertEquals(closes, 1)
           _ = assertEquals(result.peerOpens, result.peerCloses)
-          _ = assertEquals(result.reason, "deadline")
+          _ = assert(
+            Set(
+              PlutusRunPolicy.FollowStop.Deadline,
+              PlutusRunPolicy.FollowStop.Driver(EphemeralStreaming.Stop.Deadline)
+            ).contains(result.stop)
+          )
           _ = assert(!result.inclusionReached)
           _ = assertEquals(result.snapshot.state.id, before.state.id)
           _ = assertEquals(result.snapshot.state.revision, before.state.revision)
@@ -84,7 +89,12 @@ class PlutusSameEpochFollowSuite extends munit.FunSuite:
           )(_ => IO.unit)
           closes <- released.get
           _ = assertEquals(closes, 1)
-          _ = assertEquals(result.reason, "deadline")
+          _ = assert(
+            Set(
+              PlutusRunPolicy.FollowStop.Deadline,
+              PlutusRunPolicy.FollowStop.Driver(EphemeralStreaming.Stop.Deadline)
+            ).contains(result.stop)
+          )
           _ = assert(!result.inclusionReached && result.observations.isEmpty)
           _ = assertEquals(result.snapshot.state.id, before.state.id)
         yield ())

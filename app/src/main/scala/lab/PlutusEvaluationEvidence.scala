@@ -25,12 +25,13 @@ private[lab] object PlutusEvaluationEvidence:
       val witnessesSHA256: Bytes,
       val pin: StatePin,
       val execution: PlutusExecution.Success,
-      val phase: String,
-      val outcome: String
+      val event: EvaluationEvent
   ):
     val fullLedgerValidated = false
     val inclusionClaimed = false
-    val newlyAdmitted = phase == "admission" && outcome == "accepted"
+    val newlyAdmitted = EvaluationEvent.newlyAdmitted(event)
+    def phase: String = EvaluationEvent.wire(event)._1
+    def outcome: String = EvaluationEvent.wire(event)._2
 
   trait Observer[F[_]]:
     def observe(value: Observation): F[Unit]
@@ -41,20 +42,10 @@ private[lab] object PlutusEvaluationEvidence:
     */
   def checked(
       candidate: ScopedAdmission.Candidate[StatePin],
-      phase: String,
-      outcome: String
+      event: EvaluationEvent
   ): Option[Observation] =
     require(candidate != null && candidate.pin != null)
-    require(
-      (phase == "admission" && Set(
-        "accepted",
-        "already-present",
-        "pool-rejected",
-        "retry",
-        "unavailable"
-      )(outcome)) ||
-        (phase == "revalidation" && Set("retained", "discarded")(outcome))
-    )
+    require(event != null)
     candidate.plutusAdmission.map { checked =>
       require(
         candidate.pin.ledgerStateId == checked.ledgerStateId &&
@@ -70,8 +61,7 @@ private[lab] object PlutusEvaluationEvidence:
         sha(candidate.transaction.originalWitnesses),
         candidate.pin,
         checked.execution,
-        phase,
-        outcome
+        event
       )
     }
 

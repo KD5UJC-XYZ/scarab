@@ -24,6 +24,7 @@ private[lab] final class AdaSubmissionService[F[_]] private (
 )(using F: Async[F])
     extends AdmissionStateObserver[F]:
   import AdaSubmissionService.*
+  import EvaluationEvent.{AdmissionOutcome, RevalidationOutcome}
 
   final class Request private[AdaSubmissionService] (permit: budget.Request):
     def submit(original: Bytes): F[Result] = permit.validate(admit(original))
@@ -47,11 +48,10 @@ private[lab] final class AdaSubmissionService[F[_]] private (
     */
   private def observe(
       candidate: ScopedAdmission.Candidate[StatePin],
-      phase: String,
-      outcome: String
+      event: EvaluationEvent
   ): F[Unit] =
     evidence.fold(F.unit) { sink =>
-      F.delay(PlutusEvaluationEvidence.checked(candidate, phase, outcome))
+      F.delay(PlutusEvaluationEvidence.checked(candidate, event))
         .flatMap {
           case None        => F.unit
           case Some(value) => F.timeout(sink.observe(value), 5.seconds)
@@ -100,12 +100,13 @@ private[lab] final class AdaSubmissionService[F[_]] private (
                             .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
                             .flatTap { outcome =>
                               val label = outcome match
-                                case AdaPool.Outcome.Accepted(_)       => "accepted"
-                                case AdaPool.Outcome.AlreadyPresent(_) => "already-present"
-                                case AdaPool.Outcome.Rejected(_)       => "pool-rejected"
-                                case AdaPool.Outcome.Retry(_)          => "retry"
-                                case AdaPool.Outcome.Unavailable       => "unavailable"
-                              observe(candidate, "admission", label)
+                                case AdaPool.Outcome.Accepted(_) => AdmissionOutcome.Accepted
+                                case AdaPool.Outcome.AlreadyPresent(_) =>
+                                  AdmissionOutcome.AlreadyPresent
+                                case AdaPool.Outcome.Rejected(_) => AdmissionOutcome.PoolRejected
+                                case AdaPool.Outcome.Retry(_)    => AdmissionOutcome.Retry
+                                case AdaPool.Outcome.Unavailable => AdmissionOutcome.Unavailable
+                              observe(candidate, EvaluationEvent.Admission(label))
                             }
                         }
                       )
@@ -182,8 +183,10 @@ private[lab] final class AdaSubmissionService[F[_]] private (
                             }
                           observe(
                             candidate,
-                            "revalidation",
-                            if retained then "retained" else "discarded"
+                            EvaluationEvent.Revalidation(
+                              if retained then RevalidationOutcome.Retained
+                              else RevalidationOutcome.Discarded
+                            )
                           )
                         }
                       }

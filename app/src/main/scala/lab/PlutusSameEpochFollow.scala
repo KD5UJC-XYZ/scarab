@@ -12,12 +12,13 @@ import scala.concurrent.duration.*
 /** Bounded research network pull adapter. No preloaded block list, reconnect, or public admission.
   */
 private[lab] object PlutusSameEpochFollow:
+  import PlutusRunPolicy.{CompletionGoal, FollowStop}
   type Observation = NetworkPublicationObservation
   private val Observation = NetworkPublicationObservation
   final case class Outcome(
       snapshot: CoherentSequence.Snapshot,
       driver: Option[EphemeralStreaming.Report],
-      reason: String,
+      stop: FollowStop,
       inclusionReached: Boolean,
       observations: Vector[Observation],
       networkEvents: Long,
@@ -25,7 +26,8 @@ private[lab] object PlutusSameEpochFollow:
       peerOpens: Int,
       peerCloses: Int,
       initialIntersectionConfirmations: Int
-  )
+  ):
+    def reason: String = PlutusRunPolicy.followWire(stop)
   private def networkPoint(p: Point): ChainSync.Point =
     ChainSync.Point.Block(ChainSync.UInt64.from(p.slot).toOption.get, p.hash)
   private def sha(b: Bytes): Bytes = Bytes.fromArray(
@@ -46,7 +48,7 @@ private[lab] object PlutusSameEpochFollow:
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits
   )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
-    run(runtime, peer, initial, epochLength, limits, "inclusionApplied")(ready)(record)
+    run(runtime, peer, initial, epochLength, limits, CompletionGoal.Inclusion)(ready)(record)
 
   /** Service completion is a published-block budget, never an expected transaction. */
   def runUntil[F[_]: Async](
@@ -56,7 +58,9 @@ private[lab] object PlutusSameEpochFollow:
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits
   )(budgetReached: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
-    run(runtime, peer, initial, epochLength, limits, "blockLimit")(budgetReached)(record)
+    run(runtime, peer, initial, epochLength, limits, CompletionGoal.PublishedBlockBudget)(
+      budgetReached
+    )(record)
 
   private final class EpochRefused
       extends IllegalArgumentException(
@@ -69,7 +73,7 @@ private[lab] object PlutusSameEpochFollow:
       initial: Point,
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits,
-      completionReason: String
+      completionGoal: CompletionGoal
   )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
     val F = Async[F]
     def invalid(message: String): F[Unit] = F.raiseError(new IllegalArgumentException(message))
@@ -240,20 +244,19 @@ private[lab] object PlutusSameEpochFollow:
       hit <- reached.get
       confirmations <- initialConfirmations.get
       report = result.toOption
-      reason = result.fold(
+      stop = result.fold(
         e =>
-          if e.isInstanceOf[java.util.concurrent.TimeoutException] then "deadline"
-          else if completionReason == "blockLimit" && e.isInstanceOf[EpochRefused] then
-            "epochBoundaryRefused"
-          else s"failure:${e.getMessage}",
+          if e.isInstanceOf[java.util.concurrent.TimeoutException] then FollowStop.Deadline
+          else if e.isInstanceOf[EpochRefused] then FollowStop.EpochBoundary(completionGoal)
+          else FollowStop.Failed(e),
         r =>
-          if hit && r.stop == EphemeralStreaming.Stop.End then completionReason
-          else r.stop.toString
+          if hit && r.stop == EphemeralStreaming.Stop.End then FollowStop.Completed(completionGoal)
+          else FollowStop.Driver(r.stop)
       )
     yield Outcome(
       snapshot,
       report,
-      reason,
+      stop,
       hit && report.exists(_.stop == EphemeralStreaming.Stop.End),
       all,
       n,

@@ -14,6 +14,7 @@ import scala.concurrent.duration.*
 
 /** Bounded volatile service. No expected transaction, endpoint oracle or state import. */
 private[lab] object PlutusServiceRuntime:
+  import PlutusRunPolicy.{RelayStop, WindowEnd, TerminalCategory}
   import PlutusResearchIO.{
     get,
     initial,
@@ -112,12 +113,12 @@ private[lab] object PlutusServiceRuntime:
       )
     )
 
-  private[lab] def deadline(now: Long, boundary: BigInt, requestedSeconds: Int): (Long, String) =
+  private[lab] def deadline(now: Long, boundary: BigInt, requestedSeconds: Int): (Long, WindowEnd) =
     require(requestedSeconds >= 1 && requestedSeconds <= 60, "bounded requested duration")
     val requested = BigInt(now) + requestedSeconds * 1000
     val effective = requested.min(boundary - 2000)
     require(effective > now && effective.isValidLong, "initial epoch service window missed")
-    (effective.toLong, if effective < requested then "epochLimit" else "durationLimit")
+    (effective.toLong, if effective < requested then WindowEnd.Epoch else WindowEnd.Duration)
 
   private def work(config: PlutusServiceCommand.Config): IO[Boolean] =
     val c = config.base
@@ -195,15 +196,15 @@ private[lab] object PlutusServiceRuntime:
             event(
               record("kind" -> text(kind), "ids" -> J.Arr(ids.take(16).map(id => text(id.hex))))
             )
-          def relay: IO[Unit] = IO.defer {
+          def relay: IO[RelayStop] = IO.defer {
             node.service.snapshot.flatMap { pool =>
-              if pool.closed then IO.raiseError(new IllegalStateException("serviceUnavailable"))
+              if pool.closed then IO.pure(RelayStop.ServiceUnavailable)
               else if pool.eligible.isEmpty then IO.sleep(100.millis) *> relay
               else
                 relayCount
                   .modify(n => if n < MaxRelaySessions then (n + 1, Some(n + 1)) else (n, None))
                   .flatMap {
-                    case None => IO.raiseError(new IllegalStateException("relaySessionLimit"))
+                    case None => IO.pure(RelayStop.SessionLimit)
                     case Some(n) =>
                       (event(
                         record("kind" -> text("SessionStarted"), "attempt" -> num(n))
@@ -365,19 +366,7 @@ private[lab] object PlutusServiceRuntime:
                     )
                   )(published.get.map(_.size >= config.maxBlocks))(observed)
                 )
-                reason = race match
-                  case Left(Left(e)) =>
-                    if Option(e.getMessage).contains("relaySessionLimit") then "relaySessionLimit"
-                    else if Option(e.getMessage).contains("serviceUnavailable") then
-                      "serviceUnavailable"
-                    else "relayFailure"
-                  case Left(Right(_)) => "relayUnexpectedCompletion"
-                  case Right(outcome) =>
-                    outcome.reason match
-                      case "deadline" | "Deadline"     => window._2
-                      case "blockLimit" | "BlockLimit" => "blockLimit"
-                      case "epochBoundaryRefused"      => "epochBoundaryRefused"
-                      case _                           => "followerFailure"
+                reason = PlutusRunPolicy.fromRace(race.map(_.stop), window._2)
               yield (now, window, started, reason)
             }
             .flatMap { case (now, window, started, reason) =>
@@ -409,12 +398,8 @@ private[lab] object PlutusServiceRuntime:
               yield (
                 record(
                   "schema" -> text("plutus-service-result-v1"),
-                  "status" -> text(
-                    if Set("durationLimit", "epochLimit", "blockLimit").contains(reason) then
-                      "stopped"
-                    else "failed"
-                  ),
-                  "stopReason" -> text(reason),
+                  "status" -> text(PlutusRunPolicy.categoryWire(PlutusRunPolicy.category(reason))),
+                  "stopReason" -> text(PlutusRunPolicy.serviceWire(reason)),
                   "transactionSuccessClaimed" -> bool(false),
                   "fullLedgerValidated" -> bool(false),
                   "volatile" -> bool(true),
@@ -435,7 +420,8 @@ private[lab] object PlutusServiceRuntime:
                   "relaySessions" -> num(attempts),
                   "relayEvents" -> J.Arr(events)
                 ),
-                node.evidence.records
+                node.evidence.records,
+                reason
               )
             }
         }
@@ -478,7 +464,7 @@ private[lab] object PlutusServiceRuntime:
           )
         case _ => throw new IllegalStateException("result shape")
       _ <- boundedSave(root.resolve("result.json"), complete, MaxTerminalBytes)
-    yield string(field(result, "status")) == "stopped"
+    yield PlutusRunPolicy.category(closedResult._3) == TerminalCategory.Stopped
 
   def run(config: PlutusServiceCommand.Config): IO[ExitCode] = IO
     .defer(work(config))

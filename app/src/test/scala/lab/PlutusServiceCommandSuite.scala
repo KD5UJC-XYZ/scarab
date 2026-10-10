@@ -49,8 +49,14 @@ class PlutusServiceCommandSuite extends munit.FunSuite:
     invalid.foreach(args => assert(PlutusServiceCommand.options(args).isLeft))
   }
   test("effective deadline preserves epoch safety margin and explains truncation") {
-    assertEquals(PlutusServiceRuntime.deadline(1000, 100000, 60), (61000L, "durationLimit"))
-    assertEquals(PlutusServiceRuntime.deadline(90000, 100000, 60), (98000L, "epochLimit"))
+    assertEquals(
+      PlutusServiceRuntime.deadline(1000, 100000, 60),
+      (61000L, PlutusRunPolicy.WindowEnd.Duration)
+    )
+    assertEquals(
+      PlutusServiceRuntime.deadline(90000, 100000, 60),
+      (98000L, PlutusRunPolicy.WindowEnd.Epoch)
+    )
     intercept[IllegalArgumentException](PlutusServiceRuntime.deadline(98000, 100000, 1))
     intercept[IllegalArgumentException](PlutusServiceRuntime.deadline(0, 100000, 61))
   }
