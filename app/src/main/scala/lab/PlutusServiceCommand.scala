@@ -8,11 +8,12 @@ import scala.util.control.NonFatal
 /** Explicit bounded volatile service, separate from the expected-transaction diagnostic. */
 object PlutusServiceCommand:
   val usage =
-    "plutus-service --profile isolated-conway-pv9-plutus-v3-spend-v1 --initial DIRECTORY --manifest-sha256 HASH --port PORT --magic PRIVATE_MAGIC --output DIRECTORY --duration-seconds N(1..60) --max-blocks N(1..128); loopback only, testnet0, epoch0, 100ms slots, volatile, no restart or full ledger validation"
+    "plutus-service --profile isolated-conway-pv9-plutus-v3-spend-v1 --initial DIRECTORY --manifest-sha256 HASH --port PORT --magic PRIVATE_MAGIC --output DIRECTORY --duration-seconds N(1..60) --max-blocks N(1..128); loopback only, testnet0, epoch0, 100ms slots, volatile by default; opt-in --checkpoint-after N(1..8) and/or --restore-checkpoint FILE --restore-authority FILE --restore-authority-sha256 HASH require --store-id HASH --session-id HASH --generation N; bounded linear restart only, no crash durability or full ledger validation"
   private[lab] final case class Config(
       base: PlutusResearchCommand.Config,
       durationSeconds: Int,
-      maxBlocks: Int
+      maxBlocks: Int,
+      checkpoint: Option[PlutusServiceCheckpoint.Mode] = None
   )
   private[lab] def options(args: List[String]): Either[String, Config] =
     try
@@ -26,10 +27,17 @@ object PlutusServiceCommand:
         "--duration-seconds",
         "--max-blocks"
       )
-      require(args.size == 16, "eight explicit options required")
+      require(
+        args.size >= 16 && args.size <= 30 && args.size % 2 == 0,
+        "eight base options and complete opt-in groups required"
+      )
       val pairs = args.grouped(2).map(xs => xs.head -> xs(1)).toVector
       require(
-        pairs.map(_._1).toSet == names && pairs.map(_._1).distinct.size == 8,
+        names.subsetOf(pairs.map(_._1).toSet) && pairs
+          .map(_._1)
+          .forall(k =>
+            names.contains(k) || PlutusServiceCheckpoint.optionNames.contains(k)
+          ) && pairs.map(_._1).distinct.size == pairs.size,
         "exact options required"
       )
       val values = pairs.toMap
@@ -45,7 +53,11 @@ object PlutusServiceCommand:
         List("--profile", "--initial", "--manifest-sha256", "--port", "--magic").flatMap(key =>
           List(key, values(key))
         ) ++ List("--exchange", values("--output"))
-      PlutusResearchCommand.options(baseArgs).map(Config(_, duration, blocks))
+      PlutusResearchCommand.options(baseArgs).flatMap { base =>
+        PlutusServiceCheckpoint
+          .options(values, blocks, base.exchange)
+          .map(mode => Config(base, duration, blocks, mode))
+      }
     catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse("invalid configuration"))
   def run(args: List[String]): IO[ExitCode] = args match
     case List("--help") => IO.println(usage).as(ExitCode.Success)

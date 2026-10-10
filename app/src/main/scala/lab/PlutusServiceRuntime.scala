@@ -125,7 +125,6 @@ private[lab] object PlutusServiceRuntime:
     val root = c.exchange
     for
       joined <- IO.blocking(initial(c.initial, c.manifest, AdmissionProfile.PlutusV3))
-      context <- IO(get(SequenceInput.fromNativeDiagnostic(joined, joined.id)))
       genesis <- IO(ReferenceJson.parse(joined.ledger.globals.genesisOriginal))
       _ <- IO(
         require(
@@ -138,6 +137,19 @@ private[lab] object PlutusServiceRuntime:
           "checked local network and epoch geometry"
         )
       )
+      startup <- PlutusServiceCheckpoint.start(
+        config.checkpoint,
+        joined,
+        get(Bytes.fromHex(c.manifest))
+      )
+      startPoint = startup.snapshot.state.certificates.state.tip
+      effectiveMaxBlocks = config.checkpoint.flatMap(_.checkpointAfter).getOrElse(config.maxBlocks)
+      checkpointManifest <- config.checkpoint.filter(_.checkpointAfter.nonEmpty).traverse { _ =>
+        IO.blocking(read(c.initial.resolve("adapter-inputs.json"), 65536)).flatTap { bytes =>
+          IO(require(sha(bytes).hex == c.manifest, "checkpoint manifest changed"))
+        }
+      }
+      checkpointSaved <- Ref.of[IO, Option[PlutusServiceCheckpoint.Saved]](None)
       boundary = BigInt(Instant.parse(string(field(genesis, "systemStart"))).toEpochMilli) + 100000
       _ <- IO.blocking(Files.createDirectory(root.resolve("originals")))
       opened <- Ref.of[IO, Int](0)
@@ -152,8 +164,8 @@ private[lab] object PlutusServiceRuntime:
             List(
               c.port.toString,
               c.magic.toString,
-              joined.point.slot.toString,
-              joined.point.hash.hex
+              startPoint.slot.toString,
+              startPoint.hash.hex
             )
           )
         )
@@ -165,9 +177,7 @@ private[lab] object PlutusServiceRuntime:
         closed
       )
       peers = BoundedChainFollower.sessions[IO](connection, c.magic)
-      fresh = CoherentSequence
-        .createPlutusDiagnosticWithStake[IO](context, joined.ledger.epochComponents.stake)
-        .map(get(_))
+      fresh = IO.pure(startup.runtime)
       closedResult <- PlutusResearchNode
         .resource(
           fresh,
@@ -186,6 +196,37 @@ private[lab] object PlutusServiceRuntime:
                     IO.raiseUnless(ok)(new IllegalStateException("publication queue bound"))
                   )
             def closed: IO[Unit] = IO.unit
+          def modeMetadata(value: J, saved: Option[PlutusServiceCheckpoint.Saved] = None): J =
+            config.checkpoint.fold(value) { mode =>
+              value match
+                case J.Obj(fields) =>
+                  J.Obj(
+                    fields.updated(
+                      "boundedRestart",
+                      record(
+                        "scope" -> text("linear-epoch-zero-max8"),
+                        "startupRestored" -> bool(startup.restored),
+                        "sourceAnchorPoint" -> point(joined.point),
+                        "restoredDepth" -> num(startup.snapshot.state.depth),
+                        "freshCheckpointId" -> text(startup.snapshot.state.ledger.checkpointId.hex),
+                        "pendingAdmissionRestored" -> bool(false),
+                        "checkpointAfter" -> mode.checkpointAfter.fold[J](J.Lit("null"))(num(_)),
+                        "effectiveMaxBlocks" -> num(effectiveMaxBlocks),
+                        "checkpointFile" -> saved.fold[J](J.Lit("null"))(_ =>
+                          text("checkpoint.bin")
+                        ),
+                        "checkpointSHA256" -> saved.fold[J](J.Lit("null"))(x =>
+                          text(x.publication.claim.publicationSHA256.hex)
+                        ),
+                        "checkpointRequestSHA256" -> saved.fold[J](J.Lit("null"))(x =>
+                          text(x.requestSHA256.hex)
+                        ),
+                        "crashDurable" -> bool(false)
+                      )
+                    )
+                  )
+                case _ => throw new IllegalArgumentException("service metadata object required")
+            }
           def event(value: J): IO[Unit] = relayEvents.update(xs => (xs :+ value).takeRight(256))
           def emit(e: TxSubmission2Session.Event): IO[Unit] =
             val (kind, ids) = e match
@@ -269,6 +310,25 @@ private[lab] object PlutusServiceRuntime:
                   "pin" -> pin(change.view.pin)
                 )
               )
+              _ <- config.checkpoint.filter(_.checkpointAfter.contains(rows.size + 1)).traverse_ {
+                mode =>
+                  for
+                    frozen <- node.owner.withCurrent(change.view.pin)(node.owner.snapshot)
+                    snapshot <- IO.fromEither(
+                      frozen.leftMap(_ =>
+                        new IllegalStateException("checkpoint publication state changed")
+                      )
+                    )
+                    saved <- PlutusServiceCheckpoint.save(
+                      root,
+                      snapshot,
+                      joined,
+                      checkpointManifest.get,
+                      mode
+                    )
+                    _ <- checkpointSaved.set(Some(saved))
+                  yield ()
+              }
             yield ()
           }
           def observed(o: NetworkPublicationObservation): IO[Unit] =
@@ -306,25 +366,27 @@ private[lab] object PlutusServiceRuntime:
                 window <- IO(deadline(now, boundary, config.durationSeconds))
                 _ <- boundedSave(
                   root.resolve("bootstrap-ready.json"),
-                  record(
-                    "schema" -> text("plutus-service-ready-v1"),
-                    "apiPort" -> num(api.port),
-                    "profileId" -> text(AdmissionProfile.PlutusV3.id),
-                    "sourceJoinId" -> text(joined.id.hex),
-                    "initialManifestSHA256" -> text(c.manifest),
-                    "initialPoint" -> point(joined.point),
-                    "networkMagic" -> num(c.magic),
-                    "initialEpoch" -> num(0),
-                    "requestedDeadlineUnixMillis" -> num(
-                      BigInt(now) + config.durationSeconds * 1000
-                    ),
-                    "deadlineUnixMillis" -> num(window._1),
-                    "limits" -> record(
-                      "durationSeconds" -> num(config.durationSeconds),
-                      "maxBlocks" -> num(config.maxBlocks),
-                      "maxEvents" -> num(4096),
-                      "maxEvaluationReceipts" -> num(128),
-                      "maxRelaySessions" -> num(MaxRelaySessions)
+                  modeMetadata(
+                    record(
+                      "schema" -> text("plutus-service-ready-v1"),
+                      "apiPort" -> num(api.port),
+                      "profileId" -> text(AdmissionProfile.PlutusV3.id),
+                      "sourceJoinId" -> text(joined.id.hex),
+                      "initialManifestSHA256" -> text(c.manifest),
+                      "initialPoint" -> point(startPoint),
+                      "networkMagic" -> num(c.magic),
+                      "initialEpoch" -> num(0),
+                      "requestedDeadlineUnixMillis" -> num(
+                        BigInt(now) + config.durationSeconds * 1000
+                      ),
+                      "deadlineUnixMillis" -> num(window._1),
+                      "limits" -> record(
+                        "durationSeconds" -> num(config.durationSeconds),
+                        "maxBlocks" -> num(config.maxBlocks),
+                        "maxEvents" -> num(4096),
+                        "maxEvaluationReceipts" -> num(128),
+                        "maxRelaySessions" -> num(MaxRelaySessions)
+                      )
                     )
                   ),
                   16384
@@ -357,14 +419,14 @@ private[lab] object PlutusServiceRuntime:
                   PlutusSameEpochFollow.runUntil(
                     node.owner,
                     peers,
-                    joined.point,
+                    startPoint,
                     1000,
                     EphemeralStreaming.Limits(
                       maxEvents = 4096,
-                      maxBlocks = config.maxBlocks,
+                      maxBlocks = effectiveMaxBlocks,
                       duration = (window._1 - started).millis
                     )
-                  )(published.get.map(_.size >= config.maxBlocks))(observed)
+                  )(published.get.map(_.size >= effectiveMaxBlocks))(observed)
                 )
                 reason = PlutusRunPolicy.fromRace(race.map(_.stop), window._2)
               yield (now, window, started, reason)
@@ -395,30 +457,40 @@ private[lab] object PlutusServiceRuntime:
                 events <- relayEvents.get
                 attempts <- relayCount.get
                 ended <- IO.realTime.map(_.toMillis)
+                savedCheckpoint <- checkpointSaved.get
               yield (
-                record(
-                  "schema" -> text("plutus-service-result-v1"),
-                  "status" -> text(PlutusRunPolicy.categoryWire(PlutusRunPolicy.category(reason))),
-                  "stopReason" -> text(PlutusRunPolicy.serviceWire(reason)),
-                  "transactionSuccessClaimed" -> bool(false),
-                  "fullLedgerValidated" -> bool(false),
-                  "volatile" -> bool(true),
-                  "restartSupported" -> bool(false),
-                  "profileId" -> text(AdmissionProfile.PlutusV3.id),
-                  "sourceJoinId" -> text(joined.id.hex),
-                  "initialManifestSHA256" -> text(c.manifest),
-                  "initialPoint" -> point(joined.point),
-                  "finalPin" -> pin(view.pin),
-                  "initialEpoch" -> num(0),
-                  "requestedDeadlineUnixMillis" -> num(BigInt(now) + config.durationSeconds * 1000),
-                  "effectiveDeadlineUnixMillis" -> num(window._1),
-                  "startedUnixMillis" -> num(started),
-                  "endedUnixMillis" -> num(ended),
-                  "publications" -> J.Arr(rows),
-                  "terminalObservationFile" -> text("terminal-observation.json"),
-                  "terminalObservationSHA256" -> text(sha(EvidenceJson.encode(terminalValue)).hex),
-                  "relaySessions" -> num(attempts),
-                  "relayEvents" -> J.Arr(events)
+                modeMetadata(
+                  record(
+                    "schema" -> text("plutus-service-result-v1"),
+                    "status" -> text(
+                      PlutusRunPolicy.categoryWire(PlutusRunPolicy.category(reason))
+                    ),
+                    "stopReason" -> text(PlutusRunPolicy.serviceWire(reason)),
+                    "transactionSuccessClaimed" -> bool(false),
+                    "fullLedgerValidated" -> bool(false),
+                    "volatile" -> bool(true),
+                    "restartSupported" -> bool(false),
+                    "profileId" -> text(AdmissionProfile.PlutusV3.id),
+                    "sourceJoinId" -> text(joined.id.hex),
+                    "initialManifestSHA256" -> text(c.manifest),
+                    "initialPoint" -> point(startPoint),
+                    "finalPin" -> pin(view.pin),
+                    "initialEpoch" -> num(0),
+                    "requestedDeadlineUnixMillis" -> num(
+                      BigInt(now) + config.durationSeconds * 1000
+                    ),
+                    "effectiveDeadlineUnixMillis" -> num(window._1),
+                    "startedUnixMillis" -> num(started),
+                    "endedUnixMillis" -> num(ended),
+                    "publications" -> J.Arr(rows),
+                    "terminalObservationFile" -> text("terminal-observation.json"),
+                    "terminalObservationSHA256" -> text(
+                      sha(EvidenceJson.encode(terminalValue)).hex
+                    ),
+                    "relaySessions" -> num(attempts),
+                    "relayEvents" -> J.Arr(events)
+                  ),
+                  savedCheckpoint
                 ),
                 node.evidence.records,
                 reason
