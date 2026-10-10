@@ -196,7 +196,11 @@ private[lab] object PlutusServiceRuntime:
                     IO.raiseUnless(ok)(new IllegalStateException("publication queue bound"))
                   )
             def closed: IO[Unit] = IO.unit
-          def modeMetadata(value: J, saved: Option[PlutusServiceCheckpoint.Saved] = None): J =
+          def modeMetadata(
+              value: J,
+              saved: Option[PlutusServiceCheckpoint.Saved] = None,
+              admission: Option[AdaSubmissionService.Snapshot] = None
+          ): J =
             config.checkpoint.fold(value) { mode =>
               value match
                 case J.Obj(fields) =>
@@ -206,6 +210,16 @@ private[lab] object PlutusServiceRuntime:
                       record(
                         "scope" -> text("linear-epoch-zero-max8"),
                         "startupRestored" -> bool(startup.restored),
+                        "startupAdmission" -> admission.fold[J](J.Lit("null"))(a =>
+                          record(
+                            "pin" -> pin(a.pin),
+                            "size" -> num(a.size),
+                            "byteSize" -> num(a.byteSize),
+                            "eligibleCount" -> num(a.eligible.size),
+                            "rebuilding" -> bool(a.rebuilding),
+                            "closed" -> bool(a.closed)
+                          )
+                        ),
                         "sourceAnchorPoint" -> point(joined.point),
                         "restoredDepth" -> num(startup.snapshot.state.depth),
                         "freshCheckpointId" -> text(startup.snapshot.state.ledger.checkpointId.hex),
@@ -364,6 +378,16 @@ private[lab] object PlutusServiceRuntime:
               for
                 now <- IO.realTime.map(_.toMillis)
                 window <- IO(deadline(now, boundary, config.durationSeconds))
+                admission <- config.checkpoint.traverse(_ => node.service.snapshot)
+                _ <- admission.traverse_(a =>
+                  IO(
+                    require(
+                      a.size == 0 && a.byteSize == 0 &&
+                        a.eligible.isEmpty && !a.rebuilding && !a.closed && a.pin.point == startPoint,
+                      "bounded restart readiness requires actual empty startup pool"
+                    )
+                  )
+                )
                 _ <- boundedSave(
                   root.resolve("bootstrap-ready.json"),
                   modeMetadata(
@@ -387,7 +411,8 @@ private[lab] object PlutusServiceRuntime:
                         "maxEvaluationReceipts" -> num(128),
                         "maxRelaySessions" -> num(MaxRelaySessions)
                       )
-                    )
+                    ),
+                    admission = admission
                   ),
                   16384
                 )
