@@ -156,4 +156,124 @@ class ServiceControllerTest(unittest.TestCase):
                 c.publication_bindings(Path('/tmp'),dict(publications=[dict(file=name)]),self.client,'f'*64,'a'*64)
 
 
+class SequentialClientTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.pin = dict(ownerId='a'*64, profileId=c.fixture.PROFILE, generation=1,
+            coherentStateId='b'*64,ledgerStateId='c'*64,environmentId='d'*64,
+            point=dict(slot=10,blockNo=1,hash='e'*64),validationSlot=10)
+        self.state = dict(code='State',profileId=c.fixture.PROFILE,closed=False,fullLedgerValidated=False,pin=self.pin)
+        self.client = dict(transactions=[dict(acceptedResponse=dict(receipt=dict(pin=self.pin)),
+            includedResponse=dict(pin=self.pin)) for _ in range(2)],
+            betweenStateResponse=dict(pin=self.pin),afterSecondStateResponse=dict(pin=self.pin),
+            firstStatusAfterSecondResponse=dict(pin=self.pin))
+        c.base.write(self.root/'service-client-result.json',self.client)
+        self.report = dict(schema='sequential-devnet-runner-v1',allRequestedPassed=False,
+            executedScenariosPassed=True,stop='Exhausted',observationalOnly=True,restoreAuthority=False,rows=[])
+        scenarios=('ObserveService','TwoSequentialTransfers','ObserveService','RestartAndRejoin','FollowAcrossEpochs','MultipleNodes')
+        requirements=('DurableRestore','RepeatedEpochTransition','MultipleIngressNodes')
+        for index,scenario in enumerate(scenarios):
+            if index<3:
+                raw=(self.root/'service-client-result.json').read_bytes() if index==1 else c.base.json.dumps(self.state).encode()
+                (self.root/f'scenario-checkpoint-{index}.json').write_bytes(raw)
+                verdict=dict(outcome='completed',checkpointSHA256=c.fixture.digest(raw),checkpointBytes=len(raw),index=index)
+            else: verdict=dict(outcome='blocked',missingRequirement=requirements[index-3])
+            self.report['rows'].append(dict(scenario=scenario,verdict=verdict))
+        self.save_report()
+
+    def save_report(self):
+        (self.root/'scenario-runner-result.json').write_text(c.base.json.dumps(self.report))
+
+    def replace_checkpoint(self,index,value):
+        raw=c.base.json.dumps(value).encode()
+        (self.root/f'scenario-checkpoint-{index}.json').write_bytes(raw)
+        self.report['rows'][index]['verdict'].update(checkpointSHA256=c.fixture.digest(raw),checkpointBytes=len(raw))
+        self.save_report()
+
+    def test_default_direct_arguments_are_unchanged(self):
+        self.assertEqual(c.client_command('direct',1234,30),['lab.PlutusServiceClientMain','1234','30','/exchange'])
+        self.assertEqual(c.client_command('sequential',1234,30),['lab.PlutusScenarioRunnerMain','1234','30','/exchange'])
+
+    def test_closed_mode_and_runner_bounds(self):
+        for mode,port,duration in (('lab.OtherMain',1234,30),('SEQUENTIAL',1234,30),('sequential',1234,2),
+                                  ('sequential',1234,61),('sequential',True,30),('direct',0,30)):
+            with self.subTest(mode=mode,port=port,duration=duration),self.assertRaises(ValueError):
+                c.client_command(mode,port,duration)
+        c.client_command('direct',1234,1)
+
+    def test_typed_report_original_checkpoint_binding(self):
+        raw,checkpoints=c.sequential_report(self.root,self.client)
+        self.assertEqual(raw,(self.root/'scenario-runner-result.json').read_bytes())
+        self.assertEqual(checkpoints[1],(self.root/'service-client-result.json').read_bytes())
+        self.assertEqual(len(checkpoints),3)
+
+    def test_all_blocked_cannot_be_a_success(self):
+        for row in self.report['rows'][:3]:row['verdict']=dict(outcome='blocked',missingRequirement='DurableRestore')
+        self.save_report()
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_success_scope_and_stop_flags_are_strict(self):
+        for field,value in (('allRequestedPassed',True),('executedScenariosPassed',False),('restoreAuthority',True),
+                            ('observationalOnly',False),('stop','Failed')):
+            original=self.report[field];self.report[field]=value;self.save_report()
+            with self.subTest(field=field),self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+            self.report[field]=original
+
+    def test_exact_scenario_order_and_blocked_requirements(self):
+        self.report['rows'][1]['scenario']='MultipleNodes';self.save_report()
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+        self.report['rows'][1]['scenario']='TwoSequentialTransfers'
+        self.report['rows'][4]['verdict']['missingRequirement']='DurableRestore';self.save_report()
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_checkpoint_index_size_hash_types(self):
+        original=copy.deepcopy(self.report['rows'][0]['verdict'])
+        for field,value in (('index',True),('index',2),('checkpointBytes',0),('checkpointBytes',65537),
+                            ('checkpointSHA256','f'*64),('outcome','blocked')):
+            self.report['rows'][0]['verdict']=dict(original,**{field:value});self.save_report()
+            with self.subTest(field=field),self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_transfer_checkpoint_cannot_replace_original_client(self):
+        self.replace_checkpoint(1,dict(self.client,changed=True))
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_initial_owner_cross_binding_rejects_changed_final_owner(self):
+        state=copy.deepcopy(self.state);state['pin']['ownerId']='f'*64
+        self.replace_checkpoint(2,state)
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_client_pin_cannot_belong_to_another_owner(self):
+        self.client=copy.deepcopy(self.client)
+        self.client['transactions'][1]['acceptedResponse']['receipt']['pin']=dict(self.pin,ownerId='f'*64)
+        (self.root/'service-client-result.json').write_text(c.base.json.dumps(self.client))
+        self.replace_checkpoint(1,self.client)
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_aggregate_checkpoint_budget(self):
+        self.replace_checkpoint(0,dict(self.state,padding='x'*33000))
+        self.replace_checkpoint(2,dict(self.state,padding='y'*33000))
+        with self.assertRaisesRegex(ValueError,'aggregate'):c.sequential_report(self.root,self.client)
+
+    def test_report_and_checkpoint_files_reject_symlinks(self):
+        path=self.root/'scenario-checkpoint-0.json'
+        target=self.root/'preserved.json';target.write_bytes(path.read_bytes())
+        path.unlink();path.symlink_to(target)
+        with self.assertRaisesRegex(ValueError,'symlink'):c.sequential_report(self.root,self.client)
+
+    def test_initial_observation_cannot_follow_first_admission(self):
+        state=copy.deepcopy(self.state);state['pin']['generation']=2
+        self.replace_checkpoint(0,state)
+        self.replace_checkpoint(2,state)
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+    def test_closed_or_stale_final_observation_rejected(self):
+        self.replace_checkpoint(2,dict(self.state,closed=True))
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+        state=copy.deepcopy(self.state);state['pin']['generation']=0
+        self.replace_checkpoint(2,state)
+        with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
+
+
 if __name__=='__main__':unittest.main()

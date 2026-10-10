@@ -30,6 +30,92 @@ def service_limits(duration, blocks):
     base.require(type(blocks) is int and 1 <= blocks <= 128, "bounded service blocks 1..128")
 
 
+def client_command(mode, port, duration):
+    """Closed Test-only client selection; the Compile runtime is unchanged."""
+    base.require(mode in ("direct", "sequential"), "closed client mode: direct or sequential")
+    service_limits(duration, 128)
+    base.require(type(port) is int and 1 <= port <= 65535, "bounded client API port")
+    if mode == "sequential":
+        base.require(duration >= 3, "sequential client requires at least three seconds")
+    main = "lab.PlutusServiceClientMain" if mode == "direct" else "lab.PlutusScenarioRunnerMain"
+    return [main, str(port), str(duration), "/exchange"]
+
+
+def sequential_report(submission, client):
+    """Validate typed outcomes against original observational checkpoint bytes.
+
+    These files are evidence, never a durable state image or restore authority.
+    Known unsupported operations must remain explicitly blocked, not passed.
+    """
+    submission = Path(submission)
+    path = submission / "scenario-runner-result.json"
+    base.require(path.resolve() == path, "scenario report has no symlink traversal")
+    raw = base.read(path, 65536)
+    report = base.decode(raw)
+    base.require(report.get("schema") == "sequential-devnet-runner-v1" and
+                 report.get("executedScenariosPassed") is True and report.get("allRequestedPassed") is False and
+                 report.get("stop") == "Exhausted" and report.get("observationalOnly") is True and
+                 report.get("restoreAuthority") is False, "bounded observational sequential outcomes")
+    expected = ("ObserveService", "TwoSequentialTransfers", "ObserveService",
+                "RestartAndRejoin", "FollowAcrossEpochs", "MultipleNodes")
+    missing = ("DurableRestore", "RepeatedEpochTransition", "MultipleIngressNodes")
+    rows = report.get("rows")
+    base.require(isinstance(rows, list) and len(rows) == len(expected), "exact requested scenario count")
+    checkpoints = []
+    for index, (row, scenario) in enumerate(zip(rows, expected)):
+        base.require(isinstance(row, dict) and set(row) == {"scenario", "verdict"} and row["scenario"] == scenario,
+                     "exact ordered typed scenario")
+        verdict = row["verdict"]
+        base.require(isinstance(verdict, dict), "typed scenario verdict")
+        if index >= 3:
+            base.require(verdict == dict(outcome="blocked", missingRequirement=missing[index-3]),
+                         "known unsupported scenario remains explicitly blocked")
+            continue
+        base.require(set(verdict) == {"outcome", "checkpointSHA256", "checkpointBytes", "index"} and
+                     verdict["outcome"] == "completed" and type(verdict["index"]) is int and verdict["index"] == index and
+                     type(verdict["checkpointBytes"]) is int and 0 < verdict["checkpointBytes"] <= 65536 and
+                     base.hex64(verdict["checkpointSHA256"]), "bounded completed observational checkpoint")
+        checkpoint_path = submission / f"scenario-checkpoint-{index}.json"
+        base.require(checkpoint_path.resolve() == checkpoint_path, "checkpoint has no symlink traversal")
+        checkpoint = base.read(checkpoint_path, 65536)
+        base.require(len(checkpoint) == verdict["checkpointBytes"] and
+                     fixture.digest(checkpoint) == verdict["checkpointSHA256"], "exact checkpoint original bytes")
+        checkpoints.append(checkpoint)
+    base.require(sum(map(len, checkpoints)) <= 65536, "aggregate checkpoint byte budget")
+    client_path = submission / "service-client-result.json"
+    base.require(client_path.resolve() == client_path and checkpoints[1] == base.read(client_path, 65536) and
+                 base.decode(checkpoints[1]) == client, "transfer checkpoint preserves original external client result")
+    states = [base.decode(checkpoints[index]) for index in (0, 2)]
+    for state in states:
+        base.require(state.get("code") == "State" and state.get("profileId") == fixture.PROFILE and
+                     state.get("closed") is False and state.get("fullLedgerValidated") is False,
+                     "live bounded state observation, not restoration authority")
+    pins = [state.get("pin") for state in states]
+    for tx in client["transactions"]:
+        pins.extend((tx["acceptedResponse"]["receipt"]["pin"], tx["includedResponse"]["pin"]))
+    pins.extend(client[name]["pin"] for name in
+                ("betweenStateResponse", "afterSecondStateResponse", "firstStatusAfterSecondResponse"))
+    owner = pins[0].get("ownerId") if isinstance(pins[0], dict) else None
+    base.require(base.hex64(owner), "initial observed owner identity")
+    for pin in pins:
+        base.require(isinstance(pin, dict) and pin.get("ownerId") == owner and pin.get("profileId") == fixture.PROFILE,
+                     "all observations and HTTP evidence belong to the initial owner")
+        for key in ("coherentStateId", "ledgerStateId", "environmentId"):
+            base.require(base.hex64(pin.get(key)), "observational state identity: "+key)
+        point = base.point(pin.get("point"))
+        base.require(type(pin.get("generation")) is int and 0 <= pin["generation"] < 2**64 and
+                     type(pin.get("validationSlot")) is int and pin["validationSlot"] == point["slot"],
+                     "observational generation and validation point")
+    base.require(states[0]["pin"]["generation"] <= states[1]["pin"]["generation"] and
+                 states[0]["pin"]["point"]["slot"] <= states[1]["pin"]["point"]["slot"] and
+                 states[0]["pin"]["generation"] <= client["transactions"][0]["acceptedResponse"]["receipt"]["pin"]["generation"] and
+                 states[0]["pin"]["point"]["slot"] <= client["transactions"][0]["acceptedResponse"]["receipt"]["pin"]["point"]["slot"] and
+                 states[1]["pin"]["point"]["slot"] >= client["transactions"][1]["includedResponse"]["pin"]["point"]["slot"] and
+                 states[1]["pin"]["generation"] >= client["transactions"][1]["includedResponse"]["pin"]["generation"],
+                 "sequential state observations surround both inclusions")
+    return raw, checkpoints
+
+
 def service_cli_tail(tail, duration, blocks):
     service_limits(duration, blocks)
     tail = list(tail)
@@ -342,8 +428,8 @@ def controller_type(live):
                     "--mount", "type=bind,src="+str(self.exchange)+",dst=/exchange,readonly",
                     "--mount", "type=bind,src="+str(submission)+",dst=/exchange/submission",
                     "--entrypoint", self.args.java, self.args.scala_image, "-Xmx512m", "-XX:ActiveProcessorCount=1",
-                    "-cp", client_classpath, "lab.PlutusServiceClientMain", str(self.api_port),
-                    str(self.args.duration_seconds), "/exchange"]
+                    "-cp", client_classpath, *client_command(getattr(self.args, "client_mode", "direct"),
+                    self.api_port, self.args.duration_seconds)]
             cid = self.create("ada-client", args)
             try:
                 observed = self.owned(cid)
@@ -361,6 +447,17 @@ def controller_type(live):
                 base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "two-spend HTTP client exit")
                 self.client_receipt = client_result(base.decode(base.read(submission / "service-client-result.json", 65536)), self.transfers)
                 base.write(self.out / "client-result.json", self.client_receipt)
+                if getattr(self.args, "client_mode", "direct") == "sequential":
+                    report_raw, checkpoints = sequential_report(submission, self.client_receipt)
+                    with (self.out / "scenario-runner-result.json").open("xb") as stream:
+                        stream.write(report_raw)
+                    for index, raw in enumerate(checkpoints):
+                        with (self.out / f"scenario-checkpoint-{index}.json").open("xb") as stream:
+                            stream.write(raw)
+                    self.scenario_evidence = dict(clientMode="sequential",
+                        scenarioRunnerReportFile="scenario-runner-result.json",
+                        scenarioRunnerReportSHA256=fixture.digest(report_raw),
+                        scenarioCheckpointSHA256=[fixture.digest(raw) for raw in checkpoints])
                 self.client_completed = True
             finally:
                 self.remove_client()
@@ -603,7 +700,7 @@ def execute(live, support, args, classpath):
                    endpointComparisonSHA256=base.sha(launch.out / "endpoint-comparison.json"),
                    evaluationReceiptSHA256=[base.sha(launch.out / ("evaluation-receipt-"+str(i)+".json")) for i in (1,2)], runtimeEntrypoint="lab.Main plutus-service",
                    runtimeClasspathSHA256=base.sha(args.scala_classpath_file),
-                   clientClasspathSHA256=base.sha(args.client_classpath_file)))
+                   clientClasspathSHA256=base.sha(args.client_classpath_file), **getattr(launch, "scenario_evidence", {})))
     except BaseException as error:
         if not (launch.out / "failure.json").exists():
             base.write(launch.out / "failure.json", dict(errorType=type(error).__name__, message=str(error)[:4096]))
@@ -627,9 +724,11 @@ def main():
     parser.add_argument("--java", default="java")
     parser.add_argument("--duration-seconds", type=int, default=30)
     parser.add_argument("--max-blocks", type=int, default=128)
+    parser.add_argument("--client-mode", choices=("direct", "sequential"), default="direct")
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
     service_limits(args.duration_seconds, args.max_blocks)
+    client_command(args.client_mode, 1, args.duration_seconds)
     live, support, classpath = base.preflight(args)
     base.require(classpath == checked_classpath(args.scala_classpath_file, args.scala_build_root, True),
                  "Compile-only runtime classpath")
