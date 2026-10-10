@@ -23,6 +23,7 @@ The original audit below records its historical baseline and WIP findings. This 
 | Checked rebuild pairing | Integrated in `0710699`: actual queued work uses a private checked `RebuildContext`, binding the full admission pin and profile. This does not replace the owner fence or pool work token. |
 | HTTP failure policy | Integrated in `4057885`: 15 closed failure outcomes replace arbitrary status/code/category triples in actual HTTP paths. Existing wire bytes, redaction and effect handling remain; this is not a full HTTP/domain migration. |
 | Typed admission preparation | Integrated in `dc2977d`: a Sync-only effect boundary returns typed rejection or a private checked view/candidate pair. The actual service retains the permit through fenced commit and evidence. |
+| Admission decision | Integrated in `8f46841`: one exhaustive pool classification binds the evidence event and returned result; unchecked pairs cannot be constructed. |
 | Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
 
 Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
@@ -113,6 +114,40 @@ Exact source `40578853389cc85c6253ec70bb3a5e2f704ed8b5` passed 1,978 public Scal
 55-test retained invocation, 27 public gates and 542 Python tests with two skips.
 An initial test-fixture type error is retained separately; production code
 compiled in that attempt. Phase log SHA256: `4d0e8766c7d82a240d136da083b2347c44c208fe90d4b5482ab6ad1107d6e12e`.
+
+### Admission decision
+
+Before `8f46841`, the service matched all five pool outcomes twice: first
+to choose an evidence label inside the owner fence, then to return its public
+result outside it. Those independent matches could drift. The private-constructor
+[AdmissionDecision](../app/src/main/scala/lab/AdmissionDecision.scala) now binds
+both outputs in one exhaustive pure `fromPool` classification. It preserves the
+exact receipt, rejection and full pin objects, with no public constructor or copy.
+
+The actual service path is now:
+
+```scala
+pool.modify(/* unchanged pure admission transition */)
+  .map(AdmissionDecision.fromPool)
+  .flatTap(decision => observe(candidate, decision.event))
+```
+
+This remains inside the same uncancelable owner fence. Only after observation
+succeeds does the applied decision expose its result. A stale fence still yields
+Retry without a decision or evidence; sink failure still shuts eligibility and
+returns Unavailable through the existing handler. No extra effect, resource,
+retry or capability was introduced. Revalidation uses its separate predicate.
+
+Two added table/compile tests cover every outcome and rejection, exact payload
+references, wire labels, newly-admitted classification, valid factory use and
+rejected construction/copy/mutation. Existing evidence tests retain stale fencing,
+duplicate admission, persistence failure and masked cancellation coverage.
+Exact source `8f46841b8d3c088df03f1fed354b1a3433c09685` passed 1,987 public Scala/translator tests, the separate
+55-test retained invocation, 27 gates and 542 Python tests with two skips.
+Phase log SHA256: `3cf29e1d0e4036be9a1b3d8bf3fc69ceed1745e370b7ccaf4e09ebe2d5163ce3`.
+Initial missing-import and test-fixture constructor compilation failures were
+corrected before this tested source; both failed private logs were retained.
+This adds no live or broader ledger-validation claim.
 
 ### Typed admission preparation
 

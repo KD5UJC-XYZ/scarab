@@ -610,3 +610,17 @@ Gate/Python log SHA256: `70f19cc7f625bc02505dc0d51c0096a0aa2cf0f2ff277e649028558
 The preceding `262b82b` checkpoint passed
 [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38029208034); this later source requires its own CI result.
 No new live claim follows from this refactor.
+
+
+## Admission decision - 2026-10-10
+
+Exact source `8f46841b8d3c088df03f1fed354b1a3433c09685` passed 1,987 public Scala/translator tests, the separate
+55-test retained invocation, 27 gates and 544 Python tests run (542 passed, two
+skipped). The [functional audit](functional-scala-audit.md#admission-decision)
+records the single pool classification that binds evidence and returned results,
+preserving fencing, failure and cancellation behavior.
+Phase log SHA256: `3cf29e1d0e4036be9a1b3d8bf3fc69ceed1745e370b7ccaf4e09ebe2d5163ce3`.
+Retained log SHA256: `0fd84cc7065895ebe3748d02a22b730a1e39cd9d2c57e5947089bb471ccefe6b`.
+Gate/Python log SHA256: `2caf272e0ebff8327515b9ddfedc36312854f74a20126d516ac58eb591897a41`.
+The preceding `52265f9` checkpoint passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38030345463);
+this later source requires its own CI result. No new live claim follows.
