@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab
 
-import cats.effect.{IO, Ref, ExitCode}
+import cats.effect.{IO, Ref, Resource, ExitCode}
 import cats.syntax.all.*
 import java.nio.file.{Files, Path, StandardOpenOption as Open}
 import java.time.Instant
@@ -126,13 +126,20 @@ private[lab] object PlutusServiceRuntime:
     require(end.isValidLong && end > now, "repeated deadline range")
     (end.toLong, WindowEnd.Duration)
 
+  private[lab] def publishAfterFinalization[A](output: Path, resource: Resource[IO, A])(
+      body: A => IO[(J, Boolean)]
+  ): IO[Boolean] =
+    resource.use(body).flatMap { (value, success) =>
+      boundedSave(output.resolve("result.json"), value, MaxTerminalBytes).as(success)
+    }
+
   private def work(config: PlutusServiceCommand.Config): IO[Boolean] =
-    config.repeated match
-      case None => workWithOracle(config, None)
+    val selected: Resource[IO, Option[NativeLikelihoodOracle.Oracle[IO]]] = config.repeated match
+      case None => Resource.pure[IO, Option[NativeLikelihoodOracle.Oracle[IO]]](None)
       case Some(PlutusServiceCommand.Repeated.Jvm) =>
         JvmLikelihoodGenerator
           .resource[IO](config.base.exchange.resolve("jvm-likelihood"))
-          .use(generator => workWithOracle(config, Some(generator)))
+          .map(g => Some(g))
       case Some(PlutusServiceCommand.Repeated.Native(executable, executableSHA256)) =>
         NativeLikelihoodOracle
           .resource[IO](
@@ -142,12 +149,13 @@ private[lab] object PlutusServiceRuntime:
               config.base.exchange.resolve("native-likelihood")
             )
           )
-          .use(oracle => workWithOracle(config, Some(oracle)))
+          .map(g => Some(g))
+    publishAfterFinalization(config.base.exchange, selected)(workWithOracle(config, _))
 
   private def workWithOracle(
       config: PlutusServiceCommand.Config,
       oracle: Option[NativeLikelihoodOracle.Oracle[IO]]
-  ): IO[Boolean] =
+  ): IO[(J, Boolean)] =
     val c = config.base
     val root = c.exchange
     for
@@ -690,11 +698,14 @@ private[lab] object PlutusServiceRuntime:
             )
           )
         case _ => throw new IllegalStateException("result shape")
-      _ <- boundedSave(root.resolve("result.json"), complete, MaxTerminalBytes)
-    yield PlutusRunPolicy.category(closedResult._3) == TerminalCategory.Stopped
+    yield (complete, PlutusRunPolicy.category(closedResult._3) == TerminalCategory.Stopped)
 
-  def run(config: PlutusServiceCommand.Config): IO[ExitCode] = IO
-    .defer(work(config))
+  def run(config: PlutusServiceCommand.Config): IO[ExitCode] = runOperation(config)(work(config))
+
+  private[lab] def runOperation(
+      config: PlutusServiceCommand.Config
+  )(operation: => IO[Boolean]): IO[ExitCode] = IO
+    .defer(operation)
     .timeout(if config.repeated.nonEmpty then 760.seconds else 220.seconds)
     .map(ok => if ok then ExitCode.Success else ExitCode(2))
     .handleErrorWith { e =>

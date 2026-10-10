@@ -5,8 +5,9 @@ import cats.effect.IO
 import lab.cbor.Bytes
 import lab.network.ChainSync
 
-/** Native-checked preparation stays outside the admission publication gate. Every mutation still
-  * passes through the same admission owner, updating pins and notifying the pending pool.
+/** Selected likelihood generation preparation stays outside the admission publication gate. Every
+  * mutation still passes through the same admission owner, updating pins and notifying the pending
+  * pool.
   */
 private[lab] object PlutusRepeatedDriver:
   def apply(
