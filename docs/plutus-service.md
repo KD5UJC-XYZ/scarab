@@ -66,7 +66,44 @@ read these external expected outcomes. Funding snapshots are bracketed under
 observed quiescence; the historical endpoint is acquired separately from a
 running reference node. No atomic cross-query snapshot is claimed.
 
-Verification results and exact tested source will be recorded after acceptance.
+## Isolated service acceptance — 2026-10-10
+
+Exact source `af8c589df14dee0342383f13abd3a8cf349bae15` passed the second
+isolated attempt. The [curated receipt](../reference/plutus-admission/service-live-receipt.json)
+binds source, full accepted pins, original transaction identities and evidence hashes.
+Bootstrap was slot 154/block 3. First admission/inclusion were slots 369/414;
+second admission/inclusion were slots 414/451. Both returned HTTP 202. The actual
+duplicate returned HTTP 200 `AlreadyPresent`; the conflict returned HTTP 409
+`InputsReserved`. The same API stayed available after each inclusion. The service
+published 15 blocks, continued to slot 628/block 18 and stopped at `durationLimit`.
+All 19 opened transports closed and owned-cluster cleanup was verified.
+
+The exact historical endpoint matched all 10 supported UTxO entries, original
+collateral, instantaneous stake and represented protocol fields. Fees increased
+from 200,000 to 800,000 lovelace. Endpoint stake snapshots remained unchanged from
+bootstrap; this is not a new runtime snapshot-transition claim. Both accepted
+evaluations consumed 47,600 memory units and 19,269,788 steps against declared
+100,000/30,000,000 budgets. Those are checked-runtime recordings, not a second
+independent evaluation. Original bodies and witnesses were compared on inclusion;
+whole-envelope byte equality is not asserted.
+
+The first attempt failed before Scala startup: funding observation took 9.302s,
+leaving insufficient time for the strict slot-300 snapshot check. Its failure and
+verified cleanup are retained privately. The successful retry observed funding
+in 0.821s. This establishes one successful bounded run, not timing reliability.
+
+Final source verification passed 1,728 Scala/translator tests, 27 public gates,
+466 Python tests run with two skips, and 20 separately mounted retained-evidence
+tests. The latter do not ship with public fixtures. Full-suite log SHA256:
+`f159f5f3d611c11f09cd8c6ab012b479f23d4073f06ec6b43703b8bcb30b0f73`;
+gate/Python log: `b6d2a9f996880a260b843749118420fb6ffedb854a5489f12ee86eff7a0ebd31`;
+retained log: `f258c6f917e824533e715b58b471c427dbe7668095ffbb806a736bc5f14eacb3`.
+
+The [functional audit](functional-scala-audit.md) identifies follow-up correctness
+work: typed termination/evidence events and an accurate contract for masked
+evidence I/O under the owner fence. Those changes are separate from this exact
+live-tested artifact; filesystem cancellation remains cooperative.
+
 This phase does not enable repeated epochs, productive rewards, mixed admission
 profiles, rollback/reconnect recovery, general scripts, full ledger validation or
 complete consensus. Default reference initialization delay is a separate future

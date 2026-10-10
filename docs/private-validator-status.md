@@ -20,7 +20,7 @@ separate. This is still an explicitly selected, bounded same-epoch diagnostic.
 
 | Area | Demonstrated capability | Remaining boundary |
 | --- | --- | --- |
-| Running the software | Main CLI supports bounded codec, acquisition, replay and private-node research commands. | Explicit Compile-only `plutus-research` CLI and managed loopback API passed isolated acceptance; external diagnostic exchange remains required. No supported long-running or durable submission service. |
+| Running the software | Main CLI supports bounded codec, acquisition, replay and private-node research commands. | Explicit Compile-only `plutus-research` CLI and managed loopback API passed isolated acceptance; external diagnostic exchange remains required. A separate bounded `plutus-service` now passed two-transaction acceptance; no durable or multi-epoch service is established. |
 | Submission | Isolated ADA-vkey, native signature-script and one registered V3 Plutus spending profile use Scala admission/pool/relay. | Pool is volatile. Public API lifecycle, durable statuses, restart/rollback recovery and broader profile combinations are incomplete. |
 | Networking | Live local ChainSync/BlockFetch original-byte acquisition and TxSubmission2 inclusion are observed. | Latest ingress acceptance explicitly sets reference initialization delay to zero. A separate relay-only default-delay observation does not establish full ingress interoperability under default settings. |
 | Plutus | Exact original identity, signatures, bounded context/integrity, registered cost model, fees/budgets, datum-aware state and collateral reservation compose for the checked profile. | One registered V3 script, one inline script input and successful phase two only. General scripts, datum-hash/reference features, other purposes, invalid phase-two collateral consumption/return and broader languages remain unsupported. |
@@ -54,9 +54,10 @@ These milestone totals must not be added together.
 
 1. **Extend operation beyond the bounded diagnostic.** The explicit Main CLI,
    managed service/API lifecycle and packaged HTTP-to-inclusion acceptance now
-   pass for the restricted profile. Remaining work includes removing dependence
-   on an external expected-transaction diagnostic exchange and specifying
-   sustained service status, shutdown and recovery behavior before broader use.
+   pass for the restricted profile. The [bounded service](plutus-service.md) no longer
+   consumes an expected-transaction descriptor and continues after inclusion.
+   Typed termination/evidence boundaries, durable recovery and multi-epoch
+   operation remain separate acceptance work.
 2. **Establish default-delay interoperability.** Keep real protocol startup
    timing, use genesis-derived budgets, and exercise delayed readiness,
    cancellation, reconnect and exhausted windows. Require the complete ingress

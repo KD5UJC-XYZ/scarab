@@ -1,0 +1,102 @@
+{
+  "schema": "plutus-service-public-acceptance-v1",
+  "testedSourceCommit": "af8c589df14dee0342383f13abd3a8cf349bae15",
+  "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+  "passed": true,
+  "initialPoint": {
+    "blockNo": 3,
+    "hash": "1759a895fe062f6813dac29d28822b64e78d814f349f4c46de41e522e390a86e",
+    "slot": 154
+  },
+  "finalPoint": {
+    "blockNo": 18,
+    "hash": "174c024054730ec9cd7ade41d26da9622df117fd745fa25d544d573e4b0d0bad",
+    "slot": 628
+  },
+  "transactions": [
+    {
+      "transactionId": "b222deaba77da3bec17cde08e6d0056c285022766580798c396caf676a37b44d",
+      "acceptedPin": {
+        "ownerId": "24b41a8af8babc4d61fe7dbc2c6048fe9952cce03e2cc0ccff931e26a117fefb",
+        "generation": 3,
+        "point": {
+          "hash": "160d936f6b1326fc9f4f255adbbb3ea6eeea852a001812047d47f5c46a9f3053",
+          "slot": 369,
+          "blockNo": 6
+        },
+        "coherentStateId": "856ce99cf39501453a0e76df8504d931c8d8f6edde883d28a5345dee3d04bafe",
+        "ledgerStateId": "4e4af8575e470abd435f0b2643ae386419cd0834c6cb1bd68b3e599a75ce4371",
+        "environmentId": "3ce3b4226a51e37c64cc23e03b049e327b022ed8faaf62b867a4a9620353bc9c",
+        "validationSlot": 369,
+        "profileId": "isolated-conway-pv9-plutus-v3-spend-v1"
+      },
+      "bodySHA256": "23415cffe6bc1ac2e93fad3ac7fcfcbff036048ac7890ba9c41a60bb9feb5359",
+      "witnessesSHA256": "000e65bce927aa6c66532407448b762562f26f81e792e1df034a47d1a64fa17e",
+      "envelopeSHA256": "74296acc061fc92dce8bbc08594c329ac0dfbc23d1ccef7cc6ef17475d4d8afc",
+      "contextSHA256": "10a076e2d99337a0b3871888e29dc870a8acceb2e6d3e6b37916e276202f67cb",
+      "declared": {
+        "memory": 100000,
+        "steps": 30000000
+      },
+      "consumed": {
+        "memory": 47600,
+        "steps": 19269788
+      },
+      "originalEvaluationReceiptSHA256": "f501813ab7b92c8e7e6b901e31f04ec80da2155980c31fe24cbfbbef701c83fd"
+    },
+    {
+      "transactionId": "7d804f5278ff643eed32c8f9afdf8bb6861142db69aed992385d6c6319badaed",
+      "acceptedPin": {
+        "ownerId": "24b41a8af8babc4d61fe7dbc2c6048fe9952cce03e2cc0ccff931e26a117fefb",
+        "generation": 4,
+        "point": {
+          "hash": "7e7248df0c48d6c82789577a0b80d224b4fea0eb6de98182c6574f31373218a1",
+          "slot": 414,
+          "blockNo": 7
+        },
+        "coherentStateId": "bf3e7f17f6e717a0a16aa964d0d2a06bd5649b552ab05238eaf035c5713290a7",
+        "ledgerStateId": "34d59a339d83f13ac12d84a1fdc0e2a8e621438808369caeb8c719bd54e18915",
+        "environmentId": "3ce3b4226a51e37c64cc23e03b049e327b022ed8faaf62b867a4a9620353bc9c",
+        "validationSlot": 414,
+        "profileId": "isolated-conway-pv9-plutus-v3-spend-v1"
+      },
+      "bodySHA256": "941e4f1c6899f41246e1c241a24016ca832a5275265154b9a1038d520a933053",
+      "witnessesSHA256": "ee58e77420c744a7996e5fc4648f2638fc61df9d2c10380e47903e5d889107ee",
+      "envelopeSHA256": "5cbed2cdb080b84949ef9f2f71c2de7f34ed604d913363d765f46f7e9409afa8",
+      "contextSHA256": "e4a8eb85e16fdb6706e694fefc06690f6a8e0d0c1512cc6160f458190c01ad29",
+      "declared": {
+        "memory": 100000,
+        "steps": 30000000
+      },
+      "consumed": {
+        "memory": 47600,
+        "steps": 19269788
+      },
+      "originalEvaluationReceiptSHA256": "0aa4fa71199b3a3e9784d54f2fb4fe57421edc4bbae3c487c5da266a690648ba"
+    }
+  ],
+  "publicationCount": 15,
+  "stopReason": "durationLimit",
+  "resourcesFinalized": true,
+  "transportOpens": 19,
+  "transportCloses": 19,
+  "cleanupVerified": true,
+  "feeIncrease": 600000,
+  "completeSupportedUtxoEqual": true,
+  "collateralPreserved": true,
+  "instantaneousStakeEqual": true,
+  "representedProtocolEqual": true,
+  "endpointSnapshotsUnchanged": true,
+  "fullLedgerValidated": false,
+  "restartSupported": false,
+  "multiEpochScalaProven": false,
+  "evidenceHashes": {
+    "result.json": "e5b2707b39ac6ac314f72ebd7fe75d7f2a2f16f71777d710d9429504a56cb14c",
+    "client-result.json": "244b3026205c46236441eb952ef9df61f1320f7322484dceb743c3aeaf315dc7",
+    "scala-result.json": "25fb80cddcd75c85877a431ac4da0b97a4d20daed7dc2c64fc09d2090bf810b0",
+    "endpoint-comparison.json": "dd246d064623f0be359af11dbb106a2ede790de820d9bf83d3567ce70454388b",
+    "cleanup.json": "4ab61686d6e573d7497f689a1fbb2343297630e2d8f6254be34bf91de3cc057b"
+  },
+  "rawRuntimeResultSHA256": "890fc1a68276e739b6437bf37601faafa7bc6590db88a620c6aa3c1c5272bea0",
+  "firstAttempt": "Funding snapshot timed out before Scala startup under unchanged slot-300 guard; retained, cleanup verified."
+}

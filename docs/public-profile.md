@@ -2,7 +2,7 @@
 
 This export omits historical/private corpus data whose redistribution is not established. It starts a new public history; full research history and historical run output remain private. The two pinned licensed synthetic Conway vectors and their notices are retained.
 
-At the audited base `c1e3dc99da88baf676c153045da78119b03f5f64`, use the complete CI command sequence below. `check` compiles and runs the eight aggregate public modules sequentially; `translator/test` is separate because the translator is not in that aggregate. The gate runner contains 26 explicit public gates, including the Compile-only Plutus CLI gate. Neither claims the original research package's 1,294 tests or 31 gates. Actual public results are recorded separately after execution.
+At the audited base `c1e3dc99da88baf676c153045da78119b03f5f64`, use the complete CI command sequence below. `check` compiles and runs the eight aggregate public modules sequentially; `translator/test` is separate because the translator is not in that aggregate. The audited base contained 26 public gates. The later service source `af8c589` adds the 27th gate and fifth Python discovery command shown below. Neither claims the original research package's 1,294 tests or 31 gates. Actual public results are recorded separately after execution.
 
 Twelve corpus-dependent suite source files live under `src/privateCorpus/scala` and are not compiled or executed by default `Test`. With a separately and lawfully obtained complete corpus, `bash scripts/sbtw checkPrivateCorpus` opts into them. A missing corpus fails before test execution; these tests are not marked skipped or passed. The six excluded Python gates also fail immediately when corpus directories are unavailable. No public command downloads the private corpus.
 
@@ -24,7 +24,7 @@ Build: pinned official Temurin JDK 21.0.11, sbt 1.10.7, Scala 3.3.8; 4 CPU / 4 G
 
 `.github/workflows/public-profile.yml` runs one Ubuntu 24.04 job on pull requests and pushes to main. It pins official checkout/setup-java actions to immutable commits and Temurin to Adoptium selector `21.0.11+10.0.LTS` (JDK 21.0.11+10), then uses the repository's SHA-pinned sbt 1.10.7 wrapper. Permissions are `contents: read`, checkout does not persist credentials, the job has a 20-minute timeout, and newer runs cancel older runs for the same PR/ref. There are no secrets, private-corpus downloads, live reference clusters, artifact publishing or deployment steps. The hosted OS image is an Ubuntu version label, not an immutable machine-image digest.
 
-At this base the job runs the public Scala check/runtime-classpath task, the separate translator tests, the explicit 26-gate runner, and four Python discovery commands. Guard tests do not launch live Docker workloads. Optional retained-evidence environment variables are not set by the workflow; passing public CI does not establish captured-reference agreement or live acceptance.
+The current job runs the public Scala check/runtime-classpath task, separate translator tests, 27 public gates, and five Python discovery commands. Guard tests do not launch live Docker workloads. Optional retained-evidence environment variables are not set by the workflow; passing public CI does not establish captured-reference agreement or live acceptance.
 
 ```sh
 bash scripts/sbtw check app/runtimeClasspathFile
@@ -34,6 +34,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_priva
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_validated_checkpoint_restart.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_native_script_submission_fixture.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_submission_fixture.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_service_fixture.py'
 ```
 
 Public Maven access is needed on a cold hosted runner. The workflow initially uses no dependency cache action. Local verification uses the existing inspected dependency cache with networking disabled in a fresh public source export; that does not establish fresh online resolution. The workflow is committed and has historical hosted results linked below. Local structure checks do not establish hosted success for a later revision; attribute each hosted result to its exact commit.
@@ -391,3 +392,7 @@ controller-attested semantic anchor may use fresh runtime identities and canonic
 content/provenance commitments; discarded history is not independently replayed.
 The ephemeral crossing path remains separate and requires complete native seed
 admission and automatic governance/non-myopic effects to be carried and compared.
+
+## Bounded service milestone — 2026-10-10
+
+Source `af8c589` passed 1,728 Scala/translator tests, 27 public gates and 466 Python tests run with two skips. Separately, 20 retained-data tests passed. The second isolated service attempt passed; the first timing failure remains retained. See [exact acceptance and limits](plutus-service.md#isolated-service-acceptance--2026-10-10). These counts are a dated milestone and are not additive with older runs.

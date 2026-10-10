@@ -4,6 +4,12 @@
 
 A runnable Scala research implementation of **byte-preserving CBOR and Cardano transaction-ID conformance**, bounded chain following, and restricted transaction admission. It includes pinned Plutus evaluator vectors, witness and selected ledger predicates, reversible UTxO/fee projections, and separate bounded persistence profiles. Later isolated acceptance covers Scala HTTP admission, relay and reference inclusion for ADA, native signature scripts and one registered Plutus V3 spend. It does not run a complete Cardano ledger, independently select a fully validated chain, or produce blocks.
 
+The [bounded Plutus service](docs/plutus-service.md) now has a separate isolated
+two-transaction acceptance at source `af8c589`. It continues after inclusion and
+stops at a configured bound; durable recovery and Scala multi-epoch operation
+remain unsupported. See the [functional audit](docs/functional-scala-audit.md)
+and [documentation audit](docs/documentation-audit-2026-10-10.md).
+
 ## Ordinary local node milestones
 
 See the dated [current capabilities, gaps and next phases](docs/private-validator-status.md)
@@ -89,6 +95,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_priva
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_validated_checkpoint_restart.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_native_script_submission_fixture.py'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_submission_fixture.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_service_fixture.py'
 ```
 
 The [public CI workflow](.github/workflows/public-profile.yml) runs these commands on pull requests and main pushes with pinned actions/JDK and read-only permissions; see [verification status](docs/public-profile.md). The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.
