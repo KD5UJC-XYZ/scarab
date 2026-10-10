@@ -451,3 +451,30 @@ exact source `d57d9796a75c4cbb1e5b31897c259ac7eb296932`, not this later source.
 It proves two live ingress owners and cross-observed original transaction
 body/witness bytes in the bounded same-epoch profile. No multi-epoch soak has
 yet passed.
+
+
+## Typed errors and compiler verification — 2026-10-10
+
+Exact source `915ead2efd57889d3543f2fe2b5448ba22dc5451` passed 1,935 public Scala/translator tests,
+41 tests in the separate retained invocation, all 27 public gates and 511
+Python tests (two skipped). Retained and public invocation totals overlap as
+described above. Log SHA256 values are respectively
+`f16a2cf53557a612b9027d38c16b1c7e09797792e3eb46763953f301b3d9a670`,
+`6a479e7c1e10ceef3f3d44f22ae282cb1eb3553289b6797c0c36ea6942498b91`
+and `d44457571df5d3ff791ad6a4f55478d272e5560ba8ee3a2f28bbe4e03ae57e91`.
+
+Admission view construction now preserves typed domain, pin and input causes
+until the existing effect boundary. The large research runner is decomposed
+into typed phases with unchanged resource and effect order. A preceding full
+build hit a Scala 3.3.8 posttyper stack overflow; the preserved failure was not
+reproduced by every isolated compile. The decomposed runner passed a clean
+compile and the full aggregate using the default stack, without changing the
+Scala version or adding unsafe effect execution.
+
+This source also includes the offline early-restart controller and dynamic
+JVM likelihood computation gated by exact native comparison. That mode has a
+native runtime dependency. The registered-DRep and repeated-boundary changes
+integrated later have their own focused evidence and are not covered by these
+aggregate counts. Independent JVM-only generation and the measured 600-second
+multi-epoch soak remain pending. The published `d8613b4` checkpoint separately
+passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38024507910).
