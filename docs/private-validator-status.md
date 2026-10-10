@@ -87,3 +87,11 @@ cluster state stay outside Git.
 ## Sequential runner and restore prerequisites
 
 The [typed sequential runner](sequential-devnet-runner.md) now has a bounded live acceptance with three completed and three explicitly blocked scenarios. Reviewed ledger/stake image codecs are present, but complete coherent-state restore and repeated-epoch operation remain unsupported. Its ten-minute target is a proposal gated on those semantics and explicit longer-run limits, not a completed soak.
+
+
+The next prerequisite increment adds [source-bound empty DRep completion](conway-empty-drep-completion.md),
+[coherent snapshot component export](coherent-stake-images.md), and an
+[offline two-endpoint client boundary](multi-endpoint-client-boundary.md).
+All are tested within their stated domains. They do not enable the blocked live
+scenarios. The [remaining concrete tests and untested two-service budget](sequential-devnet-runner.md#next-tests-after-the-prerequisite-components)
+cover exact likelihood arithmetic, complete fresh-owner restoration and concrete HTTP/topology integration.

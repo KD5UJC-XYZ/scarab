@@ -159,9 +159,14 @@ timing reliability.
 
 The proposed next long run is **600 seconds of active operation on one mutable
 private devnet**, with a proposed 720-second supervisor budget plus 30-second
-owned cleanup. Keep the aggregate 4 CPU/7 GiB profile: reference nodes share
-2 CPU/3 GiB, one Scala service uses 1 CPU/2 GiB, and the serial client/helper uses
-1 CPU/2 GiB. Use at most eight planned scenarios, at most 64 KiB per checkpoint
+owned cleanup. Keep the aggregate 4 CPU/7 GiB ceiling. For a proposed two-service topology, reference nodes share
+2 CPU/3 GiB, each Scala service receives 0.5 CPU/1 GiB, and one serial client/helper
+receives 1 CPU/2 GiB. This split is untested capacity, not an implemented launcher.
+Each Scala service needs separate owners, writable state, loopback ports and evidence,
+with JVM heap below its container limit and headroom for native/metaspace/thread memory.
+Verify actual quotas, readiness, bounded original-byte responses and cancellation before live use;
+all helper/capture phases must stay inside the same aggregate ceiling. Read-only classpaths
+may be shared; writable caches may not. Distinct owners alone do not prove propagation or consensus. Use at most eight planned scenarios, at most 64 KiB per checkpoint
 and 512 KiB aggregate checkpoint evidence; retain the monitored 1 GiB private
 directory ceiling and 60 GiB free-space reserve. The 250ms disk scan can
 overshoot; it is not a filesystem quota. Existing bounded container logging
@@ -178,12 +183,36 @@ across subsequent epochs. Reference-only progress cannot satisfy the Scala steps
 | --- | --- |
 | Sequential execution and honest diagnostics | Tested and observed in the bounded smoke test |
 | Ledger/stake image components | Reviewed [ledger image](restricted-validator-storage-v1.md) and [stake image](restricted-stake-image.md) preserve bounded data; decoding remains untrusted |
-| Complete restart/rejoin | Capture one coherent cell; authenticate ledger/image/full-point correspondence; restore certificates, nonce/eligibility/source authority and replay into fresh owners; reject old capabilities. Runtime refusal remains |
+| Complete restart/rejoin | [Coherent component export](coherent-stake-images.md) now derives and cross-binds the two images from one snapshot. Complete certificate/nonce/eligibility/source authority, retained replay and fresh-owner installation remain absent; runtime refusal remains |
 | Repeated epochs | Fresh governance completion and exact nonempty-go likelihood arithmetic, correct reward/freeze ownership, Plutus environment rebinding and atomic successor publication remain prerequisites |
-| Empty governance prerequisite | A narrowly source-bound empty DRep completion is the next independent transition component; it must not erase registered pool domains or reuse stale completion |
-| Multiple node submissions | Add an owned endpoint adapter and independent original-byte inclusion checks per endpoint; current adapter has one Scala API |
+| Empty governance prerequisite | [Captured empty DRep completion](conway-empty-drep-completion.md) is implemented and tested; it preserves the supplied full pool domain and rejects stale captures. This does not enable the repeated coordinator |
+| Multiple node submissions | An [offline typed two-endpoint boundary](multi-endpoint-client-boundary.md) checks ownership and original identities. Concrete HTTP clients, two-service topology and endpoint-specific inclusion evidence remain absent; the live adapter still blocks MultipleNodes |
 | Longer operational limits | Review duration, publication/evidence caps and cancellation under the proposed profile only after semantic gates pass |
 
 The image components reduce the persistence gap; they do not supply a complete
 restore path or enable the ten-minute validator run. No checkpoint or epoch guard
 has been removed.
+
+
+## Next tests after the prerequisite components
+
+The [repeated-epoch invariants](repeated-epoch-gap-map.md) are now included in the
+public regression suite. The following tests target remaining capabilities;
+none is evidence that the proposed ten-minute run has occurred.
+
+* **Nonempty-go arithmetic:** use the existing native `generationProbes[1]` in
+  `ledger/src/test/resources/non-myopic/native-result.json`, with f=1/20,
+  sigma=1/13, d=0, one block and 500 epoch slots. First inject the recorded
+  binary64 probability `3f702126612e5f00` and compare all 100 raw binary32
+  likelihood words; then independently compute the probability and compare its
+  binary64 bits before repeating the vector. This separates log/Float rounding
+  from pow/rational conversion. One passing case cannot remove the nonempty-go guard.
+* **Restore/rejoin:** authenticate complete certificate, nonce, eligibility and
+  retained-original replay state alongside these images; construct a fresh owner,
+  replay to the exact coherent tuple and prove old fences/undo capabilities reject.
+  The current historical image export test does not perform restoration.
+* **Multiple ingress nodes:** implement bounded concrete HTTP transports and a
+  supervisor-owned two-service topology, using independent admissible inputs.
+  Compare each endpoint's submitted originals and later full-point inclusion,
+  then cancel both client leases. First verify the proposed smaller Scala memory
+  allocations offline; fake transports are only client-boundary tests.

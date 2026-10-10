@@ -400,3 +400,24 @@ Source `af8c589` passed 1,728 Scala/translator tests, 27 public gates and 466 Py
 ## Typed sequential milestone — 2026-10-10
 
 Source `0424dd7cc6194ca01581884ab8222632c5e9af28` passed 1,765 Scala/translator tests, 27 gates and 486 Python tests run with two skips, plus 20 separate retained tests. See [live evidence and preserved failure](sequential-devnet-runner.md#bounded-sequential-acceptance--2026-10-10). The preceding service snapshot `08898c9` passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38018444095); this link is not a CI claim for the newer source.
+
+
+## Longer-run prerequisites — 2026-10-10
+
+Source `66997e2968eb34188a53fda2f211572b37aa2253` passed **1,791 public Scala/translator tests**, formatting and packaging,
+**27 public gates**, **486 Python tests run with two skips**, and **26 separate retained-data tests**.
+The new corpus-dependent image tests remain opt-in; the public count includes three
+image refusal/bounds tests, six empty DRep tests, eleven two-endpoint boundary tests
+and six repeated-epoch invariants. No new live test was run for this increment.
+
+| Exact verification log | SHA-256 |
+| --- | --- |
+| Public Scala/translator | `c90e3b608eb223a54fc3aa401e2898be0136e7225ecd2dff09ad0bf2793cf905` |
+| Public gates/Python | `6aeed35ca369882c79679ac02bc060e62b911b0d4f70c2180b0f9d83c26e73f4` |
+| Separate retained data | `e6d96c4181e5b3a3e3b446a9179e1c127ae6c8ef25c473ae16e84cc3b61e34b6` |
+
+The preserved sequential acceptance publication `40c5ef271a74e16cbd8af336e8432726cc3dbe7c`
+passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38020455228).
+That historical CI result is not a claim for this newer source. The original
+live success and reference-stall failure remain bound to their own immutable sources.
+See the [capability matrix and next tests](sequential-devnet-runner.md#ten-minute-target-and-prerequisites).

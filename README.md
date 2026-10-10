@@ -4,7 +4,7 @@
 
 A runnable Scala research implementation of **byte-preserving CBOR and Cardano transaction-ID conformance**, bounded chain following, and restricted transaction admission. It includes pinned Plutus evaluator vectors, witness and selected ledger predicates, reversible UTxO/fee projections, and separate bounded persistence profiles. Later isolated acceptance covers Scala HTTP admission, relay and reference inclusion for ADA, native signature scripts and one registered Plutus V3 spend. It does not run a complete Cardano ledger, independently select a fully validated chain, or produce blocks.
 
-The [typed sequential runner](docs/sequential-devnet-runner.md) records supported smoke-test scenarios separately from blocked restart/multi-epoch coverage. Reviewed ledger/stake image components are prerequisites, not runtime restore.
+The [typed sequential runner](docs/sequential-devnet-runner.md) records supported smoke-test scenarios separately from blocked restart/multi-epoch coverage. Reviewed [coherent component images](docs/coherent-stake-images.md), [empty DRep completion](docs/conway-empty-drep-completion.md) and an [offline two-endpoint client boundary](docs/multi-endpoint-client-boundary.md) narrow the remaining gaps; complete restore, repeated epochs and live multiple-node ingress remain unsupported.
 
 The [bounded Plutus service](docs/plutus-service.md) now has a separate isolated
 two-transaction acceptance at source `af8c589`. It continues after inclusion and
