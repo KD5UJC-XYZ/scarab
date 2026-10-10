@@ -1,0 +1,7 @@
+# Multi-endpoint client boundary (offline only)
+
+`PlutusMultiEndpointScenarioAdapter` is a Test-only typed transport seam. It acquires two client leases, checks distinct endpoint labels, loopback ports and observed owner IDs, then binds each designated transaction's accepted envelope and included body/witness hashes to that endpoint's full state pin and publication. The supervisor supplies endpoint ownership; this boundary does not prove independent node processes. Fake transports test these checks and resource finalization. They are not multi-node execution evidence.
+
+The existing live scenario runner still blocks `MultipleNodes`. No HTTP transport implementation, two-service launcher, resource-profile expansion, public-network submission, restart authority or repeated-epoch capability is added. Inclusion checks do not assert whole signed-envelope equality with block bytes or full ledger validation.
+
+The next integration test requires a reviewed supervisor-owned two-service topology with separate loopback HTTP ingress ports and owner IDs, bounded concrete HTTP clients that decode scoped responses, endpoint-specific original-byte publications, two independent admissible inputs, and cancellation of both client leases. It must independently compare both submitted originals and endpoint evidence before any live multi-node claim. Existing slot100/300, service lifetime and cluster resource constraints remain unchanged; fitting two services requires separate resource review.
