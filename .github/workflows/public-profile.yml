@@ -3,7 +3,7 @@ name: Public profile
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, pico/repeated-epoch-soak-local]
 
 permissions:
   contents: read
