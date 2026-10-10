@@ -97,75 +97,7 @@ private[lab] object NativeEndpointLedger:
       case _ => throw new IllegalArgumentException("endpoint source path")
   }
 
-  /** Every non-UTxO sibling must remain the exact original span, not a re-encoding. */
-  private[lab] def checkReplacement(seed: Bytes, debug: Bytes, whole: Bytes): Either[String, Unit] =
-    protect {
-      val a = parse(seed); val b = parse(debug)
-      def descend(left: Node, right: Node, remaining: List[Int]): Unit = remaining match
-        case Nil =>
-          empty(right, "debug UTxO placeholder")
-          val unpacked = get(NativeCoinUtxoMemPack.decode(left.original))
-          require(
-            get(utxoSemantics(unpacked)) == get(utxoSemantics(whole)),
-            "endpoint mempack/whole UTxO mismatch"
-          )
-        case index :: rest =>
-          val l = left.value match
-            case V.Arr(v) => v
-            case _        => throw new IllegalArgumentException("endpoint replacement array")
-          val r = arr(right, l.size)
-          require(index < l.size, "endpoint replacement path")
-          l.indices
-            .filter(_ != index)
-            .foreach(i =>
-              require(l(i).original == r(i).original, "endpoint changed non-UTxO original")
-            )
-          descend(l(index), r(index), rest)
-      descend(a, b, List(3, 1, 1, 0))
-    }
-
-  private[lab] def utxoSemantics(raw: Bytes) = protect {
-    get(S.decodeUtxo(raw)).map { (input, out) =>
-      val pair = parse(out.original).value match
-        case V.Arr(Vector(address, coin)) => (address, coin)
-        case V.Map(fields) if fields.size == 2 =>
-          (fields.find(_._1.value == V.UInt(0)).get._2, fields.find(_._1.value == V.UInt(1)).get._2)
-        case _ => throw new IllegalArgumentException("endpoint coin-only TxOut shape")
-      require(uint(pair._2) == out.coin, "endpoint coin-only value required")
-      val address = pair._1.value match
-        case V.ByteString(b) => b
-        case _               => throw new IllegalArgumentException("endpoint output address")
-      input -> (out.credential, out.coin, address)
-    }
-  }
-
-  private[lab] def checkSnapshot(raw: Bytes, expected: S.Snapshot): Either[String, Unit] = protect {
-    val a = arr(parse(raw), 2)
-    val active = map(a(0)).map { (k, v) =>
-      val x = arr(v, 2); credential(k) -> S.Active(uint(x(0)), bytes(x(1), 28))
-    }.toMap
-    val pools = map(a(1)).map { (k, v) =>
-      val x = arr(v, 10); val count = uint(x(8))
-      require(count <= Int.MaxValue, "endpoint delegator count")
-      bytes(k, 28) -> S.PoolSnapshot(
-        uint(x(0)),
-        ratio(x(1)),
-        set(x(2))(bytes(_, 28)),
-        uint(x(3)),
-        bytes(x(4), 32),
-        uint(x(5)),
-        uint(x(6)),
-        ratio(x(7)),
-        count.toInt,
-        credential(x(9))
-      )
-    }.toMap
-    require(
-      active == expected.active && pools == expected.pools &&
-        active.values.map(_.coin).sum.max(BigInt(1)) == expected.total,
-      "endpoint snapshot mismatch"
-    )
-  }
+  export EndpointLedgerChecks.{checkReplacement, utxoSemantics, checkSnapshot}
 
   /** Historical PV9 multiplicity index is preserved, never reconstructed from pool registrations.
     */

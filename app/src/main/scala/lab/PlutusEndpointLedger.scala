@@ -7,7 +7,9 @@ import lab.ledger.{ConwayStake as S, PlutusOutput, TxIn}
 import lab.submission.SignedTransaction
 import scala.util.control.NonFatal
 
-/** Test-only same-epoch, one successful Plutus spend comparison. No reward/governance parity. */
+/** Restricted research same-epoch, one successful Plutus spend comparison. No reward/governance
+  * parity.
+  */
 private[lab] object PlutusEndpointLedger:
   final case class Report(
       acquisitionId: Bytes,
@@ -123,7 +125,7 @@ private[lab] object PlutusEndpointLedger:
       "one consumed inline datum and datumless endpoint required"
     )
     get(
-      NativeEndpointLedger.checkReplacement(
+      EndpointLedgerChecks.checkReplacement(
         sources("derived-full-epoch-seed.cbor"),
         sources("original-debug-epoch.cbor"),
         whole
@@ -192,9 +194,9 @@ private[lab] object PlutusEndpointLedger:
       "endpoint/follower/recomputed instantaneous stake mismatch"
     )
     val snaps = arr(es(2), 4)
-    get(NativeEndpointLedger.checkSnapshot(snaps(0).original, stake.snapshots.mark))
-    get(NativeEndpointLedger.checkSnapshot(snaps(1).original, stake.snapshots.set))
-    get(NativeEndpointLedger.checkSnapshot(snaps(2).original, stake.snapshots.go))
+    get(EndpointLedgerChecks.checkSnapshot(snaps(0).original, stake.snapshots.mark))
+    get(EndpointLedgerChecks.checkSnapshot(snaps(1).original, stake.snapshots.set))
+    get(EndpointLedgerChecks.checkSnapshot(snaps(2).original, stake.snapshots.go))
     require(uint(snaps(3)) == stake.snapshots.fees, "endpoint snapshot fees mismatch")
     Report(
       endpoint.id,

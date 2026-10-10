@@ -11,16 +11,8 @@ import scala.concurrent.duration.*
 
 /** Test-only network pull adapter. No preloaded block list, reconnect, or public admission. */
 private[lab] object NativeLiveBoundary:
-  final case class Observation(
-      index: Int,
-      announced: Point,
-      original: BoundedChainFollower.Original,
-      envelopeSHA256: Bytes,
-      blockSHA256: Bytes,
-      arrived: FiniteDuration,
-      fetched: FiniteDuration,
-      applied: Option[FiniteDuration]
-  )
+  type Observation = NetworkPublicationObservation
+  val Observation = NetworkPublicationObservation
   final case class Outcome(
       snapshot: CoherentSequence.Snapshot,
       driver: Option[EphemeralStreaming.Report],

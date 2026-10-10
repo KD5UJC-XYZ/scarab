@@ -344,18 +344,4 @@ private[lab] object SyntheticRewardProjection:
       "application" -> application
     )
 
-  def render(j: J): String = j match
-    case J.Obj(fs) =>
-      fs.toVector
-        .sortBy(_._1)
-        .map((k, v) => render(str(k)) + ":" + render(v))
-        .mkString("{", ",", "}")
-    case J.Arr(xs) => xs.map(render).mkString("[", ",", "]")
-    case J.Str(s) =>
-      "\"" + s.flatMap {
-        case '\"' => "\\\""; case '\\' => "\\\\"; case c if c < ' ' => f"\\u${c.toInt}%04x";
-        case c    => c.toString
-      } + "\""
-    case J.Num(n) => n
-    case J.Lit(l) => l
-  def encode(j: J): Bytes = Bytes.fromArray((render(j) + "\n").getBytes(UTF_8))
+  export EvidenceJson.{render, encode}

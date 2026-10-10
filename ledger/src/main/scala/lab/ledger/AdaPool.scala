@@ -170,7 +170,11 @@ object AdaPool:
       private[AdaPool] val results: Vector[
         Either[ScopedAdmission.Failure, ScopedAdmission.Candidate[P]]
       ]
-  )
+  ):
+    /** Existing successful evaluations only; observing these never reruns the evaluator. */
+    def evaluatedCandidates: Vector[ScopedAdmission.Candidate[P]] = results.collect {
+      case Right(c) => c
+    }
 
   /** included IDs must come from an applied follower block at newPin. Never relay events. */
   def move[P](

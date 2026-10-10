@@ -5,7 +5,9 @@ import lab.cbor.Bytes
 import lab.header.{PraosCertificateState as Certificate, PraosNonceEvolution as Nonces}
 import scala.util.control.NonFatal
 
-/** Test-only same-point field comparison. Source pins are attribution, not authentication. */
+/** Restricted research same-point field comparison. Source pins are attribution, not
+  * authentication.
+  */
 private[lab] object NativeEndpointProtocol:
   final class Checked private[NativeEndpointProtocol] (
       val terminal: Certificate.Point,

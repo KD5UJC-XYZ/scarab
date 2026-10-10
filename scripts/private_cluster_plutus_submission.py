@@ -9,6 +9,8 @@ from pathlib import Path
 import signal
 import shutil
 import os
+import re
+import hashlib
 import time
 
 import private_cluster_ada_submission as ada
@@ -68,13 +70,102 @@ def same_epoch_request(value, initial, join_id, boundary_ms):
     return terminal
 
 
+
+def research_cli_tail(tail):
+    tail = list(tail)
+    index = tail.index("lab.NativeLiveBoundaryMain")
+    original = tail[index + 1:]
+    base.require(len(original) == 5, "exact isolated research launcher arguments")
+    initial, manifest_pin, port, magic, exchange = original
+    return tail[:index] + ["lab.Main", "plutus-research", "--profile", fixture.PROFILE,
+            "--initial", initial, "--manifest-sha256", manifest_pin, "--port", port,
+            "--magic", magic, "--exchange", exchange]
+
+
+def checked_classpath(path, build_root, compile_only=False):
+    value = base.read(path, 65536).decode().strip()
+    components = value.split(":")
+    base.require(components and all(x.startswith("/work/") and
+                 ".." not in Path(x).parts and "\n" not in x and "\r" not in x and
+                 (build_root / x[len("/work/"):]).exists() for x in components),
+                 "classpath must resolve under read-only build")
+    if compile_only:
+        base.require(all(not any(part in ("test", "test-classes", "test-resources")
+                                 for part in Path(x).parts) for x in components),
+                     "runtime classpath must exclude Test classes/resources")
+    return value
+
+
+
+def evaluation_receipt(exchange, result, transfer, source_join_id, manifest_pin, client):
+    relative = result.get("evaluationReceiptFile")
+    base.require(isinstance(relative, str) and
+                 re.fullmatch(r"evaluation-receipts/plutus-evaluation-[0-9]{4}\.json", relative),
+                 "bounded evaluation receipt relative path")
+    root = Path(exchange).resolve()
+    path = root / relative
+    base.require(path.resolve() == path and not path.parent.is_symlink(), "evaluation receipt has no symlink traversal")
+    raw = base.read(path, 16384)
+    pin = hashlib.sha256(raw).hexdigest()
+    base.require(base.hex64(result.get("evaluationReceiptSHA256")) and result["evaluationReceiptSHA256"] == pin,
+                 "final result pins original evaluation receipt bytes")
+    value = base.decode(raw)
+    base.require(value.get("schema") == "plutus-evaluation-evidence-v1" and
+                 value.get("phase") == "admission" and value.get("outcome") == "accepted" and
+                 value.get("newlyAdmitted") is True, "newly accepted HTTP admission evaluation")
+    index = value.get("eventIndex")
+    count = result.get("evaluationReceiptCount")
+    base.require(type(count) is int and 1 <= count <= 128 and
+                 type(index) is int and 0 <= index < count and
+                 relative == f"evaluation-receipts/plutus-evaluation-{index:04d}.json", "receipt event identity")
+    base.require(value.get("sourceJoinId") == source_join_id and
+                 value.get("initialManifestSHA256") == manifest_pin, "evaluation bootstrap source bindings")
+    for name in ("transactionId", "envelopeSHA256", "bodySHA256", "witnessesSHA256"):
+        base.require(base.hex64(value.get(name)) and value[name] == transfer[name], "evaluation original binding: " + name)
+    for name in ("requestDigest", "contextSHA256", "scriptSHA256", "modelSHA256"):
+        base.require(base.hex64(value.get(name)), "evaluation hash: " + name)
+    base.require(value["scriptSHA256"] == fixture.SCRIPT_SHA and
+                 value["modelSHA256"] == "6ab455d588e186649a6aae2761fec85ae5a2647cb002a2acb737604f698b21a2",
+                 "registered script and model evidence")
+    base.require(value.get("evaluator") == "Scalus" and value.get("evaluatorVersion") == "1.3.0" and
+                 value.get("language") == "PlutusV3" and value.get("semantics") == "C" and
+                 type(value.get("protocolMajor")) is int and value["protocolMajor"] == 9,
+                 "fixed evaluator semantics evidence")
+    declared, consumed = value.get("declared"), value.get("consumed")
+    base.require(isinstance(declared, dict) and isinstance(consumed, dict) and
+                 set(declared) == set(consumed) == {"memory", "steps"}, "explicit execution-unit dimensions")
+    for name, maximum in (("memory", 100000), ("steps", 30000000)):
+        base.require(type(declared[name]) is int and declared[name] == maximum and
+                     type(consumed[name]) is int and 0 <= consumed[name] <= maximum, "bounded execution units: " + name)
+    state = value.get("statePin")
+    base.require(isinstance(state, dict) and state.get("profileId") == fixture.PROFILE, "profile-bound state pin")
+    base.require(base.hex64(state.get("ownerId")), "32-byte admission owner")
+    for name in ("generation", "validationSlot"):
+        base.require(type(state.get(name)) is int and 0 <= state[name] < 2 ** 64, "state pin integer: " + name)
+    for name in ("coherentStateId", "ledgerStateId", "environmentId"):
+        base.require(base.hex64(state.get(name)), "state pin hash: " + name)
+    base.point(state.get("point"))
+    base.require(state["validationSlot"] == state["point"]["slot"], "admission validation slot equals published point")
+    accepted = client.get("acceptedResponse")
+    base.require(isinstance(accepted, dict) and accepted.get("code") == "Accepted" and
+                 accepted.get("profileId") == fixture.PROFILE, "actual accepted HTTP response")
+    accepted_receipt = accepted.get("receipt")
+    base.require(isinstance(accepted_receipt, dict) and
+                 accepted_receipt.get("transactionId") == transfer["transactionId"] and
+                 accepted_receipt.get("envelopeSHA256") == transfer["envelopeSHA256"] and
+                 accepted_receipt.get("pin") == state, "exact accepted HTTP original and full state pin")
+    base.require(all(value.get(name) is False for name in
+                 ("fullLedgerValidated", "inclusionClaimed", "currentEligibilityClaimed")), "evaluation evidence scope")
+    return raw
+
+
 def controller_type(live):
     AdaController = ada.controller_type(live)
 
     class PlutusController(AdaController):
         def create(self, phase, tail):
             if phase == "scala":
-                tail = ["lab.PlutusSubmissionMain" if x == "lab.NativeLiveBoundaryMain" else x for x in tail]
+                tail = research_cli_tail(tail)
             if phase == "ada-client":
                 tail = [*tail, fixture.PROFILE]
             return super().create(phase, tail)
@@ -83,13 +174,15 @@ def controller_type(live):
             base.require(phase in ("native-originals", "plutus-spend-originals") and
                          phase not in self.containers and "scala" not in self.containers,
                          "serial fixture proof before Scala startup")
+            base.require(len(arguments) == 3 and arguments[0] == "originals",
+                         "original-span Compile command only")
             args = ["--pull=never", "--network=none", "--cpus=1", "--memory=2g", "--memory-swap=2g",
                     "--pids-limit=256", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
                     "--user", "1000:1000", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
                     "--mount", "type=bind,src=" + str(self.args.scala_build_root) + ",dst=/work,readonly",
                     "--mount", "type=bind,src=" + str(self.exchange) + ",dst=/exchange",
                     "--entrypoint", self.args.java, self.args.scala_image, "-Xmx512m", "-XX:ActiveProcessorCount=1",
-                    "-cp", self.classpath, "lab.NativeScriptFixtureMain", *arguments]
+                    "-cp", self.classpath, "lab.Main", "transaction-originals", *arguments[1:]]
             cid = self.create(phase, args)
             try:
                 observed = self.owned(cid)
@@ -291,8 +384,15 @@ def controller_type(live):
             base.write(root / "descriptor.json", self.transfer)
 
         def run_client(self):
-            super().run_client()
-            plutus_receipt(self.client_receipt)
+            # The independent external client remains a Test helper. Never add
+            # its classes to the Compile-only runtime/originals process.
+            runtime_classpath = self.classpath
+            self.classpath = checked_classpath(self.args.client_classpath_file, self.args.scala_build_root)
+            try:
+                super().run_client()
+                plutus_receipt(self.client_receipt)
+            finally:
+                self.classpath = runtime_classpath
 
         def wait_file(self, name, seconds):
             value = super().wait_file(name, seconds)
@@ -446,6 +546,11 @@ def controller_type(live):
                          result.get("feeDelta") == fixture.FEE and result.get("governanceCompared") is False,
                          "same-epoch spend, collateral and exact fee bindings")
             base.require(all(result.get(k) is False for k in ("fullLedgerValidated", "nativeConformance", "runtimeImport", "livePulserCursorEqual")), "restricted scope")
+            original_receipt = evaluation_receipt(self.exchange, result, self.transfer,
+                                                   ready["sourceJoinId"], base.sha(initial / "adapter-inputs.json"),
+                                                   self.client_receipt)
+            with (self.out / "evaluation-receipt.json").open("xb") as stream:
+                stream.write(original_receipt)
             cid = self.containers["scala"]
             until = min(self.deadline, time.monotonic() + 5)
             while time.monotonic() < until:
@@ -480,7 +585,9 @@ def execute(live, support, args, classpath):
                    supportManifestSHA256=args.support_sha, controllerSHA256=base.sha(Path(__file__)),
                    baseControllerSHA256=base.sha(Path(base.__file__)), resources=base.RESOURCES,
                    projectionSHA256=base.PROJECTION_SHA, scalaImage=args.scala_image,
-                   scalaClasspathSHA256=base.sha(args.scala_classpath_file), scalaBuildRoot=str(args.scala_build_root),
+                   scalaClasspathSHA256=base.sha(args.scala_classpath_file),
+                   clientClasspathSHA256=base.sha(args.client_classpath_file), runtimeEntrypoint="lab.Main plutus-research",
+                   scalaBuildRoot=str(args.scala_build_root),
                    operationSeconds=240, cleanupSeconds=30, profileId=fixture.PROFILE,
                    cliSubmissionAllowed="one-reference-funding-before-bootstrap-only",
                    testedSpendCliSubmissionAllowed=False, fixturePlannerSHA256=base.sha(Path(fixture.__file__)),
@@ -500,7 +607,11 @@ def execute(live, support, args, classpath):
                    scalaResultSHA256=base.sha(launch.out / "scala-result.json"),
                    clientResultSHA256=base.sha(launch.out / "client-result.json"),
                    profileId=fixture.PROFILE, fundingComparisonSHA256=base.sha(launch.out / "funding-comparison.json"),
-                   bootstrapProofSHA256=base.sha(launch.out / "plutus-bootstrap-proof.json")))
+                   bootstrapProofSHA256=base.sha(launch.out / "plutus-bootstrap-proof.json"),
+                   evaluationReceiptSHA256=base.sha(launch.out / "evaluation-receipt.json"),
+                   evaluationReceiptFile=result["evaluationReceiptFile"], runtimeEntrypoint="lab.Main plutus-research",
+                   runtimeClasspathSHA256=base.sha(args.scala_classpath_file),
+                   clientClasspathSHA256=base.sha(args.client_classpath_file)))
     except BaseException as error:
         if not (launch.out / "failure.json").exists():
             base.write(launch.out / "failure.json", dict(errorType=type(error).__name__, message=str(error)[:4096]))
@@ -517,7 +628,7 @@ def execute(live, support, args, classpath):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("support-manifest", "owned-root", "evidence-root", "scala-build-root", "scala-classpath-file", "projection"):
+    for name in ("support-manifest", "owned-root", "evidence-root", "scala-build-root", "scala-classpath-file", "client-classpath-file", "projection"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--support-sha", required=True)
     parser.add_argument("--scala-image", required=True)
@@ -525,6 +636,9 @@ def main():
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
     live, support, classpath = base.preflight(args)
+    base.require(classpath == checked_classpath(args.scala_classpath_file, args.scala_build_root, True),
+                 "Compile-only runtime classpath")
+    checked_classpath(args.client_classpath_file, args.scala_build_root)
     if args.execute:
         execute(live, support, args, classpath)
     else:

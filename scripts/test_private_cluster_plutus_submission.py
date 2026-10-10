@@ -3,6 +3,9 @@ import ast
 import copy
 from pathlib import Path
 import unittest
+import tempfile
+import json
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -46,10 +49,42 @@ class ControllerTest(unittest.TestCase):
             def create(self, phase, tail): return tuple(tail)
         controller = c.controller_type(SimpleNamespace(Launcher=Launcher))
         obj = object.__new__(controller)
-        self.assertEqual(obj.create('scala', ['java', 'lab.NativeLiveBoundaryMain', 'a']),
-                         ('java', 'lab.PlutusSubmissionMain', 'a'))
+        self.assertEqual(obj.create('scala', ['java', 'lab.NativeLiveBoundaryMain', 'initial', 'pin', '1', '2', 'exchange']),
+                         ('java', 'lab.Main', 'plutus-research', '--profile', c.fixture.PROFILE,
+                          '--initial', 'initial', '--manifest-sha256', 'pin', '--port', '1',
+                          '--magic', '2', '--exchange', 'exchange'))
         self.assertEqual(obj.create('ada-client', ['lab.AdaSubmissionClientMain', '1']),
                          ('lab.AdaSubmissionClientMain', '1', c.fixture.PROFILE))
+
+    def test_research_dispatch_rejects_legacy_argument_shape(self):
+        with self.assertRaises(ValueError): c.research_cli_tail(['lab.NativeLiveBoundaryMain', 'only-one'])
+
+    def test_compile_classpath_rejects_test_output_but_client_may_use_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'app/target/test-classes').mkdir(parents=True)
+            (root / 'app/target/classes').mkdir()
+            cp = root / 'classpath.txt'
+            cp.write_text('/work/app/target/test-classes')
+            with self.assertRaisesRegex(ValueError, 'exclude Test'):
+                c.checked_classpath(cp, root, True)
+            self.assertEqual(c.checked_classpath(cp, root), '/work/app/target/test-classes')
+            cp.write_text('/work/app/target/classes')
+            self.assertEqual(c.checked_classpath(cp, root, True), '/work/app/target/classes')
+
+    def test_external_client_failure_restores_compile_classpath(self):
+        class Launcher: pass
+        controller = c.controller_type(SimpleNamespace(Launcher=Launcher))
+        obj = object.__new__(controller)
+        obj.classpath = '/work/runtime/classes'
+        obj.args = SimpleNamespace(client_classpath_file=Path('/client-cp'), scala_build_root=Path('/build'))
+        def fail_client(actual):
+            self.assertEqual(actual.classpath, '/work/client/test-classes')
+            raise TimeoutError('external test client failure')
+        with patch.object(c, 'checked_classpath', return_value='/work/client/test-classes'), \
+             patch.object(controller.__bases__[0], 'run_client', fail_client):
+            with self.assertRaises(TimeoutError): obj.run_client()
+        self.assertEqual(obj.classpath, '/work/runtime/classes')
 
     def test_reference_submit_forbidden_through_inherited_dispatch(self):
         class Launcher:
@@ -67,7 +102,12 @@ class ControllerTest(unittest.TestCase):
         obj.exchange, obj.out, obj.classpath = Path('/owned/exchange'), Path('/owned/evidence'), '/work/classes'
         obj.containers = {}
         obj.deadline = c.time.monotonic() + 60
-        obj.create = lambda phase, args: 'owned-id'
+        def create(phase, args):
+            self.assertIn('lab.Main', args)
+            self.assertIn('transaction-originals', args)
+            self.assertNotIn('lab.NativeScriptFixtureMain', args)
+            return 'owned-id'
+        obj.create = create
         inspections = []
         def owned(cid):
             inspections.append(cid)
@@ -83,7 +123,7 @@ class ControllerTest(unittest.TestCase):
         with patch.object(c.base, 'write'), patch.object(c.base, 'check_resources',
                 side_effect=ValueError('mock inspection rejection') if resource_failure else None):
             with self.assertRaises((TimeoutError, ValueError)):
-                obj.proof_helper('plutus-spend-originals', [], Path('/owned/exchange/out.json'))
+                obj.proof_helper('plutus-spend-originals', ['originals', 'input', 'output'], Path('/owned/exchange/out.json'))
         self.assertEqual(inspections, ['owned-id', 'owned-id'])
         self.assertIn(('rm', '--force', 'owned-id'), calls)
         self.assertTrue(any(x[0] == 'ps' for x in calls))
@@ -99,6 +139,98 @@ class ControllerTest(unittest.TestCase):
         self.assertIn('same_epoch_lifecycle', methods)
         self.assertNotIn('cleanup', methods)  # inherit token/immutable-ID cleanup
         self.assertNotIn('execute', methods)  # inherit reference submit prohibition
+
+
+class EvaluationReceiptTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        (self.root / 'evaluation-receipts').mkdir()
+        self.path = self.root / 'evaluation-receipts/plutus-evaluation-0000.json'
+        self.transfer = {name: str(i) * 64 for i, name in enumerate(
+            ('transactionId', 'envelopeSHA256', 'bodySHA256', 'witnessesSHA256'), 1)}
+        self.value = dict(schema='plutus-evaluation-evidence-v1', eventIndex=0,
+            phase='admission', outcome='accepted', newlyAdmitted=True, sourceJoinId='5' * 64,
+            initialManifestSHA256='6' * 64, **self.transfer,
+            requestDigest='7' * 64, contextSHA256='8' * 64, scriptSHA256=c.fixture.SCRIPT_SHA,
+            modelSHA256='6ab455d588e186649a6aae2761fec85ae5a2647cb002a2acb737604f698b21a2',
+            evaluator='Scalus', evaluatorVersion='1.3.0', language='PlutusV3', semantics='C', protocolMajor=9,
+            declared=dict(memory=100000, steps=30000000), consumed=dict(memory=50000, steps=20000000),
+            statePin=dict(ownerId='e' * 64, generation=1, validationSlot=200, profileId=c.fixture.PROFILE,
+                point=dict(slot=200, blockNo=5, hash='9' * 64), coherentStateId='a' * 64,
+                ledgerStateId='b' * 64, environmentId='c' * 64),
+            fullLedgerValidated=False, inclusionClaimed=False, currentEligibilityClaimed=False)
+        self.client = dict(acceptedResponse=dict(code='Accepted', profileId=c.fixture.PROFILE,
+            receipt=dict(transactionId=self.transfer['transactionId'], envelopeSHA256=self.transfer['envelopeSHA256'],
+                         pin=copy.deepcopy(self.value['statePin']))))
+
+    def result(self):
+        self.raw = json.dumps(self.value, indent=2).encode()
+        self.path.write_bytes(self.raw)
+        return dict(evaluationReceiptFile=str(self.path.relative_to(self.root)),
+                    evaluationReceiptSHA256=hashlib.sha256(self.raw).hexdigest(), evaluationReceiptCount=1)
+
+    def check(self, result=None):
+        return c.evaluation_receipt(self.root, result or self.result(), self.transfer, '5' * 64, '6' * 64, self.client)
+
+    def test_original_accepted_receipt_bytes_retained(self):
+        result = self.result()
+        self.assertEqual(self.check(result), self.raw)
+
+    def test_changed_receipt_digest_rejected(self):
+        result = self.result()
+        result['evaluationReceiptSHA256'] = 'd' * 64
+        with self.assertRaisesRegex(ValueError, 'pins original'): self.check(result)
+
+    def test_different_original_or_bootstrap_rejected_even_with_valid_file_hash(self):
+        for name in ('transactionId', 'bodySHA256', 'sourceJoinId', 'initialManifestSHA256'):
+            with self.subTest(field=name):
+                old = self.value[name]
+                self.value[name] = 'd' * 64
+                with self.assertRaises(ValueError): self.check()
+                self.value[name] = old
+
+    def test_duplicate_and_revalidation_are_not_new_http_acceptance(self):
+        for changes in (dict(outcome='already-present', newlyAdmitted=False), dict(phase='revalidation')):
+            old = self.value.copy()
+            self.value.update(changes)
+            with self.assertRaisesRegex(ValueError, 'newly accepted'): self.check()
+            self.value = old
+
+    def test_claim_inflation_or_budget_overrun_rejected(self):
+        self.value['inclusionClaimed'] = True
+        with self.assertRaisesRegex(ValueError, 'scope'): self.check()
+        self.value['inclusionClaimed'] = False
+        self.value['consumed']['steps'] = 30000001
+        with self.assertRaisesRegex(ValueError, 'execution units'): self.check()
+
+    def test_other_admission_state_rejected_with_same_transaction_and_sources(self):
+        for field, replacement in (('ownerId', 'f' * 64), ('generation', 2),
+                                   ('ledgerStateId', 'd' * 64), ('environmentId', 'd' * 64)):
+            with self.subTest(field=field):
+                old = self.value['statePin'][field]
+                self.value['statePin'][field] = replacement
+                with self.assertRaisesRegex(ValueError, 'full state pin'): self.check()
+                self.value['statePin'][field] = old
+        self.value['statePin']['validationSlot'] = 201
+        self.value['statePin']['point']['slot'] = 201
+        with self.assertRaisesRegex(ValueError, 'full state pin'): self.check()
+
+    def test_receipt_record_bounds(self):
+        result = self.result()
+        result['evaluationReceiptCount'] = 129
+        with self.assertRaisesRegex(ValueError, 'event identity'): self.check(result)
+
+    def test_receipt_path_traversal_and_symlink_rejected(self):
+        result = self.result()
+        result['evaluationReceiptFile'] = '../evaluation-receipts/plutus-evaluation-0000.json'
+        with self.assertRaisesRegex(ValueError, 'relative path'): self.check(result)
+        result = self.result()
+        alternate = self.root / 'alternate.json'
+        self.path.rename(alternate)
+        self.path.symlink_to(alternate)
+        with self.assertRaisesRegex(ValueError, 'symlink'): self.check(result)
 
 
 class TimingTest(unittest.TestCase):

@@ -53,8 +53,10 @@ object Verify:
 
 object Main extends IOApp:
   private val usage =
-    "usage: app/run node --profile PROFILE --bootstrap DIRECTORY --port PORT [BOUNDS] | node-fence-audit CONTEXT_DIR ORACLE_DIR NODE_STDOUT 2 TARGET(12..16) | reference-range-capture PORT MAGIC START_SLOT START_HASH END_SLOT END_HASH MAX(1..8) | reference-handshake PORT PRIVATE_NETWORK_MAGIC | [fixture-index.tsv] | --help | vm [fixture-directory] | network-demo | network-selftest | ledger-demo | witness-demo | coverage-demo | vrf-demo | fee-size-demo | praos-demo | opcert-demo | sum6-demo | chain-sync-selftest | chain-sync-session-selftest | chain-fetch | chain-fetch-tcp | block-fetch-selftest | body-commitment | block-evidence | restricted-replay | restricted-replay-store"
+    "usage: app/run plutus-research --help | transaction-originals INPUT_CBOR OUTPUT_JSON | node --profile PROFILE --bootstrap DIRECTORY --port PORT [BOUNDS] | node-fence-audit CONTEXT_DIR ORACLE_DIR NODE_STDOUT 2 TARGET(12..16) | reference-range-capture PORT MAGIC START_SLOT START_HASH END_SLOT END_HASH MAX(1..8) | reference-handshake PORT PRIVATE_NETWORK_MAGIC | [fixture-index.tsv] | --help | vm [fixture-directory] | network-demo | network-selftest | ledger-demo | witness-demo | coverage-demo | vrf-demo | fee-size-demo | praos-demo | opcert-demo | sum6-demo | chain-sync-selftest | chain-sync-session-selftest | chain-fetch | chain-fetch-tcp | block-fetch-selftest | body-commitment | block-evidence | restricted-replay | restricted-replay-store"
   def run(args: List[String]): IO[ExitCode] = args match
+    case "plutus-research" :: rest                 => PlutusResearchCommand.run(rest)
+    case "transaction-originals" :: rest           => TransactionOriginalsCommand.run(rest)
     case "node" :: rest                            => NodeCommand.run(rest)
     case "node-fence-audit" :: rest                => NodeAuditCommand.runFenced(rest)
     case "node-audit" :: rest                      => NodeAuditCommand.run(rest)

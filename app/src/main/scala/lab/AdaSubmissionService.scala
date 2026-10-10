@@ -19,7 +19,8 @@ private[lab] final class AdaSubmissionService[F[_]] private (
     validations: Semaphore[F],
     pending: Ref[F, Option[(AdmissionView, AdaPool.Rebuild[StatePin])]],
     wake: Queue[F, Unit],
-    val relaySource: lab.network.RelaySource[F]
+    val relaySource: lab.network.RelaySource[F],
+    evidence: Option[PlutusEvaluationEvidence.Observer[F]]
 )(using F: Async[F])
     extends AdmissionStateObserver[F]:
   import AdaSubmissionService.*
@@ -39,6 +40,27 @@ private[lab] final class AdaSubmissionService[F[_]] private (
   )
   def status(id: Bytes): F[Option[AdaPool.Status[StatePin]]] =
     guarded(s => F.monotonic.map(t => s.status(id, t.toNanos)))
+
+  /** Runs while the owner fence is held. A failed sink closes relay eligibility before release. The
+    * bounded filesystem sink waits for in-flight writes on cancellation; five seconds is a
+    * cooperative sink deadline, not a hard real-time filesystem guarantee.
+    */
+  private def observe(
+      candidate: ScopedAdmission.Candidate[StatePin],
+      phase: String,
+      outcome: String
+  ): F[Unit] =
+    evidence.fold(F.unit) { sink =>
+      F.delay(PlutusEvaluationEvidence.checked(candidate, phase, outcome))
+        .flatMap {
+          case None        => F.unit
+          case Some(value) => F.timeout(sink.observe(value), 5.seconds)
+        }
+        .handleErrorWith { _ =>
+          F.monotonic.flatMap(t => pool.update(AdaPool.shutdown(_, t.toNanos))) *>
+            F.raiseError(new EvidenceUnavailable)
+        }
+    }
 
   private def admit(original: Bytes): F[Result] =
     (for
@@ -73,8 +95,19 @@ private[lab] final class AdaSubmissionService[F[_]] private (
                   else
                     owner
                       .withCurrent(view.pin)(
-                        F.monotonic
-                          .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
+                        F.uncancelable { _ =>
+                          F.monotonic
+                            .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
+                            .flatTap { outcome =>
+                              val label = outcome match
+                                case AdaPool.Outcome.Accepted(_)       => "accepted"
+                                case AdaPool.Outcome.AlreadyPresent(_) => "already-present"
+                                case AdaPool.Outcome.Rejected(_)       => "pool-rejected"
+                                case AdaPool.Outcome.Retry(_)          => "retry"
+                                case AdaPool.Outcome.Unavailable       => "unavailable"
+                              observe(candidate, "admission", label)
+                            }
+                        }
                       )
                       .map {
                         case Left(pin)                                => Result.Retry(pin)
@@ -88,6 +121,7 @@ private[lab] final class AdaSubmissionService[F[_]] private (
               }
           }
     yield result).handleErrorWith {
+      case _: EvidenceUnavailable        => F.pure(Result.Unavailable)
       case _: AdmissionState.Unavailable => F.pure(Result.Unavailable)
       case error                         => F.raiseError(error)
     }
@@ -130,7 +164,31 @@ private[lab] final class AdaSubmissionService[F[_]] private (
           .flatMap { result =>
             owner
               .withCurrent(view.pin)(
-                F.monotonic.flatMap(t => pool.update(s => AdaPool.finish(s, result, t.toNanos)._1))
+                F.uncancelable { _ =>
+                  F.monotonic.flatMap { time =>
+                    pool
+                      .modify { old =>
+                        val (next, committed) = AdaPool.finish(old, result, time.toNanos)
+                        (next, (next, committed))
+                      }
+                      .flatMap { (next, committed) =>
+                        result.evaluatedCandidates.traverse_ { candidate =>
+                          val retained = committed && next
+                            .status(candidate.transaction.transactionId, time.toNanos)
+                            .exists {
+                              case AdaPool.Status.Pending(receipt, true) =>
+                                receipt.pin == candidate.pin && receipt.envelopeSHA256 == candidate.transaction.envelopeSHA256
+                              case _ => false
+                            }
+                          observe(
+                            candidate,
+                            "revalidation",
+                            if retained then "retained" else "discarded"
+                          )
+                        }
+                      }
+                  }
+                }
               )
               .void
           }
@@ -169,6 +227,8 @@ private[lab] final class AdaSubmissionService[F[_]] private (
     }
 
 private[lab] object AdaSubmissionService:
+  private final class EvidenceUnavailable
+      extends RuntimeException("evaluation evidence unavailable; pool closed")
   enum Result:
     case Accepted(receipt: AdaPool.Receipt[StatePin])
     case AlreadyPresent(receipt: AdaPool.Receipt[StatePin])
@@ -199,7 +259,8 @@ private[lab] object AdaSubmissionService:
 
   def resource[F[_]: Async](
       owner: AdmissionState[F],
-      limits: AdaPool.Limits = AdaPool.Limits()
+      limits: AdaPool.Limits = AdaPool.Limits(),
+      evidence: Option[PlutusEvaluationEvidence.Observer[F]] = None
   ): Resource[F, AdaSubmissionService[F]] =
     for
       initial <- Resource.eval(owner.current)
@@ -223,7 +284,17 @@ private[lab] object AdaSubmissionService:
       )
       service <- Resource.make(
         Async[F].pure(
-          new AdaSubmissionService(owner, profile, pool, budget, validations, pending, wake, relay)
+          new AdaSubmissionService(
+            owner,
+            profile,
+            pool,
+            budget,
+            validations,
+            pending,
+            wake,
+            relay,
+            evidence
+          )
         )
       )(_.stop)
       _ <- Resource
