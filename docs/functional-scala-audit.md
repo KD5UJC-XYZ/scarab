@@ -5,7 +5,7 @@ Owned branch: `audit/functional-scala-20261010`; worktree: `/home/<user>/cardano
 
 This is a source and retained-evidence audit, not a production refactor or a fresh test result. Only this Markdown document is changed. No builds, dependency installations, live/native jobs, containers or public pushes were performed. No applicable AGENTS.md or repository SKILL.md was found in the inspected repository and ancestor locations. Main's service work was read without modification and is explicitly marked WIP below.
 
-## Implementation checklist (2026-10-10, integrated through `8b407d2`)
+## Implementation checklist (2026-10-10)
 
 The original audit below records its historical baseline and WIP findings. This checklist records subsequent implementation; the original statement that only Markdown changed applies to that audit, not these later commits.
 
@@ -20,6 +20,7 @@ The original audit below records its historical baseline and WIP findings. This 
 | MTL/capabilities | Integrated in `8fd3500`: actual service admission, rebuild and guarded reads use explicit `Read[F]`/`Fence[F]`, `given`/`using`, typed results and pin syntax. MTL was assessed; no new direct dependency or use was needed. Cats Effect retains transitive MTL `1.3.1`. Broader orchestration remains separate work. |
 | Typed runtime phases | Integrated in `915ead2`: `Bootstrap`, `Followed` and `VerifiedInclusion` connect ordered runtime helpers. This runtime remains `IO`; it is not presented as a generic `F[_]` migration. |
 | Resource composition | Integrated in `4cc59cb`: the actual service publishes its result only after the selected JVM/native generation resource closes. Release failure yields failure status and no success result. |
+| Checked rebuild pairing | Integrated in `0710699`: actual queued work uses a private checked `RebuildContext`, binding the full admission pin and profile. This does not replace the owner fence or pool work token. |
 | Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
 
 Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
@@ -146,6 +147,34 @@ Validation: the isolated 2-CPU/2-GiB offline follow-on build passed formatting a
 The pure `pinFor` assembly is used by the owner itself. Both existing `F.fromEither` boundaries, owner gate and cancellation mask remain in place; no lifecycle or authority operation moved. Admission profiles already use a closed enum at this boundary, so no redundant opaque profile wrapper was added. HTTP code/category strings remain at their final wire-rendering boundary. Broader CLI/runtime errors and remaining string compatibility callers are still unfinished.
 
 Validation: formatting and all 42 focused tests passed in the isolated 2-CPU/2-GiB offline build. Four new tests cover actual owner field/reference equivalence, distinct domain/pin/view causes, historical rendering and validation order, and compiler-negative arbitrary-string substitution; the other 38 retain owner/service/evidence/capability regression coverage. Private evidence: `cardano-typed-admission-error-tests-20261010-first/result.json` and `tests.log` (SHA-256 `9333a25d5e7cdc58c12e0b7a54f942036e8159db35ab70e6f4ec3b0f53f60ada`). No live behavior or broader typed-error completion is claimed.
+
+## Follow-on: checked rebuild context
+
+Integrated commit `07106996174a5619e59272a4f2cf2fe2d605ba51` replaces the actual service's
+`Option[(AdmissionView, AdaPool.Rebuild[StatePin])]` pending slot with
+`Option[RebuildContext]`. The old tuple could represent a valid view paired with
+work for a different pin or profile. The private-constructor
+[context](../app/src/main/scala/lab/RebuildContext.scala) now checks complete pin
+equality and profile identity once, returning closed `MissingInput`,
+`PinMismatch` or `ProfileMismatch` causes. The production state-change path
+constructs it before placing work in the pending slot; the worker and rebuild
+method accept only that checked value.
+
+This pairing is not publication authority. The existing owner fence and pool
+token still decide whether revalidated work may commit. `sameWork` deliberately
+compares the original work object's reference, preserving the rule that an old
+completion cannot clear newer pending work. Queue reads, pending-slot rechecks,
+permits, cancellation races, masking and evidence order are unchanged. Public
+wire formats and compatibility constructors are unchanged.
+
+The isolated 2-CPU/2-GiB build passed formatting and 43 focused tests: five new
+pairing, profile, identity and compile-negative cases plus 38 existing owner,
+service, evidence and capability checks. Existing rapid-generation, lost-wake
+and cancellation regressions remain included. Log SHA256:
+`f9cf48694cbada797357abda1f0cc651089131108d8c4803ae3c548dfaddc617`.
+Independent source review matched all three changed source/test files to that
+build. Ordered pool rebuilding and wider renderer/domain migration remain
+separate work; this change establishes no new live result.
 
 ## Compiler-depth follow-on: research runtime phases
 

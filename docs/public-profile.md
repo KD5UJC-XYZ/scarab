@@ -519,7 +519,32 @@ assumption that elapsed time means completion. No new live restart, multi-epoch
 soak, terminal parity or public-network fetch success is claimed. The prior
 same-epoch two-service result remains bound to its original source.
 
-The [functional audit](functional-scala-audit.md#implementation-checklist-2026-10-10-integrated-through-8b407d2)
+The [functional audit](functional-scala-audit.md#implementation-checklist-2026-10-10)
 records exact commits, real production before/after examples, law coverage and
 remaining migrations. Wider raw-domain/error migration and rebuild composition
 remain separate work.
+
+
+## Checked rebuild pairing — 2026-10-10
+
+Exact Scala source `07106996174a5619e59272a4f2cf2fe2d605ba51` passed 1,974 public Scala/translator tests,
+55 tests in the separate retained invocation and all 27 public gates. Python
+sources are unchanged from the preceding checkpoint: the established 511-test
+run passed again with two skips; the separately pinned 18 new tests retain
+their passing result. Combined coverage remains 527 passed and two skipped.
+
+The [functional audit](functional-scala-audit.md#follow-on-checked-rebuild-context)
+records the production change from an unchecked view/work tuple to a private
+checked context. Complete pin and profile equality is established before work
+is queued; original work identity and owner fencing remain in force. Five new
+tests cover pairing and identity boundaries, alongside existing wake-up,
+cancellation and rapid-generation regressions. No public wire format changed.
+
+Scala log SHA256: `050282717995cbc6815601cc60941b0cfe5060630a93ce50cce07994e19e258d`.
+Retained log SHA256: `3957cfd2fc3415098b4a9e27a17644aaa641cda1b888f0d1e0165e736d9aeaf3`.
+Gate/Python log SHA256: `f6b73a949b6c3bcb86988a960f1af268ecc4bdb618cf9d752352717000325915`.
+
+The preceding `910b8dd` prerequisite checkpoint passed
+[hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38027107108). This later source requires its own CI
+result. The repeated terminal comparator and combined live supervisor remain
+unfinished; no new live restart, soak or terminal agreement is claimed.
