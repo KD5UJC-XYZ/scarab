@@ -57,9 +57,11 @@ one reference-only funding submission before bootstrap.
   point, state pin, component epoch and transition count. `0` is explicitly
   `epoch-zero-only`; `1` is `post-boundary-exact-epoch-one`. A run ending in another
   epoch fails. Duration is a bound, not a guarantee that a desired epoch is reached.
-- Active monetary reward pulsing is unsupported. The exporter and comparator
-  reject it; the controller also accepts only `absent` or `complete` reward
-  phases. There is no polling for a convenient replacement terminal state,
+- The restricted exporter and comparator now have a locally tested
+  [exact active reward projection](repeated-active-reward-comparison.md), including
+  the uncompleted cursor and recent rewards. Independent native/live acceptance
+  remains pending. The controller still accepts only `absent` or `complete` reward
+  phases; this local change does not remove that guard. There is no polling for a convenient replacement terminal state,
   latest-state fallback, endpoint substitution, or in-runtime native checking.
 
 ## Evidence
@@ -103,8 +105,11 @@ terminal pin, source/initial manifest, original terminal observation/output map,
 endpoint manifest/acquisition receipt and native whole-UTxO bytes. It verifies
 complete supported UTxO effects, collateral, stake/snapshots, epoch/governance and
 reward components, raw non-myopic IEEE bits, actual fee pots and represented
-protocol fields. Active pulsers and other unsupported native effects fail rather
-than being projected away. The final controller result is emitted only after
+protocol fields. Restricted active pulser fields can now be compared exactly by the
+local comparator, while malformed or unsupported native effects fail rather than
+being projected away. The controller's active-phase refusal and historical failed
+receipts remain unchanged pending independent native validation and separate guard
+review. The final controller result is emitted only after
 this comparison, original evaluation-receipt checks and verified cleanup.
 
 This prerequisite makes no full-ledger, late-restart, multi-service, native

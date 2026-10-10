@@ -7,7 +7,11 @@ Branch: `pico/repeated-epoch-soak-local`.
 
 Draft repeated terminal comparator, bounded CBOR reader, checked governance completion,
 runtime export hook, test CLI and strict supervisor result verification. New pure
-boundaries return typed failures. Active reward pulsing is explicitly unsupported.
+boundaries return typed failures. Subsequent local changes add a restricted
+[exact active reward projection](repeated-active-reward-comparison.md), preserving
+the active phase, remaining cursor, accumulated/recent rewards and raw likelihood
+words, with independently checked source-global bindings. Native/live acceptance
+is still pending; historical active-phase refusals remain failed evidence.
 The full-soak launcher remains unconditionally disabled. A separate bounded
 single-service capture runner now supports an explicitly declared terminal epoch
 (zero or one) to establish prerequisite native endpoint agreement.
@@ -40,6 +44,13 @@ single-service capture runner now supports an explicitly declared terminal epoch
   and the same AF_UNIX environment error. No failure was relabeled as success.
 - Optional retained-source exporter coverage has not run. Native endpoint agreement
   and the 120/600-second live cohorts have not run.
+- The subsequent combined timing correction and active-reward projection compiled
+  freshly offline across ledger, ledger-runtime and app main/test sources with
+  Scala 3.3.8 and `-Werror`. All 221 tests across 27 targeted suites passed with no
+  failures, skips or assumptions; final affected Scala source hashes matched the
+  frozen source manifest. This includes generated active-field mutations and
+  timing regressions, not an independent native endpoint or live result. Launch
+  guards remain unchanged.
 - GitHub push is unavailable in this environment: no authenticated Git helper or gh
   login; push dry-run failed requesting a username with terminal prompts disabled.
 

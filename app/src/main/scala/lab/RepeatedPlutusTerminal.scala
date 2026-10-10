@@ -31,17 +31,19 @@ private[lab] object RepeatedPlutusTerminal:
   final case class Snapshot(active: Map[S.Credential, S.Active], pools: Map[Bytes, S.PoolSnapshot])
   enum Reward:
     case Absent
+    case Pulsing(projection: RepeatedTerminalRewardPulser.Projection)
     case Complete(deltas: B.Deltas, rewards: Map[S.Credential, Set[B.Reward]], nonMyopic: NM.State)
   private enum RewardPhase:
-    case Absent, Complete
+    case Absent, Pulsing, Complete
   private def generationMode(j: J)(using Scope): N.Mode = text(j) match
     case "pure-jvm"    => N.Mode.PureJvm
     case "checked-jvm" => N.Mode.CheckedJvm
     case _             => reject(Failure.Unsupported("generation mode"))
   private def rewardPhase(j: J)(using Scope): RewardPhase = text(j) match
     case "absent"   => RewardPhase.Absent
+    case "pulsing"  => RewardPhase.Pulsing
     case "complete" => RewardPhase.Complete
-    case _          => reject(Failure.Unsupported("active or unknown monetary reward phase"))
+    case _          => reject(Failure.Unsupported("unknown monetary reward phase"))
   final case class Components(
       epoch: BigInt,
       pots: B.Pots,
@@ -78,7 +80,7 @@ private[lab] object RepeatedPlutusTerminal:
     if s.distribution.isEmpty then BigInt(1) else s.total,
     s.distribution.map((p, v) => p -> G.PoolShare(v.coin, v.ratio, v.vrf))
   )
-  private def nonMyopic(n: Node)(using Scope): NM.State =
+  private[lab] def nonMyopic(n: Node)(using Scope): NM.State =
     val a = arr(n, 2)
     val likelihoods = mapping(a(0))(
       bytes(_, 28),
@@ -91,6 +93,20 @@ private[lab] object RepeatedPlutusTerminal:
         )
     )
     get(NM.state(likelihoods, uint(a(1))), "non-myopic state")
+  private[lab] def poolSnapshot(n: Node)(using Scope): S.PoolSnapshot =
+    val v = arr(n, 10); val count = uint(v(8)); valid(count <= Int.MaxValue, "delegator count")
+    S.PoolSnapshot(
+      uint(v(0)),
+      ratio(v(1)),
+      set(v(2))(bytes(_, 28)),
+      uint(v(3)),
+      bytes(v(4), 32),
+      uint(v(5)),
+      uint(v(6)),
+      ratio(v(7)),
+      count.toInt,
+      credential(v(9))
+    )
   private def decodeSnapshot(n: Node)(using Scope): Snapshot =
     val a = arr(n, 2)
     val active = mapping(a(0))(
@@ -98,23 +114,7 @@ private[lab] object RepeatedPlutusTerminal:
       x =>
         val v = arr(x, 2); S.Active(uint(v(0)), bytes(v(1), 28))
     )
-    val pools = mapping(a(1))(
-      bytes(_, 28),
-      x =>
-        val v = arr(x, 10); val count = uint(v(8)); valid(count <= Int.MaxValue, "delegator count")
-        S.PoolSnapshot(
-          uint(v(0)),
-          ratio(v(1)),
-          set(v(2))(bytes(_, 28)),
-          uint(v(3)),
-          bytes(v(4), 32),
-          uint(v(5)),
-          uint(v(6)),
-          ratio(v(7)),
-          count.toInt,
-          credential(v(9))
-        )
-    )
+    val pools = mapping(a(1))(bytes(_, 28), poolSnapshot)
     Snapshot(active, pools)
   private def decodeDistribution(n: Node)(using Scope): G.PoolDistribution =
     val a = arr(n, 2)
@@ -126,7 +126,7 @@ private[lab] object RepeatedPlutusTerminal:
           val v = arr(x, 3); G.PoolShare(uint(v(1)), ratio(v(0)), bytes(v(2), 32))
       )
     )
-  private def reward(n: Node)(using Scope): B.Reward =
+  private[lab] def reward(n: Node)(using Scope): B.Reward =
     val a = arr(n, 3); val kind = uint(a(0)); valid(kind <= 1, "reward kind")
     B.Reward(
       if kind == 0 then B.RewardKind.Member else B.RewardKind.Leader,
@@ -138,7 +138,9 @@ private[lab] object RepeatedPlutusTerminal:
       val a = rows(inner)
       valid(a.nonEmpty, "reward sum")
       uint(a.head) match
-        case tag if tag == 0 => reject(Failure.Unsupported("active monetary reward pulser"))
+        case tag if tag == 0 =>
+          equal(a.size, 3, "active reward sum width")
+          Reward.Pulsing(unwrap(RepeatedTerminalRewardPulser.decode(a(1), a(2))))
         case tag if tag == 1 =>
           equal(a.size, 2, "complete reward sum width")
           val r = arr(a(1), 5)
@@ -172,10 +174,18 @@ private[lab] object RepeatedPlutusTerminal:
     )
     r.pulser match
       case None => Reward.Absent
-      case Some(p) if p.phase == P.Phase.Pulsing =>
-        reject(Failure.Unsupported("active monetary reward pulser"))
       case Some(p) =>
         val f = r.frozen.get
+        val globals =
+          f.rewardGlobals.getOrElse(reject(Failure.Invalid("reward", "missing globals")))
+        valid(
+          f.window == b.globals.randomnessStabilisationWindow &&
+            f.epochLength == b.globals.geometry.epochLength && f.maxSupply == b.globals.maxLovelaceSupply &&
+            globals.id == b.globals.rewardGlobals.id &&
+            globals.securityParameter.contains(b.globals.securityParameter) &&
+            globals.activeSlotCoefficient == b.globals.activeSlotCoefficient,
+          "source checked reward globals and randomness window"
+        )
         val generated = b.checkedLikelihood.get
         valid(
           generated.mode == b.generationMode && !generated.nativeValuesAuthoritative &&
@@ -199,15 +209,18 @@ private[lab] object RepeatedPlutusTerminal:
             b.allocationId.contains(allocation.id),
           "reward allocation binding"
         )
-        val c = p.completion.getOrElse(reject(Failure.Invalid("reward", "missing completion")))
-        valid(c.frozenId == f.id && c.allocationId == allocation.id, "reward completion binding")
         val history =
           b.frozenHistory.getOrElse(reject(Failure.Invalid("reward", "missing frozen history")))
-        val nm = get(
-          NM.completeFrozen(history, history.id, f, f.id, allocation, values),
-          "completed non-myopic state"
-        ).after
-        Reward.Complete(c.completed.deltas, c.completed.rewards, nm)
+        if p.phase == P.Phase.Pulsing then
+          Reward.Pulsing(unwrap(RepeatedTerminalRewardPulser.fromState(p, history, values)))
+        else
+          val c = p.completion.getOrElse(reject(Failure.Invalid("reward", "missing completion")))
+          valid(c.frozenId == f.id && c.allocationId == allocation.id, "reward completion binding")
+          val nm = get(
+            NM.completeFrozen(history, history.id, f, f.id, allocation, values),
+            "completed non-myopic state"
+          ).after
+          Reward.Complete(c.completed.deltas, c.completed.rewards, nm)
 
   def fromState(state: CoherentSequence.State): Either[Failure, Components] = boundary:
     valid(state != null, "terminal state")
@@ -324,31 +337,30 @@ private[lab] object RepeatedPlutusTerminal:
         )
       )
 
+  private[lab] def poolSnapshotJson(p: S.PoolSnapshot): J = record(
+    "coin" -> num(p.coin),
+    "ratio" -> ratioJson(p.ratio),
+    "owners" -> J.Arr(p.owners.toVector.map(_.hex).sorted.map(str)),
+    "ownerCoin" -> num(p.ownerCoin),
+    "vrf" -> str(p.vrf.hex),
+    "pledge" -> num(p.pledge),
+    "cost" -> num(p.cost),
+    "margin" -> ratioJson(p.margin),
+    "delegators" -> num(p.delegators),
+    "rewardAccount" -> str(cred(p.rewardAccount))
+  )
   private def snapshotJson(s: Snapshot): J = record(
     "active" -> mapJson(s.active)(cred, a => J.Arr(Vector(num(a.coin), str(a.pool.hex)))),
-    "pools" -> mapJson(s.pools)(
-      _.hex,
-      p =>
-        record(
-          "coin" -> num(p.coin),
-          "ratio" -> ratioJson(p.ratio),
-          "owners" -> J.Arr(p.owners.toVector.map(_.hex).sorted.map(str)),
-          "ownerCoin" -> num(p.ownerCoin),
-          "vrf" -> str(p.vrf.hex),
-          "pledge" -> num(p.pledge),
-          "cost" -> num(p.cost),
-          "margin" -> ratioJson(p.margin),
-          "delegators" -> num(p.delegators),
-          "rewardAccount" -> str(cred(p.rewardAccount))
-        )
-    )
+    "pools" -> mapJson(s.pools)(_.hex, poolSnapshotJson)
   )
-  private def nmJson(n: NM.State): J = record(
+  private[lab] def nmJson(n: NM.State): J = record(
     "rewardPot" -> num(n.rewardPot),
     "likelihoods" -> mapJson(n.likelihoods)(_.hex, l => J.Arr(l.hex.map(str)))
   )
   private def rewardJson(r: Reward): J = r match
     case Reward.Absent => record("phase" -> str("absent"))
+    case Reward.Pulsing(p) =>
+      record("phase" -> str("pulsing"), "active" -> RepeatedTerminalRewardPulser.json(p))
     case Reward.Complete(d, rewards, nm) =>
       record(
         "phase" -> str("complete"),
@@ -506,6 +518,7 @@ private[lab] object RepeatedPlutusTerminal:
         "frozenId" -> option(b.frozenId)(x => str(x.hex)),
         "allocationId" -> option(b.allocationId)(x => str(x.hex)),
         "nonMyopicId" -> str(b.nonMyopic.id.hex),
+        "rewardContext" -> RepeatedTerminalRewardPulser.contextJson(b.globals),
         "checkedLikelihood" -> likelihood(state)
       )
     )
@@ -544,22 +557,76 @@ private[lab] object RepeatedPlutusTerminal:
         "frozenId",
         "allocationId",
         "nonMyopicId",
+        "rewardContext",
         "checkedLikelihood"
       ),
       "repeated metadata fields"
     )
     hash(field(r, "componentId")); hash(field(r, "nonMyopicId"))
+    val context = field(r, "rewardContext")
+    equal(
+      obj(context).keySet,
+      Set(
+        "globalsId",
+        "sourceBindingId",
+        "genesisSHA256",
+        "rewardGlobalsId",
+        "randomnessWindow",
+        "securityParameter",
+        "epochLength",
+        "activeSlotCoefficient",
+        "maxSupply"
+      ),
+      "reward context fields"
+    )
+    Vector("globalsId", "sourceBindingId", "genesisSHA256", "rewardGlobalsId").foreach(k =>
+      hash(field(context, k))
+    )
+    val epochLength = number(field(context, "epochLength"))
+    val window = number(field(context, "randomnessWindow"))
+    val k = number(field(context, "securityParameter"))
+    val maxSupply = number(field(context, "maxSupply"))
+    val coefficient = jsonRows(field(context, "activeSlotCoefficient"))
+    valid(coefficient.size == 2, "active slot coefficient width")
+    val fNumerator = number(coefficient(0)); val fDenominator = number(coefficient(1))
+    valid(
+      epochLength > 0 && window > 0 && k > 0 && maxSupply > 0 &&
+        fNumerator > 0 && fNumerator <= fDenominator && fNumerator.gcd(fDenominator) == 1,
+      "reward context bounds"
+    )
+    equal(
+      window,
+      (4 * k * fDenominator + fNumerator - 1) / fNumerator,
+      "source randomness window geometry"
+    )
+    equal(
+      number(field(field(field(j, "components"), "pots"), "maxSupply")),
+      maxSupply,
+      "reward context maximum supply"
+    )
+    equal(pin.point.slot / epochLength, epoch, "reward context terminal epoch")
     val transitions = number(field(r, "transitions"))
     valid(transitions == epoch && transitions <= 8, "repeated epoch-zero transition count")
     val mode = generationMode(field(r, "generationMode"))
     val reward = field(field(j, "components"), "reward")
     val phase = rewardPhase(field(reward, "phase"))
+    if phase == RewardPhase.Pulsing then
+      equal(obj(reward).keySet, Set("phase", "active"), "pulsing reward fields")
+      valid(
+        pin.point.slot > epoch * epochLength + window &&
+          pin.point.slot <= epoch * epochLength + 2 * window,
+        "active reward signal window"
+      )
     val nullValue = J.Lit("null")
     if phase == RewardPhase.Absent then
       equal(field(r, "frozenId"), nullValue, "absent frozen identity")
       equal(field(r, "allocationId"), nullValue, "absent allocation identity")
       equal(field(r, "checkedLikelihood"), nullValue, "absent generation evidence")
     else
+      valid(
+        epochLength == 1000 && fNumerator == 1 && fDenominator == 20,
+        "registered likelihood generation geometry"
+      )
       val frozen = hash(field(r, "frozenId")); hash(field(r, "allocationId"))
       val g = field(r, "checkedLikelihood")
       equal(
@@ -589,7 +656,11 @@ private[lab] object RepeatedPlutusTerminal:
       equal(hash(field(g, "frozenId")), frozen, "generation frozen identity")
       equal(number(field(g, "applicationEpoch")), epoch, "generation application epoch")
       val observed = number(field(g, "observedSlot"))
-      valid(observed <= pin.point.slot && observed / 1000 == epoch, "generation observed slot")
+      valid(
+        observed <= pin.point.slot && observed / epochLength == epoch &&
+          observed > epoch * epochLength + window,
+        "generation observed slot"
+      )
       hash(field(g, "preTickTupleId"))
       equal(generationMode(field(g, "mode")), mode, "configured generation mode")
       equal(number(field(g, "jvmMismatchWords")), BigInt(0), "generation mismatch count")
@@ -598,7 +669,8 @@ private[lab] object RepeatedPlutusTerminal:
       equal(sha(request), hash(field(g, "requestSHA256")), "generation request digest")
       equal(sha(evidence), hash(field(g, "evidenceSHA256")), "generation evidence digest")
       val requestText = ascii(request); val evidenceText = ascii(evidence)
-      val requestPrefix = N.Profile + "\n" + frozen.hex + "\n1000 1 20 0 1\n"
+      val requestPrefix =
+        N.Profile + "\n" + frozen.hex + s"\n$epochLength $fNumerator $fDenominator 0 1\n"
       valid(
         requestText.startsWith(requestPrefix) && requestText.endsWith("\n"),
         "generation request echo"
@@ -614,7 +686,10 @@ private[lab] object RepeatedPlutusTerminal:
         val parts = row.split(" ")
         val stake = decimal(parts(1)); val circulation = decimal(parts(2));
         val blocks = decimal(parts(3))
-        valid(circulation > 0 && stake <= circulation && blocks <= 1000, "request quantities")
+        valid(
+          circulation > 0 && stake <= circulation && blocks <= epochLength,
+          "request quantities"
+        )
         (parts(0), stake, circulation, blocks)
       }
       equal(inputs.map(_._1), inputs.map(_._1).distinct.sorted, "generation pool order/domain")
@@ -633,14 +708,17 @@ private[lab] object RepeatedPlutusTerminal:
         valid(row.matches("[0-9a-f]{56} [0-9a-f]{16} [0-9a-f]{800}"), "generation raw word row")
         val parts = row.split(" "); equal(parts(0), pool, "generation output pool")
         val probability =
-          1.0 - java.lang.Math.pow(1.0 - 1.0 / 20.0, stake.toDouble / circulation.toDouble)
+          1.0 - java.lang.Math.pow(
+            1.0 - fNumerator.toDouble / fDenominator.toDouble,
+            stake.toDouble / circulation.toDouble
+          )
         val raw64 = java.lang.Double.doubleToRawLongBits(probability)
         equal(parts(1), f"$raw64%016x", "generation raw64 probability")
         val expectedWords = Vector
           .tabulate(100) { i =>
             val x = (i.toDouble + 0.5) / 100.0
             val value = (blocks.toDouble * java.lang.Math.log(x) +
-              (1000 - blocks).toDouble * java.lang.Math.log(1.0 - probability * x)).toFloat
+              (epochLength - blocks).toDouble * java.lang.Math.log(1.0 - probability * x)).toFloat
             valid(java.lang.Float.isFinite(value), "finite generated raw32")
             val word = java.lang.Float.floatToRawIntBits(value); f"$word%08x"
           }
@@ -798,11 +876,31 @@ private[lab] object RepeatedPlutusTerminal:
       whole: Bytes,
       terminal: Bytes,
       protocolOriginal: Bytes,
-      maxSupply: BigInt
+      sourceGlobals: GovernanceGlobals.Checked
   ): Either[Failure, Comparison] = boundary:
-    valid(observation != null, "terminal observation")
+    valid(
+      observation != null && sourceGlobals != null,
+      "terminal observation and checked source globals"
+    )
+    val maxSupply = sourceGlobals.maxLovelaceSupply
+    equal(
+      field(field(observation.json, "repeatedEpoch"), "rewardContext"),
+      RepeatedTerminalRewardPulser.contextJson(sourceGlobals),
+      "checked source reward context"
+    )
     val seed = parse(endpointSeed); val debug = parse(endpointDebug);
     val initial = parse(initialSeed)
+    equal(uint(path(initial, 0)), sourceGlobals.epoch, "checked source epoch")
+    equal(
+      sha(path(initial, 3, 1, 1, 3, 3).original),
+      sourceGlobals.currentParameterSHA256,
+      "checked source current parameters"
+    )
+    equal(
+      sha(path(initial, 3, 1, 1, 3, 4).original),
+      sourceGlobals.previousParameterSHA256,
+      "checked source previous parameters"
+    )
     replacement(seed, debug, whole)
     // These immutable source indexes have no synthesized runtime representation.
     Vector(Vector(3, 1, 0, 1, 0), Vector(3, 1, 0, 2, 2)).foreach { p =>

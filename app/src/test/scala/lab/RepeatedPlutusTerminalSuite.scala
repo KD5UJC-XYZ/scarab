@@ -13,7 +13,8 @@ import RepeatedPlutusTerminal as T
 
 /** Generated source-shaped inputs, not a native endpoint agreement claim. */
 class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
-  private lazy val source = bundle().epoch
+  private lazy val sourceBundle = bundle()
+  private lazy val source = sourceBundle.epoch
   private def sourceSeed = source.originals("derived-full-epoch-seed.cbor")
   private def sourceDebug = source.originals("original-debug-epoch.cbor")
   private def whole = source.originals("original-whole-utxo.cbor")
@@ -83,6 +84,7 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
         "frozenId" -> nullJson,
         "allocationId" -> nullJson,
         "nonMyopicId" -> J.Str(c.nonMyopic.id.hex),
+        "rewardContext" -> RepeatedTerminalRewardPulser.contextJson(sourceBundle.globals),
         "checkedLikelihood" -> nullJson
       )
     )
@@ -109,7 +111,7 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
       whole,
       output,
       protocol,
-      source.pots.maxSupply
+      sourceBundle.globals
     )
 
   test("all bounded native-shaped absent components and original UTxO replacement compare") {
@@ -130,7 +132,7 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
     assert(compare(observation(), foreign, debug).isLeft)
     assert(compare(observation(), sourceSeed, debug).isLeft)
   }
-  test("changed output digest, full protocol slot and supplied maximum supply reject") {
+  test("changed output digest, full protocol slot and foreign checked source globals reject") {
     assert(compare(observation(), output = raw(m())).isLeft)
     val otherProtocol =
       raw(change(get(Cbor.decode(protocolOriginal)).value, Vector(1, 0, 1), V.UInt(37)))
@@ -144,7 +146,7 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
         whole,
         whole,
         protocolOriginal,
-        source.pots.maxSupply - 1
+        bundle(epochLength = 500).globals
       ).isLeft
     )
   }
@@ -195,7 +197,7 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
     val generation = obj(
       "frozenId" -> J.Str(frozen.hex),
       "applicationEpoch" -> J.Num("0"),
-      "observedSlot" -> J.Num("36"),
+      "observedSlot" -> J.Num("401"),
       "preTickTupleId" -> J.Str(bytes(32, 31).hex),
       "requestSHA256" -> J.Str(sha(request).hex),
       "requestOriginal" -> J.Str(request.hex),
@@ -219,7 +221,16 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
       "allocationId" -> J.Str(bytes(32, 32).hex),
       "checkedLikelihood" -> generation
     )
-    changed(base, List("repeatedEpoch"), J.Obj(fields))
+    val result = changed(base, List("repeatedEpoch"), J.Obj(fields))
+    changed(
+      changed(
+        changed(result, List("pin", "point", "slot"), J.Num("801")),
+        List("pin", "validationSlot"),
+        J.Num("801")
+      ),
+      List("validationSlot"),
+      J.Num("801")
+    )
   test("current PureJvm and CheckedJvm evidence representations remain distinct and source-bound") {
     Vector(false, true).foreach { checked =>
       val value = completedObservation(checked)
@@ -356,10 +367,106 @@ class RepeatedPlutusTerminalSuite extends NativeLedgerSeedFixtures:
       case _                               => fail("complete expected")
   }
   test("active native Pulsing tag zero is never treated as Complete") {
-    assertEquals(
-      decodedReward(a(a(V.UInt(0), a(), a()))),
-      Left(T.Failure.Unsupported("active monetary reward pulser"))
+    assert(decodedReward(a(a(V.UInt(0), a(), a()))).isLeft)
+  }
+  test("active terminal comparison keeps phase and binds independently checked source globals") {
+    // An empty active VMap is still Pulsing until the next native pulseStep.
+    val active = a(
+      a(
+        V.UInt(0),
+        a(
+          V.UInt(0),
+          a(V.UInt(9), V.UInt(0)),
+          a(m(), V.UInt(0)),
+          V.UInt(0),
+          V.UInt(0),
+          V.UInt(0),
+          m(),
+          m()
+        ),
+        a(
+          V.UInt(1),
+          a(set(credential(11)), V.UInt(100), a(V.UInt(9), V.UInt(0)), m()),
+          m(),
+          a(m(), m())
+        )
+      )
     )
+    val seed = raw(change(sourceValue, Vector(4), active))
+    val debug = raw(change(get(Cbor.decode(seed)).value, Vector(3, 1, 1, 0), m()))
+    val projected = T.componentsJson(get(T.decodeComponents(seed, source.pots.maxSupply)))
+    val terminalProtocol =
+      raw(change(get(Cbor.decode(protocolOriginal)).value, Vector(1, 0, 1), V.UInt(401)))
+    val original = completedObservation(false)
+    val observation = changed(
+      changed(
+        changed(
+          changed(
+            changed(
+              changed(original, List("components"), projected),
+              List("componentsSHA256"),
+              J.Str(sha(EvidenceJson.encode(projected)).hex)
+            ),
+            List("pin", "point", "slot"),
+            J.Num("401")
+          ),
+          List("pin", "validationSlot"),
+          J.Num("401")
+        ),
+        List("validationSlot"),
+        J.Num("401")
+      ),
+      List("representedProtocol", "lastSlot"),
+      J.Num("401")
+    )
+    def checked(
+        j: J,
+        nativeSeed: Bytes = seed,
+        nativeDebug: Bytes = debug,
+        globals: GovernanceGlobals.Checked = sourceBundle.globals
+    ) =
+      parseObservation(j).flatMap { o =>
+        T.compareComponents(
+          o,
+          sourceSeed,
+          nativeSeed,
+          nativeDebug,
+          whole,
+          whole,
+          terminalProtocol,
+          globals
+        )
+      }
+    assert(checked(observation).isRight)
+    assert(checked(observation, sourceSeed, sourceDebug).isLeft)
+    assert(checked(observation, globals = bundle(epochLength = 500).globals).isLeft)
+    val base = List("repeatedEpoch", "rewardContext")
+    Vector(
+      "globalsId" -> J.Str("01" * 32),
+      "sourceBindingId" -> J.Str("01" * 32),
+      "genesisSHA256" -> J.Str("01" * 32),
+      "rewardGlobalsId" -> J.Str("01" * 32),
+      "randomnessWindow" -> J.Num("300"),
+      "securityParameter" -> J.Num("4"),
+      "epochLength" -> J.Num("999"),
+      "activeSlotCoefficient" -> J.Arr(Vector(J.Num("1"), J.Num("19"))),
+      "maxSupply" -> J.Num((source.pots.maxSupply - 1).toString)
+    ).foreach { (key, value) =>
+      assert(checked(changed(observation, base :+ key, value)).isLeft, key)
+    }
+    val metadata = ReferenceJson.field(observation, "repeatedEpoch").asInstanceOf[J.Obj]
+    assert(
+      parseObservation(
+        changed(observation, List("repeatedEpoch"), J.Obj(metadata.fields - "rewardContext"))
+      ).isLeft
+    )
+    val wrongPhase = changed(observation, List("components", "reward", "phase"), J.Str("complete"))
+    val rehashedPhase = changed(
+      wrongPhase,
+      List("componentsSHA256"),
+      J.Str(sha(EvidenceJson.encode(ReferenceJson.field(wrongPhase, "components"))).hex)
+    )
+    assert(checked(rehashedPhase).isLeft)
   }
   test("native reward duplicate ordering keys reject even if amounts differ") {
     val rewardMap =

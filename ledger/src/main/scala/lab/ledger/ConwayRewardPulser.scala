@@ -142,6 +142,48 @@ object ConwayRewardPulser:
 
   private[lab] def frozenForRecovery(source: State): B.Frozen = source.work.frozen
 
+  /** Read-only native-shaped observation of an opaque active cursor. Recomputing its bounded prefix
+    * checks the accumulated answer; it never completes, advances or replaces the source. Native
+    * recentRewardAns is precisely the last processed chunk, including a short final chunk.
+    */
+  private[lab] final case class ActiveObservation(
+      frozen: B.Frozen,
+      allocation: ConwayRewardStart.Allocation,
+      pools: Map[Bytes, ConwayPoolReward.Result],
+      remaining: Vector[(S.Credential, S.Active)],
+      recent: Map[S.Credential, Set[B.Reward]]
+  )
+  private[lab] def observeActive(source: State): Either[String, ActiveObservation] = checked {
+    require(source != null && source.phase == Phase.Pulsing, "active pulser required")
+    val work = source.work
+    val k = work.frozen.rewardGlobals.flatMap(_.securityParameter).get
+    val chunk = ((BigInt(work.traversal.size) + 4 * k - 1) / (4 * k)).max(BigInt(1)).toInt
+    require(
+      source.traversal == work.traversal && source.pulseSize == chunk &&
+        source.processed >= 0 && source.processed <= source.traversal.size &&
+        (source.processed == source.traversal.size || source.processed % chunk == 0) &&
+        source.revision == (BigInt(source.processed) + chunk - 1) / chunk &&
+        timing(work.frozen, source.slot) == B.Timing.StartOrPulse,
+      "active traversal, chunk, cursor or signal invariant"
+    )
+    val prefix = work.advance(work.initial, source.processed)
+    require(prefix.members == source.members, "active accumulated prefix mismatch")
+    val first = if source.processed == 0 then 0 else ((source.processed - 1) / chunk) * chunk
+    val recent = source.traversal
+      .slice(first, source.processed)
+      .flatMap { credential =>
+        source.members.get(credential).map(reward => credential -> Set(reward))
+      }
+      .toMap
+    ActiveObservation(
+      work.frozen,
+      work.allocation,
+      work.pools,
+      source.traversal.drop(source.processed).map(c => c -> work.frozen.go.active(c)),
+      recent
+    )
+  }
+
   /** Rebuild bounded work from an opaque controller-authorized source. Signal-chain identity cannot
     * be recreated from the cursor alone, so only that source may retain it.
     */

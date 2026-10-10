@@ -26,8 +26,10 @@ can start at 1401, and force only after 1800. The trace used source `9fbbcb0`, b
 source SHA-256 `7339ffec5306782823589b7c269343e6f932c55ed3c31dba34501cd37b2e1a98`,
 and effective genesis SHA-256 `49bdde48f28417445de47bc572adf8d333474d7989b4c86c61d4061498ce4bf3`.
 No matching native endpoint was acquired for that trace, so this source-level correction
-is not an observed native endpoint comparison or live-soak result. Active-pulser comparison
-support and launcher guards are unchanged by this timing-only patch.
+is not an observed native endpoint comparison or live-soak result. This timing correction
+alone does not add active-pulser comparison. The separate local
+[exact active reward projection](repeated-active-reward-comparison.md) is covered under its
+own source-shaped test limits; launcher guards remain unchanged.
 
 Generated bootstrap-source tests distinguish the 300/400 windows, reject foreign supplied
 globals and timing overrides, and cover exact start/force edges in epochs zero and one.

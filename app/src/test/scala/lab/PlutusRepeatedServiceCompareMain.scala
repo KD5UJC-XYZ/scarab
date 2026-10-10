@@ -46,7 +46,7 @@ object PlutusRepeatedServiceCompareMain extends IOApp:
         whole,
         terminal,
         sources("original-debug-protocol.cbor"),
-        initial.ledger.globals.maxLovelaceSupply
+        initial.ledger.globals
       )
     )
     val txs = args
