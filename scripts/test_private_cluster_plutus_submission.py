@@ -66,6 +66,7 @@ class ControllerTest(unittest.TestCase):
         obj.args = SimpleNamespace(scala_build_root=Path('/owned/build'), java='java', scala_image='pinned')
         obj.exchange, obj.out, obj.classpath = Path('/owned/exchange'), Path('/owned/evidence'), '/work/classes'
         obj.containers = {}
+        obj.deadline = c.time.monotonic() + 60
         obj.create = lambda phase, args: 'owned-id'
         inspections = []
         def owned(cid):
@@ -98,6 +99,87 @@ class ControllerTest(unittest.TestCase):
         self.assertIn('same_epoch_lifecycle', methods)
         self.assertNotIn('cleanup', methods)  # inherit token/immutable-ID cleanup
         self.assertNotIn('execute', methods)  # inherit reference submit prohibition
+
+
+class TimingTest(unittest.TestCase):
+    def tip(self, slot):
+        return dict(era="Conway", epoch=0, slot=slot, block=1, hash="11" * 32)
+
+    def test_pre_funding_exact_edge_and_late_first_block(self):
+        self.assertEqual(c.prefunding_point(self.tip(99))["slot"], 99)
+        for slot in (100, 175, 299):
+            with self.subTest(slot=slot), self.assertRaisesRegex(TimeoutError, "slot-100 window missed"):
+                c.prefunding_point(self.tip(slot))
+
+    def test_genesis_window_not_controller_uptime(self):
+        # Genesis start 1,000,000ms, slot300 deadline 1,030,000ms.
+        # The controller could have any monotonic origin or long operation budget.
+        with patch.object(c.time, "time_ns", return_value=1_029_200_000_000), \
+             patch.object(c.time, "monotonic", return_value=5000):
+            self.assertAlmostEqual(c.window_deadline(1_100_000, 300, 9000, 15), 5000.8)
+
+    def test_missed_wallclock_window_even_with_frozen_early_tip(self):
+        c.prefunding_point(self.tip(50))
+        with patch.object(c.time, "time_ns", return_value=1_030_000_000_000), \
+             patch.object(c.time, "monotonic", return_value=1):
+            with self.assertRaisesRegex(TimeoutError, "slot-300 preparation window missed"):
+                c.window_deadline(1_100_000, 300, 100000, 30)
+
+    def test_operation_and_phase_caps_still_apply(self):
+        with patch.object(c.time, "time_ns", return_value=1_001_000_000_000), \
+             patch.object(c.time, "monotonic", return_value=100):
+            self.assertEqual(c.window_deadline(1_100_000, 300, 105, 15), 105)
+            self.assertEqual(c.window_deadline(1_100_000, 300, 200, 15), 115)
+            self.assertEqual(c.window_deadline(1_100_000, 100, 200, 90), 109)
+
+    def test_preparation_restores_deadline_and_rejects_late_return(self):
+        class Launcher: pass
+        cls = c.controller_type(SimpleNamespace(Launcher=Launcher))
+        obj = object.__new__(cls)
+        obj.boundary_ms, obj.deadline = 1_100_000, 9000
+        observed = []
+        def prepare(anchor):
+            observed.append(obj.deadline)
+            return self.tip(292)
+        obj.prepare_funding = prepare
+        with patch.object(c.time, "time_ns", side_effect=[1_020_000_000_000, 1_030_000_000_000]), \
+             patch.object(c.time, "monotonic", return_value=5000):
+            with self.assertRaisesRegex(TimeoutError, "slot-300 preparation window missed"):
+                obj.prepare_initial(self.tip(90))
+        self.assertEqual(observed, [5010])
+        self.assertEqual(obj.deadline, 9000)
+
+    def test_late_anchor_fails_before_preparation_actions(self):
+        class Launcher: pass
+        cls = c.controller_type(SimpleNamespace(Launcher=Launcher))
+        obj = object.__new__(cls)
+        obj.prepare_funding = lambda _: self.fail("must not prepare late anchor")
+        with self.assertRaisesRegex(TimeoutError, "pre-funding slot-100"):
+            obj.prepare_initial(self.tip(175))
+
+    def test_slow_tip_queries_cannot_accept_old_point_after_window(self):
+        class Launcher: pass
+        cls = c.controller_type(SimpleNamespace(Launcher=Launcher,
+                                process=SimpleNamespace(same_tip=lambda a, b: a == b)))
+        obj = object.__new__(cls)
+        obj.boundary_ms, obj.deadline = 1_100_000, 9000
+        wall = [1_009_900_000_000]
+        observed_deadlines = []
+        def tip(node):
+            observed_deadlines.append(obj.deadline)
+            if node == 2: wall[0] = 1_010_001_000_000
+            return self.tip(99)
+        obj.tip = tip
+        with patch.object(c.time, "time_ns", side_effect=lambda: wall[0]), \
+             patch.object(c.time, "monotonic", return_value=5000):
+            with self.assertRaisesRegex(TimeoutError, "slot-100 preparation window missed"):
+                obj.select_prefunding()
+        self.assertEqual(observed_deadlines, [5000.1, 5000.1])
+        self.assertEqual(obj.deadline, 9000)
+
+    def test_final_frozen_point_remains_strict_slot300(self):
+        self.assertEqual(c.frozen_point(self.tip(299))["slot"], 299)
+        with self.assertRaises(ValueError): c.frozen_point(self.tip(300))
 
 
 if __name__ == '__main__': unittest.main()

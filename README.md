@@ -6,6 +6,9 @@ A runnable research prototype for **byte-preserving CBOR and Cardano transaction
 
 ## Ordinary local node milestones
 
+See the dated [current capabilities, gaps and next phases](docs/private-validator-status.md)
+for the present private-validator scope; older milestone counts below are historical.
+
 The app-private [Scala transaction ingress](docs/scala-transaction-ingress-roadmap.md)
 now has isolated ADA-vkey and opt-in native-script acceptance evidence. The
 [native signature-script case](docs/native-submission-implementation.md) passed

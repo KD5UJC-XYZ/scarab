@@ -8,7 +8,9 @@ including the explicit zero reference initialization-delay setting. General
 public-node admission, default-delay interoperability and full ledger/consensus
 validation remain unproved. The opt-in native-script signature-only acceptance
 case has also passed; see [native implementation and evidence](native-submission-implementation.md).
-Wider native reference agreement and a separately versioned Plutus profile remain next.
+The separately versioned [bounded PV9 Plutus profile](plutus-admission.md) has now
+passed isolated same-epoch acceptance. Wider native and Plutus reference coverage
+remain next; see the [current phased plan](private-validator-status.md).
 
 ## Sequence
 
@@ -24,10 +26,10 @@ Wider native reference agreement and a separately versioned Plutus profile remai
    signature-only positive passed inclusion and exact endpoint comparison. Next:
    extend reference agreement across valid and invalid witness/validity
    combinations, with authoritative evaluation-slot evidence for negatives.
-4. Then add a separately versioned Plutus profile using Scalus and reference
-   conformance tests for phase-one/phase-two, budgets, contexts and collateral.
-   The same Scala API remains the ingress; each profile requires its own isolated
-   admission, relay, inclusion and endpoint evidence.
+4. Completed within the registered V3 successful-spend scope: a separately
+   versioned Plutus profile using Scalus, the same Scala API, and isolated
+   admission, relay, inclusion and endpoint evidence. Broader phase-one/phase-two,
+   context, budget and collateral-negative agreement remain separate gates.
 
 Forwarding an API request to a reference CLI is not the Scala admission, pool or
 relay milestone. API acceptance, peer delivery and chain inclusion are separate
@@ -73,4 +75,4 @@ All integration scenarios use disposable keys and isolated local Docker clusters
 No real funds, production keys or public-network submissions are part of these
 milestones.
 
-The initial shared worker boundary is implemented in [ADA submission contract v1](ada-submission-contract-v1.md). Restricted ADA and native signature-script acceptance evidence is recorded; wider native reference agreement and Plutus remain pending.
+The initial shared worker boundary is implemented in [ADA submission contract v1](ada-submission-contract-v1.md). Restricted ADA, native signature-script and bounded PV9 Plutus acceptance evidence is recorded; wider script coverage and collateral-negative agreement remain pending.

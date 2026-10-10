@@ -23,6 +23,31 @@ def frozen_point(tip, ceiling=300):
     return base.point(dict(slot=tip["slot"], blockNo=tip["block"], hash=tip["hash"]))
 
 
+
+def window_deadline(boundary_ms, slot, operation_deadline, maximum_seconds):
+    """Convert a genesis-derived slot deadline to the current monotonic clock.
+
+    future_boundary has already checked the fixed 1000-slot/100ms geometry.
+    Controller startup time cannot extend this window.
+    """
+    base.require(type(boundary_ms) is int and slot in (100, 300), "checked local slot window")
+    remaining = (boundary_ms - 100000 + slot * 100 - time.time_ns() // 1000000) / 1000
+    if remaining <= 0:
+        raise TimeoutError(f"Plutus slot-{slot} preparation window missed")
+    now = time.monotonic()
+    until = min(operation_deadline, now + maximum_seconds, now + remaining)
+    if until <= now:
+        raise TimeoutError("Plutus operation budget exhausted before preparation")
+    return until
+
+
+def prefunding_point(tip):
+    """A late first block is a missed window, not a convergence failure."""
+    if type(tip.get("slot")) is int and tip["slot"] >= 100:
+        raise TimeoutError("Plutus pre-funding slot-100 window missed")
+    return frozen_point(tip, 100)
+
+
 def plutus_receipt(value):
     base.require(value.get("profileId") == fixture.PROFILE, "explicit Plutus profile receipt")
     return value
@@ -73,7 +98,10 @@ def controller_type(live):
                              {(str(self.args.scala_build_root), "/work", False), (str(self.exchange), "/exchange", True)},
                              "exact fixture proof mounts")
                 base.write(self.out / (phase + "-inspection.json"), observed)
-                result = self.docker("start", "--attach", cid, timeout=35)
+                timeout = min(35, self.deadline - time.monotonic())
+                if timeout <= 0:
+                    raise TimeoutError("Plutus fixture proof exceeded preparation window")
+                result = self.docker("start", "--attach", cid, timeout=timeout)
                 (self.out / (phase + ".log")).write_text(result.stdout + result.stderr)
                 state = self.owned(cid)["State"]
                 base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "fixture proof exit")
@@ -113,7 +141,18 @@ def controller_type(live):
             return original
 
         def prepare_initial(self, anchor):
-            frozen_point(anchor, 100)
+            prefunding_point(anchor)
+            original_deadline = self.deadline
+            self.deadline = window_deadline(self.boundary_ms, 300, original_deadline, 30)
+            try:
+                result = self.prepare_funding(anchor)
+                window_deadline(self.boundary_ms, 300, self.deadline, 30)
+                return result
+            finally:
+                self.deadline = original_deadline
+
+        def prepare_funding(self, anchor):
+            prefunding_point(anchor)
             root = self.exchange / "plutus-fixture"
             root.mkdir(mode=0o700)
             before = self.snapshot("funding-before", anchor)
@@ -176,6 +215,7 @@ def controller_type(live):
                          "pre-funding construction bracket moved")
             # Restart before submission: stopping a producer after submit could
             # discard its volatile mempool. Node 2 remains keyless throughout.
+            window_deadline(self.boundary_ms, 300, self.deadline, 15)
             self.stop_node(1)
             self.stopped.discard(1)
             self.start_node(1, True)
@@ -183,12 +223,13 @@ def controller_type(live):
                 lambda *argv: super(AdaController, self).execute(*argv), self.magic,
                 fixture.ROOT + "/socket/node1/sock")
             started = time.monotonic()
+            window_deadline(self.boundary_ms, 300, self.deadline, 15)
             submitted = self.funding_gate.submit_funding(self.read_signed, fixture.digest(original))
             base.write(self.out / "funding-submit.json", dict(
                 scope="reference-only-fixture-funding", returncode=submitted.returncode,
                 elapsedSeconds=time.monotonic() - started, attempts=1,
                 originalSHA256=fixture.digest(original), ledgerAcceptanceProven=False))
-            until = min(self.deadline - 150, started + 15)
+            until = window_deadline(self.boundary_ms, 300, self.deadline, 15)
             while time.monotonic() < until:
                 utxo = base.decode(self.query_node(1, "utxo", "--whole-utxo", "--output-json"))
                 if self.funded_txid + "#0" in utxo:
@@ -206,7 +247,7 @@ def controller_type(live):
             self.stopped.clear()
             self.start_node(1, False)
             self.start_node(2, False)
-            until = min(self.deadline - 150, time.monotonic() + 10)
+            until = window_deadline(self.boundary_ms, 300, self.deadline, 10)
             while time.monotonic() < until:
                 a, b = self.tip(1), self.tip(2)
                 if live.process.same_tip(a, b):
@@ -291,6 +332,25 @@ def controller_type(live):
             # owned process checks continue to enforce configuration identity.
             return self.same_epoch_lifecycle(approval)
 
+        def select_prefunding(self):
+            original_deadline = self.deadline
+            self.deadline = window_deadline(self.boundary_ms, 100, original_deadline - 150, 90)
+            try:
+                while time.monotonic() < self.deadline:
+                    a, b = self.tip(1), self.tip(2)
+                    for observed in (a, b):
+                        if type(observed.get("slot")) is int and observed["slot"] >= 100:
+                            raise TimeoutError("Plutus pre-funding slot-100 window missed")
+                    # Slow queries may return an old tip after the actual window.
+                    window_deadline(self.boundary_ms, 100, self.deadline, 90)
+                    if live.process.same_tip(a, b) and a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 100 and a.get("block", 0) > 0:
+                        prefunding_point(a)
+                        return a, b
+                    time.sleep(0.2)
+                raise TimeoutError("Plutus pre-funding slot-100 window missed without a common point")
+            finally:
+                self.deadline = original_deadline
+
         def same_epoch_lifecycle(self, approval):
             self.exchange.mkdir(mode=0o700)
             shutil.copytree(approval.evidence, self.out / "fixture")
@@ -306,27 +366,22 @@ def controller_type(live):
             base.require(live.process.PORTS[1] != live.process.PORTS[2], "distinct ports")
             self.start_node(1, True)
             self.start_node(2, False)
-            until = min(self.deadline - 150, time.monotonic() + 90)
-            while time.monotonic() < until:
-                a, b = self.tip(1), self.tip(2)
-                if live.process.same_tip(a, b) and a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 300 and a.get("block", 0) > 0:
-                    break
-                time.sleep(0.2)
-            else:
-                raise TimeoutError("fresh common early epoch-zero point")
+            a, b = self.select_prefunding()
             self.stop_node(1)
             self.stop_node(2)
             self.start_node(1, False)
             self.start_node(2, False)
             # Clean stop can leave the non-forging peer one block behind.
             # Both restarted nodes are keyless; allow bounded synchronization.
-            until = min(self.deadline - 150, time.monotonic() + 10)
+            until = window_deadline(self.boundary_ms, 300, self.deadline, 10)
             while time.monotonic() < until:
                 a, b = self.tip(1), self.tip(2)
                 if live.process.same_tip(a, b):
                     break
                 time.sleep(0.2)
-            base.require(live.process.same_tip(a, b) and a["epoch"] == 0 and 0 < a["slot"] < 300, "frozen initial point")
+            prefunding_point(a)
+            prefunding_point(b)
+            base.require(live.process.same_tip(a, b), "pre-funding keyless full-point convergence")
             a = self.prepare_initial(a)
             base.require(live.process.same_tip(a, self.tip(1)) and live.process.same_tip(a, self.tip(2)) and
                     a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 300,

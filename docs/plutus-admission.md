@@ -72,8 +72,12 @@ reference CLI submission. All owned containers were removed after the comparison
 Two earlier attempts stopped before funding: a missing CLI text-envelope
 description (corrected and independently CLI-checked), and a random first block
 at slot 175 outside the unchanged pre-funding slot-100 budget. The successful
-attempt froze at slot 24 before funding; the bootstrap bound remained slot 300.
-These are separate retained observations, not an average or a hidden retry.
+attempt froze at slot 24 before funding; the funded bootstrap reached slot 292,
+only eight slots below the strict slot-300 bound. This narrow observed margin
+does not establish reliable timing across fresh clusters. Both nodes in the
+failed attempt agreed at slot 175; its failure was the pre-funding window, not
+node convergence. These are separate retained observations, not an average or a
+hidden retry.
 
 The debug epoch export suppresses its UTxO map; the MemPack evidence comes from
 the reference-derived verified full seed bound to that export and whole-UTxO
