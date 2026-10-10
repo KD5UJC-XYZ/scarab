@@ -624,3 +624,19 @@ Retained log SHA256: `0fd84cc7065895ebe3748d02a22b730a1e39cd9d2c57e5947089bb471c
 Gate/Python log SHA256: `2caf272e0ebff8327515b9ddfedc36312854f74a20126d516ac58eb591897a41`.
 The preceding `52265f9` checkpoint passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38030345463);
 this later source requires its own CI result. No new live claim follows.
+
+
+## Checked relay selection - 2026-10-10
+
+Exact source `5e1248e59f0538eaccfd3821032d6d6ba1f32528` passed 1,992 public Scala/translator tests, the separate
+55-test retained invocation, 27 gates and 544 Python tests run (542 passed, two
+skipped). The [functional audit](functional-scala-audit.md#checked-relay-selection)
+records immutable offer/original batches, typed failure boundaries and real-owner
+close/error regressions. Lease masks, token ownership, timers and cleanup retain
+their existing semantics. No new live or full-ledger validation claim follows.
+
+Phase log SHA256: `d49ad9a2ac93e0a59ebcd851f18d890bb34601c6a9c480ab163a702f1bc9259c`.
+Retained log SHA256: `4e55caa173e145451f61ab1eb2372e36ae4ef4d256870286b1f6d237242cddb9`.
+Gate/Python log SHA256: `ff7bbfd34d2f230078afa48fb7953ab49ac3a452d54ae7d03f42f58f251729ef`.
+The preceding `c757439` checkpoint passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38031341565);
+this later source requires its own CI result.

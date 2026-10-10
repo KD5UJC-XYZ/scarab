@@ -24,7 +24,17 @@ The original audit below records its historical baseline and WIP findings. This 
 | HTTP failure policy | Integrated in `4057885`: 15 closed failure outcomes replace arbitrary status/code/category triples in actual HTTP paths. Existing wire bytes, redaction and effect handling remain; this is not a full HTTP/domain migration. |
 | Typed admission preparation | Integrated in `dc2977d`: a Sync-only effect boundary returns typed rejection or a private checked view/candidate pair. The actual service retains the permit through fenced commit and evidence. |
 | Admission decision | Integrated in `8f46841`: one exhaustive pool classification binds the evidence event and returned result; unchecked pairs cannot be constructed. |
-| Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
+| Checked relay selection | Integrated in `5e1248e`: immutable batches bind offers, exact originals and byte totals; typed selection/install failures become compatibility exceptions only after leaving the owner callback. |
+| Ordered rebuild/shared rendering | Reassessed after checked relay selection and deferred: the bounded pure rebuild already enforces ordered first-wins reservations and private work identity; replacing local variables would be stylistic. Renderers have different wire representations/order. Neither has an identified defect or immediate invariant improvement in this service scope. |
+
+The admission-decision and relay-batch slices were followed by two independent
+remaining-scope assessments. No further bounded service refactor was identified
+that removes a concrete invalid state or duplicated policy. Registry checks and
+stop/expiry/rebuild recovery deliberately have different precedence and outcomes;
+generic wrappers would obscure those differences. Wider identity/time-unit,
+protocol-error and runtime migrations remain separate design work. This is a
+reasoned stopping point for this service pass, not completion of every historical
+audit suggestion.
 
 Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
 
@@ -114,6 +124,46 @@ Exact source `40578853389cc85c6253ec70bb3a5e2f704ed8b5` passed 1,978 public Scal
 55-test retained invocation, 27 public gates and 542 Python tests with two skips.
 An initial test-fixture type error is retained separately; production code
 compiled in that attempt. Phase log SHA256: `4d0e8766c7d82a240d136da083b2347c44c208fe90d4b5482ab6ad1107d6e12e`.
+
+### Checked relay selection
+
+Before `5e1248e`, relay selection threaded
+`Either[Throwable, (offers, originals, bytes)]` and returned an unchecked pair.
+Reservation and installation also carried arbitrary Throwable values for expected
+closed, capacity and expiry outcomes. [RelayBatch](../app/src/main/scala/lab/RelayBatch.scala)
+now performs pure selection into a private-constructor immutable Batch: its offers,
+original-byte map and byte total are built together, with a closed failure model.
+No external constructor, copy or mutable field can break that pairing.
+
+The actual [source](../app/src/main/scala/lab/AdaRelaySource.scala) consumes that
+batch while holding the same owner callback. Reserve carries `Either[Reason, ...]`;
+install distinguishes selection failure from lease unavailability. The existing
+exception classes and text are rendered only after the registry operation or,
+for installation, after leaving `selection.withEligible`. Expected failures thus
+remain values inside the trusted owner callback. Diagnostic advertised-size text
+is retained as data, never used to select policy.
+
+Selection still validates all eligible entries (at most 64, non-null and unique)
+before count/byte truncation. It scans in stable order, skips an oversized entry
+and continues to later fitting entries, keeps exact original byte objects, and
+uses the same advertised-size function. The pure factory also rejects invalid
+limits; production already rejects those before reservation. Registry expiration,
+closed-before-capacity/expired precedence, tokens, Ref/gate placement, makeFull,
+poll, timeout, timers and finalizer order are unchanged.
+
+[Five new tests](../app/src/test/scala/lab/AdaRelaySourceSuite.scala) cover bounded
+selection invariants across count/byte combinations, explicit oversized-middle
+selection, full-domain rejection beyond the selected prefix, private immutable
+construction, and two real SubmissionOwner boundaries. Invalid selection releases
+capacity while leaving the owner usable; closing the source during a held
+selection callback returns Closed only after that callback, also leaving the
+owner usable. Existing expiry, forgotten-lease, token identity, exact witness-byte
+retention and cancellation tests continue to pass.
+
+Exact source `5e1248e59f0538eaccfd3821032d6d6ba1f32528` passed 1,992 public Scala/translator tests, the separate
+55-test retained invocation, 27 gates and 542 Python tests with two skips.
+Phase log SHA256: `d49ad9a2ac93e0a59ebcd851f18d890bb34601c6a9c480ab163a702f1bc9259c`.
+No dependency, custom typeclass, new resource topology or live claim was added.
 
 ### Admission decision
 
