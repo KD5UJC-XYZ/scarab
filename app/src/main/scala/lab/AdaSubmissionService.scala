@@ -25,7 +25,7 @@ private[lab] final class AdaSubmissionService[F[_]] private (
   import AdaSubmissionService.*
   import AdmissionPrograms.{Fenced, syntax as admissionSyntax}
   import admissionSyntax.*
-  import EvaluationEvent.{AdmissionOutcome, RevalidationOutcome}
+  import EvaluationEvent.RevalidationOutcome
 
   final class Request private[AdaSubmissionService] (permit: budget.Request):
     def submit(original: Bytes): F[Result] = permit.validate(admit(original))
@@ -105,28 +105,13 @@ private[lab] final class AdaSubmissionService[F[_]] private (
         F.uncancelable { _ =>
           F.monotonic
             .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
-            .flatTap { outcome =>
-              val label = outcome match
-                case AdaPool.Outcome.Accepted(_) => AdmissionOutcome.Accepted
-                case AdaPool.Outcome.AlreadyPresent(_) =>
-                  AdmissionOutcome.AlreadyPresent
-                case AdaPool.Outcome.Rejected(_) => AdmissionOutcome.PoolRejected
-                case AdaPool.Outcome.Retry(_)    => AdmissionOutcome.Retry
-                case AdaPool.Outcome.Unavailable => AdmissionOutcome.Unavailable
-              observe(candidate, EvaluationEvent.Admission(label))
-            }
+            .map(AdmissionDecision.fromPool)
+            .flatTap(decision => observe(candidate, decision.event))
         }
       )
       .map {
-        case Fenced.Stale(pin) => Result.Retry(pin)
-        case Fenced.Applied(AdaPool.Outcome.Accepted(receipt)) =>
-          Result.Accepted(receipt)
-        case Fenced.Applied(AdaPool.Outcome.AlreadyPresent(receipt)) =>
-          Result.AlreadyPresent(receipt)
-        case Fenced.Applied(AdaPool.Outcome.Rejected(reason)) =>
-          Result.PoolRejected(reason)
-        case Fenced.Applied(AdaPool.Outcome.Retry(pin))  => Result.Retry(pin)
-        case Fenced.Applied(AdaPool.Outcome.Unavailable) => Result.Unavailable
+        case Fenced.Stale(pin)        => Result.Retry(pin)
+        case Fenced.Applied(decision) => decision.result
       }
 
   /** Called under the owner gate; no validation, fiber joining, or owner re-entry here. */

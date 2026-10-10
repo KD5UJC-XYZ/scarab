@@ -525,3 +525,81 @@ class AdaSubmissionServiceSuite extends munit.FunSuite:
       }
     yield ()).timeout(10.seconds).unsafeToFuture()
   }
+
+  test("admission decisions bind all pool outcomes to unchanged evidence and exact payloads") {
+    val pin = view().pin
+    val receipt = AdaPool.Receipt(digest, digest, pin)
+    val reason = AdaPool.Rejection.InputsReserved(Set(TxIn.create(digest, 0).toOption.get))
+    val cases = Vector(
+      (
+        AdaPool.Outcome.Accepted(receipt),
+        AdaSubmissionService.Result.Accepted(receipt),
+        "accepted",
+        true
+      ),
+      (
+        AdaPool.Outcome.AlreadyPresent(receipt),
+        AdaSubmissionService.Result.AlreadyPresent(receipt),
+        "already-present",
+        false
+      ),
+      (
+        AdaPool.Outcome.Rejected(reason),
+        AdaSubmissionService.Result.PoolRejected(reason),
+        "pool-rejected",
+        false
+      ),
+      (
+        AdaPool.Outcome.Rejected(AdaPool.Rejection.EnvelopeConflict),
+        AdaSubmissionService.Result.PoolRejected(AdaPool.Rejection.EnvelopeConflict),
+        "pool-rejected",
+        false
+      ),
+      (
+        AdaPool.Outcome.Rejected(AdaPool.Rejection.Capacity),
+        AdaSubmissionService.Result.PoolRejected(AdaPool.Rejection.Capacity),
+        "pool-rejected",
+        false
+      ),
+      (AdaPool.Outcome.Retry(pin), AdaSubmissionService.Result.Retry(pin), "retry", false),
+      (AdaPool.Outcome.Unavailable, AdaSubmissionService.Result.Unavailable, "unavailable", false)
+    )
+    cases.foreach { (outcome, expected, code, newlyAdmitted) =>
+      val decision = AdmissionDecision.fromPool(outcome)
+      assertEquals(decision.result, expected)
+      assertEquals(EvaluationEvent.wire(decision.event), ("admission", code))
+      assertEquals(EvaluationEvent.newlyAdmitted(decision.event), newlyAdmitted)
+      (outcome, decision.result) match
+        case (AdaPool.Outcome.Accepted(a), AdaSubmissionService.Result.Accepted(b)) =>
+          assert(a eq b)
+        case (AdaPool.Outcome.AlreadyPresent(a), AdaSubmissionService.Result.AlreadyPresent(b)) =>
+          assert(a eq b)
+        case (AdaPool.Outcome.Rejected(a), AdaSubmissionService.Result.PoolRejected(b)) =>
+          assert(a eq b)
+        case (AdaPool.Outcome.Retry(a), AdaSubmissionService.Result.Retry(b)) => assert(a eq b)
+        case (AdaPool.Outcome.Unavailable, AdaSubmissionService.Result.Unavailable) => ()
+        case _ => fail("outcome and service result diverged")
+    }
+  }
+
+  test("admission decisions require pool classification and cannot be forged or copied") {
+    assertEquals(
+      compileErrors("""lab.AdmissionDecision.fromPool(lab.ledger.AdaPool.Outcome.Unavailable)"""),
+      ""
+    )
+    assert(
+      compileErrors(
+        """new lab.AdmissionDecision(lab.EvaluationEvent.Admission(lab.EvaluationEvent.AdmissionOutcome.Accepted), lab.AdaSubmissionService.Result.Unavailable)"""
+      ).nonEmpty
+    )
+    assert(
+      compileErrors(
+        """lab.AdmissionDecision.fromPool(lab.ledger.AdaPool.Outcome.Unavailable).copy(result = lab.AdaSubmissionService.Result.Unavailable)"""
+      ).nonEmpty
+    )
+    assert(
+      compileErrors(
+        """lab.AdmissionDecision.fromPool(lab.ledger.AdaPool.Outcome.Unavailable).result = lab.AdaSubmissionService.Result.Unavailable"""
+      ).nonEmpty
+    )
+  }
