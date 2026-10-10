@@ -50,3 +50,5 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_native_script_submission_fixture.py'
           python3 -m unittest discover -s scripts -p 'test_plutus_submission_fixture.py'
           python3 -m unittest discover -s scripts -p 'test_plutus_service_fixture.py'
+          python3 -m unittest discover -s scripts -p 'test_plutus_soak_prerequisites.py'
+          python3 -m unittest discover -s scripts -p 'test_verify_likelihood_postrun.py'

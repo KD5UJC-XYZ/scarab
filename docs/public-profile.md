@@ -478,3 +478,48 @@ integrated later have their own focused evidence and are not covered by these
 aggregate counts. Independent JVM-only generation and the measured 600-second
 multi-epoch soak remain pending. The published `d8613b4` checkpoint separately
 passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38024507910).
+
+
+## JVM-only repeated runtime prerequisites — 2026-10-10
+
+Scala source `8b407d2e822c7387492a782833faa5106e8e96e3` passed 1,969 public Scala/translator tests and
+55 tests in the separate retained invocation. Python source `3a8898f22f0d8eb32cbe3c5d036959c84a91c9ca` passed
+all 27 public gates. The Python invocations ran 529 tests across the established
+511-test run and the two new suites (18 tests): 527 passed, two were skipped,
+and none failed. The
+retained invocation overlaps public tests and is not an additional unique-test
+count. The new Python suites are explicitly included in hosted CI.
+
+| Verification | Log SHA256 |
+| --- | --- |
+| Scala/translator | `437dc37baa3f0b9fee4f948cb3994796431038909f264bb2c8ad7ffb6d4dbf58` |
+| Retained invocation | `0856b30942337acff72e6a40f56bc77ed12e19a21ab4549ae12102b477f9a649` |
+| Public gates and established Python suites | `c83c12790b1d84bfe618c2853122639873cd89da9b645a4ea4042346d2dfa214` |
+| New Python suites | `0c02a4bd7c5b54c3a9167406889c5ee0b29ab351ab311d86263751ca25211e87` |
+
+The primary [repeated service](plutus-repeated-service.md) now selects explicit
+JVM-only likelihood generation with source-bound recorded arithmetic. The
+separate native-checked mode retains its declared native runtime dependency.
+Neither mode substitutes endpoint state for the selected mutable state. The
+registered-DRep completion, repeated governance/reward coordinator, late-freeze
+binding and Plutus successor binding have focused offline and retained evidence.
+Successful service results are written only after generation resources close.
+
+The [post-run differential verifier](likelihood-postrun-differential.md) is
+independent of runtime generation. Its finite native smoke matched 100 raw32
+words and one raw64 value, and detected exactly one deliberately changed bit
+without replacing JVM output. That smoke used synthetic publication metadata;
+it is not a live-service result or universal floating-point parity proof.
+
+The [post-boundary client and fixture](plutus-soak-prerequisites.md) are tested
+standalone prerequisites. The incomplete combined supervisor is excluded from
+this checkpoint. The repeated terminal serializer/comparator remains unfinished;
+in-progress reward pulsers require their own supported comparison, not an
+assumption that elapsed time means completion. No new live restart, multi-epoch
+soak, terminal parity or public-network fetch success is claimed. The prior
+same-epoch two-service result remains bound to its original source.
+
+The [functional audit](functional-scala-audit.md#implementation-checklist-2026-10-10-integrated-through-8b407d2)
+records exact commits, real production before/after examples, law coverage and
+remaining migrations. Wider raw-domain/error migration and rebuild composition
+remain separate work.

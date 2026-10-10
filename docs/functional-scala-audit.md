@@ -5,7 +5,7 @@ Owned branch: `audit/functional-scala-20261010`; worktree: `/home/<user>/cardano
 
 This is a source and retained-evidence audit, not a production refactor or a fresh test result. Only this Markdown document is changed. No builds, dependency installations, live/native jobs, containers or public pushes were performed. No applicable AGENTS.md or repository SKILL.md was found in the inspected repository and ancestor locations. Main's service work was read without modification and is explicitly marked WIP below.
 
-## Implementation checklist (2026-10-10)
+## Implementation checklist (2026-10-10, integrated through `8b407d2`)
 
 The original audit below records its historical baseline and WIP findings. This checklist records subsequent implementation; the original statement that only Markdown changed applies to that audit, not these later commits.
 
@@ -13,11 +13,13 @@ The original audit below records its historical baseline and WIP findings. This 
 | --- | --- |
 | Typed stop policy and evaluation events | Published in `c2a9b00`: closed termination policy and evaluation phase/outcome values with explicit wire renderers. This does not establish sustained or multi-epoch service behavior. |
 | Admission callback contract | Published in `8318eb4`: package-trusted admission capability and truthful evidence-I/O contract. The owner fence remains; asynchronous persistence and a hard filesystem deadline are not implemented. |
-| Domain IDs and quantities | This slice adds checked opaque owner/coherent/ledger/environment IDs and uint64 generation/validation-slot types. `StatePin.checkedTyped` is additive; only `SubmissionOwner` pin assembly adopts it. Legacy constructors, raw fields, validation order/text, wire bytes and authority checks remain. Migration of remaining raw callers, transaction/envelope identities and other time units is unfinished. |
-| Typed boundary errors | This slice adds typed pin/domain construction errors. Wider HTTP/network/admission error migration remains unfinished; existing compatibility rendering is retained. |
-| Laws | This slice adds Discipline Eq laws for four identity roles and Order laws for two quantities, plus raw-denotation agreement, boundary rejection, wrong-role compile checks and legacy field/hash equivalence. This is narrow pin coverage, not repository-wide algebraic verification. |
-| Dependency alignment | Direct Cats core/kernel use is aligned at `2.13.0`, already requested by pinned Scalus `1.3.0`. Cats Effect/testkit `3.6.3`, Scala `3.3.8`, Scalus, cryptographic dependencies and native exclusions remain pinned. Core adds only kernel at runtime; kernel-laws `2.13.0`, discipline-munit `2.0.0` and munit-scalacheck `1.0.0` are Test dependencies. Existing MUnit remains `1.0.2`. |
-| MTL/capabilities | Assessed, no new direct MTL dependency or use. Cats Effect already brings MTL `1.3.1` transitively. Pure pin validation needs neither `Ask` nor `Raise`; the existing owner capability enforces freshness. Adding an effect-transformer stack here would not reduce capability requirements. Broader orchestration seams remain separate work. |
+| Domain IDs and quantities | Integrated in `8b83576`: checked opaque owner/coherent/ledger/environment IDs and uint64 generation/validation-slot types. `StatePin.checkedTyped` is additive; only `SubmissionOwner` pin assembly adopts it. Legacy constructors, raw fields, validation order/text, wire bytes and authority checks remain. Migration of remaining raw callers, transaction/envelope identities and other time units is unfinished. |
+| Typed boundary errors | Integrated in `8b83576` and `e7ba7e7`: typed domain, pin and admission-view causes survive actual owner assembly until one compatibility exception boundary. Wider HTTP/network/CLI migration remains unfinished. |
+| Laws | Integrated in `8b83576`: Discipline Eq laws for four identity roles and Order laws for two quantities, plus raw-denotation agreement, boundary rejection, wrong-role compile checks and legacy field/hash equivalence. This is narrow pin coverage, not repository-wide algebraic verification. |
+| Dependency alignment | Integrated in `8b83576`: direct Cats core/kernel use is aligned at `2.13.0`, already requested by pinned Scalus `1.3.0`. Cats Effect/testkit `3.6.3`, Scala `3.3.8`, Scalus, cryptographic dependencies and native exclusions remain pinned. Core adds only kernel at runtime; kernel-laws `2.13.0`, discipline-munit `2.0.0` and munit-scalacheck `1.0.0` are Test dependencies. Existing MUnit remains `1.0.2`. |
+| MTL/capabilities | Integrated in `8fd3500`: actual service admission, rebuild and guarded reads use explicit `Read[F]`/`Fence[F]`, `given`/`using`, typed results and pin syntax. MTL was assessed; no new direct dependency or use was needed. Cats Effect retains transitive MTL `1.3.1`. Broader orchestration remains separate work. |
+| Typed runtime phases | Integrated in `915ead2`: `Bootstrap`, `Followed` and `VerifiedInclusion` connect ordered runtime helpers. This runtime remains `IO`; it is not presented as a generic `F[_]` migration. |
+| Resource composition | Integrated in `4cc59cb`: the actual service publishes its result only after the selected JVM/native generation resource closes. Release failure yields failure status and no success result. |
 | Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
 
 Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
@@ -25,6 +27,107 @@ Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://gi
 Validation: the isolated 2-CPU/2-GiB offline build passed formatting, 63 core boundary/law checks and 32 existing owner/service/evidence tests. Core, network-runtime and app eviction reports were inspected. Selected Cats core/kernel are now `2.13.0` throughout the effect modules (previously `2.11.0` in network-runtime, ledger-runtime and fetcher; app was already `2.13.0`). Core newly selects kernel `2.13.0`. Cats Effect remains `3.6.3`; MUnit resolves to `1.0.2`. Transitive cats-free remains `2.11.0` in lower modules and `2.12.0` in app; this is core/kernel alignment, not blanket convergence of every Cats artifact. The excluded `foundation.icon:blst-java` and `org.scalus:scalus-secp256k1-jni` remain absent from resolved reports; the existing compiler JLine JNI dependency is unrelated and unchanged.
 
 Private evidence: `cardano-functional-domain-tests-20261010-second/result.json`, `resolved-after.json` and `tests.log` (SHA-256 `8cd12f2ca04d1153f5b21cf6d549648c1d48dddcb7270baee66a5c7c70829dc4`); the first evidence directory retains `resolved-before.json` and verified public Maven download hashes. An initial offline dependency-resolution failure is retained there; no tests ran in that first attempt. The focused result does not replace the integration aggregate and introduces no new live, restart, multi-epoch or full-ledger validation claim.
+
+## Before and after: actual production use
+
+These excerpts describe integrated source, not suggested APIs. They omit unrelated
+arguments and branches; the linked production files and tests are authoritative.
+All baseline findings in the numbered audit sections below remain historical.
+In particular, the old lower-module Cats versions and absence of a core Cats
+dependency do not describe the current build.
+
+### Explicit capabilities and syntax
+
+Before `8fd3500`, the service's guarded helper took the concrete owner, read it,
+called `owner.withCurrent`, and recursively interpreted an `Either` for retries.
+The current [service](../app/src/main/scala/lab/AdaSubmissionService.scala)
+constructs one interpreter and installs both capabilities explicitly:
+
+```scala
+val capabilities = AdmissionPrograms.fromOwner(owner)
+given AdmissionPrograms.Read[F] = capabilities
+given AdmissionPrograms.Fence[F] = capabilities
+```
+
+Its constructor requires those capabilities with `using`. Admission and rebuild
+now call `view.pin.commitIfCurrent(...)` through imported extension syntax;
+snapshot, status, relay selection, expiry and shutdown use the shared guarded
+program. The pin remains data: neither a pin nor `Read[F]` can supply `Fence[F]`.
+
+[AdmissionPrograms](../app/src/main/scala/lab/AdmissionPrograms.scala) expresses
+the program with `F[_]`, requiring only `Read[F]` for `current`, `Fence[F]` for
+`commitIfCurrent`, and `Monad[F]` plus both capabilities for `guarded`. Its
+`tailRecM` preserves exactly four attempts and returns the closed
+`Guarded.Read`/`Exhausted` result; the interpreter maps the owner's existing
+outcome into `Fenced.Applied`/`Stale`. It introduces no new fibers, gates or
+cancellation masks. [Capability tests](../app/src/test/scala/lab/AdmissionProgramsSuite.scala)
+check missing-capability compile failures, old/new retry traces, cancellation,
+failure non-retry and the concrete owner's masked commit.
+
+### Typed data between layers
+
+Before `e7ba7e7`, owner view construction flattened validation failures to
+strings between domain, pin and view construction. The actual
+[owner](../app/src/main/scala/lab/SubmissionOwner.scala) now composes checked
+opaque roles and `StatePin.checkedTyped` in a pure `Either` program. Failures
+remain `ViewConstructionError.Domain`, `.Pin` or `.View` until the existing
+effect boundary wraps them in `ViewConstructionFailure`, retaining `.error`.
+The exception still extends `IllegalStateException` and keeps historical text.
+
+[PinDomain](../core/src/main/scala/lab/submission/PinDomain.scala) distinguishes
+owner, coherent-state, ledger-state and environment identities, plus generation
+and validation-slot units. `StatePin.checkedTyped` takes those roles and the
+closed `AdmissionProfile`. Passing an environment ID as a ledger ID is a compile
+error. Public raw `StatePin` fields and legacy constructors deliberately remain
+compatible; migration of every hash, quantity and caller is not complete.
+
+### Typed phase composition and resource completion
+
+Before `915ead2`, one large research-runner comprehension carried unrelated
+intermediate values. [The runtime](../app/src/main/scala/lab/PlutusResearchRuntime.scala)
+now returns `Bootstrap`, `Followed` and `VerifiedInclusion` from ordered helpers.
+The same effects and resource scopes remain; the typed records make which data
+each next phase needs explicit. The clean default-stack compile and 48 focused
+regressions passed after a preserved, context-dependent compiler stack overflow.
+
+Before `4cc59cb`, repeated-service `result.json` was emitted inside the generation
+resource's `use`, before its finalizer ran. The actual
+[service runtime](../app/src/main/scala/lab/PlutusServiceRuntime.scala) now uses:
+
+```scala
+resource.use(body).flatMap { (value, success) =>
+  boundedSave(output.resolve("result.json"), value, MaxTerminalBytes).as(success)
+}
+```
+
+Default, JVM-only and native-checked modes share that path.
+[Finalization tests](../app/src/test/scala/lab/PlutusServiceFinalizationSuite.scala)
+prove that a result is absent during release and that release failure produces
+failure status with no success result. This is an `IO` application lifecycle;
+the smaller admission capability program is the effect-polymorphic component.
+
+### Laws with behavior checks
+
+[PinDomainLaws](../core/src/test/scala/lab/submission/PinDomainLaws.scala) runs
+Discipline `EqTests` for four identity roles and `OrderTests` for generation and
+validation slot. Separate properties compare raw denotations, and
+[boundary tests](../core/src/test/scala/lab/submission/PinDomainSuite.scala)
+check invalid hashes, the full uint64 range, wrong-role/unit compile failures
+and legacy equality/hash behavior. These tests supplement owner concurrency and
+service regressions; they do not prove repository-wide algebraic correctness
+or JVM/native floating-point parity.
+
+### Remaining work
+
+- Migrate additional raw identities, units and string construction errors where
+  they cross real boundaries; preserve compatibility only at explicit edges.
+- Assess the ordered rebuild accumulator and duplicated renderers against their
+  first-wins, cancellation and resource semantics before changing them.
+- Keep wider orchestration effect requirements honest; do not add MTL, custom
+  typeclasses or laws without an actual operation or custom instance to justify them.
+- Complete the separate repeated terminal comparator and supervisor, then obtain
+  measured restart, post-boundary transaction and multi-epoch evidence. Offline
+  refactors and law tests do not establish those live outcomes.
 
 ## Follow-on: admission capability programs
 
