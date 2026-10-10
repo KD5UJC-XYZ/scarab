@@ -11,6 +11,18 @@ private[lab] object RepeatedPlutusBootstrap:
   private def get[A](value: Either[?, A]): A =
     value.fold(error => throw new IllegalArgumentException(error.toString), identity)
 
+  private[lab] def boundaryProfile(
+      source: NativeLedgerSeed.Checked
+  ): CoherentSequence.Result[CoherentSequence.SyntheticBoundaryProfile] =
+    if source == null then
+      Left(CoherentSequence.Failure.Rejected("repeated-bootstrap", "checked source required"))
+    else
+      CoherentSequence.syntheticBoundaryProfile(
+        source.parameterRoles,
+        source.pools,
+        source.globals
+      )
+
   def start(
       joined: NativeLedgerV2.Checked,
       early: PlutusServiceCheckpoint.Started,
@@ -40,16 +52,7 @@ private[lab] object RepeatedPlutusBootstrap:
     }
     source = joined.ledger
     epoch = source.epochComponents
-    profile <- IO(
-      get(
-        CoherentSequence.syntheticBoundaryProfile(
-          source.parameterRoles,
-          source.pools,
-          source.globals,
-          source.globals.stabilityWindow
-        )
-      )
-    )
+    profile <- IO(get(boundaryProfile(source)))
     runtime <- CoherentSequence
       .createWithRepeatedBoundary[IO](
         context,

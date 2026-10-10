@@ -39,6 +39,59 @@ class SyntheticBoundaryCompositionSuite extends munit.FunSuite:
     assertEquals(x.governanceAfter.map(_.dormant), y.governanceAfter.map(_.dormant))
     assertEquals(x.boundaryApplied, y.boundaryApplied)
 
+  test("source-bound reward timing keeps strict runtime start and force edges") {
+    assertEquals(F.typedGlobals.stabilityWindow, BigInt(3))
+    assertEquals(F.typedGlobals.randomnessStabilisationWindow, BigInt(4))
+    Vector[BigInt](5, 8, 9)
+      .traverse_ { firstRewardSlot =>
+        val requested = Vector[BigInt](3, 4, firstRewardSlot)
+        val blocks = F.signed(requested)
+        for
+          runtime <- F.boundaryRuntime
+          before <- run(runtime, blocks.init)
+          _ = assertEquals(before.stop, D.Stop.End)
+          rewards = before.snapshot.state.syntheticRewards.get
+          _ = assertEquals(rewards.profile.window, F.typedGlobals.randomnessStabilisationWindow)
+          _ = assert(rewards.frozen.isEmpty && rewards.pulser.isEmpty)
+          _ = assert(component(before.snapshot.state).frozenId.isEmpty)
+          started <- run(runtime, blocks.takeRight(1))
+          _ = assertEquals(started.stop, D.Stop.End)
+          after = started.snapshot.state.syntheticRewards.get
+          _ = assertEquals(after.frozen.map(_.observedSlot), Some(firstRewardSlot))
+          _ = assertEquals(after.frozen.map(_.window), Some(BigInt(4)))
+          _ = assertEquals(
+            after.pulser.map(_.phase),
+            Some(if firstRewardSlot == 9 then P.Phase.Complete else P.Phase.Pulsing)
+          )
+          _ <-
+            if firstRewardSlot == 8 then
+              val forceBlock = F.signed(requested :+ BigInt(9)).last
+              run(runtime, Vector(forceBlock)).map { forced =>
+                assertEquals(forced.stop, D.Stop.End)
+                assertEquals(
+                  forced.snapshot.state.syntheticRewards.get.pulser.map(_.phase),
+                  Some(P.Phase.Complete)
+                )
+              }
+            else IO.unit
+        yield ()
+      }
+      .unsafeToFuture()
+  }
+
+  test("post-boundary runtime remains absent through the source-bound reward start edge") {
+    (for
+      runtime <- F.boundaryRuntime
+      before <- run(runtime, F.signed(Vector[BigInt](40, 43, 44)))
+      _ = assertEquals(before.stop, D.Stop.End)
+      _ = assertEquals(before.snapshot.state.ledger.environment.epoch, BigInt(1))
+      rewards = before.snapshot.state.syntheticRewards.get
+      _ = assertEquals(rewards.profile.window, F.typedGlobals.randomnessStabilisationWindow)
+      _ = assert(rewards.frozen.isEmpty && rewards.pulser.isEmpty)
+      _ = assert(component(before.snapshot.state).frozenId.isEmpty)
+    yield ()).unsafeToFuture()
+  }
+
   test("one atomic boundary handles absent, pulsing and completed old monetary state") {
     Vector(Vector(1, 40), Vector(1, 5, 40), Vector(1, 5, 6, 7, 40))
       .traverse_ { slots =>
@@ -219,7 +272,7 @@ class SyntheticBoundaryCompositionSuite extends munit.FunSuite:
       id -> F.checkedPools(if id == F.issuer then F.secondPool else F.issuer)
     )
     val foreign = get(
-      CoherentSequence.syntheticBoundaryProfile(F.roles, swapped, F.typedGlobals, F.rewardWindow)
+      CoherentSequence.syntheticBoundaryProfile(F.roles, swapped, F.typedGlobals)
     )
     (for
       a <- create(profile = foreign)
@@ -315,7 +368,7 @@ class SyntheticBoundaryCompositionSuite extends munit.FunSuite:
     )
     assert(
       CoherentSequence
-        .syntheticBoundaryProfile(roles, F.checkedPools, F.typedGlobals, F.rewardWindow)
+        .syntheticBoundaryProfile(roles, F.checkedPools, F.typedGlobals)
         .isLeft
     )
   }
@@ -389,7 +442,7 @@ class SyntheticBoundaryCompositionSuite extends munit.FunSuite:
         assert(G.applyBoundary(input, 1).isRight)
         val spliced = get(
           CoherentSequence
-            .syntheticBoundaryProfile(roles, F.checkedPools, F.typedGlobals, F.rewardWindow)
+            .syntheticBoundaryProfile(roles, F.checkedPools, F.typedGlobals)
         )
         val prepared = get(
           NativeSeedParameters.decode(
@@ -408,7 +461,7 @@ class SyntheticBoundaryCompositionSuite extends munit.FunSuite:
         assertEquals(matchingGlobals.rewardGlobals.id, F.typedGlobals.rewardGlobals.id)
         val coherent = get(
           CoherentSequence
-            .syntheticBoundaryProfile(roles, F.checkedPools, matchingGlobals, F.rewardWindow)
+            .syntheticBoundaryProfile(roles, F.checkedPools, matchingGlobals)
         )
         for
           rejected <- CoherentSequence.createWithSyntheticBoundary[IO](

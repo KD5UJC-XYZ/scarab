@@ -158,6 +158,15 @@ class ConwayEpochBoundarySuite extends munit.FunSuite:
     assertEquals(get(B.rewardTiming(0, 100, 101)), B.Timing.StartOrPulse)
     assertEquals(get(B.rewardTiming(0, 100, 200)), B.Timing.StartOrPulse)
     assertEquals(get(B.rewardTiming(0, 100, 201)), B.Timing.ForceCompletion)
+    for epochFirst <- Vector[BigInt](0, 1000) do
+      for offset <- Vector[BigInt](300, 301, 319, 399, 400) do
+        assertEquals(get(B.rewardTiming(epochFirst, 400, epochFirst + offset)), B.Timing.TooEarly)
+      for offset <- Vector[BigInt](401, 799, 800) do
+        assertEquals(
+          get(B.rewardTiming(epochFirst, 400, epochFirst + offset)),
+          B.Timing.StartOrPulse
+        )
+      assertEquals(get(B.rewardTiming(epochFirst, 400, epochFirst + 801)), B.Timing.ForceCompletion)
     assert(B.rewardTiming(max - 1, 1, max).isLeft)
     assert(B.rewardTiming(0, 0, 1).isLeft)
     val f = new Fixture

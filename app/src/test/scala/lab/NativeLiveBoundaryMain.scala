@@ -32,8 +32,7 @@ object NativeLiveBoundaryMain extends IOApp:
           CoherentSequence.syntheticBoundaryProfile(
             joined.ledger.parameterRoles,
             joined.ledger.pools,
-            joined.ledger.globals,
-            joined.ledger.globals.randomnessStabilisationWindow
+            joined.ledger.globals
           )
         )
       )

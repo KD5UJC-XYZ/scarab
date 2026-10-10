@@ -15,7 +15,7 @@ it is not a native reward update, runtime publication path or native parity proo
 k is a positive uint64. The existing globals decoder remains available but lacks
 k and cannot start this pulser. The original projection bytes, hence k, enter
 the frozen identity before allocation or pool calculation. Existing byte/depth/
-item/rational/profile checks apply. The frozen stability window remains supplied
+item/rational/profile checks apply. The frozen reward timing window remains supplied
 and identity-bound; this packet does not derive or authenticate network globals.
 
 Start requires the exact frozen/allocation identities and a complete map of
@@ -115,7 +115,7 @@ Log: `.cache/reward-pulser-tests.log`. No blocked fixture or live action occurre
 This is the final pure-infrastructure packet. Next work should plan a separately
 authorized native differential rather than add another pure abstraction:
 
-1. Pin native previous PParams, globals including k/stability window, frozen go
+1. Pin native previous PParams, globals including k/reward timing window, frozen go
    credentials/pools, previous blocks, reserves, fees and supply from one checked
    native environment. Keep provenance separate from these scoped projections.
 2. Compare native start intermediates, exact credential order/chunk size, every

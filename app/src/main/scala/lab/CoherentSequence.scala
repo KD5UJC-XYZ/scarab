@@ -2093,18 +2093,25 @@ object CoherentSequence:
       private[CoherentSequence] val monetary: SyntheticRewardProfile
   )
 
+  /** Shelley RUPD uses the source-bound randomness stabilisation window (4k/f), not the consensus
+    * stability window (3k/f). A typed profile cannot override this timing scalar.
+    */
   private[lab] def syntheticBoundaryProfile(
       roles: GovernanceParameterPayload.Roles,
       pools: Map[Bytes, GovernancePoolPayload.Checked],
-      globals: GovernanceGlobals.Checked,
-      window: BigInt
+      globals: GovernanceGlobals.Checked
   ): Result[SyntheticBoundaryProfile] = protect {
     for
       _ <- Either.cond(
-        roles != null && pools != null && globals != null && window != null &&
-          window > 0 && 2 * window < globals.rewardGlobals.epochLength && pools.size <= 4096,
+        roles != null && pools != null && globals != null && pools.size <= 4096,
         (),
-        Failure.Rejected("synthetic-boundary", "typed profile inputs/bounds required")
+        Failure.Rejected("synthetic-boundary", "typed profile inputs required")
+      )
+      window = globals.randomnessStabilisationWindow
+      _ <- Either.cond(
+        window > 0 && 2 * window < globals.rewardGlobals.epochLength,
+        (),
+        Failure.Rejected("synthetic-boundary", "source-bound reward timing bounds required")
       )
       _ <- checked(
         "synthetic-boundary",

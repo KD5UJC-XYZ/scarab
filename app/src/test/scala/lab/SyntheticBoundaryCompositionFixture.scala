@@ -417,7 +417,7 @@ package lab {
         get(SyntheticBoundaryState.typedGlobals(typedGlobals))
       )
     lazy val boundaryProfile = get(
-      CoherentSequence.syntheticBoundaryProfile(roles, checkedPools, typedGlobals, rewardWindow)
+      CoherentSequence.syntheticBoundaryProfile(roles, checkedPools, typedGlobals)
     )
     def boundaryRuntime: IO[CoherentSequence.Runtime[IO]] = CoherentSequence
       .createWithSyntheticBoundary[IO](

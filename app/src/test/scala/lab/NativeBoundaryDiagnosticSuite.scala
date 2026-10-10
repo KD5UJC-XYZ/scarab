@@ -144,8 +144,7 @@ class NativeBoundaryDiagnosticSuite extends NativeLedgerV2AuditedFixture:
         CoherentSequence.syntheticBoundaryProfile(
           joined.ledger.parameterRoles,
           joined.ledger.pools,
-          joined.ledger.globals,
-          joined.ledger.globals.randomnessStabilisationWindow
+          joined.ledger.globals
         )
       )
       (for

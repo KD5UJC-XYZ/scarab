@@ -366,8 +366,7 @@ class NativeLedgerV2Suite extends NativeLedgerSeedFixtures:
       CoherentSequence.syntheticBoundaryProfile(
         ledger.parameterRoles,
         ledger.pools,
-        ledger.globals,
-        epoch.parameters.randomnessWindow
+        ledger.globals
       )
     )
     (for

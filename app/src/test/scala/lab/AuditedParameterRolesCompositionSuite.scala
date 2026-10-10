@@ -80,7 +80,7 @@ class AuditedParameterRolesCompositionSuite extends munit.FunSuite:
       globals = get(SyntheticBoundaryState.typedGlobals(globals))
     )
     val profile = get(
-      CoherentSequence.syntheticBoundaryProfile(roles, F.checkedPools, globals, F.rewardWindow)
+      CoherentSequence.syntheticBoundaryProfile(roles, F.checkedPools, globals)
     )
     Bound(previous, current, globals, profile, input)
 
