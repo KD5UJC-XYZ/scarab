@@ -28,6 +28,9 @@ from the running node; no atomic cross-query snapshot is claimed. Full ledger,
 governance and consensus validation are not claimed. The pre-funding slot-100 and bootstrap slot-300 timing windows are
 strict; the successful bootstrap had only eight slots of margin. Failed attempts
 and the original controller/source hashes remain preserved.
+The live run did not retain a standalone context-hash or consumed-budget VM
+receipt, so those exact live values are not independently audited. The later
+timing guards are offline-tested changes outside the captured successful run.
 
 Local validation included 1,701 Scala tests, 25 public gates, 418 Python tests
 run with two skips, and 28 separately mounted retained-evidence tests. These are
@@ -44,7 +47,10 @@ the public repository. Subsequent timing guard tests are a separate follow-up.
    timing, use genesis-derived budgets, and exercise delayed readiness,
    cancellation, reconnect and exhausted windows. Require the complete ingress
    path under the default reference setting; do not infer it from relay-only tests.
-3. **Expand ledger/Plutus semantics one versioned scope at a time.** Add paired
+3. **Expand ledger/Plutus semantics one versioned scope at a time.** First retain
+   a bounded evaluation receipt binding original transaction/state identities,
+   context hash, model/version and declared/consumed budgets for independent
+   comparison. Add paired
    positive/negative reference cases for budget/context/integrity boundaries,
    phase-two-invalid collateral behavior, total collateral/return, then datum-hash
    and reference features and additional script purposes. Each addition needs
