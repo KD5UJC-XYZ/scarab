@@ -11,6 +11,7 @@ import lab.network.ChainSync
   */
 final case class Header(
     raw: Bytes,
+    bodyRaw: Bytes,
     hash: Bytes,
     blockNo: BigInt,
     slot: BigInt,
@@ -80,6 +81,7 @@ object Header:
       minor <- uint(pv(1))
     yield Header(
       raw,
+      outer(0).original,
       Blake2b.hash256.hash(raw),
       blockNo,
       slot,

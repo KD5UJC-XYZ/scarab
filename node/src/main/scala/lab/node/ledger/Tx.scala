@@ -1,0 +1,310 @@
+// SPDX-License-Identifier: Apache-2.0
+package lab.node.ledger
+
+import cats.syntax.all.*
+import lab.Blake2b
+import lab.cbor.{Bytes, Cbor, Node}
+import lab.node.Block
+
+/** DRep a stake credential delegates its vote to. */
+enum DRep:
+  case Registered(credential: Credential)
+  case AlwaysAbstain
+  case AlwaysNoConfidence
+
+  def render: String = this match
+    case Registered(Credential.Key(h))    => s"drep-keyHash-${h.hex}"
+    case Registered(Credential.Script(h)) => s"drep-scriptHash-${h.hex}"
+    case AlwaysAbstain                    => "drep-alwaysAbstain"
+    case AlwaysNoConfidence               => "drep-alwaysNoConfidence"
+
+object DRep:
+  def decode(n: Node): Either[String, DRep] =
+    CborRead.array(n, "drep").flatMap {
+      case Vector(t, h) =>
+        (CborRead.uint(t, "drep").map(_.toInt), CborRead.bytesN(h, 28, "drep hash")).tupled
+          .flatMap {
+            case (0, hash) => Right(Registered(Credential.Key(hash)))
+            case (1, hash) => Right(Registered(Credential.Script(hash)))
+            case (tag, _)  => Left(s"drep tag $tag")
+          }
+      case Vector(t) =>
+        CborRead.uint(t, "drep").map(_.toInt).flatMap {
+          case 2   => Right(AlwaysAbstain)
+          case 3   => Right(AlwaysNoConfidence)
+          case tag => Left(s"drep tag $tag")
+        }
+      case _ => Left("drep: malformed")
+    }
+
+final case class PoolParams(
+    operator: Bytes,
+    vrfKeyHash: Bytes,
+    pledge: BigInt,
+    cost: BigInt,
+    margin: Rational,
+    rewardAccount: RewardAccount,
+    owners: Set[Bytes],
+    relays: Bytes,
+    metadata: Option[Bytes]
+)
+
+enum Certificate:
+  case Register(credential: Credential, deposit: Option[BigInt])
+  case Unregister(credential: Credential, refund: Option[BigInt])
+  case Delegate(
+      credential: Credential,
+      pool: Option[Bytes],
+      drep: Option[DRep],
+      deposit: Option[BigInt]
+  )
+  case RegisterPool(params: PoolParams)
+  case RetirePool(pool: Bytes, epoch: BigInt)
+  case RegisterDRep(credential: Credential, deposit: BigInt)
+  case UnregisterDRep(credential: Credential, refund: BigInt)
+  case UpdateDRep(credential: Credential)
+  case CommitteeAuthorize(cold: Credential, hot: Credential)
+  case CommitteeResign(cold: Credential)
+
+object Certificate:
+  def decode(n: Node): Either[String, Certificate] =
+    def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), "certificate credential")
+    def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, "pool id")
+    def coin(i: Int, xs: Vector[Node]) = CborRead.uint(xs(i), "certificate coin")
+    def drep(i: Int, xs: Vector[Node]) = DRep.decode(xs(i))
+    CborRead.array(n, "certificate").flatMap { xs =>
+      for
+        tag <- xs.headOption
+          .toRight("empty certificate")
+          .flatMap(CborRead.uint(_, "certificate tag"))
+        arity = Map(
+          0 -> 2,
+          1 -> 2,
+          2 -> 3,
+          3 -> 10,
+          4 -> 3,
+          7 -> 3,
+          8 -> 3,
+          9 -> 3,
+          10 -> 4,
+          11 -> 4,
+          12 -> 4,
+          13 -> 5,
+          14 -> 3,
+          15 -> 3,
+          16 -> 4,
+          17 -> 3,
+          18 -> 3
+        )
+        _ <- arity
+          .get(tag.toInt)
+          .filter(_ == xs.size)
+          .toRight(s"certificate $tag with ${xs.size} fields")
+        cert <- tag.toInt match
+          case 0 => cred(1, xs).map(Register(_, None))
+          case 1 => cred(1, xs).map(Unregister(_, None))
+          case 2 => (cred(1, xs), pool(2, xs)).mapN((c, p) => Delegate(c, Some(p), None, None))
+          case 3 => poolParams(xs.drop(1)).map(RegisterPool(_))
+          case 4 => (pool(1, xs), CborRead.uint(xs(2), "retirement epoch")).mapN(RetirePool(_, _))
+          case 7 => (cred(1, xs), coin(2, xs)).mapN((c, d) => Register(c, Some(d)))
+          case 8 => (cred(1, xs), coin(2, xs)).mapN((c, d) => Unregister(c, Some(d)))
+          case 9 => (cred(1, xs), drep(2, xs)).mapN((c, d) => Delegate(c, None, Some(d), None))
+          case 10 =>
+            (cred(1, xs), pool(2, xs), drep(3, xs))
+              .mapN((c, p, d) => Delegate(c, Some(p), Some(d), None))
+          case 11 =>
+            (cred(1, xs), pool(2, xs), coin(3, xs))
+              .mapN((c, p, d) => Delegate(c, Some(p), None, Some(d)))
+          case 12 =>
+            (cred(1, xs), drep(2, xs), coin(3, xs))
+              .mapN((c, v, d) => Delegate(c, None, Some(v), Some(d)))
+          case 13 =>
+            (cred(1, xs), pool(2, xs), drep(3, xs), coin(4, xs))
+              .mapN((c, p, v, d) => Delegate(c, Some(p), Some(v), Some(d)))
+          case 14 => (cred(1, xs), cred(2, xs)).mapN(CommitteeAuthorize(_, _))
+          case 15 => cred(1, xs).map(CommitteeResign(_))
+          case 16 => (cred(1, xs), coin(2, xs)).mapN(RegisterDRep(_, _))
+          case 17 => (cred(1, xs), coin(2, xs)).mapN(UnregisterDRep(_, _))
+          case 18 => cred(1, xs).map(UpdateDRep(_))
+          case t  => Left(s"certificate tag $t")
+      yield cert
+    }
+
+  private def poolParams(xs: Vector[Node]): Either[String, PoolParams] =
+    for
+      operator <- CborRead.bytesN(xs(0), 28, "pool operator")
+      vrf <- CborRead.bytesN(xs(1), 32, "pool vrf")
+      pledge <- CborRead.uint(xs(2), "pool pledge")
+      cost <- CborRead.uint(xs(3), "pool cost")
+      margin <- CborRead.rational(xs(4), "pool margin")
+      account <- CborRead.bytes(xs(5), "pool reward account").flatMap(RewardAccount.decode)
+      owners <- CborRead
+        .set(xs(6), "pool owners")
+        .flatMap(_.traverse(CborRead.bytesN(_, 28, "pool owner")))
+      metadata = xs(8).value match
+        case lab.cbor.Value.Null => None
+        case _                   => Some(xs(8).original)
+    yield PoolParams(
+      operator,
+      vrf,
+      pledge,
+      cost,
+      margin,
+      account,
+      owners.toSet,
+      xs(7).original,
+      metadata
+    )
+
+/** Decoded Conway transaction body; `raw` is the original encoding whose hash is the tx id. */
+final case class TxBody(
+    raw: Bytes,
+    inputs: Vector[TxIn],
+    outputs: Vector[TxOut],
+    fee: BigInt,
+    ttl: Option[BigInt],
+    validityStart: Option[BigInt],
+    certificates: Vector[Certificate],
+    withdrawals: Vector[(RewardAccount, BigInt)],
+    mint: Map[Bytes, Map[Bytes, BigInt]],
+    collateral: Vector[TxIn],
+    requiredSigners: Vector[Bytes],
+    networkId: Option[BigInt],
+    referenceInputs: Vector[TxIn],
+    hasScriptData: Boolean,
+    hasGovernance: Boolean,
+    donation: BigInt
+):
+  lazy val id: Bytes = Blake2b.hash256.hash(raw)
+
+object TxBody:
+  private val Known = Set(0, 1, 2, 3, 4, 5, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
+
+  def decode(raw: Bytes): Either[String, TxBody] =
+    for
+      root <- Cbor.decode(raw)
+      f <- CborRead.fields(root, "transaction body")
+      _ <- Either.cond(
+        f.keySet.subsetOf(Known),
+        (),
+        s"transaction body: unknown fields ${f.keySet -- Known}"
+      )
+      inputs <- f
+        .get(0)
+        .toRight("missing inputs")
+        .flatMap(CborRead.set(_, "inputs"))
+        .flatMap(_.traverse(TxIn.decode))
+      outputs <- f
+        .get(1)
+        .toRight("missing outputs")
+        .flatMap(CborRead.array(_, "outputs"))
+        .flatMap(_.traverse(TxOut.decode))
+      fee <- f.get(2).toRight("missing fee").flatMap(CborRead.uint(_, "fee"))
+      ttl <- f.get(3).traverse(CborRead.uint(_, "ttl"))
+      start <- f.get(8).traverse(CborRead.uint(_, "validity start"))
+      certs <- f
+        .get(4)
+        .traverse(CborRead.set(_, "certificates").flatMap(_.traverse(Certificate.decode)))
+      withdrawals <- f
+        .get(5)
+        .traverse(
+          CborRead
+            .map(_, "withdrawals")
+            .flatMap(_.traverse { case (k, v) =>
+              (
+                CborRead.bytes(k, "withdrawal account").flatMap(RewardAccount.decode),
+                CborRead.uint(v, "withdrawal")
+              ).tupled
+            })
+        )
+      mint <- f.get(9).traverse(Value.multiasset(_, "mint", signed = true))
+      collateral <- f
+        .get(13)
+        .traverse(CborRead.set(_, "collateral").flatMap(_.traverse(TxIn.decode)))
+      signers <- f
+        .get(14)
+        .traverse(
+          CborRead.set(_, "required signers").flatMap(_.traverse(CborRead.bytesN(_, 28, "signer")))
+        )
+      network <- f.get(15).traverse(CborRead.uint(_, "network id"))
+      refs <- f
+        .get(18)
+        .traverse(CborRead.set(_, "reference inputs").flatMap(_.traverse(TxIn.decode)))
+      donation <- f.get(22).traverse(CborRead.uint(_, "donation"))
+    yield TxBody(
+      raw,
+      inputs,
+      outputs,
+      fee,
+      ttl,
+      start,
+      certs.getOrElse(Vector.empty),
+      withdrawals.getOrElse(Vector.empty),
+      mint.getOrElse(Map.empty),
+      collateral.getOrElse(Vector.empty),
+      signers.getOrElse(Vector.empty),
+      network,
+      refs.getOrElse(Vector.empty),
+      hasScriptData = f.contains(11),
+      hasGovernance = f.contains(19) || f.contains(20) || f.contains(21),
+      donation.getOrElse(0)
+    )
+
+/** Witness set: verification-key witnesses are decoded; any script-related witness is flagged. */
+final case class Witnesses(
+    vkeys: Vector[(Bytes, Bytes)],
+    hasScripts: Boolean,
+    hasBootstrap: Boolean
+)
+
+object Witnesses:
+  def decode(raw: Bytes): Either[String, Witnesses] =
+    for
+      root <- Cbor.decode(raw)
+      f <- CborRead.fields(root, "witness set")
+      vkeys <- f
+        .get(0)
+        .traverse(
+          CborRead
+            .set(_, "vkey witnesses")
+            .flatMap(_.traverse { w =>
+              CborRead
+                .arrayN(w, 2, "vkey witness")
+                .flatMap(xs =>
+                  (
+                    CborRead.bytesN(xs(0), 32, "vkey"),
+                    CborRead.bytesN(xs(1), 64, "signature")
+                  ).tupled
+                )
+            })
+        )
+    yield Witnesses(
+      vkeys.getOrElse(Vector.empty),
+      hasScripts = (f.keySet - 0 - 2).nonEmpty,
+      hasBootstrap = f.contains(2)
+    )
+
+/** A transaction as included in a block. */
+final case class Tx(
+    body: TxBody,
+    witnesses: Witnesses,
+    size: Long,
+    isValid: Boolean,
+    hasAuxiliaryData: Boolean
+)
+
+object Tx:
+  /** Ledger size is the size of the serialized `[body, witnesses, isValid, aux]` transaction. */
+  def fromBlock(t: Block.Transaction): Either[String, Tx] =
+    for
+      body <- TxBody.decode(t.body)
+      witnesses <- Witnesses.decode(t.witnesses)
+    yield
+      val aux = t.auxiliaryData.fold(1L)(_.size.toLong) // `null` is one byte
+      Tx(
+        body,
+        witnesses,
+        1L + t.body.size + t.witnesses.size + 1L + aux,
+        t.isValid,
+        t.auxiliaryData.isDefined
+      )

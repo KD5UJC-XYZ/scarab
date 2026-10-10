@@ -32,7 +32,7 @@ object JsonLog:
     )
 
   def finished[S](chain: VolatileChain[S]): IO[Unit] =
-    line("finished", "tip" -> point(chain.tip), "state" -> chain.state.toString.asJson)
+    line("finished", "tip" -> point(chain.tip), "retained" -> chain.length.asJson)
 
   def error(e: NodeError): IO[Unit] =
     line("error", "kind" -> e.getClass.getSimpleName.asJson, "message" -> e.message.asJson)

@@ -2,15 +2,30 @@
 package lab.node
 
 import cats.effect.{ExitCode, IO, IOApp, Ref}
-import cats.mtl.Handle
+import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
+import io.circe.parser
 import java.nio.file.{Files, Path}
 import lab.network.NumericPeer
+import lab.Blake2b
+import lab.cbor.Bytes
+import lab.node.consensus.{Praos, PraosConfig}
+import lab.node.ledger.{GenesisState, LedgerGlobals, Rational}
+import lab.vrf.PraosLeaderThreshold
 import scala.concurrent.duration.*
 
-/** `follow --genesis <shelley-genesis.json> --peer <ip>:<port> [--seconds N]` */
+/** `follow --genesis-dir <dir> --peer <ip>:<port> [--seconds N] [--query-port P]`
+  *
+  * Follows the peer from genesis, applying the full ledger rules, and serves the retained ledger
+  * states on loopback for comparison against a reference node.
+  */
 object Main extends IOApp:
-  final case class Options(genesis: Path, peer: NumericPeer, seconds: Option[Long])
+  final case class Options(
+      genesisDir: Path,
+      peer: NumericPeer,
+      seconds: Option[Long],
+      queryPort: Int
+  )
 
   def run(args: List[String]): IO[ExitCode] =
     parse(args) match
@@ -21,23 +36,57 @@ object Main extends IOApp:
           .rescue(error => JsonLog.error(error).as(ExitCode(1)))
 
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
-    for
-      text <- IO.blocking(Files.readString(options.genesis))
-      genesis <- Genesis.shelley(text).fold(Handle[IO, NodeError].raise, IO.pure)
-      ref <- Ref.of[IO, VolatileChain[FollowState]](
-        VolatileChain.genesis(genesis.geometry.securityParam, FollowState.empty)
+    def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
+    def read(name: String) = IO.blocking(Files.readString(options.genesisDir.resolve(name)))
+    def json(name: String) =
+      read(name).flatMap(t =>
+        parser.parse(t).fold(e => fail(ConfigError(s"$name: ${e.message}")), IO.pure)
       )
-      given cats.mtl.Stateful[IO, VolatileChain[FollowState]] = RefStateful(ref)
+    for
+      genesis <- read("shelley-genesis.json").flatMap(t => Genesis.shelley(t).fold(fail, IO.pure))
+      files <- (
+        json("shelley-genesis.json"),
+        json("alonzo-genesis.json"),
+        json("conway-genesis.json"),
+        json("byron-genesis.json")
+      ).mapN(GenesisState.Files.apply)
+      globals = LedgerGlobals(
+        genesis.maxLovelaceSupply,
+        genesis.geometry.epochLength,
+        Rational.fromDecimal(genesis.geometry.activeSlotsCoeff),
+        network = if genesis.networkMagic == 764824073L then 1 else 0
+      )
+      initial <- GenesisState.initial(files, globals).fold(fail, IO.pure)
+      genesisBytes <- IO.blocking(
+        Files.readAllBytes(options.genesisDir.resolve("shelley-genesis.json"))
+      )
+      f = genesis.geometry.activeSlotsCoeff
+      active <- PraosLeaderThreshold.Fraction
+        .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
+        .fold(e => fail(ConfigError(e)), IO.pure)
+      praosConfig = PraosConfig(
+        genesis.geometry,
+        genesis.slotsPerKesPeriod,
+        genesis.maxKesEvolutions,
+        active
+      )
+      start = NodeState(Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(genesisBytes))), initial)
+      ref <- Ref.of[IO, VolatileChain[NodeState]](
+        VolatileChain.genesis(genesis.geometry.securityParam, start)
+      )
+      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
       events = JsonLog.events
-      follower = Follower[IO, FollowState](StructuralRules[IO], events, genesis.geometry)
+      rules = NodeRules[IO](praosConfig, globals)
+      follower = Follower[IO, NodeState](rules, events, genesis.geometry)
       settings = Peer.Settings(options.peer, genesis.networkMagic)
       retry = Follower.Retry(maxAttempts = 30, delay = 2.seconds)
       // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
-      run = Handle
+      sync = Handle
         .allow[PeerError](
           Follower.supervise(follower, Peer.nodeToNode[IO](settings), events, retry)
         )
-        .rescue(error => Handle[IO, NodeError].raise(error))
+        .rescue(error => fail[Unit](error))
+      run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort).surround(sync)
       _ <- JsonLog.started(options.peer, genesis)
       _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
       last <- ref.get
@@ -45,7 +94,8 @@ object Main extends IOApp:
     yield ()
 
   private def parse(args: List[String]): Either[String, Options] =
-    val usage = "usage: follow --genesis <shelley-genesis.json> --peer <ip>:<port> [--seconds N]"
+    val usage =
+      "usage: follow --genesis-dir <dir> --peer <ip>:<port> [--seconds N] [--query-port P]"
     def go(rest: List[String], acc: Map[String, String]): Either[String, Map[String, String]] =
       rest match
         case Nil => Right(acc)
@@ -56,7 +106,7 @@ object Main extends IOApp:
       case "follow" :: rest =>
         for
           flags <- go(rest, Map.empty)
-          genesis <- flags.get("genesis").toRight(usage).map(Path.of(_))
+          dir <- flags.get("genesis-dir").toRight(usage).map(Path.of(_))
           peerText <- flags.get("peer").toRight(usage)
           split <- peerText.lastIndexOf(':') match
             case -1 => Left(usage)
@@ -64,5 +114,6 @@ object Main extends IOApp:
               peerText.drop(i + 1).toIntOption.toRight(usage).map(p => peerText.take(i) -> p)
           peer <- NumericPeer.checked(split._1, split._2)
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
-        yield Options(genesis, peer, seconds)
+          port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
+        yield Options(dir, peer, seconds, port)
       case _ => Left(usage)

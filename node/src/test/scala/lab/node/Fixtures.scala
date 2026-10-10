@@ -13,6 +13,7 @@ object Fixtures:
     val raw = Bytes(s"header-$blockNo-$slot-${prev.map(_.hex)}-$salt".getBytes.toVector)
     Header(
       raw = raw,
+      bodyRaw = raw,
       hash = Blake2b.hash256.hash(raw),
       blockNo = blockNo,
       slot = slot,
