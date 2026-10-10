@@ -105,11 +105,34 @@ lazy val app = project.in(file("app")).dependsOn(core, vm, network, networkRunti
   Compile / run / fork := true,
   Compile / run / baseDirectory := (LocalRootProject / baseDirectory).value
 )
-lazy val root = project.in(file(".")).aggregate(core, vm, network, networkRuntime, ledger, ledgerRuntime, fetcher, app)
+lazy val catsMtlVersion = "1.6.0"
+// Tagless-final node runtime: algebras over F[_] with cats-mtl typed control flow.
+lazy val node = project.in(file("node")).dependsOn(core, network, networkRuntime, ledger).settings(
+  libraryDependencies ++= Seq(
+    "org.typelevel" %% "cats-core" % catsVersion,
+    "org.typelevel" %% "cats-effect" % catsEffectVersion,
+    "org.typelevel" %% "cats-mtl" % catsMtlVersion,
+    "io.circe" %% "circe-parser" % "0.14.10",
+    "org.typelevel" %% "cats-laws" % catsVersion % Test,
+    "org.typelevel" %% "cats-mtl-laws" % catsMtlVersion % Test,
+    "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
+    "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test,
+    "org.typelevel" %% "cats-effect-testkit" % catsEffectVersion % Test,
+    "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
+    "org.scalameta" %% "munit" % munitVersion % Test
+  ),
+  runtimeClasspathFile := {
+    val output = target.value / "runtime-classpath.txt"
+    IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
+    output
+  },
+  Compile / run / fork := true
+)
+lazy val root = project.in(file(".")).aggregate(core, vm, network, networkRuntime, ledger, ledgerRuntime, fetcher, app, node)
 // Compile every test module first, then complete module test commands one at a time.
 addCommandAlias(
   "check",
-  ";scalafmtCheckAll;core/Test/compile;vm/Test/compile;network/Test/compile;networkRuntime/Test/compile;ledger/Test/compile;ledgerRuntime/Test/compile;fetcher/Test/compile;app/Test/compile;core/Test/test;vm/Test/test;network/Test/test;networkRuntime/Test/test;ledger/Test/test;ledgerRuntime/Test/test;fetcher/Test/test;app/Test/test"
+  ";scalafmtCheckAll;core/Test/compile;vm/Test/compile;network/Test/compile;networkRuntime/Test/compile;ledger/Test/compile;ledgerRuntime/Test/compile;fetcher/Test/compile;app/Test/compile;node/Test/compile;core/Test/test;vm/Test/test;network/Test/test;networkRuntime/Test/test;ledger/Test/test;ledgerRuntime/Test/test;fetcher/Test/test;app/Test/test;node/Test/test"
 )
 
 addCommandAlias("checkPrivateCorpus", ";core/requirePrivateCorpus;core/PrivateCorpus/test;fetcher/PrivateCorpus/test;app/PrivateCorpus/test")
