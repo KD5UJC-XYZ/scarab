@@ -21,6 +21,7 @@ The original audit below records its historical baseline and WIP findings. This 
 | Typed runtime phases | Integrated in `915ead2`: `Bootstrap`, `Followed` and `VerifiedInclusion` connect ordered runtime helpers. This runtime remains `IO`; it is not presented as a generic `F[_]` migration. |
 | Resource composition | Integrated in `4cc59cb`: the actual service publishes its result only after the selected JVM/native generation resource closes. Release failure yields failure status and no success result. |
 | Checked rebuild pairing | Integrated in `0710699`: actual queued work uses a private checked `RebuildContext`, binding the full admission pin and profile. This does not replace the owner fence or pool work token. |
+| HTTP failure policy | Integrated in `4057885`: 15 closed failure outcomes replace arbitrary status/code/category triples in actual HTTP paths. Existing wire bytes, redaction and effect handling remain; this is not a full HTTP/domain migration. |
 | Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
 
 Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
@@ -81,6 +82,36 @@ and validation-slot units. `StatePin.checkedTyped` takes those roles and the
 closed `AdmissionProfile`. Passing an environment ID as a ledger ID is a compile
 error. Public raw `StatePin` fields and legacy constructors deliberately remain
 compatible; migration of every hash, quantity and caller is not complete.
+
+### Closed HTTP failure policy
+
+Before `4057885`, the actual HTTP renderer accepted
+`failure(http: Int, code: String, category: String)`. Every classification branch
+could choose an inconsistent triple. The [handler](../app/src/main/scala/lab/AdaHttpHandler.scala)
+now takes a closed `FailureResponse` with 15 immutable wire mappings:
+
+```scala
+case InternalFailure extends FailureResponse(503, "InternalFailure", "unavailable")
+```
+
+Identity, ledger, Plutus phase-one and execution classification return that
+type. Pool rejection and the actual unexpected-error fallback use the same
+closed policy before rendering. For example, `failure(FailureResponse.InternalFailure)`
+replaces the repeated raw triple. The original `handleError` stays at the same
+effect boundary. Accepted, pending, state and retry/current-pin payloads are
+unchanged, as are JSON key order, escaping, statuses and scope fields.
+
+[Four boundary tests](../app/src/test/scala/lab/AdaHttpFailureSuite.scala) cover all
+15 cases with exact response bytes, every nested validation branch, direct/nested
+identity equivalence, pool/fallback mappings and private control/Unicode detail
+redaction. Compile-negative checks reject arbitrary triples and string outcomes;
+a compile-positive control confirms a valid typed call. No generic renderer,
+new typeclass, dependency or resource topology was introduced.
+
+Exact source `40578853389cc85c6253ec70bb3a5e2f704ed8b5` passed 1,978 public Scala/translator tests, the separate
+55-test retained invocation, 27 public gates and 542 Python tests with two skips.
+An initial test-fixture type error is retained separately; production code
+compiled in that attempt. Phase log SHA256: `4d0e8766c7d82a240d136da083b2347c44c208fe90d4b5482ab6ad1107d6e12e`.
 
 ### Typed phase composition and resource completion
 

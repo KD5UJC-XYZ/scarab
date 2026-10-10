@@ -574,3 +574,20 @@ contains source, points, counts and original-evidence hashes only. Keys, raw
 checkpoint/state and logs remain private. The repeated-state comparator and
 combined multi-epoch supervisor remain unfinished; no new tested-spend,
 late-restore, crash-durability or multi-epoch claim is made here.
+
+
+## Closed HTTP failure policy - 2026-10-10
+
+Exact source `40578853389cc85c6253ec70bb3a5e2f704ed8b5` passed 1,978 public Scala/translator tests, 55 tests in
+the separate retained invocation, 27 public gates and 544 Python tests run
+(542 passed, two skipped). The [functional audit](functional-scala-audit.md#closed-http-failure-policy)
+records actual replacement of arbitrary HTTP status/code/category triples by
+15 closed outcomes. Exact-response and redaction tests preserve the existing
+wire contract; accepted, retry and state responses and effect ordering are
+unchanged. No new live claim follows from this refactor.
+
+Phase log SHA256: `4d0e8766c7d82a240d136da083b2347c44c208fe90d4b5482ab6ad1107d6e12e`.
+Retained log SHA256: `7c52f481b278dcdec399d98f1d67abfe6b077ebfb951c5b2914c6fcd2adefbf5`.
+Gate/Python log SHA256: `d381aa4402e820145c63b94cca56655db283623bcee60fe6e70dcef2baa4d23c`.
+The preceding restart checkpoint `3a8e012` passed
+[hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38028658672); this later source requires its own CI result.
