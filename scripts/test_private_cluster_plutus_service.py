@@ -276,4 +276,93 @@ class SequentialClientTest(unittest.TestCase):
         with self.assertRaises(ValueError):c.sequential_report(self.root,self.client)
 
 
+class HelperFailureTest(unittest.TestCase):
+    class FailedProcess(ValueError):
+        def __init__(self,code,stdout,stderr):
+            self.code,self.stdout,self.stderr=code,stdout,stderr
+            super().__init__('original helper failure')
+
+    def test_private_stream_limits_hashes_and_permissions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            stdout=b'x'*300000;stderr=b'private stderr'
+            value=c.retain_helper_failure(self.FailedProcess(2,stdout,stderr),root)
+            self.assertEqual(value['exitCode'],2)
+            self.assertEqual(value['stdout']['observedBytes'],300000)
+            self.assertEqual(value['stdout']['retainedBytes'],262144)
+            self.assertTrue(value['stdout']['truncated'])
+            self.assertEqual(value['stdout']['originalSHA256'],c.fixture.digest(stdout))
+            self.assertEqual(value['stdout']['retainedSHA256'],c.fixture.digest(stdout[:262144]))
+            self.assertEqual((root/'client-helper-failure.stderr').read_bytes(),stderr)
+            self.assertEqual((root/'client-helper-failure.stderr').stat().st_mode&0o777,0o600)
+            self.assertNotIn('private stderr',c.base.json.dumps(value))
+            with self.assertRaises(FileExistsError):c.retain_helper_failure(self.FailedProcess(2,b'',b''),root)
+
+    def failed_report(self):
+        return dict(schema='sequential-devnet-runner-v1',stop='Failed',allRequestedPassed=False,
+            executedScenariosPassed=False,observationalOnly=True,restoreAuthority=False,
+            rows=[dict(scenario='ObserveService',verdict=dict(outcome='completed')),
+                  dict(scenario='TwoSequentialTransfers',verdict=dict(outcome='failed',reason='ClientFailure',
+                    diagnostic=dict(operation='HttpClient',cause='ConnectionFailure',
+                        lastObservation=dict(stage='WaitFirstInclusion',responseCode='Pending'))))])
+
+    def test_failure_report_closed_diagnostics_without_raw_text(self):
+        report=self.failed_report();report['arbitrary']='private exception text'
+        summary=c.typed_failure_summary(c.base.json.dumps(report).encode())
+        self.assertEqual(summary['diagnostic']['cause'],'ConnectionFailure')
+        self.assertEqual(summary['diagnostic']['lastObservation']['responseCode'],'Pending')
+        self.assertNotIn('private exception text',c.base.json.dumps(summary))
+        report['executedScenariosPassed']=True
+        with self.assertRaises(ValueError):c.typed_failure_summary(c.base.json.dumps(report).encode())
+
+    def test_unknown_cause_never_becomes_public_text(self):
+        report=self.failed_report();report['rows'][-1]['verdict']['diagnostic']['cause']='secret text'
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);c.base.write(root/'scenario-runner-result.json',report)
+            value=c.retain_helper_failure(self.FailedProcess(2,b'',b''),root)
+            self.assertEqual(value['scenarioReport']['validation'],'rejected')
+            self.assertNotIn('secret text',c.base.json.dumps(value))
+
+    def test_oversized_upstream_stream_is_not_retained(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaises(ValueError):
+                c.retain_helper_failure(self.FailedProcess(2,b'x'*(4*1024*1024+1),b''),Path(folder))
+            self.assertEqual(list(Path(folder).iterdir()),[])
+
+    def exercise_run_client_failure(self,recording_failure=False):
+        class Launcher:pass
+        live=SimpleNamespace(Launcher=Launcher,bounded_process=SimpleNamespace(__globals__={'FailedProcess':self.FailedProcess}))
+        obj=object.__new__(c.controller_type(live))
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);submission=root/'submission';submission.mkdir();out=root/'out';out.mkdir()
+            obj.exchange=root;obj.out=out;obj.api_port=1234;obj.deadline=c.time.monotonic()+30
+            obj.args=SimpleNamespace(client_classpath_file=Path('/cp'),scala_build_root=Path('/build'),
+                java='java',scala_image='image',duration_seconds=30)
+            obj.containers={'reference':'r'*64};obj.create=lambda phase,args:'c'*64
+            obj.owned=lambda cid:dict(Mounts=[dict(Type='bind',Source='/build',Destination='/work',RW=False),
+                dict(Type='bind',Source=str(root),Destination='/exchange',RW=False),
+                dict(Type='bind',Source=str(submission),Destination='/exchange/submission',RW=True)],Image='image')
+            original=self.FailedProcess(7,b'helper output',b'helper error')
+            def fail(*args,**kwargs):raise original
+            obj.docker=fail;removed=[];diagnostics=[]
+            def remove():
+                removed.append(True)
+                if not recording_failure:self.assertTrue((out/'client-helper-failure.json').exists())
+            obj.remove_client=remove
+            obj.diagnostic_write=lambda name,value:diagnostics.append((name,value))
+            with patch.object(c,'checked_classpath',return_value='/work/test-classes'),patch.object(c.base,'check_resources'):
+                if recording_failure:
+                    with patch.object(c,'retain_helper_failure',side_effect=OSError('private error text')):
+                        with self.assertRaises(self.FailedProcess) as caught:obj.run_client()
+                else:
+                    with self.assertRaises(self.FailedProcess) as caught:obj.run_client()
+            self.assertIs(caught.exception,original)
+            self.assertEqual(removed,[True])
+            if recording_failure:
+                self.assertEqual(diagnostics[0][1],dict(errorType='OSError'))
+
+    def test_failure_is_retained_before_cleanup_and_original_reraised(self):self.exercise_run_client_failure()
+    def test_diagnostic_failure_preserves_original_and_cleanup(self):self.exercise_run_client_failure(True)
+
+
 if __name__=='__main__':unittest.main()

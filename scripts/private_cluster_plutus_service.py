@@ -30,6 +30,78 @@ def service_limits(duration, blocks):
     base.require(type(blocks) is int and 1 <= blocks <= 128, "bounded service blocks 1..128")
 
 
+def typed_failure_summary(raw):
+    report = base.decode(raw)
+    base.require(isinstance(report, dict) and report.get("schema") == "sequential-devnet-runner-v1" and
+                 report.get("stop") == "Failed" and report.get("allRequestedPassed") is False and
+                 report.get("executedScenariosPassed") is False and report.get("observationalOnly") is True and
+                 report.get("restoreAuthority") is False, "typed unsuccessful observational report")
+    scenarios = ("ObserveService", "TwoSequentialTransfers", "ObserveService",
+                 "RestartAndRejoin", "FollowAcrossEpochs", "MultipleNodes")
+    rows = report.get("rows")
+    base.require(isinstance(rows, list) and 1 <= len(rows) <= 6, "bounded failed scenario prefix")
+    for index, row in enumerate(rows):
+        base.require(isinstance(row, dict) and row.get("scenario") == scenarios[index] and
+                     isinstance(row.get("verdict"), dict), "ordered failed scenario prefix")
+    verdict = rows[-1]["verdict"]
+    reasons = ("ActionRejected", "AdapterError", "ActionDeadline", "CheckpointTooLarge", "EvidenceBudget", "ClientFailure")
+    base.require(verdict.get("outcome") == "failed" and verdict.get("reason") in reasons,
+                 "closed typed failure reason")
+    summary = dict(schema=report["schema"], stop="Failed", allRequestedPassed=False,
+                   executedScenariosPassed=False, scenario=scenarios[len(rows)-1], reason=verdict["reason"])
+    diagnostic_value = verdict.get("diagnostic")
+    if diagnostic_value is not None:
+        causes = ("ConnectionFailure", "Deadline", "InvalidObservation", "TransportFailure", "EvidenceUnavailable", "UnknownClientFailure")
+        base.require(verdict["reason"] == "ClientFailure" and isinstance(diagnostic_value, dict) and
+                     diagnostic_value.get("operation") == "HttpClient" and diagnostic_value.get("cause") in causes,
+                     "closed HTTP failure diagnostic")
+        summary["diagnostic"] = dict(operation="HttpClient", cause=diagnostic_value["cause"])
+        observed = diagnostic_value.get("lastObservation")
+        if observed is not None:
+            stages = ("Admission1", "Admission2", "Duplicate1", "Duplicate2", "Conflict1", "WaitFirstInclusion",
+                      "WaitSecondInclusion", "BetweenState", "AfterSecondState", "FirstStatusAfterSecond", "Unknown")
+            codes = ("Accepted", "AlreadyPresent", "InputsReserved", "Pending", "Included", "State", "Rejected",
+                     "Unsupported", "StaleState", "Unavailable", "Unknown")
+            base.require(isinstance(observed, dict) and observed.get("stage") in stages and
+                         observed.get("responseCode") in codes, "closed last HTTP observation")
+            summary["diagnostic"]["lastObservation"] = dict(stage=observed["stage"], responseCode=observed["responseCode"])
+    return summary
+
+
+def retain_helper_failure(error, submission):
+    """Retain bounded helper bytes privately; return hash-only safe metadata."""
+    submission = Path(submission)
+    base.require(submission.resolve() == submission, "owned failure evidence directory")
+    base.require(type(error.code) is int and -128 <= error.code <= 255, "bounded helper exit code")
+    result = dict(schema="plutus-service-helper-failure-v1", exitCode=error.code, passed=False,
+                  logsPrivate=True, fullLedgerValidated=False)
+    for name, upstream_limit, retained_limit in (("stdout", 4*1024*1024, 262144), ("stderr", 131072, 131072)):
+        raw = getattr(error, name)
+        base.require(isinstance(raw, bytes) and len(raw) <= upstream_limit, "bounded helper "+name)
+        kept = raw[:retained_limit]
+        filename = "client-helper-failure."+name
+        descriptor = os.open(submission / filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(kept)
+        result[name] = dict(file="submission/"+filename, observedBytes=len(raw), retainedBytes=len(kept),
+                            truncated=len(kept) != len(raw), originalSHA256=fixture.digest(raw),
+                            retainedSHA256=fixture.digest(kept))
+    report_path = submission / "scenario-runner-result.json"
+    if report_path.exists():
+        try:
+            base.require(report_path.resolve() == report_path, "typed failure report has no symlink traversal")
+            raw = base.read(report_path, 65536)
+            result["scenarioReport"] = dict(file="submission/scenario-runner-result.json", bytes=len(raw),
+                                             sha256=fixture.digest(raw), validation="rejected")
+            result["scenarioReport"]["summary"] = typed_failure_summary(raw)
+            result["scenarioReport"]["validation"] = "typed-failure"
+        except (ValueError, KeyError, TypeError, OSError):
+            # The original helper failure remains primary. Never copy arbitrary
+            # exception text or unvalidated report text into public metadata.
+            result.setdefault("scenarioReport", dict(validation="unavailable"))
+    return result
+
+
 def client_command(mode, port, duration):
     """Closed Test-only client selection; the Compile runtime is unchanged."""
     base.require(mode in ("direct", "sequential"), "closed client mode: direct or sequential")
@@ -441,7 +513,23 @@ def controller_type(live):
                            network=network, cpus=1, memoryBytes=2*base.GIB, mounts=observed["Mounts"]))
                 timeout = min(self.args.duration_seconds+5, self.deadline-time.monotonic())
                 base.require(timeout > 0, "remaining external client deadline")
-                attached = self.docker("start", "--attach", cid, timeout=timeout)
+                try:
+                    attached = self.docker("start", "--attach", cid, timeout=timeout)
+                except ValueError as error:
+                    # Resolve the exact exception class from the already pinned
+                    # support function, rather than matching arbitrary messages.
+                    failed_type = getattr(getattr(live, "bounded_process", None), "__globals__", {}).get("FailedProcess")
+                    if isinstance(failed_type, type) and isinstance(error, failed_type):
+                        try:
+                            failure = retain_helper_failure(error, submission)
+                            base.write(self.out / "client-helper-failure.json", failure)
+                        except Exception as diagnostic_error:
+                            try:
+                                self.diagnostic_write("client-helper-failure-recording-error.json",
+                                                      dict(errorType=type(diagnostic_error).__name__))
+                            except Exception:
+                                pass  # Never replace the original FailedProcess.
+                    raise
                 (self.out / "client-attach.log").write_text(attached.stdout+attached.stderr)
                 state = self.owned(cid)["State"]
                 base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "two-spend HTTP client exit")
