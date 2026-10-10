@@ -1,0 +1,11 @@
+# Repeated-soak client and isolated fixture prerequisites
+
+These are independently usable test prerequisites, not a delivered soak supervisor or live acceptance result.
+
+`plutus_soak_fixture.spend_commands` requires the explicit `early-restart-two-service-soak-v1` profile and derives the existing two disjoint spending/collateral transactions with only the tested spend upper validity bound changed from 999 to 8000. Existing short fixtures, fees, signing/build structure and funding expiry remain unchanged.
+
+The Test-only `PlutusSoakClientMain PORT1 PORT2 120 EXCHANGE1 EXCHANGE2 OUTPUT` owns bounded HTTP clients for two distinct actual owners. Each exchange supplies its own `submission/transaction-1.cbor` and existing bootstrap/publication evidence. The client submits the first original via the first API and observes inclusion. It then waits for both actual owners to reach slot 1000 with changed environment identities, submits the second original via the second API under that observed environment, and requires both original body/witness spans in both checked publication streams. Foreign owners, stale pins, unchanged environments and substituted originals fail. Its fresh output is `soak-client-result.json`; a successful client result makes no claim about the remaining service lifetime or full ledger validation. No receipt endpoint or CLI spend is introduced.
+
+The optional typed `NativeRuntimeMounts` extension on the separate early-restart adapter accepts exact read-only executable/library mounts only after checking the binary hash and an independently supplied canonical hash of the complete contained library set. Traversal is bounded before sorting (256 entries, 128 file/link rows, bounded path/file/aggregate sizes); escaping symlinks fail. Default mount expectations and default runtime behavior remain unchanged. This optional extension is not used by the planned JVM-only mode.
+
+A complete repeated supervisor additionally needs the reviewed repeated runtime, source-bound JVM generation records, a supported terminal state comparator, full active-duration verification and independently retained live evidence. These prerequisites do not grant restore authority, implement late-epoch checkpoint recovery or establish a successful 120/600-second run.

@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import struct
+import stat
 import time
 import private_cluster_plutus_two_service as two
 
@@ -174,7 +175,64 @@ class RunningRestored:
     prior_checkpoint: str
 
 
-def launch_service(controller, live, phase, root, manifest, extra, readonly=(), command_builder=None):
+def library_manifest(directory):
+    directory = Path(directory)
+    base.require(directory.is_absolute() and directory.resolve() == directory and directory.is_dir(), "canonical native library directory")
+    rows = []
+    total = 0
+    # Count every directory entry before collecting/sorting; do not eagerly
+    # materialize an unbounded recursive tree, including empty directories.
+    entries = []
+    pending = [directory]
+    while pending:
+        parent = pending.pop()
+        with os.scandir(parent) as listing:
+            for item in listing:
+                base.require(len(entries) < 256, "bounded native library traversal")
+                path = Path(item.path)
+                base.require(len(path.relative_to(directory).as_posix()) <= 256, "bounded native library path")
+                entries.append(path)
+                if item.is_dir(follow_symlinks=False):
+                    pending.append(path)
+    for path in sorted(entries):
+        relative = path.relative_to(directory).as_posix()
+        base.require(len(rows) < 128 and len(relative) <= 256, "bounded native library domain")
+        info = path.lstat()
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        if stat.S_ISLNK(info.st_mode):
+            target = os.readlink(path)
+            resolved = path.resolve(strict=True)
+            base.require(not Path(target).is_absolute() and resolved.is_relative_to(directory) and resolved.is_file(), "contained native library link")
+            rows.append(dict(path=relative, link=target))
+        else:
+            base.require(stat.S_ISREG(info.st_mode), "regular native library member")
+            raw = base.read(path, 32*1024*1024)
+            total += len(raw)
+            base.require(total <= 128*1024*1024, "native library aggregate bound")
+            rows.append(dict(path=relative, bytes=len(raw), sha256=digest(raw)))
+    base.require(rows, "nonempty native library set")
+    return dict(schema="plutus-native-library-set-v1", files=rows)
+
+
+@dataclass(frozen=True)
+class NativeRuntimeMounts:
+    executable: Path
+    executable_sha256: str
+    libraries: Path
+    libraries_sha256: str
+
+    def checked_mounts(self):
+        raw = read_exact(self.executable,256*1024*1024)
+        base.require(base.hex64(self.executable_sha256) and digest(raw) == self.executable_sha256 and
+                     os.access(self.executable,os.X_OK), "pinned executable native runtime")
+        manifest = library_manifest(self.libraries)
+        base.require(base.hex64(self.libraries_sha256) and digest(encoded(manifest)) == self.libraries_sha256,
+                     "independently pinned complete native library set")
+        return {(str(self.executable),"/native/likelihood",False),(str(self.libraries),"/oracle-libs",False)}
+
+
+def launch_service(controller, live, phase, root, manifest, extra, readonly=(), command_builder=None, native_runtime=None):
     """Uses inspected exact existing resource envelope; custom builder is trusted supervisor code."""
     root.mkdir(mode=0o700)
     initial = controller.exchange / "initial"
@@ -184,6 +242,9 @@ def launch_service(controller, live, phase, root, manifest, extra, readonly=(), 
     insertion = args.index("--entrypoint")
     mounts = {(str(controller.args.scala_build_root), "/work", False),
               (str(initial), "/initial", False), (str(root), "/exchange", True)}
+    if native_runtime is not None:
+        base.require(type(native_runtime) is NativeRuntimeMounts, "typed native runtime mount contract")
+        mounts |= native_runtime.checked_mounts()
     for host, guest in readonly:
         base.require(host.resolve() == host and host.is_file() and guest.startswith("/restore/"), "exact restore file mount")
         args[insertion:insertion] = ["--mount", "type=bind,src="+str(host)+",dst="+guest+",readonly"]
@@ -193,6 +254,8 @@ def launch_service(controller, live, phase, root, manifest, extra, readonly=(), 
     cid = controller.create(phase, args)
     observed = controller.owned(cid)
     two.check_service(observed, phase, controller.args.scala_image, "container:"+controller.containers["reference"], mounts)
+    if native_runtime is not None:
+        base.require("LD_LIBRARY_PATH=/oracle-libs" in observed["Config"]["Env"], "exact native library search path")
     base.write(controller.out / (phase+"-restart-inspection.json"), observed)
     controller.docker("start", cid)
 
@@ -217,7 +280,7 @@ def peer_ready(controller, live, phase, resumed):
 
 
 def perform_early_restart(controller, live, manifest, *, store_id, session_id, generation,
-                          resume_producer, freeze_producer, checkpoint_after=1, continuation_builder=None):
+                          resume_producer, freeze_producer, checkpoint_after=1, continuation_builder=None, continuation_native=None):
     """Live-ready stage on an already bootstrapped, owned, frozen mutable network.
 
     Required controller is the existing TwoServiceController; its deadline,
@@ -270,7 +333,8 @@ def perform_early_restart(controller, live, manifest, *, store_id, session_id, g
         ["--restore-checkpoint", "/restore/checkpoint.bin", "--restore-authority", "/restore/authority.json",
          "--restore-authority-sha256", authority_pin, *identity],
         readonly=((first_root / "checkpoint.bin", "/restore/checkpoint.bin"), (authority, "/restore/authority.json")),
-        command_builder=continuation_builder)
+        command_builder=continuation_builder,
+        **({"native_runtime":continuation_native} if continuation_native is not None else {}))
     ready = controller.wait_service("service-2", "bootstrap-ready.json", 25)
     startup(ready, first["sourceJoinId"], manifest, claim["terminalPoint"], True,
             before["ownerId"], first["boundedRestart"]["freshCheckpointId"])
