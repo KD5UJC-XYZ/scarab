@@ -7,14 +7,14 @@ import RepeatedTerminalCbor.{Node, Value as V}
 class RepeatedTerminalCborSuite extends munit.FunSuite:
   private val C = RepeatedTerminalCbor
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  private def decoded(hex: String): Node = C.decode(bytes(hex)).fold(error => fail(error.toString), identity)
+  private def decoded(hex: String): Node =
+    C.decode(bytes(hex)).fold(error => fail(error.toString), identity)
   private def value(v: V): Node = Node(v, Bytes.empty)
   private def float64(raw: Long): String = "fb" + f"$raw%016x"
   private def head(major: Int, size: Int): Vector[Byte] =
     if size < 24 then Vector(((major << 5) | size).toByte)
     else if size < 256 then Vector(((major << 5) | 24).toByte, size.toByte)
-    else if size < 65536 then
-      Vector(((major << 5) | 25).toByte, (size >>> 8).toByte, size.toByte)
+    else if size < 65536 then Vector(((major << 5) | 25).toByte, (size >>> 8).toByte, size.toByte)
     else
       Vector(
         ((major << 5) | 26).toByte,
@@ -49,7 +49,10 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
       case V.Map(pairs) =>
         assertEquals(pairs.head._1.original.hex, "6161")
         assertEquals(pairs.head._2.original.hex, "9ff4f5f6ff")
-        assertEquals(C.rows(pairs.head._2).toOption.get.map(_.value), Vector(V.Bool(false), V.Bool(true), V.Null))
+        assertEquals(
+          C.rows(pairs.head._2).toOption.get.map(_.value),
+          Vector(V.Bool(false), V.Bool(true), V.Null)
+        )
       case _ => fail("map expected")
   }
 
@@ -121,13 +124,27 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
           if exponent == 0 then Math.scalb(fraction.toDouble, -24)
           else Math.scalb((1024 + fraction).toDouble, exponent - 25)
         val expected = (if (raw & 0x8000) != 0 then -magnitude else magnitude).toFloat
-        assertEquals(C.float32(value(V.Float16(raw))), Right(java.lang.Float.floatToRawIntBits(expected)))
+        assertEquals(
+          C.float32(value(V.Float16(raw))),
+          Right(java.lang.Float.floatToRawIntBits(expected))
+        )
       else assert(C.float32(value(V.Float16(raw))).isLeft)
     }
   }
 
   test("finite binary32 words and exactly representable binary64 values give identical raw32") {
-    Vector(0, Int.MinValue, 1, Int.MinValue | 1, 0x007fffff, 0x00800000, 0x3f800000, 0xbf800000, 0x7f7fffff, 0xff7fffff).foreach { raw =>
+    Vector(
+      0,
+      Int.MinValue,
+      1,
+      Int.MinValue | 1,
+      0x007fffff,
+      0x00800000,
+      0x3f800000,
+      0xbf800000,
+      0x7f7fffff,
+      0xff7fffff
+    ).foreach { raw =>
       val d = java.lang.Float.intBitsToFloat(raw).toDouble
       val source = java.lang.Double.doubleToRawLongBits(d)
       assertEquals(C.float32(value(V.Float32(raw))), Right(raw))
@@ -136,7 +153,14 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
   }
 
   test("binary64 narrowing rejects rounding, underflow and overflow honestly") {
-    Vector(0.1d, Math.nextUp(1.0d), java.lang.Double.MIN_VALUE, -java.lang.Double.MIN_VALUE, java.lang.Double.MAX_VALUE, -java.lang.Double.MAX_VALUE).foreach { d =>
+    Vector(
+      0.1d,
+      Math.nextUp(1.0d),
+      java.lang.Double.MIN_VALUE,
+      -java.lang.Double.MIN_VALUE,
+      java.lang.Double.MAX_VALUE,
+      -java.lang.Double.MAX_VALUE
+    ).foreach { d =>
       val n = decoded(float64(java.lang.Double.doubleToRawLongBits(d)))
       assert(C.float32(n).isLeft, d.toString)
     }
@@ -148,15 +172,31 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
     assertEquals(C.nativeFloat32(decoded("fa3f800000")), Right(0x3f800000))
     Vector("fb0000000000000000", "fb8000000000000000", "fb3ff0000000000000").foreach { hex =>
       assert(C.float32(decoded(hex)).isRight)
-      assertEquals(C.nativeFloat32(decoded(hex)), Left(C.Failure.Unsupported("binary64 native Float field")))
+      assertEquals(
+        C.nativeFloat32(decoded(hex)),
+        Left(C.Failure.Unsupported("binary64 native Float field"))
+      )
     }
   }
 
   test("infinities and signaling and quiet NaNs reject in every floating width") {
     Vector(
-      "f97c00", "f9fc00", "f97c01", "f9fc01", "f97e00", "f9fe00",
-      "fa7f800000", "faff800000", "fa7f800001", "fa7fc00000", "faffc00000",
-      "fb7ff0000000000000", "fbfff0000000000000", "fb7ff0000000000001", "fb7ff8000000000000", "fbfff8000000000000"
+      "f97c00",
+      "f9fc00",
+      "f97c01",
+      "f9fc01",
+      "f97e00",
+      "f9fe00",
+      "fa7f800000",
+      "faff800000",
+      "fa7f800001",
+      "fa7fc00000",
+      "faffc00000",
+      "fb7ff0000000000000",
+      "fbfff0000000000000",
+      "fb7ff0000000000001",
+      "fb7ff8000000000000",
+      "fbfff8000000000000"
     ).foreach(hex => assert(C.decode(bytes(hex)).isLeft, hex))
     assert(C.float32(value(V.Float16(65536))).isLeft)
     assert(C.float32(value(V.Float32(0x7f800000))).isLeft)
@@ -164,7 +204,14 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
   }
 
   test("every scalar argument and float payload truncation is rejected") {
-    Vector("1bffffffffffffffff", "3bffffffffffffffff", "d9ffff00", "f93c00", "fa3f800000", "fb3ff0000000000000").foreach { hex =>
+    Vector(
+      "1bffffffffffffffff",
+      "3bffffffffffffffff",
+      "d9ffff00",
+      "f93c00",
+      "fa3f800000",
+      "fb3ff0000000000000"
+    ).foreach { hex =>
       val full = bytes(hex)
       (0 until full.size).foreach { size =>
         assert(C.decode(Bytes(full.value.take(size))).isLeft, s"$hex truncated to $size")
@@ -173,7 +220,37 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
   }
 
   test("malformed containers reserved values invalid chunks and trailing bytes reject") {
-    Vector("", "ff", "00ff", "0000", "1c", "1d", "1e", "1f", "3f", "df00", "f7", "f0", "f814", "fc", "fd", "fe", "41", "42aa", "5f6100ff", "5f5fffff", "7f4100ff", "7f7fffff", "9f00", "bf01ff", "bf01", "a101", "8100ff", "a10000ff", "c0").foreach { hex =>
+    Vector(
+      "",
+      "ff",
+      "00ff",
+      "0000",
+      "1c",
+      "1d",
+      "1e",
+      "1f",
+      "3f",
+      "df00",
+      "f7",
+      "f0",
+      "f814",
+      "fc",
+      "fd",
+      "fe",
+      "41",
+      "42aa",
+      "5f6100ff",
+      "5f5fffff",
+      "7f4100ff",
+      "7f7fffff",
+      "9f00",
+      "bf01ff",
+      "bf01",
+      "a101",
+      "8100ff",
+      "a10000ff",
+      "c0"
+    ).foreach { hex =>
       assert(C.decode(bytes(hex)).isLeft, hex)
     }
     assert(C.decode(null).isLeft)
@@ -181,7 +258,15 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
   }
 
   test("all 64-bit announced lengths are bounded before integer conversion or allocation") {
-    Vector("5bffffffffffffffff", "7bffffffffffffffff", "9bffffffffffffffff", "bbffffffffffffffff", "5b0000000100000000", "9b0000000100000000", "bb0000000100000000").foreach { hex =>
+    Vector(
+      "5bffffffffffffffff",
+      "7bffffffffffffffff",
+      "9bffffffffffffffff",
+      "bbffffffffffffffff",
+      "5b0000000100000000",
+      "9b0000000100000000",
+      "bb0000000100000000"
+    ).foreach { hex =>
       assert(C.decode(bytes(hex)).isLeft, hex)
     }
   }
@@ -192,7 +277,10 @@ class RepeatedTerminalCborSuite extends munit.FunSuite:
     val n = C.decode(raw).fold(error => fail(error.toString), identity)
     assertEquals(n.original.size, C.MaxInputBytes)
     assertEquals(C.bytes(n, payloadSize).toOption.get.size, payloadSize)
-    assertEquals(C.decode(Bytes(raw.value :+ 0.toByte)), Left(C.Failure.Limit(C.LimitKind.InputBytes)))
+    assertEquals(
+      C.decode(Bytes(raw.value :+ 0.toByte)),
+      Left(C.Failure.Limit(C.LimitKind.InputBytes))
+    )
   }
 
   test("nested large payloads cannot multiply retained originals beyond the cumulative bound") {

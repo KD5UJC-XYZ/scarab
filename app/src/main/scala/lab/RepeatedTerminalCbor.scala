@@ -81,7 +81,9 @@ private[lab] object RepeatedTerminalCbor:
           case 26 => 4
           case 27 => 8
           case _ =>
-            fail(Failure.Malformed("reserved CBOR additional information or invalid indefinite item"))
+            fail(
+              Failure.Malformed("reserved CBOR additional information or invalid indefinite item")
+            )
         if width > data.length - pos then fail(Failure.Malformed("truncated CBOR argument"))
         var result = BigInt(0)
         var i = 0
@@ -106,7 +108,8 @@ private[lab] object RepeatedTerminalCbor:
       val result = decoder.decode(ByteBuffer.wrap(raw), text, true)
       if result.isError || result.isOverflow then fail(Failure.Malformed("invalid UTF-8 CBOR text"))
       val flushed = decoder.flush(text)
-      if flushed.isError || flushed.isOverflow then fail(Failure.Malformed("invalid UTF-8 CBOR text"))
+      if flushed.isError || flushed.isOverflow then
+        fail(Failure.Malformed("invalid UTF-8 CBOR text"))
       text.flip().toString
     private def string(major: Int, ai: Int, depth: Int): Value =
       if ai != 31 then
@@ -120,7 +123,9 @@ private[lab] object RepeatedTerminalCbor:
           consume(depth + 1)
           val h = read()
           if h / 32 != major || (h & 31) == 31 then
-            fail(Failure.Malformed("indefinite CBOR strings require definite chunks of the same type"))
+            fail(
+              Failure.Malformed("indefinite CBOR strings require definite chunks of the same type")
+            )
           val length = bounded(argument(h & 31), MaxInputBytes - total, LimitKind.StringBytes)
           val raw = payload(length)
           total += length
@@ -217,7 +222,7 @@ private[lab] object RepeatedTerminalCbor:
 
   def signed(n: Node): Either[Failure, BigInt] = n match
     case Node(Value.NInt(value), _) if value < 0 && value >= -1 - MaxUInt => Right(value)
-    case _ => unsigned(n)
+    case _                                                                => unsigned(n)
 
   def rows(n: Node): Either[Failure, Vector[Node]] = n match
     case Node(Value.Arr(value), _) if value.size <= MaxContainerEntries => Right(value)
@@ -257,7 +262,7 @@ private[lab] object RepeatedTerminalCbor:
     */
   def nativeFloat32(n: Node): Either[Failure, Int] = n match
     case Node(Value.Float64(_), _) => Left(Failure.Unsupported("binary64 native Float field"))
-    case _                        => float32(n)
+    case _                         => float32(n)
 
   /** Return IEEE binary32 bits only when the finite source value converts exactly. The raw-bit
     * round trip for binary64 also checks the sign of zero; tiny and overflowing values reject.

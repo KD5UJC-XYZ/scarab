@@ -295,10 +295,62 @@ def controller_type(live):
     BoundaryController = AdaController.__bases__[0]
 
     class ServiceController(DiagnosticController):
+        operation_seconds = 240
+        invocation_schema = "plutus-service-controller-invocation-v1"
+        result_schema = "plutus-service-controller-result-v1"
+
+        def mode_evidence(self):
+            return {}
+
+        def service_command(self, tail):
+            epoch_budget(self.boundary_ms, self.args.duration_seconds)
+            return service_cli_tail(tail, self.args.duration_seconds, self.args.max_blocks)
+
+        def client_duration(self):
+            return self.args.duration_seconds
+
+        def oracle_main(self):
+            return "lab.PlutusServiceCompareMain"
+
+        def readiness_deadline(self, ready):
+            deadline = ready.get("deadlineUnixMillis")
+            base.require(type(deadline) is int and time.time_ns()//1000000 < deadline < self.boundary_ms and
+                         deadline == ready.get("requestedDeadlineUnixMillis"), "uncropped same-epoch service deadline")
+            return deadline
+
+        def peer_started(self, ready, resumed):
+            pass
+
+        def terminal_interval(self, result, deadline, resumed):
+            base.require(result.get("effectiveDeadlineUnixMillis") == deadline and
+                         type(result.get("startedUnixMillis")) is int and type(result.get("endedUnixMillis")) is int and
+                         resumed <= result["startedUnixMillis"] <= result["endedUnixMillis"] < self.boundary_ms,
+                         "actual same-epoch service interval")
+            terminal = base.point(result["finalPin"]["point"])
+            base.require(self.initial["slot"] < terminal["slot"] < 1000 and
+                         0 < terminal["blockNo"]-self.initial["blockNo"] <= self.args.max_blocks,
+                         "bounded same-epoch terminal successor")
+            return terminal
+
+        def validate_publications(self, result, ready, manifest):
+            publication_bindings(self.exchange, result, self.client_receipt, ready["sourceJoinId"], manifest)
+
+        def terminal_observation(self, result, ready, manifest):
+            base.require(result.get("terminalObservationFile") == "terminal-observation.json" and
+                         result.get("terminalObservationSHA256") == base.sha(self.exchange / "terminal-observation.json"),
+                         "original terminal observation bytes")
+            observation = base.decode(base.read(self.exchange / "terminal-observation.json", 1048576))
+            base.require(observation.get("pin") == result["finalPin"] and observation.get("sourceJoinId") == ready["sourceJoinId"] and
+                         observation.get("initialManifestSHA256") == manifest and observation.get("epoch") == 0,
+                         "full terminal owner/source/epoch cross-binding")
+            return observation
+
+        def validate_comparison(self, value, terminal, ready, manifest, result, endpoint_ready):
+            return comparison_result(value, self.transfers, terminal, ready["sourceJoinId"], manifest)
+
         def create(self, phase, tail):
             if phase == "scala":
-                epoch_budget(self.boundary_ms, self.args.duration_seconds)
-                tail = service_cli_tail(tail, self.args.duration_seconds, self.args.max_blocks)
+                tail = self.service_command(tail)
             # Skip diagnostic command rewriting, retaining its actual audited
             # ADA/base container ownership implementation in this MRO.
             return super(DiagnosticController, self).create(phase, tail)
@@ -501,7 +553,7 @@ def controller_type(live):
                     "--mount", "type=bind,src="+str(submission)+",dst=/exchange/submission",
                     "--entrypoint", self.args.java, self.args.scala_image, "-Xmx512m", "-XX:ActiveProcessorCount=1",
                     "-cp", client_classpath, *client_command(getattr(self.args, "client_mode", "direct"),
-                    self.api_port, self.args.duration_seconds)]
+                    self.api_port, self.client_duration())]
             cid = self.create("ada-client", args)
             try:
                 observed = self.owned(cid)
@@ -511,7 +563,7 @@ def controller_type(live):
                               (str(submission), "/exchange/submission", True)}, "exact two-spend client mounts")
                 base.write(self.out / "client-inspection.json", dict(containerId=cid, image=observed["Image"],
                            network=network, cpus=1, memoryBytes=2*base.GIB, mounts=observed["Mounts"]))
-                timeout = min(self.args.duration_seconds+5, self.deadline-time.monotonic())
+                timeout = min(self.client_duration()+5, self.deadline-time.monotonic())
                 base.require(timeout > 0, "remaining external client deadline")
                 try:
                     attached = self.docker("start", "--attach", cid, timeout=timeout)
@@ -562,7 +614,7 @@ def controller_type(live):
                     "--mount", "type=bind,src="+str(self.exchange)+",dst=/exchange",
                     "--entrypoint", self.args.java, self.args.scala_image, "-Xmx512m", "-XX:ActiveProcessorCount=1",
                     "-cp", checked_classpath(self.args.client_classpath_file, self.args.scala_build_root),
-                    "lab.PlutusServiceCompareMain", "/exchange/initial", manifest_pin, "/exchange", "/exchange",
+                    self.oracle_main(), "/exchange/initial", manifest_pin, "/exchange", "/exchange",
                     "/exchange/submission/transaction-1.cbor", "/exchange/submission/transaction-2.cbor",
                     "/exchange/service-comparison.json"]
             cid = self.create(phase, args)
@@ -645,9 +697,7 @@ def controller_type(live):
             limits = ready.get("limits", {})
             base.require(limits.get("durationSeconds") == self.args.duration_seconds and limits.get("maxBlocks") == self.args.max_blocks and
                          limits.get("maxEvents") == 4096 and limits.get("maxEvaluationReceipts") == 128, "service readiness limits")
-            deadline = ready.get("deadlineUnixMillis")
-            base.require(type(deadline) is int and time.time_ns()//1000000 < deadline < self.boundary_ms and
-                         deadline == ready.get("requestedDeadlineUnixMillis"), "uncropped same-epoch service deadline")
+            deadline = self.readiness_deadline(ready)
             base.write(self.out / "plutus-bootstrap-proof.json", ready)
             self.stop_node(1)
             self.stop_node(2)
@@ -659,6 +709,7 @@ def controller_type(live):
             base.write(self.exchange / "peer-ready.json", dict(schema="native-live-peer-ready-v1",
                        referenceContainerId=self.containers["reference"], generatedPort=live.process.PORTS[1],
                        networkMagic=self.magic, producerResumedUnixMillis=resumed))
+            self.peer_started(ready, resumed)
             self.run_client()
             # The producer stays running: stopping/restarting it would close
             # the service's socket, and reconnect is outside this profile.
@@ -672,14 +723,7 @@ def controller_type(live):
                          type(result.get("transportOpens")) is int and result["transportOpens"] > 0 and
                          all(result.get(k) is False for k in ("transactionSuccessClaimed", "fullLedgerValidated", "restartSupported")),
                          "finalized service with restricted claims")
-            base.require(result.get("effectiveDeadlineUnixMillis") == deadline and
-                         type(result.get("startedUnixMillis")) is int and type(result.get("endedUnixMillis")) is int and
-                         resumed <= result["startedUnixMillis"] <= result["endedUnixMillis"] < self.boundary_ms,
-                         "actual same-epoch service interval")
-            terminal = base.point(result["finalPin"]["point"])
-            base.require(self.initial["slot"] < terminal["slot"] < 1000 and
-                         0 < terminal["blockNo"]-self.initial["blockNo"] <= self.args.max_blocks,
-                         "bounded same-epoch terminal successor")
+            terminal = self.terminal_interval(result, deadline, resumed)
             cid = self.containers["scala"]
             until = min(self.deadline, time.monotonic()+5)
             state = self.owned(cid)["State"]
@@ -687,14 +731,8 @@ def controller_type(live):
                 time.sleep(0.1)
                 state = self.owned(cid)["State"]
             base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "bounded service process completion")
-            publication_bindings(self.exchange, result, self.client_receipt, ready["sourceJoinId"], manifest_pin)
-            base.require(result.get("terminalObservationFile") == "terminal-observation.json" and
-                         result.get("terminalObservationSHA256") == base.sha(self.exchange / "terminal-observation.json"),
-                         "original terminal observation bytes")
-            observation = base.decode(base.read(self.exchange / "terminal-observation.json", 1048576))
-            base.require(observation.get("pin") == result["finalPin"] and observation.get("sourceJoinId") == ready["sourceJoinId"] and
-                         observation.get("initialManifestSHA256") == manifest_pin and observation.get("epoch") == 0,
-                         "full terminal owner/source/epoch cross-binding")
+            self.validate_publications(result, ready, manifest_pin)
+            observation = self.terminal_observation(result, ready, manifest_pin)
             # Exact historical acquisition; capture rejects unavailable points.
             # Never query latest or freeze/restart after service shutdown.
             packet, acquisition = self.capture(terminal, "endpoint")
@@ -706,9 +744,11 @@ def controller_type(live):
                               genesisSHA256=base.sha(initial / "effective-shelley-genesis.json"),
                               acquisitionResultSHA256=result_pin, inputs=base.manifest(endpoint, base.PACKET_NAMES))
             base.write(endpoint / "endpoint-inputs.json", descriptor)
-            base.write(self.exchange / "endpoint-ready.json", dict(schema="native-endpoint-ready-v1",
-                       manifestSHA256=base.sha(endpoint / "endpoint-inputs.json"), acquisitionResultSHA256=result_pin))
-            compared = comparison_result(self.compare_endpoint(manifest_pin), self.transfers, terminal, ready["sourceJoinId"], manifest_pin)
+            endpoint_ready = dict(schema="native-endpoint-ready-v1",
+                                  manifestSHA256=base.sha(endpoint / "endpoint-inputs.json"), acquisitionResultSHA256=result_pin)
+            base.write(self.exchange / "endpoint-ready.json", endpoint_ready)
+            compared = self.validate_comparison(self.compare_endpoint(manifest_pin), terminal, ready, manifest_pin,
+                                                result, endpoint_ready)
             base.require(compared.get("terminalObservationSHA256") == result["terminalObservationSHA256"] and
                          compared.get("outputMapSHA256") == observation.get("outputMapSHA256"), "oracle binds terminal originals")
             base.write(self.out / "endpoint-comparison.json", compared)
@@ -743,8 +783,12 @@ def controller_type(live):
     return ServiceController
 
 
-def execute(live, support, args, classpath):
-    launch = controller_type(live)(support, args, classpath)
+def execute(live, support, args, classpath, *, controller=None, source=None):
+    """Shared bounded supervisor; opt-in controllers retain the same owned cleanup."""
+    source = Path(__file__) if source is None else Path(source)
+    launch = (controller_type(live) if controller is None else controller)(support, args, classpath)
+    operation = launch.operation_seconds
+    base.require(type(operation) is int and 1 <= operation <= 300, "single-service operation hard cap")
     watchdog = live.DiskWatchdog(args.owned_root)
     previous = {}
     def interrupted(signum, _frame):
@@ -754,10 +798,11 @@ def execute(live, support, args, classpath):
     started = time.monotonic()
     try:
         previous = {s: signal.signal(s, interrupted) for s in (signal.SIGALRM, signal.SIGTERM, signal.SIGINT, signal.SIGUSR1)}
-        signal.alarm(240)
+        signal.alarm(operation)
         watchdog.start()
-        base.write(launch.out / "invocation.json", dict(schema="plutus-service-controller-invocation-v1",
-                   supportManifestSHA256=args.support_sha, controllerSHA256=base.sha(Path(__file__)),
+        base.write(launch.out / "invocation.json", dict(schema=launch.invocation_schema,
+                   supportManifestSHA256=args.support_sha, controllerSHA256=base.sha(source),
+                   serviceControllerSHA256=base.sha(Path(__file__)),
                    baseControllerSHA256=base.sha(Path(base.__file__)),
                    diagnosticControllerSHA256=base.sha(Path(diagnostic.__file__)),
                    singleFixtureSHA256=base.sha(Path(fixture.one.__file__)), resources=base.RESOURCES,
@@ -765,20 +810,20 @@ def execute(live, support, args, classpath):
                    scalaClasspathSHA256=base.sha(args.scala_classpath_file),
                    clientClasspathSHA256=base.sha(args.client_classpath_file), runtimeEntrypoint="lab.Main plutus-service",
                    scalaBuildRoot=str(args.scala_build_root),
-                   operationSeconds=240, cleanupSeconds=30, profileId=fixture.PROFILE,
+                   operationSeconds=operation, cleanupSeconds=30, profileId=fixture.PROFILE,
                    cliSubmissionAllowed="one-reference-funding-before-bootstrap-only",
                    testedSpendCliSubmissionAllowed=False, fixturePlannerSHA256=base.sha(Path(fixture.__file__)),
                    adaControllerSHA256=base.sha(Path(ada.__file__)),
-                   network="reference-none;scala-and-http-client-exact-reference-namespace;capture-none"))
+                   network="reference-none;scala-and-http-client-exact-reference-namespace;capture-none", **launch.mode_evidence()))
         base.require(launch.docker("image", "inspect", args.scala_image, "--format", "{{.Id}}").stdout.strip() == args.scala_image,
                      "Scala image pin")
-        ids = dict(generatorSHA256=live.z.GENERATOR_SHA, launcherSHA256=base.sha(Path(__file__)),
+        ids = dict(generatorSHA256=live.z.GENERATOR_SHA, launcherSHA256=base.sha(source),
                    imageId=live.z.REFERENCE_IMAGE, sourceCommit=support["sourceCommit"])
         result, receipt = live.controller.execute(args.owned_root, ids, launch.generate, launch.lifecycle, on_abort=launch.cleanup)
         base.write(launch.out / "controller-lifecycle.json", receipt)
         base.require(launch.cleaned and watchdog.failure is None, "owned cleanup/watchdog")
-        base.require(time.monotonic() - started <= 270, "total deadline")
-        base.write(launch.out / "result.json", dict(schema="plutus-service-controller-result-v1", passed=True,
+        base.require(time.monotonic() - started <= operation+30, "total deadline")
+        base.write(launch.out / "result.json", dict(schema=launch.result_schema, passed=True,
                    exchangeRoot=str(launch.exchange), cleanupVerified=True, elapsedSeconds=time.monotonic() - started,
                    initialPoint=result["initialPoint"], finalPoint=result["finalPoint"], transactionIds=[t["transactionId"] for t in launch.transfers],
                    scalaResultSHA256=base.sha(launch.out / "scala-result.json"),
@@ -788,7 +833,8 @@ def execute(live, support, args, classpath):
                    endpointComparisonSHA256=base.sha(launch.out / "endpoint-comparison.json"),
                    evaluationReceiptSHA256=[base.sha(launch.out / ("evaluation-receipt-"+str(i)+".json")) for i in (1,2)], runtimeEntrypoint="lab.Main plutus-service",
                    runtimeClasspathSHA256=base.sha(args.scala_classpath_file),
-                   clientClasspathSHA256=base.sha(args.client_classpath_file), **getattr(launch, "scenario_evidence", {})))
+                   clientClasspathSHA256=base.sha(args.client_classpath_file), **getattr(launch, "scenario_evidence", {}),
+                   **launch.mode_evidence()))
     except BaseException as error:
         if not (launch.out / "failure.json").exists():
             base.write(launch.out / "failure.json", dict(errorType=type(error).__name__, message=str(error)[:4096]))

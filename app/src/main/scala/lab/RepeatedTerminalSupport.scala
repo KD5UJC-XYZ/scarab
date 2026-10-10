@@ -40,12 +40,12 @@ private[lab] object RepeatedTerminalSupport:
   def mapping[K, A](n: Node)(key: Node => K, value: Node => A)(using Scope): Map[K, A] =
     val pairs = n.value match
       case V.Map(xs) => xs.map((k, v) => key(k) -> value(v))
-      case _        => reject(Failure.Invalid("map", "map required"))
+      case _         => reject(Failure.Invalid("map", "map required"))
     valid(pairs.size <= 4096 && pairs.map(_._1).distinct.size == pairs.size, "map keys/bound")
     pairs.toMap
   def emptyMap(n: Node, name: String)(using Scope): Unit = n.value match
     case V.Map(xs) if xs.isEmpty => ()
-    case _                      => reject(Failure.Unsupported(name))
+    case _                       => reject(Failure.Unsupported(name))
   def emptySeq(n: Node, name: String)(using Scope): Unit =
     ensure(rows(n).isEmpty, Failure.Unsupported(name))
   def credential(n: Node)(using Scope): S.Credential =
@@ -88,7 +88,7 @@ private[lab] object RepeatedTerminalSupport:
     get(Bytes.fromHex(s), "hash")
   def jsonRows(j: J)(using Scope): Vector[J] = j match
     case J.Arr(xs) if xs.size <= 4096 => xs
-    case _                          => reject(Failure.Invalid("JSON", "bounded array required"))
+    case _                            => reject(Failure.Invalid("JSON", "bounded array required"))
   def record(fields: (String, J)*): J = J.Obj(fields.toMap)
   def num(n: BigInt): J = J.Num(n.toString)
   def str(s: String): J = J.Str(s)

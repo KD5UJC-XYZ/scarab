@@ -236,10 +236,11 @@ def soak_client_result(value, transfers, ports):
     return value
 
 
-def jvm_generations(root):
+def jvm_generations(root, *, allow_empty=False):
     base.require(root.resolve() == root and root.is_dir(), "JVM evidence directory")
     directories = sorted(root.iterdir())
-    base.require(0 < len(directories) <= 128, "bounded actual JVM generations")
+    base.require(type(allow_empty) is bool and (0 if allow_empty else 1) <= len(directories) <= 128,
+                 "bounded actual JVM generations")
     rows = []
     for index, directory in enumerate(directories):
         base.require(directory.name == f"generation-{index:04d}" and directory.resolve() == directory and directory.is_dir(),
@@ -280,7 +281,7 @@ def jvm_generations(root):
     return rows
 
 
-def repeated_publications(root, result, observed, source, manifest, active_record):
+def repeated_publications(root, result, observed, source, manifest, active_record, *, terminal_epoch=None):
     refs = result.get("publications")
     base.require(isinstance(refs, list) and 1 <= len(refs) <= 512, "bounded repeated publication references")
     final = two.pin(result.get("finalPin"))
@@ -322,12 +323,17 @@ def repeated_publications(root, result, observed, source, manifest, active_recor
         actual[name] = (ref["sha256"], value)
     if active_record.get("repeatedEpoch") is not None:
         epoch(active_record["repeatedEpoch"], two.pin(active_record.get("pin"), final["ownerId"]))
-    base.require(len(epochs) >= 2 and max(epochs) == final["point"]["slot"]//1000, "multiple actual epochs observed")
+    if terminal_epoch is None:
+        base.require(len(epochs) >= 2 and max(epochs) == final["point"]["slot"]//1000, "multiple actual epochs observed")
+    else:
+        base.require(type(terminal_epoch) is int and 0 <= terminal_epoch < 8 and
+                     max(epochs) == terminal_epoch == final["point"]["slot"]//1000 and
+                     (terminal_epoch == 0 or len(epochs) >= 2), "declared prerequisite terminal epoch observed")
     for transaction in observed:
         name = transaction.get("publicationFile")
         base.require(name in actual and actual[name] == (transaction.get("publicationSHA256"), transaction.get("publication")),
                      "both client original inclusion proofs bind retained publications")
-    records = jvm_generations(root/"jvm-likelihood")
+    records = jvm_generations(root/"jvm-likelihood", allow_empty=terminal_epoch == 0)
     selected, drafts = [], []
     for record in records:
         matches = [g for g in generations if all(g.get(k) == record[k] for k in
@@ -338,7 +344,7 @@ def repeated_publications(root, result, observed, source, manifest, active_recor
     base.require(all(any(all(g.get(k) == record[k] for k in
                      ("frozenId", "requestSHA256", "evidenceSHA256", "computedRaw32Words", "computedRaw64Words"))
                          for record in selected) for g in generations), "every publication generation has original JVM evidence")
-    base.require(bool(selected), "actual selected JVM generation evidence")
+    base.require(bool(selected) or terminal_epoch == 0, "actual selected JVM generation evidence")
     return dict(epochs=sorted(epochs), selectedGenerations=selected, unselectedDrafts=drafts,
                 nativeParityChecked=False)
 
@@ -369,7 +375,7 @@ def terminal_observation(root, result, final_pin, join_id, manifest):
     return value
 
 
-def soak_comparison_result(value, transfers, terminal, join_id, manifest, final_pin, endpoint_ready):
+def soak_comparison_result(value, transfers, terminal, join_id, manifest, final_pin, endpoint_ready, *, terminal_epoch=None):
     """Check the separate repeated comparator contract; this never enables execution."""
     base.require(isinstance(value, dict) and set(value) == COMPARISON_FIELDS and
                  value.get("schema") == "plutus-repeated-service-endpoint-comparison-v1",
@@ -390,9 +396,16 @@ def soak_comparison_result(value, transfers, terminal, join_id, manifest, final_
     base.require(all(value[k] is True for k in COMPARISON_TRUE_FIELDS) and
                  value["fullLedgerValidated"] is False and value["restartSupported"] is False,
                  "complete repeated diagnostic comparison without broader claims")
-    base.require(type(value["epoch"]) is int and 1 <= value["epoch"] < 8 and
-                 value["epoch"] == terminal["slot"]//1000,
-                 "actual bounded post-boundary terminal epoch")
+    if terminal_epoch is None:
+        base.require(type(value["epoch"]) is int and 1 <= value["epoch"] < 8 and
+                     value["epoch"] == terminal["slot"]//1000,
+                     "actual bounded post-boundary terminal epoch")
+    else:
+        # Only the separately scoped prerequisite controller supplies this option.
+        # The full soak retains its post-boundary requirement and launch guard.
+        base.require(type(terminal_epoch) is int and 0 <= terminal_epoch < 8 and
+                     type(value["epoch"]) is int and value["epoch"] == terminal_epoch == terminal["slot"]//1000,
+                     "exact declared prerequisite terminal epoch")
     # Boundary reward processing can move fees into snapshots and reward pots.
     # The comparator checks actual component pots; a same-epoch +600000 delta
     # would reject valid repeated endpoints or hide an invented terminal pot.

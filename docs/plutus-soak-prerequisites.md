@@ -9,3 +9,10 @@ The Test-only `PlutusSoakClientMain PORT1 PORT2 120 EXCHANGE1 EXCHANGE2 OUTPUT` 
 The optional typed `NativeRuntimeMounts` extension on the separate early-restart adapter accepts exact read-only executable/library mounts only after checking the binary hash and an independently supplied canonical hash of the complete contained library set. Traversal is bounded before sorting (256 entries, 128 file/link rows, bounded path/file/aggregate sizes); escaping symlinks fail. Default mount expectations and default runtime behavior remain unchanged. This optional extension is not used by the planned JVM-only mode.
 
 A complete repeated supervisor additionally needs the reviewed repeated runtime, source-bound JVM generation records, a supported terminal state comparator, full active-duration verification and independently retained live evidence. These prerequisites do not grant restore authority, implement late-epoch checkpoint recovery or establish a successful 120/600-second run.
+
+The separate [single-service repeated capture lane](plutus-repeated-capture.md)
+can collect the comparator's missing native endpoint prerequisite without
+launching the full soak. It requires a declared terminal epoch and labels
+an epoch-zero-only result separately from post-boundary evidence. Its operation
+is capped at 300 seconds plus 30 seconds cleanup, retaining the existing aggregate
+4 CPU / 7 GiB ceiling. The full-soak launch guard remains unchanged.

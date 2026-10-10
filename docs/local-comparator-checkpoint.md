@@ -8,7 +8,9 @@ Branch: `pico/repeated-epoch-soak-local`.
 Draft repeated terminal comparator, bounded CBOR reader, checked governance completion,
 runtime export hook, test CLI and strict supervisor result verification. New pure
 boundaries return typed failures. Active reward pulsing is explicitly unsupported.
-The live launcher remains unconditionally disabled.
+The full-soak launcher remains unconditionally disabled. A separate bounded
+single-service capture runner now supports an explicitly declared terminal epoch
+(zero or one) to establish prerequisite native endpoint agreement.
 
 ## Verification
 
@@ -21,15 +23,30 @@ The live launcher remains unconditionally disabled.
   This environment limitation was not converted to a passing result.
 - Separately, 151 focused Plutus supervisor tests and four prerequisite tests passed.
 - `git diff --check` passed.
-- Scala compilation, scalafmt and the new Scala tests have **not run successfully**.
-  The sbt launcher downloaded with its pinned SHA verified, but bootstrap execution
-  was cancelled by the execution review service. No compiler result was obtained.
+- Initial sbt bootstrap was cancelled by the execution review service. A verified
+  portable compiler/dependency closure subsequently enabled offline local compilation.
+  All 127 app production and 175 app test sources compiled with Scala 3.3.8 and
+  `-Werror`. The first test execution found a future-parameter projection defect:
+  post-boundary `PotentialNone` was rejected as though only `NoUpdate` were valid.
+  Both constructors are now preserved and compared distinctly. After recompilation,
+  all 81 targeted tests passed (48 new/mode cases and 33 finite regressions).
+- Final formatting used offline scalafmt 3.8.4 with the repository configuration:
+  11 changed Scala files checked, eight formatted, zero differences on a second
+  check, and identical pre/post-format Scala ASTs. Fresh post-format compilation
+  and the same 81 tests passed; all 302 app source hashes remained stable during
+  compilation. Earlier failing and pre-format logs were retained separately.
+- The new capture runner passed independent static review and 164 focused controller
+  tests. The final Python run had 598 tests: 596 passed, one skipped,
+  and the same AF_UNIX environment error. No failure was relabeled as success.
 - Optional retained-source exporter coverage has not run. Native endpoint agreement
   and the 120/600-second live cohorts have not run.
 - GitHub push is unavailable in this environment: no authenticated Git helper or gh
   login; push dry-run failed requesting a username with terminal prompts disabled.
 
-This is an uncompiled source checkpoint, not a release or conformance result.
+This is a locally tested research checkpoint, not a release or live conformance result.
+Automatic bundle transfers to dev-host and compiled-artifact transfers back to the cloud
+have been demonstrated with matching hashes. dev-host performs E2E preparation/testing
+and may push the exact tested branch after validation; source fixes remain local.
 
 ## Native serialization provenance
 
@@ -48,7 +65,7 @@ Haskell likelihood equality after additive-offset normalization.
 
 ## Required next checks
 
-1. Run `bash scripts/sbtw scalafmtAll`, focused app suites, and the full public check.
+1. Complete the full public check; targeted tests do not substitute for that aggregate.
 2. Run optional retained-source exporter coverage with the pinned bootstrap input.
 3. Establish independent exact-point native component agreement.
 4. Review guard removal separately, then execute the bounded 120-second smoke and
