@@ -41,10 +41,14 @@ That earlier live run did not retain a standalone context-hash or consumed-budge
 receipt, so those exact live values are not independently audited. The later
 timing guards are offline-tested changes outside the captured successful run.
 
-Local validation included 1,701 Scala tests, 25 public gates, 418 Python tests
+The earlier Test-only Plutus milestone validation included 1,701 Scala tests, 25 public gates, 418 Python tests
 run with two skips, and 28 separately mounted retained-evidence tests. These are
 dated run counts, not a sum of unique tests or a claim that private data ships in
-the public repository. Subsequent timing guard tests are a separate follow-up.
+the public repository. Subsequent timing guard tests are a separate follow-up. The later Compile-only
+CLI milestone records 1,716 Scala/translator tests, 26 public gates, 442 Python
+tests (two skips), and 17 separately mounted retained tests; see its
+[verification history](plutus-research-cli.md#isolated-cli-acceptance--2026-10-10).
+These milestone totals must not be added together.
 
 ## Next phases and acceptance gates
 

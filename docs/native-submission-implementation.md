@@ -97,6 +97,8 @@ exit is insufficient. No such oracle agreement is claimed here.
 
 Full ledger/consensus validation, native conformance, live reward-pulser cursor
 equality, default 60-second reference initialization-delay interoperability,
-restart durability and a Plutus admission profile remain unproved or unsupported.
-Future Plutus work needs separately versioned phase-one/phase-two, language/cost
-model, context, budget and collateral evidence using the same Scala ingress.
+restart durability remain unproved or unsupported for this native acceptance case.
+A later, separately versioned [Plutus profile](plutus-admission.md) and
+[Compile-only diagnostic CLI](plutus-research-cli.md) passed one same-epoch
+registered V3 successful spend. That evidence does not broaden the native-script
+reference matrix or establish general Plutus support.

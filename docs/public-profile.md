@@ -2,7 +2,7 @@
 
 This export omits historical/private corpus data whose redistribution is not established. It starts a new public history; full research history and historical run output remain private. The two pinned licensed synthetic Conway vectors and their notices are retained.
 
-Run `bash scripts/sbtw check app/runtimeClasspathFile`, then `python3 scripts/check-public-gates.py`. The first command compiles all production code and public test sources, then executes public module tests sequentially. The second runs exactly 25 explicit public gates. Neither claims the original research package's 1,294 tests or 31 gates. Actual public results are recorded separately after execution.
+At the audited base `c1e3dc99da88baf676c153045da78119b03f5f64`, use the complete CI command sequence below. `check` compiles and runs the eight aggregate public modules sequentially; `translator/test` is separate because the translator is not in that aggregate. The gate runner contains 26 explicit public gates, including the Compile-only Plutus CLI gate. Neither claims the original research package's 1,294 tests or 31 gates. Actual public results are recorded separately after execution.
 
 Twelve corpus-dependent suite source files live under `src/privateCorpus/scala` and are not compiled or executed by default `Test`. With a separately and lawfully obtained complete corpus, `bash scripts/sbtw checkPrivateCorpus` opts into them. A missing corpus fails before test execution; these tests are not marked skipped or passed. The six excluded Python gates also fail immediately when corpus directories are unavailable. No public command downloads the private corpus.
 
@@ -24,15 +24,19 @@ Build: pinned official Temurin JDK 21.0.11, sbt 1.10.7, Scala 3.3.8; 4 CPU / 4 G
 
 `.github/workflows/public-profile.yml` runs one Ubuntu 24.04 job on pull requests and pushes to main. It pins official checkout/setup-java actions to immutable commits and Temurin to Adoptium selector `21.0.11+10.0.LTS` (JDK 21.0.11+10), then uses the repository's SHA-pinned sbt 1.10.7 wrapper. Permissions are `contents: read`, checkout does not persist credentials, the job has a 20-minute timeout, and newer runs cancel older runs for the same PR/ref. There are no secrets, private-corpus downloads, live reference clusters, artifact publishing or deployment steps. The hosted OS image is an Ubuntu version label, not an immutable machine-image digest.
 
-The job runs the public Scala check/runtime-classpath task, the explicit 25-gate runner, and Python launcher guard discovery. Guard tests do not launch Docker. `CLUSTER_TRANSFER_EVIDENCE` is not set, so the 26 opt-in captured-reference tests are not counted as executed. The six standalone JSON-reader tests remain in the default public profile.
+At this base the job runs the public Scala check/runtime-classpath task, the separate translator tests, the explicit 26-gate runner, and four Python discovery commands. Guard tests do not launch live Docker workloads. Optional retained-evidence environment variables are not set by the workflow; passing public CI does not establish captured-reference agreement or live acceptance.
 
 ```sh
 bash scripts/sbtw check app/runtimeClasspathFile
+bash scripts/sbtw translator/test
 python3 scripts/check-public-gates.py
-python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_validated_checkpoint_restart.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_native_script_submission_fixture.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_submission_fixture.py'
 ```
 
-Public Maven access is needed on a cold hosted runner. The workflow initially uses no dependency cache action. Local verification uses the existing inspected dependency cache with networking disabled in a fresh public source export; that does not establish fresh online resolution. The workflow must pass independent review before publication; local YAML structure checks do not replace an actual GitHub Actions run.
+Public Maven access is needed on a cold hosted runner. The workflow initially uses no dependency cache action. Local verification uses the existing inspected dependency cache with networking disabled in a fresh public source export; that does not establish fresh online resolution. The workflow is committed and has historical hosted results linked below. Local structure checks do not establish hosted success for a later revision; attribute each hosted result to its exact commit.
 
 ### Local CI-command acceptance, 2026-10-08
 

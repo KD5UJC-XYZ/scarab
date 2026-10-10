@@ -2,7 +2,7 @@
 
 # Cardano Scala Lab 0.23.0
 
-A runnable research prototype for **byte-preserving CBOR and Cardano transaction-ID conformance**. It also runs eighteen pinned Plutus evaluator conformance vectors and bounded handshake/mux source-conformance checks over localhost TCP. It also checks one narrowly scoped Conway PV9 value-conservation predicate and an experimental strict public-input Ed25519 witness predicate. It also composes a bounded, reversible in-memory Conway PV9 ADA-transfer UTxO/fee projection. It also includes a bounded durable interpreter for that research projection. It does not fully validate transactions, run a complete Cardano ledger, sync a chain, or produce blocks.
+A runnable Scala research implementation of **byte-preserving CBOR and Cardano transaction-ID conformance**, bounded chain following, and restricted transaction admission. It includes pinned Plutus evaluator vectors, witness and selected ledger predicates, reversible UTxO/fee projections, and separate bounded persistence profiles. Later isolated acceptance covers Scala HTTP admission, relay and reference inclusion for ADA, native signature scripts and one registered Plutus V3 spend. It does not run a complete Cardano ledger, independently select a fully validated chain, or produce blocks.
 
 ## Ordinary local node milestones
 
@@ -13,9 +13,12 @@ The app-private [Scala transaction ingress](docs/scala-transaction-ingress-roadm
 now has isolated ADA-vkey and opt-in native-script acceptance evidence. The
 [native signature-script case](docs/native-submission-implementation.md) passed
 Scala HTTP admission, TxSubmission2 relay, follower inclusion and an exact native
-endpoint comparison across epoch 1. This remains a Test-only loopback API with a
-bounded volatile pool; it does not establish a production node or full ledger
-and consensus validation.
+endpoint comparison across epoch 1. Those ADA/native acceptance executables are
+Test-only. The later [restricted Plutus CLI](docs/plutus-research-cli.md) passed
+Compile-only runtime acceptance for one registered V3 successful spend in epoch
+zero, through loopback HTTP, relay, inclusion and endpoint comparison. Its pool
+is volatile and its external diagnostic exchange remains required; this does
+not establish a production node or full ledger and consensus validation.
 
 
 The [bounded durable fork acceptance](docs/private-cluster-fork.md) now demonstrates
@@ -74,17 +77,27 @@ admission and durable recovery are not established.
 
 The local Docker harness now exercises a verified Cardano node 11.1.3: real Scala NtN14 handshake, ChainSync/BlockFetch capture, and a restricted ADA-transfer comparison against original reference inclusion bytes, whole-UTxO changes and actual fee-pot exports. A separate relay-only scenario observes hot/full-duplex peers and transaction-ID requests after the configured startup delay before submitting through the relay. It uses disposable private-cluster keys, an internal Docker network and bounded cleanup; no public peers or real funds. See [setup and resource contract](docs/private-cluster.md), [byte capture](docs/reference-capture.md), and [transfer/context/relay scope](docs/private-cluster-transfer.md).
 
-Scala checks v2 context numerics directly against hashed reference JSON, with duplicate-field and numeric-form rejection. State queries are still separately acquired under observed quiescence, not atomic. Header signatures, consensus/leadership, complete minimum-output checks and full ledger validity remain outside this scenario. Historical RestrictedReplay profiles are unchanged. The latest affected regression passed 295 Scala tests and 21 Python guards; this is not a replacement full-public-suite count. Real-reference evidence tests are opt-in and their captured files are not distributed in Git.
+Scala checks v2 context numerics directly against hashed reference JSON, with duplicate-field and numeric-form rejection. State queries are still separately acquired under observed quiescence, not atomic. Header signatures, consensus/leadership, complete minimum-output checks and full ledger validity remain outside this scenario. Historical RestrictedReplay profiles are unchanged. The historical transfer regression passed 295 Scala tests and 21 Python guards; this is not a replacement full-public-suite count. Real-reference evidence tests are opt-in and their captured files are not distributed in Git.
 
 Public acceptance remains:
 
 ```sh
 bash scripts/sbtw check app/runtimeClasspathFile
+bash scripts/sbtw translator/test
 python3 scripts/check-public-gates.py
-python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_private_cluster*.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_validated_checkpoint_restart.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_native_script_submission_fixture.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_plutus_submission_fixture.py'
 ```
 
-The proposed [public CI workflow](.github/workflows/public-profile.yml) runs these commands on pull requests and main pushes with pinned actions/JDK and read-only permissions; see [verification status](docs/public-profile.md). The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.
+The [public CI workflow](.github/workflows/public-profile.yml) runs these commands on pull requests and main pushes with pinned actions/JDK and read-only permissions; see [verification status](docs/public-profile.md). The Python unit tests check launcher guards without starting Docker. Live reference scenarios are separate, opt-in commands in the linked documentation. Use [the public profile](docs/public-profile.md) for the dated full-public baseline and private-corpus exclusions.
+
+## Historical release evidence
+
+These versioned counts describe preserved runs, not the current public acceptance
+profile. See the [dated documentation audit](docs/documentation-audit-2026-10-10.md)
+for the capability matrix, evidence boundaries and remaining documentation debt.
 
 Version 0.23 adds a separate Cats Effect-owned, all-JVM local replay store with atomic head publication, checked restart reconstruction, rollback and owner/session revision fencing. Original bytes and the pure profile remain unchanged. The final durable module passes 150 tests together, and its complete direct-JVM CLI gate passes all 19 cases. All 1,294 project tests and 31 scripts have passing coverage across preserved runs with disclosed timing failures; no clean uninterrupted aggregate/script pass is claimed. Fresh-archive acceptance remains pending. [Verification history](docs/restricted-replay-store-verification.md). It requires a trusted dedicated directory and does not claim hardware power-loss guarantees. See the [store contract and CLI](docs/restricted-replay-store.md).
 
@@ -146,7 +159,7 @@ The application returns exit 1 for a hash mismatch and 2 for input errors; the s
 - `core/lab.vrf`: experimental public-only draft03 verification, immutable input/output, typed malformed/rejected/internal outcomes; [exact scope and evidence](docs/vrf-verification.md)
 - `ledger/FeeSize`: exact memo-byte Conway PV9 closed-transfer fee/size predicates, independent outcomes and checked spending-output closure; [scope and evidence](docs/fee-size-predicates.md)
 - `core/lab.vrf/PraosVrfCertificate`: checked unsigned slot and explicit neutral/hash nonce, protocol alpha and claimed-output gate; four archived public certificate positives with supplied source-pinned epoch nonces, historical chain inclusion unestablished; [scope and evidence](docs/praos-certificates.md)
-- `network/ChainSync`: pure non-pipelined envelope/state codec, checked UInt64 points/tips, distinct opaque NtN/NtC fixture adapters, bounded synthetic intersection/fork model; [scope and provenance](docs/chain-sync.md). Bounded fixture ConnectionSession is implemented; no live peer evidence
+- `network/ChainSync`: pure non-pipelined envelope/state codec, checked UInt64 points/tips, distinct opaque NtN/NtC fixture adapters, bounded synthetic intersection/fork model; [scope and provenance](docs/chain-sync.md). Bounded fixture ConnectionSession is implemented; later [local live follower evidence](docs/bounded-follower-live.md) has a separate restricted scope
 - `core/lab.opcert/OperationalCertificate`: checked immutable public cold-key signature predicate over exact raw 48-byte messages; four archived positives, 24 native-rejected mutations and 25 independent serialization controls; [scope and evidence](docs/operational-certificates.md)
 - `core/lab.kes/Sum6Kes`: experimental supplied-message signature predicate, six commitments over the existing strict leaf; the frozen primitive corpus has four archive positives at periods 28/29/35 plus 17,332 synthetic controls; v0.21 separately adds the documented full-block supplied-context observations; [contract, limits and provenance](docs/sum6-supplied-message.md)
 - `core/lab.chain/CardanoBlockEvidence`: one owned parse and typed same-block partial receipt, strict local profile, bound supplied timing/optional nonce and read-only CLI; [scope and evidence](docs/block-evidence.md)
@@ -160,9 +173,9 @@ Decoder defaults: 1 MiB input, depth 64, 100,000 items (including string chunks)
 
 The VM command accepts only the eighteen vendored fixture names and exact source/result/budget bytes. Even whitespace edits and alternate registered vectors at the wrong filename are rejected. SHA-256 admission happens before parsing, with an exhaustive post-parse capability gate. This avoids parser paths that could touch Scalus's global native BLS backend. It is a fixture harness, not an arbitrary-script evaluator or general native-free parser. Unsupported capabilities never count as ordinary evaluation failures. [VM scope, provenance and limitations](docs/vm-conformance.md).
 
-Complete script context construction, full transaction/header rules, general native-script ledger validation, complete ledger/consensus transitions, rollback of validated state, staking and block production remain unimplemented. The later sections describe bounded acquisition/storage/protocols and supplied-message crypto research; those narrower implementations do not fill these gaps. Runtime uses Java/Scala artifacts with Scalus native crypto artifacts excluded; see dependency inventory. No DiLF4S source was reused or migrated.
+General script context construction, complete transaction/header rules, full ledger/consensus transitions and block production remain unsupported. Restricted profiles do implement a registered Plutus context, native-script spending, stake projections and scoped rollback/recovery. These capabilities do not establish general epoch execution or durable recovery of the complete Plutus/stake/epoch tuple; see the [capability matrix](docs/private-validator-status.md). Runtime uses Java/Scala artifacts with Scalus native crypto artifacts excluded; see dependency inventory. No DiLF4S source was reused or migrated.
 
-See [network conformance and local simulation](docs/network-conformance.md) for exact version sets, resource limits, provenance and remaining reference-runtime gate. No real Cardano node was contacted.
+See [network conformance and local simulation](docs/network-conformance.md) for the original fixture/localhost profile, version sets and resource limits. That historical profile contacted no reference node; later isolated live evidence is linked above.
 
 ## License and versioning
 

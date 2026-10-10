@@ -65,7 +65,9 @@ explicitly; the most recent evaluation is not a substitute. The file observer
 uses a fresh directory, at most 128 records of at most 16 KiB each, and
 no-overwrite publication. Cancellation waits for an in-progress filesystem write
 to finish; no detached writer is allowed to outlive the owner fence or resource.
-This bounds work and storage, not filesystem latency. An evaluation receipt
+The store forces file contents before no-overwrite publication but does not
+fsync the containing directory. It is an observation sink, not a crash-durable
+checkpoint or restart contract. This bounds work and storage, not filesystem latency. An evaluation receipt
 does not prove subsequent inclusion, full ledger validity, or correspondence to
 some other state point. Inclusion still needs independently observed original
 body/witness equality and the endpoint comparison.
@@ -79,9 +81,9 @@ state/evidence bindings, cancellation and failure behavior.
 
 The earlier [local acceptance receipt](../reference/plutus-admission/live-receipt.json)
 predates this CLI and standalone evaluation instrumentation. It is preserved
-unchanged and cannot establish these later features. New live acceptance, if
-performed, must name the exact tested source and runtime artifacts, capture the
-standalone receipt and distinguish it from the earlier run.
+unchanged and cannot establish these later features. The later [isolated CLI
+acceptance](#isolated-cli-acceptance--2026-10-10) names the tested source and runtime
+artifacts and retains the standalone receipt separately from that earlier run.
 
 See [current capabilities and next phases](private-validator-status.md) for the
 remaining script, epoch, persistence and consensus gaps. All live scenarios use

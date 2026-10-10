@@ -9,7 +9,10 @@ public-node admission, default-delay interoperability and full ledger/consensus
 validation remain unproved. The opt-in native-script signature-only acceptance
 case has also passed; see [native implementation and evidence](native-submission-implementation.md).
 The separately versioned [bounded PV9 Plutus profile](plutus-admission.md) has now
-passed isolated same-epoch acceptance. Wider native and Plutus reference coverage
+passed isolated same-epoch acceptance. Its later [Compile-only diagnostic
+CLI](plutus-research-cli.md) also passed isolated acceptance; this still requires
+the external diagnostic exchange and does not establish a sustained service.
+Wider native and Plutus reference coverage
 remain next; see the [current phased plan](private-validator-status.md).
 
 ## Sequence
@@ -52,6 +55,12 @@ with reasons and exact inclusion points. Restart durability and rollback recover
 must either be implemented and tested or explicitly remain unsupported.
 
 ## Script extension
+
+The following is an extension checklist, not a claim that every listed feature
+is implemented. The [current Plutus profile](plutus-admission.md) supports one
+registered V3 script, one inline script input and successful phase two only.
+Datum-hash lookup, reference inputs/scripts, additional purposes, collateral
+return and phase-two-invalid collateral transitions remain unsupported.
 
 The versioned validation profile should make supported eras, script languages and
 features explicit. Reject unsupported combinations before claiming acceptance.
