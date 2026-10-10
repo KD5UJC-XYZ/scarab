@@ -13,6 +13,82 @@ import SequentialDevnetRunner.*
   * Resource responsibility. This adapter adds no JVM or cluster, and never submits to reference.
   */
 object PlutusServiceScenarioAdapter:
+  /** Failure metadata only: every result here remains a failed action. Unknown input is never
+    * copied into the public-shaped diagnostic or used to select successful control flow.
+    */
+  private[lab] def clientFailure(bytes: Bytes): Failure =
+    import ReferenceJson.{Json as J, field, string}
+    val cause = scala.util
+      .Try {
+        require(bytes.size <= 65536)
+        val json = ReferenceJson.parse(bytes)
+        require(field(json, "schema") == J.Str("plutus-service-client-result-v1"))
+        require(field(json, "passed") == J.Lit("false"))
+        require(field(json, "fullLedgerValidated") == J.Lit("false"))
+        val failureType = string(field(json, "failureType"))
+        require(failureType.length <= 96)
+        failureType match
+          case "ConnectException" => FailureCause.ConnectionFailure
+          case "TimeoutException" | "HttpTimeoutException" | "HttpConnectTimeoutException" =>
+            FailureCause.Deadline
+          case "IllegalArgumentException" | "AssertionError" | "ClientEvidenceLimit" =>
+            FailureCause.InvalidObservation
+          case "IOException" | "SocketException" => FailureCause.TransportFailure
+          case _                                 => FailureCause.UnknownClientFailure
+      }
+      .getOrElse(FailureCause.InvalidObservation)
+    val last = scala.util
+      .Try {
+        require(bytes.size <= 65536)
+        val json = ReferenceJson.parse(bytes)
+        field(json, "observations") match
+          case J.Arr(rows) if rows.size <= 32 =>
+            rows.lastOption.map { row =>
+              val stage = string(field(row, "stage")) match
+                case "admission1"             => ObservationStage.Admission1
+                case "admission2"             => ObservationStage.Admission2
+                case "duplicate1"             => ObservationStage.Duplicate1
+                case "duplicate2"             => ObservationStage.Duplicate2
+                case "conflict1"              => ObservationStage.Conflict1
+                case "included1"              => ObservationStage.WaitFirstInclusion
+                case "included2"              => ObservationStage.WaitSecondInclusion
+                case "betweenState"           => ObservationStage.BetweenState
+                case "afterSecondState"       => ObservationStage.AfterSecondState
+                case "firstStatusAfterSecond" => ObservationStage.FirstStatusAfterSecond
+                case _                        => ObservationStage.Unknown
+              val rawCode = row match
+                case J.Obj(fields) if fields.contains("response") =>
+                  string(field(row, "response", "code"))
+                case _ => string(field(row, "responseCode"))
+              val code = rawCode match
+                case "Accepted"       => ResponseCode.Accepted
+                case "AlreadyPresent" => ResponseCode.AlreadyPresent
+                case "InputsReserved" => ResponseCode.InputsReserved
+                case "Pending"        => ResponseCode.Pending
+                case "Included"       => ResponseCode.Included
+                case "State"          => ResponseCode.State
+                case "Rejected"       => ResponseCode.Rejected
+                case "Unsupported"    => ResponseCode.Unsupported
+                case "StaleState"     => ResponseCode.StaleState
+                case "Unavailable"    => ResponseCode.Unavailable
+                case _                => ResponseCode.Unknown
+              LastObservation(stage, code)
+            }
+          case _ => None
+      }
+      .toOption
+      .flatten
+    Failure.ClientFailure(cause, Operation.HttpClient, last)
+
+  private def readClient(exchange: Path): IO[Bytes] = IO.blocking {
+    val in = Files.newInputStream(exchange.resolve("submission/service-client-result.json"))
+    val raw =
+      try in.readNBytes(65537)
+      finally in.close()
+    require(raw.length <= 65536, "client evidence size")
+    Bytes.fromArray(raw)
+  }
+
   private[lab] def stateOwner(bytes: Bytes): String =
     import ReferenceJson.{Json as J, field, string}
     val json = ReferenceJson.parse(bytes)
@@ -100,9 +176,18 @@ object PlutusServiceScenarioAdapter:
               case Scenario.TwoSequentialTransfers =>
                 state *> PlutusServiceClientMain
                   .run(List(port.toString, clientSeconds.toString, exchange.toString))
-                  .map(code =>
-                    if code == ExitCode.Success then Right(()) else Left(Failure.ActionRejected)
-                  )
+                  .flatMap { code =>
+                    if code == ExitCode.Success then IO.pure(Right(()))
+                    else
+                      readClient(exchange)
+                        .map(bytes => Left(clientFailure(bytes)))
+                        .handleError(_ =>
+                          Left(
+                            Failure
+                              .ClientFailure(FailureCause.EvidenceUnavailable, Operation.HttpClient)
+                          )
+                        )
+                  }
               case _ => IO.pure(Left(Failure.ActionRejected))
             def observe(s: Scenario): IO[Bytes] =
               val observation = s match

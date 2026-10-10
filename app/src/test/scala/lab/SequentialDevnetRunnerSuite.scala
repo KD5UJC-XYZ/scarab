@@ -242,3 +242,106 @@ class SequentialDevnetRunnerSuite extends munit.FunSuite:
       _ = assertEquals(Bytes.fromArray(stored), bytes)
     yield ()).unsafeToFuture()
   }
+
+  test("failed client connection retains typed diagnostic and cannot become success") {
+    import ReferenceJson.{Json as J, field}
+    def receipt(kind: String, passed: Boolean = false): Bytes =
+      SyntheticRewardProjection.encode(
+        J.Obj(
+          Map(
+            "schema" -> J.Str("plutus-service-client-result-v1"),
+            "passed" -> J.Lit(passed.toString),
+            "fullLedgerValidated" -> J.Lit("false"),
+            "failureType" -> J.Str(kind)
+          )
+        )
+      )
+    val failure = PlutusServiceScenarioAdapter.clientFailure(receipt("ConnectException"))
+    assertEquals(
+      failure,
+      Failure.ClientFailure(FailureCause.ConnectionFailure, Operation.HttpClient)
+    )
+    assertEquals(
+      PlutusServiceScenarioAdapter.clientFailure(receipt("TimeoutException")),
+      Failure.ClientFailure(FailureCause.Deadline, Operation.HttpClient)
+    )
+    assertEquals(
+      PlutusServiceScenarioAdapter.clientFailure(receipt("private arbitrary detail")),
+      Failure.ClientFailure(FailureCause.UnknownClientFailure, Operation.HttpClient)
+    )
+    assertEquals(
+      PlutusServiceScenarioAdapter.clientFailure(receipt("ConnectException", true)),
+      Failure.ClientFailure(FailureCause.InvalidObservation, Operation.HttpClient)
+    )
+    val adapter = new Adapter:
+      val capabilities = Set(Requirement.SameEpochService)
+      def execute(s: Scenario) = IO.pure(Left(failure))
+      def observe(s: Scenario) = IO.raiseError(new AssertionError("failure must not checkpoint"))
+    run(Vector(Scenario.TwoSequentialTransfers), limits, Resource.pure[IO, Adapter](adapter))
+      .map { report =>
+        assert(!report.executedScenariosPassed)
+        assert(!report.allRequestedPassed)
+        val json = ReferenceJson.parse(PlutusScenarioRunnerMain.encode(report))
+        val rows = field(json, "rows").asInstanceOf[J.Arr].values
+        assertEquals(field(rows.head, "verdict", "reason"), J.Str("ClientFailure"))
+        assertEquals(field(rows.head, "verdict", "diagnostic", "cause"), J.Str("ConnectionFailure"))
+        assertEquals(field(rows.head, "verdict", "diagnostic", "operation"), J.Str("HttpClient"))
+      }
+      .unsafeToFuture()
+  }
+
+  test("last pending observation diagnoses connection failure without claiming inclusion") {
+    import ReferenceJson.{Json as J, field}
+    val bytes = SyntheticRewardProjection.encode(
+      J.Obj(
+        Map(
+          "schema" -> J.Str("plutus-service-client-result-v1"),
+          "passed" -> J.Lit("false"),
+          "fullLedgerValidated" -> J.Lit("false"),
+          "failureType" -> J.Str("ConnectException"),
+          "observations" -> J.Arr(
+            Vector(
+              J.Obj(
+                Map(
+                  "stage" -> J.Str("admission1"),
+                  "response" -> J.Obj(Map("code" -> J.Str("Accepted")))
+                )
+              ),
+              J.Obj(
+                Map(
+                  "stage" -> J.Str("included1"),
+                  "response" -> J.Obj(Map("code" -> J.Str("Pending")))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    val failure = PlutusServiceScenarioAdapter.clientFailure(bytes)
+    assertEquals(
+      failure,
+      Failure.ClientFailure(
+        FailureCause.ConnectionFailure,
+        Operation.HttpClient,
+        Some(LastObservation(ObservationStage.WaitFirstInclusion, ResponseCode.Pending))
+      )
+    )
+    val report = Report(
+      Vector(Row(Scenario.TwoSequentialTransfers, Verdict.Failed(failure))),
+      StopReason.Failed
+    )
+    assert(!report.allRequestedPassed)
+    assert(!report.executedScenariosPassed)
+    val json = ReferenceJson.parse(PlutusScenarioRunnerMain.encode(report))
+    val rows = field(json, "rows").asInstanceOf[J.Arr].values
+    assertEquals(
+      field(rows.head, "verdict", "diagnostic", "lastObservation", "stage"),
+      J.Str("WaitFirstInclusion")
+    )
+    assertEquals(
+      field(rows.head, "verdict", "diagnostic", "lastObservation", "responseCode"),
+      J.Str("Pending")
+    )
+    assertEquals(field(rows.head, "verdict", "outcome"), J.Str("failed"))
+  }

@@ -17,8 +17,26 @@ object SequentialDevnetRunner:
       case RestartAndRejoin                        => Requirement.DurableRestore
       case FollowAcrossEpochs                      => Requirement.RepeatedEpochTransition
       case MultipleNodes                           => Requirement.MultipleIngressNodes
+  enum ObservationStage:
+    case Admission1, Admission2, Duplicate1, Duplicate2, Conflict1
+    case WaitFirstInclusion, WaitSecondInclusion, BetweenState, AfterSecondState,
+      FirstStatusAfterSecond, Unknown
+  enum ResponseCode:
+    case Accepted, AlreadyPresent, InputsReserved, Pending, Included, State
+    case Rejected, Unsupported, StaleState, Unavailable, Unknown
+  final case class LastObservation(stage: ObservationStage, responseCode: ResponseCode)
+  enum FailureCause:
+    case ConnectionFailure, Deadline, InvalidObservation, TransportFailure
+    case EvidenceUnavailable, UnknownClientFailure
+  enum Operation:
+    case HttpClient
   enum Failure:
     case ActionRejected, AdapterError, ActionDeadline, CheckpointTooLarge, EvidenceBudget
+    case ClientFailure(
+        cause: FailureCause,
+        operation: Operation,
+        lastObservation: Option[LastObservation] = None
+    )
   enum Verdict:
     case Completed(checkpoint: Checkpoint)
     case Blocked(missing: Requirement)

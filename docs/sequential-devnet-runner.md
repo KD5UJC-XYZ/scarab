@@ -96,3 +96,21 @@ preserves a hard-linked `.part` name without copying its data. An external
 controller can independently verify every report hash and the owner identity in
 both state responses and the client receipts. These remain observational files;
 failed/cancelled attempts can leave partial evidence and never imply restoration.
+
+
+Failed HTTP-client actions retain a closed diagnostic category and operation in
+the failed verdict: `reason=ClientFailure`, with `diagnostic.operation=HttpClient`
+and `diagnostic.cause` such as `ConnectionFailure`, `Deadline`, or
+`InvalidObservation`. Unknown failure types become `UnknownClientFailure` without
+copying arbitrary error text; unreadable receipts become `EvidenceUnavailable`.
+These categories describe failures only and never alter acceptance. Original
+bounded client observations, including stages and HTTP response codes, remain in
+the private client receipt; classification does not replace that evidence.
+Cancellation remains cancellation and cannot produce a completed checkpoint.
+
+When available, the diagnostic also includes the last retained observation's
+closed stage and response-code categories (for example `WaitFirstInclusion` and
+`Pending`). This describes the last received response, not a proven cause of
+the later connection failure. Acceptance followed by pending responses is never
+reported as inclusion. Unknown stage/code values are sanitized to `Unknown`.
+Scenario, requirement, stop and failure wire names use explicit closed mappings.
