@@ -421,3 +421,33 @@ passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/
 That historical CI result is not a claim for this newer source. The original
 live success and reference-stall failure remain bound to their own immutable sources.
 See the [capability matrix and next tests](sequential-devnet-runner.md#ten-minute-target-and-prerequisites).
+
+
+## Functional and restore checkpoint — 2026-10-10
+
+Exact source `86088809097cb09b0ca9e2a644eedc43becdb622` passed 1,918 public Scala/translator tests,
+41 tests in the separate retained-data invocation, 27 public gates and 500
+Python tests (two skipped). The retained invocation includes three public
+checkpoint parser tests alongside retained cases; these totals are separate
+invocations, not a disjoint count of unique tests.
+
+This adds checked opaque pin identifiers and quantities, typed construction,
+Cats 2.13 alignment with Discipline laws, and actual service composition through
+explicit read/fence capabilities. Read-only capabilities cannot authorize a
+commit; the generic guarded program preserves four attempts and existing
+owner serialization/masking. Wider typed errors and caller migrations remain
+active work in the [functional audit](functional-scala-audit.md).
+
+Authenticated bounded runtime replay and opt-in service checkpoint/restore
+wiring are tested offline. The linear epoch-zero image accepts at most eight
+retained blocks, starts a fresh owner and empty pool, and depends on an exact
+external authorization. It is not crash-durable storage or a live restart
+result. Checked Plutus successor binding is also an offline prerequisite;
+repeated epoch publication and a valid successor-spend integration test remain
+outstanding.
+
+The separate [two-service live result](two-service-http-client.md) used earlier
+exact source `d57d9796a75c4cbb1e5b31897c259ac7eb296932`, not this later source.
+It proves two live ingress owners and cross-observed original transaction
+body/witness bytes in the bounded same-epoch profile. No multi-epoch soak has
+yet passed.

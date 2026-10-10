@@ -51,3 +51,36 @@ acceptance requires the independent supervisor, two Compile-only Scala owners,
 original endpoint-file checks, and two independently bound historical endpoint
 oracles. Public-network activity, restart authority, repeated epochs and full
 ledger/consensus validation remain outside this client.
+
+
+## Bounded live acceptance — 2026-10-10
+
+The [curated receipt](../reference/plutus-admission/two-service-live-receipt.json)
+records exact source `d57d9796a75c4cbb1e5b31897c259ac7eb296932`. Two separate
+Scala services each accepted one disjoint Plutus spend. Both services observed
+original transaction body and witness bytes for both spends in fetched blocks;
+whole submitted-envelope equality is not claimed. Independent ingress owners
+shared a checked bootstrap at slot 232 and ended at slot 744/block 8. The
+35-second readiness-based windows contained 31.559 and 31.864 seconds of
+recorded active following.
+
+Separate endpoint acquisitions agreed on the complete restricted ten-entry
+UTxO, collateral, instantaneous stake, represented parameters and snapshots.
+Fees increased from 200,000 to 800,000. Acquisitions are separately bracketed
+observations, not an atomic cross-query reference snapshot. Both service
+transport counts were 11 opened/11 closed; client and service finalization and
+owned cleanup passed. The two accepted evaluations consumed 47,600 memory and
+19,269,788 steps each under Scalus 1.3.0/V3/C/PV9.
+
+The earlier 30-second attempt failed with the second transaction still pending
+at service shutdown. Preserved reference logs show a subsequent forged block
+and transaction removal about 200 ms later; those logs alone do not establish
+original-byte inclusion. Its services and supervisor cleaned up, but its client
+did not confirm finalization. The successful retry used the existing supported
+35-second option without changing epoch, transaction or resource guards.
+
+This proves bounded same-epoch dual-ingress operation. It does not prove restart,
+multi-epoch operation, general timing reliability or full ledger/consensus
+validation. Raw logs, keys, cluster state and original private evidence remain
+outside Git. The exact live source passed 1,841 Scala/translator tests, 36
+retained-data tests, 27 public gates and 500 Python tests (two skipped).

@@ -216,3 +216,20 @@ none is evidence that the proposed ten-minute run has occurred.
   Compare each endpoint's submitted originals and later full-point inclusion,
   then cancel both client leases. First verify the proposed smaller Scala memory
   allocations offline; fake transports are only client-boundary tests.
+
+
+## Later capability checkpoint
+
+The separate [two-service HTTP supervisor](two-service-http-client.md) now has
+a successful bounded live run with two independent Scala ingress owners. The
+original single-service scenario adapter above still reports MultipleNodes as
+blocked; its historical receipt is unchanged.
+
+[Bounded runtime restoration](restricted-runtime-checkpoint.md) and
+[service checkpoint wiring](plutus-service-checkpoint.md) now reconstruct a
+restricted linear epoch-zero runtime with new ownership and an empty volatile
+pool. Their offline tests do not yet establish live restart/rejoin.
+[Checked Plutus successor binding](plutus-successor-binding.md) supplies a
+ledger/stake prerequisite, not automatic repeated-epoch authorization.
+The proposed 600-second combined soak remains pending integration and live
+verification; existing default duration and epoch guards remain in force.

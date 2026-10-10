@@ -95,3 +95,14 @@ The next prerequisite increment adds [source-bound empty DRep completion](conway
 All are tested within their stated domains. They do not enable the blocked live
 scenarios. The [remaining concrete tests and untested two-service budget](sequential-devnet-runner.md#next-tests-after-the-prerequisite-components)
 cover exact likelihood arithmetic, complete fresh-owner restoration and concrete HTTP/topology integration.
+
+
+The 2026-10-10 two-service pilot passed at exact source
+`d57d9796a75c4cbb1e5b31897c259ac7eb296932`: each independent service admitted a
+transaction, both followed both original body/witness spans, and separate
+terminal comparisons agreed on the restricted state. See the
+[curated evidence](../reference/plutus-admission/two-service-live-receipt.json).
+Later integrated functional capabilities, bounded runtime/service restore and
+checked successor binding have offline evidence recorded in
+[the public profile](public-profile.md); no later-source live result or
+combined multi-epoch/restart soak is implied.

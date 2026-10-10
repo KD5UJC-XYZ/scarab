@@ -1,0 +1,123 @@
+{
+  "schema": "two-service-public-acceptance-v1",
+  "testedSourceCommit": "d57d9796a75c4cbb1e5b31897c259ac7eb296932",
+  "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+  "passed": true,
+  "configuredLifetimeSeconds": 35,
+  "initialPoint": {
+    "blockNo": 2,
+    "hash": "ab321bb5a8233be716c2f86d6947afcf56cfec503d5dbe9d89d72e02bb49dc8b",
+    "slot": 232
+  },
+  "independentIngressOwners": true,
+  "originalBodyAndWitnessBytesObservedInBothServices": true,
+  "submittedEnvelopeByteEqualityVerified": false,
+  "transactions": [
+    {
+      "transactionId": "53503a9df3c9148cd0b7e2f5578450ff623e30dc041dce92ced2deba18bd7c3a",
+      "bodySHA256": "cfca575e22bc0372b049b0f230007bc5b18104e93c65b7c77f32d4650ca966d0",
+      "witnessesSHA256": "315ae2a5c94435858132c153172d66d3b9a49ebbd4359beaba2c85ec64f16f22",
+      "envelopeSHA256": "349dd730945a611ad5996cc311bda51566e664d2063836d4eec89ea1ef8b82cf"
+    },
+    {
+      "transactionId": "be125478df74f5545f561a04ccf3f2aeda078209cf0187a2487c5ef5451b64d0",
+      "bodySHA256": "94d397ad658adf973831d65e44ab3b48f2929516744408a373aa572f4b00653f",
+      "witnessesSHA256": "b30bccdd99055757c0a2d0954e4b59963048f7bc5f33735c9699f93b5df80dc9",
+      "envelopeSHA256": "390891cd9207b1f395dad1056d5e5b85b62b633449514fdf4672f11d3f7aa6bc"
+    }
+  ],
+  "services": [
+    {
+      "service": "service-1",
+      "ownerId": "591a085d7c5e6f914e2788f9427e65844b66cdaf14a4609ba5fa3e19e3687774",
+      "acceptedPoint": {
+        "blockNo": 4,
+        "hash": "287a4d1462f1defc377f084d05b038035fd8a63b6f1cbb70163842a6f85b6025",
+        "slot": 448
+      },
+      "includedPoint": {
+        "blockNo": 5,
+        "hash": "a4b4cdc0d5eaa89b5041904612439111e807258765ee551569b7d29116cb8b17",
+        "slot": 579
+      },
+      "finalPoint": {
+        "blockNo": 8,
+        "hash": "d3b58af012d658f6afaba1564d1e84445133f3a474698e98cb479755fc0584af",
+        "slot": 744
+      },
+      "publicationCount": 6,
+      "recordedActiveSeconds": 31.559,
+      "transportOpens": 11,
+      "transportCloses": 11,
+      "stopReason": "durationLimit",
+      "resourcesFinalized": true,
+      "endpoint": {
+        "entries": 10,
+        "feesBefore": 200000,
+        "feesAfter": 800000,
+        "completeUtxoEqual": true,
+        "collateralPreserved": true,
+        "instantaneousStakeEqual": true,
+        "representedProtocolEqual": true,
+        "endpointSnapshotsUnchanged": true
+      },
+      "rawExchangeResultSHA256": "1f7c7a2ded4ac73df383ebe4f657abf5c1cccf2419ad62cd7fd6ce2cd85c2884",
+      "rawExchangeEndpointComparisonSHA256": "c7e7a4c7576d8c0aaa7ffc10dcbe8243e826e684fd811efd3c00ae05e0a161b1"
+    },
+    {
+      "service": "service-2",
+      "ownerId": "08550401b48f9f3c779b51508a60fd533dae056cd0c66675630433d447ddb0d3",
+      "acceptedPoint": {
+        "blockNo": 4,
+        "hash": "287a4d1462f1defc377f084d05b038035fd8a63b6f1cbb70163842a6f85b6025",
+        "slot": 448
+      },
+      "includedPoint": {
+        "blockNo": 6,
+        "hash": "66c73e53aef474865565a996ad6e4e2a6e24d80939f290fbd10cbce373fe052f",
+        "slot": 677
+      },
+      "finalPoint": {
+        "blockNo": 8,
+        "hash": "d3b58af012d658f6afaba1564d1e84445133f3a474698e98cb479755fc0584af",
+        "slot": 744
+      },
+      "publicationCount": 6,
+      "recordedActiveSeconds": 31.864,
+      "transportOpens": 11,
+      "transportCloses": 11,
+      "stopReason": "durationLimit",
+      "resourcesFinalized": true,
+      "endpoint": {
+        "entries": 10,
+        "feesBefore": 200000,
+        "feesAfter": 800000,
+        "completeUtxoEqual": true,
+        "collateralPreserved": true,
+        "instantaneousStakeEqual": true,
+        "representedProtocolEqual": true,
+        "endpointSnapshotsUnchanged": true
+      },
+      "rawExchangeResultSHA256": "0aa8e326e18289dc04322ec6a403f4b0827076f83ea959e349e4d110279b75b6",
+      "rawExchangeEndpointComparisonSHA256": "bf1b1b45c5766022a983b20fe8cf1544c1750992739288309f0bc48136ec85ac"
+    }
+  ],
+  "clientResourcesFinalized": true,
+  "cleanupVerified": true,
+  "fullLedgerValidated": false,
+  "restartSupported": false,
+  "multiEpochScalaProven": false,
+  "tests": {
+    "scalaAndTranslator": 1841,
+    "retained": 36,
+    "publicGates": 27,
+    "pythonRun": 500,
+    "pythonSkipped": 2
+  },
+  "evidenceSHA256": {
+    "result.json": "4aaa279d9b1d7f93ac4b3cd78ceef2339d1a0540b3e4d5a8b3f23e237b04058b",
+    "client-result.json": "95c7fb3840969e48511cdf9912047fccd6cc3bff55d4cf1fa5b1a56546b22a8d",
+    "cleanup.json": "4fc4e0fc554f1865cd1385f30f151f6171b82f5047f848b097599c96a4f6c509"
+  },
+  "priorFailurePostmortemSHA256": "702b3a3436681d075e47cb59c12288ff42a264273fb46011a852f1e907e599c5"
+}
