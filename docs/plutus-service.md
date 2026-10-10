@@ -66,6 +66,41 @@ read these external expected outcomes. Funding snapshots are bracketed under
 observed quiescence; the historical endpoint is acquired separately from a
 running reference node. No atomic cross-query snapshot is claimed.
 
+## Controller terminal-failure diagnostics
+
+The single-service controller, including its repeated-capture subclass, keeps
+terminal failure as rejection. If `failure.json` appears before a final result,
+or the owned service exits first, it reads the runtime failure once more after
+the exit observation. This closes the failure-publication/exit-check race without
+restarting the service, extending its deadline, choosing another terminal state,
+or accepting a failure as a result. A present failure takes precedence over a
+present result.
+
+`service-runtime-failure.json` in controller evidence records a bounded diagnostic
+when possible. Before reading, the controller checks the immutable owned Scala
+container, expected image/phase, exact build/exchange mounts, and canonical
+exchange under the fresh owned root. It reads at most 16 KiB from a regular file
+without following a final file or exchange-directory symlink. It validates the
+exact `plutus-service-failure-v1` fields, failed status, false full-ledger claim,
+and bounded error type/message. Original `exchange/failure.json` bytes remain
+private and unchanged; the diagnostic records their byte count and SHA-256.
+
+Only closed exception names and the exact known
+`IllegalArgumentException: Unsupported(active monetary reward pulser)` diagnosis
+can enter the controller exception text. Other runtime messages are redacted;
+their originals remain in the private failure file. Malformed, oversized,
+unreadable or incorrectly owned evidence cannot replace the original controller
+rejection. Diagnostic-write failures likewise preserve rejection and do not
+overwrite a previous diagnostic.
+
+The runtime v1 failure schema contains no owner or source identity. Any included
+`bootstrapSourceContext` comes from the controller's already-validated bootstrap;
+`runtimeSourceBindingPresent=false` explicitly prevents treating it as a binding
+inside the failure payload. This is diagnostic provenance, not endpoint agreement,
+acceptance, full-ledger validation or a new live-run claim. Focused offline tests
+cover the exit race, unsafe/malformed text, file and ownership guards, unchanged
+success/timeout paths, and original failure/evidence preservation.
+
 ## Isolated service acceptance — 2026-10-10
 
 Exact source `af8c589df14dee0342383f13abd3a8cf349bae15` passed the second

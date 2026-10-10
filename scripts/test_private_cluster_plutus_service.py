@@ -156,6 +156,165 @@ class ServiceControllerTest(unittest.TestCase):
                 c.publication_bindings(Path('/tmp'),dict(publications=[dict(file=name)]),self.client,'f'*64,'a'*64)
 
 
+class RuntimeFailureTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.exchange = self.root/'exchange'; self.exchange.mkdir()
+        self.out = self.root/'out'; self.out.mkdir()
+        self.cid = 'c'*64
+        self.args = SimpleNamespace(owned_root=self.root, scala_build_root=Path('/build'), scala_image='image')
+        self.observed = dict(Id=self.cid, Image='image', State=dict(Running=False),
+            Config=dict(Labels={'lab.zero-live.phase':'scala'}), Mounts=[
+                dict(Type='bind',Source='/build',Destination='/work',RW=False),
+                dict(Type='bind',Source=str(self.exchange),Destination='/exchange',RW=True)])
+        self.failure = dict(schema='plutus-service-failure-v1',status='failed',
+            errorType='IllegalArgumentException',message='Unsupported(active monetary reward pulser)',
+            fullLedgerValidated=False)
+        self.source = dict(sourceJoinId='a'*64,initialManifestSHA256='b'*64)
+        kind = c.controller_type(SimpleNamespace(Launcher=type('Launcher',(),{})))
+        self.obj = object.__new__(kind)
+        self.obj.args=self.args; self.obj.exchange=self.exchange; self.obj.out=self.out
+        self.obj.deadline=c.time.monotonic()+5; self.obj.containers={'scala':self.cid}
+        self.obj.owned=lambda cid:self.observed
+        self.obj.runtime_failure_source=self.source
+
+    def save(self, value=None):
+        raw=c.base.json.dumps(self.failure if value is None else value).encode()
+        (self.exchange/'failure.json').write_bytes(raw)
+        return raw
+
+    def evidence(self):
+        return c.runtime_failure_evidence(self.exchange,self.args,self.cid,self.observed,self.source)
+
+    def recorded(self):
+        return c.base.decode((self.out/'service-runtime-failure.json').read_bytes())
+
+    def test_exact_pulser_failure_source_context_hash_and_original_preserved(self):
+        raw=self.save(); value=self.evidence()
+        self.assertEqual(value['validation'],'typed-failure')
+        self.assertEqual(value['summary']['cause'],'UnsupportedActiveMonetaryRewardPulser')
+        self.assertEqual(value['summary']['message'],self.failure['message'])
+        self.assertEqual(value['original'],dict(file='exchange/failure.json',bytes=len(raw),sha256=c.fixture.digest(raw)))
+        self.assertEqual(value['bootstrapSourceContext'],self.source)
+        self.assertFalse(value['runtimeSourceBindingPresent'])
+        self.assertFalse(value['passed']); self.assertFalse(value['fullLedgerValidated'])
+        self.assertEqual((self.exchange/'failure.json').read_bytes(),raw)
+
+    def test_unknown_exception_text_is_redacted_including_near_match_and_controls(self):
+        for error_type,message in (('SecretClass','secret password'),('IllegalArgumentException',
+                'Unsupported(active monetary reward pulser)\nsecret'),('IllegalArgumentException','\x1b[31msecret'),
+                ('IllegalStateException',self.failure['message'])):
+            with self.subTest(error_type=error_type,message=message):
+                self.save(dict(self.failure,errorType=error_type,message=message))
+                summary=self.evidence()['summary']
+                self.assertEqual(summary['cause'],'UnclassifiedRuntimeFailure')
+                self.assertTrue(summary['messageRedacted']); self.assertNotIn('message',summary)
+                self.assertNotIn('secret',c.base.json.dumps(summary))
+                self.assertNotIn('SecretClass',c.base.json.dumps(summary))
+
+    def test_schema_bounds_duplicate_keys_and_scope_fail_closed(self):
+        changes=[dict(schema='other'),dict(status='stopped'),dict(fullLedgerValidated=True),
+                 dict(fullLedgerValidated=0),dict(errorType='x'*129),dict(message='x'*513),
+                 dict(message=[]),dict(sourceJoinId='a'*64)]
+        for change in changes:
+            with self.subTest(change=change):
+                self.save(dict(self.failure,**change)); value=self.evidence()
+                self.assertEqual(value['validation'],'rejected'); self.assertNotIn('summary',value)
+        for raw in (b'{}',b'null',b'[]',b'{"schema":1,"schema":2}',b'{"value":NaN}',b'\xff',b'['*2000):
+            with self.subTest(raw=raw[:30]):
+                (self.exchange/'failure.json').write_bytes(raw)
+                value=self.evidence()
+                self.assertEqual(value['validation'],'rejected'); self.assertNotIn('summary',value)
+                self.assertEqual(value['original']['sha256'],c.fixture.digest(raw))
+
+    def test_runtime_file_must_be_bounded_regular_and_no_symlink(self):
+        path=self.exchange/'failure.json'
+        target=self.root/'external.json'; target.write_bytes(c.base.json.dumps(self.failure).encode())
+        path.symlink_to(target)
+        with self.assertRaises(OSError):self.evidence()
+        path.unlink(); path.mkdir()
+        with self.assertRaises((OSError,ValueError)):self.evidence()
+        path.rmdir(); c.os.mkfifo(path)
+        with self.assertRaises(ValueError):self.evidence()
+        path.unlink(); path.write_bytes(b'x'*16385)
+        with self.assertRaises(ValueError):self.evidence()
+
+    def test_canonical_owned_exchange_container_image_phase_and_mounts_required(self):
+        self.save()
+        mutations=[('Id','d'*64),('Image','other'),('Config',dict(Labels={'lab.zero-live.phase':'helper'})),
+                   ('Mounts',self.observed['Mounts'][:1]),('Mounts',[
+                       self.observed['Mounts'][0],dict(Type='bind',Source='/elsewhere',Destination='/exchange',RW=True)])]
+        for key,value in mutations:
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                c.runtime_failure_evidence(self.exchange,self.args,self.cid,dict(self.observed,**{key:value}))
+        with self.assertRaises(ValueError):
+            c.runtime_failure_evidence(self.exchange,self.args,'not-a-container',self.observed)
+        alias=self.root/'alias'; alias.symlink_to(self.exchange, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            c.runtime_failure_evidence(alias,self.args,self.cid,self.observed)
+        for source in ({'sourceJoinId':'a'*64},dict(self.source,sourceJoinId='secret'),dict(self.source,extra=True)):
+            with self.subTest(source=source),self.assertRaises(ValueError):
+                c.runtime_failure_evidence(self.exchange,self.args,self.cid,self.observed,source)
+
+    def test_owned_exit_rechecks_failure_published_during_inspection(self):
+        reads=[]
+        def owned(cid):
+            reads.append(cid); self.save(); return self.observed
+        self.obj.owned=owned
+        with self.assertRaisesRegex(ValueError,'service exited before final result; runtime IllegalArgumentException: '
+                                   r'Unsupported\(active monetary reward pulser\)'):
+            self.obj.wait_file('result.json',1)
+        self.assertEqual(reads,[self.cid])
+        self.assertEqual(self.recorded()['validation'],'typed-failure')
+        self.assertFalse((self.exchange/'result.json').exists())
+
+    def test_existing_failure_wins_over_even_a_present_result(self):
+        self.save(); (self.exchange/'result.json').write_text('{"status":"stopped"}')
+        with self.assertRaisesRegex(ValueError,'service reported terminal failure; runtime'):
+            self.obj.wait_file('result.json',1)
+        self.assertEqual(self.recorded()['summary']['cause'],'UnsupportedActiveMonetaryRewardPulser')
+
+    def test_missing_malformed_or_unowned_diagnostic_never_masks_original_exit(self):
+        for mode in ('missing','malformed','unowned','unsafe'):
+            with self.subTest(mode=mode):
+                path=self.exchange/'failure.json'
+                if path.exists():path.unlink()
+                if mode=='malformed':path.write_bytes(b'secret invalid bytes')
+                if mode=='unowned':
+                    self.save(); self.observed['Image']='wrong'
+                if mode=='unsafe':self.save(dict(self.failure,message='secret private exception'))
+                with self.assertRaises(ValueError) as caught:
+                    self.obj.terminal_failure('service exited before final result',self.observed)
+                self.assertTrue(str(caught.exception).startswith('service exited before final result'))
+                self.assertNotIn('secret',str(caught.exception))
+                self.assertNotIn('secret',c.base.json.dumps(self.recorded()))
+                self.observed['Image']='image'
+                (self.out/'service-runtime-failure.json').unlink()
+
+    def test_recording_failure_does_not_replace_runtime_cause_or_first_evidence(self):
+        raw=self.save()
+        original=b'{"first":"retained"}'
+        (self.out/'service-runtime-failure.json').write_bytes(original)
+        with self.assertRaisesRegex(ValueError,'Unsupported'):
+            self.obj.terminal_failure('service reported terminal failure',self.observed)
+        self.assertEqual((self.out/'service-runtime-failure.json').read_bytes(),original)
+        with patch.object(c.base,'write',side_effect=OSError('secret recording error')):
+            with self.assertRaisesRegex(ValueError,'Unsupported'):
+                self.obj.terminal_failure('service reported terminal failure',self.observed)
+        self.assertEqual((self.exchange/'failure.json').read_bytes(),raw)
+
+    def test_result_and_timeout_paths_are_unchanged(self):
+        path=self.exchange/'result.json'; path.write_text('{"status":"stopped"}')
+        self.assertEqual(self.obj.wait_file('result.json',1),dict(status='stopped'))
+        path.unlink(); self.observed['State']['Running']=True
+        with patch.object(c.time,'monotonic',side_effect=[0,0,2]),patch.object(c.time,'sleep'):
+            with self.assertRaisesRegex(TimeoutError,'bounded service result readiness'):
+                self.obj.wait_file('result.json',1)
+        self.assertFalse((self.out/'service-runtime-failure.json').exists())
+
+
 class SequentialClientTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

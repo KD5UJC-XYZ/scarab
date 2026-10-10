@@ -13,6 +13,7 @@ from pathlib import Path
 import signal
 import shutil
 import os
+import stat
 import time
 import private_cluster_ada_submission as ada
 import private_cluster_native_boundary as base
@@ -23,6 +24,73 @@ frozen_point = diagnostic.frozen_point
 prefunding_point = diagnostic.prefunding_point
 window_deadline = diagnostic.window_deadline
 checked_classpath = diagnostic.checked_classpath
+
+
+def runtime_failure_summary(raw):
+    """Recognize runtime failures without publishing arbitrary exception text."""
+    base.require(isinstance(raw, bytes) and len(raw) <= 16384, "bounded runtime failure bytes")
+    value = base.decode(raw)
+    base.require(isinstance(value, dict) and set(value) ==
+                 {"schema", "status", "errorType", "message", "fullLedgerValidated"} and
+                 value["schema"] == "plutus-service-failure-v1" and value["status"] == "failed" and
+                 value["fullLedgerValidated"] is False, "exact unsuccessful runtime failure schema")
+    base.require(isinstance(value["errorType"], str) and 0 < len(value["errorType"]) <= 128 and
+                 isinstance(value["message"], str) and len(value["message"]) <= 512,
+                 "bounded runtime failure fields")
+    error_types = ("IllegalArgumentException", "IllegalStateException", "TimeoutException", "IOException")
+    summary = dict(schema=value["schema"], status="failed", fullLedgerValidated=False,
+                   errorType=value["errorType"] if value["errorType"] in error_types else "OtherRuntimeFailure",
+                   cause="UnclassifiedRuntimeFailure", messageRedacted=True)
+    # Match the complete known runtime exception, never a substring that could
+    # turn an unrelated/private message into an authoritative diagnosis.
+    if (value["errorType"], value["message"]) == (
+            "IllegalArgumentException", "Unsupported(active monetary reward pulser)"):
+        summary.update(cause="UnsupportedActiveMonetaryRewardPulser",
+                       message="Unsupported(active monetary reward pulser)", messageRedacted=False)
+    return summary
+
+
+def runtime_failure_evidence(exchange, args, cid, observed, source=None):
+    """Read only the bounded failure in this invocation's owned runtime mount.
+
+    v1 has no source/owner fields. Any bootstrap source below is independently
+    validated controller context, not a signature or binding in the payload.
+    Original failure bytes stay private and untouched in the exchange.
+    """
+    exchange = Path(exchange)
+    owned_root = Path(args.owned_root)
+    base.require(owned_root.is_absolute() and owned_root.resolve() == owned_root and
+                 exchange == owned_root / "exchange" and exchange.resolve() == exchange,
+                 "canonical owned runtime failure exchange")
+    base.require(base.hex64(cid) and observed["Id"] == cid and observed["Image"] == args.scala_image and
+                 observed["Config"]["Labels"].get("lab.zero-live.phase") == "scala",
+                 "owned runtime failure container/image/phase")
+    base.require({(m["Source"], m["Destination"], m["RW"]) for m in observed["Mounts"] if m["Type"] == "bind"} ==
+                 {(str(args.scala_build_root), "/work", False), (str(exchange), "/exchange", True)},
+                 "exact owned runtime failure mounts")
+    result = dict(schema="plutus-service-runtime-failure-v1", passed=False, fullLedgerValidated=False,
+                  logsPrivate=True, containerId=cid, validation="rejected", runtimeSourceBindingPresent=False)
+    if source is not None:
+        base.require(isinstance(source, dict) and set(source) == {"sourceJoinId", "initialManifestSHA256"} and
+                     all(base.hex64(value) for value in source.values()), "validated bootstrap source context")
+        result["bootstrapSourceContext"] = dict(source)
+    directory = os.open(exchange, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        descriptor = os.open("failure.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            base.require(stat.S_ISREG(info.st_mode) and info.st_size <= 16384, "bounded regular runtime failure")
+            raw = stream.read(16385)
+            base.require(len(raw) <= 16384, "runtime failure grew past bound")
+    finally:
+        os.close(directory)
+    result["original"] = dict(file="exchange/failure.json", bytes=len(raw), sha256=fixture.digest(raw))
+    try:
+        result["summary"] = runtime_failure_summary(raw)
+        result["validation"] = "typed-failure"
+    except (ValueError, TypeError, RecursionError):
+        pass  # Bounded malformed bytes remain private, never part of an error message.
+    return result
 
 
 def service_limits(duration, blocks):
@@ -360,13 +428,41 @@ def controller_type(live):
                 return BoundaryController.wait_file(self, name, seconds)
             until = min(self.deadline, time.monotonic()+seconds)
             while time.monotonic() < until:
-                base.require(not (self.exchange / "failure.json").exists(), "service reported terminal failure")
+                if os.path.lexists(self.exchange / "failure.json"):
+                    self.terminal_failure("service reported terminal failure")
                 path = self.exchange / name
                 if path.exists():
                     return base.decode(base.read(path, 1048576))
-                base.require(self.owned(self.containers["scala"])["State"]["Running"], "service exited before final result")
+                observed = self.owned(self.containers["scala"])
+                if not observed["State"]["Running"]:
+                    # Atomic failure publication can race the existence check.
+                    # Re-read once after owned exit; do not retry the runtime or
+                    # select another result/terminal state to obtain acceptance.
+                    self.terminal_failure("service exited before final result", observed)
                 time.sleep(0.1)
             raise TimeoutError("bounded service result readiness")
+
+        def terminal_failure(self, reason, observed=None):
+            error = ValueError(reason)
+            evidence = dict(schema="plutus-service-runtime-failure-v1", passed=False,
+                            fullLedgerValidated=False, logsPrivate=True, validation="unavailable")
+            try:
+                cid = self.containers["scala"]
+                if observed is None:
+                    observed = self.owned(cid)
+                evidence = runtime_failure_evidence(self.exchange, self.args, cid, observed,
+                                                   getattr(self, "runtime_failure_source", None))
+                summary = evidence.get("summary")
+                if summary is not None:
+                    error = ValueError(reason + "; runtime " + summary["errorType"] + ": " +
+                                       summary.get("message", summary["cause"]))
+            except Exception:
+                pass  # Failed diagnostics never replace the original rejection.
+            try:
+                base.write(self.out / "service-runtime-failure.json", evidence)
+            except Exception:
+                pass  # Preserve any first evidence and the runtime failure.
+            raise error
 
         def proof_helper(self, phase, arguments, output):
             base.require(phase in ("native-originals", "plutus-spend-1-originals", "plutus-spend-2-originals") and
@@ -698,6 +794,7 @@ def controller_type(live):
             base.require(limits.get("durationSeconds") == self.args.duration_seconds and limits.get("maxBlocks") == self.args.max_blocks and
                          limits.get("maxEvents") == 4096 and limits.get("maxEvaluationReceipts") == 128, "service readiness limits")
             deadline = self.readiness_deadline(ready)
+            self.runtime_failure_source = dict(sourceJoinId=ready["sourceJoinId"], initialManifestSHA256=manifest_pin)
             base.write(self.out / "plutus-bootstrap-proof.json", ready)
             self.stop_node(1)
             self.stop_node(2)
