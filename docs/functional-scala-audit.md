@@ -5,6 +5,27 @@ Owned branch: `audit/functional-scala-20261010`; worktree: `/home/<user>/cardano
 
 This is a source and retained-evidence audit, not a production refactor or a fresh test result. Only this Markdown document is changed. No builds, dependency installations, live/native jobs, containers or public pushes were performed. No applicable AGENTS.md or repository SKILL.md was found in the inspected repository and ancestor locations. Main's service work was read without modification and is explicitly marked WIP below.
 
+## Implementation checklist (2026-10-10)
+
+The original audit below records its historical baseline and WIP findings. This checklist records subsequent implementation; the original statement that only Markdown changed applies to that audit, not these later commits.
+
+| Item | Status and precise boundary |
+| --- | --- |
+| Typed stop policy and evaluation events | Published in `c2a9b00`: closed termination policy and evaluation phase/outcome values with explicit wire renderers. This does not establish sustained or multi-epoch service behavior. |
+| Admission callback contract | Published in `8318eb4`: package-trusted admission capability and truthful evidence-I/O contract. The owner fence remains; asynchronous persistence and a hard filesystem deadline are not implemented. |
+| Domain IDs and quantities | This slice adds checked opaque owner/coherent/ledger/environment IDs and uint64 generation/validation-slot types. `StatePin.checkedTyped` is additive; only `SubmissionOwner` pin assembly adopts it. Legacy constructors, raw fields, validation order/text, wire bytes and authority checks remain. Migration of remaining raw callers, transaction/envelope identities and other time units is unfinished. |
+| Typed boundary errors | This slice adds typed pin/domain construction errors. Wider HTTP/network/admission error migration remains unfinished; existing compatibility rendering is retained. |
+| Laws | This slice adds Discipline Eq laws for four identity roles and Order laws for two quantities, plus raw-denotation agreement, boundary rejection, wrong-role compile checks and legacy field/hash equivalence. This is narrow pin coverage, not repository-wide algebraic verification. |
+| Dependency alignment | Direct Cats core/kernel use is aligned at `2.13.0`, already requested by pinned Scalus `1.3.0`. Cats Effect/testkit `3.6.3`, Scala `3.3.8`, Scalus, cryptographic dependencies and native exclusions remain pinned. Core adds only kernel at runtime; kernel-laws `2.13.0`, discipline-munit `2.0.0` and munit-scalacheck `1.0.0` are Test dependencies. Existing MUnit remains `1.0.2`. |
+| MTL/capabilities | Assessed, no new direct MTL dependency or use. Cats Effect already brings MTL `1.3.1` transitively. Pure pin validation needs neither `Ask` nor `Raise`; the existing owner capability enforces freshness. Adding an effect-transformer stack here would not reduce capability requirements. Broader orchestration seams remain separate work. |
+| Ordered rebuild/shared rendering | Wider refactoring remains unfinished. Existing first-wins reservations, source identity checks, gate/Ref placement and cancellation masking are preserved. |
+
+Dependency choices use the pinned upstream definitions: [Cats 2.13.0](https://github.com/typelevel/cats/blob/v2.13.0/build.sbt), [Cats Effect 3.6.3](https://github.com/typelevel/cats-effect/blob/v3.6.3/build.sbt), and [Discipline MUnit 2.0.0](https://github.com/typelevel/discipline-munit/blob/v2.0.0/build.sbt). Discipline's published integration uses munit-scalacheck `1.0.0`; there is no `1.0.2` artifact. These are compatibility/alignment choices, not a claim that every dependency is latest.
+
+Validation: the isolated 2-CPU/2-GiB offline build passed formatting, 63 core boundary/law checks and 32 existing owner/service/evidence tests. Core, network-runtime and app eviction reports were inspected. Selected Cats core/kernel are now `2.13.0` throughout the effect modules (previously `2.11.0` in network-runtime, ledger-runtime and fetcher; app was already `2.13.0`). Core newly selects kernel `2.13.0`. Cats Effect remains `3.6.3`; MUnit resolves to `1.0.2`. Transitive cats-free remains `2.11.0` in lower modules and `2.12.0` in app; this is core/kernel alignment, not blanket convergence of every Cats artifact. The excluded `foundation.icon:blst-java` and `org.scalus:scalus-secp256k1-jni` remain absent from resolved reports; the existing compiler JLine JNI dependency is unrelated and unchanged.
+
+Private evidence: `cardano-functional-domain-tests-20261010-second/result.json`, `resolved-after.json` and `tests.log` (SHA-256 `8cd12f2ca04d1153f5b21cf6d549648c1d48dddcb7270baee66a5c7c70829dc4`); the first evidence directory retains `resolved-before.json` and verified public Maven download hashes. An initial offline dependency-resolution failure is retained there; no tests ran in that first attempt. The focused result does not replace the integration aggregate and introduces no new live, restart, multi-epoch or full-ledger validation claim.
+
 ## Decision and priorities
 
 The code is already functional at important boundaries: pure immutable ledger transitions, private-constructor admission evidence, typed rejection sums, Resource-owned lifetimes, and a single admission/publication gate. Preserve these. The strongest improvement is to make policy and authority visible in types; replacing every match or local mutable variable would not achieve that.

@@ -73,17 +73,30 @@ private[lab] final class SubmissionOwner[F[_]] private (
     counter <- generation.get
     state = snapshot.state
     pin <- F.fromEither(
-      StatePin
-        .checked(
-          ownerId,
-          counter,
-          state.certificates.state.tip,
-          state.id,
-          state.ledger.id,
-          state.ledger.environment.id,
-          state.ledger.slot,
-          profile.id
-        )
+      (for
+        owner <- PinDomain.OwnerId.checked(ownerId).left.map(_.message)
+        generation <- PinDomain.Generation.checked(counter).left.map(_.message)
+        coherent <- PinDomain.CoherentStateId.checked(state.id).left.map(_.message)
+        ledger <- PinDomain.LedgerStateId.checked(state.ledger.id).left.map(_.message)
+        environment <- PinDomain.EnvironmentId
+          .checked(state.ledger.environment.id)
+          .left
+          .map(_.message)
+        slot <- PinDomain.ValidationSlot.checked(state.ledger.slot).left.map(_.message)
+        checked <- StatePin
+          .checkedTyped(
+            owner,
+            generation,
+            state.certificates.state.tip,
+            coherent,
+            ledger,
+            environment,
+            slot,
+            profile
+          )
+          .left
+          .map(_.message)
+      yield checked)
         .leftMap(new IllegalStateException(_))
     )
     result <- F.fromEither(
