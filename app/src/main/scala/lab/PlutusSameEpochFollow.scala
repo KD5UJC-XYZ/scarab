@@ -46,6 +46,31 @@ private[lab] object PlutusSameEpochFollow:
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits
   )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
+    run(runtime, peer, initial, epochLength, limits, "inclusionApplied")(ready)(record)
+
+  /** Service completion is a published-block budget, never an expected transaction. */
+  def runUntil[F[_]: Async](
+      runtime: CoherentDriver[F],
+      peer: Resource[F, BoundedChainFollower.Peer[F]],
+      initial: Point,
+      epochLength: BigInt,
+      limits: EphemeralStreaming.Limits
+  )(budgetReached: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
+    run(runtime, peer, initial, epochLength, limits, "blockLimit")(budgetReached)(record)
+
+  private final class EpochRefused
+      extends IllegalArgumentException(
+        "announcement does not extend applied fullpoint within initial epoch"
+      )
+
+  private def run[F[_]: Async](
+      runtime: CoherentDriver[F],
+      peer: Resource[F, BoundedChainFollower.Peer[F]],
+      initial: Point,
+      epochLength: BigInt,
+      limits: EphemeralStreaming.Limits,
+      completionReason: String
+  )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
     val F = Async[F]
     def invalid(message: String): F[Unit] = F.raiseError(new IllegalArgumentException(message))
     def checked[A](e: Either[?, A]): F[A] =
@@ -149,6 +174,7 @@ private[lab] object PlutusSameEpochFollow:
                           _ <- charge(envelope.size.toLong)
                           header <- checked(ReferenceCaptureCommand.header(envelope))
                           previous = state.certificates.state.tip
+                          _ <- F.raiseWhen(header.slot >= epochLength)(new EpochRefused)
                           _ <- F.raiseUnless(
                             header.parent == previous.hash && header.slot > previous.slot &&
                               header.blockNo == previous.blockNo + 1 && header.slot < epochLength
@@ -217,9 +243,11 @@ private[lab] object PlutusSameEpochFollow:
       reason = result.fold(
         e =>
           if e.isInstanceOf[java.util.concurrent.TimeoutException] then "deadline"
+          else if completionReason == "blockLimit" && e.isInstanceOf[EpochRefused] then
+            "epochBoundaryRefused"
           else s"failure:${e.getMessage}",
         r =>
-          if hit && r.stop == EphemeralStreaming.Stop.End then "inclusionApplied"
+          if hit && r.stop == EphemeralStreaming.Stop.End then completionReason
           else r.stop.toString
       )
     yield Outcome(
