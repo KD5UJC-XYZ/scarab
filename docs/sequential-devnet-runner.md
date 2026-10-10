@@ -13,7 +13,9 @@ helper JVM. It borrows one loopback service, observes `/v1/state`, binds the fix
 profile and first observed owner identity, and invokes the
 existing two-transfer HTTP client in process. The client checks first inclusion
 before second submission, same owner, API availability and original identities.
-Its exchange must contain the independently prepared three signed fixture files.
+Before completing the transfer checkpoint, accepted/included receipt pins and
+client state responses must match that borrowed owner, even without a later
+observation scenario. Its exchange must contain the independently prepared three signed fixture files.
 The two-transfer action is single-use per exchange: evidence is published without
 overwrite and repeated execution fails. The adapter cannot create clusters or
 submit transactions to a reference node. The external supervisor retains cluster
@@ -83,3 +85,14 @@ limits, epoch margin, source bindings and supervisor disk/log watchdogs. Referen
 uses 2 CPU/3 GiB, Scala service 1 CPU/2 GiB and this in-process client 1 CPU/2 GiB;
 total at most 4 CPU/7 GiB. The ten-minute constructor ceiling is only a defensive
 maximum, not a proposed long run or evidence of supported cross-epoch operation.
+
+
+The concrete adapter retains exact successful observation bytes at
+`submission/scenario-checkpoint-0.json`, `-1.json`, etc. Indices count actual
+adapter observations, not blocked scenarios. For the CLI's fixed six-row plan,
+indices 0 and 2 are state responses; index 1 equals the original client result.
+Each file and the aggregate original byte count are bounded to 64 KiB. Publication
+preserves a hard-linked `.part` name without copying its data. An external
+controller can independently verify every report hash and the owner identity in
+both state responses and the client receipts. These remain observational files;
+failed/cancelled attempts can leave partial evidence and never imply restoration.

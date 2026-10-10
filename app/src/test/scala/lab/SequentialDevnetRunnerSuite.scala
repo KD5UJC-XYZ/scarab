@@ -177,3 +177,68 @@ class SequentialDevnetRunnerSuite extends munit.FunSuite:
       ReferenceJson.Json.Lit("true")
     )
   }
+
+  test("replacement owner evidence cannot complete transfer-only plan") {
+    import ReferenceJson.Json as J
+    import lab.submission.AdmissionProfile
+    val profile = J.Str(AdmissionProfile.PlutusV3.id)
+    def evidence(owner: String): Bytes =
+      val pin = J.Obj(Map("ownerId" -> J.Str(owner), "profileId" -> profile))
+      val response = J.Obj(Map("pin" -> pin))
+      val tx = J.Obj(
+        Map("acceptedResponse" -> J.Obj(Map("receipt" -> response)), "includedResponse" -> response)
+      )
+      SyntheticRewardProjection.encode(
+        J.Obj(
+          Map(
+            "schema" -> J.Str("plutus-service-client-result-v1"),
+            "passed" -> J.Lit("true"),
+            "sameOwner" -> J.Lit("true"),
+            "profileId" -> profile,
+            "fullLedgerValidated" -> J.Lit("false"),
+            "transactions" -> J.Arr(Vector(tx, tx)),
+            "betweenStateResponse" -> response,
+            "afterSecondStateResponse" -> response,
+            "firstStatusAfterSecondResponse" -> response
+          )
+        )
+      )
+    val ownerA = "aa" * 32
+    val ownerB = "bb" * 32
+    PlutusServiceScenarioAdapter.validateClientOwner(evidence(ownerA), ownerA)
+    val adapter = new Adapter:
+      val capabilities = Set(Requirement.SameEpochService)
+      def execute(s: Scenario) = IO.pure(Right(()))
+      def observe(s: Scenario) = IO {
+        val bytes = evidence(ownerB)
+        PlutusServiceScenarioAdapter.validateClientOwner(bytes, ownerA)
+        bytes
+      }
+    run(Vector(Scenario.TwoSequentialTransfers), limits, Resource.pure[IO, Adapter](adapter))
+      .map { report =>
+        assertEquals(report.rows.head.verdict, Verdict.Failed(Failure.AdapterError))
+        assert(!report.executedScenariosPassed)
+        assert(!report.allRequestedPassed)
+      }
+      .unsafeToFuture()
+  }
+
+  test("checkpoint publication preserves exact bytes and refuses replacement") {
+    import java.nio.file.Files
+    (for
+      root <- IO.blocking(Files.createTempDirectory("typed-checkpoint-test"))
+      _ <- IO.blocking(Files.createDirectory(root.resolve("submission")))
+      bytes = Bytes.fromArray(Array[Byte](1, 2, 3))
+      _ <- PlutusServiceScenarioAdapter.saveCheckpoint(root, 0, bytes)
+      second <- PlutusServiceScenarioAdapter.saveCheckpoint(root, 0, Bytes.empty).attempt
+      replacement <- PlutusServiceScenarioAdapter
+        .saveCheckpoint(root, 0, Bytes.fromArray(Array[Byte](4)))
+        .attempt
+      stored <- IO.blocking(
+        Files.readAllBytes(root.resolve("submission/scenario-checkpoint-0.json"))
+      )
+      _ = assert(second.isLeft)
+      _ = assert(replacement.isLeft)
+      _ = assertEquals(Bytes.fromArray(stored), bytes)
+    yield ()).unsafeToFuture()
+  }
