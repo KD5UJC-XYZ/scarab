@@ -38,8 +38,8 @@ one reference-only funding submission before bootstrap.
 
 - One Compile-only pure-JVM service, one reference namespace and serial helper
   processes. The aggregate ceiling remains **4 CPUs / 7 GiB**. Runtime and helper
-  mounts, immutable identities, ownership tokens, process checks and cleanup are
-  inherited unchanged.
+  mounts, immutable identities, ownership tokens and cleanup are inherited.
+  Process identity and frozen-point guards remain enforced.
 - **300 seconds maximum operation, plus 30 seconds owned cleanup**. Startup checks
   reserve 30 seconds peer readiness, the full requested active interval, 10
   seconds finalization, 57 seconds exact capture and 35 seconds comparator work.
@@ -63,6 +63,24 @@ one reference-only funding submission before bootstrap.
   latest-state fallback, endpoint substitution, or in-runtime native checking.
 
 ## Evidence
+
+Preparation reads each active process's `stat`, NUL-delimited `cmdline`, and
+`stat` again in one fresh container-side command. Both identity observations must
+pass the pinned validator and equal the saved PID/start-ticks/argv; no result is
+cached between checks. This removes one Docker exec per identity check and also
+rejects process replacement across the batch. It is not an atomic observation.
+Both process-role brackets, both final tips, separate state queries, and all
+slot-100/slot-300 deadlines remain unchanged.
+
+`preparation-timing.json` records per-command elapsed time, preparation stage,
+remaining budget and requested timeout. Its dispatch timeout is explicitly an
+upper bound: the inherited launcher clips it again at subprocess dispatch.
+Payloads, command outputs and unrestricted error text are excluded. The receipt
+is written on success or failure without replacing an existing failure; a
+`body-completed` receipt does not prove preparation acceptance. The final window
+check also runs after receipt writing. These offline-checked changes do not
+establish that a future live run will fit the preparation budget, and do not
+replace or reclassify previous failed evidence.
 
 The runtime must identify pure-JVM repeated mode in bootstrap, active and final
 records. Original client bodies/witnesses, all publication hashes, full owner pins,
@@ -101,6 +119,7 @@ still required; an epoch-zero receipt cannot satisfy a post-boundary gate.
 python3 -m unittest discover -s scripts -p 'test_private_cluster_plutus_repeated_capture.py'
 python3 -m unittest discover -s scripts -p 'test_private_cluster_plutus_service.py'
 python3 -m unittest discover -s scripts -p 'test_private_cluster_plutus_soak.py'
+python3 -m unittest discover -s scripts -p 'test_private_cluster_plutus_preparation.py'
 ```
 
 The focused tests cover unchanged default dispatch/epoch guard, explicit mode and

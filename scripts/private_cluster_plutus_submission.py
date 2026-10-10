@@ -12,6 +12,7 @@ import os
 import re
 import hashlib
 import time
+from contextlib import contextmanager
 
 import private_cluster_ada_submission as ada
 import private_cluster_native_boundary as base
@@ -167,6 +168,63 @@ def controller_type(live):
     AdaController = ada.controller_type(live)
 
     class PlutusController(AdaController):
+        def process(self, node):
+            # Fresh container-side reads on every call: no identity caching.
+            # The second stat also rejects PID reuse across the cmdline read.
+            saved = self.active[node]
+            pid = saved["pid"]
+            base.require(type(pid) is int and pid > 1, "owned child PID required")
+            stat_path = f"/proc/{pid}/stat"
+            raw = self.execute("cat", "--", stat_path, f"/proc/{pid}/cmdline", stat_path).stdout
+            base.require(0 < len(raw.encode()) <= 65536, "bounded batched process identity")
+            before, newline, rest = raw.partition("\n")
+            command, nul, after = rest.rpartition("\0")
+            base.require(newline and nul and after.endswith("\n"), "complete batched process identity")
+            argv = command.split("\0")
+            identity = live.process.process_identity(pid, before, argv, saved["argv"])
+            final = live.process.process_identity(pid, after, argv, saved["argv"])
+            base.require(identity == final == saved["identity"], "PID/start identity changed")
+            return identity
+
+        def docker(self, *args, **kwargs):
+            rows = getattr(self, "_preparation_commands", None)
+            if rows is None:
+                return super().docker(*args, **kwargs)
+            started = time.monotonic()
+            requested = kwargs.get("timeout", 10)  # Pinned Launcher.docker default.
+            remaining = self.deadline - started
+            row = dict(index=len(rows), stage=self._preparation_stage,
+                       operation=args[0], commandSHA256=hashlib.sha256(base.json.dumps(args).encode()).hexdigest(),
+                       startedMonotonicSeconds=started, requestedTimeoutSeconds=requested,
+                       remainingBudgetSeconds=remaining,
+                       dispatchTimeoutCeilingSeconds=max(0, min(requested, remaining)))
+            # Keep useful command context, never stdin, outputs, shell programs,
+            # CLI arguments or arbitrary exception text (which may contain keys).
+            if args[0] == "exec":
+                offset = 3 if args[1] in ("-i", "-d") else 2
+                row["executable"] = Path(args[offset]).name
+                row["processFiles"] = [x for x in args[offset+1:]
+                                       if re.fullmatch(r"/proc/[0-9]+/(stat|cmdline)", x)]
+            rows.append(row)
+            try:
+                result = super().docker(*args, **kwargs)
+                row["returncode"] = result.returncode
+                return result
+            except BaseException as error:
+                row["errorType"] = type(error).__name__
+                raise
+            finally:
+                row["elapsedSeconds"] = time.monotonic() - started
+
+        @contextmanager
+        def preparation_stage(self, stage):
+            previous = getattr(self, "_preparation_stage", "funding")
+            self._preparation_stage = stage
+            try:
+                yield
+            finally:
+                self._preparation_stage = previous
+
         def create(self, phase, tail):
             if phase == "scala":
                 tail = research_cli_tail(tail)
@@ -211,6 +269,10 @@ def controller_type(live):
                 base.write(self.out / (phase + "-cleanup.json"), dict(containerId=cid, absenceVerified=True))
 
         def snapshot(self, phase, anchor):
+            with self.preparation_stage(phase):
+                return self.frozen_snapshot(phase, anchor)
+
+        def frozen_snapshot(self, phase, anchor):
             frozen_point(anchor)
             roles = self.roles()
             base.require(set(roles) == {"1", "2"}, "both owned keyless nodes required")
@@ -241,12 +303,37 @@ def controller_type(live):
             prefunding_point(anchor)
             original_deadline = self.deadline
             self.deadline = window_deadline(self.boundary_ms, 300, original_deadline, 30)
+            started = time.monotonic()
+            self._preparation_commands = []
+            self._preparation_stage = "funding"
+            error = None
             try:
                 result = self.prepare_funding(anchor)
                 window_deadline(self.boundary_ms, 300, self.deadline, 30)
-                return result
+            except BaseException as failure:
+                error = failure
+                raise
             finally:
+                rows, self._preparation_commands = self._preparation_commands, None
+                receipt = dict(schema="plutus-preparation-timing-v1", commands=rows,
+                               elapsedSeconds=time.monotonic()-started,
+                               preparationDeadlineMonotonicSeconds=self.deadline,
+                               operationDeadlineMonotonicSeconds=original_deadline,
+                               slot300DeadlineUnixMillis=self.boundary_ms-70000,
+                               outcome="failed" if error is not None else "body-completed",
+                               errorType=type(error).__name__ if error is not None else None,
+                               preparationAcceptanceProven=False,
+                               timeoutValuesAreDispatchCeilings=True)
                 self.deadline = original_deadline
+                try:
+                    base.write(self.out / "preparation-timing.json", receipt)
+                except BaseException:
+                    if error is None:
+                        raise
+                    # A failed diagnostic must never replace the original error.
+            # Receipt I/O cannot turn a late preparation into an accepted one.
+            window_deadline(self.boundary_ms, 300, receipt["preparationDeadlineMonotonicSeconds"], 30)
+            return result
 
         def prepare_funding(self, anchor):
             prefunding_point(anchor)
