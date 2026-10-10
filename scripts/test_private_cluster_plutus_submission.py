@@ -233,6 +233,76 @@ class EvaluationReceiptTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'symlink'): self.check(result)
 
 
+class BlockZeroReadinessTest(unittest.TestCase):
+    def tip(self, **changes):
+        return dict(dict(era='Conway', epoch=0, slot=66, block=0, hash='1' * 64), **changes)
+
+    def test_common_real_block_zero_selected_under_same_deadline(self):
+        class Launcher: pass
+        controller = c.controller_type(SimpleNamespace(Launcher=Launcher,
+                                process=SimpleNamespace(same_tip=lambda a, b: a == b)))
+        obj = object.__new__(controller)
+        obj.boundary_ms, obj.deadline = 1_100_000, 9000
+        queried = []
+        def tip(node):
+            queried.append(node)
+            return self.tip()
+        obj.tip = tip
+        with patch.object(c.time, 'time_ns', return_value=1_007_000_000_000), \
+             patch.object(c.time, 'monotonic', return_value=5000):
+            a, b = obj.select_prefunding()
+        self.assertEqual((a['block'], b['block']), (0, 0))
+        self.assertEqual(queried, [1, 2])
+        self.assertEqual(obj.deadline, 9000)
+
+    def test_peer_boolean_block_is_not_integer_zero(self):
+        class Launcher: pass
+        controller = c.controller_type(SimpleNamespace(Launcher=Launcher,
+                                process=SimpleNamespace(same_tip=lambda a, b: a == b)))
+        obj = object.__new__(controller)
+        obj.boundary_ms, obj.deadline = 1_100_000, 9000
+        obj.tip = lambda node: self.tip(block=0 if node == 1 else False)
+        with patch.object(c.time, 'time_ns', return_value=1_007_000_000_000), \
+             patch.object(c.time, 'monotonic', return_value=5000):
+            with self.assertRaisesRegex(ValueError, 'real bounded block'):
+                obj.select_prefunding()
+        self.assertEqual(obj.deadline, 9000)
+
+    def test_block_zero_snapshot_and_confirmed_funding_advance(self):
+        f = c.fixture
+        source, script, beneficiary = ('addr_test1' + char * 40 for char in 'abc')
+        source_id, txid = '1' * 64 + '#0', '2' * 64
+        def row(address, amount, datum=None):
+            return dict(address=address, value=dict(lovelace=amount), inlineDatum=datum)
+        datum = dict(constructor=0, fields=[dict(bytes='ab' * 28), dict(int=5000000)])
+        before = f.Snapshot(c.prefunding_point(self.tip()), {source_id: row(source, 100000000)}, 0).checked()
+        plan = f.funding_plan(before.utxo, source, script, beneficiary, beneficiary, datum)
+        after = f.Snapshot(c.frozen_point(self.tip(slot=90, block=1, hash='2' * 64)),
+            {txid+'#0': row(script, 20000000, datum), txid+'#1': row(beneficiary, 5000000),
+             txid+'#2': row(source, 74800000)}, 200000).checked()
+        original = b'funding-original'
+        identity = dict(transactionId=txid, envelopeSHA256=f.digest(original), bytes=len(original),
+                        bodySHA256='3' * 64, witnessesSHA256='4' * 64)
+        result = f.funding_comparison(before, after, plan, txid, original, identity)
+        self.assertEqual((result['beforePoint']['blockNo'], result['afterPoint']['blockNo']), (0, 1))
+        self.assertTrue(result['completeUtxoChecked'])
+
+    def test_invalid_or_absent_block_number_rejected(self):
+        for block in (None, True, False, -1, 2 ** 64):
+            with self.subTest(block=block), self.assertRaises(ValueError):
+                c.frozen_point(self.tip(block=block))
+        tip = self.tip()
+        del tip['block']
+        with self.assertRaises(ValueError): c.frozen_point(tip)
+
+    def test_origin_missing_hash_and_slot_bounds_rejected(self):
+        for changes in (dict(slot=0), dict(slot=-1), dict(slot=True), dict(slot=300),
+                        dict(hash=None), dict(hash='not-a-hash'), dict(era='Babbage'), dict(epoch=1)):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                c.frozen_point(self.tip(**changes))
+        with self.assertRaises(TimeoutError): c.prefunding_point(self.tip(slot=100))
+
+
 class TimingTest(unittest.TestCase):
     def tip(self, slot):
         return dict(era="Conway", epoch=0, slot=slot, block=1, hash="11" * 32)

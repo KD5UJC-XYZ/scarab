@@ -22,7 +22,11 @@ def frozen_point(tip, ceiling=300):
     base.require(tip.get("era") == "Conway" and tip.get("epoch") == 0 and
                  type(tip.get("slot")) is int and 0 < tip["slot"] < ceiling,
                  "bounded frozen Conway epoch-zero point")
-    return base.point(dict(slot=tip["slot"], blockNo=tip["block"], hash=tip["hash"]))
+    base.require(type(tip.get("block")) is int and 0 <= tip["block"] < 2 ** 64,
+                 "real bounded block number, including first block zero")
+    # Block number zero with a positive slot and full hash is a real first block,
+    # not chain origin. Funding must advance it before the shared capture path.
+    return fixture.point(dict(slot=tip["slot"], blockNo=tip["block"], hash=tip.get("hash")))
 
 
 
@@ -440,8 +444,9 @@ def controller_type(live):
                             raise TimeoutError("Plutus pre-funding slot-100 window missed")
                     # Slow queries may return an old tip after the actual window.
                     window_deadline(self.boundary_ms, 100, self.deadline, 90)
-                    if live.process.same_tip(a, b) and a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 100 and a.get("block", 0) > 0:
+                    if live.process.same_tip(a, b) and a.get("era") == "Conway" and a.get("epoch") == 0 and 0 < a.get("slot", 0) < 100 and type(a.get("block")) is int and a["block"] >= 0:
                         prefunding_point(a)
+                        prefunding_point(b)
                         return a, b
                     time.sleep(0.2)
                 raise TimeoutError("Plutus pre-funding slot-100 window missed without a common point")
