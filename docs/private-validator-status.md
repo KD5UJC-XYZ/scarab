@@ -1,17 +1,26 @@
 # Private validator status — 2026-10-10
 
 The Scala node is a bounded research implementation, not a complete private
-Cardano validator. The latest published milestone is a successful isolated
+Cardano validator. The earlier published milestone was a successful isolated
 Conway PV9 Plutus V3 spend through Scala HTTP admission, its volatile pool,
 TxSubmission2 relay, original-byte follower inclusion, and reference endpoint
 comparison. [Integration CI passed](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38011863015)
 at `02b8e7c24feff9b5b2c13840bc544e2709df7919`.
 
+
+The newer [restricted Plutus CLI](plutus-research-cli.md) and standalone checked
+evaluation evidence passed isolated acceptance at `35ea26e27c045317d479558621d2789f523fbac9`.
+Bootstrap/admission/inclusion were slots 201/423/492. The [new receipt](../reference/plutus-admission/cli-live-receipt.json)
+links the exact accepted state pin, context hash and consumed budget to original
+transaction identities, separately from the earlier Test-only run below.
+The runtime uses Compile artifacts only; the external HTTP test client remains
+separate. This is still an explicitly selected, bounded same-epoch diagnostic.
+
 ## Capabilities and remaining gaps
 
 | Area | Demonstrated capability | Remaining boundary |
 | --- | --- | --- |
-| Running the software | Main CLI supports bounded codec, acquisition, replay and private-node research commands. | Submission acceptance entrypoints remain under `app/src/test`; no supported long-running submission CLI/API service. |
+| Running the software | Main CLI supports bounded codec, acquisition, replay and private-node research commands. | Explicit Compile-only `plutus-research` CLI and managed loopback API passed isolated acceptance; external diagnostic exchange remains required. No supported long-running or durable submission service. |
 | Submission | Isolated ADA-vkey, native signature-script and one registered V3 Plutus spending profile use Scala admission/pool/relay. | Pool is volatile. Public API lifecycle, durable statuses, restart/rollback recovery and broader profile combinations are incomplete. |
 | Networking | Live local ChainSync/BlockFetch original-byte acquisition and TxSubmission2 inclusion are observed. | Latest ingress acceptance explicitly sets reference initialization delay to zero. A separate relay-only default-delay observation does not establish full ingress interoperability under default settings. |
 | Plutus | Exact original identity, signatures, bounded context/integrity, registered cost model, fees/budgets, datum-aware state and collateral reservation compose for the checked profile. | One registered V3 script, one inline script input and successful phase two only. General scripts, datum-hash/reference features, other purposes, invalid phase-two collateral consumption/return and broader languages remain unsupported. |
@@ -28,7 +37,7 @@ from the running node; no atomic cross-query snapshot is claimed. Full ledger,
 governance and consensus validation are not claimed. The pre-funding slot-100 and bootstrap slot-300 timing windows are
 strict; the successful bootstrap had only eight slots of margin. Failed attempts
 and the original controller/source hashes remain preserved.
-The live run did not retain a standalone context-hash or consumed-budget VM
+That earlier live run did not retain a standalone context-hash or consumed-budget VM
 receipt, so those exact live values are not independently audited. The later
 timing guards are offline-tested changes outside the captured successful run.
 
@@ -39,18 +48,19 @@ the public repository. Subsequent timing guard tests are a separate follow-up.
 
 ## Next phases and acceptance gates
 
-1. **Make the existing profile operable.** Promote a reviewed service entrypoint
-   into Main with explicit configuration, bounded resources, structured status,
-   graceful shutdown and documented profile selection. Require packaged-CLI
-   acceptance through HTTP, relay, inclusion and exact endpoint comparison.
+1. **Extend operation beyond the bounded diagnostic.** The explicit Main CLI,
+   managed service/API lifecycle and packaged HTTP-to-inclusion acceptance now
+   pass for the restricted profile. Remaining work includes removing dependence
+   on an external expected-transaction diagnostic exchange and specifying
+   sustained service status, shutdown and recovery behavior before broader use.
 2. **Establish default-delay interoperability.** Keep real protocol startup
    timing, use genesis-derived budgets, and exercise delayed readiness,
    cancellation, reconnect and exhausted windows. Require the complete ingress
    path under the default reference setting; do not infer it from relay-only tests.
-3. **Expand ledger/Plutus semantics one versioned scope at a time.** First retain
-   a bounded evaluation receipt binding original transaction/state identities,
-   context hash, model/version and declared/consumed budgets for independent
-   comparison. Add paired
+3. **Expand ledger/Plutus semantics one versioned scope at a time.** A bounded
+   source-bound evaluation receipt is now retained and independently checked
+   against transaction/source/state bindings. Independent evaluator comparison
+   of the captured context and budget remains separate work. Add paired
    positive/negative reference cases for budget/context/integrity boundaries,
    phase-two-invalid collateral behavior, total collateral/return, then datum-hash
    and reference features and additional script purposes. Each addition needs

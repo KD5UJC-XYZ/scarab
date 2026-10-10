@@ -1,0 +1,63 @@
+{
+  "schema": "plutus-cli-local-acceptance-v1",
+  "sourceCommit": "35ea26e27c045317d479558621d2789f523fbac9",
+  "controllerSHA256": "7a9d38639ec6d974aeda9542d4214fa603ded055d94a67cabe0644a4e04f1af1",
+  "runtimeEntrypoint": "lab.Main plutus-research",
+  "runtimeClasspathSHA256": "460bc9d5a56e4444dcb68e87d397ba8c5f01f7404c44b3dad119b1c7d368374d",
+  "clientClasspathSHA256": "169158b7c13eab2bab20d64c2b421beb8f47604f7f0931c052ccee6e64d561cf",
+  "runtimeCompileOnly": true,
+  "referenceInitializationDelaySeconds": 0,
+  "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+  "transactionId": "005c0f93746eb12255975fedf2daa124b88ccf716fc9310c786754b6396ae5f2",
+  "initialPoint": {
+    "blockNo": 1,
+    "hash": "3736d6de6eec85e70b69ac6d4c33e2c4598f52474d6fe8afd3e1e0a27ac3dc06",
+    "slot": 201
+  },
+  "admissionPoint": {
+    "hash": "0df93d145a6f98188aed2ff3d18c8c28a707a6caf97ae9877bc033dd7084195d",
+    "slot": 423,
+    "blockNo": 2
+  },
+  "inclusionPoint": {
+    "blockNo": 3,
+    "hash": "a9d3c6dd917b9e5dc9f0d0f6191237eb7623dba2d9daf7228769da55fb953206",
+    "slot": 492
+  },
+  "evaluationReceipt": "cli-evaluation-receipt.json",
+  "evaluationReceiptSHA256": "f30c3280e34a0fe6d7392a59b03a5185bf1f32415da8f01f177af9bcb8b06b1f",
+  "evaluationReceiptCount": 2,
+  "controllerResultSHA256": "f699d0edb8be50de6da92201357d6e93a22dc118454bb5ec79c674220e285707",
+  "fundingComparisonSHA256": "ad4e1ba20d18e2ef6166d5b5ee0b70d7d258e4d17ba0c7bfc43639b106d38d34",
+  "sourceRecordSHA256": "09e77a960f2f3c0cf93e1344efa0036c2a83715c9c0661d0aeb2908450253cde",
+  "privateCapturePublished": false,
+  "adaSubmittedViaHttp": true,
+  "adaIncluded": true,
+  "wholeUtxoEqual": true,
+  "instantaneousStakeEqual": true,
+  "representedProtocolEqual": true,
+  "collateralPreserved": true,
+  "feeDelta": 300000,
+  "feesBefore": 200000,
+  "feesAfter": 500000,
+  "poolEntryRemoved": true,
+  "resourcesFinalized": true,
+  "fullEnvelopeEqualityClaimed": false,
+  "fullLedgerValidated": false,
+  "governanceCompared": false,
+  "sameEpoch": true,
+  "includedBodySHA256": "901b2903c71cc93de63f75f9653d389a9e1d109467e4bfe101fa848cdf19e3b3",
+  "includedWitnessesSHA256": "8cf4e90f3105ea58b3c0619d6c0b510961273fcb5f0671c2e85956d6f8e6d06d",
+  "cleanupVerified": true,
+  "ownedContainersRemaining": [],
+  "snapshotScope": "Funding snapshots were separate queries bracketed under observed quiescence; final endpoint queries targeted a requested historical full point from the running node. No atomic cross-query snapshot claim.",
+  "limits": [
+    "One registered Plutus V3 successful spend",
+    "Same epoch zero only",
+    "No default-delay ingress claim",
+    "No full ledger or consensus validation"
+  ],
+  "rawExchangeResultSHA256": "bce457656c532e526854c7b3e60d5b6f64c11cfe8d081481cab5a7657203b931",
+  "controllerFormattedScalaResultSHA256": "44037ccc3f0a6653599f44ce26c51b6a595251a55eaaeab9adcea2a26e002a0c",
+  "resultRepresentationsEqual": true
+}

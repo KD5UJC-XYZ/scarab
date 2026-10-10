@@ -87,3 +87,32 @@ See [current capabilities and next phases](private-validator-status.md) for the
 remaining script, epoch, persistence and consensus gaps. All live scenarios use
 isolated local Docker clusters, disposable keys and no real funds; private
 captures, logs and cluster state stay outside Git.
+
+## Isolated CLI acceptance — 2026-10-10
+
+The Compile-only runtime passed a fresh isolated local run at source
+`35ea26e27c045317d479558621d2789f523fbac9`. The [acceptance receipt](../reference/plutus-admission/cli-live-receipt.json)
+binds the source/controller/runtime hashes and the unchanged original bytes of
+the [standalone evaluation receipt](../reference/plutus-admission/cli-evaluation-receipt.json).
+Bootstrap was slot 201, actual HTTP admission slot 423, and inclusion slot 492.
+Scalus 1.3.0 consumed 47,600 memory units and 19,269,788 steps against declared
+100,000 / 30,000,000. The accepted event is index zero; a later observation is
+not substituted for its state pin. Context bytes remain private; the receipt
+retains their hash and records the checked execution, not a separate evaluator replay.
+
+Original body/witness inclusion, whole supported UTxO, instantaneous stake,
+represented protocol fields, preserved collateral and the 300,000-lovelace fee
+increase matched. Resources finalized and owned-container cleanup passed.
+This is one bounded successful example with zero reference initialization delay.
+It does not establish general scripts, cross-epoch operation, full ledger or consensus.
+
+Two earlier CLI attempts remain preserved privately: one exhausted the strict
+slot-300 preparation window; another froze beyond slot 100 after skipping the
+real first block numbered zero. The local readiness fix accepts a positive-slot,
+full-hash block zero while retaining both-node checks and unchanged deadlines.
+Neither failed attempt reached Scala startup. One later success is not a
+reliability or timing guarantee.
+
+Offline validation: 1,716 Scala/translator tests, 17 retained tests, 26 public
+gates and 442 Python guard tests (two intentionally skipped). Private captures,
+keys, logs and cluster state are excluded from Git.
