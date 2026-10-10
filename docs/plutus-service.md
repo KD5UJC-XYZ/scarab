@@ -111,3 +111,7 @@ profiles, rollback/reconnect recovery, general scripts, full ledger validation o
 complete consensus. Default reference initialization delay is a separate future
 interoperability gate. All live acceptance remains isolated local Docker work
 with disposable keys, no public-network submissions and no real funds.
+
+## Typed runner follow-up
+
+The later [sequential runner acceptance](sequential-devnet-runner.md#bounded-sequential-acceptance--2026-10-10) adds typed stop/evaluation events, a truthful narrowed admission callback contract, typed failure diagnostics and independent checkpoint checks. It has its own tested source and live receipt; the earlier `af8c589` evidence above remains unchanged. Ledger/stake image components are separate persistence prerequisites and do not enable runtime restore.

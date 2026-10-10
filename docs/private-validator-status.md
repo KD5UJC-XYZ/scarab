@@ -83,3 +83,7 @@ These milestone totals must not be added together.
 All live gates remain isolated local Docker tests with disposable keys and no
 real funds or public-network submissions. Private keys, captures, logs and
 cluster state stay outside Git.
+
+## Sequential runner and restore prerequisites
+
+The [typed sequential runner](sequential-devnet-runner.md) now has a bounded live acceptance with three completed and three explicitly blocked scenarios. Reviewed ledger/stake image codecs are present, but complete coherent-state restore and repeated-epoch operation remain unsupported. Its ten-minute target is a proposal gated on those semantics and explicit longer-run limits, not a completed soak.

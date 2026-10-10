@@ -1,0 +1,191 @@
+{
+  "schema": "sequential-devnet-public-acceptance-v1",
+  "testedSourceCommit": "0424dd7cc6194ca01581884ab8222632c5e9af28",
+  "supportedScenariosPassed": true,
+  "allRequestedScenariosPassed": false,
+  "scenarioReport": {
+    "allRequestedPassed": false,
+    "executedScenariosPassed": true,
+    "observationalOnly": true,
+    "restoreAuthority": false,
+    "rows": [
+      {
+        "scenario": "ObserveService",
+        "verdict": {
+          "checkpointBytes": 751,
+          "checkpointSHA256": "d8ed18c446dfcf53a4167a6b00d69560d8041a3d0942f34e2adc8e0b706d0873",
+          "index": 0,
+          "outcome": "completed"
+        }
+      },
+      {
+        "scenario": "TwoSequentialTransfers",
+        "verdict": {
+          "checkpointBytes": 36704,
+          "checkpointSHA256": "c3237c44176ab3b55c18163a17f814e8250b0d385eefe8c9ebf5e9b2acaab034",
+          "index": 1,
+          "outcome": "completed"
+        }
+      },
+      {
+        "scenario": "ObserveService",
+        "verdict": {
+          "checkpointBytes": 751,
+          "checkpointSHA256": "f745c21e6e6ccf3fd267121f3bd13b44d0f709f6edd1494de0cf2720ec84dd04",
+          "index": 2,
+          "outcome": "completed"
+        }
+      },
+      {
+        "scenario": "RestartAndRejoin",
+        "verdict": {
+          "missingRequirement": "DurableRestore",
+          "outcome": "blocked"
+        }
+      },
+      {
+        "scenario": "FollowAcrossEpochs",
+        "verdict": {
+          "missingRequirement": "RepeatedEpochTransition",
+          "outcome": "blocked"
+        }
+      },
+      {
+        "scenario": "MultipleNodes",
+        "verdict": {
+          "missingRequirement": "MultipleIngressNodes",
+          "outcome": "blocked"
+        }
+      }
+    ],
+    "schema": "sequential-devnet-runner-v1",
+    "stop": "Exhausted"
+  },
+  "initialPoint": {
+    "blockNo": 3,
+    "hash": "035b59e19e6db535f1772e0df6109e4cd16079e591d0ccbfacc88f1e5966527c",
+    "slot": 182
+  },
+  "finalPoint": {
+    "blockNo": 14,
+    "hash": "bb57288db6fdd78cf598c7bbd400775bcb807d656d325705d72f9238edd8d394",
+    "slot": 624
+  },
+  "configuredLifetimeSeconds": 30,
+  "recordedActiveServiceSeconds": 26.093,
+  "transactions": [
+    {
+      "transactionId": "8ed831f801152c50af654c88478af6cd012917d1d6d0d8d037fbb2d77df71eea",
+      "bodySHA256": "c11ac914cf50a51678c06168feb2e40b7e235437e3d3db40038a8715c717b53f",
+      "witnessesSHA256": "622657b66740c3cc358236880c11a1d5ed6d025f367ac217bc22686b3d81a4f4",
+      "envelopeSHA256": "64e6b9087a726525c975876a35116004df07c3833e9b3f88ce050b582f63cbcd",
+      "publicationSHA256": "a848610aa8efa7def957d340ad9129cc74eda1c710b2006d531c3bc54c9adef2",
+      "acceptedPin": {
+        "coherentStateId": "bdca9f690cb1f34af6817ac5b2f811072bfafb22c8962d927b5a07a52352d349",
+        "environmentId": "ae08c652029ebf1f9e83ee15e77d8421f891a65dbd7b0ce7d3476587a7850a9b",
+        "generation": 1,
+        "ledgerStateId": "75e524a12a89194e4c5bad2b9cc0cc71aacc978127894d9a565bfc169aee998b",
+        "ownerId": "ad78bca772f7e2dbd1c9971142e2e318ae6af2e4676948b59ba006583e277982",
+        "point": {
+          "blockNo": 4,
+          "hash": "7b3a5eb6700a2cf00374954b4302c9ede0c388203fa5d203f06726cb8237b352",
+          "slot": 395
+        },
+        "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+        "validationSlot": 395
+      },
+      "includedPin": {
+        "coherentStateId": "0e52bac0c72b5acee98d00c029061fa2a2f02c501a713083925a3956b27ab017",
+        "environmentId": "ae08c652029ebf1f9e83ee15e77d8421f891a65dbd7b0ce7d3476587a7850a9b",
+        "generation": 2,
+        "ledgerStateId": "6029deb50ec99f9de690362b0cb0ba176ddc0b13a00e650e0222f72dd4f3110e",
+        "ownerId": "ad78bca772f7e2dbd1c9971142e2e318ae6af2e4676948b59ba006583e277982",
+        "point": {
+          "blockNo": 5,
+          "hash": "898d72d9a9c66c767cb5e5a63fba6d9cd9b794770734934d899556af6ec9a64d",
+          "slot": 426
+        },
+        "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+        "validationSlot": 426
+      }
+    },
+    {
+      "transactionId": "e95b110e670c581dbf2055b61ed0419988e53796f413839d69484564f535290d",
+      "bodySHA256": "3b4711e38543a5c25e26e0df07a8a2b595698b52abdebf878b77d12cae327eb6",
+      "witnessesSHA256": "4984bbef95fd235f94a33fc6e0d0f4070231c253ea92bea91b3d3c0800281058",
+      "envelopeSHA256": "d2e700f14edcfdd9e8ce9ef6dbe221bd60eecaba680ecdd1e2c277d22696e30c",
+      "publicationSHA256": "b17a5fc4c98ca1004f2e2190002f01dfb646c1937cb9f5070deb118491860404",
+      "acceptedPin": {
+        "coherentStateId": "0e52bac0c72b5acee98d00c029061fa2a2f02c501a713083925a3956b27ab017",
+        "environmentId": "ae08c652029ebf1f9e83ee15e77d8421f891a65dbd7b0ce7d3476587a7850a9b",
+        "generation": 2,
+        "ledgerStateId": "6029deb50ec99f9de690362b0cb0ba176ddc0b13a00e650e0222f72dd4f3110e",
+        "ownerId": "ad78bca772f7e2dbd1c9971142e2e318ae6af2e4676948b59ba006583e277982",
+        "point": {
+          "blockNo": 5,
+          "hash": "898d72d9a9c66c767cb5e5a63fba6d9cd9b794770734934d899556af6ec9a64d",
+          "slot": 426
+        },
+        "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+        "validationSlot": 426
+      },
+      "includedPin": {
+        "coherentStateId": "f64b0709b326bc8f24788b0913bc2e2a572eff2520809219c63e0e37be76f347",
+        "environmentId": "ae08c652029ebf1f9e83ee15e77d8421f891a65dbd7b0ce7d3476587a7850a9b",
+        "generation": 3,
+        "ledgerStateId": "c774ffe398460b017f4fa0cdb34995e19adb96049b9df90e31d2c987cb709dd4",
+        "ownerId": "ad78bca772f7e2dbd1c9971142e2e318ae6af2e4676948b59ba006583e277982",
+        "point": {
+          "blockNo": 6,
+          "hash": "6dbb056b13f74c23a7ebd702ee4e04ac07b160de1a4ac99f79c0221c61471f5f",
+          "slot": 481
+        },
+        "profileId": "isolated-conway-pv9-plutus-v3-spend-v1",
+        "validationSlot": 481
+      }
+    }
+  ],
+  "publicationCount": 11,
+  "transportOpens": 15,
+  "transportCloses": 15,
+  "stopReason": "durationLimit",
+  "cleanupVerified": true,
+  "endpoint": {
+    "entries": 10,
+    "feesBefore": 200000,
+    "feesAfter": 800000,
+    "completeUtxoEqual": true,
+    "collateralPreserved": true,
+    "instantaneousStakeEqual": true,
+    "representedProtocolEqual": true,
+    "endpointSnapshotsUnchanged": true
+  },
+  "fullLedgerValidated": false,
+  "restartSupported": false,
+  "multiEpochScalaProven": false,
+  "tests": {
+    "scalaAndTranslator": 1765,
+    "publicGates": 27,
+    "pythonRun": 486,
+    "pythonSkipped": 2,
+    "retained": 20
+  },
+  "testLogSHA256": {
+    "phase": "a033242e4f3a3f52a93ae21a7069edcd8453cedbe18d9e9aec95bad540320fba",
+    "retained": "d2904f486416ff403cbdb78825e286f8ef56bcaa8db067e1b3a7e9c2e51eb299",
+    "gates": "0bfedb304fe82d86164f7d7c8244df5d880f6a94e85f95ae99b478703282ed4b"
+  },
+  "evidenceSHA256": {
+    "result.json": "693758706b15a7a921815371b0797f97d099b7cd60ea0041b9681eb7b03f3b19",
+    "client-result.json": "84413f590371e3f8d7d373862e0a86af9ec02fff545f07d725b5235bcf000c3b",
+    "scala-result.json": "93f490ae460c850db70832b2ff67e71c83bb985db5f0d60bc44c5b2dd30f9a80",
+    "endpoint-comparison.json": "8bdb188a26a33bc4b3c550a1c7382ac4428135fc98982198ec6ce3e54a29188a",
+    "scenario-runner-result.json": "191fcd093b5bcc86bff12a8aeda4e1ea27a2191cc671bfc158a0ecabc5f0874f",
+    "scenario-checkpoint-0.json": "d8ed18c446dfcf53a4167a6b00d69560d8041a3d0942f34e2adc8e0b706d0873",
+    "scenario-checkpoint-1.json": "c3237c44176ab3b55c18163a17f814e8250b0d385eefe8c9ebf5e9b2acaab034",
+    "scenario-checkpoint-2.json": "f745c21e6e6ccf3fd267121f3bd13b44d0f709f6edd1494de0cf2720ec84dd04",
+    "cleanup.json": "1716af13f0b1a5b08ecda0843efba43fbfcbf35f34dc5ffda363820977bf91da"
+  },
+  "rawRuntimeResultSHA256": "7c977e0a942e0580a1e2cf189743f7eca2ea190b847b6145cab0571a18cd373f",
+  "priorFailurePostmortemSHA256": "d98b7459efb8c89c7e29c929a5c1773475c5f7fbe0332eb4443a358309673b89"
+}

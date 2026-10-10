@@ -396,3 +396,7 @@ admission and automatic governance/non-myopic effects to be carried and compared
 ## Bounded service milestone — 2026-10-10
 
 Source `af8c589` passed 1,728 Scala/translator tests, 27 public gates and 466 Python tests run with two skips. Separately, 20 retained-data tests passed. The second isolated service attempt passed; the first timing failure remains retained. See [exact acceptance and limits](plutus-service.md#isolated-service-acceptance--2026-10-10). These counts are a dated milestone and are not additive with older runs.
+
+## Typed sequential milestone — 2026-10-10
+
+Source `0424dd7cc6194ca01581884ab8222632c5e9af28` passed 1,765 Scala/translator tests, 27 gates and 486 Python tests run with two skips, plus 20 separate retained tests. See [live evidence and preserved failure](sequential-devnet-runner.md#bounded-sequential-acceptance--2026-10-10). The preceding service snapshot `08898c9` passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38018444095); this link is not a CI claim for the newer source.
