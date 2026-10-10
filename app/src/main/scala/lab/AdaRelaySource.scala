@@ -6,7 +6,7 @@ import cats.effect.std.Supervisor
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import lab.cbor.Bytes
-import lab.network.{RelayLease, RelayLimits, RelayOffer, RelaySource, TxSubmission2}
+import lab.network.{RelayLease, RelayLimits, RelayOffer, RelaySource}
 import lab.submission.SignedTransaction
 import scala.concurrent.duration.*
 
@@ -29,10 +29,10 @@ private[lab] final class AdaRelaySource[F[_]] private (
   private def reserve(token: Token, limits: RelayLimits): F[FiniteDuration] =
     F.monotonic.flatMap { now =>
       registry
-        .modify[Either[Throwable, FiniteDuration]] { old =>
+        .modify[Either[Reason, FiniteDuration]] { old =>
           val current = old.expire(now)
-          if current.closed then (current, Left(new Unavailable(Reason.Closed)))
-          else if current.entries.size >= 2 then (current, Left(new Unavailable(Reason.Capacity)))
+          if current.closed then (current, Left(Reason.Closed))
+          else if current.entries.size >= 2 then (current, Left(Reason.Capacity))
           else
             val deadline = now + limits.maxLifetime
             (
@@ -40,7 +40,7 @@ private[lab] final class AdaRelaySource[F[_]] private (
               Right(deadline)
             )
         }
-        .flatMap(F.fromEither)
+        .flatMap(result => F.fromEither(result.leftMap(new Unavailable(_))))
     }
 
   private def install(token: Token, limits: RelayLimits): F[Vector[RelayOffer]] =
@@ -49,27 +49,28 @@ private[lab] final class AdaRelaySource[F[_]] private (
     // Expected close/expiry failures are values until AFTER leaving that gate: they must not
     // poison the owner's trusted callback boundary.
     selection
-      .withEligible[Either[Throwable, Vector[RelayOffer]]] { eligible =>
-        bounded(eligible, limits) match
-          case Left(error) => F.pure(Left(error))
-          case Right((offers, originals)) =>
+      .withEligible[Either[InstallFailure, Vector[RelayOffer]]] { eligible =>
+        RelayBatch.select(eligible, limits) match
+          case Left(error) => F.pure(Left(InstallFailure.Selection(error)))
+          case Right(batch) =>
             F.monotonic.flatMap { now =>
-              registry.modify[Either[Throwable, Vector[RelayOffer]]] { old =>
+              registry.modify[Either[InstallFailure, Vector[RelayOffer]]] { old =>
                 val current = old.expire(now)
                 current.entries.get(token) match
-                  case _ if current.closed => (current, Left(new Unavailable(Reason.Closed)))
-                  case None                => (current, Left(new Unavailable(Reason.Expired)))
+                  case _ if current.closed =>
+                    (current, Left(InstallFailure.Unavailable(Reason.Closed)))
+                  case None => (current, Left(InstallFailure.Unavailable(Reason.Expired)))
                   case Some(entry) =>
                     (
                       current.copy(entries =
-                        current.entries.updated(token, entry.copy(originals = originals))
+                        current.entries.updated(token, entry.copy(originals = batch.originals))
                       ),
-                      Right(offers)
+                      Right(batch.offers)
                     )
               }
             }
       }
-      .flatMap(F.fromEither)
+      .flatMap(result => F.fromEither(result.leftMap(InstallFailure.toThrowable)))
 
   private final class Lease(token: Token, val offers: Vector[RelayOffer]) extends RelayLease[F]:
     def original(transactionId: Bytes): F[Option[Bytes]] = F.monotonic.flatMap { now =>
@@ -131,36 +132,21 @@ private[lab] object AdaRelaySource:
     def expire(now: FiniteDuration): Registry =
       copy(entries = entries.filter { case (_, entry) => now < entry.deadline })
 
-  private def bounded(
-      eligible: Vector[SignedTransaction],
-      limits: RelayLimits
-  ): Either[Throwable, (Vector[RelayOffer], Map[Bytes, Bytes])] =
-    if eligible == null || eligible.size > 64 || eligible.exists(_ == null) then
-      Left(new IllegalStateException("bounded eligible pool required"))
-    else if eligible.map(_.transactionId).distinct.size != eligible.size then
-      Left(new IllegalStateException("duplicate eligible transaction identity"))
-    else
-      eligible
-        .foldLeft[Either[Throwable, (Vector[RelayOffer], Map[Bytes, Bytes], Int)]](
-          Right((Vector.empty, Map.empty, 0))
-        ) { (acc, transaction) =>
-          acc.flatMap { case (offers, originals, bytes) =>
-            if offers.size >= limits.maxTransactions || transaction.byteSize > limits.maxOriginalBytes - bytes
-            then Right((offers, originals, bytes))
-            else
-              TxSubmission2
-                .advertisedSize(transaction.byteSize)
-                .leftMap(new IllegalStateException(_))
-                .map { size =>
-                  (
-                    offers :+ RelayOffer(transaction.transactionId, size),
-                    originals.updated(transaction.transactionId, transaction.original),
-                    bytes + transaction.byteSize
-                  )
-                }
-          }
-        }
-        .map { case (offers, originals, _) => (offers, originals) }
+  private enum InstallFailure:
+    case Selection(error: RelayBatch.Failure)
+    case Unavailable(reason: Reason)
+
+  private object InstallFailure:
+    def toThrowable(error: InstallFailure): Throwable = error match
+      case InstallFailure.Unavailable(reason) => new AdaRelaySource.Unavailable(reason)
+      case InstallFailure.Selection(RelayBatch.Failure.InvalidLimits) =>
+        new IllegalArgumentException("bounded relay limits required")
+      case InstallFailure.Selection(RelayBatch.Failure.InvalidEligibleDomain) =>
+        new IllegalStateException("bounded eligible pool required")
+      case InstallFailure.Selection(RelayBatch.Failure.DuplicateIdentity) =>
+        new IllegalStateException("duplicate eligible transaction identity")
+      case InstallFailure.Selection(RelayBatch.Failure.InvalidOriginalSize(detail)) =>
+        new IllegalStateException(detail)
 
   /** Called exactly once by AdaSubmissionService.resource; callers use that service's relaySource.
     * This is internal composition, not an API for making independent wrappers of one pool.

@@ -209,3 +209,199 @@ class AdaRelaySourceSuite extends munit.FunSuite:
       }
     yield ()).unsafeToFuture()
   }
+
+  private def padded(body: Int): SignedTransaction =
+    SignedTransaction
+      .checked(Bytes.fromHex(f"84a10018$body%02xa1005840" + "00" * 64 + "f5f6").toOption.get)
+      .toOption
+      .get
+
+  test("checked relay batches preserve stable selection, exact originals and all bounds") {
+    val values =
+      Vector(transaction(1), padded(2), transaction(3), transaction(4), padded(5), transaction(6))
+    for
+      count <- 1 to 8
+      bytes <- Vector(1, 10, 20, 30, 64, 128, 524288)
+    do
+      val batch = RelayBatch
+        .select(values, RelayLimits(maxTransactions = count, maxOriginalBytes = bytes))
+        .toOption
+        .get
+      val ids = batch.offers.map(_.transactionId)
+      assertEquals(batch.originals.keySet, ids.toSet)
+      assertEquals(batch.originalBytes, batch.originals.values.map(_.size).sum)
+      assert(batch.offers.size <= count && batch.originalBytes <= bytes)
+      assertEquals(ids, values.filter(v => ids.contains(v.transactionId)).map(_.transactionId))
+      batch.offers.foreach { offer =>
+        val source = values.find(_.transactionId == offer.transactionId).get
+        assert(batch.originals(offer.transactionId) eq source.original)
+        assertEquals(
+          offer.advertisedSize,
+          TxSubmission2.advertisedSize(source.byteSize).toOption.get
+        )
+      }
+    val skipped = RelayBatch
+      .select(values, RelayLimits(maxOriginalBytes = values.head.byteSize * 2))
+      .toOption
+      .get
+    assertEquals(
+      skipped.offers.map(_.transactionId),
+      Vector(values(0).transactionId, values(2).transactionId)
+    )
+    val limited = RelayBatch.select(values, RelayLimits(maxTransactions = 1)).toOption.get
+    assertEquals(limited.offers.map(_.transactionId), Vector(values.head.transactionId))
+  }
+
+  test("relay selection validates the whole domain before count or byte truncation") {
+    import RelayBatch.Failure
+    val first = transaction(1)
+    assertEquals(
+      RelayBatch.select(null, RelayLimits()).left.toOption,
+      Some(Failure.InvalidEligibleDomain)
+    )
+    assertEquals(
+      RelayBatch.select(Vector(first, null), RelayLimits()).left.toOption,
+      Some(Failure.InvalidEligibleDomain)
+    )
+    assertEquals(
+      RelayBatch.select((1 to 65).map(transaction(_)).toVector, RelayLimits()).left.toOption,
+      Some(Failure.InvalidEligibleDomain)
+    )
+    val duplicates = Vector(first, transaction(2), transaction(2, 1))
+    assertEquals(
+      RelayBatch
+        .select(duplicates, RelayLimits(maxTransactions = 1, maxOriginalBytes = 1))
+        .left
+        .toOption,
+      Some(Failure.DuplicateIdentity)
+    )
+    assertEquals(
+      RelayBatch.select(Vector.empty, RelayLimits(maxTransactions = 0)).left.toOption,
+      Some(Failure.InvalidLimits)
+    )
+    assertEquals(RelayBatch.select(Vector.empty, null).left.toOption, Some(Failure.InvalidLimits))
+    val empty = RelayBatch.select(Vector.empty, RelayLimits()).toOption.get
+    assertEquals((empty.offers.size, empty.originals.size, empty.originalBytes), (0, 0, 0))
+  }
+
+  test("relay batches cannot be constructed, copied or mutated outside checked selection") {
+    assertEquals(
+      compileErrors("""lab.RelayBatch.select(Vector.empty, lab.network.RelayLimits())"""),
+      ""
+    )
+    assert(compileErrors("""new lab.RelayBatch.Batch(Vector.empty, Map.empty, 0)""").nonEmpty)
+    assert(
+      compileErrors(
+        """lab.RelayBatch.select(Vector.empty, lab.network.RelayLimits()).toOption.get.copy(originalBytes = 1)"""
+      ).nonEmpty
+    )
+    assert(
+      compileErrors(
+        """lab.RelayBatch.select(Vector.empty, lab.network.RelayLimits()).toOption.get.originalBytes = 1"""
+      ).nonEmpty
+    )
+  }
+
+  private def activeOwner =
+    SubmissionOwner.resource[IO](EphemeralStreamingFixture.runtime).evalTap { owner =>
+      owner.attach(new lab.submission.AdmissionStateObserver[IO]:
+        def changed(change: lab.submission.AdmissionStateChange) = IO.unit
+        def closed = IO.unit)
+    }
+
+  private def ownerSelection(
+      owner: SubmissionOwner[IO],
+      values: IO[Vector[SignedTransaction]],
+      before: IO[Unit] = IO.unit
+  ): AdaRelaySource.Selection[IO] = new AdaRelaySource.Selection[IO]:
+    def withEligible[A](take: Vector[SignedTransaction] => IO[A]): IO[A] =
+      owner.current
+        .flatMap(view => owner.withCurrent(view.pin)(before *> values.flatMap(take)))
+        .flatMap {
+          case Right(value) => IO.pure(value)
+          case Left(_) =>
+            IO.raiseError(new IllegalStateException("unexpected fixture pin movement"))
+        }
+
+  test("invalid relay selection leaves the real owner usable and releases reserved capacity") {
+    activeOwner
+      .use { owner =>
+        for
+          values <- Ref.of[IO, Vector[SignedTransaction]](Vector(transaction(1), transaction(1, 1)))
+          _ <- AdaRelaySource.resource(ownerSelection(owner, values.get)).use { source =>
+            for
+              failed <- source
+                .acquireBatch(RelayLimits(maxTransactions = 1))
+                .use(_ => IO.unit)
+                .attempt
+              _ = assert(
+                failed.left.toOption.exists(e =>
+                  e.isInstanceOf[
+                    IllegalStateException
+                  ] && e.getMessage == "duplicate eligible transaction identity"
+                )
+              )
+              _ <- values.set(null)
+              invalid <- source.acquireBatch(RelayLimits()).use(_ => IO.unit).attempt
+              _ = assert(
+                invalid.left.toOption.exists(e =>
+                  e.isInstanceOf[
+                    IllegalStateException
+                  ] && e.getMessage == "bounded eligible pool required"
+                )
+              )
+              view <- owner.current
+              commit <- owner.withCurrent(view.pin)(IO.pure(7))
+              _ = assertEquals(commit, Right(7))
+              _ <- values.set(Vector(transaction(1)))
+              _ <- (source.acquireBatch(RelayLimits()), source.acquireBatch(RelayLimits())).tupled
+                .use { (a, b) =>
+                  IO(assertEquals((a.offers.size, b.offers.size), (1, 1)))
+                }
+            yield ()
+          }
+        yield ()
+      }
+      .unsafeToFuture()
+  }
+
+  test(
+    "relay close during selection returns Closed after the real owner callback without poisoning it"
+  ) {
+    activeOwner
+      .use { owner =>
+        for
+          entered <- Deferred[IO, Unit]
+          resume <- Deferred[IO, Unit]
+          selection = ownerSelection(
+            owner,
+            IO.pure(Vector.empty),
+            entered.complete(()).void *> resume.get
+          )
+          _ <- Resource.make(AdaRelaySource.resource(selection).allocated)(_._2).use {
+            (source, close) =>
+              Resource
+                .make(source.acquireBatch(RelayLimits()).use(_ => IO.unit).attempt.start)(fiber =>
+                  resume.complete(()).void *> fiber.cancel
+                )
+                .use { fiber =>
+                  for
+                    _ <- entered.get
+                    _ <- close
+                    _ <- resume.complete(())
+                    result <- fiber.joinWithNever
+                    _ = assert(result.left.toOption.exists {
+                      case e: AdaRelaySource.Unavailable =>
+                        e.reason == AdaRelaySource.Reason.Closed && e.getMessage == "relay lease unavailable: Closed"
+                      case _ => false
+                    })
+                    view <- owner.current
+                    commit <- owner.withCurrent(view.pin)(IO.pure(11))
+                    _ = assertEquals(commit, Right(11))
+                  yield ()
+                }
+          }
+        yield ()
+      }
+      .unsafeToFuture()
+  }
