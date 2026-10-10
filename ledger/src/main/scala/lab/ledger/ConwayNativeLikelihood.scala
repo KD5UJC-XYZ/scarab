@@ -8,27 +8,31 @@ import scala.util.control.NonFatal
 object ConwayNativeLikelihood:
   val Profile = "conway-native-likelihood-v1"
   enum Mode:
-    case CheckedJvm, AssistedNative
+    case PureJvm, CheckedJvm, AssistedNative
   val MaxPools = 64
   val MaxResponseBytes = 131072
   final class Request private[ConwayNativeLikelihood] (
       val frozen: ConwayEpochBoundary.Frozen,
       val original: Bytes,
-      private[ConwayNativeLikelihood] val rows: Vector[(Bytes, BigInt, BigInt, BigInt)]
+      private[ledger] val rows: Vector[(Bytes, BigInt, BigInt, BigInt)]
   )
   final class Generated private[ConwayNativeLikelihood] (
       val request: Request,
-      val response: Bytes,
+      val evidence: Bytes,
+      val nativeResponse: Option[Bytes],
       val likelihoods: Map[Bytes, ConwayNonMyopic.Likelihood],
       val mode: Mode,
       val raw32Mismatches: Int,
       val raw64Mismatches: Int
   ):
     val jvmMismatchWords = raw32Mismatches + raw64Mismatches
-    val raw32Comparisons = request.rows.size * 100
-    val raw64Comparisons = request.rows.size
+    val computedRaw32Words = request.rows.size * 100
+    val computedRaw64Words = request.rows.size
+    val raw32Comparisons = if mode == Mode.PureJvm then 0 else computedRaw32Words
+    val raw64Comparisons = if mode == Mode.PureJvm then 0 else computedRaw64Words
     val nativeValuesAuthoritative = mode == Mode.AssistedNative
-    val diagnosticNativeDependency = true
+    val diagnosticNativeDependency = mode != Mode.PureJvm
+    val nativeValidated = mode == Mode.CheckedJvm && jvmMismatchWords == 0
     val generalJvmParityValidated = false
     def forFrozen(
         frozen: ConwayEpochBoundary.Frozen,
@@ -90,7 +94,7 @@ object ConwayNativeLikelihood:
       mode: Mode = Mode.CheckedJvm
   ): Either[String, Generated] = checked {
     require(
-      request != null && mode != null && response != null && response.size <= MaxResponseBytes,
+      request != null && mode != null && mode != Mode.PureJvm && response != null && response.size <= MaxResponseBytes,
       "native response bounds"
     )
     val text = new String(response.value.toArray, "US-ASCII")
@@ -98,6 +102,9 @@ object ConwayNativeLikelihood:
     require(text.startsWith(prefix) && text.endsWith("\n"), "native request echo mismatch")
     val lines = text.substring(prefix.length).split("\n", -1).toVector.dropRight(1)
     require(lines.size == request.rows.size, "native full pool domain required")
+    val calculated = get(ConwayLikelihoodGeneration.calculate(request))
+    val calculatedRows =
+      calculated.rows.map((pool, probability, words) => pool -> (probability, words)).toMap
     var mismatch32 = 0
     var mismatch64 = 0
     val values = request.rows
@@ -112,17 +119,9 @@ object ConwayNativeLikelihood:
           "nonfinite native probability"
         )
         val words = parts(2).grouped(8).map(java.lang.Integer.parseUnsignedInt(_, 16)).toVector
-        val probability =
-          1.0 - java.lang.Math.pow(1.0 - 1.0 / 20.0, stake.toDouble / circulation.toDouble)
-        if java.lang.Double.doubleToRawLongBits(probability) != rawProbability then mismatch64 += 1
-        val jvmWords = words.zipWithIndex.map { (word, i) =>
-          val x = (i.toDouble + 0.5) / 100.0
-          val value = (blocks.toDouble * java.lang.Math.log(x) +
-            (1000 - blocks).toDouble * java.lang.Math.log(1.0 - probability * x)).toFloat
-          val computed = java.lang.Float.floatToRawIntBits(value)
-          if computed != word then mismatch32 += 1
-          computed
-        }
+        val (jvmProbability, jvmWords) = calculatedRows(pool)
+        if jvmProbability != rawProbability then mismatch64 += 1
+        mismatch32 += jvmWords.zip(words).count((a, b) => a != b)
         pool -> get(ConwayNonMyopic.likelihood(if mode == Mode.CheckedJvm then jvmWords else words))
       }
       .toMap
@@ -130,5 +129,17 @@ object ConwayNativeLikelihood:
       mode == Mode.AssistedNative || mismatch32 + mismatch64 == 0,
       s"native/JVM exact mismatch raw32=$mismatch32 raw64=$mismatch64"
     )
-    new Generated(request, response, values, mode, mismatch32, mismatch64)
+    new Generated(request, response, Some(response), values, mode, mismatch32, mismatch64)
+  }
+
+  /** Separate research capability: JVM computation only, with no native response or gate. */
+  private[ledger] def generatePureJvm(
+      frozen: ConwayEpochBoundary.Frozen,
+      expectedId: Bytes
+  ): Either[String, Generated] = checked {
+    val input = get(request(frozen, expectedId))
+    val calculated = get(ConwayLikelihoodGeneration.calculate(input))
+    val values =
+      calculated.rows.map((pool, _, words) => pool -> get(ConwayNonMyopic.likelihood(words))).toMap
+    new Generated(input, calculated.original, None, values, Mode.PureJvm, 0, 0)
   }

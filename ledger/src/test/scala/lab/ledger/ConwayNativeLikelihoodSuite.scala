@@ -159,3 +159,52 @@ class ConwayNativeLikelihoodSuite extends munit.FunSuite:
       )
     }
   }
+
+  test("pure JVM capability has exact source binding and no native validation claim") {
+    val f = fixture()
+    val g = get(ConwayLikelihoodGeneration.generateJvm(f, f.id))
+    assertEquals(g.mode, N.Mode.PureJvm)
+    assertEquals(g.nativeResponse, None)
+    assertEquals(g.computedRaw32Words, 100)
+    assertEquals(g.computedRaw64Words, 1)
+    assertEquals(g.raw32Comparisons, 0)
+    assertEquals(g.raw64Comparisons, 0)
+    assert(!g.nativeValidated && !g.nativeValuesAuthoritative && !g.diagnosticNativeDependency)
+    assert(!g.generalJvmParityValidated)
+    assert(g.forFrozen(f, f.id).isRight)
+    assert(g.forFrozen(fixture(), f.id).isLeft)
+    assert(ConwayLikelihoodGeneration.generateJvm(f, bytes(9)).isLeft)
+    val invalid = fixture(blocks = 1001)
+    assert(ConwayLikelihoodGeneration.generateJvm(invalid, invalid.id).isLeft)
+    assertEquals(get(ConwayLikelihoodGeneration.generateJvm(f, f.id)).evidence, g.evidence)
+    assert(N.acceptTrustedNative(g.request, wire(g.request), N.Mode.PureJvm).isLeft)
+  }
+  test("pure JVM computes all ten native golden cases independently before comparison") {
+    val stream = getClass.getResourceAsStream("/non-myopic-dynamic/native-result.txt")
+    val text =
+      try new String(stream.readAllBytes(), "US-ASCII")
+      finally stream.close()
+    val parts = text.split("--native--\n")
+    val inputs = parts(0).linesIterator.drop(3).toVector
+    val outputs = parts(1).linesIterator.toVector
+    assertEquals(inputs.size, 10)
+    inputs.zip(outputs).foreach { (input, output) =>
+      val fields = input.split(" ")
+      val f = fixture(
+        stake = BigInt(fields(1)),
+        reserves = 1000,
+        blocks = BigInt(fields(3)),
+        supply = BigInt(fields(2)) + 1000
+      )
+      val generated = get(ConwayLikelihoodGeneration.generateJvm(f, f.id))
+      val actual = new String(generated.evidence.value.toArray, "US-ASCII")
+        .split("--jvm--\n")(1)
+        .trim
+        .split(" ")
+      val expected = output.split(" ")
+      assertEquals(actual(1), expected(1))
+      assertEquals(actual(2), expected(2))
+      assertEquals(generated.likelihoods(key(1)).hex.mkString, expected(2))
+      assertEquals(generated.raw32Comparisons, 0)
+    }
+  }

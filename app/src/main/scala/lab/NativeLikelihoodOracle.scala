@@ -37,7 +37,8 @@ object NativeLikelihoodOracle:
             config.evidenceDirectory.isAbsolute && config.executableSHA256 != null &&
             config.executableSHA256.size == 32 && config.timeout > Duration.Zero &&
             config.timeout <= 30.seconds && config.maxInvocations > 0 &&
-            config.maxInvocations <= 128 && config.mode != null,
+            config.maxInvocations <= 128 && config.mode != null &&
+            config.mode != ConwayNativeLikelihood.Mode.PureJvm,
           "native oracle configuration"
         )
         require(
