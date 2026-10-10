@@ -16,7 +16,7 @@ private[lab] final class AdaSubmissionService[F[_]] private (
     pool: Ref[F, AdaPool.State[StatePin]],
     budget: AdaIngressBudget[F],
     validations: Semaphore[F],
-    pending: Ref[F, Option[(AdmissionView, AdaPool.Rebuild[StatePin])]],
+    pending: Ref[F, Option[RebuildContext]],
     wake: Queue[F, Unit],
     val relaySource: lab.network.RelaySource[F],
     evidence: Option[PlutusEvaluationEvidence.Observer[F]]
@@ -154,13 +154,19 @@ private[lab] final class AdaSubmissionService[F[_]] private (
             now.toNanos
           )
         }
-        .flatMap(work => pending.set(Some(change.view -> work)) *> wake.tryOffer(()).void)
+        .flatMap(work =>
+          F.fromEither(
+            RebuildContext.checked(change.view, work).leftMap(new RebuildContext.Invalid(_))
+          ).flatMap(context => pending.set(Some(context)) *> wake.tryOffer(()).void)
+        )
     }
 
   def closed: F[Unit] = F.monotonic.flatMap(t => pool.update(AdaPool.shutdown(_, t.toNanos))) *>
     pending.set(None) *> wake.tryOffer(()).void
 
-  private def rebuild(view: AdmissionView, work: AdaPool.Rebuild[StatePin]): F[Unit] =
+  private def rebuild(context: RebuildContext): F[Unit] =
+    val view = context.view
+    val work = context.work
     validations.permit
       .use { _ =>
         F.cede *> F
@@ -207,12 +213,12 @@ private[lab] final class AdaSubmissionService[F[_]] private (
   private def worker(wait: Boolean): F[Unit] =
     (if wait then wake.take else F.unit) *> pending.get.flatMap {
       case None => worker(true)
-      case Some((view, work)) =>
-        F.race(rebuild(view, work), wake.take).flatMap {
+      case Some(context) =>
+        F.race(rebuild(context), wake.take).flatMap {
           // A losing take may already have consumed a concurrent wake. Inspect the
           // authoritative pending slot before waiting again, whichever branch won.
           case Left(_) =>
-            pending.update(_.filterNot { case (_, current) => current eq work }) *> worker(false)
+            pending.update(_.filterNot(_.sameWork(context))) *> worker(false)
           case Right(_) => worker(false)
         }
     }
@@ -286,7 +292,7 @@ private[lab] object AdaSubmissionService:
       )
       budget <- Resource.eval(AdaIngressBudget.create[F]())
       validations <- Resource.eval(Semaphore[F](2))
-      pending <- Resource.eval(Ref.of[F, Option[(AdmissionView, AdaPool.Rebuild[StatePin])]](None))
+      pending <- Resource.eval(Ref.of[F, Option[RebuildContext]](None))
       wake <- Resource.eval(Queue.bounded[F, Unit](1))
       relay <- AdaRelaySource.resource[F](
         new AdaRelaySource.Selection[F]:
