@@ -250,11 +250,9 @@ def controller_type(live):
             root.mkdir(mode=0o700)
             before = self.snapshot("funding-before", anchor)
             keyroot = self.environment / "utxo-keys"
-            addresses = [self.execute("cardano-cli", "address", "build", "--payment-verification-key-file",
-                         str(keyroot / ("utxo" + str(i)) / "utxo.vkey"), "--testnet-magic", str(self.magic)).stdout.strip()
-                         for i in (1, 2)]
-            keyhash = self.execute("cardano-cli", "address", "key-hash", "--payment-verification-key-file",
-                                   str(keyroot / "utxo1/utxo.vkey")).stdout.strip()
+            source_address = self.execute("cardano-cli", "address", "build", "--payment-verification-key-file",
+                                          str(keyroot / "utxo1/utxo.vkey"),
+                                          "--testnet-magic", str(self.magic)).stdout.strip()
             self.execute("mkdir", "-p", fixture.ROOT + "/keys")
             self.execute("cardano-cli", "address", "key-gen", "--verification-key-file", fixture.ROOT + "/keys/beneficiary.vkey",
                          "--signing-key-file", fixture.ROOT + "/keys/beneficiary.skey")
@@ -269,7 +267,6 @@ def controller_type(live):
             base.write(root / "script.json", self.script["json"])
             (root / "script.cbor").write_bytes(bytes.fromhex(self.script["originalCborHex"]))
             base.write(self.out / "script-fixture.json", self.script)
-            self.execute("mkdir", "-p", fixture.ROOT + "/keys")
             self.execute("cp", "--", str(keyroot / "utxo1/utxo.skey"), fixture.ROOT + "/keys/utxo.skey")
             self.execute("ln", "-s", str(self.environment / "socket"), fixture.ROOT + "/socket")
             self.owned(self.containers["reference"])
@@ -292,7 +289,7 @@ def controller_type(live):
                 referenceScriptHash=reference_hash, scriptHash=self.script["scriptHash"],
                 addressInfoSHA256=base.sha(root / "address-info.json"), matched=True))
             script_address = fixture.checked_script_address(self.script, info)
-            self.plan = fixture.funding_plan(before.utxo, addresses[0], script_address, beneficiary, beneficiary, self.script["datum"])
+            self.plan = fixture.funding_plan(before.utxo, source_address, script_address, beneficiary, beneficiary, self.script["datum"])
             self.commands = fixture.commands(self.plan, self.magic, fixture.ROOT + "/keys/utxo.skey")
             self.execute(*self.commands["fundingBuild"])
             self.execute(*self.commands["fundingSign"])
