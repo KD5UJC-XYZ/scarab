@@ -168,6 +168,186 @@ class AdaSubmissionServiceSuite extends munit.FunSuite:
       .flatMap(x => if x.rebuilding then IO.cede *> ready(s) else IO.unit)
       .timeout(5.seconds)
 
+  test("preparation suspends validation once and retains genuine candidate and view references") {
+    Vector(AdmissionProfile.AdaVkey, AdmissionProfile.NativeScript)
+      .traverse_ { profile =>
+        val v = view(profile = profile)
+        val original = tx(scripts =
+          if profile == AdmissionProfile.NativeScript then Vector(native) else Vector.empty
+        )
+        val candidate = AdmissionValidation.prepare(profile, v.pin, v.ledger, original).toOption.get
+        val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+        val prepared = AdmissionPreparation.evaluate[IO](profile, v) {
+          calls.incrementAndGet()
+          Right(candidate)
+        }
+        assertEquals(calls.get(), 0)
+        prepared.map { result =>
+          val value = result.toOption.get
+          assertEquals(calls.get(), 1)
+          assert(value.view eq v)
+          assert(value.candidate eq candidate)
+          assert(value.candidate.transaction.original eq candidate.transaction.original)
+        }
+      }
+      .unsafeToFuture()
+  }
+
+  test("validation rejection bypasses binding and preserves the exact domain cause") {
+    val error = ScopedAdmission.Failure.Unsupported("test domain cause")
+    AdmissionPreparation
+      .evaluate[IO](AdmissionProfile.AdaVkey, null)(Left(error))
+      .map {
+        case Left(AdmissionPreparation.Failure.Rejected(actual)) => assert(actual eq error)
+        case other                                               => fail(other.toString)
+      }
+      .unsafeToFuture()
+  }
+
+  test("all profile identity rejections agree with the existing pure validator") {
+    val original = Bytes(Vector(0x80.toByte))
+    AdmissionProfile.values.toVector
+      .traverse_ { profile =>
+        val v = view(profile = profile)
+        val old = AdmissionValidation.prepare(profile, v.pin, v.ledger, original)
+        assert(old.isLeft)
+        AdmissionPreparation
+          .evaluate[IO](profile, v) {
+            AdmissionValidation.prepare(profile, v.pin, v.ledger, original)
+          }
+          .map(result =>
+            assertEquals(
+              result.left.toOption,
+              old.left.toOption.map(AdmissionPreparation.Failure.Rejected.apply)
+            )
+          )
+      }
+      .unsafeToFuture()
+  }
+
+  test("checked preparation preserves legacy binding decisions over full pin and view drift") {
+    val v = view()
+    val original = tx()
+    val p = v.pin
+    val changed = Bytes(Vector.fill(32)(9.toByte))
+    def pin(
+        owner: Bytes = p.ownerId,
+        generation: BigInt = p.generation,
+        point: Point = p.point,
+        coherent: Bytes = p.coherentStateId,
+        ledger: Bytes = p.ledgerStateId,
+        environment: Bytes = p.environmentId,
+        slot: BigInt = p.validationSlot,
+        profile: String = p.profileId
+    ): StatePin =
+      StatePin
+        .checked(owner, generation, point, coherent, ledger, environment, slot, profile)
+        .toOption
+        .get
+    val variants = Vector(
+      p,
+      pin(owner = changed),
+      pin(generation = p.generation + 1),
+      pin(point = Point(changed, p.point.slot, p.point.blockNo)),
+      pin(point = Point(p.point.hash, p.point.slot + 1, p.point.blockNo)),
+      pin(point = Point(p.point.hash, p.point.slot, p.point.blockNo + 1)),
+      pin(coherent = changed),
+      pin(ledger = changed),
+      pin(environment = changed),
+      pin(slot = p.validationSlot + 1),
+      pin(profile = AdmissionProfile.NativeScript.id)
+    )
+    def candidate(pin: StatePin, source: R.State = v.ledger) =
+      AdmissionValidation.prepare(AdmissionProfile.AdaVkey, pin, source, original).toOption.get
+    val base = candidate(p)
+    val wrongProfile =
+      AdmissionView.checked(pin(profile = AdmissionProfile.NativeScript.id), v.ledger).toOption.get
+    val changedStates = Vector(
+      initial(fees = 700001),
+      initial(environment = env(a = 45)),
+      R.checkpoint(v.ledger.environment, v.ledger.outputMap, v.ledger.fees, 21, digest).toOption.get
+    )
+    val drift = changedStates.map { ledger =>
+      val q = pin(ledger = ledger.id, environment = ledger.environment.id, slot = ledger.slot)
+      (AdmissionProfile.AdaVkey, AdmissionView.checked(q, ledger).toOption.get, candidate(q))
+    }
+    val rows = variants.map(q => (AdmissionProfile.AdaVkey, v, candidate(q))) ++ drift ++ Vector(
+      (AdmissionProfile.NativeScript, v, base),
+      (AdmissionProfile.AdaVkey, wrongProfile, base)
+    )
+    rows.foreach { (profile, current, checked) =>
+      val legacy = checked.profile == profile && current.pin.profileId == profile.id &&
+        checked.ledgerStateId == current.pin.ledgerStateId && checked.environmentId == current.pin.environmentId &&
+        checked.validationSlot == current.pin.validationSlot && checked.pin == current.pin
+      val modern = AdmissionPreparation.checked(profile, current, checked)
+      assertEquals(modern.isRight, legacy)
+      if !legacy then
+        assertEquals(modern.left.toOption, Some(AdmissionPreparation.Failure.BindingMismatch))
+    }
+    assertEquals(
+      rows.count { (profile, current, checked) =>
+        AdmissionPreparation.checked(profile, current, checked).isRight
+      },
+      1
+    )
+  }
+
+  test("unexpected preparation exceptions remain the original effect failure") {
+    val sentinel = new IllegalStateException("preparation sentinel")
+    AdmissionPreparation
+      .evaluate[IO](AdmissionProfile.AdaVkey, view())(throw sentinel)
+      .attempt
+      .map { result =>
+        assert(result.swap.toOption.exists(_ eq sentinel))
+      }
+      .unsafeToFuture()
+  }
+
+  test("cancellation before suspended preparation does not evaluate or become domain rejection") {
+    val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+    val prepared = AdmissionPreparation.evaluate[IO](AdmissionProfile.AdaVkey, view()) {
+      calls.incrementAndGet()
+      Left(ScopedAdmission.Failure.Unsupported("not evaluated"))
+    }
+    (for
+      entered <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      fiber <- (entered.complete(()).void *> release.get *> prepared).start
+      _ <- entered.get
+      _ <- fiber.cancel
+      outcome <- fiber.join
+      _ = assert(outcome.isCanceled)
+      _ = assertEquals(calls.get(), 0)
+    yield ()).unsafeToFuture()
+  }
+
+  test("preparation requires only Sync but checked data cannot forge owner authority") {
+    import scala.compiletime.testing.{typeCheckErrors, typeChecks}
+    assert(
+      typeChecks(
+        """import lab.*; import lab.submission.*; import lab.ledger.ScopedAdmission; def prepare[F[_]: cats.effect.Sync](v: AdmissionView, r: Either[ScopedAdmission.Failure, ScopedAdmission.Candidate[StatePin]]) = AdmissionPreparation.evaluate[F](AdmissionProfile.AdaVkey,v)(r)"""
+      )
+    )
+    assert(
+      typeCheckErrors(
+        """import lab.*; import lab.submission.*; import lab.ledger.ScopedAdmission; def prepare[F[_]: cats.Applicative](v: AdmissionView, r: Either[ScopedAdmission.Failure, ScopedAdmission.Candidate[StatePin]]) = AdmissionPreparation.evaluate[F](AdmissionProfile.AdaVkey,v)(r)"""
+      ).nonEmpty
+    )
+    assert(
+      typeCheckErrors(
+        """import lab.*; import lab.submission.*; import lab.ledger.ScopedAdmission; def forge(v: AdmissionView,c: ScopedAdmission.Candidate[StatePin]) = new AdmissionPreparation.Prepared(v,c)"""
+      ).nonEmpty
+    )
+    assert(
+      typeCheckErrors(
+        """import lab.*; def fence[F[_]](p: AdmissionPreparation.Prepared): AdmissionPrograms.Fence[F] = p"""
+      ).nonEmpty
+    )
+    assert(
+      typeCheckErrors("""val error: lab.AdmissionPreparation.Failure = "unavailable"""").nonEmpty
+    )
+  }
+
   test("concurrent conflicting spends reserve one input; duplicate survives request release") {
     (for
       o <- owner()

@@ -75,60 +75,59 @@ private[lab] final class AdaSubmissionService[F[_]] private (
         if !available then F.pure(Result.Unavailable)
         else
           validations.permit.use { _ =>
-            F.cede *> F
-              .delay(
-                AdmissionValidation.prepare(
-                  profile,
-                  view.pin,
-                  view.ledger,
-                  original,
-                  Some(lab.vm.Pv9SubmissionEvaluator)
-                )
+            (F.cede *> AdmissionPreparation.evaluate[F](profile, view)(
+              AdmissionValidation.prepare(
+                profile,
+                view.pin,
+                view.ledger,
+                original,
+                Some(lab.vm.Pv9SubmissionEvaluator)
               )
-              .flatMap {
-                case Left(error) => F.pure(Result.Rejected(error))
-                case Right(candidate) =>
-                  if candidate.profile != profile || view.pin.profileId != profile.id ||
-                    candidate.ledgerStateId != view.pin.ledgerStateId ||
-                    candidate.environmentId != view.pin.environmentId ||
-                    candidate.validationSlot != view.pin.validationSlot || candidate.pin != view.pin
-                  then F.pure(Result.Unavailable)
-                  else
-                    view.pin
-                      .commitIfCurrent(
-                        F.uncancelable { _ =>
-                          F.monotonic
-                            .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
-                            .flatTap { outcome =>
-                              val label = outcome match
-                                case AdaPool.Outcome.Accepted(_) => AdmissionOutcome.Accepted
-                                case AdaPool.Outcome.AlreadyPresent(_) =>
-                                  AdmissionOutcome.AlreadyPresent
-                                case AdaPool.Outcome.Rejected(_) => AdmissionOutcome.PoolRejected
-                                case AdaPool.Outcome.Retry(_)    => AdmissionOutcome.Retry
-                                case AdaPool.Outcome.Unavailable => AdmissionOutcome.Unavailable
-                              observe(candidate, EvaluationEvent.Admission(label))
-                            }
-                        }
-                      )
-                      .map {
-                        case Fenced.Stale(pin) => Result.Retry(pin)
-                        case Fenced.Applied(AdaPool.Outcome.Accepted(receipt)) =>
-                          Result.Accepted(receipt)
-                        case Fenced.Applied(AdaPool.Outcome.AlreadyPresent(receipt)) =>
-                          Result.AlreadyPresent(receipt)
-                        case Fenced.Applied(AdaPool.Outcome.Rejected(reason)) =>
-                          Result.PoolRejected(reason)
-                        case Fenced.Applied(AdaPool.Outcome.Retry(pin))  => Result.Retry(pin)
-                        case Fenced.Applied(AdaPool.Outcome.Unavailable) => Result.Unavailable
-                      }
-              }
+            )).flatMap {
+              case Left(AdmissionPreparation.Failure.Rejected(error)) =>
+                F.pure(Result.Rejected(error))
+              case Left(AdmissionPreparation.Failure.BindingMismatch) => F.pure(Result.Unavailable)
+              case Right(prepared)                                    => commit(prepared)
+            }
           }
     yield result).handleErrorWith {
       case _: EvidenceUnavailable        => F.pure(Result.Unavailable)
       case _: AdmissionState.Unavailable => F.pure(Result.Unavailable)
       case error                         => F.raiseError(error)
     }
+
+  /** Still inside validations.permit.use; the owner fence and evidence mask are unchanged. */
+  private def commit(prepared: AdmissionPreparation.Prepared): F[Result] =
+    val view = prepared.view
+    val candidate = prepared.candidate
+    view.pin
+      .commitIfCurrent(
+        F.uncancelable { _ =>
+          F.monotonic
+            .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
+            .flatTap { outcome =>
+              val label = outcome match
+                case AdaPool.Outcome.Accepted(_) => AdmissionOutcome.Accepted
+                case AdaPool.Outcome.AlreadyPresent(_) =>
+                  AdmissionOutcome.AlreadyPresent
+                case AdaPool.Outcome.Rejected(_) => AdmissionOutcome.PoolRejected
+                case AdaPool.Outcome.Retry(_)    => AdmissionOutcome.Retry
+                case AdaPool.Outcome.Unavailable => AdmissionOutcome.Unavailable
+              observe(candidate, EvaluationEvent.Admission(label))
+            }
+        }
+      )
+      .map {
+        case Fenced.Stale(pin) => Result.Retry(pin)
+        case Fenced.Applied(AdaPool.Outcome.Accepted(receipt)) =>
+          Result.Accepted(receipt)
+        case Fenced.Applied(AdaPool.Outcome.AlreadyPresent(receipt)) =>
+          Result.AlreadyPresent(receipt)
+        case Fenced.Applied(AdaPool.Outcome.Rejected(reason)) =>
+          Result.PoolRejected(reason)
+        case Fenced.Applied(AdaPool.Outcome.Retry(pin))  => Result.Retry(pin)
+        case Fenced.Applied(AdaPool.Outcome.Unavailable) => Result.Unavailable
+      }
 
   /** Called under the owner gate; no validation, fiber joining, or owner re-entry here. */
   def changed(change: AdmissionStateChange): F[Unit] =
