@@ -1,0 +1,23 @@
+{
+  "schema": "registered-drep-native-provenance-v1",
+  "native": {
+    "scope": "synthetic native execution only; Scala parity separately pending",
+    "binarySha256": "abad2e1c0702cb645d80fc538d6ae9512e3b663f4cb5188d64d33c436012b7ea",
+    "inputSha256": "0113966ffd5d3383f83f22cf74228a9042402f3cf576b41c6a11461d860f2627",
+    "resultSha256": "b3ec8d4ae76e58341ecea5fe590b09bb33ea9ae9469382d6b350d72be9a45918",
+    "image": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c"
+  },
+  "executionSHA256": "c4811a147945446d9b97043b81031f35ed8a7575af62fb648f3de0b1d9802718",
+  "sourceFiles": {
+    "Main.hs": "0852605d2644fb855709fa5d895dd8baced1a1e756f9821fa39ceab2a51a58ca",
+    "synthetic-reward-diff.cabal": "35e0119f0b6414fe441a20572eaf65c2f30e2611e90ad5570b7bd89f8dd039a5",
+    "BoundaryMain.hs": "5cf8b69abd453b158b3a59483feb5c33ddf48618b7142e33e78925b2be448751",
+    "RegisteredDRepDiagnostic.hs": "af8eb7b1495a66eeab9888794d85a135d0f5592ef8e0086390e401e052a43151",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "cases.txt": "0113966ffd5d3383f83f22cf74228a9042402f3cf576b41c6a11461d860f2627",
+    "source-pins.json": "7cffe1c838bf653050af38f11f24be4cca12d763b441b086df3cb1cc60802900",
+    "GovernanceMain.hs": "6f956d1d3fecc192efdb5f7af4a4a3e76d6d1234ac8b764595a11e7e32e57ea4"
+  },
+  "syntheticGoldenSHA256": "b3ec8d4ae76e58341ecea5fe590b09bb33ea9ae9469382d6b350d72be9a45918",
+  "scope": "four finite supplied captures; no live epoch authority"
+}

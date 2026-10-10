@@ -1,0 +1,52 @@
+{
+  "format": "empty-governance-source-pins-v1",
+  "scope": "Pinned package source members for registered-DRep completion; native execution recorded separately.",
+  "packages": [
+    {
+      "package": "cardano-ledger-conway",
+      "version": "1.23.0.0",
+      "archiveSha256": "486831d3d94060fff90e5e85c74030c744008526aa83f4a18215da124720cf1a",
+      "files": [
+        {
+          "path": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance.hs",
+          "sha256": "1761313ddee85dd7fa743f8a8acc34126d76e8582c6e23e7f5d9bca74300ff71"
+        },
+        {
+          "path": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+          "sha256": "c0e5c984d28c69ff024e9f3d950284c7fd122ff22703279b744141d9720fcf97"
+        },
+        {
+          "path": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+          "sha256": "b0512e261b41eb4908949ecf7fdcde2d749718a3100c7854f70f8226ccee1005"
+        },
+        {
+          "path": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs",
+          "sha256": "db3f09dc46ba3411c770185e64c86ddbe3bc6ebb10d8843957c104c88b058e85"
+        },
+        {
+          "path": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+          "sha256": "1aac82302cbbda3f34319bb6bf787dbce1f3c939ed517922a0ea8267e3039599"
+        },
+        {
+          "path": "cardano-ledger-conway-1.23.0.0/src/Cardano/Ledger/Conway/State/VState.hs",
+          "sha256": "5910a94d51eb6320edb0b52037a204a46809bfc29bdab1e5e2134b0656155d0c"
+        }
+      ]
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archiveSha256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "files": [
+        {
+          "path": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/DRep.hs",
+          "sha256": "3dc4edcaf8b406f1281120dcae306b41bde22d1aee68585bd06a3d3729fbcb6b"
+        },
+        {
+          "path": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/State/Governance.hs",
+          "sha256": "e836e80dabae53177e4f4aa8e7f5fb51b3e5b3a6276d0ba98d11fadc327ebcae"
+        }
+      ]
+    }
+  ]
+}
