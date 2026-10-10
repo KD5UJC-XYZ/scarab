@@ -1,0 +1,14 @@
+{
+  "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/LedgerState/IncrementalStake.hs": {
+    "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+    "sha256": "b322438a1249fe25425ce5f4e416d58d5f27a4a3966e831d26f473f0c347f299"
+  },
+  "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/LedgerState/PulsingReward.hs": {
+    "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+    "sha256": "d351328c783e33552f73ee6cb7435fb5b08e0df9eaab28415990786e00cb3f4e"
+  },
+  "cardano-ledger-shelley-1.19.0.1/src/Cardano/Ledger/Shelley/PoolRank.hs": {
+    "archive": "cardano-ledger-shelley-1.19.0.1.tar.gz",
+    "sha256": "62f66ab3449f8e4bc9b2b6d5e6b8ef0aeeef23fb0a74ceae451034ec82d0a323"
+  }
+}

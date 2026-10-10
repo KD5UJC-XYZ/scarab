@@ -1,0 +1,54 @@
+{
+  "schema": "non-myopic-grid-native-provenance-v1",
+  "classification": "finite supplied arithmetic, no private identifiers or captured ledger corpus",
+  "inputSHA256": "b32511d9b33b6d55d77f2c23dcf3c89a1f007ef365d58c28b510365da8e92e3e",
+  "nativeResultSHA256": "2774bb0bcb85ad4ac6187067e8eb7fc3d57cfd65ae1ebedbb74415541d76401a",
+  "nativeBinarySHA256": "fe805eec4525b3ee8afd39025842f2f0b2d4dcc7355fcc666ac46ebf5dcd948a",
+  "image": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c",
+  "closureSHA256": "d16d7855d9910e808c45fc39ddf57e176e9b8bd315594916cc937e9932e64129",
+  "planSHA256": "594d4199378222935fe47fbadb1b6cdf32566802021a94d33c95357ca3e91418",
+  "nativeExecutionSHA256": "869995136828d7d742518f149fae2b5646f666e5c885e38bb045b37006cbd0c9",
+  "closureUnits": 235,
+  "sourceFiles": {
+    "Main.hs": "0852605d2644fb855709fa5d895dd8baced1a1e756f9821fa39ceab2a51a58ca",
+    "cases.json": "b32511d9b33b6d55d77f2c23dcf3c89a1f007ef365d58c28b510365da8e92e3e",
+    "NonMyopicDiagnostic.hs": "468d1faea46bd6639b6e93faf71f646d13d6d7fd6d8daa781d490ea869c0bd3e",
+    "synthetic-reward-diff.cabal": "652a746f8efebcb056859f3756a9790387d830d5af48aba9654a0e8e36830cc2",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "source-pins.json": "20d92aecedb671ac16f8237ad6ff585247ee07dd3fa90014f2f2312c7096e704"
+  },
+  "limitations": [
+    "eight supplied arithmetic cases only",
+    "not authenticated future go or reward freeze",
+    "no production generator or runtime guard change",
+    "no universal JVM/native pow-log equivalence"
+  ],
+  "actualComparison": {
+    "raw32Comparisons": 3200,
+    "raw32Mismatches": 0,
+    "raw64Comparisons": 16,
+    "raw64Mismatches": 0,
+    "primitives": [
+      "Math",
+      "StrictMath"
+    ],
+    "stages": [
+      "A: injected native binary64 probability",
+      "B: computed JVM probability"
+    ],
+    "arithmeticResultSHA256": "966c70065e8877a25ac13b749d8f848957adf48cd84891729497f9b4d1492a8b",
+    "jvmLogSHA256": "4ae6eb341c1faa688627efb58c860e9f578fb099ae120f5b08c483d7a506a7fe",
+    "testSourceSHA256": "9f6c1689d9cf2cee334904b1434eb4ca8663b42647d313e7b579d3e1ac6cec9f",
+    "passedTests": 51
+  },
+  "executionLimits": {
+    "network": "none",
+    "cpus": 2,
+    "memoryBytes": 2147483648,
+    "swapAdditionalBytes": 0,
+    "nativeDeadlineSeconds": 300,
+    "nativeElapsedSeconds": 74.51612928789109,
+    "nativeCompiler": "GHC9.6.7-O0",
+    "newCachePrivate": true
+  }
+}
