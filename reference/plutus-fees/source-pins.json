@@ -1,0 +1,71 @@
+{
+  "schema": "plutus-fee-source-pins-v1",
+  "kind": "source inspection only",
+  "sources": [
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Plutus/ExUnits.hs",
+      "sourceSHA256": "618964660c3e7445367563440c4c1994b8c50f6e129d7185cd05fb87a2a9be4c",
+      "lines": [
+        185,
+        190
+      ],
+      "purpose": "single ceiling of the combined rational memory and step price"
+    },
+    {
+      "package": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "archive": "cardano-ledger-alonzo-1.16.0.0.tar.gz",
+      "archiveSHA256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+      "member": "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/Tx.hs",
+      "sourceSHA256": "d4ebeaa8cb9269a4a3b88420b8f66474c0370b6a440a4b44e9ddff884fed0ed7",
+      "lines": [
+        453,
+        464
+      ],
+      "purpose": "linear memo fee plus execution fee from declared redeemer budgets"
+    },
+    {
+      "package": "cardano-ledger-alonzo",
+      "version": "1.16.0.0",
+      "archive": "cardano-ledger-alonzo-1.16.0.0.tar.gz",
+      "archiveSHA256": "195f1b9dac59bcdd8d4f499275f450bc37ee57169efee0fadf0d1676bc37cae5",
+      "member": "cardano-ledger-alonzo-1.16.0.0/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+      "sourceSHA256": "1330fdceee12c3dbb02473041cb26b42b583139a7358033a800bc7cab7668a83",
+      "lines": [
+        343,
+        350
+      ],
+      "purpose": "collateral sufficiency uses supplied fee times percentage"
+    },
+    {
+      "package": "cardano-ledger-babbage",
+      "version": "1.14.0.0",
+      "archive": "cardano-ledger-babbage-1.14.0.0.tar.gz",
+      "archiveSHA256": "8a0466673e9de9f0a2375cd137fb1b6368c901929865b0def41abd83a200730d",
+      "member": "cardano-ledger-babbage-1.14.0.0/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+      "sourceSHA256": "a184942394c2bbce9cf1a09771d70c02677927f5799a01e0927fca4fe33b183f",
+      "lines": [
+        225,
+        241
+      ],
+      "purpose": "reuse Alonzo collateral predicate against collateral balance"
+    },
+    {
+      "package": "cardano-ledger-core",
+      "version": "1.21.0.0",
+      "archive": "cardano-ledger-core-1.21.0.0.tar.gz",
+      "archiveSHA256": "9789ca4b4959048ccb881aeabf623ce4514394e31e5a270b6b301dbcdaf1810a",
+      "member": "cardano-ledger-core-1.21.0.0/src/Cardano/Ledger/Plutus/TxInfo.hs",
+      "sourceSHA256": "0f358b95a13e726318ec1dd8677a296fb5378416143250ac882a6384b30a47b7",
+      "lines": [
+        164,
+        171
+      ],
+      "purpose": "truncate absolute POSIX time in milliseconds after epoch-info conversion"
+    }
+  ]
+}
