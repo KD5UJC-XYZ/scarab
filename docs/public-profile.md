@@ -640,3 +640,39 @@ Retained log SHA256: `4e55caa173e145451f61ab1eb2372e36ae4ef4d256870286b1f6d23724
 Gate/Python log SHA256: `ff7bbfd34d2f230078afa48fb7953ab49ac3a452d54ae7d03f42f58f251729ef`.
 The preceding `c757439` checkpoint passed [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38031341565);
 this later source requires its own CI result.
+
+
+## Measured repeated-soak preparation — 2026-10-10
+
+Runtime source `b5256c1265f60ff5e10d4f397c509a32c5d0cddf` and supervisor
+integration `058c0b2e23ca86ab24d7631dfcda755af0e6a475` add the explicit pure-JVM soak lifetime allowance,
+follow-loop timestamps captured before peer cleanup, and peer-first early
+restart supervision. Process continuity binds container identity, PID, start
+timestamp, zero restarts and runtime owner. Accepted overlap must cover the
+requested target after a two-second clock uncertainty discount. Existing
+unflagged and native-assisted duration bounds remain unchanged.
+
+The combined public source passed 2,001 Scala/translator tests, 27 serial
+gates and 576 Python tests run (574 passed, 2 expected skips).
+The separate retained-data invocation passed 60 tests on the identical
+production runtime sources; it is a separate invocation, not a distinct-test
+sum. The two new HTTP probe tests compiled and passed in the combined profile.
+Independent review covered runtime and supervisor changes, including a separate
+60-test Python rerun. Validation log SHA256 values:
+
+- Public Scala/translator: `bb288c1d7fed0f63a34826fd2da23af6a0fa59bee8bb3d66057325c2acec77c7`.
+- Retained invocation: `d1443271f3d318e73e0861357240fdcd59a5428bf3c2b3b01e67db7107d12555`.
+- Serial gates/Python: `f062afa41915352fc5598b12a98a901c83c81f0cb72625285f847404e3fb0562`.
+
+The earlier supervisor aggregate failed because its safe-missing-directory test
+used actual free space in a 128 MiB test tmpfs against the production 2 GiB floor.
+The test now supplies explicit disk-space inputs and retains low-space rejection;
+the production floor is unchanged. The failed evidence remains retained.
+
+This is still disabled preparation. The comparator guard refuses every normal
+launch path, and no live smoke or 600-second soak ran for this checkpoint. The
+repeated terminal comparator remains incomplete. Its directory-edit approval
+propagation blocker is separate from the user's test authorization. No repeated
+terminal equality, native likelihood parity, full ledger or consensus claim is
+made. The [supervisor contract](plutus-two-service-soak.md) records the measured
+overlap rules and 1080-second operation plus 30-second cleanup limits.
