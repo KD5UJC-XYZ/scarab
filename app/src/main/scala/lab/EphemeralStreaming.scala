@@ -24,6 +24,10 @@ private[lab] object EphemeralStreaming:
     def valid: Boolean = retained >= 1 && retained <= 8 && maxEvents > 0 && maxEvents <= 4096 &&
       maxBlocks > 0 && maxBlocks <= maxEvents && maxBytes > 0 &&
       maxBytes <= 256L * 1024 * 1024 && duration > Duration.Zero && duration <= 120.seconds
+  private[lab] def repeatedLimits(limits: Limits): Boolean =
+    limits != null && limits.copy(duration = 120.seconds).valid &&
+      limits.maxBlocks <= 512 && limits.duration > Duration.Zero && limits.duration <= 600.seconds
+
   final case class Counters(
       events: Long = 0,
       blocks: Long = 0,
@@ -54,8 +58,24 @@ private[lab] object EphemeralStreaming:
       runtime: CoherentDriver[F],
       limits: Limits
   )(next: F[Option[Event]]): F[Report] =
+    runWithin(runtime, limits, repeated = false)(next)
+
+  /** Explicit runtime-dependent repeated research profile; default limits are unchanged. */
+  private[lab] def runRepeated[F[_]: Async](
+      runtime: CoherentDriver[F],
+      limits: Limits
+  )(next: F[Option[Event]]): F[Report] =
+    runWithin(runtime, limits, repeated = true)(next)
+
+  private def runWithin[F[_]: Async](
+      runtime: CoherentDriver[F],
+      limits: Limits,
+      repeated: Boolean
+  )(next: F[Option[Event]]): F[Report] =
     val F = Async[F]
-    if runtime == null || limits == null || !limits.valid || limits.retained > runtime.maxBlocks
+    if runtime == null || limits == null ||
+      !(if repeated then repeatedLimits(limits)
+        else limits.valid) || limits.retained > runtime.maxBlocks
     then F.raiseError(new IllegalArgumentException("bounded streaming runtime/limits required"))
     else
       for

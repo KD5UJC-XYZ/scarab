@@ -120,7 +120,34 @@ private[lab] object PlutusServiceRuntime:
     require(effective > now && effective.isValidLong, "initial epoch service window missed")
     (effective.toLong, if effective < requested then WindowEnd.Epoch else WindowEnd.Duration)
 
+  private[lab] def repeatedDeadline(now: Long, requestedSeconds: Int): (Long, WindowEnd) =
+    require(requestedSeconds >= 1 && requestedSeconds <= 600, "bounded repeated duration")
+    val end = BigInt(now) + BigInt(requestedSeconds) * 1000
+    require(end.isValidLong && end > now, "repeated deadline range")
+    (end.toLong, WindowEnd.Duration)
+
   private def work(config: PlutusServiceCommand.Config): IO[Boolean] =
+    config.repeated match
+      case None => workWithOracle(config, None)
+      case Some(PlutusServiceCommand.Repeated.Jvm) =>
+        JvmLikelihoodGenerator
+          .resource[IO](config.base.exchange.resolve("jvm-likelihood"))
+          .use(generator => workWithOracle(config, Some(generator)))
+      case Some(PlutusServiceCommand.Repeated.Native(executable, executableSHA256)) =>
+        NativeLikelihoodOracle
+          .resource[IO](
+            NativeLikelihoodOracle.Config(
+              executable,
+              executableSHA256,
+              config.base.exchange.resolve("native-likelihood")
+            )
+          )
+          .use(oracle => workWithOracle(config, Some(oracle)))
+
+  private def workWithOracle(
+      config: PlutusServiceCommand.Config,
+      oracle: Option[NativeLikelihoodOracle.Oracle[IO]]
+  ): IO[Boolean] =
     val c = config.base
     val root = c.exchange
     for
@@ -137,10 +164,20 @@ private[lab] object PlutusServiceRuntime:
           "checked local network and epoch geometry"
         )
       )
-      startup <- PlutusServiceCheckpoint.start(
+      earlyStartup <- PlutusServiceCheckpoint.start(
         config.checkpoint,
         joined,
         get(Bytes.fromHex(c.manifest))
+      )
+      startup <- oracle.fold(IO.pure(earlyStartup))(o =>
+        RepeatedPlutusBootstrap.start(
+          joined,
+          earlyStartup,
+          o,
+          if config.repeated.contains(PlutusServiceCommand.Repeated.Jvm)
+          then lab.ledger.ConwayNativeLikelihood.Mode.PureJvm
+          else lab.ledger.ConwayNativeLikelihood.Mode.CheckedJvm
+        )
       )
       startPoint = startup.snapshot.state.certificates.state.tip
       effectiveMaxBlocks = config.checkpoint.flatMap(_.checkpointAfter).getOrElse(config.maxBlocks)
@@ -201,8 +238,39 @@ private[lab] object PlutusServiceRuntime:
               saved: Option[PlutusServiceCheckpoint.Saved] = None,
               admission: Option[AdaSubmissionService.Snapshot] = None
           ): J =
-            config.checkpoint.fold(value) { mode =>
+            val scoped = config.repeated.fold(value) { mode =>
               value match
+                case J.Obj(fields) =>
+                  J.Obj(
+                    fields.updated(
+                      "epochMode",
+                      record(
+                        "mode" -> text(mode.id),
+                        "jvmComputed" -> bool(true),
+                        "nativeChecked" -> bool(mode.executablePin.nonEmpty),
+                        "nativeRuntimeDependency" -> bool(mode.executablePin.nonEmpty),
+                        "researchOnly" -> bool(true),
+                        "activeStartsAfterPeerReady" -> bool(true),
+                        "startupTimeoutSeconds" -> num(30),
+                        "nativeExecutableSHA256" -> mode.executablePin.fold[J](J.Lit("null"))(x =>
+                          text(x.hex)
+                        ),
+                        "nativeEvidenceDirectory" -> mode.executablePin.fold[J](J.Lit("null"))(_ =>
+                          text("native-likelihood")
+                        ),
+                        "generationEvidenceDirectory" -> text(
+                          if mode.executablePin.nonEmpty then "native-likelihood"
+                          else "jvm-likelihood"
+                        ),
+                        "maxEpochTransitions" -> num(8),
+                        "lateCheckpointRestoreSupported" -> bool(false)
+                      )
+                    )
+                  )
+                case _ => throw new IllegalArgumentException("service metadata object required")
+            }
+            config.checkpoint.fold(scoped) { mode =>
+              scoped match
                 case J.Obj(fields) =>
                   J.Obj(
                     fields.updated(
@@ -293,7 +361,15 @@ private[lab] object PlutusServiceRuntime:
               rows <- published.get
               _ <- IO(require(rows.size < config.maxBlocks, "publication file bound"))
               pool <- node.service.snapshot.attempt
-              value = record(
+              repeated <- config.repeated.traverse { _ =>
+                node.owner.withCurrent(change.view.pin)(node.owner.snapshot).flatMap { checked =>
+                  IO.fromEither(
+                    checked
+                      .leftMap(_ => new IllegalStateException("repeated publication state changed"))
+                  ).map(snapshot => PlutusRepeatedPublication.fields(snapshot.state))
+                }
+              }
+              baseValue = record(
                 "schema" -> text("plutus-service-publication-v1"),
                 "index" -> num(rows.size),
                 "pin" -> pin(change.view.pin),
@@ -315,6 +391,11 @@ private[lab] object PlutusServiceRuntime:
                 "diagnosticOnly" -> bool(true),
                 "fullLedgerValidated" -> bool(false)
               )
+              value = repeated.fold(baseValue) { fields =>
+                baseValue match
+                  case J.Obj(all) => J.Obj(all.updated("repeatedEpoch", fields))
+                  case _          => throw new IllegalStateException("publication object required")
+              }
               file = f"publication-${rows.size}%04d.json"
               _ <- boundedSave(root.resolve(file), value, MaxPublicationBytes)
               _ <- published.update(
@@ -377,7 +458,10 @@ private[lab] object PlutusServiceRuntime:
             .use { api =>
               for
                 now <- IO.realTime.map(_.toMillis)
-                window <- IO(deadline(now, boundary, config.durationSeconds))
+                window <- IO(
+                  if config.repeated.nonEmpty then repeatedDeadline(now, 30)
+                  else deadline(now, boundary, config.durationSeconds)
+                )
                 admission <- config.checkpoint.traverse(_ => node.service.snapshot)
                 _ <- admission.traverse_(a =>
                   IO(
@@ -439,22 +523,60 @@ private[lab] object PlutusServiceRuntime:
                 _ <- IO(
                   require(started < window._1, "service startup exhausted effective deadline")
                 )
+                activeWindow <- IO(
+                  if config.repeated.nonEmpty then repeatedDeadline(started, config.durationSeconds)
+                  else window
+                )
+                activeView <- node.owner.current
+                _ <- config.repeated.traverse_(_ =>
+                  boundedSave(
+                    root.resolve("service-active.json"),
+                    record(
+                      "schema" -> text("plutus-service-active-v1"),
+                      "pin" -> pin(activeView.pin),
+                      "repeatedEpoch" -> PlutusRepeatedPublication.fields(startup.snapshot.state),
+                      "epochMode" -> text(config.repeated.get.id),
+                      "startedUnixMillis" -> num(started),
+                      "deadlineUnixMillis" -> num(activeWindow._1),
+                      "durationSeconds" -> num(config.durationSeconds)
+                    ),
+                    16384
+                  )
+                )
+                followStarted <- IO.realTime.map(_.toMillis)
+                _ <- IO(
+                  require(
+                    followStarted < activeWindow._1,
+                    "active deadline exhausted before follow"
+                  )
+                )
                 race <- IO.race(
-                  relay.attempt,
-                  PlutusSameEpochFollow.runUntil(
-                    node.owner,
-                    peers,
-                    startPoint,
-                    1000,
-                    EphemeralStreaming.Limits(
+                  relay.attempt, {
+                    val limits = EphemeralStreaming.Limits(
                       maxEvents = 4096,
                       maxBlocks = effectiveMaxBlocks,
-                      duration = (window._1 - started).millis
+                      duration = (activeWindow._1 - followStarted).millis
                     )
-                  )(published.get.map(_.size >= effectiveMaxBlocks))(observed)
+                    val complete = published.get.map(_.size >= effectiveMaxBlocks)
+                    oracle match
+                      case None =>
+                        PlutusSameEpochFollow
+                          .runUntil(node.owner, peers, startPoint, 1000, limits)(complete)(observed)
+                          .map(_.stop)
+                      case Some(o) =>
+                        PlutusRepeatedEpochFollow
+                          .runUntil(
+                            PlutusRepeatedDriver(startup.runtime, node.owner, o),
+                            peers,
+                            startPoint,
+                            1000,
+                            limits
+                          )(complete)(observed)
+                          .map(_.stop)
+                  }
                 )
-                reason = PlutusRunPolicy.fromRace(race.map(_.stop), window._2)
-              yield (now, window, started, reason)
+                reason = PlutusRunPolicy.fromRace(race, activeWindow._2)
+              yield (now, activeWindow, started, reason)
             }
             .flatMap { case (now, window, started, reason) =>
               // HTTP and all owned request fibers are finalized before capturing receipts/state.
@@ -502,7 +624,9 @@ private[lab] object PlutusServiceRuntime:
                     "finalPin" -> pin(view.pin),
                     "initialEpoch" -> num(0),
                     "requestedDeadlineUnixMillis" -> num(
-                      BigInt(now) + config.durationSeconds * 1000
+                      BigInt(
+                        if config.repeated.nonEmpty then started else now
+                      ) + config.durationSeconds * 1000
                     ),
                     "effectiveDeadlineUnixMillis" -> num(window._1),
                     "startedUnixMillis" -> num(started),
@@ -529,7 +653,7 @@ private[lab] object PlutusServiceRuntime:
             root.resolve("cancelled.json"),
             record(
               "schema" -> text("plutus-service-cancelled-v1"),
-              "resourcesFinalized" -> bool(opens == closes),
+              "resourcesFinalized" -> bool(opens == closes && config.repeated.isEmpty),
               "transportOpens" -> num(opens),
               "transportCloses" -> num(closes)
             ),
@@ -554,7 +678,13 @@ private[lab] object PlutusServiceRuntime:
                   )
                 )
               ),
-              "resourcesFinalized" -> bool(true),
+              "resourcesFinalized" -> bool(closedResult._3 match
+                case PlutusRunPolicy.ServiceStop.FollowerFailure(
+                      PlutusRunPolicy.FollowStop
+                        .Failed(_: PlutusRepeatedEpochFollow.ResourceFailure)
+                    ) =>
+                  false
+                case _ => true),
               "transportOpens" -> num(opens),
               "transportCloses" -> num(closes)
             )
@@ -565,7 +695,7 @@ private[lab] object PlutusServiceRuntime:
 
   def run(config: PlutusServiceCommand.Config): IO[ExitCode] = IO
     .defer(work(config))
-    .timeout(220.seconds)
+    .timeout(if config.repeated.nonEmpty then 760.seconds else 220.seconds)
     .map(ok => if ok then ExitCode.Success else ExitCode(2))
     .handleErrorWith { e =>
       val value = record(
