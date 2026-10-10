@@ -73,34 +73,12 @@ private[lab] final class SubmissionOwner[F[_]] private (
     counter <- generation.get
     state = snapshot.state
     pin <- F.fromEither(
-      (for
-        owner <- PinDomain.OwnerId.checked(ownerId).left.map(_.message)
-        generation <- PinDomain.Generation.checked(counter).left.map(_.message)
-        coherent <- PinDomain.CoherentStateId.checked(state.id).left.map(_.message)
-        ledger <- PinDomain.LedgerStateId.checked(state.ledger.id).left.map(_.message)
-        environment <- PinDomain.EnvironmentId
-          .checked(state.ledger.environment.id)
-          .left
-          .map(_.message)
-        slot <- PinDomain.ValidationSlot.checked(state.ledger.slot).left.map(_.message)
-        checked <- StatePin
-          .checkedTyped(
-            owner,
-            generation,
-            state.certificates.state.tip,
-            coherent,
-            ledger,
-            environment,
-            slot,
-            profile
-          )
-          .left
-          .map(_.message)
-      yield checked)
-        .leftMap(new IllegalStateException(_))
+      pinFor(ownerId, counter, state, profile).leftMap(new ViewConstructionFailure(_))
     )
     result <- F.fromEither(
-      AdmissionView.checked(pin, state.ledger).leftMap(new IllegalStateException(_))
+      AdmissionView
+        .checkedTyped(pin, state.ledger)
+        .leftMap(error => new ViewConstructionFailure(ViewConstructionError.View(error)))
     )
   yield result
 
@@ -164,6 +142,60 @@ private[lab] final class SubmissionOwner[F[_]] private (
   }
 
 private[lab] object SubmissionOwner:
+  enum ViewConstructionError:
+    case Domain(cause: PinDomain.Error)
+    case Pin(cause: StatePin.ConstructionError)
+    case View(cause: AdmissionView.ConstructionError)
+    def message: String = this match
+      case Domain(cause) => cause.message
+      case Pin(cause)    => cause.message
+      case View(cause)   => cause.message
+
+  /** One effect-boundary renderer. The closed cause remains available without parsing this text. */
+  final class ViewConstructionFailure(val error: ViewConstructionError)
+      extends IllegalStateException(error.message)
+
+  /** Pure role-safe assembly shared by the actual owner view path and boundary tests. */
+  private[lab] def pinFor(
+      ownerId: Bytes,
+      counter: BigInt,
+      state: CoherentSequence.State,
+      profile: AdmissionProfile
+  ): Either[ViewConstructionError, StatePin] =
+    for
+      owner <- PinDomain.OwnerId.checked(ownerId).left.map(ViewConstructionError.Domain(_))
+      generation <- PinDomain.Generation.checked(counter).left.map(ViewConstructionError.Domain(_))
+      coherent <- PinDomain.CoherentStateId
+        .checked(state.id)
+        .left
+        .map(ViewConstructionError.Domain(_))
+      ledger <- PinDomain.LedgerStateId
+        .checked(state.ledger.id)
+        .left
+        .map(ViewConstructionError.Domain(_))
+      environment <- PinDomain.EnvironmentId
+        .checked(state.ledger.environment.id)
+        .left
+        .map(ViewConstructionError.Domain(_))
+      slot <- PinDomain.ValidationSlot
+        .checked(state.ledger.slot)
+        .left
+        .map(ViewConstructionError.Domain(_))
+      pin <- StatePin
+        .checkedTyped(
+          owner,
+          generation,
+          state.certificates.state.tip,
+          coherent,
+          ledger,
+          environment,
+          slot,
+          profile
+        )
+        .left
+        .map(ViewConstructionError.Pin(_))
+    yield pin
+
   private enum Lifecycle[F[_]]:
     case Initializing()
     case Active(observer: AdmissionStateObserver[F])

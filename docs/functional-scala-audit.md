@@ -36,6 +36,14 @@ This is a concrete capability extraction, not a global effect-stack migration. N
 
 Validation: the isolated 2-CPU/2-GiB offline follow-on build passed formatting and all 38 focused checks: six capability tests plus 32 existing owner/service/evidence regressions. Coverage includes compiler-negative capability separation, old/new retry-trace equivalence for zero through five stale observations, failure non-retry, cancellation before fencing, concrete-owner masked completion and stale action suppression. Private evidence: `cardano-admission-capability-tests-20261010-first/result.json` and `tests.log` (SHA-256 `2dc92510579a31952483259d6cd61a9d6498c71c82661e83bc3ddbd8ae59dd27`). No new live capability follows from these offline tests.
 
+## Follow-on: typed owner view construction errors
+
+`AdmissionView.checkedTyped` returns closed missing-input/full-pin-mismatch causes. Its existing `checked` method remains the string compatibility boundary with unchanged validation order and text. The actual `SubmissionOwner` view path now preserves `PinDomain.Error`, `StatePin.ConstructionError` and `AdmissionView.ConstructionError` in a `ViewConstructionError` sum; it no longer renders a string between each layer. `ViewConstructionFailure` renders once at the existing effect boundary while retaining the structured cause and the `IllegalStateException` compatibility superclass.
+
+The pure `pinFor` assembly is used by the owner itself. Both existing `F.fromEither` boundaries, owner gate and cancellation mask remain in place; no lifecycle or authority operation moved. Admission profiles already use a closed enum at this boundary, so no redundant opaque profile wrapper was added. HTTP code/category strings remain at their final wire-rendering boundary. Broader CLI/runtime errors and remaining string compatibility callers are still unfinished.
+
+Validation: formatting and all 42 focused tests passed in the isolated 2-CPU/2-GiB offline build. Four new tests cover actual owner field/reference equivalence, distinct domain/pin/view causes, historical rendering and validation order, and compiler-negative arbitrary-string substitution; the other 38 retain owner/service/evidence/capability regression coverage. Private evidence: `cardano-typed-admission-error-tests-20261010-first/result.json` and `tests.log` (SHA-256 `9333a25d5e7cdc58c12e0b7a54f942036e8159db35ab70e6f4ec3b0f53f60ada`). No live behavior or broader typed-error completion is claimed.
+
 ## Decision and priorities
 
 The code is already functional at important boundaries: pure immutable ledger transitions, private-constructor admission evidence, typed rejection sums, Resource-owned lifetimes, and a single admission/publication gate. Preserve these. The strongest improvement is to make policy and authority visible in types; replacing every match or local mutable variable would not achieve that.

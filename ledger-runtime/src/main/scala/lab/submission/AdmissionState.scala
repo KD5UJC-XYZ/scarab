@@ -9,11 +9,24 @@ import lab.ledger.ClusterTransition
   */
 final class AdmissionView private (val pin: StatePin, val ledger: ClusterTransition.State)
 object AdmissionView:
+  enum ConstructionError:
+    case MissingInput, PinMismatch
+    def message: String = this match
+      case MissingInput => "pin and ledger view required"
+      case PinMismatch  => "ledger view differs from complete state pin"
+
+  /** Compatibility boundary; internal callers can retain the construction cause until rendering. */
   def checked(pin: StatePin, ledger: ClusterTransition.State): Either[String, AdmissionView] =
-    if pin == null || ledger == null then Left("pin and ledger view required")
+    checkedTyped(pin, ledger).left.map(_.message)
+
+  def checkedTyped(
+      pin: StatePin,
+      ledger: ClusterTransition.State
+  ): Either[ConstructionError, AdmissionView] =
+    if pin == null || ledger == null then Left(ConstructionError.MissingInput)
     else if pin.ledgerStateId != ledger.id || pin.environmentId != ledger.environment.id ||
       pin.validationSlot != ledger.slot
-    then Left("ledger view differs from complete state pin")
+    then Left(ConstructionError.PinMismatch)
     else Right(new AdmissionView(pin, ledger))
 
 /** Called only after coherent block publication. Memos reconstruct an envelope; these fields
