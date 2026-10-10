@@ -1,0 +1,25 @@
+{
+  "schema": "dynamic-likelihood-native-provenance-v1",
+  "native": {
+    "scope": "synthetic native execution only; Scala parity separately pending",
+    "binarySha256": "3cde4f06af463f72b4ccb3b7e30b03e42cb926b71a4168fa9f9f910ae3b25ed2",
+    "inputSha256": "76f5cbf409d6ef333bdd594d83c3e97980644796f01c7de636299ea57d5a2333",
+    "resultSha256": "96966e4f3188efd1e71ebda01a60406ead3f16a0baa1508b8b9ef574a90e9afc",
+    "image": "sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c"
+  },
+  "executionSHA256": "b2b2f45b2d21c0b3b2c7ce6efd42e36929b2c7bb1b9ddf1eabd36e565fb56a02",
+  "sourceFiles": {
+    "Main.hs": "0852605d2644fb855709fa5d895dd8baced1a1e756f9821fa39ceab2a51a58ca",
+    "NonMyopicDiagnostic.hs": "9d8fba88614397672a1ece6478d84a487c148984d6ce288f5078f66fa8d3e1c6",
+    "synthetic-reward-diff.cabal": "652a746f8efebcb056859f3756a9790387d830d5af48aba9654a0e8e36830cc2",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "source-pins.json": "20d92aecedb671ac16f8237ad6ff585247ee07dd3fa90014f2f2312c7096e704"
+  },
+  "syntheticGoldenSHA256": "96966e4f3188efd1e71ebda01a60406ead3f16a0baa1508b8b9ef574a90e9afc",
+  "limitations": [
+    "explicit runtime native diagnostic dependency",
+    "no runtime epoch guard changes",
+    "finite recorded comparisons, per-request validation required",
+    "trusted executable and separately pinned dynamic-library environment"
+  ]
+}
