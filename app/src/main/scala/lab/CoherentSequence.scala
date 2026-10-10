@@ -104,7 +104,8 @@ object CoherentSequence:
       private[CoherentSequence] val rewards: Option[SyntheticRewards],
       private[CoherentSequence] val epochBinding: Option[SyntheticEpochContext] = None,
       private[CoherentSequence] val transitionBoundary: Option[HistoricalBoundary] = None,
-      private[CoherentSequence] val syntheticBoundary: Option[SyntheticBoundaryState.State] = None
+      private[CoherentSequence] val syntheticBoundary: Option[SyntheticBoundaryState.State] = None,
+      private[CoherentSequence] val compositionPending: Boolean = false
   )
   final class Applied private[CoherentSequence] (
       val state: State,
@@ -570,7 +571,8 @@ object CoherentSequence:
       current: State,
       fence: Fence,
       preview: SyntheticSuccessor,
-      block: SequenceInput.Block
+      block: SequenceInput.Block,
+      deferComposition: Boolean = false
   ): Result[Candidate] = protect {
     for
       _ <- Either.cond(fence.owner eq owner, (), Failure.ForeignFence)
@@ -657,54 +659,102 @@ object CoherentSequence:
         "successor-eligibility",
         PraosEligibility.check(eligibilityContext, Vector(certificate))
       )
-      pending <- ledger(
-        Ledger.prepareSyntheticSuccessorBlock(
-          current.ledger,
-          preview.preview.epoch,
-          preview.preview.pots.fees,
-          preview.preview.id,
-          block.header.hash,
-          block.transactionMemos,
-          block.header.slot,
-          Some(lab.vm.Pv9SubmissionEvaluator)
-        )
+      _ <- Either.cond(
+        !current.syntheticBoundary.exists(_.repeated) || deferComposition,
+        (),
+        Failure.Unsupported("repeated-boundary", "effectful checked preparation required")
       )
+      plutusBinding <-
+        if current.syntheticBoundary.exists(
+            _.repeated
+          ) && current.ledger.environment.plutus.nonEmpty
+        then
+          val component = current.syntheticBoundary.get
+          val old = current.ledger.environment.plutus.get.parameters
+          for
+            parameters <- checked(
+              "successor-current-parameters",
+              lab.ledger.PlutusParameters.decode(
+                component.roles.current.original,
+                component.roles.current.sha256,
+                old.modelText
+              )
+            )
+            bound <- checked(
+              "successor-plutus-binding",
+              lab.ledger.PlutusSuccessorBinding.prepare(current.ledger, preview.preview, parameters)
+            )
+          yield Some(bound)
+        else Right(None)
+      pending <- ledger(plutusBinding match
+        case Some(bound) =>
+          Ledger.preparePlutusSuccessorBlock(
+            current.ledger,
+            bound,
+            block.header.hash,
+            block.transactionMemos,
+            block.header.slot,
+            Some(lab.vm.Pv9SubmissionEvaluator)
+          )
+        case None =>
+          Ledger.prepareSyntheticSuccessorBlock(
+            current.ledger,
+            preview.preview.epoch,
+            preview.preview.pots.fees,
+            preview.preview.id,
+            block.header.hash,
+            block.transactionMemos,
+            block.header.slot,
+            Some(lab.vm.Pv9SubmissionEvaluator)
+          ))
       binding <- current.stakeBinding.toRight(Failure.Rejected("successor-stake", "missing stake"))
       (stakeOwner, beforeStake) = binding
       stake <- checked(
         "successor-stake",
-        Stake.prepareSyntheticSuccessor(
-          stakeOwner,
-          beforeStake,
-          current.ledger,
-          pending,
-          preview.preview
-        )
+        plutusBinding match
+          case Some(bound) =>
+            Stake.preparePlutusSuccessor(
+              stakeOwner,
+              beforeStake,
+              current.ledger,
+              pending,
+              preview.preview,
+              bound
+            )
+          case None =>
+            Stake.prepareSyntheticSuccessor(
+              stakeOwner,
+              beforeStake,
+              current.ledger,
+              pending,
+              preview.preview
+            )
       )
       selected <- checked("successor-stake", Stake.select(stakeOwner, beforeStake, stake))
       rewards <- afterBoundaryRewards(current, preview.preview, selected)
-      boundary <- current.syntheticBoundary.traverse { before =>
-        for
-          applied <- checked(
-            "synthetic-boundary",
-            SyntheticBoundaryState.atBoundary(
-              before,
-              current.syntheticRewards.flatMap(_.frozen),
-              preview.completedPulser,
-              preview.preview,
-              preview.completeEffect
+      boundary <- (if deferComposition then None else current.syntheticBoundary).traverse {
+        before =>
+          for
+            applied <- checked(
+              "synthetic-boundary",
+              SyntheticBoundaryState.atBoundary(
+                before,
+                current.syntheticRewards.flatMap(_.frozen),
+                preview.completedPulser,
+                preview.preview,
+                preview.completeEffect
+              )
             )
-          )
-          after <- checked(
-            "synthetic-boundary",
-            SyntheticBoundaryState.afterBoundaryFreeze(
-              before,
-              applied,
-              rewards.flatMap(_.frozen),
-              rewards.flatMap(_.pulser)
+            after <- checked(
+              "synthetic-boundary",
+              SyntheticBoundaryState.afterBoundaryFreeze(
+                before,
+                applied,
+                rewards.flatMap(_.frozen),
+                rewards.flatMap(_.pulser)
+              )
             )
-          )
-        yield after
+          yield after
       }
     yield new Candidate(
       owner,
@@ -726,7 +776,8 @@ object CoherentSequence:
           current.ledger.environment.id
         )
       ),
-      boundary
+      boundary,
+      compositionPending = deferComposition
     )
   }
 
@@ -859,7 +910,8 @@ object CoherentSequence:
         Failure.Unsupported("synthetic-rewards", "profile not enabled")
       )
       _ <- Either.cond(
-        !current.syntheticBoundary.exists(_.boundaryApplied),
+        !current.syntheticBoundary.exists(b => b.boundaryApplied && !b.repeated) &&
+          !current.syntheticBoundary.exists(b => b.repeated && b.transitions >= b.repeatedLimit),
         (),
         Failure.Unsupported(
           "synthetic-boundary",
@@ -981,7 +1033,8 @@ object CoherentSequence:
       maxBlocks: Int,
       current: State,
       block: SequenceInput.Block,
-      synthetic: Boolean = false
+      synthetic: Boolean = false,
+      deferComposition: Boolean = false
   ): Result[Candidate] = protect {
     val certContext =
       if synthetic then current.epochBinding.fold(context.certificates)(_.certificates)
@@ -994,6 +1047,11 @@ object CoherentSequence:
       if synthetic then current.epochBinding.fold(context.eligibility.stakes)(_.stakes)
       else context.eligibility.stakes
     for
+      _ <- Either.cond(
+        !current.syntheticBoundary.exists(_.repeated) || deferComposition,
+        (),
+        Failure.Unsupported("repeated-boundary", "effectful checked preparation required")
+      )
       _ <- Either.cond(
         block.header.slot / nonceContext.epochLength == epoch,
         (),
@@ -1046,7 +1104,7 @@ object CoherentSequence:
         checked("stake", Stake.prepare(stakeOwner, state, current.ledger, pending))
       }
       rewards <- prepareRewards(current, block.header.slot)
-      boundary <- current.syntheticBoundary.traverse(b =>
+      boundary <- (if deferComposition then None else current.syntheticBoundary).traverse(b =>
         checked(
           "synthetic-boundary-freeze",
           SyntheticBoundaryState.advanceFreeze(
@@ -1068,7 +1126,8 @@ object CoherentSequence:
       stake,
       rewards,
       current.epochBinding,
-      syntheticBoundary = boundary
+      syntheticBoundary = boundary,
+      compositionPending = deferComposition
     )
   }
   private def bindings(current: State, c: Candidate): Boolean =
@@ -1094,7 +1153,9 @@ object CoherentSequence:
       candidate: Candidate
   ): Result[(Cell, Applied)] = protect {
     val current = cell.state
-    if !(candidate.owner eq owner) then Left(Failure.ForeignCandidate)
+    if candidate.compositionPending then
+      Left(Failure.Rejected("composition", "unfinished checked preparation"))
+    else if !(candidate.owner eq owner) then Left(Failure.ForeignCandidate)
     else if current.id != candidate.before.id || current.revision != candidate.before.revision ||
       cell.receipts.size >= maxBlocks || !bindings(current, candidate)
     then Left(Failure.StaleCandidate)
@@ -1414,6 +1475,116 @@ object CoherentSequence:
           else CoherentSequence.prepare(owner, context, maxBlocks, c.state, block, synthetic = true)
         })
       )
+
+    /** The oracle executes outside cell.modify. Drafts cannot be published. A stale reply is
+      * discarded against the exact captured Cell, followed by the normal publication CAS.
+      */
+    private[lab] def prepareRepeatedBlock(
+        fence: Fence,
+        block: SequenceInput.Block,
+        successorPreview: Option[SyntheticSuccessor],
+        compare: (Boundary.Frozen, Bytes) => F[lab.ledger.ConwayNativeLikelihood.Generated]
+    ): F[Result[Candidate]] = cell.get.flatMap { captured =>
+      val current = captured.state
+      val draft = protect {
+        if fence.owner ne owner then Left(Failure.ForeignFence)
+        else if fence.stateId != current.id || fence.revision != current.revision then
+          Left(Failure.StaleFence)
+        else if !current.syntheticBoundary.exists(_.repeated) then
+          Left(Failure.Unsupported("repeated-boundary", "explicit profile required"))
+        else
+          successorPreview match
+            case Some(preview) =>
+              prepareSuccessor(
+                owner,
+                context,
+                maxBlocks,
+                current,
+                fence,
+                preview,
+                block,
+                deferComposition = true
+              )
+            case None =>
+              CoherentSequence.prepare(
+                owner,
+                context,
+                maxBlocks,
+                current,
+                block,
+                synthetic = true,
+                deferComposition = true
+              )
+      }
+      draft match
+        case Left(error) => F.pure(Left(error))
+        case Right(pending) =>
+          val before = current.syntheticBoundary.get
+          val base = successorPreview match
+            case None => Right(before)
+            case Some(preview) =>
+              checked(
+                "repeated-boundary",
+                SyntheticBoundaryState.atBoundary(
+                  before,
+                  current.syntheticRewards.flatMap(_.frozen),
+                  preview.completedPulser,
+                  preview.preview,
+                  preview.completeEffect
+                )
+              )
+          base match
+            case Left(error) => F.pure(Left(error))
+            case Right(component) =>
+              val frozen = pending.rewards.flatMap(_.frozen)
+              val attach: F[Result[SyntheticBoundaryState.State]] = frozen match
+                case Some(f) if component.checkedLikelihood.isEmpty =>
+                  compare(f, f.id).attempt.map {
+                    case Left(error) =>
+                      Left(Failure.Rejected("native-comparison", error.getClass.getName))
+                    case Right(generated) =>
+                      checked(
+                        "native-comparison",
+                        SyntheticBoundaryState.attachLikelihood(component, generated)
+                      )
+                  }
+                case _ => F.pure(Right(component))
+              attach.flatMap { attached =>
+                F.delay(attached.flatMap { ready =>
+                  val phase = successorPreview match
+                    case None =>
+                      SyntheticBoundaryState
+                        .advanceFreeze(ready, frozen, pending.rewards.flatMap(_.pulser))
+                    case Some(_) =>
+                      SyntheticBoundaryState.afterBoundaryFreeze(
+                        before,
+                        ready,
+                        frozen,
+                        pending.rewards.flatMap(_.pulser)
+                      )
+                  checked("repeated-freeze", phase).map { completed =>
+                    new Candidate(
+                      owner,
+                      current,
+                      pending.block,
+                      pending.certificates,
+                      pending.certificate,
+                      pending.nonce,
+                      pending.eligibility,
+                      pending.ledger,
+                      pending.stake,
+                      pending.rewards,
+                      pending.epochBinding,
+                      pending.transitionBoundary,
+                      Some(completed)
+                    )
+                  }
+                }).flatMap { result =>
+                  cell.get
+                    .map(now => if now ne captured then Left(Failure.StaleCandidate) else result)
+                }
+              }
+    }
 
     /** Pure successor subrules only. No header, nonce, ledger or epoch publication path exists. */
     def prepareSyntheticSuccessor(
@@ -2017,6 +2188,56 @@ object CoherentSequence:
               case Right(state) => (Cell(state, Vector.empty), Right(runtime))
           }
       }
+
+  /** Explicit bounded repeated research composition; no durable import or CLI admission. */
+  private[lab] def createWithRepeatedBoundary[F[_]: Sync](
+      context: SequenceInput.Context,
+      prepared: ConwayStakeSeed.Prepared,
+      profile: SyntheticBoundaryProfile,
+      input: Governance.Input,
+      nonMyopic: NonMyopic.State,
+      pots: Boundary.Pots,
+      previousBlocks: Map[Bytes, BigInt],
+      currentBlocks: Map[Bytes, BigInt],
+      absentEvidence: Bytes,
+      maxTransitions: Int,
+      maxBlocks: Int = MaxBlocks
+  ): F[Result[Runtime[F]]] =
+    createWithSyntheticBoundary[F](
+      context,
+      prepared,
+      profile,
+      input,
+      nonMyopic,
+      pots,
+      previousBlocks,
+      currentBlocks,
+      absentEvidence,
+      maxBlocks
+    ).flatMap {
+      case Left(error) => Sync[F].pure(Left(error))
+      case Right(runtime) =>
+        runtime.cell.modify { cell =>
+          val initial = cell.state
+          checked(
+            "repeated-profile",
+            SyntheticBoundaryState.enableRepeated(initial.syntheticBoundary.get, maxTransitions)
+          ) match
+            case Left(error) => (cell, Left(error))
+            case Right(component) =>
+              val next = new State(
+                initial.contextId,
+                initial.certificates,
+                initial.nonces,
+                initial.eligibility,
+                initial.ledger,
+                stakeBinding = initial.stakeBinding,
+                rewardBinding = initial.rewardBinding,
+                syntheticBoundary = Some(component)
+              )
+              (Cell(next, Vector.empty), Right(runtime))
+        }
+    }
 
   /** Synthetic absent reward seed is an explicit assertion, never decoded from native JSON. The
     * profile requires all omitted effects to be explicitly empty. No durability is supported.

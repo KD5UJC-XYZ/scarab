@@ -144,3 +144,22 @@ private[lab] object GovernanceParameterPayload:
     )
     new Roles(previous, current, id)
   }
+
+  /** Empty governance rolls complete current originals into both temporal roles. */
+  private[lab] def rollover(before: Roles, applied: G.Applied): Either[String, Roles] = checked {
+    require(before != null && applied != null, "parameter rollover source required")
+    require(
+      applied.before.parameters.previous.original == before.previous.original &&
+        applied.before.parameters.current.original == before.current.original &&
+        applied.parameters.previous.original == before.current.original &&
+        applied.parameters.current.original == before.current.original,
+      "parameter rollover originals differ"
+    )
+    val id = ClusterHeaderObservation.sha256(
+      Bytes.fromArray(
+        ("governance-parameter-roles-v1\n" + before.current.sha256.hex + "\n" + before.current.sha256.hex)
+          .getBytes("UTF-8")
+      )
+    )
+    new Roles(before.current, before.current, id)
+  }

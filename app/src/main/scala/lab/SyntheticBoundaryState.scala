@@ -4,6 +4,8 @@ package lab
 import lab.cbor.Bytes
 import lab.ledger.{
   ConwayEmptyGovernance as G,
+  ConwayRegisteredDRepCompletion as D,
+  ConwayNativeLikelihood as N,
   ConwayNonMyopic as NM,
   ConwayStake as S,
   ConwayEpochBoundary as B,
@@ -30,8 +32,12 @@ private[lab] object SyntheticBoundaryState:
       val allocationId: Option[Bytes],
       private[SyntheticBoundaryState] val origin: Bytes,
       private[SyntheticBoundaryState] val boundaryParent: Option[Bytes],
-      val id: Bytes
+      val id: Bytes,
+      val repeatedLimit: Int,
+      val transitions: Int,
+      val checkedLikelihood: Option[N.Generated]
   ):
+    val repeated = repeatedLimit > 0
     val boundaryApplied = governanceAfter.isDefined
     val syntheticOnly = true
     val nativeConformance = false
@@ -56,7 +62,10 @@ private[lab] object SyntheticBoundaryState:
       frozen: Option[Bytes],
       allocation: Option[Bytes],
       origin: Bytes,
-      parent: Option[Bytes]
+      parent: Option[Bytes],
+      repeatedLimit: Int = 0,
+      transitions: Int = 0,
+      likelihood: Option[N.Generated] = None
   ): State =
     val id = digest(
       Vector(
@@ -69,7 +78,17 @@ private[lab] object SyntheticBoundaryState:
         frozen.fold("absent")(_.hex),
         allocation.fold("absent")(_.hex),
         parent.fold("absent")(_.hex)
-      )
+      ) ++ (if repeatedLimit == 0 then Vector.empty
+            else
+              Vector(
+                repeatedLimit.toString,
+                transitions.toString,
+                likelihood.fold("absent")(g =>
+                  ClusterHeaderObservation
+                    .sha256(g.request.original)
+                    .hex + ClusterHeaderObservation.sha256(g.response).hex
+                )
+              ))
     )
     new State(
       input,
@@ -83,8 +102,77 @@ private[lab] object SyntheticBoundaryState:
       allocation,
       origin,
       parent,
-      id
+      id,
+      repeatedLimit,
+      transitions,
+      likelihood
     )
+
+  /** Explicit bounded, non-durable repeated research lane; seed checks remain unchanged. */
+  def enableRepeated(state: State, maxTransitions: Int): Either[String, State] = checked {
+    require(
+      state != null && !state.boundaryApplied && state.frozenId.isEmpty &&
+        !state.repeated && maxTransitions >= 1 && maxTransitions <= 8,
+      "repeated initial scope"
+    )
+    val prospective = get(G.applyBoundary(state.governanceInput, state.governanceInput.epoch + 1))
+    get(D.complete(prospective, prospective.id, prospective.epoch))
+    make(
+      state.governanceInput,
+      None,
+      state.roles,
+      state.globals,
+      state.poolPayloads,
+      state.nonMyopic,
+      None,
+      None,
+      None,
+      state.origin,
+      None,
+      maxTransitions
+    )
+  }
+
+  private def likelihood(state: State, frozen: B.Frozen): Map[Bytes, NM.Likelihood] =
+    if !state.repeated then get(NM.generateForFrozen(frozen, frozen.id))
+    else
+      val generated = state.checkedLikelihood.getOrElse(
+        throw new IllegalArgumentException("checked JVM/native freeze comparison required")
+      )
+      require(
+        generated.mode == N.Mode.CheckedJvm && !generated.nativeValuesAuthoritative &&
+          generated.jvmMismatchWords == 0,
+        "native authoritative values forbidden in checked JVM lane"
+      )
+      get(generated.forFrozen(frozen, frozen.id))
+
+  def attachLikelihood(state: State, generated: N.Generated): Either[String, State] = checked {
+    require(
+      state != null && state.repeated && generated != null && state.checkedLikelihood.isEmpty,
+      "new repeated freeze evidence required"
+    )
+    require(
+      generated.mode == N.Mode.CheckedJvm && !generated.nativeValuesAuthoritative &&
+        generated.jvmMismatchWords == 0,
+      "checked JVM comparison required"
+    )
+    make(
+      state.governanceInput,
+      state.governanceAfter,
+      state.roles,
+      state.globals,
+      state.poolPayloads,
+      state.nonMyopic,
+      state.frozenHistory,
+      state.frozenId,
+      state.allocationId,
+      state.origin,
+      state.boundaryParent,
+      state.repeatedLimit,
+      state.transitions,
+      Some(generated)
+    )
+  }
 
   def typedGlobals(value: GovernanceGlobals.Checked): Either[String, G.SuppliedFixedGlobals] =
     checked {
@@ -244,9 +332,7 @@ private[lab] object SyntheticBoundaryState:
         )
         val allocation = get(R.calculate(f, f.id))
         require(p.allocationId == allocation.id, "composition owned allocation mismatch")
-        get(
-          NM.generateForFrozen(f, f.id)
-        ) // Fail at first freeze if native generation is unavailable.
+        likelihood(state, f) // Exact captured comparison is required before publication.
         state.frozenId match
           case Some(id) =>
             require(
@@ -268,7 +354,10 @@ private[lab] object SyntheticBoundaryState:
               Some(f.id),
               Some(allocation.id),
               state.origin,
-              state.boundaryParent
+              state.boundaryParent,
+              state.repeatedLimit,
+              state.transitions,
+              state.checkedLikelihood
             )
 
   def advanceFreeze(
@@ -288,7 +377,8 @@ private[lab] object SyntheticBoundaryState:
       completeEffect: Option[B.Complete]
   ): Either[String, State] = checked {
     require(
-      state != null && !state.boundaryApplied && preview != null && frozen != null &&
+      state != null && (!state.boundaryApplied || state.repeated) &&
+        (!state.repeated || state.transitions < state.repeatedLimit) && preview != null && frozen != null &&
         completedPulser != null && completeEffect != null,
       "only one composed boundary supported"
     )
@@ -338,7 +428,7 @@ private[lab] object SyntheticBoundaryState:
               f,
               f.id,
               allocation,
-              get(NM.generateForFrozen(f, f.id))
+              likelihood(state, f)
             )
           )
         )
@@ -364,10 +454,25 @@ private[lab] object SyntheticBoundaryState:
       "postreward supply accounting"
     )
     val after = get(G.applyBoundary(input, preview.epoch))
+    val nextRoles =
+      if state.repeated then get(GovernanceParameterPayload.rollover(state.roles, after))
+      else state.roles
+    val nextInput =
+      if !state.repeated then input
+      else
+        val completed = get(D.complete(after, after.id, after.epoch))
+        input.copy(
+          epoch = after.epoch,
+          dormant = after.dormant,
+          committeeState = after.committeeState,
+          parameters = after.parameters,
+          oldDRep = get(D.forSource(completed, after, after.id, after.epoch)),
+          donations = 0
+        )
     make(
-      input,
+      nextInput,
       Some(after),
-      state.roles,
+      nextRoles,
       state.globals,
       state.poolPayloads,
       nm,
@@ -375,7 +480,10 @@ private[lab] object SyntheticBoundaryState:
       None,
       None,
       digest(Vector(state.origin.hex, preview.id.hex, completeEffect.fold("absent")(_.id.hex))),
-      Some(state.id)
+      Some(state.id),
+      state.repeatedLimit,
+      state.transitions + 1,
+      None
     )
   }
 
