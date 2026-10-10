@@ -34,13 +34,17 @@ final case class AdmissionStateChange(
     included: Vector[IncludedTransaction]
 )
 
-/** The mutation owner implements this interface. commit must be a bounded in-memory operation, must
-  * not re-enter the owner, and must not perform I/O. The entire callback and pin comparison share
-  * the chain mutation gate and a short cancellation mask.
+/** The mutation owner supplies the admission linearization gate. The package-trusted commit and
+  * complete pin comparison run serialized under a cancellation mask. A commit must not re-enter
+  * this owner or perform validation. It may install bounded admission evidence with serialized
+  * filesystem I/O before releasing eligibility. Such I/O has cooperative liveness: cancellation and
+  * shutdown wait for the masked commit; this interface promises no hard filesystem deadline.
+  * Callers must not detach writes or release eligibility before persistence/fail-closed handling.
+  * This callback is internal authority, not a general extension point.
   */
 trait AdmissionState[F[_]]:
   def current: F[AdmissionView]
-  def withCurrent[A](expected: StatePin)(commit: F[A]): F[Either[StatePin, A]]
+  private[lab] def withCurrent[A](expected: StatePin)(commit: F[A]): F[Either[StatePin, A]]
 
 object AdmissionState:
   enum UnavailableReason:
@@ -50,7 +54,9 @@ object AdmissionState:
 
 /** changed runs under the owner gate, after state publication and before admission may resume. It
   * must atomically invalidate eligibility/update reservations and only enqueue bounded revalidation
-  * work; it must not wait for validation or call AdmissionState again.
+  * work; it must not wait for validation, perform external I/O, or re-enter the owner through
+  * AdmissionState. Unlike the trusted admission commit, publication observers remain bounded
+  * in-memory notifications. closed follows the same no-reentry/no-external-I/O restriction.
   */
 trait AdmissionStateObserver[F[_]]:
   def changed(change: AdmissionStateChange): F[Unit]

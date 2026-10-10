@@ -10,8 +10,11 @@ import lab.network.ChainSync
 import lab.submission.*
 
 /** Exclusive owner of the follower mutation surface and admission linearization gate. Runtime
-  * creation must return a fresh unshared runtime. Callbacks are trusted, bounded memory operations:
-  * they may neither reenter this owner nor perform validation or external I/O.
+  * creation must return a fresh unshared runtime. Publication observers only invalidate/enqueue
+  * bounded in-memory work, without validation, external I/O, or owner reentry. The package-trusted
+  * admission commit has the distinct AdmissionState contract: serialized evidence I/O may run
+  * inside the gate and cancellation mask, so cancellation/shutdown depend on cooperative I/O
+  * completion. Neither callback may re-enter this owner.
   */
 private[lab] final class SubmissionOwner[F[_]] private (
     runtime: CoherentDriver[F],
@@ -42,7 +45,8 @@ private[lab] final class SubmissionOwner[F[_]] private (
 
   private def unavailable[A](reason: UnavailableReason): F[A] =
     F.raiseError(new AdmissionState.Unavailable(reason))
-  // Acquiring the permit remains cancelable. Publication and its notification are one mask.
+  // Acquiring the permit remains cancelable. Once acquired, the complete operation is masked.
+  // Publication includes its notification; admission includes trusted evidence installation.
   private def locked[A](operation: F[A]): F[A] =
     gate.permit.use(_ => F.uncancelable(_ => operation))
   private def active: F[AdmissionStateObserver[F]] = lifecycle.get.flatMap {
@@ -101,12 +105,13 @@ private[lab] final class SubmissionOwner[F[_]] private (
         F.raiseError(new IllegalStateException("submission observer can attach exactly once"))
     }
   }
-  def withCurrent[A](expected: StatePin)(commit: F[A]): F[Either[StatePin, A]] = locked {
-    active *> capacity *> view.flatMap { now =>
-      if now.pin != expected then F.pure(Left(now.pin))
-      else poisonOnError(commit).map(Right(_))
+  private[lab] def withCurrent[A](expected: StatePin)(commit: F[A]): F[Either[StatePin, A]] =
+    locked {
+      active *> capacity *> view.flatMap { now =>
+        if now.pin != expected then F.pure(Left(now.pin))
+        else poisonOnError(commit).map(Right(_))
+      }
     }
-  }
   private def mutate[A](kind: StateChangeKind, operation: F[Result[A]])(
       included: A => Vector[IncludedTransaction]
   ): F[Result[A]] = locked {
