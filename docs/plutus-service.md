@@ -76,7 +76,9 @@ second admission/inclusion were slots 414/451. Both returned HTTP 202. The actua
 duplicate returned HTTP 200 `AlreadyPresent`; the conflict returned HTTP 409
 `InputsReserved`. The same API stayed available after each inclusion. The service
 published 15 blocks, continued to slot 628/block 18 and stopped at `durationLimit`.
-All 19 opened transports closed and owned-cluster cleanup was verified.
+Recorded active service operation was **26.259 seconds** within the configured
+30-second lifetime, whose budget also includes startup/readiness. All 19 opened
+transports closed and owned-cluster cleanup was verified.
 
 The exact historical endpoint matched all 10 supported UTxO entries, original
 collateral, instantaneous stake and represented protocol fields. Fees increased

@@ -98,5 +98,7 @@
     "cleanup.json": "4ab61686d6e573d7497f689a1fbb2343297630e2d8f6254be34bf91de3cc057b"
   },
   "rawRuntimeResultSHA256": "890fc1a68276e739b6437bf37601faafa7bc6590db88a620c6aa3c1c5272bea0",
-  "firstAttempt": "Funding snapshot timed out before Scala startup under unchanged slot-300 guard; retained, cleanup verified."
+  "firstAttempt": "Funding snapshot timed out before Scala startup under unchanged slot-300 guard; retained, cleanup verified.",
+  "configuredLifetimeSeconds": 30,
+  "recordedActiveServiceMilliseconds": 26259
 }
