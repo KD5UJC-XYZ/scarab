@@ -373,6 +373,12 @@ def wait_checked_successor(controller, restored, seconds=20):
                        transactionInclusionClaimed=False, wholeStateOracleCompared=False,
                        fullLedgerValidated=False, crashDurable=False))
             return current
-        base.require(controller.owned(controller.containers[restored.phase])["State"]["Running"], "restored service exited before successor")
+        if not controller.owned(controller.containers[restored.phase])["State"]["Running"]:
+            # Publication may have completed during the Docker inspection.
+            # Re-enter the same validation path only if final evidence now exists;
+            # the outer deadline still applies, and stopped-without-evidence fails.
+            base.require(not (root / "failure.json").exists(), "restored service failed")
+            base.require(path.exists(), "restored service exited before successor")
+            continue
         time.sleep(.1)
     raise TimeoutError("checked restart successor deadline")

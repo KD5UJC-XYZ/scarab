@@ -147,6 +147,33 @@ class EarlyRestartTests(unittest.TestCase):
         (phase/"publication-0000.json").write_bytes(restart.encoded(value))
         with self.assertRaises(ValueError):restart.wait_checked_successor(controller,restored,1)
 
+    def test_successor_published_during_stopped_inspection_uses_full_validation(self):
+        for mode in ('valid','missing','failure','symlink','invalid','wrong-owner'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory).resolve();phase=root/'service-2';phase.mkdir()
+                current=pin(dict(slot=30,blockNo=3,hash=H),OTHER,generation=1)
+                value=dict(schema="plutus-service-publication-v1",index=0,pin=current,sourceJoinId=JOIN,
+                    initialManifestSHA256=H,profileId=restart.two.fixture.PROFILE,fullLedgerValidated=False)
+                def owned(cid):
+                    self.assertEqual(cid,'owned')
+                    path=phase/'publication-0000.json'
+                    if mode=='wrong-owner':value['pin']=pin(dict(slot=30,blockNo=3,hash=H),H,generation=1)
+                    if mode=='symlink':
+                        target=root/'foreign.json';target.write_bytes(restart.encoded(value));path.symlink_to(target)
+                    elif mode=='invalid':path.write_text('not json')
+                    elif mode!='missing':path.write_bytes(restart.encoded(value))
+                    if mode=='failure':(phase/'failure.json').write_text('{}')
+                    return {'State':{'Running':False}}
+                controller=SimpleNamespace(exchange=root,out=root,deadline=restart.time.monotonic()+2,
+                    containers={'service-2':'owned'},owned=owned)
+                restored=restart.RunningRestored('service-2',ready(True,TERMINAL,OTHER,OTHER),self.claim,H,H,H)
+                if mode=='valid':
+                    self.assertEqual(restart.wait_checked_successor(controller,restored,1),current)
+                    self.assertTrue((root/'restart-successor.json').exists())
+                else:
+                    with self.assertRaises(ValueError):restart.wait_checked_successor(controller,restored,1)
+                    self.assertFalse((root/'restart-successor.json').exists())
+
     def test_adapter_authorizes_only_after_clean_exit_and_capture_and_leaves_successor_running(self):
         calls=[]
         exchange=self.root/"exchange";exchange.mkdir()

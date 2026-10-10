@@ -1,0 +1,52 @@
+{
+  "schema": "curated-plutus-early-restart-live-receipt-v1",
+  "sourceCommit": "5db2ca87dd3224d805dfcf3d87c4495208f49015",
+  "restartProfile": "early-restart-only-v1",
+  "passed": true,
+  "elapsedSeconds": 70.62787303002551,
+  "initialPoint": {
+    "blockNo": 1,
+    "hash": "017905f3ff623775935d7ad9eab74bb73d957a6bff1b49bdfc9d039f256453d7",
+    "slot": 188
+  },
+  "checkpointPoint": {
+    "blockNo": 2,
+    "hash": "4d4616e3058b6ad2f28dd4e99d8b82efe15d8d2e5ecedfbdcf76b3924eb5479f",
+    "slot": 360
+  },
+  "successorPoint": {
+    "blockNo": 3,
+    "hash": "ba66db0c2b6fc061dc8695a6ddd48a01d19e8cdee48b5294ef99d298b765a7de",
+    "slot": 362
+  },
+  "originalCount": 1,
+  "restoredDepth": 1,
+  "freshOwner": true,
+  "emptyPoolObserved": true,
+  "checkedSuccessor": true,
+  "firstTransportOpens": 2,
+  "firstTransportCloses": 2,
+  "restoredTransportOpens": 2,
+  "restoredTransportCloses": 2,
+  "resourcesFinalized": true,
+  "cleanupVerified": true,
+  "controllerResultSHA256": "5bf2ff2cbac695bc820ec718fc778dd45778b939dff266936c7b2c81891ead82",
+  "acceptedPairSHA256": "1422dbd85085cbae9c489b98892f34860cb2fec564c3f141b88c80a8883d8cb3",
+  "acquisitionSHA256": "b301df169596183884d0b460712b4bb20f529c30e3160c06f544c4c3f2f2264b",
+  "authoritySHA256": "3e8689060e1b159d31df56e653baf8816d80e23e114b19b32d45c623628286c7",
+  "restoredReadySHA256": "9de74ac4103af9b0348614a1c6b20ea96ceafdfb41282b0459be250d126d004f",
+  "successorSHA256": "447ff1f2c11c120f1f2ac61d425f5ba1eb00b6b95bd85e0dc89706e3ba903915",
+  "restoredServiceResultSHA256": "18d9f4c08e1235b5475a609c295ea7732752113a5d63660f0d78fc6d10214cfe",
+  "epochZeroOnly": true,
+  "transactionInclusionClaimed": false,
+  "wholeStateOracleCompared": false,
+  "multiEpoch": false,
+  "fullLedgerValidated": false,
+  "lateCheckpointRestoreSupported": false,
+  "crashDurable": false,
+  "rawEvidencePublic": false,
+  "priorAttempt": "Preserved controller receipt/exit race failure before restart authorization; owned cleanup verified",
+  "durationScope": "Entire controller lifecycle including cluster preparation and cleanup",
+  "firstServiceIntervalMillis": 1070,
+  "restoredServiceIntervalMillis": 583
+}

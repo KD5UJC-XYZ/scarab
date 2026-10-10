@@ -548,3 +548,29 @@ The preceding `910b8dd` prerequisite checkpoint passed
 [hosted CI](https://github.com/ottobot-ai/cardano-scala-lab/actions/runs/38027107108). This later source requires its own CI
 result. The repeated terminal comparator and combined live supervisor remain
 unfinished; no new live restart, soak or terminal agreement is claimed.
+
+
+## Independent early restart acceptance - 2026-10-10
+
+The [bounded restart driver](plutus-early-restart-check.md) now has independently
+reviewed local execution evidence at exact source `5db2ca87dd3224d805dfcf3d87c4495208f49015`. Initial
+slot 188/block 1 advanced to checkpoint slot 360/block 2, then a replacement
+with a fresh owner and empty pool checked slot 362/block 3. Each service
+balanced two transport opens/closes, and owned cleanup was verified. The
+70.628-second controller lifecycle included preparation and cleanup; service
+intervals were 1.070 and 0.583 seconds. This is epoch-zero restart acceptance,
+not the planned 600-second active soak or whole-state oracle agreement.
+
+A preserved first attempt exposed a receipt/exit inspection race, fixed before
+the successful retry. Equivalent successor-wait hardening followed that live
+run and has separate regression coverage. The final Python run completed
+544 tests: 542 passed and two skipped. All 27 public gates passed. Unchanged
+Scala sources retain the preceding exact-source 1,974-test result and separate
+55-test retained invocation. Final gate/Python log SHA256:
+`4b2164792fbcaaa5c46dc8b185dc9e297f1f1daccb262e5111c39649eb7e6c1f`.
+
+The [curated receipt](../reference/plutus-admission/early-restart-live-receipt.json)
+contains source, points, counts and original-evidence hashes only. Keys, raw
+checkpoint/state and logs remain private. The repeated-state comparator and
+combined multi-epoch supervisor remain unfinished; no new tested-spend,
+late-restore, crash-durability or multi-epoch claim is made here.
