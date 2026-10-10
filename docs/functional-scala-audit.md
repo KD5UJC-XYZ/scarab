@@ -26,6 +26,16 @@ Validation: the isolated 2-CPU/2-GiB offline build passed formatting, 63 core bo
 
 Private evidence: `cardano-functional-domain-tests-20261010-second/result.json`, `resolved-after.json` and `tests.log` (SHA-256 `8cd12f2ca04d1153f5b21cf6d549648c1d48dddcb7270baee66a5c7c70829dc4`); the first evidence directory retains `resolved-before.json` and verified public Maven download hashes. An initial offline dependency-resolution failure is retained there; no tests ran in that first attempt. The focused result does not replace the integration aggregate and introduces no new live, restart, multi-epoch or full-ledger validation claim.
 
+## Follow-on: admission capability programs
+
+`AdmissionPrograms` extracts actual service orchestration into `F[_]` programs with explicit `given`/`using` requirements. Read-only observation requires `Read[F]`; guarded execution additionally requires `Fence[F]` and `Monad[F]`. The interpreter uses only `Functor[F]` to map the owner's existing result. A pin's fluent `commitIfCurrent` operation requires a fence capability; possessing pin data or a read capability cannot manufacture that authority.
+
+Service construction explicitly supplies both capabilities from the same owner interpreter. Admission and rebuild commits, guarded snapshots/status, relay selection, expiry and shutdown use this path. `Fenced.Applied/Stale` and `Guarded.Read/Exhausted` retain layer-specific results until the service renders its existing external result or compatibility exception. Guarded reads retain exactly four attempts and evaluate the action only inside a matching owner fence. The new programs do not acquire gates, mask cancellation, fork fibers, install evidence or move pool state themselves. Those operations and their order remain in the owner/service interpreters.
+
+This is a concrete capability extraction, not a global effect-stack migration. No clock capability was added because the extracted programs do not read time; existing effectful clock calls remain where pool transitions need them. No new MTL dependency or direct MTL use was introduced. Wider orchestration, typed error and domain-ID migration remains unfinished.
+
+Validation: the isolated 2-CPU/2-GiB offline follow-on build passed formatting and all 38 focused checks: six capability tests plus 32 existing owner/service/evidence regressions. Coverage includes compiler-negative capability separation, old/new retry-trace equivalence for zero through five stale observations, failure non-retry, cancellation before fencing, concrete-owner masked completion and stale action suppression. Private evidence: `cardano-admission-capability-tests-20261010-first/result.json` and `tests.log` (SHA-256 `2dc92510579a31952483259d6cd61a9d6498c71c82661e83bc3ddbd8ae59dd27`). No new live capability follows from these offline tests.
+
 ## Decision and priorities
 
 The code is already functional at important boundaries: pure immutable ledger transitions, private-constructor admission evidence, typed rejection sums, Resource-owned lifetimes, and a single admission/publication gate. Preserve these. The strongest improvement is to make policy and authority visible in types; replacing every match or local mutable variable would not achieve that.

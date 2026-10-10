@@ -12,7 +12,6 @@ import lab.submission.*
 
 /** Volatile, scoped ADA pool. The supplied owner is the only chain mutation authority. */
 private[lab] final class AdaSubmissionService[F[_]] private (
-    owner: AdmissionState[F],
     val profile: AdmissionProfile,
     pool: Ref[F, AdaPool.State[StatePin]],
     budget: AdaIngressBudget[F],
@@ -21,9 +20,11 @@ private[lab] final class AdaSubmissionService[F[_]] private (
     wake: Queue[F, Unit],
     val relaySource: lab.network.RelaySource[F],
     evidence: Option[PlutusEvaluationEvidence.Observer[F]]
-)(using F: Async[F])
+)(using F: Async[F], ownerRead: AdmissionPrograms.Read[F], ownerFence: AdmissionPrograms.Fence[F])
     extends AdmissionStateObserver[F]:
   import AdaSubmissionService.*
+  import AdmissionPrograms.{Fenced, syntax as admissionSyntax}
+  import admissionSyntax.*
   import EvaluationEvent.{AdmissionOutcome, RevalidationOutcome}
 
   final class Request private[AdaSubmissionService] (permit: budget.Request):
@@ -32,7 +33,7 @@ private[lab] final class AdaSubmissionService[F[_]] private (
   def request: Resource[F, Option[Request]] = budget.request.map(_.map(new Request(_)))
 
   private def guarded[A](read: AdaPool.State[StatePin] => F[A]): F[A] =
-    AdaSubmissionService.guarded(owner, pool)(read)
+    AdaSubmissionService.guarded(pool)(read)
 
   def snapshot: F[Snapshot] = guarded(s =>
     F.monotonic.map(t =>
@@ -64,7 +65,7 @@ private[lab] final class AdaSubmissionService[F[_]] private (
 
   private def admit(original: Bytes): F[Result] =
     (for
-      view <- owner.current
+      view <- AdmissionPrograms.current[F]
       available <- guarded(s =>
         F.pure(
           !s.closed && !s.rebuilding && s.profile == profile && s.pin.profileId == profile.id && view.pin.profileId == profile.id
@@ -93,8 +94,8 @@ private[lab] final class AdaSubmissionService[F[_]] private (
                     candidate.validationSlot != view.pin.validationSlot || candidate.pin != view.pin
                   then F.pure(Result.Unavailable)
                   else
-                    owner
-                      .withCurrent(view.pin)(
+                    view.pin
+                      .commitIfCurrent(
                         F.uncancelable { _ =>
                           F.monotonic
                             .flatMap(t => pool.modify(s => AdaPool.admit(s, candidate, t.toNanos)))
@@ -111,13 +112,15 @@ private[lab] final class AdaSubmissionService[F[_]] private (
                         }
                       )
                       .map {
-                        case Left(pin)                                => Result.Retry(pin)
-                        case Right(AdaPool.Outcome.Accepted(receipt)) => Result.Accepted(receipt)
-                        case Right(AdaPool.Outcome.AlreadyPresent(receipt)) =>
+                        case Fenced.Stale(pin) => Result.Retry(pin)
+                        case Fenced.Applied(AdaPool.Outcome.Accepted(receipt)) =>
+                          Result.Accepted(receipt)
+                        case Fenced.Applied(AdaPool.Outcome.AlreadyPresent(receipt)) =>
                           Result.AlreadyPresent(receipt)
-                        case Right(AdaPool.Outcome.Rejected(reason)) => Result.PoolRejected(reason)
-                        case Right(AdaPool.Outcome.Retry(pin))       => Result.Retry(pin)
-                        case Right(AdaPool.Outcome.Unavailable)      => Result.Unavailable
+                        case Fenced.Applied(AdaPool.Outcome.Rejected(reason)) =>
+                          Result.PoolRejected(reason)
+                        case Fenced.Applied(AdaPool.Outcome.Retry(pin))  => Result.Retry(pin)
+                        case Fenced.Applied(AdaPool.Outcome.Unavailable) => Result.Unavailable
                       }
               }
           }
@@ -163,8 +166,8 @@ private[lab] final class AdaSubmissionService[F[_]] private (
         F.cede *> F
           .delay(AdaPool.revalidate(work, view.ledger, Some(lab.vm.Pv9SubmissionEvaluator)))
           .flatMap { result =>
-            owner
-              .withCurrent(view.pin)(
+            view.pin
+              .commitIfCurrent(
                 F.uncancelable { _ =>
                   F.monotonic.flatMap { time =>
                     pool
@@ -249,15 +252,17 @@ private[lab] object AdaSubmissionService:
   )
 
   private def guarded[F[_]: Async, A](
-      owner: AdmissionState[F],
       pool: Ref[F, AdaPool.State[StatePin]]
-  )(read: AdaPool.State[StatePin] => F[A], attempts: Int = 3): F[A] =
-    val F = Async[F]
-    owner.current.flatMap(v => owner.withCurrent(v.pin)(pool.get.flatMap(read))).flatMap {
-      case Right(value)            => F.pure(value)
-      case Left(_) if attempts > 0 => guarded(owner, pool)(read, attempts - 1)
-      case Left(_) =>
-        F.raiseError(new AdmissionState.Unavailable(AdmissionState.UnavailableReason.Initializing))
+  )(read: AdaPool.State[StatePin] => F[A])(using
+      AdmissionPrograms.Read[F],
+      AdmissionPrograms.Fence[F]
+  ): F[A] =
+    AdmissionPrograms.guarded(pool.get.flatMap(read)).flatMap {
+      case AdmissionPrograms.Guarded.Read(value) => Async[F].pure(value)
+      case AdmissionPrograms.Guarded.Exhausted(_) =>
+        Async[F].raiseError(
+          new AdmissionState.Unavailable(AdmissionState.UnavailableReason.Initializing)
+        )
     }
 
   def resource[F[_]: Async](
@@ -265,8 +270,11 @@ private[lab] object AdaSubmissionService:
       limits: AdaPool.Limits = AdaPool.Limits(),
       evidence: Option[PlutusEvaluationEvidence.Observer[F]] = None
   ): Resource[F, AdaSubmissionService[F]] =
+    val capabilities = AdmissionPrograms.fromOwner(owner)
+    given AdmissionPrograms.Read[F] = capabilities
+    given AdmissionPrograms.Fence[F] = capabilities
     for
-      initial <- Resource.eval(owner.current)
+      initial <- Resource.eval(AdmissionPrograms.current[F])
       profile <- Resource.eval(
         Async[F].fromOption(
           AdmissionProfile.fromId(initial.pin.profileId),
@@ -283,12 +291,11 @@ private[lab] object AdaSubmissionService:
       relay <- AdaRelaySource.resource[F](
         new AdaRelaySource.Selection[F]:
           def withEligible[A](take: Vector[SignedTransaction] => F[A]): F[A] =
-            guarded(owner, pool)(s => Async[F].monotonic.flatMap(t => take(s.eligible(t.toNanos))))
+            guarded(pool)(s => Async[F].monotonic.flatMap(t => take(s.eligible(t.toNanos))))
       )
       service <- Resource.make(
         Async[F].pure(
           new AdaSubmissionService(
-            owner,
             profile,
             pool,
             budget,
