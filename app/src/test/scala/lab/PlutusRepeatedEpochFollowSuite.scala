@@ -111,6 +111,89 @@ class PlutusRepeatedEpochFollowSuite extends munit.FunSuite:
       .unsafeToFuture()
   }
 
+  test("follow measurement excludes acquisition intersection and delayed peer release") {
+    TestControl
+      .executeEmbed(for
+        timing <- Ref.of[IO, Option[L.FollowWindow]](None)
+        atRelease <- Ref.of[IO, Option[L.FollowWindow]](None)
+        peer = Resource.make(IO.sleep(2.seconds))(_ =>
+          timing.get.flatMap(atRelease.set) *> IO.sleep(7.seconds)
+        )
+        _ <- peer.use(_ => IO.sleep(3.seconds) *> L.measureFollow(timing)(IO.sleep(11.seconds)))
+        measured <- timing.get
+        observed <- atRelease.get
+        ended <- IO.monotonic
+        _ = assertEquals(measured, Some(L.FollowWindow(5000, 16000, 11000000000L)))
+        _ = assertEquals(observed, measured)
+        _ = assertEquals(ended, 23.seconds)
+      yield ())
+      .unsafeToFuture()
+  }
+
+  test("operational deadline retains follow measurement before slow resource finalization") {
+    TestControl
+      .executeEmbed(for
+        timing <- Ref.of[IO, Option[L.FollowWindow]](None)
+        atRelease <- Ref.of[IO, Option[L.FollowWindow]](None)
+        resource = Resource.make(IO.unit)(_ =>
+          timing.get.flatMap(atRelease.set) *> IO.sleep(4.seconds)
+        )
+        result <- L.boundedResourceSession(10.seconds, resource)(_ =>
+          IO.sleep(2.seconds) *> L.measureFollow(timing)(IO.never[Unit])
+        )
+        measured <- timing.get
+        observed <- atRelease.get
+        _ = assertEquals(result.left.map(L.failureStop), Left(PlutusRunPolicy.FollowStop.Deadline))
+        _ = assertEquals(measured, Some(L.FollowWindow(2000, 10000, 8000000000L)))
+        _ = assertEquals(observed, measured)
+      yield ())
+      .unsafeToFuture()
+  }
+
+  test("external cancellation retains timing without converting cancellation to completion") {
+    TestControl
+      .executeEmbed(for
+        timing <- Ref.of[IO, Option[L.FollowWindow]](None)
+        entered <- Deferred[IO, Unit]
+        atRelease <- Ref.of[IO, Option[L.FollowWindow]](None)
+        resource = Resource.make(IO.unit)(_ =>
+          timing.get.flatMap(atRelease.set) *> IO.sleep(3.seconds)
+        )
+        fiber <- resource
+          .use(_ => L.measureFollow(timing)(entered.complete(()).void *> IO.never[Unit]))
+          .start
+        _ <- entered.get *> IO.sleep(5.seconds) *> fiber.cancel
+        outcome <- fiber.join
+        measured <- timing.get
+        observed <- atRelease.get
+        _ = assertEquals(measured, Some(L.FollowWindow(0, 5000, 5000000000L)))
+        _ = assertEquals(observed, measured)
+        _ = outcome match
+          case Outcome.Canceled() => ()
+          case other              => fail(s"measurement changed cancellation: $other")
+      yield ())
+      .unsafeToFuture()
+  }
+
+  test("follow measurement preserves the original failure identity before resource release") {
+    TestControl
+      .executeEmbed(for
+        timing <- Ref.of[IO, Option[L.FollowWindow]](None)
+        error <- IO(new IllegalStateException("original"))
+        atRelease <- Ref.of[IO, Option[L.FollowWindow]](None)
+        resource = Resource.make(IO.unit)(_ =>
+          timing.get.flatMap(atRelease.set) *> IO.sleep(4.seconds)
+        )
+        result <- resource
+          .use(_ => L.measureFollow(timing)(IO.sleep(2.seconds) *> IO.raiseError[Unit](error)))
+          .attempt
+        observed <- atRelease.get
+        _ = assert(result.left.toOption.exists(_ eq error))
+        _ = assertEquals(observed, Some(L.FollowWindow(0, 2000, 2000000000L)))
+      yield ())
+      .unsafeToFuture()
+  }
+
   sys.env.get("PLUTUS_REPEAT_BOOTSTRAP_BUNDLE").foreach { directory =>
     lazy val manifest = sys.env.getOrElse(
       "PLUTUS_REPEAT_BOOTSTRAP_MANIFEST_SHA256",
@@ -129,6 +212,46 @@ class PlutusRepeatedEpochFollowSuite extends munit.FunSuite:
     def fresh = PlutusServiceCheckpoint
       .start(None, joined, Bytes.fromHex(manifest).toOption.get)
       .flatMap(early => RepeatedPlutusBootstrap.start(joined, early, oracle))
+
+    test(
+      "actual soak follower measures only post-intersection streaming before peer finalization"
+    ) {
+      fresh
+        .flatMap { startup =>
+          TestControl.executeEmbed(for
+            timing <- Ref.of[IO, Option[L.FollowWindow]](None)
+            atRelease <- Ref.of[IO, Option[L.FollowWindow]](None)
+            peer = new Peer(IO.never):
+              override def intersect(points: Vector[ChainSync.Point]) =
+                IO.sleep(2.seconds).as(points.head)
+            resource = Resource
+              .make(IO.pure(peer))(_ => timing.get.flatMap(atRelease.set) *> IO.sleep(7.seconds))
+            result <- L.runUntil(
+              startup.runtime,
+              resource,
+              startup.snapshot.state.certificates.state.tip,
+              1000,
+              EphemeralStreaming.Limits(duration = 5.seconds),
+              EphemeralStreaming.RepeatedBudget.Soak,
+              Some(timing)
+            )(IO.pure(false))(_ => IO.unit)
+            measured <- timing.get
+            observed <- atRelease.get
+            _ = assertEquals(measured, Some(L.FollowWindow(2000, 5000, 3000000000L)))
+            _ = assertEquals(result.followWindow, measured)
+            _ = assertEquals(observed, measured)
+            _ = assertEquals(result.peerOpens, 1)
+            _ = assertEquals(result.peerCloses, 1)
+            _ = assertEquals(result.snapshot.state.id, startup.snapshot.state.id)
+            _ = assert(!result.inclusionReached)
+            _ = assert(
+              result.stop == PlutusRunPolicy.FollowStop.Deadline ||
+                result.stop == PlutusRunPolicy.FollowStop.Driver(EphemeralStreaming.Stop.Deadline)
+            )
+          yield ())
+        }
+        .unsafeToFuture()
+    }
 
     test(
       "genuine repeated seed refuses a foreign fullpoint intersection without pulling or publishing"

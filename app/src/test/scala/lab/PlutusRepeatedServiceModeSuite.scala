@@ -148,3 +148,97 @@ class PlutusRepeatedServiceModeSuite extends munit.FunSuite:
         .isLeft
     )
   }
+
+  test("720 second budget requires the exact pure JVM soak opt-in and preserves other caps") {
+    val jvm = base ++ List("--epoch-mode", PlutusServiceCommand.JvmModeId)
+    val soak = changed(jvm, "--duration-seconds", "720") ++ List(
+      "--soak-profile",
+      PlutusServiceCommand.SoakProfileId
+    )
+    val config = PlutusServiceCommand.options(soak).toOption.get
+    assertEquals(config.repeatedBudget, EphemeralStreaming.RepeatedBudget.Soak)
+    assertEquals(config.durationSeconds, 720)
+    assertEquals(PlutusServiceRuntime.operationTimeout(config), 880.seconds)
+    assertEquals(
+      PlutusServiceRuntime.operationTimeout(PlutusServiceCommand.options(jvm).toOption.get),
+      760.seconds
+    )
+    assert(PlutusServiceCommand.options(changed(jvm, "--duration-seconds", "601")).isLeft)
+    assert(PlutusServiceCommand.options(changed(soak, "--duration-seconds", "721")).isLeft)
+    assert(PlutusServiceCommand.options(changed(soak, "--max-blocks", "513")).isLeft)
+    assert(PlutusServiceCommand.options(changed(soak, "--soak-profile", "unknown")).isLeft)
+    assert(
+      PlutusServiceCommand
+        .options(base ++ mode ++ List("--soak-profile", PlutusServiceCommand.SoakProfileId))
+        .isLeft
+    )
+    assert(
+      PlutusServiceCommand
+        .options(
+          changed(changed(base, "--duration-seconds", "30"), "--max-blocks", "128") ++ List(
+            "--soak-profile",
+            PlutusServiceCommand.SoakProfileId
+          )
+        )
+        .isLeft
+    )
+    assert(
+      PlutusServiceCommand
+        .options(soak ++ List("--soak-profile", PlutusServiceCommand.SoakProfileId))
+        .isLeft
+    )
+    assertEquals(
+      PlutusServiceRuntime.repeatedDeadline(90000, 720, config.repeatedBudget),
+      (810000L, PlutusRunPolicy.WindowEnd.Duration)
+    )
+    intercept[IllegalArgumentException](
+      PlutusServiceRuntime.repeatedDeadline(0, 721, config.repeatedBudget)
+    )
+    val limits =
+      EphemeralStreaming.Limits(maxEvents = 4096, maxBlocks = 512, duration = 720.seconds)
+    assert(!EphemeralStreaming.repeatedLimits(limits))
+    assert(EphemeralStreaming.repeatedLimits(limits, config.repeatedBudget))
+    assert(!EphemeralStreaming.repeatedLimits(limits.copy(retained = 9), config.repeatedBudget))
+    assert(!EphemeralStreaming.repeatedLimits(limits.copy(maxEvents = 4097), config.repeatedBudget))
+    assert(!EphemeralStreaming.repeatedLimits(limits.copy(maxBlocks = 513), config.repeatedBudget))
+    assert(
+      !EphemeralStreaming.repeatedLimits(
+        limits.copy(maxBytes = 256L * 1024 * 1024 + 1),
+        config.repeatedBudget
+      )
+    )
+  }
+
+  test("soak streaming waits beyond 600 and stops at its explicit 720 second deadline") {
+    TestControl
+      .executeEmbed(for
+        runtime <- EphemeralStreamingFixture.runtime
+        before <- runtime.snapshot
+        result <- EphemeralStreaming.runRepeated(
+          runtime,
+          EphemeralStreaming.Limits(duration = 720.seconds),
+          EphemeralStreaming.RepeatedBudget.Soak
+        )(IO.never[Option[EphemeralStreaming.Event]])
+        _ = assertEquals(result.elapsed, 720.seconds)
+        _ = assertEquals(result.stop, EphemeralStreaming.Stop.Deadline)
+        _ = assertEquals(result.snapshot.state.id, before.state.id)
+      yield ())
+      .unsafeToFuture()
+  }
+
+  test("absent follow timing preserves legacy JSON exactly") {
+    val original = ReferenceJson.Json.Obj(Map("schema" -> ReferenceJson.Json.Str("legacy")))
+    assertEquals(PlutusServiceRuntime.withFollowWindow(original, None), original)
+    val window = PlutusRepeatedEpochFollow.FollowWindow(1000, 2200, 1200000000L)
+    val timed = PlutusServiceRuntime.withFollowWindow(original, Some(window))
+    assertEquals(ReferenceJson.field(timed, "schema"), ReferenceJson.Json.Str("legacy"))
+    val measured = ReferenceJson.field(timed, "followWindow")
+    assertEquals(
+      ReferenceJson.field(measured, "schema"),
+      ReferenceJson.Json.Str("plutus-service-follow-window-v1")
+    )
+    assertEquals(
+      ReferenceJson.field(measured, "elapsedMonotonicNanos"),
+      ReferenceJson.Json.Num("1200000000")
+    )
+  }

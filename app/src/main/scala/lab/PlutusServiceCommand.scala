@@ -10,7 +10,8 @@ import lab.cbor.Bytes
 /** Explicit bounded volatile service, separate from the expected-transaction diagnostic. */
 object PlutusServiceCommand:
   val usage =
-    "plutus-service --profile isolated-conway-pv9-plutus-v3-spend-v1 --initial DIRECTORY --manifest-sha256 HASH --port PORT --magic PRIVATE_MAGIC --output DIRECTORY --duration-seconds N(1..60) --max-blocks N(1..128); loopback only, testnet0, epoch0, 100ms slots, volatile by default; opt-in --checkpoint-after N(1..8) and/or --restore-checkpoint FILE --restore-authority FILE --restore-authority-sha256 HASH require --store-id HASH --session-id HASH --generation N; bounded linear restart only, no crash durability or full ledger validation; separate --epoch-mode repeated-native-checked-jvm-v1 --native-likelihood-executable ABSOLUTE_FILE --native-likelihood-sha256 HASH permits duration<=600/max-blocks<=512 with JVM-computed, native-checked runtime-dependent research epochs; primary --epoch-mode repeated-jvm-v1 has no native executable options or runtime native process"
+    "plutus-service --profile isolated-conway-pv9-plutus-v3-spend-v1 --initial DIRECTORY --manifest-sha256 HASH --port PORT --magic PRIVATE_MAGIC --output DIRECTORY --duration-seconds N(1..60) --max-blocks N(1..128); loopback only, testnet0, epoch0, 100ms slots, volatile by default; opt-in --checkpoint-after N(1..8) and/or --restore-checkpoint FILE --restore-authority FILE --restore-authority-sha256 HASH require --store-id HASH --session-id HASH --generation N; bounded linear restart only, no crash durability or full ledger validation; separate --epoch-mode repeated-native-checked-jvm-v1 --native-likelihood-executable ABSOLUTE_FILE --native-likelihood-sha256 HASH permits duration<=600/max-blocks<=512 with JVM-computed, native-checked runtime-dependent research epochs; primary --epoch-mode repeated-jvm-v1 has no native executable options or runtime native process; only pure JVM --soak-profile early-restart-two-service-soak-v1 permits duration<=720"
+  private[lab] val SoakProfileId = "early-restart-two-service-soak-v1"
   private[lab] val RepeatedModeId = "repeated-native-checked-jvm-v1"
   private[lab] val JvmModeId = "repeated-jvm-v1"
   private[lab] val repeatedOptions =
@@ -32,7 +33,8 @@ object PlutusServiceCommand:
       durationSeconds: Int,
       maxBlocks: Int,
       checkpoint: Option[PlutusServiceCheckpoint.Mode] = None,
-      repeated: Option[Repeated] = None
+      repeated: Option[Repeated] = None,
+      repeatedBudget: EphemeralStreaming.RepeatedBudget = EphemeralStreaming.RepeatedBudget.Standard
   )
   private[lab] def options(args: List[String]): Either[String, Config] =
     try
@@ -47,7 +49,7 @@ object PlutusServiceCommand:
         "--max-blocks"
       )
       require(
-        args.size >= 16 && args.size <= 36 && args.size % 2 == 0,
+        args.size >= 16 && args.size <= 38 && args.size % 2 == 0,
         "eight base options and complete opt-in groups required"
       )
       val pairs = args.grouped(2).map(xs => xs.head -> xs(1)).toVector
@@ -55,7 +57,8 @@ object PlutusServiceCommand:
         names.subsetOf(pairs.map(_._1).toSet) && pairs
           .map(_._1)
           .forall(k =>
-            names.contains(k) || PlutusServiceCheckpoint.optionNames.contains(k) || repeatedOptions
+            names.contains(k) || k == "--soak-profile" || PlutusServiceCheckpoint.optionNames
+              .contains(k) || repeatedOptions
               .contains(k)
           ) && pairs.map(_._1).distinct.size == pairs.size,
         "exact options required"
@@ -93,7 +96,14 @@ object PlutusServiceCommand:
               require(pin.matches("[0-9a-f]{64}"), "canonical native executable pin required")
               Some(Repeated.Native(executable, Bytes.fromHex(pin).toOption.get))
             case _ => throw new IllegalArgumentException("unsupported repeated epoch mode")
-      val duration = number("--duration-seconds", if repeated.nonEmpty then 600 else 60)
+      val budget = values.get("--soak-profile") match
+        case None => EphemeralStreaming.RepeatedBudget.Standard
+        case Some(SoakProfileId) =>
+          require(repeated.contains(Repeated.Jvm), "soak profile requires pure JVM repeated mode")
+          EphemeralStreaming.RepeatedBudget.Soak
+        case Some(_) => throw new IllegalArgumentException("unsupported soak profile")
+      val duration =
+        number("--duration-seconds", if repeated.nonEmpty then budget.maximumSeconds else 60)
       val blocks = number("--max-blocks", if repeated.nonEmpty then 512 else 128)
       val baseArgs =
         List("--profile", "--initial", "--manifest-sha256", "--port", "--magic").flatMap(key =>
@@ -109,7 +119,7 @@ object PlutusServiceCommand:
               )
             else if repeated.flatMap(_.executable).exists(_.startsWith(base.exchange)) then
               Left("native executable must be outside service output")
-            else Right(Config(base, duration, blocks, mode, repeated))
+            else Right(Config(base, duration, blocks, mode, repeated, budget))
           }
       }
     catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse("invalid configuration"))

@@ -120,11 +120,44 @@ private[lab] object PlutusServiceRuntime:
     require(effective > now && effective.isValidLong, "initial epoch service window missed")
     (effective.toLong, if effective < requested then WindowEnd.Epoch else WindowEnd.Duration)
 
-  private[lab] def repeatedDeadline(now: Long, requestedSeconds: Int): (Long, WindowEnd) =
-    require(requestedSeconds >= 1 && requestedSeconds <= 600, "bounded repeated duration")
+  private[lab] def repeatedDeadline(
+      now: Long,
+      requestedSeconds: Int,
+      budget: EphemeralStreaming.RepeatedBudget = EphemeralStreaming.RepeatedBudget.Standard
+  ): (Long, WindowEnd) =
+    require(
+      requestedSeconds >= 1 && requestedSeconds <= budget.maximumSeconds,
+      "bounded repeated duration"
+    )
     val end = BigInt(now) + BigInt(requestedSeconds) * 1000
     require(end.isValidLong && end > now, "repeated deadline range")
     (end.toLong, WindowEnd.Duration)
+
+  private[lab] def withFollowWindow(
+      value: J,
+      window: Option[PlutusRepeatedEpochFollow.FollowWindow]
+  ): J =
+    window.fold(value) { w =>
+      value match
+        case J.Obj(fields) =>
+          J.Obj(
+            fields.updated(
+              "followWindow",
+              record(
+                "schema" -> text("plutus-service-follow-window-v1"),
+                "startedUnixMillis" -> num(w.startedUnixMillis),
+                "endedUnixMillis" -> num(w.endedUnixMillis),
+                "elapsedMonotonicNanos" -> num(w.elapsedMonotonicNanos)
+              )
+            )
+          )
+        case _ => throw new IllegalArgumentException("follow window requires an object")
+    }
+
+  private[lab] def operationTimeout(config: PlutusServiceCommand.Config): FiniteDuration =
+    if config.repeated.isEmpty then 220.seconds
+    else if config.repeatedBudget == EphemeralStreaming.RepeatedBudget.Soak then 880.seconds
+    else 760.seconds
 
   private[lab] def publishAfterFinalization[A](output: Path, resource: Resource[IO, A])(
       body: A => IO[(J, Boolean)]
@@ -199,6 +232,7 @@ private[lab] object PlutusServiceRuntime:
       _ <- IO.blocking(Files.createDirectory(root.resolve("originals")))
       opened <- Ref.of[IO, Int](0)
       closed <- Ref.of[IO, Int](0)
+      followWindow <- Ref.of[IO, Option[PlutusRepeatedEpochFollow.FollowWindow]](None)
       relayCount <- Ref.of[IO, Int](0)
       relayEvents <- Ref.of[IO, Vector[J]](Vector.empty)
       pending <- Ref.of[IO, Vector[AdmissionStateChange]](Vector.empty)
@@ -246,8 +280,16 @@ private[lab] object PlutusServiceRuntime:
               saved: Option[PlutusServiceCheckpoint.Saved] = None,
               admission: Option[AdaSubmissionService.Snapshot] = None
           ): J =
-            val scoped = config.repeated.fold(value) { mode =>
-              value match
+            val profiled =
+              if config.repeatedBudget == EphemeralStreaming.RepeatedBudget.Soak then
+                value match
+                  case J.Obj(fields) =>
+                    J.Obj(fields.updated("soakProfile", text(PlutusServiceCommand.SoakProfileId)))
+                  case _ =>
+                    throw new IllegalArgumentException("profile metadata requires an object")
+              else value
+            val scoped = config.repeated.fold(profiled) { mode =>
+              profiled match
                 case J.Obj(fields) =>
                   J.Obj(
                     fields.updated(
@@ -532,7 +574,8 @@ private[lab] object PlutusServiceRuntime:
                   require(started < window._1, "service startup exhausted effective deadline")
                 )
                 activeWindow <- IO(
-                  if config.repeated.nonEmpty then repeatedDeadline(started, config.durationSeconds)
+                  if config.repeated.nonEmpty then
+                    repeatedDeadline(started, config.durationSeconds, config.repeatedBudget)
                   else window
                 )
                 activeView <- node.owner.current
@@ -578,7 +621,11 @@ private[lab] object PlutusServiceRuntime:
                             peers,
                             startPoint,
                             1000,
-                            limits
+                            limits,
+                            config.repeatedBudget,
+                            Option.when(
+                              config.repeatedBudget == EphemeralStreaming.RepeatedBudget.Soak
+                            )(followWindow)
                           )(complete)(observed)
                           .map(_.stop)
                   }
@@ -657,20 +704,25 @@ private[lab] object PlutusServiceRuntime:
         .onCancel(for
           opens <- opened.get
           closes <- closed.get
+          measured <- followWindow.get
           _ <- boundedSave(
             root.resolve("cancelled.json"),
-            record(
-              "schema" -> text("plutus-service-cancelled-v1"),
-              "resourcesFinalized" -> bool(opens == closes && config.repeated.isEmpty),
-              "transportOpens" -> num(opens),
-              "transportCloses" -> num(closes)
+            withFollowWindow(
+              record(
+                "schema" -> text("plutus-service-cancelled-v1"),
+                "resourcesFinalized" -> bool(opens == closes && config.repeated.isEmpty),
+                "transportOpens" -> num(opens),
+                "transportCloses" -> num(closes)
+              ),
+              measured
             ),
             16384
           ).attempt.void
         yield ())
       // The service workers, owner and evidence sink have all finalized. records is a read-only Ref snapshot.
       receipts <- closedResult._2
-      result = closedResult._1
+      measured <- followWindow.get
+      result = withFollowWindow(closedResult._1, measured)
       opens <- opened.get
       closes <- closed.get
       _ <- IO(require(opens == closes, "owned transport finalization mismatch"))
@@ -706,7 +758,7 @@ private[lab] object PlutusServiceRuntime:
       config: PlutusServiceCommand.Config
   )(operation: => IO[Boolean]): IO[ExitCode] = IO
     .defer(operation)
-    .timeout(if config.repeated.nonEmpty then 760.seconds else 220.seconds)
+    .timeout(operationTimeout(config))
     .map(ok => if ok then ExitCode.Success else ExitCode(2))
     .handleErrorWith { e =>
       val value = record(

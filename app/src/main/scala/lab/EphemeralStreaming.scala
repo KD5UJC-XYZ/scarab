@@ -24,9 +24,15 @@ private[lab] object EphemeralStreaming:
     def valid: Boolean = retained >= 1 && retained <= 8 && maxEvents > 0 && maxEvents <= 4096 &&
       maxBlocks > 0 && maxBlocks <= maxEvents && maxBytes > 0 &&
       maxBytes <= 256L * 1024 * 1024 && duration > Duration.Zero && duration <= 120.seconds
-  private[lab] def repeatedLimits(limits: Limits): Boolean =
+  enum RepeatedBudget(val maximumSeconds: Int):
+    case Standard extends RepeatedBudget(600)
+    case Soak extends RepeatedBudget(720)
+  private[lab] def repeatedLimits(
+      limits: Limits,
+      budget: RepeatedBudget = RepeatedBudget.Standard
+  ): Boolean =
     limits != null && limits.copy(duration = 120.seconds).valid &&
-      limits.maxBlocks <= 512 && limits.duration > Duration.Zero && limits.duration <= 600.seconds
+      limits.maxBlocks <= 512 && limits.duration > Duration.Zero && limits.duration <= budget.maximumSeconds.seconds
 
   final case class Counters(
       events: Long = 0,
@@ -58,24 +64,24 @@ private[lab] object EphemeralStreaming:
       runtime: CoherentDriver[F],
       limits: Limits
   )(next: F[Option[Event]]): F[Report] =
-    runWithin(runtime, limits, repeated = false)(next)
+    runWithin(runtime, limits, repeated = None)(next)
 
   /** Explicit runtime-dependent repeated research profile; default limits are unchanged. */
   private[lab] def runRepeated[F[_]: Async](
       runtime: CoherentDriver[F],
-      limits: Limits
+      limits: Limits,
+      budget: RepeatedBudget = RepeatedBudget.Standard
   )(next: F[Option[Event]]): F[Report] =
-    runWithin(runtime, limits, repeated = true)(next)
+    runWithin(runtime, limits, repeated = Some(budget))(next)
 
   private def runWithin[F[_]: Async](
       runtime: CoherentDriver[F],
       limits: Limits,
-      repeated: Boolean
+      repeated: Option[RepeatedBudget]
   )(next: F[Option[Event]]): F[Report] =
     val F = Async[F]
     if runtime == null || limits == null ||
-      !(if repeated then repeatedLimits(limits)
-        else limits.valid) || limits.retained > runtime.maxBlocks
+      !repeated.fold(limits.valid)(repeatedLimits(limits, _)) || limits.retained > runtime.maxBlocks
     then F.raiseError(new IllegalArgumentException("bounded streaming runtime/limits required"))
     else
       for

@@ -16,6 +16,31 @@ private[lab] object PlutusRepeatedEpochFollow:
   import PlutusRunPolicy.{CompletionGoal, FollowStop}
   type Observation = NetworkPublicationObservation
   private val Observation = NetworkPublicationObservation
+  final case class FollowWindow(
+      startedUnixMillis: Long,
+      endedUnixMillis: Long,
+      elapsedMonotonicNanos: Long
+  )
+
+  /** Bracket only the streaming body; capture completion before outer peer cleanup, including
+    * cancellation.
+    */
+  private[lab] def measureFollow[F[_]: Async, A](sink: Ref[F, Option[FollowWindow]])(
+      body: F[A]
+  ): F[A] =
+    val F = Async[F]
+    F.uncancelable { poll =>
+      for
+        wall <- F.realTime
+        mono <- F.monotonic
+        result <- poll(body).guarantee(
+          (F.monotonic, F.realTime).tupled.flatMap { (endMono, endWall) =>
+            sink.set(Some(FollowWindow(wall.toMillis, endWall.toMillis, (endMono - mono).toNanos)))
+          }
+        )
+      yield result
+    }
+
   final case class Outcome(
       snapshot: CoherentSequence.Snapshot,
       driver: Option[EphemeralStreaming.Report],
@@ -26,7 +51,8 @@ private[lab] object PlutusRepeatedEpochFollow:
       networkBytes: Long,
       peerOpens: Int,
       peerCloses: Int,
-      initialIntersectionConfirmations: Int
+      initialIntersectionConfirmations: Int,
+      followWindow: Option[FollowWindow] = None
   ):
     def reason: String = PlutusRunPolicy.followWire(stop)
   private def networkPoint(p: Point): ChainSync.Point =
@@ -49,7 +75,16 @@ private[lab] object PlutusRepeatedEpochFollow:
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits
   )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
-    run(runtime, peer, initial, epochLength, limits, CompletionGoal.Inclusion)(ready)(record)
+    run(
+      runtime,
+      peer,
+      initial,
+      epochLength,
+      limits,
+      CompletionGoal.Inclusion,
+      EphemeralStreaming.RepeatedBudget.Standard,
+      None
+    )(ready)(record)
 
   /** Service completion is a published-block budget, never an expected transaction. */
   def runUntil[F[_]: Async](
@@ -57,9 +92,20 @@ private[lab] object PlutusRepeatedEpochFollow:
       peer: Resource[F, BoundedChainFollower.Peer[F]],
       initial: Point,
       epochLength: BigInt,
-      limits: EphemeralStreaming.Limits
+      limits: EphemeralStreaming.Limits,
+      budget: EphemeralStreaming.RepeatedBudget = EphemeralStreaming.RepeatedBudget.Standard,
+      timing: Option[Ref[F, Option[FollowWindow]]] = None
   )(budgetReached: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
-    run(runtime, peer, initial, epochLength, limits, CompletionGoal.PublishedBlockBudget)(
+    run(
+      runtime,
+      peer,
+      initial,
+      epochLength,
+      limits,
+      CompletionGoal.PublishedBlockBudget,
+      budget,
+      timing
+    )(
       budgetReached
     )(record)
 
@@ -100,7 +146,9 @@ private[lab] object PlutusRepeatedEpochFollow:
       initial: Point,
       epochLength: BigInt,
       limits: EphemeralStreaming.Limits,
-      completionGoal: CompletionGoal
+      completionGoal: CompletionGoal,
+      budget: EphemeralStreaming.RepeatedBudget,
+      timing: Option[Ref[F, Option[FollowWindow]]]
   )(ready: F[Boolean])(record: Observation => F[Unit]): F[Outcome] =
     val F = Async[F]
     def invalid(message: String): F[Unit] = F.raiseError(new IllegalArgumentException(message))
@@ -111,9 +159,12 @@ private[lab] object PlutusRepeatedEpochFollow:
         runtime != null && initial != null && initial.hash.size == 32 && initial.slot >= 0 &&
           initial.slot <= BigInt("18446744073709551615") && initial.blockNo >= 0 &&
           epochLength > 0 && initial.slot < epochLength && limits != null && EphemeralStreaming
-            .repeatedLimits(limits) && limits.retained == 8 &&
+            .repeatedLimits(limits, budget) && limits.retained == 8 &&
           limits.maxEvents <= 4096 && limits.maxBlocks <= 512
       )(new IllegalArgumentException("bounded epoch-zero initial state and limits required"))
+      _ <- F.raiseUnless((budget == EphemeralStreaming.RepeatedBudget.Soak) == timing.nonEmpty)(
+        new IllegalArgumentException("follow timing requires the explicit soak profile")
+      )
       before <- runtime.snapshot
       _ <- F.raiseUnless(
         before.state.certificates.state.tip == initial &&
@@ -256,8 +307,13 @@ private[lab] object PlutusRepeatedEpochFollow:
               val remaining = limits.duration - spent
               if remaining <= Duration.Zero then F.raiseError(new OperationalDeadline)
               else
-                EphemeralStreaming
-                  .runRepeated(runtime, limits.copy(duration = remaining))(next)
+                val follow = EphemeralStreaming.runRepeated(
+                  runtime,
+                  limits.copy(duration = remaining),
+                  budget
+                )(next)
+                timing
+                  .fold(follow)(sink => measureFollow(sink)(follow))
                   .flatTap(_ => observeApplication)
             }
           }
@@ -272,6 +328,7 @@ private[lab] object PlutusRepeatedEpochFollow:
       c <- closes.get
       hit <- reached.get
       confirmations <- initialConfirmations.get
+      window <- timing.traverse(_.get).map(_.flatten)
       report = result.toOption
       stop = result.fold(
         failureStop,
@@ -289,5 +346,6 @@ private[lab] object PlutusRepeatedEpochFollow:
       b,
       o,
       c,
-      confirmations
+      confirmations,
+      window
     )
