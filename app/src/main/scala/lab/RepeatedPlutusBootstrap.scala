@@ -14,7 +14,8 @@ private[lab] object RepeatedPlutusBootstrap:
   def start(
       joined: NativeLedgerV2.Checked,
       early: PlutusServiceCheckpoint.Started,
-      oracle: NativeLikelihoodOracle.Oracle[IO]
+      oracle: NativeLikelihoodOracle.Oracle[IO],
+      mode: lab.ledger.ConwayNativeLikelihood.Mode = lab.ledger.ConwayNativeLikelihood.Mode.PureJvm
   ): IO[PlutusServiceCheckpoint.Started] = for
     context <- IO {
       require(
@@ -60,7 +61,8 @@ private[lab] object RepeatedPlutusBootstrap:
         epoch.previousBlocks,
         epoch.currentBlocks,
         epoch.reward.componentSHA256,
-        8
+        8,
+        generationMode = mode
       )
       .map(get(_))
     _ <- early.snapshot.state.acquisition.originals.traverse_ { original =>

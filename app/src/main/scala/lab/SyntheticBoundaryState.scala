@@ -35,7 +35,8 @@ private[lab] object SyntheticBoundaryState:
       val id: Bytes,
       val repeatedLimit: Int,
       val transitions: Int,
-      val checkedLikelihood: Option[N.Generated]
+      val checkedLikelihood: Option[N.Generated],
+      val generationMode: N.Mode
   ):
     val repeated = repeatedLimit > 0
     val boundaryApplied = governanceAfter.isDefined
@@ -65,7 +66,8 @@ private[lab] object SyntheticBoundaryState:
       parent: Option[Bytes],
       repeatedLimit: Int = 0,
       transitions: Int = 0,
-      likelihood: Option[N.Generated] = None
+      likelihood: Option[N.Generated] = None,
+      generationMode: N.Mode = N.Mode.CheckedJvm
   ): State =
     val id = digest(
       Vector(
@@ -83,10 +85,11 @@ private[lab] object SyntheticBoundaryState:
               Vector(
                 repeatedLimit.toString,
                 transitions.toString,
+                generationMode.toString,
                 likelihood.fold("absent")(g =>
                   ClusterHeaderObservation
                     .sha256(g.request.original)
-                    .hex + ClusterHeaderObservation.sha256(g.response).hex
+                    .hex + ClusterHeaderObservation.sha256(g.evidence).hex
                 )
               ))
     )
@@ -105,14 +108,20 @@ private[lab] object SyntheticBoundaryState:
       id,
       repeatedLimit,
       transitions,
-      likelihood
+      likelihood,
+      generationMode
     )
 
   /** Explicit bounded, non-durable repeated research lane; seed checks remain unchanged. */
-  def enableRepeated(state: State, maxTransitions: Int): Either[String, State] = checked {
+  def enableRepeated(
+      state: State,
+      maxTransitions: Int,
+      mode: N.Mode = N.Mode.CheckedJvm
+  ): Either[String, State] = checked {
     require(
       state != null && !state.boundaryApplied && state.frozenId.isEmpty &&
-        !state.repeated && maxTransitions >= 1 && maxTransitions <= 8,
+        !state.repeated && maxTransitions >= 1 && maxTransitions <= 8 &&
+        (mode == N.Mode.PureJvm || mode == N.Mode.CheckedJvm),
       "repeated initial scope"
     )
     val prospective = get(G.applyBoundary(state.governanceInput, state.governanceInput.epoch + 1))
@@ -129,7 +138,8 @@ private[lab] object SyntheticBoundaryState:
       None,
       state.origin,
       None,
-      maxTransitions
+      maxTransitions,
+      generationMode = mode
     )
   }
 
@@ -140,9 +150,9 @@ private[lab] object SyntheticBoundaryState:
         throw new IllegalArgumentException("checked JVM/native freeze comparison required")
       )
       require(
-        generated.mode == N.Mode.CheckedJvm && !generated.nativeValuesAuthoritative &&
-          generated.jvmMismatchWords == 0,
-        "native authoritative values forbidden in checked JVM lane"
+        generated.mode == state.generationMode && !generated.nativeValuesAuthoritative &&
+          (generated.mode == N.Mode.PureJvm || generated.jvmMismatchWords == 0),
+        "foreign likelihood mode or native authoritative values forbidden"
       )
       get(generated.forFrozen(frozen, frozen.id))
 
@@ -152,9 +162,9 @@ private[lab] object SyntheticBoundaryState:
       "new repeated freeze evidence required"
     )
     require(
-      generated.mode == N.Mode.CheckedJvm && !generated.nativeValuesAuthoritative &&
-        generated.jvmMismatchWords == 0,
-      "checked JVM comparison required"
+      generated.mode == state.generationMode && !generated.nativeValuesAuthoritative &&
+        (generated.mode == N.Mode.PureJvm || generated.jvmMismatchWords == 0),
+      "configured likelihood generation mode required"
     )
     make(
       state.governanceInput,
@@ -170,7 +180,8 @@ private[lab] object SyntheticBoundaryState:
       state.boundaryParent,
       state.repeatedLimit,
       state.transitions,
-      Some(generated)
+      Some(generated),
+      state.generationMode
     )
   }
 
@@ -357,7 +368,8 @@ private[lab] object SyntheticBoundaryState:
               state.boundaryParent,
               state.repeatedLimit,
               state.transitions,
-              state.checkedLikelihood
+              state.checkedLikelihood,
+              state.generationMode
             )
 
   def advanceFreeze(
@@ -483,7 +495,8 @@ private[lab] object SyntheticBoundaryState:
       Some(state.id),
       state.repeatedLimit,
       state.transitions + 1,
-      None
+      None,
+      state.generationMode
     )
   }
 

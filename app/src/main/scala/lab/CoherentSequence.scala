@@ -2201,7 +2201,9 @@ object CoherentSequence:
       currentBlocks: Map[Bytes, BigInt],
       absentEvidence: Bytes,
       maxTransitions: Int,
-      maxBlocks: Int = MaxBlocks
+      maxBlocks: Int = MaxBlocks,
+      generationMode: lab.ledger.ConwayNativeLikelihood.Mode =
+        lab.ledger.ConwayNativeLikelihood.Mode.CheckedJvm
   ): F[Result[Runtime[F]]] =
     createWithSyntheticBoundary[F](
       context,
@@ -2221,7 +2223,11 @@ object CoherentSequence:
           val initial = cell.state
           checked(
             "repeated-profile",
-            SyntheticBoundaryState.enableRepeated(initial.syntheticBoundary.get, maxTransitions)
+            SyntheticBoundaryState.enableRepeated(
+              initial.syntheticBoundary.get,
+              maxTransitions,
+              generationMode
+            )
           ) match
             case Left(error) => (cell, Left(error))
             case Right(component) =>

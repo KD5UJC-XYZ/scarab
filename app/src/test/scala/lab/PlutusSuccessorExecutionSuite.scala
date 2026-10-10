@@ -167,7 +167,7 @@ class PlutusSuccessorExecutionSuite extends munit.FunSuite:
         joined,
         sha(inputs("initial/adapter-inputs.json"))
       )
-      repeated <- RepeatedPlutusBootstrap.start(joined, early, emptyOracle)
+      repeated <- RepeatedPlutusBootstrap.start(joined, early, emptyOracle, N.Mode.CheckedJvm)
     yield repeated
     lazy val firstBlock =
       val name =
@@ -224,123 +224,230 @@ class PlutusSuccessorExecutionSuite extends munit.FunSuite:
     }
 
     test("late successor freezes pre-tick history and reuses captured likelihood at boundary") {
+      Vector(N.Mode.PureJvm, N.Mode.CheckedJvm)
+        .traverse_ { mode =>
+          val generation = if mode == N.Mode.PureJvm then pureOracle else emptyOracle
+          (for
+            early <- PlutusServiceCheckpoint.start(
+              None,
+              joined,
+              sha(inputs("initial/adapter-inputs.json"))
+            )
+            started <- RepeatedPlutusBootstrap.start(joined, early, generation, mode)
+            state = started.snapshot.state
+            source = joined.ledger.epochComponents
+            stakeOwner = S.owner()
+            seedStake = get(source.stake.attach(stakeOwner, state.ledger))
+            advance = get(
+              L.prepareBlock(
+                state.ledger,
+                sha(Bytes.fromArray("freeze-point".getBytes("UTF-8"))),
+                Vector.empty,
+                400,
+                Some(lab.vm.Pv9SubmissionEvaluator)
+              )
+            )
+            ledger = get(L.commitBlock(state.ledger, advance)).state
+            stake = get(
+              S.select(
+                stakeOwner,
+                seedStake,
+                get(S.prepare(stakeOwner, seedStake, state.ledger, advance))
+              )
+            )
+            boundaryOwner = B.owner()
+            context = get(
+              B.context(
+                boundaryOwner,
+                stakeOwner,
+                ledger.id,
+                stake,
+                source.pots,
+                source.previousBlocks,
+                source.currentBlocks
+              )
+            )
+            profile = state.syntheticRewards.get.profile
+            frozen = get(
+              B.freezeForAllocation(
+                boundaryOwner,
+                context,
+                400,
+                profile.window,
+                profile.parameters,
+                profile.globals
+              )
+            )
+            generated <- generation.generate(frozen, frozen.id)
+            allocation = get(R.calculate(frozen, frozen.id))
+            pulser = get(P.start(frozen, frozen.id, allocation, allocation.id, Map.empty))
+            bound = get(
+              SyntheticBoundaryState.advanceFreeze(
+                get(
+                  SyntheticBoundaryState.attachLikelihood(state.syntheticBoundary.get, generated)
+                ),
+                Some(frozen),
+                Some(pulser)
+              )
+            )
+            completed = get(P.completeAtBoundary(pulser, pulser.id, 1700))
+            effect = get(
+              B.completeFromFrozen(boundaryOwner, context, completed.completion.get.completed)
+            )
+            header = sha(Bytes.fromArray("late-successor-capture-test".getBytes("UTF-8")))
+            preview = get(
+              B.preview(
+                boundaryOwner,
+                context,
+                get(B.signal(boundaryOwner, context, header, 1700)),
+                B.RewardPhase.Completed(effect)
+              )
+            )
+            binding = get(
+              PlutusSuccessorBinding
+                .prepare(ledger, preview, ledger.environment.plutus.get.parameters)
+            )
+            block = get(
+              L.preparePlutusSuccessorBlock(
+                ledger,
+                binding,
+                header,
+                Vector.empty,
+                1700,
+                Some(lab.vm.Pv9SubmissionEvaluator)
+              )
+            )
+            pending = get(
+              S.preparePlutusSuccessor(stakeOwner, stake, ledger, block, preview, binding)
+            )
+            selected = get(S.select(stakeOwner, stake, pending))
+            next = get(
+              SyntheticBoundaryState
+                .atBoundary(bound, Some(frozen), Some(completed), preview, Some(effect))
+            )
+            late = get(
+              B.freezeAfterBoundary(
+                boundaryOwner,
+                preview,
+                selected,
+                profile.window,
+                profile.parameters,
+                profile.globals
+              )
+            )
+            lateGenerated <- generation.generate(late, late.id)
+            lateAllocation = get(R.calculate(late, late.id))
+            latePulser = get(P.start(late, late.id, lateAllocation, lateAllocation.id, Map.empty))
+            result = get(
+              SyntheticBoundaryState.afterBoundaryFreeze(
+                bound,
+                get(SyntheticBoundaryState.attachLikelihood(next, lateGenerated)),
+                Some(late),
+                Some(latePulser)
+              )
+            )
+            _ = assert(result.frozenHistory.get eq bound.nonMyopic)
+            _ = assertEquals(late.snapshotFees, stake.snapshots.fees)
+            _ = assertEquals(result.generationMode, mode)
+            _ = assert(result.checkedLikelihood.get.request.frozen eq late)
+            _ = assertEquals(late.go, stake.snapshots.go)
+            _ = assertEquals(result.governanceInput.epoch, BigInt(1))
+            _ = assertEquals(result.roles.previous.original, result.roles.current.original)
+            firstLedger = get(L.commitBlock(ledger, block)).state
+            secondContext = get(
+              B.context(
+                boundaryOwner,
+                stakeOwner,
+                firstLedger.id,
+                selected,
+                preview.pots,
+                preview.previousBlocks,
+                Map.empty
+              )
+            )
+            secondComplete = get(P.completeAtBoundary(latePulser, latePulser.id, 2000))
+            secondEffect = get(
+              B.completeFromFrozen(
+                boundaryOwner,
+                secondContext,
+                secondComplete.completion.get.completed
+              )
+            )
+            secondHeader = sha(header)
+            secondPreview = get(
+              B.preview(
+                boundaryOwner,
+                secondContext,
+                get(B.signal(boundaryOwner, secondContext, secondHeader, 2000)),
+                B.RewardPhase.Completed(secondEffect)
+              )
+            )
+            second = get(
+              SyntheticBoundaryState.atBoundary(
+                result,
+                Some(late),
+                Some(secondComplete),
+                secondPreview,
+                Some(secondEffect)
+              )
+            )
+            _ = assertEquals(second.transitions, 2)
+            _ = assertEquals(second.governanceInput.epoch, BigInt(2))
+            _ = assertEquals(second.governanceInput.dreps, joined.ledger.governanceInput.dreps)
+            _ = assertEquals(second.generationMode, mode)
+            _ = assert(second.checkedLikelihood.isEmpty && second.frozenId.isEmpty)
+          yield ())
+        }
+        .unsafeToFuture()
+    }
+
+    lazy val pureOracle = new NativeLikelihoodOracle.Oracle[IO]:
+      def generate(frozen: B.Frozen, id: Bytes): IO[N.Generated] =
+        IO(get(lab.ledger.ConwayLikelihoodGeneration.generateJvm(frozen, id)))
+    test("pure JVM bootstrap binds mode and rejects native comparison substitution") {
       (for
-        started <- start
-        state = started.snapshot.state
-        source = joined.ledger.epochComponents
-        stakeOwner = S.owner()
-        seedStake = get(source.stake.attach(stakeOwner, state.ledger))
-        advance = get(
-          L.prepareBlock(
-            state.ledger,
-            sha(Bytes.fromArray("freeze-point".getBytes("UTF-8"))),
-            Vector.empty,
-            400,
-            Some(lab.vm.Pv9SubmissionEvaluator)
-          )
+        early <- PlutusServiceCheckpoint.start(
+          None,
+          joined,
+          sha(inputs("initial/adapter-inputs.json"))
         )
-        ledger = get(L.commitBlock(state.ledger, advance)).state
-        stake = get(
-          S.select(
-            stakeOwner,
-            seedStake,
-            get(S.prepare(stakeOwner, seedStake, state.ledger, advance))
-          )
+        pure <- RepeatedPlutusBootstrap.start(joined, early, pureOracle)
+        checked <- RepeatedPlutusBootstrap.start(joined, early, emptyOracle, N.Mode.CheckedJvm)
+        _ = assertNotEquals(pure.snapshot.state.id, checked.snapshot.state.id)
+        _ = assertEquals(pure.snapshot.state.syntheticBoundary.get.generationMode, N.Mode.PureJvm)
+        injected <- pure.runtime.prepareRepeatedBlock(
+          pure.snapshot.fence,
+          firstBlock,
+          None,
+          emptyOracle.generate
         )
-        boundaryOwner = B.owner()
-        context = get(
-          B.context(
-            boundaryOwner,
-            stakeOwner,
-            ledger.id,
-            stake,
-            source.pots,
-            source.previousBlocks,
-            source.currentBlocks
-          )
+        _ = assert(injected.isLeft)
+        unchanged <- pure.runtime.snapshot
+        _ = assertEquals(unchanged.state.id, pure.snapshot.state.id)
+        candidate <- pure.runtime
+          .prepareRepeatedBlock(pure.snapshot.fence, firstBlock, None, pureOracle.generate)
+          .map(get(_))
+        applied <- pure.runtime.publish(candidate).map(get(_))
+        generated = applied.state.syntheticBoundary.get.checkedLikelihood.get
+        _ = assertEquals(generated.mode, N.Mode.PureJvm)
+        _ = assertEquals(generated.raw32Comparisons, 0)
+        _ = assertEquals(generated.raw64Comparisons, 0)
+        _ = assert(
+          generated.nativeResponse.isEmpty && !generated.nativeValidated &&
+            !generated.diagnosticNativeDependency && !generated.nativeValuesAuthoritative
         )
-        profile = state.syntheticRewards.get.profile
-        frozen = get(
-          B.freezeForAllocation(
-            boundaryOwner,
-            context,
-            400,
-            profile.window,
-            profile.parameters,
-            profile.globals
-          )
+        _ = assert(generated.request.frozen eq applied.state.syntheticRewards.get.frozen.get)
+        reverse <- checked.runtime.prepareRepeatedBlock(
+          checked.snapshot.fence,
+          firstBlock,
+          None,
+          pureOracle.generate
         )
-        generated <- emptyOracle.generate(frozen, frozen.id)
-        allocation = get(R.calculate(frozen, frozen.id))
-        pulser = get(P.start(frozen, frozen.id, allocation, allocation.id, Map.empty))
-        bound = get(
-          SyntheticBoundaryState.advanceFreeze(
-            get(SyntheticBoundaryState.attachLikelihood(state.syntheticBoundary.get, generated)),
-            Some(frozen),
-            Some(pulser)
-          )
-        )
-        completed = get(P.completeAtBoundary(pulser, pulser.id, 1700))
-        effect = get(
-          B.completeFromFrozen(boundaryOwner, context, completed.completion.get.completed)
-        )
-        header = sha(Bytes.fromArray("late-successor-capture-test".getBytes("UTF-8")))
-        preview = get(
-          B.preview(
-            boundaryOwner,
-            context,
-            get(B.signal(boundaryOwner, context, header, 1700)),
-            B.RewardPhase.Completed(effect)
-          )
-        )
-        binding = get(
-          PlutusSuccessorBinding
-            .prepare(ledger, preview, ledger.environment.plutus.get.parameters)
-        )
-        block = get(
-          L.preparePlutusSuccessorBlock(
-            ledger,
-            binding,
-            header,
-            Vector.empty,
-            1700,
-            Some(lab.vm.Pv9SubmissionEvaluator)
-          )
-        )
-        pending = get(
-          S.preparePlutusSuccessor(stakeOwner, stake, ledger, block, preview, binding)
-        )
-        selected = get(S.select(stakeOwner, stake, pending))
-        next = get(
-          SyntheticBoundaryState
-            .atBoundary(bound, Some(frozen), Some(completed), preview, Some(effect))
-        )
-        late = get(
-          B.freezeAfterBoundary(
-            boundaryOwner,
-            preview,
-            selected,
-            profile.window,
-            profile.parameters,
-            profile.globals
-          )
-        )
-        lateGenerated <- emptyOracle.generate(late, late.id)
-        lateAllocation = get(R.calculate(late, late.id))
-        latePulser = get(P.start(late, late.id, lateAllocation, lateAllocation.id, Map.empty))
-        result = get(
-          SyntheticBoundaryState.afterBoundaryFreeze(
-            bound,
-            get(SyntheticBoundaryState.attachLikelihood(next, lateGenerated)),
-            Some(late),
-            Some(latePulser)
-          )
-        )
-        _ = assertEquals(result.frozenHistory.get.id, bound.nonMyopic.id)
-        _ = assert(result.checkedLikelihood.get.request.frozen eq late)
-        _ = assertEquals(late.go, stake.snapshots.go)
-        _ = assertEquals(result.governanceInput.epoch, BigInt(1))
-        _ = assertEquals(result.roles.previous.original, result.roles.current.original)
+        _ = assert(reverse.isLeft)
+        assisted <- RepeatedPlutusBootstrap
+          .start(joined, early, pureOracle, N.Mode.AssistedNative)
+          .attempt
+        _ = assert(assisted.isLeft)
       yield ()).unsafeToFuture()
     }
   }
