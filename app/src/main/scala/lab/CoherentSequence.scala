@@ -57,6 +57,8 @@ object CoherentSequence:
       private[lab] val syntheticBoundary: Option[SyntheticBoundaryState.State] = None
   ):
     def stake: Option[Stake.State] = stakeBinding.map(_._2)
+    private[lab] def supportsRestrictedImageExport: Boolean =
+      rewardBinding.isEmpty && epochBinding.isEmpty && boundaryOrigin.isEmpty && syntheticBoundary.isEmpty
     def syntheticRewards: Option[SyntheticRewards] = rewardBinding
     def acquisition: BoundedChainFollower.Checkpoint = certificates.acquisition
     def revision: BigInt = ledger.revision
