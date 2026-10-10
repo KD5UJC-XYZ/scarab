@@ -173,6 +173,7 @@ class RunningRestored:
     authority_sha256: str
     prior_owner: str
     prior_checkpoint: str
+    output_root: Path | None = None
 
 
 def library_manifest(directory):
@@ -350,7 +351,7 @@ def perform_early_restart(controller, live, manifest, *, store_id, session_id, g
 def wait_checked_successor(controller, restored, seconds=20):
     """Observe an actual checked successor while leaving service ownership to caller."""
     base.require(type(seconds) is int and 1 <= seconds <= 60, "bounded successor observation")
-    root = controller.exchange / restored.phase
+    root = restored.output_root if restored.output_root is not None else controller.exchange / restored.phase
     path = root / "publication-0000.json"
     until = min(controller.deadline, time.monotonic()+seconds)
     while time.monotonic() < until:

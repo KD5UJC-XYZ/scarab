@@ -9,11 +9,265 @@ import private_cluster_plutus_early_restart as restart
 from test_private_cluster_plutus_early_restart import pin, H, OTHER, JOIN
 
 
+PROCESS=dict(pid=1234,startedAt="2026-10-10T00:00:00Z",restartCount=0)
+
+
 class SoakTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
+        disk=patch.object(soak.shutil,"disk_usage",return_value=SimpleNamespace(free=4*soak.base.GIB))
+        disk.start();self.addCleanup(disk.stop)
+
+    def test_complete_stage_plan_and_remaining_budget(self):
+        plan=soak.stage_plan(600)
+        self.assertEqual((plan["peerLifetime"],plan["restoredLifetime"],plan["latestFollowEnd"]),(720,660,750))
+        self.assertEqual(plan["operationBudget"],1069)
+        self.assertEqual((soak.MAX_OPERATION,soak.MAX_CLEANUP),(1080,30))
+        with patch.object(soak.time,"monotonic",return_value=100):
+            soak.require_budget(1170,1069,"whole plan")
+            with self.assertRaises(ValueError):soak.require_budget(1169,1069,"whole plan")
+        for target in (True,0,601):
+            with self.assertRaises(ValueError):soak.stage_plan(target)
+
+    def overlap_evidence(self):
+        def result(start,end):
+            return dict(soakProfile=soak.PROFILE,startedUnixMillis=start-100,endedUnixMillis=end+100,
+                        followWindow=dict(schema="plutus-service-follow-window-v1",startedUnixMillis=start,
+                                          endedUnixMillis=end,elapsedMonotonicNanos=(end-start)*1000000))
+        return [result(1000,721000),result(61000,721000)],[dict(startedUnixMillis=2000,endedUnixMillis=3000),
+                                                                      dict(startedUnixMillis=62000,endedUnixMillis=63000)]
+
+    def test_overlap_uses_actual_loops_not_service_finalizer_lifetimes(self):
+        results,obs=self.overlap_evidence()
+        self.assertEqual(soak.actual_overlap(results,600,obs)["measuredOverlapMillis"],660000)
+        for change in (dict(endedUnixMillis=600999),dict(elapsedMonotonicNanos=1),
+                       dict(elapsedMonotonicNanos=662000000000),dict(startedUnixMillis=True),dict(schema="other")):
+            bad=copy.deepcopy(results);bad[1]["followWindow"].update(change)
+            with self.subTest(change=change),self.assertRaises(ValueError):soak.actual_overlap(bad,600,obs)
+        bad=copy.deepcopy(results);bad[1]["soakProfile"]="other"
+        with self.assertRaises(ValueError):soak.actual_overlap(bad,600,obs)
+        bad=copy.deepcopy(results);bad[1]["followWindow"]=None
+        with self.assertRaises(ValueError):soak.actual_overlap(bad,600,obs)
+        # Individually long loops are insufficient if the start skew reduces overlap.
+        bad=copy.deepcopy(results);bad[1]["followWindow"].update(startedUnixMillis=122000,endedUnixMillis=782000)
+        bad[1]["endedUnixMillis"]=782100
+        with self.assertRaises(ValueError):soak.actual_overlap(bad,600,obs)
+        # Both individual loops exceed600s, but a permitted endpoint clock
+        # discrepancy must not inflate an exact600s wall overlap into a pass.
+        bad=copy.deepcopy(results)
+        bad[0]["followWindow"].update(endedUnixMillis=661000,elapsedMonotonicNanos=659500000000)
+        with self.assertRaises(ValueError):soak.actual_overlap(bad,600,obs)
+        bad=copy.deepcopy(obs);bad[0]["startedUnixMillis"]=999
+        with self.assertRaises(ValueError):soak.actual_overlap(results,600,bad)
+
+    def test_peer_proofs_reject_owner_pid_and_progress_substitution(self):
+        before=dict(schema="plutus-service-state-probe-v1",startedUnixMillis=1000,endedUnixMillis=1001,
+                    resourcesFinalized=True,diagnosticOnly=True,fullLedgerValidated=False,containerId=H,process=PROCESS,state=dict(pin=pin()))
+        after=copy.deepcopy(before);after.update(startedUnixMillis=2000,endedUnixMillis=2001)
+        after["state"]["pin"]=pin(dict(hash=H,slot=20,blockNo=2),generation=1)
+        soak.peer_probe(before,pin());soak.peer_survival(before,after)
+        for mutate in (lambda b:b.update(process=dict(PROCESS,pid=5678)),lambda b:b.update(containerId=OTHER),lambda b:b["state"]["pin"].update(ownerId=OTHER),
+                       lambda b:b.update(state=before["state"]),lambda b:b.update(startedUnixMillis=1000)):
+            bad=copy.deepcopy(after);mutate(bad)
+            with self.assertRaises(ValueError):soak.peer_survival(before,bad)
+
+    def test_peer_live_guard_rejects_stopped_or_replaced_process(self):
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace())
+        c=object.__new__(cls);c.peer_process=PROCESS;c.peer_cid=H;c.containers={"service-1":H};c.service_roots={"service-1":self.root}
+        c.owned=lambda cid:dict(RestartCount=0,State=dict(Running=True,OOMKilled=False,Pid=1234,StartedAt=PROCESS["startedAt"]))
+        c.peer_alive()
+        c.containers["service-1"]=OTHER
+        with self.assertRaises(ValueError):c.peer_alive()
+        c.containers["service-1"]=H;c.owned=lambda cid:dict(State=dict(Running=False,OOMKilled=False))
+        with self.assertRaises(ValueError):c.peer_alive()
+
+    def test_lifecycle_keeps_peer_before_through_and_after_restart(self):
+        # Exercise the actual orchestration, replacing only process/I/O boundaries.
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace(process=SimpleNamespace(PORTS={1:3001,2:3002})))
+        c=object.__new__(cls);c.args=SimpleNamespace(duration_seconds=600,max_blocks=512)
+        c.budget_plan=soak.stage_plan(600);c.operation_started=soak.time.monotonic();c.deadline=c.operation_started+1080
+        c.exchange=self.root;c.out=self.root/"out";c.out.mkdir();c.initial=dict(hash=H,slot=10,blockNo=1);c.magic=42
+        c.service_roots={p:self.root/p for p in soak.SERVICE_PHASES};c.containers={};events=[]
+        c.owned=lambda cid:dict(RestartCount=0,State=dict(Running=True,OOMKilled=False,Pid=1234,StartedAt=PROCESS["startedAt"]))
+        mode=dict(mode=soak.MODE,jvmComputed=True,researchOnly=True,activeStartsAfterPeerReady=True,nativeChecked=False,
+                  nativeRuntimeDependency=False,lateCheckpointRestoreSupported=False,nativeExecutableSHA256=None,
+                  nativeEvidenceDirectory=None,generationEvidenceDirectory="jvm-likelihood",maxEpochTransitions=8,startupTimeoutSeconds=30)
+        point2=dict(hash=H,slot=20,blockNo=2)
+        def ready(point,port,lifetime):
+            return dict(schema="plutus-service-ready-v1",soakProfile=soak.PROFILE,initialPoint=point,profileId=soak.fixture.PROFILE,initialEpoch=0,
+                        networkMagic=42,initialManifestSHA256=H,sourceJoinId=JOIN,apiPort=port,epochMode=mode,
+                        limits=dict(durationSeconds=lifetime,maxBlocks=512,maxEvents=4096,maxEvaluationReceipts=128))
+        peer=ready(c.initial,4001,720);restored_ready=ready(point2,4002,660)
+        results,observations=self.overlap_evidence()
+        def prepare(_):events.append("prepare");return H
+        c.prepare_soak_initial=prepare
+        def construct():
+            events.append("funded-fixtures");d=self.root/"submission";d.mkdir()
+            for i in (1,2):(d/f"transaction-{i}.cbor").write_bytes(b"offline")
+        c.construct_transfer=construct
+        def start(phase,root,manifest,**kw):
+            self.assertEqual(phase,"service-1");events.append("peer-start");root.mkdir();c.containers[phase]=H
+        c.start_repeated=start
+        def wait(phase,name,seconds):
+            if name=="bootstrap-ready.json":return peer
+            return dict(schema="plutus-service-active-v1",epochMode=soak.MODE,durationSeconds=720,
+                        startedUnixMillis=900,deadlineUnixMillis=720900,pin=pin())
+        c.wait_service=wait
+        def resume():events.append("producer-resume-once");c.last_resumed=900
+        c.resume_producer=resume;c.signal_peer=lambda phase:events.append("signal-peer")
+        def first(_):events.append("peer-checked-progress");return pin()
+        c.first_peer_publication=first
+        def probe(label,ready,previous):
+            events.append(label)
+            value=dict(observations[0 if label=="before-restart" else 1],containerId=H,process=PROCESS,state=dict(pin=pin()))
+            if label=="after-restore":value["state"]["pin"]=pin(point2,generation=1)
+            return value
+        c.probe_peer=probe
+        def recover(_):
+            self.assertEqual(events[-1],"before-restart");self.assertEqual(c.containers["service-1"],H)
+            events.extend(["checkpoint-service2","old-service2-removed","restored-service2"])
+            c.service_roots["service-2"].mkdir();c.containers["service-2"]=OTHER
+            c.actives["service-2"]=dict(startedUnixMillis=61000,deadlineUnixMillis=721000)
+            return SimpleNamespace(ready=restored_ready,claim=dict(terminalPoint=point2,sourceJoinId=JOIN))
+        c.restart_while_peer_follows=recover;c.run_client=lambda:events.append("client-after-rejoin")
+        c.wait_full_intervals=lambda:results;c.verify_result=lambda *a:c.initial
+        c.compare_service=lambda *a:events.append("oracle");c.stop_node=lambda n:events.append("stop-node")
+        c.cleanup=lambda:events.append("cleanup")
+        with patch.object(soak,"require_comparator"),patch.object(restart,"wait_checked_successor",side_effect=lambda *a,**kw:events.append("checked-rejoin")),patch.object(restart,"wait_exit"):
+            c.same_epoch_lifecycle(None)
+        self.assertEqual(events[:10],["prepare","funded-fixtures","peer-start","producer-resume-once","signal-peer",
+                                     "peer-checked-progress","before-restart","checkpoint-service2","old-service2-removed","restored-service2"])
+        self.assertLess(events.index("checked-rejoin"),events.index("after-restore"))
+        self.assertLess(events.index("after-restore"),events.index("client-after-rejoin"))
+        self.assertEqual(c.containers["service-1"],H)
+        self.assertEqual(c.overlap["measuredOverlapMillis"],660000)
+        self.assertEqual(events.count("producer-resume-once"),1)
+
+    def test_restart_method_authenticates_pair_and_removes_only_old_slot_before_replacement(self):
+        from test_private_cluster_plutus_early_restart import wire,ready,SOURCE,TERMINAL
+        live=SimpleNamespace(process=SimpleNamespace(PORTS={1:3001,2:3002}))
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(live)
+        c=object.__new__(cls);c.args=SimpleNamespace(duration_seconds=600,max_blocks=512)
+        c.exchange=self.root;c.out=self.root/"out";c.out.mkdir();c.manifest_pin=H;c.initial=SOURCE
+        c.deadline=soak.time.monotonic()+1080;c.budget_plan=soak.stage_plan(600);c.magic=42;c.last_resumed=1000
+        c.lifetimes={"service-1":720,"service-2":660};c.peer_process=PROCESS;c.peer_cid=H;c.containers={"service-1":H,"reference":JOIN}
+        c.service_roots={p:self.root/p for p in soak.SERVICE_PHASES};c.service_roots["service-1"].mkdir()
+        c.actives={"service-1":dict(startedUnixMillis=1000)};events=[];live_ids={H,JOIN}
+        c.owned=lambda cid:dict(RestartCount=0,State=dict(Running=cid in live_ids,OOMKilled=False,Pid=1234,StartedAt=PROCESS["startedAt"]))
+        raw=bytearray(wire());raw[8:40]=bytes.fromhex(restart.digest(b"a"*32));raw[40:72]=bytes.fromhex(restart.digest(b"b"*32))
+        raw=bytes(raw);claim=restart.envelope_claim(raw)
+        first=ready();second=ready(True,TERMINAL,OTHER,OTHER)
+        request=dict(schema="plutus-service-checkpoint-publication-v1",checkpointFile="checkpoint.bin",checkpointBytes=len(raw),
+                     claim=claim,restoreAuthorized=False,crashDurable=False,scope=restart.SCOPE)
+        request_raw=restart.encoded(request)
+        stopped=dict(schema="plutus-service-result-v1",status="stopped",stopReason="blockLimit",resourcesFinalized=True,
+                     sourceJoinId=JOIN,initialManifestSHA256=H,fullLedgerValidated=False,transactionSuccessClaimed=False,
+                     transportOpens=1,transportCloses=1,finalPin=pin(TERMINAL,generation=1),
+                     boundedRestart=dict(checkpointFile="checkpoint.bin",checkpointSHA256=restart.digest(raw),
+                                         checkpointRequestSHA256=restart.digest(request_raw),checkpointAfter=1))
+        old="ef"*32;fresh="34"*32
+        def launch(controller,live,phase,root,manifest,extra):
+            self.assertEqual(phase,"service-2");self.assertIn(H,live_ids);self.assertEqual(c.args.duration_seconds,30)
+            root.mkdir();(root/"checkpoint.bin").write_bytes(raw);(root/"checkpoint-request.json").write_bytes(request_raw)
+            c.containers[phase]=old;live_ids.add(old);events.append("checkpoint-created")
+        def wait(phase,name,seconds):
+            self.assertIn(H,live_ids)
+            if name=="bootstrap-ready.json":return first if c.containers[phase]==old else second
+            if name=="result.json":live_ids.remove(old);events.append("checkpoint-exited");return stopped
+            return dict(schema="plutus-service-active-v1",epochMode=soak.MODE,durationSeconds=660,
+                        startedUnixMillis=21000,deadlineUnixMillis=681000)
+        c.wait_service=wait
+        def capture(point,name):
+            self.assertEqual(point,TERMINAL);self.assertIn(H,live_ids);self.assertNotIn(old,live_ids)
+            events.append("independent-acquisition")
+            return self.root,dict(schema="native-live-acquisition-result-v1",acquireCount=1,reacquireCount=0,
+                                 exactAcquiredPoint=True,referenceContainerId=JOIN,point=TERMINAL)
+        c.capture=capture
+        def remove(phase):
+            self.assertEqual(phase,"service-2");self.assertNotIn(old,live_ids)
+            self.assertTrue((c.out/"restart-authority.json").exists());events.append("old-removed")
+        c.remove_service=remove
+        def start(phase,root,manifest,extra,mounts,lifetime):
+            self.assertEqual(events[-1],"old-removed");self.assertIn(H,live_ids)
+            self.assertEqual(lifetime,660);self.assertEqual(c.args.duration_seconds,600)
+            self.assertEqual(restart.base.decode((c.out/"restart-authority.json").read_bytes())["claim"],claim)
+            root.mkdir();c.service_roots[phase]=root;c.containers[phase]=fresh;live_ids.add(fresh);events.append("replacement-created")
+        c.start_repeated=start
+        with patch.object(restart,"launch_service",side_effect=launch),patch.object(restart,"wait_exit"),             patch.object(soak.os,"urandom",side_effect=[b"a"*32,b"b"*32]):
+            restored=c.restart_while_peer_follows(first)
+        self.assertEqual(events,["checkpoint-created","checkpoint-exited","independent-acquisition","old-removed","replacement-created"])
+        self.assertEqual(c.containers["service-1"],H);self.assertIn(H,live_ids)
+        self.assertEqual(restored.output_root,self.root/"service-2-restored")
+        self.assertEqual(restored.claim,claim)
+
+    def test_serial_probes_and_client_keep_distinct_immutable_cleanup_evidence(self):
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace(LABEL="owned"))
+        c=object.__new__(cls);c.out=self.root;c.token="token";c.containers={};present=set();removed=[]
+        def docker(*args,**kwargs):
+            if args[0]=="ps":
+                if "label=lab.zero-live.phase=ada-client" in args:return SimpleNamespace(stdout="\n".join(present))
+                cid=next(a[3:] for a in args if a.startswith("id="))
+                return SimpleNamespace(stdout=cid if cid in present else "")
+            if args[0]=="logs":return SimpleNamespace(stdout=args[-1],stderr="")
+            if args[0]=="rm":present.remove(args[-1]);removed.append(args[-1]);return SimpleNamespace(stdout="")
+            raise AssertionError(args)
+        c.docker=docker;c.owned=lambda cid:self.assertIn(cid,present)
+        for cid in (H,OTHER,JOIN):
+            c.containers["ada-client"]=cid;present.add(cid);c.remove_client();c.remove_client()
+            record=restart.base.decode((self.root/("client-"+cid[:12]+"-cleanup.json")).read_bytes())
+            self.assertEqual(record["containerId"],cid);self.assertTrue(record["absenceVerified"])
+        self.assertEqual(removed,[H,OTHER,JOIN]);self.assertFalse(present)
+        self.assertEqual(len(list(self.root.glob("client-*-cleanup.json"))),3)
+
+    def test_maximum_planned_finalization_still_leaves_two_serial_endpoint_reserves(self):
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace())
+        c=object.__new__(cls);c.deadline=1080;c.budget_plan=soak.stage_plan(600)
+        c.service_roots={p:self.root/p for p in soak.SERVICE_PHASES}
+        clock=dict(startedUnixMillis=1000,deadlineUnixMillis=721000)
+        c.actives={p:clock for p in soak.SERVICE_PHASES}
+        value=dict(schema="plutus-service-result-v1",status="stopped",stopReason="durationLimit",startedUnixMillis=1000,
+                   requestedDeadlineUnixMillis=721000,effectiveDeadlineUnixMillis=721000,endedUnixMillis=736000)
+        for root in c.service_roots.values():root.mkdir();(root/"result.json").write_bytes(restart.encoded(value))
+        # 120setup +750follow +15finalization.184seconds of terminal gates remain.
+        with patch.object(soak.time,"monotonic",return_value=885):
+            self.assertEqual(c.wait_full_intervals(),[value,value])
+            soak.require_budget(c.deadline,184,"two endpoint gates")
+        results,obs=self.overlap_evidence();results[1]["endedUnixMillis"]=results[1]["followWindow"]["endedUnixMillis"]+15001
+        with self.assertRaises(ValueError):soak.actual_overlap(results,600,obs)
+
+    def test_process_identity_rejects_restart_pid_and_start_time_substitution(self):
+        original=dict(RestartCount=0,State=dict(Running=True,OOMKilled=False,Pid=1234,StartedAt=PROCESS["startedAt"]))
+        self.assertEqual(soak.process_identity(original),PROCESS)
+        for changed in (dict(original,RestartCount=1),dict(original,State=dict(original["State"],Pid=True)),
+                        dict(original,State=dict(original["State"],StartedAt=""))):
+            with self.assertRaises(ValueError):soak.process_identity(changed)
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace())
+        c=object.__new__(cls);c.peer_cid=H;c.peer_process=PROCESS;c.containers={"service-1":H};c.service_roots={"service-1":self.root}
+        for changed in (dict(original,State=dict(original["State"],Pid=5678)),
+                        dict(original,State=dict(original["State"],StartedAt="2026-10-10T00:01:00Z"))):
+            c.owned=lambda cid,value=changed:value
+            with self.assertRaises(ValueError):c.peer_alive()
+
+    def test_peer_bootstrap_time_is_inside_setup_allowance_before_checkpoint(self):
+        from unittest.mock import Mock
+        with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace())
+        c=object.__new__(cls);c.args=SimpleNamespace(duration_seconds=600,max_blocks=512)
+        c.operation_started=0;c.deadline=1080;c.budget_plan=soak.stage_plan(600);c.exchange=self.root;c.containers={"service-1":H}
+        c.prepare_soak_initial=lambda approval:H;c.construct_transfer=lambda:None
+        c.start_repeated=lambda *args,**kwargs:None;c.resume_producer=lambda:None;c.signal_peer=lambda phase:None
+        c.first_peer_publication=Mock();clock=[0]
+        def wait(phase,name,seconds):
+            if name=="bootstrap-ready.json":return {}
+            clock[0]=121
+            return dict(schema="plutus-service-active-v1",epochMode=soak.MODE,durationSeconds=720,
+                        startedUnixMillis=121000,deadlineUnixMillis=841000)
+        c.wait_service=wait
+        with patch.object(soak,"require_comparator"),patch.object(soak.time,"monotonic",side_effect=lambda:clock[0]):
+            with self.assertRaisesRegex(ValueError,"peer bootstrap exhausted setup allowance"):
+                c.same_epoch_lifecycle(None)
+        c.first_peer_publication.assert_not_called()
 
     def generations(self, count=1):
         root = self.root/"jvm-likelihood"; root.mkdir()
@@ -42,8 +296,8 @@ class SoakTests(unittest.TestCase):
     def test_pure_command_has_no_native_mount_or_flags_and_keeps_resource_ceiling(self):
         args=SimpleNamespace(duration_seconds=600,max_blocks=512,scala_build_root=self.root,java="java",scala_image="sha256:"+H)
         command=soak.repeated_args(args,self.root/"output",self.root/"initial","cp",H,3001,42,H)
-        self.assertEqual(command[-2:],["--epoch-mode","repeated-jvm-v1"])
-        self.assertEqual(command[command.index("--duration-seconds")+1],"600")
+        self.assertEqual(command[-4:],["--epoch-mode","repeated-jvm-v1","--soak-profile",soak.PROFILE])
+        self.assertEqual(command[command.index("--duration-seconds")+1],"720")
         self.assertEqual(command[command.index("--max-blocks")+1],"512")
         self.assertIn("--cpus=0.5",command);self.assertIn("--memory=1g",command)
         self.assertFalse(any("native-likelihood" in x or "/oracle-libs" in x for x in command))
@@ -70,7 +324,7 @@ class SoakTests(unittest.TestCase):
         # cannot convert an early service result into the requested duration.
         live=SimpleNamespace()
         with patch.object(soak.two,"controller_type",return_value=object): cls=soak.controller_type(live)
-        controller=object.__new__(cls);controller.deadline=soak.time.monotonic()+1
+        controller=object.__new__(cls);controller.deadline=soak.time.monotonic()+1;controller.budget_plan=dict(terminalReserve=0)
         controller.service_roots={p:self.root/p for p in soak.SERVICE_PHASES}
         controller.actives={p:dict(startedUnixMillis=1,deadlineUnixMillis=600001) for p in soak.SERVICE_PHASES}
         for root in controller.service_roots.values():
@@ -120,14 +374,17 @@ class SoakTests(unittest.TestCase):
         with self.assertRaises(ValueError):restart.library_manifest(libs)
 
     def test_disk_and_log_budgets_fail_closed_and_missing_start_root_is_safe(self):
-        soak.tree_budget([self.root/"not-created-yet"])
+        with patch.object(soak.shutil,"disk_usage",return_value=SimpleNamespace(free=4*soak.base.GIB)):
+            soak.tree_budget([self.root/"not-created-yet"])
+        with patch.object(soak.shutil,"disk_usage",return_value=SimpleNamespace(free=soak.base.GIB)),self.assertRaises(ValueError):
+            soak.tree_budget([self.root])
         (self.root/"x.log").write_bytes(b"12345")
         with patch.object(soak,"MAX_LOG_BYTES",4),self.assertRaises(ValueError):soak.tree_budget([self.root])
         with patch.object(soak,"MAX_TREE_BYTES",4),self.assertRaises(ValueError):soak.tree_budget([self.root])
 
     def test_stopped_inspection_race_rechecks_full_interval_result(self):
         with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace())
-        controller=object.__new__(cls);controller.deadline=soak.time.monotonic()+2
+        controller=object.__new__(cls);controller.deadline=soak.time.monotonic()+2;controller.budget_plan=dict(terminalReserve=0)
         controller.service_roots={p:self.root/p for p in soak.SERVICE_PHASES}
         controller.containers={p:p for p in soak.SERVICE_PHASES}
         clock=dict(startedUnixMillis=1000,deadlineUnixMillis=121000)
@@ -143,7 +400,7 @@ class SoakTests(unittest.TestCase):
 
     def test_receipt_race_rechecks_failure_precedence(self):
         with patch.object(soak.two,"controller_type",return_value=object):cls=soak.controller_type(SimpleNamespace())
-        controller=object.__new__(cls);controller.deadline=soak.time.monotonic()+2
+        controller=object.__new__(cls);controller.deadline=soak.time.monotonic()+2;controller.budget_plan=dict(terminalReserve=0)
         controller.service_roots={"service-2":self.root};controller.containers={"service-2":"id"}
         def stopped(_):
             (self.root/"result.json").write_bytes(b"{}")

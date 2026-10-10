@@ -27,27 +27,115 @@ single = two.single
 MODE = "repeated-jvm-v1"
 SERVICE_PHASES = two.SERVICE_PHASES
 PROFILE = "early-restart-two-service-soak-v1"
-MAX_OPERATION = 720
+MAX_OPERATION = 1080
 MAX_CLEANUP = 30
 MAX_TREE_BYTES = 8 * base.GIB
 MAX_LOG_BYTES = 64 * 1024 * 1024
 MAX_FILES = 100000
 
 
+def stage_plan(target):
+    base.require(type(target) is int and target in (120, 600), "explicit overlap target")
+    plan = dict(target=target, peerLifetime=target+120, restoredLifetime=target+60,
+                setup=120, restart=90, finalization=15, capture=57, comparison=35, cleanup=30)
+    plan["latestFollowEnd"] = max(plan["peerLifetime"], plan["restart"]+plan["restoredLifetime"])
+    plan["terminalReserve"] = plan["finalization"]+2*(plan["capture"]+plan["comparison"])
+    plan["operationBudget"] = plan["setup"]+plan["latestFollowEnd"]+plan["terminalReserve"]
+    base.require(plan["peerLifetime"] <= 720 and plan["restoredLifetime"] <= 720 and
+                 plan["operationBudget"] <= MAX_OPERATION and plan["cleanup"] == MAX_CLEANUP,
+                 "complete bounded setup/restart/follow/serial-oracle/cleanup plan")
+    return plan
+
+
 def soak_limits(duration, blocks):
-    base.require(type(duration) is int and duration in (120, 600), "explicit 120/600-second soak")
+    stage_plan(duration)
     base.require(type(blocks) is int and blocks == 512, "explicit 512-block soak ceiling")
     two.budget()
 
 
-def repeated_args(args, root, initial, classpath, reference, port, magic, manifest):
+def require_budget(deadline, seconds, label):
+    base.require(type(seconds) is int and seconds >= 0 and time.monotonic()+seconds < deadline,
+                 "insufficient remaining stage budget: "+label)
+
+
+def actual_overlap(results, target, observations):
+    plan = stage_plan(target)
+    base.require(isinstance(results,list) and len(results)==2 and isinstance(observations,list) and len(observations)==2,"exact two-owner interval evidence")
+    windows = []
+    for result in results:
+        base.require(result.get("soakProfile")==PROFILE,"explicit final soak profile")
+        w = result.get("followWindow")
+        base.require(isinstance(w, dict) and w.get("schema") == "plutus-service-follow-window-v1" and
+                     all(type(w.get(k)) is int for k in ("startedUnixMillis", "endedUnixMillis", "elapsedMonotonicNanos")),
+                     "actual follower interval required")
+        start, end, elapsed = (w[k] for k in ("startedUnixMillis", "endedUnixMillis", "elapsedMonotonicNanos"))
+        base.require(0 < start < end and elapsed >= target*1000000000 and
+                     abs((end-start)*1000000-elapsed) <= 1000000000 and
+                     start >= result["startedUnixMillis"] and end <= result["endedUnixMillis"] <= end+plan["finalization"]*1000,
+                     "positive actual follower interval with bounded clock inconsistency")
+        windows.append(w)
+    peer, restored = windows
+    base.require(0 <= restored["startedUnixMillis"]-peer["startedUnixMillis"] <= plan["restart"]*1000,
+                 "actual restored follower started within restart allowance")
+    before, after = observations
+    base.require(peer["startedUnixMillis"] <= before["startedUnixMillis"] <= before["endedUnixMillis"] <
+                 after["startedUnixMillis"] <= after["endedUnixMillis"] <= peer["endedUnixMillis"],
+                 "unchanged peer followed throughout both restart observations")
+    for observation in observations:
+        stamp=observation.get("controllerObservedUnixMillis",observation["endedUnixMillis"])
+        base.require(type(stamp) is int and observation["endedUnixMillis"]<=stamp<=peer["endedUnixMillis"],"controller observation inside surviving peer interval")
+    overlap = min(w["endedUnixMillis"] for w in windows)-max(w["startedUnixMillis"] for w in windows)
+    conservative_overlap=overlap-2000  # one second uncertainty at each selected endpoint
+    base.require(conservative_overlap >= target*1000, "clock-discounted simultaneous observation target not reached")
+    return dict(schema="plutus-soak-follow-overlap-v1", targetSeconds=target, measuredOverlapMillis=overlap,
+                windows=windows, clockConsistencyToleranceNanos=1000000000,
+                uncertaintyDiscountMillis=2000, conservativeOverlapMillis=conservative_overlap)
+
+
+def process_identity(obj):
+    state=obj.get("State",{})
+    base.require(state.get("Running") is True and state.get("OOMKilled") is False and
+                 type(state.get("Pid")) is int and state["Pid"]>0 and
+                 isinstance(state.get("StartedAt"),str) and 0<len(state["StartedAt"])<=64 and
+                 type(obj.get("RestartCount")) is int and obj["RestartCount"]==0,
+                 "actual live process without Docker restart")
+    return dict(pid=state["Pid"],startedAt=state["StartedAt"],restartCount=0)
+
+
+def peer_probe(value, previous):
+    base.require(value.get("schema")=="plutus-service-state-probe-v1" and
+                 value.get("resourcesFinalized") is True and value.get("diagnosticOnly") is True and
+                 value.get("fullLedgerValidated") is False and
+                 all(type(value.get(k)) is int for k in ("startedUnixMillis","endedUnixMillis")) and
+                 0<value["startedUnixMillis"]<=value["endedUnixMillis"],"bounded finalized HTTP state observation")
+    state=value.get("state")
+    base.require(isinstance(state,dict),"actual HTTP state reply")
+    pin=two.pin(state.get("pin"),previous["ownerId"])
+    base.require(two.follows(pin,previous),"HTTP state follows checked observation")
+    return value
+
+
+def peer_survival(before, after):
+    base.require(isinstance(before.get("containerId"),str) and len(before["containerId"])==64 and
+                 before["containerId"]==after.get("containerId"),"same independent peer container across restart")
+    base.require(before.get("process")==after.get("process") and isinstance(before.get("process"),dict),"same peer process identity")
+    previous=two.pin(before["state"]["pin"])
+    current=two.pin(after["state"]["pin"],previous["ownerId"])
+    base.require(two.follows(current,previous) and current["generation"]>previous["generation"] and
+                 current["point"]["blockNo"]>previous["point"]["blockNo"] and
+                 before["endedUnixMillis"]<after["startedUnixMillis"],"unchanged independent owner progressed across restart")
+
+
+def repeated_args(args, root, initial, classpath, reference, port, magic, manifest, lifetime=None):
     soak_limits(args.duration_seconds, args.max_blocks)
     small = copy.copy(args)
     small.duration_seconds, small.max_blocks = 30, 128
     command = two.service_args(small, root, initial, classpath, reference, port, magic, manifest)
-    command[command.index("--duration-seconds")+1] = str(args.duration_seconds)
+    selected = stage_plan(args.duration_seconds)["peerLifetime"] if lifetime is None else lifetime
+    base.require(type(selected) is int and selected in (stage_plan(args.duration_seconds)["peerLifetime"], stage_plan(args.duration_seconds)["restoredLifetime"]), "closed cohort lifetime")
+    command[command.index("--duration-seconds")+1] = str(selected)
     command[command.index("--max-blocks")+1] = str(args.max_blocks)
-    return command + ["--epoch-mode", MODE]
+    return command + ["--epoch-mode", MODE, "--soak-profile", PROFILE]
 
 
 def check_epoch_mode(value):
@@ -256,7 +344,9 @@ def controller_type(live):
     class SoakController(Parent):
         def __init__(self,*args):
             super().__init__(*args)
-            self.deadline=time.monotonic()+MAX_OPERATION
+            self.operation_started=time.monotonic()
+            self.deadline=self.operation_started+MAX_OPERATION
+            self.budget_plan=stage_plan(self.args.duration_seconds)
             self.service_roots={p:self.exchange/p for p in two.SERVICE_PHASES}
             self.service_instances=[]
             self.instance_counter=0
@@ -309,11 +399,35 @@ def controller_type(live):
             path=self.out/(phase+"-"+cid[:12]+"-cleanup.json")
             if not path.exists():base.write(path,dict(containerId=cid,absenceVerified=True,removedBeforeNamespaceOwner=True))
 
-        def start_repeated(self,phase,root,manifest,restore_extra=(),restore_mounts=()):
+        def remove_client(self):
+            # Probes and transaction client reuse one serial helper slot; each
+            # immutable instance has its own logs and cleanup receipt.
+            found=self.docker("ps","-aq","--no-trunc","--filter","label="+live.LABEL+"="+self.token,
+                              "--filter","label=lab.zero-live.phase=ada-client").stdout.split()
+            base.require(len(found)<=1,"unambiguous serial helper ownership")
+            cid=self.containers.get("ada-client")
+            if found and found != [cid]:
+                base.require(cid is None or not self.docker("ps","-aq","--no-trunc","--filter","id="+cid).stdout.strip(),
+                             "previous helper absent before recovering interrupted create")
+                cid=found[0];self.containers["ada-client"]=cid
+            if not cid:return
+            ids=self.docker("ps","-aq","--no-trunc","--filter","id="+cid).stdout.split()
+            base.require(ids in ([],[cid]),"immutable helper identity")
+            if ids:
+                self.owned(cid)
+                logs=self.docker("logs","--tail","1000",cid,check=False,timeout=3)
+                path=self.out/("client-"+cid[:12]+".log")
+                if not path.exists():restart.publish_new(path,(logs.stdout+logs.stderr).encode()[-262144:] or b"\n")
+                self.docker("rm","--force",cid)
+            base.require(not self.docker("ps","-aq","--no-trunc","--filter","id="+cid).stdout.strip(),"helper instance absence")
+            path=self.out/("client-"+cid[:12]+"-cleanup.json")
+            if not path.exists():base.write(path,dict(containerId=cid,absenceVerified=True,removedBeforeNamespaceOwner=True))
+
+        def start_repeated(self,phase,root,manifest,restore_extra=(),restore_mounts=(),lifetime=None):
             root.mkdir(mode=0o700)
             self.service_roots[phase]=root
             initial=self.exchange/"initial"
-            args=repeated_args(self.args,root,initial,self.classpath,self.containers["reference"],live.process.PORTS[1],self.magic,manifest)
+            args=repeated_args(self.args,root,initial,self.classpath,self.containers["reference"],live.process.PORTS[1],self.magic,manifest,lifetime=lifetime)
             pos=args.index("--entrypoint")
             mounts={(str(self.args.scala_build_root),"/work",False),(str(initial),"/initial",False),(str(root),"/exchange",True)}
             for host,guest in restore_mounts:
@@ -516,7 +630,7 @@ def controller_type(live):
             owner = row["observedOwnerId"]
             final_pin = two.pin(result.get("finalPin"), owner)
             base.require(result.get("schema") == "plutus-service-result-v1" and result.get("status") == "stopped" and
-                         result.get("stopReason") == "durationLimit" and result.get("profileId") == fixture.PROFILE and
+                         result.get("stopReason") == "durationLimit" and result.get("soakProfile") == PROFILE and result.get("profileId") == fixture.PROFILE and
                          result.get("initialPoint") == ready["initialPoint"] and result.get("sourceJoinId") == ready["sourceJoinId"] and
                          result.get("initialManifestSHA256") == self.manifest_pin, "service terminal source bindings")
             base.require(result.get("resourcesFinalized") is True and type(result.get("transportOpens")) is int and type(result.get("transportCloses")) is int and
@@ -568,77 +682,200 @@ def controller_type(live):
             base.write(self.out / (phase+"-result.json"), result)
             return terminal
 
-        def same_epoch_lifecycle(self, approval):
-            require_comparator()
-            # The inherited dispatcher name is retained; this explicit profile
-            # uses the repeated runtime and never claims the old same-epoch gate.
-            self.manifest_pin = self.prepare_soak_initial(approval)
-            self.construct_transfer()
-            source_args = self.args
-            early = copy.copy(source_args)
-            early.duration_seconds, early.max_blocks = 30, 8
-            self.args = early
-            def continuation(_args, *remaining):
-                return repeated_args(source_args, *remaining)
-            try:
-                restored = restart.perform_early_restart(self, live, self.manifest_pin,
-                    store_id=restart.digest(os.urandom(32)), session_id=restart.digest(os.urandom(32)), generation=0,
-                    resume_producer=self.resume_producer, freeze_producer=self.freeze_producer,
-                    checkpoint_after=1, continuation_builder=continuation)
-            finally:
-                self.args = source_args
-            self.restored = restored
-            # Old service-1 has exited and been removed. Its files are retained;
-            # the independent peer has a different output root and process ID.
-            self.start_repeated("service-1", self.exchange/"peer-service", self.manifest_pin)
-            peer = self.wait_service("service-1", "bootstrap-ready.json", 25)
-            readies = [peer, restored.ready]
-            self.api_ports = []
-            for phase, ready in zip(SERVICE_PHASES, readies):
-                expected = self.initial if phase == "service-1" else restored.claim["terminalPoint"]
-                base.require(ready.get("schema") == "plutus-service-ready-v1" and ready.get("initialPoint") == expected and
-                             ready.get("profileId") == fixture.PROFILE and ready.get("initialEpoch") == 0 and
-                             ready.get("networkMagic") == self.magic and ready.get("initialManifestSHA256") == self.manifest_pin and
-                             ready.get("sourceJoinId") == restored.claim["sourceJoinId"], "checked repeated bootstrap source")
-                check_epoch_mode(ready.get("epochMode"))
-                port = ready.get("apiPort")
-                base.require(type(port) is int and 1 <= port <= 65535 and port not in live.process.PORTS.values(), "actual API port")
-                self.api_ports.append(port)
-                limits = ready.get("limits", {})
-                base.require(type(limits.get("durationSeconds")) is int and limits["durationSeconds"] == self.args.duration_seconds and
-                             type(limits.get("maxBlocks")) is int and limits["maxBlocks"] == 512 and
-                             limits.get("maxEvents") == 4096 and limits.get("maxEvaluationReceipts") == 128, "bounded repeated runtime")
-                base.write(self.out/(phase+"-bootstrap-proof.json"), ready)
-            base.require(len(set(self.api_ports)) == 2, "distinct loopback ingress ports")
-            # Do not restart the reference process once the restored follower is
-            # active. The fresh peer joins that same running mutable chain.
-            base.write(self.service_roots["service-1"]/"peer-ready.json", dict(schema="native-live-peer-ready-v1",
+        def signal_peer(self, phase):
+            base.write(self.service_roots[phase]/"peer-ready.json", dict(schema="native-live-peer-ready-v1",
                        referenceContainerId=self.containers["reference"], generatedPort=live.process.PORTS[1],
                        networkMagic=self.magic, producerResumedUnixMillis=self.last_resumed))
-            self.actives = {p: active(self.wait_service(p, "service-active.json", 10), self.args.duration_seconds) for p in SERVICE_PHASES}
-            for index, phase in enumerate(SERVICE_PHASES):
-                destination = self.service_roots[phase]/"submission"
-                destination.mkdir(mode=0o700)
-                shutil.copyfile(self.exchange/"submission"/(f"transaction-{index+1}.cbor"), destination/"transaction-1.cbor")
-            restart.wait_checked_successor(self, restored, seconds=20)
-            self.client_duration = 120
+
+        def peer_alive(self):
+            base.require(self.containers["service-1"] == self.peer_cid, "independent peer process identity changed")
+            base.require(process_identity(self.owned(self.peer_cid))==self.peer_process,
+                         "independent peer PID/start identity changed")
+            base.require(not (self.service_roots["service-1"]/"failure.json").exists(), "independent peer failed")
+
+        def probe_peer(self, label, ready, previous):
+            # Serial helper shares the already bounded helper slot. It performs
+            # one GET only; the service never receives an expected transaction.
+            base.require(label in ("before-restart", "after-restore"), "closed peer observation")
+            self.peer_alive()
+            require_budget(self.deadline,20+self.budget_plan["terminalReserve"],"HTTP peer observation")
+            root = self.exchange/("probe-"+label)
+            root.mkdir(mode=0o700)
+            mounts = {(str(self.args.scala_build_root), "/work", False), (str(root), "/probe", True)}
+            network = "container:"+self.containers["reference"]
+            args = ["--pull=never", "--network="+network, "--cpus=1", "--memory=2g", "--memory-swap=2g",
+                    "--pids-limit=256", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
+                    "--user", "1000:1000", "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m"]
+            for source, destination, writable in sorted(mounts):
+                args += ["--mount", "type=bind,src="+source+",dst="+destination+("" if writable else ",readonly")]
+            args += ["--entrypoint", self.args.java, self.args.scala_image, "-Xmx512m", "-XX:ActiveProcessorCount=1",
+                     "-cp", single.checked_classpath(self.args.client_classpath_file, self.args.scala_build_root),
+                     "lab.PlutusServiceStateProbeMain", str(ready["apiPort"]), "/probe/state.json"]
+            cid = self.create("ada-client", args)
+            try:
+                obj = self.owned(cid)
+                base.check_resources(obj, "helper", self.args.scala_image, network)
+                base.require({(m["Source"],m["Destination"],m["RW"]) for m in obj["Mounts"] if m["Type"] == "bind"} == mounts,
+                             "state probe exact mounts")
+                base.write(self.out/(label+"-probe-inspection.json"), obj)
+                attached = self.docker("start", "--attach", cid, timeout=min(20,self.deadline-time.monotonic()))
+                state = self.owned(cid)["State"]
+                base.require(not state["Running"] and state["ExitCode"] == 0 and not state["OOMKilled"], "GET probe finalized")
+                raw = restart.read_exact(root/"state.json",65536)
+                value = peer_probe(base.decode(raw), previous)
+                self.peer_alive()
+                inspection=self.owned(self.peer_cid)
+                base.require(process_identity(inspection)==self.peer_process,"retained peer process identity")
+                inspection_path=self.out/(label+"-peer-process-inspection.json")
+                base.write(inspection_path,inspection)
+                value = dict(value, containerId=self.peer_cid, process=self.peer_process, rawSHA256=restart.digest(raw),
+                             processInspectionSHA256=base.sha(inspection_path),
+                             controllerObservedUnixMillis=time.time_ns()//1000000)
+                base.write(self.out/(label+"-peer.json"),value)
+                return value
+            finally:
+                self.remove_client()
+
+        def first_peer_publication(self, ready):
+            root = self.service_roots["service-1"]
+            until = min(self.deadline,time.monotonic()+20)
+            while time.monotonic()<until:
+                self.peer_alive()
+                path=root/"publication-0000.json"
+                if path.exists():
+                    raw=restart.read_exact(path,131072); value=base.decode(raw)
+                    pin=two.pin(value.get("pin"), self.actives["service-1"]["pin"]["ownerId"])
+                    base.require(value.get("schema")=="plutus-service-publication-v1" and
+                                 type(value.get("index")) is int and value["index"]==0 and
+                                 value.get("sourceJoinId")==ready["sourceJoinId"] and
+                                 value.get("initialManifestSHA256")==self.manifest_pin and
+                                 value.get("diagnosticOnly") is True and value.get("fullLedgerValidated") is False and
+                                 pin["generation"]>self.actives["service-1"]["pin"]["generation"] and
+                                 two.follows(pin,self.actives["service-1"]["pin"]), "peer actually published before restart")
+                    base.write(self.out/"peer-first-publication.json",dict(publication=value,sha256=restart.digest(raw)))
+                    return pin
+                time.sleep(.1)
+            raise TimeoutError("peer did not follow before checkpoint")
+
+        def restart_while_peer_follows(self, peer):
+            self.peer_alive()
+            store, session = restart.digest(os.urandom(32)), restart.digest(os.urandom(32))
+            identity=["--store-id",store,"--session-id",session,"--generation","0"]
+            first_root=self.exchange/"service-2"
+            source_args=self.args; early=copy.copy(source_args); early.duration_seconds,early.max_blocks=30,8
+            try:
+                self.args=early
+                restart.launch_service(self,live,"service-2",first_root,self.manifest_pin,["--checkpoint-after","1",*identity])
+            finally:
+                self.args=source_args
+            first=self.wait_service("service-2","bootstrap-ready.json",25)
+            old=restart.startup(first,peer["sourceJoinId"],self.manifest_pin,self.initial,False)
+            self.signal_peer("service-2")
+            stopped=self.wait_service("service-2","result.json",40)
+            restart.wait_exit(self,"service-2")
+            self.peer_alive()
+            terminal=base.point(two.pin(stopped.get("finalPin"))["point"])
+            # Historical exact-point acquisition while the same producer and
+            # independent follower keep running. No transport-disrupting freeze.
+            require_budget(self.deadline,self.budget_plan["capture"]+self.budget_plan["restoredLifetime"]+
+                           self.budget_plan["terminalReserve"],"checkpoint acquisition and continuation")
+            _,acquisition=self.capture(terminal,"restart-checkpoint")
+            base.require(acquisition.get("schema")=="native-live-acquisition-result-v1" and
+                         type(acquisition.get("acquireCount")) is int and acquisition["acquireCount"]==1 and
+                         type(acquisition.get("reacquireCount")) is int and acquisition["reacquireCount"]==0 and
+                         acquisition.get("exactAcquiredPoint") is True and acquisition.get("point")==terminal and
+                         acquisition.get("referenceContainerId")==self.containers["reference"],"independent exact checkpoint acquisition")
+            base.write(self.out/"restart-acquisition.json",acquisition)
+            _,accepted,claim=restart.authorize_pair(first_root,first,stopped,store_id=store,session_id=session,
+                generation=0,source_point=self.initial,manifest=self.manifest_pin,acquired_point=acquisition["point"],checkpoint_after=1)
+            authority=self.out/"restart-authority.json"; restart.publish_new(authority,accepted)
+            authority_pin=restart.digest(accepted)
+            base.write(self.out/"restart-accepted-pair.json",dict(claim=claim,requestSHA256=base.sha(first_root/"checkpoint-request.json"),
+                       authoritySHA256=authority_pin,acquisitionSHA256=base.sha(self.out/"restart-acquisition.json"),
+                       semanticRecoveryPending=True,wholeStateOracleCompared=False,crashDurable=False))
+            self.remove_service("service-2")
+            self.peer_alive()
+            root=self.exchange/"service-2-restored"
+            extra=["--restore-checkpoint","/restore/checkpoint.bin","--restore-authority","/restore/authority.json",
+                   "--restore-authority-sha256",authority_pin,*identity]
+            self.start_repeated("service-2",root,self.manifest_pin,extra,
+                ((first_root/"checkpoint.bin","/restore/checkpoint.bin"),(authority,"/restore/authority.json")),
+                lifetime=self.lifetimes["service-2"])
+            ready=self.wait_service("service-2","bootstrap-ready.json",25)
+            restart.startup(ready,first["sourceJoinId"],self.manifest_pin,claim["terminalPoint"],True,
+                            old["ownerId"],first["boundedRestart"]["freshCheckpointId"])
+            base.require(ready["boundedRestart"].get("sourceAnchorPoint")==self.initial and
+                         ready["boundedRestart"].get("restoredDepth")==1,"restored exact source anchor/depth")
+            self.signal_peer("service-2")
+            self.actives["service-2"]=active(self.wait_service("service-2","service-active.json",10),self.lifetimes["service-2"])
+            base.require(0<=self.actives["service-2"]["startedUnixMillis"]-self.actives["service-1"]["startedUnixMillis"]<=90000,
+                         "conservative active-clock restart scheduling bound")
+            base.write(self.out/"restart-ready.json",ready)
+            return restart.RunningRestored("service-2",ready,claim,authority_pin,old["ownerId"],
+                                           first["boundedRestart"]["freshCheckpointId"],root)
+
+        def same_epoch_lifecycle(self, approval):
+            require_comparator()
+            require_budget(self.deadline,self.budget_plan["operationBudget"],"complete cohort plan")
+            self.manifest_pin=self.prepare_soak_initial(approval)
+            self.construct_transfer()
+            require_budget(self.deadline,self.budget_plan["latestFollowEnd"]+self.budget_plan["terminalReserve"],"peer start")
+            base.require(time.monotonic()-self.operation_started<=self.budget_plan["setup"],"setup allowance exhausted")
+            self.lifetimes=dict(zip(SERVICE_PHASES,(self.budget_plan["peerLifetime"],self.budget_plan["restoredLifetime"])))
+            self.start_repeated("service-1",self.exchange/"service-1",self.manifest_pin,lifetime=self.lifetimes["service-1"])
+            peer=self.wait_service("service-1","bootstrap-ready.json",25)
+            self.peer_cid=self.containers["service-1"]
+            self.resume_producer()
+            self.signal_peer("service-1")
+            self.actives={"service-1":active(self.wait_service("service-1","service-active.json",10),self.lifetimes["service-1"])}
+            base.require(time.monotonic()-self.operation_started<=self.budget_plan["setup"],"peer bootstrap exhausted setup allowance")
+            self.peer_process=process_identity(self.owned(self.peer_cid))
+            first=self.first_peer_publication(peer)
+            before=self.probe_peer("before-restart",peer,first)
+            restored=self.restart_while_peer_follows(peer)
+            self.restored=restored
+            restart.wait_checked_successor(self,restored,seconds=20)
+            after=self.probe_peer("after-restore",peer,before["state"]["pin"])
+            peer_survival(before,after)
+            self.peer_observations=[before,after]
+            readies=[peer,restored.ready]
+            self.api_ports=[]
+            for phase,ready in zip(SERVICE_PHASES,readies):
+                expected=self.initial if phase=="service-1" else restored.claim["terminalPoint"]
+                base.require(ready.get("schema")=="plutus-service-ready-v1" and ready.get("soakProfile")==PROFILE and ready.get("initialPoint")==expected and
+                             ready.get("profileId")==fixture.PROFILE and ready.get("initialEpoch")==0 and
+                             ready.get("networkMagic")==self.magic and ready.get("initialManifestSHA256")==self.manifest_pin and
+                             ready.get("sourceJoinId")==restored.claim["sourceJoinId"],"checked repeated bootstrap source")
+                check_epoch_mode(ready.get("epochMode"))
+                port=ready.get("apiPort")
+                base.require(type(port) is int and 1<=port<=65535 and port not in live.process.PORTS.values(),"actual API port")
+                self.api_ports.append(port)
+                limits=ready.get("limits",{})
+                base.require(type(limits.get("durationSeconds")) is int and limits["durationSeconds"]==self.lifetimes[phase] and
+                             type(limits.get("maxBlocks")) is int and limits["maxBlocks"]==512 and
+                             limits.get("maxEvents")==4096 and limits.get("maxEvaluationReceipts")==128,"bounded repeated runtime")
+                base.write(self.out/(phase+"-bootstrap-proof.json"),ready)
+            base.require(len(set(self.api_ports))==2,"distinct loopback ingress ports")
+            for index,phase in enumerate(SERVICE_PHASES):
+                destination=self.service_roots[phase]/"submission"; destination.mkdir(mode=0o700)
+                shutil.copyfile(self.exchange/"submission"/(f"transaction-{index+1}.cbor"),destination/"transaction-1.cbor")
+            require_budget(self.deadline,125+self.budget_plan["terminalReserve"],"bounded HTTP workload and terminal gates")
+            self.client_duration=120
             self.run_client()
-            # Client completion is never the service lifetime criterion.
-            results = self.wait_full_intervals()
-            for phase in SERVICE_PHASES:
-                restart.wait_exit(self, phase)
-            terminals = [self.verify_result(i, ready, result, self.last_resumed)
-                         for i, (ready, result) in enumerate(zip(readies, results))]
-            for phase, terminal, ready, result in zip(SERVICE_PHASES, terminals, readies, results):
-                self.compare_service(phase, terminal, ready, result)
-            self.stop_node(1)
-            self.stop_node(2)
-            self.cleanup()
+            results=self.wait_full_intervals()
+            for phase in SERVICE_PHASES: restart.wait_exit(self,phase)
+            self.overlap=actual_overlap(results,self.args.duration_seconds,self.peer_observations)
+            base.write(self.out/"follow-overlap.json",self.overlap)
+            terminals=[self.verify_result(i,ready,result,self.last_resumed) for i,(ready,result) in enumerate(zip(readies,results))]
+            for index,(phase,terminal,ready,result) in enumerate(zip(SERVICE_PHASES,terminals,readies,results)):
+                require_budget(self.deadline,(2-index)*(self.budget_plan["capture"]+self.budget_plan["comparison"]),"serial terminal gates")
+                self.compare_service(phase,terminal,ready,result)
+            self.stop_node(1); self.stop_node(2); self.cleanup()
             return terminals
 
         def wait_full_intervals(self):
             results = {}
-            while len(results) != 2 and time.monotonic() < self.deadline:
+            while len(results) != 2 and time.monotonic() < self.deadline-(self.budget_plan["terminalReserve"]-self.budget_plan.get("finalization",0)):
                 for phase in SERVICE_PHASES:
                     if phase in results:
                         continue
@@ -719,7 +956,9 @@ def execute(live, support, args, classpath):
                    initialPoint=launch.initial, finalPoints=result, serviceCount=2,
                    earlyRestart=dict(authoritySHA256=launch.restored.authority_sha256,
                      successorSHA256=base.sha(launch.out/"restart-successor.json"), freshOwner=True, emptyPoolObserved=True),
-                   independentIngressOwners=True, postBoundaryHttpSpend=True, fullActiveIntervalsVerified=True,
+                   independentIngressOwners=True, postBoundaryHttpSpend=True, fullActiveIntervalsVerified=True, independentPeerSurvivedRestart=True,
+                   measuredOverlap=launch.overlap, stagePlan=launch.budget_plan,
+                   peerObservationSHA256=[base.sha(launch.out/(n+"-peer.json")) for n in ("before-restart","after-restore")],
                    fullLedgerValidated=False, lateCheckpointRestoreSupported=False, crashDurable=False,
                    nativeRuntimeDependency=False, posthocNativeComparisonClaimed=False,
                    diskHighWater=monitor.high_water,
