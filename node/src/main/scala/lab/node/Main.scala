@@ -138,8 +138,16 @@ object Main extends IOApp:
             genesis.geometry,
             NodeRules.observe(genesis.geometry),
             Some(persistence.fold(served)(Persistence.both(_, served))),
-            Some(chain =>
-              chain.tipRef.traverse_(t => mempool.sync(chain.state.ledger, t.slot).void)
+            Some((chain, added) =>
+              val adopted = added.flatMap(raw =>
+                Block.decode(raw, genesis.geometry.byron.epochSlots).toOption.toVector.flatMap {
+                  case b: Block.Shelley => b.transactions.map(_.id)
+                  case _                => Vector.empty
+                }
+              )
+              chain.tipRef.traverse_(t =>
+                mempool.sync(chain.state.ledger, t.slot, adopted.toSet).void
+              )
             )
           )
           handlers = ServerHandlers[IO, NtNHeader](

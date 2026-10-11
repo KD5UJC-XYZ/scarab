@@ -66,6 +66,7 @@ object JsonLog:
         )
       case MempoolEvent.Rejected(id, reason) =>
         line("mempoolRejected", "tx" -> id.map(_.hex).asJson, "reason" -> reason.message.asJson)
+      case MempoolEvent.Adopted(id) => line("mempoolAdopted", "tx" -> id.hex.asJson)
       case MempoolEvent.Dropped(id, reason) =>
         line("mempoolDropped", "tx" -> id.hex.asJson, "reason" -> reason.message.asJson)
       case MempoolEvent.Synced(count, bytes, dropped) =>

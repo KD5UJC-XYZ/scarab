@@ -95,8 +95,10 @@ final class Follower[F[_]: Async, S] private (
     observe: (S, S, BlockRef) => List[FollowerEvent],
     /** Receives every applied block and rollback so the immutable part can be stored. */
     persistence: Option[ChainPersistence[F, S]],
-    /** Called with the chain after every change of the tip (mempool revalidation, for one). */
-    onTip: Option[VolatileChain[S] => F[Unit]],
+    /** Called with the chain after every change of the tip and the raw blocks that were added
+      * (mempool revalidation, for one).
+      */
+    onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]],
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
     lock: Mutex[F]
@@ -249,7 +251,7 @@ final class Follower[F[_]: Async, S] private (
       _ <- views.retain(
         steps.last.after.blocks.map(_._1.hash).toSet ++ steps.last.after.anchor.block.map(_.hash)
       )
-      _ <- onTip.traverse_(_(steps.last.after))
+      _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw)))
     yield ()
 
 object Follower:
@@ -261,7 +263,7 @@ object Follower:
       geometry: EpochGeometry,
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
-      onTip: Option[VolatileChain[S] => F[Unit]] = None,
+      onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]] = None,
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor
   )(using
       Stateful[F, VolatileChain[S]],

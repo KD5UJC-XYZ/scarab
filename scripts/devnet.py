@@ -8,6 +8,8 @@
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
+    devnet.py relay [--seconds N]  up + the Scala node as a relay (follows the pools, serves a
+                                   Haskell relay) + load through that relay; tips and propagation
     devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
     devnet.py capture-eras         capture the up-eras chain as test fixtures (fixtures/eras)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
@@ -500,6 +502,9 @@ def load(args):
     Each wallet acts only once its previous transaction is confirmed, so submissions never
     conflict in the mempool.
     """
+    global SOCKET
+    if getattr(args, "socket", None):
+        SOCKET = f"--testnet-magic {MAGIC} --socket-path {args.socket}"
     rng = random.Random(args.seed)
     deposit = json.loads(in_ref(args.name, f"{CLI} query protocol-parameters {SOCKET}").stdout)["stakeAddressDeposit"]
     pools = json.loads(in_ref(args.name, f"{CLI} query stake-pools {SOCKET} --output-json").stdout)
@@ -573,7 +578,7 @@ def load(args):
         else:
             stats["rejected"] += 1
             print(json.dumps({"rejected": kind, "error": r.stderr.strip()[:400]}), flush=True)
-        if (stats["submitted"] + stats["rejected"]) % 20 == 0:
+        if (stats["submitted"] + stats["rejected"]) % getattr(args, "stats_every", 20) == 0:
             print(json.dumps(stats), flush=True)
         time.sleep(args.interval)
     print(json.dumps(stats), flush=True)
@@ -806,6 +811,213 @@ def soak(args):
     }
     (root / "summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
+
+
+# ---------------------------------------------------------------- the Scala node as a relay
+
+SCALA_PORT = 3350   # the Scala node's node-to-node listener (loopback, shared network namespace)
+RELAY_PORT = 3351   # the Haskell relay, whose only upstream peer is the Scala node
+RELAY_DIR = "/work/relay"
+RELAY_SOCKET = f"{RELAY_DIR}/sock"
+
+
+def start_scala_relay(args, root, peers):
+    """The Scala node following `peers` (reference node ports) and listening for node-to-node
+    connections, with an on-disk chain so it can serve the whole chain to a syncing peer."""
+    classpath = freeze_classes(root)
+    db = root / "scala-db"
+    db.mkdir(exist_ok=True)
+    db.chmod(0o777)
+    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
+               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db"]
+    for port in peers:
+        program += ["--peer", f"127.0.0.1:{port}"]
+    command = scala_container(args, root, classpath, "lab.node.Main", program,
+                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db"], name=f"{args.name}-scala")
+    log = (root / "follower.jsonl").open("a")
+    return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)
+
+
+def start_haskell_relay(args):
+    """A non-producing reference node whose topology names only the Scala node."""
+    in_ref(args.name, f"mkdir -p {RELAY_DIR}/db")
+    topology = {"bootstrapPeers": None,
+                "localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": SCALA_PORT}],
+                                "advertise": False, "behindFirewall": False, "trustable": True,
+                                "diffusionMode": args.relay_mode, "hotValency": 1, "warmValency": 1}],
+                "publicRoots": [{"accessPoints": [], "advertise": False}], "useLedgerAfterSlot": -1}
+    put_file(args.name, f"{RELAY_DIR}/topology.json", json.dumps(topology))
+    docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
+           f"cd {ENV} && cardano-node run --config {ENV}/configuration.yaml --topology {RELAY_DIR}/topology.json "
+           f"--database-path {RELAY_DIR}/db --socket-path {RELAY_SOCKET} --port {RELAY_PORT} "
+           f"--host-addr 127.0.0.1 > {RELAY_DIR}/node.log 2>&1")
+
+
+def tip_at(name, socket):
+    """`cardano-cli query tip` against one node socket, or None while it cannot answer."""
+    r = docker("exec", ref(name), "/bin/sh", "-c",
+               f"cardano-cli query tip --testnet-magic {MAGIC} --socket-path {socket}", check=False, timeout=30)
+    try:
+        tip = json.loads(r.stdout)
+        return tip if "hash" in tip else None
+    except json.JSONDecodeError:
+        return None
+
+
+def log_counts(path):
+    """Event counts of the Scala node's JSON log."""
+    counts = {}
+    events, other = read_log(path)
+    for e in events:
+        counts[e["event"]] = counts.get(e["event"], 0) + 1
+    return counts, events, other
+
+
+def relay(args):
+    """Fresh 3-pool cluster, the Scala node as a relay in front of a Haskell relay, and a load
+    generator that submits through the Haskell relay.
+
+    Transactions travel: Haskell relay -> (TxSubmission2) -> Scala mempool -> (TxSubmission2) -> pools
+    -> blocks -> Scala node (ChainSync/BlockFetch from the pools) -> Haskell relay (from the Scala node)."""
+    root = data_root(args.name)
+    up(args)
+    ports = json.loads((root / "ports.json").read_text())
+    peers = [ports[str(n)] for n in sorted(map(int, ports))][: args.peers]
+    scala, loader = None, None
+    samples, failures, summary = [], [], {}
+    try:
+        scala = start_scala_relay(args, root, peers)
+        log = root / "follower.jsonl"
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            counts, _, _ = log_counts(log)
+            if counts.get("listening") and counts.get("extended"):
+                break
+            if scala.poll() is not None:
+                raise SystemExit(f"the Scala node exited with {scala.returncode}; see {log}")
+            time.sleep(1)
+        else:
+            raise SystemExit("the Scala node did not start listening and following within 120 s")
+        # let the chain grow past k so the relay has to be served from the Scala node's stored blocks too
+        grow_until = time.monotonic() + 180
+        while time.monotonic() < grow_until:
+            counts, _, _ = log_counts(log)
+            if counts.get("extended", 0) >= args.relay_after_blocks:
+                break
+            time.sleep(1)
+        relay_blocks = log_counts(log)[0].get("extended", 0)
+        start_haskell_relay(args)
+        relay_started = time.monotonic()
+        reference = f"{ENV}/socket/node1/sock"
+        synced_at = None
+        deadline = time.monotonic() + args.sync_timeout
+        while time.monotonic() < deadline:
+            mine, theirs = tip_at(args.name, RELAY_SOCKET), tip_at(args.name, reference)
+            if mine and theirs and mine["block"] >= theirs["block"] - 1 and mine["block"] > 0:
+                synced_at = time.monotonic()
+                break
+            time.sleep(1)
+        if synced_at is None:
+            raise SystemExit(f"the Haskell relay did not sync from the Scala node within {args.sync_timeout} s")
+        print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
+        command = [sys.executable, __file__, "--name", args.name, "load", "--seed", str(args.seed),
+                   "--socket", RELAY_SOCKET, "--interval", str(args.interval), "--stats-every", "1"]
+        loader = subprocess.Popen(command, stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
+        stop = time.monotonic() + args.seconds
+        while time.monotonic() < stop:
+            time.sleep(args.every)
+            if scala.poll() is not None:
+                failures.append(f"the Scala node exited with {scala.returncode}")
+                break
+            sample = {"t": round(time.monotonic() - synced_at, 1),
+                      "relay": tip_at(args.name, RELAY_SOCKET),
+                      "pool1": tip_at(args.name, reference)}
+            samples.append(sample)
+            r, p = sample["relay"], sample["pool1"]
+            print(json.dumps({"t": sample["t"], "relay": r and (r["block"], r["hash"][:12]),
+                              "pool1": p and (p["block"], p["hash"][:12])}), flush=True)
+        loader.terminate()
+        loader.wait()
+        loader = None
+        # let the chain settle, then compare every node's tip
+        final = {}
+        settle = time.monotonic() + 60
+        while time.monotonic() < settle:
+            final = {"relay": tip_at(args.name, RELAY_SOCKET)}
+            for n in (1, 2, 3):
+                final[f"pool{n}"] = tip_at(args.name, f"{ENV}/socket/node{n}/sock")
+            if all(final.values()) and len({t["hash"] for t in final.values()}) == 1:
+                break
+            time.sleep(1)
+        final_hashes = {k: (v["block"], v["hash"]) if v else None for k, v in final.items()}
+        counts, events, other = log_counts(log)
+        scala_blocks = [e for e in events if e["event"] == "extended"]
+        scala_tip = scala_blocks[-1]["block"]["hash"] if scala_blocks else None
+        agree = len({v[1] for v in final_hashes.values() if v}) == 1 and all(final_hashes.values())
+        lag = [p["pool1"]["block"] - p["relay"]["block"] for p in samples if p["relay"] and p["pool1"]]
+        load_lines = (root / "load.log").read_text().strip().splitlines()
+        load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
+        epochs = sorted({p["pool1"]["epoch"] for p in samples if p["pool1"]})
+        relay_log = in_ref(args.name, f"cat {RELAY_DIR}/node.log | tail -c 3000").stdout
+        summary = {
+            "relaySyncSeconds": round(synced_at - relay_started, 1),
+            "scalaBlocksWhenRelayStarted": relay_blocks,
+            "upstreamPeers": len(peers),
+            "samples": len(samples),
+            "epochsObserved": epochs,
+            "relayLagBlocks": {"max": max(lag, default=None), "atTip": sum(1 for x in lag if x <= 1), "of": len(lag)},
+            "finalTips": final_hashes,
+            "scalaTip": scala_tip,
+            "allTipsEqual": agree,
+            "load": load_stats,
+            "propagation": {
+                "submittedToHaskellRelay": load_stats.get("submitted"),
+                "arrivedInScalaMempool": counts.get("mempoolAdded", 0),
+                "rejectedByScalaMempool": counts.get("mempoolRejected", 0),
+                "includedInBlocks": counts.get("mempoolAdopted", 0),
+                "droppedAfterAdding": counts.get("mempoolDropped", 0)},
+            "scalaEvents": {k: counts.get(k, 0) for k in
+                            ("extended", "rolledBack", "reconnecting", "error", "inbound", "mempoolAdded",
+                             "mempoolAdopted", "mempoolRejected", "mempoolDropped")},
+            "unparsedScalaOutput": other[:10],
+        }
+        if not agree:
+            failures.append(f"final tips differ: {final_hashes}")
+        if scala_tip and final.get("pool1") and scala_tip != final["pool1"]["hash"]:
+            failures.append(f"the Scala node's last block {scala_tip[:12]} is not the final tip")
+        if lag and sum(1 for x in lag if x <= 1) < 0.9 * len(lag):
+            failures.append("the Haskell relay was more than one block behind in over 10% of samples")
+        if len(epochs) < args.min_epochs:
+            failures.append(f"only {len(epochs)} epochs observed")
+        if not load_stats.get("submitted"):
+            failures.append("no transaction was submitted through the Haskell relay")
+        elif summary["propagation"]["arrivedInScalaMempool"] < 0.9 * load_stats["submitted"]:
+            failures.append("fewer than 90% of the submitted transactions reached the Scala mempool")
+        if summary["propagation"]["includedInBlocks"] == 0:
+            failures.append("no transaction passing through the Scala mempool was included in a block")
+        if counts.get("error"):
+            failures.append(f"{counts['error']} error events in the Scala log")
+        if other:
+            failures.append(f"unexpected Scala output: {other[0][:200]}")
+        summary["relayLogTail"] = relay_log[-600:] if failures else ""
+    except SystemExit as e:
+        failures.append(str(e))
+    finally:
+        if loader is not None:
+            loader.terminate()
+        docker("rm", "-f", f"{args.name}-scala", check=False)
+        if scala is not None:
+            scala.wait()
+        summary["failures"] = failures
+        summary["passed"] = not failures
+        (root / "relay-summary.json").write_text(json.dumps(summary, indent=2))
+        print(json.dumps(summary, indent=2))
+        if not args.keep:
+            docker("rm", "-f", ref(args.name), check=False)
+            shutil.rmtree(root / "classes", ignore_errors=True)
+            if args.keep_data:
+                pass
+    sys.exit(0 if not failures else 1)
 
 
 # ---------------------------------------------------------------- era fixtures and e2e
@@ -1275,6 +1487,8 @@ def main():
     ld.add_argument("--max-out", type=int, default=200, help="largest output in ADA")
     ld.add_argument("--min-balance", type=int, default=300_000_000)
     ld.add_argument("--fresh-wallets-only", action="store_true", help="skip the genesis utxo-keys wallets")
+    ld.add_argument("--stats-every", type=int, default=20, help="print the running totals every N transactions")
+    ld.add_argument("--socket", help="node socket (inside the reference container) to build and submit through")
     ld.set_defaults(run=load)
     gl = sub.add_parser("govload", help="Conway governance and Plutus scenarios on a Conway-only cluster")
     gl.add_argument("--seconds", type=int)
@@ -1285,6 +1499,20 @@ def main():
     sk.add_argument("--every", type=int, default=20)
     sk.add_argument("--seed", type=int, default=1)
     sk.set_defaults(run=soak)
+    rl = sub.add_parser("relay", help="Scala node as a relay serving a Haskell relay; load through the relay")
+    rl.add_argument("--seconds", type=int, default=300, help="load phase length")
+    rl.add_argument("--every", type=int, default=5, help="seconds between tip samples")
+    rl.add_argument("--seed", type=int, default=1)
+    rl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
+    rl.add_argument("--peers", type=int, default=3, help="reference nodes the Scala node follows")
+    rl.add_argument("--sync-timeout", type=int, default=240)
+    rl.add_argument("--relay-after-blocks", type=int, default=30,
+                    help="start the Haskell relay once the Scala node has applied this many blocks")
+    rl.add_argument("--min-epochs", type=int, default=4)
+    rl.add_argument("--relay-mode", choices=["InitiatorAndResponder", "InitiatorOnly"], default="InitiatorAndResponder")
+    rl.add_argument("--keep", action="store_true", help="leave the cluster running")
+    rl.add_argument("--keep-data", action="store_true")
+    rl.set_defaults(run=relay)
     sub.add_parser("down").set_defaults(run=down)
     args = p.parse_args()
     args.name = args.name or ("csl-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "csl-devnet")

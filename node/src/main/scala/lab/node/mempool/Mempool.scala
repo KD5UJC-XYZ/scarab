@@ -16,6 +16,9 @@ enum MempoolEvent:
 
   /** Held transactions that the new tip no longer admits (adopted in a block, or invalidated). */
   case Dropped(id: Bytes, reason: Rejection)
+
+  /** A held transaction is now in the chain: it was in a block that became part of our chain. */
+  case Adopted(id: Bytes)
   case Synced(count: Int, bytes: Long, dropped: Int)
 
 trait MempoolEvents[F[_]]:
@@ -46,8 +49,15 @@ trait Mempool[F[_]]:
   /** The transactions a block of at most `maxBytes` of transaction bytes can take, in order. */
   def forBlock(maxBytes: Long): F[Vector[Entry]]
 
-  /** Revalidate against the ledger state `ledger` at the new tip (in `tipSlot`). */
-  def sync(ledger: LedgerState, tipSlot: BigInt): F[Vector[(Entry, Rejection)]]
+  /** Revalidate against the ledger state `ledger` at the new tip (in `tipSlot`). `adopted` are the
+    * ids of the transactions in the blocks that just joined our chain: held ones among them leave
+    * the pool as adopted, the others that no longer apply are returned with the reason.
+    */
+  def sync(
+      ledger: LedgerState,
+      tipSlot: BigInt,
+      adopted: Set[Bytes] = Set.empty
+  ): F[Vector[(Entry, Rejection)]]
 
   /** Offer our transactions to a peer (we are the TxSubmission2 client). */
   def source: TxSubmissionClient.Source[F]
@@ -114,18 +124,22 @@ object Mempool:
 
       def forBlock(maxBytes: Long) = state.get.map(_.forBlock(maxBytes))
 
-      def sync(ledger: LedgerState, tipSlot: BigInt) = lock.lock.surround {
+      def sync(ledger: LedgerState, tipSlot: BigInt, adopted: Set[Bytes]) = lock.lock.surround {
         for
           current <- state.get
           result <- F.blocking(current.sync(ledger, tipSlot, env))
           (next, dropped) = result
           _ <- state.set(next)
-          _ <- dropped.traverse_ { (entry, reason) =>
+          (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))
+          _ <- inBlock.traverse_ { (entry, _) =>
+            seen.update(_.add(entry.id, seenLimit)) *> events.emit(MempoolEvent.Adopted(entry.id))
+          }
+          _ <- invalid.traverse_ { (entry, reason) =>
             seen.update(_.add(entry.id, seenLimit)) *>
               events.emit(MempoolEvent.Dropped(entry.id, reason))
           }
-          _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, dropped.size))
-        yield dropped
+          _ <- events.emit(MempoolEvent.Synced(next.entries.size, next.bytes, invalid.size))
+        yield invalid
       }
 
       val source: TxSubmissionClient.Source[F] = new TxSubmissionClient.Source[F]:
