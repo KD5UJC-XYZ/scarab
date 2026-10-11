@@ -34,6 +34,11 @@ final case class Snapshot(
       .groupMapReduce(_._1)(_._2)(_ + _)
   lazy val activeStake: BigInt = poolStake.values.sum
 
+  /** The pool distribution as the leader check consumes it; built once per snapshot, not per block.
+    */
+  lazy val distribution: lab.node.consensus.PoolDistribution =
+    lab.node.consensus.PoolDistribution(poolStake, pools.map { case (id, p) => id -> p.vrfKeyHash })
+
 object Snapshot:
   val empty: Snapshot = Snapshot(Map.empty, Map.empty, Map.empty)
 

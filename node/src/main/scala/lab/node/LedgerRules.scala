@@ -377,10 +377,7 @@ object NodeRules:
         (),
         "structure" -> s"body size ${block.bodySize} exceeds ${ticked.params.maxBlockBodySize}"
       )
-      pools = PoolDistribution(
-        ticked.poolDistribution.poolStake,
-        ticked.poolDistribution.pools.map { case (id, p) => id -> p.vrfKeyHash }
-      )
+      pools = ticked.poolDistribution.distribution
       view = LedgerView(
         ticked.params.effectiveD,
         ticked.params.extraEntropy,

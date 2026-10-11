@@ -95,6 +95,8 @@ object Main extends IOApp:
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
     utxoBacking(options).use((store, backing) => followWith(options, store, backing))
 
+  private val blocks = new java.util.concurrent.atomic.AtomicLong
+
   private def followWith(
       options: Options,
       store: UtxoStore[IO],
@@ -117,8 +119,15 @@ object Main extends IOApp:
         setup.byronRules,
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
-        afterBlock =
-          Some(s => IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
+        afterBlock = Some { s =>
+          IO.delay {
+            Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)
+            if blocks.incrementAndGet() % 20000 == 0 then
+              System.err.println(
+                s"verification verdicts found ahead (hits/lookups): ${Verification.summary}"
+              )
+          }
+        }
       )
       k = genesis.geometry.securityParam
       storage = options.db.fold(

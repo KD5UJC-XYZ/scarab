@@ -52,13 +52,18 @@ object Verification:
     Vrf.alpha(input) match
       case Right(alpha) =>
         val known = vrfs.remove(VrfKey(0, alpha, vkey, proof, output))
+        vrfStats.record(known != null)
         if known != null then known else Vrf.verify(input, vkey, proof, output)
       case Left(_) => Vrf.verify(input, vkey, proof, output)
 
   /** TPraos VRF verdict over an already derived alpha. */
   def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
     val known = vrfs.remove(VrfKey(1, alpha, vkey, proof, output))
+    vrfStats.record(known != null)
     if known != null then known else Vrf.verifyAlpha(alpha, vkey, proof, output)
+
+  /** `witnesses hits/lookups, opcerts hits/lookups, vrf hits/lookups` for the log. */
+  def summary: String = s"witness=$witnessStats opCert=$opCertStats vrf=$vrfStats"
 
   private def warmVrf(header: Header.Shelley, config: PraosConfig): Unit =
     val hint = epochNonce.get
@@ -89,10 +94,23 @@ object Verification:
       case Right(VerificationResult.SignatureVerified) => true
       case _                                           => false
 
+  /** How often a verdict was already there (`hits`) or had to be computed by the rules (`misses`).
+    */
+  final class Counters:
+    val hits = new java.util.concurrent.atomic.LongAdder
+    val misses = new java.util.concurrent.atomic.LongAdder
+    def record(hit: Boolean): Unit = if hit then hits.increment() else misses.increment()
+    override def toString: String = s"${hits.sum}/${hits.sum + misses.sum}"
+
+  val witnessStats = new Counters
+  val opCertStats = new Counters
+  val vrfStats = new Counters
+
   /** Whether `signature` is a valid witness of `message` under `vkey`. */
   def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
     val key = WitnessKey(vkey, signature, message)
     val known = witnesses.remove(key)
+    witnessStats.record(known != null)
     if known != null then known.booleanValue else compute(key)
 
   /** The OCERT signature checks of a header (see [[OCertRules.verifySignatures]]). */
@@ -102,6 +120,7 @@ object Verification:
       maxKesEvolutions: BigInt
   ): Either[OCertError, Unit] =
     val known = headers.remove(HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions))
+    opCertStats.record(known != null)
     if known != null then known
     else OCertRules.verifySignatures(header, slotsPerKesPeriod, maxKesEvolutions)
 
