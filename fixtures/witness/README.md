@@ -2,8 +2,8 @@
 
 This is an **experimental source-profile research corpus**, not proof of Cardano
 release-binary equivalence or complete transaction/witness validation. See
-[`manifest.json`](manifest.json) for machine-readable provenance and
-[`../../docs/witness-provenance.md`](../../docs/witness-provenance.md) for scope.
+[`manifest.json`](manifest.json) for machine-readable provenance and scope. Verify the files
+against [`SHA256SUMS`](SHA256SUMS) (`sha256sum -c SHA256SUMS` in this directory).
 
 ## Contents
 
@@ -25,7 +25,7 @@ release-binary equivalence or complete transaction/witness validation. See
   and Wycheproof inputs, and two byte-identical original ledger sequences.
 - `archive/`: prior public verification observations and Scala 2.12 diagnostic
   runner source. These files are not project runtime code and are not executed
-  by the projector. `archive/pinned-source-oracle/` separately records a fresh
+  by any current code. `archive/pinned-source-oracle/` separately records a fresh
   exact-source non-COMPAT native run: all 2,207 fixed-size cases match, eight
   ledger witnesses pass, and 12 malformed signatures never cross the native ABI.
   No native binary or original seed-bearing source is vendored. The strict prototype's broad catch is a historical
@@ -60,36 +60,20 @@ BC 1.85.2 raw verification accepts `speccheck-2`, `speccheck-4`, `speccheck-5`
 while system sodium and the strict prototype reject them. All accept mixed-order
 `speccheck-3`; prime-subgroup-only validation would over-reject that control.
 
-## Portable offline reproduction
+## Reproduction
 
-From the repository, with Python 3.9+ standard library only:
+The derived files were produced by `scripts/project-witness-fixtures.py` (a stdlib-only projector
+that pinned the source, archive, license and provenance hashes and regenerated `SHA256SUMS`). That
+tooling, and the provenance guide it referred to, were removed in commit `6d330b5` ("Remove research
+and evidence modules, scripts and docs"); see git history (`git show 6d330b5^:scripts/project-witness-fixtures.py`).
+The fixtures are frozen evidence: today they are checked by `SHA256SUMS` and consumed by the
+`core` tests (`StrictEd25519Suite`).
 
-```sh
-python3 scripts/project-witness-fixtures.py --check
-```
+The original optional check read an upstream `sign.c` kept **outside** this repository (SHA256
+`fa3f37d292782694d721a218d0adf2b7de633552d41bbdc1d0ae0a708e32a21d`); the published seed field was
+discarded and only public output compared. Do not add `sign.c` or upstream seed tables here.
 
-Without `--check`, the script regenerates the five derived files and
-`SHA256SUMS`. Source/archive/license/provenance hashes are immutable constants in
-the script, checked before parsing. Derived hashes are fixed too. Reads are
-bounded; no network, external process, native library, signing or key generation
-is involved. No library installation or original secret-bearing source is needed.
-
-Optional stronger source-to-projection verification uses an already downloaded
-original `sign.c` **outside this repository**:
-
-```sh
-python3 scripts/project-witness-fixtures.py --check --sodium-source /tmp/sign.c
-```
-
-The original file SHA256 is checked before parsing:
-`fa3f37d292782694d721a218d0adf2b7de633552d41bbdc1d0ae0a708e32a21d`.
-The extractor discards the published seed field and compares only public output
-against the immutable seed-free projection hash. It never executes upstream code.
-Original source acquisition is a separate optional step, documented in the
-provenance guide. Do not add `sign.c` or upstream seed tables to this deliverable.
-
-The original installed native oracle was libsodium 1.0.18 with unknown complete
-build provenance. The separate exact-source non-COMPAT self-build now strengthens
-that evidence: all 2,207 fixed-size rows agree. It is not the shipped Cardano node
-binary, whose compiler/flags and native linkage remain unestablished. Offline
-reproduction checks both archives without executing or loading either library.
+The original installed native oracle was libsodium 1.0.18 with unknown complete build provenance.
+A separate exact-source non-COMPAT self-build strengthens that evidence: all 2,207 fixed-size rows
+agree. It is not the shipped Cardano node binary, whose compiler, flags and native linkage remain
+unestablished.

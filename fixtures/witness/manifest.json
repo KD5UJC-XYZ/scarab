@@ -231,11 +231,11 @@
     "vendored_seed_or_private_key_tables": false
   },
   "reproducibility": {
-    "default": "python3 scripts/project-witness-fixtures.py --check",
+    "default": "none: the projector scripts/project-witness-fixtures.py was removed in commit 6d330b5 (see git history); verify the files against SHA256SUMS",
     "external_packages_required": false,
     "offline_inputs_all_vendored": true,
-    "optional_original_source": "python3 scripts/project-witness-fixtures.py --check --sodium-source /outside/repository/sign.c",
-    "original_source_fetch": "Separate, optional, exact pinned raw URL; never part of offline check; keep seed-bearing source outside the deliverable."
+    "optional_original_source": "removed with the projector in commit 6d330b5",
+    "original_source_fetch": "Separate, optional, exact pinned raw URL; never part of the fixtures; keep seed-bearing source outside the repository."
   },
   "schema_version": 1,
   "schemas": {

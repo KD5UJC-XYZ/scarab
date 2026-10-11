@@ -31,24 +31,22 @@ self-built Cardano sodium source pin `dbb48cce5429cb6585c9034f002568964f1ce567`;
 library SHA-256 `76b41125c867878a1b0cfe64dde580872f61ca4cc6fae06223e902e3e803b24f`.
 Only detached public signature verification was called for these observations.
 This is source-build evidence, not demonstrated official release-binary equivalence.
-No native oracle is rerun by the offline projector or JVM tests.
+No native oracle is rerun by the JVM tests.
 
 The unchanged research JSON/script also contain KES prototypes, convenience pool
 hashes and period calculations. These are explicitly outside admission here. The
-projector reads only header identity, certificate fields/message and opcert native
-outcomes. It does not validate or rely on KES, pool IDs, registration, counters
+former projector read only header identity, certificate fields/message and opcert native
+outcomes. It did not validate or rely on KES, pool IDs, registration, counters
 from historical state, or protocol-period values.
 
-## Offline admission
+## Reproduction
 
-Run `python3 scripts/project-opcert-fixtures.py` from the repository. Its embedded
-manifest digest pins all evidence and projections before parsing; each read is
-limited to 64 KiB, with bounded fixture CBOR depth/array sizes and exact end checks.
-The parser is for these four hash-admitted fixtures only, never general header
-admission. `verify-opcert-projector.py` exercises corruption, bounds, evidence
-semantics and an edited-manifest bypass attempt. The CLI separately embeds the
-TSV SHA-256 before parsing. Editing a manifest cannot admit alternative CLI input.
+The fixtures were admitted by `scripts/project-opcert-fixtures.py` (pinned the manifest digest of all
+evidence and projections before parsing, bounded reads and CBOR depth, for these four fixtures only)
+and exercised by `verify-opcert-projector.py`. Both were removed in commit `6d330b5`; see git
+history (`git show 6d330b5^:scripts/project-opcert-fixtures.py`). The fixtures are frozen evidence,
+checked by `sha256.json` and consumed by the `core` tests.
 
-Neither finite positive agreement nor these controls establish a cryptographic
-security audit, universal acceptance equivalence, current/authorized certificates,
-registered pools, KES signatures or full header validity.
+Neither finite positive agreement nor these controls establish a cryptographic security audit,
+universal acceptance equivalence, current/authorized certificates, registered pools, KES signatures
+or full header validity.

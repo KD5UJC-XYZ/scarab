@@ -1,4 +1,9 @@
 Cardano Scala Lab
+Unofficial, independent research software. It is not affiliated with, endorsed by or
+sponsored by Input Output Global, Intersect, the Cardano Foundation or Emurgo. "Cardano" and
+related names are trademarks of their respective owners and are used here only to describe
+compatibility.
+
 Original code, 2026, Apache-2.0, except the explicitly attributed MIT adaptations
 core/src/main/java/lab/vrf/Ed25519Point.java and Draft03Math.java. Their source
 notices and fixtures/vrf/licenses/CCL-LICENSE are retained unchanged.
@@ -29,9 +34,9 @@ signer or keygen is bundled.
 
 Ed25519 witnesses (fixtures/witness): public-only sodium, speccheck, Wycheproof
 and ledger fixture projections with their ISC, Apache-2.0 and MIT/CC0/BSD
-attribution files in fixtures/witness/licenses. The Weavechain 0.1.3 arithmetic
-artifact is a runtime dependency; no signing implementation or private-key
-corpus is vendored.
+attribution files in fixtures/witness/licenses. The curve25519-elisabeth 0.1.3
+arithmetic artifact is a runtime dependency (see "Third-party runtime dependencies"); no
+signing implementation or private-key corpus is vendored.
 
 Operational certificates (fixtures/opcert): the exact ledger OCert source and
 four public Amaru header fixtures with their Apache-2.0 LICENSE/NOTICE files
@@ -62,3 +67,28 @@ foundation.icon:blst-java 0.3.2, Apache-2.0) and the secp256k1 JNI library
 (org.scalus:scalus-secp256k1-jni 0.6.0, Apache-2.0, wrapping bitcoin-core/secp256k1, MIT). They are
 retrieved from Maven Central at build time and never redistributed in this repository. Scalus's
 own ledger-to-script-context translation is consulted only as a test oracle.
+
+Third-party runtime dependencies. None is redistributed in this repository: they are retrieved
+from Maven Central at build time and keep their own licenses (as declared in their POMs at the
+versions pinned in build.sbt).
+
+  Scalus (org.scalus:scalus_3 1.2.0)                       Apache-2.0   UPLC machine and builtins
+  blst-java (foundation.icon:blst-java 0.3.2)              Apache-2.0   bundles supranational/blst
+  scalus-secp256k1-jni (org.scalus 0.6.0)                  Apache-2.0   wraps bitcoin-core/secp256k1 (MIT)
+  RocksDB JNI (org.rocksdb:rocksdbjni 10.2.1)              Apache-2.0 OR GPL-2.0-only; the Apache-2.0
+                                                           option is elected here. Bundles the native library.
+  Bouncy Castle (org.bouncycastle:bcprov-jdk18on 1.85.2)   Bouncy Castle Licence (MIT-style)
+  curve25519-elisabeth (com.weavechain 0.1.3)              MIT (its distribution carries further MIT, CC0
+                                                           and BSD-3-Clause notices for adapted components)
+  cats-core, cats-kernel 2.13.0                            MIT (Typelevel)
+  cats-effect 3.6.3                                        Apache-2.0 (Typelevel)
+  cats-mtl 1.6.0                                           Apache-2.0 (Typelevel)
+  fs2-core, fs2-io 3.11.0                                  MIT (Typelevel)
+  http4s-ember-server, http4s-dsl, http4s-circe 0.23.30    Apache-2.0
+  circe-parser 0.14.10                                     Apache-2.0
+  Scala 3 library 3.3.8                                    Apache-2.0
+  Test only: munit, munit-scalacheck, munit-cats-effect (Apache-2.0), discipline-munit (BSD-3-Clause),
+  cats-laws, cats-mtl-laws, cats-kernel-laws, cats-effect-testkit (Typelevel, MIT or Apache-2.0).
+
+Licenses were read from the POMs resolved by the build; transitive dependencies of the above are
+not individually listed. This list is not legal advice and not a completed redistribution review.
