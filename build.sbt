@@ -55,6 +55,8 @@ lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application ru
 
 // Tagless-final node: algebras over F[_] with cats-mtl typed control flow.
 lazy val node = project.in(file("node")).dependsOn(core, network, networkRuntime).settings(
+  // Snapshot codecs are derived by inline `Mirror` recursion; ProtocolParams has 33 fields.
+  scalacOptions += "-Xmax-inlines:512",
   libraryDependencies ++= Seq(
     "org.typelevel" %% "cats-core" % catsVersion,
     "org.typelevel" %% "cats-effect" % catsEffectVersion,

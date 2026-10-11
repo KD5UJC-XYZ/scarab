@@ -41,6 +41,32 @@ final case class ValidationError(point: ChainSync.Point, rule: String, reason: S
     extends NodeError:
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
 
+/** Failures of the on-disk chain database. Raised by the storage algebras; IO exceptions are mapped
+  * to [[Io]] at the file boundary only.
+  */
+enum StorageError extends NodeError:
+  /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
+  case Corrupt(what: String, reason: String)
+
+  /** An operating-system failure reading or writing `what`. */
+  case Io(what: String, reason: String)
+
+  /** The data was written by an incompatible format or schema version. */
+  case VersionMismatch(what: String, found: String, expected: String)
+
+  /** A requested block or point is not stored. */
+  case Missing(what: String)
+
+  /** An append that does not extend the stored chain. */
+  case OutOfOrder(reason: String)
+
+  def message: String = this match
+    case Corrupt(w, r)            => s"corrupt $w: $r"
+    case Io(w, r)                 => s"io $w: $r"
+    case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
+    case Missing(w)               => s"missing $w"
+    case OutOfOrder(r)            => s"out of order: $r"
+
 final case class ConfigError(reason: String) extends NodeError:
   def message: String = s"config: $reason"
 

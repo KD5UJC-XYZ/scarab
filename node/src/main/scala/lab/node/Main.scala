@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab.node
 
-import cats.effect.{ExitCode, IO, IOApp, Ref}
+import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
+import lab.node.storage.{ChainPersistence, ChainStorage, NodeCodecs}
+import NodeCodecs.given
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, SocketAddress}
 import scala.concurrent.duration.*
 
-/** `follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>]`
+/** `follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases
+  * <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]`
   *
   * Follows the peer from genesis, applying the full ledger rules, and serves the retained ledger
-  * states on loopback for comparison against a reference node.
+  * states on loopback for comparison against a reference node. With `--db` the blocks older than
+  * `k` and periodic state snapshots are persisted, and a restart resumes from the newest valid
+  * snapshot plus a replay of the stored blocks instead of from genesis.
   */
 object Main extends IOApp:
   final case class Options(
@@ -19,8 +24,27 @@ object Main extends IOApp:
       peer: SocketAddress[Host],
       seconds: Option[Long],
       queryPort: Int,
-      plutusCases: Option[Path] = None
+      plutusCases: Option[Path] = None,
+      db: Option[Path] = None,
+      snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
+      keepSnapshots: Int = 3
   )
+
+  /** `--snapshot-every`: a number of slots (`50000` or `50000slots`) or of epochs (`2epochs`). */
+  enum SnapshotInterval:
+    case Slots(n: Long)
+    case Epochs(n: Long)
+
+  object SnapshotInterval:
+    def parse(text: String): Option[SnapshotInterval] =
+      val digits = text.takeWhile(_.isDigit)
+      val unit = text.drop(digits.length)
+      digits.toLongOption.filter(_ > 0).flatMap { n =>
+        unit match
+          case "" | "slots"       => Some(Slots(n))
+          case "epochs" | "epoch" => Some(Epochs(n))
+          case _                  => None
+      }
 
   def run(args: List[String]): IO[ExitCode] =
     parse(args) match
@@ -37,10 +61,6 @@ object Main extends IOApp:
         .blocking(NodeSetup.fromDirectory(options.genesisDir))
         .flatMap(_.fold(fail, IO.pure))
       genesis = setup.genesis
-      ref <- Ref.of[IO, VolatileChain[NodeState]](
-        VolatileChain.genesis(genesis.geometry.securityParam, setup.start, setup.origin)
-      )
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
       events = JsonLog.events
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
@@ -52,34 +72,66 @@ object Main extends IOApp:
         setup.byronRules,
         phase2Observer = cases.map(c => c.observe)
       )
-      follower = Follower[IO, NodeState](
-        rules,
-        events,
-        genesis.geometry,
-        NodeRules.observe(genesis.geometry)
-      )
-      settings = Peer.Settings(
-        options.peer,
-        genesis.networkMagic,
-        byronEpochSlots = genesis.geometry.byron.epochSlots
-      )
-      retry = Follower.Retry(maxAttempts = 30, delay = 2.seconds)
-      // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
-      sync = Handle
-        .allow[PeerError](
-          Follower.supervise(follower, Peer.nodeToNode[IO](settings), events, retry)
+      k = genesis.geometry.securityParam
+      storage = options.db.fold(
+        Resource.pure[IO, (Option[BlockRef], NodeState, Option[ChainPersistence[IO, NodeState]])](
+          (None, setup.start, None)
         )
-        .rescue(error => fail[Unit](error))
-      run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort).surround(sync)
-      _ <- JsonLog.started(options.peer, genesis, setup.config)
-      _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
-      last <- ref.get
-      _ <- JsonLog.finished(last)
+      ) { dir =>
+        val every = options.snapshotEvery match
+          case SnapshotInterval.Slots(n)  => BigInt(n)
+          case SnapshotInterval.Epochs(n) => BigInt(n) * genesis.geometry.epochLength
+        ChainStorage
+          .open[IO, NodeState](
+            fs2.io.file.Path.fromNioPath(dir),
+            ChainStorage.Config(
+              every,
+              options.keepSnapshots,
+              byronEpochSlots = genesis.geometry.byron.epochSlots
+            ),
+            rules,
+            setup.start,
+            JsonLog.storage
+          )
+          .map(r => (r.anchor, r.state, Some(r.persistence)))
+      }
+      _ <- storage.use { (anchor, state, persistence) =>
+        for
+          ref <- Ref.of[IO, VolatileChain[NodeState]](
+            VolatileChain(k, Anchor(anchor, state), Vector.empty, setup.origin)
+          )
+          given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
+          follower = Follower[IO, NodeState](
+            rules,
+            events,
+            genesis.geometry,
+            NodeRules.observe(genesis.geometry),
+            persistence
+          )
+          settings = Peer.Settings(
+            options.peer,
+            genesis.networkMagic,
+            byronEpochSlots = genesis.geometry.byron.epochSlots
+          )
+          retry = Follower.Retry(maxAttempts = 30, delay = 2.seconds)
+          // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
+          sync = Handle
+            .allow[PeerError](
+              Follower.supervise(follower, Peer.nodeToNode[IO](settings), events, retry)
+            )
+            .rescue(error => fail[Unit](error))
+          run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort).surround(sync)
+          _ <- JsonLog.started(options.peer, genesis, setup.config)
+          _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
+          last <- ref.get
+          _ <- JsonLog.finished(last)
+        yield ()
+      }
     yield ()
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]"
     def go(rest: List[String], acc: Map[String, String]): Either[String, Map[String, String]] =
       rest match
         case Nil => Right(acc)
@@ -95,5 +147,20 @@ object Main extends IOApp:
           peer <- Peer.parseAddress(peerText)
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
           port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
-        yield Options(dir, peer, seconds, port, flags.get("plutus-cases").map(Path.of(_)))
+          interval <- flags
+            .get("snapshot-every")
+            .fold(Right(SnapshotInterval.Epochs(1)))(t => SnapshotInterval.parse(t).toRight(usage))
+          keep <- flags
+            .get("keep-snapshots")
+            .fold(Right(3))(_.toIntOption.filter(_ > 0).toRight(usage))
+        yield Options(
+          dir,
+          peer,
+          seconds,
+          port,
+          flags.get("plutus-cases").map(Path.of(_)),
+          flags.get("db").map(Path.of(_)),
+          interval,
+          keep
+        )
       case _ => Left(usage)

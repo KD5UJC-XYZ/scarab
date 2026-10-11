@@ -6,6 +6,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import lab.network.ChainSync
+import lab.node.storage.{StorageEvent, StorageEvents}
 
 /** One JSON object per line on stdout, for the soak harness to consume. */
 object JsonLog:
@@ -109,3 +110,45 @@ object JsonLog:
         )
       case FollowerEvent.Reconnecting(reason, attempt) =>
         line("reconnecting", "reason" -> reason.message.asJson, "attempt" -> attempt.asJson)
+
+  val storage: StorageEvents[IO] = new StorageEvents[IO]:
+    private def anchor(b: Option[BlockRef]): Json = b.fold(Json.Null)(block)
+    def emit(event: StorageEvent): IO[Unit] = event match
+      case StorageEvent.ImmutableOpened(r) =>
+        line(
+          "immutableOpened",
+          "tip" -> anchor(r.tip),
+          "blocks" -> r.blocks.asJson,
+          "chunks" -> r.chunks.asJson,
+          "truncatedEntries" -> r.truncatedEntries.asJson,
+          "truncatedBytes" -> r.truncatedBytes.asJson
+        )
+      case StorageEvent.SnapshotSkipped(name, error) =>
+        line("snapshotSkipped", "file" -> name.asJson, "reason" -> error.message.asJson)
+      case StorageEvent.SnapshotRestored(name, a) =>
+        line("snapshotRestored", "file" -> name.asJson, "anchor" -> anchor(a))
+      case StorageEvent.SnapshotWritten(name, a, bytes, millis) =>
+        line(
+          "snapshotWritten",
+          "file" -> name.asJson,
+          "anchor" -> anchor(a),
+          "bytes" -> bytes.asJson,
+          "millis" -> millis.asJson
+        )
+      case StorageEvent.SnapshotFailed(reason) => line("snapshotFailed", "reason" -> reason.asJson)
+      case StorageEvent.ReplayStarted(from, tip) =>
+        line("replayStarted", "from" -> anchor(from), "immutableTip" -> anchor(tip))
+      case StorageEvent.ReplayProgress(at, replayed, millis) =>
+        line(
+          "replayProgress",
+          "at" -> block(at),
+          "replayed" -> replayed.asJson,
+          "millis" -> millis.asJson
+        )
+      case StorageEvent.ReplayFinished(at, replayed, millis) =>
+        line(
+          "replayFinished",
+          "at" -> anchor(at),
+          "replayed" -> replayed.asJson,
+          "millis" -> millis.asJson
+        )

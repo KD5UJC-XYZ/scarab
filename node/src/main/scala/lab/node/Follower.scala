@@ -8,6 +8,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import lab.cbor.Bytes
 import lab.network.{ChainSync, Era}
+import lab.node.storage.ChainPersistence
 import scala.concurrent.duration.*
 
 /** The node's chain-extension rule: the state after `header`/`block`, or a [[ValidationError]]. */
@@ -69,7 +70,9 @@ final class Follower[F[_]: Monad, S](
     events: FollowerEvents[F],
     geometry: EpochGeometry,
     /** Extra events derived from a state transition (era changes, epoch summaries). */
-    observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil
+    observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
+    /** Receives every applied block and rollback so the immutable part can be stored. */
+    persistence: Option[ChainPersistence[F, S]] = None
 )(using chain: Stateful[F, VolatileChain[S]], raise: Raise[F, ChainError]):
 
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. */
@@ -96,6 +99,7 @@ final class Follower[F[_]: Monad, S](
         (after, immutable) = extended
         _ <- chain.set(after)
         ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+        _ <- persistence.traverse_(_.extended(ref, block, immutable, after.anchor))
         epoch = geometry.epochOf(header.slot)
         _ <- events.emit(FollowerEvent.Extended(ref, epoch, tip, header.era))
         enteredEpoch = before.tipRef.forall(t => geometry.epochOf(t.slot) < epoch)
@@ -112,7 +116,7 @@ final class Follower[F[_]: Monad, S](
           _.raise[F, Unit],
           rolled =>
             val depth = current.length - rolled.length
-            chain.set(rolled) *>
+            chain.set(rolled) *> persistence.traverse_(_.rolledBack(rolled.tip)) *>
               events
                 .emit(FollowerEvent.RolledBack(current.tip, point, depth))
                 .whenA(reportDepth && depth > 0)
