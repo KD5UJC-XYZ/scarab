@@ -6,7 +6,7 @@ import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import lab.Blake2b
 import lab.cbor.Bytes
-import lab.node.consensus.{ByronRules, Praos, PraosConfig}
+import lab.node.consensus.{ByronRules, HardForkConfig, Praos, PraosConfig}
 import lab.node.ledger.{GenesisState, LedgerGlobals, LiteLedger, Rational}
 import lab.vrf.PraosLeaderThreshold
 
@@ -74,7 +74,8 @@ object NodeSetup:
         genesis.geometry,
         genesis.slotsPerKesPeriod,
         genesis.maxKesEvolutions,
-        active
+        active,
+        HardForkConfig.fromEpochs(config.hardForkEpochs)
       )
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley)
     yield NodeSetup(

@@ -80,6 +80,62 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     assertEquals(ChainSelection.tiebreakerFor(lab.network.Era.Conway), Tiebreaker.Restricted(5))
   }
 
+  // Exact cases from upstream `comparePraos` (ouroboros-consensus 4.2.0.x, Praos/Common.hs:125-168).
+
+  test("restricted: the slot distance bound is inclusive (5 apart compares, 6 apart does not)") {
+    val ours = view(3, slot = 100, issuer = 1, vrf = 200)
+    val f = Tiebreaker.Restricted(5)
+    assert(prefers(f, ours, view(3, slot = 105, issuer = 2, vrf = 10)))
+    assert(prefers(f, ours, view(3, slot = 95, issuer = 2, vrf = 10)))
+    assert(!prefers(f, ours, view(3, slot = 106, issuer = 2, vrf = 10)))
+    assert(!prefers(f, ours, view(3, slot = 94, issuer = 2, vrf = 10)))
+  }
+
+  test("equal VRF outputs keep the current chain") {
+    for f <- Seq(Tiebreaker.Unrestricted, Tiebreaker.Restricted(5)) do
+      assert(!prefers(f, view(3, issuer = 1, vrf = 7), view(3, issuer = 2, vrf = 7)))
+  }
+
+  test("the issue number is compared only for the same issuer and the same slot") {
+    for f <- Seq(Tiebreaker.Unrestricted, Tiebreaker.Restricted(5)) do
+      // same issuer, same slot: the higher issue number wins even with a worse VRF
+      assert(prefers(f, view(3, issueNo = 1, vrf = 1), view(3, issueNo = 2, vrf = 200)))
+      assert(!prefers(f, view(3, issueNo = 2, vrf = 200), view(3, issueNo = 1, vrf = 1)))
+      // same issuer, different slots: the issue number is ignored, the VRF decides
+      assert(
+        !prefers(
+          f,
+          view(3, slot = 100, issueNo = 1, vrf = 1),
+          view(3, slot = 101, issueNo = 2, vrf = 200)
+        )
+      )
+      assert(
+        prefers(
+          f,
+          view(3, slot = 100, issueNo = 2, vrf = 200),
+          view(3, slot = 101, issueNo = 1, vrf = 1)
+        )
+      )
+      // same slot, other issuers: the issue number is ignored
+      assert(
+        !prefers(
+          f,
+          view(3, issuer = 1, issueNo = 1, vrf = 1),
+          view(3, issuer = 2, issueNo = 9, vrf = 200)
+        )
+      )
+  }
+
+  test("same issuer and slot, equal issue numbers: nothing to prefer") {
+    assert(!prefers(Tiebreaker.Unrestricted, view(3, issueNo = 1), view(3, issueNo = 1)))
+  }
+
+  test("Byron tips (no VRF) never tie-break") {
+    val byron = SelectView(3, 100, None, 0, None)
+    assert(!prefers(Tiebreaker.Unrestricted, byron, view(3, issuer = 2, vrf = 0)))
+    assert(!prefers(Tiebreaker.Unrestricted, view(3, vrf = 9), byron))
+  }
+
   // ---- decisions over chains
 
   /** Headers with the given block numbers on top of `from`, issuer/vrf as chosen. */

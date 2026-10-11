@@ -33,8 +33,8 @@ object SelectView:
   * back no more than `k` blocks.
   *
   * Preference, in order: the longer chain; for chains of equal length whose tips were issued by the
-  * same pool, the higher operational-certificate issue number; otherwise the lower VRF output of
-  * the tips. Ties that none of these decides keep the current chain.
+  * same pool in the same slot, the higher operational-certificate issue number; otherwise the lower
+  * VRF output of the tips. Ties that none of these decides keep the current chain.
   */
 object ChainSelection:
   /** How the VRF tie-breaker applies. The unrestricted flavor compares any two tips; the restricted
@@ -44,7 +44,10 @@ object ChainSelection:
     case Unrestricted
     case Restricted(maxSlotDistance: BigInt)
 
-  /** Conway restricts the VRF tie-breaker to tips within 5 slots of each other. */
+  /** Conway restricts the VRF tie-breaker to tips within 5 slots of each other:
+    * `Shelley/Ledger/Config.hs` lines 86-93 of ouroboros-consensus-cardano 4.2.0.x
+    * (`isBeforeConway` gives `UnrestrictedVRFTiebreaker`, else `RestrictedVRFTiebreaker 5`).
+    */
   val ConwayRestriction: BigInt = 5
 
   def tiebreakerFor(era: Era): Tiebreaker =
@@ -60,20 +63,31 @@ object ChainSelection:
       }
       .getOrElse(false)
 
-  /** Is `candidate` strictly preferred to `ours`? */
+  /** Is `candidate` strictly preferred to `ours`? Tips of equal length are compared as upstream
+    * `comparePraos` does (ouroboros-consensus 4.2.0.x, as in cardano-node 11.1.3:
+    * `ouroboros-consensus-protocol/.../Protocol/Praos/Common.hs` lines 125-168, `issueNoArmed` at
+    * 154, `vrfArmed` at 159, `slotDist` at 164):
+    *   - the opcert issue numbers are compared only when both tips have the same issuer AND the
+    *     same slot (then the VRF outputs coincide); the higher number wins;
+    *   - otherwise, if the VRF comparison is armed (always for the unrestricted flavor, for the
+    *     restricted one when the slot distance is `<= maxSlotDistance`, inclusive), the strictly
+    *     lower VRF output wins;
+    *   - everything else keeps the current chain.
+    */
   def prefers(tiebreaker: Tiebreaker, ours: SelectView, candidate: SelectView): Boolean =
     if candidate.blockNo != ours.blockNo then candidate.blockNo > ours.blockNo
-    else if ours.issuer.isDefined && ours.issuer == candidate.issuer &&
-      ours.issueNo != candidate.issueNo
-    then candidate.issueNo > ours.issueNo
     else
-      val allowed = tiebreaker match
-        case Tiebreaker.Unrestricted => true
-        case Tiebreaker.Restricted(distance) =>
-          (ours.slot - candidate.slot).abs <= distance
-      (ours.tieBreak, candidate.tieBreak) match
-        case (Some(o), Some(c)) if allowed => lower(c, o)
-        case _                             => false
+      val issueNoArmed =
+        ours.slot == candidate.slot && ours.issuer.isDefined && ours.issuer == candidate.issuer
+      if issueNoArmed && ours.issueNo != candidate.issueNo then candidate.issueNo > ours.issueNo
+      else
+        val vrfArmed = tiebreaker match
+          case Tiebreaker.Unrestricted => true
+          case Tiebreaker.Restricted(distance) =>
+            (ours.slot - candidate.slot).abs <= distance
+        (ours.tieBreak, candidate.tieBreak) match
+          case (Some(o), Some(c)) if vrfArmed => lower(c, o)
+          case _                              => false
 
   /** A block of our volatile chain. */
   final case class LocalBlock(point: Point, view: SelectView)

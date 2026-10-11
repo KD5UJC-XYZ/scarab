@@ -40,7 +40,8 @@ final case class PraosConfig(
     geometry: EpochGeometry,
     slotsPerKesPeriod: BigInt,
     maxKesEvolutions: BigInt,
-    activeSlotsCoeff: Leader.Fraction
+    activeSlotsCoeff: Leader.Fraction,
+    forks: HardForkConfig = HardForkConfig.default
 )
 
 /** Praos header validation and chain-dependent state evolution. */

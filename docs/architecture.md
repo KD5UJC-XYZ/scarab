@@ -113,8 +113,13 @@ Epochs and slots are absolute, so `firstSlot(epoch)`, `epochOf(slot)`, the stabi
 TPraos overlay, KES periods and PPUP deadlines all work across the boundary. `NodeSetup` derives
 it from `shelley-genesis.json`, `byron-genesis.json` and the node configuration
 (`Test<Era>HardForkAtEpoch`; an absent `TestShelleyHardForkAtEpoch` means the chain starts in
-Shelley, as on Preview). Hard forks decided on chain by update proposals (mainnet) are not
-modelled.
+Shelley, as on Preview). The era of each Shelley-based block is checked against
+`consensus/HardFork.scala` (`HardForkConfig`): an era with a `Test<Era>HardForkAtEpoch` key is
+entered at that epoch, any other when the ledger's protocol major version, ticked to the block's
+slot, reaches the era's first version (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9), as the
+HFC's `TriggerHardForkAtVersion` does. The same check carries the envelope rules (maximum
+supported major version 11, header and body size, Conway mainnet header version). Byron to Shelley
+remains a configured epoch.
 
 - **Chain model:** `VolatileChain.origin` is the hash the first block names (the Byron genesis
   hash: `ByronGenesisHash` from the configuration, else Blake2b-256 of the canonical JSON of
@@ -388,8 +393,8 @@ that offer them again are not asked for the body.
 **Chain selection** (`consensus/ChainSelection.scala`, `Follower.scala`). A peer session keeps a
 candidate (the headers it announced after the point where it joined our chain). The Praos rule: the
 longer chain wins; at equal length, tips issued by the same pool compare the operational-certificate
-issue number (higher wins); otherwise the lower VRF output of the tips wins (the VRF certificate of
-the header, TPraos: the leader one). From Conway the VRF tie-breaker only applies to tips at most 5
+issue number (higher wins) when their slots are also equal; otherwise the lower VRF output of the
+tips wins (the VRF certificate of the header, TPraos: the leader one). From Conway the VRF tie-breaker only applies to tips at most 5
 slots apart. A candidate that is not strictly preferred changes nothing (so a peer's rollback or
 equal fork leaves our chain alone). A switch rolls back at most `k` blocks (the volatile chain is
 the limit; a candidate that no longer joins it is dropped as a protocol error of that peer, not of

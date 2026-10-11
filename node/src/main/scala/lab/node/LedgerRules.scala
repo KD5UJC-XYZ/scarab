@@ -279,16 +279,21 @@ object NodeRules:
         "structure" -> s"block epoch $epoch precedes ledger epoch"
       )
       lite <- LiteLedger.tick(boot.lite, header.slot, geometry).leftMap("ledger" -> _)
-      _ <- Either.cond(
-        header.raw.size <= lite.params.maxBlockHeaderSize,
-        (),
-        "structure" -> s"header size ${header.raw.size} exceeds ${lite.params.maxBlockHeaderSize}"
-      )
-      _ <- Either.cond(
-        header.bodySize <= lite.params.maxBlockBodySize,
-        (),
-        "structure" -> s"body size ${header.bodySize} exceeds ${lite.params.maxBlockBodySize}"
-      )
+      _ <- config.forks
+        .check(
+          header.era,
+          epoch,
+          header.protocolVersion._1,
+          lite.params.protocolVersion._1,
+          header.raw.size,
+          lite.params.maxBlockHeaderSize,
+          header.bodySize,
+          lite.params.maxBlockBodySize,
+          mainnet = false,
+          // the bootstrap ledger does not follow Conway governance, nor does it model the header rule
+          ledgerTracksVersion = false
+        )
+        .leftMap(e => "envelope" -> e.message)
       validated <-
         if header.era.usesTPraos then
           TPraos
@@ -380,16 +385,19 @@ object NodeRules:
       ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
       // Changes to the UTxO set made by this block are stamped with its number.
       ticked = ticked0.copy(utxo = ticked0.utxo.at(announced.blockNo.toLong))
-      _ <- Either.cond(
-        announced.raw.size <= ticked.params.maxBlockHeaderSize || ticked.params.protocolMajor >= 9,
-        (),
-        "structure" -> s"header size ${announced.raw.size} exceeds ${ticked.params.maxBlockHeaderSize}"
-      )
-      _ <- Either.cond(
-        block.bodySize <= ticked.params.maxBlockBodySize,
-        (),
-        "structure" -> s"body size ${block.bodySize} exceeds ${ticked.params.maxBlockBodySize}"
-      )
+      _ <- config.forks
+        .check(
+          announced.era,
+          epoch,
+          announced.protocolVersion._1,
+          ticked.params.protocolMajor,
+          announced.raw.size,
+          ticked.params.maxBlockHeaderSize,
+          block.bodySize,
+          ticked.params.maxBlockBodySize,
+          mainnet = globals.network == 1
+        )
+        .leftMap(e => "envelope" -> e.message)
       pools = ticked.poolDistribution.distribution
       view = LedgerView(
         ticked.params.effectiveD,
