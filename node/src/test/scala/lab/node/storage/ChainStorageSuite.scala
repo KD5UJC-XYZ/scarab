@@ -111,7 +111,7 @@ class ChainStorageSuite extends CatsEffectSuite:
                   case None        => done.complete(()) *> IO.never[SyncEvent]
                 }
                 def fetch(header: Header) = IO.pure(bodies(header.hash))
-              follower = Follower[IO, NodeState](
+              follower <- Follower.create[IO, NodeState](
                 rules,
                 noEvents,
                 geometry,

@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import lab.cbor.Bytes
 import lab.network.{CardanoBlockFetch, ChainSync, NtNHeader}
-import lab.network.runtime.{ChainSyncClient, NetworkError, NodeToNode}
+import lab.network.runtime.{ChainSyncClient, NetworkError, NodeToNode, TxSubmissionClient}
 
 enum SyncEvent:
   case RollForward(header: Header, tip: ChainSync.Tip)
@@ -55,7 +55,10 @@ object Peer:
     * multiplexed connection (KeepAlive runs in the background). Every network failure surfaces as a
     * typed [[PeerError]].
     */
-  def nodeToNode[F[_]: Async](settings: Settings)(using
+  def nodeToNode[F[_]: Async](
+      settings: Settings,
+      transactions: Option[TxSubmissionClient.Source[F]] = None
+  )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
     val F = Async[F]
@@ -70,7 +73,8 @@ object Peer:
         settings.address,
         settings.magic,
         NtNHeader.codec,
-        settings.network
+        settings.network,
+        transactions
       )
       .evalMap { connection =>
         // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the blocks

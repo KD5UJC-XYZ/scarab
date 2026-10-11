@@ -41,7 +41,7 @@ object HandshakeServer:
       bytes <- Handshake
         .encode(Handshake.Suite.NodeToNode, answer._1)
         .fold(refuse, Temporal[F].pure)
-      _ <- channel.send(bytes)
+      _ <- channel.send(bytes) *> channel.flush
       agreed <- answer._2 match
         case Handshake.Result.Negotiated(version, data) =>
           Temporal[F].pure(HandshakeClient.Agreed(version, data))

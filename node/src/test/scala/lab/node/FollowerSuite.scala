@@ -57,9 +57,11 @@ class FollowerSuite extends CatsEffectSuite:
         }
       }
 
-  private def run(
-      sessions: List[List[Either[PeerError, SyncEvent]]],
-      invalid: Set[Bytes] = Set.empty
+  /** One scripted peer per element of `peers`, each with its own sessions; all follow one chain. */
+  private def runPeers(
+      peers: List[List[List[Either[PeerError, SyncEvent]]]],
+      invalid: Set[Bytes] = Set.empty,
+      retries: Int = 3
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
@@ -67,34 +69,82 @@ class FollowerSuite extends CatsEffectSuite:
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
       outcome <- Handle
         .allow[NodeError] {
-          val follower = Follower[IO, BigInt](rules(invalid), noEvents, geometry)
-          Handle
-            .allow[PeerError](
-              scriptedPeers(sessions, offered).flatMap(peers =>
-                Follower.supervise(follower, peers, noEvents, Follower.Retry(3, 1.milli))
+          for
+            follower <- Follower.create[IO, BigInt](rules(invalid), noEvents, geometry)
+            result <- Handle
+              .allow[PeerError](
+                peers.parTraverse_ { sessions =>
+                  scriptedPeers(sessions, offered).flatMap(connect =>
+                    Follower
+                      .supervise(follower, connect, noEvents, Follower.Retry(retries, 1.milli))
+                  )
+                }
               )
-            )
-            .rescue(e => Handle[IO, NodeError].raise(e))
-            .timeoutTo(300.millis, IO.unit)
-            .map(_.asRight[NodeError])
+              .rescue(e => Handle[IO, NodeError].raise(e))
+              .timeoutTo(300.millis, IO.unit)
+          yield result.asRight[NodeError]
         }
         .rescue(e => IO.pure(e.asLeft[Unit]))
       chain <- ref.get
       offers <- offered.get
     yield (outcome, chain, offers)
 
+  private def run(
+      sessions: List[List[Either[PeerError, SyncEvent]]],
+      invalid: Set[Bytes] = Set.empty
+  ) = runPeers(List(sessions), invalid)
+
   private def forward(h: Header) = Right(SyncEvent.RollForward(h, tip))
   private def backward(h: Header) = Right(SyncEvent.RollBackward(h.point, tip))
 
-  test("follows forks: rolls back and adopts the replacement branch") {
+  test("follows forks: a longer branch replaces ours, rolling back to where it forks") {
     val main = Fixtures.chain(8)
-    val fork = Fixtures.chain(2, salt = 1, from = Some(main(5)))
+    val fork = Fixtures.chain(3, salt = 1, from = Some(main(5)))
     run(List(main.map(forward).toList ++ List(backward(main(5))) ++ fork.map(forward))).map {
       case (outcome, chain, _) =>
         assertEquals(outcome, Right(()))
         assertEquals(chain.tip, fork.last.point)
         assertEquals(chain.state, fork.last.blockNo)
-        assertEquals(chain.anchor.block.map(_.hash), Some(main(2).hash))
+        assertEquals(chain.anchor.block.map(_.hash), Some(main(3).hash))
+    }
+  }
+
+  test("a peer's branch that is not longer than ours changes nothing") {
+    val main = Fixtures.chain(8)
+    val fork = Fixtures.chain(2, salt = 1, from = Some(main(5)))
+    run(List(main.map(forward).toList ++ List(backward(main(5))) ++ fork.map(forward))).map {
+      case (outcome, chain, _) =>
+        assertEquals(outcome, Right(()))
+        assertEquals(chain.tip, main.last.point)
+    }
+  }
+
+  test("two peers: the chain of the longer one is followed, whichever arrives first") {
+    val main = Fixtures.chain(6)
+    val longer = Fixtures.chain(3, salt = 1, from = Some(main(3)))
+    val shorter = Fixtures.chain(1, salt = 2, from = Some(main(3)))
+    val common = main.take(4).map(forward).toList
+    runPeers(
+      List(
+        List(common ++ shorter.map(forward)),
+        List(common ++ longer.map(forward))
+      )
+    ).map { case (outcome, chain, _) =>
+      assertEquals(outcome, Right(()))
+      assertEquals(chain.tip, longer.last.point)
+    }
+  }
+
+  test("a fork deeper than k is never adopted, and the peer is dropped, not the node") {
+    // k = 5: the peer rolls back to a block that is already immutable here, to a longer branch
+    val main = Fixtures.chain(12)
+    val deep = Fixtures.chain(9, salt = 1, from = Some(main(4)))
+    run(List(main.map(forward).toList ++ List(backward(main(4))) ++ deep.map(forward))).map {
+      case (outcome, chain, offers) =>
+        assertEquals(outcome, Right(()))
+        assertEquals(chain.tip, main.last.point)
+        assertEquals(chain.anchor.block.map(_.hash), Some(main(6).hash))
+        assertEquals(offers.size, 2) // dropped and reconnected
     }
   }
 
@@ -127,11 +177,12 @@ class FollowerSuite extends CatsEffectSuite:
     }
   }
 
-  test("a header that does not connect is a chain error, not a reconnect") {
+  test("a header that does not connect is a peer error: the peer is dropped and re-synced") {
     val main = Fixtures.chain(4)
     val stray = Fixtures.chain(2, salt = 2).last
-    run(List(main.map(forward).toList :+ forward(stray))).map { case (outcome, chain, _) =>
-      assertEquals(outcome, Left(ChainError.NotConnected(stray.point, main.last.point)))
+    run(List(main.map(forward).toList :+ forward(stray))).map { case (outcome, chain, offers) =>
+      assertEquals(outcome, Right(()))
       assertEquals(chain.tip, main.last.point)
+      assertEquals(offers.size, 2)
     }
   }

@@ -6,6 +6,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import lab.network.ChainSync
+import lab.node.mempool.{MempoolEvent, MempoolEvents}
 import lab.node.storage.{StorageEvent, StorageEvents}
 
 /** One JSON object per line on stdout, for the soak harness to consume. */
@@ -25,13 +26,14 @@ object JsonLog:
     Json.obj("slot" -> b.slot.asJson, "blockNo" -> b.blockNo.asJson, "hash" -> b.hash.hex.asJson)
 
   def started(
-      peer: SocketAddress[Host],
+      peers: List[SocketAddress[Host]],
       genesis: ShelleyGenesis,
       config: NodeConfig = NodeConfig.empty
   ): IO[Unit] =
     line(
       "started",
-      "peer" -> peer.toString.asJson,
+      "peer" -> peers.headOption.map(_.toString).asJson,
+      "peers" -> peers.map(_.toString).asJson,
       "networkMagic" -> genesis.networkMagic.asJson,
       "epochLength" -> genesis.geometry.epochLength.asJson,
       "securityParam" -> genesis.geometry.securityParam.asJson,
@@ -45,6 +47,36 @@ object JsonLog:
 
   def error(e: NodeError): IO[Unit] =
     line("error", "kind" -> e.getClass.getSimpleName.asJson, "message" -> e.message.asJson)
+
+  /** The node accepts inbound connections on `address`. */
+  def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
+
+  def inbound(remote: String, what: String, reason: Option[String] = None): IO[Unit] =
+    line("inbound", "remote" -> remote.asJson, "state" -> what.asJson, "reason" -> reason.asJson)
+
+  val mempool: MempoolEvents[IO] = new MempoolEvents[IO]:
+    def emit(event: MempoolEvent): IO[Unit] = event match
+      case MempoolEvent.Added(id, size, count, bytes) =>
+        line(
+          "mempoolAdded",
+          "tx" -> id.hex.asJson,
+          "size" -> size.asJson,
+          "count" -> count.asJson,
+          "bytes" -> bytes.asJson
+        )
+      case MempoolEvent.Rejected(id, reason) =>
+        line("mempoolRejected", "tx" -> id.map(_.hex).asJson, "reason" -> reason.message.asJson)
+      case MempoolEvent.Dropped(id, reason) =>
+        line("mempoolDropped", "tx" -> id.hex.asJson, "reason" -> reason.message.asJson)
+      case MempoolEvent.Synced(count, bytes, dropped) =>
+        if dropped > 0 then
+          line(
+            "mempoolSynced",
+            "count" -> count.asJson,
+            "bytes" -> bytes.asJson,
+            "dropped" -> dropped.asJson
+          )
+        else IO.unit
 
   val events: FollowerEvents[IO] = new FollowerEvents[IO]:
     def emit(event: FollowerEvent): IO[Unit] = event match

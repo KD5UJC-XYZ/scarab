@@ -18,6 +18,11 @@ trait MuxChannel[F[_]]:
   /** Queue one complete protocol message; it is split into SDUs by the writer. */
   def send(message: Bytes): F[Unit]
 
+  /** Completes once everything queued on the connection so far has been written to the bearer (or
+    * the connection has failed). Used before closing, so that a final message is not lost.
+    */
+  def flush: F[Unit]
+
   /** The next complete message. `decode` is a pure `decodePrefix` for the current protocol state;
     * more SDUs are awaited while it answers `NeedMore`, and bytes beyond the message are kept for
     * the next call. Fails with `IngressLimit` once `maxBytes` are buffered without a message.
@@ -87,7 +92,7 @@ object Mux:
           .map(_.toMap)
       )
       outbound <- Resource.eval(
-        Queue.bounded[F, (Int, Role, Bytes)](config.egressQueueMessages)
+        Queue.bounded[F, Either[Deferred[F, Unit], (Int, Role, Bytes)]](config.egressQueueMessages)
       )
       decoder <- Resource.eval(
         WireMux.Decoder
@@ -132,23 +137,25 @@ object Mux:
           .handleError(t => s"bearer failed: ${describe(t)}")
 
       def writeLoop: F[String] =
-        outbound.take.flatMap { case (protocol, role, message) =>
-          Clock[F].monotonic.flatMap { now =>
-            val frames = WireMux
-              .segmentProtocolMessage(
-                message,
-                now.toMicros & 0xffffffffL,
-                sending(role),
-                config.maxSduPayload,
-                protocol,
-                config.maxMessageBytes
-              )
-              .flatMap(_.traverse(WireMux.encode))
-            frames match
-              case Left(reason) => F.pure(s"mux write: $reason")
-              case Right(encoded) =>
-                bearer.write(Chunk.array(encoded.flatMap(_.value).toArray)) *> writeLoop
-          }
+        outbound.take.flatMap {
+          case Left(flushed) => flushed.complete(()) *> writeLoop
+          case Right((protocol, role, message)) =>
+            Clock[F].monotonic.flatMap { now =>
+              val frames = WireMux
+                .segmentProtocolMessage(
+                  message,
+                  now.toMicros & 0xffffffffL,
+                  sending(role),
+                  config.maxSduPayload,
+                  protocol,
+                  config.maxMessageBytes
+                )
+                .flatMap(_.traverse(WireMux.encode))
+              frames match
+                case Left(reason) => F.pure(s"mux write: $reason")
+                case Right(encoded) =>
+                  bearer.write(Chunk.array(encoded.flatMap(_.value).toArray)) *> writeLoop
+            }
         }
       val writer: F[String] = writeLoop.handleError(t => s"bearer failed: ${describe(t)}")
 
@@ -185,7 +192,7 @@ object Mux:
       id: Int,
       role: Role,
       queue: Queue[F, Bytes],
-      outbound: Queue[F, (Int, Role, Bytes)],
+      outbound: Queue[F, Either[Deferred[F, Unit], (Int, Role, Bytes)]],
       closed: Deferred[F, String],
       buffer: Ref[F, Bytes],
       lock: Mutex[F],
@@ -204,11 +211,16 @@ object Mux:
         closed.tryGet.flatMap {
           case Some(reason) => bearerClosed(reason)
           case None =>
-            F.race(closed.get, outbound.offer((id, role, message))).flatMap {
+            F.race(closed.get, outbound.offer(Right((id, role, message)))).flatMap {
               case Left(reason) => bearerClosed(reason)
               case Right(_)     => F.unit
             }
         }
+
+    def flush: F[Unit] =
+      Deferred[F, Unit].flatMap { flushed =>
+        F.race(closed.get, outbound.offer(Left(flushed)) *> flushed.get).void
+      }
 
     // Queued SDUs are delivered before a close is reported; the reader closes only after enqueueing.
     private def nextPayload: F[Bytes] =

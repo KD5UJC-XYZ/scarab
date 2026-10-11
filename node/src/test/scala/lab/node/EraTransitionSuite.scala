@@ -486,10 +486,12 @@ class EraTransitionSuite extends CatsEffectSuite:
       outcome <- Handle
         .allow[NodeError] {
           val rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
-          val follower =
-            Follower[IO, NodeState](rules, events, geometry, NodeRules.observe(geometry))
-          IO.race(follower.session(peer), done.get.timeout(60.seconds))
-            .as(().asRight[NodeError])
+          Follower
+            .create[IO, NodeState](rules, events, geometry, NodeRules.observe(geometry))
+            .flatMap(follower =>
+              IO.race(follower.session(peer), done.get.timeout(60.seconds))
+                .as(().asRight[NodeError])
+            )
         }
         .rescue(e => IO.pure(e.asLeft[Unit]))
       _ = outcome.fold(e => fail(e.message), identity)
@@ -523,20 +525,38 @@ class EraTransitionSuite extends CatsEffectSuite:
   test(
     "a rollback across the Byron to Shelley boundary restores the Byron state; the era is entered again"
   ) {
+    // The real blocks form one chain, so the rollback is driven on the chain model and the rules
+    // directly (the follower only rolls back when a different, preferred branch exists).
     val b = boundaries.head
-    val script = (0 until b + 3).map(forward).toVector ++
-      Vector(SyncEvent.RollBackward(headers(b - 1).point, ChainSync.Tip.Origin)) ++
-      (b until b + 6).map(forward)
-    replay(script).map { (events, chain) =>
+    given cats.mtl.Raise[IO, ValidationError] = new cats.mtl.Raise[IO, ValidationError]:
+      def functor = cats.Functor[IO]
+      def raise[E2 <: ValidationError, A](e: E2): IO[A] = IO.raiseError(RuntimeException(e.message))
+    val rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+    def apply(chain: VolatileChain[NodeState], range: Range): IO[VolatileChain[NodeState]] =
+      range.toList.foldLeftM(chain) { (c, i) =>
+        rules(c.state, headers(i), raws(i)).map(next =>
+          c.extend(headers(i), next).fold(e => fail(e.message), _._1)
+        )
+      }
+    val genesis = VolatileChain.genesis(geometry.securityParam, setup.start, setup.origin)
+    for
+      first <- apply(genesis, 0 until b + 3)
+      rolled = first.rollback(headers(b - 1).point).fold(e => fail(e.message), identity)
+      replayed <- apply(rolled, b until b + 6)
+    yield
+      assertEquals(rolled.state.boot.era, Some(Era.Byron))
+      assertEquals(rolled.state, states(b))
+      assertEquals(first.length - rolled.length, 3)
       assertEquals(
-        entered(events).map(_._2),
-        Vector(Era.Byron, Era.Shelley, Era.Shelley)
+        NodeRules
+          .observe(geometry)(
+            rolled.state,
+            states(b + 1),
+            BlockRef(headers(b).slot, headers(b).hash, headers(b).blockNo)
+          )
+          .collect { case FollowerEvent.EraEntered(from, to, _, _) => (from, to) },
+        List((Some(Era.Byron), Era.Shelley))
       )
-      assertEquals(
-        events.collect { case FollowerEvent.RolledBack(_, to, depth) => (to, depth) },
-        Vector((headers(b - 1).point, 3))
-      )
-      assertEquals(chain.tip, headers(b + 5).point)
-      assertEquals(chain.state, states(b + 6))
-    }
+      assertEquals(replayed.tip, headers(b + 5).point)
+      assertEquals(replayed.state, states(b + 6))
   }
