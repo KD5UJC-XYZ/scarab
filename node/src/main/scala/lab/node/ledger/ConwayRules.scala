@@ -600,7 +600,7 @@ private[ledger] object ConwayGov:
         ""
       )
       proposals <- body.proposals.zipWithIndex.foldLeftM(s.gov.proposals)(addProposal)
-      knownVoters <- body.votes.traverse_ { case (voter, _) =>
+      _ <- body.votes.traverse_ { case (voter, _) =>
         val known = voter match
           case Voter.DRepVoter(c)    => s.dreps.contains(c)
           case Voter.Pool(h)         => s.pools.contains(h)

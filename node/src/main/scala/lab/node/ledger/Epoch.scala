@@ -66,10 +66,16 @@ object Epoch:
               .foldLeft(state.genDelegs)((m, f) => m.updated(f.genesisKey, f.pair)),
             futureGenDelegs = later
           )
-    if adopted.rewardRegistered.isEmpty && adopted.params.protocolMajor < 9 &&
-      slot > epochStart + globals.startRewards
-    then adopted.copy(rewardRegistered = Some(adopted.accounts.keySet))
-    else adopted
+    val registered =
+      if adopted.rewardRegistered.isEmpty && adopted.params.protocolMajor < 9 &&
+        slot > epochStart + globals.startRewards
+      then adopted.copy(rewardRegistered = Some(adopted.accounts.keySet))
+      else adopted
+    // The ledger creates the reward update when a block arrives after the start-rewards slot; if
+    // none does, the epoch pays nothing.
+    if registered.rewardDraft.isDefined && slot > epochStart + globals.startRewards then
+      registered.copy(rewardUpdate = registered.rewardDraft, rewardDraft = None)
+    else registered
 
   private[ledger] def rotate(state: LedgerState): LedgerState =
     state.copy(
@@ -109,7 +115,7 @@ object Epoch:
     )
     val entered =
       if next.params.protocolMajor >= 9 then Translate.toConway(next, globals) else next
-    entered.copy(rewardUpdate = Some(Rewards.update(entered, globals)))
+    entered.copy(rewardUpdate = None, rewardDraft = Some(Rewards.update(entered, globals)))
 
   private def conwayBoundary(
       state: LedgerState,
@@ -119,7 +125,7 @@ object Epoch:
     val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _, prefilter = false))
     val reaped = poolReap(adoptPools(rotate(rewarded)), epoch)
     val entered = ConwayEpoch(reaped, epoch)
-    entered.copy(rewardUpdate = Some(Rewards.update(entered, globals)))
+    entered.copy(rewardUpdate = None, rewardDraft = Some(Rewards.update(entered, globals)))
 
   /** Sum of all outstanding deposits: stake credentials, pools and DReps. */
   def obligation(state: LedgerState): BigInt =

@@ -530,11 +530,13 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val end =
         (1 to epochs).foldLeft(start.copy(rewardUpdate = Some(Rewards.update(start, globals)))) {
           (st, e) =>
-            Epoch
-              .boundary(st, st.epoch + 1, globals)
-              .copy(
-                blocksCurrent = Map(a.hash -> BigInt(blocksA), b.hash -> BigInt(blocksB))
-              )
+            val next = Epoch.boundary(st, st.epoch + 1, globals)
+            // a block after the start of rewards creates the update
+            next.copy(
+              rewardUpdate = next.rewardDraft,
+              rewardDraft = None,
+              blocksCurrent = Map(a.hash -> BigInt(blocksA), b.hash -> BigInt(blocksB))
+            )
         }
       assertEquals(end.total, Supply)
     }

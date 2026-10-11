@@ -100,6 +100,9 @@ final case class LedgerState(
     snapshots: Snapshots,
     blocksCurrent: Map[Bytes, BigInt],
     blocksPrevious: Map[Bytes, BigInt],
+    /** The reward update to apply at the next boundary. The ledger creates it with the first block
+      * after `startRewards` slots into the epoch; an epoch without such a block pays no rewards.
+      */
     rewardUpdate: Option[RewardUpdate],
     /** Pool stake distribution for this epoch's leader schedule (`nesPd`). */
     poolDistribution: Snapshot,
@@ -120,7 +123,9 @@ final case class LedgerState(
     /** Committee hot-key authorisations and resignations by cold credential. */
     committeeState: Map[Credential, CommitteeAuth] = Map.empty,
     /** Treasury donations of the epoch so far, moved to the treasury at the boundary. */
-    donation: BigInt = 0
+    donation: BigInt = 0,
+    /** The reward update computed at the epoch boundary, waiting for the block that creates it. */
+    rewardDraft: Option[RewardUpdate] = None
 ):
   /** Parameters in force during the previous epoch. */
   def previousParams: ProtocolParams = prevParams.getOrElse(params)

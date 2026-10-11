@@ -410,3 +410,25 @@ class ConwayRulesSuite extends FunSuite:
     val busy = Epoch.boundary(revived, revived.epoch + 1, globals)
     assertEquals(busy.dormantEpochs, BigInt(0))
   }
+
+  test("an epoch pays rewards only if a block arrives after the start of rewards") {
+    val globals = LedgerGlobals(Supply, 100, Rational(1, 20), 0, startRewards = 40)
+    val s0 = conway
+    val s = s0.copy(fees = 1000, reserves = s0.reserves - 1000)
+    val first = Epoch.boundary(s, s.epoch + 1, globals)
+    assertEquals(first.rewardUpdate, None)
+    assert(first.rewardDraft.isDefined)
+    val start = first.epoch * 100
+    // a block too early does not create the update
+    assertEquals(Epoch.tick(first, start + 40, start, globals).rewardUpdate, None)
+    val created = Epoch.tick(first, start + 41, start, globals)
+    assert(created.rewardUpdate.isDefined && created.rewardDraft.isEmpty)
+    // with the update the next boundary pays it and releases the fees of the snapshot
+    val paid = Epoch.boundary(created, created.epoch + 1, globals)
+    assertEquals(paid.fees, BigInt(0))
+    assertEquals(paid.total, Supply)
+    // without it nothing is paid and the fees stay
+    val skipped = Epoch.boundary(first, first.epoch + 1, globals)
+    assertEquals(skipped.fees, BigInt(1000))
+    assertEquals(skipped.total, Supply)
+  }

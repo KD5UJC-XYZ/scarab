@@ -685,16 +685,43 @@ def scala_state(name, tip):
     return json.loads(r.stdout) if r.returncode == 0 and r.stdout else None
 
 
+BUNDLE = [("ls", "query ledger-state"), ("utxo", "query utxo --whole-utxo"), ("protocol", "query protocol-state"),
+          ("gov", "query gov-state"), ("committee", "query committee-state"),
+          ("drep", "query drep-stake-distribution --all-dreps")]
+
+
+def query_bundle(name):
+    """The reference queries of one comparison, run in parallel in one shell between two tip reads (so a
+    block arriving meanwhile is detected). Returns {key: parsed JSON} for the keys of BUNDLE, 'before'
+    and 'after', or None if a query failed."""
+    q = "/work/q"
+    lines = [f"mkdir -p {q}", f"{CLI} query tip {SOCKET} > {q}/before"]
+    for key, command in BUNDLE:
+        extra = " --output-json" if key == "utxo" else ""
+        lines.append(f"{CLI} {command} {SOCKET}{extra} > {q}/{key} 2> {q}/{key}.err &")
+    lines += ["wait", f"{CLI} query tip {SOCKET} > {q}/after"]
+    keys = ["before", "after"] + [k for k, _ in BUNDLE]
+    lines.append(f"for f in {' '.join(keys)}; do echo \"@@$f\"; cat {q}/$f; done")
+    out = in_ref(name, "\n".join(lines), timeout=180).stdout
+    parts = {}
+    for chunk in out.split("@@")[1:]:
+        key, _, body = chunk.partition("\n")
+        parts[key.strip()] = body
+    try:
+        return {k: json.loads(parts[k]) for k in keys}
+    except (KeyError, json.JSONDecodeError):
+        return None
+
+
 def compare_once(name, attempts=10, scala_wait=30):
     """One bracketed comparison. Returns a result dict, or None if no stable bracket was found."""
     for attempt in range(attempts):
-        before = query(name, "tip")
-        ls = json.loads(in_ref(name, f"{CLI} query ledger-state {SOCKET}", timeout=120).stdout)
-        utxo = json.loads(in_ref(name, f"{CLI} query utxo --whole-utxo {SOCKET} --output-json", timeout=120).stdout)
-        protocol = query(name, "protocol-state")
-        gov = (query(name, "gov-state"), query(name, "committee-state"),
-               query(name, "drep-stake-distribution --all-dreps"))
-        after = query(name, "tip")
+        bundle = query_bundle(name)
+        if bundle is None:
+            continue
+        before, after = bundle["before"], bundle["after"]
+        ls, utxo, protocol = bundle["ls"], bundle["utxo"], bundle["protocol"]
+        gov = (bundle["gov"], bundle["committee"], bundle["drep"])
         if before["hash"] != after["hash"]:
             continue
         scala = None

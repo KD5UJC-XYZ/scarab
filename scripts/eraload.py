@@ -435,6 +435,13 @@ class EraLoad:
         self.proposed = {}
         self.attempts = {}
 
+    def live_genesis_dreps(self):
+        """The genesis DReps that are registered (the era-walking cluster registers none)."""
+        out = self.sh(f"cardano-cli conway query drep-state --all-dreps --testnet-magic {MAGIC} "
+                      f"--socket-path {SOCKET}", timeout=120).stdout
+        registered = {c.get("keyHash") for c, _ in json.loads(out)}
+        return [k for k in self.genesis_dreps if k.hash.hex() in registered]
+
     def gov_votes(self, label, wallet, casts, signers):
         """One transaction with the votes `casts` ([(voter, [(gov_action_id, vote)])]) signed by `signers`."""
         return self.act("conway", label, wallet, [], votes=eratx.voting_procedures(casts),
@@ -472,7 +479,7 @@ class EraLoad:
         gw, d = self.gw, self.gdrep
         pools = [k.hash for k in self.pool_cold]
         act = lambda label, wallet, *a, **kw: self.act("conway", label, wallet, *a, fee=kw.pop("fee", 500_000), **kw)
-        self.stage("gfund", lambda: act("gfund", self.delegator(3), [(w.address, 600_000_000, None, {}) for w in gw[:4]]))
+        self.stage("gfund", lambda: act("gfund", self.delegator(3), [(w.address, 200_000_000, None, {}) for w in gw[:4]]))
         if "gfund" not in self.done:
             return
         # stake credentials with pool and DRep delegation, two DReps
@@ -551,10 +558,11 @@ class EraLoad:
         all_ids = [eratx.gov_id(*i) for i in ids]
         info = all_ids[0]
         casts = []
+        genesis = self.live_genesis_dreps()
         if pv < 10:
             # bootstrap: DReps may only vote on info actions; pools vote on the hard fork and on security
             # parameters (all_ids: info, hard fork, security parameter change, other parameter change)
-            for k in self.genesis_dreps:
+            for k in genesis:
                 casts.append((eratx.voter("drep", k.hash), [(info, "yes")]))
             casts.append((eratx.voter("drep", self.gdrep[0].hash), [(info, "no")]))
             for p in self.pool_cold[:2]:
@@ -562,16 +570,19 @@ class EraLoad:
             casts.append((eratx.voter("pool", self.pool_cold[2].hash),
                           [(info, "abstain"), (all_ids[1], "no"), (all_ids[2], "no")]))
         else:
-            for k in self.genesis_dreps[:2]:
+            for k in genesis[:2]:
                 casts.append((eratx.voter("drep", k.hash), [(i, "yes") for i in all_ids]))
-            casts.append((eratx.voter("drep", self.genesis_dreps[2].hash),
-                          [(info, "no")] + [(i, "yes") for i in all_ids[1:3]]))
-            casts.append((eratx.voter("drep", self.gdrep[0].hash), [(i, "abstain") for i in all_ids]))
-            casts.append((eratx.voter("drep", self.gdrep[1].hash), [(i, "no") for i in all_ids[3:]]))
+            for k in genesis[2:]:
+                casts.append((eratx.voter("drep", k.hash), [(info, "no")] + [(i, "yes") for i in all_ids[1:3]]))
+            # without registered genesis DReps (the era-walking cluster) the new DReps carry the vote
+            first = "abstain" if genesis else "yes"
+            casts.append((eratx.voter("drep", self.gdrep[0].hash), [(i, first) for i in all_ids]))
+            casts.append((eratx.voter("drep", self.gdrep[1].hash),
+                          [(i, "no" if genesis else "yes") for i in all_ids[3:]]))
             # pools vote on the info action and the committee update (parameters and withdrawals are not theirs)
             for p in self.pool_cold:
                 casts.append((eratx.voter("pool", p.hash), [(info, "yes"), (all_ids[3], "yes")]))
-        return self.gov_votes(f"gvotes{phase}", gw[0], casts, self.genesis_dreps + self.gdrep + self.pool_cold)
+        return self.gov_votes(f"gvotes{phase}", gw[0], casts, genesis + self.gdrep + self.pool_cold)
 
     def committee_root(self):
         previous = self.gov_state()["nextRatifyState"]["nextEnactState"]["prevGovActionIds"]["Committee"]
@@ -592,30 +603,36 @@ class EraLoad:
 
     def second_round(self, pv):
         """A withdrawal and the hard fork to protocol version 11, both needing the committee."""
+        dreps = (self.live_genesis_dreps() + self.gdrep)[:2]
+
         def cast(ids):
-            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps[:2]]
+            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
             casts += [(eratx.voter("pool", p.hash), [(ids[1], "yes")]) for p in self.pool_cold[:2]]
             casts.append((eratx.voter("committee", self.hot[0].hash), [(i, "yes") for i in ids]))
             casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no"), (ids[1], "yes")]))
-            return casts, self.genesis_dreps[:2] + self.pool_cold[:2] + self.hot
+            return casts, dreps + self.pool_cold[:2] + self.hot
         return self.round_with_votes("gproposals2", [
             eratx.treasury_withdrawal_action({self.gw[3].reward: 2_000_000}),
             eratx.hard_fork_action(11, 0, self.hard_fork_root())], cast)
 
     def third_round(self, pv):
         """No confidence in the committee."""
+        dreps = self.live_genesis_dreps() + self.gdrep
+
         def cast(ids):
-            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps]
+            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
             casts += [(eratx.voter("pool", p.hash), [(i, "yes") for i in ids]) for p in self.pool_cold[:2]]
-            return casts, self.genesis_dreps + self.pool_cold[:2]
+            return casts, dreps + self.pool_cold[:2]
         return self.round_with_votes("gproposals3", [eratx.no_confidence_action(self.committee_root())], cast)
 
     def fourth_round(self, pv, epoch):
         """Elect a new committee without an existing one: lower thresholds, no committee vote."""
+        dreps = self.live_genesis_dreps() + self.gdrep
+
         def cast(ids):
-            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps]
+            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
             casts += [(eratx.voter("pool", p.hash), [(i, "yes") for i in ids]) for p in self.pool_cold]
-            return casts, self.genesis_dreps + self.pool_cold
+            return casts, dreps + self.pool_cold
         return self.round_with_votes("gproposals4", [
             eratx.update_committee_action({self.cold[0].hash: epoch + 30}, threshold=(1, 3),
                                           prev=self.committee_root())], cast)
@@ -637,7 +654,6 @@ class EraLoad:
         fee = 1_500_000
         policy = self.script_hash
         mint = {policy: {b"v3token": 7}}
-        datum_free = []
 
         def redeemers(sorted_inputs):
             spends = [(0, sorted_inputs.index(u[0]), 0, units) for u in locked]
@@ -699,7 +715,8 @@ class EraLoad:
         if era == "conway":
             self.conway_features(epoch)
         self.transfers(era, 2)
-        self.withdrawals(era)
+        if era != "conway":  # the ledger-state layout the withdrawals read is the pre-Conway one
+            self.withdrawals(era)
 
     # ------------------------------------------------------------ the worker
     POINTS = [("mid", 230), ("late", 440)]

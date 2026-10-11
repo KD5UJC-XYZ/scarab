@@ -81,8 +81,14 @@ address funded and spent, a pool retirement; Mary minting and burning under nati
 (one timelocked), multi-asset transfers, MIR from the treasury, stake deregistration; Alonzo
 collateral inputs, datum-hash outputs, required signers, network id; Babbage inline datums,
 reference-script outputs, reference inputs, collateral return; Conway the cardano-cli `load`
-(transfers, registration, delegation, withdrawals, deregistration). Plutus scripts are a TODO in
-`eraload.py` (they need the script data hash and execution-unit fees). Rejected submissions are logged.
+(transfers, registration, delegation, withdrawals, deregistration) and the governance and Plutus V3
+scenarios described under "Conway load" below. Plutus V1 and V2 scripts are still a TODO in
+`eraload.py`. Rejected submissions are logged.
+
+The e2e run follows seven Conway epochs: the bootstrap-phase governance first (protocol 9), then the
+hard fork to 10 and the full governance. The Conway ledger is compared with the reference through the
+CLI (all queries of one comparison run in parallel between two tip reads), including `gov-state`,
+`committee-state` and `drep-stake-distribution` (see below).
 
 Comparison: cardano-cli 11.2.3 refuses `query ledger-state` and `query protocol-state` before
 Conway, so `scripts/ntcquery.py` speaks LocalStateQuery to the node directly (through `socat` in the
@@ -258,6 +264,31 @@ reads the reference tip, queries `ledger-state`, `utxo --whole-utxo` and `protoc
 re-reads the tip. When the tip is unchanged, it fetches the Scala node's state at exactly that
 block and diffs everything. Run data lives in `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>`.
 The node runs from a frozen copy of the compiled classes.
+
+### Conway load and comparison
+
+`devnet.py govload` (started by `soak` next to `load`; `e2e` runs the same code in its Conway epochs)
+builds and signs Conway transactions with `eratx.py` and drives these stages, one pass per epoch (a
+stage that fails is retried, then given up and logged): fund four wallets; register stake credentials
+with pool and DRep delegation (certificates 9 to 13) and two DReps; lock funds at a Plutus V3
+script address (inline datum, no datum, and a reference-script output), spend both and mint with the
+V3 script (redeemer map, script data hash with the V3 cost model) and mint again from the reference
+script; re-delegate to a registered DRep; propose an info action, a parameter change, a treasury
+withdrawal, a committee update and a constitution (in the bootstrap phase an info action, a hard
+fork to 10 and two parameter changes) and vote with the genesis DReps, the new DReps, the three
+pools and, later, the committee; authorise the committee's hot keys; a second round of a treasury
+withdrawal and the hard fork to 11 that need the committee; a no-confidence action; a committee
+elected while there is none; DRep update and retirement, committee resignation, stake
+deregistration with refund; a treasury donation naming the current treasury. The genesis committee
+of `cardano-testnet` is empty with threshold 0, so with committee `minSize` 0 the committee accepts
+everything until the first update.
+
+Besides the existing ledger-state comparison, every comparison diffs the governance projection
+(`scripts/govview.py` maps the CLI JSON onto `Projection.gov`): the proposals with their votes,
+deposits, return accounts, expiry and action contents, the committee and its threshold, the
+constitution, the committee state (hot keys, resignations), the DRep stake distribution (including
+always-abstain and always-no-confidence) and the ratify state (enacted and expired actions, the delay
+flag, the next committee, constitution and previous action ids, the protocol version).
 
 ## Verified result (2026-10-10)
 
