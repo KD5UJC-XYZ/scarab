@@ -67,3 +67,18 @@ enum EvalResult:
   */
 trait ScriptEvaluator[F[_]]:
   def evaluate(request: EvalRequest): F[EvalResult]
+
+/** Whether a Plutus script deserialises for a ledger language and protocol version: the flat
+  * program decodes and uses only builtins the pair allows ([[PlutusAvailability]]). The ledger runs
+  * this for the scripts of a transaction before it accepts them (Babbage onward), so a script that
+  * cannot be decoded makes the transaction invalid rather than failing phase 2. The result is a
+  * pure function of the arguments.
+  */
+trait ScriptDecoder[F[_]]:
+  /** `Right(())` when the script deserialises, else the reason it does not. */
+  def validate(language: PlutusLanguage, protocolMajor: Int, script: Bytes): F[Either[String, Unit]]
+
+object ScriptDecoder:
+  /** Accepts every script; for tests whose scripts are placeholders. */
+  def lenient[F[_]](using F: cats.Applicative[F]): ScriptDecoder[F] =
+    (_, _, _) => F.pure(Right(()))

@@ -377,6 +377,38 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
   }
 
+  test("from Babbage a Plutus script must deserialise: an unavailable builtin is phase-1 invalid") {
+    import scalus.uplc.{DefaultFun, Program, Term}
+    def plutus(kind: ScriptKind, f: DefaultFun) =
+      Script.plutus(kind, Bytes.fromArray(Program((1, 0, 0), Term.Builtin(f)).cborEncoded))
+    val keccakV2 = plutus(ScriptKind.PlutusV2, DefaultFun.Keccak_256) // V2: protocol 11
+    val ripemdV3 = plutus(ScriptKind.PlutusV3, DefaultFun.Ripemd_160) // V3: protocol 10
+    val addV2 = plutus(ScriptKind.PlutusV2, DefaultFun.AddInteger)
+    def check(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
+      val (s, in) = funded(protocol)
+      val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
+      val b = body("wf", Vector(in), outputs, 200)
+      rule(
+        PreConwayRules
+          .scriptsWellFormed(
+            s,
+            tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
+            env
+          )
+          .map(_ => s)
+      )
+    assertEquals(check(8, Vector(keccakV2), Vector.empty), "MalformedScriptWitnesses")
+    assertEquals(check(8, Vector.empty, Vector(keccakV2)), "MalformedReferenceScripts")
+    assertEquals(check(8, Vector(addV2), Vector(addV2)), "accepted")
+    assertEquals(check(7, Vector.empty, Vector(keccakV2, addV2)), "MalformedReferenceScripts")
+    assertEquals(check(9, Vector(ripemdV3), Vector.empty), "MalformedScriptWitnesses")
+    assertEquals(check(10, Vector(ripemdV3), Vector(ripemdV3)), "accepted")
+    assertEquals(check(10, Vector(keccakV2), Vector.empty), "MalformedScriptWitnesses")
+    assertEquals(check(11, Vector(keccakV2), Vector(keccakV2)), "accepted")
+    // Alonzo has no such rule: an undecodable script fails phase 2 only when it is needed.
+    assertEquals(check(5, Vector(keccakV2), Vector.empty), "accepted")
+  }
+
   test("Byron outputs are spent with bootstrap witnesses whose address root matches") {
     val spender = key()
     val chainCode = Bytes(Vector.fill(32)(5))

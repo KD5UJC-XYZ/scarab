@@ -125,6 +125,7 @@ object ConwayRules:
       )
       _ <- PreConwayRules.auxiliaryChecks(tx)
       _ <- PreConwayRules.witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes)
+      _ <- PreConwayRules.scriptsWellFormed(state, tx, env)
       withdrawn = body.withdrawals.map(_._2).sum
       consumed = spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
         Value(0, body.mint)

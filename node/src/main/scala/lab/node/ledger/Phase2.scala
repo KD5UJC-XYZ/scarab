@@ -90,7 +90,7 @@ object Phase2:
 
     loop(redeemers.toList, 0)
 
-  private def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =
+  private[ledger] def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =
     script.kind match
       case ScriptKind.PlutusV1 => Right(PlutusLanguage.V1)
       case ScriptKind.PlutusV2 => Right(PlutusLanguage.V2)

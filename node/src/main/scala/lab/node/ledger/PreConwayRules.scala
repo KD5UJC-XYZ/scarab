@@ -104,6 +104,7 @@ object PreConwayRules:
       )
       _ <- auxiliaryChecks(tx)
       _ <- witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes)
+      _ <- scriptsWellFormed(state, tx, env)
       // Value conservation holds for valid and invalid transactions alike.
       withdrawn = body.withdrawals.map(_._2).sum
       consumed = spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
@@ -374,6 +375,41 @@ object PreConwayRules:
           if needsHash then "MissingRequiredScriptIntegrityHash"
           else "UnexpectedScriptIntegrityHash",
           s"${body.scriptDataHash.map(_.hex)}"
+        )
+      yield ()
+
+  /** Babbage onward: every Plutus script in the witness set and in the outputs (the collateral
+    * return included) must deserialise for its language and the protocol version in force, which
+    * rejects a builtin the pair does not allow (`validateScriptsWellFormed`:
+    * `MalformedScriptWitnesses`, `MalformedReferenceScripts`). Alonzo has no such check; there an
+    * undecodable script that a transaction needs fails phase 2.
+    */
+  private[ledger] def scriptsWellFormed(state: LedgerState, tx: Tx, env: Env): Result[Unit] =
+    val pv = state.params.protocolMajor.toInt
+    def malformed(rule: String, scripts: Vector[Script]): Result[Unit] =
+      val bad = scripts.filter(_.kind.isPlutus).flatMap { s =>
+        for
+          language <- Phase2.languageOf(s).toOption.toVector
+          code <- s.plutus.toVector
+          reason <- env.decoder.validate(language, pv, code).left.toOption
+        yield s.hash.hex -> reason
+      }
+      if bad.isEmpty then Right(())
+      else
+        Left(
+          LedgerFailure.Invalid(
+            tx.body.id,
+            rule,
+            bad.map((h, why) => s"$h: $why").mkString("; ")
+          )
+        )
+    if pv < 7 then Right(())
+    else
+      for
+        _ <- malformed("MalformedScriptWitnesses", tx.witnesses.scripts)
+        _ <- malformed(
+          "MalformedReferenceScripts",
+          (tx.body.outputs ++ tx.body.collateralReturn.toVector).flatMap(_.referenceScript)
         )
       yield ()
 

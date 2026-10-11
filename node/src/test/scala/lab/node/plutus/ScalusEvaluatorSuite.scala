@@ -34,9 +34,12 @@ class ScalusEvaluatorSuite extends FunSuite:
   private def assertion(cond: String): String =
     s"(force [ (force (builtin ifThenElse)) $cond (delay (con unit ())) (delay (error)) ])"
 
-  private def script(uplc: String): Bytes =
+  /** Version 1.0.0 unless the program needs `constr` /`case`: V1 and V2 accept 1.1.0 only from
+    * protocol 11.
+    */
+  private def script(uplc: String, version: String = "1.0.0"): Bytes =
     Bytes.fromArray(
-      Program.parseUplc(s"(program 1.1.0 $uplc)").fold(sys.error, identity).cborEncoded
+      Program.parseUplc(s"(program $version $uplc)").fold(sys.error, identity).cborEncoded
     )
 
   private def run(
