@@ -569,6 +569,11 @@ no confidence and DRep and committee certificates.
 - Conway: proposals and their votes, committee and committee state, constitution, the DRep stake
   distribution and the ratify state
 
+**Pool.** `devnet.py pool --seconds 480` (the Scala node as pool 1 of 3, 1/3 of the stake, 250-slot KES periods)
+passed: 86 blocks forged, 85 on the final chain (one lost a slot battle), and the Haskell ledger counts exactly 85
+blocks made by the pool, against 83 expected; 151 load transactions in 72 of those blocks; 18 KES period
+boundaries crossed; deepest rollback 1; 16/16 ledger comparisons matched, all tips equal at the end.
+
 **Preview.** Conway blocks of Preview (protocol 10 and 11) with every kind of proposal, votes and the
 real guardrails script are decoded and replayed state-independently (see `fixtures/preview/README.md`):
 18 transactions run through phase 2, all agree with `is_valid`, the recomputed script data hash and
