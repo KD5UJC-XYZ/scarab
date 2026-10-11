@@ -135,8 +135,8 @@ object ScalusEvaluator:
       * on Preview as a script spending 3063 more steps than the 539483304 the block declared.
       *
       * Reproducer: `ScalusReproducersSuite`; costing differential: `BuiltinCostingSuite`. Still
-      * present in Scalus 1.3.0 (B11, to be reported upstream; remove this when a fixed release is
-      * adopted and the reproducer fails).
+      * present in Scalus 1.3.0 (reported as https://github.com/scalus3/scalus/issues/387; remove
+      * this when a fixed release is adopted and the reproducer fails).
       */
     private def corrected(params: MachineParams, variant: BuiltinSemanticsVariant): MachineParams =
       if variant != BuiltinSemanticsVariant.A then params

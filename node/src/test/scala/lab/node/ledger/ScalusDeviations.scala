@@ -13,8 +13,8 @@ import scalus.uplc.builtin.Data
   * its place. A real Preview transaction (slot 116688298, a Sundae cosponsor proposal) only
   * validates with the wrapper: its script compares the context with a value it builds itself.
   *
-  * Reproducer: `ScalusReproducersSuite`. Still present in Scalus 1.3.0 (B11, to be reported
-  * upstream).
+  * Reproducer: `ScalusReproducersSuite`. Still present in Scalus 1.3.0 (reported as
+  * https://github.com/scalus3/scalus/issues/388; B11).
   *
   * Only the proposal procedures of the transaction info, the `Proposing` purposes (script info and
   * redeemer keys) are touched; datums and redeemers that happen to look alike are left alone.
