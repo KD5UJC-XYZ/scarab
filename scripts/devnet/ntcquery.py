@@ -9,6 +9,8 @@ import struct
 import subprocess
 from fractions import Fraction
 
+from .cbor import enc
+
 
 class Incomplete(Exception):
     pass
@@ -142,30 +144,6 @@ def decode_all(buf):
     return v
 
 
-def _enc(x):
-    def head(major, n):
-        if n < 24:
-            return bytes([major << 5 | n])
-        if n < 256:
-            return bytes([major << 5 | 24, n])
-        if n < 65536:
-            return bytes([major << 5 | 25]) + n.to_bytes(2, "big")
-        if n < 1 << 32:
-            return bytes([major << 5 | 26]) + n.to_bytes(4, "big")
-        return bytes([major << 5 | 27]) + n.to_bytes(8, "big")
-    if isinstance(x, bool):
-        return b"\xf5" if x else b"\xf4"
-    if isinstance(x, int):
-        return head(0, x) if x >= 0 else head(1, -1 - x)
-    if isinstance(x, bytes):
-        return head(2, len(x)) + x
-    if isinstance(x, list):
-        return head(4, len(x)) + b"".join(_enc(i) for i in x)
-    if isinstance(x, dict):
-        return head(5, len(x)) + b"".join(_enc(k) + _enc(v) for k, v in x.items())
-    raise TypeError(type(x))
-
-
 class LocalStateQuery:
     """Context manager: one NtC connection to a node socket inside a container."""
 
@@ -179,7 +157,7 @@ class LocalStateQuery:
             ["docker", "exec", "-i", self.container, "socat", "-", f"UNIX-CONNECT:{self.socket}"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         self.buffers = {}
-        self._send(0, _enc([0, {v: [self.magic, False] for v in self.VERSIONS}]))
+        self._send(0, enc([0, {v: [self.magic, False] for v in self.VERSIONS}]))
         reply = self._recv(0)
         if reply[0] != 1:
             raise RuntimeError(f"handshake refused: {reply}")
@@ -187,7 +165,7 @@ class LocalStateQuery:
 
     def __exit__(self, *exc):
         try:
-            self._send(7, _enc([7]))
+            self._send(7, enc([7]))
         except Exception:
             pass
         self.proc.kill()
@@ -223,16 +201,16 @@ class LocalStateQuery:
             self.buffers[proto & 0x7fff] = self.buffers.get(proto & 0x7fff, b"") + payload
 
     def acquire(self):
-        self._send(7, _enc([8]))  # VolatileTip
+        self._send(7, enc([8]))  # VolatileTip
         reply = self._recv(7)
         if reply[0] != 1:
             raise RuntimeError(f"acquire failed: {reply}")
 
     def release(self):
-        self._send(7, _enc([5]))
+        self._send(7, enc([5]))
 
     def query_raw(self, query):
-        self._send(7, _enc([3, query]))
+        self._send(7, enc([3, query]))
         reply = self._recv(7)
         if reply[0] != 4:
             raise RuntimeError(f"query failed: {reply}")

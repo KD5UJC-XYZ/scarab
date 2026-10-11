@@ -11,14 +11,16 @@ the validity interval needs. `follow --plutus-cases` writes the same format from
 """
 import hashlib
 import json
-import struct
+import pathlib
 import sys
 import urllib.request
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from devnet.encoding import bech32_bytes  # noqa: E402
 
 KOIOS = "https://preview.koios.rest/api/v1/"
 SYSTEM_START_MS = 1666656000000
 EPOCH_SLOTS = 86400
-CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
 
 # ---------------------------------------------------------------- CBOR (decoding with offsets)
@@ -133,19 +135,6 @@ def enc(x):
     if isinstance(x, dict):
         return enc_head(5, len(x)) + b"".join(enc(k) + enc(v) for k, v in x.items())
     raise TypeError(type(x))
-
-
-def bech32_bytes(s):
-    data = s.rsplit("1", 1)[1]
-    acc = bits = 0
-    out = []
-    for c in data[:-6]:
-        acc = acc << 5 | CHARSET.index(c)
-        bits += 5
-        while bits >= 8:
-            bits -= 8
-            out.append(acc >> bits & 255)
-    return bytes(out)
 
 
 def koios(path, body):

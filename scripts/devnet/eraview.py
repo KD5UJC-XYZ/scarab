@@ -8,8 +8,8 @@ Protocol parameters come from `cardano-cli query protocol-parameters`, which wor
 """
 from fractions import Fraction
 
-import eratx
-import ntcquery
+from . import eratx
+from . import ntcquery
 
 ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "conway": 6}
 

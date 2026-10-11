@@ -9,62 +9,8 @@ validates every transaction, which is the point: it is the oracle for the Scala 
 """
 import hashlib
 import json
-import struct
 
-# ---------------------------------------------------------------- CBOR
-
-
-class Tag:
-    def __init__(self, tag, value):
-        self.tag, self.value = tag, value
-
-
-class Raw:
-    """Already encoded CBOR."""
-
-    def __init__(self, data):
-        self.data = data
-
-
-def _head(major, n):
-    if n < 24:
-        return bytes([major << 5 | n])
-    if n < 1 << 8:
-        return bytes([major << 5 | 24, n])
-    if n < 1 << 16:
-        return bytes([major << 5 | 25]) + struct.pack(">H", n)
-    if n < 1 << 32:
-        return bytes([major << 5 | 26]) + struct.pack(">I", n)
-    return bytes([major << 5 | 27]) + struct.pack(">Q", n)
-
-
-def enc(x):
-    if isinstance(x, Raw):
-        return x.data
-    if x is None:
-        return b"\xf6"
-    if x is True:
-        return b"\xf5"
-    if x is False:
-        return b"\xf4"
-    if isinstance(x, int):
-        return _head(0, x) if x >= 0 else _head(1, -1 - x)
-    if isinstance(x, (bytes, bytearray)):
-        return _head(2, len(x)) + bytes(x)
-    if isinstance(x, str):
-        b = x.encode()
-        return _head(3, len(b)) + b
-    if isinstance(x, (list, tuple)):
-        return _head(4, len(x)) + b"".join(enc(i) for i in x)
-    if isinstance(x, frozenset):
-        return enc(sorted(x))
-    if isinstance(x, dict):
-        items = sorted(((enc(k), enc(v)) for k, v in x.items()), key=lambda kv: (len(kv[0]), kv[0]))
-        return _head(5, len(items)) + b"".join(k + v for k, v in items)
-    if isinstance(x, Tag):
-        return _head(6, x.tag) + enc(x.value)
-    raise TypeError(type(x))
-
+from .cbor import Raw, Tag, enc, head
 
 # ---------------------------------------------------------------- hashes and Ed25519 (RFC 8032)
 
@@ -352,7 +298,7 @@ def cost_model_view(language, cost_model):
 def script_data_hash(redeemers_cbor, datums_cbor, models):
     """`models` maps a language (1, 2, 3 for Plutus V1, V2, V3) to its cost model; no models gives 0xa0."""
     views = sorted((cost_model_view(l, m) for l, m in models.items()), key=lambda kv: (len(kv[0]), kv[0]))
-    body = b"\xa0" if not views else _head(5, len(views)) + b"".join(k + v for k, v in views)
+    body = b"\xa0" if not views else head(5, len(views)) + b"".join(k + v for k, v in views)
     return blake2b(redeemers_cbor + datums_cbor + body)
 
 

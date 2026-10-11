@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: Apache-2.0
+name: E2E devnet
+
+# The Scala node against the official Haskell cardano-node 11.1.3 in Docker: soak, era walk, relay
+# and pool scenarios, run one after the other on a standard 4 vCPU / 16 GB runner.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
+jobs:
+  devnet:
+    name: soak, e2e, relay, pool
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      CSL_DATA_DIR: ${{ github.workspace }}/../csl-data
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache sbt launcher, boot, ivy and coursier
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/cardano-scala-lab
+          key: sbt-e2e-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
+          restore-keys: |
+            sbt-e2e-${{ runner.os }}-
+
+      - name: Build the JDK image (digest-pinned Temurin)
+        run: docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+
+      - name: Compile the node in the JDK image
+        run: |
+          mkdir -p .cache/home
+          docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" \
+            -e HOME=/work/.cache/home cardano-scala-jdk:local \
+            bash scripts/sbtw node/compile node/runtimeClasspathFile
+
+      - name: Build the reference image from the downloaded, verified official release
+        run: python3 scripts/prepare_reference_image.py --download --download-dir "$RUNNER_TEMP/release" --pull-base
+
+      - name: Prepare the run directory
+        run: mkdir -p "$CSL_DATA_DIR" "$RUNNER_TEMP/logs"
+
+      - name: Soak (480 s of load, periodic ledger comparison)
+        run: python3 scripts/devnet.py --name csl-ci-soak soak --seconds 480 2>&1 | tee "$RUNNER_TEMP/logs/soak.log"
+
+      - name: Era walk (Byron to Conway)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/devnet.py --name csl-ci-eras e2e 2>&1 | tee "$RUNNER_TEMP/logs/e2e.log"
+
+      - name: Relay (Scala node serving a Haskell relay)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/devnet.py --name csl-ci-relay relay --seconds 300 2>&1 | tee "$RUNNER_TEMP/logs/relay.log"
+
+      - name: Pool (Scala node forging among Haskell pools)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/devnet.py --name csl-ci-pool pool 2>&1 | tee "$RUNNER_TEMP/logs/pool.log"
+
+      - name: Collect summaries and logs
+        if: ${{ always() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifact"
+          cp -r "$RUNNER_TEMP/logs" "$RUNNER_TEMP/artifact/stdout"
+          for dir in "$CSL_DATA_DIR"/*/; do
+            [ -d "$dir" ] || continue
+            name=$(basename "$dir")
+            mkdir -p "$RUNNER_TEMP/artifact/$name"
+            # run summaries, comparisons and node logs; never the frozen classes or generated keys
+            find "$dir" -maxdepth 2 -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.log' \) \
+              -not -path '*/classes/*' -not -path '*/genesis/*' -not -path '*/keys/*' \
+              -exec cp --parents {} "$RUNNER_TEMP/artifact/$name" \; 2>/dev/null || true
+          done
+          for name in csl-ci-soak csl-ci-eras csl-ci-relay csl-ci-pool; do
+            docker logs "$name-ref" > "$RUNNER_TEMP/artifact/$name-ref.docker.log" 2>&1 || true
+          done
+          du -sh "$RUNNER_TEMP/artifact"
+
+      - name: Upload summaries and logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: devnet-${{ github.run_id }}
+          path: ${{ runner.temp }}/artifact
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Tear down
+        if: ${{ always() }}
+        run: |
+          for name in csl-ci-soak csl-ci-eras csl-ci-relay csl-ci-pool; do
+            python3 scripts/devnet.py --name "$name" down > /dev/null 2>&1 || true
+          done
+          docker ps -aq | xargs -r docker rm -f > /dev/null 2>&1 || true
+          rm -rf "$CSL_DATA_DIR"
