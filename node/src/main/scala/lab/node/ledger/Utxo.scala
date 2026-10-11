@@ -34,7 +34,8 @@ final case class Utxo(
     count: Long,
     /** Stamp given to the changes made now (the block number being applied). */
     stamp: Long,
-    /** Changes with a stamp up to this one are in the backing store and were trimmed from `diff`. */
+    /** Changes with a stamp up to this one are in the backing store and were trimmed from `diff`.
+      */
     flushed: Long
 ):
   import Utxo.*

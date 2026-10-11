@@ -94,7 +94,8 @@ object Cbor:
           total += length
           if major == 2 then chunks.write(raw, 0, raw.length) else text.append(utf8(raw))
         read()
-        if major == 2 then Value.ByteString(Bytes.wrap(chunks.toByteArray)) else Value.Text(text.toString)
+        if major == 2 then Value.ByteString(Bytes.wrap(chunks.toByteArray))
+        else Value.Text(text.toString)
     private def node(depth: Int): Node =
       if depth > limits.maxDepth then fail("depth limit exceeded")
       consumeItem()

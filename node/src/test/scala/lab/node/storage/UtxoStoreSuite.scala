@@ -46,7 +46,12 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     TxOut(
       Address(
         Bytes.wrap(0x01.toByte +: (credBytes(pay) ++ credBytes(stake))),
-        Address.Kind.Shelley(0, Credential.Key(Bytes.wrap(credBytes(pay))), Some(Credential.Key(Bytes.wrap(credBytes(stake)))), None)
+        Address.Kind.Shelley(
+          0,
+          Credential.Key(Bytes.wrap(credBytes(pay))),
+          Some(Credential.Key(Bytes.wrap(credBytes(stake)))),
+          None
+        )
       ),
       Value.coin(coin)
     )
@@ -116,7 +121,11 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       val keys = model.keys.toVector.sortBy(_.render)
       val spent =
         if keys.isEmpty then Vector.empty
-        else (0 until math.min(spends, keys.size)).map(i => keys(((pick + 7 * i) % keys.size).toInt)).distinct.toVector
+        else
+          (0 until math.min(spends, keys.size))
+            .map(i => keys(((pick + 7 * i) % keys.size).toInt))
+            .distinct
+            .toVector
       val blockNo = chain.blockNo + 1
       val txId = Bytes.wrap(be(chain.txCounter + 1, 32))
       val made = creates.zipWithIndex.map((o, i) => TxIn(txId, i) -> o)
@@ -153,7 +162,9 @@ class UtxoStoreSuite extends ScalaCheckSuite:
             )
       yield next
 
-  private def recomputed(model: Map[TxIn, TxOut]): (BigInt, Long, Map[Credential, BigInt], Map[Ptr, BigInt]) =
+  private def recomputed(
+      model: Map[TxIn, TxOut]
+  ): (BigInt, Long, Map[Credential, BigInt], Map[Ptr, BigInt]) =
     val stake = model.valuesIterator
       .collect { case TxOut(_, Address(_, Address.Kind.Shelley(_, _, Some(c), _)), v, _, _, _) =>
         c -> v.coin
@@ -170,8 +181,8 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       .filter(_._2 != 0)
     (model.valuesIterator.map(_.value.coin).sum, model.size.toLong, stake, ptrs)
 
-  /** Every retained state, completed from the store, equals its model; the incremental stake,
-    * total and count equal a recomputation; and the store alone equals the anchor.
+  /** Every retained state, completed from the store, equals its model; the incremental stake, total
+    * and count equal a recomputation; and the store alone equals the anchor.
     */
   private def check(store: UtxoStore[IO], chain: Chain): IO[Boolean] =
     for
@@ -239,7 +250,11 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     }
   }
 
-  private def checkpointRoundTrip(open: (UtxoStore[IO] => IO[Boolean]) => IO[Boolean], actions: List[Action], more: List[Action]) =
+  private def checkpointRoundTrip(
+      open: (UtxoStore[IO] => IO[Boolean]) => IO[Boolean],
+      actions: List[Action],
+      more: List[Action]
+  ) =
     open { store =>
       val dir = tempDir()
       val cp = Path.fromNioPath(dir) / "cp"

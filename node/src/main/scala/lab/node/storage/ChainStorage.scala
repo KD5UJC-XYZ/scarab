@@ -56,6 +56,9 @@ object ChainPersistence:
   * Layout: `<dir>/immutable/` and `<dir>/snapshots/`.
   */
 object ChainStorage:
+  /** Stored blocks are prepared this many at a time during replay. */
+  private val ReplayBatch = 64
+
   final case class Config(
       /** A snapshot is taken once the immutable tip is this many slots past the previous one. */
       snapshotEverySlots: BigInt,
@@ -80,7 +83,11 @@ object ChainStorage:
       rules: BlockRules[F, S],
       initial: S,
       events: StorageEvents[F],
-      backing: StateBacking[F, S]
+      backing: StateBacking[F, S],
+      /** Called with each batch of stored blocks just before they are applied (verification that
+        * does not depend on the state can run ahead, in parallel).
+        */
+      prepare: Vector[Bytes] => F[Unit]
   )(using
       Codec[StateSnapshot[S]],
       Raise[F, StorageError],
@@ -135,7 +142,7 @@ object ChainStorage:
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
       replayed <- Resource.eval(
-        replay(store, rules, persistence, config, events, start._1, start._2, began)
+        replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
       )
     yield Recovered(replayed._1, replayed._2, persistence, store)
 
@@ -146,6 +153,7 @@ object ChainStorage:
       persistence: Persistence[F, S],
       config: Config,
       events: StorageEvents[F],
+      prepare: Vector[Bytes] => F[Unit],
       from: Option[BlockRef],
       state: S,
       began: FiniteDuration
@@ -155,6 +163,11 @@ object ChainStorage:
     def elapsed: F[Long] = Clock[F].monotonic.map(now => (now - began).toMillis)
     store
       .stream(from.fold[ChainSync.Point](ChainSync.Point.Origin)(_.point))
+      // Warm the next batch (signature checks in parallel) while the current one is applied.
+      .chunkN(ReplayBatch)
+      .evalMap(chunk => prepare(chunk.toVector.map(_.raw)).as(chunk))
+      .prefetchN(2)
+      .flatMap(fs2.Stream.chunk)
       .evalScan(Acc(from, state, 0L)) { (acc, stored) =>
         for
           block <- Block.decode(stored.raw, config.byronEpochSlots) match

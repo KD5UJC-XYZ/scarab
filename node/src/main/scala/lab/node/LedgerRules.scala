@@ -112,7 +112,8 @@ final class NodeRules[F[_]: Monad](
 object NodeRules:
   /** A block decoded once for both the read-set fetch and the rules. */
   final case class Prepared(block: Block.Shelley, txs: Vector[Either[String, Tx]]):
-    /** Everything the transactions can read from the UTxO set (not what the block itself creates). */
+    /** Everything the transactions can read from the UTxO set (not what the block itself creates).
+      */
     def inputs: Vector[TxIn] =
       val created = txs.collect { case Right(t) => t.body.id }.toSet
       txs.flatMap {
@@ -127,9 +128,15 @@ object NodeRules:
     * then report the error).
     */
   def prepare(header: Header.Shelley, raw: Bytes): Option[Prepared] =
-    Block.decode(raw).toOption.collect {
-      case b: Block.Shelley if b.era == header.era =>
-        Prepared(b, b.transactions.map(t => Tx.fromBlock(t, b.era)))
+    Verification
+      .takePrepared(header.hash)
+      .orElse(decodeShelley(raw))
+      .filter(_.block.era == header.era)
+
+  /** Decode a Shelley-based block and its transactions. */
+  def decodeShelley(raw: Bytes): Option[Prepared] =
+    Block.decode(raw).toOption.collect { case b: Block.Shelley =>
+      Prepared(b, b.transactions.map(t => Tx.fromBlock(t, b.era)))
     }
 
   /** Era transitions and completed-epoch summaries visible between two states. */

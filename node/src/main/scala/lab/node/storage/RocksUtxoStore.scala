@@ -66,7 +66,8 @@ final class RocksUtxoStore[F[_]: Sync] private (
           .map { case (in, bytes) =>
             Coding.decodeValue(bytes) match
               case Right(out) => in -> out
-              case Left(e) => throw new IllegalStateException(s"corrupt UTxO entry ${in.render}: $e")
+              case Left(e) =>
+                throw new IllegalStateException(s"corrupt UTxO entry ${in.render}: $e")
           }
           .toMap
       }
@@ -171,7 +172,10 @@ object RocksUtxoStore:
   private[storage] def deleteTree(path: java.nio.file.Path): Unit =
     if Files.exists(path) then
       val walk = Files.walk(path)
-      try walk.sorted(java.util.Comparator.reverseOrder[java.nio.file.Path]()).forEach(Files.delete(_))
+      try
+        walk
+          .sorted(java.util.Comparator.reverseOrder[java.nio.file.Path]())
+          .forEach(Files.delete(_))
       finally walk.close()
 
   /** Rebuild a live database directory from a checkpoint: the immutable SST files are hard-linked
@@ -207,6 +211,7 @@ object RocksUtxoStore:
         .flatMap {
           case Right((cache, ref)) =>
             Sync[F].pure(new RocksUtxoStore[F](dir.toNioPath, cache, ref))
-          case Left(e)    => StorageError.Io(dir.toString, String.valueOf(e)).raise[F, RocksUtxoStore[F]]
+          case Left(e) =>
+            StorageError.Io(dir.toString, String.valueOf(e)).raise[F, RocksUtxoStore[F]]
         }
     )(s => Sync[F].blocking(s.close()))

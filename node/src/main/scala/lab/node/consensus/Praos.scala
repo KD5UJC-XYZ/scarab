@@ -147,8 +147,8 @@ object Praos:
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
-      _ <- OCertRules
-        .verifySignatures(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+      _ <- lab.node.Verification
+        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(_.message)
       _ <- OCertRules
         .checkCounter(

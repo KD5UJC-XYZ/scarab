@@ -66,7 +66,8 @@ object Main extends IOApp:
           .allow[NodeError](follow(options).as(ExitCode.Success))
           .rescue(error => JsonLog.error(error).as(ExitCode(1)))
 
-  /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots. */
+  /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots.
+    */
   private def utxoBacking(
       options: Options
   )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], StateBacking[IO, NodeState])] =
@@ -78,9 +79,8 @@ object Main extends IOApp:
           .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
           .map(s => (s: UtxoStore[IO]) -> (new UtxoBacking[IO](s, root / "checkpoints")))
       case (_, db) =>
-        val root = db.fold(fs2.io.file.Path("utxo-memory"))(d =>
-          fs2.io.file.Path.fromNioPath(d) / "utxo"
-        )
+        val root =
+          db.fold(fs2.io.file.Path("utxo-memory"))(d => fs2.io.file.Path.fromNioPath(d) / "utxo")
         Resource
           .eval(MemoryUtxoStore[IO])
           .map(s =>
@@ -136,7 +136,8 @@ object Main extends IOApp:
             rules,
             setup.start,
             JsonLog.storage,
-            backing
+            backing,
+            Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
           )
           .map(r => (r.anchor, r.state, Some(r.persistence)))
       }
@@ -162,10 +163,20 @@ object Main extends IOApp:
           // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
           sync = Handle
             .allow[PeerError](
-              Follower.supervise(follower, Peer.nodeToNode[IO](settings), events, retry)
+              Follower.supervise(
+                follower,
+                Peer.nodeToNode[IO](
+                  settings,
+                  Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
+                ),
+                events,
+                retry
+              )
             )
             .rescue(error => fail[Unit](error))
-          run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort, Some(store)).surround(sync)
+          run = QueryServer
+            .resource[IO](ChainView.fromRef(ref), options.queryPort, Some(store))
+            .surround(sync)
           _ <- JsonLog.started(options.peer, genesis, setup.config)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
           last <- ref.get
@@ -201,7 +212,9 @@ object Main extends IOApp:
           utxoKind <- flags
             .get("utxo-store")
             .traverse(k => Either.cond(Set("memory", "rocksdb")(k), k, usage))
-          cacheMb <- flags.get("utxo-cache-mb").fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
+          cacheMb <- flags
+            .get("utxo-cache-mb")
+            .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
         yield Options(
           dir,
           peer,

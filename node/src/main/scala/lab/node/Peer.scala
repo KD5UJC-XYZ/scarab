@@ -37,6 +37,9 @@ object Peer:
       byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
   )
 
+  /** Called with each prefetched batch of raw blocks before they are handed to the rules. */
+  type Prepare[F[_]] = Vector[Bytes] => F[Unit]
+
   /** `host:port` where host is a DNS name or an IP literal. */
   def parseAddress(text: String): Either[String, SocketAddress[Host]] =
     SocketAddress.fromString(text).toRight(s"invalid peer address '$text', expected <host>:<port>")
@@ -55,7 +58,10 @@ object Peer:
     * multiplexed connection (KeepAlive runs in the background). Every network failure surfaces as a
     * typed [[PeerError]].
     */
-  def nodeToNode[F[_]: Async](settings: Settings)(using
+  def nodeToNode[F[_]: Async](
+      settings: Settings,
+      prepare: Prepare[F]
+  )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
     val F = Async[F]
@@ -98,7 +104,7 @@ object Peer:
             else
               connection.blockFetch.requestRange(headers.head.point, headers.last.point).flatMap {
                 case Some(raw) =>
-                  blocks.set(
+                  prepare(raw) *> blocks.set(
                     raw
                       .flatMap(b =>
                         Block.decode(b, settings.byronEpochSlots).toOption.map(_.header.hash -> b)

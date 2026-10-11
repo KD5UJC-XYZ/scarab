@@ -5,7 +5,6 @@ import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.Bytes
 import lab.node.consensus.GenDelegPair
-import lab.witness.{StrictEd25519, VerificationResult}
 
 /** UTXOW, UTXO, UTXOS and DELEGS for Shelley, Allegra, Mary, Alonzo and Babbage. Era behaviour is
   * selected by the protocol major version of the parameters in force: Allegra 3, Mary 4, Alonzo 5,
@@ -449,14 +448,12 @@ object PreConwayRules:
     val provided = vkeyHashes.toSet
     for
       _ <- wits.vkeys.traverse_ { case (vkey, signature) =>
-        StrictEd25519.verify(vkey, signature, id) match
-          case Right(VerificationResult.SignatureVerified) => Right(())
-          case _ => Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", vkey.hex))
+        if lab.node.Verification.witness(vkey, signature, id) then Right(())
+        else Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", vkey.hex))
       }
       _ <- wits.bootstrap.traverse_ { w =>
-        StrictEd25519.verify(w.vkey, w.signature, id) match
-          case Right(VerificationResult.SignatureVerified) => Right(())
-          case _ => Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", w.vkey.hex))
+        if lab.node.Verification.witness(w.vkey, w.signature, id) then Right(())
+        else Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", w.vkey.hex))
       }
       missing = required -- provided
       _ <- check(missing.isEmpty, "MissingVKeyWitnessesUTXOW", missing.map(_.hex).mkString(","))

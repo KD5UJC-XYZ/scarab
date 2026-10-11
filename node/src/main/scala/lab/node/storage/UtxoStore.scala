@@ -52,7 +52,10 @@ object UtxoStore:
       else
         val changes = utxo.changesAfter(at).toVector
         // The store is now at the state's newest change (stamps only grow along a chain).
-        store.write(changes, math.max(at, utxo.diff.valuesIterator.map(_.stamp).maxOption.getOrElse(at)))
+        store.write(
+          changes,
+          math.max(at, utxo.diff.valuesIterator.map(_.stamp).maxOption.getOrElse(at))
+        )
     }
 
   /** The complete set as of `utxo`: the backing store with the state's changes on top. */
@@ -98,7 +101,8 @@ object UtxoStore:
         Some(k)
 
     def decodeKey(k: Array[Byte]): TxIn =
-      val i = ((k(32) & 0xff) << 24) | ((k(33) & 0xff) << 16) | ((k(34) & 0xff) << 8) | (k(35) & 0xff)
+      val i =
+        ((k(32) & 0xff) << 24) | ((k(33) & 0xff) << 16) | ((k(34) & 0xff) << 8) | (k(35) & 0xff)
       TxIn(Bytes.wrap(java.util.Arrays.copyOfRange(k, 0, 32)), BigInt(i))
 
 /** The UTxO set in memory: tests, the devnet and `follow` without `--db`. Checkpoints are files

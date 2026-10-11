@@ -197,8 +197,8 @@ object TPraos:
             )
             _ <- vrfChecks
           yield LeaderCheck.Overlay(gkey)
-      _ <- OCertRules
-        .verifySignatures(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+      _ <- lab.node.Verification
+        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(TPraosError.OCert(_))
       _ <- OCertRules
         .checkCounter(

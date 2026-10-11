@@ -37,7 +37,7 @@ object CaptureMain extends IOApp:
       case Some((peer, magic, n, out, from)) =>
         Handle
           .allow[PeerError](
-            Peer.nodeToNode[IO](Peer.Settings(peer, magic)).use(capture(_, n, from))
+            Peer.nodeToNode[IO](Peer.Settings(peer, magic), _ => IO.unit).use(capture(_, n, from))
           )
           .rescue(e => IO.raiseError(new RuntimeException(e.message)))
           .flatMap(blocks =>

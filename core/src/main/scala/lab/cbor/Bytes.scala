@@ -17,7 +17,8 @@ final class Bytes private (
 ) extends Serializable:
   private var cachedHash = 0
 
-  /** A `Bytes` built from a null vector (programming misuse) fails on first use, as it always did. */
+  /** A `Bytes` built from a null vector (programming misuse) fails on first use, as it always did.
+    */
   def size: Int =
     if array eq null then throw new NullPointerException("malformed Bytes")
     length
@@ -120,7 +121,9 @@ object Bytes:
     else
       val a = new Array[Byte](bytes.size)
       var i = 0
-      bytes.foreach { b => a(i) = b; i += 1 }
+      bytes.foreach { b =>
+        a(i) = b; i += 1
+      }
       new Bytes(a, 0, a.length)
 
   /** Copies. */
@@ -145,6 +148,9 @@ object Bytes:
       val out = new Array[Byte](hex.length / 2)
       var i = 0
       while i < out.length do
-        out(i) = ((Character.digit(hex.charAt(2 * i), 16) << 4) | Character.digit(hex.charAt(2 * i + 1), 16)).toByte
+        out(i) = ((Character.digit(hex.charAt(2 * i), 16) << 4) | Character.digit(
+          hex.charAt(2 * i + 1),
+          16
+        )).toByte
         i += 1
       Right(wrap(out))
