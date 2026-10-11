@@ -241,6 +241,40 @@ class EraTransitionSuite extends CatsEffectSuite:
 
   // ---------------------------------------------------------------- validation across the boundaries
 
+  test("the version-triggered era history agrees with the configured epochs on the whole chain") {
+    // The cluster places the boundaries with Test<Era>HardForkAtEpoch and raises the ledger's
+    // protocol version in step; the mainnet-style history (era from the ledger's version alone)
+    // must give the same era for every Shelley-based block.
+    val byVersion = consensus.HardForkConfig.default
+    val byEpoch = setup.praos.forks
+    blocks.indices.filter(blocks(_).isInstanceOf[Block.Shelley]).foreach { i =>
+      val epoch = geometry.epochOf(headers(i).slot)
+      val major = states(i + 1).ledger.params.protocolMajor
+      assertEquals(byEpoch.eraAt(epoch, major), eraAt(i), s"block $i by epoch")
+      assertEquals(byVersion.eraAt(epoch, major), eraAt(i), s"block $i by version (major $major)")
+    }
+  }
+
+  test("the first block of an era is rejected when the era history does not enter it there") {
+    val allegra = boundaries(1)
+    assertEquals(eraAt(allegra), Era.Allegra)
+    val late = setup.praos.copy(forks =
+      consensus.HardForkConfig.fromEpochs(setup.config.hardForkEpochs.updated(Era.Allegra, 99))
+    )
+    val result = NodeRules.applyBlock(
+      states(allegra),
+      headers(allegra),
+      raws(allegra),
+      late,
+      setup.globals,
+      setup.byronRules
+    )
+    assertEquals(result.left.map(_._1), Left("envelope"))
+    assert(result.left.exists(_._2.contains("the chain is in Shelley")))
+    // and the configured history accepts it
+    assert(validate(states(allegra), allegra).isRight)
+  }
+
   test("the node's block rules accept the whole chain from the genesis state") {
     assertEquals(states.size, blocks.size + 1)
     assertEquals(states.last.boot.era, Some(Era.Conway))

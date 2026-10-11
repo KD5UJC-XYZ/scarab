@@ -24,7 +24,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 
 ## B. Unconfirmed rules: implemented but not yet checked against the reference (P1)
 
-- **B1** [#3](https://github.com/ottobot-ai/cardano-scala-lab/issues/3) Conway VRF tie-break restriction in chain selection. It was written from memory; check it against ouroboros-consensus.
+- **B1** [#3](https://github.com/ottobot-ai/cardano-scala-lab/issues/3) (done) Conway VRF tie-break restriction in chain selection, confirmed against ouroboros-consensus 4.2.0.0 `comparePraos`. One deviation fixed: the opcert issue number is compared only for the same issuer **and slot**. See [findings.md](findings.md).
 - **B2** [#4](https://github.com/ottobot-ai/cardano-scala-lab/issues/4) SPO default votes after the bootstrap phase. The devnet pools' reward accounts are unregistered, so this is covered by unit tests only.
 - **B3** [#5](https://github.com/ottobot-ai/cardano-scala-lab/issues/5) Committee rules: committee `minSize`, expiry and term limits (unit tests only).
 - **B4** [#6](https://github.com/ottobot-ai/cardano-scala-lab/issues/6) Treasury withdrawals and script DReps: withdrawals to script accounts and script-DRep voting, checked on Preview data only.
@@ -36,7 +36,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **B10** [#12](https://github.com/ottobot-ai/cardano-scala-lab/issues/12) Plutus semantics-variant C costing for `modInteger` and `remainderInteger` relies on Scalus.
 - **B11** [#13](https://github.com/ottobot-ai/cardano-scala-lab/issues/13) Scalus deviations: the `verifyEd25519Signature` variant-A costing (patched in our wrapper) and the V3 `NewConstitution` context. Report both upstream to Scalus.
 - **B12** [#14](https://github.com/ottobot-ai/cardano-scala-lab/issues/14) Mary output-size and value-size checks are approximations; there is no `maxValueSize` check before Alonzo.
-- **B13** [#15](https://github.com/ottobot-ai/cardano-scala-lab/issues/15) Hard-fork rules: header protocol-version checks and exact hard-fork timing are not enforced. Hard forks decided on chain by update proposals (mainnet-style) are not modelled in the era history.
+- **B13** [#15](https://github.com/ottobot-ai/cardano-scala-lab/issues/15) (done) Hard-fork rules: envelope checks (`ObsoleteNode`, header and body size, Conway mainnet `HeaderProtVerTooHigh`) and the era of every block derived from the ledger's protocol version (`TriggerHardForkAtVersion`) unless a `Test<Era>HardForkAtEpoch` key gives an epoch (`consensus/HardFork.scala`). Byron to Shelley by version needs the Byron update state (C1) and stays a configured epoch; in bootstrap (ledger-lite) mode the Babbage to Conway version cannot be seen, so the check is relaxed there.
 
 ## C. Byron (P1, needed for preprod and mainnet)
 
