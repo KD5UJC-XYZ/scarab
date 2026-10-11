@@ -109,3 +109,23 @@ class TxDecodingSuite extends FunSuite:
       Address.Kind.Shelley(0, Credential.Key(Bytes(hash)), None, Some(Ptr(300, 5, 0)))
     )
   }
+
+  test("a block whose datum is nested beyond 64 levels (Preview slot 22680061) decodes") {
+    val all = txs("fixtures/preview/deeply-nested-datum.hex")
+    assert(all.nonEmpty)
+    assert(all.exists { case (_, tx) => tx.witnesses.datums.nonEmpty || tx.body.outputs.nonEmpty })
+  }
+
+  test("CBOR nesting up to the limit decodes on an ordinary thread; one level more is an error") {
+    def nested(levels: Int): Bytes = Bytes.wrap(Array.fill(levels)(0x81.toByte) :+ 0x00.toByte)
+    var results = Vector.empty[Boolean]
+    val t = new Thread(() =>
+      results = Vector(
+        Cbor.decode(nested(2048)).isRight,
+        Cbor.decode(nested(2049)).isLeft
+      )
+    )
+    t.start()
+    t.join()
+    assertEquals(results, Vector(true, true))
+  }

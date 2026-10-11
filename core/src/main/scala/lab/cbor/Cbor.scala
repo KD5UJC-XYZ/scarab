@@ -12,7 +12,7 @@ import scala.util.control.NonFatal
 object Cbor:
   final case class Limits(
       maxInputBytes: Int = 1048576,
-      maxDepth: Int = 64,
+      maxDepth: Int = 2048,
       maxItems: Int = 100000,
       maxStringBytes: Int = 1048576
   )
