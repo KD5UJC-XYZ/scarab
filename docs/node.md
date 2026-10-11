@@ -248,6 +248,62 @@ limits.
   spent and referenced outputs, cost models, clock samples) for a few transactions of each kind;
   `fixtures/preview/plutus` holds a selection that the tests replay.
 
+## Persistence (`follow --db <dir>`)
+
+Modelled on the ouroboros-consensus ChainDB, as tagless-final algebras in `node/.../storage/`:
+
+| Part | Where | Role |
+|---|---|---|
+| `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `NodeState` at an immutable point; newest valid wins |
+| `ChainStorage` | `ChainStorage.scala` | Opens both, restores the newest usable snapshot, replays the stored blocks after it, and hands the follower a `ChainPersistence` hook |
+| Volatile part | `VolatileChain` (memory) | The last `k` blocks are not stored; after a restart the peer re-sends them from the immutable tip |
+| `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to `LedgerState` is persisted with no codec change |
+| `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
+
+```sh
+follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
+```
+
+Without `--db` nothing changes: the node is in-memory and replays from genesis. With `--db` the
+JSON log gains `immutableOpened`, `snapshotRestored`, `snapshotSkipped`, `snapshotWritten`,
+`snapshotFailed`, `replayStarted`, `replayProgress` and `replayFinished`.
+
+**Immutable store format** (`<db>/immutable/`). `format` names the version and chunk size
+(`chunkSlots`, 21600); a different chunk size is a `VersionMismatch`. Blocks of slots
+`[c * chunkSlots, (c + 1) * chunkSlots)` go to `<c>.chunk` (concatenated raw blocks) and
+`<c>.index`: the magic `CSLIDX01` then 68-byte big-endian entries
+`offset u64 | length u32 | crc32 u32 | slot u64 | blockNo u64 | hash[32] | flags u8 | zero[3]`
+(`flags` bit 0 marks a Byron epoch-boundary block). Appends write data then index without syncing;
+`sync` (before every snapshot, at chunk roll-over and on close) forces both and the directory.
+On open the newest chunk is validated entry by entry (contiguous offsets, data in bounds, CRC) and
+both files are truncated to the last good entry; a chunk left with no good entry is removed, and
+data files without an index are deleted. Older chunks were synced at roll-over and are trusted.
+
+**Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
+default 3, are kept): `"CSLSNAP1" | format version u32 | schema fingerprint[8] | payload | SHA-256`.
+The payload is the codec of `StateSnapshot(anchor, NodeState)`; integers are LEB128 varints,
+`BigInt` is length-prefixed two's complement, containers are a count then the elements, sums a
+variant index then the variant. The fingerprint is the SHA-256 prefix of the codec's `shape` (the
+names and types of every persisted field), so changing any state type makes older snapshots fail
+with `VersionMismatch` rather than decode wrongly. A write goes to `*.tmp`, is fsynced, renamed
+(atomic) and the directory is fsynced; leftover `*.tmp` files are removed on open. Snapshots are
+written by a background fiber from the immutable (structurally shared) anchor state, so following
+does not pause.
+
+**Recovery.** Snapshots are tried newest first. One that fails its checksum, decodes badly, has
+another schema or names an anchor missing from the immutable store is reported (`snapshotSkipped`)
+and the next older one is tried; with none usable the stored blocks are replayed from genesis. The
+stored blocks after the chosen snapshot are re-applied through the same `NodeRules` with no
+network, then ChainSync resumes with the replayed anchor as the intersection candidate.
+
+Tests (`node/src/test/.../storage`): round-trip properties for every persisted type from generators
+derived by the same `Mirror`s (so new fields are covered automatically), prefix/trailing/random-byte
+rejection, golden encodings and a golden digest and schema fingerprint, the store's crash cases
+(torn data, torn index entry, garbage, flipped bytes, lost chunk, every cut point of the newest
+chunk), snapshot corruption at many points and fallback, and restart equivalence over the Byron to
+Conway capture (`fixtures/eras`) through the real follower.
+
 ## Running a local soak (Docker only)
 
 Prerequisite: the `cardano-reference-11.1.3:local` image (see [reference image](reference-image.md)).
@@ -336,7 +392,7 @@ Scalus's script contexts. A full Preview sync into Conway (several million block
 - **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
 - **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions) and the
   block-level execution-unit limit.
-- **Persistence:** none in this tree; the node replays from genesis on start.
+- **On-disk ledger:** the whole UTxO and ledger state live in memory; only snapshots are on disk. The volatile blocks are not persisted.
 - **Peers:** a single upstream peer only.
 - **Rewards:** non-myopic pool ranking.
 - **Production:** block production and a mempool.

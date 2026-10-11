@@ -90,7 +90,8 @@ final class In(stream: InputStream, limit: Long):
       System.arraycopy(buffer, pos, out, done, n)
       pos += n
       done += n
-    consumed += len
+      // Count as we go: `refill` bounds its read by what is still unconsumed.
+      consumed += n
     out
 
   def varint(): Long =

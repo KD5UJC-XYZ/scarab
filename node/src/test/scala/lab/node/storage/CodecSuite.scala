@@ -75,6 +75,19 @@ class CodecSuite extends ScalaCheckSuite:
     }
   }
 
+  test("the reader never reads past its limit, wherever a value straddles its buffer") {
+    // A value that spans a refill used to over-read into the bytes after the limit (the checksum).
+    (65400 to 65700).foreach { size =>
+      val value = Bytes(Vector.tabulate(size)(_.toByte))
+      val payload = Codec.encode(value)
+      val tail = Array.fill[Byte](40)(0x5a)
+      val stream = java.io.ByteArrayInputStream(payload ++ tail)
+      val in = In(stream, payload.length.toLong)
+      assertEquals(summon[Codec[Bytes]].read(in), value)
+      assertEquals(stream.available(), tail.length, s"size $size")
+    }
+  }
+
   test("a huge collection count is rejected without allocating") {
     val bytes = Array[Byte](-1, -1, -1, -1, -1, -1, -1, -1, 127)
     assert(Codec.decode[Map[Bytes, BigInt]](bytes).isLeft)
