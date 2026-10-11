@@ -8,7 +8,8 @@ from . import eraview
 from . import ntcquery
 from . import govview
 from .encoding import address_hex
-from .util import CLI, ENV, ERAS, MAGIC, QUERY_PORT, SOCKET, docker, in_ref, ref
+from . import util
+from .util import CLI, ENV, ERAS, MAGIC, QUERY_PORT, docker, in_ref, ref
 
 
 def conway_output(v):
@@ -97,11 +98,11 @@ def query_bundle(name):
     block arriving meanwhile is detected). Returns {key: parsed JSON} for the keys of BUNDLE, 'before'
     and 'after', or None if a query failed."""
     q = "/work/q"
-    lines = [f"mkdir -p {q}", f"{CLI} query tip {SOCKET} > {q}/before"]
+    lines = [f"mkdir -p {q}", f"{CLI} query tip {util.SOCKET} > {q}/before"]
     for key, command in BUNDLE:
         extra = " --output-json" if key == "utxo" else ""
-        lines.append(f"{CLI} {command} {SOCKET}{extra} > {q}/{key} 2> {q}/{key}.err &")
-    lines += ["wait", f"{CLI} query tip {SOCKET} > {q}/after"]
+        lines.append(f"{CLI} {command} {util.SOCKET}{extra} > {q}/{key} 2> {q}/{key}.err &")
+    lines += ["wait", f"{CLI} query tip {util.SOCKET} > {q}/after"]
     keys = ["before", "after"] + [k for k, _ in BUNDLE]
     lines.append(f"for f in {' '.join(keys)}; do echo \"@@$f\"; cat {q}/$f; done")
     out = in_ref(name, "\n".join(lines), timeout=180).stdout
@@ -170,7 +171,7 @@ def lsq(name):
 
 
 def protocol_parameters(name):
-    return json.loads(in_ref(name, f"cardano-cli query protocol-parameters {SOCKET}").stdout)
+    return json.loads(in_ref(name, f"cardano-cli query protocol-parameters {util.SOCKET}").stdout)
 
 
 def compare_pre_conway(name, era, attempts=10):

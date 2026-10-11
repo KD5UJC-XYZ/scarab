@@ -10,6 +10,7 @@ import time
 from ..cluster import freeze_classes, scala_container, start_nodes, start_reference
 from ..compare import compare_once
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
+from .. import util
 from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref
 
 
@@ -80,7 +81,6 @@ def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
     the Scala node follows them and forges with the pool's VRF key, KES key and operational certificate."""
-    global SOCKET
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py --name {args.name} down` first")
@@ -90,7 +90,7 @@ def pool(args):
     ours = args.pool
     others = [n for n in (1, 2, 3) if n != ours]
     observer = others[0]
-    SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
+    util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
     failures, summary, scala, loader = [], {}, None, None
     comparisons, samples = [], []
     try:

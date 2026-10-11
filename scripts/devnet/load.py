@@ -9,7 +9,8 @@ import time
 from . import eraload
 from .compare import lsq
 from .encoding import address_hex
-from .util import CLI, ENTRY, ENV, LOAD, MAGIC, SOCKET, docker, in_ref, ref
+from . import util
+from .util import CLI, ENTRY, ENV, LOAD, MAGIC, docker, in_ref, ref
 
 
 def load_wallets(args):
@@ -63,12 +64,11 @@ def load(args):
     Each wallet acts only once its previous transaction is confirmed, so submissions never
     conflict in the mempool.
     """
-    global SOCKET
     if getattr(args, "socket", None):
-        SOCKET = f"--testnet-magic {MAGIC} --socket-path {args.socket}"
+        util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {args.socket}"
     rng = random.Random(args.seed)
-    deposit = json.loads(in_ref(args.name, f"{CLI} query protocol-parameters {SOCKET}").stdout)["stakeAddressDeposit"]
-    pools = json.loads(in_ref(args.name, f"{CLI} query stake-pools {SOCKET} --output-json").stdout)
+    deposit = json.loads(in_ref(args.name, f"{CLI} query protocol-parameters {util.SOCKET}").stdout)["stakeAddressDeposit"]
+    pools = json.loads(in_ref(args.name, f"{CLI} query stake-pools {util.SOCKET} --output-json").stdout)
     wallets, stakers, address, stake_address = load_wallets(args)
     pending = {}  # wallet -> txid awaiting confirmation
     stats = {"submitted": 0, "rejected": 0, "transfers": 0, "registrations": 0, "delegations": 0,
@@ -77,7 +77,7 @@ def load(args):
     def stake_action(w):
         """Extra build arguments and signing keys for one staking operation, or None."""
         info = json.loads(in_ref(args.name, f"{CLI} query stake-address-info --address {stake_address[w]} "
-                                            f"{SOCKET}").stdout)
+                                            f"{util.SOCKET}").stdout)
         cert = f"{LOAD}/cert-{stats['submitted'] + stats['rejected']}"
         skeys = [f"{w}.skey", f"{w}.stake.skey"]
         if not info:
@@ -102,7 +102,7 @@ def load(args):
     deadline = time.monotonic() + args.seconds if args.seconds else None
     while deadline is None or time.monotonic() < deadline:
         w = rng.choice(wallets)
-        utxo = json.loads(in_ref(args.name, f"{CLI} query utxo --address {address[w]} {SOCKET} --output-json").stdout)
+        utxo = json.loads(in_ref(args.name, f"{CLI} query utxo --address {address[w]} {util.SOCKET} --output-json").stdout)
         if pending.get(w) and not any(k.startswith(pending[w]) for k in utxo):
             time.sleep(0.2)
             continue
@@ -124,12 +124,12 @@ def load(args):
         outs = " ".join(f"--tx-out {address[rng.choice(wallets)]}+{rng.randint(1, args.max_out) * 1_000_000}"
                         for _ in range(rng.randint(1, 3)))
         tx = f"{LOAD}/tx-{stats['submitted'] + stats['rejected']}"
-        script = (f"{CLI} transaction build {SOCKET} {' '.join('--tx-in ' + i for i in ins)} {outs} {extra} "
+        script = (f"{CLI} transaction build {util.SOCKET} {' '.join('--tx-in ' + i for i in ins)} {outs} {extra} "
                   f"--change-address {address[w]} --witness-override {len(skeys)} --out-file {tx}.body && "
                   f"{CLI} transaction sign --tx-body-file {tx}.body "
                   f"{' '.join('--signing-key-file ' + k for k in skeys)} "
                   f"--testnet-magic {MAGIC} --out-file {tx}.signed && "
-                  f"{CLI} transaction submit {SOCKET} --tx-file {tx}.signed && "
+                  f"{CLI} transaction submit {util.SOCKET} --tx-file {tx}.signed && "
                   f"{CLI} transaction txid --tx-file {tx}.signed --output-text && rm -f {tx}.body {tx}.signed")
         r = docker("exec", ref(args.name), "/bin/sh", "-c", script, check=False, timeout=60)
         if r.returncode == 0:

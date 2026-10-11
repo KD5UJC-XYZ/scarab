@@ -5,7 +5,8 @@ import os
 import shutil
 import subprocess
 import time
-from .util import ENV, JDK_IMAGE, MAGIC, REFERENCE_IMAGE, REPO, SOCKET, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
+from . import util
+from .util import ENV, JDK_IMAGE, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
 
 
 def start_reference(name):
@@ -62,7 +63,7 @@ STABILITY_FACTOR = 6  # a protocol-parameter update must land 2 * 3k/f slots bef
 
 
 def era_tip(name, node=1):
-    r = in_ref(name, f"cardano-cli query tip {SOCKET.replace('node1', f'node{node}')}")
+    r = in_ref(name, f"cardano-cli query tip {util.SOCKET.replace('node1', f'node{node}')}")
     return json.loads(r.stdout)
 
 
@@ -149,12 +150,12 @@ class EraDriver:
         in_ref(self.name, f"mkdir -p {TX}")
 
     def utxo(self, address):
-        out = in_ref(self.name, f"cardano-cli query utxo --address {address} {SOCKET} --output-json").stdout
+        out = in_ref(self.name, f"cardano-cli query utxo --address {address} {util.SOCKET} --output-json").stdout
         return {k: v["value"]["lovelace"] for k, v in json.loads(out).items()}
 
     def submit(self, era, build, label):
         """Build with `compatible <era> ... signed-transaction`, submit, and wait for the inputs to be spent."""
-        r = in_ref(self.name, f"{build} && cardano-cli conway transaction submit {SOCKET} --tx-file {TX}/{label}.tx")
+        r = in_ref(self.name, f"{build} && cardano-cli conway transaction submit {util.SOCKET} --tx-file {TX}/{label}.tx")
         return r
 
     def byron_inputs(self):
@@ -244,7 +245,7 @@ class EraDriver:
         if index < 0 or ("epoch", epoch) in self.done:
             return False
         self.done.add(("epoch", epoch))
-        pv = json.loads(in_ref(self.name, f"cardano-cli query protocol-parameters {SOCKET}").stdout)["protocolVersion"]
+        pv = json.loads(in_ref(self.name, f"cardano-cli query protocol-parameters {util.SOCKET}").stdout)["protocolVersion"]
         self.protocol[epoch] = pv["major"]
         print(json.dumps({"epoch": epoch, "era": era, "protocolMajor": pv["major"]}), flush=True)
         if index == 0:
