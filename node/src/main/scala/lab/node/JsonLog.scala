@@ -4,7 +4,8 @@ package lab.node
 import cats.effect.IO
 import io.circe.Json
 import io.circe.syntax.*
-import lab.network.{ChainSync, NumericPeer}
+import com.comcast.ip4s.{Host, SocketAddress}
+import lab.network.ChainSync
 
 /** One JSON object per line on stdout, for the soak harness to consume. */
 object JsonLog:
@@ -22,7 +23,7 @@ object JsonLog:
   private def block(b: BlockRef): Json =
     Json.obj("slot" -> b.slot.asJson, "blockNo" -> b.blockNo.asJson, "hash" -> b.hash.hex.asJson)
 
-  def started(peer: NumericPeer, genesis: ShelleyGenesis): IO[Unit] =
+  def started(peer: SocketAddress[Host], genesis: ShelleyGenesis): IO[Unit] =
     line(
       "started",
       "peer" -> peer.toString.asJson,

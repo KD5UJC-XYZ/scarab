@@ -9,7 +9,12 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import tarfile
 import tempfile
-from private_cluster import BINARY_HASHES
+
+BINARY_HASHES = {
+    "cardano-node": "ee396604345cc07c7169391ef3f5364886d4b7fe0d539aff6919b470e7a336c3",
+    "cardano-cli": "0ac45e874599fac4ee6ca4fd9602c0ddb9854a62be5f365dfa425eff9f4bd0ed",
+    "cardano-testnet": "124e10b604f2653ce8e736f46da2b104aa17325e0f23034cb7dbb5f96f95b149",
+}
 
 BASE = "ghcr.io/intersectmbo/cardano-node@sha256:b863d5751bf691588995a8e12509057076e207270db65e88bb16bd543aaa9347"
 ARCHIVE_SHA256 = "530fb99986fbdccc46f9ee0dd86cabb1393b015feac9173cb731d89fa748365f"

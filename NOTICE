@@ -1,120 +1,54 @@
 Cardano Scala Lab
-Original research prototype code, 2026.
-Original code is Apache-2.0 except the explicitly attributed MIT adaptations
+Original code, 2026, Apache-2.0, except the explicitly attributed MIT adaptations
 core/src/main/java/lab/vrf/Ed25519Point.java and Draft03Math.java. Their source
 notices and fixtures/vrf/licenses/CCL-LICENSE are retained unchanged.
+Third-party dependencies retain their own licenses.
 
-This source distribution includes fixtures from Cardano Ledger and Plutus,
-and reference cost parameters from Scalus. Original upstream licenses and
-notices are retained under fixtures/licenses. See docs/fixture-provenance.md,
-docs/vm-conformance.md and docs/vm-provenance.json for immutable provenance.
+This source distribution includes test fixtures derived from Cardano Ledger,
+Cardano Base, Ouroboros Network, Ouroboros Consensus, Amaru and Scalus-node.
+Original upstream licenses and notices are retained under fixtures/licenses and
+the per-fixture directories named below. No upstream implementation source is
+vendored beyond the retained fixture/evidence excerpts.
 
-Scalus is a runtime dependency; no Scalus implementation source or DiLF4S
-implementation is vendored. Third-party dependencies retain their licenses.
+Network fixtures (fixtures/network): manually specified and source-derived
+handshake, mux, BlockFetch and KeepAlive envelopes from Ouroboros Network
+(KeepAlive pin: commit c45735a56c567fa977969173d18943bac6bb3821) and Scalus-node,
+plus Ouroboros Consensus-derived payloads, all Apache-2.0. Licenses and NOTICE
+files are retained in fixtures/licenses, and the KeepAlive license beside
+fixtures/network/keepalive-direct-range/manifest.json. Source-derived envelopes
+are not captured upstream runtime transcripts. The Scala implementation is
+independent.
 
-Handshake/mux research also includes manually specified and source-derived
-fixtures from Scalus-node and Ouroboros Network. Their Apache-2.0 licenses and
-applicable NOTICE files are retained in fixtures/licenses. See
-docs/network-conformance.md and docs/network-fixtures.json. No upstream
-networking runtime implementation is vendored.
+VRF (fixtures/vrf): the draft03 verifier adapts Bloxbean CCL Ed25519Point.java
+and VrfUtil.java at commit 45906b783973b4c44ac6883253af26bdd07bc1b4 under MIT.
+The full CCL copyright/permission notice is retained in
+fixtures/vrf/licenses/CCL-LICENSE. Cardano sodium source-derived public
+fixtures retain the ISC notice in fixtures/vrf/licenses/sodium-LICENSE.
+Bouncy Castle's notice is retained alongside it. No native binary, prover,
+signer or keygen is bundled.
 
-The bounded ledger predicate corpus contains byte-preserved Haskell ledger
-integration tests distributed through cardano-blueprint and Amaru. Their
-upstream licenses/notices and pinned source provenance are retained under
-fixtures/licenses and fixtures/ledger. See docs/ledger-conservation.md.
+Ed25519 witnesses (fixtures/witness): public-only sodium, speccheck, Wycheproof
+and ledger fixture projections with their ISC, Apache-2.0 and MIT/CC0/BSD
+attribution files in fixtures/witness/licenses. The Weavechain 0.1.3 arithmetic
+artifact is a runtime dependency; no signing implementation or private-key
+corpus is vendored.
 
-Strict public-input Ed25519 research includes public-only sodium, speccheck,
-Wycheproof and ledger fixture projections, archived oracle results and source
-provenance. Full ISC, Apache-2.0 and MIT/CC0/BSD attribution files are retained
-under fixtures/witness/licenses. The Weavechain 0.1.3 arithmetic artifact is a
-runtime dependency; no signing implementation or private-key corpus is vendored.
-See docs/witness-provenance.md and docs/witness-verification.md.
+Operational certificates (fixtures/opcert): the exact ledger OCert source and
+four public Amaru header fixtures with their Apache-2.0 LICENSE/NOTICE files
+under fixtures/opcert/evidence. The Scala adapter is original public-only code.
 
-Required payment-key coverage adds the byte-preserved MissingVKeyWitnessesUTXOW
-sequence and generator assertion from the same pinned Haskell/Blueprint/Amaru
-corpus. Existing fixtures/licenses attribution applies. Original bytes,
-public-only oracle observations and provenance are in fixtures/coverage;
-see docs/required-key-coverage.md. No new runtime dependency is introduced.
-
-Experimental public-only draft03 VRF verification adapts Bloxbean CCL
-Ed25519Point.java and VrfUtil.java at commit
-45906b783973b4c44ac6883253af26bdd07bc1b4 under MIT. The full CCL
-copyright/permission notice is retained in fixtures/vrf/licenses/CCL-LICENSE.
-Cardano sodium source-derived public fixtures/instrumentation retain ISC
-notice in fixtures/vrf/licenses/sodium-LICENSE. Bouncy Castle's notice is
-retained alongside it. No native binary, prover, signer or keygen is bundled.
-See docs/vrf-verification.md for exact modifications and evidence limits.
-
-Closed transfer fee/size research retains Apache-2.0 ledger, generator, Blueprint
-and API source/fixture evidence under fixtures/fee-size, including full licenses
-and generator NOTICE. Source-derived boundaries are not archived ledger failures.
-See docs/fee-size-predicates.md. No native binary or runtime dependency is added.
-
-Pure ChainSync research adds byte-preserved serialization examples and placeholder
-envelope goldens from Ouroboros Consensus, Apache-2.0. Its original LICENSE and
-NOTICE are retained under fixtures/chain-sync. Existing Ouroboros Network and
-Scalus-node notices apply to manually specified/source-derived envelopes.
-No upstream networking or consensus runtime source is vendored. See docs/chain-sync.md.
-
-The public export omits fixtures/chain-fetch, fixtures/post-byron,
-fixtures/body-commitment, fixtures/block-evidence and their corresponding
-historical-index/post-byron/body-commitment/block-evidence test resources.
-Provider redistribution permission for portions of that research corpus is not
-established. Those bytes and the old research Git history are not distributed.
-Optional private-corpus test source requires separately and lawfully obtained
-data; it is not executed or counted by the public verification profile.
-See docs/public-profile.md and docs/public-export-provenance.md.
-
-Pure BlockFetch research retains pinned Ouroboros Network codec/type/serialization
-and limit sources, and Ouroboros Consensus server source and Conway golden-derived
-payload, under Apache-2.0. Original LICENSE and NOTICE files are retained as
-fixtures/licenses/block-fetch-{network,consensus}-{LICENSE,NOTICE}. Source-derived
-wire envelopes are not captured upstream runtime transcripts. Shared framing
-mechanics are extracted from this project's original ChainSyncWire implementation.
-See docs/block-fetch-provenance.md and fixtures/network/block-fetch/manifest.json.
-
-Operational-certificate signature research retains the exact ledger OCert source
-and four public Amaru header fixtures with their Apache-2.0 LICENSE/NOTICE files
-under fixtures/opcert/evidence. The Scala adapter is original public-only code
-over the existing strict Ed25519 primitive; no full crypto provider is imported.
-See fixtures/opcert/README.md and docs/operational-certificates.md for source pins,
-research-oracle provenance and deliberately limited acceptance claims.
-
-KeepAlive codec-v2 and bounded initiator runtime source-conformance additions (0.18):
-Ouroboros Network commit c45735a56c567fa977969173d18943bac6bb3821, Apache-2.0.
-Retained source excerpts/files, source paths and hashes are listed in
-fixtures/network/keepalive-direct-range/manifest.json; the original Apache license
-is retained beside that manifest. The Scala implementation is independent.
-
-Sum6KES supplied-message research adapter (v0.19): source-derived from
+Sum6 KES (fixtures/sum6) and Praos headers (fixtures/praos): source-derived from
 IntersectMBO/cardano-base revision 060819b59c184b951a54e3c563304983c53a3eac,
-Apache-2.0. Retained KES sources and exact-target LICENSE are under
-fixtures/sum6/evidence; original notices remain in those files. Four public
-Amaru header fixtures retain Apache-2.0 provenance and the existing Amaru license.
-See docs/sum6-supplied-message.md and fixtures/sum6/evidence/sources.json for immutable pins.
+Apache-2.0, with public Amaru header fixtures under the Amaru license. Retained
+sources and exact-target LICENSE files are under the respective evidence
+directories; original notices remain in those files. Immutable pins are in
+fixtures/sum6/evidence/sources.json.
 
-Restricted replay packet (0.22): original transaction, parameter and initial/final
-UTxO byte projections are derived from the already-vendored cardano-ledger / Amaru
-Conway PV9 conformance archive. Existing fixture licenses and notices continue
-to apply:
-- fixtures/licenses/cardano-ledger-conformance-LICENSE
-- fixtures/licenses/cardano-ledger-conformance-NOTICE
-- fixtures/licenses/amaru-LICENSE
-The existing fixtures/ledger and fixtures/coverage provenance is retained. No new
-upstream runtime code or dependency was added. Extraction/evidence details:
-docs/restricted-replay.md.
+The Conway ledger-derived witness fixtures originate in the Haskell
+cardano-ledger-conformance-tests, distributed through cardano-blueprint and
+Amaru; their verbatim licenses are fixtures/licenses/cardano-ledger-conformance-LICENSE,
+cardano-ledger-conformance-NOTICE, blueprint-conformance-LICENSE and amaru-LICENSE.
 
-
-Synthetic reward differential: reference/synthetic-reward-diff contains newly
-written Apache-2.0 harness/schema/validator source using the named Cardano ledger
-APIs. The cases, hand-derived expectations and exact self-generated native result
-under app/src/test/resources/synthetic-reward are synthetic data under this
-project's Apache-2.0 license. Native dependency source/binaries and captured-chain
-corpora are not redistributed. See native-provenance.json for exact source,
-input/output/binary identities and finite evidence limits.
-
-
-Synthetic empty-governance differential: reference/empty-governance-diff contains original Apache-2.0 native harness source using Cardano ledger APIs. Its finite synthetic cases and recorded golden share this project license. Dependency source/binaries and captured-chain data are not redistributed. See docs/empty-governance-differential.md for provenance and limits.
-
-
-Synthetic non-myopic differential: original Apache-2.0 harness, supplied-case data, exact synthetic native JSON and validated TSV are retained under reference/non-myopic-diagnostic and ledger/src/test/resources/non-myopic. Native dependencies, binaries and private execution records are not redistributed. See docs/conway-non-myopic.md.
+The reference Cardano node binaries used by scripts/prepare_reference_image.py are
+the official IntersectMBO 11.1.3 release (Apache-2.0); they are downloaded by the
+user and never redistributed in this repository.

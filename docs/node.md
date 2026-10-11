@@ -27,7 +27,7 @@ exactness. Scripted-peer tests cover forks, reconnects and fatal rule violations
 
 ## Running a local soak (Docker only)
 
-Prerequisite: the `cardano-reference-11.1.3:local` image (see [private-cluster](private-cluster.md)).
+Prerequisite: the `cardano-reference-11.1.3:local` image (see [reference image](reference-image.md)).
 
 ```sh
 bash scripts/sbtw node/compile node/runtimeClasspathFile

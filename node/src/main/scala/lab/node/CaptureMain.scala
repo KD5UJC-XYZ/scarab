@@ -6,9 +6,9 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import lab.cbor.Bytes
-import lab.network.{ChainSync, NumericPeer}
+import lab.network.ChainSync
 
-/** `capture --peer <ip>:<port> --magic M --blocks N --out <file>`
+/** `capture --peer <host>:<port> --magic M --blocks N --out <file>`
   *
   * Records the first N blocks of a chain from genesis, one hex-encoded raw block per line, for
   * offline replay tests. Capturing continues until those blocks are k deep, so none is rolled back.
@@ -20,15 +20,14 @@ object CaptureMain extends IOApp:
     val flags = args.drop(1).grouped(2).collect { case List(k, v) => k.drop(2) -> v }.toMap
     val parsed = for
       peerText <- flags.get("peer")
-      i = peerText.lastIndexOf(':')
-      peer <- NumericPeer.checked(peerText.take(i), peerText.drop(i + 1).toInt).toOption
+      peer <- Peer.parseAddress(peerText).toOption
       magic <- flags.get("magic").flatMap(_.toLongOption)
       blocks <- flags.get("blocks").flatMap(_.toIntOption)
       out <- flags.get("out").map(Path.of(_))
     yield (peer, magic, blocks, out)
     parsed match
       case None =>
-        IO.println("usage: capture --peer <ip>:<port> --magic M --blocks N --out <file>")
+        IO.println("usage: capture --peer <host>:<port> --magic M --blocks N --out <file>")
           .as(ExitCode(2))
       case Some((peer, magic, n, out)) =>
         Handle

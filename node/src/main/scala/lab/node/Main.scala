@@ -6,7 +6,7 @@ import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import io.circe.parser
 import java.nio.file.{Files, Path}
-import lab.network.NumericPeer
+import com.comcast.ip4s.{Host, SocketAddress}
 import lab.Blake2b
 import lab.cbor.Bytes
 import lab.node.consensus.{Praos, PraosConfig}
@@ -14,7 +14,7 @@ import lab.node.ledger.{GenesisState, LedgerGlobals, Rational}
 import lab.vrf.PraosLeaderThreshold
 import scala.concurrent.duration.*
 
-/** `follow --genesis-dir <dir> --peer <ip>:<port> [--seconds N] [--query-port P]`
+/** `follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P]`
   *
   * Follows the peer from genesis, applying the full ledger rules, and serves the retained ledger
   * states on loopback for comparison against a reference node.
@@ -22,7 +22,7 @@ import scala.concurrent.duration.*
 object Main extends IOApp:
   final case class Options(
       genesisDir: Path,
-      peer: NumericPeer,
+      peer: SocketAddress[Host],
       seconds: Option[Long],
       queryPort: Int
   )
@@ -95,7 +95,7 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <ip>:<port> [--seconds N] [--query-port P]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P]"
     def go(rest: List[String], acc: Map[String, String]): Either[String, Map[String, String]] =
       rest match
         case Nil => Right(acc)
@@ -108,11 +108,7 @@ object Main extends IOApp:
           flags <- go(rest, Map.empty)
           dir <- flags.get("genesis-dir").toRight(usage).map(Path.of(_))
           peerText <- flags.get("peer").toRight(usage)
-          split <- peerText.lastIndexOf(':') match
-            case -1 => Left(usage)
-            case i =>
-              peerText.drop(i + 1).toIntOption.toRight(usage).map(p => peerText.take(i) -> p)
-          peer <- NumericPeer.checked(split._1, split._2)
+          peer <- Peer.parseAddress(peerText)
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
           port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
         yield Options(dir, peer, seconds, port)
