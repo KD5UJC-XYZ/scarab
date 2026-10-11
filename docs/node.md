@@ -108,9 +108,10 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
 - **Read-ahead:** while the peer is far ahead, ChainSync requests are pipelined and each batch is
   fetched with one BlockFetch range (`Peer.nodeToNode`, `ChainSyncClient.requestNextBatch`).
 
-Verified: Preview from genesis through epoch 54 (227k blocks, Alonzo to Babbage 8.0) with every
-non-overlay header threshold-checked and no rule failure, and the Byron-to-Conway era fixture
-(`EraTransitionSuite`).
+Verified: Preview from genesis through epoch 74 (6.4M slots, protocol 6 to 8) with every non-overlay
+header threshold-checked and no rule failure; 315,717 Plutus transactions evaluated successfully and
+55 evaluated to failure, each equal to the block's `is_valid` flag, and 333,607 script data hashes
+recomputed and equal. The Byron-to-Conway era fixture (`EraTransitionSuite`) also passes.
 
 ```sh
 bash scripts/sbtw node/compile node/runtimeClasspathFile
