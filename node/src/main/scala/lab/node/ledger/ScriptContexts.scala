@@ -373,7 +373,7 @@ object ScriptContexts:
           )
         )
       case GovAction.NewConstitution(prev, script, _) =>
-        Right(constr(5, previous(prev), policy(script)))
+        Right(constr(5, previous(prev), constr(0, policy(script))))
       case GovAction.Info => Right(constr(6))
     action.map(a => constr(0, I(p.deposit), credential(p.returnAccount.credential), a))
 
