@@ -17,6 +17,13 @@ object ChainSync:
     def from(value: BigInt): Either[String, UInt64] =
       if value < 0 || value > Max then Left("outside uint64") else Right(new UInt64(value))
 
+    /** Total conversion for values that are unsigned 64-bit by construction (decoded CBOR unsigned
+      * integers, slot and block counters). Out-of-range input saturates; it cannot occur for such
+      * values, so saturation exists only to keep the function total.
+      */
+    def saturating(value: BigInt): UInt64 =
+      if value < 0 then Zero else new UInt64(value.min(Max))
+
   enum Point:
     case Origin
     case Block(slot: UInt64, hash: Bytes)

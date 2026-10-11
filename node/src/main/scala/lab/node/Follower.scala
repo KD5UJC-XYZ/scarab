@@ -332,7 +332,7 @@ final class Follower[F[_]: Async, S] private (
                     )
                     tip = ChainSync.Tip(
                       header.point,
-                      ChainSync.UInt64.from(header.blockNo).toOption.get
+                      ChainSync.UInt64.saturating(header.blockNo)
                     )
                     _ <- commit(before, at, depth, Vector(applied), tip)
                   yield Follower.Adoption.Adopted(ref)

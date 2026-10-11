@@ -27,7 +27,7 @@ sealed trait Header:
   def slot: BigInt
   def prevHash: Option[Bytes]
   def point: ChainSync.Point =
-    ChainSync.Point.Block(ChainSync.UInt64.from(slot).toOption.get, hash)
+    ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
   def prevPoint: Option[Bytes] = prevHash
 
   /** A Byron epoch-boundary block: it shares its slot with the epoch's first slot and its block

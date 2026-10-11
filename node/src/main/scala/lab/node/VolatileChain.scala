@@ -11,7 +11,7 @@ import lab.network.ChainSync
   */
 final case class BlockRef(slot: BigInt, hash: Bytes, blockNo: BigInt, boundary: Boolean = false):
   def point: ChainSync.Point =
-    ChainSync.Point.Block(ChainSync.UInt64.from(slot).toOption.get, hash)
+    ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
 
 object BlockRef:
   given Eq[BlockRef] = Eq.fromUniversalEquals

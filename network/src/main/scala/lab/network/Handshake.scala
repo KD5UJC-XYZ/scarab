@@ -232,9 +232,12 @@ object Handshake:
       decodeData(suite, v, term) match
         case Left(e) => Result.Rejected(Reason.DecodeError(v, e))
         case Right(d) =>
-          agree(offers.find(_._1 == v).get._2, d) match
-            case Left(e)       => Result.Rejected(Reason.Refused(v, e))
-            case Right(agreed) => Result.Negotiated(v, agreed)
+          offers.find(_._1 == v) match
+            case None => Result.Rejected(Reason.VersionMismatch(offers.map(_._1).sorted))
+            case Some((_, own)) =>
+              agree(own, d) match
+                case Left(e)       => Result.Rejected(Reason.Refused(v, e))
+                case Right(agreed) => Result.Negotiated(v, agreed)
   final case class Client private[Handshake] (
       suite: Suite,
       offers: Vector[(Int, Data)],

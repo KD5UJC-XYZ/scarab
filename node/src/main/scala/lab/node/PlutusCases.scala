@@ -13,6 +13,10 @@ import lab.node.ledger.*
   * and `max` overall, and is only used by tooling (`follow --plutus-cases <dir>`).
   */
 final class PlutusCases(dir: Path, perKind: Int, max: Int):
+  // Deliberate instance-local mutable state, not global: the phase-2 observer is a synchronous
+  // callback (`Observation => Unit`) invoked from the pure evaluator, outside any effect, so the
+  // counters cannot live in a Ref. Every access goes through `observe`, which is synchronized, and
+  // the instance exists only when `--plutus-cases` is given (tooling, off by default).
   private val seen = collection.mutable.Map.empty[String, Int]
   private var written = 0
 

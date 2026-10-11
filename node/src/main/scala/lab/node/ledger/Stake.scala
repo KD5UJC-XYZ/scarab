@@ -24,8 +24,8 @@ object Stake:
 
   /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. */
   def snapshot(state: LedgerState, pointers: Boolean = true): Snapshot =
-    val delegations = state.accounts.iterator.collect {
-      case (c, a) if a.pool.exists(state.pools.contains) => c -> a.pool.get
+    val delegations = state.accounts.iterator.flatMap { (c, a) =>
+      a.pool.filter(state.pools.contains).map(c -> _)
     }.toMap
     val stake = instantWith(state, pointers && state.params.protocolMajor < 9).filter {
       case (c, _) => delegations.contains(c)

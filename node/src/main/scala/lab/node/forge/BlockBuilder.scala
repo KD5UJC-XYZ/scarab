@@ -97,11 +97,11 @@ object BlockBuilder:
   /** The size of the body of `pieces` without assembling it (checked against [[body]] in tests). */
   def bodySize(pieces: Vector[Piece]): Long =
     val n = pieces.size
-    val aux = pieces.zipWithIndex.collect { case (p, i) if p.aux.isDefined => (p, i) }
+    val aux = pieces.zipWithIndex.flatMap((p, i) => p.aux.map(a => (i, a)))
     val invalid = pieces.zipWithIndex.collect { case (p, i) if !p.valid => i }
     headLength(n) + pieces.map(_.body.size.toLong).sum +
       headLength(n) + pieces.map(_.witnesses.size.toLong).sum +
-      head(5, aux.size.toLong).length + aux.map((p, i) => headLength(i) + p.aux.get.size).sum +
+      head(5, aux.size.toLong).length + aux.map((i, a) => headLength(i) + a.size).sum +
       headLength(invalid.size) + invalid.map(i => headLength(i)).sum
 
   /** What fits: the protocol's block limits for a block at `slot` on top of `ticked`. */

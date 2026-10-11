@@ -33,7 +33,8 @@ final case class PoolVotingThresholds(
     )
 
 object PoolVotingThresholds:
-  val zero: PoolVotingThresholds = fromVector(Vector.fill(5)(Rational.zero)).toOption.get
+  val zero: PoolVotingThresholds =
+    Constants.checked("PoolVotingThresholds.zero")(fromVector(Vector.fill(5)(Rational.zero)))
   def fromVector(xs: Vector[Rational]): Either[String, PoolVotingThresholds] =
     xs match
       case Vector(a, b, c, d, e) => Right(PoolVotingThresholds(a, b, c, d, e))
@@ -66,7 +67,8 @@ final case class DRepVotingThresholds(
   )
 
 object DRepVotingThresholds:
-  val zero: DRepVotingThresholds = fromVector(Vector.fill(10)(Rational.zero)).toOption.get
+  val zero: DRepVotingThresholds =
+    Constants.checked("DRepVotingThresholds.zero")(fromVector(Vector.fill(10)(Rational.zero)))
   def fromVector(xs: Vector[Rational]): Either[String, DRepVotingThresholds] =
     xs match
       case Vector(a, b, c, d, e, f, g, h, i, j) =>
@@ -399,3 +401,10 @@ object ProtocolParams:
 
   private def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name).as[A].leftMap(e => ConfigError(s"protocol parameter $name: ${e.message}"))
+
+private object Constants:
+  /** Unwraps a validated literal. A failure is a programming error in a constant, and surfaces
+    * once, at class initialisation, with the name of the constant.
+    */
+  def checked[A](what: String)(result: Either[String, A]): A =
+    result.fold(reason => throw new ExceptionInInitializerError(s"$what: $reason"), identity)

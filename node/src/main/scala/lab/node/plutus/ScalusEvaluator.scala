@@ -51,6 +51,10 @@ object ScalusEvaluator:
   )
 
   private final class Interpreter extends ScriptEvaluator[Id]:
+    // Deliberate instance-scoped caches (one Interpreter per evaluator value, not hidden in an object;
+    // `default` shares one): `evaluate` is a pure function of its request, and the caches only memoise
+    // PlutusVM construction and program decoding. ConcurrentHashMap.computeIfAbsent is atomic and
+    // BoundedCache is synchronized, so concurrent evaluations are safe and results are unaffected.
     private val vms = ConcurrentHashMap[VmKey, Either[String, PlutusVM]]()
     private val programs = BoundedCache[Bytes, Either[String, DeBruijnedProgram]](512)
 

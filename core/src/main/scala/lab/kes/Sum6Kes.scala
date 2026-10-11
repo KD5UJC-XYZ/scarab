@@ -118,13 +118,18 @@ object Sum6Kes:
         if mismatch then Right(Result.SignatureRejected)
         else if residual != 0 then Left(Failure.InternalFailure("period-invariant"))
         else
-          val key = PublicKey32.create(current).toOption.get
-          val sig = Signature64.create(Bytes(signature.bytes.value.take(64))).toOption.get
-          leaf(key, sig, message.bytes) match
-            case Right(VerificationResult.SignatureVerified) =>
-              Right(Result.SuppliedMessageSignatureVerified)
-            case Right(VerificationResult.SignatureRejected) => Right(Result.SignatureRejected)
-            case Left(VerificationError.ImplementationFailure(kind)) =>
-              Left(Failure.InternalFailure(kind))
-            case _ => Left(Failure.InternalFailure("leaf-contract"))
+          val checked = for
+            key <- PublicKey32.create(current)
+            sig <- Signature64.create(Bytes(signature.bytes.value.take(64)))
+          yield (key, sig)
+          checked match
+            case Left(_) => Left(Failure.InternalFailure("leaf-contract"))
+            case Right((key, sig)) =>
+              leaf(key, sig, message.bytes) match
+                case Right(VerificationResult.SignatureVerified) =>
+                  Right(Result.SuppliedMessageSignatureVerified)
+                case Right(VerificationResult.SignatureRejected) => Right(Result.SignatureRejected)
+                case Left(VerificationError.ImplementationFailure(kind)) =>
+                  Left(Failure.InternalFailure(kind))
+                case _ => Left(Failure.InternalFailure("leaf-contract"))
       catch case NonFatal(e) => Left(Failure.InternalFailure(e.getClass.getName))
