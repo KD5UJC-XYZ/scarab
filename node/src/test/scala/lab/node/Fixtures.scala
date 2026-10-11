@@ -3,6 +3,7 @@ package lab.node
 
 import lab.Blake2b
 import lab.cbor.Bytes
+import lab.network.Era
 import org.scalacheck.Gen
 
 /** Synthetic, internally consistent headers for chain-shape tests. Crypto fields are dummies. */
@@ -11,7 +12,8 @@ object Fixtures:
 
   def header(blockNo: BigInt, slot: BigInt, prev: Option[Bytes], salt: Int = 0): Header =
     val raw = Bytes(s"header-$blockNo-$slot-${prev.map(_.hex)}-$salt".getBytes.toVector)
-    Header(
+    Header.Shelley(
+      era = Era.Conway,
       raw = raw,
       bodyRaw = raw,
       hash = Blake2b.hash256.hash(raw),
@@ -20,8 +22,7 @@ object Fixtures:
       prevHash = prev,
       issuerVkey = filled(32, 1),
       vrfVkey = filled(32, 2),
-      vrfOutput = filled(64, 3),
-      vrfProof = filled(80, 4),
+      vrf = HeaderVrf.Praos(VrfCert(filled(64, 3), filled(80, 4))),
       bodySize = 0,
       bodyHash = filled(32, 5),
       opCert = Header.OpCert(filled(32, 6), 0, 0, filled(64, 7)),

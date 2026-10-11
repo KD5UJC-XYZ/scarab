@@ -4,82 +4,114 @@ package lab.node
 import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.{Bytes, Cbor, Node, Value}
-import lab.network.ChainSync
+import lab.network.{ChainSync, Era, NtNHeader}
 
-/** Decoded Babbage/Conway (Praos) block header. `raw` is the exact signed header encoding; its
-  * Blake2b-256 digest is the block hash.
+/** VRF certificate: 64-byte output and 80-byte proof. */
+final case class VrfCert(output: Bytes, proof: Bytes)
+
+/** The VRF evidence of a header: TPraos (Shelley-Alonzo) has separate nonce and leader
+  * certificates, Praos (Babbage-Conway) a single one for both uses.
   */
-final case class Header(
-    raw: Bytes,
-    bodyRaw: Bytes,
-    hash: Bytes,
-    blockNo: BigInt,
-    slot: BigInt,
-    prevHash: Option[Bytes],
-    issuerVkey: Bytes,
-    vrfVkey: Bytes,
-    vrfOutput: Bytes,
-    vrfProof: Bytes,
-    bodySize: BigInt,
-    bodyHash: Bytes,
-    opCert: Header.OpCert,
-    protocolVersion: (BigInt, BigInt),
-    kesSignature: Bytes
-):
+enum HeaderVrf:
+  case TPraos(nonce: VrfCert, leader: VrfCert)
+  case Praos(result: VrfCert)
+
+/** A decoded block header. `raw` is the exact encoding; its Blake2b-256 digest is the block hash
+  * (for Byron, of the tagged `[subtag, header]` wrapper).
+  */
+sealed trait Header:
+  def era: Era
+  def raw: Bytes
+  def hash: Bytes
+  def blockNo: BigInt
+  def slot: BigInt
+  def prevHash: Option[Bytes]
   def point: ChainSync.Point =
     ChainSync.Point.Block(ChainSync.UInt64.from(slot).toOption.get, hash)
   def prevPoint: Option[Bytes] = prevHash
 
 object Header:
+  /** Shelley..Conway header: `bodyRaw` is the exact signed `header_body` encoding (KES message). */
+  final case class Shelley(
+      era: Era,
+      raw: Bytes,
+      bodyRaw: Bytes,
+      hash: Bytes,
+      blockNo: BigInt,
+      slot: BigInt,
+      prevHash: Option[Bytes],
+      issuerVkey: Bytes,
+      vrfVkey: Bytes,
+      vrf: HeaderVrf,
+      bodySize: BigInt,
+      bodyHash: Bytes,
+      opCert: OpCert,
+      protocolVersion: (BigInt, BigInt),
+      kesSignature: Bytes
+  ) extends Header
+
+  /** Byron main or epoch-boundary header. For a boundary block `slotInEpoch` is 0; `blockNo` is the
+    * header's chain difficulty. Byron headers are not validated.
+    */
+  final case class Byron(
+      raw: Bytes,
+      hash: Bytes,
+      boundary: Boolean,
+      epoch: BigInt,
+      slotInEpoch: BigInt,
+      epochSlots: BigInt,
+      blockNo: BigInt,
+      prevHash: Option[Bytes]
+  ) extends Header:
+    def era: Era = Era.Byron
+    def slot: BigInt = epoch * epochSlots + slotInEpoch
+
   final case class OpCert(hotVkey: Bytes, sequence: BigInt, kesPeriod: BigInt, sigma: Bytes)
 
-  /** Hard-fork-combinator era index of Conway in node-to-node envelopes. */
-  val ConwayEra: BigInt = 6
+  /** Slots per Byron epoch on mainnet and preprod (10 * k, k = 2160). */
+  val DefaultByronEpochSlots: BigInt = 21600
 
   private val envelopeLimits = Cbor.Limits(65535, 24, 8192, 65535)
   private val headerLimits = Cbor.Limits(4096, 16, 256, 4096)
 
-  /** Decode a ChainSync node-to-node header envelope `[era, #6.24(bytes .cbor header)]`. */
-  def fromEnvelope(envelope: Bytes): Either[ChainError, Header] =
-    for
-      root <- Cbor.decode(envelope, envelopeLimits).leftMap(fail)
-      parts <- array(root, 2)
-      era <- uint(parts(0))
-      _ <- Either.cond(era == ConwayEra, (), fail(s"era $era is not Conway"))
-      raw <- parts(1).value match
-        case Value.Tag(n, Node(Value.ByteString(b), _)) if n == 24 => Right(b)
-        case _ => Left(fail("expected tag-24 wrapped header bytes"))
-      header <- fromRaw(raw)
-    yield header
+  extension (h: Shelley)
+    /** The single VRF result for Praos headers; `None` for TPraos. */
+    def praosVrf: Option[VrfCert] = h.vrf match
+      case HeaderVrf.Praos(r) => Some(r)
+      case _                  => None
 
-  /** Decode a raw header `[header_body, kes_signature]`. */
-  def fromRaw(raw: Bytes): Either[ChainError, Header] =
+  /** Decode a ChainSync node-to-node header envelope `[era, payload]`. */
+  def fromEnvelope(
+      envelope: Bytes,
+      byronEpochSlots: BigInt = DefaultByronEpochSlots
+  ): Either[ChainError, Header] =
+    NtNHeader.codec.decode(envelope).leftMap(fail).flatMap(fromNtN(_, byronEpochSlots))
+
+  def fromNtN(
+      h: NtNHeader,
+      byronEpochSlots: BigInt = DefaultByronEpochSlots
+  ): Either[ChainError, Header] =
+    h.byron match
+      case Some(info) => byronFromRaw(h.raw, info.boundary, byronEpochSlots)
+      case None       => fromRaw(h.era, h.raw)
+
+  /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era. */
+  def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
     for
+      _ <- Either.cond(era != Era.Byron, (), fail("Byron headers have a different layout"))
       root <- Cbor.decode(raw, headerLimits).leftMap(fail)
       outer <- array(root, 2)
-      body <- array(outer(0), 10)
       kes <- bytes(outer(1), 448)
+      body <- array(outer(0), if era.usesTPraos then 15 else 10)
       blockNo <- uint(body(0))
       slot <- uint(body(1))
-      prev <- body(2).value match
-        case Value.Null => Right(None)
-        case _          => bytes(body(2), 32).map(Some(_))
+      prev <- optHash(body(2))
       issuer <- bytes(body(3), 32)
       vrfVkey <- bytes(body(4), 32)
-      vrf <- array(body(5), 2)
-      vrfOutput <- bytes(vrf(0), 64)
-      vrfProof <- bytes(vrf(1), 80)
-      bodySize <- uint(body(6))
-      bodyHash <- bytes(body(7), 32)
-      oc <- array(body(8), 4)
-      hot <- bytes(oc(0), 32)
-      seq <- uint(oc(1))
-      kesPeriod <- uint(oc(2))
-      sigma <- bytes(oc(3), 64)
-      pv <- array(body(9), 2)
-      major <- uint(pv(0))
-      minor <- uint(pv(1))
-    yield Header(
+      layout <- if era.usesTPraos then tpraosTail(body) else praosTail(body)
+      (vrf, bodySize, bodyHash, opCert, pv) = layout
+    yield Shelley(
+      era,
       raw,
       outer(0).original,
       Blake2b.hash256.hash(raw),
@@ -88,14 +120,109 @@ object Header:
       prev,
       issuer,
       vrfVkey,
-      vrfOutput,
-      vrfProof,
+      vrf,
       bodySize,
       bodyHash,
-      OpCert(hot, seq, kesPeriod, sigma),
-      (major, minor),
+      opCert,
+      pv,
       kes
     )
+
+  private type Tail = (HeaderVrf, BigInt, Bytes, OpCert, (BigInt, BigInt))
+
+  /** TPraos tail: nonce_vrf, leader_vrf, size, hash, hot_vkey, seq, kes_period, sigma, major,
+    * minor.
+    */
+  private def tpraosTail(body: Vector[Node]): Either[ChainError, Tail] =
+    for
+      nonce <- vrfCert(body(5))
+      leader <- vrfCert(body(6))
+      size <- uint(body(7))
+      hash <- bytes(body(8), 32)
+      hot <- bytes(body(9), 32)
+      seq <- uint(body(10))
+      period <- uint(body(11))
+      sigma <- bytes(body(12), 64)
+      major <- uint(body(13))
+      minor <- uint(body(14))
+    yield (
+      HeaderVrf.TPraos(nonce, leader),
+      size,
+      hash,
+      OpCert(hot, seq, period, sigma),
+      (major, minor)
+    )
+
+  /** Praos tail: vrf_result, size, hash, operational_cert, protocol_version. */
+  private def praosTail(body: Vector[Node]): Either[ChainError, Tail] =
+    for
+      vrf <- vrfCert(body(5))
+      size <- uint(body(6))
+      hash <- bytes(body(7), 32)
+      oc <- array(body(8), 4)
+      hot <- bytes(oc(0), 32)
+      seq <- uint(oc(1))
+      period <- uint(oc(2))
+      sigma <- bytes(oc(3), 64)
+      pv <- array(body(9), 2)
+      major <- uint(pv(0))
+      minor <- uint(pv(1))
+    yield (HeaderVrf.Praos(vrf), size, hash, OpCert(hot, seq, period, sigma), (major, minor))
+
+  private def vrfCert(n: Node): Either[ChainError, VrfCert] =
+    for
+      xs <- array(n, 2)
+      out <- bytes(xs(0), 64)
+      proof <- bytes(xs(1), 80)
+    yield VrfCert(out, proof)
+
+  /** Byron header. Main: `[magic, prev, bodyProof,
+    * [[epoch, slot], pubkey, [difficulty], sig], extra]`; boundary: `[magic, prev, bodyProof, [epoch, [difficulty]],
+    * extra]`. The block hash is Blake2b-256 of `0x82 subtag header` (the CBOR pair
+    * `[subtag, header]`).
+    */
+  def byronFromRaw(
+      raw: Bytes,
+      boundary: Boolean,
+      epochSlots: BigInt = DefaultByronEpochSlots
+  ): Either[ChainError, Header.Byron] =
+    for
+      root <- Cbor.decode(raw, headerLimits).leftMap(fail)
+      h <- array(root, 5)
+      prev <- bytes(h(1), 32)
+      consensus <- array(h(3), if boundary then 2 else 4)
+      parsed <-
+        if boundary then
+          for
+            epoch <- uint(consensus(0))
+            diff <- array(consensus(1), 1)
+            no <- uint(diff(0))
+          yield (epoch, BigInt(0), no)
+        else
+          for
+            slotId <- array(consensus(0), 2)
+            epoch <- uint(slotId(0))
+            inEpoch <- uint(slotId(1))
+            diff <- array(consensus(2), 1)
+            no <- uint(diff(0))
+          yield (epoch, inEpoch, no)
+      (epoch, inEpoch, no) = parsed
+    yield Header.Byron(
+      raw,
+      Blake2b.hash256.hash(
+        Bytes(Vector(0x82.toByte, (if boundary then 0 else 1).toByte) ++ raw.value)
+      ),
+      boundary,
+      epoch,
+      inEpoch,
+      epochSlots,
+      no,
+      Some(prev)
+    )
+
+  private def optHash(n: Node): Either[ChainError, Option[Bytes]] = n.value match
+    case Value.Null => Right(None)
+    case _          => bytes(n, 32).map(Some(_))
 
   private def fail(reason: String): ChainError = ChainError.Decode("header", reason)
   private def array(n: Node, size: Int): Either[ChainError, Vector[Node]] = n.value match

@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.Bytes
 import lab.kes.Sum6Kes
-import lab.node.{EpochGeometry, Header}
+import lab.node.{EpochGeometry, Header, HeaderVrf}
 import lab.opcert.OperationalCertificate
 import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
@@ -69,6 +69,20 @@ object Praos:
       pools: PoolDistribution,
       config: PraosConfig
   ): Either[String, PraosState] =
+    header match
+      case h: Header.Shelley =>
+        h.vrf match
+          case HeaderVrf.Praos(cert) => updatePraos(state, h, cert, pools, config)
+          case _: HeaderVrf.TPraos   => Left(s"${h.era} headers use TPraos, not Praos")
+      case h => Left(s"${h.era} headers are not Praos headers")
+
+  private def updatePraos(
+      state: PraosState,
+      header: Header.Shelley,
+      vrf: lab.node.VrfCert,
+      pools: PoolDistribution,
+      config: PraosConfig
+  ): Either[String, PraosState] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
     val epochNonce = state.epochNonce match
       case Nonce.Neutral => Right(Vrf.NeutralNonce)
@@ -86,7 +100,7 @@ object Praos:
       nonce <- epochNonce
       slot <- Vrf.Slot.fromBigInt(header.slot).leftMap(_.toString)
       input <- Vrf.Input.create(slot, nonce).leftMap(_.toString)
-      output <- Vrf.verify(input, header.vrfVkey, header.vrfProof, header.vrfOutput) match
+      output <- Vrf.verify(input, header.vrfVkey, vrf.proof, vrf.output) match
         case Vrf.Result.VerifiedCertificate(o) => Right(o)
         case other                             => Left(s"VRF proof rejected: $other")
       value <- Leader.leaderValue(output)

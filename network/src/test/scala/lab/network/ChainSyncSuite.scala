@@ -232,26 +232,60 @@ class ChainSyncSuite extends munit.FunSuite:
     )
     failed(decodePrefix(State.Idle, Role.Client, b("81"), payload, Limits(maxMessageBytes = 1)))
   }
-  test("opaque adapters distinguish NtN header and NtC block; placeholders stay unvalidated") {
-    val header = b("8206d818483c4845414445523e")
+  test("opaque NtC block adapter stays unvalidated; point policy needs 32-byte hashes") {
     val block = b("d8184f3c43415244414e4f5f424c4f434b3e")
-    assertEquals(right(ChainSyncFixtures.ntnHeader.decode(header)).bytes, header)
     assertEquals(right(ChainSyncFixtures.ntcBlock.decode(block)).bytes, block)
-    assert(ChainSyncFixtures.ntnHeader.decode(block).isLeft)
-    assert(ChainSyncFixtures.ntcBlock.decode(header).isLeft)
-    Vector(
-      "8205d8184100",
-      "8206d8174100",
-      "8206d81800",
-      "8306d818410000",
-      "9f06d8184101ff",
-      "8206d8185f4101ff"
-    ).foreach(h => assert(ChainSyncFixtures.ntnHeader.decode(b(h)).isLeft))
     Vector("d8174100", "d81800", "d818410000", "d8185f4101ff").foreach(h =>
       assert(ChainSyncFixtures.ntcBlock.decode(b(h)).isLeft)
     )
     assert(ChainSyncFixtures.cardanoPoint(Point.Block(UInt64.Zero, b("00"))).isLeft)
     assertEquals(decoded(decodePoint(b("82004100"))), Point.Block(UInt64.Zero, b("00")))
+  }
+  test("NtN header codec: every Shelley-based era round-trips") {
+    Era.values.filter(_ != Era.Byron).foreach { era =>
+      val wire = b(f"82${era.index}%02xd818483c4845414445523e")
+      val h = right(NtNHeader.codec.decode(wire))
+      assertEquals(h, NtNHeader(era, b("3c4845414445523e"), None))
+      assertEquals(right(NtNHeader.codec.encode(h)), wire)
+    }
+  }
+  test("NtN header codec: Byron wrapper carries subtag and size hint") {
+    val wire = b("82008282011904d2d81843010203")
+    val h = right(NtNHeader.codec.decode(wire))
+    assertEquals(h, NtNHeader(Era.Byron, b("010203"), Some(NtNHeader.ByronInfo(false, 1234))))
+    assertEquals(right(NtNHeader.codec.encode(h)), wire)
+    val boundary = right(NtNHeader.codec.decode(b("820082820000d8184100")))
+    assertEquals(boundary.byron, Some(NtNHeader.ByronInfo(true, 0)))
+  }
+  test("NtN header codec rejects malformed envelopes") {
+    Vector(
+      "8207d8184100", // unknown era
+      "8206d8174100", // wrong tag
+      "8206d81800", // truncated
+      "8306d818410000", // arity
+      "9f06d8184101ff", // indefinite
+      "8206d8185f4101ff", // indefinite bytes
+      "8200d8184100", // Byron without wrapper
+      "820082820200d8184100", // unknown subtag
+      "8206d818410000" // trailing
+    ).foreach(h => assert(NtNHeader.codec.decode(b(h)).isLeft, h))
+    assert(NtNHeader.codec.encode(NtNHeader(Era.Byron, b("00"), None)).isLeft)
+    assert(
+      NtNHeader.codec
+        .encode(NtNHeader(Era.Conway, b("00"), Some(NtNHeader.ByronInfo(true, 1))))
+        .isLeft
+    )
+  }
+  test("era index and block tag mappings") {
+    assertEquals(Era.values.map(_.index).toVector, Vector(0, 1, 2, 3, 4, 5, 6))
+    assertEquals(Era.fromBlockTag(0), Some(Era.Byron))
+    assertEquals(Era.fromBlockTag(1), Some(Era.Byron))
+    assertEquals((2 to 7).flatMap(t => Era.fromBlockTag(t)), Era.values.drop(1).toSeq)
+    assertEquals(Era.fromBlockTag(8), None)
+    assertEquals(
+      Era.values.filter(_.usesTPraos).toSeq,
+      Seq(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo)
+    )
   }
   test("exact 65535-byte message succeeds; one extra byte is rejected") {
     val raw = Bytes(Vector(0x59.toByte, 0xff.toByte, 0xf7.toByte) ++ Vector.fill(65527)(0.toByte))

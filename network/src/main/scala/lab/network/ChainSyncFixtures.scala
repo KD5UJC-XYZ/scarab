@@ -4,20 +4,17 @@ package lab.network
 import lab.cbor.Bytes
 import ChainSync.*
 
-/** These types attest only to bounded serialization envelopes. The tag-24 interior is opaque: even
-  * upstream ASCII placeholders are accepted, and no header/block validity is implied.
+/** These types attest only to bounded serialization envelopes (NtC block fixtures; the era-aware
+  * NtN header codec is [[NtNHeader]]). The tag-24 interior is opaque: even upstream ASCII
+  * placeholders are accepted, and no header/block validity is implied.
   */
 object ChainSyncFixtures:
-  final class OpaqueNtNHeaderFixture private[ChainSyncFixtures] (val bytes: Bytes)
   final class OpaqueNtCBlockFixture private[ChainSyncFixtures] (val bytes: Bytes)
 
-  private def envelope(bytes: Bytes, header: Boolean): Either[String, Unit] =
+  private def envelope(bytes: Bytes): Either[String, Unit] =
     validateItem(bytes).flatMap { _ =>
       try
         val r = new ChainSyncWire.Reader(bytes, Limits())
-        if header then
-          if r.arrayLength() != 2 || r.uint().value != 6 then
-            bad("only Conway era-index-6 two-element NtN fixture envelope supported")
         if r.tag() != 24 then bad("fixture requires tag24")
         r.bytes(65535)
         if r.position != bytes.size then bad("trailing fixture bytes")
@@ -25,15 +22,10 @@ object ChainSyncFixtures:
       catch case Failure(message, _) => Left(message)
     }
 
-  val ntnHeader: PayloadCodec[OpaqueNtNHeaderFixture] = new PayloadCodec[OpaqueNtNHeaderFixture]:
-    def encode(value: OpaqueNtNHeaderFixture): Either[String, Bytes] = Right(value.bytes)
-    def decode(bytes: Bytes): Either[String, OpaqueNtNHeaderFixture] =
-      envelope(bytes, true).map(_ => new OpaqueNtNHeaderFixture(bytes))
-
   val ntcBlock: PayloadCodec[OpaqueNtCBlockFixture] = new PayloadCodec[OpaqueNtCBlockFixture]:
     def encode(value: OpaqueNtCBlockFixture): Either[String, Bytes] = Right(value.bytes)
     def decode(bytes: Bytes): Either[String, OpaqueNtCBlockFixture] =
-      envelope(bytes, false).map(_ => new OpaqueNtCBlockFixture(bytes))
+      envelope(bytes).map(_ => new OpaqueNtCBlockFixture(bytes))
 
   /** Generic test payload, still checked as exactly one bounded CBOR item. */
   val rawItem: PayloadCodec[Bytes] = new PayloadCodec[Bytes]:

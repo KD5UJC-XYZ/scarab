@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import lab.cbor.Bytes
-import lab.network.{CardanoBlockFetch, ChainSync, ChainSyncFixtures}
+import lab.network.{CardanoBlockFetch, ChainSync, NtNHeader}
 import lab.network.runtime.{ChainSyncClient, NetworkError, NodeToNode}
 
 enum SyncEvent:
@@ -61,10 +61,10 @@ object Peer:
     def protocol[A](reason: String): F[A] = PeerError.Protocol(reason).raise
 
     NodeToNode
-      .connect[F, ChainSyncFixtures.OpaqueNtNHeaderFixture](
+      .connect[F, NtNHeader](
         settings.address,
         settings.magic,
-        ChainSyncFixtures.ntnHeader,
+        NtNHeader.codec,
         settings.network
       )
       .map { connection =>
@@ -76,7 +76,7 @@ object Peer:
             connection.chainSync.requestNext.flatMap {
               case ChainSyncClient.Update.RollForward(h, tip) =>
                 Header
-                  .fromEnvelope(h.bytes)
+                  .fromNtN(h)
                   .fold(e => protocol(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
               case ChainSyncClient.Update.RollBackward(point, tip) =>
                 F.pure(SyncEvent.RollBackward(point, tip))

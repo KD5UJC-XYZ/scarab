@@ -4,19 +4,33 @@ package lab.node
 import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.{Bytes, Cbor, Node, Value}
+import lab.network.Era
 
-/** A Conway block as fetched over node-to-node BlockFetch (`[era, block]`). Every component keeps
-  * its original encoding: hashes and ledger rules are computed over these bytes, never over a
+/** A block as fetched over node-to-node BlockFetch (`[tag, block]`). Every component keeps its
+  * original encoding: hashes and ledger rules are computed over these bytes, never over a
   * re-encoding.
   */
-final case class Block(
-    header: Header,
-    transactions: Vector[Block.Transaction],
-    bodySize: Long,
-    bodyHash: Bytes
-)
+sealed trait Block:
+  def era: Era
+  def header: Header
 
 object Block:
+  /** Shelley..Conway block: header, transactions and the body commitment recomputed from the
+    * original bytes. `bodySize` /`bodyHash` are what the header's `block_body_size`
+    * /`block_body_hash` must equal.
+    */
+  final case class Shelley(
+      era: Era,
+      header: Header.Shelley,
+      transactions: Vector[Transaction],
+      bodySize: Long,
+      bodyHash: Bytes
+  ) extends Block
+
+  /** Byron main or epoch-boundary block: only the header is decoded, the body stays raw. */
+  final case class Byron(header: Header.Byron, body: Bytes) extends Block:
+    def era: Era = Era.Byron
+
   /** One transaction: original body/witness/auxiliary-data bytes and phase-2 validity flag. */
   final case class Transaction(
       body: Bytes,
@@ -25,9 +39,6 @@ object Block:
       isValid: Boolean
   ):
     lazy val id: Bytes = Blake2b.hash256.hash(body)
-
-  /** Disk/BlockFetch era tag for Conway blocks. */
-  val ConwayTag: BigInt = 7
 
   private val limits = Cbor.Limits(
     maxInputBytes = 2500000,
@@ -43,9 +54,20 @@ object Block:
       tag <- outer(0).value match
         case Value.UInt(t) => Right(t)
         case _             => Left(fail("expected era tag"))
-      _ <- Either.cond(tag == ConwayTag, (), fail(s"era tag $tag is not Conway"))
-      parts <- array(outer(1), 5)
-      header <- Header.fromRaw(parts(0).original)
+      era <- Era.fromBlockTag(tag).toRight(fail(s"unknown era tag $tag"))
+      block <- if era == Era.Byron then byron(tag == 0, outer(1)) else shelley(era, outer(1))
+    yield block
+
+  private def byron(boundary: Boolean, n: Node): Either[ChainError, Block] =
+    for
+      parts <- array(n, 3)
+      header <- Header.byronFromRaw(parts(0).original, boundary)
+    yield Byron(header, Bytes(parts.tail.flatMap(_.original.value)))
+
+  private def shelley(era: Era, n: Node): Either[ChainError, Block] =
+    for
+      parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
+      header <- Header.fromRaw(era, parts(0).original)
       bodies <- list(parts(1))
       witnesses <- list(parts(2))
       _ <- Either.cond(
@@ -59,9 +81,13 @@ object Block:
             .traverse { case (k, v) => index(k, bodies.size).map(_ -> v.original) }
             .map(_.toMap)
         case _ => Left(fail("auxiliary data must be a map"))
-      invalid <- list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).map(_.toSet)
-      components = Vector(parts(1), parts(2), parts(3), parts(4)).map(_.original)
-    yield Block(
+      invalid <-
+        if era.hasInvalidTransactions then
+          list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).map(_.toSet)
+        else Right(Set.empty[Int])
+      components = parts.drop(1).map(_.original)
+    yield Shelley(
+      era,
       header,
       bodies.indices.toVector.map(i =>
         Transaction(bodies(i).original, witnesses(i).original, aux.get(i), !invalid.contains(i))

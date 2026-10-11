@@ -10,6 +10,7 @@ so it can be compared byte for byte against a reference `cardano-node`.
 |---|---|---|
 | Errors | `NodeError.scala` | Closed hierarchy: `PeerError` (recoverable), `ChainError`, `ValidationError`, `ConfigError`. Raised via cats-mtl `Raise`, handled via lexically scoped `Handle.allow` |
 | Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node v14 interpreter over `network-runtime` |
+| Decoding | `Header.scala`, `Block.scala`, `network/Era.scala`, `network/NtNHeader.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`, Shelley-Conway) and `Header.Byron`; blocks decoded per era with the body hash recomputed from original bytes. Real fixtures under `fixtures/preview/` |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`; `supervise` reconnects on `PeerError` |
 | Consensus | `consensus/Praos.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block) |

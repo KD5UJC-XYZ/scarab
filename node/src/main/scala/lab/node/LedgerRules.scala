@@ -7,6 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.Bytes
+import lab.network.Era
 import lab.node.consensus.{PoolDistribution, Praos, PraosConfig, PraosState}
 import lab.node.ledger.*
 
@@ -40,14 +41,20 @@ object NodeRules:
     val geometry = config.geometry
     val epoch = geometry.epochOf(header.slot)
     for
-      block <- Block.decode(raw).leftMap(e => "decode" -> e.message)
+      announced <- header match
+        case h: Header.Shelley => Right(h)
+        case h                 => Left("structure" -> s"${h.era} blocks are not supported")
+      decoded <- Block.decode(raw).leftMap(e => "decode" -> e.message)
+      block <- decoded match
+        case b: Block.Shelley if b.era == Era.Conway => Right(b)
+        case b => Left("structure" -> s"${b.era} blocks are not supported by the Conway rules")
       _ <- Either.cond(
         block.header.hash == header.hash,
         (),
         "structure" -> "block header differs from announced header"
       )
       _ <- Either.cond(
-        block.bodySize == header.bodySize && block.bodyHash == header.bodyHash,
+        block.bodySize == announced.bodySize && block.bodyHash == announced.bodyHash,
         (),
         "structure" -> "body does not match the header commitment"
       )
@@ -78,7 +85,7 @@ object NodeRules:
           .flatMap(tx => TxRules(s, tx, env).leftMap(f => "ledger" -> f.message))
       }
     yield
-      val issuer = Blake2b.hash224.hash(header.issuerVkey)
+      val issuer = Blake2b.hash224.hash(announced.issuerVkey)
       NodeState(
         praos,
         applied.copy(blocksCurrent =
