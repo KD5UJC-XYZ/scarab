@@ -3,12 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is pre-1.0 research
 software; versions mark milestones, not stability. Commit hashes refer to this repository's history.
 
-## [0.1.0] - research preview (to be tagged)
+## [0.1.0] - 2026-10-11 - research preview
 
 The uninterrupted Preview genesis-to-tip sync ran on commit 5cfdefd (4,748,226 blocks in 3h36m42s,
 0 error events, final tip identical to Koios; see [docs/performance.md](docs/performance.md)). The tag
-will be placed on a later commit (hygiene, docs, CI; no intended behaviour change; all gates re-run). `build.sbt` still carries the
-internal version `0.24.0` of the pre-cleanup lineage.
+is on a later commit (hygiene, docs, CI, forge-loop reporting; no intended behaviour change). On the
+tagged code `check` (494 node tests), soak (24/24 and 30/30), e2e (every era matched), relay and
+pool all passed; the pool scenario now asserts every scheduled leader slot against
+`cardano-cli query leadership-schedule` (92 scheduled, 92 forged, 0 missed).
 
 ### Foundation
 - Cleanup to a tagless-final code base: pure `core` and `network`, fs2 `network-runtime`, `node`
