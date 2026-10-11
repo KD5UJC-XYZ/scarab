@@ -59,6 +59,15 @@ ERA_PLAN = [("shelley", 2), ("allegra", 3), ("mary", 4), ("alonzo", 5), ("alonzo
             ("babbage", 7), ("babbage", 8), ("conway", 9)]
 
 
+def era_plan(args):
+    """ERA_PLAN with `--shelley-epochs` epochs at protocol 2. The pools produce blocks from the third
+    epoch (the overlay is switched off in the second, the pool distribution lags two boundaries), so
+    with three Shelley epochs the pre-Allegra reward rules pay out: blocks of epoch 3, the update made
+    in epoch 4 under the epoch 3 parameters (protocol 2), paid at the boundary into epoch 5."""
+    n = getattr(args, "shelley_epochs", 1)
+    return [ERA_PLAN[0]] * n + ERA_PLAN[1:]
+
+
 STABILITY_FACTOR = 6  # a protocol-parameter update must land 2 * 3k/f slots before the epoch ends
 
 
@@ -79,7 +88,7 @@ def prepare_eras_env(name, args):
     start = int(time.time()) + 10
     config = read_json(name, f"{ENV}/configuration.yaml")
     first = {}
-    for i, (era, _) in enumerate(ERA_PLAN):
+    for i, (era, _) in enumerate(era_plan(args)):
         first.setdefault(era, args.byron_epochs + i)
     for era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
         config[f"Test{era.capitalize()}HardForkAtEpoch"] = first[era]
@@ -92,6 +101,7 @@ def prepare_eras_env(name, args):
     shelley.pop("extraConfig")  # funds and pools are only read from here when the chain starts in Conway
     shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
     shelley["protocolParams"]["protocolVersion"] = {"major": ERA_PLAN[0][1], "minor": 0}
+    shelley["protocolParams"]["minUTxOValue"] = getattr(args, "min_utxo_value", 0)
     # The overlay (decentralisation = 1) is the only block source until the pools hold stake, so the
     # genesis delegates are the pool operators themselves: the same cold, VRF and KES keys serve both.
     delegs = {}
@@ -137,6 +147,7 @@ class EraDriver:
 
     def __init__(self, args, shelley):
         self.args, self.name = args, args.name
+        self.plan = era_plan(args)
         self.key_deposit = shelley["protocolParams"]["keyDeposit"]
         self.epoch_length = shelley["epochLength"]
         self.pool_deposit = shelley["protocolParams"]["poolDeposit"]
@@ -180,14 +191,22 @@ class EraDriver:
         outs = [spendable // 3 + spendable % 3, spendable // 3, spendable // 3]
         certs = []
         cli = f"cardano-cli compatible {era}"
+        # --cross-rewards: pool 1 pays its leader reward to delegator 2 (a member of pool 2, which delegator 1
+        # owns) and pool 2 pays to delegator 3 (who owns and leads pool 3), so accounts earn several rewards
+        cross = getattr(self.args, "cross_rewards", False)
+        owner_of = {1: 1, 2: 1, 3: 3} if cross else {1: 1, 2: 2, 3: 3}
+        reward_of = {1: 2, 2: 3, 3: 3} if cross else {1: 1, 2: 2, 3: 3}
         for n in (1, 2, 3):
             d, pool = f"{ENV}/stake-delegators/delegator{n}", f"{ENV}/pools-keys/pool{n}"
+            owner = f"{ENV}/stake-delegators/delegator{owner_of[n]}"
+            reward = f"{ENV}/stake-delegators/delegator{reward_of[n]}"
             in_ref(self.name, f"{cli} stake-address registration-certificate --stake-verification-key-file {d}/staking.vkey "
                               f"--out-file {TX}/reg{n}.cert && "
                               f"{cli} stake-pool registration-certificate --cold-verification-key-file {pool}/cold.vkey "
-                              f"--vrf-verification-key-file {pool}/vrf.vkey --pool-pledge 0 --pool-cost 0 --pool-margin 0 "
-                              f"--pool-reward-account-verification-key-file {d}/staking.vkey "
-                              f"--pool-owner-stake-verification-key-file {d}/staking.vkey --testnet-magic {MAGIC} "
+                              f"--vrf-verification-key-file {pool}/vrf.vkey --pool-pledge 0 --pool-cost 0 "
+                              f"--pool-margin {getattr(self.args, 'pool_margin', '0')} "
+                              f"--pool-reward-account-verification-key-file {reward}/staking.vkey "
+                              f"--pool-owner-stake-verification-key-file {owner}/staking.vkey --testnet-magic {MAGIC} "
                               f"--out-file {TX}/pool{n}.cert && "
                               f"{cli} stake-address stake-delegation-certificate --stake-verification-key-file {d}/staking.vkey "
                               f"--cold-verification-key-file {pool}/cold.vkey --out-file {TX}/deleg{n}.cert")
@@ -220,16 +239,18 @@ class EraDriver:
         cli = f"cardano-cli compatible {era}"
         keys = " ".join(f"--genesis-verification-key-file {ENV}/genesis-keys/genesis{n}/key.vkey" for n in (1, 2, 3))
         extra = " --decentralization-parameter 0" if decentralise else ""
+        # a step that stays at the same protocol version proposes only the parameter change
+        version = f"--protocol-major-version {major} --protocol-minor-version 0" if major else ""
         in_ref(self.name, f"{cli} governance action create-protocol-parameters-update --epoch {epoch} {keys} "
-                          f"--protocol-major-version {major} --protocol-minor-version 0{extra} --out-file {TX}/pp{major}.proposal")
+                          f"{version}{extra} --out-file {TX}/pp{major or 'same'}-{epoch}.proposal")
         (txin, lovelace), = sorted(self.utxo(self.address[1]).items(), key=lambda kv: -kv[1])[:1]
         fee = 300_000
         signers = [f"--signing-key-file {ENV}/stake-delegators/delegator1/payment.skey"]
         signers += [f"--signing-key-file {ENV}/pools-keys/pool{n}/cold.skey" for n in (1, 2, 3)]
         build = (f"{cli} transaction signed-transaction --tx-in {txin} --tx-out {self.address[1]}+{lovelace - fee} "
-                 f"--update-proposal-file {TX}/pp{major}.proposal {' '.join(signers)} --testnet-magic {MAGIC} "
-                 f"--fee {fee} --out-file {TX}/pp{major}.tx")
-        r = self.submit(era, build, f"pp{major}")
+                 f"--update-proposal-file {TX}/pp{major or 'same'}-{epoch}.proposal {' '.join(signers)} --testnet-magic {MAGIC} "
+                 f"--fee {fee} --out-file {TX}/pp{major or 'same'}-{epoch}.tx")
+        r = self.submit(era, build, f"pp{major or 'same'}-{epoch}")
         if r.returncode != 0:
             raise SystemExit(f"update proposal for protocol {major} failed: {r.stderr.strip()[:600]}")
         self.wait_spent(self.address[1], None, [txin])
@@ -250,11 +271,15 @@ class EraDriver:
         print(json.dumps({"epoch": epoch, "era": era, "protocolMajor": pv["major"]}), flush=True)
         if index == 0:
             self.setup_pools(era)
-        if index + 1 < len(ERA_PLAN):
-            if tip["slotInEpoch"] > self.epoch_length - STABILITY_FACTOR * 5 / self.args.active_slots_coeff - 20:
-                raise SystemExit(f"epoch {epoch} is too far gone to submit an update proposal: {tip}")
-            self.propose(era, epoch, ERA_PLAN[index + 1][1], decentralise=(index == 1))
-        return index == len(ERA_PLAN) - 1 and era == ERA_PLAN[-1][0]
+        plan = self.plan
+        if index + 1 < len(plan):
+            decentralise = index == 1
+            major = plan[index + 1][1]
+            if major != plan[index][1] or decentralise:
+                if tip["slotInEpoch"] > self.epoch_length - STABILITY_FACTOR * 5 / self.args.active_slots_coeff - 20:
+                    raise SystemExit(f"epoch {epoch} is too far gone to submit an update proposal: {tip}")
+                self.propose(era, epoch, major if major != plan[index][1] else None, decentralise=decentralise)
+        return index == len(plan) - 1 and era == plan[-1][0]
 
 
 def up_eras(args, on_nodes_up=None, on_pools_ready=None, on_tick=None):

@@ -44,6 +44,14 @@ def main():
     eras_options.add_argument("--byron-epochs", type=int, default=1, help="epochs spent in Byron")
     eras_options.add_argument("--byron-slot-ms", type=int, default=1000, help="Byron slot length in milliseconds")
     eras_options.add_argument("--stall-seconds", type=int, default=90, help="fail when the chain does not grow for this long")
+    eras_options.add_argument("--shelley-epochs", type=int, default=1,
+                              help="epochs at protocol 2 (the fixture cluster has 1; e2e uses 3 so pre-Allegra rewards pay out)")
+    eras_options.add_argument("--min-utxo-value", type=int, default=0,
+                              help="Shelley genesis minUTxOValue (0 in the fixture cluster; e2e uses 1 ada)")
+    eras_options.add_argument("--pool-margin", default="0",
+                              help="margin of the three pools (0 in the fixture cluster; e2e uses 0.1)")
+    eras_options.add_argument("--cross-rewards", action="store_true",
+                              help="register the pools so reward accounts also delegate to other pools (e2e does)")
     sub.add_parser("up-eras", parents=[eras_options],
                    help="start in Byron and walk Shelley..Conway (one epoch per era step)").set_defaults(run=up_eras)
     ce = sub.add_parser("capture-eras", help="capture the running up-eras chain as fixtures")
@@ -60,7 +68,7 @@ def main():
     e2.add_argument("--no-compare", action="store_true", help="skip the per-era ledger comparisons")
     e2.add_argument("--min-comparisons", type=int, default=3,
                     help="matched ledger comparisons required in each Shelley-based era")
-    e2.set_defaults(run=e2e)
+    e2.set_defaults(run=e2e, shelley_epochs=3, min_utxo_value=1_000_000, pool_margin="0.1", cross_rewards=True)
     t = sub.add_parser("tip", help="print the reference tip as JSON")
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
     t.set_defaults(run=tip)

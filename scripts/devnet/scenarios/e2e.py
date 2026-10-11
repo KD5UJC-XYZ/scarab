@@ -232,6 +232,9 @@ def e2e(args):
             failures.append(f"stopped without reaching Conway epoch {target}: {reason}")
         if not args.no_compare:
             failures += judge_comparisons(comparisons, args.min_comparisons, loader is not None)
+        if loader is not None and loader.stats.get("unexpected"):
+            failures.append(f"{loader.stats['unexpected']} submissions that must be rejected were accepted or "
+                            f"rejected for another reason: {[e for e in loader.evidence if e['verdict'] != 'expected'][:3]}")
     except SystemExit as e:
         failures.append(str(e))
     finally:
@@ -246,6 +249,7 @@ def e2e(args):
             summary["ledgerComparison"] = {"perEra": comparisons.per_era, "mismatches": comparisons.mismatches}
         if loader is not None:
             summary["load"] = loader.stats
+            summary["loadEvidence"] = loader.evidence
         summary["failures"] = failures
         summary["passed"] = not failures
         root.mkdir(parents=True, exist_ok=True)

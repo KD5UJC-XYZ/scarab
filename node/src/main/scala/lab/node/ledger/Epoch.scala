@@ -335,12 +335,13 @@ object Rewards:
       if pp.protocolMajor >= 3 then
         rewards.groupMapReduce(_.credential)(_.amount)(_ + _).filter(_._2 != 0)
       else
-        // Before Allegra a credential earning several rewards keeps only the smallest by
-        // (type, pool): member rewards sort before leader rewards.
+        // Before Allegra a credential earning several rewards keeps only the smallest in the
+        // ledger's `Ord Reward` (`filterRewards` takes `Set.deleteFindMin`): leader rewards sort
+        // before member rewards, then by pool id.
         rewards
           .groupBy(_.credential)
           .view
-          .mapValues(rs => rs.minBy(x => (x.leader, x.pool.hex)).amount)
+          .mapValues(rs => rs.minBy(x => (!x.leader, x.pool.hex)).amount)
           .toMap
           .filter(_._2 != 0)
     val distributed = aggregated.values.sum

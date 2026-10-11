@@ -544,3 +544,226 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       assertEquals(end.total, Supply)
     }
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // B7 / B12: min-UTxO, output value size, MIR rules (cardano-ledger Mary.TxOut, Allegra.Rules.Utxo,
+  // Shelley.Rules.Deleg)
+
+  private val policy = Bytes(Vector.fill(28)(0x11))
+  private def assetName(s: String) = Bytes(s.getBytes.toVector)
+  private def valued(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]) =
+    val v = Value(coin, assets)
+    out(bob.address(), 0).copy(value = v)
+
+  private def outputRule(pp: ProtocolParams, o: TxOut): String =
+    PreConwayRules.outputChecks(pp, env, Bytes.empty, o) match
+      case Left(LedgerFailure.Invalid(_, r, _)) => r
+      case Left(other)                          => other.message
+      case Right(_)                             => "accepted"
+
+  test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
+    // ada-only outputs: the flat parameter in every Shelley-based era up to Mary
+    List(2, 3, 4).foreach { pv =>
+      assertEquals(outputRule(params(pv), valued(ada, Map.empty)), "accepted", s"era $pv")
+      assertEquals(
+        outputRule(params(pv), valued(ada - 1, Map.empty)),
+        "OutputTooSmallUTxO",
+        s"era $pv"
+      )
+    }
+    // Mary scaledMinDeposit: max(mv, (mv / 27) * (27 + size v)); one 5-byte name: 6 + ceil(45 / 8) = 12 words
+    val one = Map(policy -> Map(assetName("abcde") -> BigInt(1)))
+    val mv = BigInt(1000000)
+    val expected = (mv / 27) * (27 + 12)
+    assertEquals(expected, BigInt(1444443))
+    assertEquals(PreConwayRules.minUTxO(params(4), valued(0, one)), expected)
+    assertEquals(outputRule(params(4), valued(expected, one)), "accepted")
+    assertEquals(outputRule(params(4), valued(expected - 1, one)), "OutputTooSmallUTxO")
+    // a small value never goes below the parameter
+    assertEquals(
+      PreConwayRules.minUTxO(params(4).copy(minUTxOValue = 40), valued(0, one)),
+      BigInt(40)
+    )
+    // Shelley and Allegra do not scale (they cannot hold assets, the rule is the flat parameter)
+    assertEquals(PreConwayRules.minUTxO(params(3), valued(0, one)), mv)
+    // the same asset name under two policies counts once: 2 triples, 2 policies, 5 name bytes
+    val twice = one.updated(Bytes(Vector.fill(28)(0x22)), Map(assetName("abcde") -> BigInt(1)))
+    assertEquals(
+      PreConwayRules.valueWords(valued(0, twice).value),
+      BigInt(6 + (24 + 5 + 56 + 7) / 8)
+    )
+    assertEquals(PreConwayRules.minUTxO(params(4), valued(0, twice)), (mv / 27) * (27 + 17))
+    // Alonzo divides by the 29 words of an ada-only entry instead
+    assertEquals(PreConwayRules.minUTxO(params(5), valued(0, Map.empty)), BigInt(29 * 34482))
+  }
+
+  private def cborValue(v: Value): Int =
+    import lab.cbor.{Cbor, Node, Value as C}
+    def n(x: C) = Node(x, Bytes.empty)
+    val ada = C.UInt(v.coin)
+    val value =
+      if v.assets.isEmpty then ada
+      else
+        C.Arr(
+          Vector(
+            n(ada),
+            n(
+              C.Map(
+                v.assets.toVector.map { case (p, names) =>
+                  n(C.ByteString(p)) -> n(
+                    C.Map(names.toVector.map { case (k, q) => n(C.ByteString(k)) -> n(C.UInt(q)) })
+                  )
+                }
+              )
+            )
+          )
+        )
+    Cbor.encode(value).toOption.get.size
+
+  test("the serialised value size matches the CBOR encoding") {
+    val names = (0 until 30).map(i => Bytes(Vector.fill(i % 33)(i.toByte))).distinct
+    val shapes = List(
+      Value.coin(0),
+      Value.coin(23),
+      Value.coin(24),
+      Value.coin(70000),
+      Value.coin(BigInt("5000000000")),
+      Value(ada, Map(policy -> Map(assetName("a") -> BigInt(1)))),
+      Value(
+        ada,
+        Map(policy -> Map(assetName("") -> BigInt(300), assetName("b" * 32) -> BigInt(70000)))
+      ),
+      Value(
+        1,
+        Map(
+          policy -> names.map(x => x -> BigInt(5)).toMap,
+          Bytes(Vector.fill(28)(0x33)) -> Map(assetName("z") -> BigInt("5000000000"))
+        )
+      )
+    )
+    shapes.foreach(v => assertEquals(v.serializedSize, cborValue(v), v.toString))
+  }
+
+  test("output value size: 4000 bytes in Mary, maxValueSize from Alonzo, none in Shelley") {
+    def withNames(n: Int) =
+      val m = (0 until n).map(i => assetName(f"$i%032d") -> BigInt(1)).toMap
+      valued(1000000000, Map(policy -> m))
+    // one policy: 1 + 5 (coin) + 1 + 30 (policy) + 2 (inner map head, 113 entries) + n * (2 + 32 + 1)
+    assertEquals(withNames(113).value.serializedSize, 3994)
+    assertEquals(withNames(114).value.serializedSize, 4029)
+    List(3, 4).foreach { pv =>
+      assertEquals(PreConwayRules.maxOutputValueSize(params(pv)), Some(BigInt(4000)))
+    }
+    assertEquals(outputRule(params(4), withNames(113)), "accepted")
+    assertEquals(outputRule(params(4), withNames(114)), "OutputTooBigUTxO")
+    // Shelley has no value size rule; a pre-Mary chain cannot carry such a value anyway
+    assertEquals(PreConwayRules.maxOutputValueSize(params(2)), None)
+    // Alonzo and later use the maxValueSize parameter (5000 here)
+    List(5, 7).foreach { pv =>
+      assertEquals(outputRule(params(pv), withNames(114)), "accepted", s"era $pv")
+      assertEquals(outputRule(params(pv), withNames(141)), "accepted", s"era $pv")
+      assertEquals(outputRule(params(pv), withNames(142)), "OutputTooBigUTxO", s"era $pv")
+    }
+    val tight = params(5).copy(maxValueSize = 3994)
+    assertEquals(outputRule(tight, withNames(113)), "accepted")
+    assertEquals(outputRule(tight.copy(maxValueSize = 3993), withNames(113)), "OutputTooBigUTxO")
+  }
+
+  private def mirState(pv: Int) =
+    val g = Vector(key(), key())
+    val d = Vector(key(), key())
+    val (s0, in) = funded(pv)
+    val stake = key()
+    val s = s0.copy(
+      genDelegs =
+        g.zip(d).map { case (gk, dk) => gk.hash -> GenDelegPair(dk.hash, Bytes.empty) }.toMap,
+      accounts = s0.accounts.updated(stake.credential, Account(0, 2 * ada, None, None))
+    )
+    (s, in, stake, d)
+
+  private def mirTx(
+      s: LedgerState,
+      in: TxIn,
+      signers: Vector[Key],
+      certs: Vector[Certificate],
+      e: TxRules.Env = env
+  ) =
+    val b = body(
+      "mir",
+      Vector(in),
+      Vector(out(alice.address(), 100 * ada - 200)),
+      200,
+      certificates = certs
+    )
+    TxRules(s, tx(b, alice +: signers), e)
+
+  test("MIR: transfers between pots and negative amounts need protocol 5 (Alonzo)") {
+    val (s4, in4, stake4, d4) = mirState(4)
+    val (s5, in5, stake5, d5) = mirState(5)
+    val transfer = Certificate.MoveRewards(Pot.Reserves, Left(5 * ada))
+    assertEquals(rule(mirTx(s4, in4, d4, Vector(transfer))), "MIRTransferNotCurrentlyAllowed")
+    val moved = mirTx(s5, in5, d5, Vector(transfer)).fold(f => fail(f.message), identity)
+    assertEquals(moved.mir.deltaReserves, -5 * ada)
+    assertEquals(moved.mir.deltaTreasury, 5 * ada)
+    val negative = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake4.credential -> -ada)))
+    assertEquals(rule(mirTx(s4, in4, d4, Vector(negative))), "MIRNegativesNotCurrentlyAllowed")
+    // from Alonzo a negative entry may cancel an earlier one but not go below zero
+    val plus = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake5.credential -> 3 * ada)))
+    val minus = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake5.credential -> -(4 * ada))))
+    val cancel = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake5.credential -> -(3 * ada))))
+    assertEquals(rule(mirTx(s5, in5, d5, Vector(plus, minus))), "MIRProducesNegativeUpdate")
+    val zero = mirTx(s5, in5, d5, Vector(plus, cancel)).fold(f => fail(f.message), identity)
+    assertEquals(zero.mir.reserves(stake5.credential), BigInt(0))
+  }
+
+  test("MIR: a later certificate replaces an earlier one before Alonzo and adds to it after") {
+    def entry(pv: Int) =
+      val (s, in, stake, d) = mirState(pv)
+      val first = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> 7 * ada)))
+      val second = Certificate.MoveRewards(Pot.Reserves, Right(Map(stake.credential -> 3 * ada)))
+      mirTx(s, in, d, Vector(first, second))
+        .fold(f => fail(f.message), _.mir.reserves(stake.credential))
+    assertEquals(entry(4), 3 * ada)
+    assertEquals(entry(5), 10 * ada)
+  }
+
+  test("MIR is refused from the slot 3k/f before the next epoch") {
+    val (s, in, stake, d) = mirState(4)
+    val cert = Vector(Certificate.MoveRewards(Pot.Treasury, Right(Map(stake.credential -> ada))))
+    // the treasury must hold the coin
+    val holding = s.copy(treasury = 5 * ada, reserves = s.reserves - 5 * ada)
+    val last = env.firstSlotNextEpoch - env.stabilityWindow - 1
+    assertEquals(rule(mirTx(holding, in, d, cert, env.copy(slot = last))), "accepted")
+    assertEquals(
+      rule(mirTx(holding, in, d, cert, env.copy(slot = last + 1))),
+      "MIRCertificateTooLateinEpochDELEG"
+    )
+    // more than the pot holds is refused whatever the slot
+    val greedy =
+      Vector(Certificate.MoveRewards(Pot.Treasury, Right(Map(stake.credential -> 6 * ada))))
+    assertEquals(rule(mirTx(holding, in, d, greedy)), "InsufficientForInstantaneousRewardsDELEG")
+  }
+
+  test("MIR entries survive stake key deregistration and are dropped at the boundary") {
+    val (s0, in, stake, _) = mirState(4)
+    val s = s0.copy(
+      mir = InstantRewards(Map(stake.credential -> 7 * ada), Map.empty, 0, 0),
+      deposited = 2 * ada,
+      reserves = s0.reserves - 2 * ada
+    )
+    val dereg = body(
+      "dereg",
+      Vector(in),
+      Vector(out(alice.address(), 100 * ada - 200 + 2 * ada)),
+      200,
+      certificates = Vector(Certificate.Unregister(stake.credential, None))
+    )
+    val after =
+      TxRules(s, tx(dereg, Vector(alice, stake)), env).fold(f => fail(f.message), identity)
+    assert(!after.accounts.contains(stake.credential))
+    // `Unregister` leaves `dsIRewards` alone: the entry stays until the MIR rule filters it
+    assertEquals(after.mir.reserves.get(stake.credential), Some(7 * ada))
+    val paid = Mir(after)
+    assertEquals(paid.reserves, after.reserves)
+    assertEquals(paid.mir, InstantRewards.empty)
+  }
