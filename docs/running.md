@@ -157,7 +157,7 @@ python3 scripts/devnet.py down                       # remove containers and the
 | `relay [--seconds 300] [--peers 3] [--relay-mode ...] [--keep]` | the Scala node follows the pools and serves a non-producing Haskell relay (`--listen`, `--db`, `--local-socket`); load is submitted through the relay | the Haskell relay syncs the whole chain from the Scala node and stays at the tip (lag samples every `--every` seconds), transactions travel relay, Scala mempool, pools, block, and one is submitted with `cardano-cli` to the Scala socket |
 | `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event. Writes `pool-summary.json` |
 
-Building blocks (also runnable on their own): `up` (start the 3-pool cluster), `up-eras [--epoch-length 500 --active-slots-coeff 0.2 --byron-epochs 1 --byron-slot-ms 1000 --stall-seconds 90]`, `capture-eras [--out fixtures/eras --conway-blocks 3]`, `tip [--node N]`, `follow [--seconds N] [--node N]`, `load [--seconds N --wallets 10 --stakers 4 ...]`, `govload [--seconds N]`, `compare`, `down`.
+Building blocks (also runnable on their own): `up` (start the 3-pool cluster), `up-eras [--epoch-length 500 --active-slots-coeff 0.2 --byron-epochs 1 --byron-slot-ms 1000 --stall-seconds 90 --shelley-epochs 1 --min-utxo-value 0 --pool-margin 0 --cross-rewards]`, `capture-eras [--out fixtures/eras --conway-blocks 3]`, `tip [--node N]`, `follow [--seconds N] [--node N]`, `load [--seconds N --wallets 10 --stakers 4 ...]`, `govload [--seconds N]`, `compare`, `down`.
 
 Cluster parameters: the `soak`, `relay` and `pool` clusters come from `cardano-testnet` 11.1.1 defaults
 with k = 5, f = 0.05 and 500-slot epochs of 0.1 s (as recorded in the 2026-10-11 runs; the `up-eras`
@@ -171,6 +171,13 @@ before Conway, so `scripts/devnet/ntcquery.py` speaks LocalStateQuery to the ref
 node's `/state` shape. Byron is not compared (the CLI cannot query a Byron ledger and the node keeps
 no Byron UTxO).
 
+`e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
+decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the
+update for those blocks is made and paid under protocol 2 in epochs 4 and 5), `--min-utxo-value 1000000`,
+`--pool-margin 0.1` and `--cross-rewards` (pool 1 pays its leader reward to delegator 2, who is also a
+member of pool 2, and pool 2 pays delegator 3, who owns and leads pool 3). The plain `up-eras` defaults
+are those of the committed `fixtures/eras` (one Shelley epoch, no minimum, margin 0).
+
 Era load (`scripts/devnet/eraload.py`, transactions built and signed by `scripts/devnet/eratx.py` because
 cardano-cli 11 builds Conway transactions only): Shelley transfers, stake registration and delegation,
 a new pool, pool re-registration, MIR from the reserves, a genesis delegation certificate,
@@ -178,6 +185,17 @@ withdrawals; Allegra validity intervals, auxiliary data, a timelock script, pool
 minting and burning under native-script policies, multi-asset transfers, MIR from the treasury;
 Alonzo collateral, datum-hash outputs, required signers; Babbage inline datums, reference scripts,
 reference inputs, collateral return; Conway the governance load (`govload`) described below.
+
+Boundary load (roadmap B7, B8, B12): outputs of exactly `minUTxOValue` (Shelley, Allegra, Mary) and one
+lovelace less, which the reference must refuse; the Mary scaled minimum for one native asset at the
+boundary; serialised values of exactly 4000 (Mary) and 5000 (Alonzo) bytes against 4001 and 5001; MIR
+from the reserves early, mid-epoch, just before and just after the `3k/f` cut-off (the later one
+replaces the earlier entry before Alonzo) and to an unregistered credential; MIR pot transfers and
+negative entries refused in Mary and accepted in Alonzo; stake keys deregistered before and after the
+reward calculation starts at `4k/f`. A submission that must be refused counts as `unexpected` (and fails
+the run) if the reference accepts it or names another reason; the replies are in `loadEvidence` of
+`e2e-summary.json`. The reference reward update is projected with the pre-Allegra choice (one reward
+per account) when the previous epoch's parameters are protocol 2.
 Plutus V1 and V2 scripts are not driven by the devnet load (`eraload.py` TODO); they are verified by
 the Preview sync and the unit and oracle tests only.
 

@@ -578,7 +578,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(expected, BigInt(1444443))
     assertEquals(PreConwayRules.minUTxO(params(4), valued(0, one)), expected)
     assertEquals(outputRule(params(4), valued(expected, one)), "accepted")
-    assertEquals(outputRule(params(4), valued(expected - 1, one)), "OutputTooSmallUTxO")
+    // ... but the Allegra/Mary rule tests `pointwise (<) v (inject min)`, which no value with assets
+    // satisfies, so only ada-only outputs can be too small (observed on the 11.1.3 reference too)
+    assertEquals(outputRule(params(4), valued(expected - 1, one)), "accepted")
+    assertEquals(outputRule(params(4), valued(1, one)), "accepted")
+    assertEquals(outputRule(params(5), valued(1, one)), "OutputTooSmallUTxO")
     // a small value never goes below the parameter
     assertEquals(
       PreConwayRules.minUTxO(params(4).copy(minUTxOValue = 40), valued(0, one)),

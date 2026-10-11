@@ -74,8 +74,22 @@ object Epoch:
     // The ledger creates the reward update when a block arrives after the start-rewards slot; if
     // none does, the epoch pays nothing.
     if registered.rewardDraft.isDefined && slot > epochStart + globals.startRewards then
-      registered.copy(rewardUpdate = registered.rewardDraft, rewardDraft = None)
+      registered.copy(
+        rewardUpdate = registered.rewardDraft.map(prefilter(registered, _)),
+        rewardDraft = None
+      )
     else registered
+
+  /** Before Babbage the calculation (`startStep`) skips rewards of accounts that are not registered
+    * when it starts (`rewardRegistered`); what it skips stays in the reserves (`deltaR2`). The
+    * reference reward update carries the filtered rewards, so this is done when it is created.
+    */
+  private def prefilter(state: LedgerState, ru: RewardUpdate): RewardUpdate =
+    if state.previousParams.protocolMajor >= 7 || state.params.protocolMajor >= 9 then ru
+    else
+      val eligible = state.rewardRegistered.getOrElse(state.accounts.keySet)
+      val (kept, dropped) = ru.rewards.partition { case (c, _) => eligible(c) }
+      ru.copy(rewards = kept, deltaReserves = ru.deltaReserves + dropped.values.sum)
 
   private[ledger] def rotate(state: LedgerState, pointers: Boolean = true): LedgerState =
     state.copy(
@@ -100,7 +114,7 @@ object Epoch:
       epoch: BigInt,
       globals: LedgerGlobals
   ): LedgerState =
-    val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _, prefilter = true))
+    val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _))
     val paid = Mir.apply(rewarded)
     // The boundary that enters Conway runs under the Conway rules (the era translation precedes
     // it), and those ignore pointer addresses: the snapshot taken here does not count them
@@ -128,7 +142,7 @@ object Epoch:
       epoch: BigInt,
       globals: LedgerGlobals
   ): LedgerState =
-    val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _, prefilter = false))
+    val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _))
     val reaped = poolReap(adoptPools(rotate(rewarded)), epoch)
     val entered = ConwayEpoch(reaped, epoch)
     entered.copy(rewardUpdate = None, rewardDraft = Some(Rewards.update(entered, globals)))
@@ -140,20 +154,16 @@ object Epoch:
       .sum +
       state.dreps.valuesIterator.map(_.deposit).sum + state.gov.proposals.totalDeposits
 
-  /** Apply a reward update. Before Babbage the update skips rewards for accounts that were not
-    * registered when the calculation started (their share stays in the reserves); credentials that
-    * deregistered since lose their reward to the treasury.
+  /** Apply a reward update: rewards of credentials that are no longer registered go to the treasury
+    * (`filterAllRewards'`).
     */
-  private def applyRewards(state: LedgerState, ru: RewardUpdate, prefilter: Boolean): LedgerState =
-    val filtering = prefilter && state.previousParams.protocolMajor < 7
-    val eligible = state.rewardRegistered.getOrElse(state.accounts.keySet)
-    val (kept, dropped) =
-      if filtering then ru.rewards.partition { case (c, _) => eligible(c) }
-      else (ru.rewards, Map.empty[Credential, BigInt])
-    val (registered, unregistered) = kept.partition { case (c, _) => state.accounts.contains(c) }
+  private def applyRewards(state: LedgerState, ru: RewardUpdate): LedgerState =
+    val (registered, unregistered) = ru.rewards.partition { case (c, _) =>
+      state.accounts.contains(c)
+    }
     state.copy(
       treasury = state.treasury + ru.deltaTreasury + unregistered.values.sum,
-      reserves = state.reserves + ru.deltaReserves + dropped.values.sum,
+      reserves = state.reserves + ru.deltaReserves,
       fees = state.fees + ru.deltaFees,
       accounts = registered.foldLeft(state.accounts) { case (as, (c, r)) =>
         as.updatedWith(c)(_.map(a => a.copy(balance = a.balance + r)))

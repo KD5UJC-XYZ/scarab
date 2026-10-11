@@ -243,8 +243,15 @@ object PreConwayRules:
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
     val min = minUTxO(pp, out)
+    // Allegra and Mary test `pointwise (<) v (inject min)`: every component must be below, so a value
+    // that carries assets is never too small (Shelley compares the coin, Alonzo negates `pointwise (>=)`).
+    val minimumApplies = pp.protocolMajor <= 2 || pp.protocolMajor >= 5 || out.value.assets.isEmpty
     for
-      _ <- check(out.value.coin >= min, "OutputTooSmallUTxO", s"${out.value.coin} < $min")
+      _ <- check(
+        !minimumApplies || out.value.coin >= min,
+        "OutputTooSmallUTxO",
+        s"${out.value.coin} < $min"
+      )
       _ <- check(
         out.address.kind match
           case Address.Kind.Shelley(n, _, _, _) => n == env.network

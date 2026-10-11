@@ -142,7 +142,10 @@ class EraLoad:
         # the reference's reason is in the first lines; the Haskell call stack that follows is noise
         text = (r.stderr or r.stdout).strip().split("CallStack")[0].strip()
         if expect is not None:
-            verdict = "accepted" if ok else "expected" if expect in text else "other reason"
+            # the refusal must name the rule under test and must not be a side effect of a stale input or an
+            # unbalanced transaction, which would also refuse it
+            stale = ("BadInputsUTxO" in text or "ValueNotConservedUTxO" in text) and expect not in text
+            verdict = "accepted" if ok else "expected" if expect in text and not stale else "other reason"
             self.evidence.append({"era": era, "label": label, "mustReject": expect, "verdict": verdict,
                                   "error": "" if ok else text[:400]})
             key = "expectedRejected" if verdict == "expected" else "unexpected"
@@ -325,12 +328,14 @@ class EraLoad:
         raise RuntimeError(f"no asset set serialises to {target} bytes")
 
     def value_size_case(self, era, label, size, coin, expect=None):
-        """Mint and pay a value of exactly `size` serialised bytes to wallet 2."""
+        """Mint and pay a value of exactly `size` serialised bytes to wallet 2; the wallet with the most ada pays."""
         w = self.wallets
         script = eratx.sig_script(w[5].pay.hash)
         assets = self.sized_assets(eratx.script_hash(script), size, coin)
-        self.act(era, label, w[5], [(w[2].address, coin, assets, {})], mint=assets, native_scripts=[script],
-                 ttl=self.tip["slot"] + 2000, expect_reject=expect)
+        _, _, by_addr = self.snapshot()
+        payer = max(w, key=lambda x: max([u[1] for u in by_addr.get(x.address, []) if not u[2]] or [0]))
+        self.act(era, label, payer, [(w[2].address, coin, assets, {})], mint=assets, native_scripts=[script],
+                 extra_signers=[w[5].pay], ttl=self.tip["slot"] + 2000, expect_reject=expect)
 
     def shelley_features(self, era):
         w = self.wallets
@@ -464,17 +469,18 @@ class EraLoad:
         if self.once("mir-treasury"):
             self.mir(era, 1, w[1], 3_000_000)
         if self.once("min-utxo-mary"):
-            self.min_utxo_boundary(era)
+            self.min_utxo_boundary(era)  # ada-only outputs: exactly the parameter
         mv = self.min_utxo_value()
         if mv and self.once("min-assets"):
-            # scaledMinDeposit for one asset: exactly the minimum is accepted, one lovelace less is refused
+            # scaledMinDeposit for one asset is 1444443 with the 1 ada parameter, but the Allegra/Mary rule
+            # (`pointwise (<) v (inject min)`) never calls an output with assets too small: the reference
+            # accepts one lovelace less, and even one lovelace
             name = MIN_UTXO_ASSET_NAME
             need = mary_min_utxo(mv, {policy: {name: 1}})
-            self.act(era, "min-assets-ok", w[5], [(w[4].address, need, {policy: {name: 1}}, {})],
-                     mint={policy: {name: 1}}, native_scripts=[policy_script], ttl=slot + 2000)
-            self.act(era, "min-assets-low", w[5], [(w[4].address, need - 1, {policy: {name + b"2": 1}}, {})],
-                     mint={policy: {name + b"2": 1}}, native_scripts=[policy_script], ttl=slot + 2000,
-                     expect_reject="OutputTooSmallUTxO")
+            self.log({"scaledMinDeposit": need})
+            for tag, coin, asset in (("ok", need, name), ("below", need - 1, name + b"2"), ("one", 1, name + b"3")):
+                self.act(era, f"min-assets-{tag}", w[5], [(w[4].address, coin, {policy: {asset: 1}}, {})],
+                         mint={policy: {asset: 1}}, native_scripts=[policy_script], ttl=slot + 2000)
         if self.once("value-4000"):
             # Allegra and Mary: serialised values larger than 4000 bytes are refused
             self.value_size_case(era, "value-4000", 4000, 30_000_000)

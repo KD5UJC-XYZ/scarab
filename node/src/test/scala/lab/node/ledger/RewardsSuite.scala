@@ -170,6 +170,12 @@ class RewardsSuite extends ScalaCheckSuite:
       if registeredAtStart then atCutoff else atCutoff.copy(accounts = Map.empty)
     val started = Epoch.tick(between, start + 41, start, g)
     assertEquals(started.rewardRegistered.map(_.contains(account)), Some(registeredAtStart))
+    // the update carries the filtered rewards, the skipped ones went back to the reserves
+    assertEquals(started.rewardUpdate.map(_.rewards.contains(account)), Some(registeredAtStart))
+    assertEquals(
+      started.rewardUpdate.map(_.deltaReserves),
+      Some(BigInt(if registeredAtStart then -110 else -10))
+    )
     val later =
       if registeredAtApply then started.copy(accounts = Map(account -> acc))
       else started.copy(accounts = Map.empty)
