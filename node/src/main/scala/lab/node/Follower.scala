@@ -265,9 +265,12 @@ final class Follower[F[_]: Async, S] private (
       _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw)))
     yield ()
 
-  /** Adopt a block this node has just forged on top of its own tip. The block goes through the
-    * node's block rules like any other; if the tip has moved since it was built the block is
-    * `Lost`, and a block the rules refuse is `Invalid` (the chain is untouched in both cases).
+  /** Adopt a block this node has just forged. It goes through the node's block rules like any other
+    * block. If it extends our tip it is adopted. If the tip has moved on (a block of the same
+    * height arrived first: a slot battle) chain selection decides as it does for a peer's chain:
+    * the block replaces the tip only when it is strictly preferred (the VRF tie-break), otherwise
+    * it is `Lost`. A block the rules refuse is `Invalid`. The chain is untouched unless the block
+    * is `Adopted`.
     */
   def adoptForged(header: Header, raw: Bytes)(using
       handle: Handle[F, NodeError]
@@ -275,40 +278,65 @@ final class Follower[F[_]: Async, S] private (
     lock.lock.surround {
       for
         before <- chain.get
-        result <-
-          if before.tipRef.map(_.hash) != header.prevHash then
-            F.pure(
-              Follower.Adoption.Lost(
-                s"the tip moved to ${Points.show(before.tip)} while the block was being built"
-              )
-            )
+        l <- local
+        known = before.blocks.map(_._1) ++ before.anchor.block
+        // where the block would attach, and how many blocks of ours that replaces
+        plan: Either[String, (ChainSync.Point, Int)] =
+          if before.tipRef.map(_.hash) == header.prevHash then Right((before.tip, 0))
           else
-            handle.attempt(rules(before.state, header, raw)).flatMap {
-              case Left(e: ValidationError) => F.pure(Follower.Adoption.Invalid(e))
-              case Left(other)              => other.raise[F, Follower.Adoption]
-              case Right(next) =>
-                val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
-                for
-                  extended <- before
-                    .extend(header, next)
-                    .fold(_.raise[F, (VolatileChain[S], Vector[BlockRef])], _.pure[F])
-                  applied = Applied(
-                    ref,
-                    raw,
-                    extended._2,
-                    extended._1,
-                    before,
-                    next,
-                    SelectView.of(header),
-                    header.era
-                  )
-                  tip = ChainSync.Tip(
-                    header.point,
-                    ChainSync.UInt64.from(header.blockNo).toOption.get
-                  )
-                  _ <- commit(before, before.tip, 0, Vector(applied), tip)
-                yield Follower.Adoption.Adopted(ref)
-            }
+            header.prevHash.fold(Option(ChainSync.Point.Origin: ChainSync.Point))(h =>
+              known.find(_.hash == h).map(_.point)
+            ) match
+              case None =>
+                Left(
+                  s"the tip moved to ${Points.show(before.tip)} and the block's predecessor is not on our chain"
+                )
+              case Some(base) =>
+                ChainSelection.decide(
+                  tiebreaker(header.era),
+                  l,
+                  ChainSelection.Candidate(base, Vector(header))
+                ) match
+                  case ChainSelection.Decision.Switch(to, depth, _) => Right((to, depth))
+                  case _ =>
+                    Left(
+                      s"the tip moved to ${Points.show(before.tip)}, which chain selection prefers to the block"
+                    )
+        result <- plan match
+          case Left(reason) => F.pure(Follower.Adoption.Lost(reason))
+          case Right((at, depth)) =>
+            for
+              rolled <- before.rollback(at).fold(_.raise[F, VolatileChain[S]], _.pure[F])
+              outcome <- handle.attempt(rules(rolled.state, header, raw)).flatMap {
+                case Left(e: ValidationError) => F.pure(Follower.Adoption.Invalid(e).asLeft[S])
+                case Left(other)              => other.raise[F, Either[Follower.Adoption, S]]
+                case Right(next)              => F.pure(next.asRight[Follower.Adoption])
+              }
+              adopted <- outcome match
+                case Left(refused) => F.pure(refused)
+                case Right(next) =>
+                  val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+                  for
+                    extended <- rolled
+                      .extend(header, next)
+                      .fold(_.raise[F, (VolatileChain[S], Vector[BlockRef])], _.pure[F])
+                    applied = Applied(
+                      ref,
+                      raw,
+                      extended._2,
+                      extended._1,
+                      rolled,
+                      next,
+                      SelectView.of(header),
+                      header.era
+                    )
+                    tip = ChainSync.Tip(
+                      header.point,
+                      ChainSync.UInt64.from(header.blockNo).toOption.get
+                    )
+                    _ <- commit(before, at, depth, Vector(applied), tip)
+                  yield Follower.Adoption.Adopted(ref)
+            yield adopted
       yield result
     }
 

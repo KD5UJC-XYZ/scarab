@@ -15,6 +15,7 @@ so it can be compared byte for byte against a reference `cardano-node`.
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
 | Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain (ChainSync, BlockFetch), collects and offers transactions (TxSubmission2) and accepts local submissions; see "Relay" below |
+| Forging | `forge/`, `Follower.adoptForged`, `core/.../vrf/Draft03Prover`, `core/.../kes/Sum6KesSigning` | Praos block production: VRF proving, KES signing and evolution, block assembly from the mempool; see "Block production" below |
 | Consensus | `consensus/Praos.scala`, `consensus/TPraos.scala`, `consensus/OCertRules.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block). TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation, and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
@@ -406,6 +407,90 @@ through the Scala node to the relay. One transaction is also submitted with `car
 to the Scala node's Unix socket. The run reports tips and lag every 5 s, the epochs seen, the final
 tip of every node, and how many transactions reached the Scala mempool and were included.
 
+## Block production (`follow --forge`)
+
+```sh
+follow ... --listen 127.0.0.1:3001 --forge --vrf-skey vrf.skey --kes-skey kes.skey --opcert opcert.cert
+```
+
+The node produces Praos (Conway) blocks for one pool. The files are the ones `cardano-cli` writes: the text
+envelopes `VrfSigningKey_PraosVRF` (64 bytes, seed then public key), `KesSigningKey_ed25519_kes_2^6` (the
+608-byte period-0 key) and `NodeOperationalCertificate` (`[[hotVkey, counter, kesPeriod, sigma], coldVkey]`,
+which also gives the cold key, so the cold signing key is never needed). On start the three are
+cross-checked: the certificate must name this KES key and be signed by its cold key.
+
+**Cryptography** (`core`, pure, with vectors):
+
+- `Draft03Prover` is ECVRF-ED25519-SHA512-Elligator2 draft-03 proving as libsodium does it. It reproduces the
+  IETF draft-03 vectors 16 and 17 (public key, 80-byte proof and 64-byte output), and a property test checks
+  that every proof verifies with `StrictDraft03` and certifies the same output. Secret scalars only meet the
+  constant-time arithmetic of `curve25519-elisabeth`; the hash-to-curve step takes public inputs only.
+- `Sum6KesSigning` is the cardano-base `SumKES` layout: a level-`d` key is `subKey || r1 || vk0 || vk1`, the
+  signature the leaf signature followed by the `vk0 || vk1` of each level (448 bytes), the verification key
+  `Blake2b-256(vk0 || vk1)`. `generate(seed)` expands seeds with `Blake2b-256(0x01 || seed)` and
+  `Blake2b-256(0x02 || seed)`; `fixtures/kes-gen` has the seeds `cardano-cli node key-gen-KES` stored in its keys
+  together with the verification key it computed, and regenerating the depth-5 tree from the seed gives exactly
+  that verification key. `evolve` moves one period and zeroes what cannot be used again (the seed of the right
+  half when it is generated, the whole left half when the right one takes over); `fromBytes` recomputes every
+  level's stored verification keys and refuses a damaged key. A key from a file is at period 0 and is evolved to
+  the slot's period (`slot / slotsPerKESPeriod - certificate start`) before it signs.
+
+**Forging** (`node/forge`). `Forger` runs one attempt per slot from the wall clock over the era history
+(`EpochGeometry`); a passed slot is never forged late. For the slot it takes the tip's state to the slot's
+epoch exactly as block validation does (cached per tip and epoch), reads the pool's stake and registered VRF
+key from that epoch's pool distribution, proves `Blake2b-256(slot || epochNonce)` and compares the output with
+the Praos threshold (`Leadership`, the same check as for received headers). When elected it:
+
+1. selects transactions from the mempool and re-applies them one after another to the ledger ticked to the
+   slot, in the block's own environment (`BlockBuilder.select`): `maxBlockBodySize`, `maxBlockExUnits` (the
+   sum of the redeemers' execution units) and the per-block reference script limit are enforced, and a
+   transaction that no longer applies is skipped;
+2. encodes the body from the transactions' original bytes (bodies, witness sets, auxiliary data by index,
+   invalid indices), hashes it as the header commits, and builds the ten-element Praos header body (block
+   number, slot, previous hash, cold key, VRF key, VRF result, body size and hash, operational certificate,
+   the ledger's protocol version);
+3. evolves the KES key to the slot's period and signs the exact header body bytes;
+4. offers the block to `Follower.adoptForged`, which runs it through the node's own `NodeRules`, then commits it
+   through the same path as any block (persistence, the chain server, mempool synchronisation). A block built on
+   a tip that has moved is `Lost`; one our rules refuse is `Invalid`, and the forger then retries without
+   transactions.
+
+The forger does nothing until a peer session has intersected, and not from a tip older than the stability
+window (a node that is still syncing cannot know the slot's ledger view). Only Praos with Conway transactions
+is forged; a TPraos era or the bootstrap mode is `ForgeError.UnsupportedProtocol`.
+
+Errors are a closed ADT, `ForgeError`: `KeyFile`, `KeyMismatch`, `KeyPeriodOutOfRange`, `KesFailure`,
+`VrfFailure`, `NotLeader` (the ordinary answer), `LedgerViewUnavailable`, `UnsupportedProtocol`, `Assembly`,
+`SelfRejected`. Log events: `forgeStarted`, `forged` (slot, block number, hash, transaction ids, KES periods,
+stake), `adopted`, `lost` (the block did not join our chain, or was replaced at its height later),
+`kesEvolved`, `forgeSkipped`, `forgeFailed`.
+
+Tests: `ForgeSuite` forges with real keys against the real `NodeRules` over a synthetic Conway ledger (blocks are
+accepted, consecutive, counted for the pool, transactions leave the mempool, the KES key crosses period
+boundaries, an unregistered VRF key or a certificate outside its window never forges, lost and invalid
+adoption, body size accounting and a decode round trip), `KeyFilesSuite` loads a real `cardano-cli`
+certificate, `Draft03ProverSuite` and `Sum6KesSigningSuite` hold the vectors.
+
+### The pool scenario (`devnet.py pool`)
+
+```sh
+bash scripts/sbtw node/compile node/runtimeClasspathFile
+python3 scripts/devnet.py pool --seconds 480
+```
+
+Creates the 3-pool sandbox with `slotsPerKESPeriod = 250` (the default, 129600, would never change period in
+a run) and starts the Haskell nodes of pools 2 and 3 only: **the Haskell node of pool 1 is never started**, so
+nothing but the Scala node ever holds pool 1's keys. The topologies of pools 2 and 3 name each other and the
+Scala node, which follows both, listens on loopback and forges with pool 1's VRF key, KES key and certificate
+(copied out of the sandbox into the run directory, mode 0400, and mounted read-only). The load generator submits
+through pool 2's socket, so transactions travel Haskell mempool, TxSubmission2, Scala mempool, Scala block.
+The run asserts: blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the
+pool (`blocksBefore`/`blocksCurrent` of `query ledger-state`, per epoch) equals the number of Scala-forged blocks
+on the chain up to the last compared tip and is within four standard deviations of the expected share
+(slots times `1 - (1 - f)^stake`); transactions of the load in Scala-forged blocks; at least one KES period
+boundary crossed; no rollback deeper than `k` and the Haskell pools agreeing on the tip; the ledger comparison
+matching at every point; no error event. It writes `pool-summary.json`.
+
 ## Running a local soak (Docker only)
 
 Prerequisite: the `cardano-reference-11.1.3:local` image (see [reference image](reference-image.md)).
@@ -492,10 +577,10 @@ Scalus's script contexts. A full Preview sync into Conway (several million block
 ## Not yet implemented
 
 - **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
-- **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions) and the
-  block-level execution-unit limit.
+- **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions). The block-level
+  execution-unit limit is enforced when forging but not yet when validating a received block.
 - **On-disk ledger:** the whole UTxO and ledger state live in memory; only snapshots are on disk. The volatile blocks are not persisted.
 - **Peers:** no peer selection (the configured peers are all used), no header validation ahead of the block fetch, one block fetched at a time; inbound duplex connections are accepted but not used for our own clients.
 - **Rewards:** non-myopic pool ranking.
-- **Production:** block production (VRF proving, KES signing and evolution, operational certificate handling and block assembly from the mempool); the mempool has no block-level execution-unit limit and no epoch-boundary ticking.
+- **Production:** forging is Praos/Conway only (no TPraos eras), the pool must be registered with stake in the ledger (no Preview pool is run), there is no KES agent (the KES key is loaded from a file at start and evolved in memory; a restart loads period 0 again and evolves forward, no key is rewritten) and no operational certificate issuing; the mempool has no epoch-boundary ticking (the forger re-validates in the block's own slot and epoch).
 - **Node-to-client:** only LocalTxSubmission (no LocalStateQuery, LocalChainSync or LocalTxMonitor); rejections are not in the ledger's encoding.

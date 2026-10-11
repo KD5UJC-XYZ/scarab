@@ -7,9 +7,10 @@ import java.util.Arrays
 import lab.cbor.Bytes
 import scala.util.control.NonFatal
 
-/** ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, as libsodium's `crypto_vrf_ietfdraft03_prove`
-  * and the Cardano `PraosVRF` signing key: a 64-byte key `seed || publicKey`. Proofs are
-  * deterministic, so they are checked against known vectors and by [[StrictDraft03.verify]].
+/** ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, as libsodium's
+  * `crypto_vrf_ietfdraft03_prove` and the Cardano `PraosVRF` signing key: a 64-byte key
+  * `seed || publicKey`. Proofs are deterministic, so they are checked against known vectors and by
+  * [[StrictDraft03.verify]].
   *
   * Secret scalars only meet the constant-time curve arithmetic of `curve25519-elisabeth` (base
   * point and arbitrary point multiplication, scalar multiply-and-add). The hash-to-curve step takes

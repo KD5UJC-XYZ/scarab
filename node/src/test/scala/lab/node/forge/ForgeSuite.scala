@@ -103,7 +103,8 @@ class ForgeSuite extends CatsEffectSuite:
       val forger: Forger[IO],
       val ref: Ref[IO, VolatileChain[NodeState]],
       val mempool: Mempool[IO],
-      val events: Ref[IO, Vector[ForgeEvent]]
+      val events: Ref[IO, Vector[ForgeEvent]],
+      val raws: Ref[IO, Map[Bytes, Bytes]]
   ):
     def chain: IO[VolatileChain[NodeState]] = ref.get
     def seen: IO[Vector[ForgeEvent]] = events.get
@@ -127,10 +128,19 @@ class ForgeSuite extends CatsEffectSuite:
         1000000,
         MempoolEvents.none[IO]
       )
+      raws <- Ref.of[IO, Map[Bytes, Bytes]](Map.empty)
       follower <- Follower.create[IO, NodeState](
         rules,
         _ => IO.unit,
         geometry,
+        persistence = Some(new lab.node.storage.ChainPersistence[IO, NodeState]:
+          def extended(
+              ref: BlockRef,
+              raw: Bytes,
+              immutable: Vector[BlockRef],
+              anchor: lab.node.Anchor[NodeState]
+          ) = raws.update(_.updated(ref.hash, raw))
+          def rolledBack(to: lab.network.ChainSync.Point) = IO.unit),
         onTip = Some((c, added) => mempool.sync(c.state.ledger, c.tipRef.get.slot, Set.empty).void)
       )
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
@@ -146,7 +156,7 @@ class ForgeSuite extends CatsEffectSuite:
         now = Some(IO.pure(Instant.EPOCH)),
         sleep = Some(_ => IO.unit)
       )
-    yield new Harness(follower, forger, ref, mempool, seen)
+    yield new Harness(follower, forger, ref, mempool, seen, raws)
 
   private def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
@@ -308,6 +318,55 @@ class ForgeSuite extends CatsEffectSuite:
       (10, 0)
     )
     BlockBuilder.block(headerBody, Bytes.fromArray(new Array[Byte](448)), body)
+
+  test(
+    "a slot battle is decided by chain selection: of two blocks at one height exactly one wins"
+  ) {
+    val p = pool(kesStart = 50, seed = 10)
+    val ledger = ledgerWith(p, 1)
+    val elected = (5000 until 5200).filter(s =>
+      Leadership
+        .check(s, epochNonce, p.creds.vrf, 1000000, 1000000, config.activeSlotsCoeff)
+        .isRight
+    )
+    val pair = elected.zip(elected.tail).find((a, b) => b - a <= 5).get
+    withHandle {
+      for
+        a <- harness(p, ledger)
+        b <- harness(
+          pool(kesStart = 50, seed = 10).copy(creds = p.creds, cold = p.cold, stake = p.stake),
+          ledger
+        )
+        _ <- a.forger.step(pair._1)
+        _ <- b.forger.step(pair._2)
+        blockA <- a.chain.map(_.tipRef.get)
+        blockB <- b.chain.map(_.tipRef.get)
+        rawA <- a.raws.get.map(_(blockA.hash))
+        rawB <- b.raws.get.map(_(blockB.hash))
+        headerA = Block.decode(rawA).toOption.get.header
+        headerB = Block.decode(rawB).toOption.get.header
+        toA <- a.follower.adoptForged(headerB, rawB)
+        toB <- b.follower.adoptForged(headerA, rawA)
+        tipA <- a.chain.map(_.tipRef.map(_.hash))
+        tipB <- b.chain.map(_.tipRef.map(_.hash))
+      yield
+        val bWins = lab.node.consensus.ChainSelection.prefers(
+          lab.node.consensus.ChainSelection.Tiebreaker.Restricted(5),
+          lab.node.consensus.SelectView.of(headerA),
+          lab.node.consensus.SelectView.of(headerB)
+        )
+        // exactly one of the two blocks is preferred, and each node ends on that one
+        if bWins then
+          assert(toA.isInstanceOf[Follower.Adoption.Adopted], toA.toString)
+          assert(toB.isInstanceOf[Follower.Adoption.Lost], toB.toString)
+        else
+          assert(toA.isInstanceOf[Follower.Adoption.Lost], toA.toString)
+          assert(toB.isInstanceOf[Follower.Adoption.Adopted], toB.toString)
+        val winner = if bWins then blockB.hash else blockA.hash
+        assertEquals(tipA, Some(winner))
+        assertEquals(tipB, Some(winner))
+    }
+  }
 
   test("a block our rules refuse is Invalid and leaves the chain alone") {
     val p = pool(kesStart = 50, seed = 9)

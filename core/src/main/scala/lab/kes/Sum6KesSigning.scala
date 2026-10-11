@@ -7,8 +7,8 @@ import lab.cbor.Bytes
 import org.bouncycastle.crypto.params.{Ed25519PrivateKeyParameters, Ed25519PublicKeyParameters}
 import org.bouncycastle.crypto.signers.Ed25519Signer
 
-/** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`, Blake2b-256):
-  * the `kes.skey` payload of `cardano-cli node key-gen-KES`.
+/** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`,
+  * Blake2b-256): the `kes.skey` payload of `cardano-cli node key-gen-KES`.
   *
   * A key of depth `d` is `subKey(d-1) || r1 (32) || vk0 (32) || vk1 (32)`; depth 0 is the 32-byte
   * Ed25519 seed. `subKey` is the key of the half that contains the current period (the left half
@@ -53,7 +53,8 @@ object Sum6KesSigning:
     def sign(message: Bytes): Bytes =
       Bytes.fromArray(signAt(material, 0, Depth, current, message.toArray))
 
-    /** Advance to `target` (not before the current period), erasing what cannot be used any more. */
+    /** Advance to `target` (not before the current period), erasing what cannot be used any more.
+      */
     def evolveTo(target: Int): Either[Failure, Unit] =
       if target < current || target >= Periods then Left(Failure.PeriodOutOfRange(target))
       else
@@ -89,9 +90,8 @@ object Sum6KesSigning:
     Arrays.fill(m, 0.toByte)
     Bytes.fromArray(vk)
 
-  /** Load a `kes.skey` payload that is at period `period` (0 for a fresh key). Every level's
-    * stored verification keys are recomputed and checked, so a corrupt or mis-sized key is
-    * refused.
+  /** Load a `kes.skey` payload that is at period `period` (0 for a fresh key). Every level's stored
+    * verification keys are recomputed and checked, so a corrupt or mis-sized key is refused.
     */
   def fromBytes(bytes: Bytes, period: Int = 0): Either[Failure, SigningKey] =
     if bytes == null || bytes.size != KeyBytes then
@@ -202,11 +202,16 @@ object Sum6KesSigning:
       val seedAt = r1At(offset, depth)
       val seedZero = (0 until 32).forall(i => m(seedAt + i) == 0)
       if inRight != seedZero then
-        Left(s"level $depth: the right-half seed is ${if seedZero then "erased" else "present"} at period $period")
+        Left(s"level $depth: the right-half seed is ${
+            if seedZero then "erased" else "present"
+          } at period $period")
       else if !Arrays.equals(vkOf(m, offset, depth - 1), stored) then
         Left(s"level $depth: the stored key does not match its verification key")
       else if !inRight && !Arrays.equals(
-          rootOfSeed(Bytes.fromArray(Arrays.copyOfRange(m, seedAt, seedAt + 32)), depth - 1).toArray,
+          rootOfSeed(
+            Bytes.fromArray(Arrays.copyOfRange(m, seedAt, seedAt + 32)),
+            depth - 1
+          ).toArray,
           Arrays.copyOfRange(m, vk1At(offset, depth), vk1At(offset, depth) + 32)
         )
       then Left(s"level $depth: the right-half seed does not generate the stored verification key")

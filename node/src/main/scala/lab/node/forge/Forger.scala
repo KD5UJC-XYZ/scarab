@@ -157,16 +157,18 @@ final class Forger[F[_]: Async](
           ForgeError.NotLeader(slot)
         )
       )
-      cert <- lift(
-        Leadership.check(
-          slot,
-          crossed.praos.epochNonce,
-          credentials.vrf,
-          stake,
-          pools.total,
-          config.activeSlotsCoeff
+      cert <- F
+        .blocking(
+          Leadership.check(
+            slot,
+            crossed.praos.epochNonce,
+            credentials.vrf,
+            stake,
+            pools.total,
+            config.activeSlotsCoeff
+          )
         )
-      )
+        .flatMap(lift)
       ticked = Epoch.tick(crossed.ledger, slot, geometry.firstSlot(epoch), globals)
       _ <- lift(
         Either.cond(
@@ -249,7 +251,7 @@ final class Forger[F[_]: Async](
       case Right(headerBody) =>
         for
           before <- F.delay(credentials.kes.period)
-          signed <- F.delay(
+          signed <- F.blocking(
             credentials.kes
               .evolveTo(relative.toInt)
               .leftMap(e => ForgeError.KesFailure(e.toString))

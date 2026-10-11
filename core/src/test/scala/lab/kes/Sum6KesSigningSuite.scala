@@ -16,7 +16,8 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     Sum6Kes.verify(vk, period, msg, sig) == Right(Sum6Kes.Result.SuppliedMessageSignatureVerified)
 
   test("cardano-cli key-gen-KES vectors: regenerating the right depth-5 tree from r1 gives vk1") {
-    val rows = Files.readString(Path.of("fixtures", "kes-gen", "vectors.tsv")).linesIterator.toVector
+    val rows =
+      Files.readString(Path.of("fixtures", "kes-gen", "vectors.tsv")).linesIterator.toVector
     assert(rows.nonEmpty)
     rows.foreach { row =>
       val Array(name, r1, vk1, vk0, vk) = row.split("\t")
