@@ -28,7 +28,7 @@ source, not authoritative statements. Roadmap IDs (B1, ...) point into [roadmap.
 | The fee size counts the array header, body, witnesses and auxiliary data, not the `is_valid` byte. | Preview Babbage mint with metadata | `fixtures/preview/babbage-mint.hex` |
 | **Conway reference-script fee** prices the bytes of the distinct inputs' and reference inputs' scripts at `minFeeRefScriptCostPerByte`, times 1.2 for every further 25 KiB; 200 KiB per transaction, 1 MiB per block (counted against the block's starting UTxO up to protocol 10). | implemented from the ledger source, checked on Preview Conway blocks | `ConwayRulesSuite` |
 | The node stops if total supply differs from the maximum supply at an epoch boundary (a runtime invariant, `Epoch`). | all runs | runtime check |
-| `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state` before Conway, so the comparator speaks LocalStateQuery itself. | devnet e2e (commit 85721cb) | `scripts/ntcquery.py` |
+| `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state` before Conway, so the comparator speaks LocalStateQuery itself. | devnet e2e (commit 85721cb) | `scripts/devnet/ntcquery.py` |
 
 ## Plutus
 

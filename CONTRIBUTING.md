@@ -66,14 +66,18 @@ with a pattern that matches your own shell command line.
 |---|---|
 | Any | `scripts/sbtw check` (CI runs it on every pull request) |
 | Docs only | check that relative links resolve; no gate beyond review |
+| Scripts (`scripts/devnet/**`) | `python3 -m unittest discover -s scripts/tests` (CI runs it), plus the scenario the change touches |
 | Ledger or consensus (rules, rewards, governance, Plutus, nonces, headers) | `check`, plus `python3 scripts/devnet.py soak --seconds 480` and `e2e`; a Preview regression run through the affected region (use `fixtures/preview` or a `--db` follower) when the change was motivated by Preview data |
 | Network (mini-protocols, mux, peer, chain selection) | `check`, plus `soak` and `relay` |
 | Storage (stores, snapshots, UTxO set) | `check` with the storage suites, plus a restart check (`follow --db`, stop, restart) and `soak` |
 | Forging or mempool | `check`, plus `pool` and `relay` |
 
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
-and are described in [docs/running.md](docs/running.md). They are not in CI yet (roadmap A3), so
-the contributor runs them.
+and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`
+fetches and verifies the official release itself. On GitHub, `.github/workflows/ci.yml` runs
+`check`, the script tests and actionlint on every pull request; `.github/workflows/e2e.yml` runs
+soak, e2e, relay and pool nightly, on demand and on version tags. Every scenario exits non-zero on
+any mismatch or error, so run the ones your change touches before opening a pull request.
 
 ## How evidence is recorded
 

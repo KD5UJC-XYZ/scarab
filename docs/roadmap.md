@@ -15,9 +15,10 @@ How each area stands today is in [compatibility.md](compatibility.md).
 
 - **A1** (P0, done in v0.1.0) Compatibility matrix: [compatibility.md](compatibility.md).
 - **A2** (P0, done in v0.1.0) Docs restructure: README, architecture, running, compatibility, performance, findings, roadmap, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CHANGELOG, issue and PR templates.
-- **A3** (P0) CI: per-PR `check` exists; a nightly scenario job (soak, e2e, relay, pool) with the reference image downloaded by URL and sha256, dependency caching, all scripts compiled, secret scan, dependency review.
-- **A4** (P1) Split `scripts/devnet.py` into a package and add Python unit tests for the pure helpers (CBOR, bech32, projections).
-- **A5** (P0) Legal and provenance review: dependency licences (listed in `NOTICE`), fixture provenance, a secret scan over the full history before pushing it, trademark wording.
+- **A3** (P0, done in v0.1.0) CI: `ci.yml` (check with dependency caching, script tests, actionlint) on every pull request; `e2e.yml` (soak, e2e, relay, pool, reference image downloaded by URL and sha256) nightly, on demand and on tags. Still open: a secret scan and dependency review in CI (A8), and a first green `e2e.yml` run on GitHub.
+- **A8** (P1) Secret scanning (gitleaks) and dependency review in CI. A manual gitleaks 8.24.3 scan of the full history before v0.1.0 found 182 generic-api-key hits, all false positives (key hashes, verification keys, SHA-256 file digests); CI needs an allowlist for those fixture paths.
+- **A4** (P1, done in v0.1.0) Split `scripts/devnet.py` into a package and add Python unit tests for the pure helpers (CBOR, bech32, projections).
+- **A5** (P0, secret scan done for v0.1.0) Legal and provenance review: dependency licences (listed in `NOTICE`), fixture provenance, a secret scan over the full history before pushing it, trademark wording.
 - **A6** (P0) GitHub repository description and topics (the old description says "not a complete validating node or block producer").
 - **A7** (P0) Release: tag `v0.1.0` as a research preview once the uninterrupted Preview genesis-to-tip sync on the tagged build is recorded (see the placeholder in the README and [performance.md](performance.md)).
 
@@ -86,7 +87,7 @@ How each area stands today is in [compatibility.md](compatibility.md).
 - **I1** Conformance: run the upstream Plutus conformance suite against our `ScriptEvaluator`.
 - **I2** Own evaluator. Decide on our own CEK machine versus staying on Scalus, then differential-test it against Scalus and the conformance suite.
 
-- **I3** Drive Plutus V1 and V2 scripts in the devnet load (`scripts/eraload.py` TODO) so the Haskell comparator covers them; today they are verified by the Preview sync and unit/oracle tests only.
+- **I3** Drive Plutus V1 and V2 scripts in the devnet load (`scripts/devnet/eraload.py` TODO) so the Haskell comparator covers them; today they are verified by the Preview sync and unit/oracle tests only.
 
 ## J. Operational parity (P2)
 

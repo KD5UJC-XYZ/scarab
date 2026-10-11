@@ -162,12 +162,12 @@ files are rewritten at cluster start, so a cluster is not reproducible from the 
 the committed `fixtures/eras` capture is the Docker-free replay of one `up-eras` run.
 
 Comparison method: `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state`
-before Conway, so `scripts/ntcquery.py` speaks LocalStateQuery to the reference node directly and
-`scripts/eraview.py` projects `DebugNewEpochState`, the whole UTxO and `DebugChainDepState` onto the
+before Conway, so `scripts/devnet/ntcquery.py` speaks LocalStateQuery to the reference node directly and
+`scripts/devnet/eraview.py` projects `DebugNewEpochState`, the whole UTxO and `DebugChainDepState` onto the
 node's `/state` shape. Byron is not compared (the CLI cannot query a Byron ledger and the node keeps
 no Byron UTxO).
 
-Era load (`scripts/eraload.py`, transactions built and signed by `scripts/eratx.py` because
+Era load (`scripts/devnet/eraload.py`, transactions built and signed by `scripts/devnet/eratx.py` because
 cardano-cli 11 builds Conway transactions only): Shelley transfers, stake registration and delegation,
 a new pool, pool re-registration, MIR from the reserves, a genesis delegation certificate,
 withdrawals; Allegra validity intervals, auxiliary data, a timelock script, pool retirement; Mary
