@@ -44,7 +44,6 @@ final case class Utxo(
     case Some(change) => change.out
     case None         => resident.get(in)
 
-  def apply(in: TxIn): TxOut = get(in).getOrElse(throw new NoSuchElementException(in.render))
   def contains(in: TxIn): Boolean = get(in).isDefined
   def size: Int = count.toInt
   def isEmpty: Boolean = count == 0

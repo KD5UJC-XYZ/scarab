@@ -33,8 +33,9 @@ import scala.concurrent.duration.*
 
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge
-  * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
+  * [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file>
+  * --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -120,8 +121,6 @@ object Main extends IOApp:
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
     utxoBacking(options).use((store, backing) => followWith(options, store, backing))
 
-  private val blocks = new java.util.concurrent.atomic.AtomicLong
-
   private def followWith(
       options: Options,
       store: UtxoStore[IO],
@@ -133,6 +132,7 @@ object Main extends IOApp:
         .blocking(NodeSetup.fromDirectory(options.genesisDir))
         .flatMap(_.fold(fail, IO.pure))
       genesis = setup.genesis
+      blocks <- Ref.of[IO, Long](0L)
       connected <- Ref.of[IO, Boolean](false)
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
@@ -151,13 +151,14 @@ object Main extends IOApp:
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
         afterBlock = Some { s =>
-          IO.delay {
-            Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)
-            if blocks.incrementAndGet() % 20000 == 0 then
-              System.err.println(
-                s"verification verdicts found ahead (hits/lookups): ${Verification.summary}"
-              )
-          }
+          IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
+            blocks.updateAndGet(_ + 1).flatMap { n =>
+              IO.blocking(
+                System.err.println(
+                  s"verification verdicts found ahead (hits/lookups): ${Verification.summary}"
+                )
+              ).whenA(n % 20000 == 0)
+            }
         }
       )
       k = genesis.geometry.securityParam

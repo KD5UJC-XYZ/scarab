@@ -23,6 +23,12 @@ import lab.witness.{StrictEd25519, VerificationResult}
   * [[witness]] and [[opCert]], which return the remembered one (once) or compute it. The verdict is
   * exactly the one the plain function gives, so the rules stay pure functions of their inputs; this
   * is memoisation, and a verdict that was never warmed is simply computed in place.
+  *
+  * The state below is deliberately process-global and outside `Ref`: the verdict caches are written
+  * from the parallel warming threads and read, synchronously, from the pure rules, which have no
+  * effect type to thread a `Ref` through. Every structure is a concurrent map or atomic, bounded
+  * (cleared at [[Limit]]), and holds only verdicts that are functions of their key, so sharing it
+  * between tests or nodes in one JVM changes timing, never results.
   */
 object Verification:
   private final case class WitnessKey(vkey: Bytes, signature: Bytes, message: Bytes)

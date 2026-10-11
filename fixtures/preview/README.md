@@ -1,7 +1,7 @@
 # Preview testnet block fixtures
 
 Raw node-to-node BlockFetch blocks (`[era_tag, block]`), one hex-encoded block per line, captured
-with `lab.node.CaptureMain` from the public relay `preview-node.play.dev.cardano.org:3001`
+with `lab.node.tools.CaptureMain` from the public relay `preview-node.play.dev.cardano.org:3001`
 (network magic 2) on 2026-10-10. Every captured block was at least 10 blocks deep.
 
 | File | Contents |
@@ -20,7 +20,7 @@ that has auxiliary data (CIP-25 metadata); it pins the transaction size used for
 ## Conway governance and Plutus V3
 
 `conway-governance.hex`: 23 Conway blocks (protocol version 10 and 11, epochs 1047 to 1447) captured
-with `lab.node.CaptureMain --from <slot>.<hash>` from the relay on 2026-10-11. The points were found
+with `lab.node.tools.CaptureMain --from <slot>.<hash>` from the relay on 2026-10-11. The points were found
 with the Koios API (`proposal_list`, `vote_list`, `drep_updates`, `tx_info`, `block_info`): a block
 window around each of two proposals of every action type (parameter change, treasury withdrawal,
 hard fork, new constitution, no confidence, committee update, info), the DRep, pool and committee

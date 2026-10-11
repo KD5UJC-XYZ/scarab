@@ -352,7 +352,7 @@ class ConwayRulesSuite extends FunSuite:
     )
     def run(s: LedgerState, cert: Certificate, signer: Key) =
       val spend = s.utxo.keys.head
-      val coin = s.utxo(spend).value.coin
+      val coin = s.utxo.get(spend).map(_.value.coin).getOrElse(fail("spent input not in the UTxO"))
       val b = body(
         "cc",
         Vector(spend),

@@ -245,6 +245,9 @@ object Peer:
                   case Some(event) => F.pure(event)
                   case None =>
                     queue.take.flatMap {
+                      // The producer fibers run in the background; the failure they caught
+                      // (a typed PeerError carried by the Raise interpreter, or a defect) is
+                      // handed over unchanged to whoever calls `next`, so re-raise it as is.
                       case Left(error)  => F.raiseError[SyncEvent](error)
                       case Right(batch) => permits.release *> current.set(batch) *> next
                     }

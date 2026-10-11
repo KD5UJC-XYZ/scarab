@@ -50,7 +50,7 @@ final case class ServedChain(
 
   def tipRef: Option[BlockRef] = blocks.lastOption.map(_.ref).orElse(anchor)
 
-  def tip: Tip = tipRef.fold(Tip.Origin)(r => Tip(r.point, UInt64.from(r.blockNo).toOption.get))
+  def tip: Tip = tipRef.fold(Tip.Origin)(r => Tip(r.point, UInt64.saturating(r.blockNo)))
 
   private def position(point: Point): Option[Int] = point match
     case Point.Origin => None

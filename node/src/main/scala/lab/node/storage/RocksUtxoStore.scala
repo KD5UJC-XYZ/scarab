@@ -40,6 +40,9 @@ import scala.jdk.CollectionConverters.*
 final class RocksUtxoStore[F[_]: Sync] private (
     dir: java.nio.file.Path,
     cache: LRUCache,
+    // The handle is swapped when the database is reopened (see `open`); the holder is private to
+    // this store and its lifetime is the enclosing Resource. A Ref would only add a suspension
+    // around every JNI call on the hot read path.
     db: AtomicReference[RocksDB]
 )(using Raise[F, StorageError])
     extends UtxoStore[F]:
@@ -64,12 +67,14 @@ final class RocksUtxoStore[F[_]: Sync] private (
           .zip(values.iterator)
           .collect { case ((in, _), v) if v != null => in -> v }
           .map { case (in, bytes) =>
-            Coding.decodeValue(bytes) match
-              case Right(out) => in -> out
-              case Left(e) =>
-                throw new IllegalStateException(s"corrupt UTxO entry ${in.render}: $e")
+            Coding.decodeValue(bytes).bimap(e => s"${in.render}: $e", out => in -> out)
           }
-          .toMap
+          .toVector
+          .sequence
+          .map(_.toMap)
+      }.flatMap {
+        case Right(found) => F.pure(found)
+        case Left(reason) => StorageError.Corrupt("utxo entry", reason).raise[F, Map[TxIn, TxOut]]
       }
 
   def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long): F[Unit] =

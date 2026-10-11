@@ -11,7 +11,7 @@ see [findings.md](findings.md).
 | `core/` | `core` | CBOR (`lab.cbor`), Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, operational certificates | Pure functions, no effects |
 | `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, era and header tags (`Era`, `NtNHeader`) | Pure |
 | `network-runtime/` | `networkRuntime` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
-| `node/` | `node` | Peer, volatile chain, follower, Praos and TPraos consensus, ledger rules for Shelley to Conway, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `CaptureMain` |
+| `node/` | `node` | Peer, volatile chain, follower, Praos and TPraos consensus, ledger rules for Shelley to Conway, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
 
 Dependencies: `core` <- `network` <- `networkRuntime` <- `node`. Note that `network/Mux.scala` (the
 pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are different files.
@@ -76,8 +76,7 @@ Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled 
 | `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
 | `ConfigError` | bad genesis or configuration | fatal at start |
 
-Two documented exceptions: `CaptureMain` (a development tool) throws, and a few
-programmer-error guards throw (`Utxo.apply`, `Bytes`, `Sum6Kes` hash contract). See the audit items
+A few programmer-error guards still throw (`Bytes`, the `Sum6Kes` hash contract, `Constants.checked` at class init). See the audit items
 in the [roadmap](roadmap.md) (M2).
 
 ## Data flow

@@ -117,10 +117,10 @@ loopback and is a development interface, not a stable API.
 
 ## `capture`: recording blocks
 
-`lab.node.CaptureMain` records raw blocks (one hex-encoded block per line) for offline replay tests:
+`lab.node.tools.CaptureMain` records raw blocks (one hex-encoded block per line) for offline replay tests:
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.CaptureMain capture \
+java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.tools.CaptureMain capture \
   --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]
 ```
 

@@ -1,6 +1,6 @@
 # Mainnet Byron fixtures
 
-Captured with `lab.node.CaptureMain` from `backbone.cardano.iog.io:3001` (magic 764824073) on
+Captured with `lab.node.tools.CaptureMain` from `backbone.cardano.iog.io:3001` (magic 764824073) on
 2026-10-10.
 
 | File | Contents |
