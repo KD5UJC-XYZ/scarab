@@ -56,18 +56,22 @@ def query(name, kind, node=1):
     return json.loads(out)
 
 
-def up(args):
-    root = data_root(args.name)
-    if root.exists():
-        raise SystemExit(f"{root} exists; run `devnet.py down` first")
-    (root / "genesis").mkdir(parents=True)
-    docker("run", "-d", "--name", ref(args.name), "--pull=never",
+def start_reference(name):
+    docker("run", "-d", "--name", ref(name), "--pull=never",
            "--cpus=3", "--memory=6g", "--user", "1000:1000",
            "--tmpfs", "/work:rw,exec,size=2g,uid=1000,gid=1000",
            "-e", "PATH=/opt/reference/bin:/usr/local/bin:/usr/bin:/bin",
            "-e", "CARDANO_CLI=/opt/reference/bin/cardano-cli",
            "-e", "CARDANO_NODE=/opt/reference/bin/cardano-node",
            "--entrypoint", "/bin/sh", REFERENCE_IMAGE, "-c", "sleep infinity")
+
+
+def up(args):
+    root = data_root(args.name)
+    if root.exists():
+        raise SystemExit(f"{root} exists; run `devnet.py down` first")
+    (root / "genesis").mkdir(parents=True)
+    start_reference(args.name)
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--output {ENV} > /work/create-env.log 2>&1")
     ports = {n: int(in_ref(args.name, f"cat {ENV}/node-data/node{n}/port").stdout) for n in (1, 2, 3)}
@@ -92,6 +96,272 @@ def up(args):
             pass
         time.sleep(2)
     raise SystemExit("reference cluster produced no block within 120 s; see /work/cluster.log")
+
+
+# ---------------------------------------------------------------- era-walking cluster
+
+# One epoch per step after the Byron epochs: (era, protocol major version at the start of the epoch).
+# Alonzo and Babbage get a second epoch because each spans two protocol versions on mainnet.
+ERA_PLAN = [("shelley", 2), ("allegra", 3), ("mary", 4), ("alonzo", 5), ("alonzo", 6),
+            ("babbage", 7), ("babbage", 8), ("conway", 9)]
+STABILITY_FACTOR = 6  # a protocol-parameter update must land 2 * 3k/f slots before the epoch ends
+TX = "/work/tx"
+
+
+def put_file(name, path, text):
+    r = subprocess.run(["docker", "exec", "-i", ref(name), "/bin/sh", "-c", f"cat > {path}"],
+                       input=text, text=True, capture_output=True)
+    if r.returncode != 0:
+        raise SystemExit(f"cannot write {path}: {r.stderr.strip()}")
+
+
+def read_json(name, path):
+    return json.loads(in_ref(name, f"cat {path}").stdout)
+
+
+def era_tip(name, node=1):
+    r = in_ref(name, f"cardano-cli query tip {SOCKET.replace('node1', f'node{node}')}")
+    return json.loads(r.stdout)
+
+
+def prepare_eras_env(name, args):
+    """Rewrite the generated Conway-only environment so the chain starts in Byron and walks the eras.
+
+    cardano-testnet itself cannot supervise a Byron start (its block watcher aborts with "Byron era is
+    not supported"), so this only borrows `create-env` and the node command lines.
+    """
+    in_ref(name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
+                 f"--epoch-length {args.epoch_length} --active-slots-coeff {args.active_slots_coeff} "
+                 f"--output {ENV} > /work/create-env.log 2>&1")
+    start = int(time.time()) + 10
+    config = read_json(name, f"{ENV}/configuration.yaml")
+    first = {}
+    for i, (era, _) in enumerate(ERA_PLAN):
+        first.setdefault(era, args.byron_epochs + i)
+    for era in ("shelley", "allegra", "mary", "alonzo", "babbage", "conway"):
+        config[f"Test{era.capitalize()}HardForkAtEpoch"] = first[era]
+    put_file(name, f"{ENV}/configuration.yaml", json.dumps(config, indent=2))
+    byron = read_json(name, f"{ENV}/byron-genesis.json")
+    byron["startTime"] = start
+    byron["blockVersionData"]["slotDuration"] = str(args.byron_slot_ms)
+    put_file(name, f"{ENV}/byron-genesis.json", json.dumps(byron, indent=2))
+    shelley = read_json(name, f"{ENV}/shelley-genesis.json")
+    shelley.pop("extraConfig")  # funds and pools are only read from here when the chain starts in Conway
+    shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
+    shelley["protocolParams"]["protocolVersion"] = {"major": ERA_PLAN[0][1], "minor": 0}
+    # The overlay (decentralisation = 1) is the only block source until the pools hold stake, so the
+    # genesis delegates are the pool operators themselves: the same cold, VRF and KES keys serve both.
+    delegs = {}
+    for n in (1, 2, 3):
+        genesis_hash = in_ref(name, f"cardano-cli conway genesis key-hash --verification-key-file "
+                                    f"{ENV}/genesis-keys/genesis{n}/key.vkey").stdout.strip()
+        pool_hash = in_ref(name, f"cardano-cli conway stake-pool id --output-format hex --cold-verification-key-file "
+                                 f"{ENV}/pools-keys/pool{n}/cold.vkey").stdout.strip()
+        vrf_hash = in_ref(name, f"cardano-cli conway node key-hash-VRF --verification-key-file "
+                                f"{ENV}/pools-keys/pool{n}/vrf.vkey").stdout.strip()
+        delegs[genesis_hash] = {"delegate": pool_hash, "vrf": vrf_hash}
+    shelley["genDelegs"] = delegs
+    put_file(name, f"{ENV}/shelley-genesis.json", json.dumps(shelley, indent=2))
+    return shelley
+
+
+def start_nodes(name):
+    ports = {}
+    for n in (1, 2, 3):
+        ports[n] = int(in_ref(name, f"cat {ENV}/node-data/node{n}/port").stdout)
+        in_ref(name, f"mkdir -p {ENV}/socket/node{n}")
+        pool = f"{ENV}/pools-keys/pool{n}"
+        docker("exec", "-d", ref(name), "/bin/sh", "-c",
+               f"cd {ENV} && cardano-node run --config {ENV}/configuration.yaml "
+               f"--topology {ENV}/node-data/node{n}/topology.json --database-path {ENV}/node-data/node{n}/db "
+               f"--shelley-kes-key {pool}/kes.skey --shelley-vrf-key {pool}/vrf.skey "
+               f"--shelley-operational-certificate {pool}/opcert.cert "
+               f"--byron-delegation-certificate {pool}/byron-delegation.cert "
+               f"--byron-signing-key {pool}/byron-delegate.key "
+               f"--socket-path {ENV}/socket/node{n}/sock --port {ports[n]} --host-addr 127.0.0.1 "
+               f"> /work/node{n}.log 2>&1")
+    return ports
+
+
+class EraDriver:
+    """Submits the transactions that move the chain through the eras and records each transition.
+
+    Shelley: one transaction spends the Byron genesis balances into three staked addresses and
+    registers three pools. The update proposals then raise the protocol version once per epoch (the
+    Test<Era>HardForkAtEpoch flags place the era boundaries, the proposals make the ledger report the
+    matching version) and, in the Allegra epoch, switch off the overlay so the pools take over.
+    """
+
+    def __init__(self, args, shelley):
+        self.args, self.name = args, args.name
+        self.key_deposit = shelley["protocolParams"]["keyDeposit"]
+        self.epoch_length = shelley["epochLength"]
+        self.pool_deposit = shelley["protocolParams"]["poolDeposit"]
+        self.done = set()
+        self.timeline = []
+        self.address = {n: in_ref(self.name, f"cardano-cli conway address build --testnet-magic {MAGIC} "
+                                             f"--payment-verification-key-file {ENV}/stake-delegators/delegator{n}/payment.vkey "
+                                             f"--stake-verification-key-file {ENV}/stake-delegators/delegator{n}/staking.vkey"
+                                  ).stdout.strip() for n in (1, 2, 3)}
+        in_ref(self.name, f"mkdir -p {TX}")
+
+    def utxo(self, address):
+        out = in_ref(self.name, f"cardano-cli query utxo --address {address} {SOCKET} --output-json").stdout
+        return {k: v["value"]["lovelace"] for k, v in json.loads(out).items()}
+
+    def submit(self, era, build, label):
+        """Build with `compatible <era> ... signed-transaction`, submit, and wait for the inputs to be spent."""
+        r = in_ref(self.name, f"{build} && cardano-cli conway transaction submit {SOCKET} --tx-file {TX}/{label}.tx")
+        return r
+
+    def byron_inputs(self):
+        inputs = []
+        for n in (1, 2, 3):
+            raw = f"{ENV}/pools-keys/pool{n}/byron-delegate.key"
+            key = f"{TX}/byron{n}.skey"  # the raw delegate key as a Byron payment text envelope, for bootstrap witnesses
+            in_ref(self.name, f"cardano-cli key convert-byron-key --byron-payment-key-type "
+                              f"--byron-signing-key-file {raw} --out-file {key}")
+            addr = in_ref(self.name, f"cardano-cli byron key signing-key-address --byron-formats --testnet-magic {MAGIC} "
+                                     f"--secret {raw}").stdout.splitlines()[0].strip()
+            (txin, lovelace), = self.utxo(addr).items()
+            inputs.append((txin, lovelace, key, addr))
+        return inputs
+
+    def setup_pools(self, era):
+        """Spend the Byron balances into three base addresses; register stake keys, pools, delegations."""
+        inputs = self.byron_inputs()
+        fee = 300_000
+        deposits = 3 * self.key_deposit + 3 * self.pool_deposit
+        spendable = sum(i[1] for i in inputs) - fee - deposits
+        outs = [spendable // 3 + spendable % 3, spendable // 3, spendable // 3]
+        certs = []
+        cli = f"cardano-cli compatible {era}"
+        for n in (1, 2, 3):
+            d, pool = f"{ENV}/stake-delegators/delegator{n}", f"{ENV}/pools-keys/pool{n}"
+            in_ref(self.name, f"{cli} stake-address registration-certificate --stake-verification-key-file {d}/staking.vkey "
+                              f"--out-file {TX}/reg{n}.cert && "
+                              f"{cli} stake-pool registration-certificate --cold-verification-key-file {pool}/cold.vkey "
+                              f"--vrf-verification-key-file {pool}/vrf.vkey --pool-pledge 0 --pool-cost 0 --pool-margin 0 "
+                              f"--pool-reward-account-verification-key-file {d}/staking.vkey "
+                              f"--pool-owner-stake-verification-key-file {d}/staking.vkey --testnet-magic {MAGIC} "
+                              f"--out-file {TX}/pool{n}.cert && "
+                              f"{cli} stake-address stake-delegation-certificate --stake-verification-key-file {d}/staking.vkey "
+                              f"--cold-verification-key-file {pool}/cold.vkey --out-file {TX}/deleg{n}.cert")
+        for kind in ("reg", "pool", "deleg"):
+            certs += [f"--certificate-file {TX}/{kind}{n}.cert" for n in (1, 2, 3)]
+        signers = [f"--signing-key-file {i[2]} --address {i[3]}" for i in inputs]
+        signers += [f"--signing-key-file {ENV}/stake-delegators/delegator{n}/staking.skey" for n in (1, 2, 3)]
+        signers += [f"--signing-key-file {ENV}/pools-keys/pool{n}/cold.skey" for n in (1, 2, 3)]
+        build = (f"{cli} transaction signed-transaction {' '.join('--tx-in ' + i[0] for i in inputs)} "
+                 f"{' '.join(f'--tx-out {self.address[n]}+{outs[n - 1]}' for n in (1, 2, 3))} "
+                 f"{' '.join(certs)} {' '.join(signers)} --testnet-magic {MAGIC} --fee {fee} --out-file {TX}/setup.tx")
+        r = self.submit(era, build, "setup")
+        if r.returncode != 0:
+            raise SystemExit(f"pool setup transaction failed: {r.stderr.strip()[:600]}")
+        self.wait_spent(self.address[1], None, [i[0] for i in inputs])
+
+    def wait_spent(self, address, _unused, spent, timeout=60):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            utxo = self.utxo(self.address[1]) if address == self.address[1] else self.utxo(address)
+            if utxo and not any(s in utxo for s in spent):
+                return
+            time.sleep(0.5)
+        raise SystemExit("transaction was not confirmed within 60 s")
+
+    def propose(self, era, epoch, major, decentralise):
+        """One update proposal from all three genesis delegates, adopted at the next epoch boundary."""
+        cli = f"cardano-cli compatible {era}"
+        keys = " ".join(f"--genesis-verification-key-file {ENV}/genesis-keys/genesis{n}/key.vkey" for n in (1, 2, 3))
+        extra = " --decentralization-parameter 0" if decentralise else ""
+        in_ref(self.name, f"{cli} governance action create-protocol-parameters-update --epoch {epoch} {keys} "
+                          f"--protocol-major-version {major} --protocol-minor-version 0{extra} --out-file {TX}/pp{major}.proposal")
+        (txin, lovelace), = sorted(self.utxo(self.address[1]).items(), key=lambda kv: -kv[1])[:1]
+        fee = 300_000
+        signers = [f"--signing-key-file {ENV}/stake-delegators/delegator1/payment.skey"]
+        signers += [f"--signing-key-file {ENV}/pools-keys/pool{n}/cold.skey" for n in (1, 2, 3)]
+        build = (f"{cli} transaction signed-transaction --tx-in {txin} --tx-out {self.address[1]}+{lovelace - fee} "
+                 f"--update-proposal-file {TX}/pp{major}.proposal {' '.join(signers)} --testnet-magic {MAGIC} "
+                 f"--fee {fee} --out-file {TX}/pp{major}.tx")
+        r = self.submit(era, build, f"pp{major}")
+        if r.returncode != 0:
+            raise SystemExit(f"update proposal for protocol {major} failed: {r.stderr.strip()[:600]}")
+        self.wait_spent(self.address[1], None, [txin])
+
+    def step(self, tip):
+        """Act on one tip observation; return True once the final era's first block is seen."""
+        era, epoch = tip["era"].lower(), tip["epoch"]
+        index = epoch - self.args.byron_epochs
+        if not self.timeline or self.timeline[-1]["era"] != era:
+            self.timeline.append({"era": era, "epoch": epoch, "slot": tip["slot"], "block": tip["block"],
+                                  "hash": tip["hash"], "previousBlock": self.last_block})
+            print(json.dumps({"era": era, "epoch": epoch, "slot": tip["slot"], "hash": tip["hash"]}), flush=True)
+        if index < 0 or ("epoch", epoch) in self.done:
+            return False
+        self.done.add(("epoch", epoch))
+        pv = json.loads(in_ref(self.name, f"cardano-cli query protocol-parameters {SOCKET}").stdout)["protocolVersion"]
+        self.protocol[epoch] = pv["major"]
+        print(json.dumps({"epoch": epoch, "era": era, "protocolMajor": pv["major"]}), flush=True)
+        if index == 0:
+            self.setup_pools(era)
+        if index + 1 < len(ERA_PLAN):
+            if tip["slotInEpoch"] > self.epoch_length - STABILITY_FACTOR * 5 / self.args.active_slots_coeff - 20:
+                raise SystemExit(f"epoch {epoch} is too far gone to submit an update proposal: {tip}")
+            self.propose(era, epoch, ERA_PLAN[index + 1][1], decentralise=(index == 1))
+        return index == len(ERA_PLAN) - 1 and era == ERA_PLAN[-1][0]
+
+
+def up_eras(args):
+    root = data_root(args.name)
+    if root.exists():
+        raise SystemExit(f"{root} exists; run `devnet.py down` first")
+    (root / "genesis").mkdir(parents=True)
+    start_reference(args.name)
+    shelley = prepare_eras_env(args.name, args)
+    ports = start_nodes(args.name)
+    (root / "ports.json").write_text(json.dumps(ports))
+    deadline = time.monotonic() + 90
+    while True:
+        try:
+            era_tip(args.name)
+            break
+        except (SystemExit, json.JSONDecodeError, subprocess.TimeoutExpired):
+            if time.monotonic() > deadline:
+                raise SystemExit("reference nodes did not answer queries within 90 s; see /work/node1.log")
+            time.sleep(1)
+    for f in ["shelley-genesis.json", "byron-genesis.json", "alonzo-genesis.json",
+              "conway-genesis.json", "configuration.yaml"]:
+        raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{f}"],
+                             capture_output=True, check=True).stdout
+        (root / "genesis" / f).write_bytes(raw)
+    driver = EraDriver(args, shelley)
+    driver.last_block = None
+    driver.protocol = {}
+    stalled = time.monotonic()
+    last = None
+    while True:
+        try:
+            tip = era_tip(args.name)
+        except (SystemExit, json.JSONDecodeError, subprocess.TimeoutExpired):
+            time.sleep(0.5)
+            continue
+        if "slot" not in tip:
+            time.sleep(0.5)
+            continue
+        if last is None or tip["block"] != last["block"]:
+            stalled = time.monotonic()
+        elif time.monotonic() - stalled > args.stall_seconds:
+            raise SystemExit(f"no new block for {args.stall_seconds} s at {tip}")
+        finished = driver.step(tip)
+        driver.last_block = tip["block"]
+        last = tip
+        if finished:
+            break
+        time.sleep(0.4)
+    summary = {"up": True, "root": str(root), "ports": ports, "eras": driver.timeline,
+               "protocolMajorByEpoch": driver.protocol}
+    (root / "eras.json").write_text(json.dumps(summary, indent=2))
+    print(json.dumps(summary))
 
 
 def tip(args):
@@ -429,9 +699,16 @@ def down(args):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--name", default="csl-devnet")
+    p.add_argument("--name", help="default csl-devnet, or csl-eras for up-eras")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("up").set_defaults(run=up)
+    ue = sub.add_parser("up-eras", help="start in Byron and walk Shelley..Conway (one epoch per era step)")
+    ue.add_argument("--epoch-length", type=int, default=500)
+    ue.add_argument("--active-slots-coeff", type=float, default=0.2)
+    ue.add_argument("--byron-epochs", type=int, default=1)
+    ue.add_argument("--byron-slot-ms", type=int, default=1000)
+    ue.add_argument("--stall-seconds", type=int, default=90)
+    ue.set_defaults(run=up_eras)
     t = sub.add_parser("tip")
     t.add_argument("--node", type=int, default=1)
     t.set_defaults(run=tip)
@@ -455,6 +732,7 @@ def main():
     sk.set_defaults(run=soak)
     sub.add_parser("down").set_defaults(run=down)
     args = p.parse_args()
+    args.name = args.name or ("csl-eras" if args.command == "up-eras" else "csl-devnet")
     args.run(args)
 
 
