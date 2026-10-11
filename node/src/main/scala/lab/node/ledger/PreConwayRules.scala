@@ -346,7 +346,7 @@ object PreConwayRules:
         out.address.kind match
           case Address.Kind.Shelley(_, Credential.Script(h), _, _)
               if scripts.get(h).exists(_.kind.isPlutus) =>
-            Some(out.datum)
+            Some(out.datum -> scripts(h).kind)
           case _ => None
       }
       for
@@ -361,11 +361,13 @@ object PreConwayRules:
           (provided -- plutusPurposes).mkString(",")
         )
         _ <- required.traverse_ {
-          case Datum.Hash(h) =>
+          case (Datum.Hash(h), _) =>
             check(wits.datumHashes.contains(h), "MissingRequiredDatums", h.hex)
-          case Datum.Inline(_) =>
+          case (Datum.Inline(_), _) =>
             check(pv >= 7, "UnspendableUTxONoDatumHash", "inline datum before Babbage")
-          case Datum.NoDatum => check(false, "UnspendableUTxONoDatumHash", "no datum hash")
+          // Plutus V3 scripts need no datum (CIP-69)
+          case (Datum.NoDatum, kind) =>
+            check(kind == ScriptKind.PlutusV3, "UnspendableUTxONoDatumHash", "no datum hash")
         }
         needsHash = wits.redeemers.nonEmpty || wits.datums.nonEmpty
         _ <- check(

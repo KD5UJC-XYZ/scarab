@@ -16,3 +16,27 @@ epoch 0 and the first block is already Alonzo.
 
 `babbage-mint.hex`: one Babbage block (slot 730119, epoch 8) with a native-script mint transaction
 that has auxiliary data (CIP-25 metadata); it pins the transaction size used for the minimum fee.
+
+## Conway governance and Plutus V3
+
+`conway-governance.hex`: 23 Conway blocks (protocol version 10 and 11, epochs 1047 to 1447) captured
+with `lab.node.CaptureMain --from <slot>.<hash>` from the relay on 2026-10-11. The points were found
+with the Koios API (`proposal_list`, `vote_list`, `drep_updates`, `tx_info`, `block_info`): a block
+window around each of two proposals of every action type (parameter change, treasury withdrawal,
+hard fork, new constitution, no confidence, committee update, info), the DRep, pool and committee
+votes of three transactions and a DRep registration. Most proposals carry the constitution's
+guardrails script (a Plutus V3 script in the witness set).
+
+`conway-governance.json`: what Koios reported for those transactions (action type, deposit, return
+account, previous action, the explorer's rendering of the action, the votes) and the protocol
+version and cost models of the nine epochs involved. `PreviewConwayGovernanceSuite` decodes the
+blocks, checks the transaction ids and all signatures, compares the proposals, votes and the DRep
+registration with the explorer data and recomputes the script data hash with those cost models.
+
+`plutus/slot125...json` and the other `plutus/` cases dated slot 90526940 and later: Plutus
+transactions of the blocks above in the format `follow --plutus-cases` writes (the spent and
+referenced outputs come from Koios `utxo_info`, re-encoded). They are replayed by `PlutusCaseSuite`
+(script data hash, phase-2 verdict equal to `is_valid`, budgets) and `ScriptContextOracleSuite`
+(contexts equal Scalus's). They include `Proposing` redeemers of parameter changes and treasury
+withdrawals running the real guardrails script, `Voting` redeemers of script committee members and
+V3 spends, mints and rewards. `scripts/preview_plutus_cases.py` rebuilds them.

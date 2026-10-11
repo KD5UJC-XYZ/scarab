@@ -41,6 +41,7 @@ JDK_IMAGE = "cardano-public-v023-check:local"
 MAGIC = 1082026
 ENV = "/work/env"
 QUERY_PORT = 7071
+CONWAY_EPOCHS = 7  # Conway epochs the e2e run follows: bootstrap governance, the hard fork to 10, then full governance
 
 
 def data_root(name):
@@ -486,7 +487,6 @@ def govload(args):
             if tip.get("slotInEpoch", 0) >= 3 and tip["epoch"] not in seen:
                 seen.add(tip["epoch"])
                 loader.conway_features(tip["epoch"])
-                loader.transfers("conway", 1)
         except Exception as e:  # a scenario problem must not stop the soak
             print(json.dumps({"govloadFailed": repr(e)}), flush=True)
         time.sleep(0.7)
@@ -1114,7 +1114,7 @@ def e2e(args):
             if epoch != t["epoch"]:
                 raise SystemExit(f"eras.json puts {t['era']} at epoch {t['epoch']}, configuration at {epoch}")
             expected.append({"era": t["era"], "epoch": epoch})
-        target = args.until_epoch if args.until_epoch is not None else expected[-1]["epoch"] + 1
+        target = args.until_epoch if args.until_epoch is not None else expected[-1]["epoch"] + CONWAY_EPOCHS
         log = root / "follower.jsonl"
         deadline = time.monotonic() + args.timeout
         reason = "timeout"
@@ -1222,8 +1222,9 @@ def main():
     ce.set_defaults(run=capture_eras)
     e2 = sub.add_parser("e2e", parents=[eras_options],
                         help="up-eras, follow from Origin, assert every era and transition")
-    e2.add_argument("--timeout", type=int, default=900)
-    e2.add_argument("--until-epoch", type=int, help="Conway epoch to reach (default: first Conway epoch + 1)")
+    e2.add_argument("--timeout", type=int, default=1500)
+    e2.add_argument("--until-epoch", type=int,
+                    help=f"Conway epoch to reach (default: first Conway epoch + {CONWAY_EPOCHS})")
     e2.add_argument("--keep", action="store_true", help="leave the cluster running")
     e2.add_argument("--no-load", action="store_true", help="no era-specific transactions (blocks only)")
     e2.add_argument("--no-compare", action="store_true", help="skip the per-era ledger comparisons")

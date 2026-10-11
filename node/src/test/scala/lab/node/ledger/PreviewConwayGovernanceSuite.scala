@@ -229,3 +229,40 @@ class PreviewConwayGovernanceSuite extends FunSuite:
       }
     }
   }
+
+  test("fees cover the Conway minimum fee and outputs the minimum value, as the chain required") {
+    val parameters = field(manifest, "epochParams").asObject.get.toMap
+    def decimal(j: Json, name: String): Rational =
+      Rational.fromDecimal(field(j, name).as[BigDecimal].toOption.get)
+    var exact = 0
+    // transactions that use no reference input need no knowledge of the ledger state for the fee
+    txs.filter(_._2.body.referenceInputs.isEmpty).foreach { case (b, t) =>
+      val p = parameters((b.header.slot / 86400).toString)
+      val pp = TestLedger
+        .params(11)
+        .copy(
+          minFeeA = field(p, "minFeeA").as[BigInt].toOption.get,
+          minFeeB = field(p, "minFeeB").as[BigInt].toOption.get,
+          priceMem = decimal(p, "priceMem"),
+          priceSteps = decimal(p, "priceSteps"),
+          coinsPerUTxOByte = field(p, "coinsPerUtxoByte").as[BigInt].toOption.get
+        )
+      val units = t.witnesses.totalExUnits
+      val scriptFee =
+        (pp.priceMem * Rational(units.mem) + pp.priceSteps * Rational(units.steps)).ceil
+      val minimum = pp.minFeeA * t.size + pp.minFeeB + scriptFee
+      assert(t.body.fee >= minimum, s"fee of ${t.body.id.hex}: ${t.body.fee} < $minimum")
+      // wallets estimate the size with a few bytes to spare, so the fee exceeds the minimum by whole
+      // multiples of the per-byte fee
+      if units == ExUnits.zero then
+        assertEquals((t.body.fee - minimum) % pp.minFeeA, BigInt(0), s"fee of ${t.body.id.hex}")
+      if t.body.fee - minimum <= pp.minFeeA * 2 then exact += 1
+      t.body.outputs.foreach { o =>
+        assert(
+          o.value.coin >= (160 + o.ledgerSize) * pp.coinsPerUTxOByte,
+          s"output of ${t.body.id.hex}"
+        )
+      }
+    }
+    assert(exact >= 3, s"only $exact transactions pay within two bytes of the minimum fee")
+  }

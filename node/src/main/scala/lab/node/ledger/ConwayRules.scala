@@ -338,12 +338,11 @@ private[ledger] object ConwayCerts:
         // Before protocol version 10 a re-delegation does not remove the old reverse delegation.
         val dreps = drep.fold(st.dreps) { d =>
           val preserveIncorrect = pp.protocolMajor < 10
-          if fresh || preserveIncorrect then
-            d match
-              case DRep.Registered(n) =>
-                st.dreps.updatedWith(n)(_.map(x => x.copy(delegs = x.delegs + c)))
-              case _ => st.dreps
-          else redelegate(st.dreps, c, a.drep, Some(d))
+          d match
+            case DRep.Registered(n) if fresh || preserveIncorrect =>
+              st.dreps.updatedWith(n)(_.map(x => x.copy(delegs = x.delegs + c)))
+            case _ if fresh => st.dreps
+            case _          => redelegate(st.dreps, c, a.drep, Some(d))
         }
         st.copy(
           accounts = st.accounts.updated(

@@ -488,11 +488,16 @@ class EraLoad:
         if "greg" not in self.done:
             return
         # Plutus V3: lock funds with an inline datum next to a reference script, then spend and mint
-        self.stage("plutus-lock", lambda: act(
+        lock = self.stage("plutus-lock", lambda: act(
             "plutus-lock", gw[1], [(self.script_addr, 30_000_000, None, {"inline_datum": [42, b"v3"]}),
+                                   (self.script_addr, 20_000_000, None, {}),  # no datum: allowed for V3
                                    (gw[2].address, 5_000_000, None, {"script_ref_plutus": (3, self.script)})]))
+        if lock:
+            self.proposed["lock"] = lock
         if "plutus-lock" in self.done:
             self.stage("plutus-spend", lambda: self.plutus_spend(pp))
+        if "plutus-spend" in self.done and "lock" in self.proposed:
+            self.stage("plutus-ref", lambda: self.plutus_ref_mint(pp))
         if n >= 2:
             self.stage("gdeleg", lambda: act(
                 "gdeleg", gw[3], [], extra_signers=[gw[3].stake],
@@ -502,7 +507,8 @@ class EraLoad:
                 "gdeleg2", gw[0], [], extra_signers=[gw[0].stake],
                 certs=[eratx.stake_vote_deleg_cert(gw[0].stake.hash, pools[1], eratx.drep_ref("key", d[1].hash))]))
         # first round of proposals; the votes follow once the proposals are on chain
-        if n >= 1 and "gproposals" not in self.done:
+        phase = "10" if pv >= 10 else "9"
+        if n >= 1 and f"gproposals{phase}" not in self.done:
             actions = [eratx.info_action()]
             if pv < 10:
                 actions += [eratx.hard_fork_action(10, 0), eratx.param_change_action({3: pp["maxTxSize"] + 8}),
@@ -512,11 +518,11 @@ class EraLoad:
                             eratx.treasury_withdrawal_action({gw[2].reward: 7_000_000}),
                             eratx.update_committee_action({c.hash: epoch + 40 for c in self.cold}, threshold=(1, 2)),
                             eratx.constitution_action("https://constitution.invalid/v1", eratx.blake2b(b"v1"))]
-            txid = self.stage("gproposals", lambda: self.propose("gproposals", gw[1], actions))
+            txid = self.stage(f"gproposals{phase}", lambda: self.propose(f"gproposals{phase}", gw[1], actions))
             if txid:
-                self.proposed["first"] = [(txid, i) for i in range(len(actions))]
-        if "first" in self.proposed:
-            self.stage("gvotes", lambda: self.cast_votes(pv, self.proposed["first"]))
+                self.proposed[phase] = [(txid, i) for i in range(len(actions))]
+        if phase in self.proposed:
+            self.stage(f"gvotes{phase}", lambda: self.cast_votes(pv, self.proposed[phase], phase))
         # committee authorisation once the committee has members (protocol version 10 and later)
         if pv >= 10 and "gcommittee" not in self.done and self.committee_members():
             self.stage("gcommittee", lambda: act(
@@ -539,7 +545,7 @@ class EraLoad:
         except Exception:
             return False
 
-    def cast_votes(self, pv, ids):
+    def cast_votes(self, pv, ids, phase=""):
         """DRep, pool and committee votes on the first round of proposals."""
         gw = self.gw
         all_ids = [eratx.gov_id(*i) for i in ids]
@@ -565,7 +571,7 @@ class EraLoad:
             # pools vote on the info action and the committee update (parameters and withdrawals are not theirs)
             for p in self.pool_cold:
                 casts.append((eratx.voter("pool", p.hash), [(info, "yes"), (all_ids[3], "yes")]))
-        return self.gov_votes("gvotes", gw[0], casts, self.genesis_dreps + self.gdrep + self.pool_cold)
+        return self.gov_votes(f"gvotes{phase}", gw[0], casts, self.genesis_dreps + self.gdrep + self.pool_cold)
 
     def committee_root(self):
         previous = self.gov_state()["nextRatifyState"]["nextEnactState"]["prevGovActionIds"]["Committee"]
@@ -628,13 +634,14 @@ class EraLoad:
             return None
         collateral = coll[-1]
         units = [1_000_000, 400_000_000]
+        fee = 1_500_000
         policy = self.script_hash
         mint = {policy: {b"v3token": 7}}
         datum_free = []
 
         def redeemers(sorted_inputs):
-            spend_ix = sorted_inputs.index(locked[0][0])
-            return [(0, spend_ix, 0, units), (1, 0, 0, units)]
+            spends = [(0, sorted_inputs.index(u[0]), 0, units) for u in locked]
+            return spends + [(1, 0, 0, units)]
 
         models = self.v3_models(pp)
 
@@ -644,7 +651,26 @@ class EraLoad:
 
         return self.act("conway", "plutus-spend", w, [(self.gw[1].address, 4_000_000, {policy: {b"v3token": 7}}, {})],
                  mint=mint, spend_extra=locked, collateral=[collateral[0]], avoid=[collateral[0]],
-                 plutus={3: [self.script]}, redeemers=redeemers, script_data=script_data, fee=1_000_000)
+                 plutus={3: [self.script]}, redeemers=redeemers, script_data=script_data, fee=fee)
+
+    def plutus_ref_mint(self, pp):
+        """Mint under the V3 script taken from a reference input (no script in the witness set)."""
+        w = self.gw[0]
+        coll = [u for u in self.funds(w.address) if not u[2]]
+        if len(coll) < 2:
+            return None
+        collateral = coll[-1]
+        units = [1_000_000, 400_000_000]
+        policy = self.script_hash
+        models = self.v3_models(pp)
+
+        def script_data(red, dat):
+            return eratx.script_data_hash(eratx.enc({(t, i): [dd, list(u)] for t, i, dd, u in red}), b"", models)
+
+        return self.act("conway", "plutus-ref", w, [(self.gw[1].address, 4_000_000, {policy: {b"v3ref": 3}}, {})],
+                        mint={policy: {b"v3ref": 3}}, collateral=[collateral[0]], avoid=[collateral[0]],
+                        reference_inputs=[(self.proposed["lock"], 2)], redeemers=[(1, 0, 0, units)],
+                        script_data=script_data, fee=1_000_000)
 
     def more_gov(self, pp, pv, epoch):
         """Updates, resignations, refunds and a donation."""

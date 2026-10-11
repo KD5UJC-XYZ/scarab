@@ -1548,7 +1548,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1447": {
    "protocolMajor": 11,
@@ -2574,7 +2582,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1417": {
    "protocolMajor": 11,
@@ -3600,7 +3616,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1415": {
    "protocolMajor": 11,
@@ -4626,7 +4650,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1375": {
    "protocolMajor": 11,
@@ -5652,7 +5684,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1368": {
    "protocolMajor": 11,
@@ -6678,7 +6718,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1365": {
    "protocolMajor": 11,
@@ -7704,7 +7752,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 1000000000
   },
   "1288": {
    "protocolMajor": 10,
@@ -8730,7 +8786,15 @@
      12,
      21
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 100000000000
   },
   "1047": {
    "protocolMajor": 10,
@@ -9380,7 +9444,15 @@
      24520,
      3
     ]
-   }
+   },
+   "minFeeA": 44,
+   "minFeeB": 155381,
+   "priceMem": 0.0577,
+   "priceSteps": 7.21e-05,
+   "coinsPerUtxoByte": 4310,
+   "maxTxSize": 16384,
+   "minFeeRefScriptCostPerByte": 15,
+   "govActionDeposit": 100000000000
   }
  }
 }

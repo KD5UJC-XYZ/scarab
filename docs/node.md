@@ -15,7 +15,7 @@ so it can be compared byte for byte against a reference `cardano-node`.
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`; `supervise` reconnects on `PeerError` |
 | Consensus | `consensus/Praos.scala`, `consensus/TPraos.scala`, `consensus/OCertRules.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block). TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
-| Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation |
+| Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation, and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
 | Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` |
 
@@ -121,10 +121,9 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
   transaction is applied and an invalid one consumes its collateral. See "Plutus evaluation" below.
   The script data hash is recomputed (`ledger/ScriptIntegrity.scala`) and a mismatch is a hard
   error (`PPViewHashesDontMatch`).
-- **Conway** continues from the Babbage state through `Translate.toConway` (Conway parameters from
-  the Conway genesis, empty DRep state, pre-Conway update/MIR/pointer state dropped); this
-  translation and the Conway transaction rules for scripts and governance are not verified (see
-  below).
+- **Conway** continues from the Babbage state through `Translate.toConway` (Conway parameters,
+  committee and constitution from the Conway genesis, empty DRep state, pre-Conway update/MIR/pointer
+  state dropped). The Conway rules are described in "Conway" below.
 - **Bootstrap mode** remains available (`NodeRules(..., bootstrap = true)`): headers only, with the
   leader threshold reported as unchecked.
 - **Nonce windows** (verified on Preview): candidate nonce freezes `3k/f` before the epoch end
@@ -142,6 +141,61 @@ recomputed and equal. The Byron-to-Conway era fixture (`EraTransitionSuite`) als
 bash scripts/sbtw node/compile node/runtimeClasspathFile
 # then run lab.node.Main follow --genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001
 ```
+
+## Conway
+
+`ledger/ConwayRules.scala` is the LEDGER rule for protocol versions 9 and later (Preview runs 11).
+For a phase-2 valid transaction it follows the ledger's order: treasury value and reference-script
+size checks, the withdrawals (key accounts must be delegated to a DRep from version 10; a withdrawal
+takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
+extraneous, datums, redeemers, vkey and bootstrap witnesses, the script data hash), UTXO (validity
+interval, fee, value conservation, collateral) and UTXOS (phase 2). A transaction flagged invalid
+consumes its collateral and nothing else.
+
+- **Scripts**: native and Plutus V1, V2, V3, reference scripts, minting and burning, script
+  credentials for spending, withdrawals, certificates, votes and proposals (`Purpose`). Redeemers in
+  the array or the map form; the integrity hash is over the witness set's own bytes.
+- **Fee**: `minFeeA * size + minFeeB + ceil(price * units) + tierRefScriptFee`. The reference-script
+  fee prices the bytes of the reference scripts of the distinct inputs and reference inputs at
+  `minFeeRefScriptCostPerByte`, multiplied by 1.2 for every further 25 KiB. A transaction may use 200 KiB
+  of reference scripts, a block 1 MiB (counted against the block's starting UTxO up to protocol 10).
+- **Value**: `inputs + withdrawals + refunds + mint = outputs + fee + deposits + donation`, where the
+  deposits are the key, pool (new pools only), DRep and proposal deposits and the refunds come from the
+  state before the transaction. A donation joins the treasury at the next epoch boundary.
+- **Certificates**: registration (with or without deposit), deregistration, stake, vote and combined
+  delegations, pool registration and retirement, DRep registration, update and retirement, committee
+  hot-key authorisation and cold-key resignation. The DRep reverse delegation index is kept as the
+  ledger keeps it, including the protocol-9 behaviour that a re-delegation does not remove the old
+  entry; entering protocol 10 rebuilds it. DRep expiries account for dormant epochs from version 10.
+- **GOV** (`ConwayGov`): the seven action types with deposit, return account, network, previous action
+  (the proposal store checks ancestry per lineage), hard-fork version succession, well-formed parameter
+  updates, the guardrails script hash of the constitution for parameter changes and treasury
+  withdrawals, committee updates without conflicts and with future expiries; votes by DReps, pools and
+  hot committee keys, who may vote on what, no votes on expired actions, and the bootstrap-phase
+  restrictions of protocol 9 (only parameter changes, hard forks and info actions; DReps only vote on
+  info actions).
+- **Epoch boundary** (`ConwayEpoch`): the ratification result of the pulser that started a boundary
+  earlier is applied: enacted treasury withdrawals reach the registered accounts, expired and enacted
+  actions leave the proposal store (competitors and descendants with them) and their deposits go back
+  to the return accounts (to the treasury if the account is gone), parameters, committee and
+  constitution change, donations join the treasury, the dormant-epoch counter and the obligation
+  (`deposited`) are updated, and a fresh pulser snapshots the state.
+- **Ratification** (`Ratify`): a pure function of the pulser's snapshot. DRep stake distribution
+  (UTxO stake, rewards and proposal deposits of delegating accounts; always-abstain excluded,
+  always-no-confidence a no vote except on no-confidence), pool distribution of the mark snapshot plus
+  proposal deposits, the pool default votes, committee ratios (silent members vote no; expired,
+  resigned and unauthorised members are out; fewer active members than `committeeMinSize` means no
+  committee), the thresholds by action and parameter group, the bootstrap phase (DRep thresholds zero,
+  silent pools abstain), committee term limits, withdrawals bounded by the treasury, delaying
+  actions. The ledger computes this incrementally over the epoch; the node computes it when the
+  snapshot is taken and keeps both (`GovState.pulsed`), which is what `query ratify-state` shows.
+
+`LedgerState` gained `gov`, `committeeState` and `donation` (plain case classes); `DRepState` has the
+anchor and the delegators.
+
+Not modelled: the VRF key hash uniqueness of protocol 11 (it only rejects transactions), the
+unelected-committee vote check is implemented but untested against a reference, and block execution-unit
+limits.
 
 ## Plutus evaluation
 

@@ -596,3 +596,92 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       states.forall(st => st.s.total == Supply && st.s.deposited == Epoch.obligation(st.s))
     }
   }
+
+  property(
+    "DRep and delegation certificates keep the supply, the deposit pot and the reverse index"
+  ) {
+    forAll(Gen.listOfN(14, Gen.choose(0, 4)), Gen.listOfN(14, Gen.choose(0, 9))) { (ops, picks) =>
+      val w = World(10)
+      var st = w.initial
+      var extra = Vector.empty[Key]
+      def pick(n: Int, size: Int) = if size == 0 then 0 else n % size
+      ops.zip(picks).foreach { case (op, p) =>
+        val staker = w.stakes(p % 3)
+        val result: Option[Either[LedgerFailure, State]] = op match
+          case 0 =>
+            val k = key()
+            Some(
+              submit(
+                w,
+                st,
+                Vector(k),
+                certs = Vector(Certificate.RegisterDRep(k.credential, 500 * ada, None)),
+                deposits = 500 * ada
+              ).map { next =>
+                extra = extra :+ k; next
+              }
+            )
+          case 1 if extra.nonEmpty =>
+            val k = extra(pick(p, extra.size))
+            Some(
+              submit(
+                w,
+                st,
+                Vector(k),
+                certs = Vector(Certificate.UnregisterDRep(k.credential, 500 * ada)),
+                refunds = 500 * ada
+              ).map { next =>
+                extra = extra.filterNot(_ == k); next
+              }
+            )
+          case 2 =>
+            val all = (w.dreps ++ extra).filter(k => st.s.dreps.contains(k.credential))
+            val target = all(pick(p, all.size))
+            Some(
+              submit(
+                w,
+                st,
+                Vector(staker),
+                certs = Vector(
+                  Certificate.Delegate(
+                    staker.credential,
+                    None,
+                    Some(DRep.Registered(target.credential)),
+                    None
+                  )
+                )
+              )
+            )
+          case 3 =>
+            Some(
+              submit(
+                w,
+                st,
+                Vector(staker),
+                certs = Vector(
+                  Certificate.Delegate(staker.credential, None, Some(DRep.AlwaysAbstain), None)
+                )
+              )
+            )
+          case _ if extra.nonEmpty =>
+            val k = extra(pick(p, extra.size))
+            Some(
+              submit(w, st, Vector(k), certs = Vector(Certificate.UpdateDRep(k.credential, None)))
+            )
+          case _ => None
+        result.foreach(r => st = ok(r))
+        assertEquals(st.s.total, Supply)
+        assertEquals(st.s.deposited, Epoch.obligation(st.s))
+        st.s.accounts.foreach { case (c, a) =>
+          a.drep.foreach {
+            case DRep.Registered(d) => assert(st.s.dreps(d).delegs.contains(c))
+            case _                  => ()
+          }
+        }
+        st.s.dreps.foreach { case (d, state) =>
+          state.delegs.foreach(c => assertEquals(st.s.accounts(c).drep, Some(DRep.Registered(d))))
+        }
+      }
+      true
+    }
+  }
