@@ -261,6 +261,11 @@ forger.
   the era history and the system start (`EpochGeometry.slotStart`); the upper bound of an interval
   without a lower bound is inclusive before Conway and exclusive from it. Purposes are spending,
   minting, certifying, rewarding, voting and proposing, in the ledger's orders.
+- **Availability** (`plutus/PlutusAvailability.scala`): the builtins and UPLC program versions a script
+  may use in each (language, protocol major), transcribed from plutus-ledger-api
+  (`Common/Versions.hs`). `ScalusEvaluator` rejects a script that uses another builtin as a decode
+  failure; `ScriptDecoder[F]` (same interpreter, shared cache) is the pure check the phase-1 rule
+  `PreConwayRules.scriptsWellFormed` uses from Babbage on for witness-set and output scripts.
 - **Cost models**: per language from the protocol parameters in force. The genesis cost model is a
   map of named integers whose canonical order is the sorted name order, not the file order; the Conway
   genesis adds PlutusV3. A redeemer's declared units are its budget, the transaction total is bounded by
@@ -268,7 +273,8 @@ forger.
 - **Script data hash** (`ledger/ScriptIntegrity.scala`): `blake2b-256(redeemers ‖ datums ‖ language
   views)` over the witness set's own bytes; datums are omitted when empty; PlutusV1's cost model is a
   byte string wrapping an indefinite list under the byte-string key `0x4100`, V2 and V3 are plain, keys
-  in canonical order (V2, V3, then V1); no languages is `0xa0`.
+  in canonical order (V2, V3, then V1); no languages is `0xa0`. Without redeemers the redeemer part is the
+  encoding of an empty collection: `0x80` before Conway, `0xa0` from Conway (confirmed on Preview).
 - **Counters**: `ledgerEpoch` log lines carry `phase2.evaluatedSuccess`, `phase2.evaluatedFailure`,
   `phase2.scripts` and `scriptIntegrityHashChecked`.
 - **Recording cases**: `follow --plutus-cases <dir>` writes self-contained JSON cases (transaction,

@@ -46,3 +46,10 @@ from genesis): a PlutusV1 mint whose witness set lists six redeemers for the one
 (data 01, 01, 02, 02, 03, 03). The ledger keeps redeemers in a map, so the last entry counts; the
 script fails on 01 and 02 and passes on 03 with exactly the declared units. `Witnesses.decode` keeps
 the last of repeated `(tag, index)` entries of the array form.
+
+`empty-redeemers.hex`: six whole blocks (one per line) found by scanning the entire Preview chain for
+transactions with a `script_data_hash`, datums and no redeemers or Plutus language: Babbage slots
+936549 (redeemers key absent) and 1291038 (explicit `0x80`), Conway slots 56231298 (protocol 9),
+56408384 (10), 111388018 (11) and 122786727 (12), captured from a fully synced node's immutable
+store on 2026-10-11. They pin the `0x80` (Babbage) and `0xa0` (Conway) empty-redeemers encodings in
+the script data hash (`PreviewEmptyRedeemersSuite`).
