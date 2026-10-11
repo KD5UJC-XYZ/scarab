@@ -135,3 +135,56 @@ class PreviewConwayRulesSuite extends FunSuite:
       c.tx.body.inputs.foreach(i => assert(!after.utxo.contains(i)))
     }
   }
+
+  /** Votes of script committee members on a parameter-change proposal. */
+  private val voting = PlutusCase.all.filter(c =>
+    c.protocolMajor >= 10 && c.collateral.nonEmpty && c.tx.isValid && c.tx.body.votes.nonEmpty
+  )
+
+  test("the captured committee votes are present") {
+    assert(voting.size >= 3, voting.size)
+  }
+
+  voting.foreach { c =>
+    test(s"${c.name}: the Conway rules accept the committee vote of a script member") {
+      val body = c.tx.body
+      val voters = body.votes.collect { case (Voter.CommitteeHot(h), vs) => h -> vs }
+      assertEquals(voters.size, body.votes.size)
+      val epoch = c.slot / 86400
+      val world = worldOf(c)
+      val cold = voters.zipWithIndex.map { case ((hot, _), i) =>
+        Credential.Key(lab.Blake2b.hash224.hash(lab.cbor.Bytes(Vector(i.toByte, 9)))) -> hot
+      }
+      val actions = voters
+        .flatMap(_._2.map(_._1))
+        .distinct
+        .map { id =>
+          GovActionState(
+            id,
+            Map.empty,
+            Map.empty,
+            Map.empty,
+            Proposal(
+              1000 * ada,
+              RewardAccount(0, cold.head._1),
+              GovAction
+                .ParameterChange(None, ParamUpdate(Map(16 -> lab.cbor.Bytes(Vector(0x01)))), None)
+            ),
+            epoch - 5,
+            epoch + 5
+          )
+        }
+      val s = world.copy(
+        gov = world.gov.copy(
+          committee = Some(Committee(cold.map(_._1 -> (epoch + 50)).toMap, Rational(2, 3))),
+          proposals = Proposals(actions, PrevIds())
+        ),
+        committeeState = cold.map { case (c, hot) => c -> CommitteeAuth.Hot(hot) }.toMap
+      )
+      val after = TxRules(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
+      val recorded = after.gov.proposals.actions.flatMap(_.committeeVotes.values)
+      assertEquals(recorded.size, voters.flatMap(_._2).size)
+      assert(recorded.forall(_ == Vote.Yes))
+      assertEquals(after.total, Supply)
+    }
+  }
