@@ -10,7 +10,7 @@ import com.comcast.ip4s.{Host, SocketAddress}
 import lab.Blake2b
 import lab.cbor.Bytes
 import lab.node.consensus.{Praos, PraosConfig}
-import lab.node.ledger.{GenesisState, LedgerGlobals, Rational}
+import lab.node.ledger.{GenesisState, LedgerGlobals, LiteLedger, Rational}
 import lab.vrf.PraosLeaderThreshold
 import scala.concurrent.duration.*
 
@@ -70,14 +70,19 @@ object Main extends IOApp:
         genesis.maxKesEvolutions,
         active
       )
-      start = NodeState(Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(genesisBytes))), initial)
+      lite <- LiteLedger.fromGenesis(files.shelley).fold(fail, IO.pure)
+      start = NodeState(
+        Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(genesisBytes))),
+        initial,
+        BootstrapState.initial(lite)
+      )
       ref <- Ref.of[IO, VolatileChain[NodeState]](
         VolatileChain.genesis(genesis.geometry.securityParam, start)
       )
       given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
       events = JsonLog.events
       rules = NodeRules[IO](praosConfig, globals)
-      follower = Follower[IO, NodeState](rules, events, genesis.geometry)
+      follower = Follower[IO, NodeState](rules, events, genesis.geometry, NodeRules.observe)
       settings = Peer.Settings(options.peer, genesis.networkMagic)
       retry = Follower.Retry(maxAttempts = 30, delay = 2.seconds)
       // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.

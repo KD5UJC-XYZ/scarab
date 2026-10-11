@@ -78,15 +78,36 @@ object PraosLeaderThreshold:
         BigInt(1, Blake2b.hash256.hash(Bytes(Vector(0x4c.toByte) ++ verifiedOutput.value)).toArray)
       )
 
+  /** Leader value as a natural over 2^512: the raw 64-byte certified output (TPraos, Shelley). */
+  def rawLeaderValue(verifiedOutput: Bytes): Either[String, BigInt] =
+    if verifiedOutput == null || verifiedOutput.value == null || verifiedOutput.size != 64 then
+      Left("verified VRF output must contain 64 bytes")
+    else Right(BigInt(1, verifiedOutput.toArray))
+
+  /** Range of a 64-byte output, for [[rawLeaderValue]]. */
+  val Range512: BigInt = BigInt(1) << 512
+
+  /** Praos check: `value` is the 32-byte "L"-hash natural, over 2^256. */
   def check(value: BigInt, stake: Fraction, active: Fraction): Either[String, Decision] =
-    if value == null || value < 0 || value >= Range || stake == null || active == null then
+    check(value, stake, active, Range)
+
+  /** Leader iff `value / range < 1 - (1 - active)^stake`, decided by the reference Taylor series.
+    * `range` is the size of the value's domain (2^256 for Praos, 2^512 for TPraos).
+    */
+  def check(
+      value: BigInt,
+      stake: Fraction,
+      active: Fraction,
+      range: BigInt
+  ): Either[String, Decision] =
+    if value == null || value < 0 || value >= range || stake == null || active == null then
       Left("malformed leader comparison")
     else if active.numerator == 0 ||
       (active.numerator != active.denominator && active.numerator * 2 > active.denominator)
     then Left("supported active coefficient is (0,1/2] or the reference testing case 1")
     else if active.numerator == active.denominator then Right(Decision.Eligible)
     else
-      val cmp = Range * Scale / (Range - value)
+      val cmp = range * Scale / (range - value)
       // Haskell2010 prefix negation has precedence 6; multiplication (7) happens first.
       val x = -mul(fixed(stake), activeLog(active))
       var err = x; var acc = Scale; var divisor = Scale

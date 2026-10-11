@@ -4,9 +4,7 @@ package lab.node.consensus
 import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.Bytes
-import lab.kes.Sum6Kes
 import lab.node.{EpochGeometry, Header, HeaderVrf}
-import lab.opcert.OperationalCertificate
 import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
 enum Nonce:
@@ -52,13 +50,15 @@ object Praos:
     val n = Nonce.Hash(shelleyGenesisHash)
     PraosState(0, n, n, n, Nonce.Neutral, Nonce.Neutral, Map.empty)
 
-  /** Epoch transition: the new epoch nonce mixes the frozen candidate with the last block's lab. */
-  def tick(state: PraosState, epoch: BigInt): PraosState =
+  /** Epoch transition: the new epoch nonce mixes the frozen candidate with the last block's lab
+    * (and, for TPraos, the protocol parameters' extra entropy).
+    */
+  def tick(state: PraosState, epoch: BigInt, extraEntropy: Nonce = Nonce.Neutral): PraosState =
     if epoch <= state.epoch then state
     else
       state.copy(
         epoch = epoch,
-        epochNonce = state.candidate.combine(state.lastEpochBlock),
+        epochNonce = state.candidate.combine(state.lastEpochBlock).combine(extraEntropy),
         lastEpochBlock = state.lab
       )
 
@@ -69,10 +69,24 @@ object Praos:
       pools: PoolDistribution,
       config: PraosConfig
   ): Either[String, PraosState] =
+    validate(state, header, StakeView.Known(pools), config).map(_._1)
+
+  /** As [[update]], also reporting how leadership was established. With an unknown stake view every
+    * cryptographic check runs but the leader threshold is reported as unchecked.
+    */
+  def validate(
+      state: PraosState,
+      header: Header,
+      stake: StakeView,
+      config: PraosConfig,
+      nonceWindow: BigInt = BigInt(-1)
+  ): Either[String, (PraosState, LeaderCheck)] =
+    val window =
+      if nonceWindow >= 0 then nonceWindow else config.geometry.randomnessStabilisationWindow
     header match
       case h: Header.Shelley =>
         h.vrf match
-          case HeaderVrf.Praos(cert) => updatePraos(state, h, cert, pools, config)
+          case HeaderVrf.Praos(cert) => updatePraos(state, h, cert, stake, config, window)
           case _: HeaderVrf.TPraos   => Left(s"${h.era} headers use TPraos, not Praos")
       case h => Left(s"${h.era} headers are not Praos headers")
 
@@ -80,89 +94,82 @@ object Praos:
       state: PraosState,
       header: Header.Shelley,
       vrf: lab.node.VrfCert,
-      pools: PoolDistribution,
-      config: PraosConfig
-  ): Either[String, PraosState] =
+      stakeView: StakeView,
+      config: PraosConfig,
+      window: BigInt
+  ): Either[String, (PraosState, LeaderCheck)] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
     val epochNonce = state.epochNonce match
       case Nonce.Neutral => Right(Vrf.NeutralNonce)
       case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(_.toString)
+    val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
     for
-      stake <- pools.stake
-        .get(pool)
-        .toRight(s"issuer ${pool.hex} has no stake in the pool distribution")
-      vrfHash <- pools.vrf.get(pool).toRight(s"issuer ${pool.hex} is not a registered pool")
-      _ <- Either.cond(
-        Blake2b.hash256.hash(header.vrfVkey) == vrfHash,
-        (),
-        "VRF key is not the pool's registered key"
-      )
+      registered <- stakeView match
+        case StakeView.Known(pools) =>
+          for
+            stake <- pools.stake
+              .get(pool)
+              .toRight(s"issuer ${pool.hex} has no stake in the pool distribution")
+            registeredVrf <- pools.vrf
+              .get(pool)
+              .toRight(s"issuer ${pool.hex} is not a registered pool")
+            _ <- Either.cond(
+              vrfHash == registeredVrf,
+              (),
+              "VRF key is not the pool's registered key"
+            )
+          yield Some(stake -> pools.total)
+        case StakeView.Unknown(registry) =>
+          for
+            keys <- registry.get(pool).toRight(s"issuer ${pool.hex} is not a registered pool")
+            _ <- Either.cond(
+              keys.contains(vrfHash),
+              (),
+              "VRF key is not the pool's registered key"
+            )
+          yield None
       nonce <- epochNonce
       slot <- Vrf.Slot.fromBigInt(header.slot).leftMap(_.toString)
       input <- Vrf.Input.create(slot, nonce).leftMap(_.toString)
       output <- Vrf.verify(input, header.vrfVkey, vrf.proof, vrf.output) match
         case Vrf.Result.VerifiedCertificate(o) => Right(o)
         case other                             => Left(s"VRF proof rejected: $other")
-      value <- Leader.leaderValue(output)
-      fraction <- Leader.Fraction.checked(stake, pools.total)
-      decision <- Leader.check(value, fraction, config.activeSlotsCoeff)
-      _ <- Either.cond(
-        decision == Leader.Decision.Eligible,
-        (),
-        s"issuer not elected for slot ${header.slot}: $decision"
-      )
-      kesPeriod = header.slot / config.slotsPerKesPeriod
-      start = header.opCert.kesPeriod
-      _ <- Either.cond(
-        start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
-        (),
-        s"KES period $kesPeriod outside opcert window [$start, ${start + config.maxKesEvolutions})"
-      )
-      kes <- Sum6Kes
-        .verify(
-          header.opCert.hotVkey,
-          (kesPeriod - start).toInt,
-          header.bodyRaw,
-          header.kesSignature
-        )
-        .leftMap(_.toString)
-      _ <- Either.cond(
-        kes == Sum6Kes.Result.SuppliedMessageSignatureVerified,
-        (),
-        "KES signature rejected"
-      )
-      oc <- OperationalCertificate
-        .verify(
-          header.issuerVkey,
-          header.opCert.hotVkey,
+      leader <- registered match
+        case Some((stake, total)) =>
+          for
+            value <- Leader.leaderValue(output)
+            fraction <- Leader.Fraction.checked(stake, total)
+            decision <- Leader.check(value, fraction, config.activeSlotsCoeff)
+            _ <- Either.cond(
+              decision == Leader.Decision.Eligible,
+              (),
+              s"issuer not elected for slot ${header.slot}: $decision"
+            )
+          yield LeaderCheck.Threshold
+        case None => Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
+      _ <- OCertRules
+        .verifySignatures(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+        .leftMap(_.message)
+      _ <- OCertRules
+        .checkCounter(
+          state.counters,
+          pool,
           header.opCert.sequence,
-          start,
-          header.opCert.sigma
+          known = true, // reaching here means the pool is in the stake view
+          bounded = true
         )
-        .leftMap(_.toString)
-      _ <- Either.cond(
-        oc == OperationalCertificate.Result.OperationalCertificateSignatureVerified,
-        (),
-        "opcert signature rejected"
-      )
-      current = state.counters.getOrElse(pool, BigInt(0))
-      n = header.opCert.sequence
-      _ <- Either.cond(
-        current <= n && n <= current + 1,
-        (),
-        s"opcert counter $n not in [$current, ${current + 1}]"
-      )
+        .leftMap(_.message)
     yield
       val evolving = state.evolving.combine(nonceValue(output))
       val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)
       state.copy(
         evolving = evolving,
         candidate =
-          if header.slot + config.geometry.randomnessStabilisationWindow < nextEpoch then evolving
+          if header.slot + window < nextEpoch then evolving
           else state.candidate,
         lab = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
-        counters = state.counters.updated(pool, n)
-      )
+        counters = state.counters.updated(pool, header.opCert.sequence)
+      ) -> leader
 
   /** A block's nonce contribution: the doubly hashed "N"-prefixed VRF output. */
   def nonceValue(output: Bytes): Nonce =

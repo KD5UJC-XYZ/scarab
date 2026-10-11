@@ -7,7 +7,7 @@ import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import lab.cbor.Bytes
-import lab.network.ChainSync
+import lab.network.{ChainSync, Era}
 import scala.concurrent.duration.*
 
 /** The node's chain-extension rule: the state after `header`/`block`, or a [[ValidationError]]. */
@@ -23,6 +23,12 @@ enum FollowerEvent:
   case Immutable(block: BlockRef)
   case Reconnecting(reason: PeerError, attempt: Int)
 
+  /** The first block of a new era was applied. */
+  case EraEntered(from: Option[Era], to: Era, first: BlockRef)
+
+  /** An epoch of bootstrap-mode headers is complete: how each one was established. */
+  case EpochValidated(epoch: BigInt, threshold: Long, overlay: Long, unchecked: Long)
+
 trait FollowerEvents[F[_]]:
   def emit(event: FollowerEvent): F[Unit]
 
@@ -33,7 +39,9 @@ trait FollowerEvents[F[_]]:
 final class Follower[F[_]: Monad, S](
     rules: BlockRules[F, S],
     events: FollowerEvents[F],
-    geometry: EpochGeometry
+    geometry: EpochGeometry,
+    /** Extra events derived from a state transition (era changes, epoch summaries). */
+    observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil
 )(using chain: Stateful[F, VolatileChain[S]], raise: Raise[F, ChainError]):
 
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. */
@@ -64,6 +72,7 @@ final class Follower[F[_]: Monad, S](
         _ <- events.emit(FollowerEvent.Extended(ref, epoch, tip))
         enteredEpoch = before.tipRef.forall(t => geometry.epochOf(t.slot) < epoch)
         _ <- events.emit(FollowerEvent.EpochEntered(epoch, ref)).whenA(enteredEpoch)
+        _ <- observe(before.state, next, ref).traverse_(events.emit)
         _ <- immutable.traverse_(b => events.emit(FollowerEvent.Immutable(b)))
       yield ()
 

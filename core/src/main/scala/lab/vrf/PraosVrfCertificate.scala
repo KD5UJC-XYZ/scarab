@@ -86,17 +86,29 @@ object PraosVrfCertificate:
       alpha(input) match
         case Left(Failure.Malformed(reason))             => Result.Malformed(reason)
         case Left(Failure.InternalFailure(kind, detail)) => Result.InternalFailure(kind, detail)
-        case Right(message) =>
-          primitive(publicKey, proof, message) match
-            case StrictDraft03.Result.Verified(output) =>
-              if output == null || output.size != 64 then
-                Result.InternalFailure("primitive-contract", "verified output must be 64 bytes")
-              else if output == claimedOutput then Result.VerifiedCertificate(output)
-              else Result.OutputMismatch
-            case StrictDraft03.Result.MalformedEnvelope(reason) => Result.Malformed(reason)
-            case StrictDraft03.Result.Rejected(reason)          => Result.ProofRejected(reason)
-            case StrictDraft03.Result.InternalFailure(kind, detail) =>
-              Result.InternalFailure(kind, detail)
+        case Right(message) => classify(primitive(publicKey, proof, message), claimedOutput)
     catch
       case NonFatal(e) =>
         Result.InternalFailure(e.getClass.getName, Option(e.getMessage).getOrElse(""))
+
+  /** Verify a certificate over an arbitrary, already derived alpha string (TPraos builds its own
+    * seeds). Same draft-03 verifier and output binding as [[verify]].
+    */
+  def verifyAlpha(alpha: Bytes, publicKey: Bytes, proof: Bytes, claimedOutput: Bytes): Result =
+    if publicKey == null || publicKey.size != 32 then
+      Result.Malformed("public key must be 32 bytes")
+    else if proof == null || proof.size != 80 then Result.Malformed("proof must be 80 bytes")
+    else if claimedOutput == null || claimedOutput.size != 64 then
+      Result.Malformed("claimed output must be 64 bytes")
+    else classify(StrictDraft03.verify(publicKey, proof, alpha), claimedOutput)
+
+  private def classify(r: StrictDraft03.Result, claimedOutput: Bytes): Result = r match
+    case StrictDraft03.Result.Verified(output) =>
+      if output == null || output.size != 64 then
+        Result.InternalFailure("primitive-contract", "verified output must be 64 bytes")
+      else if output == claimedOutput then Result.VerifiedCertificate(output)
+      else Result.OutputMismatch
+    case StrictDraft03.Result.MalformedEnvelope(reason) => Result.Malformed(reason)
+    case StrictDraft03.Result.Rejected(reason)          => Result.ProofRejected(reason)
+    case StrictDraft03.Result.InternalFailure(kind, detail) =>
+      Result.InternalFailure(kind, detail)

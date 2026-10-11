@@ -1,7 +1,8 @@
 # Scala node (`node` module)
 
 A Cardano node core written as tagless-final cats-effect programs. It follows a peer from genesis,
-validates Praos headers and applies the Conway ledger rules. Every retained state can be queried,
+validates TPraos and Praos headers and applies the Conway ledger rules (or, for chains that start
+before Conway, follows in bootstrap mode, see below). Every retained state can be queried,
 so it can be compared byte for byte against a reference `cardano-node`.
 
 ## Architecture
@@ -13,7 +14,7 @@ so it can be compared byte for byte against a reference `cardano-node`.
 | Decoding | `Header.scala`, `Block.scala`, `network/Era.scala`, `network/NtNHeader.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`, Shelley-Conway) and `Header.Byron`; blocks decoded per era with the body hash recomputed from original bytes. Real fixtures under `fixtures/preview/` |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`; `supervise` reconnects on `PeerError` |
-| Consensus | `consensus/Praos.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block) |
+| Consensus | `consensus/Praos.scala`, `consensus/TPraos.scala`, `consensus/OCertRules.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block). TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
 | Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` |
@@ -25,6 +26,33 @@ uses an exact `Rational` with Haskell `floor` semantics.
 Laws and properties: the `Ref`-backed `Stateful` passes the cats-mtl Stateful laws, `Rational`
 passes the cats-kernel Order laws, and the ScalaCheck properties cover rollback, reward bounds and
 exactness. Scripted-peer tests cover forks, reconnects and fatal rule violations.
+
+## Bootstrap mode (Preview from genesis)
+
+`NodeRules` dispatches by era. A chain that starts before Conway (Preview forks to Alonzo at epoch
+0) is followed in bootstrap mode until a full pre-Conway ledger exists:
+
+- **Headers:** Alonzo blocks use `TPraos` (overlay schedule while `d > 0`), Babbage and later use
+  `Praos`. The `PraosState` carries over the era boundary unchanged.
+- **Ledger-lite** (`ledger/BootstrapLedger.scala`): no UTxO. It tracks `d`, extra entropy,
+  protocol version, size limits, genesis delegates, and pool VRF keys from block bodies:
+  PPUP proposals (applied at the epoch boundary when a quorum proposed the identical update),
+  genesis delegation certificates (adopted after the stability window), pool registrations and
+  retirements. Transactions are not validated.
+- **Unchecked leaders:** without a stake distribution, non-overlay slots get every cryptographic
+  check (both VRF proofs, KES, opcert, the issuer's registered VRF key) but the leader threshold is
+  reported as `LeaderCheck.Unchecked`, never as valid. The JSON log has one `epochValidated` line
+  per epoch (`thresholdChecked`, `overlay`, `leaderUnchecked`) and an `eraTransition` line.
+- **Nonce windows** (verified on Preview): candidate nonce freezes `3k/f` before the epoch end
+  through Babbage; Conway and the devnet use `4k/f`. TPraos overlay formulas follow cardano-ledger
+  `classifyOverlaySlot` (`position = ceiling(s * d)`, active when `position mod floor(1/f) = 0`).
+- **Read-ahead:** while the peer is far ahead, ChainSync requests are pipelined and each batch is
+  fetched with one BlockFetch range (`Peer.nodeToNode`, `ChainSyncClient.requestNextBatch`).
+
+```sh
+bash scripts/sbtw node/compile node/runtimeClasspathFile
+# then run lab.node.Main follow --genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001
+```
 
 ## Running a local soak (Docker only)
 

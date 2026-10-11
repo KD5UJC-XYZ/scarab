@@ -19,6 +19,12 @@ trait ChainSyncClient[F[_], P]:
   /** The next instruction. An `AwaitReply` is waited out rather than reported. */
   def requestNext: F[ChainSyncClient.Update[P]]
 
+  /** `n` instructions with all requests sent before any reply is read (pipelined). Only valid while
+    * the peer is known to be at least `n` blocks ahead; at its tip the later replies wait for new
+    * blocks. Replies are checked against the protocol state machine in order.
+    */
+  def requestNextBatch(n: Int): F[Vector[ChainSyncClient.Update[P]]]
+
   /** Tell the peer we are finished; the protocol ends. */
   def done: F[Unit]
 
@@ -55,28 +61,30 @@ object ChainSyncClient:
             .productR(next.fold(illegal, state.set))
         }
 
-      def receive: F[Message[P]] =
-        state.get.flatMap { current =>
-          val limit = current match
-            case State.Intersect     => F.pure(settings.intersectTimeout)
-            case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
-            case State.NextMustReply => F.pure(settings.mustReplyTimeout)
-            case other               => illegal[FiniteDuration](s"no reply is expected in $other")
-          limit.flatMap { wait =>
-            Timed
-              .within(wait, id, current.toString)(
-                channel.recv(settings.limits.maxMessageBytes)(
-                  ChainSync.decodePrefix(current, ChainSync.Role.Server, _, codec, settings.limits)
-                )
+      /** The next server message in protocol state `current`; the state is not advanced. */
+      def receiveAt(current: State): F[Message[P]] = {
+        val limit = current match
+          case State.Intersect     => F.pure(settings.intersectTimeout)
+          case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
+          case State.NextMustReply => F.pure(settings.mustReplyTimeout)
+          case other               => illegal[FiniteDuration](s"no reply is expected in $other")
+        limit.flatMap { wait =>
+          Timed
+            .within(wait, id, current.toString)(
+              channel.recv(settings.limits.maxMessageBytes)(
+                ChainSync.decodePrefix(current, ChainSync.Role.Server, _, codec, settings.limits)
               )
-              .flatMap(message =>
-                ChainSync
-                  .transition(current, ChainSync.Role.Server, message)
-                  .fold(illegal, state.set)
-                  .as(message)
-              )
-          }
+            )
         }
+      }
+
+      def advance(current: State, message: Message[P]): F[State] =
+        ChainSync.transition(current, ChainSync.Role.Server, message).fold(illegal, F.pure)
+
+      def receive: F[Message[P]] =
+        state.get.flatMap(current =>
+          receiveAt(current).flatMap(m => advance(current, m).flatMap(state.set).as(m))
+        )
 
       new ChainSyncClient[F, P]:
         def findIntersect(points: Vector[Point]) =
@@ -90,6 +98,39 @@ object ChainSyncClient:
 
         def requestNext: F[Update[P]] =
           send(Message.RequestNext) *> collect
+
+        def requestNextBatch(n: Int): F[Vector[Update[P]]] =
+          if n <= 1 then requestNext.map(Vector(_))
+          else
+            state.get.flatMap {
+              case State.Idle =>
+                ChainSync
+                  .encode(
+                    State.Idle,
+                    ChainSync.Role.Client,
+                    Message.RequestNext,
+                    codec,
+                    settings.limits
+                  )
+                  .fold(illegal, bytes => List.fill(n)(bytes).traverse_(channel.send))
+                  .productR(List.fill(n)(()).traverse(_ => collectOne))
+                  .map(_.toVector)
+              case other => illegal(s"pipelined request in $other")
+            }
+
+        // One reply to an outstanding request: waits out AwaitReply; the state returns to Idle.
+        private def collectOne: F[Update[P]] =
+          def go(current: State): F[Update[P]] =
+            receiveAt(current).flatMap { message =>
+              advance(current, message).flatMap { next =>
+                message match
+                  case Message.AwaitReply                => go(next)
+                  case Message.RollForward(payload, tip) => F.pure(Update.RollForward(payload, tip))
+                  case Message.RollBackward(point, tip)  => F.pure(Update.RollBackward(point, tip))
+                  case other                             => illegal(s"unexpected reply $other")
+              }
+            }
+          go(State.NextCanAwait)
 
         private def collect: F[Update[P]] =
           receive.flatMap {

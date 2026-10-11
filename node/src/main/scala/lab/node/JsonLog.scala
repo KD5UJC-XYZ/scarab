@@ -53,5 +53,21 @@ object JsonLog:
       case FollowerEvent.EpochEntered(epoch, first) =>
         line("epoch", "epoch" -> epoch.asJson, "first" -> block(first))
       case FollowerEvent.Immutable(_) => IO.unit
+      case FollowerEvent.EraEntered(from, to, first) =>
+        line(
+          "eraTransition",
+          "from" -> from.map(_.toString).asJson,
+          "to" -> to.toString.asJson,
+          "first" -> block(first)
+        )
+      case FollowerEvent.EpochValidated(epoch, threshold, overlay, unchecked) =>
+        line(
+          "epochValidated",
+          "epoch" -> epoch.asJson,
+          "headers" -> (threshold + overlay + unchecked).asJson,
+          "thresholdChecked" -> threshold.asJson,
+          "overlay" -> overlay.asJson,
+          "leaderUnchecked" -> unchecked.asJson
+        )
       case FollowerEvent.Reconnecting(reason, attempt) =>
         line("reconnecting", "reason" -> reason.message.asJson, "attempt" -> attempt.asJson)

@@ -18,8 +18,10 @@ private[witness] object WitnessTestData:
       .map(_.split("\t", -1).toVector)
       .toVector
 
+  final case class Witness(publicKey: PublicKey32, signature: Signature64)
+
   final case class PublicVector(id: String, key: Bytes, signature: Bytes, message: Bytes):
-    def witness: VKeyWitness = VKeyWitness(
+    def witness: Witness = Witness(
       PublicKey32.create(key).toOption.get,
       Signature64.create(signature).toOption.get
     )
