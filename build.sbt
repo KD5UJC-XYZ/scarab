@@ -1,11 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
 val catsVersion = "2.13.0"
 val catsEffectVersion = "3.6.3"
 val catsMtlVersion = "1.6.0"
 val fs2Version = "3.11.0"
 val munitVersion = "1.0.2"
 ThisBuild / scalaVersion := "3.3.8"
-ThisBuild / version := "0.24.0"
-ThisBuild / organization := "dev.cardano.research"
+ThisBuild / version := "0.1.0-SNAPSHOT"
+ThisBuild / organization := "io.github.ottobot-ai"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Werror")
 ThisBuild / publish / skip := true
@@ -41,7 +42,7 @@ lazy val network = project.in(file("network")).dependsOn(core).settings(
 )
 
 // Tagless-final network runtime: fs2 bearer, multiplexer and mini-protocol clients.
-lazy val networkRuntime = project.in(file("network-runtime")).dependsOn(network).settings(
+lazy val networkRuntime = project.in(file("network-runtime")).dependsOn(network % "compile->compile;test->test").settings(
   libraryDependencies ++= Seq(
     "org.typelevel" %% "cats-core" % catsVersion,
     "org.typelevel" %% "cats-effect" % catsEffectVersion,

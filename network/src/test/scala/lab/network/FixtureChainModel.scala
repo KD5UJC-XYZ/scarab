@@ -99,7 +99,7 @@ object FixtureChainModel:
   def demo(): Either[String, Model] =
     def p(slot: Int, hash: Int): Point =
       Point.Block(
-        UInt64.from(BigInt(slot)).toOption.get,
+        UInt64.saturating(BigInt(slot)),
         lab.cbor.Bytes(Vector.fill(32)(hash.toByte))
       )
     val a = p(1, 1); val b = p(2, 2); val c = p(3, 3)

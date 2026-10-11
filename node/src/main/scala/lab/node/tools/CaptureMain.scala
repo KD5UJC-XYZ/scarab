@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-package lab.node
+package lab.node.tools
 
 import cats.effect.{ExitCode, IO, IOApp}
-import cats.mtl.Handle
+import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import lab.cbor.Bytes
 import lab.network.ChainSync
+import lab.node.{ChainError, Header, NodeError, Peer, SyncEvent}
 
-/** `capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]`
+/** Development tool, not part of the node: `lab.node.tools.CaptureMain`.
+  *
+  * `capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]`
   *
   * Records N blocks of a chain, one hex-encoded raw block per line, for offline replay tests. It
   * starts at genesis, or with `--from` at the first block after that point. Capturing continues
@@ -36,14 +39,16 @@ object CaptureMain extends IOApp:
         ).as(ExitCode(2))
       case Some((peer, magic, n, out, from)) =>
         Handle
-          .allow[PeerError](
-            Peer.nodeToNode[IO](Peer.Settings(peer, magic), _ => IO.unit).use(capture(_, n, from))
-          )
-          .rescue(e => IO.raiseError(new RuntimeException(e.message)))
-          .flatMap(blocks =>
-            IO.blocking(Files.writeString(out, blocks.map(_.hex).mkString("", "\n", "\n")))
-          )
-          .as(ExitCode.Success)
+          .allow[NodeError] {
+            Peer
+              .nodeToNode[IO](Peer.Settings(peer, magic), _ => IO.unit)
+              .use(capture(_, n, from))
+              .flatMap(blocks =>
+                IO.blocking(Files.writeString(out, blocks.map(_.hex).mkString("", "\n", "\n")))
+              )
+              .as(ExitCode.Success)
+          }
+          .rescue(e => IO.println(e.message).as(ExitCode(1)))
 
   private def parsePoint(text: String): Option[ChainSync.Point] = text.split('.') match
     case Array(slot, hash) =>
@@ -53,7 +58,9 @@ object CaptureMain extends IOApp:
       yield ChainSync.Point.Block(s, h)
     case _ => None
 
-  private def capture(peer: Peer[IO], n: Int, from: ChainSync.Point): IO[Vector[Bytes]] =
+  private def capture(peer: Peer[IO], n: Int, from: ChainSync.Point)(using
+      Raise[IO, NodeError]
+  ): IO[Vector[Bytes]] =
     def loop(chain: Vector[(Header, Bytes)]): IO[Vector[Bytes]] =
       if n != All && chain.size >= n + Depth then IO.pure(chain.take(n).map(_._2))
       else
@@ -71,5 +78,5 @@ object CaptureMain extends IOApp:
         }
     peer.intersect(Vector(from)).flatMap {
       case Some(_) => loop(Vector.empty)
-      case None    => IO.raiseError(new RuntimeException("peer does not have the --from point"))
+      case None    => Raise[IO, NodeError].raise(ChainError.NoIntersection)
     }
