@@ -442,6 +442,13 @@ class EraLoad:
         registered = {c.get("keyHash") for c, _ in json.loads(out)}
         return [k for k in self.genesis_dreps if k.hash.hex() in registered]
 
+    def live_dreps(self):
+        """Every DRep key of the scenarios that is registered now."""
+        registered = {c.get("keyHash") for c, _ in json.loads(self.sh(
+            f"cardano-cli conway query drep-state --all-dreps --testnet-magic {MAGIC} --socket-path {SOCKET}",
+            timeout=120).stdout)}
+        return [k for k in self.genesis_dreps + self.gdrep if k.hash.hex() in registered]
+
     def gov_votes(self, label, wallet, casts, signers):
         """One transaction with the votes `casts` ([(voter, [(gov_action_id, vote)])]) signed by `signers`."""
         return self.act("conway", label, wallet, [], votes=eratx.voting_procedures(casts),
@@ -603,7 +610,7 @@ class EraLoad:
 
     def second_round(self, pv):
         """A withdrawal and the hard fork to protocol version 11, both needing the committee."""
-        dreps = (self.live_genesis_dreps() + self.gdrep)[:2]
+        dreps = self.live_dreps()[:2]
 
         def cast(ids):
             casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
@@ -617,7 +624,7 @@ class EraLoad:
 
     def third_round(self, pv):
         """No confidence in the committee."""
-        dreps = self.live_genesis_dreps() + self.gdrep
+        dreps = self.live_dreps()
 
         def cast(ids):
             casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
@@ -627,7 +634,7 @@ class EraLoad:
 
     def fourth_round(self, pv, epoch):
         """Elect a new committee without an existing one: lower thresholds, no committee vote."""
-        dreps = self.live_genesis_dreps() + self.gdrep
+        dreps = self.live_dreps()
 
         def cast(ids):
             casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]

@@ -119,7 +119,9 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
   accounts registered when the calculation started, so unclaimed rewards return to the reserves),
   MIR, SNAP with pointer-address stake, pool re-registration and retirement, parameter update
   adoption, and the reward update with `d`-dependent performance and the previous epoch's
-  parameters. The `set` snapshot is the pool distribution for the leader checks, so
+  parameters. The ledger creates the reward update with the first block that arrives after
+  `4k/f` slots into the epoch (`LedgerState.rewardDraft` is computed at the boundary and activated by
+  `Epoch.tick`): an epoch with no such block pays no rewards and keeps its fee snapshot. The `set` snapshot is the pool distribution for the leader checks, so
   `LeaderCheck.Threshold` replaces `Unchecked`; the node stops if the total supply ever differs
   from the maximum supply at an epoch boundary.
 - **Plutus (phase 2)**: every redeemer is evaluated (`ledger/Phase2.scala`) and the block's
@@ -290,33 +292,51 @@ constitution, the committee state (hot keys, resignations), the DRep stake distr
 always-abstain and always-no-confidence) and the ratify state (enacted and expired actions, the delay
 flag, the next committee, constitution and previous action ids, the protocol version).
 
-## Verified result (2026-10-10)
+## Verified result (2026-10-11)
 
-An 8-minute soak from genesis matched the reference exactly at **23/23** comparison points.
-Details:
+**Soak.** `devnet.py soak --seconds 480` from genesis matched the reference exactly at **24/24**
+comparison points (epochs 0 to 9, 245 blocks, no error). The governance load ran every stage within
+those ten epochs, including a hard fork to protocol 11 (Plutus V3 spend, mint and reference-script mint
+included). A longer run (900 s, epochs 0 to 18, 456 blocks) matched at **41/41**; it went through the
+hard fork to 11, a no-confidence action and the election of a new committee while there was none.
 
-- **Chain:** epochs 0–9, 270 blocks, 2 fork rollbacks and 4 reconnects.
-- **Transactions:** 432 accepted: 402 transfers, 6 registrations, 13 delegations,
-  8 withdrawals and 3 deregistrations.
-- **What each comparison covers:**
-  - whole UTxO, fees, deposits, treasury and reserves
-  - accounts, pools and DReps
-  - mark/set/go snapshots and the fee snapshot
-  - block counts, the reward update and the pool distribution
-  - all five Praos nonces and the opcert counters
+**E2E.** `devnet.py e2e` (Byron to Conway, seven Conway epochs after the transition, 751 Conway blocks)
+passed with every comparison matched:
+
+| era | compared | mismatched |
+|---|---|---|
+| Shelley | 4 | 0 |
+| Allegra | 4 | 0 |
+| Mary | 4 | 0 |
+| Alonzo | 8 | 0 |
+| Babbage | 8 | 0 |
+| Conway | 30 | 0 |
+
+The Conway epochs start at protocol version 9 (bootstrap phase): info, parameter-change and hard-fork
+proposals with pool and DRep votes, the hard fork to 10, then committee election, treasury withdrawals,
+no confidence and DRep and committee certificates.
+
+**What each comparison covers:**
+
+- whole UTxO, fees, deposits, treasury and reserves
+- accounts, pools and DReps
+- mark/set/go snapshots and the fee snapshot
+- block counts, the reward update and the pool distribution
+- all five Praos nonces and the opcert counters
+- Conway: proposals and their votes, committee and committee state, constitution, the DRep stake
+  distribution and the ratify state
+
+**Preview.** Conway blocks of Preview (protocol 10 and 11) with every kind of proposal, votes and the
+real guardrails script are decoded and replayed state-independently (see `fixtures/preview/README.md`):
+18 transactions run through phase 2, all agree with `is_valid`, the recomputed script data hash and
+Scalus's script contexts. A full Preview sync into Conway (several million blocks) was not attempted.
 
 ## Not yet implemented
 
-Rejected as `Unsupported` under the Conway rules, so the node stops rather than diverging:
-
-- **Conway scripts and assets:** scripts, minting and bootstrap witnesses (the pre-Conway rules support them).
-- **Governance:** proposals and votes, committee certificates and treasury donations.
-- **Plutus V3 in a block:** the V3 script context is built and tested against Scalus, but the Conway transaction rules still reject scripts, so V3 is not reached from a chain.
 - **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
-
-Also not implemented:
-
-- **Persistence:** none; the node replays from genesis on start.
+- **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions) and the
+  block-level execution-unit limit.
+- **Persistence:** none in this tree; the node replays from genesis on start.
 - **Peers:** a single upstream peer only.
-- **Rewards and governance:** non-myopic pool ranking, the DRep pulser and ratification state.
+- **Rewards:** non-myopic pool ranking.
 - **Production:** block production and a mempool.

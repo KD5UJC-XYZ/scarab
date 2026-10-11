@@ -8,12 +8,15 @@ compatible with the reference Haskell implementation.
 ## Status
 
 The node follows a reference cluster from genesis, validates Praos headers (VRF, KES, opcert,
-nonces) and applies Conway ledger rules for key-witnessed ADA transactions and staking
-certificates. An 8-minute soak matched the Haskell `cardano-node` exactly at 23/23 comparison
-points over epochs 0-9 (270 blocks, 432 transactions, 2 fork rollbacks, 4 reconnects). The
-compared state covers the UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps,
-snapshots, reward update and the Praos nonces. Scripts, assets, governance actions and Byron
-spending are rejected as unsupported. See [docs/node.md](docs/node.md) for details and limits.
+nonces) and applies the ledger rules of every Shelley-based era through Conway: native and Plutus
+V1 to V3 scripts, minting, reference scripts, all certificates, governance (proposals, votes,
+ratification, enactment, the DRep pulser) and treasury donations. An 8-minute soak matched the
+Haskell `cardano-node` exactly at 24/24 comparison points over epochs 0-9 with governance and Plutus
+V3 load, and the Byron-to-Conway `e2e` run matched every comparison in every era. The compared state
+covers the UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps, snapshots, reward update,
+the Praos nonces and the governance state (proposals, committee, constitution, DRep stake, ratify
+state). Byron transactions are rejected as unsupported. See [docs/node.md](docs/node.md) for details
+and limits.
 
 ## Modules
 
