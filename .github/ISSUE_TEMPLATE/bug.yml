@@ -1,0 +1,43 @@
+name: Bug or divergence report
+description: Wrong behaviour, a crash, or a disagreement with the Haskell node or the chain
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Exploitable security problems: do not file here, see SECURITY.md. This is unofficial research software.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you saw.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: Output of `git rev-parse HEAD`, and whether you built in the JDK image.
+    validations:
+      required: true
+  - type: input
+    id: network
+    attributes:
+      label: Network and era
+      description: Preview, devnet scenario name, ...; era (Byron ... Conway).
+  - type: textarea
+    id: divergence
+    attributes:
+      label: For a ledger or consensus divergence
+      description: Slot or block hash, transaction id, expected and actual result, and the source of truth (Haskell node version, Koios, db-sync, ...). A fixture or captured block is ideal.
+  - type: input
+    id: roadmap
+    attributes:
+      label: Related compatibility row or roadmap ID
+      placeholder: e.g. B2, Plutus phase 2
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: The JSON log lines around the failure. Remove any key material.
+      render: json

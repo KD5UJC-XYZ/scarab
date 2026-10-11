@@ -1,0 +1,27 @@
+name: Feature or roadmap item
+description: Propose a feature or pick up an item from docs/roadmap.md
+labels: [enhancement]
+body:
+  - type: input
+    id: roadmap
+    attributes:
+      label: Roadmap ID
+      description: The item in docs/roadmap.md this belongs to, if any.
+      placeholder: e.g. F1
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: How would it be verified?
+      description: Which reference, fixtures or devnet scenario shows it is right (see CONTRIBUTING.md, gates by change type).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

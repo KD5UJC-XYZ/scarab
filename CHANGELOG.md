@@ -1,0 +1,61 @@
+# Changelog
+
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is pre-1.0 research
+software; versions mark milestones, not stability. Commit hashes refer to this repository's history.
+
+## [0.1.0] - research preview (to be tagged)
+
+The tag waits for the uninterrupted Preview genesis-to-tip sync on the tagged build
+(`<<SYNC>>`, see [docs/performance.md](docs/performance.md)). `build.sbt` still carries the
+internal version `0.24.0` of the pre-cleanup lineage.
+
+### Foundation
+- Cleanup to a tagless-final code base: pure `core` and `network`, fs2 `network-runtime`, `node`
+  with cats-mtl typed errors; research modules, scripts and documents removed (6d330b5, history at 8dca66c).
+- Network runtime rebuilt on fs2 as algebras over one multiplexed connection (e04dc9a).
+
+### Consensus
+- Praos header validation (VRF, KES, operational certificates, nonces) and TPraos validation with the
+  overlay schedule; Preview followed from genesis (6332426).
+- Era-aware headers and blocks for Byron, TPraos and Praos (d6122c7); Byron to Conway follow with
+  the Byron signature check (8c8258b).
+- Praos chain selection over several peers (bb38470).
+- Block forging: ECVRF draft-03 proving, Sum6 KES generation, signing and evolution, leader check,
+  block assembly from the mempool, adoption (00450a9, 803aefb).
+
+### Ledger
+- Full Shelley to Babbage ledger: UTXO/UTXOW/DELEGS/PPUP, MIR, rewards, epoch boundary (baee535, f2e0d34).
+- Plutus V1 to V3 phase 2 via Scalus behind a `ScriptEvaluator` algebra, own script contexts and
+  script data hash (35ff3e6, 82ab9b3, be02666).
+- Conway: transaction rules, scripts, certificates, governance, ratification, enactment, DRep
+  pulser (a785baf, 87a36d4, 21bdedd); governance snapshot codecs (47f7208).
+- Block execution-unit limits validated on received blocks and enforced when forging.
+- Fixes found by syncing Preview: pledge owners' stake (ca925cf), pointer addresses at the Conway
+  boundary (ff735db), repeated redeemer purposes (aabb240, bd4871f), Plutus V1 with reference inputs
+  (e5beb60), `NewConstitution` context (73e5b4f), CBOR nesting depth (f3003aa); reward-update
+  activation (8d81d5c).
+
+### Network and relay
+- Node-to-node servers: duplex mux, handshake, ChainSync, BlockFetch, KeepAlive, TxSubmission2 over
+  TCP (dad6087); the node serves its own chain and holds transactions in a mempool (aac9996).
+- Node-to-client LocalTxSubmission over a Unix socket (435d2fc).
+- BlockFetch ranges cut by body size and intersection candidates thinned (d0ed44d).
+
+### Storage and scale
+- `ImmutableStore`, `LedgerSnapshots`, restart recovery (b1a7f85); snapshot reader fix (24cef6b).
+- UTxO set behind `UtxoStore` with RocksDB and memory interpreters, incremental stake (a71db6a).
+- Compact array-backed bytes (1ef066d); parallel verification ahead of the rules (aee62d9); pipelined
+  peer (84d3e54, d97196f); cached per-block recomputation (1426627, 0cc6ef3).
+
+### Tooling and evidence
+- `devnet.py`: `up-eras` and `e2e` (b5667f8, 8c8258b), per-era load and comparison (85721cb),
+  Conway governance load (6f6e659), `relay` (8f35379), `pool` (288582d); fixtures `fixtures/eras`
+  and Preview governance/Plutus cases.
+- Documentation overhaul: README, architecture, running, compatibility matrix, performance,
+  findings, roadmap; CONTRIBUTING, SECURITY, CODE_OF_CONDUCT; issue and pull request templates;
+  complete `NOTICE`.
+
+### Known limits
+See [docs/compatibility.md](docs/compatibility.md) and [docs/roadmap.md](docs/roadmap.md): Byron
+transactions, preprod and mainnet, full node-to-client queries, Mithril import, P2P governor, KES
+agent and opcert issuing, TPraos forging, unaudited.
