@@ -448,10 +448,32 @@ no confidence and DRep and committee certificates.
 - Conway: proposals and their votes, committee and committee state, constitution, the DRep stake
   distribution and the ratify state
 
-**Preview.** Conway blocks of Preview (protocol 10 and 11) with every kind of proposal, votes and the
-real guardrails script are decoded and replayed state-independently (see `fixtures/preview/README.md`):
-18 transactions run through phase 2, all agree with `is_valid`, the recomputed script data hash and
-Scalus's script contexts. A full Preview sync into Conway (several million blocks) was not attempted.
+**Preview, from genesis to the tip (2026-10-11).** `follow --db` with the RocksDB UTxO store synced the
+whole of Preview over the network: 4,747,639 blocks, epochs 0 to 1447, Alonzo (epoch 0), Babbage
+(epoch 3), Conway (epoch 646, protocol 9; protocol 10 and 11 later), every header checked against the
+leader schedule and every transaction through UTXOW/UTXO/phase 2 (3.23M transactions evaluated, 242
+failing scripts, each equal to the block's `is_valid` flag; 11.2M scripts; 3.30M script data hashes
+recomputed), the reward calculation at every boundary, and from epoch 646 the Conway governance. The
+average over the live-synced epochs was about 550 blocks/s (270 to 840 per hundred epochs) on 8 CPUs
+with `-Xmx3g`. At the tip: 3.2M UTxO entries (466 MB in RocksDB), 112k accounts, 726 pools; the heap
+after a full collection is under 300 MB; a ledger snapshot is 52 MB. See `.workspace/notes/perf.md`.
+
+Syncing a chain this long is also the first check of the ledger against a public network, and it
+found six bugs that the devnet cannot show (each has a test or fixture now):
+
+| where | what the node did | what the ledger does |
+|---|---|---|
+| epoch 493 (rewards) | counted a pool owner's stake for the pledge whatever the owner delegates to | only the stake delegated to the pool counts (`poolStake` restricts the map) |
+| epoch 646 (Babbage to Conway) | the SNAP at the boundary counted pointer addresses | that boundary runs under the Conway rules, which ignore pointers |
+| slot 12924758 (Alonzo-style witness) | evaluated six redeemers for one purpose | redeemers are a map keyed by purpose, the last entry counts |
+| slot 62567517 (Conway map form) | counted a redeemer listed twice twice in the fee | the same: one entry per purpose |
+| slot 65493476 | refused a Plutus V1 script in a transaction with reference inputs | from Conway they are simply not part of the V1 context |
+| slot 116688298 | encoded `NewConstitution` as `[previous, Maybe ScriptHash]` | `Constitution` is a constructor of its own: `[previous, Constr 0 [Maybe ScriptHash]]`; Scalus 1.2.0 has the same gap (the oracle tests note it) |
+
+Two network-side faults of the new pipeline were fixed on the way: a BlockFetch range of full blocks
+exceeds the client's 10 MB per-request limit (ranges are now cut by announced body size), and a
+reconnect offered every retained block as an intersection candidate (more than the protocol's 64; now
+thinned).
 
 ## Not yet implemented
 
@@ -459,6 +481,7 @@ Scalus's script contexts. A full Preview sync into Conway (several million block
 - **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions) and the
   block-level execution-unit limit.
 - **On-disk ledger:** only the UTxO set is on disk (see "Scale"); the other ledger maps (accounts, pools, DReps, the three stake snapshots) are in memory and in the snapshot file. The volatile blocks are not persisted.
-- **Peers:** a single upstream peer only.
+- **Peers:** a single upstream peer only. The sync is pipelined but bounded by one ChainSync request
+  stream (64 to 128 headers per round trip against the public relay; 256 times out).
 - **Rewards:** non-myopic pool ranking.
 - **Production:** block production and a mempool.
