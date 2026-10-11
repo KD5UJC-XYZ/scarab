@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab.node.storage
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -80,56 +80,90 @@ class ChainStorageSuite extends CatsEffectSuite:
       every: Int = 120,
       log: Ref[IO, Vector[StorageEvent]]
   ): IO[(Option[BlockRef], VolatileChain[NodeState])] =
+    runWith(dir, until, every, log, None).map((anchor, chain, _) => (anchor, chain))
+
+  /** As [[run]], with the UTxO set in a store (`memory` or `rocksdb`) under the database directory;
+    * the last component is the complete UTxO set at the end.
+    */
+  private def runWith(
+      dir: Path,
+      until: Int,
+      every: Int,
+      log: Ref[IO, Vector[StorageEvent]],
+      store: Option[String]
+  ): IO[
+    (Option[BlockRef], VolatileChain[NodeState], Map[lab.node.ledger.TxIn, lab.node.ledger.TxOut])
+  ] =
     Handle
       .allow[NodeError] {
-        ChainStorage
-          .open[IO, NodeState](
-            dir,
-            config(every),
-            rules,
-            setup.start,
-            storageEvents(log),
-            StateBacking.none[IO, NodeState],
-            _ => IO.unit
-          )
-          .use { recovered =>
-            for
-              chainRef <- Ref.of[IO, VolatileChain[NodeState]](
-                VolatileChain(
-                  k,
-                  Anchor(recovered.anchor, recovered.state),
-                  Vector.empty,
-                  setup.origin
-                )
-              )
-              given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
-              queue <- Queue.unbounded[IO, SyncEvent]
-              resumeFrom = recovered.anchor.fold(0)(a => headers.indexWhere(_.hash == a.hash) + 1)
-              _ <- (resumeFrom until until).toList.traverse_(i =>
-                queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
-              )
-              done <- Deferred[IO, Unit]
-              offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
-              bodies = headers.map(_.hash).zip(raws).toMap
-              peer = new Peer[IO]:
-                def intersect(candidates: Vector[ChainSync.Point]) =
-                  offered.update(_ :+ candidates).as(candidates.headOption)
-                def next = queue.tryTake.flatMap {
-                  case Some(event) => IO.pure(event)
-                  case None        => done.complete(()) *> IO.never[SyncEvent]
-                }
-                def fetch(header: Header) = IO.pure(bodies(header.hash))
-              follower = Follower[IO, NodeState](
+        val backed: Resource[IO, (Option[UtxoStore[IO]], StateBacking[IO, NodeState])] =
+          store match
+            case None => Resource.pure((None, StateBacking.none[IO, NodeState]))
+            case Some("memory") =>
+              Resource.eval(MemoryUtxoStore[IO]).map { s =>
+                (Some(s: UtxoStore[IO]), new UtxoBacking[IO](s, dir / "utxo" / "checkpoints"))
+              }
+            case Some(_) =>
+              RocksUtxoStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
+                (Some(s: UtxoStore[IO]), new UtxoBacking[IO](s, dir / "utxo" / "checkpoints"))
+              }
+        backed
+          .use { (utxoStore, backing) =>
+            val rules =
+              NodeRules[IO](setup.praos, setup.globals, setup.byronRules, utxoStore = utxoStore)
+            ChainStorage
+              .open[IO, NodeState](
+                dir,
+                config(every),
                 rules,
-                noEvents,
-                geometry,
-                persistence = Some(recovered.persistence)
+                setup.start,
+                storageEvents(log),
+                backing,
+                _ => IO.unit
               )
-              _ <- IO.race(follower.session(peer), done.get.timeout(60.seconds))
-              // Snapshots are written in the background; let them land.
-              _ <- IO.sleep(500.millis)
-              chain <- chainRef.get
-            yield (recovered.anchor, chain.copy(blocks = chain.blocks))
+              .use { recovered =>
+                for
+                  chainRef <- Ref.of[IO, VolatileChain[NodeState]](
+                    VolatileChain(
+                      k,
+                      Anchor(recovered.anchor, recovered.state),
+                      Vector.empty,
+                      setup.origin
+                    )
+                  )
+                  given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+                  queue <- Queue.unbounded[IO, SyncEvent]
+                  resumeFrom = recovered.anchor
+                    .fold(0)(a => headers.indexWhere(_.hash == a.hash) + 1)
+                  _ <- (resumeFrom until until).toList.traverse_(i =>
+                    queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
+                  )
+                  done <- Deferred[IO, Unit]
+                  offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
+                  bodies = headers.map(_.hash).zip(raws).toMap
+                  peer = new Peer[IO]:
+                    def intersect(candidates: Vector[ChainSync.Point]) =
+                      offered.update(_ :+ candidates).as(candidates.headOption)
+                    def next = queue.tryTake.flatMap {
+                      case Some(event) => IO.pure(event)
+                      case None        => done.complete(()) *> IO.never[SyncEvent]
+                    }
+                    def fetch(header: Header) = IO.pure(bodies(header.hash))
+                  follower = Follower[IO, NodeState](
+                    rules,
+                    noEvents,
+                    geometry,
+                    persistence = Some(recovered.persistence)
+                  )
+                  _ <- IO.race(follower.session(peer), done.get.timeout(60.seconds))
+                  // Snapshots are written in the background; let them land.
+                  _ <- IO.sleep(500.millis)
+                  chain <- chainRef.get
+                  all <- utxoStore.fold(IO.pure(chain.state.ledger.utxo.toMap))(s =>
+                    UtxoStore.materialize(s, chain.state.ledger.utxo)
+                  )
+                yield (recovered.anchor, chain.copy(blocks = chain.blocks), all)
+              }
           }
           .map(_.asRight[NodeError])
       }
@@ -249,6 +283,68 @@ class ChainStorageSuite extends CatsEffectSuite:
         opened = e2.collectFirst { case StorageEvent.ImmutableOpened(r) => r }.get
         _ <- IO(assert(opened.truncatedEntries >= 1, opened.toString))
         _ <- IO(assertEquals(chain.state, states(500)))
+      yield ()
+    }
+  }
+
+  private def sameLedger(a: NodeState, b: NodeState): Unit =
+    assertEquals(a.praos, b.praos)
+    assertEquals(a.boot, b.boot)
+    assertEquals(
+      a.ledger.copy(utxo = lab.node.ledger.Utxo.empty),
+      b.ledger.copy(utxo = lab.node.ledger.Utxo.empty)
+    )
+    assertEquals(a.ledger.utxo.stake, b.ledger.utxo.stake)
+    assertEquals(a.ledger.utxo.coin, b.ledger.utxo.coin)
+    assertEquals(a.ledger.utxo.count, b.ledger.utxo.count)
+
+  for kind <- List("memory", "rocksdb") do
+    test(s"restart with the UTxO set in a $kind store: snapshot, checkpoint and replay agree") {
+      tempDir.use { dir =>
+        for
+          log1 <- events(dir)
+          first <- runWith(dir, 500, 120, log1, Some(kind))
+          _ <- IO(sameLedger(first._2.state, states(500)))
+          _ <- IO(assertEquals(first._3, states(500).ledger.utxo.toMap))
+          checkpoints <- files
+            .list(dir / "utxo" / "checkpoints")
+            .compile
+            .toList
+          _ <- IO(assert(checkpoints.nonEmpty, "a checkpoint goes with every snapshot"))
+          log2 <- events(dir)
+          second <- runWith(dir, 731, 120, log2, Some(kind))
+          e2 <- log2.get
+          _ <- IO(assert(e2.exists(_.isInstanceOf[StorageEvent.SnapshotRestored]), e2.toString))
+          _ <- IO(sameLedger(second._2.state, states(731)))
+          _ <- IO(assertEquals(second._3, states(731).ledger.utxo.toMap))
+        yield ()
+      }
+    }
+
+  test("a snapshot whose UTxO checkpoint is missing is skipped, the older one is used") {
+    tempDir.use { dir =>
+      for
+        log1 <- events(dir)
+        _ <- runWith(dir, 600, 60, log1, Some("rocksdb"))
+        snaps <- snapshotsIn(dir)
+        _ <- IO(assert(snaps.size >= 2, s"need two snapshots, have ${snaps.size}"))
+        newest = snaps.head.fileName.toString.stripSuffix(".bin")
+        _ <- IO(
+          RocksUtxoStore.deleteTree(
+            (dir / "utxo" / "checkpoints" / newest).toNioPath
+          )
+        )
+        log2 <- events(dir)
+        again <- runWith(dir, 650, 120, log2, Some("rocksdb"))
+        e2 <- log2.get
+        _ <- IO(
+          assertEquals(
+            e2.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
+            List(snaps.head.fileName.toString)
+          )
+        )
+        _ <- IO(sameLedger(again._2.state, states(650)))
+        _ <- IO(assertEquals(again._3, states(650).ledger.utxo.toMap))
       yield ()
     }
   }
