@@ -48,3 +48,45 @@ class RewardsSuite extends ScalaCheckSuite:
     assertEquals(Rewards.leaderReward(400, p, Rational.zero, Rational(1, 10)), BigInt(400))
     assertEquals(Rewards.memberReward(400, p, Rational(1, 20), Rational(1, 10)), BigInt(0))
   }
+
+  test("the pledge counts the owners' stake only where they delegate to the pool") {
+    val poolId = Bytes(Vector.fill(28)(1))
+    val other = Bytes(Vector.fill(28)(9))
+    val owner = Bytes(Vector.fill(28)(5))
+    val ownerCredential = Credential.Key(owner)
+    val member = Credential.Key(Bytes(Vector.fill(28)(6)))
+    val params = pool(cost = 0, Rational.zero).copy(
+      pledge = 1000000,
+      rewardAccount = RewardAccount(0, ownerCredential),
+      owners = Set(owner)
+    )
+    val otherParams = params.copy(operator = other, owners = Set.empty)
+    def rewardsWhenOwnerDelegates(to: Bytes): Map[Credential, BigInt] =
+      val go = Snapshot(
+        stake = Map(ownerCredential -> BigInt(5000000), member -> BigInt(5000000)),
+        delegations = Map(ownerCredential -> to, member -> poolId),
+        pools = Map(poolId -> params, other -> otherParams)
+      )
+      val state = TestLedger
+        .state(8, Vector.empty)
+        .copy(
+          snapshots = Snapshots(Snapshot.empty, Snapshot.empty, go, 0),
+          blocksPrevious = Map(poolId -> BigInt(10), other -> BigInt(10)),
+          reserves = BigInt(10) * 1000000000000L
+        )
+      val globals = LedgerGlobals(
+        maxSupply = TestLedger.Supply,
+        epochLength = 100,
+        activeSlotsCoeff = Rational(1, 5),
+        network = 0
+      )
+      Rewards.update(state, globals).rewards
+    // Delegating to the pool: the pledge is met, the pool pays its leader and its member.
+    val met = rewardsWhenOwnerDelegates(poolId)
+    assert(met.get(ownerCredential).exists(_ > 0), met.toString)
+    assert(met.get(member).exists(_ > 0), met.toString)
+    // Delegating elsewhere: the owners' stake is not the pool's, the pledge is not met, and the
+    // pool (leader and members alike) earns nothing, however much the owner holds.
+    val unmet = rewardsWhenOwnerDelegates(other)
+    assert(!unmet.contains(member), unmet.toString)
+  }

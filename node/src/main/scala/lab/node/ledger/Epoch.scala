@@ -291,8 +291,11 @@ object Rewards:
             val sigma = Rational(poolStake, totalStake)
             val sigmaA =
               if activeStake == 0 then Rational.zero else Rational(poolStake, activeStake)
-            val ownerStake =
-              params.owners.toVector.map(o => go.stake.getOrElse(Credential.Key(o), BigInt(0))).sum
+            // The owners' stake counts only where they delegate to this very pool (`poolStake` of
+            // the ledger restricts the stake map to the pool's delegators before `rewardOnePool`).
+            val ownerStake = members.iterator.collect {
+              case (Credential.Key(h), stake) if params.owners(h) => stake
+            }.sum
             val pledgeRatio = Rational(params.pledge, totalStake)
             val maxP =
               if params.pledge <= ownerStake then maxPool(pp.a0, pp.nOpt, r, sigma, pledgeRatio)
