@@ -14,8 +14,8 @@ import scala.concurrent.duration.*
 object HandshakeClient:
   final case class Agreed(version: Int, data: Handshake.Data)
 
-  private def decodeReply(bytes: Bytes): DecodeResult[Handshake.Message] =
-    Handshake.decodePrefix(Handshake.Suite.NodeToNode, Handshake.State.Confirm, bytes) match
+  private def decodeReply(suite: Handshake.Suite)(bytes: Bytes): DecodeResult[Handshake.Message] =
+    Handshake.decodePrefix(suite, Handshake.State.Confirm, bytes) match
       case Right((message, rest))  => DecodeResult.Decoded(message, bytes.size - rest.size)
       case Left(e) if e.incomplete => DecodeResult.NeedMore
       case Left(e)                 => DecodeResult.Failed(e.message)
@@ -23,20 +23,21 @@ object HandshakeClient:
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
       offers: Vector[(Int, Handshake.Data)],
-      timeout: FiniteDuration = Handshake.DefaultPhaseTimeout
+      timeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
+      suite: Handshake.Suite = Handshake.Suite.NodeToNode
   )(using Raise[F, NetworkError]): F[Agreed] =
     def refuse[A](reason: String): F[A] = NetworkError.HandshakeRefused(reason).raise[F, A]
     for
       start <- Handshake
-        .clientStart(Handshake.Suite.NodeToNode, offers)
+        .clientStart(suite, offers)
         .fold(refuse, Temporal[F].pure)
       (client, proposal) = start
       bytes <- Handshake
-        .encode(Handshake.Suite.NodeToNode, proposal)
+        .encode(suite, proposal)
         .fold(refuse, Temporal[F].pure)
       _ <- channel.send(bytes)
       reply <- Timed.within(timeout, Protocols.Handshake, "confirm")(
-        channel.recv(Handshake.MaxMessageBytes)(decodeReply)
+        channel.recv(Handshake.MaxMessageBytes)(decodeReply(suite))
       )
       outcome <- client.receive(reply).fold(refuse, Temporal[F].pure)
       agreed <- outcome._2 match

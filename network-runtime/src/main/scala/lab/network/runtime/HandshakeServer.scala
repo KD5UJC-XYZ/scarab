@@ -19,8 +19,14 @@ object HandshakeServer:
   def offers(magic: Long, duplex: Boolean): Vector[(Int, Handshake.Data)] =
     Vector(14, 15).map(v => v -> Handshake.Data(magic, initiatorOnly = !duplex))
 
-  private def decodeProposal(bytes: Bytes): DecodeResult[Handshake.Message] =
-    Handshake.decodePrefix(Handshake.Suite.NodeToNode, Handshake.State.Propose, bytes) match
+  /** The node-to-client versions this node accepts (no query). */
+  def localOffers(magic: Long): Vector[(Int, Handshake.Data)] =
+    (16 to 23).toVector.map(v => v -> Handshake.Data(magic))
+
+  private def decodeProposal(suite: Handshake.Suite)(
+      bytes: Bytes
+  ): DecodeResult[Handshake.Message] =
+    Handshake.decodePrefix(suite, Handshake.State.Propose, bytes) match
       case Right((message, rest))  => DecodeResult.Decoded(message, bytes.size - rest.size)
       case Left(e) if e.incomplete => DecodeResult.NeedMore
       case Left(e)                 => DecodeResult.Failed(e.message)
@@ -28,18 +34,19 @@ object HandshakeServer:
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
       supported: Vector[(Int, Handshake.Data)],
-      timeout: FiniteDuration = Handshake.DefaultPhaseTimeout
+      timeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
+      suite: Handshake.Suite = Handshake.Suite.NodeToNode
   )(using Raise[F, NetworkError]): F[HandshakeClient.Agreed] =
     def refuse[A](reason: String): F[A] = NetworkError.HandshakeRefused(reason).raise[F, A]
     for
       proposal <- Timed.within(timeout, Protocols.Handshake, "propose")(
-        channel.recv(Handshake.MaxMessageBytes)(decodeProposal)
+        channel.recv(Handshake.MaxMessageBytes)(decodeProposal(suite))
       )
       answer <- Handshake
-        .responder(Handshake.Suite.NodeToNode, supported, proposal)
+        .responder(suite, supported, proposal)
         .fold(refuse, Temporal[F].pure)
       bytes <- Handshake
-        .encode(Handshake.Suite.NodeToNode, answer._1)
+        .encode(suite, answer._1)
         .fold(refuse, Temporal[F].pure)
       _ <- channel.send(bytes) *> channel.flush
       agreed <- answer._2 match

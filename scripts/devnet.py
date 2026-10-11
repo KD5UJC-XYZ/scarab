@@ -828,12 +828,16 @@ def start_scala_relay(args, root, peers):
     db = root / "scala-db"
     db.mkdir(exist_ok=True)
     db.chmod(0o777)
+    sock = root / "scala-sock"
+    sock.mkdir(exist_ok=True)
+    sock.chmod(0o777)
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
-               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db"]
+               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
     for port in peers:
         program += ["--peer", f"127.0.0.1:{port}"]
     command = scala_container(args, root, classpath, "lab.node.Main", program,
-                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db"], name=f"{args.name}-scala")
+                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
+                              name=f"{args.name}-scala")
     log = (root / "follower.jsonl").open("a")
     return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)
 
@@ -871,6 +875,37 @@ def log_counts(path):
     for e in events:
         counts[e["event"]] = counts.get(e["event"], 0) + 1
     return counts, events, other
+
+
+def submit_through_local_socket(args, root):
+    """`cardano-cli transaction submit` against the Scala node's node-to-client Unix socket (run in a
+    throwaway container of the reference image that shares the socket directory). The transaction
+    is built and signed through the Haskell relay. Returns what happened; the caller checks that it
+    reached the mempool and a block."""
+    tx = f"{root / 'ntc'}"
+    pathlib.Path(tx).mkdir(exist_ok=True)
+    pathlib.Path(tx).chmod(0o777)
+    utxo_dir = f"{ENV}/utxo-keys/utxo3"
+    address = in_ref(args.name, f"{CLI} address build --payment-verification-key-file {utxo_dir}/utxo.vkey "
+                                f"--testnet-magic {MAGIC}").stdout.strip()
+    utxos = json.loads(in_ref(args.name, f"{CLI} query utxo --address {address} --socket-path {RELAY_SOCKET} "
+                                         f"--testnet-magic {MAGIC} --output-json").stdout)
+    txin = max(utxos, key=lambda k: utxos[k]["value"]["lovelace"])
+    target = in_ref(args.name, f"{CLI} address build --payment-verification-key-file "
+                               f"{ENV}/utxo-keys/utxo1/utxo.vkey --testnet-magic {MAGIC}").stdout.strip()
+    in_ref(args.name, f"{CLI} transaction build --testnet-magic {MAGIC} --socket-path {RELAY_SOCKET} --tx-in {txin} "
+                      f"--tx-out {target}+12345678 --change-address {address} --out-file /work/ntc.body && "
+                      f"{CLI} transaction sign --tx-body-file /work/ntc.body --signing-key-file {utxo_dir}/utxo.skey "
+                      f"--testnet-magic {MAGIC} --out-file /work/ntc.signed")
+    txid = in_ref(args.name, f"{CLI} transaction txid --tx-file /work/ntc.signed --output-text").stdout.strip()
+    signed = subprocess.run(["docker", "exec", ref(args.name), "cat", "/work/ntc.signed"], capture_output=True, check=True).stdout
+    (pathlib.Path(tx) / "ntc.signed").write_bytes(signed)
+    r = docker("run", "--rm", "--pull=never", "--user", "1000:1000", "-v", f"{root / 'scala-sock'}:/sock",
+               "-v", f"{tx}:/tx:ro", "--entrypoint", "/opt/reference/bin/cardano-cli", REFERENCE_IMAGE,
+               "conway", "transaction", "submit", "--testnet-magic", str(MAGIC),
+               "--socket-path", "/sock/node.socket", "--tx-file", "/tx/ntc.signed", check=False, timeout=60)
+    return {"txid": txid, "txin": txin, "exitCode": r.returncode, "stdout": r.stdout.strip()[:300],
+            "stderr": r.stderr.strip()[:600]}
 
 
 def relay(args):
@@ -920,6 +955,8 @@ def relay(args):
         if synced_at is None:
             raise SystemExit(f"the Haskell relay did not sync from the Scala node within {args.sync_timeout} s")
         print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
+        local = submit_through_local_socket(args, root)
+        print(json.dumps({"localSubmit": local}), flush=True)
         command = [sys.executable, __file__, "--name", args.name, "load", "--seed", str(args.seed),
                    "--socket", RELAY_SOCKET, "--interval", str(args.interval), "--stats-every", "1"]
         loader = subprocess.Popen(command, stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
@@ -959,7 +996,10 @@ def relay(args):
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         epochs = sorted({p["pool1"]["epoch"] for p in samples if p["pool1"]})
         relay_log = in_ref(args.name, f"cat {RELAY_DIR}/node.log | tail -c 3000").stdout
+        local["adopted"] = any(e["event"] == "mempoolAdopted" and e["tx"] == local["txid"] for e in events)
+        local["addedToMempool"] = any(e["event"] == "mempoolAdded" and e["tx"] == local["txid"] for e in events)
         summary = {
+            "localSubmit": local,
             "relaySyncSeconds": round(synced_at - relay_started, 1),
             "scalaBlocksWhenRelayStarted": relay_blocks,
             "upstreamPeers": len(peers),
@@ -995,6 +1035,8 @@ def relay(args):
             failures.append("fewer than 90% of the submitted transactions reached the Scala mempool")
         if summary["propagation"]["includedInBlocks"] == 0:
             failures.append("no transaction passing through the Scala mempool was included in a block")
+        if local["exitCode"] != 0 or not local["addedToMempool"] or not local["adopted"]:
+            failures.append(f"the transaction submitted over the node-to-client socket did not reach a block: {local}")
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
         if other:

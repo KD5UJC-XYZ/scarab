@@ -33,6 +33,7 @@ object Protocols:
   val BlockFetch = 3
   val TxSubmission2 = 4
   val KeepAlive = 8
+  val LocalTxSubmission = 6
 
   def name(protocol: Int): String = protocol match
     case Handshake     => "handshake"

@@ -9,14 +9,20 @@ import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
 import lab.network.NtNHeader
-import lab.network.runtime.{BearerServer, NetworkError, NodeToNodeServer, ServerHandlers}
-import lab.node.mempool.{Mempool, MempoolEnv}
+import lab.network.runtime.{
+  BearerServer,
+  LocalTxSubmissionServer,
+  NetworkError,
+  NodeToNodeServer,
+  ServerHandlers
+}
+import lab.node.mempool.{LocalSubmission, Mempool, MempoolEnv}
 import lab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N]`
+  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -37,7 +43,8 @@ object Main extends IOApp:
       snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
       keepSnapshots: Int = 3,
       listen: Option[SocketAddress[Host]] = None,
-      mempoolBytes: Long = 1048576L
+      mempoolBytes: Long = 1048576L,
+      localSocket: Option[Path] = None
   )
 
   /** `--snapshot-every`: a number of slots (`50000` or `50000slots`) or of epochs (`2epochs`). */
@@ -192,9 +199,24 @@ object Main extends IOApp:
               }
               .evalMap(bound => JsonLog.listening(bound.toString))
           )
+          local = options.localSocket.fold(Resource.unit[IO])(path =>
+            BearerServer
+              .listenUnix[IO](path) { bearer =>
+                JsonLog.inbound(path.toString, "accepted") *>
+                  Handle
+                    .allow[NetworkError](
+                      LocalTxSubmissionServer
+                        .accept(bearer, genesis.networkMagic, LocalSubmission.handler(mempool))
+                    )
+                    .rescue(e => IO.pure(e.message))
+                    .flatMap(reason => JsonLog.inbound(path.toString, "closed", Some(reason)))
+              }
+              .evalMap(_ => JsonLog.listening(path.toString))
+          )
           run = QueryServer
             .resource[IO](ChainView.fromRef(ref), options.queryPort)
             .flatMap(_ => relay)
+            .flatMap(_ => local)
             .surround(sync)
           _ <- JsonLog.started(options.peers, genesis, setup.config)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
@@ -206,7 +228,7 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>]"
     def go(
         rest: List[String],
         acc: Map[String, List[String]]
@@ -234,6 +256,7 @@ object Main extends IOApp:
             .get("keep-snapshots")
             .fold(Right(3))(_.toIntOption.filter(_ > 0).toRight(usage))
           listen <- flags.get("listen").traverse(Peer.parseAddress)
+          localSocket = flags.get("local-socket").map(Path.of(_))
           mempool <- flags
             .get("mempool-bytes")
             .fold(Right(1048576L))(_.toLongOption.filter(_ > 0).toRight(usage))
@@ -247,6 +270,7 @@ object Main extends IOApp:
           interval,
           keep,
           listen,
-          mempool
+          mempool,
+          localSocket
         )
       case _ => Left(usage)

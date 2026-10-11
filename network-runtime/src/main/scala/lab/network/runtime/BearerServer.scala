@@ -7,6 +7,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import fs2.Stream
 import fs2.io.net.Network
+import scala.concurrent.duration.*
 
 /** Inbound side of the transport: a listening TCP socket whose accepted connections are handed to
   * one handler each, at most `maxConnections` at a time. A handler that fails closes only its own
@@ -42,3 +43,29 @@ object BearerServer:
           .background
           .as(bound)
       }
+
+  /** The same on a Unix domain socket at `path` (an existing file there is replaced), for
+    * node-to-client clients such as `cardano-cli`.
+    */
+  def listenUnix[F[_]: Async](path: java.nio.file.Path, maxConnections: Int = 16)(
+      handle: Bearer[F] => F[Unit]
+  ): Resource[F, Unit] =
+    import fs2.io.net.unixsocket.{UnixSocketAddress, UnixSockets}
+    Resource.eval(Async[F].blocking(java.nio.file.Files.deleteIfExists(path))) *>
+      UnixSockets
+        .forAsync[F]
+        .server(UnixSocketAddress(path.toString))
+        .map(socket => Stream.eval(handle(Bearer.fromSocket(socket)).attempt.void))
+        .parJoin(maxConnections)
+        .compile
+        .drain
+        .background *>
+      // the socket file appears once the server has bound it
+      Resource.eval(
+        Async[F]
+          .blocking(java.nio.file.Files.exists(path))
+          .flatMap(found => Async[F].sleep(5.millis).unlessA(found).as(found))
+          .iterateUntil(identity)
+          .timeout(5.seconds)
+          .void
+      )

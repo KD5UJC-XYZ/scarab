@@ -1,6 +1,6 @@
 # Scala node (`node` module)
 
-A Cardano node core written as tagless-final cats-effect programs. It follows a peer from genesis,
+A Cardano node core written as tagless-final cats-effect programs. It follows one or more peers from genesis,
 validates TPraos and Praos headers and applies the ledger rules of every Shelley-based era (see
 "Full ledger" below). Every retained state can be queried,
 so it can be compared byte for byte against a reference `cardano-node`.
@@ -13,7 +13,8 @@ so it can be compared byte for byte against a reference `cardano-node`.
 | Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node v14 interpreter over `network-runtime` |
 | Decoding | `Header.scala`, `Block.scala`, `network/Era.scala`, `network/NtNHeader.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`, Shelley-Conway) and `Header.Byron`; blocks decoded per era with the body hash recomputed from original bytes. Real fixtures under `fixtures/preview/` |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
-| Follower | `Follower.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`; `supervise` reconnects on `PeerError` |
+| Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
+| Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain (ChainSync, BlockFetch), collects and offers transactions (TxSubmission2) and accepts local submissions; see "Relay" below |
 | Consensus | `consensus/Praos.scala`, `consensus/TPraos.scala`, `consensus/OCertRules.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block). TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation, and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
@@ -304,6 +305,107 @@ rejection, golden encodings and a golden digest and schema fingerprint, the stor
 chunk), snapshot corruption at many points and fallback, and restart equivalence over the Byron to
 Conway capture (`fixtures/eras`) through the real follower.
 
+## Relay (`follow --listen`, `--local-socket`)
+
+With `--listen <host>:<port>` the node accepts node-to-node connections (versions 14 and 15) and
+serves its own chain; with `--local-socket <path>` local clients can submit transactions over a Unix
+socket. Everything it serves comes from its own validated chain and mempool, never from what a peer
+announced. The pieces, bottom up:
+
+**Multiplexer and duplex** (`network-runtime/Mux.scala`). Every channel has a side per
+mini-protocol, `Initiator` (client) or `Responder` (server), and an SDU carries the mode bit of its
+sender. `Mux.Config(duplex = true)` registers both sides of every protocol on one bearer, so a
+client and a server of the same protocol number never see each other's traffic;
+`mux.channel(protocol, role)` picks the side. Without `duplex` only the side opposite to the peer's
+is registered and the other mode bit closes the connection. `Mux.flush` waits until everything
+queued has been written, used so that a handshake refusal is not lost when the connection closes.
+
+**Handshake** (`HandshakeServer`). Reads the proposal, answers through the pure
+`Handshake.responder` (highest common version of 14 and 15 here, 16 to 23 for node-to-client) and
+reports the agreed data. `initiatorOnly` in the agreed data is false only if both sides allow a
+duplex connection. `NodeToNode.over(..., serve = Some(handlers))` offers InitiatorAndResponder and
+runs our servers next to our clients when the peer agrees; `NodeToNodeServer.accept` is the inbound
+side (the node's inbound connections are served, and duplex is accepted, but it does not start
+clients on them).
+
+**Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
+clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
+a `Source` that holds one client's cursor. `BlockFetchServer` streams an inclusive range from a
+`Blocks` source and answers NoBlocks for anything that is not a contiguous stretch of our chain (or
+longer than `maxBlocks`). `KeepAliveServer` echoes cookies. `TxSubmissionClient` and
+`TxSubmissionServer` are the two roles of TxSubmission2: the client offers a `Source` of
+transactions (each once per connection, by ticket number) and hands out bodies on request; the
+server asks for ids with a blocking request, fetches the bodies it does not know (verifying the id
+against the body hash) and passes them to a `Sink`; one batch is fully processed and acknowledged
+before the next request. `LocalTxSubmissionServer` is the node-to-client submission protocol.
+
+**Served chain** (`relay/ServedChain.scala`, `relay/ChainServer.scala`). The ouroboros-consensus
+`ChainProducerState`: the volatile chain (last `k` blocks with their headers and raw bytes) plus
+the read pointer of every connected client. A rollback rewrites exactly the pointers of the clients
+that had read past the new tip (they get a RollBackward to it and then follow the new branch). A
+client behind the volatile chain is served from the `ImmutableStore`. `ChainServer` is a
+`ChainPersistence`, composed after the storage persistence so a block is stored before it leaves the
+volatile chain. Without `--db` only the volatile chain can be served.
+
+**Mempool** (`mempool/`). `MempoolState` is pure: the transactions are kept in arrival order, and
+the invariant is that they apply in order to the ledger state at the tip through the real
+`TxRules` (phase 1, phase 2 and the Conway rules). `add` validates against the state after all held
+transactions, so a transaction may spend the output of one before it. Rejections are typed
+(`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `sync(ledger, slot)`
+runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
+transactions that a block contains leave as adopted. Capacity is counted in bytes. A transaction
+is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
+boundary). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
+operations, offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
+that offer them again are not asked for the body.
+
+**Chain selection** (`consensus/ChainSelection.scala`, `Follower.scala`). A peer session keeps a
+candidate (the headers it announced after the point where it joined our chain). The Praos rule: the
+longer chain wins; at equal length, tips issued by the same pool compare the operational-certificate
+issue number (higher wins); otherwise the lower VRF output of the tips wins (the VRF certificate of
+the header, TPraos: the leader one). From Conway the VRF tie-breaker only applies to tips at most 5
+slots apart. A candidate that is not strictly preferred changes nothing (so a peer's rollback or
+equal fork leaves our chain alone). A switch rolls back at most `k` blocks (the volatile chain is
+the limit; a candidate that no longer joins it is dropped as a protocol error of that peer, not of
+the node). The blocks of a preferred candidate are fetched from that peer, validated on a copy of
+the chain and committed together, so a rule violation leaves the chain at the last valid block
+(still fatal, as before). Headers are not validated before the blocks are fetched.
+Several sessions can run at once; adoption is serialised.
+
+**Wiring** (`Main`). `--peer` may be given several times (with more than one peer a peer that
+keeps failing is retried forever, with one it is fatal after 30 attempts), `--listen` starts the
+inbound server, `--local-socket` the local one, `--mempool-bytes` sets the capacity. The followed
+peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
+`mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolDropped` and `mempoolSynced`.
+
+Local rejections are sent as a CBOR text with the reason; `cardano-cli` accepts the submission
+but cannot render the reason, because it expects the ledger's own predicate-failure encoding.
+
+Tests: servers against our own clients over in-memory bearers and loopback TCP (both directions,
+duplex, pipelining, timeouts, refusals); a property that every follower reconstructs the served chain
+across arbitrary extensions, rollbacks and reads; the chain server over a real immutable store;
+mempool properties (held transactions always apply in order, byte accounting, tickets);
+chain-selection properties (antisymmetric, longer wins, issue number, unsigned VRF compare,
+never more than `k` rolled back, the winner among several candidates does not depend on arrival
+order); the follower with several scripted peers; the local protocol over a Unix socket.
+
+### The relay scenario (`devnet.py relay`)
+
+```sh
+bash scripts/sbtw node/compile node/runtimeClasspathFile
+python3 scripts/devnet.py relay --seconds 300     # up + Scala relay + Haskell relay + load
+```
+
+Starts the 3-pool cluster, the Scala node following all three pools with `--listen`, `--db` and
+`--local-socket`, and, once the Scala node has applied 30 blocks, a non-producing reference
+`cardano-node` whose topology names only the Scala node. The relay must sync the whole chain from
+the Scala node (the older blocks come from the immutable store) and then stays at the tip while
+the load generator builds, signs and submits transactions through the relay's socket. A
+transaction travels Haskell relay, TxSubmission2, Scala mempool, TxSubmission2, pools, block, back
+through the Scala node to the relay. One transaction is also submitted with `cardano-cli` straight
+to the Scala node's Unix socket. The run reports tips and lag every 5 s, the epochs seen, the final
+tip of every node, and how many transactions reached the Scala mempool and were included.
+
 ## Running a local soak (Docker only)
 
 Prerequisite: the `cardano-reference-11.1.3:local` image (see [reference image](reference-image.md)).
@@ -393,6 +495,7 @@ Scalus's script contexts. A full Preview sync into Conway (several million block
 - **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions) and the
   block-level execution-unit limit.
 - **On-disk ledger:** the whole UTxO and ledger state live in memory; only snapshots are on disk. The volatile blocks are not persisted.
-- **Peers:** a single upstream peer only.
+- **Peers:** no peer selection (the configured peers are all used), no header validation ahead of the block fetch, one block fetched at a time; inbound duplex connections are accepted but not used for our own clients.
 - **Rewards:** non-myopic pool ranking.
-- **Production:** block production and a mempool.
+- **Production:** block production (VRF proving, KES signing and evolution, operational certificate handling and block assembly from the mempool); the mempool has no block-level execution-unit limit and no epoch-boundary ticking.
+- **Node-to-client:** only LocalTxSubmission (no LocalStateQuery, LocalChainSync or LocalTxMonitor); rejections are not in the ledger's encoding.
