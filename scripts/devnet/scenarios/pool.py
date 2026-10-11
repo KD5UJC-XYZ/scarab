@@ -77,6 +77,53 @@ def pool_blocks_made(comparisons, pool_id):
     return per_epoch
 
 
+def leadership_schedule(name, socket, pool_number):
+    """The slots the pool leads in the epoch of `socket`'s node, from the reference node's own
+    `query leadership-schedule --current` (the oracle for the Scala forger), or None when it cannot answer."""
+    keys = f"{ENV}/pools-keys/pool{pool_number}"
+    r = docker("exec", ref(name), "/bin/sh", "-c",
+               f"cardano-cli conway query leadership-schedule --testnet-magic {MAGIC} --socket-path {socket} "
+               f"--genesis {ENV}/shelley-genesis.json --stake-pool-verification-key-file {keys}/cold.vkey "
+               f"--vrf-signing-key-file {keys}/vrf.skey --current --output-json", check=False, timeout=60)
+    try:
+        return [int(e["slotNumber"]) for e in json.loads(r.stdout)]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+
+
+def slot_at(shelley, stamp):
+    """The slot of an ISO timestamp of the log (the pool scenario's genesis has one slot length throughout)."""
+    system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
+    at = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    return int((at - system_start) / shelley["slotLength"])
+
+
+def missed_leader_slots(events, schedules, shelley):
+    """Check the Scala pool's forging against the reference node's `leadership-schedule`.
+
+    A scheduled slot is accounted for when the pool forged in it, or when another pool's block occupies the slot
+    (a slot battle it could not win, or a block that arrived first). Only the window in which the forger ran counts:
+    from the slot after its first synced block to two slots before the last log line. Returns a dict with the
+    scheduled count in the window, the missed slots, the slots lost to another pool's block, and the epochs of the
+    window without a schedule."""
+    forged = {e["hash"]: e["slot"] for e in events if e["event"] == "forged"}
+    others = {e["block"]["slot"] for e in events if e["event"] == "extended" and e["block"]["hash"] not in forged}
+    first = next((slot_at(shelley, e["at"]) for e in events if e["event"] == "extended"), None)
+    if first is None:
+        return {"window": None, "scheduled": 0, "missed": [], "missedReasons": {}, "occupied": [], "absentEpochs": []}
+    window = (first + 1, slot_at(shelley, events[-1]["at"]) - 2)
+    length = shelley["epochLength"]
+    scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1])
+    mine = set(forged.values())
+    skipped = {e["slot"]: e["reason"] for e in events if e["event"] == "forgeSkipped"}
+    return {"window": list(window), "scheduled": len(scheduled),
+            "missed": [s for s in scheduled if s not in mine and s not in others],
+            "missedReasons": {s: skipped.get(s, "not reported") for s in scheduled
+                              if s not in mine and s not in others},
+            "occupied": [s for s in scheduled if s not in mine and s in others],
+            "absentEpochs": [e for e in range(window[0] // length, window[1] // length + 1) if e not in schedules]}
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
@@ -93,6 +140,7 @@ def pool(args):
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
     failures, summary, scala, loader = [], {}, None, None
     comparisons, samples = [], []
+    schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
     try:
         ports, shelley = pool_environment(args)
         (root / "ports.json").write_text(json.dumps(ports))
@@ -152,6 +200,12 @@ def pool(args):
             for n in others:
                 sample[f"pool{n}"] = tip_at(args.name, f"{ENV}/socket/node{n}/sock")
             samples.append(sample)
+            seen = sample[f"pool{observer}"]
+            if seen and seen["epoch"] not in schedules:
+                got = leadership_schedule(args.name, f"{ENV}/socket/node{observer}/sock", ours)
+                if got is not None:
+                    schedules[seen["epoch"]] = got
+                    print(json.dumps({"schedule": {"epoch": seen["epoch"], "slots": len(got)}}), flush=True)
             counts, _, _ = log_counts(log)
             print(json.dumps({"t": sample["t"], **{k: v and (v["epoch"], v["block"], v["hash"][:10])
                                                   for k, v in sample.items() if k != "t"},
@@ -228,7 +282,9 @@ def pool(args):
         load_lines = (root / "load.log").read_text().strip().splitlines()
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         matched = [c for c in comparisons if c.get("matched")]
+        oracle = missed_leader_slots(events, schedules, shelley)
         summary = {
+            "oracle": oracle,
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
             "slotsPerKesPeriod": POOL_KES_SLOTS,
             "forging": {"forged": len(forged), "adopted": len(adopted), "lost": len(lost),
@@ -260,9 +316,12 @@ def pool(args):
             failures.append("a forged block is neither adopted nor lost")
         if forged and haskell_count == 0:
             failures.append("the Haskell ledger shows no block made by the Scala pool")
-        if abs(haskell_count - expected) > tolerance:
-            failures.append(f"blocks made by the Scala pool ({haskell_count}) are not near the expected "
-                            f"{expected:.1f} +- {tolerance:.1f}")
+        if oracle["missed"]:
+            failures.append(f"{len(oracle['missed'])} of {oracle['scheduled']} scheduled leader slots were neither "
+                            f"forged nor taken by another block: {dict(list(oracle['missedReasons'].items())[:10])}")
+        if oracle["absentEpochs"] or not oracle["scheduled"]:
+            failures.append(f"no leadership schedule for epochs {oracle['absentEpochs']} "
+                            f"({oracle['scheduled']} scheduled slots in the window)")
         if len(on_chain) < 0.8 * len(forged) - 1:
             failures.append(f"only {len(on_chain)} of {len(forged)} forged blocks are on the final chain")
         if upto_compared != haskell_count:
@@ -298,6 +357,7 @@ def pool(args):
         docker("rm", "-f", f"{args.name}-scala", check=False)
         if scala is not None:
             scala.wait()
+        summary["schedules"] = {str(e): v for e, v in schedules.items()}
         summary["failures"] = failures
         summary["passed"] = not failures
         if root.exists():

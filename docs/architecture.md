@@ -444,7 +444,7 @@ cross-checked: the certificate must name this KES key and be signed by its cold 
   the slot's period (`slot / slotsPerKESPeriod - certificate start`) before it signs.
 
 **Forging** (`node/forge`). `Forger` runs one attempt per slot from the wall clock over the era history
-(`EpochGeometry`); a passed slot is never forged late. For the slot it takes the tip's state to the slot's
+(`EpochGeometry`); a passed slot is never forged late, and a slot that passes while an earlier attempt is still running is reported as `forgeSkipped` ("the forger was busy with an earlier slot"). For the slot it takes the tip's state to the slot's
 epoch exactly as block validation does (cached per tip and epoch), reads the pool's stake and registered VRF
 key from that epoch's pool distribution, proves `Blake2b-256(slot || epochNonce)` and compares the output with
 the Praos threshold (`Leadership`, the same check as for received headers). When elected it:

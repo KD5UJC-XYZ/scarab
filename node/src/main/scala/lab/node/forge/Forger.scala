@@ -100,6 +100,15 @@ final class Forger[F[_]: Async](
     for
       instant <- now
       slot = geometry.slotAt(instant)
+      // slots that passed while the previous step was still running are never attempted: say so
+      _ <- last.fold(F.unit)(l =>
+        (l + 1 until slot)
+          .take(Forger.MaxReportedMissed)
+          .toList
+          .traverse_(missed =>
+            events.emit(ForgeEvent.Skipped(missed, "the forger was busy with an earlier slot"))
+          )
+      )
       _ <- if last.exists(_ >= slot) then F.unit else step(slot)
       after <- now
       untilNext = Duration.between(after, geometry.slotStart(slot + 1))
@@ -376,6 +385,11 @@ final class Forger[F[_]: Async](
     }
 
 object Forger:
+  /** At most this many missed slots are reported at once (a suspended machine would report
+    * millions).
+    */
+  private val MaxReportedMissed = 1000
+
   /** The tip's ledger and Praos state carried into an epoch. */
   final case class Crossed(
       key: (Option[Bytes], BigInt),

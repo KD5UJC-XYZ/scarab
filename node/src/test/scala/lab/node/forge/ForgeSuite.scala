@@ -2,6 +2,8 @@
 package lab.node.forge
 
 import cats.effect.{IO, Ref}
+import cats.effect.testkit.TestControl
+import scala.concurrent.duration.*
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import java.time.Instant
@@ -113,7 +115,9 @@ class ForgeSuite extends CatsEffectSuite:
       p: Pool,
       ledger: LedgerState,
       connected: Boolean = true,
-      maxTipAge: BigInt = 1000000
+      maxTipAge: BigInt = 1000000,
+      live: Boolean = false,
+      ready: Option[IO[Boolean]] = None
   )(using Handle[IO, NodeError]): IO[Harness] =
     for
       ref <- Ref.of[IO, VolatileChain[NodeState]](
@@ -151,10 +155,13 @@ class ForgeSuite extends CatsEffectSuite:
         follower,
         mempool,
         e => seen.update(_ :+ e),
-        IO.pure(connected),
+        ready.getOrElse(IO.pure(connected)),
         maxTipAge = Some(maxTipAge),
-        now = Some(IO.pure(Instant.EPOCH)),
-        sleep = Some(_ => IO.unit)
+        // `live`: the real loop on the (test) clock, starting at slot 5000; else steps are driven by hand
+        now = Some(
+          if live then IO.realTimeInstant.map(_.plusSeconds(5000)) else IO.pure(Instant.EPOCH)
+        ),
+        sleep = if live then None else Some(_ => IO.unit)
       )
     yield new Harness(follower, forger, ref, mempool, seen, raws)
 
@@ -196,6 +203,54 @@ class ForgeSuite extends CatsEffectSuite:
         assert(!chain.state.ledger.utxo.contains(TestLedger.txIn(2)))
         assert(chain.state.ledger.utxo.contains(TestLedger.txIn(3)))
     }
+  }
+
+  test("the loop attempts every slot: each slot the pool leads is forged, none is skipped") {
+    val p = pool(kesStart = 50, seed = 9)
+    // the slots the leadership check elects, computed apart from the forger
+    val leads = (5000 until 5200).filter(s =>
+      Leadership
+        .check(s, epochNonce, p.creds.vrf, 1000000, 1000000, config.activeSlotsCoeff)
+        .isRight
+    )
+    assert(leads.size > 40 && leads.size < 160, leads.size.toString)
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          h <- harness(p, ledgerWith(p, 1), live = true)
+          fiber <- h.forger.run.start
+          _ <- IO.sleep(200500.millis)
+          _ <- fiber.cancel
+          forged <- forgedIn(h)
+          events <- h.seen
+        yield
+          assertEquals(forged.map(_.slot.toInt).filter(_ < 5200), leads.toVector)
+          assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
+      }
+    )
+  }
+
+  test("slots that pass while a step is still running are reported as skipped") {
+    val p = pool(kesStart = 50, seed = 10)
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          calls <- Ref.of[IO, Int](0)
+          // the first step takes 3.5 s: slots 5001 and 5002 pass meanwhile
+          slow = calls
+            .getAndUpdate(_ + 1)
+            .flatMap(n => IO.sleep(3500.millis).whenA(n == 0).as(true))
+          h <- harness(p, ledgerWith(p, 1), live = true, ready = Some(slow))
+          fiber <- h.forger.run.start
+          _ <- IO.sleep(6500.millis)
+          _ <- fiber.cancel
+          events <- h.seen
+        yield assertEquals(
+          events.collect { case ForgeEvent.Skipped(s, _) => s.toInt },
+          Vector(5001, 5002)
+        )
+      }
+    )
   }
 
   test("the mempool is synchronised after adoption: the included transactions leave it") {

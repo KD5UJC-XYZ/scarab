@@ -12,6 +12,7 @@ from fractions import Fraction
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from devnet import cbor, compare, encoding, eratx, eraview, govview, ntcquery  # noqa: E402
+from devnet.scenarios import pool  # noqa: E402
 
 RFC8032_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 RFC8032_PUB = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
@@ -191,6 +192,39 @@ class ReferenceImageTest(unittest.TestCase):
             bad.write_bytes(b"not the archive")
             with self.assertRaises(ValueError):
                 pri.verify_archive(bad)
+
+
+class PoolOracleTest(unittest.TestCase):
+    """missed_leader_slots: every scheduled slot in the forger's window is forged or taken by another block."""
+    SHELLEY = {"systemStart": "2026-01-01T00:00:00Z", "slotLength": 1, "epochLength": 100}
+
+    @staticmethod
+    def at(slot):
+        return f"2026-01-01T00:{slot // 60:02d}:{slot % 60:02d}Z"
+
+    def events(self, forged, other, end=90):
+        ev = [{"event": "extended", "at": self.at(5), "block": {"slot": 5, "hash": "a"}}]
+        ev += [{"event": "forged", "at": self.at(s), "slot": s, "hash": f"f{s}"} for s in forged]
+        ev += [{"event": "extended", "at": self.at(s), "block": {"slot": s, "hash": f"o{s}"}} for s in other]
+        ev += [{"event": "forgeSkipped", "at": self.at(30), "slot": 30, "reason": "busy"}]
+        ev += [{"event": "extended", "at": self.at(end), "block": {"slot": end, "hash": "z"}}]
+        return ev
+
+    def test_all_accounted_for(self):
+        r = pool.missed_leader_slots(self.events([10, 20], [40]), {0: [2, 10, 20, 40, 89, 95]}, self.SHELLEY)
+        self.assertEqual(r["missed"], [])
+        self.assertEqual(r["occupied"], [40])
+        self.assertEqual(r["scheduled"], 3)  # 2 is before the window, 89 and 95 after its end
+        self.assertEqual(r["absentEpochs"], [])
+
+    def test_missed_slot_with_reason(self):
+        r = pool.missed_leader_slots(self.events([10], []), {0: [10, 30, 50]}, self.SHELLEY)
+        self.assertEqual(r["missed"], [30, 50])
+        self.assertEqual(r["missedReasons"], {30: "busy", 50: "not reported"})
+
+    def test_epoch_without_schedule(self):
+        r = pool.missed_leader_slots(self.events([10], [], end=150), {0: [10]}, self.SHELLEY)
+        self.assertEqual(r["absentEpochs"], [1])
 
 
 if __name__ == "__main__":
