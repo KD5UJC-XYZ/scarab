@@ -17,14 +17,13 @@ Transactions are built and signed by `eratx` because cardano-cli can only build 
 transactions. A rejected submission is logged and never fatal.
 """
 import json
-import os
 import random
 import subprocess
 import threading
 import time
 
-import eratx
-from eratx import Key
+from . import eratx
+from .eratx import Key
 
 FEE = 250_000
 MAGIC = 1082026

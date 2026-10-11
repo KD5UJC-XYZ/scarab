@@ -1,0 +1,259 @@
+# SPDX-License-Identifier: Apache-2.0
+"""The `relay` scenario: the Scala node as a relay serving a Haskell relay."""
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+import time
+from ..cluster import freeze_classes, scala_container, up
+from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, put_file, read_log, ref
+
+
+# ---------------------------------------------------------------- the Scala node as a relay
+
+SCALA_PORT = 3350   # the Scala node's node-to-node listener (loopback, shared network namespace)
+RELAY_PORT = 3351   # the Haskell relay, whose only upstream peer is the Scala node
+RELAY_DIR = "/work/relay"
+RELAY_SOCKET = f"{RELAY_DIR}/sock"
+
+
+def start_scala_relay(args, root, peers):
+    """The Scala node following `peers` (reference node ports) and listening for node-to-node
+    connections, with an on-disk chain so it can serve the whole chain to a syncing peer."""
+    classpath = freeze_classes(root)
+    db = root / "scala-db"
+    db.mkdir(exist_ok=True)
+    db.chmod(0o777)
+    sock = root / "scala-sock"
+    sock.mkdir(exist_ok=True)
+    sock.chmod(0o777)
+    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
+               "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
+    for port in peers:
+        program += ["--peer", f"127.0.0.1:{port}"]
+    command = scala_container(args, root, classpath, "lab.node.Main", program,
+                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
+                              name=f"{args.name}-scala")
+    log = (root / "follower.jsonl").open("a")
+    return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)
+
+
+def start_haskell_relay(args):
+    """A non-producing reference node whose topology names only the Scala node."""
+    in_ref(args.name, f"mkdir -p {RELAY_DIR}/db")
+    topology = {"bootstrapPeers": None,
+                "localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": SCALA_PORT}],
+                                "advertise": False, "behindFirewall": False, "trustable": True,
+                                "diffusionMode": args.relay_mode, "hotValency": 1, "warmValency": 1}],
+                "publicRoots": [{"accessPoints": [], "advertise": False}], "useLedgerAfterSlot": -1}
+    put_file(args.name, f"{RELAY_DIR}/topology.json", json.dumps(topology))
+    docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
+           f"cd {ENV} && cardano-node run --config {ENV}/configuration.yaml --topology {RELAY_DIR}/topology.json "
+           f"--database-path {RELAY_DIR}/db --socket-path {RELAY_SOCKET} --port {RELAY_PORT} "
+           f"--host-addr 127.0.0.1 > {RELAY_DIR}/node.log 2>&1")
+
+
+def tip_at(name, socket):
+    """`cardano-cli query tip` against one node socket, or None while it cannot answer."""
+    r = docker("exec", ref(name), "/bin/sh", "-c",
+               f"cardano-cli query tip --testnet-magic {MAGIC} --socket-path {socket}", check=False, timeout=30)
+    try:
+        tip = json.loads(r.stdout)
+        return tip if "hash" in tip else None
+    except json.JSONDecodeError:
+        return None
+
+
+def log_counts(path):
+    """Event counts of the Scala node's JSON log."""
+    counts = {}
+    events, other = read_log(path)
+    for e in events:
+        counts[e["event"]] = counts.get(e["event"], 0) + 1
+    return counts, events, other
+
+
+def submit_through_local_socket(args, root):
+    """`cardano-cli transaction submit` against the Scala node's node-to-client Unix socket (run in a
+    throwaway container of the reference image that shares the socket directory). The transaction
+    is built and signed through the Haskell relay. Returns what happened; the caller checks that it
+    reached the mempool and a block."""
+    tx = f"{root / 'ntc'}"
+    pathlib.Path(tx).mkdir(exist_ok=True)
+    pathlib.Path(tx).chmod(0o777)
+    utxo_dir = f"{ENV}/utxo-keys/utxo3"
+    address = in_ref(args.name, f"{CLI} address build --payment-verification-key-file {utxo_dir}/utxo.vkey "
+                                f"--testnet-magic {MAGIC}").stdout.strip()
+    utxos = json.loads(in_ref(args.name, f"{CLI} query utxo --address {address} --socket-path {RELAY_SOCKET} "
+                                         f"--testnet-magic {MAGIC} --output-json").stdout)
+    txin = max(utxos, key=lambda k: utxos[k]["value"]["lovelace"])
+    target = in_ref(args.name, f"{CLI} address build --payment-verification-key-file "
+                               f"{ENV}/utxo-keys/utxo1/utxo.vkey --testnet-magic {MAGIC}").stdout.strip()
+    in_ref(args.name, f"{CLI} transaction build --testnet-magic {MAGIC} --socket-path {RELAY_SOCKET} --tx-in {txin} "
+                      f"--tx-out {target}+12345678 --change-address {address} --out-file /work/ntc.body && "
+                      f"{CLI} transaction sign --tx-body-file /work/ntc.body --signing-key-file {utxo_dir}/utxo.skey "
+                      f"--testnet-magic {MAGIC} --out-file /work/ntc.signed")
+    txid = in_ref(args.name, f"{CLI} transaction txid --tx-file /work/ntc.signed --output-text").stdout.strip()
+    signed = subprocess.run(["docker", "exec", ref(args.name), "cat", "/work/ntc.signed"], capture_output=True, check=True).stdout
+    (pathlib.Path(tx) / "ntc.signed").write_bytes(signed)
+    r = docker("run", "--rm", "--pull=never", "--user", USER, "-v", f"{root / 'scala-sock'}:/sock",
+               "-v", f"{tx}:/tx:ro", "--entrypoint", "/opt/reference/bin/cardano-cli", REFERENCE_IMAGE,
+               "conway", "transaction", "submit", "--testnet-magic", str(MAGIC),
+               "--socket-path", "/sock/node.socket", "--tx-file", "/tx/ntc.signed", check=False, timeout=60)
+    return {"txid": txid, "txin": txin, "exitCode": r.returncode, "stdout": r.stdout.strip()[:300],
+            "stderr": r.stderr.strip()[:600]}
+
+
+def relay(args):
+    """Fresh 3-pool cluster, the Scala node as a relay in front of a Haskell relay, and a load
+    generator that submits through the Haskell relay.
+
+    Transactions travel: Haskell relay -> (TxSubmission2) -> Scala mempool -> (TxSubmission2) -> pools
+    -> blocks -> Scala node (ChainSync/BlockFetch from the pools) -> Haskell relay (from the Scala node)."""
+    root = data_root(args.name)
+    up(args)
+    ports = json.loads((root / "ports.json").read_text())
+    peers = [ports[str(n)] for n in sorted(map(int, ports))][: args.peers]
+    scala, loader = None, None
+    samples, failures, summary = [], [], {}
+    try:
+        scala = start_scala_relay(args, root, peers)
+        log = root / "follower.jsonl"
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            counts, _, _ = log_counts(log)
+            if counts.get("listening") and counts.get("extended"):
+                break
+            if scala.poll() is not None:
+                raise SystemExit(f"the Scala node exited with {scala.returncode}; see {log}")
+            time.sleep(1)
+        else:
+            raise SystemExit("the Scala node did not start listening and following within 120 s")
+        # let the chain grow past k so the relay has to be served from the Scala node's stored blocks too
+        grow_until = time.monotonic() + 180
+        while time.monotonic() < grow_until:
+            counts, _, _ = log_counts(log)
+            if counts.get("extended", 0) >= args.relay_after_blocks:
+                break
+            time.sleep(1)
+        relay_blocks = log_counts(log)[0].get("extended", 0)
+        start_haskell_relay(args)
+        relay_started = time.monotonic()
+        reference = f"{ENV}/socket/node1/sock"
+        synced_at = None
+        deadline = time.monotonic() + args.sync_timeout
+        while time.monotonic() < deadline:
+            mine, theirs = tip_at(args.name, RELAY_SOCKET), tip_at(args.name, reference)
+            if mine and theirs and mine["block"] >= theirs["block"] - 1 and mine["block"] > 0:
+                synced_at = time.monotonic()
+                break
+            time.sleep(1)
+        if synced_at is None:
+            raise SystemExit(f"the Haskell relay did not sync from the Scala node within {args.sync_timeout} s")
+        print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
+        local = submit_through_local_socket(args, root)
+        print(json.dumps({"localSubmit": local}), flush=True)
+        command = [sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed),
+                   "--socket", RELAY_SOCKET, "--interval", str(args.interval), "--stats-every", "1"]
+        loader = subprocess.Popen(command, stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
+        stop = time.monotonic() + args.seconds
+        while time.monotonic() < stop:
+            time.sleep(args.every)
+            if scala.poll() is not None:
+                failures.append(f"the Scala node exited with {scala.returncode}")
+                break
+            sample = {"t": round(time.monotonic() - synced_at, 1),
+                      "relay": tip_at(args.name, RELAY_SOCKET),
+                      "pool1": tip_at(args.name, reference)}
+            samples.append(sample)
+            r, p = sample["relay"], sample["pool1"]
+            print(json.dumps({"t": sample["t"], "relay": r and (r["block"], r["hash"][:12]),
+                              "pool1": p and (p["block"], p["hash"][:12])}), flush=True)
+        loader.terminate()
+        loader.wait()
+        loader = None
+        # let the chain settle, then compare every node's tip
+        final = {}
+        settle = time.monotonic() + 60
+        while time.monotonic() < settle:
+            final = {"relay": tip_at(args.name, RELAY_SOCKET)}
+            for n in (1, 2, 3):
+                final[f"pool{n}"] = tip_at(args.name, f"{ENV}/socket/node{n}/sock")
+            if all(final.values()) and len({t["hash"] for t in final.values()}) == 1:
+                break
+            time.sleep(1)
+        final_hashes = {k: (v["block"], v["hash"]) if v else None for k, v in final.items()}
+        counts, events, other = log_counts(log)
+        scala_blocks = [e for e in events if e["event"] == "extended"]
+        scala_tip = scala_blocks[-1]["block"]["hash"] if scala_blocks else None
+        agree = len({v[1] for v in final_hashes.values() if v}) == 1 and all(final_hashes.values())
+        lag = [p["pool1"]["block"] - p["relay"]["block"] for p in samples if p["relay"] and p["pool1"]]
+        load_lines = (root / "load.log").read_text().strip().splitlines()
+        load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
+        epochs = sorted({p["pool1"]["epoch"] for p in samples if p["pool1"]})
+        relay_log = in_ref(args.name, f"cat {RELAY_DIR}/node.log | tail -c 3000").stdout
+        local["adopted"] = any(e["event"] == "mempoolAdopted" and e["tx"] == local["txid"] for e in events)
+        local["addedToMempool"] = any(e["event"] == "mempoolAdded" and e["tx"] == local["txid"] for e in events)
+        summary = {
+            "localSubmit": local,
+            "relaySyncSeconds": round(synced_at - relay_started, 1),
+            "scalaBlocksWhenRelayStarted": relay_blocks,
+            "upstreamPeers": len(peers),
+            "samples": len(samples),
+            "epochsObserved": epochs,
+            "relayLagBlocks": {"max": max(lag, default=None), "atTip": sum(1 for x in lag if x <= 1), "of": len(lag)},
+            "finalTips": final_hashes,
+            "scalaTip": scala_tip,
+            "allTipsEqual": agree,
+            "load": load_stats,
+            "propagation": {
+                "submittedToHaskellRelay": load_stats.get("submitted"),
+                "arrivedInScalaMempool": counts.get("mempoolAdded", 0),
+                "rejectedByScalaMempool": counts.get("mempoolRejected", 0),
+                "includedInBlocks": counts.get("mempoolAdopted", 0),
+                "droppedAfterAdding": counts.get("mempoolDropped", 0)},
+            "scalaEvents": {k: counts.get(k, 0) for k in
+                            ("extended", "rolledBack", "reconnecting", "error", "inbound", "mempoolAdded",
+                             "mempoolAdopted", "mempoolRejected", "mempoolDropped")},
+            "unparsedScalaOutput": other[:10],
+        }
+        if not agree:
+            failures.append(f"final tips differ: {final_hashes}")
+        if scala_tip and final.get("pool1") and scala_tip != final["pool1"]["hash"]:
+            failures.append(f"the Scala node's last block {scala_tip[:12]} is not the final tip")
+        if lag and sum(1 for x in lag if x <= 1) < 0.9 * len(lag):
+            failures.append("the Haskell relay was more than one block behind in over 10% of samples")
+        if len(epochs) < args.min_epochs:
+            failures.append(f"only {len(epochs)} epochs observed")
+        if not load_stats.get("submitted"):
+            failures.append("no transaction was submitted through the Haskell relay")
+        elif summary["propagation"]["arrivedInScalaMempool"] < 0.9 * load_stats["submitted"]:
+            failures.append("fewer than 90% of the submitted transactions reached the Scala mempool")
+        if summary["propagation"]["includedInBlocks"] == 0:
+            failures.append("no transaction passing through the Scala mempool was included in a block")
+        if local["exitCode"] != 0 or not local["addedToMempool"] or not local["adopted"]:
+            failures.append(f"the transaction submitted over the node-to-client socket did not reach a block: {local}")
+        if counts.get("error"):
+            failures.append(f"{counts['error']} error events in the Scala log")
+        if other:
+            failures.append(f"unexpected Scala output: {other[0][:200]}")
+        summary["relayLogTail"] = relay_log[-600:] if failures else ""
+    except SystemExit as e:
+        failures.append(str(e))
+    finally:
+        if loader is not None:
+            loader.terminate()
+        docker("rm", "-f", f"{args.name}-scala", check=False)
+        if scala is not None:
+            scala.wait()
+        summary["failures"] = failures
+        summary["passed"] = not failures
+        (root / "relay-summary.json").write_text(json.dumps(summary, indent=2))
+        print(json.dumps(summary, indent=2))
+        if not args.keep:
+            docker("rm", "-f", ref(args.name), check=False)
+            shutil.rmtree(root / "classes", ignore_errors=True)
+            if args.keep_data:
+                pass
+    sys.exit(0 if not failures else 1)
