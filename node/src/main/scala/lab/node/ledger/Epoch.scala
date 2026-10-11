@@ -229,7 +229,12 @@ object Translate:
 object Rewards:
   private val Eighty = Rational(4, 5)
 
-  private final case class Reward(credential: Credential, amount: BigInt, leader: Boolean, pool: Bytes)
+  private final case class Reward(
+      credential: Credential,
+      amount: BigInt,
+      leader: Boolean,
+      pool: Bytes
+  )
 
   def update(state: LedgerState, globals: LedgerGlobals): RewardUpdate =
     val pp = state.previousParams
@@ -283,7 +288,12 @@ object Rewards:
                     case Credential.Key(h) => params.owners(h)
                     case _                 => false
                   ) =>
-                Reward(c, memberReward(poolR, params, Rational(stake, totalStake), sigma), false, poolId)
+                Reward(
+                  c,
+                  memberReward(poolR, params, Rational(stake, totalStake), sigma),
+                  false,
+                  poolId
+                )
             }
             Reward(params.rewardAccount.credential, leader, true, poolId) +:
               memberRewards.filter(_.amount > 0)

@@ -192,23 +192,25 @@ object ProtocolParams:
     c.focus.flatMap(_.asObject) match
       case None => Right(Map.empty)
       case Some(obj) =>
-        obj.toVector.traverse { case (lang, model) =>
-          val tag = lang match
-            case "PlutusV1" => Right(0)
-            case "PlutusV2" => Right(1)
-            case "PlutusV3" => Right(2)
-            case other      => Left(ConfigError(s"cost model language $other"))
-          val values = model.asObject match
-            case Some(o) =>
-              o.values.toVector.traverse(
-                _.as[BigInt].leftMap(e => ConfigError(s"cost model: ${e.message}"))
-              )
-            case None =>
-              model
-                .as[Vector[BigInt]]
-                .leftMap(e => ConfigError(s"cost model: ${e.message}"))
-          (tag, values).tupled
-        }.map(_.toMap)
+        obj.toVector
+          .traverse { case (lang, model) =>
+            val tag = lang match
+              case "PlutusV1" => Right(0)
+              case "PlutusV2" => Right(1)
+              case "PlutusV3" => Right(2)
+              case other      => Left(ConfigError(s"cost model language $other"))
+            val values = model.asObject match
+              case Some(o) =>
+                o.values.toVector.traverse(
+                  _.as[BigInt].leftMap(e => ConfigError(s"cost model: ${e.message}"))
+                )
+              case None =>
+                model
+                  .as[Vector[BigInt]]
+                  .leftMap(e => ConfigError(s"cost model: ${e.message}"))
+            (tag, values).tupled
+          }
+          .map(_.toMap)
 
   /** Apply a protocol-parameter update (field index -> original CBOR). Crossing into Babbage
     * derives `coinsPerUTxOByte` from the Alonzo per-word value, as the era translation does.
@@ -226,7 +228,9 @@ object ProtocolParams:
       (p: ProtocolParams, n: Node) =>
         CborRead
           .arrayN(n, 2, name)
-          .flatMap(xs => (CborRead.uint(xs(0), name), CborRead.uint(xs(1), name)).mapN(ExUnits(_, _)))
+          .flatMap(xs =>
+            (CborRead.uint(xs(0), name), CborRead.uint(xs(1), name)).mapN(ExUnits(_, _))
+          )
           .map(set(p, _))
     val steps: Vector[ProtocolParams => Either[String, ProtocolParams]] = Vector(
       field(0)(uint("minFeeA")((p, v) => p.copy(minFeeA = v))),
@@ -247,9 +251,8 @@ object ProtocolParams:
         CborRead
           .arrayN(n, 2, "protocol version")
           .flatMap(xs =>
-            (CborRead.uint(xs(0), "major"), CborRead.uint(xs(1), "minor")).mapN((a, b) =>
-              p.copy(protocolMajor = a, protocolMinor = b)
-            )
+            (CborRead.uint(xs(0), "major"), CborRead.uint(xs(1), "minor"))
+              .mapN((a, b) => p.copy(protocolMajor = a, protocolMinor = b))
           )
       ),
       field(15)(uint("minUTxOValue")((p, v) => p.copy(minUTxOValue = v))),
@@ -275,20 +278,21 @@ object ProtocolParams:
       field(23)(uint("collateralPercentage")((p, v) => p.copy(collateralPercentage = v))),
       field(24)(uint("maxCollateralInputs")((p, v) => p.copy(maxCollateralInputs = v)))
     )
-    for
-      updated <- steps.foldLeftM(p)((acc, step) => step(acc))
+    for updated <- steps.foldLeftM(p)((acc, step) => step(acc))
     yield
       if p.protocolMajor < 7 && updated.protocolMajor >= 7 && !u.fields.contains(17) then
         updated.copy(coinsPerUTxOByte = updated.coinsPerUTxOWord / 8)
       else updated
 
   private def costModels(n: Node): Either[String, Map[Int, Vector[BigInt]]] =
-    CborRead.map(n, "cost models").flatMap(_.traverse { case (k, v) =>
-      (
-        CborRead.uint(k, "language").map(_.toInt),
-        CborRead.array(v, "cost model").flatMap(_.traverse(CborRead.int(_, "cost")))
-      ).tupled
-    }.map(_.toMap))
+    CborRead
+      .map(n, "cost models")
+      .flatMap(_.traverse { case (k, v) =>
+        (
+          CborRead.uint(k, "language").map(_.toInt),
+          CborRead.array(v, "cost model").flatMap(_.traverse(CborRead.int(_, "cost")))
+        ).tupled
+      }.map(_.toMap))
 
   private def nonce(n: Node): Either[String, Nonce] =
     CborRead.array(n, "nonce").flatMap { xs =>

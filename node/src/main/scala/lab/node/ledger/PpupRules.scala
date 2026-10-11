@@ -8,8 +8,8 @@ import lab.cbor.{Bytes, Cbor}
   * at the epoch boundary when a quorum proposed the identical update (NEWPP/UPEC).
   */
 object PpupRules:
-  /** PPUP: record `update`'s proposals for the current or the next epoch. Proposals made before the
-    * point of no return (`firstSlotNextEpoch - 2 * stabilityWindow`) target the current epoch.
+  /** PPUP: record `update` 's proposals for the current or the next epoch. Proposals made before
+    * the point of no return (`firstSlotNextEpoch - 2 * stabilityWindow`) target the current epoch.
     */
   def propose(
       state: LedgerState,

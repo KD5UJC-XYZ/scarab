@@ -98,7 +98,8 @@ final case class LedgerState(
     ptrs: Map[Ptr, Credential] = Map.empty,
     /** Parameters of the previous epoch (`esPrevPp`), used by the reward calculation. */
     prevParams: Option[ProtocolParams] = None,
-    /** Registered credentials when the reward calculation started (pre-Babbage reward prefilter). */
+    /** Registered credentials when the reward calculation started (pre-Babbage reward prefilter).
+      */
     rewardRegistered: Option[Set[Credential]] = None,
     unverified: Unverified = Unverified.zero
 ):

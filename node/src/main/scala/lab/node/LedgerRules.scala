@@ -131,7 +131,7 @@ object NodeRules:
       bootstrap: Boolean = false
   ): Either[(String, String), NodeState] =
     header match
-      case h: Header.Byron => applyByron(state, h, raw, byron)
+      case h: Header.Byron                => applyByron(state, h, raw, byron)
       case h: Header.Shelley if bootstrap => applyBootstrap(state, h, raw, config)
       case h: Header.Shelley              => applyFull(state, h, raw, config, globals)
 
@@ -258,7 +258,6 @@ object NodeRules:
         )
       )
 
-
   /** Full validation for every Shelley-based era: tick the ledger to the block's slot, validate the
     * header against the ticked pool distribution (so the leader threshold is always checked outside
     * the overlay schedule), then apply every transaction.
@@ -379,7 +378,8 @@ object NodeRules:
         ledger = counted,
         boot = boot.copy(
           era = Some(announced.era),
-          stats = Some(previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)),
+          stats =
+            Some(previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)),
           completed = finished
         )
       )

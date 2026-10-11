@@ -65,8 +65,8 @@ enum Certificate:
   /** Pre-Conway genesis key delegation (tag 5). */
   case GenesisDelegate(genesisKey: Bytes, delegate: Bytes, vrf: Bytes)
 
-  /** Pre-Conway move of instantaneous rewards (tag 6): either a coin amount moved to the other
-    * pot, or per-credential amounts (deltas from Alonzo) paid from `pot`.
+  /** Pre-Conway move of instantaneous rewards (tag 6): either a coin amount moved to the other pot,
+    * or per-credential amounts (deltas from Alonzo) paid from `pot`.
     */
   case MoveRewards(pot: Pot, transfer: Either[BigInt, Map[Credential, BigInt]])
   case RegisterDRep(credential: Credential, deposit: BigInt)
@@ -197,7 +197,6 @@ object Certificate:
       xs(7).original,
       metadata
     )
-
 
 /** A pre-Conway protocol-parameter update proposal: per genesis key hash the proposed fields, and
   * the epoch the proposal targets.
@@ -356,7 +355,9 @@ final case class Witnesses(
     bootstrap: Vector[BootstrapWitness] = Vector.empty,
     scripts: Vector[Script] = Vector.empty,
     datums: Vector[Bytes] = Vector.empty,
-    redeemers: Vector[Redeemer] = Vector.empty
+    redeemers: Vector[Redeemer] = Vector.empty,
+    redeemersRaw: Option[Bytes] = None,
+    datumsRaw: Option[Bytes] = None
 ):
   lazy val scriptsByHash: Map[Bytes, Script] = scripts.map(s => s.hash -> s).toMap
   lazy val datumHashes: Set[Bytes] = datums.map(Blake2b.hash256.hash).toSet
@@ -424,13 +425,17 @@ object Witnesses:
       native.getOrElse(Vector.empty) ++ v1.getOrElse(Vector.empty) ++ v2.getOrElse(Vector.empty) ++
         v3.getOrElse(Vector.empty),
       datums.getOrElse(Vector.empty),
-      redeemers.getOrElse(Vector.empty)
+      redeemers.getOrElse(Vector.empty),
+      f.get(5).map(_.original),
+      f.get(4).map(_.original)
     )
 
   private def exUnits(n: Node): Either[String, ExUnits] =
     CborRead
       .arrayN(n, 2, "ex units")
-      .flatMap(xs => (CborRead.uint(xs(0), "mem"), CborRead.uint(xs(1), "steps")).mapN(ExUnits(_, _)))
+      .flatMap(xs =>
+        (CborRead.uint(xs(0), "mem"), CborRead.uint(xs(1), "steps")).mapN(ExUnits(_, _))
+      )
 
   /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. */
   private def redeemerList(n: Node): Either[String, Vector[Redeemer]] = n.value match
@@ -445,14 +450,16 @@ object Witnesses:
         yield Redeemer(tag.toInt, index, value(0).original, units)
       }
     case _ =>
-      CborRead.array(n, "redeemers").flatMap(_.traverse { r =>
-        for
-          xs <- CborRead.arrayN(r, 4, "redeemer")
-          tag <- CborRead.uint(xs(0), "redeemer tag")
-          index <- CborRead.uint(xs(1), "redeemer index")
-          units <- exUnits(xs(3))
-        yield Redeemer(tag.toInt, index, xs(2).original, units)
-      })
+      CborRead
+        .array(n, "redeemers")
+        .flatMap(_.traverse { r =>
+          for
+            xs <- CborRead.arrayN(r, 4, "redeemer")
+            tag <- CborRead.uint(xs(0), "redeemer tag")
+            index <- CborRead.uint(xs(1), "redeemer index")
+            units <- exUnits(xs(3))
+          yield Redeemer(tag.toInt, index, xs(2).original, units)
+        })
 
 /** A transaction as included in a block. */
 final case class Tx(

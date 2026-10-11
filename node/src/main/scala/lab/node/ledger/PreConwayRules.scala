@@ -88,8 +88,15 @@ object PreConwayRules:
         (needed.keySet -- scripts.keySet).map(_.hex).mkString(",")
       )
       extraneous = wits.scripts.map(_.hash).toSet -- needed.keySet
-      _ <- check(extraneous.isEmpty, "ExtraneousScriptWitnessesUTXOW", extraneous.map(_.hex).mkString(","))
-      plutusPurposes = needed.collect { case (h, ps) if scripts(h).kind.isPlutus => ps }.flatten.toSet
+      _ <- check(
+        extraneous.isEmpty,
+        "ExtraneousScriptWitnessesUTXOW",
+        extraneous.map(_.hex).mkString(",")
+      )
+      plutusPurposes = needed
+        .collect { case (h, ps) if scripts(h).kind.isPlutus => ps }
+        .flatten
+        .toSet
       _ <- alonzoChecks(state, tx, spent, refOuts, scripts, plutusPurposes)
       _ <- check(
         tx.isValid || plutusPurposes.nonEmpty,
@@ -112,8 +119,13 @@ object PreConwayRules:
       unverified = state.unverified.copy(
         plutusValid = state.unverified.plutusValid + (if plutus && tx.isValid then 1 else 0),
         plutusInvalid = state.unverified.plutusInvalid + (if plutus && !tx.isValid then 1 else 0),
-        integrityUnchecked =
-          state.unverified.integrityUnchecked + (if body.scriptDataHash.isDefined then 1 else 0)
+        // Script data hashes are recomputed; those that do not match are counted, not rejected.
+        integrityUnchecked = state.unverified.integrityUnchecked +
+          (if body.scriptDataHash.isDefined &&
+             integrityHash(tx, pp, needed.keys.flatMap(scripts.get).map(_.kind).toSet) !=
+               body.scriptDataHash
+           then 1
+           else 0)
       )
       result <-
         if tx.isValid then
@@ -121,10 +133,68 @@ object PreConwayRules:
         else Right(applyInvalid(state, tx, collateral).copy(unverified = unverified))
     yield result
 
+  private def cborInt(n: BigInt): Vector[Byte] =
+    def head(major: Int, v: BigInt): Vector[Byte] =
+      if v < 24 then Vector(((major << 5) | v.toInt).toByte)
+      else if v < 256 then Vector(((major << 5) | 24).toByte, v.toByte)
+      else if v < 65536 then Vector(((major << 5) | 25).toByte, (v >> 8).toByte, v.toByte)
+      else if v < (BigInt(1) << 32) then
+        ((major << 5) | 26).toByte +: Vector(24, 16, 8, 0).map(s => (v >> s).toByte)
+      else
+        ((major << 5) | 27).toByte +: Vector(56, 48, 40, 32, 24, 16, 8, 0).map(s => (v >> s).toByte)
+    if n >= 0 then head(0, n) else head(1, -1 - n)
+
+  /** The script data hash: `blake2b-256(redeemers ‖ datums ‖ language views)`. Plutus V1's cost
+    * model is a byte string wrapping an indefinite-length list under a byte-string key; later
+    * languages use a plain definite list.
+    */
+  private[ledger] def integrityHash(
+      tx: Tx,
+      pp: ProtocolParams,
+      kinds: Set[ScriptKind]
+  ): Option[Bytes] =
+    val wits = tx.witnesses
+    if wits.redeemers.isEmpty && wits.datums.isEmpty then None
+    else
+      // Keys sort shortest first: the one-byte keys of later languages precede V1's two bytes.
+      val views =
+        kinds.toVector.filter(_.isPlutus).sortBy(k => if k == ScriptKind.PlutusV1 then 9 else k.tag)
+      val entries = views.flatMap { k =>
+        val lang = k.tag - 1
+        pp.costModels.get(lang).toVector.map { model =>
+          val ints = model.flatMap(cborInt)
+          if lang == 0 then
+            val inner = (0x9f.toByte +: ints) :+ 0xff.toByte
+            Vector(0x41, 0x00).map(_.toByte) ++ wrapBytes(inner)
+          else cborInt(lang) ++ (cborArrayHead(model.size) ++ ints)
+        }
+      }
+      val languageViews =
+        if entries.isEmpty then Vector(0xa0.toByte)
+        else cborMapHead(entries.size) ++ entries.flatten
+      val redeemers = wits.redeemersRaw.fold(Vector(0xa0.toByte))(_.value)
+      val datums = wits.datumsRaw.fold(Vector.empty[Byte])(_.value)
+      Some(Blake2b.hash256.hash(Bytes(redeemers ++ datums ++ languageViews)))
+
+  private def wrapBytes(inner: Vector[Byte]): Vector[Byte] =
+    val n = inner.size
+    val head =
+      if n < 24 then Vector((0x40 | n).toByte)
+      else if n < 256 then Vector(0x58.toByte, n.toByte)
+      else Vector(0x59.toByte, (n >> 8).toByte, n.toByte)
+    head ++ inner
+
+  private def cborArrayHead(n: Int): Vector[Byte] =
+    if n < 24 then Vector((0x80 | n).toByte)
+    else if n < 256 then Vector(0x98.toByte, n.toByte)
+    else Vector(0x99.toByte, (n >> 8).toByte, n.toByte)
+
+  private def cborMapHead(n: Int): Vector[Byte] = Vector((0xa0 | n).toByte)
+
   // ---------------------------------------------------------------------------------------------
   // UTXO
 
-  private def minUTxO(pp: ProtocolParams, out: TxOut): BigInt =
+  private[ledger] def minUTxO(pp: ProtocolParams, out: TxOut): BigInt =
     if pp.protocolMajor >= 7 then (160 + out.ledgerSize) * pp.coinsPerUTxOByte
     else if pp.protocolMajor >= 5 then pp.coinsPerUTxOWord * entrySize(out)
     else if pp.protocolMajor >= 4 then
@@ -204,8 +274,7 @@ object PreConwayRules:
               _ <- check(
                 outs.forall(_.address.kind match
                   case Address.Kind.Shelley(_, Credential.Script(_), _, _) => false
-                  case _                                                   => true
-                ),
+                  case _                                                   => true),
                 "ScriptsNotPaidUTxO",
                 "collateral locked by a script"
               )
@@ -254,9 +323,9 @@ object PreConwayRules:
     }
     val certs = body.certificates.zipWithIndex.flatMap { case (c, ix) =>
       c match
-        case Certificate.Unregister(Credential.Script(h), _) => Some(h -> ((2, BigInt(ix))))
+        case Certificate.Unregister(Credential.Script(h), _)     => Some(h -> ((2, BigInt(ix))))
         case Certificate.Delegate(Credential.Script(h), _, _, _) => Some(h -> ((2, BigInt(ix))))
-        case _ => None
+        case _                                                   => None
     }
     val rewards = body.withdrawals
       .map(_._1)
@@ -321,7 +390,8 @@ object PreConwayRules:
         needsHash = wits.redeemers.nonEmpty || wits.datums.nonEmpty
         _ <- check(
           body.scriptDataHash.isDefined == needsHash,
-          if needsHash then "MissingRequiredScriptIntegrityHash" else "UnexpectedScriptIntegrityHash",
+          if needsHash then "MissingRequiredScriptIntegrityHash"
+          else "UnexpectedScriptIntegrityHash",
           s"${body.scriptDataHash.map(_.hex)}"
         )
       yield ()
@@ -360,22 +430,22 @@ object PreConwayRules:
     val locked = spent ++ collateral.outputs
     val inputKeys = locked.flatMap(_.address.kind match
       case Address.Kind.Shelley(_, Credential.Key(h), _, _) => Some(h)
-      case _                                                => None
-    )
+      case _                                                => None)
     val bootRoots = locked.flatMap(_.address.kind match
       case Address.Kind.Byron(root) => Some(root)
-      case _                        => None
-    )
-    val withdrawalKeys = body.withdrawals.collect { case (a, _) =>
-      a.credential
-    }.collect { case Credential.Key(h) => h }
+      case _                        => None)
+    val withdrawalKeys = body.withdrawals
+      .collect { case (a, _) =>
+        a.credential
+      }
+      .collect { case Credential.Key(h) => h }
     val certKeys = body.certificates.flatMap {
-      case Certificate.Unregister(Credential.Key(h), _)        => Vector(h)
-      case Certificate.Delegate(Credential.Key(h), _, _, _)    => Vector(h)
-      case Certificate.RegisterPool(p)                         => p.operator +: p.owners.toVector
-      case Certificate.RetirePool(p, _)                        => Vector(p)
-      case Certificate.GenesisDelegate(g, _, _)                => Vector(g)
-      case _                                                   => Vector.empty
+      case Certificate.Unregister(Credential.Key(h), _)     => Vector(h)
+      case Certificate.Delegate(Credential.Key(h), _, _, _) => Vector(h)
+      case Certificate.RegisterPool(p)                      => p.operator +: p.owners.toVector
+      case Certificate.RetirePool(p, _)                     => Vector(p)
+      case Certificate.GenesisDelegate(g, _, _)             => Vector(g)
+      case _                                                => Vector.empty
     }
     val updateKeys = body.update.toVector.flatMap(
       _.proposals.keys.toVector.flatMap(g => state.genDelegs.get(g).map(_.delegate))
@@ -450,7 +520,10 @@ object PreConwayRules:
           _ <- Either.cond(
             a.balance == amount,
             (),
-            fail("WithdrawalsNotInRewardsDELEGS", s"${account.credential.render}: $amount != ${a.balance}")
+            fail(
+              "WithdrawalsNotInRewardsDELEGS",
+              s"${account.credential.render}: $amount != ${a.balance}"
+            )
           )
         yield s.copy(accounts = s.accounts.updated(account.credential, a.copy(balance = 0)))
       }
@@ -459,9 +532,8 @@ object PreConwayRules:
           .propose(afterWithdrawals, u, env.slot, env.firstSlotNextEpoch, env.stabilityWindow)
           .leftMap { case (rule, detail) => fail(rule, detail) }
       }
-      afterCerts <- body.certificates.zipWithIndex.foldLeftM(afterUpdate) {
-        case (s, (cert, ix)) =>
-          PreConwayCerts(s, cert, ix, env, tx)
+      afterCerts <- body.certificates.zipWithIndex.foldLeftM(afterUpdate) { case (s, (cert, ix)) =>
+        PreConwayCerts(s, cert, ix, env, tx)
       }
     yield
       val created = body.outputs.zipWithIndex.map { case (out, i) => TxIn(id, i) -> out }
@@ -575,7 +647,10 @@ private[ledger] object PreConwayCerts:
                 s"$coin"
               ).as(
                 s.copy(mir =
-                  ir.copy(deltaReserves = ir.deltaReserves - coin, deltaTreasury = ir.deltaTreasury + coin)
+                  ir.copy(
+                    deltaReserves = ir.deltaReserves - coin,
+                    deltaTreasury = ir.deltaTreasury + coin
+                  )
                 )
               )
             case Pot.Treasury =>
@@ -585,14 +660,19 @@ private[ledger] object PreConwayCerts:
                 s"$coin"
               ).as(
                 s.copy(mir =
-                  ir.copy(deltaReserves = ir.deltaReserves + coin, deltaTreasury = ir.deltaTreasury - coin)
+                  ir.copy(
+                    deltaReserves = ir.deltaReserves + coin,
+                    deltaTreasury = ir.deltaTreasury - coin
+                  )
                 )
               )
         case Right(amounts) =>
           val current = if pot == Pot.Reserves then ir.reserves else ir.treasury
           val combined =
             if s.params.protocolMajor >= 5 then
-              amounts.foldLeft(current)((m, kv) => m.updated(kv._1, m.getOrElse(kv._1, BigInt(0)) + kv._2))
+              amounts.foldLeft(current)((m, kv) =>
+                m.updated(kv._1, m.getOrElse(kv._1, BigInt(0)) + kv._2)
+              )
             else current ++ amounts
           val available = if pot == Pot.Reserves then availableR else availableT
           for

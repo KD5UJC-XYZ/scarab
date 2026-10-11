@@ -1,8 +1,8 @@
 # Scala node (`node` module)
 
 A Cardano node core written as tagless-final cats-effect programs. It follows a peer from genesis,
-validates TPraos and Praos headers and applies the Conway ledger rules (or, for chains that start
-before Conway, follows in bootstrap mode, see below). Every retained state can be queried,
+validates TPraos and Praos headers and applies the ledger rules of every Shelley-based era (see
+"Full ledger" below). Every retained state can be queried,
 so it can be compared byte for byte against a reference `cardano-node`.
 
 ## Architecture
@@ -71,27 +71,46 @@ validation or fatal errors. It writes `e2e-summary.json` (blocks and header verd
 transitions) to the run directory, and always removes the containers unless `--keep`. Per-era ledger
 comparison against the reference is a marked hook (`ERA_LEDGER_COMPARATORS`) for the full ledger.
 
-## Bootstrap mode (Preview from genesis)
+## Full ledger for Shelley to Babbage
 
-`NodeRules` dispatches by era. A chain that starts before Conway (Preview forks to Alonzo at epoch
-0) is followed in bootstrap mode until a full pre-Conway ledger exists:
+`NodeRules` applies the full ledger to every Shelley-based block; era behaviour follows the protocol
+major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9).
 
-- **Headers:** Alonzo blocks use `TPraos` (overlay schedule while `d > 0`), Babbage and later use
-  `Praos`. The `PraosState` carries over the era boundary unchanged.
-- **Ledger-lite** (`ledger/BootstrapLedger.scala`): no UTxO. It tracks `d`, extra entropy,
-  protocol version, size limits, genesis delegates, and pool VRF keys from block bodies:
-  PPUP proposals (applied at the epoch boundary when a quorum proposed the identical update),
-  genesis delegation certificates (adopted after the stability window), pool registrations and
-  retirements. Transactions are not validated.
-- **Unchecked leaders:** without a stake distribution, non-overlay slots get every cryptographic
-  check (both VRF proofs, KES, opcert, the issuer's registered VRF key) but the leader threshold is
-  reported as `LeaderCheck.Unchecked`, never as valid. The JSON log has one `epochValidated` line
-  per epoch (`thresholdChecked`, `overlay`, `leaderUnchecked`) and an `eraTransition` line.
+- **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
+  witness sets (vkey, bootstrap, native and Plutus scripts, datums, redeemers), outputs in legacy and
+  map form (inline datums, reference scripts), certificates 0-6 (genesis delegation, MIR).
+- **Rules** (`ledger/PreConwayRules.scala`): UTXO (fee including the Alonzo execution-unit price,
+  min-UTxO per era, validity interval, sizes, network ids, collateral), UTXOW (vkey and Byron
+  bootstrap witnesses, native scripts, required signers, redeemers and datums, auxiliary data hash),
+  DELEGS (registration, delegation, pools, genesis delegation, MIR), PPUP (`PpupRules`). The fee size
+  counts the array header, body, witnesses and auxiliary data, not the `is_valid` byte.
+- **Epoch boundary** (`ledger/Epoch.scala`): reward application (pre-Babbage prefilter against the
+  accounts registered when the calculation started, so unclaimed rewards return to the reserves),
+  MIR, SNAP with pointer-address stake, pool re-registration and retirement, parameter update
+  adoption, and the reward update with `d`-dependent performance and the previous epoch's
+  parameters. The `set` snapshot is the pool distribution for the leader checks, so
+  `LeaderCheck.Threshold` replaces `Unchecked`; the node stops if the total supply ever differs
+  from the maximum supply at an epoch boundary.
+- **Plutus**: phase 2 is not evaluated. A transaction with `is_valid = true` is applied and one with
+  `false` consumes its collateral (and pays the collateral return in Babbage), both on the block
+  producer's word; `ledgerEpoch` log lines count them (`phase2NotEvaluated`). The script data hash is
+  recomputed from the redeemers, datums and cost models; mismatches are counted in
+  `scriptIntegrityHashUnchecked`, not rejected.
+- **Conway** continues from the Babbage state through `Translate.toConway` (Conway parameters from
+  the Conway genesis, empty DRep state, pre-Conway update/MIR/pointer state dropped); this
+  translation and the Conway transaction rules for scripts and governance are not verified (see
+  below).
+- **Bootstrap mode** remains available (`NodeRules(..., bootstrap = true)`): headers only, with the
+  leader threshold reported as unchecked.
 - **Nonce windows** (verified on Preview): candidate nonce freezes `3k/f` before the epoch end
   through Babbage; Conway and the devnet use `4k/f`. TPraos overlay formulas follow cardano-ledger
   `classifyOverlaySlot` (`position = ceiling(s * d)`, active when `position mod floor(1/f) = 0`).
 - **Read-ahead:** while the peer is far ahead, ChainSync requests are pipelined and each batch is
   fetched with one BlockFetch range (`Peer.nodeToNode`, `ChainSyncClient.requestNextBatch`).
+
+Verified: Preview from genesis through epoch 54 (227k blocks, Alonzo to Babbage 8.0) with every
+non-overlay header threshold-checked and no rule failure, and the Byron-to-Conway era fixture
+(`EraTransitionSuite`).
 
 ```sh
 bash scripts/sbtw node/compile node/runtimeClasspathFile
@@ -134,11 +153,12 @@ Details:
 
 ## Not yet implemented
 
-The following are rejected as `Unsupported`, so the node stops rather than diverging:
+Rejected as `Unsupported` under the Conway rules, so the node stops rather than diverging:
 
-- **Scripts:** Plutus and native scripts.
-- **Assets and governance:** minting, governance proposals and votes, committee certificates and treasury donations.
-- **Byron:** spending Byron-address outputs, Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
+- **Conway scripts and assets:** scripts, minting and bootstrap witnesses (the pre-Conway rules support them).
+- **Governance:** proposals and votes, committee certificates and treasury donations.
+- **Plutus phase 2:** scripts are never evaluated in any era.
+- **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
 
 Also not implemented:
 

@@ -13,3 +13,6 @@ with `lab.node.CaptureMain` from the public relay `preview-node.play.dev.cardano
 
 Preview has no Byron, Shelley, Allegra or Mary blocks: the chain forks through those eras at
 epoch 0 and the first block is already Alonzo.
+
+`babbage-mint.hex`: one Babbage block (slot 730119, epoch 8) with a native-script mint transaction
+that has auxiliary data (CIP-25 metadata); it pins the transaction size used for the minimum fee.
