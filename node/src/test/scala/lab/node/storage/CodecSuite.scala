@@ -44,6 +44,9 @@ class CodecSuite extends ScalaCheckSuite:
   roundTrip[Account]("Account")
   roundTrip[Snapshot]("stake Snapshot")
   roundTrip[RewardUpdate]("RewardUpdate")
+  roundTrip[GovAction]("GovAction")
+  roundTrip[Proposal]("Proposal")
+  roundTrip[GovState]("GovState")
   roundTrip[LedgerState]("LedgerState")
   roundTrip[PraosState]("PraosState")
   roundTrip[LiteLedger]("LiteLedger")
@@ -146,5 +149,5 @@ class CodecSuite extends ScalaCheckSuite:
   // Regenerate (and bump FileLedgerSnapshots.FormatVersion if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
   private val GoldenInitialState =
-    ("598ef76f81068c81e91846f990fe31c28d818de5f49e2bb74d506d34f529ce5a", 1725)
-  private val GoldenFingerprint = "59489f34539ce45f"
+    ("338fbf2a06b6786b7b949b18b1c52cd04d35b9644b4044f72abb02147bd9b356", 1835)
+  private val GoldenFingerprint = "710279839e9fa4ef"

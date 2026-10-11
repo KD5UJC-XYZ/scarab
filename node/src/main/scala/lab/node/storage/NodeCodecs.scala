@@ -31,6 +31,25 @@ object NodeCodecs:
   given era: Codec[Era] = Codec.auto
   given genDelegPair: Codec[GenDelegPair] = Codec.auto
 
+  // Governance (Conway).
+  given govActionId: Codec[GovActionId] = Codec.auto
+  given voter: Codec[Voter] = Codec.auto
+  given vote: Codec[Vote] = Codec.auto
+  given govAction: Codec[GovAction] = Codec.auto
+  given proposal: Codec[Proposal] = Codec.auto
+  given govAnchor: Codec[lab.node.ledger.Anchor] = Codec.auto
+  given constitution: Codec[Constitution] = Codec.auto
+  given committee: Codec[Committee] = Codec.auto
+  given committeeAuth: Codec[CommitteeAuth] = Codec.auto
+  given prevIds: Codec[PrevIds] = Codec.auto
+  given govActionState: Codec[GovActionState] = Codec.auto
+  given proposals: Codec[Proposals] = Codec.auto
+  given enactState: Codec[EnactState] = Codec.auto
+  given ratifyState: Codec[RatifyState] = Codec.auto
+  given pulsingSnapshot: Codec[PulsingSnapshot] = Codec.auto
+  given govState: Codec[GovState] = Codec.auto
+  given drepState: Codec[DRepState] = Codec.auto
+
   // Ledger.
   given account: Codec[Account] = Codec.auto
   given stakeSnapshot: Codec[Snapshot] = Codec.auto
