@@ -224,7 +224,10 @@ final case class TxBody(
     auxDataHash: Option[Bytes] = None,
     update: Option[Update] = None,
     collateralReturn: Option[TxOut] = None,
-    totalCollateral: Option[BigInt] = None
+    totalCollateral: Option[BigInt] = None,
+    votes: Vector[(Voter, Vector[(GovActionId, Vote)])] = Vector.empty,
+    proposals: Vector[Proposal] = Vector.empty,
+    currentTreasury: Option[BigInt] = None
 ):
   lazy val id: Bytes = Blake2b.hash256.hash(raw)
   def hasScriptData: Boolean = scriptDataHash.isDefined
@@ -304,6 +307,11 @@ object TxBody:
       refs <- f
         .get(18)
         .traverse(CborRead.set(_, "reference inputs").flatMap(_.traverse(TxIn.decode)))
+      votes <- f.get(19).traverse(VotingProcedures.decode)
+      proposals <- f
+        .get(20)
+        .traverse(CborRead.list(_, "proposal procedures").flatMap(_.traverse(Proposal.decode)))
+      treasury <- f.get(21).traverse(CborRead.uint(_, "current treasury value"))
       donation <- f.get(22).traverse(CborRead.uint(_, "donation"))
     yield TxBody(
       raw,
@@ -325,7 +333,10 @@ object TxBody:
       auxDataHash = auxHash,
       update = upd,
       collateralReturn = collateralReturn,
-      totalCollateral = totalCollateral
+      totalCollateral = totalCollateral,
+      votes = votes.getOrElse(Vector.empty),
+      proposals = proposals.getOrElse(Vector.empty),
+      currentTreasury = treasury
     )
 
 /** A Byron bootstrap witness: `[vkey, signature, chain_code, attributes]`. */
@@ -357,7 +368,9 @@ final case class Witnesses(
     datums: Vector[Bytes] = Vector.empty,
     redeemers: Vector[Redeemer] = Vector.empty,
     redeemersRaw: Option[Bytes] = None,
-    datumsRaw: Option[Bytes] = None
+    datumsRaw: Option[Bytes] = None,
+    /** The witness set's original encoding. */
+    raw: Option[Bytes] = None
 ):
   lazy val scriptsByHash: Map[Bytes, Script] = scripts.map(s => s.hash -> s).toMap
   lazy val datumHashes: Set[Bytes] = datums.map(Blake2b.hash256.hash).toSet
@@ -427,7 +440,8 @@ object Witnesses:
       datums.getOrElse(Vector.empty),
       redeemers.getOrElse(Vector.empty),
       f.get(5).map(_.original),
-      f.get(4).map(_.original)
+      f.get(4).map(_.original),
+      Some(raw)
     )
 
   private def exUnits(n: Node): Either[String, ExUnits] =

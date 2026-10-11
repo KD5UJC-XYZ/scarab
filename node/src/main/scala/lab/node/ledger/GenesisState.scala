@@ -24,7 +24,13 @@ object GenesisState:
         get[BigInt](c, "govActionDeposit"),
         get[BigInt](c, "govActionLifetime"),
         get[BigDecimal](c, "minFeeRefScriptCostPerByte").map(Rational.fromDecimal)
-      ).mapN(ConwayParams.apply).toOption
+      ).mapN(ConwayParams(_, _, _, _, _))
+        .toOption
+        .map(
+          _.copy(plutusV3CostModel =
+            c.downField("plutusV3CostModel").as[Vector[BigInt]].getOrElse(Vector.empty)
+          )
+        )
     files.shelley.hcursor
       .downField("updateQuorum")
       .as[Option[Int]]

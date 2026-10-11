@@ -9,7 +9,9 @@ final case class ConwayParams(
     drepActivity: BigInt,
     govActionDeposit: BigInt,
     govActionLifetime: BigInt,
-    minFeeRefScriptCostPerByte: Rational
+    minFeeRefScriptCostPerByte: Rational,
+    /** The PlutusV3 cost model of the Conway genesis (`plutusV3CostModel`), if present. */
+    plutusV3CostModel: Vector[BigInt] = Vector.empty
 )
 
 /** Network constants the epoch rules depend on. `stabilityWindow` is 3k/f and `startRewards` the
@@ -207,7 +209,10 @@ object Translate:
         drepActivity = c.drepActivity,
         govActionDeposit = c.govActionDeposit,
         govActionLifetime = c.govActionLifetime,
-        minFeeRefScriptCostPerByte = c.minFeeRefScriptCostPerByte
+        minFeeRefScriptCostPerByte = c.minFeeRefScriptCostPerByte,
+        costModels =
+          if c.plutusV3CostModel.isEmpty then state.params.costModels
+          else state.params.costModels.updated(2, c.plutusV3CostModel)
       )
     )
     val translated = state.copy(

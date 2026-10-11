@@ -91,11 +91,11 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
   parameters. The `set` snapshot is the pool distribution for the leader checks, so
   `LeaderCheck.Threshold` replaces `Unchecked`; the node stops if the total supply ever differs
   from the maximum supply at an epoch boundary.
-- **Plutus**: phase 2 is not evaluated. A transaction with `is_valid = true` is applied and one with
-  `false` consumes its collateral (and pays the collateral return in Babbage), both on the block
-  producer's word; `ledgerEpoch` log lines count them (`phase2NotEvaluated`). The script data hash is
-  recomputed from the redeemers, datums and cost models; mismatches are counted in
-  `scriptIntegrityHashUnchecked`, not rejected.
+- **Plutus (phase 2)**: every redeemer is evaluated (`ledger/Phase2.scala`) and the block's
+  `is_valid` flag must equal the verdict, in both directions (`ValidationTagMismatch`); a valid
+  transaction is applied and an invalid one consumes its collateral. See "Plutus evaluation" below.
+  The script data hash is recomputed (`ledger/ScriptIntegrity.scala`) and a mismatch is a hard
+  error (`PPViewHashesDontMatch`).
 - **Conway** continues from the Babbage state through `Translate.toConway` (Conway parameters from
   the Conway genesis, empty DRep state, pre-Conway update/MIR/pointer state dropped); this
   translation and the Conway transaction rules for scripts and governance are not verified (see
@@ -116,6 +116,49 @@ non-overlay header threshold-checked and no rule failure, and the Byron-to-Conwa
 bash scripts/sbtw node/compile node/runtimeClasspathFile
 # then run lab.node.Main follow --genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001
 ```
+
+## Plutus evaluation
+
+`lab.node.plutus` holds the evaluator algebra and `lab.node.ledger` the ledger side.
+
+- **Algebra** (`plutus/ScriptEvaluator.scala`): `ScriptEvaluator[F[_]]` has one method,
+  `evaluate(EvalRequest): F[EvalResult]`. A request is the language (`PlutusV1`, `V2`, `V3`), the
+  protocol major version (it selects the builtin semantics), the script bytes, the data arguments,
+  the language's cost model and the declared budget. The result is `Success(spent, logs)` or
+  `Failure(reason, spent, logs)` with a closed `EvalFailure` (`Decode`, `Unsupported`,
+  `OutOfBudget`, `Script`).
+- **Interpreter** (`plutus/ScalusEvaluator.scala`): the UPLC machine and builtins of Scalus (Apache-2.0,
+  `org.scalus:scalus_3:1.2.0`); nothing else of Scalus is used by the node. BLS12-381 runs on blst
+  (`foundation.icon:blst-java`) and secp256k1 on `scalus-secp256k1-jni`; both bundle linux x86_64
+  libraries that the JVM extracts to its temporary directory, and `ScalusEvaluatorSuite` evaluates a
+  BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).
+- **Pure or effectful**: evaluation is a deterministic function of the request, so the ledger rules,
+  which are pure functions, take a `ScriptEvaluator[Id]` (`TxRules.Env.evaluator`, default
+  `ScalusEvaluator.default`). The interpreter only memoises decoded scripts and machines per cost
+  model. `ScalusEvaluator.suspended[F]` is the same interpreter in `F` (`Sync.interruptible`) for a
+  node that wants evaluation off the main thread. The machine runs on a thread with a large stack.
+- **Script context** (`ledger/ScriptContexts.scala`, `ledger/Purpose.scala`): ours, written against
+  the ledger's `Plutus/TxInfo.hs` modules. V1 and V2 `TxInfo` (V1 rejects inline datums, reference
+  scripts and reference inputs; V2 adds reference inputs, redeemers and a datum map; withdrawals in
+  Plutus credential order; Byron outputs are dropped before Babbage and an error from it), V3 `TxInfo`
+  and `ScriptContext` (plain transaction ids, ledger-order withdrawals, redeemer and `ScriptInfo`,
+  votes, proposals, donation and treasury). Validity intervals are converted to POSIX milliseconds with
+  the era history and the system start (`EpochGeometry.slotStart`); the upper bound of an interval
+  without a lower bound is inclusive before Conway and exclusive from it. Purposes are spending,
+  minting, certifying, rewarding, voting and proposing, in the ledger's orders.
+- **Cost models**: per language from the protocol parameters in force. The genesis cost model is a
+  map of named integers whose canonical order is the sorted name order, not the file order; the Conway
+  genesis adds PlutusV3. A redeemer's declared units are its budget, the transaction total is bounded by
+  `maxTxExUnits`.
+- **Script data hash** (`ledger/ScriptIntegrity.scala`): `blake2b-256(redeemers ‖ datums ‖ language
+  views)` over the witness set's own bytes; datums are omitted when empty; PlutusV1's cost model is a
+  byte string wrapping an indefinite list under the byte-string key `0x4100`, V2 and V3 are plain, keys
+  in canonical order (V2, V3, then V1); no languages is `0xa0`.
+- **Counters**: `ledgerEpoch` log lines carry `phase2.evaluatedSuccess`, `phase2.evaluatedFailure`,
+  `phase2.scripts` and `scriptIntegrityHashChecked`.
+- **Recording cases**: `follow --plutus-cases <dir>` writes self-contained JSON cases (transaction,
+  spent and referenced outputs, cost models, clock samples) for a few transactions of each kind;
+  `fixtures/preview/plutus` holds a selection that the tests replay.
 
 ## Running a local soak (Docker only)
 
@@ -157,7 +200,7 @@ Rejected as `Unsupported` under the Conway rules, so the node stops rather than 
 
 - **Conway scripts and assets:** scripts, minting and bootstrap witnesses (the pre-Conway rules support them).
 - **Governance:** proposals and votes, committee certificates and treasury donations.
-- **Plutus phase 2:** scripts are never evaluated in any era.
+- **Plutus V3 in a block:** the V3 script context is built and tested against Scalus, but the Conway transaction rules still reject scripts, so V3 is not reached from a chain.
 - **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
 
 Also not implemented:

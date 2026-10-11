@@ -57,15 +57,20 @@ final case class InstantRewards(
 object InstantRewards:
   val empty: InstantRewards = InstantRewards(Map.empty, Map.empty, 0, 0)
 
-/** What the ledger trusted rather than verified. Phase-2 (Plutus) evaluation is not performed:
-  * `plutusValid` transactions flagged `is_valid = true` were applied and `plutusInvalid` ones
-  * (flagged false) were charged their collateral, both on the block producer's word.
-  * `integrityUnchecked` counts script-data hashes that were not recomputed.
+/** Plutus phase-2 evaluation counters. `succeeded` and `failed` count transactions whose scripts
+  * were evaluated and whose verdict equalled the block's `is_valid` flag (a disagreement is a
+  * validation error, so it is never counted); `scripts` counts the redeemers evaluated and
+  * `integrityChecked` the script data hashes recomputed and found equal.
   */
-final case class Unverified(plutusValid: Long, plutusInvalid: Long, integrityUnchecked: Long)
+final case class PlutusStats(
+    succeeded: Long,
+    failed: Long,
+    scripts: Long,
+    integrityChecked: Long
+)
 
-object Unverified:
-  val zero: Unverified = Unverified(0, 0, 0)
+object PlutusStats:
+  val zero: PlutusStats = PlutusStats(0, 0, 0, 0)
 
 /** The ledger state the node maintains. Collections are persistent, so the per-block copies kept by
   * the volatile chain share structure.
@@ -101,7 +106,7 @@ final case class LedgerState(
     /** Registered credentials when the reward calculation started (pre-Babbage reward prefilter).
       */
     rewardRegistered: Option[Set[Credential]] = None,
-    unverified: Unverified = Unverified.zero
+    plutus: PlutusStats = PlutusStats.zero
 ):
   /** Parameters in force during the previous epoch. */
   def previousParams: ProtocolParams = prevParams.getOrElse(params)

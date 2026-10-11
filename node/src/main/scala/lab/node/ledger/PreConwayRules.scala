@@ -9,15 +9,15 @@ import lab.witness.{StrictEd25519, VerificationResult}
 
 /** UTXOW, UTXO, UTXOS and DELEGS for Shelley, Allegra, Mary, Alonzo and Babbage. Era behaviour is
   * selected by the protocol major version of the parameters in force: Allegra 3, Mary 4, Alonzo 5,
-  * Babbage 7. Plutus scripts are never evaluated (see [[Unverified]]): a transaction flagged
-  * `is_valid = true` is applied and one flagged `false` consumes its collateral, on the block
-  * producer's word.
+  * Babbage 7. Plutus scripts are evaluated (see [[Phase2]]) and the block's `is_valid` flag must
+  * equal the verdict: a transaction flagged `true` is applied, one flagged `false` consumes its
+  * collateral, and a flag that disagrees with the evaluation is a validation error.
   */
 object PreConwayRules:
   import TxRules.{Env, Result}
 
-  /** Spending purposes of a script: tag 0 spend, 1 mint, 2 certificate, 3 reward. */
-  private type Purpose = (Int, BigInt)
+  /** A redeemer pointer: tag 0 spend, 1 mint, 2 certificate, 3 reward, then index. */
+  private type Pointer = (Int, BigInt)
 
   def apply(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =
     val body = tx.body
@@ -115,81 +115,74 @@ object PreConwayRules:
         "ValueNotConservedUTxO",
         s"consumed ${consumed.coin} produced ${produced.coin} assets ${consumed.assets == produced.assets}"
       )
-      plutus = plutusPurposes.nonEmpty
-      unverified = state.unverified.copy(
-        plutusValid = state.unverified.plutusValid + (if plutus && tx.isValid then 1 else 0),
-        plutusInvalid = state.unverified.plutusInvalid + (if plutus && !tx.isValid then 1 else 0),
-        // Script data hashes are recomputed; those that do not match are counted, not rejected.
-        integrityUnchecked = state.unverified.integrityUnchecked +
-          (if body.scriptDataHash.isDefined &&
-             integrityHash(tx, pp, needed.keys.flatMap(scripts.get).map(_.kind).toSet) !=
-               body.scriptDataHash
-           then 1
-           else 0)
-      )
+      plutusStats <- phase2(state, tx, env, scripts, spent, refOuts, plutusPurposes)
       result <-
         if tx.isValid then
-          applyValid(state, tx, env, deposits, refunds).map(_.copy(unverified = unverified))
-        else Right(applyInvalid(state, tx, collateral).copy(unverified = unverified))
+          applyValid(state, tx, env, deposits, refunds).map(_.copy(plutus = plutusStats))
+        else Right(applyInvalid(state, tx, collateral).copy(plutus = plutusStats))
     yield result
 
-  private def cborInt(n: BigInt): Vector[Byte] =
-    def head(major: Int, v: BigInt): Vector[Byte] =
-      if v < 24 then Vector(((major << 5) | v.toInt).toByte)
-      else if v < 256 then Vector(((major << 5) | 24).toByte, v.toByte)
-      else if v < 65536 then Vector(((major << 5) | 25).toByte, (v >> 8).toByte, v.toByte)
-      else if v < (BigInt(1) << 32) then
-        ((major << 5) | 26).toByte +: Vector(24, 16, 8, 0).map(s => (v >> s).toByte)
-      else
-        ((major << 5) | 27).toByte +: Vector(56, 48, 40, 32, 24, 16, 8, 0).map(s => (v >> s).toByte)
-    if n >= 0 then head(0, n) else head(1, -1 - n)
-
-  /** The script data hash: `blake2b-256(redeemers ‖ datums ‖ language views)`. Plutus V1's cost
-    * model is a byte string wrapping an indefinite-length list under a byte-string key; later
-    * languages use a plain definite list.
+  /** The script data hash must equal the recomputed hash, and the block's `is_valid` flag must
+    * equal the outcome of evaluating every Plutus script.
     */
-  private[ledger] def integrityHash(
+  private def phase2(
+      state: LedgerState,
       tx: Tx,
-      pp: ProtocolParams,
-      kinds: Set[ScriptKind]
-  ): Option[Bytes] =
-    val wits = tx.witnesses
-    if wits.redeemers.isEmpty && wits.datums.isEmpty then None
+      env: Env,
+      scripts: Map[Bytes, Script],
+      spent: Vector[TxOut],
+      refOuts: Vector[TxOut],
+      plutusPurposes: Set[Pointer]
+  ): Result[PlutusStats] =
+    val body = tx.body
+    val id = body.id
+    val pp = state.params
+    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
+    if pp.protocolMajor < 5 || (plutusPurposes.isEmpty && body.scriptDataHash.isEmpty) then
+      Right(state.plutus)
     else
-      // Keys sort shortest first: the one-byte keys of later languages precede V1's two bytes.
-      val views =
-        kinds.toVector.filter(_.isPlutus).sortBy(k => if k == ScriptKind.PlutusV1 then 9 else k.tag)
-      val entries = views.flatMap { k =>
-        val lang = k.tag - 1
-        pp.costModels.get(lang).toVector.map { model =>
-          val ints = model.flatMap(cborInt)
-          if lang == 0 then
-            val inner = (0x9f.toByte +: ints) :+ 0xff.toByte
-            Vector(0x41, 0x00).map(_.toByte) ++ wrapBytes(inner)
-          else cborInt(lang) ++ (cborArrayHead(model.size) ++ ints)
-        }
-      }
-      val languageViews =
-        if entries.isEmpty then Vector(0xa0.toByte)
-        else cborMapHead(entries.size) ++ entries.flatten
-      val redeemers = wits.redeemersRaw.fold(Vector(0xa0.toByte))(_.value)
-      val datums = wits.datumsRaw.fold(Vector.empty[Byte])(_.value)
-      Some(Blake2b.hash256.hash(Bytes(redeemers ++ datums ++ languageViews)))
-
-  private def wrapBytes(inner: Vector[Byte]): Vector[Byte] =
-    val n = inner.size
-    val head =
-      if n < 24 then Vector((0x40 | n).toByte)
-      else if n < 256 then Vector(0x58.toByte, n.toByte)
-      else Vector(0x59.toByte, (n >> 8).toByte, n.toByte)
-    head ++ inner
-
-  private def cborArrayHead(n: Int): Vector[Byte] =
-    if n < 24 then Vector((0x80 | n).toByte)
-    else if n < 256 then Vector(0x98.toByte, n.toByte)
-    else Vector(0x99.toByte, (n >> 8).toByte, n.toByte)
-
-  private def cborMapHead(n: Int): Vector[Byte] = Vector((0xa0 | n).toByte)
+      val needed = scriptsNeeded(body, spent)
+      val languages = needed.keys.flatMap(scripts.get).map(_.kind).toSet
+      val recomputed = ScriptIntegrity.hash(tx, pp, languages)
+      val stats = state.plutus.copy(integrityChecked = state.plutus.integrityChecked + 1)
+      if recomputed != body.scriptDataHash then
+        invalid(
+          "PPViewHashesDontMatch",
+          s"body ${body.scriptDataHash.map(_.hex)}, recomputed ${recomputed.map(_.hex)}"
+        )
+      else if plutusPurposes.isEmpty then Right(stats)
+      else
+        val inputs = body.inputs.zip(spent).toMap
+        val references = body.referenceInputs.zip(refOuts).toMap
+        val posix = env.clock.toRight(TranslationError("no era history for slot times"))
+        val outcome = Phase2.evaluate(
+          tx,
+          pp,
+          scripts,
+          inputs,
+          references,
+          slot => posix.map(_(slot)),
+          env.evaluator
+        )
+        env.observer.foreach(
+          _(Phase2.Observation(tx, pp, env.slot, inputs, references, env.clock, outcome))
+        )
+        outcome.left
+          .map(e => LedgerFailure.Invalid(id, "CollectErrors", e.reason))
+          .flatMap {
+            case Phase2.Outcome.Passed(n) =>
+              if tx.isValid then
+                Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))
+              else invalid("ValidationTagMismatch", "is_valid = false but every script succeeds")
+            case Phase2.Outcome.Failed(n, redeemer, reason) =>
+              if !tx.isValid then
+                Right(stats.copy(failed = stats.failed + 1, scripts = stats.scripts + n + 1))
+              else
+                invalid(
+                  "ValidationTagMismatch",
+                  s"is_valid = true but redeemer (${redeemer.tag}, ${redeemer.index}) fails: ${reason.message}"
+                )
+          }
 
   // ---------------------------------------------------------------------------------------------
   // UTXO
@@ -309,34 +302,16 @@ object PreConwayRules:
   private def providedScripts(wits: Witnesses, outs: Vector[TxOut]): Map[Bytes, Script] =
     outs.flatMap(_.scriptRef).map(s => s.hash -> s).toMap ++ wits.scriptsByHash
 
-  /** Script hashes the transaction must provide, with the purposes that use each. */
-  private def scriptsNeeded(body: TxBody, spent: Vector[TxOut]): Map[Bytes, Set[Purpose]] =
-    val sortedInputs = body.inputs.toVector.sorted
-    val byInput = body.inputs.toVector.zip(spent).toMap
-    val spending = sortedInputs.zipWithIndex.flatMap { case (in, ix) =>
-      byInput(in).address.kind match
-        case Address.Kind.Shelley(_, Credential.Script(h), _, _) => Some(h -> ((0, BigInt(ix))))
-        case _                                                   => None
-    }
-    val minting = body.mint.keys.toVector.sortBy(_.hex).zipWithIndex.map { case (policy, ix) =>
-      policy -> ((1, BigInt(ix)))
-    }
-    val certs = body.certificates.zipWithIndex.flatMap { case (c, ix) =>
-      c match
-        case Certificate.Unregister(Credential.Script(h), _)     => Some(h -> ((2, BigInt(ix))))
-        case Certificate.Delegate(Credential.Script(h), _, _, _) => Some(h -> ((2, BigInt(ix))))
-        case _                                                   => None
-    }
-    val rewards = body.withdrawals
-      .map(_._1)
-      .sortBy(a => (a.credential.isInstanceOf[Credential.Key], a.credential.hash.hex))
-      .zipWithIndex
-      .flatMap { case (a, ix) =>
-        a.credential match
-          case Credential.Script(h) => Some(h -> ((3, BigInt(ix))))
-          case _                    => None
-      }
-    (spending ++ minting ++ certs ++ rewards).groupMap(_._1)(_._2).view.mapValues(_.toSet).toMap
+  /** Script hashes the transaction must provide, with the redeemer pointers that use each. */
+  private def scriptsNeeded(body: TxBody, spent: Vector[TxOut]): Map[Bytes, Set[Pointer]] =
+    val byInput = body.inputs.zip(spent).toMap
+    Purpose
+      .all(body, byInput)
+      .flatMap(p => p.scriptHash.map(h => h -> ((p.tag, BigInt(p.index)))))
+      .groupMap(_._1)(_._2)
+      .view
+      .mapValues(_.toSet)
+      .toMap
 
   /** Alonzo UTXOW: redeemers match the Plutus purposes, datums, script data hash presence. */
   private def alonzoChecks(
@@ -345,7 +320,7 @@ object PreConwayRules:
       spent: Vector[TxOut],
       refOuts: Vector[TxOut],
       scripts: Map[Bytes, Script],
-      plutusPurposes: Set[Purpose]
+      plutusPurposes: Set[Pointer]
   ): Result[Unit] =
     val pv = state.params.protocolMajor
     val body = tx.body
@@ -419,7 +394,7 @@ object PreConwayRules:
       spent: Vector[TxOut],
       collateral: Collateral,
       scripts: Map[Bytes, Script],
-      needed: Map[Bytes, Set[Purpose]],
+      needed: Map[Bytes, Set[Pointer]],
       vkeyHashes: Vector[Bytes]
   ): Result[Unit] =
     val body = tx.body

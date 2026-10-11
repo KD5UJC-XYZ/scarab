@@ -100,11 +100,12 @@ object JsonLog:
           "treasury" -> treasury.asJson,
           "reserves" -> reserves.asJson,
           "protocolVersion" -> s"${pv._1}.${pv._2}".asJson,
-          "phase2NotEvaluated" -> Json.obj(
-            "validTrusted" -> u.plutusValid.asJson,
-            "invalidTrusted" -> u.plutusInvalid.asJson
+          "phase2" -> Json.obj(
+            "evaluatedSuccess" -> u.succeeded.asJson,
+            "evaluatedFailure" -> u.failed.asJson,
+            "scripts" -> u.scripts.asJson
           ),
-          "scriptIntegrityHashUnchecked" -> u.integrityUnchecked.asJson
+          "scriptIntegrityHashChecked" -> u.integrityChecked.asJson
         )
       case FollowerEvent.Reconnecting(reason, attempt) =>
         line("reconnecting", "reason" -> reason.message.asJson, "attempt" -> attempt.asJson)

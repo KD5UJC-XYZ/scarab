@@ -133,7 +133,9 @@ object ProtocolParams:
       collateralPct <- anyInt(a, "collateralPercentage")
       maxCollateral <- anyInt(a, "maxCollateralInputs")
       entropy <- extraEntropy(s)
-      costModels <- costModelsOf(a.downField("costModels"))
+      alonzoModels <- costModelsOf(a.downField("costModels"))
+      v3Model = c.downField("plutusV3CostModel").as[Vector[BigInt]].toOption
+      costModels = v3Model.fold(alonzoModels)(m => alonzoModels.updated(2, m))
       drepDeposit <- opt[BigInt](c, "dRepDeposit").map(_.getOrElse(BigInt(0)))
       drepActivity <- opt[BigInt](c, "dRepActivity").map(_.getOrElse(BigInt(0)))
       govDeposit <- opt[BigInt](c, "govActionDeposit").map(_.getOrElse(BigInt(0)))
@@ -187,7 +189,7 @@ object ProtocolParams:
           .map(Nonce.Hash(_))
       case Left(e) => Left(ConfigError(s"extraEntropy: ${e.message}"))
 
-  /** Genesis cost models are objects of named integers; the file order is the canonical order. */
+  /** Genesis cost models are objects of named integers, canonically ordered by parameter name. */
   private def costModelsOf(c: ACursor): Either[ConfigError, Map[Int, Vector[BigInt]]] =
     c.focus.flatMap(_.asObject) match
       case None => Right(Map.empty)
@@ -199,11 +201,16 @@ object ProtocolParams:
               case "PlutusV2" => Right(1)
               case "PlutusV3" => Right(2)
               case other      => Left(ConfigError(s"cost model language $other"))
+            // The ledger reads named parameters into a map ordered by name; that order is the
+            // canonical parameter order, whatever the order of the genesis file.
             val values = model.asObject match
               case Some(o) =>
-                o.values.toVector.traverse(
-                  _.as[BigInt].leftMap(e => ConfigError(s"cost model: ${e.message}"))
-                )
+                o.toVector
+                  .sortBy(_._1)
+                  .map(_._2)
+                  .traverse(
+                    _.as[BigInt].leftMap(e => ConfigError(s"cost model: ${e.message}"))
+                  )
               case None =>
                 model
                   .as[Vector[BigInt]]

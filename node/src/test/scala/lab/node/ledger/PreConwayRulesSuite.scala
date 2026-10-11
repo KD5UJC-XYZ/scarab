@@ -280,9 +280,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assert(NativeScript.AllOf(Vector.empty).eval(Set.empty, None, None))
   }
 
-  test(
-    "Plutus transactions: phase 2 is not evaluated; the flag decides between apply and collateral"
-  ) {
+  test("Plutus transactions: the evaluation verdict must equal the is_valid flag") {
     val plutus = Script.plutus(ScriptKind.PlutusV1, Bytes(Vector.fill(10)(7)))
     val scriptAddress =
       Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
@@ -301,29 +299,58 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       Vector.empty,
       scripts = Vector(plutus),
       datums = Vector(datum),
-      redeemers = Vector(redeemer)
+      redeemers = Vector(redeemer),
+      // witness-set encodings: `[ [0, 0, 1, [1000, 1000000]] ]` and `[ 1 ]`
+      redeemersRaw =
+        Some(
+          Bytes(
+            Vector(0x81, 0x84, 0x00, 0x00, 0x01, 0x82, 0x19, 0x03, 0xe8, 0x1a, 0x00, 0x0f, 0x42,
+              0x40).map(_.toByte)
+          )
+        ),
+      datumsRaw = Some(Bytes(Vector(0x81, 0x01).map(_.toByte)))
     )
     val fee = BigInt(100 + 100) + (s.params.priceMem * Rational(1000) +
       s.params.priceSteps * Rational(1000000)).ceil
-    val b = body(
-      "plutus",
-      Vector(lockedIn),
-      Vector(out(bob.address(), 50 * ada - fee)),
-      fee,
-      collateral = Vector(collateralIn),
-      scriptDataHash = Some(Bytes(Vector.fill(32)(9)))
+    def bodyWith(hash: Option[Bytes]) =
+      body(
+        "plutus",
+        Vector(lockedIn),
+        Vector(out(bob.address(), 50 * ada - fee)),
+        fee,
+        collateral = Vector(collateralIn),
+        scriptDataHash = hash
+      )
+    val hash = ScriptIntegrity.hash(
+      tx(bodyWith(None), Vector(alice), wits),
+      s.params,
+      Set(ScriptKind.PlutusV1)
     )
-    val valid = TxRules(s, tx(b, Vector(alice), wits), env).fold(f => fail(f.message), identity)
-    assertEquals(valid.unverified.plutusValid, 1L)
-    assertEquals(valid.unverified.plutusInvalid, 0L)
+    val b = bodyWith(hash)
+    def run(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
+      TxRules(
+        s,
+        tx(body, Vector(alice), wits, isValid = isValid),
+        env.copy(evaluator = scripted(succeeds))
+      )
+    val valid = run(succeeds = true, isValid = true).fold(f => fail(f.message), identity)
+    assertEquals((valid.plutus.succeeded, valid.plutus.failed), (1L, 0L))
+    assertEquals((valid.plutus.scripts, valid.plutus.integrityChecked), (1L, 1L))
     assert(valid.utxo.contains(collateralIn) && !valid.utxo.contains(lockedIn))
     assertEquals(valid.total, Supply)
-    val failed = TxRules(s, tx(b, Vector(alice), wits, isValid = false), env)
-      .fold(f => fail(f.message), identity)
-    assertEquals(failed.unverified.plutusInvalid, 1L)
+    val failed = run(succeeds = false, isValid = false).fold(f => fail(f.message), identity)
+    assertEquals((failed.plutus.succeeded, failed.plutus.failed), (0L, 1L))
     assert(!failed.utxo.contains(collateralIn) && failed.utxo.contains(lockedIn))
     assertEquals(failed.fees, 100 * ada)
     assertEquals(failed.total, Supply)
+    // The flag and the evaluation must agree, in both directions.
+    assertEquals(rule(run(succeeds = false, isValid = true)), "ValidationTagMismatch")
+    assertEquals(rule(run(succeeds = true, isValid = false)), "ValidationTagMismatch")
+    // A script data hash that is not the recomputed one is rejected.
+    assertEquals(
+      rule(run(succeeds = true, isValid = true, bodyWith(Some(Bytes(Vector.fill(32)(9)))))),
+      "PPViewHashesDontMatch"
+    )
     // a missing datum or redeemer is a phase-1 failure
     assertEquals(
       rule(TxRules(s, tx(b, Vector(alice), wits.copy(datums = Vector.empty)), env)),

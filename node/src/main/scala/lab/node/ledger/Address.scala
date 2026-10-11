@@ -216,6 +216,18 @@ final case class TxOut(
   def hasDatum: Boolean = datum != Datum.NoDatum
   def hasScriptRef: Boolean = scriptRef.isDefined
 
+  /** The reference script with its Plutus bytes, re-read from the output's encoding. */
+  def referenceScript: Option[Script] =
+    scriptRef.flatMap { kept =>
+      val reread = for
+        node <- Cbor.decode(raw)
+        f <- CborRead.fields(node, "output")
+        field <- f.get(3).toRight("output: no reference script")
+        script <- Script.decodeWrappedWithBytes(field)
+      yield script
+      reread.toOption.orElse(Some(kept))
+    }
+
   /** Size of the output as the ledger serialises it: outputs with neither inline datum nor
     * reference script use the legacy array form, shorter by two bytes than the equivalent map.
     */

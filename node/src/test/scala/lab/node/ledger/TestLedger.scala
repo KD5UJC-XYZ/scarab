@@ -58,7 +58,8 @@ object TestLedger:
       maxTxExUnits = ExUnits(10000000, 10000000000L),
       maxBlockExUnits = ExUnits(50000000, 40000000000L),
       collateralPercentage = 150,
-      maxCollateralInputs = 3
+      maxCollateralInputs = 3,
+      costModels = Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7))
     )
 
   val Supply: BigInt = 45000000000000000L
@@ -96,8 +97,21 @@ object TestLedger:
       network = 0,
       firstSlotNextEpoch = 5000,
       stabilityWindow = 100,
-      updateQuorum = 2
+      updateQuorum = 2,
+      clock = Some(slot => slot * 1000 + 1596059091000L)
     )
+
+  /** An evaluator whose verdict is fixed: every script succeeds or every script fails. */
+  def scripted(succeeds: Boolean): lab.node.plutus.ScriptEvaluator[cats.Id] =
+    _ =>
+      if succeeds then lab.node.plutus.EvalResult.Success(ExUnits(1, 1), Vector.empty)
+      else
+        lab.node.plutus.EvalResult
+          .Failure(
+            lab.node.plutus.EvalFailure.Script("scripted failure"),
+            ExUnits(1, 1),
+            Vector.empty
+          )
 
   def body(
       id: String,

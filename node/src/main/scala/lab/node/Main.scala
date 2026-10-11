@@ -8,7 +8,7 @@ import java.nio.file.Path
 import com.comcast.ip4s.{Host, SocketAddress}
 import scala.concurrent.duration.*
 
-/** `follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P]`
+/** `follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>]`
   *
   * Follows the peer from genesis, applying the full ledger rules, and serves the retained ledger
   * states on loopback for comparison against a reference node.
@@ -18,7 +18,8 @@ object Main extends IOApp:
       genesisDir: Path,
       peer: SocketAddress[Host],
       seconds: Option[Long],
-      queryPort: Int
+      queryPort: Int,
+      plutusCases: Option[Path] = None
   )
 
   def run(args: List[String]): IO[ExitCode] =
@@ -41,7 +42,16 @@ object Main extends IOApp:
       )
       given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
       events = JsonLog.events
-      rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+      cases = options.plutusCases.map { dir =>
+        java.nio.file.Files.createDirectories(dir)
+        PlutusCases(dir, perKind = 2, max = 400)
+      }
+      rules = NodeRules[IO](
+        setup.praos,
+        setup.globals,
+        setup.byronRules,
+        phase2Observer = cases.map(c => c.observe)
+      )
       follower = Follower[IO, NodeState](
         rules,
         events,
@@ -69,7 +79,7 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>]"
     def go(rest: List[String], acc: Map[String, String]): Either[String, Map[String, String]] =
       rest match
         case Nil => Right(acc)
@@ -85,5 +95,5 @@ object Main extends IOApp:
           peer <- Peer.parseAddress(peerText)
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
           port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
-        yield Options(dir, peer, seconds, port)
+        yield Options(dir, peer, seconds, port, flags.get("plutus-cases").map(Path.of(_)))
       case _ => Left(usage)

@@ -75,14 +75,15 @@ final class NodeRules[F[_]: Applicative](
     config: PraosConfig,
     globals: LedgerGlobals,
     byron: Option[ByronRules.Config] = None,
-    bootstrap: Boolean = false
+    bootstrap: Boolean = false,
+    phase2Observer: Option[Phase2.Observation => Unit] = None
 )(using
     Raise[F, ValidationError]
 ) extends BlockRules[F, NodeState]:
 
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
     NodeRules
-      .applyBlock(state, header, raw, config, globals, byron, bootstrap)
+      .applyBlock(state, header, raw, config, globals, byron, bootstrap, phase2Observer)
       .fold(
         (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
         _.pure[F]
@@ -115,7 +116,7 @@ object NodeRules:
           l.treasury,
           l.reserves,
           l.params.version,
-          l.unverified
+          l.plutus
         )
       }
     era.toList ++ byron.toList ++ epoch.toList ++ ledger.toList
@@ -128,12 +129,13 @@ object NodeRules:
       config: PraosConfig,
       globals: LedgerGlobals,
       byron: Option[ByronRules.Config] = None,
-      bootstrap: Boolean = false
+      bootstrap: Boolean = false,
+      phase2Observer: Option[Phase2.Observation => Unit] = None
   ): Either[(String, String), NodeState] =
     header match
       case h: Header.Byron                => applyByron(state, h, raw, byron)
       case h: Header.Shelley if bootstrap => applyBootstrap(state, h, raw, config)
-      case h: Header.Shelley              => applyFull(state, h, raw, config, globals)
+      case h: Header.Shelley => applyFull(state, h, raw, config, globals, phase2Observer)
 
   /** Byron: linkage, slot order, leader delegation and signature (see [[ByronRules]]). */
   private def applyByron(
@@ -267,7 +269,8 @@ object NodeRules:
       announced: Header.Shelley,
       raw: Bytes,
       config: PraosConfig,
-      globals: LedgerGlobals
+      globals: LedgerGlobals,
+      phase2Observer: Option[Phase2.Observation => Unit] = None
   ): Either[(String, String), NodeState] =
     val geometry = config.geometry
     val epoch = geometry.epochOf(announced.slot)
@@ -355,7 +358,9 @@ object NodeRules:
           firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
           stabilityWindow = geometry.stabilityWindow,
           txIndex = i,
-          updateQuorum = globals.updateQuorum
+          updateQuorum = globals.updateQuorum,
+          clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
+          observer = phase2Observer
         )
         Tx.fromBlock(t, block.era)
           .leftMap(r => "decode" -> s"tx ${t.id.hex.take(16)}: $r")

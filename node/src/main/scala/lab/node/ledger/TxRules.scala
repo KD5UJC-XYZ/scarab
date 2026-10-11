@@ -3,7 +3,9 @@ package lab.node.ledger
 
 import cats.syntax.all.*
 import lab.Blake2b
+import cats.Id
 import lab.cbor.Bytes
+import lab.node.plutus.{ScalusEvaluator, ScriptEvaluator}
 import lab.witness.{StrictEd25519, VerificationResult}
 
 /** Why the ledger refused a transaction. `Unsupported` marks a valid-chain feature this node does
@@ -31,7 +33,13 @@ object TxRules:
       firstSlotNextEpoch: BigInt = 0,
       stabilityWindow: BigInt = 0,
       txIndex: Int = 0,
-      updateQuorum: Int = 5
+      updateQuorum: Int = 5,
+      /** Slot to POSIX milliseconds through the era history (needed for the script context). */
+      clock: Option[BigInt => BigInt] = None,
+      /** The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). */
+      evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
+      /** Tooling hook called after each phase-2 evaluation; never affects the result. */
+      observer: Option[Phase2.Observation => Unit] = None
   )
 
   def apply(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =

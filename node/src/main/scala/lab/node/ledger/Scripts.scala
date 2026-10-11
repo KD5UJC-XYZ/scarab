@@ -59,9 +59,16 @@ enum ScriptKind(val tag: Int):
   def isPlutus: Boolean = this != Native
 
 /** A script with its hash. The hash is `blake2b-224(tag ‖ payload)`, where the payload is the
-  * original encoding of a native script or the bytes of a Plutus script.
+  * original encoding of a native script or the bytes of a Plutus script. `plutus` holds the bytes
+  * of a Plutus script when they were kept (witness scripts; outputs keep only the hash of their
+  * reference script and re-read the bytes from their encoding on demand).
   */
-final case class Script(kind: ScriptKind, hash: Bytes, native: Option[NativeScript])
+final case class Script(
+    kind: ScriptKind,
+    hash: Bytes,
+    native: Option[NativeScript],
+    plutus: Option[Bytes] = None
+)
 
 object Script:
   private def hashOf(kind: ScriptKind, payload: Bytes): Bytes =
@@ -72,7 +79,8 @@ object Script:
       .decode(n)
       .map(s => Script(ScriptKind.Native, hashOf(ScriptKind.Native, n.original), Some(s)))
 
-  def plutus(kind: ScriptKind, bytes: Bytes): Script = Script(kind, hashOf(kind, bytes), None)
+  def plutus(kind: ScriptKind, bytes: Bytes): Script =
+    Script(kind, hashOf(kind, bytes), None, Some(bytes))
 
   /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`. */
   def decode(n: Node): Either[String, Script] =
@@ -86,8 +94,14 @@ object Script:
       }
     }
 
-  /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field. */
-  def decodeWrapped(n: Node): Either[String, Script] = n.value match
+  /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field; the Plutus bytes
+    * are dropped so the ledger state keeps one copy (the output's own encoding).
+    */
+  def decodeWrapped(n: Node): Either[String, Script] =
+    decodeWrappedWithBytes(n).map(_.copy(plutus = None))
+
+  /** As [[decodeWrapped]], keeping the Plutus bytes. */
+  def decodeWrappedWithBytes(n: Node): Either[String, Script] = n.value match
     case Value.Tag(t, inner) if t == 24 =>
       CborRead.bytes(inner, "reference script").flatMap(Cbor.decode(_)).flatMap(decode)
     case _ => Left("reference script: expected tag 24")
