@@ -5,8 +5,10 @@ import cats.effect.Async
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import lab.cbor.Bytes
-import lab.node.consensus.{OCertError, OCertRules, PraosConfig}
+import lab.node.consensus.{Nonce, OCertError, OCertRules, Praos, PraosConfig, TPraos}
+import lab.vrf.PraosVrfCertificate as Vrf
 import lab.witness.{StrictEd25519, VerificationResult}
 
 /** Signature checks that do not depend on the ledger state, made available ahead of the sequential
@@ -33,6 +35,51 @@ object Verification:
   private val witnesses = new ConcurrentHashMap[WitnessKey, java.lang.Boolean]()
   private val headers = new ConcurrentHashMap[HeaderKey, Either[OCertError, Unit]]()
   private val prepared = new ConcurrentHashMap[Bytes, NodeRules.Prepared]()
+
+  // VRF proofs depend on the epoch nonce, which only the sequential rules know; the verdicts are
+  // keyed by the derived alpha string, so a block warmed under a wrong nonce is just a miss.
+  private final case class VrfKey(kind: Int, alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes)
+  private val vrfs = new ConcurrentHashMap[VrfKey, Vrf.Result]()
+  private val epochNonce = new AtomicReference[(BigInt, Nonce)]()
+
+  /** The newest epoch nonce the rules have seen: blocks of that epoch can have their VRF proofs
+    * verified ahead of time.
+    */
+  def noteEpochNonce(epoch: BigInt, nonce: Nonce): Unit = epochNonce.set((epoch, nonce))
+
+  /** Praos (Babbage and later) VRF verdict, see [[lab.vrf.PraosVrfCertificate.verify]]. */
+  def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+    Vrf.alpha(input) match
+      case Right(alpha) =>
+        val known = vrfs.remove(VrfKey(0, alpha, vkey, proof, output))
+        if known != null then known else Vrf.verify(input, vkey, proof, output)
+      case Left(_) => Vrf.verify(input, vkey, proof, output)
+
+  /** TPraos VRF verdict over an already derived alpha. */
+  def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+    val known = vrfs.remove(VrfKey(1, alpha, vkey, proof, output))
+    if known != null then known else Vrf.verifyAlpha(alpha, vkey, proof, output)
+
+  private def warmVrf(header: Header.Shelley, config: PraosConfig): Unit =
+    val hint = epochNonce.get
+    if hint != null && config.geometry.epochOf(header.slot) == hint._1 then
+      header.vrf match
+        case HeaderVrf.Praos(cert) =>
+          Praos.vrfInput(hint._2, header.slot).foreach { input =>
+            Vrf.alpha(input).foreach { alpha =>
+              vrfs.put(
+                VrfKey(0, alpha, header.vrfVkey, cert.proof, cert.output),
+                Vrf.verify(input, header.vrfVkey, cert.proof, cert.output)
+              )
+            }
+          }
+        case HeaderVrf.TPraos(nonceCert, leaderCert) =>
+          for (uc, cert) <- Seq(TPraos.SeedEta -> nonceCert, TPraos.SeedL -> leaderCert) do
+            val alpha = TPraos.seed(uc, header.slot, hint._2)
+            vrfs.put(
+              VrfKey(1, alpha, header.vrfVkey, cert.proof, cert.output),
+              Vrf.verifyAlpha(alpha, header.vrfVkey, cert.proof, cert.output)
+            )
 
   /** The block decoded while warming, if any (taken once). */
   def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = Option(prepared.remove(hash))
@@ -65,6 +112,7 @@ object Verification:
     if witnesses.size > Limit then witnesses.clear()
     if headers.size > Limit then headers.clear()
     if prepared.size > 4096 then prepared.clear()
+    if vrfs.size > 4096 then vrfs.clear()
     NodeRules.decodeShelley(raw).foreach { p =>
       val b = p.block
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
@@ -80,6 +128,7 @@ object Verification:
             witnesses.put(k, compute(k))
         }
       })
+      warmVrf(b.header, config)
       prepared.put(b.header.hash, p)
     }
 

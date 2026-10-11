@@ -67,7 +67,7 @@ final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
 
   def settled(state: NodeState): F[NodeState] =
     store.flushed.map { at =>
-      state.copy(ledger = state.ledger.copy(utxo = state.ledger.utxo.settled(at)))
+      state.copy(ledger = state.ledger.copy(utxo = state.ledger.utxo.settled(at, force = true)))
     }
 
   def checkpoint(anchor: BlockRef): F[Unit] =

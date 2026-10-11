@@ -2,6 +2,8 @@
 package lab.node
 
 import cats.effect.{Async, Ref, Resource}
+import cats.effect.std.{Mutex, Supervisor}
+import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -71,93 +73,142 @@ object Peer:
       def raise[E2 <: NetworkError, A](e: E2): F[A] = peerRaise.raise(peerError(e))
     def protocol[A](reason: String): F[A] = PeerError.Protocol(reason).raise
 
-    NodeToNode
-      .connect[F, NtNHeader](
-        settings.address,
-        settings.magic,
-        NtNHeader.codec,
-        settings.network
-      )
-      .evalMap { connection =>
-        // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the blocks
-        // of the whole batch are fetched with one BlockFetch range. `events` holds announced but
-        // unconsumed instructions, `blocks` the prefetched blocks by header hash.
-        (
-          Ref.of[F, Vector[SyncEvent]](Vector.empty),
-          Ref.of[F, Map[Bytes, Bytes]](Map.empty),
-          Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None)
-        ).mapN { (events, blocks, progress) =>
-          def decode(update: ChainSyncClient.Update[NtNHeader]): F[SyncEvent] = update match
-            case ChainSyncClient.Update.RollForward(h, tip) =>
-              Header
-                .fromNtN(h, settings.byronEpochSlots)
-                .fold(e => protocol(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
-            case ChainSyncClient.Update.RollBackward(point, tip) =>
-              F.pure(SyncEvent.RollBackward(point, tip))
+    Supervisor[F](await = false).flatMap { supervisor =>
+      NodeToNode
+        .connect[F, NtNHeader](
+          settings.address,
+          settings.magic,
+          NtNHeader.codec,
+          settings.network
+        )
+        .evalMap { connection =>
+          // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the
+          // blocks of the whole batch are fetched with one BlockFetch range. `events` holds
+          // announced but unconsumed instructions, `blocks` the prefetched blocks by header hash.
+          // The next batch is requested in the background while the current one is applied, so the
+          // network and the verification of the blocks overlap with the (sequential) rules.
+          (
+            Ref.of[F, Vector[SyncEvent]](Vector.empty),
+            Ref.of[F, Map[Bytes, Bytes]](Map.empty),
+            Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None),
+            Ref.of[F, Option[Throwable]](None),
+            Ref.of[F, Boolean](false),
+            Mutex[F],
+            Mutex[F]
+          ).mapN { (events, blocks, progress, failure, running, refillLock, fetchLock) =>
+            def decode(update: ChainSyncClient.Update[NtNHeader]): F[SyncEvent] = update match
+              case ChainSyncClient.Update.RollForward(h, tip) =>
+                Header
+                  .fromNtN(h, settings.byronEpochSlots)
+                  .fold(e => protocol(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
+              case ChainSyncClient.Update.RollBackward(point, tip) =>
+                F.pure(SyncEvent.RollBackward(point, tip))
 
-          /** Prefetch the blocks announced by the leading roll-forwards of a batch. */
-          def prefetch(batch: Vector[SyncEvent]): F[Unit] =
-            val headers = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
-              case SyncEvent.RollForward(h, _) => h
-            }
-            if headers.size < 2 then F.unit
-            else
-              connection.blockFetch.requestRange(headers.head.point, headers.last.point).flatMap {
-                case Some(raw) =>
-                  prepare(raw) *> blocks.set(
-                    raw
-                      .flatMap(b =>
-                        Block.decode(b, settings.byronEpochSlots).toOption.map(_.header.hash -> b)
-                      )
-                      .toMap
+            /** Prefetch the blocks announced by the leading roll-forwards of a batch. */
+            def prefetch(batch: Vector[SyncEvent]): F[Unit] =
+              val headers = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
+                case SyncEvent.RollForward(h, _) => h
+              }
+              if headers.size < 2 then F.unit
+              else
+                fetchLock.lock
+                  .surround(
+                    connection.blockFetch.requestRange(headers.head.point, headers.last.point)
                   )
-                case None => F.unit
+                  .flatMap {
+                    case Some(raw) =>
+                      // A range answers in chain order, one block per announced header; the rules
+                      // check each block against the header they were handed.
+                      val byHash =
+                        if raw.size == headers.size then headers.map(_.hash).zip(raw)
+                        else
+                          raw.flatMap(b =>
+                            Block
+                              .decode(b, settings.byronEpochSlots)
+                              .toOption
+                              .map(_.header.hash -> b)
+                          )
+                      prepare(raw) *> blocks.update(_ ++ byHash)
+                    case None => F.unit
+                  }
+
+            def refill: F[Unit] =
+              for
+                seen <- progress.get
+                ahead = seen.fold(BigInt(0)) { (tip, blockNo) =>
+                  (tip.blockNo.value - blockNo).max(0)
+                }
+                n = (ahead - 1).min(settings.readAhead).max(1).toInt
+                updates <- connection.chainSync.requestNextBatch(n)
+                batch <- updates.traverse(decode)
+                _ <- batch.lastOption.traverse_ {
+                  case SyncEvent.RollForward(h, tip) => progress.set(Some(tip -> h.blockNo))
+                  case SyncEvent.RollBackward(_, tip) =>
+                    progress.set(Some(tip -> tip.blockNo.value))
+                }
+                // Blocks first: a header is visible to the consumer only once its block is.
+                _ <- prefetch(batch)
+                _ <- events.update(_ ++ batch)
+              yield ()
+
+            /** Refill now, unless another refill already brought something. */
+            val refillIfEmpty: F[Unit] =
+              refillLock.lock.surround(
+                events.get.flatMap(q => if q.isEmpty then refill else F.unit)
+              )
+
+            /** Refill in the background; a failure is handed to the next call of `next`. */
+            val refillSoon: F[Unit] =
+              running.getAndSet(true).flatMap {
+                case true => F.unit
+                case false =>
+                  supervisor
+                    .supervise(
+                      refillLock.lock
+                        .surround(refill)
+                        .attempt
+                        .flatMap(_.fold(e => failure.set(Some(e)), _ => F.unit))
+                        .guarantee(running.set(false))
+                    )
+                    .void
               }
 
-          def refill: F[Unit] =
-            for
-              seen <- progress.get
-              ahead = seen.fold(BigInt(0)) { (tip, blockNo) =>
-                (tip.blockNo.value - blockNo).max(0)
-              }
-              n = (ahead - 1).min(settings.readAhead).max(1).toInt
-              updates <- connection.chainSync.requestNextBatch(n)
-              batch <- updates.traverse(decode)
-              _ <- batch.lastOption.traverse_ {
-                case SyncEvent.RollForward(h, tip) => progress.set(Some(tip -> h.blockNo))
-                case SyncEvent.RollBackward(_, tip) =>
-                  progress.set(Some(tip -> tip.blockNo.value))
-              }
-              _ <- blocks.set(Map.empty)
-              _ <- prefetch(batch)
-              _ <- events.set(batch)
-            yield ()
+            new Peer[F]:
+              def intersect(candidates: Vector[ChainSync.Point]) =
+                events.set(Vector.empty) *> blocks.set(Map.empty) *> progress.set(None) *>
+                  connection.chainSync.findIntersect(candidates).flatMap { case found =>
+                    F.pure(found.map(_._1))
+                  }
 
-          new Peer[F]:
-            def intersect(candidates: Vector[ChainSync.Point]) =
-              events.set(Vector.empty) *> blocks.set(Map.empty) *> progress.set(None) *>
-                connection.chainSync.findIntersect(candidates).flatMap { case found =>
-                  F.pure(found.map(_._1))
+              def next: F[SyncEvent] =
+                failure.get.flatMap {
+                  case Some(e) => F.raiseError[SyncEvent](e)
+                  case None =>
+                    events.modify(q => (q.drop(1), (q.headOption, q.size))).flatMap {
+                      case (Some(event), size) =>
+                        F.whenA(size - 1 <= settings.readAhead / 2)(refillSoon).as(event)
+                      case (None, _) => refillIfEmpty *> next
+                    }
                 }
 
-            def next: F[SyncEvent] =
-              events.modify(q => (q.drop(1), q.headOption)).flatMap {
-                case Some(event) => F.pure(event)
-                case None        => refill *> next
-              }
-
-            def fetch(header: Header): F[Bytes] =
-              blocks.modify(m => (m - header.hash, m.get(header.hash))).flatMap {
-                case Some(block) => F.pure(block)
-                case None =>
-                  CardanoBlockFetch.SpecificPoint.from(header.point) match
-                    case Left(reason) => protocol(reason)
-                    case Right(specific) =>
-                      connection.blockFetch.requestRange(specific.point, specific.point).flatMap {
-                        case Some(Vector(block)) => F.pure(block)
-                        case Some(other) => protocol(s"expected one block, received ${other.size}")
-                        case None        => protocol("peer does not have the announced block")
-                      }
-              }
+              def fetch(header: Header): F[Bytes] =
+                blocks.modify(m => (m - header.hash, m.get(header.hash))).flatMap {
+                  case Some(block) => F.pure(block)
+                  case None =>
+                    CardanoBlockFetch.SpecificPoint.from(header.point) match
+                      case Left(reason) => protocol(reason)
+                      case Right(specific) =>
+                        fetchLock.lock
+                          .surround(
+                            connection.blockFetch.requestRange(specific.point, specific.point)
+                          )
+                          .flatMap {
+                            case Some(Vector(block)) => F.pure(block)
+                            case Some(other) =>
+                              protocol(s"expected one block, received ${other.size}")
+                            case None => protocol("peer does not have the announced block")
+                          }
+                }
+          }
         }
-      }
+    }

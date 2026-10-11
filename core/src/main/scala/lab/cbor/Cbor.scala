@@ -50,12 +50,20 @@ object Cbor:
           case 26 => 4
           case 27 => 8
           case _  => fail("reserved additional information or invalid indefinite item")
-        var n = BigInt(0)
-        var i = 0
-        while i < count do
-          n = (n << 8) | BigInt(read())
-          i += 1
-        n
+        if count < 8 then
+          var n = 0L
+          var i = 0
+          while i < count do
+            n = (n << 8) | read().toLong
+            i += 1
+          BigInt(n)
+        else
+          var n = BigInt(0)
+          var i = 0
+          while i < count do
+            n = (n << 8) | BigInt(read())
+            i += 1
+          n
     private def bounded(n: BigInt, bound: Int, what: String): Int =
       if n > BigInt(bound) then fail(s"$what limit exceeded")
       n.toInt

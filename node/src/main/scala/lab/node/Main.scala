@@ -114,7 +114,9 @@ object Main extends IOApp:
         setup.globals,
         setup.byronRules,
         phase2Observer = cases.map(c => c.observe),
-        utxoStore = Some(store)
+        utxoStore = Some(store),
+        afterBlock =
+          Some(s => IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
       )
       k = genesis.geometry.securityParam
       storage = options.db.fold(

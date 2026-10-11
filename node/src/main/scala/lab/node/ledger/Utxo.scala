@@ -102,18 +102,24 @@ final case class Utxo(
   def withResident(fetched: Map[TxIn, TxOut]): Utxo =
     if fetched.isEmpty then this else copy(resident = resident ++ fetched)
 
-  /** Drop the read set and the changes the backing store now holds (stamps up to `upTo`). */
-  def settled(upTo: Long): Utxo =
-    val kept =
-      if upTo > flushed then diff.filter { case (_, c) => c.stamp > upTo } else diff
-    if kept.eq(diff) && resident.isEmpty && upTo <= flushed then this
-    else copy(diff = kept, resident = Map.empty, flushed = math.max(flushed, upTo))
+  /** Drop the read set and, once enough have piled up (or when `force` d, for a snapshot), the
+    * changes the backing store now holds (stamps up to `upTo`). Trimming walks the diff, so it is
+    * batched rather than done for every block.
+    */
+  def settled(upTo: Long, force: Boolean = false): Utxo =
+    val trim = upTo > flushed && (force || upTo - flushed >= Utxo.TrimEvery)
+    val kept = if trim then diff.filter { case (_, c) => c.stamp > upTo } else diff
+    if !trim && resident.isEmpty then this
+    else copy(diff = kept, resident = Map.empty, flushed = if trim then upTo else flushed)
 
   /** The changes newer than `after`, to be written to the backing store. */
   def changesAfter(after: Long): Iterator[(TxIn, Option[TxOut])] =
     diff.iterator.collect { case (in, c) if c.stamp > after => in -> c.out }
 
 object Utxo:
+  /** Blocks of flushed changes allowed to stay in the diff before it is trimmed. */
+  val TrimEvery = 128L
+
   /** The latest state of one key since the flushed point: `None` is a deletion. */
   final case class Change(out: Option[TxOut], stamp: Long)
 

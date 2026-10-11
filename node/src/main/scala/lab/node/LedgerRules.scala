@@ -79,7 +79,11 @@ final class NodeRules[F[_]: Monad](
     bootstrap: Boolean = false,
     phase2Observer: Option[Phase2.Observation => Unit] = None,
     /** The backing store of the UTxO set. Without one the state's [[Utxo]] holds the whole set. */
-    utxoStore: Option[UtxoStore[F]] = None
+    utxoStore: Option[UtxoStore[F]] = None,
+    /** Called with each state the rules produce (the node uses it to tell the verification pipeline
+      * which epoch nonce is current).
+      */
+    afterBlock: Option[NodeState => F[Unit]] = None
 )(using
     Raise[F, ValidationError]
 ) extends BlockRules[F, NodeState]:
@@ -90,7 +94,7 @@ final class NodeRules[F[_]: Monad](
         .applyBlock(s, header, raw, config, globals, byron, bootstrap, phase2Observer, prepared)
         .fold(
           (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
-          _.pure[F]
+          next => afterBlock.fold(next.pure[F])(f => f(next).as(next))
         )
     (utxoStore, header) match
       case (Some(store), h: Header.Shelley) if !bootstrap =>
