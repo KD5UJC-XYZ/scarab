@@ -318,7 +318,7 @@ class EraTransitionSuite extends CatsEffectSuite:
   }
 
   test(
-    "leader accounting is honest: overlay while d = 1, unchecked once pools take over, never 'threshold'"
+    "leader accounting with the full ledger: overlay while d = 1, then every header threshold-checked"
   ) {
     val validated = blocks.indices.flatMap { i =>
       NodeRules.observe(geometry)(states(i), states(i + 1), ref(i)).collect {
@@ -329,10 +329,10 @@ class EraTransitionSuite extends CatsEffectSuite:
     validated.foreach { v =>
       val inEpoch = blocks.indices.count(i => geometry.epochOf(headers(i).slot) == v.epoch)
       assertEquals(v.threshold + v.overlay + v.unchecked, inEpoch.toLong, s"epoch ${v.epoch}")
-      assertEquals(v.threshold, 0L)
+      assertEquals(v.unchecked, 0L)
       if v.era == Era.Shelley || v.era == Era.Allegra then
-        assertEquals((v.overlay, v.unchecked), (inEpoch.toLong, 0L))
-      else assertEquals((v.overlay, v.unchecked), (0L, inEpoch.toLong))
+        assertEquals((v.threshold, v.overlay), (0L, inEpoch.toLong))
+      else assertEquals((v.threshold, v.overlay), (inEpoch.toLong, 0L))
     }
   }
 

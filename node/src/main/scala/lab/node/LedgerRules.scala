@@ -134,7 +134,6 @@ object NodeRules:
       case h: Header.Byron => applyByron(state, h, raw, byron)
       case h: Header.Shelley if bootstrap => applyBootstrap(state, h, raw, config)
       case h: Header.Shelley              => applyFull(state, h, raw, config, globals)
-      case h => Left("structure" -> s"${h.era} blocks are not supported")
 
   /** Byron: linkage, slot order, leader delegation and signature (see [[ByronRules]]). */
   private def applyByron(

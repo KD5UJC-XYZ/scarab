@@ -79,14 +79,29 @@ object ProtocolParams:
         .downField(name)
         .as[Option[A]]
         .leftMap(e => ConfigError(s"protocol parameter $name: ${e.message}"))
-    def rational(cur: ACursor, name: String): Either[ConfigError, Rational] =
-      val q = cur.downField(name)
-      q.downField("numerator")
-        .as[BigInt]
-        .toOption
-        .zip(q.downField("denominator").as[BigInt].toOption)
-        .map { case (n, d) => Right(Rational(n, d)) }
-        .getOrElse(get[BigDecimal](cur, name).map(Rational.fromDecimal))
+    // Alonzo genesis files differ in key names; absent values are zero.
+    def anyInt(cur: ACursor, names: String*): Either[ConfigError, BigInt] =
+      Right(
+        names.iterator
+          .map(n => cur.downField(n).as[Option[BigInt]].toOption.flatten)
+          .collectFirst { case Some(v) => v }
+          .getOrElse(BigInt(0))
+      )
+    def rational(cur: ACursor, names: String*): Either[ConfigError, Rational] =
+      Right(
+        names.iterator
+          .map { name =>
+            val q = cur.downField(name)
+            q.downField("numerator")
+              .as[BigInt]
+              .toOption
+              .zip(q.downField("denominator").as[BigInt].toOption)
+              .map { case (n, d) => Rational(n, d) }
+              .orElse(q.as[BigDecimal].toOption.map(Rational.fromDecimal))
+          }
+          .collectFirst { case Some(r) => r }
+          .getOrElse(Rational.zero)
+      )
     for
       minFeeA <- get[BigInt](s, "minFeeA")
       minFeeB <- get[BigInt](s, "minFeeB")
@@ -109,14 +124,14 @@ object ProtocolParams:
       minUTxO <- opt[BigInt](s, "minUTxOValue").map(_.getOrElse(BigInt(0)))
       major <- get[BigInt](s.downField("protocolVersion"), "major")
       minor <- get[BigInt](s.downField("protocolVersion"), "minor")
-      priceMem <- rational(a.downField("executionPrices"), "prMem")
-      priceSteps <- rational(a.downField("executionPrices"), "prSteps")
-      txMem <- get[BigInt](a.downField("maxTxExUnits"), "exUnitsMem")
-      txSteps <- get[BigInt](a.downField("maxTxExUnits"), "exUnitsSteps")
-      blockMem <- get[BigInt](a.downField("maxBlockExUnits"), "exUnitsMem")
-      blockSteps <- get[BigInt](a.downField("maxBlockExUnits"), "exUnitsSteps")
-      collateralPct <- get[BigInt](a, "collateralPercentage")
-      maxCollateral <- get[BigInt](a, "maxCollateralInputs")
+      priceMem <- rational(a.downField("executionPrices"), "prMem", "priceMemory")
+      priceSteps <- rational(a.downField("executionPrices"), "prSteps", "priceSteps")
+      txMem <- anyInt(a.downField("maxTxExUnits"), "exUnitsMem", "memory")
+      txSteps <- anyInt(a.downField("maxTxExUnits"), "exUnitsSteps", "steps")
+      blockMem <- anyInt(a.downField("maxBlockExUnits"), "exUnitsMem", "memory")
+      blockSteps <- anyInt(a.downField("maxBlockExUnits"), "exUnitsSteps", "steps")
+      collateralPct <- anyInt(a, "collateralPercentage")
+      maxCollateral <- anyInt(a, "maxCollateralInputs")
       entropy <- extraEntropy(s)
       costModels <- costModelsOf(a.downField("costModels"))
       drepDeposit <- opt[BigInt](c, "dRepDeposit").map(_.getOrElse(BigInt(0)))
