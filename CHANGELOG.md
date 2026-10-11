@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is pre-1.0 research
 software; versions mark milestones, not stability. Commit hashes refer to this repository's history.
 
+## [Unreleased]
+
+### Ledger (B7, B8, B12)
+- Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
+- Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.
+- Mary scaled minimum output: divisor 27 and distinct asset names; Allegra and Mary only call ada-only outputs too small, as the reference does.
+- Output value limit: 4000 serialised bytes in Allegra and Mary, `maxValueSize` from Alonzo, measured on the canonical encoding.
+- MIR: transfers and negative entries need protocol 5, later certificates replace earlier ones before that, deregistration keeps pending entries.
+- devnet `e2e`: three Shelley epochs, 1 ada minimum, pool margin 0.1, cross-paying pools, boundary load and expected-rejection checks.
+
 ## [0.1.0] - 2026-10-11 - research preview
 
 The uninterrupted Preview genesis-to-tip sync ran on commit 5cfdefd (4,748,226 blocks in 3h36m42s,
