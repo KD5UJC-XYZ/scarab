@@ -30,6 +30,11 @@ sealed trait Header:
     ChainSync.Point.Block(ChainSync.UInt64.from(slot).toOption.get, hash)
   def prevPoint: Option[Bytes] = prevHash
 
+  /** A Byron epoch-boundary block: it shares its slot with the epoch's first slot and its block
+    * number with the previous block.
+    */
+  def isBoundary: Boolean = false
+
 object Header:
   /** Shelley..Conway header: `bodyRaw` is the exact signed `header_body` encoding (KES message). */
   final case class Shelley(
@@ -51,7 +56,8 @@ object Header:
   ) extends Header
 
   /** Byron main or epoch-boundary header. For a boundary block `slotInEpoch` is 0; `blockNo` is the
-    * header's chain difficulty. Byron headers are not validated.
+    * header's chain difficulty (a boundary block repeats its predecessor's). `main` holds what a
+    * main header adds: issuer key, signature and the bytes the signature covers.
     */
   final case class Byron(
       raw: Bytes,
@@ -61,10 +67,36 @@ object Header:
       slotInEpoch: BigInt,
       epochSlots: BigInt,
       blockNo: BigInt,
-      prevHash: Option[Bytes]
+      prevHash: Option[Bytes],
+      protocolMagic: BigInt = 0,
+      bodyProof: Bytes = Bytes(Vector.empty),
+      main: Option[ByronMain] = None
   ) extends Header:
     def era: Era = Era.Byron
     def slot: BigInt = epoch * epochSlots + slotInEpoch
+    override def isBoundary: Boolean = boundary
+
+  /** How a Byron main block header is signed. */
+  enum ByronSignature:
+    /** Signed directly by the slot leader's key. */
+    case Direct(signature: Bytes)
+
+    /** Signed by a delegate of the slot leader: `kind` 1 = light, 2 = heavy; `cert` is the issuer's
+      * signature over the delegation.
+      */
+    case Delegated(
+        kind: Int,
+        epochs: (BigInt, BigInt),
+        issuer: Bytes,
+        delegate: Bytes,
+        cert: Bytes,
+        signature: Bytes
+    )
+
+  /** The consensus data of a Byron main header: slot leader key (64-byte extended public key), its
+    * signature, and the exact bytes `[prev, proof, slot, difficulty, extra]` the signature covers.
+    */
+  final case class ByronMain(leader: Bytes, signature: ByronSignature, signed: Bytes)
 
   final case class OpCert(hotVkey: Bytes, sequence: BigInt, kesPeriod: BigInt, sigma: Bytes)
 
@@ -190,6 +222,8 @@ object Header:
       root <- Cbor.decode(raw, headerLimits).leftMap(fail)
       h <- array(root, 5)
       prev <- bytes(h(1), 32)
+      magic <- uint(h(0))
+      proof <- Right(Bytes(h(2).original.value))
       consensus <- array(h(3), if boundary then 2 else 4)
       parsed <-
         if boundary then
@@ -197,16 +231,22 @@ object Header:
             epoch <- uint(consensus(0))
             diff <- array(consensus(1), 1)
             no <- uint(diff(0))
-          yield (epoch, BigInt(0), no)
+          yield (epoch, BigInt(0), no, None)
         else
           for
             slotId <- array(consensus(0), 2)
             epoch <- uint(slotId(0))
             inEpoch <- uint(slotId(1))
+            leader <- bytes(consensus(1), 64)
             diff <- array(consensus(2), 1)
             no <- uint(diff(0))
-          yield (epoch, inEpoch, no)
-      (epoch, inEpoch, no) = parsed
+            signature <- byronSignature(consensus(3))
+            signed = Bytes(
+              Vector(0x85.toByte) ++ Vector(h(1), h(2), consensus(0), consensus(2), h(4))
+                .flatMap(_.original.value)
+            )
+          yield (epoch, inEpoch, no, Some(ByronMain(leader, signature, signed)))
+      (epoch, inEpoch, no, main) = parsed
     yield Header.Byron(
       raw,
       Blake2b.hash256.hash(
@@ -217,8 +257,33 @@ object Header:
       inEpoch,
       epochSlots,
       no,
-      Some(prev)
+      Some(prev),
+      magic,
+      proof,
+      main
     )
+
+  /** `[0, sig]` direct, `[1 | 2, [[psk], sig]]` light / heavy delegation. */
+  private def byronSignature(n: Node): Either[ChainError, ByronSignature] =
+    for
+      outer <- array(n, 2)
+      kind <- uint(outer(0))
+      result <- kind.toInt match
+        case 0 => bytes(outer(1), 64).map(ByronSignature.Direct(_))
+        case k @ (1 | 2) =>
+          for
+            proxy <- array(outer(1), 2)
+            psk <- array(proxy(0), 4)
+            epochs <-
+              if k == 2 then uint(psk(0)).map(e => (e, e))
+              else array(psk(0), 2).flatMap(r => (uint(r(0)), uint(r(1))).tupled)
+            issuer <- bytes(psk(1), 64)
+            delegate <- bytes(psk(2), 64)
+            cert <- bytes(psk(3), 64)
+            sig <- bytes(proxy(1), 64)
+          yield ByronSignature.Delegated(k, epochs, issuer, delegate, cert, sig)
+        case other => Left(fail(s"unknown Byron block signature kind $other"))
+    yield result
 
   private def optHash(n: Node): Either[ChainError, Option[Bytes]] = n.value match
     case Value.Null => Right(None)

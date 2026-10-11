@@ -47,7 +47,10 @@ object Block:
     maxStringBytes = 2500000
   )
 
-  def decode(raw: Bytes): Either[ChainError, Block] =
+  def decode(
+      raw: Bytes,
+      byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
+  ): Either[ChainError, Block] =
     for
       root <- Cbor.decode(raw, limits).leftMap(fail)
       outer <- array(root, 2)
@@ -55,13 +58,19 @@ object Block:
         case Value.UInt(t) => Right(t)
         case _             => Left(fail("expected era tag"))
       era <- Era.fromBlockTag(tag).toRight(fail(s"unknown era tag $tag"))
-      block <- if era == Era.Byron then byron(tag == 0, outer(1)) else shelley(era, outer(1))
+      block <-
+        if era == Era.Byron then byron(tag == 0, outer(1), byronEpochSlots)
+        else shelley(era, outer(1))
     yield block
 
-  private def byron(boundary: Boolean, n: Node): Either[ChainError, Block] =
+  private def byron(
+      boundary: Boolean,
+      n: Node,
+      epochSlots: BigInt
+  ): Either[ChainError, Block] =
     for
       parts <- array(n, 3)
-      header <- Header.byronFromRaw(parts(0).original, boundary)
+      header <- Header.byronFromRaw(parts(0).original, boundary, epochSlots)
     yield Byron(header, Bytes(parts.tail.flatMap(_.original.value)))
 
   private def shelley(era: Era, n: Node): Either[ChainError, Block] =

@@ -1,0 +1,43 @@
+# Era-walking chain fixtures (Byron to Conway)
+
+A capture of the `devnet.py up-eras` reference cluster, used by `EraTransitionSuite` (no Docker
+needed) to keep the node compatible with every era and every era transition.
+
+Captured 2026-10-10 from a live 3-pool `cardano-node` 11.1.3 cluster with
+
+```sh
+python3 scripts/devnet.py up-eras          # blocks until the first Conway block
+python3 scripts/devnet.py capture-eras     # writes this directory (node1, CaptureMain --blocks all)
+python3 scripts/devnet.py --name csl-eras down
+```
+
+## Cluster parameters
+
+Network magic 1082026, k = 5, f = 0.2. Byron epoch 0 is 50 slots (10k) of 1 s; every later epoch
+is 500 slots of 0.1 s. Shelley-based eras start at `Test<Era>HardForkAtEpoch`:
+
+| Era | First epoch | First slot | Notes |
+|---|---|---|---|
+| Byron | 0 | 0 | epoch-boundary block plus 49 main blocks, heavy delegation by the 3 genesis keys |
+| Shelley | 1 | 50 | protocol 2, d = 1 (overlay); pools registered by a Shelley transaction |
+| Allegra | 2 | 550 | protocol 3, d = 1 |
+| Mary | 3 | 1050 | protocol 4, d = 0 from here on |
+| Alonzo | 4-5 | 1550 | protocols 5 and 6 |
+| Babbage | 6-7 | 2550 | protocols 7 and 8 (Praos headers) |
+| Conway | 8 | 3550 | protocol 9 |
+
+Protocol versions advance by update proposals signed by the three genesis delegates, whose
+`genDelegs` are rewritten to the pool keys (so the same cold, VRF and KES keys sign both).
+
+## Files
+
+| File | Contents |
+|---|---|
+| `blocks.hex` | 731 raw `[era tag, block]` BlockFetch blocks, one hex line each, contiguous from Origin to the third Conway block (50 Byron, 100 Shelley, 100 Allegra, 98 Mary, 192 Alonzo, 188 Babbage, 3 Conway). The whole chain is kept, not only the blocks around each transition, because epoch nonces fold in every block's VRF output, so validation from the genesis state needs all of them. The suite asserts the first three blocks of every era and the three blocks before each transition. |
+| `eras.json` | The capture manifest: blocks per era, the era timeline recorded by `up-eras` and protocol version per epoch. |
+| `genesis/*.json` | The exact genesis files the reference nodes read. `shelley-genesis.json` must stay byte-identical: the initial Praos nonce is its Blake2b-256 hash. |
+| `genesis/configuration.yaml` | The node configuration (JSON): `Test*HardForkAtEpoch` places the eras. It has no `ByronGenesisHash`, so the node derives it from the canonical JSON of `byron-genesis.json`. |
+
+Every captured block was at least 10 blocks deep, so none is rolled back. To regenerate, delete
+the files and rerun the commands above; the chain differs every run (keys and timing), so the
+suite derives all expectations from the files, not from constants.

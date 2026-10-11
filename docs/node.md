@@ -27,6 +27,50 @@ Laws and properties: the `Ref`-backed `Stateful` passes the cats-mtl Stateful la
 passes the cats-kernel Order laws, and the ScalaCheck properties cover rollback, reward bounds and
 exactness. Scripted-peer tests cover forks, reconnects and fatal rule violations.
 
+## Era history and Byron (devnet from Byron)
+
+`EpochGeometry` is the node's era history: a Byron prefix (`ByronSpan`: epochs, 10k slots per
+epoch, its own slot length) followed by the Shelley-based eras, which share one epoch length.
+Epochs and slots are absolute, so `firstSlot(epoch)`, `epochOf(slot)`, the stability windows, the
+TPraos overlay, KES periods and PPUP deadlines all work across the boundary. `NodeSetup` derives
+it from `shelley-genesis.json`, `byron-genesis.json` and the node configuration
+(`Test<Era>HardForkAtEpoch`; an absent `TestShelleyHardForkAtEpoch` means the chain starts in
+Shelley, as on Preview). Hard forks decided on chain by update proposals (mainnet) are not
+modelled.
+
+- **Chain model:** `VolatileChain.origin` is the hash the first block names (the Byron genesis
+  hash: `ByronGenesisHash` from the configuration, else Blake2b-256 of the canonical JSON of
+  `byron-genesis.json`). A Byron epoch-boundary block repeats its predecessor's block number and
+  the main block after it may share its slot.
+- **Byron rules** (`consensus/ByronRules.scala`): protocol magic, linkage, epoch/slot order, the
+  slot leader is a genesis key and the heavy delegation is the genesis one, and the delegate's
+  Ed25519 signature over `"01" ++ issuer ++ 0x09 ++ cbor(magic) ++ [prev, proof, slot, difficulty,
+  extra]` verifies. A header delegated differently (on-chain certificates are not tracked) is
+  accepted structurally and reported `unchecked`; the delegation certificate's own signature and
+  the block body proofs are not checked. The JSON log has an `epochValidated` line per Byron epoch
+  (`signatureVerified`, `signatureUnchecked`).
+- **Byron to Shelley:** the Praos state starts with every nonce equal to the Shelley genesis hash
+  and is untouched by Byron blocks; the first Shelley block ticks it to the first Shelley epoch.
+  Ledger-lite starts at that epoch.
+- **Logging:** every era transition is an `eraTransition` line (`from`, `to`, `epoch`, `slot`,
+  `block`), the first one from no era; `extended` lines carry the block's `era`.
+
+Tests: `EraTransitionSuite` replays a committed capture of the `up-eras` cluster
+([`fixtures/eras`](../fixtures/eras/README.md)) through the node's block rules and a scripted
+follower (no Docker); `EpochGeometrySuite` has the era-history properties.
+
+```sh
+python3 scripts/devnet.py e2e          # up-eras + follower from Origin + assertions (about 10 minutes)
+```
+
+`e2e` starts the era-walking cluster, follows it from Origin until the node has applied blocks in
+the Conway epoch after the first, and fails unless: the `eraTransition` lines are exactly Byron,
+Shelley, Allegra, Mary, Alonzo, Babbage and Conway at the epochs in `eras.json` and the
+configuration, every era has applied blocks, all Byron signatures verified, and there are no
+validation or fatal errors. It writes `e2e-summary.json` (blocks and header verdicts per era,
+transitions) to the run directory, and always removes the containers unless `--keep`. Per-era ledger
+comparison against the reference is a marked hook (`ERA_LEDGER_COMPARATORS`) for the full ledger.
+
 ## Bootstrap mode (Preview from genesis)
 
 `NodeRules` dispatches by era. A chain that starts before Conway (Preview forks to Alonzo at epoch
@@ -94,7 +138,7 @@ The following are rejected as `Unsupported`, so the node stops rather than diver
 
 - **Scripts:** Plutus and native scripts.
 - **Assets and governance:** minting, governance proposals and votes, committee certificates and treasury donations.
-- **Byron:** spending Byron-address outputs.
+- **Byron:** spending Byron-address outputs, Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
 
 Also not implemented:
 

@@ -12,7 +12,13 @@ import lab.node.consensus.*
 import lab.node.ledger.*
 
 /** Verdicts of one epoch's headers in bootstrap mode. */
-final case class EpochStats(epoch: BigInt, threshold: Long, overlay: Long, unchecked: Long):
+final case class EpochStats(
+    epoch: BigInt,
+    era: Era,
+    threshold: Long,
+    overlay: Long,
+    unchecked: Long
+):
   def total: Long = threshold + overlay + unchecked
   def record(leader: LeaderCheck): EpochStats = leader match
     case LeaderCheck.Threshold    => copy(threshold = threshold + 1)
@@ -34,20 +40,48 @@ final case class BootstrapState(
 object BootstrapState:
   def initial(lite: LiteLedger): BootstrapState = BootstrapState(false, None, lite, None, None)
 
+/** Verdicts of one Byron epoch's headers. */
+final case class ByronEpochStats(epoch: BigInt, boundary: Long, verified: Long, unchecked: Long):
+  def record(check: ByronCheck): ByronEpochStats = check match
+    case ByronCheck.Boundary     => copy(boundary = boundary + 1)
+    case ByronCheck.Verified     => copy(verified = verified + 1)
+    case ByronCheck.Unchecked(_) => copy(unchecked = unchecked + 1)
+
+/** Byron chain-follow state: the last header and the verdict counters of the current epoch. */
+final case class ByronState(
+    tip: Option[ByronTip],
+    stats: Option[ByronEpochStats],
+    completed: Option[ByronEpochStats]
+):
+  /** The Byron era is over (or the epoch changed): the current epoch's counters are final. */
+  def finish: ByronState = copy(stats = None, completed = stats.orElse(completed))
+
+object ByronState:
+  val initial: ByronState = ByronState(None, None, None)
+
 /** Consensus and ledger state after a block. */
-final case class NodeState(praos: PraosState, ledger: LedgerState, boot: BootstrapState)
+final case class NodeState(
+    praos: PraosState,
+    ledger: LedgerState,
+    boot: BootstrapState,
+    byron: ByronState = ByronState.initial
+)
 
 /** Full block validation: tick the ledger and Praos state to the block's epoch, validate the header
   * against the ticked pool distribution, then apply the body. Any failure rejects the block. Chains
   * that start before Conway are followed in bootstrap mode instead.
   */
-final class NodeRules[F[_]: Applicative](config: PraosConfig, globals: LedgerGlobals)(using
+final class NodeRules[F[_]: Applicative](
+    config: PraosConfig,
+    globals: LedgerGlobals,
+    byron: Option[ByronRules.Config] = None
+)(using
     Raise[F, ValidationError]
 ) extends BlockRules[F, NodeState]:
 
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
     NodeRules
-      .applyBlock(state, header, raw, config, globals)
+      .applyBlock(state, header, raw, config, globals, byron)
       .fold(
         (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
         _.pure[F]
@@ -55,14 +89,21 @@ final class NodeRules[F[_]: Applicative](config: PraosConfig, globals: LedgerGlo
 
 object NodeRules:
   /** Era transitions and completed-epoch summaries visible between two states. */
-  def observe(before: NodeState, after: NodeState, at: BlockRef): List[FollowerEvent] =
+  def observe(geometry: EpochGeometry)(
+      before: NodeState,
+      after: NodeState,
+      at: BlockRef
+  ): List[FollowerEvent] =
     val era = after.boot.era
       .filter(e => !before.boot.era.contains(e))
-      .map(to => FollowerEvent.EraEntered(before.boot.era, to, at))
+      .map(to => FollowerEvent.EraEntered(before.boot.era, to, at, geometry.epochOf(at.slot)))
+    val byron = after.byron.completed
+      .filter(c => !before.byron.completed.contains(c))
+      .map(c => FollowerEvent.ByronEpochValidated(c.epoch, c.boundary, c.verified, c.unchecked))
     val epoch = after.boot.completed
       .filter(c => !before.boot.completed.contains(c))
-      .map(c => FollowerEvent.EpochValidated(c.epoch, c.threshold, c.overlay, c.unchecked))
-    era.toList ++ epoch.toList
+      .map(c => FollowerEvent.EpochValidated(c.epoch, c.era, c.threshold, c.overlay, c.unchecked))
+    era.toList ++ byron.toList ++ epoch.toList
 
   /** The failure side carries the rule family and the reason. */
   def applyBlock(
@@ -70,12 +111,52 @@ object NodeRules:
       header: Header,
       raw: Bytes,
       config: PraosConfig,
-      globals: LedgerGlobals
+      globals: LedgerGlobals,
+      byron: Option[ByronRules.Config] = None
   ): Either[(String, String), NodeState] =
     header match
+      case h: Header.Byron => applyByron(state, h, raw, byron)
       case h: Header.Shelley if h.era != Era.Conway || state.boot.active =>
         applyBootstrap(state, h, raw, config)
       case _ => applyConway(state, header, raw, config, globals)
+
+  /** Byron: linkage, slot order, leader delegation and signature (see [[ByronRules]]). */
+  private def applyByron(
+      state: NodeState,
+      header: Header.Byron,
+      raw: Bytes,
+      byron: Option[ByronRules.Config]
+  ): Either[(String, String), NodeState] =
+    for
+      cfg <- byron.toRight("byron" -> "no Byron genesis configured")
+      _ <- Either.cond(
+        !state.boot.active && state.boot.era.forall(_ == Era.Byron),
+        (),
+        "structure" -> "Byron block after the Shelley era began"
+      )
+      decoded <- Block.decode(raw, cfg.epochSlots).leftMap(e => "decode" -> e.message)
+      block <- decoded match
+        case b: Block.Byron => Right(b)
+        case b              => Left("structure" -> s"${b.era} block announced as Byron")
+      _ <- Either.cond(
+        block.header.hash == header.hash,
+        (),
+        "structure" -> "block header differs from announced header"
+      )
+      validated <- ByronRules.update(state.byron.tip, header, cfg).leftMap("byron" -> _)
+      (tip, check) = validated
+    yield
+      val sameEpoch = state.byron.stats.filter(_.epoch == header.epoch)
+      val base = if sameEpoch.isEmpty then state.byron.finish else state.byron
+      state.copy(
+        boot = state.boot.copy(era = Some(Era.Byron)),
+        byron = base.copy(
+          tip = Some(tip),
+          stats = Some(
+            sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0)).record(check)
+          )
+        )
+      )
 
   /** Pre-Conway eras: body commitment, TPraos or Praos header checks with the ledger-lite view,
     * then the lite effects of the transactions.
@@ -152,11 +233,12 @@ object NodeRules:
       val finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
       state.copy(
         praos = praos,
+        byron = state.byron.finish,
         boot = BootstrapState(
           active = true,
           era = Some(header.era),
           lite = applied,
-          stats = Some(previous.getOrElse(EpochStats(epoch, 0, 0, 0)).record(leader)),
+          stats = Some(previous.getOrElse(EpochStats(epoch, header.era, 0, 0, 0)).record(leader)),
           completed = finished
         )
       )
@@ -220,5 +302,6 @@ object NodeRules:
         praos = praos,
         ledger = applied.copy(blocksCurrent =
           applied.blocksCurrent.updatedWith(issuer)(n => Some(n.getOrElse(BigInt(0)) + 1))
-        )
+        ),
+        boot = state.boot.copy(era = Some(Era.Conway))
       )

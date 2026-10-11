@@ -4,14 +4,8 @@ package lab.node
 import cats.effect.{ExitCode, IO, IOApp, Ref}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
-import io.circe.parser
-import java.nio.file.{Files, Path}
+import java.nio.file.Path
 import com.comcast.ip4s.{Host, SocketAddress}
-import lab.Blake2b
-import lab.cbor.Bytes
-import lab.node.consensus.{Praos, PraosConfig}
-import lab.node.ledger.{GenesisState, LedgerGlobals, LiteLedger, Rational}
-import lab.vrf.PraosLeaderThreshold
 import scala.concurrent.duration.*
 
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P]`
@@ -37,53 +31,28 @@ object Main extends IOApp:
 
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
-    def read(name: String) = IO.blocking(Files.readString(options.genesisDir.resolve(name)))
-    def json(name: String) =
-      read(name).flatMap(t =>
-        parser.parse(t).fold(e => fail(ConfigError(s"$name: ${e.message}")), IO.pure)
-      )
     for
-      genesis <- read("shelley-genesis.json").flatMap(t => Genesis.shelley(t).fold(fail, IO.pure))
-      files <- (
-        json("shelley-genesis.json"),
-        json("alonzo-genesis.json"),
-        json("conway-genesis.json"),
-        json("byron-genesis.json")
-      ).mapN(GenesisState.Files.apply)
-      globals = LedgerGlobals(
-        genesis.maxLovelaceSupply,
-        genesis.geometry.epochLength,
-        Rational.fromDecimal(genesis.geometry.activeSlotsCoeff),
-        network = if genesis.networkMagic == 764824073L then 1 else 0
-      )
-      initial <- GenesisState.initial(files, globals).fold(fail, IO.pure)
-      genesisBytes <- IO.blocking(
-        Files.readAllBytes(options.genesisDir.resolve("shelley-genesis.json"))
-      )
-      f = genesis.geometry.activeSlotsCoeff
-      active <- PraosLeaderThreshold.Fraction
-        .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
-        .fold(e => fail(ConfigError(e)), IO.pure)
-      praosConfig = PraosConfig(
-        genesis.geometry,
-        genesis.slotsPerKesPeriod,
-        genesis.maxKesEvolutions,
-        active
-      )
-      lite <- LiteLedger.fromGenesis(files.shelley).fold(fail, IO.pure)
-      start = NodeState(
-        Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(genesisBytes))),
-        initial,
-        BootstrapState.initial(lite)
-      )
+      setup <- IO
+        .blocking(NodeSetup.fromDirectory(options.genesisDir))
+        .flatMap(_.fold(fail, IO.pure))
+      genesis = setup.genesis
       ref <- Ref.of[IO, VolatileChain[NodeState]](
-        VolatileChain.genesis(genesis.geometry.securityParam, start)
+        VolatileChain.genesis(genesis.geometry.securityParam, setup.start, setup.origin)
       )
       given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
       events = JsonLog.events
-      rules = NodeRules[IO](praosConfig, globals)
-      follower = Follower[IO, NodeState](rules, events, genesis.geometry, NodeRules.observe)
-      settings = Peer.Settings(options.peer, genesis.networkMagic)
+      rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+      follower = Follower[IO, NodeState](
+        rules,
+        events,
+        genesis.geometry,
+        NodeRules.observe(genesis.geometry)
+      )
+      settings = Peer.Settings(
+        options.peer,
+        genesis.networkMagic,
+        byronEpochSlots = genesis.geometry.byron.epochSlots
+      )
       retry = Follower.Retry(maxAttempts = 30, delay = 2.seconds)
       // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
       sync = Handle
@@ -92,7 +61,7 @@ object Main extends IOApp:
         )
         .rescue(error => fail[Unit](error))
       run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort).surround(sync)
-      _ <- JsonLog.started(options.peer, genesis)
+      _ <- JsonLog.started(options.peer, genesis, setup.config)
       _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
       last <- ref.get
       _ <- JsonLog.finished(last)

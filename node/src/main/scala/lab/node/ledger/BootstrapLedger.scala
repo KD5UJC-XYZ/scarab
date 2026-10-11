@@ -58,7 +58,8 @@ object LiteLedger:
   /** Pool entries are kept this many epochs after retirement. */
   val RetiredPoolGrace: BigInt = 3
 
-  def fromGenesis(shelley: Json): Either[ConfigError, LiteLedger] =
+  /** The ledger at the start of the first Shelley-based epoch `startEpoch`. */
+  def fromGenesis(shelley: Json, startEpoch: BigInt = 0): Either[ConfigError, LiteLedger] =
     val c = shelley.hcursor
     val pp = c.downField("protocolParams")
     def err(what: String, e: io.circe.DecodingFailure) = ConfigError(s"genesis $what: ${e.message}")
@@ -109,7 +110,7 @@ object LiteLedger:
           yield gk -> GenDelegPair(dk, vk)
         })
     yield LiteLedger(
-      0,
+      startEpoch,
       LiteParams((major, minor), Rational.fromDecimal(d), entropy, maxBB, maxTx, maxBH),
       delegs.toMap,
       Vector.empty,

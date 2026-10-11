@@ -8,6 +8,10 @@
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
+    devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
+    devnet.py capture-eras         capture the up-eras chain as test fixtures (fixtures/eras)
+    devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
+                                   era transition was followed with no validation error
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>. The Scala node shares the
@@ -368,10 +372,11 @@ def tip(args):
     print(json.dumps(query(args.name, "tip", args.node)))
 
 
-def follow(args):
-    root = data_root(args.name)
-    ports = json.loads((root / "ports.json").read_text())
-    # Freeze the compiled classes so later builds cannot change code under a running node.
+def freeze_classes(root):
+    """Copy the compiled classes so later builds cannot change code under a running node.
+
+    Returns the container classpath (the copy is mounted at /run/classes).
+    """
     frozen = root / "classes"
     shutil.rmtree(frozen, ignore_errors=True)
     entries = []
@@ -382,17 +387,33 @@ def follow(args):
             entries.append(f"/run/classes/{module}")
         else:
             entries.append(entry)
-    classpath = ":".join(entries)
+    return ":".join(entries)
+
+
+def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None):
+    """`docker run` arguments for a JVM of the frozen classes in the reference network namespace."""
+    command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
+               "--cpus=1", "--memory=1g", "--user", "1000:1000",
+               "-v", f"{REPO}:/work:ro", "-v", f"{root / 'classes'}:/run/classes:ro"]
+    if name:
+        command += ["--name", name]
+    for mount in mounts:
+        command += ["-v", mount]
+    return command + ["--entrypoint", "java", JDK_IMAGE, "-Xmx768m", "-cp", classpath,
+                      main_class, *program_args]
+
+
+def follow(args):
+    root = data_root(args.name)
+    ports = json.loads((root / "ports.json").read_text())
+    classpath = freeze_classes(root)
     log = root / "follower.jsonl"
-    command = ["run", "--rm", "--name", f"{args.name}-scala", "--pull=never",
-               "--network", f"container:{ref(args.name)}", "--cpus=1", "--memory=1g",
-               "--user", "1000:1000", "-v", f"{REPO}:/work:ro", "-v", f"{root / 'genesis'}:/genesis:ro",
-               "-v", f"{frozen}:/run/classes:ro",
-               "--entrypoint", "java", JDK_IMAGE, "-Xmx768m", "-cp", classpath, "lab.node.Main", "follow",
-               "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
+    program = ["follow", "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
                "--query-port", str(QUERY_PORT)]
     if args.seconds:
-        command += ["--seconds", str(args.seconds)]
+        program += ["--seconds", str(args.seconds)]
+    command = scala_container(args, root, classpath, "lab.node.Main", program,
+                              mounts=[f"{root / 'genesis'}:/genesis:ro"], name=f"{args.name}-scala")
     with log.open("a") as out:
         proc = subprocess.Popen(["docker", *command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in proc.stdout:
@@ -690,11 +711,230 @@ def soak(args):
     print(json.dumps(summary, indent=2))
 
 
-def down(args):
+# ---------------------------------------------------------------- era fixtures and e2e
+
+ERAS = ["byron", "shelley", "allegra", "mary", "alonzo", "babbage", "conway"]
+TAG_ERA = {0: "byron", 1: "byron", 2: "shelley", 3: "allegra", 4: "mary", 5: "alonzo", 6: "babbage", 7: "conway"}
+
+
+def block_era(hex_line):
+    """Era of a raw `[era tag, block]` line: the tag is the second byte (`82 <tag>`)."""
+    return TAG_ERA[int(hex_line[2:4], 16)]
+
+
+def capture_chain(args, root, out_name, extra=()):
+    """Run CaptureMain over the whole chain of node 1 (up to 10 blocks behind its tip)."""
+    ports = json.loads((root / "ports.json").read_text())
+    classpath = freeze_classes(root)
+    program = ["capture", "--peer", f"127.0.0.1:{ports['1']}", "--magic", str(MAGIC),
+               "--blocks", "all", "--out", f"/run/out/{out_name}", *extra]
+    command = scala_container(args, root, classpath, "lab.node.CaptureMain", program,
+                              mounts=[f"{root}:/run/out"])
+    r = subprocess.run(["docker", *command], text=True, capture_output=True, timeout=300)
+    if r.returncode != 0:
+        raise SystemExit(f"capture failed: {r.stderr.strip()[-600:]}")
+    return [l for l in (root / out_name).read_text().split() if l]
+
+
+def capture_eras(args):
+    """Capture a running up-eras chain as fixtures: every block from Origin to a few blocks into
+    Conway (header validation needs every VRF output for the nonces), plus the genesis and
+    configuration files the node reads. The chain tail is cut so the fixture ends deep enough that
+    no captured block can be rolled back."""
+    root = data_root(args.name)
+    lines = capture_chain(args, root, "blocks-all.hex")
+    first_conway = next((i for i, l in enumerate(lines) if block_era(l) == "conway"), None)
+    if first_conway is None:
+        raise SystemExit("the captured chain has no Conway block yet; wait for up-eras to finish")
+    keep = lines[: first_conway + args.conway_blocks]
+    out = pathlib.Path(args.out)
+    (out / "genesis").mkdir(parents=True, exist_ok=True)
+    (out / "blocks.hex").write_text("\n".join(keep) + "\n")
+    for f in ["shelley-genesis.json", "byron-genesis.json", "alonzo-genesis.json",
+              "conway-genesis.json", "configuration.yaml"]:
+        shutil.copyfile(root / "genesis" / f, out / "genesis" / f)
+    eras = json.loads((root / "eras.json").read_text())
+    shelley = json.loads((root / "genesis" / "shelley-genesis.json").read_text())
+    counts = {e: sum(1 for l in keep if block_era(l) == e) for e in ERAS}
+    manifest = {"capturedAt": time.strftime("%Y-%m-%d", time.gmtime()), "blocks": len(keep), "blocksPerEra": counts,
+                "eras": eras["eras"], "protocolMajorByEpoch": eras["protocolMajorByEpoch"],
+                "cluster": {k: shelley[k] for k in
+                            ("epochLength", "activeSlotsCoeff", "securityParam", "slotLength", "networkMagic")}}
+    (out / "eras.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    print(json.dumps({"captured": len(keep), "blocksPerEra": counts, "out": str(out)}))
+
+
+# Per-era ledger comparison hook. The reference `query ledger-state` JSON differs per era and this
+# node's full ledger so far covers Conway only (see `compare`), so no era is registered yet. When a
+# per-era ledger lands, register `era -> fn(name, tip) -> {"matched": bool, ...}` here: e2e calls
+# each registered comparator once the follower has applied a block of that era's last epoch.
+ERA_LEDGER_COMPARATORS = {}
+
+
+def read_log(path):
+    """(events, other lines) of the follower log."""
+    events, other = [], []
+    if path.exists():
+        text = path.read_text(errors="replace")
+        lines = text.split("\n")[:-1]  # a last line without newline is still being written
+        for line in lines:
+            if line.startswith("{"):
+                try:
+                    events.append(json.loads(line))
+                    continue
+                except json.JSONDecodeError:
+                    pass
+            if line.strip() and not line.startswith("SLF4J"):
+                other.append(line)
+    return events, other
+
+
+def summarize_e2e(events, other, expected, exit_code):
+    """Assertions and the summary over the follower's JSON log; returns (summary, failures)."""
+    failures = []
+    started = [e for e in events if e["event"] == "started"]
+    transitions = [{"from": e["from"], "to": e["to"], "epoch": e["epoch"], "slot": e["slot"],
+                    "block": e["block"]["blockNo"]} for e in events if e["event"] == "eraTransition"]
+    per_era = {e: {"blocks": 0, "firstEpoch": None, "lastEpoch": None, "headers": 0, "leaderThreshold": 0,
+                   "overlay": 0, "leaderUnchecked": 0, "signatureVerified": 0, "signatureUnchecked": 0,
+                   "boundary": 0} for e in ERAS}
+    for e in events:
+        if e["event"] == "extended":
+            r = per_era[e["era"].lower()]
+            r["blocks"] += 1
+            r["firstEpoch"] = e["epoch"] if r["firstEpoch"] is None else r["firstEpoch"]
+            r["lastEpoch"] = e["epoch"]
+        elif e["event"] == "epochValidated":
+            r = per_era[e["era"].lower()]
+            r["headers"] += e["headers"]
+            if e["era"] == "Byron":
+                r["boundary"] += e["boundary"]
+                r["signatureVerified"] += e["signatureVerified"]
+                r["signatureUnchecked"] += e["signatureUnchecked"]
+            else:
+                r["leaderThreshold"] += e["thresholdChecked"]
+                r["overlay"] += e["overlay"]
+                r["leaderUnchecked"] += e["leaderUnchecked"]
+    errors = [e for e in events if e["event"] == "error"]
+    validation = [e for e in errors if e.get("kind") == "ValidationError"]
+    fatal = [e for e in errors if e.get("kind") != "ValidationError"]
+    summary = {
+        "transitions": transitions,
+        "expectedTransitions": expected,
+        "blocksPerEra": per_era,
+        "blocksApplied": sum(r["blocks"] for r in per_era.values()),
+        "lastEpoch": max((e["epoch"] for e in events if e["event"] == "extended"), default=None),
+        "validationErrors": validation,
+        "fatalErrors": fatal,
+        "unparsedOutput": other[:20],
+        "rollbacks": sum(1 for e in events if e["event"] == "rolledBack"),
+        "reconnects": sum(1 for e in events if e["event"] == "reconnecting"),
+        "followerExit": exit_code,
+        "ledgerComparison": {"status": "not run: per-era ledger comparison needs the full ledger "
+                                       "(see ERA_LEDGER_COMPARATORS in devnet.py)"},
+    }
+    if not started:
+        failures.append("the follower never started")
+    if [t["to"].lower() for t in transitions] != [x["era"] for x in expected]:
+        failures.append(f"era transitions {[t['to'] for t in transitions]} differ from "
+                        f"{[x['era'] for x in expected]}")
+    else:
+        for t, x in zip(transitions, expected):
+            if t["epoch"] != x["epoch"]:
+                failures.append(f"{x['era']} began in epoch {t['epoch']}, expected {x['epoch']}")
+    if transitions and transitions[0]["from"] is not None:
+        failures.append("the first transition must start from no era")
+    for t, prev in zip(transitions[1:], transitions):
+        if t["from"] is None or t["from"].lower() != prev["to"].lower():
+            failures.append(f"transition to {t['to']} does not follow {prev['to']}")
+    for era in ERAS:
+        if per_era[era]["blocks"] == 0:
+            failures.append(f"no {era} block was applied")
+    byron = per_era["byron"]
+    if byron["signatureUnchecked"]:
+        failures.append(f"{byron['signatureUnchecked']} Byron headers had unchecked signatures")
+    if byron["boundary"] == 0 or byron["signatureVerified"] == 0:
+        failures.append("Byron epoch 0 was not validated (no boundary block or no verified signature)")
+    if validation:
+        failures.append(f"{len(validation)} validation errors: {validation[0]['message']}")
+    if fatal:
+        failures.append(f"{len(fatal)} fatal errors: {fatal[0]['message']}")
+    if other:
+        failures.append(f"unexpected non-JSON output: {other[0][:200]}")
+    if exit_code not in (None, 0):
+        failures.append(f"the follower exited with {exit_code}")
+    return summary, failures
+
+
+def e2e(args):
+    """Era-walking cluster, the Scala follower from Origin, and assertions over its JSON log."""
+    root = data_root(args.name)
+    if root.exists():
+        if not (root / "e2e-summary.json").exists():
+            raise SystemExit(f"{root} exists and is not an e2e leftover; run `devnet.py --name {args.name} down`")
+        down(args, quiet=True)  # leftovers of an earlier e2e run
+    follower = None
+    summary, failures = {}, []
+    try:
+        up_eras(args)
+        eras = json.loads((root / "eras.json").read_text())
+        config = json.loads((root / "genesis" / "configuration.yaml").read_text())
+        expected = []
+        for t in eras["eras"]:
+            epoch = 0 if t["era"] == "byron" else config[f"Test{t['era'].capitalize()}HardForkAtEpoch"]
+            if epoch != t["epoch"]:
+                raise SystemExit(f"eras.json puts {t['era']} at epoch {t['epoch']}, configuration at {epoch}")
+            expected.append({"era": t["era"], "epoch": epoch})
+        target = args.until_epoch if args.until_epoch is not None else expected[-1]["epoch"] + 1
+        log = root / "follower.jsonl"
+        follower = subprocess.Popen([sys.executable, __file__, "--name", args.name, "follow"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + args.timeout
+        reason = "timeout"
+        while time.monotonic() < deadline:
+            time.sleep(2)
+            events, other = read_log(log)
+            applied = [e["epoch"] for e in events if e["event"] == "extended" and e["era"] == "Conway"]
+            if any(e["event"] == "error" for e in events) or other:
+                reason = "error"
+                break
+            if follower.poll() is not None:
+                reason = "follower exited"
+                break
+            if applied and max(applied) >= target:
+                reason = "reached"
+                break
+        exit_code = follower.poll()
+        events, other = read_log(log)
+        summary, failures = summarize_e2e(events, other, expected, exit_code)
+        summary["stoppedBecause"] = reason
+        summary["targetConwayEpoch"] = target
+        if reason != "reached":
+            failures.append(f"stopped without reaching Conway epoch {target}: {reason}")
+    except SystemExit as e:
+        failures.append(str(e))
+    finally:
+        if follower is not None and follower.poll() is None:
+            docker("rm", "-f", f"{args.name}-scala", check=False)
+            follower.wait()
+        summary["failures"] = failures
+        summary["passed"] = not failures
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "e2e-summary.json").write_text(json.dumps(summary, indent=2))
+        shutil.rmtree(root / "classes", ignore_errors=True)
+        print(json.dumps(summary, indent=2))
+        if not args.keep:
+            for c in (f"{args.name}-scala", ref(args.name)):
+                docker("rm", "-f", c, check=False)
+    sys.exit(0 if not failures else 1)
+
+
+def down(args, quiet=False):
     for c in (f"{args.name}-scala", ref(args.name)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
-    print(json.dumps({"down": True}))
+    if not quiet:
+        print(json.dumps({"down": True}))
 
 
 def main():
@@ -702,13 +942,24 @@ def main():
     p.add_argument("--name", help="default csl-devnet, or csl-eras for up-eras")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("up").set_defaults(run=up)
-    ue = sub.add_parser("up-eras", help="start in Byron and walk Shelley..Conway (one epoch per era step)")
-    ue.add_argument("--epoch-length", type=int, default=500)
-    ue.add_argument("--active-slots-coeff", type=float, default=0.2)
-    ue.add_argument("--byron-epochs", type=int, default=1)
-    ue.add_argument("--byron-slot-ms", type=int, default=1000)
-    ue.add_argument("--stall-seconds", type=int, default=90)
-    ue.set_defaults(run=up_eras)
+    eras_options = argparse.ArgumentParser(add_help=False)
+    eras_options.add_argument("--epoch-length", type=int, default=500)
+    eras_options.add_argument("--active-slots-coeff", type=float, default=0.2)
+    eras_options.add_argument("--byron-epochs", type=int, default=1)
+    eras_options.add_argument("--byron-slot-ms", type=int, default=1000)
+    eras_options.add_argument("--stall-seconds", type=int, default=90)
+    sub.add_parser("up-eras", parents=[eras_options],
+                   help="start in Byron and walk Shelley..Conway (one epoch per era step)").set_defaults(run=up_eras)
+    ce = sub.add_parser("capture-eras", help="capture the running up-eras chain as fixtures")
+    ce.add_argument("--out", default=str(REPO / "fixtures/eras"))
+    ce.add_argument("--conway-blocks", type=int, default=3)
+    ce.set_defaults(run=capture_eras)
+    e2 = sub.add_parser("e2e", parents=[eras_options],
+                        help="up-eras, follow from Origin, assert every era and transition")
+    e2.add_argument("--timeout", type=int, default=900)
+    e2.add_argument("--until-epoch", type=int, help="Conway epoch to reach (default: first Conway epoch + 1)")
+    e2.add_argument("--keep", action="store_true", help="leave the cluster running")
+    e2.set_defaults(run=e2e)
     t = sub.add_parser("tip")
     t.add_argument("--node", type=int, default=1)
     t.set_defaults(run=tip)
@@ -732,7 +983,7 @@ def main():
     sk.set_defaults(run=soak)
     sub.add_parser("down").set_defaults(run=down)
     args = p.parse_args()
-    args.name = args.name or ("csl-eras" if args.command == "up-eras" else "csl-devnet")
+    args.name = args.name or ("csl-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "csl-devnet")
     args.run(args)
 
 

@@ -1,0 +1,88 @@
+{
+  "capturedAt": "2026-10-11",
+  "blocks": 731,
+  "blocksPerEra": {
+    "byron": 50,
+    "shelley": 100,
+    "allegra": 100,
+    "mary": 98,
+    "alonzo": 192,
+    "babbage": 188,
+    "conway": 3
+  },
+  "eras": [
+    {
+      "era": "byron",
+      "epoch": 0,
+      "slot": 0,
+      "block": 1,
+      "hash": "75c27cb1b4f74c2e2d1a8173ce3dcb8cbd52467bd7f19632570ac2f1b469604f",
+      "previousBlock": null
+    },
+    {
+      "era": "shelley",
+      "epoch": 1,
+      "slot": 50,
+      "block": 50,
+      "hash": "454873e4671f9e5e4d3f2ba9dc7d0baccf312f75c248a1f12cf8190a682d0648",
+      "previousBlock": 49
+    },
+    {
+      "era": "allegra",
+      "epoch": 2,
+      "slot": 550,
+      "block": 150,
+      "hash": "36f962148dd7d36f6e1fc0d23caa82a74607babcafcbae96c42373a3d666ee4d",
+      "previousBlock": 149
+    },
+    {
+      "era": "mary",
+      "epoch": 3,
+      "slot": 1055,
+      "block": 250,
+      "hash": "baffa0c16a845b74102429f5286add86ebdfd81ecf94fe2d7d9394f8f1f3b4fb",
+      "previousBlock": 249
+    },
+    {
+      "era": "alonzo",
+      "epoch": 4,
+      "slot": 1550,
+      "block": 348,
+      "hash": "8df0890b5536f0c3fa0c2608b5022fe3f68659b9674e3401e4dd0bdbcf22f5e5",
+      "previousBlock": 347
+    },
+    {
+      "era": "babbage",
+      "epoch": 6,
+      "slot": 2552,
+      "block": 540,
+      "hash": "bcd0a2019898dc375eab184887bda826a7ed42237841c22dd72d25f1dd4e5618",
+      "previousBlock": 539
+    },
+    {
+      "era": "conway",
+      "epoch": 8,
+      "slot": 3551,
+      "block": 728,
+      "hash": "a2037fd963bbe1811c6a9af98dd545ff75a640ca314f0b19cb029018af6afe24",
+      "previousBlock": 727
+    }
+  ],
+  "protocolMajorByEpoch": {
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 7,
+    "7": 8,
+    "8": 9
+  },
+  "cluster": {
+    "epochLength": 500,
+    "activeSlotsCoeff": 0.2,
+    "securityParam": 5,
+    "slotLength": 0.1,
+    "networkMagic": 1082026
+  }
+}

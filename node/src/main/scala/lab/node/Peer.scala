@@ -31,7 +31,10 @@ object Peer:
       magic: Long,
       network: NodeToNode.Settings = NodeToNode.Settings(),
       /** Most ChainSync requests pipelined at once while the peer is far ahead. */
-      readAhead: Int = 64
+      readAhead: Int = 64,
+      /** Slots per Byron epoch (10k of the Byron genesis), to place Byron headers on the slot axis.
+        */
+      byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
   )
 
   /** `host:port` where host is a DNS name or an IP literal. */
@@ -81,7 +84,7 @@ object Peer:
           def decode(update: ChainSyncClient.Update[NtNHeader]): F[SyncEvent] = update match
             case ChainSyncClient.Update.RollForward(h, tip) =>
               Header
-                .fromNtN(h)
+                .fromNtN(h, settings.byronEpochSlots)
                 .fold(e => protocol(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
             case ChainSyncClient.Update.RollBackward(point, tip) =>
               F.pure(SyncEvent.RollBackward(point, tip))
@@ -96,7 +99,11 @@ object Peer:
               connection.blockFetch.requestRange(headers.head.point, headers.last.point).flatMap {
                 case Some(raw) =>
                   blocks.set(
-                    raw.flatMap(b => Block.decode(b).toOption.map(_.header.hash -> b)).toMap
+                    raw
+                      .flatMap(b =>
+                        Block.decode(b, settings.byronEpochSlots).toOption.map(_.header.hash -> b)
+                      )
+                      .toMap
                   )
                 case None => F.unit
               }

@@ -31,3 +31,6 @@ Thumbs.db
 # Disposable Cardano private signing material; public .vkey/.cert fixtures remain allowed
 *.skey
 *.key
+
+# Agent worktrees
+/.claude/

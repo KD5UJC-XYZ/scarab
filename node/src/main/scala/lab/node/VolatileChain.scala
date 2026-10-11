@@ -6,8 +6,10 @@ import cats.syntax.all.*
 import lab.cbor.Bytes
 import lab.network.ChainSync
 
-/** Identity of an applied block. */
-final case class BlockRef(slot: BigInt, hash: Bytes, blockNo: BigInt):
+/** Identity of an applied block. `boundary` marks a Byron epoch-boundary block, which shares its
+  * block number with its predecessor and its slot with the first block of the epoch.
+  */
+final case class BlockRef(slot: BigInt, hash: Bytes, blockNo: BigInt, boundary: Boolean = false):
   def point: ChainSync.Point =
     ChainSync.Point.Block(ChainSync.UInt64.from(slot).toOption.get, hash)
 
@@ -22,9 +24,16 @@ final case class Anchor[S](block: Option[BlockRef], state: S):
   def blockNo: Option[BigInt] = block.map(_.blockNo)
 
 /** The last `k` blocks, each paired with the state after applying it. Rollback restores the exact
-  * state retained at the target, so state transitions never need inverse operations.
+  * state retained at the target, so state transitions never need inverse operations. `origin` is
+  * the hash the first block must name as its predecessor: none for a Shelley-start chain, the Byron
+  * genesis hash for a chain that starts in Byron.
   */
-final case class VolatileChain[S](k: Int, anchor: Anchor[S], blocks: Vector[(BlockRef, S)]):
+final case class VolatileChain[S](
+    k: Int,
+    anchor: Anchor[S],
+    blocks: Vector[(BlockRef, S)],
+    origin: Option[Bytes] = None
+):
   def tip: ChainSync.Point = blocks.lastOption.fold(anchor.point)(_._1.point)
   def tipRef: Option[BlockRef] = blocks.lastOption.map(_._1).orElse(anchor.block)
   def state: S = blocks.lastOption.fold(anchor.state)(_._2)
@@ -34,11 +43,14 @@ final case class VolatileChain[S](k: Int, anchor: Anchor[S], blocks: Vector[(Blo
     * vector holds blocks that became immutable, oldest first.
     */
   def extend(header: Header, next: S): Either[ChainError, (VolatileChain[S], Vector[BlockRef])] =
-    val ref = BlockRef(header.slot, header.hash, header.blockNo)
+    val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
     val connected = tipRef match
-      case None => header.prevHash.isEmpty
+      case None    => header.prevHash == origin
       case Some(t) =>
-        header.prevHash.contains(t.hash) && header.blockNo == t.blockNo + 1 && header.slot > t.slot
+        // A boundary block repeats its predecessor's number; the block after it may share its slot.
+        val number = if header.isBoundary then t.blockNo else t.blockNo + 1
+        val later = header.slot > t.slot || (header.slot == t.slot && t.boundary)
+        header.prevHash.contains(t.hash) && header.blockNo == number && later
     if !connected then Left(ChainError.NotConnected(header.point, tip))
     else
       val grown = blocks :+ (ref -> next)
@@ -67,8 +79,8 @@ final case class VolatileChain[S](k: Int, anchor: Anchor[S], blocks: Vector[(Blo
     blocks.reverseIterator.map(_._1.point).toVector :+ anchor.point
 
 object VolatileChain:
-  def genesis[S](k: Int, initial: S): VolatileChain[S] =
-    VolatileChain(k, Anchor(None, initial), Vector.empty)
+  def genesis[S](k: Int, initial: S, origin: Option[Bytes] = None): VolatileChain[S] =
+    VolatileChain(k, Anchor(None, initial), Vector.empty, origin)
 
   given [S: Eq]: Eq[VolatileChain[S]] = Eq.instance { (a, b) =>
     a.k == b.k && a.anchor.block === b.anchor.block && a.anchor.state === b.anchor.state &&

@@ -17,17 +17,31 @@ trait BlockRules[F[_], S]:
 /** Observable follower milestones. */
 enum FollowerEvent:
   case Connected(intersection: ChainSync.Point)
-  case Extended(block: BlockRef, epoch: BigInt, peerTip: ChainSync.Tip)
+  case Extended(block: BlockRef, epoch: BigInt, peerTip: ChainSync.Tip, era: Era)
   case RolledBack(from: ChainSync.Point, to: ChainSync.Point, depth: Int)
   case EpochEntered(epoch: BigInt, first: BlockRef)
   case Immutable(block: BlockRef)
   case Reconnecting(reason: PeerError, attempt: Int)
 
-  /** The first block of a new era was applied. */
-  case EraEntered(from: Option[Era], to: Era, first: BlockRef)
+  /** The first block of a new era was applied (`from` is empty for the chain's first era). */
+  case EraEntered(from: Option[Era], to: Era, first: BlockRef, epoch: BigInt)
 
   /** An epoch of bootstrap-mode headers is complete: how each one was established. */
-  case EpochValidated(epoch: BigInt, threshold: Long, overlay: Long, unchecked: Long)
+  case EpochValidated(
+      epoch: BigInt,
+      era: Era,
+      threshold: Long,
+      overlay: Long,
+      unchecked: Long
+  )
+
+  /** A Byron epoch is complete: its boundary and main blocks and how each main signature stood. */
+  case ByronEpochValidated(
+      epoch: BigInt,
+      boundary: Long,
+      verified: Long,
+      unchecked: Long
+  )
 
 trait FollowerEvents[F[_]]:
   def emit(event: FollowerEvent): F[Unit]
@@ -67,9 +81,9 @@ final class Follower[F[_]: Monad, S](
           .fold(_.raise[F, (VolatileChain[S], Vector[BlockRef])], _.pure[F])
         (after, immutable) = extended
         _ <- chain.set(after)
-        ref = BlockRef(header.slot, header.hash, header.blockNo)
+        ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
         epoch = geometry.epochOf(header.slot)
-        _ <- events.emit(FollowerEvent.Extended(ref, epoch, tip))
+        _ <- events.emit(FollowerEvent.Extended(ref, epoch, tip, header.era))
         enteredEpoch = before.tipRef.forall(t => geometry.epochOf(t.slot) < epoch)
         _ <- events.emit(FollowerEvent.EpochEntered(epoch, ref)).whenA(enteredEpoch)
         _ <- observe(before.state, next, ref).traverse_(events.emit)

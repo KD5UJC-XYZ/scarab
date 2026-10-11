@@ -66,6 +66,13 @@ python3 scripts/devnet.py down                   # remove containers and run dat
 load, and diffs the full ledger and consensus state at matching tips. Details are in
 [docs/node.md](docs/node.md).
 
+## Era-walking end-to-end
+
+`python3 scripts/devnet.py e2e` starts a reference cluster that walks Byron, Shelley, Allegra,
+Mary, Alonzo, Babbage and Conway (`up-eras`), follows it from Origin with the Scala node and
+asserts every era transition and zero validation errors. The same chain is committed under
+`fixtures/eras` for the Docker-free `EraTransitionSuite`.
+
 Run data lives in `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}`, never in the checkout or home
 directory.
 
@@ -74,8 +81,8 @@ directory.
 1. Cleanup and refactor to a tagless-final runtime (in progress).
 2. Follow public Preview: hard-fork combinator and TPraos headers, Alonzo/Babbage ledger, and a
    headers-only bootstrap mode.
-3. A reference cluster that walks Byron, Shelley, Allegra, Mary, Alonzo, Babbage and Conway,
-   with a comparator at every era.
+3. A reference cluster that walks Byron, Shelley, Allegra, Mary, Alonzo, Babbage and Conway
+   (the node follows it from Byron, era transitions are tested); a comparator at every era is next.
 4. Plutus V1-V3 evaluator, native scripts and multi-assets.
 5. Persistence and Mithril snapshot import, multiple peers, mempool and transaction submission,
    and block production.

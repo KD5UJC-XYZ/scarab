@@ -23,13 +23,20 @@ object JsonLog:
   private def block(b: BlockRef): Json =
     Json.obj("slot" -> b.slot.asJson, "blockNo" -> b.blockNo.asJson, "hash" -> b.hash.hex.asJson)
 
-  def started(peer: SocketAddress[Host], genesis: ShelleyGenesis): IO[Unit] =
+  def started(
+      peer: SocketAddress[Host],
+      genesis: ShelleyGenesis,
+      config: NodeConfig = NodeConfig.empty
+  ): IO[Unit] =
     line(
       "started",
       "peer" -> peer.toString.asJson,
       "networkMagic" -> genesis.networkMagic.asJson,
       "epochLength" -> genesis.geometry.epochLength.asJson,
-      "securityParam" -> genesis.geometry.securityParam.asJson
+      "securityParam" -> genesis.geometry.securityParam.asJson,
+      "byronEpochs" -> genesis.geometry.byron.epochs.asJson,
+      "byronEpochSlots" -> genesis.geometry.byron.epochSlots.asJson,
+      "hardForkEpochs" -> config.hardForkEpochs.map((e, n) => e.toString -> n).asJson
     )
 
   def finished[S](chain: VolatileChain[S]): IO[Unit] =
@@ -41,11 +48,12 @@ object JsonLog:
   val events: FollowerEvents[IO] = new FollowerEvents[IO]:
     def emit(event: FollowerEvent): IO[Unit] = event match
       case FollowerEvent.Connected(p) => line("connected", "intersection" -> point(p))
-      case FollowerEvent.Extended(b, epoch, tip) =>
+      case FollowerEvent.Extended(b, epoch, tip, era) =>
         line(
           "extended",
           "block" -> block(b),
           "epoch" -> epoch.asJson,
+          "era" -> era.toString.asJson,
           "peerTip" -> point(tip.point)
         )
       case FollowerEvent.RolledBack(from, to, depth) =>
@@ -53,16 +61,29 @@ object JsonLog:
       case FollowerEvent.EpochEntered(epoch, first) =>
         line("epoch", "epoch" -> epoch.asJson, "first" -> block(first))
       case FollowerEvent.Immutable(_) => IO.unit
-      case FollowerEvent.EraEntered(from, to, first) =>
+      case FollowerEvent.EraEntered(from, to, first, epoch) =>
         line(
           "eraTransition",
           "from" -> from.map(_.toString).asJson,
           "to" -> to.toString.asJson,
-          "first" -> block(first)
+          "epoch" -> epoch.asJson,
+          "slot" -> first.slot.asJson,
+          "block" -> block(first)
         )
-      case FollowerEvent.EpochValidated(epoch, threshold, overlay, unchecked) =>
+      case FollowerEvent.ByronEpochValidated(epoch, boundary, verified, unchecked) =>
         line(
           "epochValidated",
+          "era" -> "Byron".asJson,
+          "epoch" -> epoch.asJson,
+          "headers" -> (boundary + verified + unchecked).asJson,
+          "boundary" -> boundary.asJson,
+          "signatureVerified" -> verified.asJson,
+          "signatureUnchecked" -> unchecked.asJson
+        )
+      case FollowerEvent.EpochValidated(epoch, era, threshold, overlay, unchecked) =>
+        line(
+          "epochValidated",
+          "era" -> era.toString.asJson,
           "epoch" -> epoch.asJson,
           "headers" -> (threshold + overlay + unchecked).asJson,
           "thresholdChecked" -> threshold.asJson,
