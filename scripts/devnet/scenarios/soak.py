@@ -9,6 +9,35 @@ from ..compare import compare_once
 from ..util import ENTRY, data_root, docker
 
 
+# stages of govextra.py that a `soak --governance-extended` of 900 s must complete
+EXTENDED_STAGES = ["xfund", "xrewards", "xscriptreg", "xpc1", "xscriptvote", "xscriptwithdraw", "xvrf", "xminsize",
+                   "xstuck"]
+
+
+def extended_summary(root):
+    """What the extended governance scenarios did, from govload.log: stages completed, transactions the
+    reference refused as expected (and any it did not), and what its ratification enacted per epoch."""
+    events = []
+    for line in (root / "govload.log").read_text().splitlines():
+        if line.startswith("{"):
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    done = [e["stage"] for e in events if e.get("extended") and e.get("ok")]
+    negatives = [e for e in events if "refusedAsExpected" in e]
+    return {
+        "stagesDone": done,
+        "missingStages": [s for s in EXTENDED_STAGES if s not in done],
+        "refusedAsExpected": sum(1 for e in negatives if e["refusedAsExpected"]),
+        "refusedUnexpectedly": sum(1 for e in negatives if not e["refusedAsExpected"]),
+        "counted": {e["counted"]: e["total"] for e in events if "counted" in e},
+        "refused": sorted(e["negative"].rsplit("-", 1)[0] for e in negatives if e["refusedAsExpected"]),
+        "enactedByEpoch": {e["trace"]: e["enacted"] for e in events if "trace" in e and e["enacted"]},
+        "expiredByEpoch": {e["trace"]: e["expired"] for e in events if "trace" in e and e["expired"]},
+    }
+
+
 def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
@@ -17,7 +46,8 @@ def soak(args):
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
                               stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
-    governance = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "govload"],
+    governance = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "govload",
+                                   *(["--extended"] if getattr(args, "governance_extended", False) else [])],
                                   stdout=(root / "govload.log").open("w"), stderr=subprocess.STDOUT)
     results = []
     deadline = time.monotonic() + args.seconds
@@ -54,6 +84,9 @@ def soak(args):
         "errors": [e for e in log if e.get("event") == "error"],
         "load": (root / "load.log").read_text().strip().splitlines()[-1:],
     }
+    extended = extended_summary(root) if getattr(args, "governance_extended", False) else None
+    if extended is not None:
+        summary["governanceExtended"] = extended
     (root / "summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
     failures = []
@@ -65,6 +98,11 @@ def soak(args):
         failures.append("follower logged errors")
     if not follower_alive:
         failures.append("follower exited before the end")
+    if extended is not None:
+        if extended["refusedUnexpectedly"]:
+            failures.append("a transaction the reference was expected to refuse was not refused as expected")
+        if extended["missingStages"]:
+            failures.append(f"extended governance stages not reached: {extended['missingStages']}")
     if failures:
         print(json.dumps({"failed": failures}), flush=True)
     sys.exit(1 if failures else 0)

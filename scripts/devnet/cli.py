@@ -16,6 +16,8 @@
     devnet.py capture-eras         capture the up-eras chain as test fixtures (fixtures/eras)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
                                    era transition was followed with no validation error
+    devnet.py refused-fixture      write fixtures/devnet/refused-txs.jsonl from a finished
+                                   `soak --governance-extended` run directory
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>. The Scala node shares the
@@ -26,6 +28,7 @@ from .cluster import down, tip, up, up_eras
 from .compare import compare
 from .follower import follow
 from .load import govload, load
+from .refused_fixture import DEFAULT_OUT, refused_fixture
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.pool import pool
 from .scenarios.relay import relay
@@ -83,12 +86,17 @@ def main():
     ld.set_defaults(run=load)
     gl = sub.add_parser("govload", help="Conway governance and Plutus scenarios on a Conway-only cluster")
     gl.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
+    gl.add_argument("--extended", action="store_true",
+                    help="also run the extended scenarios of govextra.py (SPO default votes, committee rules, "
+                         "script accounts and DReps, protocol-11 rules)")
     gl.set_defaults(run=govload)
     sub.add_parser("compare", help="compare the Scala ledger with the reference at one block").set_defaults(run=compare)
     sk = sub.add_parser("soak", help="up + follow + load + periodic compare, then a summary")
     sk.add_argument("--seconds", type=int, default=600, help="load phase length")
     sk.add_argument("--every", type=int, default=20, help="seconds between ledger comparisons")
     sk.add_argument("--seed", type=int, default=1, help="random seed of the load")
+    sk.add_argument("--governance-extended", action="store_true",
+                    help="the governance load also runs the extended scenarios (about 16 epochs of 500 slots; use --seconds 900)")
     sk.set_defaults(run=soak)
     rl = sub.add_parser("relay", help="Scala node as a relay serving a Haskell relay; load through the relay")
     rl.add_argument("--seconds", type=int, default=300, help="load phase length")
@@ -117,6 +125,10 @@ def main():
     pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
     pl.add_argument("--keep", action="store_true", help="leave the cluster running")
     pl.set_defaults(run=pool)
+    rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
+                                                "`soak --governance-extended`")
+    rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")
+    rf.set_defaults(run=refused_fixture)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
     args = p.parse_args()
     args.name = args.name or ("csl-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "csl-pool" if args.command == "pool" else "csl-devnet")

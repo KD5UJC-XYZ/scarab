@@ -34,6 +34,30 @@ object ConwayRules:
         )
     go(Rational.zero, base, size)
 
+  /** `unelectedCommitteeVoters`: the committee hot credentials among the voters of `body` that no
+    * member of the current committee has authorised. From protocol version 11 the GOV rule refuses
+    * such votes; before that the reference refuses them in its mempool only (`Rules/Mempool.hs`),
+    * so blocks may carry them.
+    */
+  def unelectedCommitteeVoters(s: LedgerState, body: TxBody): Vector[String] =
+    val electedHot =
+      s.committeeState.collect {
+        case (cold, CommitteeAuth.Hot(h)) if s.gov.committee.exists(_.members.contains(cold)) => h
+      }.toSet
+    body.votes.collect { case (Voter.CommitteeHot(h), _) if !electedHot(h) => h.render }
+
+  /** `hardforkConwayDisallowDuplicatedVRFKeys` (protocol version 11 and later): the VRF key hash of
+    * a pool registration may not be held by another pool, active or scheduled by a re-registration
+    * (the ledger keeps this as `psVRFKeyHashes`; here it is derived from `pools` and `futurePools`,
+    * which are the same set). A pool may keep its own current key. Differs from the reference only
+    * for key hashes that were already shared when protocol version 11 began.
+    */
+  def vrfAvailable(s: LedgerState, p: PoolParams): Boolean =
+    val vrf = p.vrfKeyHash
+    s.pools.get(p.operator).exists(_.params.vrfKeyHash == vrf) ||
+    (!s.pools.valuesIterator.exists(_.params.vrfKeyHash == vrf) &&
+      !s.futurePools.valuesIterator.exists(_.vrfKeyHash == vrf))
+
   /** Total size of the reference scripts of the distinct inputs and reference inputs. */
   def refScriptsSize(state: LedgerState, body: TxBody): Int =
     (body.inputs.toSet ++ body.referenceInputs.toSet).iterator
@@ -383,6 +407,11 @@ private[ledger] object ConwayCerts:
         for
           _ <- check(p.cost >= pp.minPoolCost, "StakePoolCostTooLowPOOL", s"${p.cost}")
           _ <- check(p.rewardAccount.network == network, "WrongNetworkPOOL", p.operator.hex)
+          _ <- check(
+            pp.protocolMajor <= 10 || ConwayRules.vrfAvailable(s, p),
+            "VRFKeyHashAlreadyRegistered",
+            s"${p.operator.hex} ${p.vrfKeyHash.hex}"
+          )
         yield
           if s.pools.contains(p.operator) then
             s.copy(
@@ -587,18 +616,11 @@ private[ledger] object ConwayGov:
       yield added
 
     val hotCredentials = s.committeeState.values.collect { case CommitteeAuth.Hot(h) => h }.toSet
-    val electedHot =
-      s.committeeState.collect {
-        case (cold, CommitteeAuth.Hot(h)) if s.gov.committee.exists(_.members.contains(cold)) => h
-      }.toSet
     for
       _ <- check(
-        pp.protocolMajor <= 10 || body.votes.forall {
-          case (Voter.CommitteeHot(h), _) => electedHot(h)
-          case _                          => true
-        },
+        pp.protocolMajor <= 10 || ConwayRules.unelectedCommitteeVoters(s, body).isEmpty,
         "UnelectedCommitteeVoters",
-        ""
+        ConwayRules.unelectedCommitteeVoters(s, body).mkString(",")
       )
       proposals <- body.proposals.zipWithIndex.foldLeftM(s.gov.proposals)(addProposal)
       _ <- body.votes.traverse_ { case (voter, _) =>

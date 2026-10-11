@@ -22,7 +22,7 @@ import subprocess
 import threading
 import time
 
-from . import eratx
+from . import eratx, util
 from .eratx import Key
 
 FEE = 250_000
@@ -56,6 +56,8 @@ class EraLoad:
         self.ready = threading.Event()  # set by the driver once the pools exist
         self.stop = threading.Event()
         self.pending = 0
+        self.ext = None  # govextra.Extended while the extended governance scenarios run
+        self.ext_thread = None
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -124,7 +126,7 @@ class EraLoad:
     def act(self, era, label, wallet, outputs=(), certs=None, withdrawals=None, deposit=0, refund=0, mint=None,
             extra_signers=(), native_scripts=(), valid_from=None, ttl=None, spend_extra=(), metadata=None,
             aux_scripts=(), collateral=None, required_signers=None, reference_inputs=None, network_id=None,
-            collateral_return=None, total_collateral=None, avoid=(), fee=FEE, **build):
+            collateral_return=None, total_collateral=None, avoid=(), fee=FEE, expect_reject=None, record=None, **build):
         """Spend from `wallet` (largest ADA-only output plus any `spend_extra` inputs), pay `outputs`
         ((address, coin, assets, kwargs) tuples), send the change back to the wallet, sign, submit and
         wait for the confirmation. Returns the transaction id, or None."""
@@ -188,9 +190,39 @@ class EraLoad:
         except Exception as e:  # a bug in a scenario must not stop the cluster walk
             self.log({"buildFailed": label, "error": repr(e)})
             return None
+        if expect_reject is not None:
+            return self.expect_rejected(era, tx, f"{label}-{txid[:8]}", expect_reject, record)
         if not self.submit(era, tx, f"{label}-{txid[:8]}"):
             return None
+        if record:
+            self.keep_tx(record, {"label": label, "era": era, "outcome": "accepted", "tx": tx.hex()})
         return txid if self.confirm(txid) else None
+
+    def keep_tx(self, file, entry):
+        """Append one JSON line to `file` in the run directory (transactions kept for replay in unit tests)."""
+        with (util.data_root(self.name) / file).open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def expect_rejected(self, era, tx, label, expected, record=None):
+        """Submit `tx` and require the reference to refuse it with every text of `expected` in its
+        error (the predicate failure names). A matching refusal counts as `negativeOk`; the
+        transaction is appended to `negative-txs.jsonl` of the run directory, so the Scala rules can
+        be replayed on the very bytes the reference refused. Returns True when it was refused as expected."""
+        env = eratx.envelope(era, tx)
+        r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit "
+                    f"--testnet-magic {MAGIC} --socket-path {SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
+        text = (r.stderr or r.stdout).strip().split("CallStack")[0].strip()
+        ok = r.returncode != 0 and all(e in text for e in expected)
+        self.stats["negativeOk" if ok else "negativeUnexpected"] = self.stats.get(
+            "negativeOk" if ok else "negativeUnexpected", 0) + 1
+        self.log({"negative": label, "refusedAsExpected": ok, "expected": list(expected), "error": text[:700]})
+        entry = {"label": label, "era": era, "outcome": "refused", "expected": list(expected), "error": text[:2000],
+                 "tx": tx.hex()}
+        if ok:
+            self.keep_tx("negative-txs.jsonl", entry)
+        if record:
+            self.keep_tx(record, entry if ok else {**entry, "outcome": "unexpected"})
+        return ok
 
     # ------------------------------------------------------------ scenarios
     def once(self, key):
@@ -453,11 +485,13 @@ class EraLoad:
         return self.act("conway", label, wallet, [], votes=eratx.voting_procedures(casts),
                         extra_signers=list(signers), fee=500_000)
 
-    def propose(self, label, wallet, actions, signers=()):
-        """Submit proposals; returns the transaction id (the action ids are (txid, index))."""
+    def propose(self, label, wallet, actions, signers=(), anchors=None):
+        """Submit proposals; returns the transaction id (the action ids are (txid, index)). `anchors` gives
+        actions that are otherwise identical (a proposal set cannot hold the same proposal twice) their own."""
         pp = self.protocol_params()
         deposit = pp["govActionDeposit"]
-        proposals = [eratx.proposal(deposit, wallet.reward, a) for a in actions]
+        proposals = [eratx.proposal(deposit, wallet.reward, a, (anchors or [None] * len(actions))[i])
+                     for i, a in enumerate(actions)]
         txid = self.act("conway", label, wallet, [], proposals=proposals, deposit=deposit * len(actions),
                         extra_signers=list(signers), fee=500_000)
         return txid
@@ -470,6 +504,7 @@ class EraLoad:
         result = run()
         if result:
             self.done.add(key)
+        self.log({"stage": key, "ok": bool(result), "try": self.attempts[key]})
         return result
 
     def conway_features(self, epoch):
@@ -541,12 +576,22 @@ class EraLoad:
             self.stage("gcommittee", lambda: act(
                 "gcommittee", gw[3], [], extra_signers=self.cold,
                 certs=[eratx.auth_committee_cert(c.hash, h.hash) for c, h in zip(self.cold, self.hot)]))
-        if pv >= 10 and "gcommittee" in self.done and n >= 3:
+        extended = self.ext is not None and self.ext.full
+        if pv >= 10 and "gcommittee" in self.done and n >= 3 and (not extended or "xrewards" in self.ext.done):
             self.stage("ground2", lambda: self.second_round(pv))
-        if "ground2" in self.done and n >= 6:
-            self.stage("ground3", lambda: self.third_round(pv))
-        if "ground3" in self.done and n >= 8:
-            self.stage("ground4", lambda: self.fourth_round(pv, epoch))
+        if extended:
+            # the extended rounds follow the chain: the pool thresholds are lowered for the no-confidence
+            # round (which then runs on the default pool votes), and the committee is elected after it is gone
+            pc1 = self.ext.epochs.get("pc1")
+            if "ground2" in self.done and pv >= 11 and pc1 is not None and epoch > pc1:
+                self.stage("ground3", lambda: self.third_round(pv))
+            if "ground3" in self.done and not self.committee_members():
+                self.stage("ground4", lambda: self.fourth_round(pv, epoch))
+        else:
+            if "ground2" in self.done and n >= 6:
+                self.stage("ground3", lambda: self.third_round(pv))
+            if "ground3" in self.done and n >= 8:
+                self.stage("ground4", lambda: self.fourth_round(pv, epoch))
         if pv >= 10 and "ground2" in self.done and n >= 5:
             self.stage("gmore", lambda: self.more_gov(pp, pv, epoch))
         if n >= 2:
@@ -598,9 +643,9 @@ class EraLoad:
         previous = self.gov_state()["nextRatifyState"]["nextEnactState"]["prevGovActionIds"]["HardFork"]
         return None if previous is None else eratx.gov_id(previous["txId"], previous["govActionIx"])
 
-    def round_with_votes(self, label, actions, cast):
+    def round_with_votes(self, label, actions, cast, anchors=None):
         """Propose `actions`, wait for them, then vote: `cast(ids)` returns the votes and their signers."""
-        txid = self.propose(label, self.gw[1], actions)
+        txid = self.propose(label, self.gw[1], actions, anchors=anchors)
         if not txid:
             return None
         ids = [eratx.gov_id(txid, i) for i in range(len(actions))]
@@ -608,25 +653,42 @@ class EraLoad:
         return self.gov_votes(label + "-votes", self.gw[0], casts, signers)
 
     def second_round(self, pv):
-        """A withdrawal and the hard fork to protocol version 11, both needing the committee."""
+        """A withdrawal and the hard fork to protocol version 11, both needing the committee. In the extended
+        run there are two competing hard forks: pool 3 alone votes for the first (pool 1's default is No for a
+        hard fork even though it delegates to always-abstain), pools 2 and 3 for the second, which is enacted."""
         dreps = self.live_dreps()[:2]
+        extended = self.ext is not None and self.ext.full
 
         def cast(ids):
             casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
+            if extended:
+                casts += [(eratx.voter("pool", self.pool_cold[2].hash), [(ids[1], "yes"), (ids[2], "yes")]),
+                          (eratx.voter("pool", self.pool_cold[1].hash), [(ids[2], "yes")])]
+                casts.append((eratx.voter("committee", self.hot[0].hash), [(i, "yes") for i in ids]))
+                casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no"), (ids[1], "yes"), (ids[2], "yes")]))
+                return casts, dreps + self.pool_cold[1:] + self.hot
             casts += [(eratx.voter("pool", p.hash), [(ids[1], "yes")]) for p in self.pool_cold[:2]]
             casts.append((eratx.voter("committee", self.hot[0].hash), [(i, "yes") for i in ids]))
             casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no"), (ids[1], "yes")]))
             return casts, dreps + self.pool_cold[:2] + self.hot
-        return self.round_with_votes("gproposals2", [
-            eratx.treasury_withdrawal_action({self.gw[3].reward: 2_000_000}),
-            eratx.hard_fork_action(11, 0, self.hard_fork_root())], cast)
+        actions = [eratx.treasury_withdrawal_action({self.gw[3].reward: 2_000_000}),
+                   eratx.hard_fork_action(11, 0, self.hard_fork_root())]
+        anchors = None
+        if extended:
+            actions.append(eratx.hard_fork_action(11, 0, self.hard_fork_root()))
+            anchors = [None, None, eratx.anchor("https://hardfork.invalid/second")]
+        return self.round_with_votes("gproposals2", actions, cast, anchors=anchors)
 
     def third_round(self, pv):
-        """No confidence in the committee."""
+        """No confidence in the committee. In the extended run no pool votes: pool 1 abstains, pool 2 votes
+        yes and pool 3 no by default, and the lowered threshold lets that carry."""
         dreps = self.live_dreps()
+        extended = self.ext is not None and self.ext.full
 
         def cast(ids):
             casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
+            if extended:
+                return casts, dreps
             casts += [(eratx.voter("pool", p.hash), [(i, "yes") for i in ids]) for p in self.pool_cold[:2]]
             return casts, dreps + self.pool_cold[:2]
         return self.round_with_votes("gproposals3", [eratx.no_confidence_action(self.committee_root())], cast)
@@ -634,6 +696,8 @@ class EraLoad:
     def fourth_round(self, pv, epoch):
         """Elect a new committee without an existing one: lower thresholds, no committee vote."""
         dreps = self.live_dreps()
+        if self.ext is not None and self.ext.full:
+            return self.ext.committee_election(dreps, epoch)
 
         def cast(ids):
             casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in dreps]
@@ -710,6 +774,24 @@ class EraLoad:
         """A treasury donation that names the current treasury value."""
         return self.act("conway", "gdonate", self.gw[0], [], donation=1_000_000, deposit=1_000_000,
                         treasury=self.treasury(), fee=500_000)
+
+    def start_extended(self, full=True):
+        """Run the extended governance scenarios (govextra.py) in a thread of their own. `full` also
+        changes the base governance rounds (competing hard forks, pools left to their default votes, the
+        committee election); the light set only adds transactions and leaves the base rounds alone."""
+        from . import govextra
+        if self.ext is None:
+            self.ext = govextra.Extended(self, full)
+
+            def body():
+                while not self.stop.is_set():
+                    try:
+                        self.ext.step()
+                    except Exception as e:  # a scenario problem must not stop the run
+                        self.log({"extendedFailed": repr(e)})
+                    time.sleep(1.5)
+            self.ext_thread = threading.Thread(target=body, daemon=True)
+            self.ext_thread.start()
 
     FEATURES = {"shelley": "shelley_features", "allegra": "allegra_features", "mary": "mary_features",
                 "alonzo": "alonzo_features", "babbage": "babbage_features"}

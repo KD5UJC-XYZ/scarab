@@ -3,6 +3,23 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is pre-1.0 research
 software; versions mark milestones, not stability. Commit hashes refer to this repository's history.
 
+## [Unreleased]
+
+### Ledger
+- Protocol version 11: a pool registration may not take a VRF key hash another pool holds or has
+  scheduled by a re-registration (`VRFKeyHashAlreadyRegistered`, `hardforkConwayDisallowDuplicatedVRFKeys`).
+- The mempool refuses votes of unelected committee members before protocol version 11, as the
+  reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
+
+### Devnet
+- `soak --governance-extended` (`govload --extended`, `scripts/devnet/govextra.py`): pool reward accounts
+  with default votes, committee election with a term limit, a member that expires and `committeeMinSize`,
+  a Plutus V3 script as stake credential, DRep and reward account, and the protocol-11 refusals (disjoint
+  reference inputs, unelected committee voters, taken VRF key hashes) checked against the reference
+  node's predicate failures (roadmap B2 to B5). `e2e` runs a light subset in its Conway epochs.
+- Refused transactions are kept and replayed through the Scala rules (`DevnetRefusedTxSuite`,
+  `fixtures/devnet`).
+
 ## [0.1.0] - 2026-10-11 - research preview
 
 The uninterrupted Preview genesis-to-tip sync ran on commit 5cfdefd (4,748,226 blocks in 3h36m42s,

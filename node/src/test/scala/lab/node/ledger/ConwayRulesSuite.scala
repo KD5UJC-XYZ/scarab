@@ -254,6 +254,68 @@ class ConwayRulesSuite extends FunSuite:
     )
   }
 
+  test("Plutus V3: a reference input that is also an input is refused from protocol version 11") {
+    val plutus = Script.plutus(ScriptKind.PlutusV3, Bytes(Vector.fill(10)(7)))
+    val scriptAddress =
+      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+    val locked = TxOut(scriptAddress, Value.coin(50 * ada))
+      .copy(datum = Datum.Inline(Bytes(Vector(0x01))))
+    val collateralIn = txIn(2)
+    val lockedIn = txIn(3)
+    val other = txIn(4)
+    val base = withUtxo(
+      conway,
+      Vector(
+        collateralIn -> out(alice.address(), 100 * ada),
+        lockedIn -> locked,
+        other -> out(alice.address(), 5 * ada)
+      )
+    )
+    val units = ExUnits(1000, 1000000)
+    val wits = Witnesses(
+      Vector.empty,
+      scripts = Vector(plutus),
+      redeemers = Vector(Redeemer(0, 0, Bytes(Vector(0x01)), units)),
+      redeemersRaw = Some(
+        Bytes(
+          Vector(0xa1, 0x82, 0x00, 0x00, 0x82, 0x01, 0x82, 0x19, 0x03, 0xe8, 0x1a, 0x00, 0x0f, 0x42,
+            0x40).map(_.toByte)
+        )
+      )
+    )
+    val fee = BigInt(100 + 100) + (base.params.priceMem * Rational(1000) +
+      base.params.priceSteps * Rational(1000000)).ceil
+    def bodyWith(hash: Option[Bytes], refs: Vector[TxIn]) =
+      body(
+        "v3-refs",
+        Vector(lockedIn),
+        Vector(out(bob.address(), 50 * ada - fee)),
+        fee,
+        collateral = Vector(collateralIn),
+        scriptDataHash = hash,
+        referenceInputs = refs
+      )
+    val hash = ScriptIntegrity.hash(
+      tx(bodyWith(None, Vector.empty), Vector(alice), wits),
+      base.params,
+      Set(ScriptKind.PlutusV3)
+    )
+    def run(protocol: Int, refs: Vector[TxIn]) =
+      rule(
+        TxRules(
+          base.copy(params = base.params.copy(protocolMajor = protocol)),
+          tx(bodyWith(hash, refs), Vector(alice), wits),
+          env.copy(evaluator = scripted(true))
+        )
+      )
+    // the input is also a reference input: refused by the UTXO rule up to 10, by the V3 script context at 11
+    assertEquals(run(10, Vector(lockedIn)), "BabbageNonDisjointRefInputs")
+    assertEquals(run(11, Vector(lockedIn)), "CollectErrors")
+    // disjoint reference inputs are fine at both
+    assertEquals(run(10, Vector(other)), "accepted")
+    assertEquals(run(11, Vector(other)), "accepted")
+  }
+
   test(
     "withdrawals from a script reward account need the script, and rewards are drained in full"
   ) {

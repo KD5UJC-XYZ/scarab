@@ -6,7 +6,7 @@ import lab.Blake2b
 import lab.cbor.{Bytes, Cbor, Value}
 import lab.network.Era
 import lab.node.{Block, EpochGeometry}
-import lab.node.ledger.{LedgerFailure, LedgerGlobals, LedgerState, Tx, TxRules}
+import lab.node.ledger.{ConwayRules, LedgerFailure, LedgerGlobals, LedgerState, Tx, TxRules}
 
 /** Why a transaction is not (or no longer) in the mempool. */
 enum Rejection:
@@ -78,6 +78,21 @@ final case class MempoolState(
       (id, tx) = parsed
       _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
       _ <- Either.cond(raw.size <= free, (), Rejection.Full(raw.size, free))
+      // The reference node's mempool, and only the mempool, refuses votes of unelected committee members
+      // before protocol version 11 (cardano-ledger `Rules/Mempool.hs`); from 11 the GOV rule does.
+      _ <- Either.cond(
+        current.params.protocolMajor < 9 || current.params.protocolMajor > 10 ||
+          ConwayRules.unelectedCommitteeVoters(current, tx.body).isEmpty,
+        (),
+        Rejection.Ledger(
+          LedgerFailure.Invalid(
+            id,
+            "ConwayMempoolFailure",
+            "Unelected committee members are not allowed to cast votes: " +
+              ConwayRules.unelectedCommitteeVoters(current, tx.body).mkString(",")
+          )
+        )
+      )
       next <- TxRules(current, tx, env.txEnv(tipSlot, base, entries.size))
         .leftMap(Rejection.Ledger(_))
     yield

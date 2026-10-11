@@ -685,3 +685,176 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       true
     }
   }
+
+  // -------------------------------------------------------------------------------------------
+  // Protocol-version 11 rules (roadmap B5). The same transactions are refused by the reference node
+  // in the devnet scenarios (scripts/devnet/govextra.py); the expected rule names are the ones its
+  // predicate failures carry.
+
+  private def rejection(r: Either[LedgerFailure, State]): String = r match
+    case Left(LedgerFailure.Invalid(_, rule, _)) => rule
+    case Left(other)                             => other.message
+    case Right(_)                                => "accepted"
+
+  test(
+    "committee hot keys: authorised but unelected keys may vote before protocol version 11 only"
+  ) {
+    def scenario(pv: Int) =
+      val w = World(pv)
+      val member = w.committeeCold(0)
+      val hot = w.committeeHot(0)
+      val update =
+        GovAction.UpdateCommittee(None, Set.empty, Map(member.credential -> BigInt(60)), half)
+      val s1 = ok(
+        submit(
+          w,
+          w.initial,
+          Vector.empty,
+          proposals = Vector(proposal(w, update), proposal(w, GovAction.Info)),
+          deposits = 2000 * ada
+        )
+      )
+      val updateId = idOf(s1, 0)
+      val infoId = idOf(s1, 1)
+      // the proposed member may authorise a hot key while the update is pending
+      val s2 = ok(
+        submit(
+          w,
+          s1,
+          Vector(member),
+          certs = Vector(Certificate.CommitteeAuthorize(member.credential, hot.credential))
+        )
+      )
+      def vote(st: State, id: GovActionId) =
+        submit(
+          w,
+          st,
+          Vector(hot),
+          votes = Vector((Voter.CommitteeHot(hot.credential), Vector(id -> Vote.Yes)))
+        )
+      val early = rejection(vote(s2, infoId))
+      // elect the member, then the same vote is accepted at every version
+      val s3 = ok(
+        submit(
+          w,
+          s2,
+          w.dreps ++ w.pools,
+          votes = w.dreps.map(drepVote(_, updateId, Vote.Yes)) ++ w.pools.map(
+            poolVote(_, updateId, Vote.Yes)
+          )
+        )
+      )
+      val elected = boundary(boundary(s3))
+      assertEquals(elected.s.gov.committee.map(_.members.keySet), Some(Set(member.credential)))
+      // the epoch boundary dropped the authorisation of a member who was not yet elected: authorise again
+      assertEquals(elected.s.committeeState, Map.empty[Credential, CommitteeAuth])
+      val again = ok(
+        submit(
+          w,
+          elected,
+          Vector(member),
+          certs = Vector(Certificate.CommitteeAuthorize(member.credential, hot.credential))
+        )
+      )
+      val s4 = ok(
+        submit(
+          w,
+          again,
+          Vector.empty,
+          proposals = Vector(proposal(w, GovAction.Info)),
+          deposits = 1000 * ada
+        )
+      )
+      (early, rejection(vote(s4, idOf(s4, 0))))
+    assertEquals(scenario(10), ("accepted", "accepted"))
+    assertEquals(scenario(11), ("UnelectedCommitteeVoters", "accepted"))
+  }
+
+  test("committee hot keys: with no committee every hot key is unelected at protocol version 11") {
+    val w = World(11)
+    val member = w.committeeCold(0)
+    val hot = w.committeeHot(0)
+    val update =
+      GovAction.UpdateCommittee(None, Set.empty, Map(member.credential -> BigInt(60)), half)
+    val s1 = ok(
+      submit(
+        w,
+        w.initial,
+        Vector.empty,
+        proposals = Vector(proposal(w, update), proposal(w, GovAction.Info)),
+        deposits = 2000 * ada
+      )
+    )
+    val s2 = ok(
+      submit(
+        w,
+        s1,
+        Vector(member),
+        certs = Vector(Certificate.CommitteeAuthorize(member.credential, hot.credential))
+      )
+    )
+    val refused = submit(
+      w,
+      s2,
+      Vector(hot),
+      votes = Vector((Voter.CommitteeHot(hot.credential), Vector(idOf(s1, 1) -> Vote.Yes)))
+    )
+    assertEquals(rejection(refused), "UnelectedCommitteeVoters")
+  }
+
+  test("protocol version 11: a pool registration may not take a VRF key hash another pool holds") {
+    def register(w: World, st: State, op: Key, vrf: Bytes, fresh: Boolean) =
+      val params = w.poolParams(op).copy(vrfKeyHash = vrf)
+      submit(
+        w,
+        st,
+        Vector(op, w.poolOwner),
+        certs = Vector(Certificate.RegisterPool(params)),
+        deposits = if fresh then w.params.poolDeposit else 0
+      )
+    def vrfOf(i: Int, w: World) = w.poolParams(w.pools(i)).vrfKeyHash
+    def fresh(n: Int) = Blake2b.hash256.hash(Bytes(Vector(0x56, n.toByte)))
+    val f1 = fresh(1)
+    val f2 = fresh(2)
+    val w = World(11)
+    val a = key()
+    val b = key()
+    val s0 = w.initial
+    // an active pool's key hash is taken, a free one is not
+    assertEquals(
+      rejection(register(w, s0, a, vrfOf(0, w), fresh = true)),
+      "VRFKeyHashAlreadyRegistered"
+    )
+    val s1 = ok(register(w, s0, a, f1, fresh = true))
+    assertEquals(rejection(register(w, s1, b, f1, fresh = true)), "VRFKeyHashAlreadyRegistered")
+    // a pool keeps its own key hash when it re-registers, and may not take another pool's
+    val s2 = ok(register(w, s1, a, f1, fresh = false))
+    assertEquals(
+      rejection(register(w, s2, a, vrfOf(1, w), fresh = false)),
+      "VRFKeyHashAlreadyRegistered"
+    )
+    // a key hash scheduled by a re-registration is taken too, until the pool goes back to its own
+    val s3 = ok(register(w, s2, a, f2, fresh = false))
+    assertEquals(rejection(register(w, s3, b, f2, fresh = true)), "VRFKeyHashAlreadyRegistered")
+    val s4 = ok(register(w, s3, a, f1, fresh = false))
+    val s5 = ok(register(w, s4, b, f2, fresh = true))
+    assertEquals(rejection(register(w, s5, b, f1, fresh = false)), "VRFKeyHashAlreadyRegistered")
+    // the scheduled change takes effect at the boundary; the other pool keeps its key hash
+    assertEquals(boundary(s5).s.pools(a.hash).params.vrfKeyHash, f1)
+  }
+
+  test("before protocol version 11 two pools may share a VRF key hash") {
+    val w = World(10)
+    val a = key()
+    val params = w.poolParams(a).copy(vrfKeyHash = w.poolParams(w.pools(0)).vrfKeyHash)
+    val s = ok(
+      submit(
+        w,
+        w.initial,
+        Vector(a, w.poolOwner),
+        certs = Vector(Certificate.RegisterPool(params)),
+        deposits = w.params.poolDeposit
+      )
+    )
+    assertEquals(s.s.pools.size, 3)
+  }
