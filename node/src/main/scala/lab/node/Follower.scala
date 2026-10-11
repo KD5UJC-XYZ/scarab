@@ -43,6 +43,20 @@ enum FollowerEvent:
       unchecked: Long
   )
 
+  /** The full ledger entered `epoch`: sizes, pots, protocol version and the running count of
+    * transactions whose phase-2 (Plutus) result was trusted rather than evaluated.
+    */
+  case LedgerEpoch(
+      epoch: BigInt,
+      utxo: Int,
+      accounts: Int,
+      pools: Int,
+      treasury: BigInt,
+      reserves: BigInt,
+      protocolVersion: (BigInt, BigInt),
+      unverified: lab.node.ledger.Unverified
+  )
+
 trait FollowerEvents[F[_]]:
   def emit(event: FollowerEvent): F[Unit]
 

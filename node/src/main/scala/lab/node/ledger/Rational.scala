@@ -21,6 +21,9 @@ final class Rational private (val numerator: BigInt, val denominator: BigInt):
   def >(o: Rational): Boolean = o < this
   def isZero: Boolean = numerator == 0
 
+  /** Round towards positive infinity, as Haskell `ceiling`. */
+  def ceil: BigInt = -Rational(-numerator, denominator).floor
+
   /** Round towards negative infinity, as Haskell `floor`. */
   def floor: BigInt =
     val (q, r) = numerator /% denominator

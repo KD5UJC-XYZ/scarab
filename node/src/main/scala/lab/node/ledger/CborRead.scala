@@ -45,14 +45,16 @@ private[ledger] object CborRead:
     case Value.Map(kvs) => Right(kvs)
     case _              => Left(s"$what: expected map")
 
-  /** Conway sets: an array, optionally wrapped in tag 258. Duplicates are rejected. */
+  /** A list that may be wrapped in tag 258 (Conway sets); elements are kept as they are. */
+  def list(n: Node, what: String): Result[Vector[Node]] = n.value match
+    case Value.Tag(t, inner) if t == 258 => array(inner, what)
+    case _                               => array(n, what)
+
+  /** Sets decode as arrays, optionally wrapped in tag 258. Before Conway an encoding may repeat an
+    * element; the set keeps the first occurrence.
+    */
   def set(n: Node, what: String): Result[Vector[Node]] =
-    val items = n.value match
-      case Value.Tag(t, inner) if t == 258 => array(inner, what)
-      case _                               => array(n, what)
-    items.flatMap(xs =>
-      Either.cond(xs.map(_.original).distinct.size == xs.size, xs, s"$what: duplicate set element")
-    )
+    list(n, what).map(xs => xs.distinctBy(_.original))
 
   /** Map with unsigned-integer keys, rejecting duplicate keys. */
   def fields(n: Node, what: String): Result[Map[Int, Node]] =

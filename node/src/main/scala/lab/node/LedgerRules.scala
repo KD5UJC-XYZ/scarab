@@ -74,14 +74,15 @@ final case class NodeState(
 final class NodeRules[F[_]: Applicative](
     config: PraosConfig,
     globals: LedgerGlobals,
-    byron: Option[ByronRules.Config] = None
+    byron: Option[ByronRules.Config] = None,
+    bootstrap: Boolean = false
 )(using
     Raise[F, ValidationError]
 ) extends BlockRules[F, NodeState]:
 
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
     NodeRules
-      .applyBlock(state, header, raw, config, globals, byron)
+      .applyBlock(state, header, raw, config, globals, byron, bootstrap)
       .fold(
         (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
         _.pure[F]
@@ -103,7 +104,21 @@ object NodeRules:
     val epoch = after.boot.completed
       .filter(c => !before.boot.completed.contains(c))
       .map(c => FollowerEvent.EpochValidated(c.epoch, c.era, c.threshold, c.overlay, c.unchecked))
-    era.toList ++ byron.toList ++ epoch.toList
+    val ledger = Option
+      .when(after.ledger.epoch != before.ledger.epoch) {
+        val l = after.ledger
+        FollowerEvent.LedgerEpoch(
+          l.epoch,
+          l.utxo.size,
+          l.accounts.size,
+          l.pools.size,
+          l.treasury,
+          l.reserves,
+          l.params.version,
+          l.unverified
+        )
+      }
+    era.toList ++ byron.toList ++ epoch.toList ++ ledger.toList
 
   /** The failure side carries the rule family and the reason. */
   def applyBlock(
@@ -112,13 +127,14 @@ object NodeRules:
       raw: Bytes,
       config: PraosConfig,
       globals: LedgerGlobals,
-      byron: Option[ByronRules.Config] = None
+      byron: Option[ByronRules.Config] = None,
+      bootstrap: Boolean = false
   ): Either[(String, String), NodeState] =
     header match
       case h: Header.Byron => applyByron(state, h, raw, byron)
-      case h: Header.Shelley if h.era != Era.Conway || state.boot.active =>
-        applyBootstrap(state, h, raw, config)
-      case _ => applyConway(state, header, raw, config, globals)
+      case h: Header.Shelley if bootstrap => applyBootstrap(state, h, raw, config)
+      case h: Header.Shelley              => applyFull(state, h, raw, config, globals)
+      case h => Left("structure" -> s"${h.era} blocks are not supported")
 
   /** Byron: linkage, slot order, leader delegation and signature (see [[ByronRules]]). */
   private def applyByron(
@@ -243,25 +259,31 @@ object NodeRules:
         )
       )
 
-  private def applyConway(
+
+  /** Full validation for every Shelley-based era: tick the ledger to the block's slot, validate the
+    * header against the ticked pool distribution (so the leader threshold is always checked outside
+    * the overlay schedule), then apply every transaction.
+    */
+  private def applyFull(
       state: NodeState,
-      header: Header,
+      announced: Header.Shelley,
       raw: Bytes,
       config: PraosConfig,
       globals: LedgerGlobals
   ): Either[(String, String), NodeState] =
     val geometry = config.geometry
-    val epoch = geometry.epochOf(header.slot)
+    val epoch = geometry.epochOf(announced.slot)
+    val boot = state.boot
+    val nonceWindow =
+      if announced.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
+      else geometry.stabilityWindow
     for
-      announced <- header match
-        case h: Header.Shelley => Right(h)
-        case h                 => Left("structure" -> s"${h.era} blocks are not supported")
       decoded <- Block.decode(raw).leftMap(e => "decode" -> e.message)
       block <- decoded match
-        case b: Block.Shelley if b.era == Era.Conway => Right(b)
-        case b => Left("structure" -> s"${b.era} blocks are not supported by the Conway rules")
+        case b: Block.Shelley if b.era == announced.era => Right(b)
+        case b => Left("structure" -> s"${b.era} block announced as ${announced.era}")
       _ <- Either.cond(
-        block.header.hash == header.hash,
+        block.header.hash == announced.hash,
         (),
         "structure" -> "block header differs from announced header"
       )
@@ -275,8 +297,20 @@ object NodeRules:
         (),
         "structure" -> s"block epoch $epoch precedes ledger epoch"
       )
-      ticked = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
+      crossed = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
         Epoch.boundary(s, e, globals)
+      )
+      _ <- Either.cond(
+        crossed.epoch == state.ledger.epoch || crossed.params.protocolMajor >= 9 ||
+          crossed.total == globals.maxSupply,
+        (),
+        "ledger" -> s"supply invariant broken entering epoch $epoch: ${crossed.total} != ${globals.maxSupply}"
+      )
+      ticked = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
+      _ <- Either.cond(
+        announced.raw.size <= ticked.params.maxBlockHeaderSize || ticked.params.protocolMajor >= 9,
+        (),
+        "structure" -> s"header size ${announced.raw.size} exceeds ${ticked.params.maxBlockHeaderSize}"
       )
       _ <- Either.cond(
         block.bodySize <= ticked.params.maxBlockBodySize,
@@ -287,21 +321,66 @@ object NodeRules:
         ticked.poolDistribution.poolStake,
         ticked.poolDistribution.pools.map { case (id, p) => id -> p.vrfKeyHash }
       )
-      praos <- Praos
-        .update(Praos.tick(state.praos, epoch), header, pools, config)
-        .leftMap("praos" -> _)
-      env = TxRules.Env(header.slot, epoch, globals.network)
-      applied <- block.transactions.foldLeftM(ticked) { (s, t) =>
-        Tx.fromBlock(t)
+      view = LedgerView(
+        ticked.params.effectiveD,
+        ticked.params.extraEntropy,
+        ticked.genDelegs,
+        StakeView.Known(pools)
+      )
+      validated <-
+        if announced.era.usesTPraos then
+          TPraos
+            .update(
+              Praos.tick(state.praos, epoch, ticked.params.extraEntropy),
+              announced,
+              view,
+              config
+            )
+            .map(v => v.state -> v.leader)
+            .leftMap("tpraos" -> _.message)
+        else
+          Praos
+            .validate(
+              Praos.tick(state.praos, epoch),
+              announced,
+              StakeView.Known(pools),
+              config,
+              nonceWindow
+            )
+            .leftMap("praos" -> _)
+      (praos, leader) = validated
+      applied <- block.transactions.zipWithIndex.foldLeftM(ticked) { case (s, (t, i)) =>
+        val env = TxRules.Env(
+          announced.slot,
+          epoch,
+          globals.network,
+          firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
+          stabilityWindow = geometry.stabilityWindow,
+          txIndex = i,
+          updateQuorum = globals.updateQuorum
+        )
+        Tx.fromBlock(t, block.era)
           .leftMap(r => "decode" -> s"tx ${t.id.hex.take(16)}: $r")
           .flatMap(tx => TxRules(s, tx, env).leftMap(f => "ledger" -> f.message))
       }
     yield
       val issuer = Blake2b.hash224.hash(announced.issuerVkey)
+      // Blocks made in overlay slots are not counted towards pool performance.
+      val counted = leader match
+        case LeaderCheck.Overlay(_) => applied
+        case _ =>
+          applied.copy(blocksCurrent =
+            applied.blocksCurrent.updatedWith(issuer)(n => Some(n.getOrElse(BigInt(0)) + 1))
+          )
+      val previous = boot.stats.filter(_.epoch == epoch)
+      val finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
       state.copy(
         praos = praos,
-        ledger = applied.copy(blocksCurrent =
-          applied.blocksCurrent.updatedWith(issuer)(n => Some(n.getOrElse(BigInt(0)) + 1))
-        ),
-        boot = state.boot.copy(era = Some(Era.Conway))
+        byron = state.byron.finish,
+        ledger = counted,
+        boot = boot.copy(
+          era = Some(announced.era),
+          stats = Some(previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)),
+          completed = finished
+        )
       )

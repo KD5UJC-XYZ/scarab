@@ -64,12 +64,7 @@ object NodeSetup:
         required("conway-genesis.json").flatMap(json("conway-genesis.json", _)),
         json("byron-genesis.json", byronBytes)
       ).mapN(GenesisState.Files.apply)
-      globals = LedgerGlobals(
-        genesis.maxLovelaceSupply,
-        genesis.geometry.epochLength,
-        Rational.fromDecimal(genesis.geometry.activeSlotsCoeff),
-        network = if genesis.networkMagic == 764824073L then 1 else 0
-      )
+      globals <- GenesisState.globals(files, genesis)
       initial <- GenesisState.initial(files, globals)
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction

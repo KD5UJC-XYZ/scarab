@@ -32,14 +32,39 @@ object Credential:
       }
     }
 
+/** Certificate pointer of a pointer address: slot, transaction index, certificate index. */
+final case class Ptr(slot: BigInt, txIx: BigInt, certIx: BigInt)
+
+object Ptr:
+  given Ordering[Ptr] = Ordering.by(p => (p.slot, p.txIx, p.certIx))
+
+  /** Three variable-length naturals (7 bits per byte, high bit set on all but the last). */
+  def decode(bytes: Vector[Byte]): Either[String, Ptr] =
+    def nat(rest: Vector[Byte]): Either[String, (BigInt, Vector[Byte])] =
+      val (continued, tail) = rest.span(b => (b & 0x80) != 0)
+      tail.headOption.toRight("pointer address: truncated natural").map { last =>
+        val digits = (continued :+ last).map(b => BigInt(b & 0x7f))
+        digits.foldLeft(BigInt(0))((acc, d) => (acc << 7) + d) -> tail.tail
+      }
+    for
+      a <- nat(bytes)
+      b <- nat(a._2)
+      c <- nat(b._2)
+      _ <- Either.cond(c._2.isEmpty, (), "pointer address: trailing bytes")
+    yield Ptr(a._1, b._1, c._1)
+
 /** A ledger address with its original bytes. Only the parts the ledger acts on are decoded. */
 final case class Address(raw: Bytes, kind: Address.Kind)
 
 object Address:
   enum Kind:
-    /** Shelley payment address; `stake` is the delegating credential of a base address. */
-    case Shelley(network: Int, payment: Credential, stake: Option[Credential], pointer: Boolean)
-    case Byron
+    /** Shelley payment address; `stake` is the delegating credential of a base address and
+      * `pointer` the certificate pointer of a pointer address.
+      */
+    case Shelley(network: Int, payment: Credential, stake: Option[Credential], pointer: Option[Ptr])
+
+    /** Byron bootstrap address; `root` is the 28-byte address root (empty if it did not parse). */
+    case Byron(root: Bytes)
 
   def decode(raw: Bytes): Either[String, Address] =
     if raw.size == 0 then Left("empty address")
@@ -67,15 +92,33 @@ object Address:
               network,
               p,
               Some(if (kind & 2) == 0 then Credential.Key(s) else Credential.Script(s)),
-              false
+              None
             )
           )
-        case 4 | 5 => payment.map(p => Address(raw, Kind.Shelley(network, p, None, pointer = true)))
+        case 4 | 5 =>
+          for
+            p <- payment
+            ptr <- Ptr.decode(raw.value.drop(29))
+          yield Address(raw, Kind.Shelley(network, p, None, Some(ptr)))
         case 6 | 7 =>
           Either.cond(raw.size == 29, (), "enterprise address length") *>
-            payment.map(p => Address(raw, Kind.Shelley(network, p, None, false)))
-        case 8 => Right(Address(raw, Kind.Byron))
+            payment.map(p => Address(raw, Kind.Shelley(network, p, None, None)))
+        case 8 => Right(Address(raw, Kind.Byron(byronRoot(raw))))
         case _ => Left(s"address header $header is not a payment address")
+
+  /** `[#6.24(bytes .cbor [root, attributes, type]), crc32]`: the root, or empty if malformed. */
+  private def byronRoot(raw: Bytes): Bytes =
+    val parsed = for
+      outer <- Cbor.decode(raw)
+      parts <- CborRead.arrayN(outer, 2, "byron address")
+      payload <- parts(0).value match
+        case lab.cbor.Value.Tag(t, inner) if t == 24 => CborRead.bytes(inner, "byron payload")
+        case _                                       => Left("byron payload")
+      body <- Cbor.decode(payload)
+      fields <- CborRead.array(body, "byron address payload")
+      root <- fields.headOption.toRight("empty").flatMap(CborRead.bytesN(_, 28, "byron root"))
+    yield root
+    parsed.getOrElse(Bytes.empty)
 
   /** Byron bootstrap address root for a genesis non-AVVM balance is the address itself. */
   def byronGenesisTxId(raw: Bytes): Bytes = Blake2b.hash256.hash(raw)
@@ -147,28 +190,55 @@ object Value:
               assetName <- CborRead.bytes(name, s"$what asset name")
               _ <- Either.cond(assetName.size <= 32, (), s"$what: asset name too long")
               quantity <- if signed then CborRead.int(q, what) else CborRead.uint(q, what)
-              _ <- Either.cond(quantity != 0, (), s"$what: zero quantity")
             yield assetName -> quantity
           }
-        yield policy -> quantities.toMap
-      }.map(_.toMap))
+        yield policy -> quantities.filter(_._2 != 0).toMap
+      }.map(_.filter(_._2.nonEmpty).toMap))
+
+/** The datum of an output. */
+enum Datum:
+  case NoDatum
+  case Hash(hash: Bytes)
+
+  /** Inline datum: the bytes of the plutus data (the content of the `#6.24` wrapper). */
+  case Inline(data: Bytes)
 
 /** A transaction output with its original encoding. */
 final case class TxOut(
     raw: Bytes,
     address: Address,
     value: Value,
-    hasDatum: Boolean,
-    hasScriptRef: Boolean
-)
+    datum: Datum,
+    scriptRef: Option[Script],
+    /** Size in bytes of the encoded value (limited by `maxValueSize`). */
+    valueSize: Int
+):
+  def hasDatum: Boolean = datum != Datum.NoDatum
+  def hasScriptRef: Boolean = scriptRef.isDefined
+
+  /** Size of the output as the ledger serialises it: outputs with neither inline datum nor
+    * reference script use the legacy array form, shorter by two bytes than the equivalent map.
+    */
+  def ledgerSize: Int =
+    val head = if raw.size == 0 then 0 else raw.value.head & 0xff
+    datum match
+      case Datum.NoDatum if scriptRef.isEmpty && head == 0xa2 => raw.size - 2
+      case Datum.Hash(_) if scriptRef.isEmpty && head == 0xa3 => raw.size - 2
+      case _                                                  => raw.size
 
 object TxOut:
+  def apply(address: Address, value: Value): TxOut =
+    TxOut(Bytes.empty, address, value, Datum.NoDatum, None, 0)
+
   def decode(n: Node): Either[String, TxOut] = n.value match
     case lab.cbor.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
       for
         a <- CborRead.bytes(xs(0), "output address").flatMap(Address.decode)
         v <- Value.decode(xs(1), "output value")
-      yield TxOut(n.original, a, v, hasDatum = xs.size == 3, hasScriptRef = false)
+        d <-
+          if xs.size == 3 then CborRead.bytesN(xs(2), 32, "datum hash").map(Datum.Hash(_))
+          else Right(Datum.NoDatum)
+      yield TxOut(n.original, a, v, d, None, xs(1).original.size)
     case lab.cbor.Value.Map(_) =>
       for
         f <- CborRead.fields(n, "output")
@@ -177,10 +247,27 @@ object TxOut:
           .toRight("output: missing address")
           .flatMap(CborRead.bytes(_, "output address"))
           .flatMap(Address.decode)
-        v <- f.get(1).toRight("output: missing value").flatMap(Value.decode(_, "output value"))
+        vn <- f.get(1).toRight("output: missing value")
+        v <- Value.decode(vn, "output value")
         _ <- Either.cond(f.keySet.subsetOf(Set(0, 1, 2, 3)), (), "output: unknown field")
-      yield TxOut(n.original, a, v, f.contains(2), f.contains(3))
+        d <- f.get(2).traverse(datumOption)
+        s <- f.get(3).traverse(Script.decodeWrapped)
+      yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
     case _ => Left("output: expected legacy array or map")
+
+  /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
+  private def datumOption(n: Node): Either[String, Datum] =
+    CborRead.arrayN(n, 2, "datum option").flatMap { xs =>
+      CborRead.uint(xs(0), "datum option tag").flatMap {
+        case t if t == 0 => CborRead.bytesN(xs(1), 32, "datum hash").map(Datum.Hash(_))
+        case t if t == 1 =>
+          xs(1).value match
+            case lab.cbor.Value.Tag(g, inner) if g == 24 =>
+              CborRead.bytes(inner, "inline datum").map(Datum.Inline(_))
+            case _ => Left("inline datum: expected tag 24")
+        case t => Left(s"datum option tag $t")
+      }
+    }
 
   def fromBytes(raw: Bytes): Either[String, TxOut] = Cbor.decode(raw).flatMap(decode)
 

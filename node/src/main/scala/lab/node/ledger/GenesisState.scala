@@ -14,11 +14,51 @@ import lab.node.ConfigError
 object GenesisState:
   final case class Files(shelley: Json, alonzo: Json, conway: Json, byron: Json)
 
+  /** Network constants from the genesis files. */
+  def globals(files: Files, genesis: lab.node.ShelleyGenesis): Either[ConfigError, LedgerGlobals] =
+    val c = files.conway.hcursor
+    val conway =
+      (
+        get[BigInt](c, "dRepDeposit"),
+        get[BigInt](c, "dRepActivity"),
+        get[BigInt](c, "govActionDeposit"),
+        get[BigInt](c, "govActionLifetime"),
+        get[BigDecimal](c, "minFeeRefScriptCostPerByte").map(Rational.fromDecimal)
+      ).mapN(ConwayParams.apply).toOption
+    files.shelley.hcursor
+      .downField("updateQuorum")
+      .as[Option[Int]]
+      .leftMap(e => ConfigError(s"updateQuorum: ${e.message}"))
+      .map { quorum =>
+        LedgerGlobals(
+          genesis.maxLovelaceSupply,
+          genesis.geometry.epochLength,
+          Rational.fromDecimal(genesis.geometry.activeSlotsCoeff),
+          network = if genesis.networkMagic == 764824073L then 1 else 0,
+          updateQuorum = quorum.getOrElse(5),
+          stabilityWindow = genesis.geometry.stabilityWindow,
+          startRewards = genesis.geometry.randomnessStabilisationWindow,
+          firstEpoch = genesis.geometry.firstShelleyEpoch,
+          conway = conway
+        )
+      }
+
   def initial(files: Files, globals: LedgerGlobals): Either[ConfigError, LedgerState] =
     val s = files.shelley.hcursor
     val extra = s.downField("extraConfig")
+    val startsInConway = s
+      .downField("protocolParams")
+      .downField("protocolVersion")
+      .downField("major")
+      .as[Int]
+      .exists(_ >= 9)
     for
-      params <- ProtocolParams.fromGenesis(files.shelley, files.alonzo, files.conway)
+      params <- ProtocolParams.fromGenesis(
+        files.shelley,
+        files.alonzo,
+        Option.when(startsInConway)(files.conway)
+      )
+      lite <- LiteLedger.fromGenesis(files.shelley)
       maxSupply <- get[BigInt](s, "maxLovelaceSupply")
       shelleyFunds <- injection[BigInt](s, extra, "initialFunds").flatMap(
         _.toVector.traverse { case (hex, coin) => output(hex, coin) }
@@ -44,7 +84,9 @@ object GenesisState:
       delegations <- stakeCreds.toVector.traverse { case (cred, poolId) =>
         (hex28(cred), hex28(poolId)).tupled.map { case (c, p) => Credential.Key(c) -> p }
       }
-      conwayExtra = files.conway.hcursor.downField("extraConfig")
+      conwayExtra =
+        if startsInConway then files.conway.hcursor.downField("extraConfig")
+        else Json.obj().hcursor.downField("extraConfig")
       drepJson <- conwayExtra
         .downField("initialDReps")
         .downField("data")
@@ -81,7 +123,7 @@ object GenesisState:
       val deposited = accounts.values.map(_.deposit).sum + poolStates.values.map(_.deposit).sum +
         dreps.map(_._2.deposit).sum
       val base = LedgerState(
-        epoch = 0,
+        epoch = globals.firstEpoch,
         params = params,
         utxo = utxo,
         fees = 0,
@@ -98,7 +140,9 @@ object GenesisState:
         blocksCurrent = Map.empty,
         blocksPrevious = Map.empty,
         rewardUpdate = None,
-        poolDistribution = Snapshot.empty
+        poolDistribution = Snapshot.empty,
+        genDelegs = lite.genDelegs,
+        prevParams = None
       )
       // Genesis-injected deposits are recorded per account but not in `deposited` (and not taken
       // from reserves); the first EPOCH rule recomputes `deposited` as the total obligation. Only
@@ -121,13 +165,7 @@ object GenesisState:
   private def outputBytes(raw: Bytes, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
     Address.decode(raw).leftMap(ConfigError(_)).map { address =>
       // Genesis outputs have no transaction encoding; `raw` is only consulted for new outputs.
-      TxIn(Blake2b.hash256.hash(raw), 0) -> TxOut(
-        Bytes.empty,
-        address,
-        Value.coin(coin),
-        false,
-        false
-      )
+      TxIn(Blake2b.hash256.hash(raw), 0) -> TxOut(address, Value.coin(coin))
     }
 
   private def pool(id: String, j: Json): Either[ConfigError, (Bytes, PoolParams)] =

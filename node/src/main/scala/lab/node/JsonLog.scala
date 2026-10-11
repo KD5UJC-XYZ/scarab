@@ -90,5 +90,21 @@ object JsonLog:
           "overlay" -> overlay.asJson,
           "leaderUnchecked" -> unchecked.asJson
         )
+      case FollowerEvent.LedgerEpoch(epoch, utxo, accounts, pools, treasury, reserves, pv, u) =>
+        line(
+          "ledgerEpoch",
+          "epoch" -> epoch.asJson,
+          "utxo" -> utxo.asJson,
+          "accounts" -> accounts.asJson,
+          "pools" -> pools.asJson,
+          "treasury" -> treasury.asJson,
+          "reserves" -> reserves.asJson,
+          "protocolVersion" -> s"${pv._1}.${pv._2}".asJson,
+          "phase2NotEvaluated" -> Json.obj(
+            "validTrusted" -> u.plutusValid.asJson,
+            "invalidTrusted" -> u.plutusInvalid.asJson
+          ),
+          "scriptIntegrityHashUnchecked" -> u.integrityUnchecked.asJson
+        )
       case FollowerEvent.Reconnecting(reason, attempt) =>
         line("reconnecting", "reason" -> reason.message.asJson, "attempt" -> attempt.asJson)

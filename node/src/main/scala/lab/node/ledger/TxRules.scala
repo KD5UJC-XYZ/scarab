@@ -23,9 +23,22 @@ enum LedgerFailure:
 object TxRules:
   type Result[A] = Either[LedgerFailure, A]
 
-  final case class Env(slot: BigInt, epoch: BigInt, network: Int)
+  /** Block-level context of a transaction. */
+  final case class Env(
+      slot: BigInt,
+      epoch: BigInt,
+      network: Int,
+      firstSlotNextEpoch: BigInt = 0,
+      stabilityWindow: BigInt = 0,
+      txIndex: Int = 0,
+      updateQuorum: Int = 5
+  )
 
   def apply(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =
+    if state.params.protocolMajor >= 9 then conway(state, tx, env)
+    else PreConwayRules(state, tx, env)
+
+  private def conway(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =
     val body = tx.body
     val id = body.id
     def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
@@ -37,8 +50,11 @@ object TxRules:
 
     for
       _ <- unsupported(tx.isValid, "phase-2 invalid transactions")
-      _ <- unsupported(!tx.witnesses.hasScripts && !body.hasScriptData, "scripts")
-      _ <- unsupported(!tx.witnesses.hasBootstrap, "bootstrap witnesses")
+      _ <- unsupported(
+        tx.witnesses.scripts.isEmpty && tx.witnesses.redeemers.isEmpty && !body.hasScriptData,
+        "scripts"
+      )
+      _ <- unsupported(tx.witnesses.bootstrap.isEmpty, "bootstrap witnesses")
       _ <- unsupported(!body.hasGovernance, "governance procedures")
       _ <- unsupported(body.donation == 0, "treasury donations")
       _ <- unsupported(body.mint.isEmpty, "minting")
@@ -68,7 +84,7 @@ object TxRules:
           check(
             out.address.kind match
               case Address.Kind.Shelley(n, _, _, _) => n == env.network
-              case Address.Kind.Byron               => true
+              case Address.Kind.Byron(_)            => true
             ,
             "WrongNetwork",
             out.address.raw.hex
@@ -128,7 +144,7 @@ object TxRules:
           case Address.Kind.Shelley(_, Credential.Key(h), _, _) => Right(h)
           case Address.Kind.Shelley(_, Credential.Script(_), _, _) =>
             Left(LedgerFailure.Unsupported(id, "script inputs"))
-          case Address.Kind.Byron => Left(LedgerFailure.Unsupported(id, "Byron inputs"))
+          case Address.Kind.Byron(_) => Left(LedgerFailure.Unsupported(id, "Byron inputs"))
       )
       required = spendKeys.toSet ++ withdrawalKeys ++ afterCerts.witnesses ++ body.requiredSigners
       provided <- tx.witnesses.vkeys.traverse { case (vkey, signature) =>
@@ -311,5 +327,7 @@ private[ledger] object Certs:
           ),
           witnesses = acc.witnesses + w
         )
+      case Certificate.GenesisDelegate(_, _, _) | Certificate.MoveRewards(_, _) =>
+        Left(LedgerFailure.Unsupported(id, "pre-Conway certificates"))
       case Certificate.CommitteeAuthorize(_, _) | Certificate.CommitteeResign(_) =>
         Left(LedgerFailure.Unsupported(id, "committee certificates"))
