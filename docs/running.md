@@ -79,9 +79,21 @@ java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow 
   --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview-db"
 ```
 
-The Preview genesis files (Byron, Shelley, Alonzo, Conway) come from the official Cardano network
-configuration and are not all committed here; `fixtures/preview/genesis/` holds only
-`shelley-genesis.json` for the tests. Preview starts in Alonzo at epoch 0. The recorded
+The Preview genesis files (Byron, Shelley, Alonzo, Conway) and `config.json` come from the official
+Cardano network configuration and are not all committed here (`fixtures/preview/genesis/` holds only
+`shelley-genesis.json` for the tests). Fetch them into the config directory, in a container like
+everything else:
+
+```sh
+mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config"
+docker run --rm --user "$(id -u):$(id -g)" -w /out \
+  -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  'for f in config.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+     curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preview/$f"; done'
+```
+
+Only `ByronGenesisHash` from `config.json` is checked against its file today; the Shelley, Alonzo
+and Conway hashes are not yet verified (roadmap J1). Preview starts in Alonzo at epoch 0. The recorded
 genesis-to-tip numbers are in [performance.md](performance.md). The run needs about 14 GB of disk
 for the immutable blocks, RocksDB and checkpoints, and about 2.2 GB RSS with `-Xmx3g`.
 

@@ -90,7 +90,7 @@ How each area stands today is in [compatibility.md](compatibility.md).
 
 ## J. Operational parity (P2)
 
-- **J1** Config and topology: read the Haskell node's `config.json` and `topology.json` (P2P) formats.
+- **J1** Config and topology: read the Haskell node's `config.json` and `topology.json` (P2P) formats, including verifying the Shelley, Alonzo and Conway genesis hashes it lists (only Byron's is checked today).
 - **J2** CLI parity: flags compatible with `cardano-node run`.
 - **J3** Observability: Prometheus metrics, structured tracing, and EKG-equivalent counters.
 
