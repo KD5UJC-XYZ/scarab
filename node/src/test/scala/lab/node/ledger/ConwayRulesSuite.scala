@@ -305,7 +305,8 @@ class ConwayRulesSuite extends FunSuite:
         TxRules(
           base.copy(params = base.params.copy(protocolMajor = protocol)),
           tx(bodyWith(hash, refs), Vector(alice), wits),
-          env.copy(evaluator = scripted(true))
+          // the placeholder script is not well-formed UPLC; this test is about reference inputs
+          env.copy(evaluator = scripted(true), decoder = lab.node.plutus.ScriptDecoder.lenient)
         )
       )
     // the input is also a reference input: refused by the UTXO rule up to 10, by the V3 script context at 11
