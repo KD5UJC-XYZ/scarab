@@ -39,6 +39,47 @@ object Peer:
       byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
   )
 
+  /** The most intersection candidates one FindIntersect carries. */
+  private val MaxCandidates = 64
+
+  /** At most [[MaxCandidates]] of `candidates` (newest first): the newest 16, then every second,
+    * fourth, eighth... one, and always the last (the oldest, which the anchor is).
+    */
+  private[node] def thin[A](candidates: Vector[A]): Vector[A] =
+    if candidates.size <= MaxCandidates then candidates
+    else
+      val picked = Iterator
+        .unfold((0, 1)) { case (i, step) =>
+          Option.when(i < candidates.size)(
+            i -> ((i + step, if i >= 15 then step * 2 else step))
+          )
+        }
+        .take(MaxCandidates - 1)
+        .toVector
+      (picked.map(candidates(_)) :+ candidates.last).distinct
+
+  /** Split announced headers into runs one BlockFetch request accepts: at most 100 blocks and about
+    * 8 MB of announced body (the client refuses more than 10 MB per request).
+    */
+  private[node] def ranges(headers: Vector[Header]): Vector[Vector[Header]] =
+    val budget = 8000000L
+    val out = Vector.newBuilder[Vector[Header]]
+    var run = Vector.empty[Header]
+    var size = 0L
+    headers.foreach { h =>
+      val bytes = h match
+        case s: Header.Shelley => s.bodySize.toLong + s.raw.size + 512
+        case _                 => 0L
+      if run.nonEmpty && (run.size >= 100 || size + bytes > budget) then
+        out += run
+        run = Vector.empty
+        size = 0L
+      run :+= h
+      size += bytes
+    }
+    if run.nonEmpty then out += run
+    out.result()
+
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
   private val Depth = 3
 
@@ -109,11 +150,16 @@ object Peer:
               case ChainSyncClient.Update.RollBackward(point, tip) =>
                 F.pure(SyncEvent.RollBackward(point, tip))
 
-            /** Prefetch the blocks announced by the leading roll-forwards of a batch. */
+            /** Prefetch the blocks announced by the leading roll-forwards of a batch, in ranges the
+              * client's per-request limits accept (a batch of full blocks is more than 10 MB).
+              */
             def prefetch(batch: Vector[SyncEvent]): F[Unit] =
               val headers = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
                 case SyncEvent.RollForward(h, _) => h
               }
+              ranges(headers).traverse_(prefetchRange)
+
+            def prefetchRange(headers: Vector[Header]): F[Unit] =
               if headers.size < 2 then F.unit
               else
                 fetchLock.lock
@@ -188,7 +234,7 @@ object Peer:
             new Peer[F]:
               def intersect(candidates: Vector[ChainSync.Point]) =
                 current.set(Vector.empty) *> blocks.set(Map.empty) *> progress.set(None) *>
-                  connection.chainSync.findIntersect(candidates).flatMap { case found =>
+                  connection.chainSync.findIntersect(thin(candidates)).flatMap { case found =>
                     F.pure(found.map(_._1))
                   }
 
