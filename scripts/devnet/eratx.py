@@ -99,8 +99,10 @@ class Key:
         return [self.vkey, sign(self.seed, body_hash)]
 
 
-def base_address(pay_hash, stake_hash, network=0):
-    return bytes([network]) + pay_hash + stake_hash
+def base_address(pay_hash, stake_hash, network=0, pay_script=False, stake_script=False):
+    """Base address; header types 0 key/key, 1 script/key, 2 key/script, 3 script/script."""
+    kind = (1 if pay_script else 0) | (2 if stake_script else 0)
+    return bytes([(kind << 4) | network]) + pay_hash + stake_hash
 
 
 def enterprise_address(pay_hash, network=0, script=False):
@@ -188,8 +190,8 @@ def unreg_cert(cred_hash, refund, script=False):  # 8
     return [8, credential(cred_hash, script), refund]
 
 
-def vote_deleg_cert(cred_hash, drep):  # 9
-    return [9, credential(cred_hash), drep]
+def vote_deleg_cert(cred_hash, drep, script=False):  # 9
+    return [9, credential(cred_hash, script), drep]
 
 
 def stake_vote_deleg_cert(cred_hash, pool, drep):  # 10

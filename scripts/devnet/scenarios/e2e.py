@@ -183,6 +183,7 @@ def e2e(args):
             def conway_hook():
                 nonlocal conway_load
                 conway_load = start_conway_load(args, root, loader)
+                loader.start_extended(full=False)  # script credentials, pool reward accounts, B5 refusals
             worker = threading.Thread(target=loader.run, args=(compare, conway_hook), daemon=True)
             worker.start()
 

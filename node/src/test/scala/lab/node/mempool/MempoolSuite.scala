@@ -48,16 +48,18 @@ object TxKit:
       outputs: Vector[(Address, BigInt)],
       fee: BigInt,
       signers: Vector[Key],
-      valid: Boolean = true
+      valid: Boolean = true,
+      votes: Vector[Byte] = Vector.empty
   ): (Bytes, Bytes) =
     val ins =
       head(4, inputs.size) ++ inputs.flatMap(i => head(4, 2) ++ bstr(i.id) ++ head(0, i.index))
     val outs =
       head(4, outputs.size) ++ outputs.flatMap((a, c) => head(4, 2) ++ bstr(a.raw) ++ head(0, c))
     val body = Bytes(
-      head(5, 3) ++ Vector(0x00.toByte) ++ ins ++ Vector(0x01.toByte) ++ outs ++ Vector(
-        0x02.toByte
-      ) ++ head(0, fee)
+      head(5, if votes.isEmpty then 3 else 4) ++ Vector(0x00.toByte) ++ ins ++ Vector(
+        0x01.toByte
+      ) ++ outs ++ Vector(0x02.toByte) ++ head(0, fee) ++
+        (if votes.isEmpty then Vector.empty else Vector(0x13.toByte) ++ votes)
     )
     val id = Blake2b.hash256.hash(body)
     val vkeys = head(4, signers.size) ++ signers.flatMap { k =>
@@ -110,6 +112,33 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     // an input that does not exist
     val (ghost, _) = pay(9)
     assert(add(s0, ghost).left.exists(_.isInstanceOf[Rejection.Ledger]))
+  }
+
+  test(
+    "a vote by an unelected committee hot key is refused by the mempool before protocol version 11 and by the GOV rule from it"
+  ) {
+    val hot = key()
+    val action = Blake2b.hash256.hash(Bytes(Vector(7)))
+    // { [0, hot]: { [action, 0]: [1, null] } }
+    val votes = head(5, 1) ++ head(4, 2) ++ head(0, 0) ++ bstr(hot.hash) ++ head(5, 1) ++
+      head(4, 2) ++ bstr(action) ++ head(0, 0) ++ head(4, 2) ++ head(0, 1) ++ Vector(0xf6.toByte)
+    val (raw, id) = tx(
+      Vector(txIn(1)),
+      Vector(bob.address() -> (99 * ada)),
+      ada,
+      Vector(alice, hot),
+      votes = votes
+    )
+    def attempt(protocol: Int) =
+      val l = ledger(1)
+      add(pool(l.copy(params = l.params.copy(protocolMajor = protocol))), raw).left
+        .map {
+          case Rejection.Ledger(LedgerFailure.Invalid(`id`, rule, _)) => rule
+          case other                                                  => other.message
+        }
+        .map(_ => "accepted")
+    assertEquals(attempt(10), Left("ConwayMempoolFailure"))
+    assertEquals(attempt(11), Left("UnelectedCommitteeVoters"))
   }
 
   test("capacity is counted in bytes and refuses what does not fit") {

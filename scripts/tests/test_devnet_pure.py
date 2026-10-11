@@ -6,12 +6,13 @@ Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 import json
 import pathlib
 import sys
+import tempfile
 import unittest
 from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, compare, encoding, eratx, eraview, govview, ntcquery  # noqa: E402
+from devnet import cbor, compare, encoding, eratx, eraview, govextra, govview, ntcquery, refused_fixture  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 
 RFC8032_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
@@ -112,6 +113,28 @@ class TxBuilderTest(unittest.TestCase):
         self.assertEqual(eratx.reward_address(h)[0], 0xe0)
         self.assertEqual(eratx.base_address(h, h, 1)[0], 1)
         self.assertEqual(len(eratx.base_address(h, h)), 57)
+        # header types: 0 key/key, 1 script/key, 2 key/script, 3 script/script
+        self.assertEqual([eratx.base_address(h, h, 0, p, s)[0] >> 4 for p in (False, True) for s in (False, True)],
+                         [0, 2, 1, 3])
+
+    def test_script_credentials_in_certificates(self):
+        h = bytes(range(28))
+        self.assertEqual(eratx.vote_deleg_cert(h, eratx.drep_ref("abstain")), [9, [0, h], [2]])
+        self.assertEqual(eratx.vote_deleg_cert(h, eratx.drep_ref("key", h, script=True), script=True),
+                         [9, [1, h], [1, h]])
+        self.assertEqual(eratx.drep_reg_cert(h, 5, None, script=True), [16, [1, h], 5, None])
+
+    def test_bech32_checksum_matches_bip173(self):
+        self.assertEqual(govextra.bech32_from_values("abcdef", range(32)),
+                         "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw")
+        self.assertEqual(govextra.bech32_from_values("a", []), "a12uel5l")
+
+    def test_stake_address_bech32_roundtrips_through_the_decoder(self):
+        h = bytes(range(28))
+        for script, header in ((False, 0xe0), (True, 0xf0)):
+            raw = encoding.bech32_bytes(govextra.bech32_stake_address(h, script=script))
+            self.assertEqual(raw[0], header)
+            self.assertEqual(raw[1:29], h)
 
     def test_native_script_hash_has_tag_prefix(self):
         script = eratx.all_script(eratx.sig_script(bytes(28)), eratx.after_script(10))
@@ -229,3 +252,18 @@ class PoolOracleTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RefusedFixtureTest(unittest.TestCase):
+    def test_build_keeps_the_vrf_sequence_and_the_refusals_that_replay(self):
+        with tempfile.TemporaryDirectory() as d:
+            run = pathlib.Path(d)
+            (run / "vrf-txs.jsonl").write_text(
+                json.dumps({"context": "genesis pools", "protocolMajor": 11, "pools": {}}) + "\n"
+                + json.dumps({"label": "xvrf-new-1", "outcome": "accepted", "tx": "00"}) + "\n")
+            (run / "negative-txs.jsonl").write_text("".join(json.dumps(e) + "\n" for e in (
+                {"label": "xunelected-hot0-ab", "expected": ["UnelectedCommitteeVoters"], "tx": "01"},
+                {"label": "xrefoverlap-pv10-cd", "expected": ["BabbageNonDisjointRefInputs"], "tx": "02"},
+                {"label": "xrefoverlap-v3-ef", "expected": ["ReferenceInputsNotDisjointFromInputs"], "tx": "03"})))
+            lines = refused_fixture.build(run)
+        self.assertEqual([l["scenario"] for l in lines], ["vrf", "vrf", "unelected", "refoverlap"])

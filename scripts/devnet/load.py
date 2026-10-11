@@ -42,6 +42,8 @@ def govload(args):
     Conway-only cluster."""
     loader = eraload.EraLoad(args.name, lambda: lsq(args.name), log=lambda m: print(json.dumps(m), flush=True))
     loader.ready.set()
+    if getattr(args, "extended", False):
+        loader.start_extended()  # B2 to B5 scenarios (govextra.py)
     seen = set()
     deadline = time.monotonic() + args.seconds if args.seconds else None
     while deadline is None or time.monotonic() < deadline:
@@ -54,6 +56,7 @@ def govload(args):
         except Exception as e:  # a scenario problem must not stop the soak
             print(json.dumps({"govloadFailed": repr(e)}), flush=True)
         time.sleep(0.7)
+    loader.stop.set()
     print(json.dumps(loader.stats), flush=True)
 
 
