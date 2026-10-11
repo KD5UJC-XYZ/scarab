@@ -33,7 +33,7 @@ import scala.concurrent.duration.*
 
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>] [--forge
+  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge
   * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
@@ -87,7 +87,7 @@ object Main extends IOApp:
 
   def run(args: List[String]): IO[ExitCode] =
     parse(args) match
-      case Left(usage) => IO.println(usage).as(ExitCode(2))
+      case Left(error) => IO.println(error.message).as(ExitCode(2))
       case Right(options) =>
         Handle
           .allow[NodeError](follow(options).as(ExitCode.Success))
@@ -324,19 +324,51 @@ object Main extends IOApp:
       }
     yield ()
 
-  private def parse(args: List[String]): Either[String, Options] =
-    val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+  private val Usage =
+    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+
+  /** Flags taking a value, other than `--peer`, which may repeat. */
+  private val ValueFlags = Set(
+    "genesis-dir",
+    "seconds",
+    "query-port",
+    "plutus-cases",
+    "db",
+    "snapshot-every",
+    "keep-snapshots",
+    "listen",
+    "mempool-bytes",
+    "utxo-store",
+    "utxo-cache-mb",
+    "read-ahead",
+    "local-socket",
+    "vrf-skey",
+    "kes-skey",
+    "opcert"
+  )
+
+  private[node] def parse(args: List[String]): Either[ConfigError, Options] =
+    def bad[A](reason: String): Either[ConfigError, A] =
+      Left(ConfigError(s"$reason\n$Usage"))
+    val usage = ConfigError(Usage)
     def go(
         rest: List[String],
         acc: Map[String, List[String]]
-    ): Either[String, Map[String, List[String]]] =
+    ): Either[ConfigError, Map[String, List[String]]] =
       rest match
-        case Nil               => Right(acc)
-        case "--forge" :: tail => go(tail, acc.updated("forge", List("true")))
+        case Nil => Right(acc)
+        case "--forge" :: tail =>
+          if acc.contains("forge") then bad("duplicate flag --forge")
+          else go(tail, acc.updated("forge", List("true")))
+        case "--peer" :: value :: tail =>
+          go(tail, acc.updated("peer", acc.getOrElse("peer", Nil) :+ value))
         case flag :: value :: tail if flag.startsWith("--") =>
-          go(tail, acc.updated(flag.drop(2), acc.getOrElse(flag.drop(2), Nil) :+ value))
-        case _ => Left(usage)
+          val name = flag.drop(2)
+          if !ValueFlags.contains(name) then bad(s"unknown flag $flag")
+          else if acc.contains(name) then bad(s"duplicate flag $flag")
+          else go(tail, acc.updated(name, List(value)))
+        case flag :: Nil if flag.startsWith("--") => bad(s"flag $flag needs a value")
+        case other :: _                           => bad(s"unexpected argument $other")
     args match
       case "follow" :: rest =>
         for
@@ -345,7 +377,7 @@ object Main extends IOApp:
           dir <- flags.get("genesis-dir").toRight(usage).map(Path.of(_))
           peerTexts = multi.getOrElse("peer", Nil)
           _ <- Either.cond(peerTexts.nonEmpty, (), usage)
-          peers <- peerTexts.traverse(Peer.parseAddress)
+          peers <- peerTexts.traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
           port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
           interval <- flags
@@ -354,7 +386,7 @@ object Main extends IOApp:
           keep <- flags
             .get("keep-snapshots")
             .fold(Right(3))(_.toIntOption.filter(_ > 0).toRight(usage))
-          listen <- flags.get("listen").traverse(Peer.parseAddress)
+          listen <- flags.get("listen").traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           localSocket = flags.get("local-socket").map(Path.of(_))
           mempool <- flags
             .get("mempool-bytes")
