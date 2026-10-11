@@ -136,7 +136,144 @@ object Projection:
       .obj("memory" -> p.maxBlockExUnits.mem.asJson, "steps" -> p.maxBlockExUnits.steps.asJson),
     "maxValueSize" -> p.maxValueSize.asJson,
     "collateralPercentage" -> p.collateralPercentage.asJson,
-    "maxCollateralInputs" -> p.maxCollateralInputs.asJson
+    "maxCollateralInputs" -> p.maxCollateralInputs.asJson,
+    "govActionDeposit" -> p.govActionDeposit.asJson,
+    "govActionLifetime" -> p.govActionLifetime.asJson,
+    "dRepDeposit" -> p.drepDeposit.asJson,
+    "dRepActivity" -> p.drepActivity.asJson,
+    "committeeMinSize" -> p.committeeMinSize.asJson,
+    "committeeMaxTermLength" -> p.committeeMaxTermLength.asJson,
+    "minFeeRefScriptCostPerByte" -> double(p.minFeeRefScriptCostPerByte),
+    "poolVotingThresholds" -> Json.obj(
+      "motionNoConfidence" -> double(p.poolVotingThresholds.motionNoConfidence),
+      "committeeNormal" -> double(p.poolVotingThresholds.committeeNormal),
+      "committeeNoConfidence" -> double(p.poolVotingThresholds.committeeNoConfidence),
+      "hardForkInitiation" -> double(p.poolVotingThresholds.hardForkInitiation),
+      "ppSecurityGroup" -> double(p.poolVotingThresholds.securityGroup)
+    ),
+    "dRepVotingThresholds" -> Json.obj(
+      "motionNoConfidence" -> double(p.drepVotingThresholds.motionNoConfidence),
+      "committeeNormal" -> double(p.drepVotingThresholds.committeeNormal),
+      "committeeNoConfidence" -> double(p.drepVotingThresholds.committeeNoConfidence),
+      "updateToConstitution" -> double(p.drepVotingThresholds.updateToConstitution),
+      "hardForkInitiation" -> double(p.drepVotingThresholds.hardForkInitiation),
+      "ppNetworkGroup" -> double(p.drepVotingThresholds.ppNetworkGroup),
+      "ppEconomicGroup" -> double(p.drepVotingThresholds.ppEconomicGroup),
+      "ppTechnicalGroup" -> double(p.drepVotingThresholds.ppTechnicalGroup),
+      "ppGovGroup" -> double(p.drepVotingThresholds.ppGovGroup),
+      "treasuryWithdrawal" -> double(p.drepVotingThresholds.treasuryWithdrawal)
+    )
+  )
+
+  private def cred(c: Credential): String = c.render
+
+  private def id(g: GovActionId): Json = s"${g.txId.hex}#${g.index}".asJson
+
+  private def optId(g: Option[GovActionId]): Json = g.fold(Json.Null)(id)
+
+  private def anchor(a: Anchor): Json = Json.obj("url" -> a.url.asJson, "hash" -> a.hash.hex.asJson)
+
+  private def vote(v: Vote): Json = v.toString.asJson
+
+  def govAction(a: GovAction): Json = a match
+    case GovAction.ParameterChange(prev, u, policy) =>
+      Json.obj(
+        "tag" -> "ParameterChange".asJson,
+        "prev" -> optId(prev),
+        "keys" -> u.fields.keys.toVector.sorted.asJson,
+        "policy" -> policy.map(_.hex).asJson
+      )
+    case GovAction.HardFork(prev, major, minor) =>
+      Json.obj(
+        "tag" -> "HardForkInitiation".asJson,
+        "prev" -> optId(prev),
+        "version" -> Vector(major, minor).asJson
+      )
+    case GovAction.TreasuryWithdrawals(ws, policy) =>
+      Json.obj(
+        "tag" -> "TreasuryWithdrawals".asJson,
+        "withdrawals" -> coinMap(
+          ws.groupMapReduce(w => cred(w._1.credential))(_._2)(_ + _),
+          (k: String) => k
+        ),
+        "policy" -> policy.map(_.hex).asJson
+      )
+    case GovAction.NoConfidence(prev) =>
+      Json.obj("tag" -> "NoConfidence".asJson, "prev" -> optId(prev))
+    case GovAction.UpdateCommittee(prev, removed, added, threshold) =>
+      Json.obj(
+        "tag" -> "UpdateCommittee".asJson,
+        "prev" -> optId(prev),
+        "removed" -> removed.toVector.map(cred).sorted.asJson,
+        "added" -> coinMap(added, cred),
+        "threshold" -> ratio(threshold)
+      )
+    case GovAction.NewConstitution(prev, script, a) =>
+      Json.obj(
+        "tag" -> "NewConstitution".asJson,
+        "prev" -> optId(prev),
+        "anchor" -> anchor(a),
+        "script" -> script.map(_.hex).asJson
+      )
+    case GovAction.Info => Json.obj("tag" -> "InfoAction".asJson)
+
+  private def votes[K](m: Map[K, Vote], key: K => String): Json =
+    Json.fromFields(m.toVector.sortBy(e => key(e._1)).map { case (k, v) => key(k) -> vote(v) })
+
+  def proposal(g: GovActionState): Json = Json.obj(
+    "id" -> id(g.id),
+    "deposit" -> g.proposal.deposit.asJson,
+    "returnAccount" -> cred(g.proposal.returnAccount.credential).asJson,
+    "anchor" -> anchor(g.proposal.anchor),
+    "action" -> govAction(g.action),
+    "committeeVotes" -> votes(g.committeeVotes, cred),
+    "drepVotes" -> votes(g.drepVotes, cred),
+    "poolVotes" -> votes(g.poolVotes, (b: Bytes) => b.hex),
+    "proposedIn" -> g.proposedIn.asJson,
+    "expiresAfter" -> g.expiresAfter.asJson
+  )
+
+  private def prevIds(p: PrevIds): Json = Json.obj(
+    "ParamUpdate" -> optId(p.paramUpdate),
+    "HardFork" -> optId(p.hardFork),
+    "Committee" -> optId(p.committee),
+    "Constitution" -> optId(p.constitution)
+  )
+
+  private def committee(c: Option[Committee]): Json = c.fold(Json.Null)(c =>
+    Json.obj("members" -> coinMap(c.members, cred), "threshold" -> ratio(c.threshold))
+  )
+
+  private def constitution(c: Constitution): Json =
+    Json.obj("anchor" -> anchor(c.anchor), "script" -> c.script.map(_.hex).asJson)
+
+  private def drepKey(d: DRep): String = d.render
+
+  def ratifyState(r: RatifyState): Json = Json.obj(
+    "enacted" -> r.enacted.map(g => id(g.id)).asJson,
+    "expired" -> r.expired.toVector.map(g => s"${g.txId.hex}#${g.index}").sorted.asJson,
+    "delayed" -> r.delayed.asJson,
+    "committee" -> committee(r.enact.committee),
+    "constitution" -> constitution(r.enact.constitution),
+    "prevGovActionIds" -> prevIds(r.enact.prevIds),
+    "withdrawals" -> coinMap(r.enact.withdrawals, cred),
+    "protocolVersion" -> Vector(r.enact.params.protocolMajor, r.enact.params.protocolMinor).asJson
+  )
+
+  /** Governance state: proposals, committee, constitution and the pulser's ratification. */
+  def gov(s: LedgerState): Json = Json.obj(
+    "proposals" -> s.gov.proposals.actions.map(proposal).asJson,
+    "committee" -> committee(s.gov.committee),
+    "constitution" -> constitution(s.gov.constitution),
+    "committeeState" -> Json.fromFields(s.committeeState.toVector.sortBy(e => cred(e._1)).map {
+      case (c, CommitteeAuth.Hot(h)) => cred(c) -> Json.obj("hot" -> cred(h).asJson)
+      case (c, CommitteeAuth.Resigned(a)) =>
+        cred(c) -> Json.obj("resigned" -> true.asJson, "anchor" -> a.map(anchor).asJson)
+    }),
+    "prevGovActionIds" -> prevIds(s.gov.proposals.roots),
+    "ratify" -> s.gov.pulsed.fold(Json.Null)(p => ratifyState(p._2)),
+    "drepDistr" -> s.gov.pulsed.fold(Json.Null)(p => coinMap(p._1.drepDistr, drepKey)),
+    "donation" -> s.donation.asJson
   )
 
   def ledger(p: ChainSync.Point, s: LedgerState): Json = Json.obj(
@@ -190,8 +327,14 @@ object Projection:
     }),
     "retiring" -> coinMap(s.retiring, (b: Bytes) => b.hex),
     "dreps" -> Json.fromFields(s.dreps.toVector.sortBy(_._1.render).map { case (c, d) =>
-      c.render -> Json.obj("deposit" -> d.deposit.asJson, "expiry" -> d.expiry.asJson)
+      c.render -> Json.obj(
+        "deposit" -> d.deposit.asJson,
+        "expiry" -> d.expiry.asJson,
+        "anchor" -> d.anchor.map(anchor).asJson,
+        "delegators" -> d.delegs.toVector.map(_.render).sorted.asJson
+      )
     }),
+    "gov" -> gov(s),
     "numDormantEpochs" -> s.dormantEpochs.asJson,
     "blocksCurrent" -> coinMap(s.blocksCurrent, (b: Bytes) => b.hex),
     "blocksBefore" -> coinMap(s.blocksPrevious, (b: Bytes) => b.hex),

@@ -96,13 +96,15 @@ class EraLoad:
 
     def submit(self, era, tx, label):
         env = eratx.envelope(era, tx)
-        r = self.sh(f"cat > /work/tx/{label}.tx && cardano-cli conway transaction submit --testnet-magic {MAGIC} "
+        r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit --testnet-magic {MAGIC} "
                     f"--socket-path {SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
         ok = r.returncode == 0
         self.stats[label.split("-")[0]] = self.stats.get(label.split("-")[0], 0) + (1 if ok else 0)
         if not ok:
             self.stats["rejected"] = self.stats.get("rejected", 0) + 1
-            self.log({"rejected": label, "error": (r.stderr or r.stdout).strip()[-500:]})
+            text = (r.stderr or r.stdout).strip()
+            # the reference's reason is in the first lines; the Haskell call stack that follows is noise
+            self.log({"rejected": label, "error": text.split("CallStack")[0].strip()[:900]})
         return ok
 
     def confirm(self, txid, timeout=25):
@@ -123,7 +125,7 @@ class EraLoad:
     def act(self, era, label, wallet, outputs=(), certs=None, withdrawals=None, deposit=0, refund=0, mint=None,
             extra_signers=(), native_scripts=(), valid_from=None, ttl=None, spend_extra=(), metadata=None,
             aux_scripts=(), collateral=None, required_signers=None, reference_inputs=None, network_id=None,
-            collateral_return=None, total_collateral=None, avoid=()):
+            collateral_return=None, total_collateral=None, avoid=(), fee=FEE, **build):
         """Spend from `wallet` (largest ADA-only output plus any `spend_extra` inputs), pay `outputs`
         ((address, coin, assets, kwargs) tuples), send the change back to the wallet, sign, submit and
         wait for the confirmation. Returns the transaction id, or None."""
@@ -131,7 +133,7 @@ class EraLoad:
         if not utxos:
             self.log({"skipped": label, "reason": "wallet has no ADA-only output"})
             return None
-        needed = FEE + deposit + 3_000_000 + sum(o[1] for o in outputs) - sum((withdrawals or {}).values()) - refund
+        needed = fee + deposit + 3_000_000 + sum(o[1] for o in outputs) - sum((withdrawals or {}).values()) - refund
         chosen, total = [], 0
         for u in utxos:  # largest first, until the outputs, fee, deposits and a change output are covered
             if total >= needed and chosen:
@@ -152,7 +154,7 @@ class EraLoad:
         for p, names in (mint or {}).items():
             for n, q in names.items():
                 assets.setdefault(p, {})[n] = assets.setdefault(p, {}).get(n, 0) + q
-        coin_out = FEE + deposit
+        coin_out = fee + deposit
         tx_outputs = []
         for address, coin, out_assets, kw in outputs:
             coin_out += coin
@@ -172,13 +174,18 @@ class EraLoad:
         tx_outputs.append(eratx.tx_out(era, wallet.address, change, assets or None))
         signers = [wallet.pay, *extra_signers]
         wits = list(native_scripts)
+        sorted_inputs = sorted((bytes.fromhex(t), i) for t, i in (u[0] for u in chosen))
+        if callable(build.get("redeemers")):
+            build["redeemers"] = build["redeemers"]([(t.hex(), i) for t, i in sorted_inputs])
+        if callable(build.get("script_data")):
+            build["script_data"] = build["script_data"](build.get("redeemers"), build.get("datums"))
         try:
             tx, txid = eratx.build_tx(
-                era, [u[0] for u in chosen], tx_outputs, FEE, signers, ttl=ttl, valid_from=valid_from, certs=certs,
+                era, [u[0] for u in chosen], tx_outputs, fee, signers, ttl=ttl, valid_from=valid_from, certs=certs,
                 withdrawals=withdrawals, mint=mint, native_scripts=wits, collateral=collateral,
                 required_signers=required_signers, reference_inputs=reference_inputs, network_id=network_id,
                 metadata=metadata, aux_scripts=aux_scripts, collateral_return=collateral_return,
-                total_collateral=total_collateral)
+                total_collateral=total_collateral, **build)
         except Exception as e:  # a bug in a scenario must not stop the cluster walk
             self.log({"buildFailed": label, "error": repr(e)})
             return None
@@ -394,6 +401,233 @@ class EraLoad:
                 self.act(era, "collateral-return", w[1], [(w[3].address, 6_000_000, None, {})], collateral=[coll[0]],
                          avoid=[coll[0]], collateral_return=ret, total_collateral=1_500_000, ttl=slot + 2000)
 
+    # ------------------------------------------------------------ Conway governance and Plutus
+    def protocol_params(self):
+        return json.loads(self.sh(f"cardano-cli conway query protocol-parameters --testnet-magic {MAGIC} "
+                                  f"--socket-path {SOCKET}").stdout)
+
+    def treasury(self):
+        return int(self.sh(f"cardano-cli conway query treasury --testnet-magic {MAGIC} "
+                           f"--socket-path {SOCKET}").stdout.strip())
+
+    def gov_state(self):
+        return json.loads(self.sh(f"cardano-cli conway query gov-state --testnet-magic {MAGIC} "
+                                  f"--socket-path {SOCKET}", timeout=120).stdout)
+
+    def v3_models(self, pp):
+        return {3: pp["costModels"]["PlutusV3"]}
+
+    def gov_setup(self):
+        """Keys the governance scenarios need: fresh wallets, DReps, committee cold and hot keys."""
+        if hasattr(self, "gw"):
+            return
+        r = random.Random(11)
+        mk = lambda: Key(json.dumps({"cborHex": "5820" + r.randbytes(32).hex()}))
+        self.gw = [Wallet(r) for _ in range(5)]
+        self.gdrep = [mk() for _ in range(2)]
+        self.cold = [mk() for _ in range(2)]
+        self.hot = [mk() for _ in range(2)]
+        self.script = eratx.plutus_always_succeeds()
+        self.script_hash = eratx.plutus_script_hash(self.script)
+        self.script_addr = eratx.enterprise_address(self.script_hash, script=True)
+        self.genesis_dreps = [self.read_key(f"{ENV}/drep-keys/drep{n}/drep.skey") for n in (1, 2, 3)]
+        self.pool_cold = [self.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey") for n in (1, 2, 3)]
+        self.proposed = {}
+        self.attempts = {}
+
+    def gov_votes(self, label, wallet, casts, signers):
+        """One transaction with the votes `casts` ([(voter, [(gov_action_id, vote)])]) signed by `signers`."""
+        return self.act("conway", label, wallet, [], votes=eratx.voting_procedures(casts),
+                        extra_signers=list(signers), fee=500_000)
+
+    def propose(self, label, wallet, actions, signers=()):
+        """Submit proposals; returns the transaction id (the action ids are (txid, index))."""
+        pp = self.protocol_params()
+        deposit = pp["govActionDeposit"]
+        proposals = [eratx.proposal(deposit, wallet.reward, a) for a in actions]
+        txid = self.act("conway", label, wallet, [], proposals=proposals, deposit=deposit * len(actions),
+                        extra_signers=list(signers), fee=500_000)
+        return txid
+
+    def stage(self, key, run, tries=4):
+        """Run a scenario stage until it succeeds (a transaction id or truthy result), at most `tries` times."""
+        if key in self.done or self.attempts.get(key, 0) >= tries:
+            return None
+        self.attempts[key] = self.attempts.get(key, 0) + 1
+        result = run()
+        if result:
+            self.done.add(key)
+        return result
+
+    def conway_features(self, epoch):
+        """The governance and Plutus scenarios, one pass per call (run once per Conway epoch). A stage that
+        cannot run is retried in later passes and eventually given up, never fatal."""
+        self.gov_setup()
+        if not hasattr(self, "first_conway"):
+            self.first_conway = epoch
+        n = epoch - self.first_conway
+        pp = self.protocol_params()
+        pv = pp["protocolVersion"]["major"]
+        deposit, drep_deposit = pp["stakeAddressDeposit"], pp["dRepDeposit"]
+        gw, d = self.gw, self.gdrep
+        pools = [k.hash for k in self.pool_cold]
+        act = lambda label, wallet, *a, **kw: self.act("conway", label, wallet, *a, fee=kw.pop("fee", 500_000), **kw)
+        self.stage("gfund", lambda: act("gfund", self.delegator(3), [(w.address, 600_000_000, None, {}) for w in gw[:4]]))
+        if "gfund" not in self.done:
+            return
+        # stake credentials with pool and DRep delegation, two DReps
+        certs = [eratx.reg_stake_vote_deleg_cert(gw[0].stake.hash, pools[0], eratx.drep_ref("abstain"), deposit),
+                 eratx.reg_vote_deleg_cert(gw[1].stake.hash, eratx.drep_ref("noconfidence"), deposit),
+                 eratx.reg_cert(gw[2].stake.hash, deposit),
+                 eratx.reg_deleg_cert(gw[3].stake.hash, pools[1], deposit),
+                 eratx.reg_cert(gw[4].stake.hash, deposit),
+                 eratx.drep_reg_cert(d[0].hash, drep_deposit, eratx.anchor("https://drep.invalid/0")),
+                 eratx.drep_reg_cert(d[1].hash, drep_deposit)]
+        self.stage("greg", lambda: act("greg", gw[0], [], certs=certs, deposit=5 * deposit + 2 * drep_deposit,
+                                       extra_signers=[w.stake for w in gw] + d))
+        if "greg" not in self.done:
+            return
+        # Plutus V3: lock funds with an inline datum next to a reference script, then spend and mint
+        self.stage("plutus-lock", lambda: act(
+            "plutus-lock", gw[1], [(self.script_addr, 30_000_000, None, {"inline_datum": [42, b"v3"]}),
+                                   (gw[2].address, 5_000_000, None, {"script_ref_plutus": (3, self.script)})]))
+        if "plutus-lock" in self.done:
+            self.stage("plutus-spend", lambda: self.plutus_spend(pp))
+        if n >= 2:
+            self.stage("gdeleg", lambda: act(
+                "gdeleg", gw[3], [], extra_signers=[gw[3].stake],
+                certs=[eratx.vote_deleg_cert(gw[3].stake.hash, eratx.drep_ref("key", d[0].hash))]))
+        if n >= 3:
+            self.stage("gdeleg2", lambda: act(
+                "gdeleg2", gw[0], [], extra_signers=[gw[0].stake],
+                certs=[eratx.stake_vote_deleg_cert(gw[0].stake.hash, pools[1], eratx.drep_ref("key", d[1].hash))]))
+        # first round of proposals; the votes follow once the proposals are on chain
+        if n >= 1 and "gproposals" not in self.done:
+            actions = [eratx.info_action()]
+            if pv < 10:
+                actions += [eratx.hard_fork_action(10, 0), eratx.param_change_action({3: pp["maxTxSize"] + 8}),
+                            eratx.param_change_action({24: pp["maxCollateralInputs"] + 1})]
+            else:
+                actions += [eratx.param_change_action({16: pp["minPoolCost"] + 1000}),
+                            eratx.treasury_withdrawal_action({gw[2].reward: 7_000_000}),
+                            eratx.update_committee_action({c.hash: epoch + 40 for c in self.cold}, threshold=(1, 2)),
+                            eratx.constitution_action("https://constitution.invalid/v1", eratx.blake2b(b"v1"))]
+            txid = self.stage("gproposals", lambda: self.propose("gproposals", gw[1], actions))
+            if txid:
+                self.proposed["first"] = [(txid, i) for i in range(len(actions))]
+        if "first" in self.proposed:
+            self.stage("gvotes", lambda: self.cast_votes(pv, self.proposed["first"]))
+        # committee authorisation once the committee has members (protocol version 10 and later)
+        if pv >= 10 and "gcommittee" not in self.done and self.committee_members():
+            self.stage("gcommittee", lambda: act(
+                "gcommittee", gw[3], [], extra_signers=self.cold,
+                certs=[eratx.auth_committee_cert(c.hash, h.hash) for c, h in zip(self.cold, self.hot)]))
+        if pv >= 10 and "gcommittee" in self.done and n >= 5:
+            self.stage("ground2", lambda: self.second_round(pv))
+        if pv >= 10 and n >= 7:
+            self.stage("gmore", lambda: self.more_gov(pp, pv, epoch))
+        if n >= 2:
+            self.stage("gdonate", self.donate, tries=6)
+
+    def committee_members(self):
+        try:
+            return bool(self.gov_state()["committee"]["members"])
+        except Exception:
+            return False
+
+    def cast_votes(self, pv, ids):
+        """DRep, pool and committee votes on the first round of proposals."""
+        gw = self.gw
+        all_ids = [eratx.gov_id(*i) for i in ids]
+        info = all_ids[0]
+        casts = []
+        if pv < 10:
+            # bootstrap: DReps may only vote on info actions; pools vote on the hard fork and on security
+            # parameters (all_ids: info, hard fork, security parameter change, other parameter change)
+            for k in self.genesis_dreps:
+                casts.append((eratx.voter("drep", k.hash), [(info, "yes")]))
+            casts.append((eratx.voter("drep", self.gdrep[0].hash), [(info, "no")]))
+            for p in self.pool_cold[:2]:
+                casts.append((eratx.voter("pool", p.hash), [(all_ids[1], "yes"), (all_ids[2], "yes")]))
+            casts.append((eratx.voter("pool", self.pool_cold[2].hash),
+                          [(info, "abstain"), (all_ids[1], "no"), (all_ids[2], "no")]))
+        else:
+            for k in self.genesis_dreps[:2]:
+                casts.append((eratx.voter("drep", k.hash), [(i, "yes") for i in all_ids]))
+            casts.append((eratx.voter("drep", self.genesis_dreps[2].hash),
+                          [(info, "no")] + [(i, "yes") for i in all_ids[1:3]]))
+            casts.append((eratx.voter("drep", self.gdrep[0].hash), [(i, "abstain") for i in all_ids]))
+            casts.append((eratx.voter("drep", self.gdrep[1].hash), [(i, "no") for i in all_ids[3:]]))
+            # pools vote on the info action and the committee update (parameters and withdrawals are not theirs)
+            for p in self.pool_cold:
+                casts.append((eratx.voter("pool", p.hash), [(info, "yes"), (all_ids[3], "yes")]))
+        return self.gov_votes("gvotes", gw[0], casts, self.genesis_dreps + self.gdrep + self.pool_cold)
+
+    def second_round(self, pv):
+        """Withdrawal and no-confidence once the committee exists; the committee votes."""
+        gw = self.gw
+        previous = self.gov_state()["nextRatifyState"]["nextEnactState"]["prevGovActionIds"]["Committee"]
+        prev = None if previous is None else eratx.gov_id(previous["txId"], previous["govActionIx"])
+        txid = self.propose("gproposals2", gw[1], [eratx.treasury_withdrawal_action({gw[3].reward: 2_000_000}),
+                                                   eratx.no_confidence_action(prev)])
+        if not txid:
+            return
+        ids = [eratx.gov_id(txid, 0), eratx.gov_id(txid, 1)]
+        casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps[:2]]
+        casts += [(eratx.voter("pool", p.hash), [(ids[1], "yes")]) for p in self.pool_cold[:2]]
+        casts.append((eratx.voter("committee", self.hot[0].hash), [(ids[0], "yes")]))
+        casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no")]))
+        return self.gov_votes("gvotes2", gw[0], casts, self.genesis_dreps[:2] + self.pool_cold[:2] + self.hot)
+
+    def plutus_spend(self, pp):
+        """Spend the locked output under PlutusV3 and mint a token under the same script."""
+        _, _, by_addr = self.snapshot()
+        locked = by_addr.get(self.script_addr, [])
+        if not locked:
+            return None
+        w = self.gw[0]
+        coll = [u for u in self.funds(w.address) if not u[2]]
+        if len(coll) < 2:
+            # split off a collateral output and try again in the next pass
+            self.act("conway", "collateral-split", w, [(w.address, 50_000_000, None, {})], fee=500_000)
+            return None
+        collateral = coll[-1]
+        units = [1_000_000, 400_000_000]
+        policy = self.script_hash
+        mint = {policy: {b"v3token": 7}}
+        datum_free = []
+
+        def redeemers(sorted_inputs):
+            spend_ix = sorted_inputs.index(locked[0][0])
+            return [(0, spend_ix, 0, units), (1, 0, 0, units)]
+
+        models = self.v3_models(pp)
+
+        def script_data(red, dat):
+            red_cbor = eratx.enc({(t, i): [dd, list(u)] for t, i, dd, u in red})
+            return eratx.script_data_hash(red_cbor, b"", models)
+
+        return self.act("conway", "plutus-spend", w, [(self.gw[1].address, 4_000_000, {policy: {b"v3token": 7}}, {})],
+                 mint=mint, spend_extra=locked, collateral=[collateral[0]], avoid=[collateral[0]],
+                 plutus={3: [self.script]}, redeemers=redeemers, script_data=script_data, fee=1_000_000)
+
+    def more_gov(self, pp, pv, epoch):
+        """Updates, resignations, refunds and a donation."""
+        gw, d = self.gw, self.gdrep
+        certs = [eratx.drep_update_cert(d[1].hash, eratx.anchor("https://drep.invalid/1b")),
+                 eratx.drep_unreg_cert(d[0].hash, pp["dRepDeposit"])]
+        if pv >= 10:
+            certs.append(eratx.resign_committee_cert(self.cold[1].hash, eratx.anchor("https://cc.invalid/resign")))
+        certs.append(eratx.unreg_cert(gw[4].stake.hash, pp["stakeAddressDeposit"]))
+        signers = [d[0], d[1], gw[4].stake] + ([self.cold[1]] if pv >= 10 else [])
+        return self.act("conway", "gmore", gw[3], [], certs=certs,
+                        refund=pp["dRepDeposit"] + pp["stakeAddressDeposit"], extra_signers=signers, fee=500_000)
+
+    def donate(self):
+        """A treasury donation that names the current treasury value."""
+        return self.act("conway", "gdonate", self.gw[0], [], donation=1_000_000, deposit=1_000_000,
+                        treasury=self.treasury(), fee=500_000)
+
     FEATURES = {"shelley": "shelley_features", "allegra": "allegra_features", "mary": "mary_features",
                 "alonzo": "alonzo_features", "babbage": "babbage_features"}
 
@@ -401,6 +635,8 @@ class EraLoad:
         """The actions for one epoch of `era`: features first (once each), then transfers and withdrawals."""
         if era in self.FEATURES:
             getattr(self, self.FEATURES[era])(era)
+        if era == "conway":
+            self.conway_features(epoch)
         self.transfers(era, 2)
         self.withdrawals(era)
 
@@ -427,7 +663,7 @@ class EraLoad:
                 if (key, "batch") not in seen and in_epoch >= 3:
                     seen.add((key, "batch"))
                     compare(era, "start")
-                    if era != "conway":
+                    if True:
                         try:
                             self.epoch_batch(era, epoch)
                         except Exception as e:

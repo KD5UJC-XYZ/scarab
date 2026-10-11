@@ -78,7 +78,7 @@ object Phase2:
             .toRight(TranslationError(s"script ${hash.hex} has no bytes"))
           model <- costModel(pp, language)
           txInfo <- info(language)
-          args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose)
+          args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
           result = evaluator.evaluate(
             EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
           )

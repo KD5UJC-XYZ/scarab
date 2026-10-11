@@ -350,22 +350,42 @@ object NodeRules:
             )
             .leftMap("praos" -> _)
       (praos, leader) = validated
-      applied <- block.transactions.zipWithIndex.foldLeftM(ticked) { case (s, (t, i)) =>
-        val env = TxRules.Env(
-          announced.slot,
-          epoch,
-          globals.network,
-          firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
-          stabilityWindow = geometry.stabilityWindow,
-          txIndex = i,
-          updateQuorum = globals.updateQuorum,
-          clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
-          observer = phase2Observer
-        )
-        Tx.fromBlock(t, block.era)
-          .leftMap(r => "decode" -> s"tx ${t.id.hex.take(16)}: $r")
-          .flatMap(tx => TxRules(s, tx, env).leftMap(f => "ledger" -> f.message))
+      applied0 <- block.transactions.zipWithIndex.foldLeftM((ticked, 0)) {
+        case ((s, refBytes), (t, i)) =>
+          val env = TxRules.Env(
+            announced.slot,
+            epoch,
+            globals.network,
+            firstSlotNextEpoch = geometry.firstSlot(epoch + 1),
+            stabilityWindow = geometry.stabilityWindow,
+            txIndex = i,
+            updateQuorum = globals.updateQuorum,
+            clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
+            observer = phase2Observer
+          )
+          Tx.fromBlock(t, block.era)
+            .leftMap(r => "decode" -> s"tx ${t.id.hex.take(16)}: $r")
+            .flatMap { tx =>
+              // Conway bounds the reference scripts of all transactions of a block.
+              val used =
+                if s.params.protocolMajor >= 9 then
+                  refBytes.toLong + ConwayRules.refScriptsSize(
+                    if s.params.protocolMajor <= 10 then ticked else s,
+                    tx.body
+                  )
+                else 0L
+              Either
+                .cond(
+                  used <= ConwayRules.MaxRefScriptSizePerBlock,
+                  (),
+                  "ledger" -> s"reference scripts of the block exceed ${ConwayRules.MaxRefScriptSizePerBlock} bytes"
+                )
+                .flatMap(_ =>
+                  TxRules(s, tx, env).leftMap(f => "ledger" -> f.message).map(_ -> used.toInt)
+                )
+            }
       }
+      applied = applied0._1
     yield
       val issuer = Blake2b.hash224.hash(announced.issuerVkey)
       // Blocks made in overlay slots are not counted towards pool performance.

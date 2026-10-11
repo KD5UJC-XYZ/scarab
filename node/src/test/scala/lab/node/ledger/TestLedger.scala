@@ -125,7 +125,14 @@ object TestLedger:
       validityStart: Option[BigInt] = None,
       collateral: Vector[TxIn] = Vector.empty,
       scriptDataHash: Option[Bytes] = None,
-      update: Option[Update] = None
+      update: Option[Update] = None,
+      votes: Vector[(Voter, Vector[(GovActionId, Vote)])] = Vector.empty,
+      proposals: Vector[Proposal] = Vector.empty,
+      donation: BigInt = 0,
+      currentTreasury: Option[BigInt] = None,
+      referenceInputs: Vector[TxIn] = Vector.empty,
+      requiredSigners: Vector[Bytes] = Vector.empty,
+      collateralReturn: Option[TxOut] = None
   ): TxBody =
     TxBody(
       raw = Bytes(id.getBytes.toVector),
@@ -138,13 +145,17 @@ object TestLedger:
       withdrawals = withdrawals,
       mint = mint,
       collateral = collateral,
-      requiredSigners = Vector.empty,
+      requiredSigners = requiredSigners,
       networkId = None,
-      referenceInputs = Vector.empty,
+      referenceInputs = referenceInputs,
       scriptDataHash = scriptDataHash,
-      hasGovernance = false,
-      donation = 0,
-      update = update
+      hasGovernance = votes.nonEmpty || proposals.nonEmpty,
+      donation = donation,
+      update = update,
+      votes = votes,
+      proposals = proposals,
+      currentTreasury = currentTreasury,
+      collateralReturn = collateralReturn
     )
 
   /** A transaction signed by `signers`; its size is fixed so fees are easy to state. */

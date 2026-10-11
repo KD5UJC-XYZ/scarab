@@ -33,6 +33,7 @@ import eraload  # noqa: E402
 import eraview  # noqa: E402
 import ntcquery  # noqa: E402
 import eratx  # noqa: E402
+import govview  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 REFERENCE_IMAGE = "cardano-reference-11.1.3:local"
@@ -471,6 +472,27 @@ def load_wallets(args):
     return wallets, stakers, address, stake_address
 
 
+def govload(args):
+    """Conway governance and Plutus scenarios (`EraLoad.conway_features`), one stage per epoch, on a
+    Conway-only cluster."""
+    loader = eraload.EraLoad(args.name, lambda: lsq(args.name), log=lambda m: print(json.dumps(m), flush=True))
+    loader.ready.set()
+    seen = set()
+    deadline = time.monotonic() + args.seconds if args.seconds else None
+    while deadline is None or time.monotonic() < deadline:
+        try:
+            tip = loader.epoch_info()
+            loader.tip = tip
+            if tip.get("slotInEpoch", 0) >= 3 and tip["epoch"] not in seen:
+                seen.add(tip["epoch"])
+                loader.conway_features(tip["epoch"])
+                loader.transfers("conway", 1)
+        except Exception as e:  # a scenario problem must not stop the soak
+            print(json.dumps({"govloadFailed": repr(e)}), flush=True)
+        time.sleep(0.7)
+    print(json.dumps(loader.stats), flush=True)
+
+
 def load(args):
     """Randomized ledger activity: ADA transfers among genesis keys and fresh wallets, plus staking
     wallets that register (stake + vote delegation), re-delegate, withdraw rewards and deregister.
@@ -670,6 +692,8 @@ def compare_once(name, attempts=10, scala_wait=30):
         ls = json.loads(in_ref(name, f"{CLI} query ledger-state {SOCKET}", timeout=120).stdout)
         utxo = json.loads(in_ref(name, f"{CLI} query utxo --whole-utxo {SOCKET} --output-json", timeout=120).stdout)
         protocol = query(name, "protocol-state")
+        gov = (query(name, "gov-state"), query(name, "committee-state"),
+               query(name, "drep-stake-distribution --all-dreps"))
         after = query(name, "tip")
         if before["hash"] != after["hash"]:
             continue
@@ -684,9 +708,13 @@ def compare_once(name, attempts=10, scala_wait=30):
                 continue  # the node may have moved past the retained window while the queries ran
             return {"tip": after, "error": "scala node never reached the reference tip"}
         reference = reference_view(ls, utxo)
+        reference["gov"] = govview.reference_gov(*gov)
         reference["protocolState"] = {k: protocol[k] for k in (
             "epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce", "oCertCounters")}
         scala_view = {k: v for k, v in scala.items() if k in reference}
+        scala_view["gov"] = govview.scala_gov(scala["gov"])
+        scala_view["dreps"] = {c: {"deposit": d["deposit"], "expiry": d["expiry"]}
+                               for c, d in scala_view["dreps"].items()}
         # the Conway load makes no datums or reference scripts; the CLI JSON shapes for them are not compared
         scala_view["utxo"] = {k: {a: b for a, b in v.items() if a in ("address", "lovelace", "assets")}
                               for k, v in scala_view["utxo"].items()}
@@ -712,6 +740,8 @@ def soak(args):
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, __file__, "--name", args.name, "load", "--seed", str(args.seed)],
                               stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
+    governance = subprocess.Popen([sys.executable, __file__, "--name", args.name, "govload"],
+                                  stdout=(root / "govload.log").open("w"), stderr=subprocess.STDOUT)
     results = []
     deadline = time.monotonic() + args.seconds
     try:
@@ -729,6 +759,8 @@ def soak(args):
     finally:
         loader.terminate()
         loader.wait()
+        governance.terminate()
+        governance.wait()
         follower_alive = follower.poll() is None
         docker("rm", "-f", f"{args.name}-scala", check=False)
         follower.wait()
@@ -1216,6 +1248,9 @@ def main():
     ld.add_argument("--min-balance", type=int, default=300_000_000)
     ld.add_argument("--fresh-wallets-only", action="store_true", help="skip the genesis utxo-keys wallets")
     ld.set_defaults(run=load)
+    gl = sub.add_parser("govload", help="Conway governance and Plutus scenarios on a Conway-only cluster")
+    gl.add_argument("--seconds", type=int)
+    gl.set_defaults(run=govload)
     sub.add_parser("compare").set_defaults(run=compare)
     sk = sub.add_parser("soak")
     sk.add_argument("--seconds", type=int, default=600)

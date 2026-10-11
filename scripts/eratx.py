@@ -56,6 +56,8 @@ def enc(x):
         return _head(3, len(b)) + b
     if isinstance(x, (list, tuple)):
         return _head(4, len(x)) + b"".join(enc(i) for i in x)
+    if isinstance(x, frozenset):
+        return enc(sorted(x))
     if isinstance(x, dict):
         items = sorted(((enc(k), enc(v)) for k, v in x.items()), key=lambda kv: (len(kv[0]), kv[0]))
         return _head(5, len(items)) + b"".join(k + v for k, v in items)
@@ -212,6 +214,148 @@ def pool_retirement_cert(pool_hash, epoch):
     return [4, pool_hash, epoch]
 
 
+# ---------------------------------------------------------------- Conway governance and Plutus
+
+def credential(h, script=False):
+    return [1 if script else 0, h]
+
+
+def drep_ref(kind, h=None, script=False):
+    """DRep as certificates and delegations encode it: key/script credential, always-abstain (2) or
+    always-no-confidence (3)."""
+    return {"abstain": [2], "noconfidence": [3]}.get(kind) or [1 if script else 0, h]
+
+
+def anchor(url="https://example.invalid/anchor", digest=None):
+    return [url, digest or blake2b(url.encode())]
+
+
+def gov_id(txid_hex, ix):
+    return [bytes.fromhex(txid_hex), ix]
+
+
+def reg_cert(cred_hash, deposit, script=False):  # 7: registration with a deposit
+    return [7, credential(cred_hash, script), deposit]
+
+
+def unreg_cert(cred_hash, refund, script=False):  # 8
+    return [8, credential(cred_hash, script), refund]
+
+
+def vote_deleg_cert(cred_hash, drep):  # 9
+    return [9, credential(cred_hash), drep]
+
+
+def stake_vote_deleg_cert(cred_hash, pool, drep):  # 10
+    return [10, credential(cred_hash), pool, drep]
+
+
+def reg_deleg_cert(cred_hash, pool, deposit):  # 11
+    return [11, credential(cred_hash), pool, deposit]
+
+
+def reg_vote_deleg_cert(cred_hash, drep, deposit):  # 12
+    return [12, credential(cred_hash), drep, deposit]
+
+
+def reg_stake_vote_deleg_cert(cred_hash, pool, drep, deposit):  # 13
+    return [13, credential(cred_hash), pool, drep, deposit]
+
+
+def auth_committee_cert(cold_hash, hot_hash, cold_script=False, hot_script=False):  # 14
+    return [14, credential(cold_hash, cold_script), credential(hot_hash, hot_script)]
+
+
+def resign_committee_cert(cold_hash, anchor_=None, script=False):  # 15
+    return [15, credential(cold_hash, script), anchor_]
+
+
+def drep_reg_cert(drep_hash, deposit, anchor_=None, script=False):  # 16
+    return [16, credential(drep_hash, script), deposit, anchor_]
+
+
+def drep_unreg_cert(drep_hash, refund, script=False):  # 17
+    return [17, credential(drep_hash, script), refund]
+
+
+def drep_update_cert(drep_hash, anchor_=None, script=False):  # 18
+    return [18, credential(drep_hash, script), anchor_]
+
+
+def proposal(deposit, return_account, action, anchor_=None):
+    return [deposit, return_account, action, anchor_ or anchor()]
+
+
+def info_action():
+    return [6]
+
+
+def treasury_withdrawal_action(withdrawals, policy=None):
+    return [2, {k: v for k, v in withdrawals.items()}, policy]
+
+
+def param_change_action(update, prev=None, policy=None):
+    return [0, prev, update, policy]
+
+
+def hard_fork_action(major, minor, prev=None):
+    return [1, prev, [major, minor]]
+
+
+def no_confidence_action(prev=None):
+    return [3, prev]
+
+
+def update_committee_action(added, removed=(), threshold=(2, 3), prev=None):
+    """`added` maps a cold credential hash to its last epoch; `removed` lists cold credential hashes."""
+    return [4, prev, Tag(258, [credential(h) for h in removed]), {tuple(credential(h)): e for h, e in added.items()},
+            Tag(30, list(threshold))]
+
+
+def constitution_action(url, digest, script=None, prev=None):
+    return [5, prev, [anchor(url, digest), script]]
+
+
+# votes: voter = (kind, hash) with kind in committee, drep, pool
+def voter(kind, h, script=False):
+    return {"committee": [1 if script else 0, h], "drep": [3 if script else 2, h], "pool": [4, h]}[kind]
+
+
+VOTE = {"no": 0, "yes": 1, "abstain": 2}
+
+
+def voting_procedures(votes):
+    """`votes`: list of (voter, [(gov_action_id, 'yes'/'no'/'abstain')])."""
+    return {tuple(v): {tuple(i): [VOTE[x], None] for i, x in cast} for v, cast in votes}
+
+
+# Plutus: the smallest scripts, `\ctx -> ()`, as flat-encoded UPLC wrapped the way the ledger stores it
+def plutus_always_succeeds(version=3):
+    # program 1.1.0, (lam x (con unit ())): 01 01 00 | lam, const, unit type | padding
+    flat = bytes.fromhex("0101002499")
+    inner = enc(flat)  # the PlutusBinary: CBOR bytes of the flat encoding
+    return inner
+
+
+def plutus_script_hash(content, version=3):
+    return blake2b(bytes([version]) + content, 28)
+
+
+def cost_model_view(language, cost_model):
+    """The language-views entry for the script data hash (`cost_model`: the parameters in order)."""
+    if language == 1:  # PlutusV1: the key and the indefinite list are wrapped as byte strings
+        ints = b"".join(enc(v) for v in cost_model)
+        return enc(b"\x00"), enc(b"\x9f" + ints + b"\xff")
+    return enc(language - 1), enc(list(cost_model))
+
+
+def script_data_hash(redeemers_cbor, datums_cbor, models):
+    """`models` maps a language (1, 2, 3 for Plutus V1, V2, V3) to its cost model; no models gives 0xa0."""
+    views = sorted((cost_model_view(l, m) for l, m in models.items()), key=lambda kv: (len(kv[0]), kv[0]))
+    body = b"\xa0" if not views else _head(5, len(views)) + b"".join(k + v for k, v in views)
+    return blake2b(redeemers_cbor + datums_cbor + body)
+
+
 # ---------------------------------------------------------------- transactions
 
 ERA_INDEX = {"shelley": 0, "allegra": 1, "mary": 2, "alonzo": 3, "babbage": 4, "conway": 5}
@@ -226,10 +370,12 @@ def value(coin, assets=None):
     return [coin, {p: dict(a) for p, a in assets.items()}]
 
 
-def tx_out(era, address, coin, assets=None, datum_hash=None, inline_datum=None, script_ref=None):
+def tx_out(era, address, coin, assets=None, datum_hash=None, inline_datum=None, script_ref=None,
+           script_ref_plutus=None):
     """Legacy array form where it suffices, the map form (Babbage) for inline datums and reference scripts."""
     v = value(coin, assets)
-    if ERA_INDEX[era] >= ERA_INDEX["babbage"] and (inline_datum is not None or script_ref is not None):
+    if ERA_INDEX[era] >= ERA_INDEX["babbage"] and (inline_datum is not None or script_ref is not None
+                                                     or script_ref_plutus is not None):
         out = {0: address, 1: v}
         if inline_datum is not None:
             out[2] = [1, Tag(24, enc(inline_datum))]
@@ -237,6 +383,8 @@ def tx_out(era, address, coin, assets=None, datum_hash=None, inline_datum=None, 
             out[2] = [0, datum_hash]
         if script_ref is not None:
             out[3] = Tag(24, enc([0, script_ref]))  # [0, native script]
+        if script_ref_plutus is not None:
+            out[3] = Tag(24, enc(list(script_ref_plutus)))  # [language, plutus script]
         return out
     return [address, v] + ([datum_hash] if datum_hash is not None else [])
 
@@ -244,7 +392,8 @@ def tx_out(era, address, coin, assets=None, datum_hash=None, inline_datum=None, 
 def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, certs=None, withdrawals=None,
              update=None, mint=None, native_scripts=(), collateral=None, required_signers=None,
              collateral_return=None, total_collateral=None, reference_inputs=None, metadata=None, network_id=None,
-             is_valid=True, aux_scripts=()):
+             is_valid=True, aux_scripts=(), votes=None, proposals=None, treasury=None, donation=None,
+             plutus=None, redeemers=None, datums=None, script_data=None):
     """Signed transaction CBOR of any Shelley-based era. `inputs` are (txid_hex, ix); `signers` are Keys."""
     index = ERA_INDEX[era]
     body = {0: [[bytes.fromhex(t), i] for t, i in inputs], 1: outputs, 2: fee}
@@ -279,6 +428,16 @@ def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, cert
         body[17] = total_collateral
     if reference_inputs:
         body[18] = [[bytes.fromhex(t), i] for t, i in reference_inputs]
+    if script_data is not None:
+        body[11] = script_data
+    if votes:
+        body[19] = votes
+    if proposals:
+        body[20] = Tag(258, proposals)
+    if treasury is not None:
+        body[21] = treasury
+    if donation:
+        body[22] = donation
     body_bytes = enc(body)
     body_hash = blake2b(body_bytes)
     witnesses = {}
@@ -292,6 +451,13 @@ def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, cert
         witnesses[0] = vkeys
     if native_scripts:
         witnesses[1] = list(native_scripts)
+    for language, key in ((1, 3), (2, 6), (3, 7)):
+        if plutus and plutus.get(language):
+            witnesses[key] = [Raw(enc(bytes_)) for bytes_ in plutus[language]]
+    if datums:
+        witnesses[4] = list(datums)
+    if redeemers:  # the Conway map form {[tag, index]: [data, [mem, steps]]}
+        witnesses[5] = {(t, i): [d, list(u)] for t, i, d, u in redeemers}
     witness_bytes = enc(witnesses)
     if index >= ERA_INDEX["alonzo"]:
         tx = b"\x84" + body_bytes + witness_bytes + enc(is_valid) + enc(aux)

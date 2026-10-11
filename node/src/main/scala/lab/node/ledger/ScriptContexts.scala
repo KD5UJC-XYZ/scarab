@@ -224,17 +224,20 @@ object ScriptContexts:
     case DRep.AlwaysAbstain      => constr(1)
     case DRep.AlwaysNoConfidence => constr(2)
 
-  private def txCert(c: Certificate): Result[PlutusData] =
+  private def txCert(c: Certificate, bootstrap: Boolean): Result[PlutusData] =
     def delegatee(pool: Option[Bytes], d: Option[DRep]): Result[PlutusData] = (pool, d) match
       case (Some(p), None)    => Right(constr(0, B(p)))
       case (None, Some(v))    => Right(constr(1, drep(v)))
       case (Some(p), Some(v)) => Right(constr(2, B(p), drep(v)))
       case _                  => fail("delegation without a delegatee")
     c match
+      // In protocol version 9 the deposit and the refund were omitted from the context.
       case Certificate.Register(cred, dep) =>
-        Right(constr(0, credential(cred), PlutusData.maybe(dep.map(I(_)))))
+        Right(constr(0, credential(cred), PlutusData.maybe(dep.filter(_ => !bootstrap).map(I(_)))))
       case Certificate.Unregister(cred, refund) =>
-        Right(constr(1, credential(cred), PlutusData.maybe(refund.map(I(_)))))
+        Right(
+          constr(1, credential(cred), PlutusData.maybe(refund.filter(_ => !bootstrap).map(I(_))))
+        )
       case Certificate.Delegate(cred, pool, d, None) =>
         delegatee(pool, d).map(x => constr(2, credential(cred), x))
       case Certificate.Delegate(cred, pool, d, Some(dep)) =>
@@ -259,21 +262,25 @@ object ScriptContexts:
     case Purpose.Certifying(_, cert)   => dcert(cert).map(constr(3, _))
     case other => fail(s"purpose $other in a Plutus V1 or V2 script context")
 
-  private def purposeV3(p: Purpose): Result[PlutusData] = p match
+  private def purposeV3(p: Purpose, bootstrap: Boolean): Result[PlutusData] = p match
     case Purpose.Minting(_, policy)      => Right(constr(0, B(policy)))
     case Purpose.Spending(_, in, _)      => Right(constr(1, outRef(in, v3 = true)))
     case Purpose.Rewarding(_, account)   => Right(constr(2, credential(account.credential)))
-    case Purpose.Certifying(ix, cert)    => txCert(cert).map(constr(3, I(ix), _))
+    case Purpose.Certifying(ix, cert)    => txCert(cert, bootstrap).map(constr(3, I(ix), _))
     case Purpose.Voting(_, voter)        => Right(constr(4, voterData(voter)))
     case Purpose.Proposing(ix, proposal) => proposalData(proposal).map(constr(5, I(ix), _))
 
   /** `ScriptInfo`: the purpose, with the datum of a spent output. */
-  private def scriptInfo(p: Purpose, datum: Option[PlutusData]): Result[PlutusData] = p match
+  private def scriptInfo(
+      p: Purpose,
+      datum: Option[PlutusData],
+      bootstrap: Boolean
+  ): Result[PlutusData] = p match
     case Purpose.Minting(_, policy) => Right(constr(0, B(policy)))
     case Purpose.Spending(_, in, _) =>
       Right(constr(1, outRef(in, v3 = true), PlutusData.maybe(datum)))
     case Purpose.Rewarding(_, account)   => Right(constr(2, credential(account.credential)))
-    case Purpose.Certifying(ix, cert)    => txCert(cert).map(constr(3, I(ix), _))
+    case Purpose.Certifying(ix, cert)    => txCert(cert, bootstrap).map(constr(3, I(ix), _))
     case Purpose.Voting(_, voter)        => Right(constr(4, voterData(voter)))
     case Purpose.Proposing(ix, proposal) => proposalData(proposal).map(constr(5, I(ix), _))
 
@@ -291,10 +298,54 @@ object ScriptContexts:
 
   private def policy(h: Option[Bytes]): PlutusData = PlutusData.maybe(h.map(B(_)))
 
+  /** `ChangedParameters`: the update as a map from parameter index to the value in Plutus data, in
+    * index order (the ledger's `ToPlutusData PParamsUpdate`).
+    */
+  def changedParameters(update: ParamUpdate): Result[PlutusData] =
+    def rational(n: lab.cbor.Node): Result[PlutusData] =
+      CborRead
+        .rational(n, "rational")
+        .bimap(TranslationError(_), r => PlutusData.List(Vector(I(r.numerator), I(r.denominator))))
+    def uint(n: lab.cbor.Node): Result[PlutusData] =
+      CborRead.int(n, "integer").bimap(TranslationError(_), I(_))
+    def list(f: lab.cbor.Node => Result[PlutusData])(n: lab.cbor.Node): Result[PlutusData] =
+      CborRead
+        .array(n, "list")
+        .leftMap(TranslationError(_))
+        .flatMap(_.traverse(f))
+        .map(PlutusData.List(_))
+    def value(key: Int, n: lab.cbor.Node): Result[PlutusData] = key match
+      case 9 | 10 | 11 | 33 => rational(n)
+      case 19               => list(rational)(n)
+      case 20 | 21          => list(uint)(n)
+      case 25 | 26          => list(rational)(n)
+      case 18 =>
+        CborRead
+          .map(n, "cost models")
+          .leftMap(TranslationError(_))
+          .flatMap(_.traverse { case (k, v) =>
+            (uint(k), list(uint)(v)).tupled
+          })
+          .map(es =>
+            PlutusData.Map(es.sortBy(_._1 match
+              case I(v) => v
+              case _    => BigInt(0)))
+          )
+      case _ => uint(n)
+    update.fields.toVector
+      .sortBy(_._1)
+      .traverse { case (key, raw) =>
+        for
+          node <- lab.cbor.Cbor.decode(raw).leftMap(TranslationError(_))
+          v <- value(key, node)
+        yield (I(key): PlutusData) -> v
+      }
+      .map(PlutusData.Map(_))
+
   private def proposalData(p: Proposal): Result[PlutusData] =
     val action: Result[PlutusData] = p.action match
-      case GovAction.ParameterChange(prev, _, script) =>
-        fail("parameter changes in a Plutus V3 script context are not supported")
+      case GovAction.ParameterChange(prev, update, script) =>
+        changedParameters(update).map(c => constr(0, previous(prev), c, policy(script)))
       case GovAction.HardFork(prev, major, minor) =>
         Right(constr(1, previous(prev), constr(0, I(major), I(minor))))
       case GovAction.TreasuryWithdrawals(withdrawals, script) =>
@@ -421,9 +472,16 @@ object ScriptContexts:
           ins <- inputs(body.inputs, env.spent, language, env)
           refs <- inputs(body.referenceInputs, env.references, language, env)
           outs <- outputs(body.outputs, language, env)
-          certs <- body.certificates.traverse(txCert)
+          _ <- Either.cond(
+            env.protocolMajor < 11 || body.inputs.toSet
+              .intersect(body.referenceInputs.toSet)
+              .isEmpty,
+            (),
+            TranslationError("a reference input is also an input")
+          )
+          certs <- body.certificates.traverse(txCert(_, env.protocolMajor == 9))
           range <- interval(body, env)
-          redeemers <- redeemerMap(tx, env, purposeV3)
+          redeemers <- redeemerMap(tx, env, purposeV3(_, env.protocolMajor == 9))
           data <- datumMap(tx.witnesses, v2 = true)
           proposals <- body.proposals.traverse(proposalData)
         yield constr(
@@ -471,14 +529,15 @@ object ScriptContexts:
       info: PlutusData,
       tx: Tx,
       redeemer: Redeemer,
-      purpose: Purpose
+      purpose: Purpose,
+      protocolMajor: Int = 10
   ): Result[Vector[PlutusData]] =
     decodeRedeemer(redeemer).flatMap { rdmr =>
       language match
         case PlutusLanguage.V3 =>
           for
             datum <- spendingDatum(tx, purpose)
-            sinfo <- scriptInfo(purpose, datum)
+            sinfo <- scriptInfo(purpose, datum, protocolMajor == 9)
           yield Vector(constr(0, info, rdmr, sinfo))
         case _ =>
           for
