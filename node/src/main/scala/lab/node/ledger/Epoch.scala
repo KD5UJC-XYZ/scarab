@@ -11,7 +11,14 @@ final case class ConwayParams(
     govActionLifetime: BigInt,
     minFeeRefScriptCostPerByte: Rational,
     /** The PlutusV3 cost model of the Conway genesis (`plutusV3CostModel`), if present. */
-    plutusV3CostModel: Vector[BigInt] = Vector.empty
+    plutusV3CostModel: Vector[BigInt] = Vector.empty,
+    poolVotingThresholds: PoolVotingThresholds = PoolVotingThresholds.zero,
+    drepVotingThresholds: DRepVotingThresholds = DRepVotingThresholds.zero,
+    committeeMinSize: BigInt = 0,
+    committeeMaxTermLength: BigInt = 0,
+    /** The genesis committee (`None` only if the genesis has no committee section). */
+    committee: Option[Committee] = None,
+    constitution: Constitution = GovState.empty.constitution
 )
 
 /** Network constants the epoch rules depend on. `stabilityWindow` is 3k/f and `startRewards` the
@@ -64,7 +71,7 @@ object Epoch:
     then adopted.copy(rewardRegistered = Some(adopted.accounts.keySet))
     else adopted
 
-  private def rotate(state: LedgerState): LedgerState =
+  private[ledger] def rotate(state: LedgerState): LedgerState =
     state.copy(
       snapshots = Snapshots(
         mark = Stake.snapshot(state),
@@ -74,7 +81,7 @@ object Epoch:
       )
     )
 
-  private def adoptPools(state: LedgerState): LedgerState =
+  private[ledger] def adoptPools(state: LedgerState): LedgerState =
     state.copy(
       pools = state.futurePools.foldLeft(state.pools) { case (ps, (id, p)) =>
         ps.updatedWith(id)(_.map(_.copy(params = p)))
@@ -111,26 +118,15 @@ object Epoch:
   ): LedgerState =
     val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _, prefilter = false))
     val reaped = poolReap(adoptPools(rotate(rewarded)), epoch)
-    // Conway EPOCH: `deposited` becomes the total obligation; without governance proposals every
-    // epoch is dormant.
-    val next = reaped.copy(
-      epoch = epoch,
-      prevParams = Some(reaped.params),
-      deposited = obligation(reaped),
-      dormantEpochs = reaped.dormantEpochs + 1,
-      blocksPrevious = reaped.blocksCurrent,
-      blocksCurrent = Map.empty,
-      rewardUpdate = None,
-      poolDistribution = reaped.snapshots.set
-    )
-    next.copy(rewardUpdate = Some(Rewards.update(next, globals)))
+    val entered = ConwayEpoch(reaped, epoch)
+    entered.copy(rewardUpdate = Some(Rewards.update(entered, globals)))
 
   /** Sum of all outstanding deposits: stake credentials, pools and DReps. */
   def obligation(state: LedgerState): BigInt =
     state.accounts.valuesIterator.map(_.deposit).sum + state.pools.valuesIterator
       .map(_.deposit)
       .sum +
-      state.dreps.valuesIterator.map(_.deposit).sum
+      state.dreps.valuesIterator.map(_.deposit).sum + state.gov.proposals.totalDeposits
 
   /** Apply a reward update. Before Babbage the update skips rewards for accounts that were not
     * registered when the calculation started (their share stays in the reserves); credentials that
@@ -152,7 +148,7 @@ object Epoch:
       }
     )
 
-  private def poolReap(state: LedgerState, epoch: BigInt): LedgerState =
+  private[ledger] def poolReap(state: LedgerState, epoch: BigInt): LedgerState =
     val retired = state.retiring.collect { case (id, e) if e == epoch => id }.toSet
     if retired.isEmpty then state
     else
@@ -210,10 +206,17 @@ object Translate:
         govActionDeposit = c.govActionDeposit,
         govActionLifetime = c.govActionLifetime,
         minFeeRefScriptCostPerByte = c.minFeeRefScriptCostPerByte,
+        poolVotingThresholds = c.poolVotingThresholds,
+        drepVotingThresholds = c.drepVotingThresholds,
+        committeeMinSize = c.committeeMinSize,
+        committeeMaxTermLength = c.committeeMaxTermLength,
         costModels =
           if c.plutusV3CostModel.isEmpty then state.params.costModels
           else state.params.costModels.updated(2, c.plutusV3CostModel)
       )
+    )
+    val gov = globals.conway.fold(GovState.empty)(c =>
+      GovState.empty.copy(committee = c.committee, constitution = c.constitution)
     )
     val translated = state.copy(
       params = params,
@@ -223,12 +226,18 @@ object Translate:
       mir = InstantRewards.empty,
       ptrs = Map.empty,
       dreps = Map.empty,
+      gov = gov,
+      committeeState = Map.empty,
+      donation = 0,
       // The epoch transition into the first Conway epoch runs under the Conway EPOCH rule (the era
       // translation precedes it), and with no governance proposals that epoch is dormant.
       dormantEpochs = 1,
       rewardRegistered = None
     )
-    translated.copy(deposited = Epoch.obligation(translated))
+    val counted = translated.copy(deposited = Epoch.obligation(translated))
+    counted.copy(gov =
+      counted.gov.copy(pulsed = Some(ConwayEpoch.freshPulser(counted, counted.epoch)))
+    )
 
 /** The Shelley reward calculation (createRUpd). Parameters are those of the previous epoch
   * (`esPrevPp`); from Babbage `d` is 0; before Allegra only one reward per account is kept.

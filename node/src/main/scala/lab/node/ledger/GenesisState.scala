@@ -26,11 +26,21 @@ object GenesisState:
         get[BigDecimal](c, "minFeeRefScriptCostPerByte").map(Rational.fromDecimal)
       ).mapN(ConwayParams(_, _, _, _, _))
         .toOption
-        .map(
-          _.copy(plutusV3CostModel =
-            c.downField("plutusV3CostModel").as[Vector[BigInt]].getOrElse(Vector.empty)
-          )
-        )
+        .flatMap { base =>
+          (ConwayGenesis.votingParams(c), ConwayGenesis.committeeAndConstitution(c)).mapN {
+            case ((pool, drep, minSize, maxTerm), (committee, constitution)) =>
+              base.copy(
+                plutusV3CostModel =
+                  c.downField("plutusV3CostModel").as[Vector[BigInt]].getOrElse(Vector.empty),
+                poolVotingThresholds = pool,
+                drepVotingThresholds = drep,
+                committeeMinSize = minSize,
+                committeeMaxTermLength = maxTerm,
+                committee = committee,
+                constitution = constitution
+              )
+          }.toOption
+        }
     files.shelley.hcursor
       .downField("updateQuorum")
       .as[Option[Int]]
@@ -126,6 +136,10 @@ object GenesisState:
         c -> Account(0, params.keyDeposit, delegations.toMap.get(c), voteMap.get(c))
       }.toMap
       val poolStates = pools.map { case (id, p) => id -> PoolState(p, params.poolDeposit) }
+      // Genesis vote delegations build the reverse index of each DRep.
+      val drepsWithDelegs = dreps.toMap.map { case (c, d) =>
+        c -> d.copy(delegs = voteMap.collect { case (s, DRep.Registered(`c`)) => s }.toSet)
+      }
       val deposited = accounts.values.map(_.deposit).sum + poolStates.values.map(_.deposit).sum +
         dreps.map(_._2.deposit).sum
       val base = LedgerState(
@@ -138,7 +152,7 @@ object GenesisState:
         pools = poolStates,
         futurePools = Map.empty,
         retiring = Map.empty,
-        dreps = dreps.toMap,
+        dreps = drepsWithDelegs,
         dormantEpochs = 0,
         treasury = 0,
         reserves = 0,
@@ -154,13 +168,33 @@ object GenesisState:
       // from reserves); the first EPOCH rule recomputes `deposited` as the total obligation. Only
       // the mark snapshot is seeded: set/go start empty, so epoch 0 earns no rewards.
       val genesisStake = Stake.snapshot(base)
-      val seeded = base.copy(
+      val seeded0 = base.copy(
         deposited = 0,
         reserves = maxSupply - utxo.valuesIterator.map(_.value.coin).sum,
         snapshots = Snapshots(genesisStake, Snapshot.empty, Snapshot.empty, 0),
         // Epochs 0 and 1 elect leaders from the genesis staking injection.
         poolDistribution = genesisStake
       )
+      val seeded =
+        if !startsInConway then seeded0
+        else
+          val withGov = seeded0.copy(gov =
+            globals.conway.fold(GovState.empty)(c =>
+              GovState.empty.copy(committee = c.committee, constitution = c.constitution)
+            )
+          )
+          withGov.copy(gov =
+            withGov.gov.copy(pulsed =
+              Some(
+                PulsingSnapshot.empty -> RatifyState(
+                  ConwayEpoch.enactState(withGov),
+                  Vector.empty,
+                  Set.empty,
+                  delayed = false
+                )
+              )
+            )
+          )
       // Epoch 0 has a (necessarily empty) reward update, like every other epoch.
       seeded.copy(rewardUpdate = Some(Rewards.update(seeded, globals)))
 

@@ -71,11 +71,20 @@ enum GovAction:
       added: Map[Credential, BigInt],
       quorum: Rational
   )
-  case NewConstitution(previous: Option[GovActionId], script: Option[Bytes])
+  case NewConstitution(
+      previous: Option[GovActionId],
+      script: Option[Bytes],
+      anchor: Anchor = GovState.noAnchor
+  )
   case Info
 
 /** `[deposit, reward_account, gov_action, anchor]`. */
-final case class Proposal(deposit: BigInt, returnAccount: RewardAccount, action: GovAction)
+final case class Proposal(
+    deposit: BigInt,
+    returnAccount: RewardAccount,
+    action: GovAction,
+    anchor: Anchor = GovState.noAnchor
+)
 
 object Proposal:
   private def optionalHash(n: Node): Either[String, Option[Bytes]] = n.value match
@@ -88,7 +97,8 @@ object Proposal:
       deposit <- CborRead.uint(xs(0), "proposal deposit")
       account <- CborRead.bytes(xs(1), "proposal reward account").flatMap(RewardAccount.decode)
       action <- action(xs(2))
-    yield Proposal(deposit, account, action)
+      anchor <- Anchor.decode(xs(3))
+    yield Proposal(deposit, account, action, anchor)
 
   private def action(n: Node): Either[String, GovAction] =
     CborRead.array(n, "governance action").flatMap { xs =>
@@ -146,8 +156,10 @@ object Proposal:
           case (5, 3) =>
             (
               GovActionId.optional(xs(1)),
-              CborRead.arrayN(xs(2), 2, "constitution").flatMap(c => optionalHash(c(1)))
-            ).mapN(GovAction.NewConstitution(_, _))
+              CborRead
+                .arrayN(xs(2), 2, "constitution")
+                .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0))).tupled)
+            ).mapN((p, c) => GovAction.NewConstitution(p, c._1, c._2))
           case (6, 1) => Right(GovAction.Info)
           case (t, k) => Left(s"governance action $t with $k elements")
       yield a

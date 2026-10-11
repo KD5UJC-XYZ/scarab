@@ -69,11 +69,11 @@ enum Certificate:
     * or per-credential amounts (deltas from Alonzo) paid from `pot`.
     */
   case MoveRewards(pot: Pot, transfer: Either[BigInt, Map[Credential, BigInt]])
-  case RegisterDRep(credential: Credential, deposit: BigInt)
+  case RegisterDRep(credential: Credential, deposit: BigInt, anchor: Option[Anchor] = None)
   case UnregisterDRep(credential: Credential, refund: BigInt)
-  case UpdateDRep(credential: Credential)
+  case UpdateDRep(credential: Credential, anchor: Option[Anchor] = None)
   case CommitteeAuthorize(cold: Credential, hot: Credential)
-  case CommitteeResign(cold: Credential)
+  case CommitteeResign(cold: Credential, anchor: Option[Anchor] = None)
 
 enum Pot:
   case Reserves
@@ -144,10 +144,11 @@ object Certificate:
             (cred(1, xs), pool(2, xs), drep(3, xs), coin(4, xs))
               .mapN((c, p, v, d) => Delegate(c, Some(p), Some(v), Some(d)))
           case 14 => (cred(1, xs), cred(2, xs)).mapN(CommitteeAuthorize(_, _))
-          case 15 => cred(1, xs).map(CommitteeResign(_))
-          case 16 => (cred(1, xs), coin(2, xs)).mapN(RegisterDRep(_, _))
+          case 15 => (cred(1, xs), Anchor.optional(xs(2))).mapN(CommitteeResign(_, _))
+          case 16 =>
+            (cred(1, xs), coin(2, xs), Anchor.optional(xs(3))).mapN(RegisterDRep(_, _, _))
           case 17 => (cred(1, xs), coin(2, xs)).mapN(UnregisterDRep(_, _))
-          case 18 => cred(1, xs).map(UpdateDRep(_))
+          case 18 => (cred(1, xs), Anchor.optional(xs(2))).mapN(UpdateDRep(_, _))
           case t  => Left(s"certificate tag $t")
       yield cert
     }

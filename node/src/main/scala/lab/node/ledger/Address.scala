@@ -228,6 +228,28 @@ final case class TxOut(
       reread.toOption.orElse(Some(kept))
     }
 
+  /** Size in bytes of the reference script as the ledger counts it for the reference-script fee:
+    * the Plutus script bytes, or the encoding of a native script.
+    */
+  def referenceScriptSize: Int =
+    if scriptRef.isEmpty then 0
+    else
+      val size = for
+        node <- Cbor.decode(raw)
+        f <- CborRead.fields(node, "output")
+        field <- f.get(3).toRight("output: no reference script")
+        inner <- field.value match
+          case lab.cbor.Value.Tag(t, i) if t == 24 => CborRead.bytes(i, "reference script")
+          case _                                   => Left("reference script: expected tag 24")
+        script <- Cbor.decode(inner)
+        parts <- CborRead.arrayN(script, 2, "script")
+        tag <- CborRead.uint(parts(0), "script type")
+        payload <-
+          if tag == 0 then Right(parts(1).original.size)
+          else CborRead.bytes(parts(1), "plutus script").map(_.size)
+      yield payload
+      size.getOrElse(0)
+
   /** Size of the output as the ledger serialises it: outputs with neither inline datum nor
     * reference script use the legacy array form, shorter by two bytes than the equivalent map.
     */

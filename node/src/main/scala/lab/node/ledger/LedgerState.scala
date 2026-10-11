@@ -9,7 +9,15 @@ final case class Account(balance: BigInt, deposit: BigInt, pool: Option[Bytes], 
 
 final case class PoolState(params: PoolParams, deposit: BigInt)
 
-final case class DRepState(deposit: BigInt, expiry: BigInt)
+/** A registered DRep. `delegs` is the reverse index of stake credentials delegating to it (kept as
+  * the ledger keeps it, including its bootstrap-phase inconsistencies).
+  */
+final case class DRepState(
+    deposit: BigInt,
+    expiry: BigInt,
+    anchor: Option[Anchor] = None,
+    delegs: Set[Credential] = Set.empty
+)
 
 /** A stake distribution snapshot: delegated stake per credential and the pool parameters in force.
   */
@@ -106,7 +114,13 @@ final case class LedgerState(
     /** Registered credentials when the reward calculation started (pre-Babbage reward prefilter).
       */
     rewardRegistered: Option[Set[Credential]] = None,
-    plutus: PlutusStats = PlutusStats.zero
+    plutus: PlutusStats = PlutusStats.zero,
+    // Conway governance state; empty before Conway.
+    gov: GovState = GovState.empty,
+    /** Committee hot-key authorisations and resignations by cold credential. */
+    committeeState: Map[Credential, CommitteeAuth] = Map.empty,
+    /** Treasury donations of the epoch so far, moved to the treasury at the boundary. */
+    donation: BigInt = 0
 ):
   /** Parameters in force during the previous epoch. */
   def previousParams: ProtocolParams = prevParams.getOrElse(params)
@@ -114,4 +128,4 @@ final case class LedgerState(
   /** Total value in existence; equals the maximum supply when the ledger is consistent. */
   def total: BigInt =
     utxo.valuesIterator.map(_.value.coin).sum + fees + deposited + treasury + reserves +
-      accounts.valuesIterator.map(_.balance).sum
+      accounts.valuesIterator.map(_.balance).sum + donation

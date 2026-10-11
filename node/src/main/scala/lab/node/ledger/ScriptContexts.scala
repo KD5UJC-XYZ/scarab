@@ -239,14 +239,14 @@ object ScriptContexts:
         delegatee(pool, d).map(x => constr(2, credential(cred), x))
       case Certificate.Delegate(cred, pool, d, Some(dep)) =>
         delegatee(pool, d).map(x => constr(3, credential(cred), x, I(dep)))
-      case Certificate.RegisterDRep(cred, dep)   => Right(constr(4, credential(cred), I(dep)))
-      case Certificate.UpdateDRep(cred)          => Right(constr(5, credential(cred)))
-      case Certificate.UnregisterDRep(cred, ref) => Right(constr(6, credential(cred), I(ref)))
-      case Certificate.RegisterPool(p)           => Right(constr(7, B(p.operator), B(p.vrfKeyHash)))
-      case Certificate.RetirePool(p, e)          => Right(constr(8, B(p), I(e)))
+      case Certificate.RegisterDRep(cred, dep, _) => Right(constr(4, credential(cred), I(dep)))
+      case Certificate.UpdateDRep(cred, _)        => Right(constr(5, credential(cred)))
+      case Certificate.UnregisterDRep(cred, ref)  => Right(constr(6, credential(cred), I(ref)))
+      case Certificate.RegisterPool(p)  => Right(constr(7, B(p.operator), B(p.vrfKeyHash)))
+      case Certificate.RetirePool(p, e) => Right(constr(8, B(p), I(e)))
       case Certificate.CommitteeAuthorize(cold, hot) =>
         Right(constr(9, credential(cold), credential(hot)))
-      case Certificate.CommitteeResign(cold) => Right(constr(10, credential(cold)))
+      case Certificate.CommitteeResign(cold, _) => Right(constr(10, credential(cold)))
       case other => fail(s"certificate $other in a Plutus V3 script context")
 
   // -------------------------------------------------------------------------------------------
@@ -321,7 +321,7 @@ object ScriptContexts:
             constr(0, I(quorum.numerator), I(quorum.denominator))
           )
         )
-      case GovAction.NewConstitution(prev, script) =>
+      case GovAction.NewConstitution(prev, script, _) =>
         Right(constr(5, previous(prev), policy(script)))
       case GovAction.Info => Right(constr(6))
     action.map(a => constr(0, I(p.deposit), credential(p.returnAccount.credential), a))

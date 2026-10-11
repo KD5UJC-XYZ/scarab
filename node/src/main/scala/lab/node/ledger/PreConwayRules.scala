@@ -17,7 +17,7 @@ object PreConwayRules:
   import TxRules.{Env, Result}
 
   /** A redeemer pointer: tag 0 spend, 1 mint, 2 certificate, 3 reward, then index. */
-  private type Pointer = (Int, BigInt)
+  private[ledger] type Pointer = (Int, BigInt)
 
   def apply(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =
     val body = tx.body
@@ -125,7 +125,7 @@ object PreConwayRules:
   /** The script data hash must equal the recomputed hash, and the block's `is_valid` flag must
     * equal the outcome of evaluating every Plutus script.
     */
-  private def phase2(
+  private[ledger] def phase2(
       state: LedgerState,
       tx: Tx,
       env: Env,
@@ -211,7 +211,12 @@ object PreConwayRules:
       case _             => 0
     27 + value + datum
 
-  private def outputChecks(pp: ProtocolParams, env: Env, id: Bytes, out: TxOut): Result[Unit] =
+  private[ledger] def outputChecks(
+      pp: ProtocolParams,
+      env: Env,
+      id: Bytes,
+      out: TxOut
+  ): Result[Unit] =
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
     val min = minUTxO(pp, out)
@@ -235,7 +240,7 @@ object PreConwayRules:
   /** Collateral rules (Alonzo+): only for transactions that carry redeemers. Returns the collateral
     * outputs and their ada balance after the return output.
     */
-  private def collateralChecks(
+  private[ledger] def collateralChecks(
       state: LedgerState,
       tx: Tx,
       env: Env
@@ -289,8 +294,8 @@ object PreConwayRules:
         Collateral(outs, balance.coin)
 
   /** Collateral outputs and the ada they pay as fees when the transaction fails phase 2. */
-  private final case class Collateral(outputs: Vector[TxOut], fee: BigInt)
-  private object Collateral:
+  private[ledger] final case class Collateral(outputs: Vector[TxOut], fee: BigInt)
+  private[ledger] object Collateral:
     val none: Collateral = Collateral(Vector.empty, 0)
 
   // ---------------------------------------------------------------------------------------------
@@ -299,11 +304,11 @@ object PreConwayRules:
   /** Scripts the transaction can use: its witnesses and the reference scripts of spent and
     * reference outputs (Babbage).
     */
-  private def providedScripts(wits: Witnesses, outs: Vector[TxOut]): Map[Bytes, Script] =
+  private[ledger] def providedScripts(wits: Witnesses, outs: Vector[TxOut]): Map[Bytes, Script] =
     outs.flatMap(_.scriptRef).map(s => s.hash -> s).toMap ++ wits.scriptsByHash
 
   /** Script hashes the transaction must provide, with the redeemer pointers that use each. */
-  private def scriptsNeeded(body: TxBody, spent: Vector[TxOut]): Map[Bytes, Set[Pointer]] =
+  private[ledger] def scriptsNeeded(body: TxBody, spent: Vector[TxOut]): Map[Bytes, Set[Pointer]] =
     val byInput = body.inputs.zip(spent).toMap
     Purpose
       .all(body, byInput)
@@ -314,7 +319,7 @@ object PreConwayRules:
       .toMap
 
   /** Alonzo UTXOW: redeemers match the Plutus purposes, datums, script data hash presence. */
-  private def alonzoChecks(
+  private[ledger] def alonzoChecks(
       state: LedgerState,
       tx: Tx,
       spent: Vector[TxOut],
@@ -371,7 +376,7 @@ object PreConwayRules:
         )
       yield ()
 
-  private def auxiliaryChecks(tx: Tx): Result[Unit] =
+  private[ledger] def auxiliaryChecks(tx: Tx): Result[Unit] =
     val id = tx.body.id
     (tx.body.auxDataHash, tx.auxiliary) match
       case (None, None) => Right(())
@@ -388,7 +393,7 @@ object PreConwayRules:
   /** Key hashes that must sign (`witsVKeyNeeded`) and the address roots that need a bootstrap
     * witness.
     */
-  private def witnessChecks(
+  private[ledger] def witnessChecks(
       state: LedgerState,
       tx: Tx,
       spent: Vector[TxOut],
@@ -420,13 +425,25 @@ object PreConwayRules:
       case Certificate.RegisterPool(p)                      => p.operator +: p.owners.toVector
       case Certificate.RetirePool(p, _)                     => Vector(p)
       case Certificate.GenesisDelegate(g, _, _)             => Vector(g)
-      case _                                                => Vector.empty
+      // Conway: the deposit-carrying registration and the governance certificates.
+      case Certificate.Register(Credential.Key(h), Some(_))     => Vector(h)
+      case Certificate.RegisterDRep(Credential.Key(h), _, _)    => Vector(h)
+      case Certificate.UnregisterDRep(Credential.Key(h), _)     => Vector(h)
+      case Certificate.UpdateDRep(Credential.Key(h), _)         => Vector(h)
+      case Certificate.CommitteeAuthorize(Credential.Key(h), _) => Vector(h)
+      case Certificate.CommitteeResign(Credential.Key(h), _)    => Vector(h)
+      case _                                                    => Vector.empty
+    }
+    val voterKeys = body.votes.map(_._1).collect {
+      case Voter.CommitteeHot(Credential.Key(h)) => h
+      case Voter.DRepVoter(Credential.Key(h))    => h
+      case Voter.Pool(h)                         => h
     }
     val updateKeys = body.update.toVector.flatMap(
       _.proposals.keys.toVector.flatMap(g => state.genDelegs.get(g).map(_.delegate))
     )
     val required =
-      (inputKeys ++ withdrawalKeys ++ certKeys ++ updateKeys ++ body.requiredSigners).toSet
+      (inputKeys ++ withdrawalKeys ++ certKeys ++ voterKeys ++ updateKeys ++ body.requiredSigners).toSet
     val provided = vkeyHashes.toSet
     for
       _ <- wits.vkeys.traverse_ { case (vkey, signature) =>
@@ -463,7 +480,11 @@ object PreConwayRules:
   // ---------------------------------------------------------------------------------------------
   // Application
 
-  private def applyInvalid(state: LedgerState, tx: Tx, collateral: Collateral): LedgerState =
+  private[ledger] def applyInvalid(
+      state: LedgerState,
+      tx: Tx,
+      collateral: Collateral
+  ): LedgerState =
     val body = tx.body
     val returned = body.collateralReturn.map(r => TxIn(body.id, body.outputs.size) -> r)
     state.copy(

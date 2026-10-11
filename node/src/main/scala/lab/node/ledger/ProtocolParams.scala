@@ -15,6 +15,64 @@ final case class ExUnits(mem: BigInt, steps: BigInt):
 object ExUnits:
   val zero: ExUnits = ExUnits(0, 0)
 
+/** Conway pool (SPO) voting thresholds, in the order of the protocol-parameter encoding. */
+final case class PoolVotingThresholds(
+    motionNoConfidence: Rational,
+    committeeNormal: Rational,
+    committeeNoConfidence: Rational,
+    hardForkInitiation: Rational,
+    securityGroup: Rational
+):
+  def toVector: Vector[Rational] =
+    Vector(
+      motionNoConfidence,
+      committeeNormal,
+      committeeNoConfidence,
+      hardForkInitiation,
+      securityGroup
+    )
+
+object PoolVotingThresholds:
+  val zero: PoolVotingThresholds = fromVector(Vector.fill(5)(Rational.zero)).toOption.get
+  def fromVector(xs: Vector[Rational]): Either[String, PoolVotingThresholds] =
+    xs match
+      case Vector(a, b, c, d, e) => Right(PoolVotingThresholds(a, b, c, d, e))
+      case _                     => Left("pool voting thresholds: expected 5 elements")
+
+/** Conway DRep voting thresholds, in the order of the protocol-parameter encoding. */
+final case class DRepVotingThresholds(
+    motionNoConfidence: Rational,
+    committeeNormal: Rational,
+    committeeNoConfidence: Rational,
+    updateToConstitution: Rational,
+    hardForkInitiation: Rational,
+    ppNetworkGroup: Rational,
+    ppEconomicGroup: Rational,
+    ppTechnicalGroup: Rational,
+    ppGovGroup: Rational,
+    treasuryWithdrawal: Rational
+):
+  def toVector: Vector[Rational] = Vector(
+    motionNoConfidence,
+    committeeNormal,
+    committeeNoConfidence,
+    updateToConstitution,
+    hardForkInitiation,
+    ppNetworkGroup,
+    ppEconomicGroup,
+    ppTechnicalGroup,
+    ppGovGroup,
+    treasuryWithdrawal
+  )
+
+object DRepVotingThresholds:
+  val zero: DRepVotingThresholds = fromVector(Vector.fill(10)(Rational.zero)).toOption.get
+  def fromVector(xs: Vector[Rational]): Either[String, DRepVotingThresholds] =
+    xs match
+      case Vector(a, b, c, d, e, f, g, h, i, j) =>
+        Right(DRepVotingThresholds(a, b, c, d, e, f, g, h, i, j))
+      case _ => Left("DRep voting thresholds: expected 10 elements")
+
 /** The protocol parameters the implemented ledger rules consult, for every era. Fields an era does
   * not have keep their genesis or zero value and are not consulted.
   */
@@ -55,7 +113,11 @@ final case class ProtocolParams(
     collateralPercentage: BigInt = 0,
     maxCollateralInputs: BigInt = 0,
     /** Cost model values by language tag (0 = PlutusV1), in the canonical parameter order. */
-    costModels: Map[Int, Vector[BigInt]] = Map.empty
+    costModels: Map[Int, Vector[BigInt]] = Map.empty,
+    poolVotingThresholds: PoolVotingThresholds = PoolVotingThresholds.zero,
+    drepVotingThresholds: DRepVotingThresholds = DRepVotingThresholds.zero,
+    committeeMinSize: BigInt = 0,
+    committeeMaxTermLength: BigInt = 0
 ):
   /** The effective decentralisation parameter (Babbage removed `d`). */
   def effectiveD: Rational = if protocolMajor >= 7 then Rational.zero else d
@@ -143,6 +205,7 @@ object ProtocolParams:
       refCost <- opt[BigDecimal](c, "minFeeRefScriptCostPerByte").map(
         _.fold(Rational.zero)(Rational.fromDecimal)
       )
+      voting <- ConwayGenesis.votingParams(c)
     yield ProtocolParams(
       minFeeA,
       minFeeB,
@@ -177,7 +240,11 @@ object ProtocolParams:
       maxBlockExUnits = ExUnits(blockMem, blockSteps),
       collateralPercentage = collateralPct,
       maxCollateralInputs = maxCollateral,
-      costModels = costModels
+      costModels = costModels,
+      poolVotingThresholds = voting._1,
+      drepVotingThresholds = voting._2,
+      committeeMinSize = voting._3,
+      committeeMaxTermLength = voting._4
     )
 
   private def extraEntropy(s: ACursor): Either[ConfigError, Nonce] =
@@ -283,13 +350,33 @@ object ProtocolParams:
       field(21)(exUnits("maxBlockExUnits")((p, v) => p.copy(maxBlockExUnits = v))),
       field(22)(uint("maxValueSize")((p, v) => p.copy(maxValueSize = v))),
       field(23)(uint("collateralPercentage")((p, v) => p.copy(collateralPercentage = v))),
-      field(24)(uint("maxCollateralInputs")((p, v) => p.copy(maxCollateralInputs = v)))
+      field(24)(uint("maxCollateralInputs")((p, v) => p.copy(maxCollateralInputs = v))),
+      field(25)((p, n) =>
+        rationals(n, "pool voting thresholds")
+          .flatMap(PoolVotingThresholds.fromVector)
+          .map(v => p.copy(poolVotingThresholds = v))
+      ),
+      field(26)((p, n) =>
+        rationals(n, "DRep voting thresholds")
+          .flatMap(DRepVotingThresholds.fromVector)
+          .map(v => p.copy(drepVotingThresholds = v))
+      ),
+      field(27)(uint("committeeMinSize")((p, v) => p.copy(committeeMinSize = v))),
+      field(28)(uint("committeeMaxTermLength")((p, v) => p.copy(committeeMaxTermLength = v))),
+      field(29)(uint("govActionLifetime")((p, v) => p.copy(govActionLifetime = v))),
+      field(30)(uint("govActionDeposit")((p, v) => p.copy(govActionDeposit = v))),
+      field(31)(uint("drepDeposit")((p, v) => p.copy(drepDeposit = v))),
+      field(32)(uint("drepActivity")((p, v) => p.copy(drepActivity = v))),
+      field(33)(rat("minFeeRefScriptCostPerByte")((p, v) => p.copy(minFeeRefScriptCostPerByte = v)))
     )
     for updated <- steps.foldLeftM(p)((acc, step) => step(acc))
     yield
       if p.protocolMajor < 7 && updated.protocolMajor >= 7 && !u.fields.contains(17) then
         updated.copy(coinsPerUTxOByte = updated.coinsPerUTxOWord / 8)
       else updated
+
+  private def rationals(n: Node, what: String): Either[String, Vector[Rational]] =
+    CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what)))
 
   private def costModels(n: Node): Either[String, Map[Int, Vector[BigInt]]] =
     CborRead

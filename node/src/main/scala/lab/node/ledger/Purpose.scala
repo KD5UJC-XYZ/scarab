@@ -49,11 +49,11 @@ object Purpose:
       case Certificate.Register(c, Some(_))        => script(c)
       case Certificate.Unregister(c, _)            => script(c)
       case Certificate.Delegate(c, _, _, _)        => script(c)
-      case Certificate.RegisterDRep(c, _)          => script(c)
+      case Certificate.RegisterDRep(c, _, _)       => script(c)
       case Certificate.UnregisterDRep(c, _)        => script(c)
-      case Certificate.UpdateDRep(c)               => script(c)
+      case Certificate.UpdateDRep(c, _)            => script(c)
       case Certificate.CommitteeAuthorize(cold, _) => script(cold)
-      case Certificate.CommitteeResign(cold)       => script(cold)
+      case Certificate.CommitteeResign(cold, _)    => script(cold)
       case _                                       => None
 
   /** Withdrawals in the ledger's order: by reward account, script credentials first. */
