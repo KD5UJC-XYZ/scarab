@@ -7,7 +7,10 @@ object Stake:
     * pointed-to certificate (if it is still registered); Conway ignores them.
     */
   def instant(state: LedgerState): Map[Credential, BigInt] =
-    val pointers = state.params.protocolMajor < 9
+    instantWith(state, state.params.protocolMajor < 9)
+
+  /** [[instant]] with pointer addresses counted or not as told. */
+  def instantWith(state: LedgerState, pointers: Boolean): Map[Credential, BigInt] =
     // Maintained as transactions apply (see `Utxo`); only the pointers need resolving here.
     val fromUtxo =
       if !pointers || state.utxo.ptrStake.isEmpty then state.utxo.stake
@@ -20,9 +23,11 @@ object Stake:
     }.toMap
 
   /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. */
-  def snapshot(state: LedgerState): Snapshot =
+  def snapshot(state: LedgerState, pointers: Boolean = true): Snapshot =
     val delegations = state.accounts.iterator.collect {
       case (c, a) if a.pool.exists(state.pools.contains) => c -> a.pool.get
     }.toMap
-    val stake = instant(state).filter { case (c, _) => delegations.contains(c) }
+    val stake = instantWith(state, pointers && state.params.protocolMajor < 9).filter {
+      case (c, _) => delegations.contains(c)
+    }
     Snapshot(stake, delegations, state.pools.map { case (id, p) => id -> p.params })

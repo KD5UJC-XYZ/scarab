@@ -77,10 +77,10 @@ object Epoch:
       registered.copy(rewardUpdate = registered.rewardDraft, rewardDraft = None)
     else registered
 
-  private[ledger] def rotate(state: LedgerState): LedgerState =
+  private[ledger] def rotate(state: LedgerState, pointers: Boolean = true): LedgerState =
     state.copy(
       snapshots = Snapshots(
-        mark = Stake.snapshot(state),
+        mark = Stake.snapshot(state, pointers),
         set = state.snapshots.mark,
         go = state.snapshots.set,
         fee = state.fees
@@ -102,7 +102,13 @@ object Epoch:
   ): LedgerState =
     val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _, prefilter = true))
     val paid = Mir.apply(rewarded)
-    val reaped = poolReap(adoptPools(rotate(paid)), epoch)
+    // The boundary that enters Conway runs under the Conway rules (the era translation precedes
+    // it), and those ignore pointer addresses: the snapshot taken here does not count them
+    // (checked against Preview: a pointer address worth 35,553 ada at epoch 646).
+    val enteringConway =
+      paid.params.protocolMajor < 9 &&
+        PpupRules.newEpoch(paid, globals).params.protocolMajor >= 9
+    val reaped = poolReap(adoptPools(rotate(paid, pointers = !enteringConway)), epoch)
     val updated = PpupRules.newEpoch(reaped, globals)
     val next = updated.copy(
       epoch = epoch,
