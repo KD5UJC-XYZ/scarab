@@ -1,8 +1,11 @@
 Cardano Scala Lab
 Unofficial, independent research software. It is not affiliated with, endorsed by or
-sponsored by Input Output Global, Intersect, the Cardano Foundation or Emurgo. "Cardano" and
-related names are trademarks of their respective owners and are used here only to describe
-compatibility.
+sponsored by Input Output Global, Intersect, the Cardano Foundation or EMURGO, and it is not the
+Cardano node software they distribute. "Cardano" is used here only to describe compatibility with
+the Cardano protocol (nominative use, Cardano Foundation Trademark Policy section 2.1).
+"Cardano" is a trademark of the Cardano Foundation, CHE-184.477.354, Dammstrasse 16, 6300 Zug, Switzerland, in Switzerland and other countries.
+"ADA" is likewise a trademark of the Cardano Foundation; other names are trademarks of their
+respective owners.
 
 Original code, 2026, Apache-2.0, except the explicitly attributed MIT adaptations
 core/src/main/java/lab/vrf/Ed25519Point.java and Draft03Math.java. Their source

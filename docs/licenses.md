@@ -116,16 +116,28 @@ dependency versions in `build.sbt` change, and update `NOTICE` and this file tog
 
 ## Name and trademark wording
 
-The Cardano Foundation's trademark and brand guidance (cardanofoundation.org) could not be fetched
-during this review: the site answered automated requests with a bot challenge (HTTP 429), so its
-current wording was not read and is not quoted here. The recommendation below is therefore a
-judgement, not a confirmed reading of that policy.
+Checked against the Cardano Foundation Trademark Policy (version "Updated 06.03.24", read from
+cardanofoundation.org/policy/trademark-policy on 2026-10-11). Appendix 1 lists the word marks ADA,
+ADACOIN, ADAPAY, CARDANO and CARDANO FOUNDATION, plus the logos.
 
-- "cardano-scala-lab" uses the word "Cardano" descriptively, to say which protocol the software
-  targets, as many community projects do, and the README, `NOTICE` and `SECURITY.md` state that it is
-  unofficial and not affiliated with or endorsed by Input Output Global, Intersect, the Cardano
-  Foundation or Emurgo. The name is acceptable on that basis.
-- Not used: the Cardano logo or brand assets, and no domain, organisation name or package namespace
-  claims to be official (the sbt organisation is `io.github.ottobot-ai`).
-- If the Foundation or another owner objects, rename the repository; the Scala package root `lab` and
-  sbt organisation are already independent of the name (roadmap M7).
+- Compatibility is nominative use: section 2.1 allows using the marks "to indicate that your product
+  is compatible with the Cardano Code". The project says it is a Cardano-compatible node and never
+  that it distributes the Cardano Foundation or IOG software.
+- Section 3.1 grants automatic permission for a software package title "exclusively intended to
+  support the Cardano Code and Project" (or to "extend or improve" it) when no official sponsorship
+  is implied. This repository is a free, open-source, unofficial compatible implementation, so the
+  name `cardano-scala-lab` falls under it. The policy's own permitted example is a free theme called
+  "Gold Plated Cardano".
+- Section 3.3 requires written permission for domain names, company or organisation names,
+  advertising and anything suggesting an official link. None apply. Section 2.2.8 prohibits using
+  the marks in one's own trademark or product name. For that reason the owner will choose a distinct
+  project name before this becomes a named product or a published artefact (roadmap M7).
+- Section 2.2.2 asks for the attribution "'Cardano' is a trademark of the Cardano Foundation,
+  CHE-184.477.354 …" wherever possible. It is in the README and `NOTICE`, with ™ (only the owner
+  may use ®).
+- Section 4 usage: "Cardano" is capitalised and used as an adjective ("a Cardano-compatible node",
+  "the Cardano protocol"), never as a verb or a possessive.
+- Not used: the Cardano logo or other brand assets. No domain, organisation name or package
+  namespace refers to the marks (the sbt organisation is `io.github.ottobot-ai`).
+- The disclaimer names the Cardano Partners the policy lists (Cardano Foundation, IOHK/IOG, EMURGO)
+  and also Intersect.

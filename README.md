@@ -1,6 +1,6 @@
 # Cardano Scala Lab
 
-An independent Cardano node written in Scala 3 as tagless-final cats-effect code: effects are
+An independent, Cardano™-compatible node written in Scala 3 as tagless-final cats-effect code: effects are
 abstract (`F[_]`), domain errors are closed ADTs raised through cats-mtl (`Raise`, `Handle`), state
 goes through `Stateful`, and the algebras carry cats-laws and ScalaCheck properties. The goal is a
 node that is compatible with the reference Haskell implementation and readable enough to study, and
@@ -8,8 +8,9 @@ this repository is how far that has got.
 
 > **Unofficial research software. Not audited. Do not use it with mainnet funds or to run
 > production stake pools.** It is not affiliated with or endorsed by Input Output Global, Intersect,
-> the Cardano Foundation or Emurgo. "Cardano" and related names belong to their respective owners
-> and are used only to describe compatibility. See [SECURITY.md](SECURITY.md) and [NOTICE](NOTICE).
+> the Cardano Foundation or EMURGO, and is not the Cardano node software they distribute. The name
+> "Cardano" is used only to describe compatibility with the Cardano protocol. "Cardano" is a trademark of the Cardano Foundation, CHE-184.477.354, Dammstrasse 16, 6300 Zug, Switzerland, in Switzerland and other countries. See
+> [SECURITY.md](SECURITY.md), [NOTICE](NOTICE) and [docs/licenses.md](docs/licenses.md#name-and-trademark-wording).
 
 ## Status: v0.1.0 research preview
 
