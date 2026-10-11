@@ -129,3 +129,18 @@ class TxDecodingSuite extends FunSuite:
     t.join()
     assertEquals(results, Vector(true, true))
   }
+
+  test(
+    "a Conway witness set naming one redeemer purpose twice keeps it once (Preview slot 62567517)"
+  ) {
+    val all = txs("fixtures/preview/duplicate-redeemer-conway.hex")
+    val duplicated = all.collect { case (_, tx) if tx.body.id.hex.startsWith("c373f449") => tx }
+    assertEquals(duplicated.size, 1)
+    val redeemers = duplicated.head.witnesses.redeemers
+    assertEquals(redeemers.map(r => (r.tag, r.index)), Vector((1, BigInt(0))))
+    assertEquals(duplicated.head.witnesses.totalExUnits, ExUnits(2301, 428149))
+    // The fee the transaction paid covers the minimum fee only with the units counted once.
+    val minFee = BigInt(44) * duplicated.head.size + 155381 +
+      (Rational(577, 10000) * Rational(2301) + Rational(721, 10000000) * Rational(428149)).ceil
+    assert(duplicated.head.body.fee >= minFee, s"${duplicated.head.body.fee} < $minFee")
+  }

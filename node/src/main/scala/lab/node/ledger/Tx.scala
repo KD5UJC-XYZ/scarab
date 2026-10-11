@@ -452,35 +452,38 @@ object Witnesses:
         (CborRead.uint(xs(0), "mem"), CborRead.uint(xs(1), "steps")).mapN(ExUnits(_, _))
       )
 
-  /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. */
-  private def redeemerList(n: Node): Either[String, Vector[Redeemer]] = n.value match
-    case lab.cbor.Value.Map(kvs) =>
-      kvs.traverse { case (k, v) =>
-        for
-          key <- CborRead.arrayN(k, 2, "redeemer key")
-          tag <- CborRead.uint(key(0), "redeemer tag")
-          index <- CborRead.uint(key(1), "redeemer index")
-          value <- CborRead.arrayN(v, 2, "redeemer value")
-          units <- exUnits(value(1))
-        yield Redeemer(tag.toInt, index, value(0).original, units)
-      }
-    case _ =>
-      CborRead
-        .array(n, "redeemers")
-        .flatMap(_.traverse { r =>
+  /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. The
+    * ledger keeps redeemers in a map keyed by purpose, so of several entries for the same
+    * `(tag, index)`, in either form, the last one counts (seen on Preview: slot 12924758, six
+    * entries for one mint with different data; slot 62567517, one entry twice).
+    */
+  private def redeemerList(n: Node): Either[String, Vector[Redeemer]] =
+    val all: Either[String, Vector[Redeemer]] = n.value match
+      case lab.cbor.Value.Map(kvs) =>
+        kvs.traverse { case (k, v) =>
           for
-            xs <- CborRead.arrayN(r, 4, "redeemer")
-            tag <- CborRead.uint(xs(0), "redeemer tag")
-            index <- CborRead.uint(xs(1), "redeemer index")
-            units <- exUnits(xs(3))
-          yield Redeemer(tag.toInt, index, xs(2).original, units)
-        })
-        // The ledger keeps redeemers in a map keyed by purpose: of several entries for the same
-        // (tag, index) in the array form the last one counts (seen on Preview, slot 12924758).
-        .map(rs =>
-          val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap
-          rs.zipWithIndex.collect { case (r, i) if last((r.tag, r.index)) == i => r }
-        )
+            key <- CborRead.arrayN(k, 2, "redeemer key")
+            tag <- CborRead.uint(key(0), "redeemer tag")
+            index <- CborRead.uint(key(1), "redeemer index")
+            value <- CborRead.arrayN(v, 2, "redeemer value")
+            units <- exUnits(value(1))
+          yield Redeemer(tag.toInt, index, value(0).original, units)
+        }
+      case _ =>
+        CborRead
+          .array(n, "redeemers")
+          .flatMap(_.traverse { r =>
+            for
+              xs <- CborRead.arrayN(r, 4, "redeemer")
+              tag <- CborRead.uint(xs(0), "redeemer tag")
+              index <- CborRead.uint(xs(1), "redeemer index")
+              units <- exUnits(xs(3))
+            yield Redeemer(tag.toInt, index, xs(2).original, units)
+          })
+    all.map { rs =>
+      val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap
+      rs.zipWithIndex.collect { case (r, i) if last((r.tag, r.index)) == i => r }
+    }
 
 /** A transaction as included in a block. */
 final case class Tx(
