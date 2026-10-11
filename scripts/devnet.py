@@ -25,7 +25,14 @@ import random
 import shutil
 import subprocess
 import sys
+import threading
 import time
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import eraload  # noqa: E402
+import eraview  # noqa: E402
+import ntcquery  # noqa: E402
+import eratx  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 REFERENCE_IMAGE = "cardano-reference-11.1.3:local"
@@ -202,6 +209,7 @@ class EraDriver:
         self.epoch_length = shelley["epochLength"]
         self.pool_deposit = shelley["protocolParams"]["poolDeposit"]
         self.done = set()
+        self.on_pools_ready = None
         self.timeline = []
         self.address = {n: in_ref(self.name, f"cardano-cli conway address build --testnet-magic {MAGIC} "
                                              f"--payment-verification-key-file {ENV}/stake-delegators/delegator{n}/payment.vkey "
@@ -263,6 +271,8 @@ class EraDriver:
         if r.returncode != 0:
             raise SystemExit(f"pool setup transaction failed: {r.stderr.strip()[:600]}")
         self.wait_spent(self.address[1], None, [i[0] for i in inputs])
+        if self.on_pools_ready:
+            self.on_pools_ready()
 
     def wait_spent(self, address, _unused, spent, timeout=60):
         deadline = time.monotonic() + timeout
@@ -315,7 +325,10 @@ class EraDriver:
         return index == len(ERA_PLAN) - 1 and era == ERA_PLAN[-1][0]
 
 
-def up_eras(args):
+def up_eras(args, on_nodes_up=None, on_pools_ready=None, on_tick=None):
+    """Start the era-walking cluster and drive it to the first Conway block. `on_nodes_up(root)` runs
+    once the nodes answer (the e2e starts its follower there) and `on_pools_ready(driver)` once the
+    pools are registered (the e2e starts its load there)."""
     root = data_root(args.name)
     if root.exists():
         raise SystemExit(f"{root} exists; run `devnet.py down` first")
@@ -339,6 +352,10 @@ def up_eras(args):
                              capture_output=True, check=True).stdout
         (root / "genesis" / f).write_bytes(raw)
     driver = EraDriver(args, shelley)
+    if on_pools_ready:
+        driver.on_pools_ready = lambda: on_pools_ready(driver)
+    if on_nodes_up:
+        on_nodes_up(root)
     driver.last_block = None
     driver.protocol = {}
     stalled = time.monotonic()
@@ -356,6 +373,8 @@ def up_eras(args):
             stalled = time.monotonic()
         elif time.monotonic() - stalled > args.stall_seconds:
             raise SystemExit(f"no new block for {args.stall_seconds} s at {tip}")
+        if on_tick:
+            on_tick(tip)
         finished = driver.step(tip)
         driver.last_block = tip["block"]
         last = tip
@@ -428,18 +447,10 @@ SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node1/sock"
 LOAD = "/work/load"
 
 
-def load(args):
-    """Randomized ledger activity: ADA transfers among genesis keys and fresh wallets, plus staking
-    wallets that register (stake + vote delegation), re-delegate, withdraw rewards and deregister.
-
-    Each wallet acts only once its previous transaction is confirmed, so submissions never
-    conflict in the mempool.
-    """
-    rng = random.Random(args.seed)
-    deposit = json.loads(in_ref(args.name, f"{CLI} query protocol-parameters {SOCKET}").stdout)["stakeAddressDeposit"]
-    pools = json.loads(in_ref(args.name, f"{CLI} query stake-pools {SOCKET} --output-json").stdout)
+def load_wallets(args):
+    """Create (idempotently) the load wallets; returns (wallets, stakers, address, stake_address)."""
     in_ref(args.name, f"mkdir -p {LOAD}")
-    wallets = [f"{ENV}/utxo-keys/utxo{i}/utxo" for i in (1, 2, 3)]
+    wallets = [] if getattr(args, "fresh_wallets_only", False) else [f"{ENV}/utxo-keys/utxo{i}/utxo" for i in (1, 2, 3)]
     stakers = []
     for i in range(args.wallets):
         w = f"{LOAD}/w{i}"
@@ -457,6 +468,20 @@ def load(args):
             stakers.append(w)
     address = {w: in_ref(args.name, f"cat {w}.addr").stdout.strip() for w in wallets}
     stake_address = {w: in_ref(args.name, f"cat {w}.stake.addr").stdout.strip() for w in stakers}
+    return wallets, stakers, address, stake_address
+
+
+def load(args):
+    """Randomized ledger activity: ADA transfers among genesis keys and fresh wallets, plus staking
+    wallets that register (stake + vote delegation), re-delegate, withdraw rewards and deregister.
+
+    Each wallet acts only once its previous transaction is confirmed, so submissions never
+    conflict in the mempool.
+    """
+    rng = random.Random(args.seed)
+    deposit = json.loads(in_ref(args.name, f"{CLI} query protocol-parameters {SOCKET}").stdout)["stakeAddressDeposit"]
+    pools = json.loads(in_ref(args.name, f"{CLI} query stake-pools {SOCKET} --output-json").stdout)
+    wallets, stakers, address, stake_address = load_wallets(args)
     pending = {}  # wallet -> txid awaiting confirmation
     stats = {"submitted": 0, "rejected": 0, "transfers": 0, "registrations": 0, "delegations": 0,
              "withdrawals": 0, "deregistrations": 0}
@@ -495,19 +520,20 @@ def load(args):
             continue
         pending.pop(w, None)
         balance = sum(v["value"]["lovelace"] for v in utxo.values())
-        if balance < 300_000_000:
+        if balance < args.min_balance:
+            time.sleep(0.2)
             continue
         ins = list(utxo.keys())
         rng.shuffle(ins)
         ins = ins[: rng.randint(1, min(3, len(ins)))]
-        if sum(utxo[i]["value"]["lovelace"] for i in ins) < 300_000_000:
+        if sum(utxo[i]["value"]["lovelace"] for i in ins) < args.min_balance:
             ins = list(utxo.keys())
         kind, extra, skeys = "transfers", "", [f"{w}.skey"]
         if w in stakers and rng.random() < args.stake_rate:
             action = stake_action(w)
             if action:
                 kind, extra, skeys = action
-        outs = " ".join(f"--tx-out {address[rng.choice(wallets)]}+{rng.randint(1, 200) * 1_000_000}"
+        outs = " ".join(f"--tx-out {address[rng.choice(wallets)]}+{rng.randint(1, args.max_out) * 1_000_000}"
                         for _ in range(rng.randint(1, 3)))
         tx = f"{LOAD}/tx-{stats['submitted'] + stats['rejected']}"
         script = (f"{CLI} transaction build {SOCKET} {' '.join('--tx-in ' + i for i in ins)} {outs} {extra} "
@@ -561,6 +587,14 @@ def address_hex(a):
     return (bech32_bytes(a) if a.startswith(("addr", "stake")) else base58_bytes(a)).hex()
 
 
+def conway_output(v):
+    out = {"address": address_hex(v["address"]), "lovelace": v["value"]["lovelace"]}
+    assets = {p: {n: q for n, q in names.items()} for p, names in v["value"].items() if p != "lovelace"}
+    if assets:
+        out["assets"] = assets
+    return out
+
+
 def reference_view(ls, utxo):
     """Project `query ledger-state` + `query utxo` onto the Scala node's /state shape."""
     es = ls["stateBefore"]
@@ -584,8 +618,7 @@ def reference_view(ls, utxo):
                    "rs": {k: v for k, v in rs.items() if v}}
     return {
         "epoch": ls["lastEpoch"],
-        "utxo": {k: {"address": address_hex(v["address"]), "lovelace": v["value"]["lovelace"]}
-                 for k, v in utxo.items()},
+        "utxo": {k: conway_output(v) for k, v in utxo.items()},
         "fees": lstate["utxoState"]["fees"],
         "deposited": lstate["utxoState"]["deposited"],
         "treasury": es["esChainAccountState"]["treasury"],
@@ -630,9 +663,9 @@ def scala_state(name, tip):
     return json.loads(r.stdout) if r.returncode == 0 and r.stdout else None
 
 
-def compare_once(name, attempts=10):
+def compare_once(name, attempts=10, scala_wait=30):
     """One bracketed comparison. Returns a result dict, or None if no stable bracket was found."""
-    for _ in range(attempts):
+    for attempt in range(attempts):
         before = query(name, "tip")
         ls = json.loads(in_ref(name, f"{CLI} query ledger-state {SOCKET}", timeout=120).stdout)
         utxo = json.loads(in_ref(name, f"{CLI} query utxo --whole-utxo {SOCKET} --output-json", timeout=120).stdout)
@@ -641,17 +674,22 @@ def compare_once(name, attempts=10):
         if before["hash"] != after["hash"]:
             continue
         scala = None
-        for _ in range(30):
+        for _ in range(scala_wait):
             scala = scala_state(name, after)
             if scala is not None:
                 break
             time.sleep(1)
         if scala is None:
+            if attempt + 1 < attempts:
+                continue  # the node may have moved past the retained window while the queries ran
             return {"tip": after, "error": "scala node never reached the reference tip"}
         reference = reference_view(ls, utxo)
         reference["protocolState"] = {k: protocol[k] for k in (
             "epochNonce", "evolvingNonce", "candidateNonce", "labNonce", "lastEpochBlockNonce", "oCertCounters")}
-        scala_view = {k: v for k, v in scala.items() if k != "point"}
+        scala_view = {k: v for k, v in scala.items() if k in reference}
+        # the Conway load makes no datums or reference scripts; the CLI JSON shapes for them are not compared
+        scala_view["utxo"] = {k: {a: b for a, b in v.items() if a in ("address", "lovelace", "assets")}
+                              for k, v in scala_view["utxo"].items()}
         if reference["rewardUpdate"] is None:
             scala_view["rewardUpdate"] = None  # reference still pulsing: nothing to compare
         differences = diff(reference, scala_view)
@@ -764,11 +802,98 @@ def capture_eras(args):
     print(json.dumps({"captured": len(keep), "blocksPerEra": counts, "out": str(out)}))
 
 
-# Per-era ledger comparison hook. The reference `query ledger-state` JSON differs per era and this
-# node's full ledger so far covers Conway only (see `compare`), so no era is registered yet. When a
-# per-era ledger lands, register `era -> fn(name, tip) -> {"matched": bool, ...}` here: e2e calls
-# each registered comparator once the follower has applied a block of that era's last epoch.
-ERA_LEDGER_COMPARATORS = {}
+# ---------------------------------------------------------------- per-era ledger comparison
+
+def lsq(name):
+    return ntcquery.LocalStateQuery(ref(name), f"{ENV}/socket/node1/sock", MAGIC)
+
+
+def protocol_parameters(name):
+    return json.loads(in_ref(name, f"cardano-cli query protocol-parameters {SOCKET}").stdout)
+
+
+def compare_pre_conway(name, era, attempts=10):
+    """One comparison in a Shelley..Babbage era: the reference ledger from LocalStateQuery (atomic at
+    the acquired tip) against the Scala node's `/state` at the same block. Returns a result dict, or
+    {"skipped": reason} when the chain left the era while querying."""
+    for attempt in range(attempts):
+        try:
+            before = protocol_parameters(name)
+            with lsq(name) as session:
+                session.acquire()
+                tip, reference = eraview.reference_pre_conway(era, session, before)
+            after = protocol_parameters(name)
+        except (RuntimeError, EOFError, json.JSONDecodeError, subprocess.TimeoutExpired) as e:
+            if "mismatch" in str(e):
+                return {"skipped": f"the chain left {era} while querying"}
+            time.sleep(0.5)
+            continue
+        if before != after:
+            continue  # an epoch boundary passed between the parameter reads and the state read
+        scala = None
+        for _ in range(8):
+            scala = scala_state(name, tip)
+            if scala is not None:
+                break
+            time.sleep(0.4)
+        if scala is None:
+            continue  # the node moved past the retained window (k blocks) while the queries ran
+        scala_view = {k: v for k, v in scala.items() if k in reference}
+        if reference["rewardUpdate"] is None:
+            scala_view["rewardUpdate"] = None  # reference pulser incomplete: nothing to compare
+        scala_view["params"] = {k: eraview._float(v) for k, v in scala_view["params"].items()
+                                if k in reference["params"]}
+        differences = diff(reference, scala_view)
+        return {"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
+                "matched": not differences, "differenceCount": len(differences),
+                "differences": [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
+                                for p, a, b in differences[:25]]}
+    return {"error": "no stable comparison within the attempts"}
+
+
+class Comparisons:
+    """Thread-safe tally of ledger comparisons per era; every result is appended to compare.jsonl."""
+
+    def __init__(self, root):
+        self.lock = threading.Lock()
+        self.file = root / "compare.jsonl"
+        self.per_era = {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS}
+        self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger and the "
+                                         "Scala node keeps no Byron UTxO")
+        self.mismatches = []
+
+    def record(self, era, label, result):
+        with self.lock:
+            row = self.per_era[era]
+            if result.get("skipped"):
+                row["skipped"] += 1
+            elif "matched" not in result:
+                row["errors"] += 1
+            elif result["matched"]:
+                row["matched"] += 1
+            else:
+                row["mismatched"] += 1
+                if len(self.mismatches) < 20:
+                    self.mismatches.append({"era": era, "label": label, **result})
+            with self.file.open("a") as f:
+                f.write(json.dumps({"era": era, "label": label, **result}) + "\n")
+        print(json.dumps({"compare": era, "label": label, "matched": result.get("matched"),
+                          "slot": (result.get("tip") or {}).get("slot"),
+                          "differences": result.get("differenceCount"),
+                          "note": result.get("skipped") or result.get("error")}), flush=True)
+
+
+def compare_era(name, era, label, comparisons):
+    """Compare the Scala ledger with the reference in `era`; never raises."""
+    try:
+        if era == "conway":
+            result = compare_once(name, attempts=12, scala_wait=3) or {"error": "no stable bracket"}
+        else:
+            result = compare_pre_conway(name, era)
+    except Exception as e:  # a comparison problem must not stop the cluster walk
+        import traceback
+        result = {"error": repr(e), "traceback": traceback.format_exc()[-1500:]}
+    comparisons.record(era, label, result)
 
 
 def read_log(path):
@@ -793,8 +918,16 @@ def summarize_e2e(events, other, expected, exit_code):
     """Assertions and the summary over the follower's JSON log; returns (summary, failures)."""
     failures = []
     started = [e for e in events if e["event"] == "started"]
-    transitions = [{"from": e["from"], "to": e["to"], "epoch": e["epoch"], "slot": e["slot"],
-                    "block": e["block"]["blockNo"]} for e in events if e["event"] == "eraTransition"]
+    transitions = []
+    for e in events:
+        if e["event"] != "eraTransition":
+            continue
+        t = {"from": e["from"], "to": e["to"], "epoch": e["epoch"], "slot": e["slot"], "block": e["block"]["blockNo"]}
+        if transitions and transitions[-1]["to"] == t["to"] and any(
+                x["event"] == "rolledBack" and transitions[-1]["slot"] <= x["from"]["slot"] for x in events):
+            transitions[-1] = t  # the first block of the era was rolled back and the era entered again
+        else:
+            transitions.append(t)
     per_era = {e: {"blocks": 0, "firstEpoch": None, "lastEpoch": None, "headers": 0, "leaderThreshold": 0,
                    "overlay": 0, "leaderUnchecked": 0, "signatureVerified": 0, "signatureUnchecked": 0,
                    "boundary": 0} for e in ERAS}
@@ -830,8 +963,7 @@ def summarize_e2e(events, other, expected, exit_code):
         "rollbacks": sum(1 for e in events if e["event"] == "rolledBack"),
         "reconnects": sum(1 for e in events if e["event"] == "reconnecting"),
         "followerExit": exit_code,
-        "ledgerComparison": {"status": "not run: per-era ledger comparison needs the full ledger "
-                                       "(see ERA_LEDGER_COMPARATORS in devnet.py)"},
+        "ledgerComparison": {"status": "not run"},
     }
     if not started:
         failures.append("the follower never started")
@@ -866,17 +998,82 @@ def summarize_e2e(events, other, expected, exit_code):
     return summary, failures
 
 
+def start_follower(name, root):
+    return subprocess.Popen([sys.executable, __file__, "--name", name, "follow"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def follower_problem(root, follower):
+    """A reason to abort the run if the follower died or logged an error, else None."""
+    events, other = read_log(root / "follower.jsonl")
+    errors = [e for e in events if e["event"] == "error"]
+    if errors:
+        return f"follower error: {errors[0].get('message', errors[0])}"
+    if other:
+        return f"unexpected follower output: {other[0][:200]}"
+    if follower.poll() is not None:
+        return f"follower exited with {follower.returncode}"
+    return None
+
+
+def start_conway_load(args, root, loader):
+    """Fund the Conway load wallets from stake delegator 3 and start the cardano-cli load generator."""
+    largs = argparse.Namespace(name=args.name, wallets=4, stakers=3, fresh_wallets_only=True)
+    wallets, _, address, _ = load_wallets(largs)
+    funder = loader.delegator(3)
+    outs = [(bytes.fromhex(address_hex(address[w])), 250_000_000, None, {}) for w in wallets]
+    loader.act("conway", "conway-fund", funder, outs)
+    command = [sys.executable, __file__, "--name", args.name, "load", "--wallets", "4", "--stakers", "3",
+               "--stake-rate", "0.5", "--min-balance", "20000000", "--max-out", "5", "--fresh-wallets-only",
+               "--interval", "1.0", "--seed", "3"]
+    return subprocess.Popen(command, stdout=(root / "load-conway.log").open("w"), stderr=subprocess.STDOUT)
+
+
 def e2e(args):
-    """Era-walking cluster, the Scala follower from Origin, and assertions over its JSON log."""
+    """Era-walking cluster with the Scala follower from the first block and era-appropriate load.
+
+    The follower starts as soon as the nodes answer, so the Scala ledger tracks the reference
+    through every era; during each epoch the load generator submits that era's transactions and the
+    two ledgers are compared at several points (see `compare_pre_conway`, `compare_once`)."""
     root = data_root(args.name)
     if root.exists():
         if not (root / "e2e-summary.json").exists():
             raise SystemExit(f"{root} exists and is not an e2e leftover; run `devnet.py --name {args.name} down`")
         down(args, quiet=True)  # leftovers of an earlier e2e run
-    follower = None
+    follower, loader, worker, conway_load = None, None, None, None
+    comparisons = None
     summary, failures = {}, []
+    state = {"last_check": 0.0}
     try:
-        up_eras(args)
+        comparisons = Comparisons(root)
+
+        def nodes_up(_root):
+            nonlocal follower
+            follower = start_follower(args.name, root)
+
+        def pools_ready(driver):
+            nonlocal loader, worker
+            if args.no_load:
+                return
+            loader = eraload.EraLoad(args.name, lambda: lsq(args.name), log=lambda m: print(json.dumps(m), flush=True))
+            loader.ready.set()
+            compare = (lambda era, label: None) if args.no_compare else \
+                (lambda era, label: compare_era(args.name, era, label, comparisons))
+
+            def conway_hook():
+                nonlocal conway_load
+                conway_load = start_conway_load(args, root, loader)
+            worker = threading.Thread(target=loader.run, args=(compare, conway_hook), daemon=True)
+            worker.start()
+
+        def on_tick(_tip):
+            if time.monotonic() - state["last_check"] > 4:
+                state["last_check"] = time.monotonic()
+                problem = follower_problem(root, follower)
+                if problem:
+                    raise SystemExit(problem)
+
+        up_eras(args, on_nodes_up=nodes_up, on_pools_ready=pools_ready, on_tick=on_tick)
         eras = json.loads((root / "eras.json").read_text())
         config = json.loads((root / "genesis" / "configuration.yaml").read_text())
         expected = []
@@ -887,8 +1084,6 @@ def e2e(args):
             expected.append({"era": t["era"], "epoch": epoch})
         target = args.until_epoch if args.until_epoch is not None else expected[-1]["epoch"] + 1
         log = root / "follower.jsonl"
-        follower = subprocess.Popen([sys.executable, __file__, "--name", args.name, "follow"],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + args.timeout
         reason = "timeout"
         while time.monotonic() < deadline:
@@ -902,8 +1097,12 @@ def e2e(args):
                 reason = "follower exited"
                 break
             if applied and max(applied) >= target:
+                # let the worker finish the comparisons of the epoch before the target one
                 reason = "reached"
                 break
+        if loader is not None:
+            loader.stop.set()
+            worker.join(timeout=90)
         exit_code = follower.poll()
         events, other = read_log(log)
         summary, failures = summarize_e2e(events, other, expected, exit_code)
@@ -911,22 +1110,57 @@ def e2e(args):
         summary["targetConwayEpoch"] = target
         if reason != "reached":
             failures.append(f"stopped without reaching Conway epoch {target}: {reason}")
+        if not args.no_compare:
+            failures += judge_comparisons(comparisons, args.min_comparisons, loader is not None)
     except SystemExit as e:
         failures.append(str(e))
     finally:
+        if loader is not None:
+            loader.stop.set()
+        if conway_load is not None:
+            conway_load.terminate()
         if follower is not None and follower.poll() is None:
             docker("rm", "-f", f"{args.name}-scala", check=False)
             follower.wait()
+        if comparisons is not None:
+            summary["ledgerComparison"] = {"perEra": comparisons.per_era, "mismatches": comparisons.mismatches}
+        if loader is not None:
+            summary["load"] = loader.stats
         summary["failures"] = failures
         summary["passed"] = not failures
         root.mkdir(parents=True, exist_ok=True)
         (root / "e2e-summary.json").write_text(json.dumps(summary, indent=2))
         shutil.rmtree(root / "classes", ignore_errors=True)
         print(json.dumps(summary, indent=2))
+        if comparisons is not None:
+            print(comparison_table(comparisons))
         if not args.keep:
             for c in (f"{args.name}-scala", ref(args.name)):
                 docker("rm", "-f", c, check=False)
     sys.exit(0 if not failures else 1)
+
+
+def judge_comparisons(comparisons, minimum, loaded):
+    """Failures from the comparison tally: any mismatch, or an era with too few matched comparisons."""
+    failures = []
+    for era in ERAS[1:]:
+        row = comparisons.per_era[era]
+        if row["mismatched"]:
+            failures.append(f"{era}: {row['mismatched']} of {row['matched'] + row['mismatched']} ledger comparisons differ")
+        if row["matched"] < minimum:
+            failures.append(f"{era}: only {row['matched']} matched ledger comparisons (need {minimum})")
+    return failures
+
+
+def comparison_table(comparisons):
+    lines = ["era       matched  mismatched  errors  skipped"]
+    for era in ERAS:
+        r = comparisons.per_era[era]
+        if era == "byron":
+            lines.append(f"{era:<9} not compared ({r['note']})")
+        else:
+            lines.append(f"{era:<9} {r['matched']:>7}  {r['mismatched']:>10}  {r['errors']:>6}  {r['skipped']:>7}")
+    return "\n".join(lines)
 
 
 def down(args, quiet=False):
@@ -959,6 +1193,10 @@ def main():
     e2.add_argument("--timeout", type=int, default=900)
     e2.add_argument("--until-epoch", type=int, help="Conway epoch to reach (default: first Conway epoch + 1)")
     e2.add_argument("--keep", action="store_true", help="leave the cluster running")
+    e2.add_argument("--no-load", action="store_true", help="no era-specific transactions (blocks only)")
+    e2.add_argument("--no-compare", action="store_true", help="skip the per-era ledger comparisons")
+    e2.add_argument("--min-comparisons", type=int, default=3,
+                    help="matched ledger comparisons required in each Shelley-based era")
     e2.set_defaults(run=e2e)
     t = sub.add_parser("tip")
     t.add_argument("--node", type=int, default=1)
@@ -974,6 +1212,9 @@ def main():
     ld.add_argument("--stake-rate", type=float, default=0.3)
     ld.add_argument("--interval", type=float, default=0.5)
     ld.add_argument("--seed", type=int, default=1)
+    ld.add_argument("--max-out", type=int, default=200, help="largest output in ADA")
+    ld.add_argument("--min-balance", type=int, default=300_000_000)
+    ld.add_argument("--fresh-wallets-only", action="store_true", help="skip the genesis utxo-keys wallets")
     ld.set_defaults(run=load)
     sub.add_parser("compare").set_defaults(run=compare)
     sk = sub.add_parser("soak")

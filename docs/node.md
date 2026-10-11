@@ -60,16 +60,41 @@ Tests: `EraTransitionSuite` replays a committed capture of the `up-eras` cluster
 follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 
 ```sh
-python3 scripts/devnet.py e2e          # up-eras + follower from Origin + assertions (about 10 minutes)
+python3 scripts/devnet.py e2e          # up-eras + follower from Origin + era load + ledger comparison (about 10 minutes)
+python3 scripts/devnet.py --name csl-eras2 e2e   # a second cluster alongside another run
 ```
 
-`e2e` starts the era-walking cluster, follows it from Origin until the node has applied blocks in
-the Conway epoch after the first, and fails unless: the `eraTransition` lines are exactly Byron,
-Shelley, Allegra, Mary, Alonzo, Babbage and Conway at the epochs in `eras.json` and the
-configuration, every era has applied blocks, all Byron signatures verified, and there are no
-validation or fatal errors. It writes `e2e-summary.json` (blocks and header verdicts per era,
-transitions) to the run directory, and always removes the containers unless `--keep`. Per-era ledger
-comparison against the reference is a marked hook (`ERA_LEDGER_COMPARATORS`) for the full ledger.
+`e2e` starts the era-walking cluster and the Scala follower as soon as the nodes answer, so the
+Scala ledger tracks the reference through every era. It fails unless: the `eraTransition` lines are
+exactly Byron, Shelley, Allegra, Mary, Alonzo, Babbage and Conway at the epochs in `eras.json` and
+the configuration, every era has applied blocks, all Byron signatures verified, there are no
+validation or fatal errors, and **every ledger comparison matched** (at least `--min-comparisons`
+per Shelley-based era). It writes `e2e-summary.json` (blocks and header verdicts per era,
+transitions, per-era comparison counts, first mismatches, load counts) and `compare.jsonl` (every
+comparison) to the run directory, and removes the containers unless `--keep`.
+
+Era load (`scripts/eraload.py`, transactions built and signed by `scripts/eratx.py` because
+cardano-cli 11 builds Conway transactions only): Shelley transfers, stake key registration and
+delegation, a new pool, pool re-registration (future parameters), MIR from the reserves, a genesis
+delegation certificate, withdrawals; Allegra validity intervals, auxiliary data, a timelock script
+address funded and spent, a pool retirement; Mary minting and burning under native-script policies
+(one timelocked), multi-asset transfers, MIR from the treasury, stake deregistration; Alonzo
+collateral inputs, datum-hash outputs, required signers, network id; Babbage inline datums,
+reference-script outputs, reference inputs, collateral return; Conway the cardano-cli `load`
+(transfers, registration, delegation, withdrawals, deregistration). Plutus scripts are a TODO in
+`eraload.py` (they need the script data hash and execution-unit fees). Rejected submissions are logged.
+
+Comparison: cardano-cli 11.2.3 refuses `query ledger-state` and `query protocol-state` before
+Conway, so `scripts/ntcquery.py` speaks LocalStateQuery to the node directly (through `socat` in the
+reference container) and `scripts/eraview.py` projects `DebugNewEpochState`, the whole UTxO and
+`DebugChainDepState` of Shelley to Babbage onto the node's `/state` shape, with the protocol
+parameters from `cardano-cli query protocol-parameters`. Compared per point: UTxO (multi-assets,
+datums, reference scripts), fees, deposits, treasury, reserves, accounts, pools with future
+parameters and retirements, genesis delegations (current and future), pending and future update
+proposals, MIR, mark/set/go snapshots, blocks made, the reward update when complete, protocol
+parameters, pool distribution, nonces and opcert counters. Each epoch is compared right after the
+boundary, after the era batch, mid-epoch and shortly before the next boundary. Byron is not
+compared: the CLI cannot query a Byron ledger and the node keeps no Byron UTxO.
 
 ## Full ledger for Shelley to Babbage
 

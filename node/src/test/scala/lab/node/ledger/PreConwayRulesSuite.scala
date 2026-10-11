@@ -473,6 +473,20 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(rule(TxRules(s, tx(late, Vector(alice, delegates(0))), env)), "PPUpdateWrongEpoch")
   }
 
+  test(
+    "the boundary that adopts protocol version 9 is a Conway transition and counts a dormant epoch"
+  ) {
+    val (s0, _) = funded(8)
+    val pv9 = ParamUpdate(Map(14 -> Bytes(Vector(0x82, 0x09, 0x00).map(_.toByte))))
+    val g = Vector(key(), key())
+    val s = s0.copy(ppup = Ppup(g.map(_.hash -> pv9).toMap, Map.empty))
+    val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
+    val entered =
+      Epoch.boundary(s.copy(rewardUpdate = Some(Rewards.update(s, globals))), s.epoch + 1, globals)
+    assertEquals(entered.params.protocolMajor, BigInt(9))
+    assertEquals(entered.dormantEpochs, BigInt(1))
+  }
+
   property("epoch boundaries conserve the supply however many blocks pools make") {
     forAll(Gen.choose(0, 40), Gen.choose(0, 40), Gen.choose(1, 4)) { (blocksA, blocksB, epochs) =>
       val a = key()

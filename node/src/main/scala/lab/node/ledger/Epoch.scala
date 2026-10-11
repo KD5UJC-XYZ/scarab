@@ -223,7 +223,9 @@ object Translate:
       mir = InstantRewards.empty,
       ptrs = Map.empty,
       dreps = Map.empty,
-      dormantEpochs = 0,
+      // The epoch transition into the first Conway epoch runs under the Conway EPOCH rule (the era
+      // translation precedes it), and with no governance proposals that epoch is dormant.
+      dormantEpochs = 1,
       rewardRegistered = None
     )
     translated.copy(deposited = Epoch.obligation(translated))

@@ -60,18 +60,119 @@ object Projection:
           "oCertCounters" -> coinMap(n.praos.counters, (b: Bytes) => b.hex)
         ),
         "stakeDistrib" -> Json.obj(
-          "total" -> n.ledger.poolDistribution.activeStake.asJson,
+          "total" -> n.ledger.poolDistribution.activeStake.max(BigInt(1)).asJson,
           "pools" -> coinMap(n.ledger.poolDistribution.poolStake, (b: Bytes) => b.hex)
         )
       )
     )
 
+  private def ratio(r: Rational): Json = s"${r.numerator}/${r.denominator}".asJson
+
+  private def double(r: Rational): Json =
+    (BigDecimal(r.numerator) / BigDecimal(
+      r.denominator,
+      java.math.MathContext.DECIMAL64
+    )).toDouble.asJson
+
+  private def assets(v: Value): Json =
+    Json.fromFields(v.assets.toVector.sortBy(_._1.hex).map { case (p, names) =>
+      p.hex -> Json.fromFields(names.toVector.sortBy(_._1.hex).map { case (n, q) =>
+        n.hex -> q.asJson
+      })
+    })
+
+  private def txOut(o: TxOut): Json =
+    val base = Json.obj("address" -> o.address.raw.hex.asJson, "lovelace" -> o.value.coin.asJson)
+    val multi = if o.value.assets.isEmpty then Json.obj() else Json.obj("assets" -> assets(o.value))
+    val datum = o.datum match
+      case Datum.NoDatum   => Json.obj()
+      case Datum.Hash(h)   => Json.obj("datumHash" -> h.hex.asJson)
+      case Datum.Inline(d) => Json.obj("inlineDatum" -> d.hex.asJson)
+    val script = o.scriptRef.fold(Json.obj())(s => Json.obj("scriptRef" -> s.hash.hex.asJson))
+    base.deepMerge(multi).deepMerge(datum).deepMerge(script)
+
+  def pool(p: PoolParams): Json = Json.obj(
+    "pledge" -> p.pledge.asJson,
+    "cost" -> p.cost.asJson,
+    "margin" -> ratio(p.margin),
+    "rewardAccount" -> p.rewardAccount.credential.hash.hex.asJson,
+    "owners" -> p.owners.map(_.hex).toVector.sorted.asJson
+  )
+
+  private def updates(m: Map[Bytes, ParamUpdate]): Json =
+    Json.fromFields(m.toVector.sortBy(_._1.hex).map { case (g, u) =>
+      g.hex -> Json.fromFields(u.fields.toVector.sortBy(_._1).map { case (i, raw) =>
+        i.toString -> raw.hex.asJson
+      })
+    })
+
+  /** Protocol parameters under the names `cardano-cli query protocol-parameters` uses. */
+  def params(p: ProtocolParams): Json = Json.obj(
+    "txFeePerByte" -> p.minFeeA.asJson,
+    "txFeeFixed" -> p.minFeeB.asJson,
+    "maxBlockBodySize" -> p.maxBlockBodySize.asJson,
+    "maxTxSize" -> p.maxTxSize.asJson,
+    "maxBlockHeaderSize" -> p.maxBlockHeaderSize.asJson,
+    "stakeAddressDeposit" -> p.keyDeposit.asJson,
+    "stakePoolDeposit" -> p.poolDeposit.asJson,
+    "poolRetireMaxEpoch" -> p.eMax.asJson,
+    "stakePoolTargetNum" -> p.nOpt.asJson,
+    "poolPledgeInfluence" -> double(p.a0),
+    "monetaryExpansion" -> double(p.rho),
+    "treasuryCut" -> double(p.tau),
+    "decentralization" -> double(p.d),
+    "extraPraosEntropy" -> p.extraEntropy.render.asJson,
+    "protocolVersion" -> Json
+      .obj("major" -> p.protocolMajor.asJson, "minor" -> p.protocolMinor.asJson),
+    "minPoolCost" -> p.minPoolCost.asJson,
+    "minUTxOValue" -> p.minUTxOValue.asJson,
+    "utxoCostPerWord" -> p.coinsPerUTxOWord.asJson,
+    "utxoCostPerByte" -> p.coinsPerUTxOByte.asJson,
+    "executionUnitPrices" -> Json
+      .obj("priceMemory" -> double(p.priceMem), "priceSteps" -> double(p.priceSteps)),
+    "maxTxExecutionUnits" -> Json
+      .obj("memory" -> p.maxTxExUnits.mem.asJson, "steps" -> p.maxTxExUnits.steps.asJson),
+    "maxBlockExecutionUnits" -> Json
+      .obj("memory" -> p.maxBlockExUnits.mem.asJson, "steps" -> p.maxBlockExUnits.steps.asJson),
+    "maxValueSize" -> p.maxValueSize.asJson,
+    "collateralPercentage" -> p.collateralPercentage.asJson,
+    "maxCollateralInputs" -> p.maxCollateralInputs.asJson
+  )
+
   def ledger(p: ChainSync.Point, s: LedgerState): Json = Json.obj(
     "point" -> point(p),
     "epoch" -> s.epoch.asJson,
     "utxo" -> Json.fromFields(s.utxo.toVector.sortBy(_._1.render).map { case (i, o) =>
-      i.render -> Json.obj("address" -> o.address.raw.hex.asJson, "lovelace" -> o.value.coin.asJson)
+      i.render -> txOut(o)
     }),
+    "params" -> params(s.params),
+    "poolParams" -> Json.fromFields(s.pools.toVector.sortBy(_._1.hex).map { case (id, ps) =>
+      id.hex -> pool(ps.params)
+    }),
+    "futurePools" -> Json.fromFields(s.futurePools.toVector.sortBy(_._1.hex).map { case (id, pp) =>
+      id.hex -> pool(pp)
+    }),
+    "genDelegs" -> Json.fromFields(s.genDelegs.toVector.sortBy(_._1.hex).map { case (g, d) =>
+      g.hex -> Json.obj("delegate" -> d.delegate.hex.asJson, "vrf" -> d.vrf.hex.asJson)
+    }),
+    "futureGenDelegs" -> s.futureGenDelegs
+      .sortBy(f => (f.slot, f.genesisKey.hex))
+      .map(f =>
+        Json.obj(
+          "slot" -> f.slot.asJson,
+          "genesisKey" -> f.genesisKey.hex.asJson,
+          "delegate" -> f.pair.delegate.hex.asJson,
+          "vrf" -> f.pair.vrf.hex.asJson
+        )
+      )
+      .asJson,
+    "ppup" -> Json.obj("current" -> updates(s.ppup.current), "future" -> updates(s.ppup.future)),
+    "mir" -> Json.obj(
+      "reserves" -> coinMap(s.mir.reserves, (c: Credential) => c.render),
+      "treasury" -> coinMap(s.mir.treasury, (c: Credential) => c.render),
+      "deltaReserves" -> s.mir.deltaReserves.asJson,
+      "deltaTreasury" -> s.mir.deltaTreasury.asJson
+    ),
     "fees" -> s.fees.asJson,
     "deposited" -> s.deposited.asJson,
     "treasury" -> s.treasury.asJson,
