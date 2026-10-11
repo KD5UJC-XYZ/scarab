@@ -22,7 +22,8 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
   cardano-scala-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
 ```
 
-This writes `node/target/runtime-classpath.txt`.
+This writes `node/target/runtime-classpath.txt`. Regenerate it with `node/runtimeClasspathFile`
+after any dependency change: a stale file lacked rocksdb.
 
 ## `follow`: the node
 
@@ -95,7 +96,10 @@ docker run --rm --user "$(id -u):$(id -g)" -w /out \
 Only `ByronGenesisHash` from `config.json` is checked against its file today; the Shelley, Alonzo
 and Conway hashes are not yet verified (roadmap J1). Preview starts in Alonzo at epoch 0. The recorded
 genesis-to-tip numbers are in [performance.md](performance.md). The run needs about 14 GB of disk
-for the immutable blocks, RocksDB and checkpoints, and about 2.2 GB RSS with `-Xmx3g`.
+for the immutable blocks, RocksDB and checkpoints, and memory well above the heap limit: an earlier multi-restart run measured 2.2 GB RSS at the tip,
+but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other off-heap memory are
+not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
+had reached 5.3 GB when the limit was raised.
 
 ### Forging
 

@@ -5,8 +5,9 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [0.1.0] - research preview (to be tagged)
 
-The tag waits for the uninterrupted Preview genesis-to-tip sync on the tagged build
-(`<<SYNC>>`, see [docs/performance.md](docs/performance.md)). `build.sbt` still carries the
+The uninterrupted Preview genesis-to-tip sync ran on commit 5cfdefd (4,748,226 blocks in 3h36m42s,
+0 error events, final tip identical to Koios; see [docs/performance.md](docs/performance.md)). The tag
+will be placed on a later commit (hygiene, docs, CI; no intended behaviour change; all gates re-run). `build.sbt` still carries the
 internal version `0.24.0` of the pre-cleanup lineage.
 
 ### Foundation

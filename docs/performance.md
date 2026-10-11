@@ -94,19 +94,40 @@ The heavy region just past block 527k (epochs 130 to 140) ran at 57 to 110 block
 pipelined peer, 20 blocks/s before. The slowest stretches are the Plutus-dense blocks of the last
 100 epochs, where the single apply thread (rules, Plutus, leader threshold) is the limit.
 
-### Final uninterrupted run (pending)
+### Final uninterrupted run
 
-<<SYNC>> Genesis-to-tip on a tagged build, single process, no restarts: commit, date, host, JVM
-flags, blocks/s, tip hash, memory and disk numbers to be recorded here.
+One process on one build: commit 5cfdefd (frozen classes), fresh db, `follow --db`, no restarts, no
+code changes, `-Xmx3g`, 6 CPUs, peer `preview-node.play.dev.cardano.org:3001`, network magic 2. The
+tag `v0.1.0` will be on a later commit (hygiene, docs, CI on top of 5cfdefd, no intended behaviour
+change, all gates re-run); the sync ran on 5cfdefd.
+
+- Start 2026-10-11 15:50:22Z, tip reached 19:27:04Z (3h36m42s): 4,748,226 blocks, epochs 0 to 1447,
+  about 365 blocks/s average.
+- Blocks/s per 100 epochs: 349, 271, 400, 394, 375, 353, 361, 420, 406, 400, 397, 409, 398, 348
+  (the last bucket mixes the catch-up with the live tip).
+- Followed the live tip for 32.8 min (until 19:59:55Z). Final block: slot 125092775, block 4748301,
+  hash `c182c2d1b783983c614d5331241bd640ebd76ba58f7f51a95dda5921865f733e`, identical to Koios `/tip`
+  at that moment.
+- 0 error events. Phase 2: 3,229,757 successful and 242 failing evaluations (each equal to
+  `is_valid`), 11,213,919 scripts, 3,303,884 script data hashes checked; 1447 epochs validated. Final
+  ledger: 3,195,803 UTxO, 112,205 accounts, 726 pools, protocol 11.0.
+- Memory: container RSS grew from about 1 GB to a peak of 5.66 GB with `-Xmx3g`. The container limit
+  was raised from 6 GiB to 10 GiB at 17:20 with `docker update` (no restart, no code change).
+  Heap after GC was not measured in this run, so the split between heap, RocksDB block cache and
+  other off-heap memory is unknown (roadmap K6). Disk: 14.8 GB.
+
+What this shows: the node accepts the real Preview chain with full validation and no false
+rejections, on a single build. It does not by itself show that the ledger state equals the Haskell
+node's (roadmap K1, db-analyser comparison); the devnet comparator covers identity on generated load.
 
 ## 4. State at the tip (block 4,747,639, epoch 1447, protocol 11)
 
-Memory and disk, from the segmented run above:
+Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted run above peaked higher on RSS):
 
 - UTxO: 3,195,803 entries; RocksDB 466 MB; checkpoints 454 MB for two snapshots (hard links share
   most); one ledger snapshot file 52 MB; immutable blocks 14 GB.
 - Heap after a full GC: 272 MB (class histogram top: `byte[]` 64 MB, `Bytes` 20 MB, `BigInt` 17 MB);
-  container RSS 2.2 GB with `-Xmx3g` (heap garbage, a 256 MB RocksDB block cache, memtables).
+  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; the composition is not yet profiled (roadmap K6).
 - Verification verdicts found ahead (since the last restart, 300k blocks): witnesses 99.9997%,
   operational certificates 99.9997%, VRF 99.8%.
 - Counts: 112k accounts, 726 pools; 3.23M Plutus transactions evaluated, 11.2M scripts.

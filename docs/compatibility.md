@@ -53,9 +53,10 @@ are pending (see the placeholder in the README and K5).
 | `devnet.py soak --seconds 900` | 41/41 matched, epochs 0 to 18, through the hard fork to protocol 11, a no-confidence action and a committee election | 87a36d4 | same |
 | `devnet.py e2e` | every comparison matched: Shelley 4, Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30; seven Conway epochs after the transition | 87a36d4 (Shelley to Babbage first matched at 85721cb) | same |
 | `devnet.py relay --seconds 300` | Haskell relay synced solely from the Scala node, at the tip across 7 epochs (lag <= 1 in 59/59 samples), 203/203 transactions included | 435d2fc | same |
-| `devnet.py pool --seconds 480` | 86 forged, 85 on the final chain (one lost a slot battle); Haskell blocks-made 85 against 83.2 expected; 151 transactions in 72 Scala blocks; 18 KES periods; deepest rollback 1; 16/16 comparisons | 13460b5 | same |
+| `devnet.py pool --seconds 480` | latest (release gate): 80 forged, 79 adopted, 78 on the final chain; Haskell blocks-made 78 = Scala on-chain 78; 16/16 comparisons | 5cfdefd | same |
+| `devnet.py pool --seconds 480` (earlier) | 86 forged, 85 on the final chain (one lost a slot battle); Haskell blocks-made 85 against 83.2 expected; 151 transactions in 72 Scala blocks; 18 KES periods; deepest rollback 1; 16/16 comparisons | 13460b5 | same |
 | Preview sync, genesis to tip | 4,747,639 blocks, epoch 1447, 551 blocks/s average, no rule failure; **the run was assembled from 12 restarts across different builds** (see [performance.md](performance.md)) | perf branch, merged in 5cfdefd | 8 CPUs, `-Xmx3g`, RocksDB UTxO |
-| Preview sync, uninterrupted on a tagged build | `<<SYNC>>` pending | | |
+| Preview sync, uninterrupted, one build | 4,748,226 blocks, epochs 0 to 1447 in 3h36m42s (about 365 blocks/s), then 32.8 min at the live tip; 0 error events; 242 failing Plutus evaluations all equal to `is_valid`; final tip identical to Koios; RSS peak 5.66 GB, disk 14.8 GB (see [performance.md](performance.md)); accepts the real chain, ledger identity vs Haskell not shown (K1) | 5cfdefd (tag v0.1.0 will be on a later docs/CI commit) | 6 CPUs, `-Xmx3g`, container limit raised to 10 GiB, RocksDB UTxO |
 
 The Scala unit and property suites run in CI (`.github/workflows/ci.yml`) via `scripts/sbtw check`
 on every pull request; the devnet scenarios do not run in CI yet (roadmap A3).

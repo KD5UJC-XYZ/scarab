@@ -25,9 +25,9 @@ what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the
 
 | Check | Result |
 |---|---|
-| **Preview, genesis to tip, uninterrupted, tagged build** | `<<SYNC>>` placeholder: commit, date, blocks/s, tip hash and resources to be recorded in [docs/performance.md](docs/performance.md). |
+| **Preview, genesis to tip, uninterrupted, one build** | Commit 5cfdefd (frozen classes), fresh db, no restarts, `-Xmx3g`, 6 CPUs, 2026-10-11: 4,748,226 blocks, epochs 0 to 1447 in 3h36m42s (about 365 blocks/s), then 32.8 min at the live tip; 0 error events; 3,229,757 successful and 242 failing Plutus evaluations, each equal to `is_valid`; final block 4748301 (slot 125092775, hash `c182c2d1...f733e`) identical to Koios `/tip`. Container RSS peaked at 5.66 GB, disk 14.8 GB. Details in [docs/performance.md](docs/performance.md). The tag `v0.1.0` will sit on a later commit (hygiene, docs, CI; no intended behaviour change, gates re-run). |
 | Preview, genesis to tip (earlier run, 12 restarts across builds) | 4,747,639 blocks, epoch 1447, no rule failure; every header leader-checked, 3.23M Plutus transactions evaluated with verdicts equal to `is_valid`; about 551 blocks/s average on 8 CPUs, 272 MB live heap at the tip. This run is not a single-build run, see [docs/performance.md](docs/performance.md). |
-| Devnet pool (`devnet.py pool`) | The Scala node as pool 1 among two Haskell pools: 86 blocks forged, 85 adopted; the Haskell ledger counts 85 blocks made by the pool against 83.2 expected; 151 transactions in Scala blocks; 18 KES periods crossed; 16/16 ledger comparisons matched. |
+| Devnet pool (`devnet.py pool`) | The Scala node as pool 1 among two Haskell pools: latest run (on 5cfdefd): 80 forged, 79 adopted, 78 on the final chain; the Haskell ledger counts 78 blocks made by the pool, equal to the 78 Scala blocks on chain; 16/16 ledger comparisons matched. An earlier run (13460b5): 86 forged, 85 adopted, Haskell blocks made 85 against 83.2 expected. |
 | Devnet e2e (`devnet.py e2e`) | Byron to Conway followed from Origin; every per-era ledger comparison against the Haskell node matched: Shelley 4, Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30. |
 | Devnet soak (`devnet.py soak`) | 24/24 comparisons matched over epochs 0 to 9 (41/41 over 18 epochs) with governance and Plutus V3 load, through the hard fork to protocol 11. |
 | Devnet relay (`devnet.py relay`) | A Haskell relay synced solely from the Scala node and stayed at the tip; 203/203 load transactions went through the Scala mempool into blocks. |
@@ -35,8 +35,8 @@ what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the
 
 The devnet runs are against `cardano-node` 11.1.3 and are one developer's recorded runs with the
 commits in [docs/compatibility.md](docs/compatibility.md); they do not run in CI yet. Preview
-agreement shows the node does not reject valid blocks, not that its ledger state is identical to
-the reference (roadmap K1). Things explicitly **not** checked include mainnet and preprod, Byron
+agreement shows the node accepts the real chain with full validation (no false rejections), not that its ledger state is identical to
+the Haskell node's (roadmap K1, db-analyser comparison); the devnet comparator covers identity on generated load. Things explicitly **not** checked include mainnet and preprod, Byron
 transactions, the full node-to-client query surface, Mithril import, the P2P governor and security
 review.
 

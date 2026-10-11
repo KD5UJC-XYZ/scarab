@@ -20,7 +20,7 @@ How each area stands today is in [compatibility.md](compatibility.md).
 - **A4** (P1, done in v0.1.0) Split `scripts/devnet.py` into a package and add Python unit tests for the pure helpers (CBOR, bech32, projections).
 - **A5** (P0, secret scan done for v0.1.0) Legal and provenance review: dependency licences (listed in `NOTICE`), fixture provenance, a secret scan over the full history before pushing it, trademark wording.
 - **A6** (P0) GitHub repository description and topics (the old description says "not a complete validating node or block producer").
-- **A7** (P0) Release: tag `v0.1.0` as a research preview once the uninterrupted Preview genesis-to-tip sync on the tagged build is recorded (see the placeholder in the README and [performance.md](performance.md)).
+- **A7** (P0) Release: tag `v0.1.0` as a research preview The uninterrupted Preview genesis-to-tip sync is recorded (commit 5cfdefd, see [performance.md](performance.md)); release pending: the tag goes on a later hygiene/docs/CI commit with all gates re-run.
 
 ## B. Unconfirmed rules: implemented but not yet checked against the reference (P1)
 
@@ -102,6 +102,7 @@ How each area stands today is in [compatibility.md](compatibility.md).
 - **K3** Fuzzing: the CBOR decoders, tx and block decoding, and the mini-protocol codecs.
 - **K4** Long-run stability: days at the tip, checking for memory growth, file handles and reconnect behaviour.
 - **K5** Single-build evidence. Keep running uninterrupted genesis-to-tip syncs on tagged builds.
+- **K6** Memory profile of the RSS growth to 5.66 GB (RocksDB block cache/off-heap vs heap) and a bounded configuration.
 
 ## L. Future eras (P2)
 
