@@ -1,0 +1,8 @@
+Sum6 KES key-generation vectors from `cardano-cli node key-gen-KES` (cardano-node 11.1.3 reference image).
+
+Each row is `name  r1  vk1  vk0  vk`, all hex, taken from a throwaway key of a `cardano-testnet create-env`
+sandbox: `r1` is the seed of the right depth-5 subtree stored in the signing key, `vk1` the root verification
+key of that subtree as cardano-cli computed it, `vk0` the left one and `vk = Blake2b-256(vk0 || vk1)` the
+`kes.vkey`. Regenerating the depth-5 tree from `r1` must give `vk1` (this fixes the seed-expansion convention),
+and `vk` must be the hash of the pair. The rows hold seeds of a subtree of a sandbox key only, never a whole
+signing key file.
