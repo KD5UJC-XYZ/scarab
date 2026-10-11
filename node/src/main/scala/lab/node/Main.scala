@@ -39,7 +39,9 @@ object Main extends IOApp:
       keepSnapshots: Int = 3,
       /** `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without. */
       utxoStore: Option[String] = None,
-      utxoCacheMb: Int = 256
+      utxoCacheMb: Int = 256,
+      /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
+      readAhead: Int = 64
   )
 
   /** `--snapshot-every`: a number of slots (`50000` or `50000slots`) or of epochs (`2epochs`). */
@@ -159,6 +161,7 @@ object Main extends IOApp:
           settings = Peer.Settings(
             options.peer,
             genesis.networkMagic,
+            readAhead = options.readAhead,
             byronEpochSlots = genesis.geometry.byron.epochSlots
           )
           retry = Follower.Retry(maxAttempts = 30, delay = 2.seconds)
@@ -189,7 +192,7 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]"
     def go(rest: List[String], acc: Map[String, String]): Either[String, Map[String, String]] =
       rest match
         case Nil => Right(acc)
@@ -217,6 +220,9 @@ object Main extends IOApp:
           cacheMb <- flags
             .get("utxo-cache-mb")
             .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
+          readAhead <- flags
+            .get("read-ahead")
+            .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
         yield Options(
           dir,
           peer,
@@ -227,6 +233,7 @@ object Main extends IOApp:
           interval,
           keep,
           utxoKind,
-          cacheMb
+          cacheMb,
+          readAhead
         )
       case _ => Left(usage)

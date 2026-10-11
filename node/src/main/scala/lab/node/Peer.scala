@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab.node
 
-import cats.effect.{Async, Ref, Resource}
-import cats.effect.std.{Mutex, Supervisor}
+import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.std.{Mutex, Queue, Semaphore, Supervisor}
 import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -38,6 +38,9 @@ object Peer:
         */
       byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
   )
+
+  /** Batches the peer keeps in flight: one being applied, the others being fetched. */
+  private val Depth = 3
 
   /** Called with each prefetched batch of raw blocks before they are handed to the rules. */
   type Prepare[F[_]] = Vector[Bytes] => F[Unit]
@@ -83,19 +86,21 @@ object Peer:
         )
         .evalMap { connection =>
           // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the
-          // blocks of the whole batch are fetched with one BlockFetch range. `events` holds
-          // announced but unconsumed instructions, `blocks` the prefetched blocks by header hash.
-          // The next batch is requested in the background while the current one is applied, so the
-          // network and the verification of the blocks overlap with the (sequential) rules.
+          // blocks of the whole batch are fetched with one BlockFetch range. A producer fiber
+          // keeps up to `Depth` batches in flight: it requests the headers of the next batch while
+          // the blocks of the previous ones are still being fetched and verified, and publishes
+          // the batches to `queue` in order. The consumer applies one batch while the network and
+          // the (parallel) signature checks work on the following ones. `blocks` holds the
+          // prefetched blocks by header hash.
           (
+            Queue.unbounded[F, Either[Throwable, Vector[SyncEvent]]],
             Ref.of[F, Vector[SyncEvent]](Vector.empty),
             Ref.of[F, Map[Bytes, Bytes]](Map.empty),
             Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None),
-            Ref.of[F, Option[Throwable]](None),
             Ref.of[F, Boolean](false),
-            Mutex[F],
+            Semaphore[F](Depth.toLong),
             Mutex[F]
-          ).mapN { (events, blocks, progress, failure, running, refillLock, fetchLock) =>
+          ).mapN { (queue, current, blocks, progress, started, permits, fetchLock) =>
             def decode(update: ChainSyncClient.Update[NtNHeader]): F[SyncEvent] = update match
               case ChainSyncClient.Update.RollForward(h, tip) =>
                 Header
@@ -132,7 +137,8 @@ object Peer:
                     case None => F.unit
                   }
 
-            def refill: F[Unit] =
+            /** The next batch of ChainSync instructions. */
+            val requestHeaders: F[Vector[SyncEvent]] =
               for
                 seen <- progress.get
                 ahead = seen.fold(BigInt(0)) { (tip, blockNo) =>
@@ -146,48 +152,53 @@ object Peer:
                   case SyncEvent.RollBackward(_, tip) =>
                     progress.set(Some(tip -> tip.blockNo.value))
                 }
-                // Blocks first: a header is visible to the consumer only once its block is.
-                _ <- prefetch(batch)
-                _ <- events.update(_ ++ batch)
+              yield batch
+
+            def fail(e: Throwable): F[Unit] = queue.offer(Left(e))
+
+            /** Request batches for ever: the blocks of each are fetched in a fiber of its own and
+              * the batch is published once the previous one has been, so order is kept.
+              */
+            def produce(previous: Deferred[F, Unit]): F[Unit] =
+              for
+                _ <- permits.acquire
+                batch <- requestHeaders
+                published <- Deferred[F, Unit]
+                _ <- supervisor.supervise(
+                  (prefetch(batch) *> previous.get *> queue.offer(Right(batch)) *>
+                    published.complete(()).void).handleErrorWith(fail)
+                )
+                _ <- produce(published)
               yield ()
 
-            /** Refill now, unless another refill already brought something. */
-            val refillIfEmpty: F[Unit] =
-              refillLock.lock.surround(
-                events.get.flatMap(q => if q.isEmpty then refill else F.unit)
-              )
-
-            /** Refill in the background; a failure is handed to the next call of `next`. */
-            val refillSoon: F[Unit] =
-              running.getAndSet(true).flatMap {
+            val start: F[Unit] =
+              started.getAndSet(true).flatMap {
                 case true => F.unit
                 case false =>
                   supervisor
                     .supervise(
-                      refillLock.lock
-                        .surround(refill)
-                        .attempt
-                        .flatMap(_.fold(e => failure.set(Some(e)), _ => F.unit))
-                        .guarantee(running.set(false))
+                      Deferred[F, Unit]
+                        .flatTap(_.complete(()))
+                        .flatMap(produce)
+                        .handleErrorWith(fail)
                     )
                     .void
               }
 
             new Peer[F]:
               def intersect(candidates: Vector[ChainSync.Point]) =
-                events.set(Vector.empty) *> blocks.set(Map.empty) *> progress.set(None) *>
+                current.set(Vector.empty) *> blocks.set(Map.empty) *> progress.set(None) *>
                   connection.chainSync.findIntersect(candidates).flatMap { case found =>
                     F.pure(found.map(_._1))
                   }
 
               def next: F[SyncEvent] =
-                failure.get.flatMap {
-                  case Some(e) => F.raiseError[SyncEvent](e)
+                start *> current.modify(q => (q.drop(1), q.headOption)).flatMap {
+                  case Some(event) => F.pure(event)
                   case None =>
-                    events.modify(q => (q.drop(1), (q.headOption, q.size))).flatMap {
-                      case (Some(event), size) =>
-                        F.whenA(size - 1 <= settings.readAhead / 2)(refillSoon).as(event)
-                      case (None, _) => refillIfEmpty *> next
+                    queue.take.flatMap {
+                      case Left(error)  => F.raiseError[SyncEvent](error)
+                      case Right(batch) => permits.release *> current.set(batch) *> next
                     }
                 }
 

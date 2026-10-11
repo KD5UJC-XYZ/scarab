@@ -540,3 +540,48 @@ class EraTransitionSuite extends CatsEffectSuite:
       assertEquals(chain.state, states(b + 6))
     }
   }
+
+  test(
+    "with the UTxO set in a store and verification warmed ahead the whole chain reaches the same state"
+  ) {
+    Handle
+      .allow[NodeError] {
+        val program =
+          for
+            store <- storage.MemoryUtxoStore[IO]
+            rules = NodeRules[IO](
+              setup.praos,
+              setup.globals,
+              setup.byronRules,
+              utxoStore = Some(store),
+              afterBlock =
+                Some(s => IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
+            )
+            last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.start) { (state, batch) =>
+              Verification.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
+                batch.toVector.foldLeftM(state) { (s, i) =>
+                  rules(s, headers(i), raws(i))
+                    .flatTap(n => storage.UtxoStore.advance(store, n.ledger.utxo))
+                }
+            }
+            all <- storage.UtxoStore.materialize(store, last.ledger.utxo)
+          yield (last, all)
+
+        program.map(_.asRight[NodeError])
+      }
+      .rescue(e => IO.pure(e.asLeft[(NodeState, Map[ledger.TxIn, ledger.TxOut])]))
+      .map { outcome =>
+        val (last, all) = outcome.fold(e => fail(e.message), identity)
+        val expected = states.last
+        assertEquals(all, expected.ledger.utxo.toMap)
+        assertEquals(last.ledger.utxo.stake, expected.ledger.utxo.stake)
+        assertEquals(last.ledger.utxo.coin, expected.ledger.utxo.coin)
+        assertEquals(last.ledger.utxo.count, expected.ledger.utxo.count)
+        assertEquals(
+          last.ledger.copy(utxo = ledger.Utxo.empty),
+          expected.ledger.copy(utxo = ledger.Utxo.empty)
+        )
+        assertEquals(last.praos, expected.praos)
+        assertEquals(last.boot, expected.boot)
+      }
+  }
