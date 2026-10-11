@@ -522,9 +522,13 @@ class EraLoad:
             self.stage("gcommittee", lambda: act(
                 "gcommittee", gw[3], [], extra_signers=self.cold,
                 certs=[eratx.auth_committee_cert(c.hash, h.hash) for c, h in zip(self.cold, self.hot)]))
-        if pv >= 10 and "gcommittee" in self.done and n >= 5:
+        if pv >= 10 and "gcommittee" in self.done and n >= 3:
             self.stage("ground2", lambda: self.second_round(pv))
-        if pv >= 10 and n >= 7:
+        if "ground2" in self.done and n >= 6:
+            self.stage("ground3", lambda: self.third_round(pv))
+        if "ground3" in self.done and n >= 8:
+            self.stage("ground4", lambda: self.fourth_round(pv, epoch))
+        if pv >= 10 and "ground2" in self.done and n >= 5:
             self.stage("gmore", lambda: self.more_gov(pp, pv, epoch))
         if n >= 2:
             self.stage("gdonate", self.donate, tries=6)
@@ -563,21 +567,52 @@ class EraLoad:
                 casts.append((eratx.voter("pool", p.hash), [(info, "yes"), (all_ids[3], "yes")]))
         return self.gov_votes("gvotes", gw[0], casts, self.genesis_dreps + self.gdrep + self.pool_cold)
 
-    def second_round(self, pv):
-        """Withdrawal and no-confidence once the committee exists; the committee votes."""
-        gw = self.gw
+    def committee_root(self):
         previous = self.gov_state()["nextRatifyState"]["nextEnactState"]["prevGovActionIds"]["Committee"]
-        prev = None if previous is None else eratx.gov_id(previous["txId"], previous["govActionIx"])
-        txid = self.propose("gproposals2", gw[1], [eratx.treasury_withdrawal_action({gw[3].reward: 2_000_000}),
-                                                   eratx.no_confidence_action(prev)])
+        return None if previous is None else eratx.gov_id(previous["txId"], previous["govActionIx"])
+
+    def hard_fork_root(self):
+        previous = self.gov_state()["nextRatifyState"]["nextEnactState"]["prevGovActionIds"]["HardFork"]
+        return None if previous is None else eratx.gov_id(previous["txId"], previous["govActionIx"])
+
+    def round_with_votes(self, label, actions, cast):
+        """Propose `actions`, wait for them, then vote: `cast(ids)` returns the votes and their signers."""
+        txid = self.propose(label, self.gw[1], actions)
         if not txid:
-            return
-        ids = [eratx.gov_id(txid, 0), eratx.gov_id(txid, 1)]
-        casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps[:2]]
-        casts += [(eratx.voter("pool", p.hash), [(ids[1], "yes")]) for p in self.pool_cold[:2]]
-        casts.append((eratx.voter("committee", self.hot[0].hash), [(ids[0], "yes")]))
-        casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no")]))
-        return self.gov_votes("gvotes2", gw[0], casts, self.genesis_dreps[:2] + self.pool_cold[:2] + self.hot)
+            return None
+        ids = [eratx.gov_id(txid, i) for i in range(len(actions))]
+        casts, signers = cast(ids)
+        return self.gov_votes(label + "-votes", self.gw[0], casts, signers)
+
+    def second_round(self, pv):
+        """A withdrawal and the hard fork to protocol version 11, both needing the committee."""
+        def cast(ids):
+            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps[:2]]
+            casts += [(eratx.voter("pool", p.hash), [(ids[1], "yes")]) for p in self.pool_cold[:2]]
+            casts.append((eratx.voter("committee", self.hot[0].hash), [(i, "yes") for i in ids]))
+            casts.append((eratx.voter("committee", self.hot[1].hash), [(ids[0], "no"), (ids[1], "yes")]))
+            return casts, self.genesis_dreps[:2] + self.pool_cold[:2] + self.hot
+        return self.round_with_votes("gproposals2", [
+            eratx.treasury_withdrawal_action({self.gw[3].reward: 2_000_000}),
+            eratx.hard_fork_action(11, 0, self.hard_fork_root())], cast)
+
+    def third_round(self, pv):
+        """No confidence in the committee."""
+        def cast(ids):
+            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps]
+            casts += [(eratx.voter("pool", p.hash), [(i, "yes") for i in ids]) for p in self.pool_cold[:2]]
+            return casts, self.genesis_dreps + self.pool_cold[:2]
+        return self.round_with_votes("gproposals3", [eratx.no_confidence_action(self.committee_root())], cast)
+
+    def fourth_round(self, pv, epoch):
+        """Elect a new committee without an existing one: lower thresholds, no committee vote."""
+        def cast(ids):
+            casts = [(eratx.voter("drep", k.hash), [(i, "yes") for i in ids]) for k in self.genesis_dreps]
+            casts += [(eratx.voter("pool", p.hash), [(i, "yes") for i in ids]) for p in self.pool_cold]
+            return casts, self.genesis_dreps + self.pool_cold
+        return self.round_with_votes("gproposals4", [
+            eratx.update_committee_action({self.cold[0].hash: epoch + 30}, threshold=(1, 3),
+                                          prev=self.committee_root())], cast)
 
     def plutus_spend(self, pp):
         """Spend the locked output under PlutusV3 and mint a token under the same script."""
