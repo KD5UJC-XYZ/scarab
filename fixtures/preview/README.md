@@ -46,3 +46,13 @@ from genesis): a PlutusV1 mint whose witness set lists six redeemers for the one
 (data 01, 01, 02, 02, 03, 03). The ledger keeps redeemers in a map, so the last entry counts; the
 script fails on 01 and 02 and passes on 03 with exactly the declared units. `Witnesses.decode` keeps
 the last of repeated `(tag, index)` entries of the array form.
+
+## Provenance and licence
+
+The blocks are public Preview testnet chain data fetched from the public relay named above and stored
+unchanged. `conway-governance.json`, the `plutus/` cases and the points used to find the blocks
+contain data from the Koios public API (https://koios.rest: `proposal_list`, `vote_list`,
+`drep_updates`, `tx_info`, `block_info`, `utxo_info`, `/tip`), which itself reports public chain state;
+Koios is credited as the source and is not affiliated with this project. `genesis/shelley-genesis.json`
+is the public Preview genesis file. No private data and no third-party code is included. The repository's
+Apache-2.0 applies to our own selection, re-encoding and packaging. See `../../NOTICE`.

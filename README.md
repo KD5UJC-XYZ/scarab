@@ -8,7 +8,8 @@ this repository is how far that has got.
 
 > **Unofficial research software. Not audited. Do not use it with mainnet funds or to run
 > production stake pools.** It is not affiliated with or endorsed by Input Output Global, Intersect,
-> the Cardano Foundation or Emurgo. See [SECURITY.md](SECURITY.md) and [NOTICE](NOTICE).
+> the Cardano Foundation or Emurgo. "Cardano" and related names belong to their respective owners
+> and are used only to describe compatibility. See [SECURITY.md](SECURITY.md) and [NOTICE](NOTICE).
 
 ## Status: v0.1.0 research preview
 
@@ -98,4 +99,4 @@ pass) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities priv
 in [SECURITY.md](SECURITY.md). Never commit signing keys.
 
 Apache-2.0, see [LICENSE](LICENSE). Third-party dependencies and fixture attributions are in
-[NOTICE](NOTICE).
+[NOTICE](NOTICE); the resolved dependency licences are in [docs/licenses.md](docs/licenses.md).
