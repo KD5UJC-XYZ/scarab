@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 AND MIT
 // Adapted from Bloxbean CCL 45906b783973b4c44ac6883253af26bdd07bc1b4 (MIT).
 // MIT notice: fixtures/vrf/licenses/CCL-LICENSE.
 // Research only: native draft03 negative-zero decoding semantics.

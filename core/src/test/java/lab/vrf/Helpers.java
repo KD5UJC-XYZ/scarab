@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 package lab.vrf;
 import java.nio.file.*;import java.util.*;
 final class Helpers {
