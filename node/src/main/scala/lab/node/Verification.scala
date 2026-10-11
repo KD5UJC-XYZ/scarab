@@ -114,6 +114,18 @@ object Verification:
       case Right(VerificationResult.SignatureVerified) => true
       case _                                           => false
 
+  private val keyHashes = new ConcurrentHashMap[Bytes, Bytes]()
+
+  /** The Blake2b-224 hash of a verification key; the same keys sign again and again. */
+  def keyHash(vkey: Bytes): Bytes =
+    val known = keyHashes.get(vkey)
+    if known != null then known
+    else
+      val hash = lab.Blake2b.hash224.hash(vkey)
+      if keyHashes.size > 200000 then keyHashes.clear()
+      keyHashes.put(vkey, hash)
+      hash
+
   /** How often a verdict was already there (`hits`) or had to be computed by the rules (`misses`).
     */
   final class Counters:
@@ -165,6 +177,7 @@ object Verification:
         (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).foreach {
           case (vkey, signature) =>
             val k = WitnessKey(vkey, signature, id)
+            keyHash(vkey)
             witnesses.put(k, compute(k))
         }
       })

@@ -33,7 +33,7 @@ object PreConwayRules:
       ins.traverse(i => state.utxo.get(i).toRight(LedgerFailure.Invalid(id, rule, i.render)))
 
     val wits = tx.witnesses
-    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => Blake2b.hash224.hash(w._1))
+    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => lab.node.Verification.keyHash(w._1))
     val hasRedeemers = wits.redeemers.nonEmpty
     val scriptFee =
       if alonzo then
@@ -616,7 +616,7 @@ private[ledger] object PreConwayCerts:
     def fail(rule: String, detail: String) = LedgerFailure.Invalid(id, rule, detail)
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else Left(fail(rule, detail))
-    val signers = tx.witnesses.vkeys.map(w => Blake2b.hash224.hash(w._1)).toSet
+    val signers = tx.witnesses.vkeys.map(w => lab.node.Verification.keyHash(w._1)).toSet
     val genesisSigners = s.genDelegs.values.map(_.delegate).toSet.intersect(signers)
     val ir = s.mir
     val availableR = s.reserves + ir.deltaReserves

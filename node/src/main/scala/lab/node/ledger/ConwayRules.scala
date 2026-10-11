@@ -53,7 +53,7 @@ object ConwayRules:
       ins.traverse(i => state.utxo.get(i).toRight(LedgerFailure.Invalid(id, rule, i.render)))
 
     val wits = tx.witnesses
-    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => lab.Blake2b.hash224.hash(w._1))
+    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => lab.node.Verification.keyHash(w._1))
     val scriptFee =
       (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
         wits.totalExUnits.steps

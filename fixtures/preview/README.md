@@ -40,3 +40,9 @@ referenced outputs come from Koios `utxo_info`, re-encoded). They are replayed b
 (contexts equal Scalus's). They include `Proposing` redeemers of parameter changes and treasury
 withdrawals running the real guardrails script, `Voting` redeemers of script committee members and
 V3 spends, mints and rewards. `scripts/preview_plutus_cases.py` rebuilds them.
+
+`plutus/slot12924758-e5e7f3de.json` (epoch 149, recorded by `follow --plutus-cases` while syncing
+from genesis): a PlutusV1 mint whose witness set lists six redeemers for the one purpose `(mint, 0)`
+(data 01, 01, 02, 02, 03, 03). The ledger keeps redeemers in a map, so the last entry counts; the
+script fails on 01 and 02 and passes on 03 with exactly the declared units. `Witnesses.decode` keeps
+the last of repeated `(tag, index)` entries of the array form.

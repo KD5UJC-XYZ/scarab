@@ -475,6 +475,12 @@ object Witnesses:
             units <- exUnits(xs(3))
           yield Redeemer(tag.toInt, index, xs(2).original, units)
         })
+        // The ledger keeps redeemers in a map keyed by purpose: of several entries for the same
+        // (tag, index) in the array form the last one counts (seen on Preview, slot 12924758).
+        .map(rs =>
+          val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap
+          rs.zipWithIndex.collect { case (r, i) if last((r.tag, r.index)) == i => r }
+        )
 
 /** A transaction as included in a block. */
 final case class Tx(
