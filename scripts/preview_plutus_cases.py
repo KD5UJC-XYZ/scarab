@@ -154,6 +154,28 @@ def koios(path, body):
     return json.load(urllib.request.urlopen(request, timeout=120))
 
 
+TAGS = ["spend", "mint", "cert", "reward", "vote", "propose"]
+
+
+def kind(b, ws, invalid):
+    """A label from the redeemer purposes and the script languages of the witness set."""
+    f = fields(b, ws)
+    at = f[5]
+    major, n, i = head(b, at)
+    tags = set()
+    for _ in range(n):
+        if major == 5:  # {[tag, index]: [data, units]}
+            tags.add(value(b, items(b, i)[0][0]))
+            i = skip(b, skip(b, i))
+        else:  # [tag, index, data, units]
+            tags.add(value(b, items(b, i)[0][0]))
+            i = skip(b, i)
+    purposes = sorted(TAGS[t] for t in tags)
+    languages = [n for key, n in ((3, "v1"), (6, "v2"), (7, "v3")) if key in f]
+    return "conway-" + ",".join(purposes) + ("-" + "+".join(languages) if languages else "-ref") + (
+        "-failed" if invalid else "-passed")
+
+
 def output_cbor(u):
     script = u["reference_script"]
     address = bech32_bytes(u["address"])
@@ -206,16 +228,17 @@ def main(blocks_file, params_file, out_dir):
                 continue
             seen.add(txid)
             body_at = fields(b, s)
-            body = {k: value(b, at) for k, at in body_at.items() if k in (0, 3, 8, 18)}
+            body = {k: value(b, at) for k, at in body_at.items() if k in (0, 3, 8, 13, 18)}
 
             def unpack(field):
                 v = body.get(field)
                 if isinstance(v, tuple) and v and v[0] == "tag":
                     v = v[2]
                 return [f"{t.hex()}#{n}" for t, n in (v or [])]
-            spent, referenced = unpack(0), unpack(18)
+            spent, referenced, collateral = unpack(0), unpack(18), unpack(13)
             infos = {f"{u['tx_hash']}#{u['tx_index']}": u
-                     for u in koios("utxo_info", {"_utxo_refs": spent + referenced, "_extended": True})}
+                     for u in koios("utxo_info",
+                                    {"_utxo_refs": spent + referenced + collateral, "_extended": True})}
             epoch = str(slot // EPOCH_SLOTS)
             models = params[epoch]["costModels"]
             clock = {}
@@ -234,7 +257,7 @@ def main(blocks_file, params_file, out_dir):
                     k = k3
             case = {
                 "name": f"slot{slot}-{txid[:8]}",
-                "kind": "v3-valid-governance-passed" if ix not in invalid_ix else "v3-invalid-governance",
+                "kind": kind(b, ws, ix in invalid_ix),
                 "slot": str(slot),
                 "protocolMajor": str(params[epoch]["protocolMajor"]),
                 "isValid": ix not in invalid_ix,
@@ -244,6 +267,7 @@ def main(blocks_file, params_file, out_dir):
                 "auxiliary": aux_raw.hex() if aux_raw else None,
                 "spent": [{"in": r, "out": output_cbor(infos[r]).hex()} for r in spent],
                 "references": [{"in": r, "out": output_cbor(infos[r]).hex()} for r in referenced],
+                "collateral": [{"in": r, "out": output_cbor(infos[r]).hex()} for r in collateral],
                 "costModels": {str(k): [str(v) for v in models[name]]
                                for k, name in ((0, "PlutusV1"), (1, "PlutusV2"), (2, "PlutusV3"))},
                 "clock": clock,

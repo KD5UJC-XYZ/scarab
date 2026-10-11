@@ -22,7 +22,9 @@ final case class PlutusCase(
     spent: Map[TxIn, TxOut],
     references: Map[TxIn, TxOut],
     costModels: Map[Int, Vector[BigInt]],
-    clock: Map[BigInt, BigInt]
+    clock: Map[BigInt, BigInt],
+    /** The collateral outputs, when the case file has them (cases built from an explorer do). */
+    collateral: Map[TxIn, TxOut] = Map.empty
 ):
   def params: ProtocolParams =
     TestLedger.params(protocolMajor).copy(costModels = costModels)
@@ -54,9 +56,8 @@ object PlutusCase:
     def utxo(f: String) =
       c.downField(f)
         .focus
-        .get
-        .asArray
-        .get
+        .flatMap(_.asArray)
+        .getOrElse(Vector.empty)
         .map { e =>
           val in = e.hcursor.get[String]("in").toOption.get.split('#')
           TxIn(hex(Json.fromString(in(0))), BigInt(in(1))) ->
@@ -86,5 +87,6 @@ object PlutusCase:
         .flatMap(_.asObject)
         .fold(Map.empty[BigInt, BigInt])(
           _.toMap.map { case (k, v) => BigInt(k) -> BigInt(v.asString.get) }
-        )
+        ),
+      utxo("collateral")
     )
