@@ -6,6 +6,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import lab.network.ChainSync
+import lab.node.forge.{ForgeEvent, ForgeEvents}
 import lab.node.mempool.{MempoolEvent, MempoolEvents}
 import lab.node.storage.{StorageEvent, StorageEvents}
 
@@ -78,6 +79,46 @@ object JsonLog:
             "dropped" -> dropped.asJson
           )
         else IO.unit
+
+  val forge: ForgeEvents[IO] = new ForgeEvents[IO]:
+    def emit(event: ForgeEvent): IO[Unit] = event match
+      case ForgeEvent.Started(pool, vrfHash, start, evolutions) =>
+        line(
+          "forgeStarted",
+          "pool" -> pool.hex.asJson,
+          "vrfKeyHash" -> vrfHash.hex.asJson,
+          "kesStart" -> start.asJson,
+          "kesEvolutions" -> evolutions.asJson
+        )
+      case ForgeEvent.Forged(slot, epoch, no, hash, prev, txs, size, kes, rel, stake, total) =>
+        line(
+          "forged",
+          "slot" -> slot.asJson,
+          "epoch" -> epoch.asJson,
+          "blockNo" -> no.asJson,
+          "hash" -> hash.hex.asJson,
+          "prev" -> prev.map(_.hex).asJson,
+          "txs" -> txs.map(_.hex).asJson,
+          "bodySize" -> size.asJson,
+          "kesPeriod" -> kes.asJson,
+          "relativeKesPeriod" -> rel.asJson,
+          "stake" -> stake.asJson,
+          "totalStake" -> total.asJson
+        )
+      case ForgeEvent.Adopted(b) => line("adopted", "block" -> block(b))
+      case ForgeEvent.Lost(slot, hash, reason) =>
+        line("lost", "slot" -> slot.asJson, "hash" -> hash.hex.asJson, "reason" -> reason.asJson)
+      case ForgeEvent.KesEvolved(period, rel) =>
+        line("kesEvolved", "kesPeriod" -> period.asJson, "relativeKesPeriod" -> rel.asJson)
+      case ForgeEvent.Skipped(slot, reason) =>
+        line("forgeSkipped", "slot" -> slot.asJson, "reason" -> reason.asJson)
+      case ForgeEvent.Failed(slot, error) =>
+        line(
+          "forgeFailed",
+          "slot" -> slot.asJson,
+          "kind" -> error.getClass.getSimpleName.asJson,
+          "message" -> error.message.asJson
+        )
 
   val events: FollowerEvents[IO] = new FollowerEvents[IO]:
     def emit(event: FollowerEvent): IO[Unit] = event match

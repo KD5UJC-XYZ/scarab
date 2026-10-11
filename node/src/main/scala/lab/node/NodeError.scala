@@ -67,6 +67,53 @@ enum StorageError extends NodeError:
     case Missing(w)               => s"missing $w"
     case OutOfOrder(r)            => s"out of order: $r"
 
+/** Why this node cannot (or did not) forge a block. [[NotLeader]] is the ordinary answer of most
+  * slots; the others are real problems with the keys, the ledger view or the assembled block.
+  */
+enum ForgeError extends NodeError:
+  /** A key or certificate file is missing, malformed or of the wrong type. */
+  case KeyFile(file: String, reason: String)
+
+  /** The keys do not belong together (hot key, certificate signature, VRF pair). */
+  case KeyMismatch(reason: String)
+
+  /** The KES period of the slot is outside the operational certificate's window. */
+  case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
+
+  /** The KES key could not be evolved to the slot's period (it has already moved past it). */
+  case KesFailure(reason: String)
+
+  case VrfFailure(reason: String)
+
+  /** The VRF output of the slot is above the pool's threshold (or the pool has no stake). */
+  case NotLeader(slot: BigInt)
+
+  /** The slot's pool distribution cannot be derived from the tip (tip too old or ledger not ready).
+    */
+  case LedgerViewUnavailable(slot: BigInt, reason: String)
+
+  /** Forging is only implemented for Praos (Conway) on a fully validated ledger. */
+  case UnsupportedProtocol(reason: String)
+
+  /** The block body or header could not be assembled within the protocol limits. */
+  case Assembly(reason: String)
+
+  /** Our own block rules refuse the block we built. */
+  case SelfRejected(rule: String, reason: String)
+
+  def message: String = this match
+    case KeyFile(f, r)  => s"key file $f: $r"
+    case KeyMismatch(r) => s"keys do not match: $r"
+    case KeyPeriodOutOfRange(p, s, e) =>
+      s"KES period $p outside the operational certificate window [$s, ${s + e})"
+    case KesFailure(r)                  => s"KES: $r"
+    case VrfFailure(r)                  => s"VRF: $r"
+    case NotLeader(slot)                => s"not elected for slot $slot"
+    case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
+    case UnsupportedProtocol(r)         => s"cannot forge: $r"
+    case Assembly(r)                    => s"block assembly: $r"
+    case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
+
 final case class ConfigError(reason: String) extends NodeError:
   def message: String = s"config: $reason"
 

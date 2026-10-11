@@ -230,7 +230,18 @@ final class Follower[F[_]: Async, S] private (
           )
         }
         .map(_._2)
-      // everything applied: commit
+      _ <- commit(original, to, depth, steps, peerTip)
+    yield ()
+
+  /** Everything applied: replace the chain, persist, announce and tell the mempool. */
+  private def commit(
+      original: VolatileChain[S],
+      to: ChainSync.Point,
+      depth: Int,
+      steps: Vector[Applied],
+      peerTip: ChainSync.Tip
+  ): F[Unit] =
+    for
       _ <- chain.set(steps.last.after)
       _ <- persistence.traverse_(_.rolledBack(to)).whenA(depth > 0)
       _ <- events
@@ -254,7 +265,60 @@ final class Follower[F[_]: Async, S] private (
       _ <- onTip.traverse_(_(steps.last.after, steps.map(_.raw)))
     yield ()
 
+  /** Adopt a block this node has just forged on top of its own tip. The block goes through the
+    * node's block rules like any other; if the tip has moved since it was built the block is
+    * `Lost`, and a block the rules refuse is `Invalid` (the chain is untouched in both cases).
+    */
+  def adoptForged(header: Header, raw: Bytes)(using
+      handle: Handle[F, NodeError]
+  ): F[Follower.Adoption] =
+    lock.lock.surround {
+      for
+        before <- chain.get
+        result <-
+          if before.tipRef.map(_.hash) != header.prevHash then
+            F.pure(
+              Follower.Adoption.Lost(
+                s"the tip moved to ${Points.show(before.tip)} while the block was being built"
+              )
+            )
+          else
+            handle.attempt(rules(before.state, header, raw)).flatMap {
+              case Left(e: ValidationError) => F.pure(Follower.Adoption.Invalid(e))
+              case Left(other)              => other.raise[F, Follower.Adoption]
+              case Right(next) =>
+                val ref = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
+                for
+                  extended <- before
+                    .extend(header, next)
+                    .fold(_.raise[F, (VolatileChain[S], Vector[BlockRef])], _.pure[F])
+                  applied = Applied(
+                    ref,
+                    raw,
+                    extended._2,
+                    extended._1,
+                    before,
+                    next,
+                    SelectView.of(header),
+                    header.era
+                  )
+                  tip = ChainSync.Tip(
+                    header.point,
+                    ChainSync.UInt64.from(header.blockNo).toOption.get
+                  )
+                  _ <- commit(before, before.tip, 0, Vector(applied), tip)
+                yield Follower.Adoption.Adopted(ref)
+            }
+      yield result
+    }
+
 object Follower:
+  /** What happened to a forged block offered to [[Follower.adoptForged]]. */
+  enum Adoption:
+    case Adopted(block: BlockRef)
+    case Lost(reason: String)
+    case Invalid(error: ValidationError)
+
   final case class Retry(maxAttempts: Int, delay: FiniteDuration)
 
   def create[F[_]: Async, S](

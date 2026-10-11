@@ -16,13 +16,15 @@ import lab.network.runtime.{
   NodeToNodeServer,
   ServerHandlers
 }
+import lab.node.forge.{Forger, KeyFiles}
 import lab.node.mempool.{LocalSubmission, Mempool, MempoolEnv}
 import lab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>]`
+  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>] [--forge
+  * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -30,7 +32,8 @@ import scala.concurrent.duration.*
   * persisted, and a restart resumes from the newest valid snapshot plus a replay of the stored
   * blocks instead of from genesis. With `--listen` the node is a relay: it accepts node-to-node
   * connections and serves its chain (ChainSync, BlockFetch), collects transactions into its mempool
-  * (TxSubmission2) and offers the mempool to the peers it follows.
+  * (TxSubmission2) and offers the mempool to the peers it follows. With `--forge` and the pool's
+  * VRF key, KES key and operational certificate it also produces blocks in the slots it leads.
   */
 object Main extends IOApp:
   final case class Options(
@@ -44,8 +47,12 @@ object Main extends IOApp:
       keepSnapshots: Int = 3,
       listen: Option[SocketAddress[Host]] = None,
       mempoolBytes: Long = 1048576L,
-      localSocket: Option[Path] = None
+      localSocket: Option[Path] = None,
+      forge: Option[ForgeFiles] = None
   )
+
+  /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
+  final case class ForgeFiles(vrfSkey: Path, kesSkey: Path, opCert: Path)
 
   /** `--snapshot-every`: a number of slots (`50000` or `50000slots`) or of epochs (`2epochs`). */
   enum SnapshotInterval:
@@ -78,7 +85,13 @@ object Main extends IOApp:
         .blocking(NodeSetup.fromDirectory(options.genesisDir))
         .flatMap(_.fold(fail, IO.pure))
       genesis = setup.genesis
-      events = JsonLog.events
+      connected <- Ref.of[IO, Boolean](false)
+      events = new FollowerEvents[IO]:
+        def emit(event: FollowerEvent): IO[Unit] =
+          (event match
+            case FollowerEvent.Connected(_) => connected.set(true)
+            case _                          => IO.unit
+          ) *> JsonLog.events.emit(event)
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
         PlutusCases(dir, perKind = 2, max = 400)
@@ -213,10 +226,28 @@ object Main extends IOApp:
               }
               .evalMap(_ => JsonLog.listening(path.toString))
           )
+          forging <- options.forge.traverse { files =>
+            for
+              credentials <- IO
+                .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
+                .flatMap(_.fold(fail, IO.pure))
+              forger <- Forger.create[IO](
+                setup.praos,
+                setup.globals,
+                credentials,
+                follower,
+                mempool,
+                JsonLog.forge,
+                connected.get
+              )
+            yield forger.run
+          }
+          production = forging.fold(Resource.unit[IO])(_.background.void)
           run = QueryServer
             .resource[IO](ChainView.fromRef(ref), options.queryPort)
             .flatMap(_ => relay)
             .flatMap(_ => local)
+            .flatMap(_ => production)
             .surround(sync)
           _ <- JsonLog.started(options.peers, genesis, setup.config)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
@@ -228,13 +259,14 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
     def go(
         rest: List[String],
         acc: Map[String, List[String]]
     ): Either[String, Map[String, List[String]]] =
       rest match
-        case Nil => Right(acc)
+        case Nil               => Right(acc)
+        case "--forge" :: tail => go(tail, acc.updated("forge", List("true")))
         case flag :: value :: tail if flag.startsWith("--") =>
           go(tail, acc.updated(flag.drop(2), acc.getOrElse(flag.drop(2), Nil) :+ value))
         case _ => Left(usage)
@@ -260,6 +292,14 @@ object Main extends IOApp:
           mempool <- flags
             .get("mempool-bytes")
             .fold(Right(1048576L))(_.toLongOption.filter(_ > 0).toRight(usage))
+          forge <-
+            if !flags.contains("forge") then Right(None)
+            else
+              (
+                flags.get("vrf-skey").toRight(usage),
+                flags.get("kes-skey").toRight(usage),
+                flags.get("opcert").toRight(usage)
+              ).mapN((v, k, o) => Some(ForgeFiles(Path.of(v), Path.of(k), Path.of(o))))
         yield Options(
           dir,
           peers,
@@ -271,6 +311,7 @@ object Main extends IOApp:
           keep,
           listen,
           mempool,
-          localSocket
+          localSocket,
+          forge
         )
       case _ => Left(usage)
