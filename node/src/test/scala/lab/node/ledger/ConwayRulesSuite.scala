@@ -230,7 +230,7 @@ class ConwayRulesSuite extends FunSuite:
       TxRules(
         s,
         tx(body, Vector(alice), wits, isValid = isValid),
-        env.copy(evaluator = scripted(succeeds))
+        env.copy(evaluator = scripted(succeeds), decoder = lab.node.plutus.ScriptDecoder.lenient)
       )
     val valid = run(succeeds = true, isValid = true).fold(f => fail(f.message), identity)
     assertEquals((valid.plutus.succeeded, valid.plutus.failed), (1L, 0L))

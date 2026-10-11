@@ -3,7 +3,7 @@ package lab.node.ledger
 
 import cats.Id
 import lab.cbor.Bytes
-import lab.node.plutus.{ScalusEvaluator, ScriptEvaluator}
+import lab.node.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 
 /** Why the ledger refused a transaction. `Unsupported` marks a valid-chain feature this node does
   * not implement yet; `Invalid` is a rule violation.
@@ -37,6 +37,8 @@ object TxRules:
       clock: Option[BigInt => BigInt] = None,
       /** The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). */
       evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
+      /** Decides whether a Plutus script deserialises (phase 1 from Babbage on). */
+      decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       /** Tooling hook called after each phase-2 evaluation; never affects the result. */
       observer: Option[Phase2.Observation => Unit] = None
   )
