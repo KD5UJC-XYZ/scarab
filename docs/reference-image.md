@@ -1,9 +1,9 @@
 # Reference image
 
-The soak in [node.md](node.md) compares the Scala node against the official Haskell
+The devnet scenarios in [running.md](running.md) compare the Scala node against the official Haskell
 `cardano-node`. `scripts/prepare_reference_image.py` builds the local image
 `cardano-reference-11.1.3:local` from the official release archive. It needs local Linux
-Docker and Python 3.11+, downloads nothing and installs nothing.
+Docker and Python 3, downloads nothing and installs nothing.
 
 ## Prepare once
 

@@ -1,36 +1,112 @@
-# Scala node (`node` module)
+# Architecture
 
-A Cardano node core written as tagless-final cats-effect programs. It follows one or more peers from genesis,
-validates TPraos and Praos headers and applies the ledger rules of every Shelley-based era (see
-"Full ledger" below). Every retained state can be queried,
-so it can be compared byte for byte against a reference `cardano-node`.
+How the node is put together. For flags and scenarios see [running.md](running.md); for what is
+verified against what see [compatibility.md](compatibility.md); for facts learned from real data
+see [findings.md](findings.md).
 
-## Architecture
+## Modules
+
+| Module | sbt id | Contents | Effect style |
+|---|---|---|---|
+| `core/` | `core` | CBOR (`lab.cbor`), Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, operational certificates | Pure functions, no effects |
+| `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, era and header tags (`Era`, `NtNHeader`) | Pure |
+| `network-runtime/` | `networkRuntime` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
+| `node/` | `node` | Peer, volatile chain, follower, Praos and TPraos consensus, ledger rules for Shelley to Conway, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `CaptureMain` |
+
+Dependencies: `core` <- `network` <- `networkRuntime` <- `node`. Note that `network/Mux.scala` (the
+pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are different files.
+
+## Layers (the `node` module)
 
 | Layer | Where | Style |
 |---|---|---|
-| Errors | `NodeError.scala` | Closed hierarchy: `PeerError` (recoverable), `ChainError`, `ValidationError`, `ConfigError`. Raised via cats-mtl `Raise`, handled via lexically scoped `Handle.allow` |
-| Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node v14 interpreter over `network-runtime` |
-| Decoding | `Header.scala`, `Block.scala`, `network/Era.scala`, `network/NtNHeader.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`, Shelley-Conway) and `Header.Byron`; blocks decoded per era with the body hash recomputed from original bytes. Real fixtures under `fixtures/preview/` |
+| Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
+| Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network-runtime` |
+| Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
-| Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain (ChainSync, BlockFetch), collects and offers transactions (TxSubmission2) and accepts local submissions; see "Relay" below |
-| Forging | `forge/`, `Follower.adoptForged`, `core/.../vrf/Draft03Prover`, `core/.../kes/Sum6KesSigning` | Praos block production: VRF proving, KES signing and evolution, block assembly from the mempool; see "Block production" below |
-| Consensus | `consensus/Praos.scala`, `consensus/TPraos.scala`, `consensus/OCertRules.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block). TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
-| Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation, and from Conway GOV, RATIFY, ENACT and the DRep pulser |
+| Consensus | `consensus/Praos.scala`, `TPraos.scala`, `OCertRules.scala`, `ByronRules.scala` | VRF leader check, KES, opcert counters, nonce evolution; TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
+| Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, EPOCH (rewards, SNAP, POOLREAP, dormant epochs), and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
-| UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `storage/RocksUtxoStore.scala` | The UTxO set behind a `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure `Utxo` view: the last changes plus the entries the block needs. See "Scale" below |
-| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` |
+| Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; Scalus interpreter; our own script contexts and cost-model selection |
+| UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `RocksUtxoStore.scala` | The UTxO set behind `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure view |
+| Storage | `storage/` | `ImmutableStore`, `LedgerSnapshots`, `ChainStorage`, derived `Codec`s |
+| Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
+| Forging | `forge/`, `Follower.adoptForged`, `core/.../vrf/Draft03Prover`, `core/.../kes/Sum6KesSigning` | Praos block production |
+| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator) |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
-staking) is read from the genesis files. Nothing assumes a particular network. Ledger arithmetic
+staking) is read from the genesis files; nothing assumes a particular network. Ledger arithmetic
 uses an exact `Rational` with Haskell `floor` semantics.
 
-Laws and properties: the `Ref`-backed `Stateful` passes the cats-mtl Stateful laws, `Rational`
-passes the cats-kernel Order laws, and the ScalaCheck properties cover rollback, reward bounds and
-exactness. Scripted-peer tests cover forks, reconnects and fatal rule violations.
+## Algebras
 
-## Era history and Byron (devnet from Byron)
+Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
+
+| Algebra | Role | Interpreters |
+|---|---|---|
+| `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP (pipelined), scripted peers in tests |
+| `BlockRules[F, S]` | validate and apply one block to a state | `NodeRules` (full ledger), bootstrap mode (headers only) |
+| `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
+| `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
+| `LedgerSnapshots[F, S]` | atomic checksummed snapshots of the node state | `FileLedgerSnapshots` |
+| `ScriptEvaluator[F]` | evaluate one Plutus script request | `ScalusEvaluator` (pure `Id` and suspended `F` forms) |
+| `Mempool[F]` | validated transaction pool, TxSubmission2 source and sink | `Mempool` over pure `MempoolState` |
+| `ChainView[F, S]` | read access for the query server | `ChainView.fromRef` |
+| `Bearer[F]`, `Mux[F]` | byte transport and multiplexer | TCP, in-memory (tests) |
+| `FollowerEvents[F]`, `ForgeEvents[F]`, `StorageEvents[F]`, `MempoolEvents[F]` | structured event sinks | `JsonLog` (JSON lines on stdout) |
+
+Purity discipline: rules (header checks, ledger, ratification, mempool state, chain selection,
+Plutus context construction) are pure functions or values; `F` appears only where the world is
+touched (network, disk, clock, concurrency). Known exceptions are deliberate performance caches
+held in global state (`Verification.scala` verdict maps, the `PlutusCases` recorder, the RocksDB
+handle reference) and are listed in the [roadmap](roadmap.md) (item M3).
+
+## Error model
+
+Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled at lexically scoped
+`Handle.allow` sites; `raiseError` is not used for domain errors.
+
+| ADT | Meaning | Handling |
+|---|---|---|
+| `PeerError` | the peer misbehaved or the connection failed; recoverable | `Follower.supervise` reconnects |
+| `ChainError` | chain-level inconsistency (for example a candidate that no longer joins our chain) | per-session or fatal |
+| `ValidationError(point, rule, reason)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
+| `StorageError` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
+| `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
+| `ConfigError` | bad genesis or configuration | fatal at start |
+
+Two documented exceptions: `CaptureMain` (a development tool) throws, and a few
+programmer-error guards throw (`Utxo.apply`, `Bytes`, `Sum6Kes` hash contract). See the audit items
+in the [roadmap](roadmap.md) (M2).
+
+## Data flow
+
+```
+peer(s) --ChainSync headers--> candidate chain (per session)
+        --BlockFetch ranges--> Verification.warm (parallel Ed25519 / opcert / KES / VRF verdicts)
+                                      |
+                                      v
+                    NodeRules: tick ledger and Praos to the block's epoch
+                      -> header checks (VRF, KES, opcert, nonces, leader threshold)
+                      -> body: decode once, fetch missing UTxO from the store,
+                         UTXOW / UTXO / DELEGS / PPUP or Conway LEDGER, phase 2 (Plutus)
+                                      |
+                                      v
+              VolatileChain (last k states)  --block older than k-->  ImmutableStore
+                    |        |                                         LedgerSnapshots + UtxoStore checkpoint
+                    |        +--> ChainServer / ServedChain --> ChainSync, BlockFetch servers --> downstream peers
+                    +--> Mempool.sync (keep, drop, mark adopted) <--> TxSubmission2, LocalTxSubmission
+Forger (slot clock, leader check) --> BlockBuilder (from mempool) --> Follower.adoptForged --> same path as any block
+```
+
+Concurrency: one producer fiber per peer keeps up to three batches in flight; one consumer applies
+blocks sequentially; snapshots are written by a background fiber from the immutable (structurally
+shared) anchor state; the forger, the servers and the query server run as resources next to the
+sync.
+
+
+## Era history and Byron
 
 `EpochGeometry` is the node's era history: a Byron prefix (`ByronSpan`: epochs, 10k slots per
 epoch, its own slot length) followed by the Shelley-based eras, which share one epoch length.
@@ -54,7 +130,7 @@ modelled.
   (`signatureVerified`, `signatureUnchecked`).
 - **Byron to Shelley:** the Praos state starts with every nonce equal to the Shelley genesis hash
   and is untouched by Byron blocks; the first Shelley block ticks it to the first Shelley epoch.
-  Ledger-lite starts at that epoch.
+  The ledger starts at that epoch.
 - **Logging:** every era transition is an `eraTransition` line (`from`, `to`, `epoch`, `slot`,
   `block`), the first one from no era; `extended` lines carry the block's `era`.
 
@@ -62,50 +138,7 @@ Tests: `EraTransitionSuite` replays a committed capture of the `up-eras` cluster
 ([`fixtures/eras`](../fixtures/eras/README.md)) through the node's block rules and a scripted
 follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 
-```sh
-python3 scripts/devnet.py e2e          # up-eras + follower from Origin + era load + ledger comparison (about 10 minutes)
-python3 scripts/devnet.py --name csl-eras2 e2e   # a second cluster alongside another run
-```
-
-`e2e` starts the era-walking cluster and the Scala follower as soon as the nodes answer, so the
-Scala ledger tracks the reference through every era. It fails unless: the `eraTransition` lines are
-exactly Byron, Shelley, Allegra, Mary, Alonzo, Babbage and Conway at the epochs in `eras.json` and
-the configuration, every era has applied blocks, all Byron signatures verified, there are no
-validation or fatal errors, and **every ledger comparison matched** (at least `--min-comparisons`
-per Shelley-based era). It writes `e2e-summary.json` (blocks and header verdicts per era,
-transitions, per-era comparison counts, first mismatches, load counts) and `compare.jsonl` (every
-comparison) to the run directory, and removes the containers unless `--keep`.
-
-Era load (`scripts/eraload.py`, transactions built and signed by `scripts/eratx.py` because
-cardano-cli 11 builds Conway transactions only): Shelley transfers, stake key registration and
-delegation, a new pool, pool re-registration (future parameters), MIR from the reserves, a genesis
-delegation certificate, withdrawals; Allegra validity intervals, auxiliary data, a timelock script
-address funded and spent, a pool retirement; Mary minting and burning under native-script policies
-(one timelocked), multi-asset transfers, MIR from the treasury, stake deregistration; Alonzo
-collateral inputs, datum-hash outputs, required signers, network id; Babbage inline datums,
-reference-script outputs, reference inputs, collateral return; Conway the cardano-cli `load`
-(transfers, registration, delegation, withdrawals, deregistration) and the governance and Plutus V3
-scenarios described under "Conway load" below. Plutus V1 and V2 scripts are still a TODO in
-`eraload.py`. Rejected submissions are logged.
-
-The e2e run follows seven Conway epochs: the bootstrap-phase governance first (protocol 9), then the
-hard fork to 10 and the full governance. The Conway ledger is compared with the reference through the
-CLI (all queries of one comparison run in parallel between two tip reads), including `gov-state`,
-`committee-state` and `drep-stake-distribution` (see below).
-
-Comparison: cardano-cli 11.2.3 refuses `query ledger-state` and `query protocol-state` before
-Conway, so `scripts/ntcquery.py` speaks LocalStateQuery to the node directly (through `socat` in the
-reference container) and `scripts/eraview.py` projects `DebugNewEpochState`, the whole UTxO and
-`DebugChainDepState` of Shelley to Babbage onto the node's `/state` shape, with the protocol
-parameters from `cardano-cli query protocol-parameters`. Compared per point: UTxO (multi-assets,
-datums, reference scripts), fees, deposits, treasury, reserves, accounts, pools with future
-parameters and retirements, genesis delegations (current and future), pending and future update
-proposals, MIR, mark/set/go snapshots, blocks made, the reward update when complete, protocol
-parameters, pool distribution, nonces and opcert counters. Each epoch is compared right after the
-boundary, after the era batch, mid-epoch and shortly before the next boundary. Byron is not
-compared: the CLI cannot query a Byron ledger and the node keeps no Byron UTxO.
-
-## Full ledger for Shelley to Babbage
+## Ledger: Shelley to Babbage
 
 `NodeRules` applies the full ledger to every Shelley-based block; era behaviour follows the protocol
 major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9).
@@ -143,15 +176,6 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
 - **Read-ahead:** while the peer is far ahead, ChainSync requests are pipelined and each batch is
   fetched with one BlockFetch range (`Peer.nodeToNode`, `ChainSyncClient.requestNextBatch`).
 
-Verified: Preview from genesis through epoch 74 (6.4M slots, protocol 6 to 8) with every non-overlay
-header threshold-checked and no rule failure; 315,717 Plutus transactions evaluated successfully and
-55 evaluated to failure, each equal to the block's `is_valid` flag, and 333,607 script data hashes
-recomputed and equal. The Byron-to-Conway era fixture (`EraTransitionSuite`) also passes.
-
-```sh
-bash scripts/sbtw node/compile node/runtimeClasspathFile
-# then run lab.node.Main follow --genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001
-```
 
 ## Conway
 
@@ -204,9 +228,10 @@ consumes its collateral and nothing else.
 `LedgerState` gained `gov`, `committeeState` and `donation` (plain case classes); `DRepState` has the
 anchor and the delegators.
 
-Not modelled: the VRF key hash uniqueness of protocol 11 (it only rejects transactions), the
-unelected-committee vote check is implemented but untested against a reference, and block execution-unit
-limits.
+Not modelled: the VRF key hash uniqueness of protocol 11 (it only rejects transactions). The
+unelected-committee vote check is implemented but untested against a reference. Block execution-unit
+limits are validated on received blocks (`LedgerRules.scala`, protocol 5 and later) and enforced by the
+forger.
 
 ## Plutus evaluation
 
@@ -391,23 +416,6 @@ chain-selection properties (antisymmetric, longer wins, issue number, unsigned V
 never more than `k` rolled back, the winner among several candidates does not depend on arrival
 order); the follower with several scripted peers; the local protocol over a Unix socket.
 
-### The relay scenario (`devnet.py relay`)
-
-```sh
-bash scripts/sbtw node/compile node/runtimeClasspathFile
-python3 scripts/devnet.py relay --seconds 300     # up + Scala relay + Haskell relay + load
-```
-
-Starts the 3-pool cluster, the Scala node following all three pools with `--listen`, `--db` and
-`--local-socket`, and, once the Scala node has applied 30 blocks, a non-producing reference
-`cardano-node` whose topology names only the Scala node. The relay must sync the whole chain from
-the Scala node (the older blocks come from the immutable store) and then stays at the tip while
-the load generator builds, signs and submits transactions through the relay's socket. A
-transaction travels Haskell relay, TxSubmission2, Scala mempool, TxSubmission2, pools, block, back
-through the Scala node to the relay. One transaction is also submitted with `cardano-cli` straight
-to the Scala node's Unix socket. The run reports tips and lag every 5 s, the epochs seen, the final
-tip of every node, and how many transactions reached the Scala mempool and were included.
-
 ## Block production (`follow --forge`)
 
 ```sh
@@ -472,31 +480,11 @@ boundaries, an unregistered VRF key or a certificate outside its window never fo
 adoption, body size accounting and a decode round trip), `KeyFilesSuite` loads a real `cardano-cli`
 certificate, `Draft03ProverSuite` and `Sum6KesSigningSuite` hold the vectors.
 
-### The pool scenario (`devnet.py pool`)
-
-```sh
-bash scripts/sbtw node/compile node/runtimeClasspathFile
-python3 scripts/devnet.py pool --seconds 480
-```
-
-Creates the 3-pool sandbox with `slotsPerKESPeriod = 250` (the default, 129600, would never change period in
-a run) and starts the Haskell nodes of pools 2 and 3 only: **the Haskell node of pool 1 is never started**, so
-nothing but the Scala node ever holds pool 1's keys. The topologies of pools 2 and 3 name each other and the
-Scala node, which follows both, listens on loopback and forges with pool 1's VRF key, KES key and certificate
-(copied out of the sandbox into the run directory, mode 0400, and mounted read-only). The load generator submits
-through pool 2's socket, so transactions travel Haskell mempool, TxSubmission2, Scala mempool, Scala block.
-The run asserts: blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the
-pool (`blocksBefore`/`blocksCurrent` of `query ledger-state`, per epoch) equals the number of Scala-forged blocks
-on the chain up to the last compared tip and is within four standard deviations of the expected share
-(slots times `1 - (1 - f)^stake`); transactions of the load in Scala-forged blocks; at least one KES period
-boundary crossed; no rollback deeper than `k` and the Haskell pools agreeing on the tip; the ledger comparison
-matching at every point; no error event. It writes `pool-summary.json`.
-
 ## Scale: the UTxO set on disk and a pipelined sync
 
 Syncing Preview with the whole ledger in memory fell from 350 blocks/s to 20 blocks/s by block 527k
 (UTxO of 1.25M entries, 2.7 GB live, 335 MB snapshots). The measurements are in
-`.workspace/notes/perf.md`; the changes, in the order they paid off:
+[performance.md](performance.md); the changes, in the order they paid off:
 
 **Compact bytes.** `lab.cbor.Bytes` was a `Vector[Byte]` (boxed, about 6 times the size, hashing and
 equality walked the elements). It is now a window onto an immutable `Array[Byte]` with a cached hash;
@@ -556,123 +544,3 @@ follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-
 
 `rocksdb` is the default with `--db`; without it the node uses the memory store. The query server
 completes the UTxO from the store for `/state`.
-
-## Running a local soak (Docker only)
-
-Prerequisite: the `cardano-reference-11.1.3:local` image (see [reference image](reference-image.md)).
-
-```sh
-bash scripts/sbtw node/compile node/runtimeClasspathFile
-python3 scripts/devnet.py soak --seconds 480     # up + follow + load + compare
-python3 scripts/devnet.py down                   # remove containers and run data
-```
-
-`devnet.py` starts a 3-pool `cardano-testnet` cluster (k = 5, f = 0.05, 500-slot epochs of 0.1 s)
-and the Scala node, which shares the reference container's network namespace. It also runs a
-load generator that sends ADA transfers, stake registration with pool and DRep delegation,
-re-delegation, full-balance reward withdrawals and deregistration. Every `--every` seconds it
-reads the reference tip, queries `ledger-state`, `utxo --whole-utxo` and `protocol-state`, then
-re-reads the tip. When the tip is unchanged, it fetches the Scala node's state at exactly that
-block and diffs everything. Run data lives in `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>`.
-The node runs from a frozen copy of the compiled classes.
-
-### Conway load and comparison
-
-`devnet.py govload` (started by `soak` next to `load`; `e2e` runs the same code in its Conway epochs)
-builds and signs Conway transactions with `eratx.py` and drives these stages, one pass per epoch (a
-stage that fails is retried, then given up and logged): fund four wallets; register stake credentials
-with pool and DRep delegation (certificates 9 to 13) and two DReps; lock funds at a Plutus V3
-script address (inline datum, no datum, and a reference-script output), spend both and mint with the
-V3 script (redeemer map, script data hash with the V3 cost model) and mint again from the reference
-script; re-delegate to a registered DRep; propose an info action, a parameter change, a treasury
-withdrawal, a committee update and a constitution (in the bootstrap phase an info action, a hard
-fork to 10 and two parameter changes) and vote with the genesis DReps, the new DReps, the three
-pools and, later, the committee; authorise the committee's hot keys; a second round of a treasury
-withdrawal and the hard fork to 11 that need the committee; a no-confidence action; a committee
-elected while there is none; DRep update and retirement, committee resignation, stake
-deregistration with refund; a treasury donation naming the current treasury. The genesis committee
-of `cardano-testnet` is empty with threshold 0, so with committee `minSize` 0 the committee accepts
-everything until the first update.
-
-Besides the existing ledger-state comparison, every comparison diffs the governance projection
-(`scripts/govview.py` maps the CLI JSON onto `Projection.gov`): the proposals with their votes,
-deposits, return accounts, expiry and action contents, the committee and its threshold, the
-constitution, the committee state (hot keys, resignations), the DRep stake distribution (including
-always-abstain and always-no-confidence) and the ratify state (enacted and expired actions, the delay
-flag, the next committee, constitution and previous action ids, the protocol version).
-
-## Verified result (2026-10-11)
-
-**Soak.** `devnet.py soak --seconds 480` from genesis matched the reference exactly at **24/24**
-comparison points (epochs 0 to 9, 245 blocks, no error). The governance load ran every stage within
-those ten epochs, including a hard fork to protocol 11 (Plutus V3 spend, mint and reference-script mint
-included). A longer run (900 s, epochs 0 to 18, 456 blocks) matched at **41/41**; it went through the
-hard fork to 11, a no-confidence action and the election of a new committee while there was none.
-
-**E2E.** `devnet.py e2e` (Byron to Conway, seven Conway epochs after the transition, 751 Conway blocks)
-passed with every comparison matched:
-
-| era | compared | mismatched |
-|---|---|---|
-| Shelley | 4 | 0 |
-| Allegra | 4 | 0 |
-| Mary | 4 | 0 |
-| Alonzo | 8 | 0 |
-| Babbage | 8 | 0 |
-| Conway | 30 | 0 |
-
-The Conway epochs start at protocol version 9 (bootstrap phase): info, parameter-change and hard-fork
-proposals with pool and DRep votes, the hard fork to 10, then committee election, treasury withdrawals,
-no confidence and DRep and committee certificates.
-
-**What each comparison covers:**
-
-- whole UTxO, fees, deposits, treasury and reserves
-- accounts, pools and DReps
-- mark/set/go snapshots and the fee snapshot
-- block counts, the reward update and the pool distribution
-- all five Praos nonces and the opcert counters
-- Conway: proposals and their votes, committee and committee state, constitution, the DRep stake
-  distribution and the ratify state
-
-**Pool.** `devnet.py pool --seconds 480` (the Scala node as pool 1 of 3, 1/3 of the stake, 250-slot KES periods)
-passed: 86 blocks forged, 85 on the final chain (one lost a slot battle), and the Haskell ledger counts exactly 85
-blocks made by the pool, against 83 expected; 151 load transactions in 72 of those blocks; 18 KES period
-boundaries crossed; deepest rollback 1; 16/16 ledger comparisons matched, all tips equal at the end.
-
-**Preview, from genesis to the tip (2026-10-11).** `follow --db` with the RocksDB UTxO store synced the
-whole of Preview over the network: 4,747,639 blocks, epochs 0 to 1447, Alonzo (epoch 0), Babbage
-(epoch 3), Conway (epoch 646, protocol 9; protocol 10 and 11 later), every header checked against the
-leader schedule and every transaction through UTXOW/UTXO/phase 2 (3.23M transactions evaluated, 242
-failing scripts, each equal to the block's `is_valid` flag; 11.2M scripts; 3.30M script data hashes
-recomputed), the reward calculation at every boundary, and from epoch 646 the Conway governance. The
-average over the live-synced epochs was about 550 blocks/s (270 to 840 per hundred epochs) on 8 CPUs
-with `-Xmx3g`. At the tip: 3.2M UTxO entries (466 MB in RocksDB), 112k accounts, 726 pools; the heap
-after a full collection is under 300 MB; a ledger snapshot is 52 MB. See `.workspace/notes/perf.md`.
-
-Syncing a chain this long is also the first check of the ledger against a public network, and it
-found six bugs that the devnet cannot show (each has a test or fixture now):
-
-| where | what the node did | what the ledger does |
-|---|---|---|
-| epoch 493 (rewards) | counted a pool owner's stake for the pledge whatever the owner delegates to | only the stake delegated to the pool counts (`poolStake` restricts the map) |
-| epoch 646 (Babbage to Conway) | the SNAP at the boundary counted pointer addresses | that boundary runs under the Conway rules, which ignore pointers |
-| slot 12924758 (Alonzo-style witness) | evaluated six redeemers for one purpose | redeemers are a map keyed by purpose, the last entry counts |
-| slot 62567517 (Conway map form) | counted a redeemer listed twice twice in the fee | the same: one entry per purpose |
-| slot 65493476 | refused a Plutus V1 script in a transaction with reference inputs | from Conway they are simply not part of the V1 context |
-| slot 116688298 | encoded `NewConstitution` as `[previous, Maybe ScriptHash]` | `Constitution` is a constructor of its own: `[previous, Constr 0 [Maybe ScriptHash]]`; Scalus 1.2.0 has the same gap (the oracle tests note it) |
-
-Two network-side faults of the new pipeline were fixed on the way: a BlockFetch range of full blocks
-exceeds the client's 10 MB per-request limit (ranges are now cut by announced body size), and a
-reconnect offered every retained block as an intersection candidate (more than the protocol's 64; now
-thinned).
-
-## Not yet implemented
-
-- **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
-- **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions).
-- **On-disk ledger:** only the UTxO set is on disk (see "Scale"); the other ledger maps (accounts, pools, DReps, the three stake snapshots) are in memory and in the snapshot file. The volatile blocks are not persisted.
-- **Peers:** no peer selection (the configured peers are all used) and no header validation ahead of the block fetch; each peer's sync is pipelined but bounded by one ChainSync request stream (64 to 128 headers per round trip against the public relay; 256 times out); inbound duplex connections are accepted but not used for our own clients.
-- **Rewards:** non-myopic pool ranking.
-- **Production:** forging is Praos/Conway only (no TPraos eras), the pool must be registered with stake in the ledger (no Preview pool is run), there is no KES agent (the KES key is loaded from a file at start and evolved in memory; a restart loads period 0 again and evolves forward, no key is rewritten) and no operational certificate issuing; the mempool has no epoch-boundary ticking (the forger re-validates in the block's own slot and epoch).
-- **Node-to-client:** only LocalTxSubmission (no LocalStateQuery, LocalChainSync or LocalTxMonitor); rejections are not in the ledger's encoding.

@@ -1,0 +1,177 @@
+# Running the node and the devnet scenarios
+
+Everything runs in Docker; no host JDK or sbt is needed. See [CONTRIBUTING.md](../CONTRIBUTING.md)
+for the build workflow. This node is research software: do not run it with keys that hold real
+funds (see [SECURITY.md](../SECURITY.md)).
+
+## Images
+
+| Image | Built from | Used for |
+|---|---|---|
+| `cardano-scala-jdk:local` | `docker/jdk.Dockerfile` (digest-pinned Temurin 21 plus Python 3) | building, running the node, `devnet.py` |
+| `cardano-reference-11.1.3:local` | the checksum-pinned official release archive, see [reference-image.md](reference-image.md) | the Haskell reference cluster for the scenarios |
+
+```sh
+docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+```
+
+Compile once and write the runtime classpath (the scenarios and the commands below use it):
+
+```sh
+docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+  cardano-scala-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
+```
+
+This writes `node/target/runtime-classpath.txt`.
+
+## `follow`: the node
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+  --genesis-dir <dir> --peer <host>:<port> [options]
+```
+
+(Inside the JDK image with the checkout mounted, or on a host with JDK 21.) The sbt form is
+`sbt "node/runMain lab.node.Main follow ..."`. The node logs one JSON object per line on stdout
+(`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
+`forged`, ...).
+
+Flags, as parsed by `Main.parse` (`node/src/main/scala/lab/node/Main.scala`). Every flag takes a
+value except `--forge`. A repeated flag keeps its last value, except `--peer`, which accumulates.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--genesis-dir <dir>` | required | directory with `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, `byron-genesis.json` (needed when the chain starts in Byron) and optionally a node configuration (`configuration.yaml`, `configuration.json` or `config.json`) |
+| `--peer <host>:<port>` | required, repeatable | node-to-node peer to follow; with several peers each is followed and chain selection picks the best chain. One peer that keeps failing is fatal after 30 attempts, with several it is retried forever |
+| `--listen <host>:<port>` | off | accept node-to-node connections (versions 14 and 15) and serve our chain |
+| `--local-socket <path>` | off | Unix socket for node-to-client LocalTxSubmission |
+| `--seconds N` | run until stopped | stop after N seconds |
+| `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`) |
+| `--db <dir>` | off (in-memory; replay from genesis on every start) | persistent chain: `immutable/`, `snapshots/`, `utxo/` |
+| `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
+| `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
+| `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
+| `--utxo-cache-mb N` | `256` | RocksDB block cache |
+| `--read-ahead N` | `64` | ChainSync requests pipelined and blocks fetched per range while far behind (256 timed out against the public relay) |
+| `--mempool-bytes N` | `1048576` | mempool capacity in bytes |
+| `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |
+| `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
+| `--vrf-skey <file>` | with `--forge` | `cardano-cli` text envelope `VrfSigningKey_PraosVRF` |
+| `--kes-skey <file>` | with `--forge` | `KesSigningKey_ed25519_kes_2^6` (the period-0 key) |
+| `--opcert <file>` | with `--forge` | `NodeOperationalCertificate` (it also carries the cold verification key; the cold signing key is never needed) |
+
+Caveats:
+
+- The parser accepts any `--name value` pair and silently ignores flags it does not know, so a typo
+  such as `--db-dir` has no effect. Rejecting unknown flags is tracked as [M1](roadmap.md).
+- A DB does not record which network it belongs to; do not point `--db` at another network's genesis
+  ([D5](roadmap.md)).
+- Volatile blocks (the last `k`) are not persisted and there is no final snapshot on shutdown; after a
+  restart the node resumes from the newest snapshot and re-fetches the volatile tail.
+
+### Preview
+
+The node follows the public Preview testnet from genesis (network magic 2):
+
+```sh
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+  --genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001 \
+  --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview-db"
+```
+
+The Preview genesis files (Byron, Shelley, Alonzo, Conway) come from the official Cardano network
+configuration and are not all committed here; `fixtures/preview/genesis/` holds only
+`shelley-genesis.json` for the tests. Preview starts in Alonzo at epoch 0. The recorded
+genesis-to-tip numbers are in [performance.md](performance.md). The run needs about 14 GB of disk
+for the immutable blocks, RocksDB and checkpoints, and about 2.2 GB RSS with `-Xmx3g`.
+
+### Forging
+
+```sh
+follow ... --listen 127.0.0.1:3001 --forge --vrf-skey vrf.skey --kes-skey kes.skey --opcert opcert.cert
+```
+
+The pool must already be registered with stake in the ledger the node follows. Only Praos (Conway)
+blocks are forged. Keep key files outside the repository and readable only by the node's user (the
+scenarios mount them read-only with mode 0400). See [architecture.md](architecture.md) for the
+forging design and [compatibility.md](compatibility.md) for what is not covered (no KES agent, no
+opcert issuing, never run on a public network).
+
+### Query server
+
+`GET /tip` and `GET /state?slot=<n>&hash=<hex>` serve the node's projection of the ledger and
+consensus state at a block; the devnet comparator diffs this against the Haskell node. It binds to
+loopback and is a development interface, not a stable API.
+
+## `capture`: recording blocks
+
+`lab.node.CaptureMain` records raw blocks (one hex-encoded block per line) for offline replay tests:
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.CaptureMain capture \
+  --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]
+```
+
+It starts at genesis (or after `--from`) and keeps going until the recorded blocks are 10 deep, so
+none is rolled back; `--blocks all` records up to 10 blocks behind the tip. The fixtures under
+`fixtures/preview`, `fixtures/mainnet` and `fixtures/eras` were captured with it.
+
+## Devnet scenarios (`scripts/devnet.py`)
+
+`devnet.py` drives Docker containers: a `cardano-testnet` cluster of three Haskell pools from the
+reference image, and the Scala node running from a frozen copy of the compiled classes in
+`cardano-scala-jdk:local`. The Scala node shares a reference container's network namespace because
+the reference nodes bind loopback. Requirements: both images, the classpath file from "Images", Docker,
+Python 3 (standard library only), roughly 10 minutes per scenario.
+
+Run data lives in `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>` (never in the checkout or the home
+directory). `--name` selects the cluster name (default `csl-devnet`, `csl-eras` for `up-eras`), so a
+second cluster can run beside another. Directories and sockets that containers of other uids must
+write are made world-writable (mode 0777) on a local devnet; the key files are 0400.
+
+```sh
+python3 scripts/devnet.py <subcommand> [options]     # python3 scripts/devnet.py --help
+python3 scripts/devnet.py down                       # remove containers and the run directory
+```
+
+| Subcommand | What it does | What it asserts |
+|---|---|---|
+| `soak [--seconds 600] [--every 20] [--seed 1]` | `up` + Scala follower + ADA, staking and Conway governance/Plutus V3 load + periodic comparison | exit status fails on any mismatched comparison or follower error. Compares at matching tips: UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps, snapshots, reward update, Praos nonces, governance state |
+| `e2e [--timeout 1500] [--until-epoch N] [--keep] [--no-load] [--no-compare] [--min-comparisons 3]` | `up-eras` (Byron, Shelley, Allegra, Mary, Alonzo, Babbage, Conway) + follower from Origin + era-specific load + per-era ledger comparison | the `eraTransition` lines are exactly the seven eras at the configured epochs; every era applied blocks; all Byron signatures verified; no validation or fatal errors; every comparison matched, at least `--min-comparisons` per Shelley-based era. Writes `e2e-summary.json` and `compare.jsonl` |
+| `relay [--seconds 300] [--peers 3] [--relay-mode ...] [--keep]` | the Scala node follows the pools and serves a non-producing Haskell relay (`--listen`, `--db`, `--local-socket`); load is submitted through the relay | the Haskell relay syncs the whole chain from the Scala node and stays at the tip (lag samples every `--every` seconds), transactions travel relay, Scala mempool, pools, block, and one is submitted with `cardano-cli` to the Scala socket |
+| `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain and is within four standard deviations of the expected share; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event. Writes `pool-summary.json` |
+
+Building blocks (also runnable on their own): `up` (start the 3-pool cluster), `up-eras [--epoch-length 500 --active-slots-coeff 0.2 --byron-epochs 1 --byron-slot-ms 1000 --stall-seconds 90]`, `capture-eras [--out fixtures/eras --conway-blocks 3]`, `tip [--node N]`, `follow [--seconds N] [--node N]`, `load [--seconds N --wallets 10 --stakers 4 ...]`, `govload [--seconds N]`, `compare`, `down`.
+
+Cluster parameters: the `soak`, `relay` and `pool` clusters come from `cardano-testnet` 11.1.1 defaults
+with k = 5, f = 0.05 and 500-slot epochs of 0.1 s (as recorded in the 2026-10-11 runs; the `up-eras`
+cluster uses f = 0.2 by default, see [`fixtures/eras/README.md`](../fixtures/eras/README.md)). The genesis
+files are rewritten at cluster start, so a cluster is not reproducible from the repository alone;
+the committed `fixtures/eras` capture is the Docker-free replay of one `up-eras` run.
+
+Comparison method: `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state`
+before Conway, so `scripts/ntcquery.py` speaks LocalStateQuery to the reference node directly and
+`scripts/eraview.py` projects `DebugNewEpochState`, the whole UTxO and `DebugChainDepState` onto the
+node's `/state` shape. Byron is not compared (the CLI cannot query a Byron ledger and the node keeps
+no Byron UTxO).
+
+Era load (`scripts/eraload.py`, transactions built and signed by `scripts/eratx.py` because
+cardano-cli 11 builds Conway transactions only): Shelley transfers, stake registration and delegation,
+a new pool, pool re-registration, MIR from the reserves, a genesis delegation certificate,
+withdrawals; Allegra validity intervals, auxiliary data, a timelock script, pool retirement; Mary
+minting and burning under native-script policies, multi-asset transfers, MIR from the treasury;
+Alonzo collateral, datum-hash outputs, required signers; Babbage inline datums, reference scripts,
+reference inputs, collateral return; Conway the governance load (`govload`) described below.
+Plutus V1 and V2 scripts are not driven by the devnet load (`eraload.py` TODO); they are verified by
+the Preview sync and the unit and oracle tests only.
+
+`govload` (run by `soak` next to `load`, and in the Conway epochs of `e2e`) drives, one pass per
+epoch: wallets; stake registration with pool and DRep delegation and two DReps; a Plutus V3 script
+address (inline datum, no datum, reference script) spent and minted; proposals of the info, parameter
+change, treasury withdrawal, committee update, constitution, hard-fork and no-confidence kinds with
+votes from DReps, pools and the committee; hot-key authorisation, DRep update and retirement,
+committee resignation, stake deregistration with refund, and a treasury donation. The genesis
+committee of `cardano-testnet` is empty with threshold 0.
+
+Recorded results and the commits they were obtained on are in
+[compatibility.md](compatibility.md) (evidence log).

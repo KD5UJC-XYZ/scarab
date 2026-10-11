@@ -1,95 +1,101 @@
 # Cardano Scala Lab
 
-A Cardano node being rebuilt in Scala as idiomatic cats-effect tagless-final code. Effects are
-abstract (`F[_]`), errors and state are typed with cats-mtl (`Raise`, `Handle`, `Stateful`), and
-the algebras carry cats-laws and ScalaCheck properties. The goal is a complete node that is
-compatible with the reference Haskell implementation.
+An independent Cardano node written in Scala 3 as tagless-final cats-effect code: effects are
+abstract (`F[_]`), domain errors are closed ADTs raised through cats-mtl (`Raise`, `Handle`), state
+goes through `Stateful`, and the algebras carry cats-laws and ScalaCheck properties. The goal is a
+node that is compatible with the reference Haskell implementation and readable enough to study, and
+this repository is how far that has got.
 
-## Status
+> **Unofficial research software. Not audited. Do not use it with mainnet funds or to run
+> production stake pools.** It is not affiliated with or endorsed by Input Output Global, Intersect,
+> the Cardano Foundation or Emurgo. See [SECURITY.md](SECURITY.md) and [NOTICE](NOTICE).
 
-The node follows a reference cluster from genesis, validates Praos headers (VRF, KES, opcert,
-nonces) and applies the ledger rules of every Shelley-based era through Conway: native and Plutus
-V1 to V3 scripts, minting, reference scripts, all certificates, governance (proposals, votes,
-ratification, enactment, the DRep pulser) and treasury donations. An 8-minute soak matched the
-Haskell `cardano-node` exactly at 24/24 comparison points over epochs 0-9 with governance and Plutus
-V3 load, and the Byron-to-Conway `e2e` run matched every comparison in every era. The compared state
-covers the UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps, snapshots, reward update,
-the Praos nonces and the governance state (proposals, committee, constitution, DRep stake, ratify
-state). Byron transactions are rejected as unsupported. See [docs/node.md](docs/node.md) for details
-and limits.
+## Status: v0.1.0 research preview
+
+The node follows a chain from genesis, validates TPraos and Praos headers (VRF, KES, operational
+certificates, nonces, leader schedule) and applies the ledger rules of every Shelley-based era
+through Conway: native and Plutus V1 to V3 scripts, all certificates, governance (proposals, votes,
+ratification, enactment, DRep pulser) and treasury donations. It persists its chain (immutable blocks,
+snapshots, a RocksDB UTxO set), acts as a relay (node-to-node servers, mempool, local transaction
+submission) and can forge Praos blocks. Byron is supported for headers only. What is checked against
+what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the next steps are in
+[docs/roadmap.md](docs/roadmap.md).
+
+## Evidence
+
+| Check | Result |
+|---|---|
+| **Preview, genesis to tip, uninterrupted, tagged build** | `<<SYNC>>` placeholder: commit, date, blocks/s, tip hash and resources to be recorded in [docs/performance.md](docs/performance.md). |
+| Preview, genesis to tip (earlier run, 12 restarts across builds) | 4,747,639 blocks, epoch 1447, no rule failure; every header leader-checked, 3.23M Plutus transactions evaluated with verdicts equal to `is_valid`; about 551 blocks/s average on 8 CPUs, 272 MB live heap at the tip. This run is not a single-build run, see [docs/performance.md](docs/performance.md). |
+| Devnet pool (`devnet.py pool`) | The Scala node as pool 1 among two Haskell pools: 86 blocks forged, 85 adopted; the Haskell ledger counts 85 blocks made by the pool against 83.2 expected; 151 transactions in Scala blocks; 18 KES periods crossed; 16/16 ledger comparisons matched. |
+| Devnet e2e (`devnet.py e2e`) | Byron to Conway followed from Origin; every per-era ledger comparison against the Haskell node matched: Shelley 4, Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30. |
+| Devnet soak (`devnet.py soak`) | 24/24 comparisons matched over epochs 0 to 9 (41/41 over 18 epochs) with governance and Plutus V3 load, through the hard fork to protocol 11. |
+| Devnet relay (`devnet.py relay`) | A Haskell relay synced solely from the Scala node and stayed at the tip; 203/203 load transactions went through the Scala mempool into blocks. |
+| Real-data bugs | Six ledger bugs found only by syncing Preview and now pinned by tests, see [docs/findings.md](docs/findings.md). |
+
+The devnet runs are against `cardano-node` 11.1.3 and are one developer's recorded runs with the
+commits in [docs/compatibility.md](docs/compatibility.md); they do not run in CI yet. Preview
+agreement shows the node does not reject valid blocks, not that its ledger state is identical to
+the reference (roadmap K1). Things explicitly **not** checked include mainnet and preprod, Byron
+transactions, the full node-to-client query surface, Mithril import, the P2P governor and security
+review.
+
+## Quick start
+
+Needs Docker and Python 3 on the host. No host JDK or sbt is required.
+
+```sh
+# 1. The JDK image used for building and running
+docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+
+# 2. Build and test (scalafmt check, compile, all tests)
+docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
+  cardano-scala-jdk:local bash scripts/sbtw check node/runtimeClasspathFile
+
+# 3. Follow a network (flags, defaults and Preview in docs/running.md)
+java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+  --genesis-dir <config dir> --peer <host>:<port> --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/db"
+```
+
+Step 3 needs a JDK 21 (or run it inside the image). The scenarios against the Haskell node also need
+the reference image `cardano-reference-11.1.3:local`, built from the checksum-pinned official release
+archive ([docs/reference-image.md](docs/reference-image.md)):
+
+```sh
+python3 scripts/devnet.py soak --seconds 480    # also: e2e, relay, pool; then `down`
+```
+
+What each scenario asserts is in [docs/running.md](docs/running.md). Run data goes to
+`${CSL_DATA_DIR:-/tmp/cardano-scala-lab}`, never into the checkout or your home directory.
 
 ## Modules
 
-| Module | Contents |
+| Path | Contents |
 |---|---|
-| `core/` | Pure CBOR, Blake2b, Ed25519, VRF, KES and operational certificates |
-| `network/` | Pure Ouroboros mini-protocol codecs |
-| `network-runtime/` | fs2 tagless-final runtime: bearer, multiplexer, handshake, ChainSync / BlockFetch / KeepAlive clients over one connection |
-| `node/` | Tagless-final node: peer, volatile chain, follower, Praos, Conway ledger, query server |
-| `fixtures/` | Licensed test vectors and provenance (see `NOTICE`) |
-| `scripts/` | `devnet.py` (local soak), `sbtw` (sbt wrapper), `prepare_reference_image.py` |
+| `core/` | Pure CBOR, Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, operational certificates |
+| `network/` | Pure Ouroboros mini-protocol codecs and state machines |
+| `network-runtime/` | fs2 tagless-final bearer, multiplexer, handshake, client and server roles of ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission |
+| `node/` | Peer, volatile chain, follower, Praos/TPraos, Shelley to Conway ledger, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` |
+| `fixtures/` | Licensed test vectors and captured chain data, each directory with its provenance |
+| `scripts/` | `devnet.py` (scenarios), `sbtw` (pinned sbt launcher), `prepare_reference_image.py` |
+| `docs/` | The documents below |
 
-## Prerequisites
+## Documentation
 
-- Docker (Linux containers) and Python 3.11+ on the host.
-- No host JDK or sbt is needed: they run in containers through `scripts/sbtw`.
+- [docs/architecture.md](docs/architecture.md): layers, algebras, error model, data flow.
+- [docs/running.md](docs/running.md): every `follow` flag, the capture tool, devnet scenarios, data directories, Preview.
+- [docs/compatibility.md](docs/compatibility.md): the compatibility matrix with evidence and unchecked items.
+- [docs/performance.md](docs/performance.md): sync numbers, profiles, memory and disk.
+- [docs/findings.md](docs/findings.md): facts learned against real data, the six Preview bugs.
+- [docs/roadmap.md](docs/roadmap.md): tracked work items with stable IDs.
+- [docs/reference-image.md](docs/reference-image.md): building the Haskell reference image.
+- [CHANGELOG.md](CHANGELOG.md).
 
-## Build the images
+## Contributing, security, license
 
-```sh
-# JDK image used by devnet.py and for building
-docker build -f Dockerfile.public-check -t cardano-public-v023-check:local .
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) (Docker-only build, style rules, the gates a change must
+pass) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately as described
+in [SECURITY.md](SECURITY.md). Never commit signing keys.
 
-The Haskell reference image `cardano-reference-11.1.3:local` is built from the checksum-pinned
-official release archive; see [docs/reference-image.md](docs/reference-image.md).
-
-## Build and test
-
-`scripts/sbtw` needs a JDK, so run it inside the JDK image:
-
-```sh
-docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" \
-  -e HOME=/work/.cache/home cardano-public-v023-check:local bash scripts/sbtw check
-```
-
-With a local JDK 21 the same command is `bash scripts/sbtw check`.
-
-## Soak against the reference node
-
-Needs both images above.
-
-```sh
-bash scripts/sbtw node/compile node/runtimeClasspathFile
-python3 scripts/devnet.py soak --seconds 480     # up + follow + load + compare
-python3 scripts/devnet.py down                   # remove containers and run data
-```
-
-`devnet.py` starts a 3-pool `cardano-testnet` cluster and the Scala node, drives a transaction
-load, and diffs the full ledger and consensus state at matching tips. Details are in
-[docs/node.md](docs/node.md).
-
-## Era-walking end-to-end
-
-`python3 scripts/devnet.py e2e` starts a reference cluster that walks Byron, Shelley, Allegra,
-Mary, Alonzo, Babbage and Conway (`up-eras`), follows it from Origin with the Scala node and
-asserts every era transition and zero validation errors. The same chain is committed under
-`fixtures/eras` for the Docker-free `EraTransitionSuite`.
-
-Run data lives in `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}`, never in the checkout or home
-directory.
-
-## Roadmap
-
-1. Cleanup and refactor to a tagless-final runtime (in progress).
-2. Follow public Preview: hard-fork combinator and TPraos headers, Alonzo/Babbage ledger, and a
-   headers-only bootstrap mode.
-3. A reference cluster that walks Byron, Shelley, Allegra, Mary, Alonzo, Babbage and Conway
-   (the node follows it from Byron, era transitions are tested); a comparator at every era is next.
-4. Plutus V1-V3 evaluator, native scripts and multi-assets.
-5. Persistence and Mithril snapshot import, multiple peers, mempool and transaction submission,
-   and block production.
-
-## License
-
-Apache-2.0, see `LICENSE`. Third-party attributions for fixtures and adapted code are in `NOTICE`.
+Apache-2.0, see [LICENSE](LICENSE). Third-party dependencies and fixture attributions are in
+[NOTICE](NOTICE).
