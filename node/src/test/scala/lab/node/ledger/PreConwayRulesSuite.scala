@@ -158,7 +158,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       metadata = None
     )
     val rich =
-      s0.copy(utxo = Map(in -> out(alice.address(), 1000 * ada)), reserves = Supply - 1000 * ada)
+      s0.copy(utxo = Utxo(Map(in -> out(alice.address(), 1000 * ada))), reserves = Supply - 1000 * ada)
     val registration = body(
       "pool",
       Vector(in),

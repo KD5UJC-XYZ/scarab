@@ -63,6 +63,8 @@ lazy val node = project.in(file("node")).dependsOn(core, network, networkRuntime
     "org.typelevel" %% "cats-mtl" % catsMtlVersion,
     // Plutus (UPLC) machine and builtins only; the script context, ledger rules and plumbing are ours.
     "org.scalus" %% "scalus" % "1.2.0",
+    // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
+    "org.rocksdb" % "rocksdbjni" % "10.2.1",
     "io.circe" %% "circe-parser" % "0.14.10",
     "org.http4s" %% "http4s-ember-server" % "0.23.30",
     "org.http4s" %% "http4s-dsl" % "0.23.30",

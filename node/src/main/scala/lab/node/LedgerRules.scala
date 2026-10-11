@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab.node
 
-import cats.Applicative
+import cats.Monad
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
@@ -10,6 +10,7 @@ import lab.cbor.Bytes
 import lab.network.Era
 import lab.node.consensus.*
 import lab.node.ledger.*
+import lab.node.storage.UtxoStore
 
 /** Verdicts of one epoch's headers in bootstrap mode. */
 final case class EpochStats(
@@ -71,25 +72,66 @@ final case class NodeState(
   * against the ticked pool distribution, then apply the body. Any failure rejects the block. Chains
   * that start before Conway are followed in bootstrap mode instead.
   */
-final class NodeRules[F[_]: Applicative](
+final class NodeRules[F[_]: Monad](
     config: PraosConfig,
     globals: LedgerGlobals,
     byron: Option[ByronRules.Config] = None,
     bootstrap: Boolean = false,
-    phase2Observer: Option[Phase2.Observation => Unit] = None
+    phase2Observer: Option[Phase2.Observation => Unit] = None,
+    /** The backing store of the UTxO set. Without one the state's [[Utxo]] holds the whole set. */
+    utxoStore: Option[UtxoStore[F]] = None
 )(using
     Raise[F, ValidationError]
 ) extends BlockRules[F, NodeState]:
 
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
-    NodeRules
-      .applyBlock(state, header, raw, config, globals, byron, bootstrap, phase2Observer)
-      .fold(
-        (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
-        _.pure[F]
-      )
+    def run(s: NodeState, prepared: Option[NodeRules.Prepared]): F[NodeState] =
+      NodeRules
+        .applyBlock(s, header, raw, config, globals, byron, bootstrap, phase2Observer, prepared)
+        .fold(
+          (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
+          _.pure[F]
+        )
+    (utxoStore, header) match
+      case (Some(store), h: Header.Shelley) if !bootstrap =>
+        // The read set: what the block's transactions spend or reference, fetched before the pure
+        // rules run (the rules then see a complete view of the entries they need).
+        val prepared = NodeRules.prepare(h, raw)
+        val utxo = state.ledger.utxo
+        val wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
+        for
+          fetched <- if wanted.isEmpty then Map.empty[TxIn, TxOut].pure[F] else store.read(wanted)
+          next <- run(
+            state.copy(ledger = state.ledger.copy(utxo = utxo.withResident(fetched))),
+            prepared
+          )
+          flushed <- store.flushed
+        yield next.copy(ledger = next.ledger.copy(utxo = next.ledger.utxo.settled(flushed)))
+      case _ => run(state, None)
 
 object NodeRules:
+  /** A block decoded once for both the read-set fetch and the rules. */
+  final case class Prepared(block: Block.Shelley, txs: Vector[Either[String, Tx]]):
+    /** Everything the transactions can read from the UTxO set (not what the block itself creates). */
+    def inputs: Vector[TxIn] =
+      val created = txs.collect { case Right(t) => t.body.id }.toSet
+      txs.flatMap {
+        case Right(t) =>
+          (t.body.inputs ++ t.body.referenceInputs ++ t.body.collateral).filterNot(i =>
+            created.contains(i.id)
+          )
+        case Left(_) => Vector.empty
+      }
+
+  /** Decode a Shelley-based block and its transactions; `None` when it does not decode (the rules
+    * then report the error).
+    */
+  def prepare(header: Header.Shelley, raw: Bytes): Option[Prepared] =
+    Block.decode(raw).toOption.collect {
+      case b: Block.Shelley if b.era == header.era =>
+        Prepared(b, b.transactions.map(t => Tx.fromBlock(t, b.era)))
+    }
+
   /** Era transitions and completed-epoch summaries visible between two states. */
   def observe(geometry: EpochGeometry)(
       before: NodeState,
@@ -130,12 +172,13 @@ object NodeRules:
       globals: LedgerGlobals,
       byron: Option[ByronRules.Config] = None,
       bootstrap: Boolean = false,
-      phase2Observer: Option[Phase2.Observation => Unit] = None
+      phase2Observer: Option[Phase2.Observation => Unit] = None,
+      prepared: Option[Prepared] = None
   ): Either[(String, String), NodeState] =
     header match
       case h: Header.Byron                => applyByron(state, h, raw, byron)
       case h: Header.Shelley if bootstrap => applyBootstrap(state, h, raw, config)
-      case h: Header.Shelley => applyFull(state, h, raw, config, globals, phase2Observer)
+      case h: Header.Shelley => applyFull(state, h, raw, config, globals, phase2Observer, prepared)
 
   /** Byron: linkage, slot order, leader delegation and signature (see [[ByronRules]]). */
   private def applyByron(
@@ -270,7 +313,8 @@ object NodeRules:
       raw: Bytes,
       config: PraosConfig,
       globals: LedgerGlobals,
-      phase2Observer: Option[Phase2.Observation => Unit] = None
+      phase2Observer: Option[Phase2.Observation => Unit] = None,
+      prepared: Option[Prepared] = None
   ): Either[(String, String), NodeState] =
     val geometry = config.geometry
     val epoch = geometry.epochOf(announced.slot)
@@ -279,7 +323,9 @@ object NodeRules:
       if announced.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
       else geometry.stabilityWindow
     for
-      decoded <- Block.decode(raw).leftMap(e => "decode" -> e.message)
+      decoded <- prepared.fold(Block.decode(raw).leftMap(e => "decode" -> e.message))(p =>
+        Right(p.block)
+      )
       block <- decoded match
         case b: Block.Shelley if b.era == announced.era => Right(b)
         case b => Left("structure" -> s"${b.era} block announced as ${announced.era}")
@@ -307,7 +353,9 @@ object NodeRules:
         (),
         "ledger" -> s"supply invariant broken entering epoch $epoch: ${crossed.total} != ${globals.maxSupply}"
       )
-      ticked = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
+      ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
+      // Changes to the UTxO set made by this block are stamped with its number.
+      ticked = ticked0.copy(utxo = ticked0.utxo.at(announced.blockNo.toLong))
       _ <- Either.cond(
         announced.raw.size <= ticked.params.maxBlockHeaderSize || ticked.params.protocolMajor >= 9,
         (),
@@ -363,7 +411,9 @@ object NodeRules:
             clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
             observer = phase2Observer
           )
-          Tx.fromBlock(t, block.era)
+          prepared
+            .flatMap(_.txs.lift(i))
+            .getOrElse(Tx.fromBlock(t, block.era))
             .leftMap(r => "decode" -> s"tx ${t.id.hex.take(16)}: $r")
             .flatMap { tx =>
               // Conway bounds the reference scripts of all transactions of a block.

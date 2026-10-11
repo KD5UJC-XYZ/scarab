@@ -2,7 +2,16 @@
 package lab.node
 
 import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
-import lab.node.storage.{ChainPersistence, ChainStorage, NodeCodecs}
+import lab.node.storage.{
+  ChainPersistence,
+  ChainStorage,
+  MemoryUtxoStore,
+  NodeCodecs,
+  RocksUtxoStore,
+  StateBacking,
+  UtxoBacking,
+  UtxoStore
+}
 import NodeCodecs.given
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -27,7 +36,10 @@ object Main extends IOApp:
       plutusCases: Option[Path] = None,
       db: Option[Path] = None,
       snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
-      keepSnapshots: Int = 3
+      keepSnapshots: Int = 3,
+      /** `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without. */
+      utxoStore: Option[String] = None,
+      utxoCacheMb: Int = 256
   )
 
   /** `--snapshot-every`: a number of slots (`50000` or `50000slots`) or of epochs (`2epochs`). */
@@ -54,7 +66,38 @@ object Main extends IOApp:
           .allow[NodeError](follow(options).as(ExitCode.Success))
           .rescue(error => JsonLog.error(error).as(ExitCode(1)))
 
+  /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots. */
+  private def utxoBacking(
+      options: Options
+  )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], StateBacking[IO, NodeState])] =
+    val kind = options.utxoStore.getOrElse(if options.db.isDefined then "rocksdb" else "memory")
+    (kind, options.db) match
+      case ("rocksdb", Some(dir)) =>
+        val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
+        RocksUtxoStore
+          .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
+          .map(s => (s: UtxoStore[IO]) -> (new UtxoBacking[IO](s, root / "checkpoints")))
+      case (_, db) =>
+        val root = db.fold(fs2.io.file.Path("utxo-memory"))(d =>
+          fs2.io.file.Path.fromNioPath(d) / "utxo"
+        )
+        Resource
+          .eval(MemoryUtxoStore[IO])
+          .map(s =>
+            (s: UtxoStore[IO]) -> (
+              if db.isDefined then new UtxoBacking[IO](s, root / "checkpoints")
+              else StateBacking.none[IO, NodeState]
+            )
+          )
+
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
+    utxoBacking(options).use((store, backing) => followWith(options, store, backing))
+
+  private def followWith(
+      options: Options,
+      store: UtxoStore[IO],
+      backing: StateBacking[IO, NodeState]
+  )(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     for
       setup <- IO
@@ -70,12 +113,13 @@ object Main extends IOApp:
         setup.praos,
         setup.globals,
         setup.byronRules,
-        phase2Observer = cases.map(c => c.observe)
+        phase2Observer = cases.map(c => c.observe),
+        utxoStore = Some(store)
       )
       k = genesis.geometry.securityParam
       storage = options.db.fold(
         Resource.pure[IO, (Option[BlockRef], NodeState, Option[ChainPersistence[IO, NodeState]])](
-          (None, setup.start, None)
+          (None, setup.start, Some(ChainPersistence.backingOnly[IO, NodeState](backing)))
         )
       ) { dir =>
         val every = options.snapshotEvery match
@@ -91,7 +135,8 @@ object Main extends IOApp:
             ),
             rules,
             setup.start,
-            JsonLog.storage
+            JsonLog.storage,
+            backing
           )
           .map(r => (r.anchor, r.state, Some(r.persistence)))
       }
@@ -120,7 +165,7 @@ object Main extends IOApp:
               Follower.supervise(follower, Peer.nodeToNode[IO](settings), events, retry)
             )
             .rescue(error => fail[Unit](error))
-          run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort).surround(sync)
+          run = QueryServer.resource[IO](ChainView.fromRef(ref), options.queryPort, Some(store)).surround(sync)
           _ <- JsonLog.started(options.peer, genesis, setup.config)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
           last <- ref.get
@@ -131,7 +176,7 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N]"
     def go(rest: List[String], acc: Map[String, String]): Either[String, Map[String, String]] =
       rest match
         case Nil => Right(acc)
@@ -153,6 +198,10 @@ object Main extends IOApp:
           keep <- flags
             .get("keep-snapshots")
             .fold(Right(3))(_.toIntOption.filter(_ > 0).toRight(usage))
+          utxoKind <- flags
+            .get("utxo-store")
+            .traverse(k => Either.cond(Set("memory", "rocksdb")(k), k, usage))
+          cacheMb <- flags.get("utxo-cache-mb").fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
         yield Options(
           dir,
           peer,
@@ -161,6 +210,8 @@ object Main extends IOApp:
           flags.get("plutus-cases").map(Path.of(_)),
           flags.get("db").map(Path.of(_)),
           interval,
-          keep
+          keep,
+          utxoKind,
+          cacheMb
         )
       case _ => Left(usage)

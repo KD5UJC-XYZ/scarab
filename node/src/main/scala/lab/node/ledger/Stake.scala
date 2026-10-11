@@ -8,16 +8,13 @@ object Stake:
     */
   def instant(state: LedgerState): Map[Credential, BigInt] =
     val pointers = state.params.protocolMajor < 9
-    val fromUtxo = state.utxo.valuesIterator
-      .flatMap(out =>
-        out.address.kind match
-          case Address.Kind.Shelley(_, _, Some(stake), _) => Iterator(stake -> out.value.coin)
-          case Address.Kind.Shelley(_, _, None, Some(ptr)) if pointers =>
-            state.ptrs.get(ptr).iterator.map(_ -> out.value.coin)
-          case _ => Iterator.empty
-      )
-      .toVector
-      .groupMapReduce(_._1)(_._2)(_ + _)
+    // Maintained as transactions apply (see `Utxo`); only the pointers need resolving here.
+    val fromUtxo =
+      if !pointers || state.utxo.ptrStake.isEmpty then state.utxo.stake
+      else
+        state.utxo.ptrStake.foldLeft(state.utxo.stake) { case (acc, (ptr, coin)) =>
+          state.ptrs.get(ptr).fold(acc)(c => acc.updated(c, acc.getOrElse(c, BigInt(0)) + coin))
+        }
     state.accounts.iterator.map { case (c, a) =>
       c -> (fromUtxo.getOrElse(c, BigInt(0)) + a.balance)
     }.toMap

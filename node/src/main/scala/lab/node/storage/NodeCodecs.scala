@@ -23,6 +23,8 @@ object NodeCodecs:
   given script: Codec[Script] = Codec.auto
   given txIn: Codec[TxIn] = Codec.auto
   given txOut: Codec[TxOut] = Codec.auto
+  given utxoChange: Codec[Utxo.Change] = Codec.auto
+  given utxo: Codec[Utxo] = Codec.auto
   given drep: Codec[DRep] = Codec.auto
   given paramUpdate: Codec[ParamUpdate] = Codec.auto
   given poolParams: Codec[PoolParams] = Codec.auto

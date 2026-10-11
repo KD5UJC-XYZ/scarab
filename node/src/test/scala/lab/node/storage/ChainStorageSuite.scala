@@ -83,7 +83,7 @@ class ChainStorageSuite extends CatsEffectSuite:
     Handle
       .allow[NodeError] {
         ChainStorage
-          .open[IO, NodeState](dir, config(every), rules, setup.start, storageEvents(log))
+          .open[IO, NodeState](dir, config(every), rules, setup.start, storageEvents(log), StateBacking.none[IO, NodeState])
           .use { recovered =>
             for
               chainRef <- Ref.of[IO, VolatileChain[NodeState]](

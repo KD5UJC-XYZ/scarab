@@ -86,7 +86,7 @@ object PlutusStats:
 final case class LedgerState(
     epoch: BigInt,
     params: ProtocolParams,
-    utxo: Map[TxIn, TxOut],
+    utxo: Utxo,
     fees: BigInt,
     deposited: BigInt,
     accounts: Map[Credential, Account],
@@ -132,5 +132,5 @@ final case class LedgerState(
 
   /** Total value in existence; equals the maximum supply when the ledger is consistent. */
   def total: BigInt =
-    utxo.valuesIterator.map(_.value.coin).sum + fees + deposited + treasury + reserves +
+    utxo.coin + fees + deposited + treasury + reserves +
       accounts.valuesIterator.map(_.balance).sum + donation

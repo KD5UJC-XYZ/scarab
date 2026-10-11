@@ -145,7 +145,7 @@ object GenesisState:
       val base = LedgerState(
         epoch = globals.firstEpoch,
         params = params,
-        utxo = utxo,
+        utxo = Utxo.fromMap(utxo),
         fees = 0,
         deposited = deposited,
         accounts = accounts,
