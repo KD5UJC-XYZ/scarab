@@ -6,6 +6,7 @@ import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
+import scala.jdk.CollectionConverters.*
 import lab.cbor.Bytes
 import lab.node.consensus.{Nonce, OCertError, OCertRules, Praos, PraosConfig, TPraos}
 import lab.vrf.PraosVrfCertificate as Vrf
@@ -45,7 +46,26 @@ object Verification:
   /** The newest epoch nonce the rules have seen: blocks of that epoch can have their VRF proofs
     * verified ahead of time.
     */
-  def noteEpochNonce(epoch: BigInt, nonce: Nonce): Unit = epochNonce.set((epoch, nonce))
+  def noteEpochNonce(epoch: BigInt, nonce: Nonce): Unit =
+    val previous = epochNonce.getAndSet((epoch, nonce))
+    // The first block of a new epoch: the blocks already fetched for it could not be warmed (their
+    // nonce was not known), so verify their VRF proofs now, in chain order, on the side.
+    if previous == null || previous._1 != epoch then rewarm(epoch)
+
+  private val lastConfig = new AtomicReference[PraosConfig]()
+  private lazy val pool = new java.util.concurrent.ForkJoinPool(defaultParallelism)
+
+  private def rewarm(epoch: BigInt): Unit =
+    val config = lastConfig.get
+    if config != null then
+      pool.execute { () =>
+        try
+          val pending = prepared.values.asScala.toVector
+            .filter(p => config.geometry.epochOf(p.block.header.slot) == epoch)
+            .sortBy(_.block.header.slot)
+          pending.asJava.parallelStream().forEach(p => warmVrf(p.block.header, config))
+        catch case scala.util.control.NonFatal(_) => ()
+      }
 
   /** Praos (Babbage and later) VRF verdict, see [[lab.vrf.PraosVrfCertificate.verify]]. */
   def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
@@ -128,10 +148,11 @@ object Verification:
     * that does not decode or a check that errors is left for the rules to report.
     */
   private def warmBlock(raw: Bytes, config: PraosConfig): Unit =
+    lastConfig.set(config)
     if witnesses.size > Limit then witnesses.clear()
     if headers.size > Limit then headers.clear()
     if prepared.size > 4096 then prepared.clear()
-    if vrfs.size > 4096 then vrfs.clear()
+    if vrfs.size > 16384 then vrfs.clear()
     NodeRules.decodeShelley(raw).foreach { p =>
       val b = p.block
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
