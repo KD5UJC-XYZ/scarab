@@ -358,10 +358,18 @@ object Projection:
 object QueryServer:
   def resource[F[_]: Async: Network](
       view: ChainView[F, NodeState],
-      port: Int
+      port: Int,
+      utxoStore: Option[lab.node.storage.UtxoStore[F]] = None
   ): Resource[F, Server] =
     val dsl = Http4sDsl[F]
     import dsl.*
+    // With the UTxO set in a backing store the state holds only its recent changes: the whole set
+    // is put back together for the projection.
+    def complete(s: NodeState): F[NodeState] = utxoStore.fold(Async[F].pure(s)) { store =>
+      lab.node.storage.UtxoStore.materialize(store, s.ledger.utxo).map { all =>
+        s.copy(ledger = s.ledger.copy(utxo = lab.node.ledger.Utxo.fromMap(all)))
+      }
+    }
     object SlotParam extends QueryParamDecoderMatcher[Long]("slot")
     object HashParam extends QueryParamDecoderMatcher[String]("hash")
     val routes = HttpRoutes.of[F] {
@@ -377,11 +385,11 @@ object QueryServer:
           case None => BadRequest("slot and 32-byte hex hash required")
           case Some(p) =>
             view.at(p).flatMap {
-              case Some(s) => Ok(Projection.node(p, s))
+              case Some(s) => complete(s).flatMap(c => Ok(Projection.node(p, c)))
               case None    => Async[F].pure(Response[F](Status.NotFound))
             }
       case GET -> Root / "state" =>
-        view.tip.flatMap { case (p, s) => Ok(Projection.node(p, s)) }
+        view.tip.flatMap { case (p, s) => complete(s).flatMap(c => Ok(Projection.node(p, c))) }
     }
     EmberServerBuilder
       .default[F]

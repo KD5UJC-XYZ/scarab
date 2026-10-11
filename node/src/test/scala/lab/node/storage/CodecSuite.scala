@@ -149,5 +149,5 @@ class CodecSuite extends ScalaCheckSuite:
   // Regenerate (and bump FileLedgerSnapshots.FormatVersion if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
   private val GoldenInitialState =
-    ("338fbf2a06b6786b7b949b18b1c52cd04d35b9644b4044f72abb02147bd9b356", 1835)
-  private val GoldenFingerprint = "710279839e9fa4ef"
+    ("d582c5990994ba233b954453c20e540e30c5cb70ffc8823a50df081c16522f68", 1862)
+  private val GoldenFingerprint = "4a95b5c8d4fc1d41"

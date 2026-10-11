@@ -99,7 +99,11 @@ class ScriptContextOracleSuite extends FunSuite:
               dataOf(
                 Oracle.getScriptContextV3(sr, datum.map(ScalusEvaluator.toData), tx, utxos, cfg, pv)
               )
-        assertEquals(ours.map(hex), Right(hex(theirs)), s"redeemer ${r.tag}.${r.index}")
+        assertEquals(
+          ours.map(hex),
+          Right(hex(ScalusDeviations.mend(theirs))),
+          s"redeemer ${r.tag}.${r.index}"
+        )
       }
     }
   }

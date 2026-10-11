@@ -19,6 +19,7 @@ so it can be compared byte for byte against a reference `cardano-node`.
 | Consensus | `consensus/Praos.scala`, `consensus/TPraos.scala`, `consensus/OCertRules.scala` | VRF leader check, KES, opcert counters, nonce evolution (evolving / candidate / epoch / lab / last-epoch-block). TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, the EPOCH rule (rewards, SNAP, POOLREAP, obligation, dormant epochs), the reward calculation, and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
+| UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `storage/RocksUtxoStore.scala` | The UTxO set behind a `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure `Utxo` view: the last changes plus the entries the block needs. See "Scale" below |
 | Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
@@ -491,6 +492,71 @@ on the chain up to the last compared tip and is within four standard deviations 
 boundary crossed; no rollback deeper than `k` and the Haskell pools agreeing on the tip; the ledger comparison
 matching at every point; no error event. It writes `pool-summary.json`.
 
+## Scale: the UTxO set on disk and a pipelined sync
+
+Syncing Preview with the whole ledger in memory fell from 350 blocks/s to 20 blocks/s by block 527k
+(UTxO of 1.25M entries, 2.7 GB live, 335 MB snapshots). The measurements are in
+`.workspace/notes/perf.md`; the changes, in the order they paid off:
+
+**Compact bytes.** `lab.cbor.Bytes` was a `Vector[Byte]` (boxed, about 6 times the size, hashing and
+equality walked the elements). It is now a window onto an immutable `Array[Byte]` with a cached hash;
+the CBOR decoder gives every node a zero-copy window of the block (`original`) instead of a copy, and
+integers are read as `Long` when they fit. The API is unchanged (`value` still gives a `Vector`).
+
+**The UTxO set behind an algebra (UTxO-HD).** `UtxoStore[F]` has `read(keys)`, `write(changes, stamp)`,
+`flushed`, `checkpoint(dir)`, `restore(dir)`, `all` and `reset`; `MemoryUtxoStore` (tests, the devnet,
+`follow` without `--db`) and `RocksUtxoStore` (RocksDB through its JNI, Maven `org.rocksdb:rocksdbjni`,
+native library bundled for linux x86_64) are the interpreters. The ledger state holds a pure `Utxo`:
+
+- `diff`: the changes made since the store's flushed point, newest per key, each stamped with the
+  block number. The states of the last `k` blocks each hold one (persistent maps, shared structure),
+  which is the DbChangelog: a rollback is dropping states, the store is never touched, and it only ever
+  holds immutable state.
+- `resident`: the read set. `NodeRules` decodes the block once, collects the inputs, reference inputs
+  and collateral of its transactions that neither the diff nor the block itself decides, and fetches
+  them from the store before the pure rules run (`Utxo.missing`, `withResident`); afterwards the read
+  set is dropped. The rules keep their shape: `state.utxo.get(in)`, `utxo -- inputs ++ created`.
+- `coin`, `count`, `stake` (lovelace by stake credential) and `ptrStake` (by certificate pointer),
+  updated as outputs are created and spent. The epoch boundary's SNAP no longer walks the UTxO set
+  (`Stake.instant` adds the accounts and resolves the pointers), and the supply invariant reads
+  `utxo.coin`.
+
+When a block becomes immutable (the follower's anchor moves) the changes of the anchor state newer than
+the store's stamp are written in one batch (`UtxoStore.advance`, through `StateBacking`); the diffs are
+trimmed lazily (`Utxo.settled`). A ledger snapshot is written for the anchor state with its diff
+trimmed, and a checkpoint of the store (RocksDB `Checkpoint`: memtable flushed, SST files
+hard-linked) is taken at the same block under `<db>/utxo/checkpoints/<snapshot name>`, so a snapshot
+and its UTxO are always the same block; pruning follows `--keep-snapshots`. A restart restores the
+snapshot and rebuilds `<db>/utxo/live` from its checkpoint (SST files hard-linked, the rest copied).
+A snapshot without its checkpoint is skipped like a damaged one. There is no write-ahead log: the live
+database is disposable.
+
+Properties (`UtxoStoreSuite`, `StakeSuite`): random blocks, rollbacks of up to 4 and flushes with
+`k = 3` leave both interpreters equal to a `Map` model at every step, and the incremental stake,
+total and count equal a recomputation; checkpoint/restore returns to the checkpointed set; the
+Byron-to-Conway capture reaches the same state through the store with verification warmed ahead.
+
+**Verification ahead of the rules.** Most of the time of a block is signature checks: transaction
+witnesses (Ed25519), the operational certificate and KES signature, and the VRF proof. They are pure
+functions of the block (the VRF also of the epoch nonce). `Verification.warm` runs them for a whole
+fetched batch in parallel and keeps the verdicts; the rules ask for the same verdicts through
+`Verification.witness`, `opCert`, `praosVrf` and `tpraosVrf`, which return the remembered one (once)
+or compute it. The VRF is warmed with the epoch nonce the rules last saw, keyed by the derived alpha
+string, so a stale nonce is only a miss. Replay of the stored blocks warms the next 64 while the
+current ones are applied; the peer warms each fetched range.
+
+**A pipelined peer.** `Peer.nodeToNode` runs a producer fiber that keeps up to three batches of 64
+in flight: it requests the headers of the next batch while the blocks of earlier ones are being
+fetched and verified, and publishes them in order; the consumer applies a batch meanwhile.
+`--read-ahead N` changes the batch size (the public relay timed out chain-sync at 256).
+
+```sh
+follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]
+```
+
+`rocksdb` is the default with `--db`; without it the node uses the memory store. The query server
+completes the UTxO from the store for `/state`.
+
 ## Running a local soak (Docker only)
 
 Prerequisite: the `cardano-reference-11.1.3:local` image (see [reference image](reference-image.md)).
@@ -574,18 +640,39 @@ passed: 86 blocks forged, 85 on the final chain (one lost a slot battle), and th
 blocks made by the pool, against 83 expected; 151 load transactions in 72 of those blocks; 18 KES period
 boundaries crossed; deepest rollback 1; 16/16 ledger comparisons matched, all tips equal at the end.
 
-**Preview.** Conway blocks of Preview (protocol 10 and 11) with every kind of proposal, votes and the
-real guardrails script are decoded and replayed state-independently (see `fixtures/preview/README.md`):
-18 transactions run through phase 2, all agree with `is_valid`, the recomputed script data hash and
-Scalus's script contexts. A full Preview sync into Conway (several million blocks) was not attempted.
+**Preview, from genesis to the tip (2026-10-11).** `follow --db` with the RocksDB UTxO store synced the
+whole of Preview over the network: 4,747,639 blocks, epochs 0 to 1447, Alonzo (epoch 0), Babbage
+(epoch 3), Conway (epoch 646, protocol 9; protocol 10 and 11 later), every header checked against the
+leader schedule and every transaction through UTXOW/UTXO/phase 2 (3.23M transactions evaluated, 242
+failing scripts, each equal to the block's `is_valid` flag; 11.2M scripts; 3.30M script data hashes
+recomputed), the reward calculation at every boundary, and from epoch 646 the Conway governance. The
+average over the live-synced epochs was about 550 blocks/s (270 to 840 per hundred epochs) on 8 CPUs
+with `-Xmx3g`. At the tip: 3.2M UTxO entries (466 MB in RocksDB), 112k accounts, 726 pools; the heap
+after a full collection is under 300 MB; a ledger snapshot is 52 MB. See `.workspace/notes/perf.md`.
+
+Syncing a chain this long is also the first check of the ledger against a public network, and it
+found six bugs that the devnet cannot show (each has a test or fixture now):
+
+| where | what the node did | what the ledger does |
+|---|---|---|
+| epoch 493 (rewards) | counted a pool owner's stake for the pledge whatever the owner delegates to | only the stake delegated to the pool counts (`poolStake` restricts the map) |
+| epoch 646 (Babbage to Conway) | the SNAP at the boundary counted pointer addresses | that boundary runs under the Conway rules, which ignore pointers |
+| slot 12924758 (Alonzo-style witness) | evaluated six redeemers for one purpose | redeemers are a map keyed by purpose, the last entry counts |
+| slot 62567517 (Conway map form) | counted a redeemer listed twice twice in the fee | the same: one entry per purpose |
+| slot 65493476 | refused a Plutus V1 script in a transaction with reference inputs | from Conway they are simply not part of the V1 context |
+| slot 116688298 | encoded `NewConstitution` as `[previous, Maybe ScriptHash]` | `Constitution` is a constructor of its own: `[previous, Constr 0 [Maybe ScriptHash]]`; Scalus 1.2.0 has the same gap (the oracle tests note it) |
+
+Two network-side faults of the new pipeline were fixed on the way: a BlockFetch range of full blocks
+exceeds the client's 10 MB per-request limit (ranges are now cut by announced body size), and a
+reconnect offered every retained block as an intersection candidate (more than the protocol's 64; now
+thinned).
 
 ## Not yet implemented
 
 - **Byron:** Byron transactions and body proofs, delegation by on-chain certificates, and the Byron slot-leader schedule.
-- **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions). The block-level
-  execution-unit limit is enforced when forging but not yet when validating a received block.
-- **On-disk ledger:** the whole UTxO and ledger state live in memory; only snapshots are on disk. The volatile blocks are not persisted.
-- **Peers:** no peer selection (the configured peers are all used), no header validation ahead of the block fetch, one block fetched at a time; inbound duplex connections are accepted but not used for our own clients.
+- **Conway details:** the VRF key hash uniqueness of protocol 11 (it only rejects transactions).
+- **On-disk ledger:** only the UTxO set is on disk (see "Scale"); the other ledger maps (accounts, pools, DReps, the three stake snapshots) are in memory and in the snapshot file. The volatile blocks are not persisted.
+- **Peers:** no peer selection (the configured peers are all used) and no header validation ahead of the block fetch; each peer's sync is pipelined but bounded by one ChainSync request stream (64 to 128 headers per round trip against the public relay; 256 times out); inbound duplex connections are accepted but not used for our own clients.
 - **Rewards:** non-myopic pool ranking.
 - **Production:** forging is Praos/Conway only (no TPraos eras), the pool must be registered with stake in the ledger (no Preview pool is run), there is no KES agent (the KES key is loaded from a file at start and evolved in memory; a restart loads period 0 again and evolves forward, no key is rewritten) and no operational certificate issuing; the mempool has no epoch-boundary ticking (the forger re-validates in the block's own slot and epoch).
 - **Node-to-client:** only LocalTxSubmission (no LocalStateQuery, LocalChainSync or LocalTxMonitor); rejections are not in the ledger's encoding.

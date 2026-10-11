@@ -58,10 +58,10 @@ final case class EpochGeometry(
     else byron.slots + (BigInt(elapsed) - byronMillis) / slotLengthMillis
 
   /** 3k/f: slots after which the chain is stable (Shelley stability window). */
-  def stabilityWindow: BigInt = ceilDiv(3 * securityParam)
+  lazy val stabilityWindow: BigInt = ceilDiv(3 * securityParam)
 
   /** 4k/f: randomness stabilisation window used by Praos nonce freezing. */
-  def randomnessStabilisationWindow: BigInt = ceilDiv(4 * securityParam)
+  lazy val randomnessStabilisationWindow: BigInt = ceilDiv(4 * securityParam)
 
   private def ceilDiv(numerator: Int): BigInt =
     val exact = BigDecimal(numerator) / activeSlotsCoeff

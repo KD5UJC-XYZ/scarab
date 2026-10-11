@@ -11,6 +11,7 @@ import lab.node.*
 import lab.node.consensus.{Praos, PraosConfig, PraosState}
 import lab.node.ledger.{Epoch, LedgerGlobals, LedgerState}
 import lab.node.mempool.Mempool
+import lab.node.storage.UtxoStore
 import scala.concurrent.duration.*
 
 /** What the forger reports, for the JSON log and for tests. */
@@ -77,7 +78,9 @@ final class Forger[F[_]: Async](
     now: F[Instant],
     sleep: FiniteDuration => F[Unit],
     cache: Ref[F, Option[Forger.Crossed]],
-    pending: Ref[F, Vector[Forger.Forged]]
+    pending: Ref[F, Vector[Forger.Forged]],
+    /** The backing store of the UTxO set: the read set of the candidates is fetched from it. */
+    utxoStore: Option[UtxoStore[F]]
 )(using chain: Stateful[F, VolatileChain[NodeState]], handle: Handle[F, NodeError]):
   private val F = Async[F]
   private val geometry = config.geometry
@@ -184,8 +187,21 @@ final class Forger[F[_]: Async](
         ticked.params.maxBlockBodySize.toLong,
         ticked.params.maxBlockExUnits
       )
+      readable <- UtxoStore.complete(
+        utxoStore,
+        ticked.utxo,
+        UtxoStore.readSet(held.entries.map(_.tx))
+      )
       chosen <- F.blocking(
-        BlockBuilder.select(ticked, slot, epoch, geometry, globals, held.entries, limits)
+        BlockBuilder.select(
+          ticked.copy(utxo = readable),
+          slot,
+          epoch,
+          geometry,
+          globals,
+          held.entries,
+          limits
+        )
       )
       outcome <- build(
         current,
@@ -380,7 +396,8 @@ object Forger:
       ready: F[Boolean],
       maxTipAge: Option[BigInt] = None,
       now: Option[F[Instant]] = None,
-      sleep: Option[FiniteDuration => F[Unit]] = None
+      sleep: Option[FiniteDuration => F[Unit]] = None,
+      utxoStore: Option[UtxoStore[F]] = None
   )(using Stateful[F, VolatileChain[NodeState]], Handle[F, NodeError]): F[Forger[F]] =
     (Ref.of[F, Option[Crossed]](None), Ref.of[F, Vector[Forged]](Vector.empty)).mapN {
       (cache, pending) =>
@@ -396,7 +413,8 @@ object Forger:
           now.getOrElse(Clock[F].realTimeInstant),
           sleep.getOrElse(d => Async[F].sleep(d)),
           cache,
-          pending
+          pending,
+          utxoStore
         )
     }
 

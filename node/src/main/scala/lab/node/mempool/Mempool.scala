@@ -8,6 +8,7 @@ import fs2.concurrent.SignallingRef
 import lab.cbor.Bytes
 import lab.network.runtime.{TxSubmissionClient, TxSubmissionServer}
 import lab.node.ledger.LedgerState
+import lab.node.storage.UtxoStore
 
 /** Observable mempool milestones, for the JSON log. */
 enum MempoolEvent:
@@ -83,7 +84,11 @@ object Mempool:
       env: MempoolEnv,
       capacityBytes: Long,
       events: MempoolEvents[F],
-      seenLimit: Int = 8192
+      seenLimit: Int = 8192,
+      /** Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
+        * of each transaction from it, as the block path does.
+        */
+      utxoStore: Option[UtxoStore[F]] = None
   ): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityBytes))
@@ -95,7 +100,13 @@ object Mempool:
 
       def add(raw: Bytes) = lock.lock.surround {
         for
-          current <- state.get
+          held <- state.get
+          current <- MempoolState.parse(raw) match
+            case Right((_, tx)) =>
+              UtxoStore
+                .complete(utxoStore, held.current.utxo, UtxoStore.readSet(Some(tx)))
+                .map(u => held.copy(current = held.current.copy(utxo = u)))
+            case Left(_) => F.pure(held)
           result <- F.blocking(current.add(raw, env))
           out <- result match
             case Right((next, entry)) =>
@@ -127,7 +138,12 @@ object Mempool:
       def sync(ledger: LedgerState, tipSlot: BigInt, adopted: Set[Bytes]) = lock.lock.surround {
         for
           current <- state.get
-          result <- F.blocking(current.sync(ledger, tipSlot, env))
+          completed <- UtxoStore.complete(
+            utxoStore,
+            ledger.utxo,
+            UtxoStore.readSet(current.entries.map(_.tx))
+          )
+          result <- F.blocking(current.sync(ledger.copy(utxo = completed), tipSlot, env))
           (next, dropped) = result
           _ <- state.set(next)
           (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))

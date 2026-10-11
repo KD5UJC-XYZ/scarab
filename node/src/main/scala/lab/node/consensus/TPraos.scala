@@ -89,12 +89,12 @@ object TPraos:
   /** `mkNonceFromOutputVRF`: the block's nonce contribution, `blake2b256(vrf output)`. */
   def nonceValue(output: Bytes): Nonce = Nonce.Hash(Blake2b.hash256.hash(output))
 
-  private def verifyVrf(
+  private[node] def verifyVrf(
       alpha: Bytes,
       vkey: Bytes,
       cert: VrfCert
   ): Either[String, Unit] =
-    Vrf.verifyAlpha(alpha, vkey, cert.proof, cert.output) match
+    lab.node.Verification.tpraosVrf(alpha, vkey, cert.proof, cert.output) match
       case Vrf.Result.VerifiedCertificate(_) => Right(())
       case other                             => Left(other.toString)
 
@@ -197,8 +197,8 @@ object TPraos:
             )
             _ <- vrfChecks
           yield LeaderCheck.Overlay(gkey)
-      _ <- OCertRules
-        .verifySignatures(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+      _ <- lab.node.Verification
+        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(TPraosError.OCert(_))
       _ <- OCertRules
         .checkCounter(

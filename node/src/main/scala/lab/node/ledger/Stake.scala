@@ -7,25 +7,27 @@ object Stake:
     * pointed-to certificate (if it is still registered); Conway ignores them.
     */
   def instant(state: LedgerState): Map[Credential, BigInt] =
-    val pointers = state.params.protocolMajor < 9
-    val fromUtxo = state.utxo.valuesIterator
-      .flatMap(out =>
-        out.address.kind match
-          case Address.Kind.Shelley(_, _, Some(stake), _) => Iterator(stake -> out.value.coin)
-          case Address.Kind.Shelley(_, _, None, Some(ptr)) if pointers =>
-            state.ptrs.get(ptr).iterator.map(_ -> out.value.coin)
-          case _ => Iterator.empty
-      )
-      .toVector
-      .groupMapReduce(_._1)(_._2)(_ + _)
+    instantWith(state, state.params.protocolMajor < 9)
+
+  /** [[instant]] with pointer addresses counted or not as told. */
+  def instantWith(state: LedgerState, pointers: Boolean): Map[Credential, BigInt] =
+    // Maintained as transactions apply (see `Utxo`); only the pointers need resolving here.
+    val fromUtxo =
+      if !pointers || state.utxo.ptrStake.isEmpty then state.utxo.stake
+      else
+        state.utxo.ptrStake.foldLeft(state.utxo.stake) { case (acc, (ptr, coin)) =>
+          state.ptrs.get(ptr).fold(acc)(c => acc.updated(c, acc.getOrElse(c, BigInt(0)) + coin))
+        }
     state.accounts.iterator.map { case (c, a) =>
       c -> (fromUtxo.getOrElse(c, BigInt(0)) + a.balance)
     }.toMap
 
   /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. */
-  def snapshot(state: LedgerState): Snapshot =
+  def snapshot(state: LedgerState, pointers: Boolean = true): Snapshot =
     val delegations = state.accounts.iterator.collect {
       case (c, a) if a.pool.exists(state.pools.contains) => c -> a.pool.get
     }.toMap
-    val stake = instant(state).filter { case (c, _) => delegations.contains(c) }
+    val stake = instantWith(state, pointers && state.params.protocolMajor < 9).filter {
+      case (c, _) => delegations.contains(c)
+    }
     Snapshot(stake, delegations, state.pools.map { case (id, p) => id -> p.params })

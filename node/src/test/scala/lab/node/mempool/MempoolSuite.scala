@@ -284,3 +284,37 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
         case MempoolEvent.Rejected(_, _: Rejection.Malformed) => true; case _ => false
       })
   }
+
+/** The pool reads inputs from the UTxO store, like the block path does. */
+class MempoolStoreSuite extends CatsEffectSuite:
+  import TxKit.*
+  import lab.node.StorageError
+  import lab.node.storage.{MemoryUtxoStore, UtxoStore}
+
+  private given cats.mtl.Raise[IO, StorageError] = new cats.mtl.Raise[IO, StorageError]:
+    def functor = cats.Functor[IO]
+    def raise[E2 <: StorageError, A](e: E2): IO[A] = IO.raiseError(new RuntimeException(e.message))
+
+  test("add and sync fetch the inputs a ledger state does not hold from the store") {
+    val full = ledger(3)
+    val bare = full.copy(utxo = Utxo.empty)
+    for
+      store <- MemoryUtxoStore[IO]
+      _ <- store.write(full.utxo.toVector.map((i, o) => i -> Some(o)), 0L)
+      mempool <- Mempool.create[IO](
+        bare,
+        1000,
+        env,
+        100000,
+        MempoolEvents.none[IO],
+        utxoStore = Some(store: UtxoStore[IO])
+      )
+      (t1, id1) = pay(1)
+      added <- mempool.add(t1)
+      _ <- IO(assertEquals(added, Right(id1)))
+      dropped <- mempool.sync(bare, 1001)
+      _ <- IO(assertEquals(dropped, Vector.empty))
+      held <- mempool.contains(id1)
+      _ <- IO(assert(held))
+    yield ()
+  }

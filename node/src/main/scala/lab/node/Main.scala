@@ -2,7 +2,17 @@
 package lab.node
 
 import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
-import lab.node.storage.{ChainPersistence, ChainStorage, ImmutableStore, NodeCodecs}
+import lab.node.storage.{
+  ChainPersistence,
+  ChainStorage,
+  ImmutableStore,
+  MemoryUtxoStore,
+  NodeCodecs,
+  RocksUtxoStore,
+  StateBacking,
+  UtxoBacking,
+  UtxoStore
+}
 import NodeCodecs.given
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
@@ -48,7 +58,12 @@ object Main extends IOApp:
       listen: Option[SocketAddress[Host]] = None,
       mempoolBytes: Long = 1048576L,
       localSocket: Option[Path] = None,
-      forge: Option[ForgeFiles] = None
+      forge: Option[ForgeFiles] = None,
+      /** `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without. */
+      utxoStore: Option[String] = None,
+      utxoCacheMb: Int = 256,
+      /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
+      readAhead: Int = 64
   )
 
   /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
@@ -78,7 +93,40 @@ object Main extends IOApp:
           .allow[NodeError](follow(options).as(ExitCode.Success))
           .rescue(error => JsonLog.error(error).as(ExitCode(1)))
 
+  /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots.
+    */
+  private def utxoBacking(
+      options: Options
+  )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], StateBacking[IO, NodeState])] =
+    val kind = options.utxoStore.getOrElse(if options.db.isDefined then "rocksdb" else "memory")
+    (kind, options.db) match
+      case ("rocksdb", Some(dir)) =>
+        val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
+        RocksUtxoStore
+          .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
+          .map(s => (s: UtxoStore[IO]) -> (new UtxoBacking[IO](s, root / "checkpoints")))
+      case (_, db) =>
+        val root =
+          db.fold(fs2.io.file.Path("utxo-memory"))(d => fs2.io.file.Path.fromNioPath(d) / "utxo")
+        Resource
+          .eval(MemoryUtxoStore[IO])
+          .map(s =>
+            (s: UtxoStore[IO]) -> (
+              if db.isDefined then new UtxoBacking[IO](s, root / "checkpoints")
+              else StateBacking.none[IO, NodeState]
+            )
+          )
+
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
+    utxoBacking(options).use((store, backing) => followWith(options, store, backing))
+
+  private val blocks = new java.util.concurrent.atomic.AtomicLong
+
+  private def followWith(
+      options: Options,
+      store: UtxoStore[IO],
+      backing: StateBacking[IO, NodeState]
+  )(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     for
       setup <- IO
@@ -100,7 +148,17 @@ object Main extends IOApp:
         setup.praos,
         setup.globals,
         setup.byronRules,
-        phase2Observer = cases.map(c => c.observe)
+        phase2Observer = cases.map(c => c.observe),
+        utxoStore = Some(store),
+        afterBlock = Some { s =>
+          IO.delay {
+            Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)
+            if blocks.incrementAndGet() % 20000 == 0 then
+              System.err.println(
+                s"verification verdicts found ahead (hits/lookups): ${Verification.summary}"
+              )
+          }
+        }
       )
       k = genesis.geometry.securityParam
       storage = options.db.fold(
@@ -113,7 +171,7 @@ object Main extends IOApp:
               Option[ImmutableStore[IO]]
           )
         ](
-          (None, setup.start, None, None)
+          (None, setup.start, Some(ChainPersistence.backingOnly[IO, NodeState](backing)), None)
         )
       ) { dir =>
         val every = options.snapshotEvery match
@@ -129,18 +187,20 @@ object Main extends IOApp:
             ),
             rules,
             setup.start,
-            JsonLog.storage
+            JsonLog.storage,
+            backing,
+            Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
           )
           .map(r => (r.anchor, r.state, Some(r.persistence), Some(r.store)))
       }
-      _ <- storage.use { (anchor, state, persistence, store) =>
+      _ <- storage.use { (anchor, state, persistence, immutable) =>
         for
           ref <- Ref.of[IO, VolatileChain[NodeState]](
             VolatileChain(k, Anchor(anchor, state), Vector.empty, setup.origin)
           )
           given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
           server <- ChainServer.open[IO](
-            store,
+            immutable,
             anchor,
             ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
           )
@@ -149,7 +209,8 @@ object Main extends IOApp:
             anchor.fold(BigInt(0))(_.slot),
             MempoolEnv(setup.globals, genesis.geometry),
             options.mempoolBytes,
-            JsonLog.mempool
+            JsonLog.mempool,
+            utxoStore = Some(store)
           )
           served = server.persistence[NodeState]
           follower <- Follower.create[IO, NodeState](
@@ -188,11 +249,16 @@ object Main extends IOApp:
                 val settings = Peer.Settings(
                   address,
                   genesis.networkMagic,
+                  readAhead = options.readAhead,
                   byronEpochSlots = genesis.geometry.byron.epochSlots
                 )
                 Follower.supervise(
                   follower,
-                  Peer.nodeToNode[IO](settings, Some(mempool.source)),
+                  Peer.nodeToNode[IO](
+                    settings,
+                    Verification.warm[IO](_, setup.praos, Verification.defaultParallelism),
+                    Some(mempool.source)
+                  ),
                   events,
                   retry
                 )
@@ -238,13 +304,14 @@ object Main extends IOApp:
                 follower,
                 mempool,
                 JsonLog.forge,
-                connected.get
+                connected.get,
+                utxoStore = Some(store)
               )
             yield forger.run
           }
           production = forging.fold(Resource.unit[IO])(_.background.void)
           run = QueryServer
-            .resource[IO](ChainView.fromRef(ref), options.queryPort)
+            .resource[IO](ChainView.fromRef(ref), options.queryPort, Some(store))
             .flatMap(_ => relay)
             .flatMap(_ => local)
             .flatMap(_ => production)
@@ -259,7 +326,7 @@ object Main extends IOApp:
 
   private def parse(args: List[String]): Either[String, Options] =
     val usage =
-      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+      "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
     def go(
         rest: List[String],
         acc: Map[String, List[String]]
@@ -300,6 +367,15 @@ object Main extends IOApp:
                 flags.get("kes-skey").toRight(usage),
                 flags.get("opcert").toRight(usage)
               ).mapN((v, k, o) => Some(ForgeFiles(Path.of(v), Path.of(k), Path.of(o))))
+          utxoKind <- flags
+            .get("utxo-store")
+            .traverse(k => Either.cond(Set("memory", "rocksdb")(k), k, usage))
+          cacheMb <- flags
+            .get("utxo-cache-mb")
+            .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
+          readAhead <- flags
+            .get("read-ahead")
+            .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
         yield Options(
           dir,
           peers,
@@ -312,6 +388,9 @@ object Main extends IOApp:
           listen,
           mempool,
           localSocket,
-          forge
+          forge,
+          utxoKind,
+          cacheMb,
+          readAhead
         )
       case _ => Left(usage)

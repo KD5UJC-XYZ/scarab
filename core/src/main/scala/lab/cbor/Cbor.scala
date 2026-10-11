@@ -12,7 +12,7 @@ import scala.util.control.NonFatal
 object Cbor:
   final case class Limits(
       maxInputBytes: Int = 1048576,
-      maxDepth: Int = 64,
+      maxDepth: Int = 2048,
       maxItems: Int = 100000,
       maxStringBytes: Int = 1048576
   )
@@ -29,15 +29,18 @@ object Cbor:
       catch case Failure(message) => Left(message)
 
   private final class Decoder(input: Bytes, limits: Limits):
-    private val data = input.toArray
-    private var pos = 0
+    // Read-only view of the input: nodes keep zero-copy windows onto it as their `original`.
+    private val data = input.unsafeArray
+    private val base = input.unsafeOffset
+    private val end = base + input.size
+    private var pos = base
     private var items = 0
     private def read(): Int =
-      if pos >= data.length then fail("unexpected end of input")
+      if pos >= end then fail("unexpected end of input")
       val result = data(pos) & 0xff
       pos += 1
       result
-    private def isBreak: Boolean = pos < data.length && (data(pos) & 0xff) == 255
+    private def isBreak: Boolean = pos < end && (data(pos) & 0xff) == 255
     private def argument(ai: Int): BigInt =
       if ai < 24 then BigInt(ai)
       else
@@ -47,17 +50,25 @@ object Cbor:
           case 26 => 4
           case 27 => 8
           case _  => fail("reserved additional information or invalid indefinite item")
-        var n = BigInt(0)
-        var i = 0
-        while i < count do
-          n = (n << 8) | BigInt(read())
-          i += 1
-        n
+        if count < 8 then
+          var n = 0L
+          var i = 0
+          while i < count do
+            n = (n << 8) | read().toLong
+            i += 1
+          BigInt(n)
+        else
+          var n = BigInt(0)
+          var i = 0
+          while i < count do
+            n = (n << 8) | BigInt(read())
+            i += 1
+          n
     private def bounded(n: BigInt, bound: Int, what: String): Int =
       if n > BigInt(bound) then fail(s"$what limit exceeded")
       n.toInt
     private def payload(size: Int): Array[Byte] =
-      if size > data.length - pos then fail("truncated string payload")
+      if size > end - pos then fail("truncated string payload")
       val result = java.util.Arrays.copyOfRange(data, pos, pos + size)
       pos += size
       result
@@ -76,9 +87,9 @@ object Cbor:
     private def string(major: Int, ai: Int): Value =
       if ai != 31 then
         val raw = payload(bounded(argument(ai), limits.maxStringBytes, "string byte"))
-        if major == 2 then Value.ByteString(Bytes.fromArray(raw)) else Value.Text(utf8(raw))
+        if major == 2 then Value.ByteString(Bytes.wrap(raw)) else Value.Text(utf8(raw))
       else
-        val chunks = Vector.newBuilder[Byte]
+        val chunks = new java.io.ByteArrayOutputStream()
         val text = new java.lang.StringBuilder
         var total = 0
         while !isBreak do
@@ -89,9 +100,10 @@ object Cbor:
           val length = bounded(argument(h & 31), limits.maxStringBytes - total, "string byte")
           val raw = payload(length)
           total += length
-          if major == 2 then chunks ++= raw else text.append(utf8(raw))
+          if major == 2 then chunks.write(raw, 0, raw.length) else text.append(utf8(raw))
         read()
-        if major == 2 then Value.ByteString(Bytes(chunks.result())) else Value.Text(text.toString)
+        if major == 2 then Value.ByteString(Bytes.wrap(chunks.toByteArray))
+        else Value.Text(text.toString)
     private def node(depth: Int): Node =
       if depth > limits.maxDepth then fail("depth limit exceeded")
       consumeItem()
@@ -138,10 +150,10 @@ object Cbor:
             case 21 => Value.Bool(true)
             case 22 => Value.Null
             case _  => fail("unsupported simple value, float, or unexpected break")
-      Node(value, Bytes.fromArray(java.util.Arrays.copyOfRange(data, start, pos)))
+      Node(value, Bytes.wrap(data, start, pos - start))
     def run(): Node =
       val result = node(0)
-      if pos != data.length then fail("trailing bytes after CBOR item")
+      if pos != end then fail("trailing bytes after CBOR item")
       result
 
   /** Uses shortest integer/length widths and definite containers, recursively re-encoding values

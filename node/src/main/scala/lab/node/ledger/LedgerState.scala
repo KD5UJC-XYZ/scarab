@@ -34,6 +34,11 @@ final case class Snapshot(
       .groupMapReduce(_._1)(_._2)(_ + _)
   lazy val activeStake: BigInt = poolStake.values.sum
 
+  /** The pool distribution as the leader check consumes it; built once per snapshot, not per block.
+    */
+  lazy val distribution: lab.node.consensus.PoolDistribution =
+    lab.node.consensus.PoolDistribution(poolStake, pools.map { case (id, p) => id -> p.vrfKeyHash })
+
 object Snapshot:
   val empty: Snapshot = Snapshot(Map.empty, Map.empty, Map.empty)
 
@@ -86,7 +91,7 @@ object PlutusStats:
 final case class LedgerState(
     epoch: BigInt,
     params: ProtocolParams,
-    utxo: Map[TxIn, TxOut],
+    utxo: Utxo,
     fees: BigInt,
     deposited: BigInt,
     accounts: Map[Credential, Account],
@@ -132,5 +137,5 @@ final case class LedgerState(
 
   /** Total value in existence; equals the maximum supply when the ledger is consistent. */
   def total: BigInt =
-    utxo.valuesIterator.map(_.value.coin).sum + fees + deposited + treasury + reserves +
+    utxo.coin + fees + deposited + treasury + reserves +
       accounts.valuesIterator.map(_.balance).sum + donation

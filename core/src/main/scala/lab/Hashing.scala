@@ -14,13 +14,17 @@ object Blake2b:
   val hash256: Hasher = implementation(256)
   val hash224: Hasher = implementation(224)
   private def implementation(bits: Int): Hasher = new Hasher:
+    // A digest is reused per thread (doFinal resets it); creating one costs more than hashing a
+    // key hash or a transaction id.
+    private val digests = new ThreadLocal[Blake2bDigest]:
+      override def initialValue(): Blake2bDigest = new Blake2bDigest(bits)
+
     def hash(bytes: Bytes): Bytes =
-      val digest = new Blake2bDigest(bits)
-      val input = bytes.toArray
-      digest.update(input, 0, input.length)
+      val digest = digests.get()
+      digest.update(bytes.unsafeArray, bytes.unsafeOffset, bytes.size)
       val output = new Array[Byte](bits / 8)
       digest.doFinal(output, 0)
-      Bytes(output.toVector)
+      Bytes.wrap(output)
 
 /** Only structural extraction and transaction-id hashing, never ledger validity. */
 object TransactionId:

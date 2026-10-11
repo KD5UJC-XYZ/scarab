@@ -373,7 +373,7 @@ object ScriptContexts:
           )
         )
       case GovAction.NewConstitution(prev, script, _) =>
-        Right(constr(5, previous(prev), policy(script)))
+        Right(constr(5, previous(prev), constr(0, policy(script))))
       case GovAction.Info => Right(constr(6))
     action.map(a => constr(0, I(p.deposit), credential(p.returnAccount.credential), a))
 
@@ -418,8 +418,11 @@ object ScriptContexts:
     language match
       case PlutusLanguage.V1 =>
         for
+          // Babbage refuses a Plutus V1 script in a transaction with reference inputs; from Conway
+          // they are simply not part of the V1 context (a V1 spend with a reference input is on
+          // Preview, slot 65493476).
           _ <- Either.cond(
-            body.referenceInputs.isEmpty,
+            body.referenceInputs.isEmpty || env.protocolMajor >= 9,
             (),
             TranslationError("reference inputs are not supported in Plutus V1")
           )

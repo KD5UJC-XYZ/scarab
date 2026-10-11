@@ -38,6 +38,13 @@ trait ChainPersistence[F[_], S]:
   def rolledBack(to: ChainSync.Point): F[Unit]
 
 object ChainPersistence:
+  /** No block storage, but the backing store still follows the immutable tip. */
+  def backingOnly[F[_]: cats.Monad, S](backing: StateBacking[F, S]): ChainPersistence[F, S] =
+    new ChainPersistence[F, S]:
+      def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
+        if immutable.isEmpty then cats.Monad[F].unit else backing.advance(anchor.state)
+      def rolledBack(to: ChainSync.Point) = cats.Monad[F].unit
+
   def none[F[_]: cats.Applicative, S]: ChainPersistence[F, S] = new ChainPersistence[F, S]:
     def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S]) =
       cats.Applicative[F].unit
@@ -49,6 +56,9 @@ object ChainPersistence:
   * Layout: `<dir>/immutable/` and `<dir>/snapshots/`.
   */
 object ChainStorage:
+  /** Stored blocks are prepared this many at a time during replay. */
+  private val ReplayBatch = 64
+
   final case class Config(
       /** A snapshot is taken once the immutable tip is this many slots past the previous one. */
       snapshotEverySlots: BigInt,
@@ -72,7 +82,12 @@ object ChainStorage:
       config: Config,
       rules: BlockRules[F, S],
       initial: S,
-      events: StorageEvents[F]
+      events: StorageEvents[F],
+      backing: StateBacking[F, S],
+      /** Called with each batch of stored blocks just before they are applied (verification that
+        * does not depend on the state can run ahead, in parallel).
+        */
+      prepare: Vector[Bytes] => F[Unit]
   )(using
       Codec[StateSnapshot[S]],
       Raise[F, StorageError],
@@ -89,7 +104,10 @@ object ChainStorage:
       supervisor <- Supervisor[F](await = false)
       restored <- Resource.eval(
         snapshots.restore(anchor =>
-          anchor.fold(F.pure(true))(a => store.get(a.point).map(_.isDefined))
+          for
+            stored <- anchor.fold(F.pure(true))(a => store.get(a.point).map(_.isDefined))
+            backed <- if stored then backing.available(anchor) else F.pure(false)
+          yield stored && backed
         )
       )
       _ <- Resource.eval(
@@ -103,6 +121,9 @@ object ChainStorage:
           events.emit(StorageEvent.SnapshotRestored(name, s.anchor))
         )
       )
+      _ <- Resource.eval(
+        restored.snapshot.fold(backing.reset)((_, s) => backing.restore(s.anchor).void)
+      )
       pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       busy <- Resource.eval(Ref.of[F, Boolean](false))
@@ -114,13 +135,14 @@ object ChainStorage:
         config,
         pending,
         lastSlot,
-        busy
+        busy,
+        backing
       )
       end <- Resource.eval(store.tip)
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
       replayed <- Resource.eval(
-        replay(store, rules, persistence, config, events, start._1, start._2, began)
+        replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
       )
     yield Recovered(replayed._1, replayed._2, persistence, store)
 
@@ -131,6 +153,7 @@ object ChainStorage:
       persistence: Persistence[F, S],
       config: Config,
       events: StorageEvents[F],
+      prepare: Vector[Bytes] => F[Unit],
       from: Option[BlockRef],
       state: S,
       began: FiniteDuration
@@ -140,6 +163,11 @@ object ChainStorage:
     def elapsed: F[Long] = Clock[F].monotonic.map(now => (now - began).toMillis)
     store
       .stream(from.fold[ChainSync.Point](ChainSync.Point.Origin)(_.point))
+      // Warm the next batch (signature checks in parallel) while the current one is applied.
+      .chunkN(ReplayBatch)
+      .evalMap(chunk => prepare(chunk.toVector.map(_.raw)).as(chunk))
+      .prefetchN(2)
+      .flatMap(fs2.Stream.chunk)
       .evalScan(Acc(from, state, 0L)) { (acc, stored) =>
         for
           block <- Block.decode(stored.raw, config.byronEpochSlots) match
@@ -170,7 +198,8 @@ object ChainStorage:
       config: Config,
       pending: Ref[F, Vector[(BlockRef, Bytes)]],
       lastSlot: Ref[F, BigInt],
-      busy: Ref[F, Boolean]
+      busy: Ref[F, Boolean],
+      backing: StateBacking[F, S]
   )(using Raise[F, StorageError])
       extends ChainPersistence[F, S]:
     private val F = Async[F]
@@ -201,16 +230,22 @@ object ChainStorage:
         if index >= 0 then p.take(index + 1) else Vector.empty
       }
 
-    /** The immutable tip is now `ref`, with `state` after it: snapshot when the policy says so. */
+    /** The immutable tip is now `ref`, with `state` after it: bring the backing store to it and
+      * snapshot when the policy says so. The backing checkpoint is taken here, before the snapshot
+      * is written in the background, because the store keeps moving with the chain.
+      */
     def advanced(ref: BlockRef, state: S): F[Unit] =
-      lastSlot.get.flatMap { last =>
+      backing.advance(state) *> lastSlot.get.flatMap { last =>
         F.whenA(ref.slot - last >= config.snapshotEverySlots) {
           busy.getAndSet(true).flatMap {
             case true => F.unit
             case false =>
-              lastSlot.set(ref.slot) *> supervisor
-                .supervise(snapshot(ref, state).guarantee(busy.set(false)))
-                .void
+              (for
+                _ <- lastSlot.set(ref.slot)
+                settled <- backing.settled(state)
+                _ <- backing.checkpoint(ref)
+                _ <- supervisor.supervise(snapshot(ref, settled).guarantee(busy.set(false)))
+              yield ()).onError(_ => busy.set(false))
           }
         }
       }
@@ -221,6 +256,8 @@ object ChainStorage:
         t0 <- began
         _ <- store.sync
         written <- snapshots.write(StateSnapshot(Some(ref), state))
+        names <- snapshots.list
+        _ <- backing.retain(names.map(_.stripSuffix(".bin")).toSet)
         t1 <- Clock[F].monotonic
         _ <- events.emit(
           StorageEvent

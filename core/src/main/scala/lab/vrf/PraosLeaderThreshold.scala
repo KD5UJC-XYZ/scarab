@@ -50,7 +50,14 @@ object PraosLeaderThreshold:
 
   // For 0 < f <= 1/2, ln'(1-f)'s splitLn exponent is exactly -1.
   // This bounded specialization follows the source continued fraction without real arithmetic.
+  // ln(1 - f) depends only on the active slot coefficient, a constant of the network: computed once
+  // per coefficient instead of once per block (the continued fraction is a thousand big divisions).
+  private val logs = new java.util.concurrent.ConcurrentHashMap[(BigInt, BigInt), BigInt]()
+
   private def activeLog(f: Fraction): BigInt =
+    logs.computeIfAbsent((f.numerator, f.denominator), _ => computeActiveLog(f))
+
+  private def computeActiveLog(f: Fraction): BigInt =
     val x = div(Scale - fixed(f), div(Scale, expOne)) - Scale
     var a2 = Scale; var b2 = BigInt(0); var a1 = BigInt(0); var b1 = Scale
     var last: Option[BigInt] = None

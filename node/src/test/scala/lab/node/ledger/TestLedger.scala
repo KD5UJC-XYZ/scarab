@@ -72,7 +72,7 @@ object TestLedger:
     LedgerState(
       epoch = 5,
       params = params(protocolMajor),
-      utxo = utxo,
+      utxo = Utxo(utxo),
       fees = 0,
       deposited = 0,
       accounts = Map.empty,

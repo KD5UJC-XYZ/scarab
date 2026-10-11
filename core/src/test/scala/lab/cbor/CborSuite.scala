@@ -121,7 +121,7 @@ class CborSuite extends munit.FunSuite:
     assert(Cbor.decode(bytes("5bffffffffffffffff")).isLeft)
     assert(Cbor.decode(bytes("9bffffffffffffffff")).isLeft)
     assert(Cbor.decode(bytes("bbffffffffffffffff")).isLeft)
-    assert(Cbor.decode(bytes("81" * 65 + "00")).isLeft)
+    assert(Cbor.decode(bytes("81" * 2049 + "00")).isLeft)
   }
   test("empty strings, null, booleans and selected values roundtrip") {
     val values = Vector(

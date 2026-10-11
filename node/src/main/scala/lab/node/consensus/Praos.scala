@@ -99,9 +99,6 @@ object Praos:
       window: BigInt
   ): Either[String, (PraosState, LeaderCheck)] =
     val pool = Blake2b.hash224.hash(header.issuerVkey)
-    val epochNonce = state.epochNonce match
-      case Nonce.Neutral => Right(Vrf.NeutralNonce)
-      case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(_.toString)
     val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
     for
       registered <- stakeView match
@@ -128,10 +125,8 @@ object Praos:
               "VRF key is not the pool's registered key"
             )
           yield None
-      nonce <- epochNonce
-      slot <- Vrf.Slot.fromBigInt(header.slot).leftMap(_.toString)
-      input <- Vrf.Input.create(slot, nonce).leftMap(_.toString)
-      output <- Vrf.verify(input, header.vrfVkey, vrf.proof, vrf.output) match
+      input <- vrfInput(state.epochNonce, header.slot)
+      output <- lab.node.Verification.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output) match
         case Vrf.Result.VerifiedCertificate(o) => Right(o)
         case other                             => Left(s"VRF proof rejected: $other")
       leader <- registered match
@@ -147,8 +142,8 @@ object Praos:
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
-      _ <- OCertRules
-        .verifySignatures(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+      _ <- lab.node.Verification
+        .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(_.message)
       _ <- OCertRules
         .checkCounter(
@@ -170,6 +165,16 @@ object Praos:
         lab = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
         counters = state.counters.updated(pool, header.opCert.sequence)
       ) -> leader
+
+  /** The VRF input of a slot under an epoch nonce. */
+  def vrfInput(epochNonce: Nonce, slot: BigInt): Either[String, Vrf.Input] =
+    for
+      nonce <- epochNonce match
+        case Nonce.Neutral => Right(Vrf.NeutralNonce)
+        case Nonce.Hash(b) => Vrf.Hash32.fromBytes(b).leftMap(_.toString)
+      s <- Vrf.Slot.fromBigInt(slot).leftMap(_.toString)
+      input <- Vrf.Input.create(s, nonce).leftMap(_.toString)
+    yield input
 
   /** A block's nonce contribution: the doubly hashed "N"-prefixed VRF output. */
   def nonceValue(output: Bytes): Nonce =

@@ -109,3 +109,38 @@ class TxDecodingSuite extends FunSuite:
       Address.Kind.Shelley(0, Credential.Key(Bytes(hash)), None, Some(Ptr(300, 5, 0)))
     )
   }
+
+  test("a block whose datum is nested beyond 64 levels (Preview slot 22680061) decodes") {
+    val all = txs("fixtures/preview/deeply-nested-datum.hex")
+    assert(all.nonEmpty)
+    assert(all.exists { case (_, tx) => tx.witnesses.datums.nonEmpty || tx.body.outputs.nonEmpty })
+  }
+
+  test("CBOR nesting up to the limit decodes on an ordinary thread; one level more is an error") {
+    def nested(levels: Int): Bytes = Bytes.wrap(Array.fill(levels)(0x81.toByte) :+ 0x00.toByte)
+    var results = Vector.empty[Boolean]
+    val t = new Thread(() =>
+      results = Vector(
+        Cbor.decode(nested(2048)).isRight,
+        Cbor.decode(nested(2049)).isLeft
+      )
+    )
+    t.start()
+    t.join()
+    assertEquals(results, Vector(true, true))
+  }
+
+  test(
+    "a Conway witness set naming one redeemer purpose twice keeps it once (Preview slot 62567517)"
+  ) {
+    val all = txs("fixtures/preview/duplicate-redeemer-conway.hex")
+    val duplicated = all.collect { case (_, tx) if tx.body.id.hex.startsWith("c373f449") => tx }
+    assertEquals(duplicated.size, 1)
+    val redeemers = duplicated.head.witnesses.redeemers
+    assertEquals(redeemers.map(r => (r.tag, r.index)), Vector((1, BigInt(0))))
+    assertEquals(duplicated.head.witnesses.totalExUnits, ExUnits(2301, 428149))
+    // The fee the transaction paid covers the minimum fee only with the units counted once.
+    val minFee = BigInt(44) * duplicated.head.size + 155381 +
+      (Rational(577, 10000) * Rational(2301) + Rational(721, 10000000) * Rational(428149)).ceil
+    assert(duplicated.head.body.fee >= minFee, s"${duplicated.head.body.fee} < $minFee")
+  }
