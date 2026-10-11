@@ -1,0 +1,442 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Era-appropriate transaction load for the era-walking devnet (see devnet.py `e2e`).
+
+Every era gets the transaction types that era introduced, so the Scala ledger is exercised on the
+rules of each era and compared with the reference node while the chain is still in that era:
+
+  Shelley  transfers, stake key registration and delegation, a new pool, pool re-registration,
+           genesis-delegate MIR and genesis delegation certificates, reward withdrawals
+  Allegra  validity intervals, a timelock script address funded and spent, auxiliary data, a pool
+           retirement
+  Mary     minting and burning under native-script policies, multi-asset transfers
+  Alonzo   collateral inputs, datum-hash outputs, required signers, network id
+           (TODO: always-succeeds Plutus spends and mints once the script data hash is built here)
+  Babbage  inline datums, reference-script outputs, reference inputs, collateral return
+
+Transactions are built and signed by `eratx` because cardano-cli can only build Conway
+transactions. A rejected submission is logged and never fatal.
+"""
+import json
+import os
+import random
+import subprocess
+import threading
+import time
+
+import eratx
+from eratx import Key
+
+FEE = 250_000
+MAGIC = 1082026
+ENV = "/work/env"
+SOCKET = f"{ENV}/socket/node1/sock"
+ERAS = ["shelley", "allegra", "mary", "alonzo", "babbage", "conway"]
+
+
+class Wallet:
+    def __init__(self, rng):
+        self.pay = Key(json.dumps({"cborHex": "5820" + rng.randbytes(32).hex()}))
+        self.stake = Key(json.dumps({"cborHex": "5820" + rng.randbytes(32).hex()}))
+        self.address = eratx.base_address(self.pay.hash, self.stake.hash)
+        self.reward = eratx.reward_address(self.stake.hash)
+        self.registered = False
+
+
+class EraLoad:
+    """One instance per cluster; `run` is the worker-thread body, `stats` its running totals."""
+
+    def __init__(self, name, lsq_factory, log=print, seed=7):
+        self.name, self.lsq_factory, self.log = name, lsq_factory, log
+        self.rng = random.Random(seed)
+        self.wallets = [Wallet(self.rng) for _ in range(6)]
+        self.stats = {}
+        self.done = set()
+        self.tip = None
+        self.keys = {}
+        self.script_address = None
+        self.ready = threading.Event()  # set by the driver once the pools exist
+        self.stop = threading.Event()
+        self.pending = 0
+
+    # ------------------------------------------------------------ reference plumbing
+    def sh(self, script, stdin=None, timeout=60):
+        return subprocess.run(["docker", "exec", "-i", f"{self.name}-ref", "/bin/sh", "-c", script],
+                              input=stdin, text=True, capture_output=True, timeout=timeout)
+
+    def read_key(self, path):
+        if path not in self.keys:
+            self.keys[path] = Key(self.sh(f"cat {path}").stdout)
+        return self.keys[path]
+
+    def snapshot(self):
+        """(tip slot, era index, {address: [(txin, lovelace, assets)]}, raw utxo)"""
+        with self.lsq_factory() as s:
+            s.acquire()
+            era = self.current_era(s)
+            slot, _ = s.ledger_query(era, [0])
+            utxo = s.ledger_query(era, [7])
+        by_addr = {}
+        for (txid, ix), out in utxo.items():
+            address, value = (out[0], out[1]) if isinstance(out, list) else (out[0], out[1])  # array or map form
+            coin, assets = (value, {}) if isinstance(value, int) else (value[0], value[1])
+            by_addr.setdefault(address, []).append(((txid.hex(), ix), coin, assets))
+        return slot, era, by_addr
+
+    def current_era(self, session):
+        # the era the node is in: ask with each index from the newest down (a wrong index answers a mismatch)
+        for index in range(6, 0, -1):
+            r = session.query_raw([0, [0, [index, [1]]]])  # GetEpochNo
+            if isinstance(r, list) and len(r) == 1:
+                return index
+        raise RuntimeError("no era answered")
+
+    def epoch_info(self):
+        r = self.sh(f"cardano-cli query tip --testnet-magic {MAGIC} --socket-path {SOCKET}")
+        return json.loads(r.stdout)
+
+    def submit(self, era, tx, label):
+        env = eratx.envelope(era, tx)
+        r = self.sh(f"cat > /work/tx/{label}.tx && cardano-cli conway transaction submit --testnet-magic {MAGIC} "
+                    f"--socket-path {SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
+        ok = r.returncode == 0
+        self.stats[label.split("-")[0]] = self.stats.get(label.split("-")[0], 0) + (1 if ok else 0)
+        if not ok:
+            self.stats["rejected"] = self.stats.get("rejected", 0) + 1
+            self.log({"rejected": label, "error": (r.stderr or r.stdout).strip()[-500:]})
+        return ok
+
+    def confirm(self, txid, timeout=25):
+        """Wait until an output of `txid` shows up in the UTxO."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not self.stop.is_set():
+            _, _, by_addr = self.snapshot()
+            if any(i[0][0] == txid for outs in by_addr.values() for i in outs):
+                return True
+            time.sleep(0.4)
+        return False
+
+    # ------------------------------------------------------------ transaction helpers
+    def funds(self, address):
+        _, _, by_addr = self.snapshot()
+        return sorted(by_addr.get(address, []), key=lambda i: -i[1])
+
+    def act(self, era, label, wallet, outputs=(), certs=None, withdrawals=None, deposit=0, refund=0, mint=None,
+            extra_signers=(), native_scripts=(), valid_from=None, ttl=None, spend_extra=(), metadata=None,
+            aux_scripts=(), collateral=None, required_signers=None, reference_inputs=None, network_id=None,
+            collateral_return=None, total_collateral=None, avoid=()):
+        """Spend from `wallet` (largest ADA-only output plus any `spend_extra` inputs), pay `outputs`
+        ((address, coin, assets, kwargs) tuples), send the change back to the wallet, sign, submit and
+        wait for the confirmation. Returns the transaction id, or None."""
+        utxos = [u for u in self.funds(wallet.address) if not u[2] and u[0] not in avoid]
+        if not utxos:
+            self.log({"skipped": label, "reason": "wallet has no ADA-only output"})
+            return None
+        needed = FEE + deposit + 3_000_000 + sum(o[1] for o in outputs) - sum((withdrawals or {}).values()) - refund
+        chosen, total = [], 0
+        for u in utxos:  # largest first, until the outputs, fee, deposits and a change output are covered
+            if total >= needed and chosen:
+                break
+            chosen.append(u)
+            total += u[1]
+        chosen += list(spend_extra)
+        slot = self.tip["slot"] if self.tip else 0
+        if ttl is None and era == "shelley":
+            ttl = slot + 3000
+        # change = inputs + withdrawals + refunds + (assets minted) - outputs - fee - deposits
+        coin_in = sum(u[1] for u in chosen) + sum((withdrawals or {}).values()) + refund
+        assets = {}
+        for u in chosen:
+            for p, names in u[2].items():
+                for n, q in names.items():
+                    assets.setdefault(p, {})[n] = assets.setdefault(p, {}).get(n, 0) + q
+        for p, names in (mint or {}).items():
+            for n, q in names.items():
+                assets.setdefault(p, {})[n] = assets.setdefault(p, {}).get(n, 0) + q
+        coin_out = FEE + deposit
+        tx_outputs = []
+        for address, coin, out_assets, kw in outputs:
+            coin_out += coin
+            for p, names in (out_assets or {}).items():
+                for n, q in names.items():
+                    assets.setdefault(p, {})[n] = assets.setdefault(p, {}).get(n, 0) - q
+            tx_outputs.append(eratx.tx_out(era, address, coin, out_assets, **kw))
+        assets = {p: {n: q for n, q in names.items() if q} for p, names in assets.items()}
+        assets = {p: names for p, names in assets.items() if names}
+        if any(q < 0 for names in assets.values() for q in names.values()):
+            self.log({"skipped": label, "reason": "not enough assets"})
+            return None
+        change = coin_in - coin_out
+        if change < 2_000_000:
+            self.log({"skipped": label, "reason": f"change {change} too small"})
+            return None
+        tx_outputs.append(eratx.tx_out(era, wallet.address, change, assets or None))
+        signers = [wallet.pay, *extra_signers]
+        wits = list(native_scripts)
+        try:
+            tx, txid = eratx.build_tx(
+                era, [u[0] for u in chosen], tx_outputs, FEE, signers, ttl=ttl, valid_from=valid_from, certs=certs,
+                withdrawals=withdrawals, mint=mint, native_scripts=wits, collateral=collateral,
+                required_signers=required_signers, reference_inputs=reference_inputs, network_id=network_id,
+                metadata=metadata, aux_scripts=aux_scripts, collateral_return=collateral_return,
+                total_collateral=total_collateral)
+        except Exception as e:  # a bug in a scenario must not stop the cluster walk
+            self.log({"buildFailed": label, "error": repr(e)})
+            return None
+        if not self.submit(era, tx, f"{label}-{txid[:8]}"):
+            return None
+        return txid if self.confirm(txid) else None
+
+    # ------------------------------------------------------------ scenarios
+    def once(self, key):
+        if key in self.done:
+            return False
+        self.done.add(key)
+        return True
+
+    def asset_utxos(self, wallet):
+        return [u for u in self.funds(wallet.address) if u[2]]
+
+    def transfers(self, era, count=2):
+        for _ in range(count):
+            _, _, by_addr = self.snapshot()
+            balance = {i: sum(u[1] for u in by_addr.get(x.address, []) if not u[2]) for i, x in enumerate(self.wallets)}
+            richest = max(balance, key=balance.get)
+            a = self.wallets[richest]
+            b = self.rng.choice([x for x in self.wallets if x is not a])
+            outs = [(b.address, self.rng.randint(3, 12) * 1_000_000, None, {}) for _ in range(self.rng.randint(1, 3))]
+            self.act(era, "transfer", a, outs)
+
+    def withdrawals(self, era):
+        """Withdraw the whole reward balance of any registered, rewarded wallet."""
+        with self.lsq_factory() as s:
+            s.acquire()
+            index = self.current_era(s)
+            nes = s.ledger_query(index, [12])
+        balances = {c[1]: a[1] for c, a in nes[3][1][0][1][0][0].items()}
+        for w in self.wallets:
+            amount = balances.get(w.stake.hash, 0)
+            if w.registered and amount > 0:
+                self.act(era, "withdrawal", w, [], withdrawals={w.reward: amount}, extra_signers=[w.stake])
+
+    def shelley_features(self, era):
+        w = self.wallets
+        if self.once("fund"):
+            funder = self.delegator(2)
+            outs = [(x.address, 450_000_000, None, {}) for x in w]
+            self.act(era, "fund", funder, outs)
+        if self.once("register"):
+            certs = [eratx.stake_key_cert(0, x.stake.hash) for x in w[:4]]
+            for x in w[:4]:
+                x.registered = True
+            self.act(era, "register", w[4], [], certs=certs, deposit=4 * 400_000, extra_signers=[x.stake for x in w[:4]])
+        if self.once("delegate"):
+            pools = [self.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey").hash for n in (1, 2, 3)]
+            certs = [eratx.delegation_cert(w[i].stake.hash, pools[i % 3]) for i in range(3)]
+            self.act(era, "delegate", w[4], [], certs=certs, extra_signers=[x.stake for x in w[:3]])
+        if self.once("newpool"):
+            self.new_pool(era)
+        if self.once("repool"):
+            self.re_register_pool(era, 1)
+        if self.once("mir"):
+            self.mir(era, 0, w[0], 7_000_000)
+        if self.once("gendeleg"):
+            self.genesis_delegation(era)
+
+    def delegator(self, n):
+        """A wallet-like view of stake delegator `n` of the cluster environment."""
+        funder = Wallet(random.Random(0))
+        funder.pay = self.read_key(f"{ENV}/stake-delegators/delegator{n}/payment.skey")
+        funder.stake = self.read_key(f"{ENV}/stake-delegators/delegator{n}/staking.skey")
+        funder.address = eratx.base_address(funder.pay.hash, funder.stake.hash)
+        return funder
+
+    def new_pool(self, era):
+        w = self.wallets[3]
+        self.extra_pool = {"operator": w.pay.hash, "vrf": eratx.blake2b(b"extra-pool-vrf", 32), "pledge": 0,
+                           "cost": 500_000, "margin": [1, 10], "reward_account": w.reward, "owners": [w.stake.hash]}
+        cert = eratx.pool_registration_cert(self.extra_pool)
+        self.act(era, "newpool", self.wallets[5], [], certs=[cert], deposit=self.pool_deposit(),
+                 extra_signers=[w.pay, w.stake])
+
+    def pool_deposit(self):
+        pp = json.loads(self.sh(f"cardano-cli query protocol-parameters --testnet-magic {MAGIC} --socket-path {SOCKET}").stdout)
+        return pp["stakePoolDeposit"]
+
+    def re_register_pool(self, era, n):
+        """Change a running pool's cost and margin: effective next epoch (future pool parameters)."""
+        cold = self.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey")
+        owner = self.read_key(f"{ENV}/stake-delegators/delegator{n}/staking.skey")
+        with self.lsq_factory() as s:
+            s.acquire()
+            index = self.current_era(s)
+            nes = s.ledger_query(index, [12])
+        p = nes[3][1][0][0][1][cold.hash]
+        params = {"operator": cold.hash, "vrf": p[0], "pledge": p[1], "cost": 1_000_000 + n, "margin": [3, 100],
+                  "reward_account": eratx.reward_address(p[4][1]), "owners": [o for o in p[5]]}
+        self.act(era, "repool", self.wallets[5], [], certs=[eratx.pool_registration_cert(params)],
+                 extra_signers=[cold, owner])
+
+    def mir(self, era, pot, target, amount):
+        """Move instantaneous rewards from the reserves (pot 0) or treasury (1), signed by the genesis delegates."""
+        cold = [self.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey") for n in (1, 2, 3)]
+        credential = eratx.Raw(eratx.enc([0, target.stake.hash]))
+        cert = [6, [pot, {credential: amount}]]
+        self.act(era, f"mir{pot}", self.wallets[5], [], certs=[cert], extra_signers=cold)
+
+    def genesis_delegation(self, era):
+        gen = self.read_key(f"{ENV}/genesis-keys/genesis1/key.skey")
+        cold = self.read_key(f"{ENV}/pools-keys/pool1/cold.skey")
+        vrf_hash = self.sh(f"cardano-cli node key-hash-VRF --verification-key-file {ENV}/pools-keys/pool1/vrf.vkey").stdout.strip()
+        cert = [5, gen.hash, cold.hash, bytes.fromhex(vrf_hash)]
+        self.act(era, "gendeleg", self.wallets[5], [], certs=[cert], extra_signers=[gen])
+
+    def allegra_features(self, era):
+        w = self.wallets
+        slot = self.tip["slot"]
+        if self.once("interval"):
+            self.act(era, "interval", w[4], [(w[5].address, 5_000_000, None, {})], valid_from=max(slot - 20, 0), ttl=slot + 2000)
+        if self.once("metadata"):
+            self.act(era, "metadata", w[4], [(w[5].address, 4_000_000, None, {})], metadata={674: {"msg": ["e2e", "metadata"]}},
+                     ttl=slot + 2000)
+        if self.once("timelock-fund"):
+            self.lock_slot = slot + 60
+            self.script = eratx.all_script(eratx.sig_script(w[4].pay.hash), eratx.after_script(self.lock_slot))
+            self.script_address = eratx.enterprise_address(eratx.script_hash(self.script), script=True)
+            self.act(era, "timelock-fund", w[4], [(self.script_address, 20_000_000, None, {})], ttl=slot + 2000)
+        if self.script_address and self.tip["slot"] > self.lock_slot + 5 and self.once("timelock-spend"):
+            self.spend_script(era)
+        if self.once("retire-pool"):
+            self.retire_extra_pool(era)
+
+    def spend_script(self, era):
+        _, _, by_addr = self.snapshot()
+        locked = by_addr.get(self.script_address, [])
+        if not locked:
+            return
+        funder = self.wallets[4]
+        self.act(era, "timelock-spend", funder, [(self.wallets[5].address, 10_000_000, None, {})], spend_extra=locked,
+                 native_scripts=[self.script], valid_from=self.lock_slot + 1, ttl=self.tip["slot"] + 2000)
+
+    def retire_extra_pool(self, era):
+        w = self.wallets[3]
+        epoch = self.tip["epoch"]
+        self.act(era, "retire", self.wallets[5], [], certs=[eratx.pool_retirement_cert(w.pay.hash, epoch + 2)],
+                 extra_signers=[w.pay])
+
+    def mary_features(self, era):
+        w = self.wallets
+        slot = self.tip["slot"]
+        policy_script = eratx.sig_script(w[5].pay.hash)
+        policy = eratx.script_hash(policy_script)
+        if self.once("mint"):
+            mint = {policy: {b"coinA": 1000, b"coinB": 500}}
+            outs = [(w[4].address, 3_000_000, {policy: {b"coinA": 300}}, {}),
+                    (w[3].address, 3_000_000, {policy: {b"coinB": 100, b"coinA": 50}}, {})]
+            self.act(era, "mint", w[5], outs, mint=mint, native_scripts=[policy_script], ttl=slot + 2000)
+        if self.once("assets-transfer"):
+            outs = [(w[0].address, 3_000_000, {policy: {b"coinA": 20}}, {})]
+            self.act(era, "assets-transfer", w[4], outs, spend_extra=self.asset_utxos(w[4])[:1])
+        if self.once("burn"):
+            self.act(era, "burn", w[5], [], mint={policy: {b"coinA": -100}}, native_scripts=[policy_script],
+                     spend_extra=self.asset_utxos(w[5])[:1], ttl=slot + 2000)
+        if self.once("mir-treasury"):
+            self.mir(era, 1, w[1], 3_000_000)
+        if self.once("timelock-mint"):
+            # a policy that only mints before an expiry slot
+            expiring = eratx.all_script(eratx.sig_script(w[4].pay.hash), eratx.before_script(slot + 3000))
+            p2 = eratx.script_hash(expiring)
+            self.act(era, "timelock-mint", w[4], [(w[1].address, 3_000_000, {p2: {b"limited": 10}}, {})],
+                     mint={p2: {b"limited": 10}}, native_scripts=[expiring], ttl=slot + 2000)
+        if self.once("dereg"):
+            self.act(era, "dereg", w[5], [], certs=[eratx.stake_key_cert(1, w[3].stake.hash)], refund=400_000,
+                     extra_signers=[w[3].stake])
+            w[3].registered = False
+
+    def alonzo_features(self, era):
+        w = self.wallets
+        slot = self.tip["slot"]
+        if self.once("collateral"):
+            utxos = [u for u in self.funds(w[1].address) if not u[2]]
+            if len(utxos) >= 2:
+                # one input to spend, another named as collateral (checked only when scripts run)
+                coll = utxos[1][0]
+                self.act(era, "collateral", w[1], [(w[2].address, 6_000_000, None, {})], collateral=[coll],
+                         avoid=[coll], ttl=slot + 2000)
+        if self.once("datum-hash"):
+            datum_hash = eratx.blake2b(eratx.enc([1, 2, 3]))
+            self.act(era, "datum-hash", w[4], [(w[2].address, 5_000_000, None, {"datum_hash": datum_hash})],
+                     required_signers=[w[4].pay.hash], network_id=0, ttl=slot + 2000)
+        # TODO(plutus): always-succeeds PlutusV1 spend and mint. Needs the script data hash (redeemers,
+        # datums and the language view of the cost models) and execution-unit fees; add with the
+        # Plutus evaluation work.
+
+    def babbage_features(self, era):
+        w = self.wallets
+        slot = self.tip["slot"]
+        if self.once("inline-datum"):
+            self.act(era, "inline-datum", w[4], [(w[2].address, 5_000_000, None, {"inline_datum": [42, b"inline"]})],
+                     ttl=slot + 2000)
+        if self.once("ref-script"):
+            script = eratx.all_script(eratx.sig_script(w[0].pay.hash))
+            self.act(era, "ref-script", w[4], [(w[2].address, 8_000_000, None, {"script_ref": script})],
+                     ttl=slot + 2000)
+        if self.once("ref-input"):
+            _, _, by_addr = self.snapshot()
+            refs = by_addr.get(w[2].address, [])
+            if refs:
+                self.act(era, "ref-input", w[4], [(w[1].address, 4_000_000, None, {})], reference_inputs=[refs[0][0]],
+                         ttl=slot + 2000)
+        if self.once("collateral-return"):
+            utxos = [u for u in self.funds(w[1].address) if not u[2]]
+            if len(utxos) >= 2:
+                coll = utxos[1]
+                ret = eratx.tx_out(era, w[1].address, coll[1] - 1_500_000)
+                self.act(era, "collateral-return", w[1], [(w[3].address, 6_000_000, None, {})], collateral=[coll[0]],
+                         avoid=[coll[0]], collateral_return=ret, total_collateral=1_500_000, ttl=slot + 2000)
+
+    FEATURES = {"shelley": "shelley_features", "allegra": "allegra_features", "mary": "mary_features",
+                "alonzo": "alonzo_features", "babbage": "babbage_features"}
+
+    def epoch_batch(self, era, epoch):
+        """The actions for one epoch of `era`: features first (once each), then transfers and withdrawals."""
+        if era in self.FEATURES:
+            getattr(self, self.FEATURES[era])(era)
+        self.transfers(era, 2)
+        self.withdrawals(era)
+
+    # ------------------------------------------------------------ the worker
+    POINTS = [("mid", 230), ("late", 440)]
+
+    def run(self, compare, conway_hook=None):
+        """Worker-thread body. Per epoch: compare right after the epoch boundary, run that epoch's
+        transaction batch, compare, compare again mid-epoch and shortly before the next boundary.
+        `compare(era, label)` records one comparison and never raises."""
+        seen = set()
+        while not self.stop.is_set():
+            try:
+                tip = self.epoch_info()
+            except Exception:
+                time.sleep(1)
+                continue
+            era, epoch, in_epoch = tip.get("era", "").lower(), tip.get("epoch"), tip.get("slotInEpoch", 0)
+            if era in ERAS and self.ready.is_set() and "slotInEpoch" in tip:
+                self.tip = tip
+                key = (era, epoch)
+                if era == "conway" and conway_hook and self.once("conway-hook"):
+                    conway_hook()
+                if (key, "batch") not in seen and in_epoch >= 3:
+                    seen.add((key, "batch"))
+                    compare(era, "start")
+                    if era != "conway":
+                        try:
+                            self.epoch_batch(era, epoch)
+                        except Exception as e:
+                            self.log({"batchFailed": era, "error": repr(e)})
+                        compare(era, "after-batch")
+                for label, at in self.POINTS:
+                    if (key, "batch") in seen and (key, label) not in seen:
+                        now = self.epoch_info()
+                        if now.get("epoch") == epoch and now.get("slotInEpoch", 0) >= at:
+                            seen.add((key, label))
+                            compare(era, label)
+            time.sleep(0.7)
