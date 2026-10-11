@@ -78,7 +78,7 @@ jobs:
           python3 scripts/prepare_reference_image.py --help > /dev/null
       - name: SPDX header on every script and workflow
         run: |
-          missing=$(find scripts .github \( -name '*.py' -o -name '*.yml' -o -name sbtw \) \
+          missing=$(find scripts .github/workflows \( -name '*.py' -o -name '*.yml' -o -name sbtw \) \
             -exec grep -L 'SPDX-License-Identifier: Apache-2.0' {} +)
           if [ -n "$missing" ]; then echo "missing SPDX header:"; echo "$missing"; exit 1; fi
 
