@@ -16,11 +16,10 @@ object Blake2b:
   private def implementation(bits: Int): Hasher = new Hasher:
     def hash(bytes: Bytes): Bytes =
       val digest = new Blake2bDigest(bits)
-      val input = bytes.toArray
-      digest.update(input, 0, input.length)
+      digest.update(bytes.unsafeArray, bytes.unsafeOffset, bytes.size)
       val output = new Array[Byte](bits / 8)
       digest.doFinal(output, 0)
-      Bytes(output.toVector)
+      Bytes.wrap(output)
 
 /** Only structural extraction and transaction-id hashing, never ledger validity. */
 object TransactionId:
