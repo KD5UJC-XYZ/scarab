@@ -28,7 +28,14 @@ trait MuxChannel[F[_]]:
   * full queue stops socket reads) and a writer fiber drains one outbound queue.
   */
 trait Mux[F[_]]:
+  /** The channel of `protocol` in the connection's own role ([[Mux.Config.role]]). */
   def channel(protocol: Int): F[MuxChannel[F]]
+
+  /** The channel of `protocol` for one side of the mini-protocol: `Initiator` is the client side
+    * (it sends with the initiator mode bit), `Responder` the server side. A connection carries both
+    * for the same protocol number only when it was opened with [[Mux.Config.duplex]].
+    */
+  def channel(protocol: Int, role: Mux.Role): F[MuxChannel[F]]
 
   /** Completes with the reason once the bearer has failed or been closed. */
   def closed: F[String]
@@ -40,8 +47,14 @@ object Mux:
   enum Role:
     case Initiator, Responder
 
+  /** `role` is the side of the connection (who opened it) and the default side of every
+    * mini-protocol. With `duplex` both sides of every mini-protocol are available on the one
+    * bearer: SDUs carry the mode bit of the sending side, so a client and a server instance of the
+    * same protocol number never see each other's traffic.
+    */
   final case class Config(
       role: Role = Role.Initiator,
+      duplex: Boolean = false,
       maxSduPayload: Int = WireMux.WireMaxPayloadBytes,
       readChunkBytes: Int = 16384,
       ingressQueueSdus: Int = 16,
@@ -53,9 +66,15 @@ object Mux:
       Raise[F, NetworkError]
   ): Resource[F, Mux[F]] =
     val F = Async[F]
-    val (sending, receiving) = config.role match
-      case Role.Initiator => (WireMux.Direction.Initiator, WireMux.Direction.Responder)
-      case Role.Responder => (WireMux.Direction.Responder, WireMux.Direction.Initiator)
+    val roles: List[Role] =
+      if config.duplex then List(Role.Initiator, Role.Responder) else List(config.role)
+    def sending(role: Role): WireMux.Direction = role match
+      case Role.Initiator => WireMux.Direction.Initiator
+      case Role.Responder => WireMux.Direction.Responder
+    // An SDU sent by the initiator side of a mini-protocol is for the responder side here.
+    def receiverOf(direction: WireMux.Direction): Role = direction match
+      case WireMux.Direction.Initiator => Role.Responder
+      case WireMux.Direction.Responder => Role.Initiator
 
     def failure[A](reason: String): F[A] = NetworkError.BearerClosed(reason).raise[F, A]
     def describe(t: Throwable): String = Option(t.getMessage).getOrElse(t.getClass.getSimpleName)
@@ -63,11 +82,13 @@ object Mux:
     val setup = for
       done <- Resource.eval(Deferred[F, String])
       inbound <- Resource.eval(
-        protocols.toList
-          .traverse(p => Queue.bounded[F, Bytes](config.ingressQueueSdus).map(p -> _))
+        (for p <- protocols.toList; r <- roles yield (p, r))
+          .traverse(key => Queue.bounded[F, Bytes](config.ingressQueueSdus).map(key -> _))
           .map(_.toMap)
       )
-      outbound <- Resource.eval(Queue.bounded[F, (Int, Bytes)](config.egressQueueMessages))
+      outbound <- Resource.eval(
+        Queue.bounded[F, (Int, Role, Bytes)](config.egressQueueMessages)
+      )
       decoder <- Resource.eval(
         WireMux.Decoder
           .create(WireMux.Limits(maxPayloadBytes = config.maxSduPayload))
@@ -80,10 +101,11 @@ object Mux:
       def route(sdus: List[WireMux.Sdu]): F[Option[String]] = sdus match
         case Nil => F.pure(None)
         case sdu :: rest =>
-          if sdu.direction != receiving then F.pure(Some("SDU with the wrong mode bit"))
+          if !protocols.contains(sdu.protocol) then
+            F.pure(Some(s"data on unexpected mini-protocol ${sdu.protocol}"))
           else
-            inbound.get(sdu.protocol) match
-              case None        => F.pure(Some(s"data on unexpected mini-protocol ${sdu.protocol}"))
+            inbound.get((sdu.protocol, receiverOf(sdu.direction))) match
+              case None        => F.pure(Some("SDU with the wrong mode bit"))
               case Some(queue) => queue.offer(sdu.payload) *> route(rest)
 
       type Feed = Either[String, WireMux.Decoder]
@@ -110,13 +132,13 @@ object Mux:
           .handleError(t => s"bearer failed: ${describe(t)}")
 
       def writeLoop: F[String] =
-        outbound.take.flatMap { case (protocol, message) =>
+        outbound.take.flatMap { case (protocol, role, message) =>
           Clock[F].monotonic.flatMap { now =>
             val frames = WireMux
               .segmentProtocolMessage(
                 message,
                 now.toMicros & 0xffffffffL,
-                sending,
+                sending(role),
                 config.maxSduPayload,
                 protocol,
                 config.maxMessageBytes
@@ -135,21 +157,25 @@ object Mux:
         _ <- F.background(writer.flatMap(done.complete))
         channels <- Resource.eval(
           inbound.toList
-            .traverse { case (protocol, queue) =>
+            .traverse { case (key @ (protocol, role), queue) =>
               for
                 buffer <- Ref.of[F, Bytes](Bytes.empty)
                 lock <- Mutex[F]
-              yield protocol -> channel(protocol, queue, outbound, done, buffer, lock, config)
+              yield key -> channel(protocol, role, queue, outbound, done, buffer, lock, config)
             }
             .map(_.toMap)
         )
       yield new Mux[F]:
-        def channel(protocol: Int) =
-          channels.get(protocol) match
+        def channel(protocol: Int) = channel(protocol, config.role)
+        def channel(protocol: Int, role: Role) =
+          channels.get((protocol, role)) match
             case Some(c) => F.pure(c)
             case None =>
               NetworkError
-                .IllegalTransition(protocol, "mini-protocol is not registered on this connection")
+                .IllegalTransition(
+                  protocol,
+                  s"mini-protocol is not registered as $role on this connection"
+                )
                 .raise[F, MuxChannel[F]]
         def closed = done.get
         def abort(reason: String) = done.complete(reason).void
@@ -157,8 +183,9 @@ object Mux:
 
   private def channel[F[_]: Async](
       id: Int,
+      role: Role,
       queue: Queue[F, Bytes],
-      outbound: Queue[F, (Int, Bytes)],
+      outbound: Queue[F, (Int, Role, Bytes)],
       closed: Deferred[F, String],
       buffer: Ref[F, Bytes],
       lock: Mutex[F],
@@ -177,7 +204,7 @@ object Mux:
         closed.tryGet.flatMap {
           case Some(reason) => bearerClosed(reason)
           case None =>
-            F.race(closed.get, outbound.offer((id, message))).flatMap {
+            F.race(closed.get, outbound.offer((id, role, message))).flatMap {
               case Left(reason) => bearerClosed(reason)
               case Right(_)     => F.unit
             }

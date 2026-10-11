@@ -31,11 +31,13 @@ object Protocols:
   val Handshake = 0
   val ChainSync = 2
   val BlockFetch = 3
+  val TxSubmission2 = 4
   val KeepAlive = 8
 
   def name(protocol: Int): String = protocol match
-    case Handshake  => "handshake"
-    case ChainSync  => "chain-sync"
-    case BlockFetch => "block-fetch"
-    case KeepAlive  => "keep-alive"
-    case other      => s"protocol-$other"
+    case Handshake     => "handshake"
+    case ChainSync     => "chain-sync"
+    case BlockFetch    => "block-fetch"
+    case TxSubmission2 => "tx-submission-2"
+    case KeepAlive     => "keep-alive"
+    case other         => s"protocol-$other"

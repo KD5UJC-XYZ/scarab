@@ -35,30 +35,43 @@ object NodeToNode:
       address: SocketAddress[Host],
       magic: Long,
       codec: ChainSync.PayloadCodec[P],
-      settings: Settings = Settings()
+      settings: Settings = Settings(),
+      transactions: Option[TxSubmissionClient.Source[F]] = None,
+      serve: Option[ServerHandlers[F, P]] = None
   )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
-    Bearer.tcp[F](address, settings.connectTimeout).flatMap(over(_, magic, codec, settings))
+    Bearer
+      .tcp[F](address, settings.connectTimeout)
+      .flatMap(over(_, magic, codec, settings, transactions, serve))
 
-  /** The same over any bearer; the tests use an in-memory one. */
+  /** The same over any bearer; the tests use an in-memory one. With `transactions` the node offers
+    * those transactions over TxSubmission2 for the life of the connection. With `serve` the
+    * connection is offered as duplex (InitiatorAndResponder) and, if the peer agrees, our servers
+    * run on it next to the clients.
+    */
   def over[F[_]: Async, P](
       bearer: Bearer[F],
       magic: Long,
       codec: ChainSync.PayloadCodec[P],
-      settings: Settings = Settings()
+      settings: Settings = Settings(),
+      transactions: Option[TxSubmissionClient.Source[F]] = None,
+      serve: Option[ServerHandlers[F, P]] = None
   )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
+    val offers = Vector(14 -> Handshake.Data(magic, initiatorOnly = serve.isEmpty))
     for
       mux <- Mux.resource(
         bearer,
-        Set(Protocols.Handshake, Protocols.ChainSync, Protocols.BlockFetch, Protocols.KeepAlive),
-        settings.mux
+        NodeToNodeServer.Protocol,
+        settings.mux.copy(duplex = serve.isDefined)
       )
       agreed <- Resource.eval(
         mux
           .channel(Protocols.Handshake)
-          .flatMap(
-            HandshakeClient.run(_, Handshake.defaultNodeToNode(magic), settings.handshakeTimeout)
-          )
+          .flatMap(HandshakeClient.run(_, offers, settings.handshakeTimeout))
       )
+      _ <- serve.filter(_ => !agreed.data.initiatorOnly).traverse_ { handlers =>
+        NodeToNodeServer.start(mux, handlers)
+      }
+      _ <- transactions.traverse_(source => TxSubmissionClient.background(mux, source))
       chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync))
       blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch))
       keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive))
