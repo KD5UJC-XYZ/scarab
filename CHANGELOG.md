@@ -22,7 +22,9 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   sbt dependency graph submitted on pushes to main (roadmap A8).
 - The signature-verdict caches are no longer process-global: `VerificationCache` is created in a
   `Resource` in `Main` and reaches the pure rules as `Verdicts` through `PraosConfig.verdicts` and
-  `TxRules.Env.verdicts`; `Verdicts.Direct` is the uncached specification (roadmap M3).
+  `TxRules.Env.verdicts`; `Verdicts.Direct` is the uncached specification (roadmap M3). A 21 minute
+  Preview follow from a fresh db (6 CPUs) ran epochs 0 to 107 at 342 blocks/s (docs/performance.md:
+  349 for the first 100 epochs), 0 errors; devnet soak 480 s, 23 comparisons, 0 mismatches.
 - `PlutusCases` moved to `lab.node.tools` (roadmap M4).
 
 ### Devnet
