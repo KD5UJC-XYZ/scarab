@@ -130,14 +130,22 @@ def reference_pre_conway(era, session, protocol_params):
     govs = ust[3]
     future_gen = [{"slot": k[0], "genesisKey": k[1].hex(), "delegate": v[0].hex(), "vrf": v[1].hex()}
                   for k, v in dstate[1].items()]
-    rewards = None
+    rewards, evidence = None, None
     if ru and len(ru) == 1:
         body = ru[0]
         r = body[1] if isinstance(body, list) and len(body) == 2 else body
         if isinstance(r, list) and len(r) >= 4:
             rs = {}
+            pre_allegra = previous_major(govs, index) in (0, 1, 2)
+            several, ignored = 0, 0
             for c, entries in r[2].items():
-                rs[cred(c)] = rs.get(cred(c), 0) + sum(e[2] for e in entries)
+                kept = aggregated_pre_allegra(entries) if pre_allegra else sum(e[2] for e in entries)
+                rs[cred(c)] = rs.get(cred(c), 0) + kept
+                if len(entries) > 1:
+                    several += 1
+                    ignored += sum(e[2] for e in entries) - kept
+            evidence = {"previousMajor": previous_major(govs, index), "accounts": len(r[2]),
+                        "withSeveralRewards": several, "ignoredByAggregation": ignored}
             rewards = {"deltaT": r[0], "deltaR": -r[1], "deltaF": -r[3], "rs": {k: v for k, v in rs.items() if v}}
     view = {
         "epoch": epoch,
@@ -164,7 +172,25 @@ def reference_pre_conway(era, session, protocol_params):
         "params": params_view(protocol_params, index),
         "protocolState": chain_dep_state(dep, index),
     }
+    if evidence:
+        view["_evidence"] = {"rewardUpdate": evidence}
     return {"slot": tip[0], "hash": tip[1].hex()}, view
+
+
+def previous_major(govs, index):
+    """Protocol major version of the previous epoch's parameters (`sgsPrevPParams`), which decide how
+    the reward update is applied; None when the layout is not the expected one."""
+    try:
+        pp = govs[3]
+        return pp[14][0] if index < ERA_INDEX["babbage"] else pp[12][0]
+    except (IndexError, TypeError, KeyError):
+        return None
+
+
+def aggregated_pre_allegra(entries):
+    """Before Allegra an account keeps one reward of its set: `Set.deleteFindMin` under `Ord Reward`, where a
+    leader reward (type 1) sorts before a member reward (type 0), then pools compare by id."""
+    return min(entries, key=lambda e: (0 if e[0] == 1 else 1, e[1]))[2]
 
 
 def params_view(pp, index):

@@ -187,29 +187,53 @@ object PreConwayRules:
   // ---------------------------------------------------------------------------------------------
   // UTXO
 
+  /** The minimum ada of an output. Shelley and Allegra: the flat `minUTxOValue`
+    * (`getMinCoinTxOut`); Mary: `scaledMinDeposit`, which is `minUTxOValue` for an ada-only value
+    * and otherwise `max(minUTxOValue, (minUTxOValue / 27) * (27 + size v))` (`coinSize` is 0 there,
+    * unlike Alonzo where the ada-only entry counts 2 words); Alonzo and Babbage:
+    * `coinsPerUTxOWord * (27 + size v + datum hash)`; Babbage onward: `coinsPerUTxOByte` times the
+    * serialised size plus 160.
+    */
   private[ledger] def minUTxO(pp: ProtocolParams, out: TxOut): BigInt =
     if pp.protocolMajor >= 7 then (160 + out.ledgerSize) * pp.coinsPerUTxOByte
     else if pp.protocolMajor >= 5 then pp.coinsPerUTxOWord * entrySize(out)
     else if pp.protocolMajor >= 4 then
       if out.value.assets.isEmpty then pp.minUTxOValue
-      else pp.minUTxOValue.max((pp.minUTxOValue / 29) * entrySize(out))
+      else
+        val perWord = pp.minUTxOValue / UtxoEntrySizeWithoutVal
+        pp.minUTxOValue.max(perWord * (UtxoEntrySizeWithoutVal + valueWords(out.value)))
     else pp.minUTxOValue
+
+  /** `utxoEntrySizeWithoutVal`: 6 + 14 (output) + 7 (input) words. */
+  private val UtxoEntrySizeWithoutVal = BigInt(27)
+
+  /** `size` of a multi-asset `MaryValue` in 8-byte words: `repOverhead` (4 + 1 ada word + 1 for the
+    * asset count) plus the packed representation, which stores 12 bytes per (policy, name) triple,
+    * one 28-byte policy id per distinct policy and the bytes of every distinct asset name. An
+    * ada-only value counts 2 words (the Alonzo entry size; Mary bypasses it).
+    */
+  private[ledger] def valueWords(value: Value): BigInt =
+    if value.assets.isEmpty then BigInt(2)
+    else
+      val triples = value.assets.valuesIterator.map(_.size).sum
+      val names = value.assets.valuesIterator.flatMap(_.keysIterator).toSet
+      val bytes = triples * 12 + names.iterator.map(_.size).sum + value.assets.size * 28
+      BigInt(6 + (bytes + 7) / 8)
 
   /** `utxoEntrySizeWithoutVal` (27 words) plus the value and datum hash sizes. */
   private def entrySize(out: TxOut): BigInt =
-    val value =
-      if out.value.assets.isEmpty then BigInt(2)
-      else
-        val pairs = for
-          (policy, names) <- out.value.assets.toVector
-          (name, _) <- names.toVector
-        yield (policy, name)
-        val bytes = pairs.size * 12 + pairs.map(_._2.size).sum + out.value.assets.size * 28
-        BigInt(6 + (bytes + 7) / 8)
     val datum = out.datum match
       case Datum.Hash(_) => 10
       case _             => 0
-    27 + value + datum
+    UtxoEntrySizeWithoutVal + valueWords(out.value) + datum
+
+  /** The largest serialised value an output may carry: 4000 bytes in Allegra and Mary (hard-coded
+    * in `validateOutputTooBigUTxO`), `maxValueSize` from Alonzo, no limit in Shelley.
+    */
+  private[ledger] def maxOutputValueSize(pp: ProtocolParams): Option[BigInt] =
+    if pp.protocolMajor >= 5 then Some(pp.maxValueSize)
+    else if pp.protocolMajor >= 3 then Some(BigInt(4000))
+    else None
 
   private[ledger] def outputChecks(
       pp: ProtocolParams,
@@ -220,8 +244,15 @@ object PreConwayRules:
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
     val min = minUTxO(pp, out)
+    // Allegra and Mary test `pointwise (<) v (inject min)`: every component must be below, so a value
+    // that carries assets is never too small (Shelley compares the coin, Alonzo negates `pointwise (>=)`).
+    val minimumApplies = pp.protocolMajor <= 2 || pp.protocolMajor >= 5 || out.value.assets.isEmpty
     for
-      _ <- check(out.value.coin >= min, "OutputTooSmallUTxO", s"${out.value.coin} < $min")
+      _ <- check(
+        !minimumApplies || out.value.coin >= min,
+        "OutputTooSmallUTxO",
+        s"${out.value.coin} < $min"
+      )
       _ <- check(
         out.address.kind match
           case Address.Kind.Shelley(n, _, _, _) => n == env.network
@@ -231,9 +262,9 @@ object PreConwayRules:
         out.address.raw.hex
       )
       _ <- check(
-        pp.protocolMajor < 5 || BigInt(out.valueSize) <= pp.maxValueSize,
+        maxOutputValueSize(pp).forall(BigInt(out.value.serializedSize) <= _),
         "OutputTooBigUTxO",
-        s"${out.valueSize}"
+        s"${out.value.serializedSize}"
       )
     yield ()
 
@@ -599,11 +630,7 @@ private[ledger] object PreConwayCerts:
           _ <- check(a.balance == 0, "StakeKeyNonZeroAccountBalanceDELEG", s"${a.balance}")
         yield s.copy(
           accounts = s.accounts - c,
-          ptrs = s.ptrs.filterNot(_._2 == c),
-          mir = s.mir.copy(
-            reserves = s.mir.reserves - c,
-            treasury = s.mir.treasury - c
-          )
+          ptrs = s.ptrs.filterNot(_._2 == c)
         )
       case Certificate.Delegate(c, Some(pool), _, _) =>
         for
@@ -657,6 +684,8 @@ private[ledger] object PreConwayCerts:
     val ir = s.mir
     val availableR = s.reserves + ir.deltaReserves
     val availableT = s.treasury + ir.deltaTreasury
+    // hardforkAlonzoAllowMIRTransfer: transfers between pots and negative entries from protocol 5.
+    val transfersAllowed = s.params.protocolMajor > 4
     for
       _ <- check(
         env.slot < env.firstSlotNextEpoch - env.stabilityWindow,
@@ -669,8 +698,10 @@ private[ledger] object PreConwayCerts:
         s"${genesisSigners.size}"
       )
       result <- transfer match
+        case Left(_) if !transfersAllowed =>
+          Left(fail("MIRTransferNotCurrentlyAllowed", ""))
         case Left(coin) =>
-          pot match
+          check(coin >= 0, "MIRNegativeTransfer", s"$coin") *> (pot match
             case Pot.Reserves =>
               check(
                 coin <= availableR - ir.reserves.values.sum,
@@ -696,18 +727,23 @@ private[ledger] object PreConwayCerts:
                     deltaTreasury = ir.deltaTreasury - coin
                   )
                 )
-              )
+              ))
         case Right(amounts) =>
           val current = if pot == Pot.Reserves then ir.reserves else ir.treasury
+          // Before Alonzo a certificate replaces earlier entries of the same credential and may not
+          // carry negative amounts; from Alonzo it adds to them and the sum may not go negative.
           val combined =
-            if s.params.protocolMajor >= 5 then
+            if transfersAllowed then
               amounts.foldLeft(current)((m, kv) =>
                 m.updated(kv._1, m.getOrElse(kv._1, BigInt(0)) + kv._2)
               )
             else current ++ amounts
           val available = if pot == Pot.Reserves then availableR else availableT
           for
-            _ <- check(combined.values.forall(_ >= 0), "MIRNegativeTransfer", "")
+            _ <-
+              if transfersAllowed then
+                check(combined.values.forall(_ >= 0), "MIRProducesNegativeUpdate", "")
+              else check(amounts.values.forall(_ >= 0), "MIRNegativesNotCurrentlyAllowed", "")
             _ <- check(
               combined.values.sum <= available,
               "InsufficientForInstantaneousRewardsDELEG",

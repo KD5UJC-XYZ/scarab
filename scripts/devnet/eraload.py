@@ -13,8 +13,23 @@ rules of each era and compared with the reference node while the chain is still 
            (TODO: always-succeeds Plutus spends and mints once the script data hash is built here)
   Babbage  inline datums, reference-script outputs, reference inputs, collateral return
 
+Boundary cases (devnet.py e2e runs three Shelley epochs, genesis minUTxOValue 1 ada, pool margin 0.1):
+
+  Shelley  a reward account that leads pool 1 and delegates to pool 2 (pre-Allegra aggregation keeps
+           only the leader reward of the two), outputs at minUTxOValue and one lovelace below, MIR
+           from the reserves submitted early, mid-epoch (replaced by a later one in the same epoch),
+           just before and just after the 3k/f cut-off, and to a credential that is not registered
+  Allegra  stake keys deregistered before and after the reward calculation starts (4k/f): the
+           pre-Babbage reward prefilter sends the first one's reward back to the reserves and the
+           second one's to the treasury
+  Mary     the scaled minimum for native assets at the boundary, values of exactly 4000 and 4001
+           bytes, MIR pot transfers and negative amounts (refused before Alonzo)
+  Alonzo   a MIR pot transfer and a cancelling negative entry (allowed from protocol 5), values of
+           exactly 5000 and 5001 bytes against maxValueSize
+
 Transactions are built and signed by `eratx` because cardano-cli can only build Conway
-transactions. A rejected submission is logged and never fatal.
+transactions. A rejected submission is logged and never fatal; a submission that must be rejected
+(`expect_reject`) counts as `unexpected` when the reference accepts it or names another reason.
 """
 import json
 import random
@@ -26,10 +41,34 @@ from . import eratx, util
 from .eratx import Key
 
 FEE = 250_000
+MIN_UTXO_ASSET_NAME = b"minb"
 MAGIC = 1082026
 ENV = "/work/env"
 SOCKET = f"{ENV}/socket/node1/sock"
 ERAS = ["shelley", "allegra", "mary", "alonzo", "babbage", "conway"]
+
+
+def mary_min_utxo(min_utxo_value, assets):
+    """Mary `scaledMinDeposit`: the parameter for an ada-only value, else
+    max(mv, (mv // 27) * (27 + size)) with size in 8-byte words (cardano-ledger Mary.TxOut / Mary.Value)."""
+    if not assets:
+        return min_utxo_value
+    triples = sum(len(names) for names in assets.values())
+    distinct = {n for names in assets.values() for n in names}
+    packed = triples * 12 + sum(len(n) for n in distinct) + 28 * len(assets)
+    words = 6 + (packed + 7) // 8
+    return max(min_utxo_value, (min_utxo_value // 27) * (27 + words))
+
+
+def value_bytes(coin, assets):
+    """Length of the CBOR value `[coin, {policy: {name: quantity}}]` (the ledger's `serialize v`)."""
+    def head(n):
+        return 1 if n < 24 else 2 if n < 256 else 3 if n < 65536 else 5 if n < 2 ** 32 else 9
+    if not assets:
+        return head(coin)
+    inner = sum(2 + 28 + head(len(names)) + sum(head(len(n)) + len(n) + head(q) for n, q in names.items())
+                for names in assets.values())
+    return 1 + head(coin) + head(len(assets)) + inner
 
 
 class Wallet:
@@ -58,6 +97,8 @@ class EraLoad:
         self.pending = 0
         self.ext = None  # govextra.Extended while the extended governance scenarios run
         self.ext_thread = None
+        self.evidence = []  # expected rejections and what the reference said
+        self.era_first = {}
 
     # ------------------------------------------------------------ reference plumbing
     def sh(self, script, stdin=None, timeout=60):
@@ -95,17 +136,28 @@ class EraLoad:
         r = self.sh(f"cardano-cli query tip --testnet-magic {MAGIC} --socket-path {SOCKET}")
         return json.loads(r.stdout)
 
-    def submit(self, era, tx, label):
+    def submit(self, era, tx, label, expect=None):
         env = eratx.envelope(era, tx)
         r = self.sh(f"mkdir -p /work/tx && cat > /work/tx/{label}.tx && cardano-cli conway transaction submit --testnet-magic {MAGIC} "
                     f"--socket-path {SOCKET} --tx-file /work/tx/{label}.tx", stdin=env)
         ok = r.returncode == 0
+        # the reference's reason is in the first lines; the Haskell call stack that follows is noise
+        text = (r.stderr or r.stdout).strip().split("CallStack")[0].strip()
+        if expect is not None:
+            # the refusal must name the rule under test and must not be a side effect of a stale input or an
+            # unbalanced transaction, which would also refuse it
+            stale = ("BadInputsUTxO" in text or "ValueNotConservedUTxO" in text) and expect not in text
+            verdict = "accepted" if ok else "expected" if expect in text and not stale else "other reason"
+            self.evidence.append({"era": era, "label": label, "mustReject": expect, "verdict": verdict,
+                                  "error": "" if ok else text[:400]})
+            key = "expectedRejected" if verdict == "expected" else "unexpected"
+            self.stats[key] = self.stats.get(key, 0) + 1
+            self.log({key: label, "mustReject": expect, "verdict": verdict, "error": text[:400]})
+            return False
         self.stats[label.split("-")[0]] = self.stats.get(label.split("-")[0], 0) + (1 if ok else 0)
         if not ok:
             self.stats["rejected"] = self.stats.get("rejected", 0) + 1
-            text = (r.stderr or r.stdout).strip()
-            # the reference's reason is in the first lines; the Haskell call stack that follows is noise
-            self.log({"rejected": label, "error": text.split("CallStack")[0].strip()[:900]})
+            self.log({"rejected": label, "error": text[:900]})
         return ok
 
     def confirm(self, txid, timeout=25):
@@ -190,9 +242,10 @@ class EraLoad:
         except Exception as e:  # a bug in a scenario must not stop the cluster walk
             self.log({"buildFailed": label, "error": repr(e)})
             return None
-        if expect_reject is not None:
+        if expect_reject is not None and not isinstance(expect_reject, str):
+            # governance scenarios: a list of predicate-failure names, the refused bytes are kept for replay
             return self.expect_rejected(era, tx, f"{label}-{txid[:8]}", expect_reject, record)
-        if not self.submit(era, tx, f"{label}-{txid[:8]}"):
+        if not self.submit(era, tx, f"{label}-{txid[:8]}", expect=expect_reject):
             return None
         if record:
             self.keep_tx(record, {"label": label, "era": era, "outcome": "accepted", "tx": tx.hex()})
@@ -244,17 +297,78 @@ class EraLoad:
             outs = [(b.address, self.rng.randint(3, 12) * 1_000_000, None, {}) for _ in range(self.rng.randint(1, 3))]
             self.act(era, "transfer", a, outs)
 
-    def withdrawals(self, era):
-        """Withdraw the whole reward balance of any registered, rewarded wallet."""
+    def reward_balances(self):
+        """{stake credential hash: reward balance} of the registered accounts, from the reference ledger."""
         with self.lsq_factory() as s:
             s.acquire()
             index = self.current_era(s)
             nes = s.ledger_query(index, [12])
-        balances = {c[1]: a[1] for c, a in nes[3][1][0][1][0][0].items()}
+        return {c[1]: a[1] for c, a in nes[3][1][0][1][0][0].items()}
+
+    def withdrawals(self, era):
+        """Withdraw the whole reward balance of any registered, rewarded wallet."""
+        balances = self.reward_balances()
         for w in self.wallets:
             amount = balances.get(w.stake.hash, 0)
             if w.registered and amount > 0:
                 self.act(era, "withdrawal", w, [], withdrawals={w.reward: amount}, extra_signers=[w.stake])
+
+    def deregister(self, era, label, wallet):
+        """Withdraw the reward balance (a deregistration needs it to be zero) and deregister, in one transaction."""
+        amount = self.reward_balances().get(wallet.stake.hash, 0)
+        txid = self.act(era, label, wallet, [], certs=[eratx.stake_key_cert(1, wallet.stake.hash)], refund=400_000,
+                        withdrawals={wallet.reward: amount} if amount else None, extra_signers=[wallet.stake])
+        if txid:
+            wallet.registered = False
+            self.log({"deregistered": label, "slot": self.epoch_info().get("slotInEpoch"), "reward": amount})
+        return txid
+
+    def min_utxo_value(self):
+        """The Shelley..Mary `minUTxOValue` parameter (absent from Alonzo on)."""
+        pp = json.loads(self.sh(f"cardano-cli query protocol-parameters --testnet-magic {MAGIC} --socket-path {SOCKET}").stdout)
+        return pp.get("minUTxOValue", 0)
+
+    def min_utxo_boundary(self, era):
+        """An ada-only output of exactly minUTxOValue is accepted, one lovelace less is refused."""
+        mv = self.min_utxo_value()
+        if not mv:
+            return
+        w, slot = self.wallets, self.tip["slot"]
+        self.act(era, "min-ok", w[4], [(w[5].address, mv, None, {})], ttl=slot + 2000)
+        self.act(era, "min-low", w[4], [(w[5].address, mv - 1, None, {})], ttl=slot + 2000,
+                 expect_reject="OutputTooSmallUTxO")
+
+    def mir_cert(self, era, label, pot, body, expect=None, certs=None):
+        """A MIR certificate (`body` is a credential-hash/amount pair or a pot-to-pot coin), signed by the genesis delegates."""
+        cold = [self.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey") for n in (1, 2, 3)]
+        if certs is None:
+            if isinstance(body, tuple):
+                body = {eratx.Raw(eratx.enc([0, body[0]])): body[1]}
+            certs = [[6, [pot, body]]]
+        return self.act(era, label, self.wallets[5], [], certs=certs, extra_signers=cold, expect_reject=expect)
+
+    def sized_assets(self, policy, target, coin):
+        """Assets under one policy whose value `[coin, ...]` serialises to exactly `target` bytes."""
+        n0 = (target - value_bytes(coin, {policy: {b"": 1}}) - 2) // 35
+        for n in (n0, n0 - 1):
+            base = {f"{i:032d}".encode(): 1 for i in range(n)}
+            for length in range(33):
+                for q in (1, 24, 256):
+                    names = dict(base)
+                    names[b"e" * length] = q
+                    if value_bytes(coin, {policy: names}) == target:
+                        return {policy: names}
+        raise RuntimeError(f"no asset set serialises to {target} bytes")
+
+    def value_size_case(self, era, label, size, coin, expect=None):
+        """Mint and pay a value of exactly `size` serialised bytes to wallet 2; the wallet with the most ada pays."""
+        w = self.wallets
+        script = eratx.sig_script(w[5].pay.hash)
+        assets = self.sized_assets(eratx.script_hash(script), size, coin)
+        _, _, by_addr = self.snapshot()
+        payer = max(w, key=lambda x: max([u[1] for u in by_addr.get(x.address, []) if not u[2]] or [0]))
+        self.act(era, label, payer, [(w[2].address, coin, assets, {})], mint=assets, native_scripts=[script],
+                 extra_signers=[w[5].pay], ttl=self.tip["slot"] + 2000, expect_reject=expect)
 
     def shelley_features(self, era):
         w = self.wallets
@@ -271,6 +385,8 @@ class EraLoad:
             pools = [self.read_key(f"{ENV}/pools-keys/pool{n}/cold.skey").hash for n in (1, 2, 3)]
             certs = [eratx.delegation_cert(w[i].stake.hash, pools[i % 3]) for i in range(3)]
             self.act(era, "delegate", w[4], [], certs=certs, extra_signers=[x.stake for x in w[:3]])
+        if self.once("min-utxo"):
+            self.min_utxo_boundary(era)
         if self.once("newpool"):
             self.new_pool(era)
         if self.once("repool"):
@@ -331,6 +447,12 @@ class EraLoad:
     def allegra_features(self, era):
         w = self.wallets
         slot = self.tip["slot"]
+        if self.once("dereg-before-cutoff"):
+            # before the reward calculation starts (slot 4k/f of the epoch): the account is not in the
+            # prefilter's set, so its reward stays in the reserves
+            self.deregister(era, "dereg-early", w[1])
+        if self.once("min-utxo-allegra"):
+            self.min_utxo_boundary(era)
         if self.once("interval"):
             self.act(era, "interval", w[4], [(w[5].address, 5_000_000, None, {})], valid_from=max(slot - 20, 0), ttl=slot + 2000)
         if self.once("metadata"):
@@ -379,6 +501,28 @@ class EraLoad:
                      spend_extra=self.asset_utxos(w[5])[:1], ttl=slot + 2000)
         if self.once("mir-treasury"):
             self.mir(era, 1, w[1], 3_000_000)
+        if self.once("min-utxo-mary"):
+            self.min_utxo_boundary(era)  # ada-only outputs: exactly the parameter
+        mv = self.min_utxo_value()
+        if mv and self.once("min-assets"):
+            # scaledMinDeposit for one asset is 1444443 with the 1 ada parameter, but the Allegra/Mary rule
+            # (`pointwise (<) v (inject min)`) never calls an output with assets too small: the reference
+            # accepts one lovelace less, and even one lovelace
+            name = MIN_UTXO_ASSET_NAME
+            need = mary_min_utxo(mv, {policy: {name: 1}})
+            self.log({"scaledMinDeposit": need})
+            for tag, coin, asset in (("ok", need, name), ("below", need - 1, name + b"2"), ("one", 1, name + b"3")):
+                self.act(era, f"min-assets-{tag}", w[5], [(w[4].address, coin, {policy: {asset: 1}}, {})],
+                         mint={policy: {asset: 1}}, native_scripts=[policy_script], ttl=slot + 2000)
+        if self.once("value-4000"):
+            # Allegra and Mary: serialised values larger than 4000 bytes are refused
+            self.value_size_case(era, "value-4000", 4000, 30_000_000)
+            self.value_size_case(era, "value-4001", 4001, 30_000_000, expect="OutputTooBigUTxO")
+        if self.once("mir-transfer-refused"):
+            self.mir_cert(era, "mir-transfer", 0, 1_000_000, expect="MIRTransferNotCurrentlyAllowed")
+        if self.once("mir-negative-refused"):
+            self.mir_cert(era, "mir-negative", 0, (w[1].stake.hash, -1_000_000),
+                          expect="MIRNegativesNotCurrentlyAllowed")
         if self.once("timelock-mint"):
             # a policy that only mints before an expiry slot
             expiring = eratx.all_script(eratx.sig_script(w[4].pay.hash), eratx.before_script(slot + 3000))
@@ -393,6 +537,18 @@ class EraLoad:
     def alonzo_features(self, era):
         w = self.wallets
         slot = self.tip["slot"]
+        if self.once("mir-transfer"):
+            # allowed from protocol 5 (hardforkAlonzoAllowMIRTransfer): the pots move at the boundary
+            self.mir_cert(era, "mir-transfer", 0, 2_000_000)
+        if self.once("mir-cancel"):
+            # entries add up from protocol 5: +3 ada and -1 ada leave 2 ada, where before they replaced each other
+            target = eratx.Raw(eratx.enc([0, w[2].stake.hash]))
+            self.mir_cert(era, "mir-cancel", 0, None,
+                          certs=[[6, [0, {target: 3_000_000}]], [6, [0, {target: -1_000_000}]]])
+        if self.once("value-5000"):
+            # maxValueSize (5000 in the devnet genesis): exactly that is accepted, one byte more is refused
+            self.value_size_case(era, "value-5000", 5000, 40_000_000)
+            self.value_size_case(era, "value-5001", 5001, 40_000_000, expect="OutputTooBigUTxO")
         if self.once("collateral"):
             utxos = [u for u in self.funds(w[1].address) if not u[2]]
             if len(utxos) >= 2:
@@ -793,6 +949,34 @@ class EraLoad:
             self.ext_thread = threading.Thread(target=body, daemon=True)
             self.ext_thread.start()
 
+    # (era, epoch of the era, first slot of the epoch, last slot, action): actions that depend on the slot
+    TIMED = [
+        ("shelley", 1, 230, 400, "mir_mid_epoch"),
+        ("shelley", 1, 385, 420, "mir_before_cutoff"),
+        ("shelley", 1, 432, 480, "mir_after_cutoff"),
+        ("shelley", 2, 60, 380, "mir_unregistered"),
+        ("allegra", 0, 150, 400, "dereg_after_start"),
+    ]
+
+    def mir_mid_epoch(self, era):
+        self.mir_cert(era, "mir-mid", 0, (self.wallets[1].stake.hash, 5_000_000))
+
+    def mir_before_cutoff(self, era):
+        """Still earlier than the slot 3k/f before the epoch ends: accepted, and replaces the earlier entry."""
+        self.mir_cert(era, "mir-before", 0, (self.wallets[1].stake.hash, 9_000_000))
+
+    def mir_after_cutoff(self, era):
+        self.mir_cert(era, "mir-after", 0, (self.wallets[2].stake.hash, 2_000_000), expect="MIRCertificateTooLate")
+
+    def mir_unregistered(self, era):
+        """An entry for a credential that is not registered: it counts against the pot, is never paid."""
+        self.mir_cert(era, "mir-unregistered", 0, (eratx.blake2b(b"never registered", 28), 4_000_000))
+
+    def dereg_after_start(self, era):
+        """After the reward calculation has started: the account was in the prefilter's set, so its
+        reward goes to the treasury at the boundary."""
+        self.deregister(era, "dereg-late", self.wallets[2])
+
     FEATURES = {"shelley": "shelley_features", "allegra": "allegra_features", "mary": "mary_features",
                 "alonzo": "alonzo_features", "babbage": "babbage_features"}
 
@@ -835,6 +1019,19 @@ class EraLoad:
                         except Exception as e:
                             self.log({"batchFailed": era, "error": repr(e)})
                         compare(era, "after-batch")
+                self.era_first.setdefault(era, epoch)
+                for first, ordinal, lo, hi, action in self.TIMED:
+                    if era == first and epoch - self.era_first[era] == ordinal and (key, "batch") in seen \
+                            and (key, action) not in seen and in_epoch >= lo:
+                        seen.add((key, action))
+                        now = self.epoch_info()
+                        if now.get("epoch") == epoch and now.get("slotInEpoch", 0) <= hi:
+                            try:
+                                getattr(self, action)(era)
+                            except Exception as e:
+                                self.log({"actionFailed": action, "error": repr(e)})
+                        else:
+                            self.log({"skipped": action, "reason": "window missed", "at": now.get("slotInEpoch")})
                 for label, at in self.POINTS:
                     if (key, "batch") in seen and (key, label) not in seen:
                         now = self.epoch_info()

@@ -200,6 +200,7 @@ def compare_pre_conway(name, era, attempts=10):
             time.sleep(0.4)
         if scala is None:
             continue  # the node moved past the retained window (k blocks) while the queries ran
+        evidence = reference.pop("_evidence", None)  # what the comparison exercised, not compared
         scala_view = {k: v for k, v in scala.items() if k in reference}
         if reference["rewardUpdate"] is None:
             scala_view["rewardUpdate"] = None  # reference pulser incomplete: nothing to compare
@@ -207,6 +208,11 @@ def compare_pre_conway(name, era, attempts=10):
                                 if k in reference["params"]}
         differences = diff(reference, scala_view)
         return {"tip": tip, "epoch": reference["epoch"], "utxoSize": len(reference["utxo"]),
+                "evidence": {**(evidence or {}), "mirPending": {
+                    "reserves": len(reference["mir"]["reserves"]), "treasury": len(reference["mir"]["treasury"]),
+                    "deltaReserves": reference["mir"]["deltaReserves"], "deltaTreasury": reference["mir"]["deltaTreasury"]},
+                    "rewardUpdate": {**(evidence or {}).get("rewardUpdate", {}),
+                                     "rewards": len((reference["rewardUpdate"] or {}).get("rs", {}))}},
                 "matched": not differences, "differenceCount": len(differences),
                 "differences": [{"path": p, "reference": str(a)[:300], "scala": str(b)[:300]}
                                 for p, a, b in differences[:25]]}

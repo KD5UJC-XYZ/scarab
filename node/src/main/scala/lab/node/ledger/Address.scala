@@ -143,7 +143,33 @@ final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
   def -(o: Value): Value = Value(coin - o.coin, Value.mergeAssets(assets, o.assets, _ - _))
   def isZero: Boolean = coin == 0 && assets.isEmpty
 
+  /** Bytes of the value as the ledger serialises it (`serialize v` in `validateOutputTooBigUTxO`):
+    * a bare unsigned integer for an ada-only value, otherwise `[coin, {policy: {name: quantity}}]`
+    * in definite-length canonical form, whatever encoding the transaction arrived in.
+    */
+  def serializedSize: Int =
+    import Value.{headSize, uintSize}
+    if assets.isEmpty then uintSize(coin)
+    else
+      val inner = assets.valuesIterator.map { names =>
+        val entries = names.iterator.map { case (name, q) =>
+          headSize(name.size) + name.size + uintSize(q.abs)
+        }.sum
+        2 + 28 + headSize(names.size) + entries
+      }.sum
+      1 + uintSize(coin) + headSize(assets.size) + inner
+
 object Value:
+  /** Size of a CBOR head carrying `n` (a length or an unsigned integer up to 2^32). */
+  private def headSize(n: BigInt): Int =
+    if n < 24 then 1
+    else if n < 256 then 2
+    else if n < 65536 then 3
+    else if n < (BigInt(1) << 32) then 5
+    else 9
+
+  private def uintSize(n: BigInt): Int = headSize(n)
+
   val zero: Value = Value(0, Map.empty)
   def coin(c: BigInt): Value = Value(c, Map.empty)
 
@@ -210,7 +236,9 @@ final case class TxOut(
     value: Value,
     datum: Datum,
     scriptRef: Option[Script],
-    /** Size in bytes of the encoded value (limited by `maxValueSize`). */
+    /** Size in bytes of the value as it arrived (informational: the size rules use
+      * [[Value.serializedSize]], the canonical re-serialisation).
+      */
     valueSize: Int
 ):
   def hasDatum: Boolean = datum != Datum.NoDatum

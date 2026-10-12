@@ -12,7 +12,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, compare, encoding, eratx, eraview, govextra, govview, ntcquery, refused_fixture  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntcquery, refused_fixture  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 
 RFC8032_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
@@ -248,6 +248,49 @@ class PoolOracleTest(unittest.TestCase):
     def test_epoch_without_schedule(self):
         r = pool.missed_leader_slots(self.events([10], [], end=150), {0: [10]}, self.SHELLEY)
         self.assertEqual(r["absentEpochs"], [1])
+
+
+class BoundaryHelperTests(unittest.TestCase):
+    """The era-load helpers that state ledger boundaries (cardano-ledger Mary.TxOut / Mary.Value / Rewards)."""
+
+    POLICY = b"\x11" * 28
+
+    def test_mary_scaled_min_deposit(self):
+        # ada only: the parameter; one 4-byte name: 6 + ceil((12 + 4 + 28) / 8) = 12 words, 1000000 // 27 per word
+        self.assertEqual(eraload.mary_min_utxo(1_000_000, {}), 1_000_000)
+        self.assertEqual(eraload.mary_min_utxo(1_000_000, {self.POLICY: {b"minb": 1}}), 37037 * (27 + 12))
+        # the same name under two policies counts once: 24 + 5 + 56 bytes -> 11 words + 6
+        two = {self.POLICY: {b"abcde": 1}, b"\x22" * 28: {b"abcde": 1}}
+        self.assertEqual(eraload.mary_min_utxo(1_000_000, two), 37037 * (27 + 17))
+        # never below the parameter
+        self.assertEqual(eraload.mary_min_utxo(40, {self.POLICY: {b"minb": 1}}), 40)
+
+    def test_value_size_search_hits_the_target(self):
+        loader = eraload.EraLoad.__new__(eraload.EraLoad)
+        for target, coin in [(4000, 30_000_000), (4001, 30_000_000), (5000, 40_000_000), (5001, 40_000_000)]:
+            assets = loader.sized_assets(self.POLICY, target, coin)
+            self.assertEqual(eraload.value_bytes(coin, assets), target)
+            # and the same bytes as the CBOR encoder produces
+            value = [coin, {self.POLICY: dict(assets[self.POLICY])}]
+            self.assertEqual(len(cbor.enc(value)), target)
+
+    def test_pre_allegra_reward_choice(self):
+        # entries are [type, pool, amount]; the leader reward (type 1) is the minimum, then the lower pool
+        self.assertEqual(eraview.aggregated_pre_allegra([[0, b"\x01", 5], [1, b"\x09", 7]]), 7)
+        self.assertEqual(eraview.aggregated_pre_allegra([[1, b"\x09", 7], [1, b"\x02", 3]]), 3)
+        self.assertEqual(eraview.aggregated_pre_allegra([[0, b"\x09", 7], [0, b"\x02", 3]]), 3)
+
+    def test_previous_protocol_major(self):
+        pp = [0] * 14 + [[2, 0]] + [0] * 3
+        self.assertEqual(eraview.previous_major([None, None, None, pp], 1), 2)
+        self.assertIsNone(eraview.previous_major([], 1))
+
+    def test_shelley_epochs_extend_the_plan(self):
+        class A:
+            shelley_epochs = 3
+        plan = cluster.era_plan(A)
+        self.assertEqual(plan[:4], [("shelley", 2)] * 3 + [("allegra", 3)])
+        self.assertEqual(cluster.era_plan(object()), cluster.ERA_PLAN)
 
 
 if __name__ == "__main__":

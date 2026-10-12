@@ -6,12 +6,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 ## [Unreleased]
 
 ### Ledger
+- Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
+- Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.
+- Mary scaled minimum output: divisor 27 and distinct asset names; Allegra and Mary only call ada-only outputs too small, as the reference does.
+- Output value limit: 4000 serialised bytes in Allegra and Mary, `maxValueSize` from Alonzo, measured on the canonical encoding.
+- MIR: transfers and negative entries need protocol 5, later certificates replace earlier ones before that, deregistration keeps pending entries.
 - Protocol version 11: a pool registration may not take a VRF key hash another pool holds or has
   scheduled by a re-registration (`VRFKeyHashAlreadyRegistered`, `hardforkConwayDisallowDuplicatedVRFKeys`).
 - The mempool refuses votes of unelected committee members before protocol version 11, as the
   reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
 
 ### Devnet
+- `e2e`: three Shelley epochs, 1 ada minimum, pool margin 0.1, cross-paying pools, boundary load and expected-rejection checks.
 - `soak --governance-extended` (`govload --extended`, `scripts/devnet/govextra.py`): pool reward accounts
   with default votes, committee election with a term limit, a member that expires and `committeeMinSize`,
   a Plutus V3 script as stake credential, DRep and reward account, and the protocol-11 refusals (disjoint
