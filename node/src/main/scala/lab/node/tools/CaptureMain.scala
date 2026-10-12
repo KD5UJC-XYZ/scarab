@@ -7,11 +7,12 @@ import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import lab.cbor.Bytes
 import lab.network.ChainSync
-import lab.node.{ChainError, Header, NodeError, Peer, SyncEvent}
+import lab.node.{ByronSpan, ChainError, Header, NodeError, Peer, SyncEvent}
 
 /** Development tool, not part of the node: `lab.node.tools.CaptureMain`.
   *
-  * `capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]`
+  * `capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]
+  * [--byron-epoch-slots N]` (N = 10k of the Byron genesis, needed where the chain has Byron blocks)
   *
   * Records N blocks of a chain, one hex-encoded raw block per line, for offline replay tests. It
   * starts at genesis, or with `--from` at the first block after that point. Capturing continues
@@ -31,17 +32,24 @@ object CaptureMain extends IOApp:
       blocks <- flags.get("blocks").flatMap(b => if b == "all" then Some(All) else b.toIntOption)
       out <- flags.get("out").map(Path.of(_))
       from <- flags.get("from").fold(Option(ChainSync.Point.Origin))(parsePoint)
-    yield (peer, magic, blocks, out, from)
+      epochSlots = flags
+        .get("byron-epoch-slots")
+        .flatMap(_.toLongOption)
+        .fold(ByronSpan.Absent.epochSlots)(BigInt(_))
+    yield (peer, magic, blocks, out, from, epochSlots)
     parsed match
       case None =>
         IO.println(
-          "usage: capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hash>]"
+          "usage: capture --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hash>] [--byron-epoch-slots N]"
         ).as(ExitCode(2))
-      case Some((peer, magic, n, out, from)) =>
+      case Some((peer, magic, n, out, from, epochSlots)) =>
         Handle
           .allow[NodeError] {
             Peer
-              .nodeToNode[IO](Peer.Settings(peer, magic), _ => IO.unit)
+              .nodeToNode[IO](
+                Peer.Settings(peer, magic, byronEpochSlots = epochSlots),
+                _ => IO.unit
+              )
               .use(capture(_, n, from))
               .flatMap(blocks =>
                 IO.blocking(Files.writeString(out, blocks.map(_.hex).mkString("", "\n", "\n")))

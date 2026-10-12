@@ -226,8 +226,8 @@ class Comparisons:
         self.lock = threading.Lock()
         self.file = root / "compare.jsonl"
         self.per_era = {e: {"matched": 0, "mismatched": 0, "errors": 0, "skipped": 0} for e in ERAS}
-        self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger and the "
-                                         "Scala node keeps no Byron UTxO")
+        self.per_era["byron"]["note"] = ("not compared: cardano-cli 11.2.3 cannot query a Byron ledger; the "
+                                         "Byron UTxO is compared through the first Shelley epoch")
         self.mismatches = []
 
     def record(self, era, label, result):

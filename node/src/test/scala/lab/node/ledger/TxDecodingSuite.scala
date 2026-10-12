@@ -17,7 +17,7 @@ class TxDecodingSuite extends FunSuite:
       .toVector
       .filter(_.nonEmpty)
       .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
-      .map(Block.decode(_).fold(e => fail(e.message), identity))
+      .map(Block.decodeShelley(_).fold(e => fail(e.message), identity))
       .collect { case b: Block.Shelley => b }
       .flatMap(b =>
         b.transactions

@@ -19,7 +19,7 @@ certificates, nonces, leader schedule) and applies the ledger rules of every She
 through Conway: native and Plutus V1 to V3 scripts, all certificates, governance (proposals, votes,
 ratification, enactment, DRep pulser) and treasury donations. It persists its chain (immutable blocks,
 snapshots, a RocksDB UTxO set), acts as a relay (node-to-node servers, mempool, local transaction
-submission) and can forge Praos blocks. Byron is supported for headers only. What is checked against
+submission) and can forge Praos blocks. Byron is supported from genesis (PBFT, ledger, update system) through to Shelley. What is checked against
 what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the next steps are in
 [docs/roadmap.md](docs/roadmap.md).
 
@@ -38,8 +38,8 @@ what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the
 The devnet runs are against `cardano-node` 11.1.3 and are one developer's recorded runs with the
 commits in [docs/compatibility.md](docs/compatibility.md); they do not run in CI yet. Preview
 agreement shows the node accepts the real chain with full validation (no false rejections), not that its ledger state is identical to
-the Haskell node's (roadmap K1, db-analyser comparison); the devnet comparator covers identity on generated load. Things explicitly **not** checked include mainnet and preprod, Byron
-transactions, `ledger-state` and the other node-to-client queries listed in the compatibility matrix, Mithril import, the P2P governor and security
+the Haskell node's (roadmap K1, db-analyser comparison); the devnet comparator covers identity on generated load. Things explicitly **not** checked include mainnet, a preprod sync to the tip, Byron
+transactions on a contiguous chain (mainnet Byron blocks with transactions are validated individually), `ledger-state` and the other node-to-client queries listed in the compatibility matrix, Mithril import, the P2P governor and security
 review.
 
 ## Quick start

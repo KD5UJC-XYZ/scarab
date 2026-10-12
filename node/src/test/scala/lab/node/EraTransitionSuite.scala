@@ -10,7 +10,7 @@ import java.nio.file.{Files, Path}
 import lab.Blake2b
 import lab.cbor.Bytes
 import lab.network.{ChainSync, Era}
-import lab.node.consensus.{ByronCheck, ByronRules, Nonce, Praos}
+import lab.node.consensus.{ByronCheck, ByronRules, Nonce, PBftState, Praos}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -282,17 +282,12 @@ class EraTransitionSuite extends CatsEffectSuite:
   }
 
   test("Byron headers: boundary block structural, every main signature verified") {
-    val checks = headers.indices.take(50).map { i =>
-      ByronRules.update(
-        states(i).byron.tip,
-        headers(i).asInstanceOf[Header.Byron],
-        setup.byronRules.get
-      )
-    }
+    val checks = headers.indices.take(50).map(i => byronUpdate(i, byronBlock(i)))
     assert(checks.forall(_.isRight), checks.collectFirst { case Left(e) => e }.toString)
     val verdicts = checks.map(_.toOption.get._2)
     assertEquals(verdicts.head, ByronCheck.Boundary)
-    assert(verdicts.tail.forall(_ == ByronCheck.Verified), verdicts.toString)
+    // every main block is on the round-robin schedule, none carries a transaction
+    assert(verdicts.tail.forall(_ == ByronCheck.Verified(true, 0)), verdicts.toString)
   }
 
   test("epoch nonces: the tick at every epoch boundary, carried over from the genesis hash") {
@@ -387,7 +382,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     }
     assertEquals(
       byron.toVector,
-      Vector[FollowerEvent](FollowerEvent.ByronEpochValidated(0, 1, 49, 0))
+      Vector[FollowerEvent](FollowerEvent.ByronEpochValidated(0, 1, 49, 0, 0))
     )
   }
 
@@ -395,58 +390,87 @@ class EraTransitionSuite extends CatsEffectSuite:
 
   private def flip(b: Bytes, i: Int): Bytes = Bytes(b.value.updated(i, (b.value(i) ^ 1).toByte))
 
+  private def byronBlock(i: Int): Block.Byron = blocks(i).asInstanceOf[Block.Byron]
+
+  /** The Byron rules on block `block` in place of block `i`, from the state before block `i`. */
+  private def byronUpdate(
+      i: Int,
+      block: Block.Byron,
+      from: Int = -1
+  ): Either[String, (ByronRules.State, ByronCheck)] =
+    val before = states(if from >= 0 then from else i).byron
+    ByronRules.update(
+      ByronRules.State(before.tip, before.ledger.get, before.pbft),
+      block,
+      setup.byronRules.get
+    )
+
+  private def withHeader(i: Int)(f: Header.Byron => Header.Byron): Block.Byron =
+    val b = byronBlock(i)
+    b.copy(header = f(b.header))
+
   test("a Byron header with a tampered signature is rejected") {
     val h = headers(5).asInstanceOf[Header.Byron]
     val main = h.main.get
     val delegated = main.signature.asInstanceOf[Header.ByronSignature.Delegated]
-    val bad = h.copy(main =
-      Some(main.copy(signature = delegated.copy(signature = flip(delegated.signature, 3))))
+    val bad = withHeader(5)(
+      _.copy(main =
+        Some(main.copy(signature = delegated.copy(signature = flip(delegated.signature, 3))))
+      )
     )
-    val result = ByronRules.update(states(5).byron.tip, bad, setup.byronRules.get)
+    val result = byronUpdate(5, bad)
     assert(result.left.exists(_.contains("signature")), result.toString)
   }
 
   test("a Byron header signed over different content is rejected") {
-    val h = headers(5).asInstanceOf[Header.Byron]
-    val main = h.main.get
-    val bad = h.copy(main = Some(main.copy(signed = flip(main.signed, 40))))
-    assert(ByronRules.update(states(5).byron.tip, bad, setup.byronRules.get).isLeft)
+    val main = headers(5).asInstanceOf[Header.Byron].main.get
+    val bad = withHeader(5)(_.copy(main = Some(main.copy(signed = flip(main.signed, 40)))))
+    assert(byronUpdate(5, bad).isLeft)
   }
 
-  test("a Byron header from a foreign delegate is flagged unchecked, not verified") {
+  test("a Byron header from a foreign delegate is rejected, not accepted unchecked") {
     val h = headers(5).asInstanceOf[Header.Byron]
     val main = h.main.get
     val delegated = main.signature.asInstanceOf[Header.ByronSignature.Delegated]
-    val other = h.copy(main =
-      Some(main.copy(signature = delegated.copy(delegate = flip(delegated.delegate, 0))))
-    )
-    assertEquals(
-      ByronRules.update(states(5).byron.tip, other, setup.byronRules.get).map(_._2.label),
-      Right("unchecked")
-    )
-    val stranger = h.copy(main =
-      Some(
-        main.copy(
-          leader = flip(main.leader, 0),
-          signature = delegated.copy(issuer = flip(delegated.issuer, 0))
-        )
+    val other = withHeader(5)(
+      _.copy(main =
+        Some(main.copy(signature = delegated.copy(delegate = flip(delegated.delegate, 0))))
       )
     )
-    assert(
-      ByronRules
-        .update(states(5).byron.tip, stranger, setup.byronRules.get)
-        .left
-        .exists(_.contains("genesis key"))
-    )
+    assert(byronUpdate(5, other).isLeft)
+  }
+
+  test("a Byron block whose body does not match the header's proof is rejected") {
+    val b = byronBlock(5)
+    val proof = b.header.bodyProof
+    val bad = b.copy(header = b.header.copy(bodyProof = flip(proof, proof.size - 3)))
+    val result = byronUpdate(5, bad)
+    assert(result.isLeft, result.toString)
   }
 
   test("a Byron block that skips its predecessor or has the wrong magic is rejected") {
-    val h = headers(5).asInstanceOf[Header.Byron]
-    assert(ByronRules.update(states(3).byron.tip, h, setup.byronRules.get).isLeft)
+    val b = byronBlock(5)
+    assert(byronUpdate(5, b, from = 3).isLeft)
+    assert(byronUpdate(5, withHeader(5)(_.copy(protocolMagic = 1))).isLeft)
+    val first = states(0).byron
     assert(
-      ByronRules.update(states(5).byron.tip, h.copy(protocolMagic = 1), setup.byronRules.get).isLeft
+      ByronRules
+        .update(ByronRules.State(None, first.ledger.get, first.pbft), b, setup.byronRules.get)
+        .isLeft
     )
-    assert(ByronRules.update(None, h, setup.byronRules.get).isLeft)
+  }
+
+  test("a Byron block signing more than the threshold of a window is rejected") {
+    val b = byronBlock(5)
+    val key = byronUpdate(5, b).toOption.get._1.pbft.signers.last._2
+    val crowded = states(5).byron.pbft.signers.map((slot, _) => (slot, key))
+    val before = states(5).byron
+    val result = ByronRules.update(
+      ByronRules.State(before.tip, before.ledger.get, PBftState(crowded)),
+      b,
+      setup.byronRules.get
+    )
+    assert(result.left.exists(_.contains("threshold")), result.toString)
   }
 
   test("the first Shelley block is rejected under a different initial nonce") {

@@ -30,7 +30,7 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
       .toVector
       .filter(_.nonEmpty)
       .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
-      .map(Block.decode(_).fold(e => fail(e.message), identity))
+      .map(Block.decodeShelley(_).fold(e => fail(e.message), identity))
       .collect { case b: Block.Shelley => b }
 
   /** The ledger's protocol major: the header's, except that a Babbage block never runs above 8. */

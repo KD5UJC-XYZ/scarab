@@ -101,6 +101,32 @@ but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other
 not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
 had reached 5.3 GB when the limit was raised.
 
+### Preprod
+
+The node follows the public preprod testnet (network magic 1) from genesis through its Byron era
+(an epoch 0 boundary block and 45 main blocks over four epochs) into Shelley and on:
+
+```sh
+mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config"
+docker run --rm --user "$(id -u):$(id -g)" -w /out \
+  -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  'for f in config.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+     curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+  --genesis-dir "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config" \
+  --peer preprod-node.play.dev.cardano.org:3001 \
+  --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod-db"
+```
+
+`config.json` has no `TestShelleyHardForkAtEpoch`, so the Byron ledger decides when the chain
+enters Shelley (epoch 4, from the update proposals the Byron blocks carry); `RequiresNetworkMagic`
+and `PBftSignatureThreshold` are read from it. The `started` line shows `"byronEpochs": null` until
+then, and the `eraTransition` line to Shelley the derived epoch. The mempool and the forger take the
+epoch history at start-up, so run them (`--listen`, `--forge`) from a database that is already past the
+transition (restart once after the Byron era); a node that starts from Origin and stays up through
+the transition validates correctly but would serve its mempool with the Byron-era history.
+The recorded run is in [performance.md](performance.md).
+
 ### Forging
 
 ```sh
@@ -196,8 +222,8 @@ bytes (`fixtures/devnet/lsq`) need no Docker.
 Comparison method: `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state`
 before Conway, so `scripts/devnet/ntcquery.py` speaks LocalStateQuery to the reference node directly and
 `scripts/devnet/eraview.py` projects `DebugNewEpochState`, the whole UTxO and `DebugChainDepState` onto the
-node's `/state` shape. Byron is not compared (the CLI cannot query a Byron ledger and the node keeps
-no Byron UTxO).
+node's `/state` shape. Byron is not compared directly (the CLI cannot query a Byron ledger); the Byron UTxO
+is compared through the first Shelley epoch, which starts from it.
 
 `e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
 decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the

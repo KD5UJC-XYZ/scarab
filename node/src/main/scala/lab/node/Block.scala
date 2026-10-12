@@ -27,8 +27,10 @@ object Block:
       bodyHash: Bytes
   ) extends Block
 
-  /** Byron main or epoch-boundary block: only the header is decoded, the body stays raw. */
-  final case class Byron(header: Header.Byron, body: Bytes) extends Block:
+  /** Byron main or epoch-boundary block: the header is decoded, the body stays raw (the ledger
+    * decodes it, see `ByronBody`). `size` is the block's encoded size.
+    */
+  final case class Byron(header: Header.Byron, body: Bytes, extra: Bytes, size: Int) extends Block:
     def era: Era = Era.Byron
 
   /** One transaction: original body/witness/auxiliary-data bytes and phase-2 validity flag. */
@@ -47,10 +49,14 @@ object Block:
     maxStringBytes = 2500000
   )
 
-  def decode(
-      raw: Bytes,
-      byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
-  ): Either[ChainError, Block] =
+  /** Decode a block; `byronEpochSlots` (10k of the Byron genesis) only matters for Byron blocks. */
+  def decode(raw: Bytes, byronEpochSlots: BigInt): Either[ChainError, Block] =
+    decodeWith(raw, Some(byronEpochSlots))
+
+  /** Decode a block of a Shelley-based era; a Byron block is an error. */
+  def decodeShelley(raw: Bytes): Either[ChainError, Block] = decodeWith(raw, None)
+
+  private def decodeWith(raw: Bytes, byronEpochSlots: Option[BigInt]): Either[ChainError, Block] =
     for
       root <- Cbor.decode(raw, limits).leftMap(fail)
       outer <- array(root, 2)
@@ -59,7 +65,10 @@ object Block:
         case _             => Left(fail("expected era tag"))
       era <- Era.fromBlockTag(tag).toRight(fail(s"unknown era tag $tag"))
       block <-
-        if era == Era.Byron then byron(tag == 0, outer(1), byronEpochSlots)
+        if era == Era.Byron then
+          byronEpochSlots
+            .toRight(fail("a Byron block where a Shelley-based block is expected"))
+            .flatMap(byron(tag == 0, outer(1), _))
         else shelley(era, outer(1))
     yield block
 
@@ -71,7 +80,7 @@ object Block:
     for
       parts <- array(n, 3)
       header <- Header.byronFromRaw(parts(0).original, boundary, epochSlots)
-    yield Byron(header, Bytes(parts.tail.flatMap(_.original.value)))
+    yield Byron(header, parts(1).original, parts(2).original, n.original.size)
 
   private def shelley(era: Era, n: Node): Either[ChainError, Block] =
     for

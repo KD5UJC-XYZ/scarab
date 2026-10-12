@@ -63,8 +63,10 @@ object ChainStorage:
       /** A snapshot is taken once the immutable tip is this many slots past the previous one. */
       snapshotEverySlots: BigInt,
       keepSnapshots: Int = 3,
-      chunkSlots: Long = 21600,
-      byronEpochSlots: BigInt = 21600,
+      chunkSlots: Long = FileImmutableStore.DefaultChunkSlots,
+      /** 10k of the Byron genesis, to place Byron blocks on the slot axis when blocks are decoded.
+        */
+      byronEpochSlots: BigInt,
       /** Replay progress is reported every this many blocks. */
       progressEvery: Int = 20000
   )

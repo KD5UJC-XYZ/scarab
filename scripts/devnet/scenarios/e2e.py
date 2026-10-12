@@ -80,7 +80,7 @@ def summarize_e2e(events, other, expected, exit_code):
         else:
             transitions.append(t)
     per_era = {e: {"blocks": 0, "firstEpoch": None, "lastEpoch": None, "headers": 0, "leaderThreshold": 0,
-                   "overlay": 0, "leaderUnchecked": 0, "signatureVerified": 0, "signatureUnchecked": 0,
+                   "overlay": 0, "leaderUnchecked": 0, "signatureVerified": 0, "offSchedule": 0, "transactions": 0,
                    "boundary": 0} for e in ERAS}
     for e in events:
         if e["event"] == "extended":
@@ -94,7 +94,8 @@ def summarize_e2e(events, other, expected, exit_code):
             if e["era"] == "Byron":
                 r["boundary"] += e["boundary"]
                 r["signatureVerified"] += e["signatureVerified"]
-                r["signatureUnchecked"] += e["signatureUnchecked"]
+                r["offSchedule"] += e["offSchedule"]
+                r["transactions"] += e["transactions"]
             else:
                 r["leaderThreshold"] += e["thresholdChecked"]
                 r["overlay"] += e["overlay"]
@@ -134,8 +135,8 @@ def summarize_e2e(events, other, expected, exit_code):
         if per_era[era]["blocks"] == 0:
             failures.append(f"no {era} block was applied")
     byron = per_era["byron"]
-    if byron["signatureUnchecked"]:
-        failures.append(f"{byron['signatureUnchecked']} Byron headers had unchecked signatures")
+    if byron["offSchedule"]:
+        failures.append(f"{byron['offSchedule']} Byron blocks were not made by the round-robin leader of their slot")
     if byron["boundary"] == 0 or byron["signatureVerified"] == 0:
         failures.append("Byron epoch 0 was not validated (no boundary block or no verified signature)")
     if validation:

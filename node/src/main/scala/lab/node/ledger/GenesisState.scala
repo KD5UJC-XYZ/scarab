@@ -5,14 +5,24 @@ import cats.syntax.all.*
 import io.circe.{ACursor, Decoder, Json}
 import lab.Blake2b
 import lab.cbor.Bytes
-import lab.node.ConfigError
+import lab.node.{ByronGenesisFile, ConfigError}
+import lab.node.ledger.byron.{ByronLedger, ByronOut}
 
 /** The ledger state at the first Shelley-based slot of a chain that forks to Conway at epoch 0.
   * Sources: Shelley `initialFunds` /staking injections, Byron non-AVVM balances and the Conway
   * genesis DReps and vote delegations.
   */
 object GenesisState:
-  final case class Files(shelley: Json, alonzo: Json, conway: Json, byron: Json)
+  /** The genesis files; `byronNetworkMagic` is the magic Byron addresses carry on a network that
+    * requires one (it decides the redeem addresses of the AVVM balances).
+    */
+  final case class Files(
+      shelley: Json,
+      alonzo: Json,
+      conway: Json,
+      byron: Json,
+      byronNetworkMagic: Option[Long] = None
+  )
 
   /** Network constants from the genesis files. */
   def globals(files: Files, genesis: lab.node.ShelleyGenesis): Either[ConfigError, LedgerGlobals] =
@@ -59,7 +69,15 @@ object GenesisState:
         )
       }
 
-  def initial(files: Files, globals: LedgerGlobals): Either[ConfigError, LedgerState] =
+  /** The ledger state at the start of the first Shelley-based epoch. Its UTxO is the Shelley
+    * `initialFunds` and the Byron UTxO: the one given (a Byron chain's UTxO when it enters Shelley)
+    * or the Byron genesis one (AVVM balances at their redeem addresses, and the non-AVVM ones).
+    */
+  def initial(
+      files: Files,
+      globals: LedgerGlobals,
+      byronUtxo: Option[Map[TxIn, ByronOut]] = None
+  ): Either[ConfigError, LedgerState] =
     val s = files.shelley.hcursor
     val extra = s.downField("extraConfig")
     val startsInConway = s
@@ -79,21 +97,19 @@ object GenesisState:
       shelleyFunds <- injection[BigInt](s, extra, "initialFunds").flatMap(
         _.toVector.traverse { case (hex, coin) => output(hex, coin) }
       )
-      byronFunds <- files.byron.hcursor
-        .downField("nonAvvmBalances")
-        .as[Map[String, String]]
-        .leftMap(e => ConfigError(s"byron nonAvvmBalances: ${e.message}"))
-        .flatMap(_.toVector.traverse { case (b58, coin) =>
-          Base58
-            .decode(b58)
-            .toRight(ConfigError(s"byron address $b58"))
-            .flatMap(raw =>
-              Either
-                .catchNonFatal(BigInt(coin))
-                .leftMap(_ => ConfigError(s"byron balance $coin"))
-                .flatMap(c => outputBytes(raw, c))
-            )
-        })
+      byronEntries <- byronUtxo.fold(
+        ByronGenesisFile
+          .genesisBalances(files.byron)
+          .flatMap((avvm, nonAvvm) =>
+            ByronLedger.genesisUtxo(avvm, nonAvvm, files.byronNetworkMagic).leftMap(ConfigError(_))
+          )
+      )(Right(_))
+      byronFunds <- byronEntries.toVector.traverse { (in, out) =>
+        Address
+          .decode(out.address)
+          .leftMap(ConfigError(_))
+          .map(a => in -> TxOut(a, Value.coin(out.value)))
+      }
       stakeCreds <- injection[String](s, extra, "stakeCredentials")
       poolJson <- injection[Json](s, extra, "stakePools")
       pools <- poolJson.toVector.traverse { case (id, j) => pool(id, j) }.map(_.toMap)

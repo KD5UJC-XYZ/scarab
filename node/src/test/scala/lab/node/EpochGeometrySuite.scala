@@ -47,6 +47,21 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     assertEquals(g.firstShelleyEpoch, BigInt(0))
   }
 
+  test(
+    "a derived Byron span is open-ended until resolved, and resolving it gives the same history"
+  ) {
+    val derived = geometry(0, 1, 500).copy(byron = ByronSpan.derived(50, 1000))
+    assert(derived.byron.derived)
+    // until the chain enters Shelley every slot is a Byron slot of the genesis epoch length
+    assertEquals(
+      Seq(0, 49, 50, 1000, 100000).map(s => derived.epochOf(s)),
+      Seq(0, 0, 1, 20, 2000).map(BigInt(_))
+    )
+    assertEquals(derived.resolved(1), geometry(1, 50, 500))
+    // resolving an already fixed history changes nothing
+    assertEquals(geometry(2, 50, 500).resolved(7), geometry(2, 50, 500))
+  }
+
   property("an epoch starts at the slot that maps back to it, and slots lie inside their epoch") {
     forAll(geometries, Gen.choose(0L, 100000L)) { (g, slot) =>
       val epoch = g.epochOf(slot)

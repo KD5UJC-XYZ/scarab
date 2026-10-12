@@ -348,7 +348,7 @@ class ForgeSuite extends CatsEffectSuite:
         chain <- h.chain
         // an identical second block on the old tip (the genesis block position)
         again <- h.follower.adoptForged(
-          Block.decode(blockOnGenesis(p, h)).toOption.get.header,
+          Block.decodeShelley(blockOnGenesis(p, h)).toOption.get.header,
           blockOnGenesis(p, h)
         )
       yield again match
@@ -398,8 +398,8 @@ class ForgeSuite extends CatsEffectSuite:
         blockB <- b.chain.map(_.tipRef.get)
         rawA <- a.raws.get.map(_(blockA.hash))
         rawB <- b.raws.get.map(_(blockB.hash))
-        headerA = Block.decode(rawA).toOption.get.header
-        headerB = Block.decode(rawB).toOption.get.header
+        headerA = Block.decodeShelley(rawA).toOption.get.header
+        headerB = Block.decodeShelley(rawB).toOption.get.header
         toA <- a.follower.adoptForged(headerB, rawB)
         toB <- b.follower.adoptForged(headerA, rawA)
         tipA <- a.chain.map(_.tipRef.map(_.hash))
@@ -429,7 +429,7 @@ class ForgeSuite extends CatsEffectSuite:
       for
         h <- harness(p, ledgerWith(p, 1))
         raw = blockOnGenesis(p, h)
-        result <- h.follower.adoptForged(Block.decode(raw).toOption.get.header, raw)
+        result <- h.follower.adoptForged(Block.decodeShelley(raw).toOption.get.header, raw)
         chain <- h.chain
       yield
         assert(result.isInstanceOf[Follower.Adoption.Invalid], result.toString)
@@ -461,7 +461,7 @@ class ForgeSuite extends CatsEffectSuite:
       (10, 3)
     )
     val raw = BlockBuilder.block(hb, Bytes.fromArray(new Array[Byte](448)), body)
-    val decoded = Block.decode(raw).toOption.get.asInstanceOf[Block.Shelley]
+    val decoded = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley]
     assertEquals(decoded.bodySize, body.size)
     assertEquals(decoded.bodyHash, body.hash)
     assertEquals(decoded.header.bodyHash, body.hash)
