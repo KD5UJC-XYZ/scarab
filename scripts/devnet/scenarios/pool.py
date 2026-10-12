@@ -98,6 +98,29 @@ def slot_at(shelley, stamp):
     return int((at - system_start) / shelley["slotLength"])
 
 
+def slot_clock(events, shelley):
+    """How the Scala node's slot clock stands against the reference nodes', in milliseconds after the slot's start
+    by the genesis: when the Scala node logged a block it forged (`forgeLatencyMs`, normally a few ms) and when it
+    received a block another pool forged (`arrivalMs`, normally a few ms). A forge latency of a second or more
+    with normal arrivals means the Scala node believes it is an earlier slot than the network does, so its
+    leader slots find the tip already past them and are silently skipped."""
+    system_start = calendar.timegm(time.strptime(shelley["systemStart"], "%Y-%m-%dT%H:%M:%SZ"))
+    length = shelley["slotLength"]
+
+    def late(e, slot):
+        at = datetime.datetime.fromisoformat(e["at"].replace("Z", "+00:00")).timestamp()
+        return (at - system_start - slot * length) * 1000
+
+    def median(values):
+        values = sorted(values)
+        return round(values[len(values) // 2]) if values else None
+
+    mine = {e["hash"] for e in events if e["event"] == "forged"}
+    return {"forgeLatencyMs": median([late(e, e["slot"]) for e in events if e["event"] == "forged"]),
+            "arrivalMs": median([late(e, e["block"]["slot"]) for e in events
+                                 if e["event"] == "extended" and e["block"]["hash"] not in mine])}
+
+
 def missed_leader_slots(events, schedules, shelley):
     """Check the Scala pool's forging against the reference node's `leadership-schedule`.
 
@@ -310,6 +333,7 @@ def pool(args):
                                                              "mempoolRejected", "mempoolDropped")},
             "unparsedScalaOutput": other[:10],
             "scheduling": scheduling_summary(events, log, args),
+            "slotClock": slot_clock(events, shelley),
         }
         if not forged:
             failures.append("the Scala node forged no block")
@@ -350,6 +374,11 @@ def pool(args):
                             f"{[e for e in events if e['event'] == 'forgeFailed'][:2]}")
         if other:
             failures.append(f"unexpected Scala output: {other[0][:200]}")
+        clock = summary["slotClock"]
+        if oracle["missed"] and clock["forgeLatencyMs"] is not None and abs(clock["forgeLatencyMs"]) > 500:
+            failures.append(f"the Scala node's slot clock is {clock['forgeLatencyMs']} ms behind the genesis' while the "
+                            f"reference's blocks arrive {clock['arrivalMs']} ms into their slots: its leader slots find the "
+                            f"tip already past them (not a scheduling problem; see roadmap D8)")
         limit = getattr(args, "max_starvation_warnings", None)
         if limit is not None and summary["scheduling"]["cpuStarvationWarnings"] > limit:
             failures.append(f"{summary['scheduling']['cpuStarvationWarnings']} cats-effect CPU-starvation warnings "

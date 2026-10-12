@@ -35,7 +35,8 @@ java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
 (Inside the JDK image with the checkout mounted, or on a host with JDK 21.) The sbt form is
 `sbt "node/runMain lab.node.Main follow ..."`. The node logs one JSON object per line on stdout
 (`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
-`forged`, ...).
+`volatileResumed`, `shutdownSnapshot`, `forged`, ...). The epoch lines carry a `scheduling` object
+(timer lateness and the longest CPU-bound step of that epoch, see "Scheduling" below).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/lab/node/Main.scala`). Every flag takes a
 value except `--forge`. A repeated flag keeps its last value, except `--peer`, which accumulates.
@@ -48,12 +49,13 @@ value except `--forge`. A repeated flag keeps its last value, except `--peer`, w
 | `--local-socket <path>` | off | Unix socket for node-to-client LocalTxSubmission |
 | `--seconds N` | run until stopped | stop after N seconds |
 | `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`) |
-| `--db <dir>` | off (in-memory; replay from genesis on every start) | persistent chain: `immutable/`, `snapshots/`, `utxo/` |
+| `--db <dir>` | off (in-memory; replay from genesis on every start) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `snapshots/`, `utxo/` |
 | `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
 | `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
 | `--utxo-cache-mb N` | `256` | RocksDB block cache |
 | `--read-ahead N` | `64` | ChainSync requests pipelined and blocks fetched per range while far behind (256 timed out against the public relay) |
+| `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`csl-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--mempool-bytes N` | `1048576` | mempool capacity in bytes |
 | `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |
 | `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
@@ -65,10 +67,19 @@ Caveats:
 
 - The parser accepts any `--name value` pair and silently ignores flags it does not know, so a typo
   such as `--db-dir` has no effect. Rejecting unknown flags is tracked as [M1](roadmap.md).
-- A DB does not record which network it belongs to; do not point `--db` at another network's genesis
-  ([D5](roadmap.md)).
-- Volatile blocks (the last `k`) are not persisted and there is no final snapshot on shutdown; after a
-  restart the node resumes from the newest snapshot and re-fetches the volatile tail.
+- A `--db` records the network it was created for (`<db>/network-identity`: magic and the Shelley and
+  Byron genesis hashes) and refuses to open with another genesis directory: `error` event `kind`
+  `NetworkMismatch`, "the database belongs to another network: it was created for magic ..., this node
+  is configured for magic ...". A database from before the file existed is adopted if its first block
+  names the configured Byron genesis hash (`ForeignChain` otherwise); on a Shelley-start network that
+  check cannot tell two networks apart. The devnet rewrites its genesis at every cluster start, so a
+  `--db` of an earlier cluster is refused too.
+- The volatile blocks (the last `k`) are kept in `<db>/volatile/` and applied again on start
+  (`volatileResumed`), and a graceful stop (SIGTERM, SIGINT, `--seconds`) writes a snapshot at the
+  immutable tip (`shutdownSnapshot`): the next start replays no stored block and continues at the
+  previous tip. After `kill -9` the node resumes from the newest periodic snapshot, replays the stored
+  blocks after it, and takes the volatile chain from the log as far as the log reached the disk.
+  Run the node so that the signal reaches the JVM (`docker stop`, not a shell wrapper that eats it).
 
 ### Preview
 
@@ -100,6 +111,20 @@ for the immutable blocks, RocksDB and checkpoints, and memory well above the hea
 but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other off-heap memory are
 not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
 had reached 5.3 GB when the limit was raised.
+
+**With one or two CPUs** (`docker run --cpus 1`, a small VM) start the JVM with
+`-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`. A JVM that finds one CPU picks the serial
+collector, whose pauses stop every thread: on Preview it made 7,595 collections in 420 s (11 full, the
+longest 396 ms) and the node's timers fired late (cats-effect starvation warnings, worst 674 ms); with
+the flags above a 31 min sync had none, at the same blocks per second as the base build
+([performance.md](performance.md) section 6). A fixed heap avoids the full collections that come from
+growing it. The node keeps its follower on its own pool (`--cpu-threads`, default one worker per CPU)
+and reports the worst timer lateness and the longest CPU-bound step of every epoch in the log.
+
+Stopping: SIGTERM or SIGINT (`docker stop`, Ctrl-C) cancels the node, which closes its servers and
+writes a snapshot at the immutable tip before it exits (a second or two on Preview; allow
+`docker stop -t 60`). `kill -9` is recovered from, at the cost of replaying the stored blocks since the
+newest periodic snapshot.
 
 ### Forging
 
@@ -156,6 +181,13 @@ python3 scripts/devnet.py down                       # remove containers and the
 | `e2e [--timeout 1500] [--until-epoch N] [--keep] [--no-load] [--no-compare] [--min-comparisons 3]` | `up-eras` (Byron, Shelley, Allegra, Mary, Alonzo, Babbage, Conway) + follower from Origin + era-specific load + per-era ledger comparison | the `eraTransition` lines are exactly the seven eras at the configured epochs; every era applied blocks; all Byron signatures verified; no validation or fatal errors; every comparison matched, at least `--min-comparisons` per Shelley-based era. Writes `e2e-summary.json` and `compare.jsonl` |
 | `relay [--seconds 300] [--peers 3] [--relay-mode ...] [--keep]` | the Scala node follows the pools and serves a non-producing Haskell relay (`--listen`, `--db`, `--local-socket`); load is submitted through the relay | the Haskell relay syncs the whole chain from the Scala node and stays at the tip (lag samples every `--every` seconds), transactions travel relay, Scala mempool, pools, block, and one is submitted with `cardano-cli` to the Scala socket |
 | `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event. Writes `pool-summary.json` |
+
+`--scala-cpus N` (`follow`, `soak`, `relay`, `pool`, `e2e`; default 2) sets the CPUs of the Scala node's
+container, and `--max-starvation-warnings N` makes a scenario fail when the node logged more cats-effect
+CPU-starvation warnings than that (otherwise they are only reported: `cpuStarvationWarnings` in
+`e2e-summary.json`, and the `scheduling` block of `pool-summary.json` with the worst timer lateness and
+the longest CPU-bound step the node measured). `pool --scala-cpus 1` is the check that the forger's slot
+clock holds with one CPU (roadmap D8).
 
 Building blocks (also runnable on their own): `up` (start the 3-pool cluster), `up-eras [--epoch-length 500 --active-slots-coeff 0.2 --byron-epochs 1 --byron-slot-ms 1000 --stall-seconds 90 --shelley-epochs 1 --min-utxo-value 0 --pool-margin 0 --cross-rewards]`, `capture-eras [--out fixtures/eras --conway-blocks 3]`, `tip [--node N]`, `follow [--seconds N] [--node N]`, `load [--seconds N --wallets 10 --stakers 4 ...]`, `govload [--seconds N]`, `compare`, `down`.
 

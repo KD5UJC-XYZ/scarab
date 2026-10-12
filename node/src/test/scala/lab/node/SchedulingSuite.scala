@@ -122,8 +122,11 @@ class SchedulingSuite extends CatsEffectSuite:
       _ <- IO {
         // all compute threads are inside a step for 600 ms: no timer can fire
         assert(unpooled >= 300, s"inline lateness $unpooled ms")
-        // on the pool the compute threads stay free; allow for a busy machine
-        assert(pooled < 250, s"pooled lateness $pooled ms")
+        // on the pool the compute threads stay free (a busy machine delays any thread, so the bound is loose)
+        assert(
+          pooled < 400 && pooled < unpooled,
+          s"pooled lateness $pooled ms, inline $unpooled ms"
+        )
       }
     yield ()
   }

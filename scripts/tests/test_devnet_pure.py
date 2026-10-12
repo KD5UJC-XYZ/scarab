@@ -356,3 +356,25 @@ class SchedulingSummaryTest(unittest.TestCase):
         self.assertIn("--cpus=1.0", cluster.scala_container(args, root, "cp", "M", []))
         self.assertIn("--cpus=2", cluster.scala_container(argparse.Namespace(name="n"), root, "cp", "M", []))
         self.assertIn("--cpus=3", cluster.scala_container(args, root, "cp", "M", [], cpus=3))
+
+
+class SlotClockTest(unittest.TestCase):
+    SHELLEY = {"systemStart": "2026-10-11T12:00:00Z", "slotLength": 0.1}
+    START = 1791720000  # 2026-10-11T12:00:00Z
+
+    def event(self, kind, at_slot, millis, **extra):
+        import datetime
+        total = self.START + (at_slot * 100 + millis) / 1000
+        stamp = datetime.datetime.fromtimestamp(total, datetime.timezone.utc).isoformat()
+        return {"event": kind, "at": stamp, **extra}
+
+    def test_a_clock_in_step_and_a_clock_a_second_behind(self):
+        in_step = [self.event("forged", 10, 12, hash="a", slot=10),
+                   self.event("extended", 20, 8, block={"slot": 20, "hash": "b"})]
+        self.assertEqual(pool.slot_clock(in_step, self.SHELLEY), {"forgeLatencyMs": 12, "arrivalMs": 8})
+        behind = [self.event("forged", 10, 1010, hash="a", slot=10),
+                  self.event("extended", 20, 9, block={"slot": 20, "hash": "b"}),
+                  self.event("extended", 10, 12, block={"slot": 10, "hash": "a"})]
+        clock = pool.slot_clock(behind, self.SHELLEY)
+        self.assertEqual((clock["forgeLatencyMs"], clock["arrivalMs"]), (1010, 9))
+        self.assertEqual(pool.slot_clock([], self.SHELLEY), {"forgeLatencyMs": None, "arrivalMs": None})

@@ -5,6 +5,28 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Storage
+- D4: the volatile chain (the last `k` blocks) is logged in `<db>/volatile/` (`VolatileStore`: CRC per
+  record, rollback markers, files collected once wholly below the forced immutable tip) and applied
+  again on start, so a restart continues at the previous tip instead of fetching those blocks. A
+  graceful stop (SIGTERM, SIGINT, `--seconds`) writes a snapshot at the immutable tip: the next start
+  replays no stored block. Persisting a block is uncancelable, so a stop never lands between two stores.
+- D5: the database records its network (`<db>/network-identity`: magic, Shelley and Byron genesis
+  hashes) and refuses a mismatch with `StorageError.NetworkMismatch`; a database from before the file
+  is adopted if its first block names the configured genesis (`ForeignChain` otherwise).
+
+### Scheduling
+- D8: the peer session (header handling, chain selection, the rules, persisting) runs on its own
+  work-stealing pool (`Compute[F]`, a `Resource`, `--cpu-threads`), apart from the pool that serves the
+  connection, the relay servers, the forger and the timers, so a long CPU-bound step cannot hold up a
+  KeepAlive or the slot clock. A monitor fiber records timer lateness; `epochValidated` and `ledgerEpoch`
+  lines carry `scheduling` (`maxTimerLatenessMs`, `longestStepMs`, `longestStep`), and `GET /scheduling`
+  serves the totals. Moving each block's rules to a pool cost 15 to 48 percent of the throughput; the
+  session on the pool costs 1 to 4 percent (Preview, 31 min, started with the base build). The replay of
+  stored blocks yields with `cede`.
+- With one CPU the JVM's serial collector, not the rules, made timers late: run with
+  `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20` (running.md); the devnet node does.
+
 ### Ledger
 - Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
 - Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.
@@ -17,6 +39,11 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
 
 ### Devnet
+- `--scala-cpus N` for `follow`, `soak`, `relay`, `pool` and `e2e` (the Scala container's CPUs) and
+  `--max-starvation-warnings N`; the `pool` summary reports `scheduling` (starvation warnings, worst
+  timer lateness, longest CPU-bound step) and `slotClock` (when the node logged its forged blocks and
+  received the others' relative to their slots; a run whose clock is a second behind the network's now
+  says so instead of only listing missed leader slots).
 - `e2e`: three Shelley epochs, 1 ada minimum, pool margin 0.1, cross-paying pools, boundary load and expected-rejection checks.
 - `soak --governance-extended` (`govload --extended`, `scripts/devnet/govextra.py`): pool reward accounts
   with default votes, committee election with a term limit, a member that expires and `committeeMinSize`,
