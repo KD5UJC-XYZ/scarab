@@ -61,6 +61,9 @@ enum UtxowFailure:
   case MalformedScriptWitnesses(hashes: Set[Bytes])
   case MalformedReferenceScripts(hashes: Set[Bytes])
 
+  /** The Plutus purposes that have no redeemer, with the hash of the script each needs. */
+  case MissingRedeemers(purposes: Vector[(Purpose, Bytes)])
+
   /** The redeemers a transaction carries too many of, as `(tag, index)`. */
   case ExtraRedeemers(purposes: Vector[(Int, BigInt)])
 
@@ -166,44 +169,45 @@ object PredicateFailure:
   def gov(f: GovFailure): PredicateFailure = Gov(f)
 
   private def nameOf(f: PredicateFailure): String = f match
-    case Utxow(u)                    => utxowName(u)
-    case Certs(CertsFailure.WithdrawalsNotInRewards(_)) => "WithdrawalsNotInRewardsCERTS"
+    case Utxow(u)                                         => utxowName(u)
+    case Certs(CertsFailure.WithdrawalsNotInRewards(_))   => "WithdrawalsNotInRewardsCERTS"
     case Certs(CertsFailure.Cert(CertFailure.Deleg(d)))   => delegName(d)
     case Certs(CertsFailure.Cert(CertFailure.Pool(p)))    => poolName(p)
     case Certs(CertsFailure.Cert(CertFailure.GovCert(g))) => govCertName(g)
-    case Gov(g)                      => g.productPrefix
-    case WdrlNotDelegatedToDRep(_)   => "ConwayWdrlNotDelegatedToDRep"
-    case TreasuryValueMismatch(_)    => "ConwayTreasuryValueMismatch"
-    case TxRefScriptsSizeTooBig(_)   => "ConwayTxRefScriptsSizeTooBig"
-    case Mempool(_)                  => "ConwayMempoolFailure"
-    case WithdrawalsMissingAccounts(_) => "ConwayWithdrawalsMissingAccounts"
-    case IncompleteWithdrawals(_)    => "ConwayIncompleteWithdrawals"
-    case Unmapped(rule, _)           => rule
+    case Gov(g)                                           => g.productPrefix
+    case WdrlNotDelegatedToDRep(_)                        => "ConwayWdrlNotDelegatedToDRep"
+    case TreasuryValueMismatch(_)                         => "ConwayTreasuryValueMismatch"
+    case TxRefScriptsSizeTooBig(_)                        => "ConwayTxRefScriptsSizeTooBig"
+    case Mempool(_)                                       => "ConwayMempoolFailure"
+    case WithdrawalsMissingAccounts(_)                    => "ConwayWithdrawalsMissingAccounts"
+    case IncompleteWithdrawals(_)                         => "ConwayIncompleteWithdrawals"
+    case Unmapped(rule, _)                                => rule
 
   private def utxowName(u: UtxowFailure): String = u match
-    case UtxowFailure.Utxo(f)                      => utxoName(f)
-    case UtxowFailure.InvalidWitnesses(_)          => "InvalidWitnessesUTXOW"
-    case UtxowFailure.MissingVKeyWitnesses(_)      => "MissingVKeyWitnessesUTXOW"
-    case UtxowFailure.MissingScriptWitnesses(_)    => "MissingScriptWitnessesUTXOW"
+    case UtxowFailure.Utxo(f)                       => utxoName(f)
+    case UtxowFailure.InvalidWitnesses(_)           => "InvalidWitnessesUTXOW"
+    case UtxowFailure.MissingVKeyWitnesses(_)       => "MissingVKeyWitnessesUTXOW"
+    case UtxowFailure.MissingScriptWitnesses(_)     => "MissingScriptWitnessesUTXOW"
     case UtxowFailure.ScriptWitnessNotValidating(_) => "ScriptWitnessNotValidatingUTXOW"
-    case UtxowFailure.ExtraneousScriptWitnesses(_) => "ExtraneousScriptWitnessesUTXOW"
-    case other                                     => other.productPrefix
+    case UtxowFailure.ExtraneousScriptWitnesses(_)  => "ExtraneousScriptWitnessesUTXOW"
+    case other                                      => other.productPrefix
 
   private def utxoName(u: UtxoFailure): String = u match
     case UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(_, _)) => "ValidationTagMismatch"
-    case UtxoFailure.BadInputs(_)                  => "BadInputsUTxO"
+    case UtxoFailure.BadInputs(_)                                    => "BadInputsUTxO"
     case UtxoFailure.OutsideValidityInterval(_, _, _) => "OutsideValidityIntervalUTxO"
-    case UtxoFailure.MaxTxSize(_)                  => "MaxTxSizeUTxO"
-    case UtxoFailure.InputSetEmpty                 => "InputSetEmptyUTxO"
-    case UtxoFailure.FeeTooSmall(_)                => "FeeTooSmallUTxO"
-    case UtxoFailure.ValueNotConserved(_)          => "ValueNotConservedUTxO"
-    case UtxoFailure.OutputTooSmall(_) | UtxoFailure.BabbageOutputTooSmall(_) => "OutputTooSmallUTxO"
-    case UtxoFailure.OutputTooBig(_)               => "OutputTooBigUTxO"
-    case UtxoFailure.ExUnitsTooBig(_)              => "ExUnitsTooBigUTxO"
-    case UtxoFailure.WrongNetworkWithdrawal(_, _)  => "WrongNetworkWithdrawal"
-    case UtxoFailure.ScriptsNotPaid(_)             => "ScriptsNotPaidUTxO"
-    case UtxoFailure.CollateralContainsNonAda(_)   => "CollateralContainsNonADA"
-    case other                                     => other.productPrefix
+    case UtxoFailure.MaxTxSize(_)                     => "MaxTxSizeUTxO"
+    case UtxoFailure.InputSetEmpty                    => "InputSetEmptyUTxO"
+    case UtxoFailure.FeeTooSmall(_)                   => "FeeTooSmallUTxO"
+    case UtxoFailure.ValueNotConserved(_)             => "ValueNotConservedUTxO"
+    case UtxoFailure.OutputTooSmall(_) | UtxoFailure.BabbageOutputTooSmall(_) =>
+      "OutputTooSmallUTxO"
+    case UtxoFailure.OutputTooBig(_)              => "OutputTooBigUTxO"
+    case UtxoFailure.ExUnitsTooBig(_)             => "ExUnitsTooBigUTxO"
+    case UtxoFailure.WrongNetworkWithdrawal(_, _) => "WrongNetworkWithdrawal"
+    case UtxoFailure.ScriptsNotPaid(_)            => "ScriptsNotPaidUTxO"
+    case UtxoFailure.CollateralContainsNonAda(_)  => "CollateralContainsNonADA"
+    case other                                    => other.productPrefix
 
   private def poolName(p: PoolFailure): String = p match
     case PoolFailure.StakePoolNotRegisteredOnKey(_)      => "StakePoolNotRegisteredOnKeyPOOL"
@@ -213,14 +217,14 @@ object PredicateFailure:
     case PoolFailure.VRFKeyHashAlreadyRegistered(_, _)   => "VRFKeyHashAlreadyRegistered"
 
   private def delegName(d: DelegFailure): String = d match
-    case DelegFailure.IncorrectDeposit(_)                => "IncorrectDepositDELEG"
-    case DelegFailure.StakeKeyRegistered(_)              => "StakeKeyRegistered"
-    case DelegFailure.StakeKeyNotRegistered(_)           => "StakeKeyNotRegisteredDELEG"
+    case DelegFailure.IncorrectDeposit(_)                 => "IncorrectDepositDELEG"
+    case DelegFailure.StakeKeyRegistered(_)               => "StakeKeyRegistered"
+    case DelegFailure.StakeKeyNotRegistered(_)            => "StakeKeyNotRegisteredDELEG"
     case DelegFailure.StakeKeyHasNonZeroAccountBalance(_) => "StakeKeyNonZeroAccountBalanceDELEG"
-    case DelegFailure.DelegateeDRepNotRegistered(_)      => "DelegateeDRepNotRegisteredDELEG"
-    case DelegFailure.DelegateeStakePoolNotRegistered(_) => "DelegateeStakePoolNotRegisteredDELEG"
-    case DelegFailure.DepositIncorrect(_)                => "DepositIncorrectDELEG"
-    case DelegFailure.RefundIncorrect(_)                 => "RefundIncorrectDELEG"
+    case DelegFailure.DelegateeDRepNotRegistered(_)       => "DelegateeDRepNotRegisteredDELEG"
+    case DelegFailure.DelegateeStakePoolNotRegistered(_)  => "DelegateeStakePoolNotRegisteredDELEG"
+    case DelegFailure.DepositIncorrect(_)                 => "DepositIncorrectDELEG"
+    case DelegFailure.RefundIncorrect(_)                  => "RefundIncorrectDELEG"
 
   private def govCertName(g: GovCertFailure): String = g match
     case GovCertFailure.DRepAlreadyRegistered(_)          => "ConwayDRepAlreadyRegistered"

@@ -5,6 +5,26 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Node-to-client
+- LocalStateQuery server (roadmap F1): the mini-protocol (acquire at a point, the volatile or immutable
+  tip, re-acquire, release), the hard-fork-combinator query envelope and the Conway queries
+  `cardano-cli conway query` sends: tip, epoch, protocol parameters, UTxO (whole, by address, by
+  input), delegations and rewards, stake pools, pool parameters and state, stake snapshots,
+  constitution, governance state, DRep state, DRep stake distribution, committee state, vote
+  delegatees, treasury and reserves, SPO stake distribution, proposals, ratify state, future
+  parameters, pool and stake distributions, DRep delegations, genesis configuration, protocol
+  (chain-dependent) state, era history, system start, chain point and block number. The answers are
+  the same CBOR as the Haskell node's at the same block (`devnet.py ntc`). Not answered yet:
+  `ledger-state`, the reward-provenance and non-myopic queries, ledger peers, eras before Conway.
+- ApplyTxErr (roadmap F3): a refused transaction is sent as the ledger's predicate-failure CBOR, so
+  `cardano-cli transaction submit` prints the error the Haskell node gives. The Conway rules raise a
+  typed `PredicateFailure` tree with the ledger's payloads; the ledger's MEMPOOL rule (all inputs
+  spent) runs first; the CERTS and GOV checks run before UTXOW as in the ledger.
+- Protocol parameters read the `extraConfig.costModels` of the Alonzo genesis (PlutusV2); the Scala
+  parameters had two cost-model languages where the reference has three.
+- `PraosState` keeps the previous epoch nonce (the chain-dependent state a client reads); snapshots
+  written by earlier builds fail their schema check and are replayed.
+
 ### Ledger
 - Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
 - Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.

@@ -114,6 +114,35 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     assert(add(s0, ghost).left.exists(_.isInstanceOf[Rejection.Ledger]))
   }
 
+  test("refusals are sent as the ledger's ApplyTxErr: the MEMPOOL rule first, then the rule") {
+    val s0 = pool(ledger(3))
+    // none of the inputs is unspent: the MEMPOOL rule's failure, whatever else is wrong
+    val (ghost, ghostId) = pay(9, fee = 1)
+    val spent = add(s0, ghost).left.getOrElse(fail("accepted"))
+    assertEquals(
+      LocalSubmission.reasonItem(spent).hex,
+      "8182068182077844416c6c20696e7075747320617265207370656e742e205472616e73616374696f6e206861732070726f6261626c7920616c7265616479206265656e20696e636c75646564"
+    )
+    // an unspent input and a fee below the minimum: FeeTooSmallUTxO, the minimum first
+    val (cheap, _) = pay(1, fee = 1)
+    val refused = add(s0, cheap).left.getOrElse(fail("accepted"))
+    val reason = LocalSubmission.reasonItem(refused).hex
+    assert(reason.startsWith("81820681820182008305"), reason)
+    // a transaction already held is, for the ledger, one whose inputs are spent
+    val (t1, _) = pay(1)
+    val s1 = add(s0, t1).fold(r => fail(r.message), identity)
+    assertEquals(
+      LocalSubmission.reasonItem(add(s1, t1).left.getOrElse(fail("accepted"))).hex,
+      LocalSubmission.reasonItem(spent).hex
+    )
+    // a transaction of another era is the combinator's era mismatch
+    assertEquals(
+      LocalSubmission.reasonItem(Rejection.WrongEra(5)).hex,
+      "8282056742616262616765820666436f6e776179"
+    )
+    assert(ghostId.size == 32)
+  }
+
   test(
     "a vote by an unelected committee hot key is refused by the mempool before protocol version 11 and by the GOV rule from it"
   ) {

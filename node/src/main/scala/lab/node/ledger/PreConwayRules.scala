@@ -289,8 +289,8 @@ object PreConwayRules:
       )
     yield ()
 
-  /** The output checks of Babbage and Conway UTXO, each reporting every offending output: too
-    * small (with the minimum), too big (with the size and the limit) and on the wrong network.
+  /** The output checks of Babbage and Conway UTXO, each reporting every offending output: too small
+    * (with the minimum), too big (with the size and the limit) and on the wrong network.
     */
   private[ledger] def outputsOk(
       pp: ProtocolParams,
@@ -303,14 +303,9 @@ object PreConwayRules:
         (o.value.serializedSize, max.toInt, o)
       }
     }
-    val wrongNetwork = outs.flatMap(_.address.kind match
-      case Address.Kind.Shelley(n, _, _, _) if n != env.network => None
-      case _                                                    => None
-    )
     val wrong = outs.filter(_.address.kind match
       case Address.Kind.Shelley(n, _, _, _) => n != env.network
-      case Address.Kind.Byron(_)            => false
-    )
+      case Address.Kind.Byron(_)            => false)
     for
       _ <- Either.cond(
         small.isEmpty,
@@ -443,12 +438,17 @@ object PreConwayRules:
             Some(out.datum -> scripts(h).kind)
           case _ => None
       }
-      for
-        _ <- check(
-          plutusPurposes.subsetOf(provided),
-          "MissingRedeemers",
-          (plutusPurposes -- provided).mkString(",")
+      // Plutus purposes without a redeemer, with the script each one needs
+      val unredeemed = Purpose
+        .all(body, body.inputs.zip(spent).toMap)
+        .flatMap(p =>
+          p.scriptHash
+            .filter(h => scripts.get(h).exists(_.kind.isPlutus))
+            .filter(_ => !provided.contains((p.tag, BigInt(p.index))))
+            .map(p -> _)
         )
+      for
+        _ <- checkWith(unredeemed.isEmpty, UtxowFailure.MissingRedeemers(unredeemed))
         _ <- checkWith(
           provided.subsetOf(plutusPurposes),
           UtxowFailure.ExtraRedeemers((provided -- plutusPurposes).toVector.sorted)
@@ -471,7 +471,10 @@ object PreConwayRules:
                 case Datum.NoDatum => Option.when(scripts(h).kind != ScriptKind.PlutusV3)(in)
             case _ => None
         }
-        _ <- checkWith(unspendable.isEmpty, UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet))
+        _ <- checkWith(
+          unspendable.isEmpty,
+          UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet)
+        )
         needsHash = wits.redeemers.nonEmpty || wits.datums.nonEmpty
         languages = scriptsNeeded(body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
         _ <- checkWith(
@@ -505,7 +508,8 @@ object PreConwayRules:
           LedgerFailure.Rejected(
             tx.body.id,
             PredicateFailure.utxow(
-              if rule == "MalformedScriptWitnesses" then UtxowFailure.MalformedScriptWitnesses(hashes)
+              if rule == "MalformedScriptWitnesses" then
+                UtxowFailure.MalformedScriptWitnesses(hashes)
               else UtxowFailure.MalformedReferenceScripts(hashes)
             )
           )

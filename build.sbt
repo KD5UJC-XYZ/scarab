@@ -24,60 +24,74 @@ val lawTestDependencies = Seq(
 )
 
 // Pure codecs and cryptography: CBOR, Blake2b, Ed25519, VRF, KES, operational certificates.
-lazy val core = project.in(file("core")).settings(
-  libraryDependencies ++= Seq(
-    "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",
-    "com.weavechain" % "curve25519-elisabeth" % "0.1.3",
-    "org.typelevel" %% "cats-kernel" % catsVersion,
-    "org.typelevel" %% "cats-kernel-laws" % catsVersion % Test,
-    "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
-    "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-    "org.scalameta" %% "munit" % munitVersion % Test
+lazy val core = project
+  .in(file("core"))
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",
+      "com.weavechain" % "curve25519-elisabeth" % "0.1.3",
+      "org.typelevel" %% "cats-kernel" % catsVersion,
+      "org.typelevel" %% "cats-kernel-laws" % catsVersion % Test,
+      "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
+      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
+      "org.scalameta" %% "munit" % munitVersion % Test
+    )
   )
-)
 
 // Pure Ouroboros mini-protocol codecs and state machines.
-lazy val network = project.in(file("network")).dependsOn(core).settings(
-  libraryDependencies += "org.scalameta" %% "munit" % munitVersion % Test
-)
+lazy val network = project
+  .in(file("network"))
+  .dependsOn(core)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
+      "org.scalameta" %% "munit" % munitVersion % Test
+    )
+  )
 
 // Tagless-final network runtime: fs2 bearer, multiplexer and mini-protocol clients.
-lazy val networkRuntime = project.in(file("network-runtime")).dependsOn(network % "compile->compile;test->test").settings(
-  libraryDependencies ++= Seq(
-    "org.typelevel" %% "cats-core" % catsVersion,
-    "org.typelevel" %% "cats-effect" % catsEffectVersion,
-    "org.typelevel" %% "cats-mtl" % catsMtlVersion,
-    "co.fs2" %% "fs2-core" % fs2Version,
-    "co.fs2" %% "fs2-io" % fs2Version
-  ) ++ lawTestDependencies
-)
+lazy val networkRuntime = project
+  .in(file("network-runtime"))
+  .dependsOn(network % "compile->compile;test->test")
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % catsVersion,
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,
+      "org.typelevel" %% "cats-mtl" % catsMtlVersion,
+      "co.fs2" %% "fs2-core" % fs2Version,
+      "co.fs2" %% "fs2-io" % fs2Version
+    ) ++ lawTestDependencies
+  )
 
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
 
 // Tagless-final node: algebras over F[_] with cats-mtl typed control flow.
-lazy val node = project.in(file("node")).dependsOn(core, network, networkRuntime).settings(
-  // Snapshot codecs are derived by inline `Mirror` recursion; ProtocolParams has 33 fields.
-  scalacOptions += "-Xmax-inlines:512",
-  libraryDependencies ++= Seq(
-    "org.typelevel" %% "cats-core" % catsVersion,
-    "org.typelevel" %% "cats-effect" % catsEffectVersion,
-    "org.typelevel" %% "cats-mtl" % catsMtlVersion,
-    // Plutus (UPLC) machine and builtins only; the script context, ledger rules and plumbing are ours.
-    "org.scalus" %% "scalus" % "1.2.0",
-    // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
-    "org.rocksdb" % "rocksdbjni" % "10.2.1",
-    "io.circe" %% "circe-parser" % "0.14.10",
-    "org.http4s" %% "http4s-ember-server" % "0.23.30",
-    "org.http4s" %% "http4s-dsl" % "0.23.30",
-    "org.http4s" %% "http4s-circe" % "0.23.30"
-  ) ++ lawTestDependencies,
-  runtimeClasspathFile := {
-    val output = target.value / "runtime-classpath.txt"
-    IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
-    output
-  },
-  Compile / run / fork := true
-)
+lazy val node = project
+  .in(file("node"))
+  .dependsOn(core, network, networkRuntime)
+  .settings(
+    // Snapshot codecs are derived by inline `Mirror` recursion; ProtocolParams has 33 fields.
+    scalacOptions += "-Xmax-inlines:512",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % catsVersion,
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,
+      "org.typelevel" %% "cats-mtl" % catsMtlVersion,
+      // Plutus (UPLC) machine and builtins only; the script context, ledger rules and plumbing are ours.
+      "org.scalus" %% "scalus" % "1.2.0",
+      // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
+      "org.rocksdb" % "rocksdbjni" % "10.2.1",
+      "io.circe" %% "circe-parser" % "0.14.10",
+      "org.http4s" %% "http4s-ember-server" % "0.23.30",
+      "org.http4s" %% "http4s-dsl" % "0.23.30",
+      "org.http4s" %% "http4s-circe" % "0.23.30"
+    ) ++ lawTestDependencies,
+    runtimeClasspathFile := {
+      val output = target.value / "runtime-classpath.txt"
+      IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
+      output
+    },
+    Compile / run / fork := true
+  )
 
 lazy val root = project.in(file(".")).aggregate(core, network, networkRuntime, node)
 

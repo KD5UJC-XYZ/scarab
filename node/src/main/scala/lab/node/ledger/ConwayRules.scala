@@ -127,9 +127,11 @@ object ConwayRules:
           UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), env.network))
         )
       )
-      _ <- PreConwayRules.outputsOk(pp, env, body.outputs ++ body.collateralReturn.toVector).leftMap(
-        LedgerFailure.Rejected(id, _)
-      )
+      _ <- PreConwayRules
+        .outputsOk(pp, env, body.outputs ++ body.collateralReturn.toVector)
+        .leftMap(
+          LedgerFailure.Rejected(id, _)
+        )
       _ <- check(
         wits.totalExUnits.fits(pp.maxTxExUnits),
         PredicateFailure.utxo(
@@ -230,10 +232,12 @@ object ConwayRules:
       if ok then Right(()) else refuse(failure)
     // Key-hash reward accounts must be delegated to a DRep after the bootstrap phase; the check
     // looks at the state before the certificates.
-    val notDelegated = body.withdrawals.collect {
-      case (account, _) if account.credential.isInstanceOf[Credential.Key] =>
-        account.credential.hash
-    }.filterNot(h => state.accounts.get(Credential.Key(h)).exists(_.drep.isDefined))
+    val notDelegated = body.withdrawals
+      .collect {
+        case (account, _) if account.credential.isInstanceOf[Credential.Key] =>
+          account.credential.hash
+      }
+      .filterNot(h => state.accounts.get(Credential.Key(h)).exists(_.drep.isDefined))
     // withdrawalsThatDoNotDrainAccounts: accounts that do not exist (or sit on another network)
     // and accounts whose balance is not withdrawn entirely
     val missing = body.withdrawals.filter { case (a, _) =>
@@ -241,7 +245,9 @@ object ConwayRules:
     }
     val incomplete = body.withdrawals.collect {
       case (a, amount)
-          if a.network == env.network && state.accounts.get(a.credential).exists(_.balance != amount) =>
+          if a.network == env.network && state.accounts
+            .get(a.credential)
+            .exists(_.balance != amount) =>
         a -> Mismatch(amount, state.accounts(a.credential).balance)
     }
     for
@@ -366,9 +372,12 @@ private[ledger] object ConwayCerts:
           declared.forall(_ == pp.keyDeposit),
           if pp.protocolMajor > 10 then
             PredicateFailure.deleg(
-              DelegFailure.DepositIncorrect(Mismatch(declared.getOrElse(pp.keyDeposit), pp.keyDeposit))
+              DelegFailure.DepositIncorrect(
+                Mismatch(declared.getOrElse(pp.keyDeposit), pp.keyDeposit)
+              )
             )
-          else PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared.getOrElse(pp.keyDeposit)))
+          else
+            PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared.getOrElse(pp.keyDeposit)))
         )
       yield st.copy(accounts = st.accounts.updated(c, Account(0, pp.keyDeposit, None, None)))
 
@@ -383,7 +392,8 @@ private[ledger] object ConwayCerts:
         a <- st.accounts
           .get(c)
           .toRight(
-            LedgerFailure.Rejected(id, PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(c)))
+            LedgerFailure
+              .Rejected(id, PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(c)))
           )
         _ <- pool.traverse_(p =>
           check(
@@ -433,7 +443,8 @@ private[ledger] object ConwayCerts:
               PredicateFailure.deleg(
                 DelegFailure.RefundIncorrect(Mismatch(declared.getOrElse(a.deposit), a.deposit))
               )
-            else PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared.getOrElse(a.deposit)))
+            else
+              PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared.getOrElse(a.deposit)))
           )
           _ <- check(
             a.balance == 0,

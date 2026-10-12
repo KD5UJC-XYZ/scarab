@@ -184,11 +184,12 @@ object QueryAnswers:
     import LedgerQuery.*
     def build(f: CborOut => Unit): Option[Bytes] = Some(CborOut.build(f(_)))
     q match
-      case GetLedgerTip      => build(point(_, view.point))
-      case GetEpochNo        => build(_.uint(s.epoch))
-      case GetCurrentPParams => build(E.protocolParams(_, s.params))
-      case GetGenesisConfig  => GenesisConfig.encode(env.shelleyGenesis).toOption
-      case GetUTxOWhole      => build(E.utxo(_, utxo))
+      case GetLedgerTip       => build(point(_, view.point))
+      case GetEpochNo         => build(_.uint(s.epoch))
+      case GetCurrentPParams  => build(E.protocolParams(_, s.params))
+      case GetGenesisConfig   => GenesisConfig.encode(env.shelleyGenesis).toOption
+      case DebugChainDepState => build(chainDepState(_, view))
+      case GetUTxOWhole       => build(E.utxo(_, utxo))
       case GetUTxOByAddress(addresses) =>
         build(E.utxo(_, utxo.filter { case (_, o) => addresses(o.address.raw) }))
       case GetUTxOByTxIn(inputs) =>
@@ -316,6 +317,23 @@ object QueryAnswers:
       case GetDRepDelegations(dreps) => build(drepDelegations(_, s, dreps))
       case _                         => None
 
+  /** `PraosState` as `Serialise` writes it: a version tag, then the last slot, the operational
+    * certificate counters and the six nonces.
+    */
+  private def chainDepState(w: CborOut, view: QueryView): CborOut =
+    val p = view.state.praos
+    w.array(2).uint(0).array(8)
+    view.point match
+      case Point.Block(slot, _) => w.array(2).uint(1).uint(slot.value)
+      case Point.Origin         => w.array(1).uint(0)
+    E.map(w, p.counters.toVector, E.bytesOrdering, variable = false)(
+      (k, h) => k.bytes(h),
+      (k, n) => k.uint(n)
+    )
+    List(p.evolving, p.candidate, p.epochNonce, p.previousEpochNonce, p.lab, p.lastEpochBlock)
+      .foreach(E.nonce(w, _))
+    w
+
   /** The parameters that take effect at the next boundary, when one is already decided. */
   private def futureParams(view: QueryView): Option[ProtocolParams] =
     view.ledger.gov.pulsed.map(_._2.enact.params).filter(_ != view.ledger.params)
@@ -331,33 +349,25 @@ object QueryAnswers:
       case _                             => 0
     w.uint(vote)
 
+  /** `queryDRepDelegations`: for a non-empty set of registered DReps their reverse delegation sets;
+    * otherwise (an empty set, or a set naming always-abstain or always-no-confidence) the accounts
+    * grouped by the DRep they delegate to, restricted to the set when it is not empty.
+    */
   private def drepDelegations(w: CborOut, s: LedgerState, dreps: Set[DRep]): CborOut =
-    val delegated: Map[DRep, Set[Credential]] =
-      s.accounts.toVector
-        .collect { case (c, a) if a.drep.isDefined => a.drep.get -> c }
-        .groupMap(_._1)(_._2)
-        .view
-        .mapValues(_.toSet)
-        .toMap
-    val registered: Map[DRep, Set[Credential]] =
-      s.dreps.map { case (c, d) => DRep.Registered(c) -> d.delegs }
-    val all =
-      if dreps.isEmpty then
-        registered ++ delegated.filter { case (k, _) =>
-          k == DRep.AlwaysAbstain || k == DRep.AlwaysNoConfidence
-        }
+    val registered = dreps.collect { case DRep.Registered(c) => c }
+    val result: Map[DRep, Set[Credential]] =
+      if dreps.nonEmpty && registered.size == dreps.size then
+        s.dreps.collect { case (c, d) if registered(c) => DRep.Registered(c) -> d.delegs }
       else
-        dreps.toVector
-          .map { d =>
-            d -> (d match
-              case DRep.Registered(_) => registered.getOrElse(d, Set.empty)
-              case _                  => delegated.getOrElse(d, Set.empty))
+        s.accounts.toVector
+          .collect {
+            case (c, a) if a.drep.exists(d => dreps.isEmpty || dreps(d)) => a.drep.get -> c
           }
-          .filter(_._2.nonEmpty || dreps.exists {
-            case DRep.Registered(_) => true; case _ => false
-          })
+          .groupMap(_._1)(_._2)
+          .view
+          .mapValues(_.toSet)
           .toMap
-    E.map(w, all.toVector, E.drepOrdering)(
+    E.map(w, result.toVector, E.drepOrdering)(
       E.drep,
       (k, creds) => E.set(k, creds, E.credentialOrdering)(E.credential)
     )
@@ -385,18 +395,15 @@ object QueryAnswers:
         k.uint(stake)
         k.bytes(dist.pools.get(id).fold(Bytes.empty)(_.vrfKeyHash))
     )
-    w.uint(total)
+    w.uint(total.max(1))
 
   private def stakeSnapshots(w: CborOut, s: LedgerState, pools: Option[Set[Bytes]]): CborOut =
     val snaps = Vector(s.snapshots.mark, s.snapshots.set, s.snapshots.go)
+    // Without a list of pools: before protocol version 11 the pools that have delegators in any
+    // snapshot, from 11 those with stake.
     val ids: Set[Bytes] = pools.getOrElse {
       if s.params.protocolMajor < 11 then
-        snaps
-          .flatMap(_.delegations.valuesIterator.filter(p => snaps.exists(_.pools.contains(p))))
-          .toSet
-          .filter(p =>
-            snaps.exists(sn => sn.pools.contains(p) && sn.delegations.valuesIterator.contains(p))
-          )
+        snaps.flatMap(sn => sn.delegations.valuesIterator.filter(sn.pools.contains)).toSet
       else snaps.flatMap(_.poolStake.collect { case (p, st) if st > 0 => p }).toSet
     }
     def stakeOf(snap: Snapshot, p: Bytes): BigInt = snap.poolStake.getOrElse(p, BigInt(0))
@@ -409,7 +416,8 @@ object QueryAnswers:
       (k, h) => k.bytes(h),
       (k, st) => { k.array(3); st.foreach(k.uint) }
     )
-    snaps.foreach(sn => w.uint(sn.activeStake))
+    // the totals are `NonZero`: an empty snapshot counts as 1
+    snaps.foreach(sn => w.uint(sn.activeStake.max(1)))
     w
 
   private def committeeMembersState(

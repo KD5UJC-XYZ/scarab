@@ -17,8 +17,9 @@ enum LedgerFailure:
 
   def message: String = this match
     case Unsupported(id, f) => s"tx ${id.hex.take(16)} uses unsupported $f"
-    case Rejected(id, f)    => s"tx ${id.hex.take(16)} violates ${f.ruleName}: ${LedgerFailure.detail(f)}"
-    case Malformed(d)       => s"malformed transaction: $d"
+    case Rejected(id, f) =>
+      s"tx ${id.hex.take(16)} violates ${f.ruleName}: ${LedgerFailure.detail(f)}"
+    case Malformed(d) => s"malformed transaction: $d"
 
 object LedgerFailure:
   /** A refusal named by its rule and a free-text detail, for the rules whose payload is not

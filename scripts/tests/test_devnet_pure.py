@@ -12,7 +12,8 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntcquery, refused_fixture  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntcqueries, ntcquery, refused_fixture  # noqa: E402
+from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 
 RFC8032_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
@@ -327,3 +328,48 @@ class StarvationWarningTest(unittest.TestCase):
             self.assertEqual(len(events), 1)
             self.assertEqual(other, ["something else"])
             self.assertEqual(util.starvation_warnings(p), 1)
+
+
+class NtcQueriesTest(unittest.TestCase):
+    def universe(self):
+        cred = [0, b"\xab" * 28]
+        return ntcqueries.Universe(pools=[b"\x01" * 28, b"\x02" * 28], creds=[tuple(cred)], dreps=[cred],
+                                   drep_keys=[cred], addresses=[b"\x61" + b"\x00" * 28],
+                                   txins=[[b"\x11" * 32, 0]], actions=[[b"\x22" * 32, 0]], committee=[cred])
+
+    def test_battery_labels_are_unique_and_every_query_encodes(self):
+        queries = ntcqueries.battery(self.universe())
+        labels = [label for label, _, _ in queries]
+        self.assertEqual(len(labels), len(set(labels)))
+        for label, query, _ in queries:
+            self.assertTrue(cbor.enc(query), label)
+
+    def test_ledger_queries_are_wrapped_for_conway(self):
+        by_label = {label: query for label, query, _ in ntcqueries.battery(self.universe())}
+        self.assertEqual(by_label["GetCurrentPParams"], [0, [0, [6, [3]]]])
+        self.assertEqual(by_label["top:GetChainPoint"], [3])
+        self.assertEqual(by_label["hfc:GetInterpreter"], [0, [2, [0]]])
+
+    def test_sets_are_tagged_and_sorted(self):
+        encoded = cbor.enc(ntcqueries.sset([[1, b"b"], [0, b"a"]]))
+        self.assertEqual(encoded[:3], bytes.fromhex("d90102"))
+        self.assertLess(encoded.index(b"a"), encoded.index(b"b"))
+
+    def test_unimplemented_queries_are_marked(self):
+        marked = {label for label, _, implemented in ntcqueries.battery(self.universe()) if not implemented}
+        self.assertIn("DebugNewEpochState", marked)
+        self.assertNotIn("GetCurrentPParams", marked)
+
+    def test_the_cli_queries_name_their_arguments(self):
+        for label, text in ntc.CLI_QUERIES:
+            self.assertFalse(text.startswith("query "), label)
+        self.assertEqual(ntc.rendered("x\nError: boom\nCallStack"), "Error: boom")
+
+
+class NtcQuerySessionTest(unittest.TestCase):
+    def test_a_rejection_reason_is_what_follows_the_message_tag(self):
+        raw = bytes.fromhex("82028182068182018200830518c401")
+        self.assertEqual(ntcquery.LocalStateQuery._reason(raw), bytes.fromhex("8182068182018200830518c401"))
+
+    def test_transactions_travel_as_cbor_in_cbor(self):
+        self.assertEqual(cbor.enc([0, [6, cbor.Tag(24, b"\x01\x02")]]), bytes.fromhex("82008206d818420102"))

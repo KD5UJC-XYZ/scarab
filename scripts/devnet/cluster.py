@@ -380,7 +380,7 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
 
 
 def down(args, quiet=False):
-    for c in (f"{args.name}-scala", ref(args.name)):
+    for c in (f"{args.name}-scala", f"{args.name}-cli", ref(args.name)):
         docker("rm", "-f", c, check=False)
     shutil.rmtree(data_root(args.name), ignore_errors=True)
     if not quiet:

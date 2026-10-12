@@ -29,7 +29,11 @@ final case class PraosState(
     epochNonce: Nonce,
     lab: Nonce,
     lastEpochBlock: Nonce,
-    counters: Map[Bytes, BigInt]
+    counters: Map[Bytes, BigInt],
+    /** The epoch nonce of the epoch before (`praosStatePreviousEpochNonce`; it takes no part in
+      * validation, node-to-client clients read it with the chain-dependent state).
+      */
+    previousEpochNonce: Nonce = Nonce.Neutral
 )
 
 /** Stake and VRF key of each pool for the leader schedule of one epoch. */
@@ -60,7 +64,8 @@ object Praos:
       state.copy(
         epoch = epoch,
         epochNonce = state.candidate.combine(state.lastEpochBlock).combine(extraEntropy),
-        lastEpochBlock = state.lab
+        lastEpochBlock = state.lab,
+        previousEpochNonce = state.epochNonce
       )
 
   /** Validate `header` (already ticked to its epoch) and return the updated state. */

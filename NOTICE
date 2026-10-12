@@ -103,4 +103,8 @@ versions pinned in build.sbt).
 Licenses were read from the POMs resolved by the build (the node Runtime classpath, 56 jars).
 Transitive dependencies are not repeated here: all of them, with versions and the native libraries
 bundled in the jars, are in docs/licenses.md. None is GPL-only, LGPL or without a declared license.
+Devnet LocalStateQuery goldens (fixtures/devnet/lsq): the genesis directory of a throwaway
+`cardano-testnet` 11.1.1 cluster and the answers the Haskell `cardano-node` 11.1.3 gave on it
+(see the README there); public data only, no secrets. Apache-2.0.
+
 This list is not legal advice and not a completed redistribution review.

@@ -148,6 +148,8 @@ class CodecSuite extends ScalaCheckSuite:
 
   // Regenerate (and bump FileLedgerSnapshots.FormatVersion if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
+  // Last regenerated for the previous epoch nonce of PraosState and the PlutusV2 cost model that the
+  // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters).
   private val GoldenInitialState =
-    ("d582c5990994ba233b954453c20e540e30c5cb70ffc8823a50df081c16522f68", 1862)
-  private val GoldenFingerprint = "4a95b5c8d4fc1d41"
+    ("f26a9f94f9df5bb8fc12e935e44b18e8c0df684c5c15ba3d36161a73709e5988", 2362)
+  private val GoldenFingerprint = "7c5587dade8e5284"
