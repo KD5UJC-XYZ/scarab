@@ -327,3 +327,32 @@ class StarvationWarningTest(unittest.TestCase):
             self.assertEqual(len(events), 1)
             self.assertEqual(other, ["something else"])
             self.assertEqual(util.starvation_warnings(p), 1)
+
+
+class SchedulingSummaryTest(unittest.TestCase):
+    def test_summary_takes_the_worst_epoch_window_and_counts_warnings(self):
+        import argparse
+        from devnet import util
+        events = [{"event": "extended"},
+                  {"event": "ledgerEpoch", "scheduling": {"maxTimerLatenessMs": 12, "timersLateOver100Ms": 0,
+                                                          "longestStepMs": 40, "longestStep": "block"}},
+                  {"event": "ledgerEpoch", "scheduling": {"maxTimerLatenessMs": 35, "timersLateOver100Ms": 1,
+                                                          "longestStepMs": 310, "longestStep": "epochBoundary"}}]
+        with tempfile.TemporaryDirectory() as d:
+            log = pathlib.Path(d) / "follower.jsonl"
+            log.write_text("starvation-and-tuning\n")
+            s = util.scheduling_summary(events, log, argparse.Namespace(scala_cpus=1.0))
+        self.assertEqual(s["scalaCpus"], 1.0)
+        self.assertEqual(s["cpuStarvationWarnings"], 1)
+        self.assertEqual(s["epochWindows"], 2)
+        self.assertEqual(s["maxTimerLatenessMs"], 35)
+        self.assertEqual(s["timersLateOver100Ms"], 1)
+        self.assertEqual((s["longestStepMs"], s["longestStep"]), (310, "epochBoundary"))
+
+    def test_scala_container_uses_the_scenario_cpus(self):
+        import argparse
+        args = argparse.Namespace(name="n", scala_cpus=1.0)
+        root = pathlib.Path("/r")
+        self.assertIn("--cpus=1.0", cluster.scala_container(args, root, "cp", "M", []))
+        self.assertIn("--cpus=2", cluster.scala_container(argparse.Namespace(name="n"), root, "cp", "M", []))
+        self.assertIn("--cpus=3", cluster.scala_container(args, root, "cp", "M", [], cpus=3))

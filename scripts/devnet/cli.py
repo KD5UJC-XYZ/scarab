@@ -39,6 +39,12 @@ from .util import REPO
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--name", help="container and run-directory name (default csl-devnet; csl-eras for up-eras, capture-eras, e2e; csl-pool for pool)")
+    scala_options = argparse.ArgumentParser(add_help=False)
+    scala_options.add_argument("--scala-cpus", type=float, default=2,
+                               help="CPUs of the Scala node's container (default 2; 1 shows how it behaves when the host is short of CPU)")
+    scala_options.add_argument("--max-starvation-warnings", type=int, default=None,
+                               help="fail when the Scala node logged more cats-effect CPU-starvation warnings than this "
+                                    "(default: only report them)")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("up", help="create genesis and start the 3-pool reference cluster").set_defaults(run=up)
     eras_options = argparse.ArgumentParser(add_help=False)
@@ -61,7 +67,7 @@ def main():
     ce.add_argument("--out", default=str(REPO / "fixtures/eras"), help="fixture directory")
     ce.add_argument("--conway-blocks", type=int, default=3, help="Conway blocks to capture")
     ce.set_defaults(run=capture_eras)
-    e2 = sub.add_parser("e2e", parents=[eras_options],
+    e2 = sub.add_parser("e2e", parents=[eras_options, scala_options],
                         help="up-eras, follow from Origin, assert every era and transition")
     e2.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     e2.add_argument("--until-epoch", type=int,
@@ -75,7 +81,7 @@ def main():
     t = sub.add_parser("tip", help="print the reference tip as JSON")
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
     t.set_defaults(run=tip)
-    f = sub.add_parser("follow", help="run the Scala follower against a reference node (logs to the run dir)")
+    f = sub.add_parser("follow", parents=[scala_options], help="run the Scala follower against a reference node (logs to the run dir)")
     f.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.set_defaults(run=follow)
@@ -99,14 +105,14 @@ def main():
                          "script accounts and DReps, protocol-11 rules)")
     gl.set_defaults(run=govload)
     sub.add_parser("compare", help="compare the Scala ledger with the reference at one block").set_defaults(run=compare)
-    sk = sub.add_parser("soak", help="up + follow + load + periodic compare, then a summary")
+    sk = sub.add_parser("soak", parents=[scala_options], help="up + follow + load + periodic compare, then a summary")
     sk.add_argument("--seconds", type=int, default=600, help="load phase length")
     sk.add_argument("--every", type=int, default=20, help="seconds between ledger comparisons")
     sk.add_argument("--seed", type=int, default=1, help="random seed of the load")
     sk.add_argument("--governance-extended", action="store_true",
                     help="the governance load also runs the extended scenarios (about 16 epochs of 500 slots; use --seconds 900)")
     sk.set_defaults(run=soak)
-    rl = sub.add_parser("relay", help="Scala node as a relay serving a Haskell relay; load through the relay")
+    rl = sub.add_parser("relay", parents=[scala_options], help="Scala node as a relay serving a Haskell relay; load through the relay")
     rl.add_argument("--seconds", type=int, default=300, help="load phase length")
     rl.add_argument("--every", type=int, default=5, help="seconds between tip samples")
     rl.add_argument("--seed", type=int, default=1, help="random seed of the load")
@@ -121,7 +127,7 @@ def main():
     rl.add_argument("--keep", action="store_true", help="leave the cluster running")
     rl.add_argument("--keep-data", action="store_true", help="keep the run directory")
     rl.set_defaults(run=relay)
-    pl = sub.add_parser("pool", help="the Scala node as a block-producing pool among two Haskell pools")
+    pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
     pl.add_argument("--seconds", type=int, default=480, help="load phase length")
     pl.add_argument("--pool", type=int, choices=[1, 2, 3], default=1, help="the pool whose keys the Scala node takes")
     pl.add_argument("--every", type=int, default=5, help="seconds between tip samples")

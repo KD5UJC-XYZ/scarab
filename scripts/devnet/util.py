@@ -82,6 +82,22 @@ def starvation_warnings(path):
     return sum(1 for line in path.read_text(errors="replace").split("\n") if is_starvation_warning(line))
 
 
+def scheduling_summary(events, log, args=None):
+    """What the node measured about its own scheduling (D8): the epoch lines of the follower log carry
+    `scheduling.maxTimerLatenessMs` and `scheduling.longestStepMs`; the cats-effect starvation warnings are counted."""
+    windows = [e["scheduling"] for e in events if isinstance(e.get("scheduling"), dict)]
+    longest = max(windows, key=lambda w: w.get("longestStepMs", 0), default={})
+    return {
+        "scalaCpus": getattr(args, "scala_cpus", None),
+        "cpuStarvationWarnings": starvation_warnings(log),
+        "epochWindows": len(windows),
+        "maxTimerLatenessMs": max((w.get("maxTimerLatenessMs", 0) for w in windows), default=None),
+        "timersLateOver100Ms": sum(w.get("timersLateOver100Ms", 0) for w in windows),
+        "longestStepMs": longest.get("longestStepMs"),
+        "longestStep": longest.get("longestStep"),
+    }
+
+
 def read_log(path):
     """(events, other lines) of the follower log; CPU-starvation warnings are not counted as other."""
     events, other = [], []

@@ -11,7 +11,7 @@ from ..cluster import freeze_classes, scala_container, start_nodes, start_refere
 from ..compare import compare_once
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
-from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref
+from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref, put_file, read_json, read_log, ref, scheduling_summary
 
 
 # ---------------------------------------------------------------- the Scala node as a block producer
@@ -169,7 +169,7 @@ def pool(args):
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
         command = scala_container(args, root, classpath, "lab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db",
-                                          f"{root / 'keys'}:/keys:ro"], name=f"{args.name}-scala", cpus=2)
+                                          f"{root / 'keys'}:/keys:ro"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + 180
@@ -309,6 +309,7 @@ def pool(args):
                                                              "inbound", "mempoolAdded", "mempoolAdopted",
                                                              "mempoolRejected", "mempoolDropped")},
             "unparsedScalaOutput": other[:10],
+            "scheduling": scheduling_summary(events, log, args),
         }
         if not forged:
             failures.append("the Scala node forged no block")
@@ -349,6 +350,10 @@ def pool(args):
                             f"{[e for e in events if e['event'] == 'forgeFailed'][:2]}")
         if other:
             failures.append(f"unexpected Scala output: {other[0][:200]}")
+        limit = getattr(args, "max_starvation_warnings", None)
+        if limit is not None and summary["scheduling"]["cpuStarvationWarnings"] > limit:
+            failures.append(f"{summary['scheduling']['cpuStarvationWarnings']} cats-effect CPU-starvation warnings "
+                            f"(allowed {limit}) with the Scala node on {args.scala_cpus} CPUs")
     except SystemExit as e:
         failures.append(str(e))
     finally:

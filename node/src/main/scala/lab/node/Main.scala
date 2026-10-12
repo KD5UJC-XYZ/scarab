@@ -34,8 +34,8 @@ import scala.concurrent.duration.*
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
-  * [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file>
-  * --kes-skey <file> --opcert <file>]`
+  * [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge
+  * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -64,7 +64,9 @@ object Main extends IOApp:
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
-      readAhead: Int = 64
+      readAhead: Int = 64,
+      /** Threads of the pool the CPU-bound rules run on (default: one per available CPU). */
+      cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors())
   )
 
   /** What the chain database (or its absence) hands the node at start. */
@@ -128,12 +130,15 @@ object Main extends IOApp:
           )
 
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
-    utxoBacking(options).use((store, backing) => followWith(options, store, backing))
+    (utxoBacking(options), Scheduling.resource[IO](options.cpuThreads)).tupled.use {
+      case ((store, backing), scheduling) => followWith(options, store, backing, scheduling)
+    }
 
   private def followWith(
       options: Options,
       store: UtxoStore[IO],
-      backing: StateBacking[IO, NodeState]
+      backing: StateBacking[IO, NodeState],
+      scheduling: Scheduling[IO]
   )(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     for
@@ -143,12 +148,13 @@ object Main extends IOApp:
       genesis = setup.genesis
       blocks <- Ref.of[IO, Long](0L)
       connected <- Ref.of[IO, Boolean](false)
+      logged = JsonLog.events(Some(scheduling.stats))
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
           (event match
             case FollowerEvent.Connected(_) => connected.set(true)
             case _                          => IO.unit
-          ) *> JsonLog.events.emit(event)
+          ) *> logged.emit(event)
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
         PlutusCases(dir, perKind = 2, max = 400)
@@ -159,6 +165,7 @@ object Main extends IOApp:
         setup.byronRules,
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
+        compute = Some(scheduling.compute),
         afterBlock = Some { s =>
           IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
             blocks.updateAndGet(_ + 1).flatMap { n =>
@@ -346,7 +353,12 @@ object Main extends IOApp:
           }
           production = forging.fold(Resource.unit[IO])(_.background.void)
           run = QueryServer
-            .resource[IO](ChainView.fromRef(ref), options.queryPort, Some(store))
+            .resource[IO](
+              ChainView.fromRef(ref),
+              options.queryPort,
+              Some(store),
+              Some(scheduling.stats.total.map(JsonLog.schedulingTotal))
+            )
             .flatMap(_ => relay)
             .flatMap(_ => local)
             .flatMap(_ => production)
@@ -360,7 +372,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -376,6 +388,7 @@ object Main extends IOApp:
     "utxo-store",
     "utxo-cache-mb",
     "read-ahead",
+    "cpu-threads",
     "local-socket",
     "vrf-skey",
     "kes-skey",
@@ -443,6 +456,11 @@ object Main extends IOApp:
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
+          cpuThreads <- flags
+            .get("cpu-threads")
+            .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
+              _.toIntOption.filter(_ > 0).toRight(usage)
+            )
         yield Options(
           dir,
           peers,
@@ -458,6 +476,7 @@ object Main extends IOApp:
           forge,
           utxoKind,
           cacheMb,
-          readAhead
+          readAhead,
+          cpuThreads
         )
       case _ => Left(usage)
