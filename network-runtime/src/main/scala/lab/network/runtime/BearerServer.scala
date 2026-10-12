@@ -24,14 +24,21 @@ object BearerServer:
   )(
       handle: (Bearer[F], SocketAddress[IpAddress]) => F[Unit]
   ): Resource[F, SocketAddress[IpAddress]] =
-    Network
-      .forAsync[F]
-      .serverResource(host, port)
-      .flatMap { (bound, sockets) =>
-        sockets
+    val network = Network.forAsync[F]
+    val wildcard = IpAddress.fromString("0.0.0.0").get
+    Resource
+      .eval(
+        host
+          .traverse(_.resolve[F](using network.dns, Async[F]))
+          .map(ip => SocketAddress(ip.getOrElse(wildcard), port.getOrElse(Port.fromInt(0).get)))
+      )
+      .flatMap(requested => network.bind(requested))
+      .flatMap { server =>
+        server.accept
           .map { socket =>
             Stream.eval(
-              socket.remoteAddress
+              Async[F]
+                .pure(socket.peerAddress.asIpUnsafe)
                 .flatMap(remote => handle(Bearer.fromSocket(socket), remote))
                 .attempt
                 .void
@@ -41,7 +48,7 @@ object BearerServer:
           .compile
           .drain
           .background
-          .as(bound)
+          .as(server.address.asIpUnsafe)
       }
 
   /** The same on a Unix domain socket at `path` (an existing file there is replaced), for
@@ -50,11 +57,12 @@ object BearerServer:
   def listenUnix[F[_]: Async](path: java.nio.file.Path, maxConnections: Int = 16)(
       handle: Bearer[F] => F[Unit]
   ): Resource[F, Unit] =
-    import fs2.io.net.unixsocket.{UnixSocketAddress, UnixSockets}
+    import com.comcast.ip4s.UnixSocketAddress
+    import fs2.io.net.Network
     Resource.eval(Async[F].blocking(java.nio.file.Files.deleteIfExists(path))) *>
-      UnixSockets
+      Network
         .forAsync[F]
-        .server(UnixSocketAddress(path.toString))
+        .bindAndAccept(UnixSocketAddress(path.toString))
         .map(socket => Stream.eval(handle(Bearer.fromSocket(socket)).attempt.void))
         .parJoin(maxConnections)
         .compile

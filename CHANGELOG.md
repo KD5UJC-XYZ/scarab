@@ -37,6 +37,13 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
 
 ### Build, CI and structure
+- Dependabot alerts: http4s 0.23.30 to 0.23.37 (ember request smuggling and HTTP/2 denial of
+  service), circe 0.14.10 to 0.14.16 (brings jawn-parser 1.7.0), fs2 3.11.0 to 3.14.0 (the 3.12.2
+  fix; http4s 0.23.37 resolves 3.14.0), cats-effect 3.6.3 to 3.7.1, cats-mtl 1.6.0 to 1.7.0. fs2 3.13
+  deprecates `UnixSockets`, `serverResource`, `client` and `remoteAddress`; the bearers now use
+  `Network.bind`, `bindAndAccept`, `connect` and `peerAddress`. The jackson, jsoup and jline alerts
+  come from the Scala 3.3.8 scaladoc and REPL tool dependencies (not shipped, not on the node
+  classpath); no 3.3.x release updates them.
 - CI: gitleaks secret scan of the full history (`.gitleaks.toml`, 182 known generic-api-key false
   positives allowlisted by path and commit, 0 findings), dependency review on pull requests and the
   sbt dependency graph submitted on pushes to main (roadmap A8).

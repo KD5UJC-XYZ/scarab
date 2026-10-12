@@ -69,8 +69,9 @@ class NodeToNodeSuite extends CatsEffectSuite:
 
   test("TCP: a host name resolves and one socket carries every protocol"):
     typed {
-      Network[IO].serverResource(Some(ip"127.0.0.1"), None).use { (bound, sockets) =>
-        val accept = sockets
+      Network[IO].bind(SocketAddress(ip"127.0.0.1", port"0")).use { server =>
+        val bound = server.address.asIpUnsafe
+        val accept = server.accept
           .map(socket =>
             fs2.Stream.eval(
               (for

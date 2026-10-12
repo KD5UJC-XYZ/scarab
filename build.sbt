@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 val catsVersion = "2.13.0"
-val catsEffectVersion = "3.6.3"
-val catsMtlVersion = "1.6.0"
-val fs2Version = "3.11.0"
+val catsEffectVersion = "3.7.1"
+val catsMtlVersion = "1.7.0"
+val fs2Version = "3.14.0"
 val munitVersion = "1.0.2"
 ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / version := "0.1.0"
@@ -80,10 +80,11 @@ lazy val node = project
       "org.scalus" %% "scalus" % "1.2.0",
       // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
       "org.rocksdb" % "rocksdbjni" % "10.2.1",
-      "io.circe" %% "circe-parser" % "0.14.10",
-      "org.http4s" %% "http4s-ember-server" % "0.23.30",
-      "org.http4s" %% "http4s-dsl" % "0.23.30",
-      "org.http4s" %% "http4s-circe" % "0.23.30"
+      // circe 0.14.16 brings jawn-parser 1.7.0 (fixes jawn advisories)
+      "io.circe" %% "circe-parser" % "0.14.16",
+      "org.http4s" %% "http4s-ember-server" % "0.23.37",
+      "org.http4s" %% "http4s-dsl" % "0.23.37",
+      "org.http4s" %% "http4s-circe" % "0.23.37"
     ) ++ lawTestDependencies,
     runtimeClasspathFile := {
       val output = target.value / "runtime-classpath.txt"
