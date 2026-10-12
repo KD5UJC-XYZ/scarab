@@ -151,5 +151,5 @@ class CodecSuite extends ScalaCheckSuite:
   // Last regenerated for the previous epoch nonce of PraosState and the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters).
   private val GoldenInitialState =
-    ("f26a9f94f9df5bb8fc12e935e44b18e8c0df684c5c15ba3d36161a73709e5988", 2362)
+    ("9958f44813c6a2e9dc939b7130c9fd17c96795bcb6b10d5d95f4eae88f609f71", 2395)
   private val GoldenFingerprint = "7c5587dade8e5284"

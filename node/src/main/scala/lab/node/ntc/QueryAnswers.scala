@@ -132,9 +132,21 @@ object QueryAnswers:
   private def coin(w: CborOut, c: BigInt): Unit = w.uint(c)
 
   private def pulsed(view: QueryView): (PulsingSnapshot, RatifyState) =
-    view.ledger.gov.pulsed.getOrElse(
+    val (snapshot, ratify) = view.ledger.gov.pulsed.getOrElse(
       (PulsingSnapshot.empty, initialRatify(view.ledger))
     )
+    // the pulser the genesis seeded keeps the parameters of the era translation until the first boundary
+    if view.ledger.prevParams.isEmpty then
+      (
+        snapshot,
+        ratify.copy(enact =
+          ratify.enact.copy(
+            params = beforeUpgrade(ratify.enact.params),
+            prevParams = beforeUpgrade(ratify.enact.prevParams)
+          )
+        )
+      )
+    else (snapshot, ratify)
 
   /** Before the first Conway epoch boundary the previous parameters, and the ones in the initial
     * pulser state, are those of the era translation: without the PlutusV3 cost model that the
@@ -145,7 +157,7 @@ object QueryAnswers:
 
   /** The previous parameters as the governance state reports them. */
   private def previous(s: LedgerState): ProtocolParams =
-    if s.gov.pulsed.isEmpty then beforeUpgrade(s.previousParams) else s.previousParams
+    if s.prevParams.isEmpty then beforeUpgrade(s.previousParams) else s.previousParams
 
   /** The pulser state before the first epoch boundary: the enact state of the current ledger. */
   private def initialRatify(s: LedgerState): RatifyState =

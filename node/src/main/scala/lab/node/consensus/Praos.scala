@@ -53,7 +53,7 @@ object Praos:
   /** The chain starts with every nonce equal to the Shelley genesis hash. */
   def initial(shelleyGenesisHash: Bytes): PraosState =
     val n = Nonce.Hash(shelleyGenesisHash)
-    PraosState(0, n, n, n, Nonce.Neutral, Nonce.Neutral, Map.empty)
+    PraosState(0, n, n, n, Nonce.Neutral, Nonce.Neutral, Map.empty, previousEpochNonce = n)
 
   /** Epoch transition: the new epoch nonce mixes the frozen candidate with the last block's lab
     * (and, for TPraos, the protocol parameters' extra entropy).
