@@ -52,7 +52,8 @@ class StateDumpSuite extends munit.FunSuite:
   test("only objects with more than the threshold of fields are replaced by digests") {
     val small = Json.fromFields((1 to StateDump.Threshold).map(i => s"k$i" -> Json.fromInt(i)))
     val big = Json.fromFields((1 to StateDump.Threshold + 1).map(i => s"k$i" -> Json.fromInt(i)))
-    val reduced = StateDump.reduce(Json.obj("small" -> small, "big" -> big, "list" -> Json.arr(big)))
+    val reduced =
+      StateDump.reduce(Json.obj("small" -> small, "big" -> big, "list" -> Json.arr(big)))
     assertEquals(reduced.hcursor.downField("small").focus, Some(small))
     assertEquals(
       reduced.hcursor.downField("big").get[Long]("count"),
@@ -65,8 +66,14 @@ class StateDumpSuite extends munit.FunSuite:
   }
 
   test("targets: epoch boundaries, every Nth epoch, or a list of slots") {
-    assertEquals(StateDump.Targets.parse("epoch-boundaries"), Some(StateDump.Targets.EpochBoundaries(1)))
-    assertEquals(StateDump.Targets.parse("epoch-boundaries/5"), Some(StateDump.Targets.EpochBoundaries(5)))
+    assertEquals(
+      StateDump.Targets.parse("epoch-boundaries"),
+      Some(StateDump.Targets.EpochBoundaries(1))
+    )
+    assertEquals(
+      StateDump.Targets.parse("epoch-boundaries/5"),
+      Some(StateDump.Targets.EpochBoundaries(5))
+    )
     assertEquals(
       StateDump.Targets.parse("300, 100,200"),
       Some(StateDump.Targets.Slots(List(BigInt(100), BigInt(200), BigInt(300))))
