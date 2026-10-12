@@ -267,3 +267,20 @@ class RefusedFixtureTest(unittest.TestCase):
                 {"label": "xrefoverlap-v3-ef", "expected": ["ReferenceInputsNotDisjointFromInputs"], "tx": "03"})))
             lines = refused_fixture.build(run)
         self.assertEqual([l["scenario"] for l in lines], ["vrf", "vrf", "unelected", "refoverlap"])
+
+
+class StarvationWarningTest(unittest.TestCase):
+    def test_starvation_warning_is_not_unparsed_output(self):
+        import tempfile
+        from devnet import util
+        with tempfile.TemporaryDirectory() as d:
+            p = pathlib.Path(d) / "follower.jsonl"
+            p.write_text('{"event": "extended"}\n'
+                         "[WARNING] Your app's responsiveness to a new asynchronous event (such as a new "
+                         "connection, an upstream response, or a timer) was in excess of 100 milliseconds. "
+                         "See https://typelevel.org/cats-effect/docs/core/starvation-and-tuning\n"
+                         "something else\n")
+            events, other = util.read_log(p)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(other, ["something else"])
+            self.assertEqual(util.starvation_warnings(p), 1)

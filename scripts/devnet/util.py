@@ -66,8 +66,24 @@ ERAS = ["byron", "shelley", "allegra", "mary", "alonzo", "babbage", "conway"]
 TAG_ERA = {0: "byron", 1: "byron", 2: "shelley", 3: "allegra", 4: "mary", 5: "alonzo", 6: "babbage", 7: "conway"}
 
 
+# cats-effect prints this when the host starves the JVM of CPU (e.g. several clusters at once);
+# it is a scheduling hint, not a node failure, so scenarios count it instead of failing on it.
+STARVATION_MARKERS = ("Your app's responsiveness to a new asynchronous event", "starvation-and-tuning")
+
+
+def is_starvation_warning(line):
+    return any(m in line for m in STARVATION_MARKERS)
+
+
+def starvation_warnings(path):
+    """Number of cats-effect CPU-starvation warnings in the follower log."""
+    if not path.exists():
+        return 0
+    return sum(1 for line in path.read_text(errors="replace").split("\n") if is_starvation_warning(line))
+
+
 def read_log(path):
-    """(events, other lines) of the follower log."""
+    """(events, other lines) of the follower log; CPU-starvation warnings are not counted as other."""
     events, other = [], []
     if path.exists():
         text = path.read_text(errors="replace")
@@ -79,6 +95,6 @@ def read_log(path):
                     continue
                 except json.JSONDecodeError:
                     pass
-            if line.strip() and not line.startswith("SLF4J"):
+            if line.strip() and not line.startswith("SLF4J") and not is_starvation_warning(line):
                 other.append(line)
     return events, other

@@ -341,10 +341,10 @@ def freeze_classes(root):
     return ":".join(entries)
 
 
-def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=1):
+def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=2):
     """`docker run` arguments for a JVM of the frozen classes in the reference network namespace."""
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
-               f"--cpus={cpus}", "--memory=1g", "--user", USER,
+               f"--cpus={cpus}", "--memory=2g", "--user", USER,
                "-v", f"{REPO}:/work:ro", "-v", f"{root / 'classes'}:/run/classes:ro"]
     if name:
         command += ["--name", name]

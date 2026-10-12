@@ -54,6 +54,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **D5** [#24](https://github.com/ottobot-ai/cardano-scala-lab/issues/24) DB network identity. The DB doesn't record which network it belongs to, so pointing `--db` at the wrong network goes undetected.
 - **D6** [#25](https://github.com/ottobot-ai/cardano-scala-lab/issues/25) Mainnet sync. About 12M blocks: measure throughput and memory, then optimise.
 - **D7** [#26](https://github.com/ottobot-ai/cardano-scala-lab/issues/26) Ed25519 throughput. Only parallelism is used. A faster path that can only accept was correctly rejected as a security weakening, so any speedup must keep strict semantics.
+- **D8** [#65](https://github.com/ottobot-ai/cardano-scala-lab/issues/65) (P1) Scheduling fairness: CPU-heavy work (batch verification, rule application, epoch boundary, Plutus) runs as uninterrupted steps on the cats-effect compute pool, so under a 1-CPU limit or an oversubscribed host it delays the node's timers (one starvation warning seen in a devnet run). Run it on a bounded pool or chunk it with `cede`, expose scheduling latency, and prove 0 warnings and 0 missed leader slots under 1 CPU.
 
 ## E. Fast start (P1)
 

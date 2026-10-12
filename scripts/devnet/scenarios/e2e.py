@@ -12,7 +12,7 @@ from ..cluster import down, freeze_classes, scala_container, up_eras
 from ..compare import Comparisons, compare_era, comparison_table, judge_comparisons, lsq
 from ..follower import follower_problem, start_follower
 from ..load import start_conway_load
-from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref
+from ..util import ERAS, MAGIC, TAG_ERA, data_root, docker, read_log, ref, starvation_warnings
 
 
 CONWAY_EPOCHS = 7  # Conway epochs the e2e run follows: bootstrap governance, the hard fork to 10, then full governance
@@ -228,6 +228,7 @@ def e2e(args):
         events, other = read_log(log)
         summary, failures = summarize_e2e(events, other, expected, exit_code)
         summary["stoppedBecause"] = reason
+        summary["cpuStarvationWarnings"] = starvation_warnings(log)
         summary["targetConwayEpoch"] = target
         if reason != "reached":
             failures.append(f"stopped without reaching Conway epoch {target}: {reason}")
