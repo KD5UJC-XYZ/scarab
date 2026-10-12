@@ -38,7 +38,7 @@ object Bearer:
       .make(
         Network
           .forAsync[F]
-          .client(address)
+          .connect(address)
           .allocated
           .timeout(connectTimeout)
           .attempt

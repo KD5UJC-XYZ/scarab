@@ -4,7 +4,8 @@ package lab.node.mempool
 import cats.effect.{IO, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
-import fs2.io.net.unixsocket.{UnixSocketAddress, UnixSockets}
+import com.comcast.ip4s.UnixSocketAddress
+import fs2.io.net.Network
 import lab.cbor.Bytes
 import lab.network.{Handshake, LocalTxSubmission}
 import lab.network.ChainSync.{DecodeResult, Role}
@@ -70,9 +71,9 @@ class LocalSubmissionSuite extends CatsEffectSuite:
         }
       }
       .use { (mempool, path) =>
-        UnixSockets
+        Network
           .forAsync[IO]
-          .client(UnixSocketAddress(path.toString))
+          .connect(UnixSocketAddress(path.toString))
           .flatMap(socket => Resource.pure[IO, Bearer[IO]](Bearer.fromSocket(socket)))
           .use { bearer =>
             Handle

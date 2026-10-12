@@ -8,7 +8,7 @@ Research software, not legal advice. This is a record of what the build resolves
 The Runtime classpath of the `node` project (which includes `core`, `network` and `network-runtime`)
 was written with `sbt node/runtimeClasspathFile` in the JDK image, at v0.1.0 plus this review. For every
 jar on it, the `<licenses>` element of its POM in the Coursier cache was read; where a POM declares
-none, the parent POM chain was followed. 56 third-party jars resolve, 15 of them direct dependencies.
+none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them direct dependencies.
 Jar contents were listed for licence files and native libraries. The licence names below are the POM
 names, normalised to SPDX identifiers where they are unambiguous.
 
@@ -49,22 +49,22 @@ regenerated here.
 |---|---|---|---|---|
 | org.scala-lang:scala3-library_3 | 3.3.8 | Apache-2.0 | direct |  |
 | org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |
-| org.typelevel:cats-effect_3 | 3.6.3 | Apache-2.0 | direct |  |
-| org.typelevel:cats-mtl_3 | 1.6.0 | Apache-2.0 | direct |  |
+| org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
+| org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
 | org.scalus:scalus_3 | 1.2.0 | Apache-2.0 | direct |  |
 | org.rocksdb:rocksdbjni | 10.2.1 | Apache-2.0 OR GPL-2.0-only | direct | Dual licence; Apache-2.0 elected. The jar bundles native libraries (see below). |
-| io.circe:circe-parser_3 | 0.14.10 | Apache-2.0 | direct |  |
-| org.http4s:http4s-ember-server_3 | 0.23.30 | Apache-2.0 | direct |  |
-| org.http4s:http4s-dsl_3 | 0.23.30 | Apache-2.0 | direct |  |
-| org.http4s:http4s-circe_3 | 0.23.30 | Apache-2.0 | direct |  |
+| io.circe:circe-parser_3 | 0.14.16 | Apache-2.0 | direct |  |
+| org.http4s:http4s-ember-server_3 | 0.23.37 | Apache-2.0 | direct |  |
+| org.http4s:http4s-dsl_3 | 0.23.37 | Apache-2.0 | direct |  |
+| org.http4s:http4s-circe_3 | 0.23.37 | Apache-2.0 | direct |  |
 | org.bouncycastle:bcprov-jdk18on | 1.85.2 | Bouncy Castle Licence (MIT-style) | direct | The jar carries META-INF/LICENSE.md. |
 | com.weavechain:curve25519-elisabeth | 0.1.3 | MIT | direct | The jar carries no licence file; further MIT, CC0 and BSD-3-Clause notices of adapted components are recorded in the project README (not verified here). |
 | org.typelevel:cats-kernel_3 | 2.13.0 | MIT | direct |  |
-| co.fs2:fs2-core_3 | 3.11.0 | MIT | direct |  |
-| co.fs2:fs2-io_3 | 3.11.0 | MIT | direct |  |
+| co.fs2:fs2-core_3 | 3.14.0 | MIT | direct |  |
+| co.fs2:fs2-io_3 | 3.14.0 | MIT | direct |  |
 | org.scala-lang:scala-library | 2.13.18 | Apache-2.0 | transitive |  |
-| org.typelevel:cats-effect-kernel_3 | 3.6.3 | Apache-2.0 | transitive |  |
-| org.typelevel:cats-effect-std_3 | 3.6.3 | Apache-2.0 | transitive |  |
+| org.typelevel:cats-effect-kernel_3 | 3.7.1 | Apache-2.0 | transitive |  |
+| org.typelevel:cats-effect-std_3 | 3.7.1 | Apache-2.0 | transitive |  |
 | org.typelevel:cats-parse_3 | 1.1.0 | MIT | transitive |  |
 | org.typelevel:paiges-core_3 | 0.4.4 | Apache-2.0 | transitive |  |
 | com.lihaoyi:upickle_3 | 4.4.3 | MIT | transitive |  |
@@ -76,31 +76,34 @@ regenerated here.
 | dev.optics:monocle-macro_3 | 3.3.0 | MIT | transitive |  |
 | foundation.icon:blst-java | 0.3.2 | Apache-2.0 | transitive | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
 | org.scalus:scalus-secp256k1-jni | 0.6.0 | Apache-2.0 | transitive | Bundles native secp256k1 (bitcoin-core, MIT) for Linux and macOS; the POM states Apache-2.0 for the wrapper. |
-| io.circe:circe-jawn_3 | 0.14.10 | Apache-2.0 | transitive |  |
-| io.circe:circe-core_3 | 0.14.10 | Apache-2.0 | transitive |  |
-| org.http4s:http4s-ember-core_3 | 0.23.30 | Apache-2.0 | transitive |  |
-| org.http4s:http4s-server_3 | 0.23.30 | Apache-2.0 | transitive |  |
-| org.typelevel:log4cats-slf4j_3 | 2.7.0 | Apache-2.0 | transitive |  |
-| org.http4s:http4s-core_3 | 0.23.30 | Apache-2.0 | transitive |  |
-| org.http4s:http4s-jawn_3 | 0.23.30 | Apache-2.0 | transitive |  |
-| org.scodec:scodec-bits_3 | 1.1.38 | BSD-3-Clause | transitive |  |
-| com.comcast:ip4s-core_3 | 3.6.0 | Apache-2.0 | transitive |  |
+| io.circe:circe-jawn_3 | 0.14.16 | Apache-2.0 | transitive |  |
+| io.circe:circe-core_3 | 0.14.16 | Apache-2.0 | transitive |  |
+| org.http4s:http4s-ember-core_3 | 0.23.37 | Apache-2.0 | transitive |  |
+| org.http4s:http4s-server_3 | 0.23.37 | Apache-2.0 | transitive |  |
+| org.typelevel:log4cats-slf4j_3 | 2.8.0 | Apache-2.0 | transitive |  |
+| org.http4s:http4s-core_3 | 0.23.37 | Apache-2.0 | transitive |  |
+| org.http4s:http4s-jawn_3 | 0.23.37 | Apache-2.0 | transitive |  |
+| org.scodec:scodec-bits_3 | 1.2.5 | BSD-3-Clause | transitive |  |
+| com.comcast:ip4s-core_3 | 3.8.0 | Apache-2.0 | transitive |  |
 | com.lihaoyi:ujson_3 | 4.4.3 | MIT | transitive |  |
 | com.lihaoyi:upack_3 | 4.4.3 | MIT | transitive |  |
 | com.lihaoyi:upickle-implicits_3 | 4.4.3 | MIT | transitive |  |
 | org.typelevel:cats-free_3 | 2.12.0 | MIT | transitive |  |
 | org.scijava:native-lib-loader | 2.5.0 | BSD-2-Clause | transitive | Extracts bundled native libraries at run time. |
-| org.typelevel:jawn-parser_3 | 1.6.0 | MIT | transitive |  |
-| io.circe:circe-numbers_3 | 0.14.10 | Apache-2.0 | transitive |  |
-| org.typelevel:log4cats-core_3 | 2.7.0 | Apache-2.0 | transitive |  |
+| org.typelevel:jawn-parser_3 | 1.7.0 | MIT | transitive |  |
+| io.circe:circe-numbers_3 | 0.14.16 | Apache-2.0 | transitive |  |
+| org.typelevel:log4cats-core_3 | 2.8.0 | Apache-2.0 | transitive |  |
 | com.twitter:hpack | 1.0.2 | Apache-2.0 | transitive |  |
 | org.slf4j:slf4j-api | 1.7.36 | MIT | transitive |  |
-| org.typelevel:case-insensitive_3 | 1.4.2 | Apache-2.0 | transitive |  |
-| org.http4s:http4s-crypto_3 | 0.2.4 | Apache-2.0 | transitive |  |
-| org.typelevel:literally_3 | 1.1.0 | Apache-2.0 | transitive |  |
-| org.typelevel:vault_3 | 3.6.0 | MIT | transitive |  |
+| org.typelevel:case-insensitive_3 | 1.5.0 | Apache-2.0 | transitive |  |
+| org.http4s:http4s-crypto_3 | 0.2.5 | Apache-2.0 | transitive |  |
+| org.typelevel:literally_3 | 1.2.0 | Apache-2.0 | transitive |  |
+| org.typelevel:idna4s-core_3 | 0.1.0 | MIT | transitive |  |
+| org.typelevel:cats-collections-core_3 | 0.9.10 | MIT and BSD-3-Clause | transitive | The POM lists both. |
+| org.typelevel:algebra_3 | 2.13.0 | MIT | transitive |  |
+| org.typelevel:vault_3 | 3.7.0 | MIT | transitive |  |
 | org.log4s:log4s_3 | 1.10.0 | Apache-2.0 | transitive |  |
-| org.typelevel:jawn-fs2_3 | 2.4.0 | Apache-2.0 | transitive |  |
+| org.typelevel:jawn-fs2_3 | 2.6.0 | Apache-2.0 | transitive |  |
 | com.lihaoyi:upickle-core_3 | 4.4.3 | MIT | transitive |  |
 | com.lihaoyi:geny_3 | 1.1.1 | MIT | transitive |  |
 
