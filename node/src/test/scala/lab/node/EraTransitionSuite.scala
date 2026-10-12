@@ -603,16 +603,17 @@ class EraTransitionSuite extends CatsEffectSuite:
         val program =
           for
             store <- storage.MemoryUtxoStore[IO]
+            cache = VerificationCache.unsafe(4)
             rules = NodeRules[IO](
-              setup.praos,
+              setup.praos.copy(verdicts = cache),
               setup.globals,
               setup.byronRules,
               utxoStore = Some(store),
               afterBlock =
-                Some(s => IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
+                Some(s => IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
             )
             last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.start) { (state, batch) =>
-              Verification.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
+              cache.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
                 batch.toVector.foldLeftM(state) { (s, i) =>
                   rules(s, headers(i), raws(i))
                     .flatTap(n => storage.UtxoStore.advance(store, n.ledger.utxo))

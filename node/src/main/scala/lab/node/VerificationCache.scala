@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package lab.node
 
-import cats.effect.Async
+import cats.effect.{Async, Resource, Sync}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import java.util.concurrent.ConcurrentHashMap
@@ -10,7 +10,6 @@ import scala.jdk.CollectionConverters.*
 import lab.cbor.Bytes
 import lab.node.consensus.{Nonce, OCertError, OCertRules, Praos, PraosConfig, TPraos}
 import lab.vrf.PraosVrfCertificate as Vrf
-import lab.witness.{StrictEd25519, VerificationResult}
 
 /** Signature checks that do not depend on the ledger state, made available ahead of the sequential
   * rules.
@@ -20,17 +19,19 @@ import lab.witness.{StrictEd25519, VerificationResult}
   * node configuration. They are also most of the work of validating a block (about half of the time
   * on Preview). So the node verifies them for a whole batch of fetched blocks in parallel
   * ([[warm]]) and remembers the verdicts here; the rules ask for the same verdict through
-  * [[witness]] and [[opCert]], which return the remembered one (once) or compute it. The verdict is
-  * exactly the one the plain function gives, so the rules stay pure functions of their inputs; this
-  * is memoisation, and a verdict that was never warmed is simply computed in place.
+  * [[Verdicts]], which returns the remembered one (once) or computes it. The verdict is exactly the
+  * one [[Verdicts.Direct]] gives, so the rules stay pure functions of their inputs; this is
+  * memoisation, and a verdict that was never warmed is simply computed in place.
   *
-  * The state below is deliberately process-global and outside `Ref`: the verdict caches are written
-  * from the parallel warming threads and read, synchronously, from the pure rules, which have no
-  * effect type to thread a `Ref` through. Every structure is a concurrent map or atomic, bounded
-  * (cleared at [[Limit]]), and holds only verdicts that are functions of their key, so sharing it
-  * between tests or nodes in one JVM changes timing, never results.
+  * The state is instance-local: `Main` creates one cache in a `Resource`
+  * ([[VerificationCache.resource]]) and hands it to the rules through `PraosConfig.verdicts`; tests
+  * build their own or use [[Verdicts.Direct]]. It is still mutable and outside `Ref`: the verdict
+  * maps are written from the parallel warming threads and read, synchronously, from the pure rules,
+  * which have no effect type to thread a `Ref` through. Every structure is a concurrent map or
+  * atomic, bounded (cleared at `Limit`), and holds only verdicts that are functions of their key,
+  * so sharing one between threads changes timing, never results.
   */
-object Verification:
+final class VerificationCache private (val parallelism: Int) extends Verdicts:
   private final case class WitnessKey(vkey: Bytes, signature: Bytes, message: Bytes)
   private final case class HeaderKey(
       hash: Bytes,
@@ -59,7 +60,9 @@ object Verification:
     if previous == null || previous._1 != epoch then rewarm(epoch)
 
   private val lastConfig = new AtomicReference[PraosConfig]()
-  private lazy val pool = new java.util.concurrent.ForkJoinPool(defaultParallelism)
+  private lazy val pool = new java.util.concurrent.ForkJoinPool(parallelism)
+
+  private[node] def shutdown(): Unit = pool.shutdownNow(): Unit
 
   private def rewarm(epoch: BigInt): Unit =
     val config = lastConfig.get
@@ -74,19 +77,19 @@ object Verification:
       }
 
   /** Praos (Babbage and later) VRF verdict, see [[lab.vrf.PraosVrfCertificate.verify]]. */
-  def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+  override def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
     Vrf.alpha(input) match
       case Right(alpha) =>
         val known = vrfs.remove(VrfKey(0, alpha, vkey, proof, output))
         vrfStats.record(known != null)
-        if known != null then known else Vrf.verify(input, vkey, proof, output)
+        if known != null then known else Verdicts.Direct.praosVrf(input, vkey, proof, output)
       case Left(_) => Vrf.verify(input, vkey, proof, output)
 
   /** TPraos VRF verdict over an already derived alpha. */
-  def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+  override def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
     val known = vrfs.remove(VrfKey(1, alpha, vkey, proof, output))
     vrfStats.record(known != null)
-    if known != null then known else Vrf.verifyAlpha(alpha, vkey, proof, output)
+    if known != null then known else Verdicts.Direct.tpraosVrf(alpha, vkey, proof, output)
 
   /** `witnesses hits/lookups, opcerts hits/lookups, vrf hits/lookups` for the log. */
   def summary: String = s"witness=$witnessStats opCert=$opCertStats vrf=$vrfStats"
@@ -113,21 +116,19 @@ object Verification:
             )
 
   /** The block decoded while warming, if any (taken once). */
-  def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = Option(prepared.remove(hash))
+  override def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = Option(prepared.remove(hash))
 
   private def compute(key: WitnessKey): Boolean =
-    StrictEd25519.verify(key.vkey, key.signature, key.message) match
-      case Right(VerificationResult.SignatureVerified) => true
-      case _                                           => false
+    Verdicts.Direct.witness(key.vkey, key.signature, key.message)
 
   private val keyHashes = new ConcurrentHashMap[Bytes, Bytes]()
 
   /** The Blake2b-224 hash of a verification key; the same keys sign again and again. */
-  def keyHash(vkey: Bytes): Bytes =
+  override def keyHash(vkey: Bytes): Bytes =
     val known = keyHashes.get(vkey)
     if known != null then known
     else
-      val hash = lab.Blake2b.hash224.hash(vkey)
+      val hash = Verdicts.Direct.keyHash(vkey)
       if keyHashes.size > 200000 then keyHashes.clear()
       keyHashes.put(vkey, hash)
       hash
@@ -145,14 +146,14 @@ object Verification:
   val vrfStats = new Counters
 
   /** Whether `signature` is a valid witness of `message` under `vkey`. */
-  def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
+  override def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
     val key = WitnessKey(vkey, signature, message)
     val known = witnesses.remove(key)
     witnessStats.record(known != null)
     if known != null then known.booleanValue else compute(key)
 
   /** The OCERT signature checks of a header (see [[OCertRules.verifySignatures]]). */
-  def opCert(
+  override def opCert(
       header: Header.Shelley,
       slotsPerKesPeriod: BigInt,
       maxKesEvolutions: BigInt
@@ -160,7 +161,7 @@ object Verification:
     val known = headers.remove(HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions))
     opCertStats.record(known != null)
     if known != null then known
-    else OCertRules.verifySignatures(header, slotsPerKesPeriod, maxKesEvolutions)
+    else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
 
   /** Verify everything a block's signatures need and remember the verdicts. Never fails: a block
     * that does not decode or a check that errors is left for the rules to report.
@@ -204,4 +205,20 @@ object Verification:
         )
         .void
 
+  /** Warm with the cache's own default parallelism. */
+  def warm[F[_]: Async](blocks: Vector[Bytes], config: PraosConfig): F[Unit] =
+    warm[F](blocks, config, parallelism)
+
+object VerificationCache:
   val defaultParallelism: Int = math.max(1, Runtime.getRuntime.availableProcessors())
+
+  /** A fresh, empty cache whose background pool is shut down when the resource is released. */
+  def resource[F[_]: Sync](parallelism: Int = defaultParallelism): Resource[F, VerificationCache] =
+    Resource.make(Sync[F].delay(new VerificationCache(parallelism)))(c =>
+      Sync[F].delay(c.shutdown())
+    )
+
+  /** An unmanaged cache for tests (no background pool is started unless an epoch rewarm happens).
+    */
+  private[node] def unsafe(parallelism: Int = defaultParallelism): VerificationCache =
+    new VerificationCache(parallelism)

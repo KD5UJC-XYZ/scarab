@@ -4,7 +4,7 @@ package lab.node.consensus
 import cats.syntax.all.*
 import lab.Blake2b
 import lab.cbor.Bytes
-import lab.node.{Header, HeaderVrf, VrfCert}
+import lab.node.{Header, HeaderVrf, Verdicts, VrfCert}
 import lab.node.ledger.Rational
 import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
@@ -90,11 +90,12 @@ object TPraos:
   def nonceValue(output: Bytes): Nonce = Nonce.Hash(Blake2b.hash256.hash(output))
 
   private[node] def verifyVrf(
+      verdicts: Verdicts,
       alpha: Bytes,
       vkey: Bytes,
       cert: VrfCert
   ): Either[String, Unit] =
-    lab.node.Verification.tpraosVrf(alpha, vkey, cert.proof, cert.output) match
+    verdicts.tpraosVrf(alpha, vkey, cert.proof, cert.output) match
       case Vrf.Result.VerifiedCertificate(_) => Right(())
       case other                             => Left(other.toString)
 
@@ -132,8 +133,12 @@ object TPraos:
     val leaderSeed = seed(SeedL, slot, state.epochNonce)
     def vrfChecks: Either[TPraosError, Unit] =
       for
-        _ <- verifyVrf(nonceSeed, header.vrfVkey, nonceCert).leftMap(TPraosError.BadNonceVrf(_))
-        _ <- verifyVrf(leaderSeed, header.vrfVkey, leaderCert).leftMap(TPraosError.BadLeaderVrf(_))
+        _ <- verifyVrf(config.verdicts, nonceSeed, header.vrfVkey, nonceCert).leftMap(
+          TPraosError.BadNonceVrf(_)
+        )
+        _ <- verifyVrf(config.verdicts, leaderSeed, header.vrfVkey, leaderCert).leftMap(
+          TPraosError.BadLeaderVrf(_)
+        )
       yield ()
     val genesisKeys = view.genDelegs.keys.toVector.sortBy(_.hex)
     val delegateHashes = view.genDelegs.valuesIterator.map(_.delegate).toSet
@@ -197,7 +202,7 @@ object TPraos:
             )
             _ <- vrfChecks
           yield LeaderCheck.Overlay(gkey)
-      _ <- lab.node.Verification
+      _ <- config.verdicts
         .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(TPraosError.OCert(_))
       _ <- OCertRules

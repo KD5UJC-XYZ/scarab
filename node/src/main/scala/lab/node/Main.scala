@@ -119,18 +119,22 @@ object Main extends IOApp:
           )
 
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
-    utxoBacking(options).use((store, backing) => followWith(options, store, backing))
+    (utxoBacking(options), VerificationCache.resource[IO]()).tupled.use {
+      case ((store, backing), cache) => followWith(options, store, backing, cache)
+    }
 
   private def followWith(
       options: Options,
       store: UtxoStore[IO],
-      backing: StateBacking[IO, NodeState]
+      backing: StateBacking[IO, NodeState],
+      cache: VerificationCache
   )(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     for
       setup <- IO
         .blocking(NodeSetup.fromDirectory(options.genesisDir))
         .flatMap(_.fold(fail, IO.pure))
+        .map(s => s.copy(praos = s.praos.copy(verdicts = cache)))
       genesis = setup.genesis
       blocks <- Ref.of[IO, Long](0L)
       connected <- Ref.of[IO, Boolean](false)
@@ -142,7 +146,7 @@ object Main extends IOApp:
           ) *> JsonLog.events.emit(event)
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
-        PlutusCases(dir, perKind = 2, max = 400)
+        tools.PlutusCases(dir, perKind = 2, max = 400)
       }
       rules = NodeRules[IO](
         setup.praos,
@@ -151,11 +155,11 @@ object Main extends IOApp:
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
         afterBlock = Some { s =>
-          IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
+          IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
             blocks.updateAndGet(_ + 1).flatMap { n =>
               IO.blocking(
                 System.err.println(
-                  s"verification verdicts found ahead (hits/lookups): ${Verification.summary}"
+                  s"verification verdicts found ahead (hits/lookups): ${cache.summary}"
                 )
               ).whenA(n % 20000 == 0)
             }
@@ -190,7 +194,7 @@ object Main extends IOApp:
             setup.start,
             JsonLog.storage,
             backing,
-            Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
+            cache.warm[IO](_, setup.praos)
           )
           .map(r => (r.anchor, r.state, Some(r.persistence), Some(r.store)))
       }
@@ -257,7 +261,7 @@ object Main extends IOApp:
                   follower,
                   Peer.nodeToNode[IO](
                     settings,
-                    Verification.warm[IO](_, setup.praos, Verification.defaultParallelism),
+                    cache.warm[IO](_, setup.praos),
                     Some(mempool.source)
                   ),
                   events,

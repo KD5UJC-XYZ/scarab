@@ -33,7 +33,7 @@ object PreConwayRules:
       ins.traverse(i => state.utxo.get(i).toRight(LedgerFailure.Invalid(id, rule, i.render)))
 
     val wits = tx.witnesses
-    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => lab.node.Verification.keyHash(w._1))
+    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => env.verdicts.keyHash(w._1))
     val hasRedeemers = wits.redeemers.nonEmpty
     val scriptFee =
       if alonzo then
@@ -103,7 +103,7 @@ object PreConwayRules:
         "is_valid = false without a Plutus script"
       )
       _ <- auxiliaryChecks(tx)
-      _ <- witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes)
+      _ <- witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes, env.verdicts)
       _ <- scriptsWellFormed(state, tx, env)
       // Value conservation holds for valid and invalid transactions alike.
       withdrawn = body.withdrawals.map(_._2).sum
@@ -468,7 +468,8 @@ object PreConwayRules:
       collateral: Collateral,
       scripts: Map[Bytes, Script],
       needed: Map[Bytes, Set[Pointer]],
-      vkeyHashes: Vector[Bytes]
+      vkeyHashes: Vector[Bytes],
+      verdicts: lab.node.Verdicts
   ): Result[Unit] =
     val body = tx.body
     val id = body.id
@@ -515,11 +516,11 @@ object PreConwayRules:
     val provided = vkeyHashes.toSet
     for
       _ <- wits.vkeys.traverse_ { case (vkey, signature) =>
-        if lab.node.Verification.witness(vkey, signature, id) then Right(())
+        if verdicts.witness(vkey, signature, id) then Right(())
         else Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", vkey.hex))
       }
       _ <- wits.bootstrap.traverse_ { w =>
-        if lab.node.Verification.witness(w.vkey, w.signature, id) then Right(())
+        if verdicts.witness(w.vkey, w.signature, id) then Right(())
         else Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", w.vkey.hex))
       }
       missing = required -- provided
@@ -679,7 +680,7 @@ private[ledger] object PreConwayCerts:
     def fail(rule: String, detail: String) = LedgerFailure.Invalid(id, rule, detail)
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else Left(fail(rule, detail))
-    val signers = tx.witnesses.vkeys.map(w => lab.node.Verification.keyHash(w._1)).toSet
+    val signers = tx.witnesses.vkeys.map(w => env.verdicts.keyHash(w._1)).toSet
     val genesisSigners = s.genDelegs.values.map(_.delegate).toSet.intersect(signers)
     val ir = s.mir
     val availableR = s.reserves + ir.deltaReserves

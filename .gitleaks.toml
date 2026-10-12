@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# gitleaks configuration (CI job "secret scan", .github/workflows/ci.yml).
+#
+# The default rule set stays on. The only rule that fires on this repository is generic-api-key, and
+# every hit is public data that merely looks like a key to an entropy check: Ed25519 verification
+# keys, key hashes and SHA-256 file digests in committed fixtures and in manifests. A manual scan of
+# the whole history before v0.1.0 found 182 such hits and nothing else. The allowlist below is
+# scoped to that one rule, and to named paths and named commits, so every other rule still applies
+# everywhere and a real secret in any other file is reported.
+#
+# Do not add `.skey`, `.key` or other signing material here. Those are never committed
+# (see CONTRIBUTING.md and .gitignore).
+
+title = "cardano-scala-lab gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[rules.allowlist]
+description = "public key hashes, verification keys and SHA-256 digests (fixtures, manifests, historical scripts)"
+paths = [
+  # Fixtures are public chain data or throwaway keys (fixtures/*/README.md and NOTICE record provenance).
+  '''^fixtures/''',
+  # A public operational-certificate verification key used as an expected value.
+  '''^node/src/test/scala/lab/node/forge/KeyFilesSuite\.scala$''',
+]
+commits = [
+  # 87cf584: removed nonce-epoch tooling; the match is the string "pre-anchor-supplied-verification-keys-v1".
+  "87cf584de722c3ff55366e7d47702384ac5b2c25",
+  # a32e816: removed fixture-projection scripts and docs; the matches are SHA-256 digests and source commit ids.
+  "a32e816840fc99db862c85ec80129b50a0ff871d",
+]

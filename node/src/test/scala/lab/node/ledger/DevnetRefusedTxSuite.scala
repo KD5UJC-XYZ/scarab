@@ -5,7 +5,6 @@ import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import lab.cbor.Bytes
-import lab.node.Verification
 import lab.node.mempool.MempoolState
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
@@ -42,7 +41,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     */
   private def funded(base: LedgerState, tx: Tx): LedgerState =
     val body = tx.body
-    val owner = Verification.keyHash(tx.witnesses.vkeys.head._1)
+    val owner = lab.node.Verdicts.Direct.keyHash(tx.witnesses.vkeys.head._1)
     val address = Address.decode(Bytes(0x60.toByte +: owner.value)).fold(e => fail(e), identity)
     val needed = body.outputs.map(_.value.coin).sum + body.fee
     val spare = BigInt(3000000)

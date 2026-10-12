@@ -77,7 +77,7 @@ object ConwayRules:
       ins.traverse(i => state.utxo.get(i).toRight(LedgerFailure.Invalid(id, rule, i.render)))
 
     val wits = tx.witnesses
-    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => lab.node.Verification.keyHash(w._1))
+    val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => env.verdicts.keyHash(w._1))
     val scriptFee =
       (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
         wits.totalExUnits.steps
@@ -148,7 +148,16 @@ object ConwayRules:
         "is_valid = false without a Plutus script"
       )
       _ <- PreConwayRules.auxiliaryChecks(tx)
-      _ <- PreConwayRules.witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes)
+      _ <- PreConwayRules.witnessChecks(
+        state,
+        tx,
+        spent,
+        collateral,
+        scripts,
+        needed,
+        vkeyHashes,
+        env.verdicts
+      )
       _ <- PreConwayRules.scriptsWellFormed(state, tx, env)
       withdrawn = body.withdrawals.map(_._2).sum
       consumed = spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +

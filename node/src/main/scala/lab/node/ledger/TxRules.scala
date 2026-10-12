@@ -40,7 +40,9 @@ object TxRules:
       /** Decides whether a Plutus script deserialises (phase 1 from Babbage on). */
       decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
       /** Tooling hook called after each phase-2 evaluation; never affects the result. */
-      observer: Option[Phase2.Observation => Unit] = None
+      observer: Option[Phase2.Observation => Unit] = None,
+      /** Signature verdicts (memoised ahead of time in the node, computed in place otherwise). */
+      verdicts: lab.node.Verdicts = lab.node.Verdicts.Direct
   )
 
   def apply(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =

@@ -58,9 +58,11 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 
 Purity discipline: rules (header checks, ledger, ratification, mempool state, chain selection,
 Plutus context construction) are pure functions or values; `F` appears only where the world is
-touched (network, disk, clock, concurrency). Known exceptions are deliberate performance caches
-held in global state (`Verification.scala` verdict maps, the `PlutusCases` recorder, the RocksDB
-handle reference) and are listed in the [roadmap](roadmap.md) (item M3).
+touched (network, disk, clock, concurrency). The deliberate performance caches are instances, not
+globals (roadmap M3): `VerificationCache` (created in a `Resource` in `Main`, read by the rules through
+the pure `Verdicts` interface in `PraosConfig.verdicts` and `TxRules.Env.verdicts`), the `PlutusCases`
+recorder (tooling, passed as the phase-2 observer) and the RocksDB handle reference (private to its
+store). Rules run without a cache use `Verdicts.Direct`.
 
 ## Error model
 
@@ -536,10 +538,10 @@ Byron-to-Conway capture reaches the same state through the store with verificati
 
 **Verification ahead of the rules.** Most of the time of a block is signature checks: transaction
 witnesses (Ed25519), the operational certificate and KES signature, and the VRF proof. They are pure
-functions of the block (the VRF also of the epoch nonce). `Verification.warm` runs them for a whole
+functions of the block (the VRF also of the epoch nonce). `VerificationCache.warm` runs them for a whole
 fetched batch in parallel and keeps the verdicts; the rules ask for the same verdicts through
-`Verification.witness`, `opCert`, `praosVrf` and `tpraosVrf`, which return the remembered one (once)
-or compute it. The VRF is warmed with the epoch nonce the rules last saw, keyed by the derived alpha
+`Verdicts.witness`, `opCert`, `praosVrf` and `tpraosVrf`, which return the remembered one (once)
+or compute it (`Verdicts.Direct` never remembers; a property test checks both agree). The VRF is warmed with the epoch nonce the rules last saw, keyed by the derived alpha
 string, so a stale nonce is only a miss. Replay of the stored blocks warms the next 64 while the
 current ones are applied; the peer warms each fetched range.
 

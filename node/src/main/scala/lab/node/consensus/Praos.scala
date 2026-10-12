@@ -41,7 +41,9 @@ final case class PraosConfig(
     slotsPerKesPeriod: BigInt,
     maxKesEvolutions: BigInt,
     activeSlotsCoeff: Leader.Fraction,
-    forks: HardForkConfig = HardForkConfig.default
+    forks: HardForkConfig = HardForkConfig.default,
+    /** Where the rules get signature verdicts from (see [[lab.node.Verdicts]]). */
+    verdicts: lab.node.Verdicts = lab.node.Verdicts.Direct
 )
 
 /** Praos header validation and chain-dependent state evolution. */
@@ -127,7 +129,7 @@ object Praos:
             )
           yield None
       input <- vrfInput(state.epochNonce, header.slot)
-      output <- lab.node.Verification.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output) match
+      output <- config.verdicts.praosVrf(input, header.vrfVkey, vrf.proof, vrf.output) match
         case Vrf.Result.VerifiedCertificate(o) => Right(o)
         case other                             => Left(s"VRF proof rejected: $other")
       leader <- registered match
@@ -143,7 +145,7 @@ object Praos:
             )
           yield LeaderCheck.Threshold
         case None => Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
-      _ <- lab.node.Verification
+      _ <- config.verdicts
         .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(_.message)
       _ <- OCertRules

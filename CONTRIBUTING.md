@@ -40,8 +40,9 @@ with a pattern that matches your own shell command line.
 ## Style rules
 
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
-  chosen in `Main`. `IO` appears only in `Main`, `JsonLog` and tools. No hidden global state in new
-  code (existing deliberate caches are tracked as roadmap M3).
+  chosen in `Main`. `IO` appears only in `Main`, `JsonLog` and tools. No hidden global state:
+  the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
+  the pure rules through a read interface (`Verdicts`); tools live under `lab.node.tools`.
 - **Closed error ADTs through cats-mtl.** Domain errors are values of a closed ADT (`PeerError`,
   `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`) raised with
   `Raise[F, E]` and handled with lexically scoped `Handle.allow`. Never use `raiseError`/`throw` for
@@ -75,7 +76,9 @@ with a pattern that matches your own shell command line.
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
 and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`
 fetches and verifies the official release itself. On GitHub, `.github/workflows/ci.yml` runs
-`check`, the script tests and actionlint on every pull request; `.github/workflows/e2e.yml` runs
+`check`, the script tests, actionlint, a gitleaks scan of the whole history (`.gitleaks.toml`; a new
+false positive is allowlisted there by path or commit, scoped to its rule, with a reason) and, on
+pull requests, a dependency review; `.github/workflows/e2e.yml` runs
 soak, e2e, relay and pool nightly, on demand and on version tags. Every scenario exits non-zero on
 any mismatch or error, so run the ones your change touches before opening a pull request.
 

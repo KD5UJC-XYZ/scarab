@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package lab.node
+package lab.node.tools
 
 import io.circe.Json
 import io.circe.syntax.*

@@ -16,6 +16,15 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 - The mempool refuses votes of unelected committee members before protocol version 11, as the
   reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
 
+### Build, CI and structure
+- CI: gitleaks secret scan of the full history (`.gitleaks.toml`, 182 known generic-api-key false
+  positives allowlisted by path and commit, 0 findings), dependency review on pull requests and the
+  sbt dependency graph submitted on pushes to main (roadmap A8).
+- The signature-verdict caches are no longer process-global: `VerificationCache` is created in a
+  `Resource` in `Main` and reaches the pure rules as `Verdicts` through `PraosConfig.verdicts` and
+  `TxRules.Env.verdicts`; `Verdicts.Direct` is the uncached specification (roadmap M3).
+- `PlutusCases` moved to `lab.node.tools` (roadmap M4).
+
 ### Devnet
 - `e2e`: three Shelley epochs, 1 ada minimum, pool margin 0.1, cross-paying pools, boundary load and expected-rejection checks.
 - `soak --governance-extended` (`govload --extended`, `scripts/devnet/govextra.py`): pool reward accounts

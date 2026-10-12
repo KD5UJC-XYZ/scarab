@@ -100,7 +100,7 @@ final class NodeRules[F[_]: Monad](
       case (Some(store), h: Header.Shelley) if !bootstrap =>
         // The read set: what the block's transactions spend or reference, fetched before the pure
         // rules run (the rules then see a complete view of the entries they need).
-        val prepared = NodeRules.prepare(h, raw)
+        val prepared = NodeRules.prepare(h, raw, config.verdicts)
         val utxo = state.ledger.utxo
         val wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
         for
@@ -131,8 +131,8 @@ object NodeRules:
   /** Decode a Shelley-based block and its transactions; `None` when it does not decode (the rules
     * then report the error).
     */
-  def prepare(header: Header.Shelley, raw: Bytes): Option[Prepared] =
-    Verification
+  def prepare(header: Header.Shelley, raw: Bytes, verdicts: Verdicts): Option[Prepared] =
+    verdicts
       .takePrepared(header.hash)
       .orElse(decodeShelley(raw))
       .filter(_.block.era == header.era)
@@ -438,7 +438,8 @@ object NodeRules:
             txIndex = i,
             updateQuorum = globals.updateQuorum,
             clock = Some(slot => BigInt(geometry.slotStart(slot).toEpochMilli)),
-            observer = phase2Observer
+            observer = phase2Observer,
+            verdicts = config.verdicts
           )
           prepared
             .flatMap(_.txs.lift(i))
