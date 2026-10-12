@@ -150,8 +150,8 @@ object QueryAnswers:
 
   /** Before the first epoch boundary of a chain that starts in Conway the previous parameters, and
     * the ones in the genesis-seeded pulser state, are those of the era translation: they carry the
-    * cost models of PlutusV1 and PlutusV3 but not the PlutusV2 model that the Alonzo genesis holds in
-    * `extraConfig` (as the reference reports them).
+    * cost models of PlutusV1 and PlutusV3 but not the PlutusV2 model that the Alonzo genesis holds
+    * in `extraConfig` (as the reference reports them).
     */
   private def beforeUpgrade(p: ProtocolParams): ProtocolParams =
     p.copy(costModels = p.costModels - 1)

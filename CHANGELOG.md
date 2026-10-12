@@ -37,6 +37,14 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
 
 ### Devnet
+- `devnet.py ntc`: the Scala node's node-to-client interface against the reference's on a loaded
+  cluster: LocalStateQuery byte for byte at the same block (707 of 707 answers, 14 rounds), 23 of 24
+  `cardano-cli conway query` commands, 18 refused transactions as raw `ApplyTxErr` bytes and as
+  `cardano-cli` text, and a valid submission (`scripts/devnet/ntcqueries.py`, `ntccases.py`,
+  `scenarios/ntc.py`; `ntcquery.py` speaks LocalTxSubmission and host sockets).
+- Recorded reference answers for the activity-independent queries (`fixtures/devnet/lsq`, replayed by
+  `QueryGoldenSuite`) and the reference's rejection bytes (`PredicateFailureCborSuite`); the three
+  recorded refusals of `fixtures/devnet` are compared with the text `cardano-cli` printed.
 - `e2e`: three Shelley epochs, 1 ada minimum, pool margin 0.1, cross-paying pools, boundary load and expected-rejection checks.
 - `soak --governance-extended` (`govload --extended`, `scripts/devnet/govextra.py`): pool reward accounts
   with default votes, committee election with a term limit, a member that expires and `committeeMinSize`,
