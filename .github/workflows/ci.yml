@@ -137,9 +137,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # Needs the repository's dependency graph (Settings > Code security > Dependency graph). Until the
-    # owner enables it, the submission returns 404 and must not turn main red.
-    continue-on-error: true
+    # Needs the repository's dependency graph (enabled with Dependabot alerts).
     permissions:
       contents: write
     steps:
