@@ -5,6 +5,7 @@ cardano-cli 11.2.3 refuses `query ledger-state` and `query protocol-state` befor
 but the node still answers them. This speaks the mini-protocol directly through `socat` inside the
 reference container, so the e2e can read the reference ledger in every Shelley-based era.
 """
+import socket
 import struct
 import subprocess
 from fractions import Fraction
@@ -144,18 +145,48 @@ def decode_all(buf):
     return v
 
 
+class _HostSocket:
+    """The process interface `LocalStateQuery` uses, over a Unix socket on the host."""
+
+    def __init__(self, path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(120)
+        self.sock.connect(path)
+        self.stdin = self
+        self.stdout = self
+
+    def write(self, data):
+        self.sock.sendall(data)
+
+    def flush(self):
+        pass
+
+    def read(self, n):
+        return self.sock.recv(n)
+
+    def kill(self):
+        self.sock.close()
+
+    def wait(self):
+        pass
+
+
 class LocalStateQuery:
-    """Context manager: one NtC connection to a node socket inside a container."""
+    """Context manager: one NtC connection to a node socket, inside a container (through `socat`)
+    or, with `host=True`, a socket path on the host (the Scala node's socket directory)."""
 
     VERSIONS = [32784 + i for i in range(0, 10)]
 
-    def __init__(self, container, socket, magic):
-        self.container, self.socket, self.magic = container, socket, magic
+    def __init__(self, container, socket, magic, host=False):
+        self.container, self.socket, self.magic, self.host = container, socket, magic, host
 
     def __enter__(self):
-        self.proc = subprocess.Popen(
-            ["docker", "exec", "-i", self.container, "socat", "-", f"UNIX-CONNECT:{self.socket}"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+        if self.host:
+            self.proc = _HostSocket(self.socket)
+        else:
+            self.proc = subprocess.Popen(
+                ["docker", "exec", "-i", self.container, "socat", "-", f"UNIX-CONNECT:{self.socket}"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         self.buffers = {}
         self._send(0, enc([0, {v: [self.magic, False] for v in self.VERSIONS}]))
         reply = self._recv(0)
@@ -165,6 +196,7 @@ class LocalStateQuery:
 
     def __exit__(self, *exc):
         try:
+            self._send(7, enc([5]))  # release (a no-op error when nothing is acquired)
             self._send(7, enc([7]))
         except Exception:
             pass
@@ -192,6 +224,7 @@ class LocalStateQuery:
             if buf:
                 try:
                     value, pos = decode(buf, 0)
+                    self.last_raw = bytes(buf[:pos])
                     self.buffers[protocol] = buf[pos:]
                     return value
                 except Incomplete:
@@ -200,8 +233,9 @@ class LocalStateQuery:
             payload = self._read(length)
             self.buffers[proto & 0x7fff] = self.buffers.get(proto & 0x7fff, b"") + payload
 
-    def acquire(self):
-        self._send(7, enc([8]))  # VolatileTip
+    def acquire(self, point=None):
+        """Acquire the volatile tip, or the state at `point` (None for the origin is not supported)."""
+        self._send(7, enc([8] if point is None else [0, point]))
         reply = self._recv(7)
         if reply[0] != 1:
             raise RuntimeError(f"acquire failed: {reply}")

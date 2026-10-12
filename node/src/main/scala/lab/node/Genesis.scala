@@ -78,7 +78,12 @@ final case class ByronGenesis(
     protocolMagic: Long,
     securityParam: Int,
     slotLengthMillis: Long,
-    delegations: Vector[ByronDelegation]
+    delegations: Vector[ByronDelegation],
+    /** `startTime` of the Byron genesis in whole seconds: the reference reports it as the system
+      * start of the hard-fork combinator (it may differ from the Shelley genesis `systemStart` by
+      * the sub-second part).
+      */
+    startTime: Option[Long] = None
 ):
   /** A Byron epoch has 10k slots. */
   def epochSlots: BigInt = BigInt(securityParam) * 10
@@ -153,7 +158,11 @@ object ByronGenesisFile:
         .as[Option[Map[String, Json]]]
         .leftMap(e => ConfigError(s"heavyDelegation: ${e.message}"))
         .flatMap(_.getOrElse(Map.empty).toVector.sortBy(_._1).traverse((_, j) => delegation(j)))
-    yield ByronGenesis(hash, magic, k, slot, delegations)
+      start <- c
+        .downField("startTime")
+        .as[Option[Long]]
+        .leftMap(e => ConfigError(s"startTime: ${e.message}"))
+    yield ByronGenesis(hash, magic, k, slot, delegations, start)
 
   private def delegation(j: Json): Either[ConfigError, ByronDelegation] =
     val c = j.hcursor

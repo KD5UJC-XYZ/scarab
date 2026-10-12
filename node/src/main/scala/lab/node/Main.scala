@@ -21,13 +21,14 @@ import com.comcast.ip4s.{Host, Port, SocketAddress}
 import lab.network.NtNHeader
 import lab.network.runtime.{
   BearerServer,
-  LocalTxSubmissionServer,
   NetworkError,
+  NodeToClientServer,
   NodeToNodeServer,
   ServerHandlers
 }
 import lab.node.forge.{Forger, KeyFiles}
 import lab.node.mempool.{LocalSubmission, Mempool, MempoolEnv}
+import lab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import lab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -134,11 +135,14 @@ object Main extends IOApp:
       genesis = setup.genesis
       blocks <- Ref.of[IO, Long](0L)
       connected <- Ref.of[IO, Boolean](false)
+      eraStarts <- Ref.of[IO, Map[lab.network.Era, BigInt]](Map.empty)
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
           (event match
             case FollowerEvent.Connected(_) => connected.set(true)
-            case _                          => IO.unit
+            case FollowerEvent.EraEntered(_, to, _, epoch) =>
+              eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
+            case _ => IO.unit
           ) *> JsonLog.events.emit(event)
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
@@ -279,14 +283,41 @@ object Main extends IOApp:
               }
               .evalMap(bound => JsonLog.listening(bound.toString))
           )
+          byronGenesis = setup.byronParams
+          queryEnv = eraStarts.get.map(observed =>
+            QueryEnv(
+              byronGenesis
+                .flatMap(_.startTime)
+                .fold(genesis.geometry.systemStart)(java.time.Instant.ofEpochSecond),
+              genesis.geometry,
+              setup.praos.forks,
+              byronGenesis.fold(
+                EraHistory.ByronParams(
+                  BigInt(genesis.geometry.securityParam) * 10,
+                  BigInt(20000),
+                  BigInt(genesis.geometry.securityParam)
+                )
+              )(b =>
+                EraHistory
+                  .ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+              ),
+              setup.globals.maxSupply,
+              genesis.raw,
+              observed
+            )
+          )
           local = options.localSocket.fold(Resource.unit[IO])(path =>
             BearerServer
               .listenUnix[IO](path) { bearer =>
                 JsonLog.inbound(path.toString, "accepted") *>
                   Handle
                     .allow[NetworkError](
-                      LocalTxSubmissionServer
-                        .accept(bearer, genesis.networkMagic, LocalSubmission.handler(mempool))
+                      NodeToClientServer.accept(
+                        bearer,
+                        genesis.networkMagic,
+                        LocalSubmission.handler(mempool),
+                        Some(StateQuerySource[IO](ref, queryEnv, store))
+                      )
                     )
                     .rescue(e => IO.pure(e.message))
                     .flatMap(reason => JsonLog.inbound(path.toString, "closed", Some(reason)))
