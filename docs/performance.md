@@ -144,3 +144,14 @@ Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted 
   strict semantics (D7).
 - One ChainSync stream per peer, 64 to 128 headers per round trip (D3). Mainnet (about 12M blocks) has
   not been synced (D6).
+
+## Preprod from genesis (C4)
+
+Commit 4606cf4, frozen classes, fresh db, `follow --db`, `-Xmx3g`, container `--cpus 4 --memory 10g`,
+2026-10-11, `--seconds 3600` against `preprod-node.play.dev.cardano.org:3001`, no restart: 697,724
+blocks in 60 minutes (about 195 blocks/s, slower than Preview because preprod's early epochs are dense
+and the full ledger runs from Shelley; the other devnet and sbt jobs shared the machine for part of
+it), slot 22,441,191, 0 error events, database 1.5 GB (immutable blocks, RocksDB UTxO, snapshots).
+Byron: 46 blocks, derived transition epoch 4; eras entered at epochs 4 (Shelley), 5, 6, 7 and 12.
+The tip (slot ~136M, about 6M blocks) was not reached; an earlier 50-minute run on a slightly earlier
+build (restart from the db after two minutes) agreed (epoch 54, 0 errors).

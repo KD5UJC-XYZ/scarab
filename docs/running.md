@@ -194,8 +194,8 @@ the committed `fixtures/eras` capture is the Docker-free replay of one `up-eras`
 Comparison method: `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state`
 before Conway, so `scripts/devnet/ntcquery.py` speaks LocalStateQuery to the reference node directly and
 `scripts/devnet/eraview.py` projects `DebugNewEpochState`, the whole UTxO and `DebugChainDepState` onto the
-node's `/state` shape. Byron is not compared (the CLI cannot query a Byron ledger and the node keeps
-no Byron UTxO).
+node's `/state` shape. Byron is not compared directly (the CLI cannot query a Byron ledger); the Byron UTxO
+is compared through the first Shelley epoch, which starts from it.
 
 `e2e` shares the `up-eras` options but changes four defaults so the pre-Allegra rules have something to
 decide: `--shelley-epochs 3` (the pools hold stake from epoch 2, produce blocks from epoch 3 and the
