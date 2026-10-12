@@ -6,7 +6,16 @@ import lab.Blake2b
 import lab.cbor.{Bytes, Cbor, Value}
 import lab.network.Era
 import lab.node.{Block, EpochGeometry}
-import lab.node.ledger.{ConwayRules, LedgerFailure, LedgerGlobals, LedgerState, Tx, TxRules}
+import lab.node.ledger.{
+  ConwayRules,
+  Credential,
+  LedgerFailure,
+  LedgerGlobals,
+  LedgerState,
+  PredicateFailure,
+  Tx,
+  TxRules
+}
 
 /** Why a transaction is not (or no longer) in the mempool. */
 enum Rejection:
@@ -22,11 +31,15 @@ enum Rejection:
   /** Holding it would exceed the mempool's capacity in bytes. */
   case Full(size: Int, free: Long)
 
+  /** The submission names an era other than the ledger's (Conway). */
+  case WrongEra(era: Int)
+
   def message: String = this match
     case Malformed(d)    => s"malformed transaction: $d"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
     case Ledger(f)       => f.message
     case Full(s, free)   => s"mempool full: $s bytes needed, $free free"
+    case WrongEra(e)     => s"era $e is not Conway"
 
 /** A held transaction. `ticket` grows with arrival order and is how peers are given each
   * transaction once.
@@ -78,18 +91,32 @@ final case class MempoolState(
       (id, tx) = parsed
       _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
       _ <- Either.cond(raw.size <= free, (), Rejection.Full(raw.size, free))
-      // The reference node's mempool, and only the mempool, refuses votes of unelected committee members
-      // before protocol version 11 (cardano-ledger `Rules/Mempool.hs`); from 11 the GOV rule does.
+      // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`) runs before LEDGER: a transaction none
+      // of whose inputs is unspent is "probably a duplicate" and is refused with that alone. Votes
+      // of unelected committee members are refused here, and only here, before protocol version 11;
+      // from 11 the GOV rule does.
+      conway = current.params.protocolMajor >= 9
+      _ <- Either.cond(
+        !conway || tx.body.inputs.exists(current.utxo.contains),
+        (),
+        Rejection.Ledger(
+          LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolState.AllInputsSpent))
+        )
+      )
       _ <- Either.cond(
         current.params.protocolMajor < 9 || current.params.protocolMajor > 10 ||
           ConwayRules.unelectedCommitteeVoters(current, tx.body).isEmpty,
         (),
         Rejection.Ledger(
-          LedgerFailure.Invalid(
+          LedgerFailure.Rejected(
             id,
-            "ConwayMempoolFailure",
-            "Unelected committee members are not allowed to cast votes: " +
-              ConwayRules.unelectedCommitteeVoters(current, tx.body).mkString(",")
+            PredicateFailure.Mempool(
+              "Unelected committee members are not allowed to cast votes: " +
+                ConwayRules
+                  .unelectedCommitteeVoters(current, tx.body)
+                  .map(MempoolState.showCredential)
+                  .mkString("[", ",", "]")
+            )
           )
         )
       )
@@ -150,6 +177,15 @@ final case class MempoolState(
   def after(ticket: Long): Vector[Entry] = entries.filter(_.ticket > ticket)
 
 object MempoolState:
+  /** The text of the ledger's MEMPOOL failure for a transaction whose inputs are all spent. */
+  val AllInputsSpent: String =
+    "All inputs are spent. Transaction has probably already been included"
+
+  /** A credential as the ledger's `Show` instance prints it. */
+  def showCredential(c: Credential): String = c match
+    case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"
+    case Credential.Script(h) => "ScriptHashObj (ScriptHash \"" + h.hex + "\")"
+
   def empty(ledger: LedgerState, tipSlot: BigInt, capacityBytes: Long): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityBytes)
 

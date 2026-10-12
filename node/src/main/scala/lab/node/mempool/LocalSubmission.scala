@@ -4,6 +4,9 @@ package lab.node.mempool
 import cats.Applicative
 import cats.syntax.all.*
 import lab.cbor.{Bytes, Cbor, Value}
+import lab.network.Era
+import lab.node.ledger.{LedgerFailure, PredicateFailure}
+import lab.node.ntc.PredicateFailureCbor
 
 /** Transactions submitted by local clients (`cardano-cli transaction submit` over the
   * node-to-client socket). The client sends the hard-fork-combinator wrapped transaction
@@ -26,15 +29,29 @@ object LocalSubmission:
                     case Value.ByteString(b) => Right(b)
                     case _ => Left(Rejection.Malformed("tag 24 does not hold a byte string"))
                 case _ => Right(payload.original)
+            case Value.UInt(e) if e.isValidInt => Left(Rejection.WrongEra(e.toInt))
             case Value.UInt(e) =>
               Left(Rejection.Malformed(s"era $e is not Conway ($ConwayEra)"))
             case _ => Left(Rejection.Malformed("era is not an integer"))
         case _ => Left(Rejection.Malformed("expected [era, transaction]"))
     }
 
-  /** The rejection as sent to the client: its message as a CBOR text string. */
-  def reasonItem(rejection: Rejection): Bytes =
-    Cbor.encode(Value.Text(rejection.message)).getOrElse(Bytes.empty)
+  /** The rejection as sent to the client: the ledger's `ApplyTxErr` for a refused transaction (the
+    * predicate failures `cardano-cli` renders), the hard-fork combinator's era mismatch for a
+    * transaction of another era. What the ledger does not report as a predicate failure (a
+    * malformed transaction, a full mempool) is sent as its free-text `ConwayMempoolFailure`.
+    */
+  def reasonItem(rejection: Rejection): Bytes = rejection match
+    case Rejection.WrongEra(era) =>
+      PredicateFailureCbor.eraMismatch(era, Era.fromIndex(BigInt(era)).fold("Unknown")(_.toString))
+    case Rejection.Ledger(LedgerFailure.Rejected(_, failure)) =>
+      PredicateFailureCbor.applyTxError(Vector(failure))
+    case Rejection.AlreadyHeld(_) =>
+      text(MempoolState.AllInputsSpent)
+    case other => text(other.message)
+
+  private def text(message: String): Bytes =
+    PredicateFailureCbor.applyTxError(Vector(PredicateFailure.Mempool(message)))
 
   /** The handler of the LocalTxSubmission server: `None` when the mempool took the transaction. */
   def handler[F[_]: Applicative](mempool: Mempool[F]): Bytes => F[Option[Bytes]] = item =>

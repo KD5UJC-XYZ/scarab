@@ -10,13 +10,32 @@ import lab.node.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
   */
 enum LedgerFailure:
   case Unsupported(txId: Bytes, feature: String)
-  case Invalid(txId: Bytes, rule: String, detail: String)
+
+  /** A rule refused the transaction; `failure` is the ledger's predicate failure for it. */
+  case Rejected(txId: Bytes, failure: PredicateFailure)
   case Malformed(detail: String)
 
   def message: String = this match
     case Unsupported(id, f) => s"tx ${id.hex.take(16)} uses unsupported $f"
-    case Invalid(id, r, d)  => s"tx ${id.hex.take(16)} violates $r: $d"
+    case Rejected(id, f)    => s"tx ${id.hex.take(16)} violates ${f.ruleName}: ${LedgerFailure.detail(f)}"
     case Malformed(d)       => s"malformed transaction: $d"
+
+object LedgerFailure:
+  /** A refusal named by its rule and a free-text detail, for the rules whose payload is not
+    * modelled (see [[PredicateFailure.Unmapped]]); pattern-matches any refusal as rule and detail.
+    */
+  object Invalid:
+    def apply(txId: Bytes, rule: String, detail: String): LedgerFailure =
+      Rejected(txId, PredicateFailure.Unmapped(rule, detail))
+    def unapply(failure: LedgerFailure): Option[(Bytes, String, String)] = failure match
+      case Rejected(id, f) => Some((id, f.ruleName, detail(f)))
+      case _               => None
+
+  /** The payload of a failure as text. */
+  def detail(f: PredicateFailure): String = f match
+    case PredicateFailure.Unmapped(_, d) => d
+    case PredicateFailure.Mempool(t)     => t
+    case other                           => other.toString.take(400)
 
 /** The transaction rules of the current era: Conway ([[ConwayRules]]) from protocol version 9, else
   * [[PreConwayRules]].

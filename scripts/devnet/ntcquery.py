@@ -260,3 +260,22 @@ class LocalStateQuery:
     def point(self):
         """(slot, hash) of the acquired state (GetLedgerTip is query 0)."""
         raise NotImplementedError
+
+    def submit(self, tx, era_index=6):
+        """LocalTxSubmission: send one transaction (its CBOR bytes) as the hard-fork-combinator
+        `[era, #6.24(tx)]` (a transaction travels as CBOR-in-CBOR). Returns None when accepted, else the raw bytes of the rejection reason (an HFC
+        `ApplyTxErr`)."""
+        from .cbor import Tag
+        self._send(6, enc([0, [era_index, Tag(24, bytes(tx))]]))
+        reply = self._recv(6)
+        if reply[0] == 1:
+            return None
+        if reply[0] != 2:
+            raise RuntimeError(f"unexpected submission reply {reply}")
+        return self._reason(self.last_raw)
+
+    @staticmethod
+    def _reason(raw):
+        """The reason item of a `[2, reason]` message."""
+        assert raw[0] == 0x82 and raw[1] == 0x02
+        return raw[2:]

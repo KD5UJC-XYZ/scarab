@@ -39,12 +39,12 @@ object ConwayRules:
     * such votes; before that the reference refuses them in its mempool only (`Rules/Mempool.hs`),
     * so blocks may carry them.
     */
-  def unelectedCommitteeVoters(s: LedgerState, body: TxBody): Vector[String] =
+  def unelectedCommitteeVoters(s: LedgerState, body: TxBody): Vector[Credential] =
     val electedHot =
       s.committeeState.collect {
         case (cold, CommitteeAuth.Hot(h)) if s.gov.committee.exists(_.members.contains(cold)) => h
       }.toSet
-    body.votes.collect { case (Voter.CommitteeHot(h), _) if !electedHot(h) => h.render }
+    body.votes.collect { case (Voter.CommitteeHot(h), _) if !electedHot(h) => h }
 
   /** `hardforkConwayDisallowDuplicatedVRFKeys` (protocol version 11 and later): the VRF key hash of
     * a pool registration may not be held by another pool, active or scheduled by a re-registration
@@ -70,11 +70,11 @@ object ConwayRules:
     val id = body.id
     val pp = state.params
     val pv = pp.protocolMajor
-    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else invalid(rule, detail)
-    def resolve(ins: Vector[TxIn], rule: String): Result[Vector[TxOut]] =
-      ins.traverse(i => state.utxo.get(i).toRight(LedgerFailure.Invalid(id, rule, i.render)))
+    def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
+    def refuseUtxo(failure: UtxoFailure) = refuse(PredicateFailure.utxo(failure))
+    def refuseUtxow(failure: UtxowFailure) = refuse(PredicateFailure.utxow(failure))
+    def check(ok: Boolean, failure: => PredicateFailure): Result[Unit] =
+      if ok then Right(()) else refuse(failure)
 
     val wits = tx.witnesses
     val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => lab.node.Verification.keyHash(w._1))
@@ -87,34 +87,54 @@ object ConwayRules:
       pp.minFeeA * tx.size + pp.minFeeB + scriptFee +
         tierRefScriptFee(pp.minFeeRefScriptCostPerByte, refSize)
     val (deposits, refunds) = depositsAndRefunds(state, body)
+    // The UTXO rule reports every input (and reference input) the set does not hold.
+    val missingInputs = (body.inputs ++ body.referenceInputs).filterNot(state.utxo.contains).toSet
+    lazy val spent: Vector[TxOut] = body.inputs.flatMap(state.utxo.get)
+    lazy val refOuts: Vector[TxOut] = body.referenceInputs.flatMap(state.utxo.get)
 
     for
-      _ <- check(body.inputs.nonEmpty, "InputSetEmptyUTxO", "no inputs")
-      spent <- resolve(body.inputs, "BadInputsUTxO")
-      refOuts <- resolve(body.referenceInputs, "BadInputsUTxO")
+      // LEDGER runs CERTS and GOV before UTXOW, so their failures come first
+      applied <-
+        if tx.isValid then ledger(state, tx, env, refSize, deposits, refunds).map(Some(_))
+        else Right(None)
+      _ <- check(body.inputs.nonEmpty, PredicateFailure.utxo(UtxoFailure.InputSetEmpty))
       _ <- check(
-        pv >= 11 || body.inputs.toSet.intersect(body.referenceInputs.toSet).isEmpty,
-        "BabbageNonDisjointRefInputs",
-        "an input is also a reference input"
+        missingInputs.isEmpty,
+        PredicateFailure.utxo(UtxoFailure.BadInputs(missingInputs))
+      )
+      overlap = body.inputs.toSet.intersect(body.referenceInputs.toSet)
+      _ <- check(
+        pv >= 11 || overlap.isEmpty,
+        PredicateFailure.utxo(UtxoFailure.BabbageNonDisjointRefInputs(overlap.toVector.sorted))
       )
       _ <- check(
         body.ttl.forall(env.slot < _) && body.validityStart.forall(_ <= env.slot),
-        "OutsideValidityIntervalUTxO",
-        s"slot ${env.slot} not in [${body.validityStart}, ${body.ttl})"
+        PredicateFailure.utxo(
+          UtxoFailure.OutsideValidityInterval(body.validityStart, body.ttl, env.slot)
+        )
       )
-      _ <- check(tx.size <= pp.maxTxSize, "MaxTxSizeUTxO", s"${tx.size} > ${pp.maxTxSize}")
-      _ <- check(body.fee >= minFee, "FeeTooSmallUTxO", s"${body.fee} < $minFee")
+      _ <- check(
+        tx.size <= pp.maxTxSize,
+        PredicateFailure.utxo(UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize)))
+      )
+      _ <- check(
+        body.fee >= minFee,
+        PredicateFailure.utxo(UtxoFailure.FeeTooSmall(Mismatch(body.fee, minFee)))
+      )
       _ <- check(
         body.networkId.forall(_ == env.network),
-        "WrongNetworkInTxBody",
-        s"${body.networkId}"
+        PredicateFailure.utxo(
+          UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), env.network))
+        )
       )
-      _ <- (body.outputs ++ body.collateralReturn.toVector)
-        .traverse_(PreConwayRules.outputChecks(pp, env, id, _))
+      _ <- PreConwayRules.outputsOk(pp, env, body.outputs ++ body.collateralReturn.toVector).leftMap(
+        LedgerFailure.Rejected(id, _)
+      )
       _ <- check(
         wits.totalExUnits.fits(pp.maxTxExUnits),
-        "ExUnitsTooBigUTxO",
-        s"${wits.totalExUnits}"
+        PredicateFailure.utxo(
+          UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
+        )
       )
       collateral <- PreConwayRules.collateralChecks(state, tx, env)
       scripts = PreConwayRules.providedScripts(wits, spent ++ refOuts)
@@ -124,18 +144,17 @@ object ConwayRules:
       received = wits.scripts.map(_.hash).toSet
       _ <- check(
         received.subsetOf(neededNonRef),
-        "ExtraneousScriptWitnessesUTXOW",
-        (received -- neededNonRef).map(_.hex).mkString(",")
+        PredicateFailure.utxow(UtxowFailure.ExtraneousScriptWitnesses(received -- neededNonRef))
       )
       _ <- check(
         neededNonRef.subsetOf(received),
-        "MissingScriptWitnessesUTXOW",
-        (neededNonRef -- received).map(_.hex).mkString(",")
+        PredicateFailure.utxow(UtxowFailure.MissingScriptWitnesses(neededNonRef -- received))
       )
       _ <- check(
         needed.keySet.subsetOf(scripts.keySet),
-        "MissingScriptWitnessesUTXOW",
-        (needed.keySet -- scripts.keySet).map(_.hex).mkString(",")
+        PredicateFailure.utxow(
+          UtxowFailure.MissingScriptWitnesses(needed.keySet -- scripts.keySet)
+        )
       )
       plutusPurposes = needed
         .collect { case (h, ps) if scripts(h).kind.isPlutus => ps }
@@ -144,8 +163,7 @@ object ConwayRules:
       _ <- PreConwayRules.alonzoChecks(state, tx, spent, refOuts, scripts, plutusPurposes)
       _ <- check(
         tx.isValid || plutusPurposes.nonEmpty,
-        "ValidationTagMismatch",
-        "is_valid = false without a Plutus script"
+        PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None)))
       )
       _ <- PreConwayRules.auxiliaryChecks(tx)
       _ <- PreConwayRules.witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes)
@@ -157,14 +175,12 @@ object ConwayRules:
         Value.coin(body.fee + deposits + body.donation)
       _ <- check(
         consumed == produced,
-        "ValueNotConservedUTxO",
-        s"consumed ${consumed.coin} produced ${produced.coin} assets ${consumed.assets == produced.assets}"
+        PredicateFailure.utxo(UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
       )
       plutusStats <- PreConwayRules.phase2(state, tx, env, scripts, spent, refOuts, plutusPurposes)
-      result <-
-        if tx.isValid then
-          ledger(state, tx, env, refSize, deposits, refunds).map(_.copy(plutus = plutusStats))
-        else Right(PreConwayRules.applyInvalid(state, tx, collateral).copy(plutus = plutusStats))
+      result = applied match
+        case Some(next) => next.copy(plutus = plutusStats)
+        case None => PreConwayRules.applyInvalid(state, tx, collateral).copy(plutus = plutusStats)
     yield result
 
   /** The deposits a transaction pays and the refunds it collects, from the state before it. */
@@ -197,7 +213,7 @@ object ConwayRules:
     }
     (deposits, refunds)
 
-  /** LEDGER for a phase-2 valid transaction: everything except the UTxO movement and phase 2. */
+  /** LEDGER for a phase-2 valid transaction: everything except phase 2. */
   private def ledger(
       state: LedgerState,
       tx: Tx,
@@ -209,54 +225,66 @@ object ConwayRules:
     val body = tx.body
     val id = body.id
     val pp = state.params
-    def fail(rule: String, detail: String) = LedgerFailure.Invalid(id, rule, detail)
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(fail(rule, detail))
+    def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
+    def check(ok: Boolean, failure: => PredicateFailure): Result[Unit] =
+      if ok then Right(()) else refuse(failure)
+    // Key-hash reward accounts must be delegated to a DRep after the bootstrap phase; the check
+    // looks at the state before the certificates.
+    val notDelegated = body.withdrawals.collect {
+      case (account, _) if account.credential.isInstanceOf[Credential.Key] =>
+        account.credential.hash
+    }.filterNot(h => state.accounts.get(Credential.Key(h)).exists(_.drep.isDefined))
+    // withdrawalsThatDoNotDrainAccounts: accounts that do not exist (or sit on another network)
+    // and accounts whose balance is not withdrawn entirely
+    val missing = body.withdrawals.filter { case (a, _) =>
+      a.network != env.network || !state.accounts.contains(a.credential)
+    }
+    val incomplete = body.withdrawals.collect {
+      case (a, amount)
+          if a.network == env.network && state.accounts.get(a.credential).exists(_.balance != amount) =>
+        a -> Mismatch(amount, state.accounts(a.credential).balance)
+    }
     for
       _ <- check(
         body.currentTreasury.forall(_ == state.treasury),
-        "ConwayTreasuryValueMismatch",
-        s"${body.currentTreasury} != ${state.treasury}"
+        PredicateFailure.TreasuryValueMismatch(
+          Mismatch(body.currentTreasury.getOrElse(state.treasury), state.treasury)
+        )
       )
       _ <- check(
         refSize <= MaxRefScriptSizePerTx,
-        "ConwayTxRefScriptsSizeTooBig",
-        s"$refSize > $MaxRefScriptSizePerTx"
+        PredicateFailure.TxRefScriptsSizeTooBig(Mismatch(refSize, MaxRefScriptSizePerTx))
       )
-      // Withdrawals of key-hash reward accounts must be delegated to a DRep after the bootstrap
-      // phase; the check looks at the state before the certificates.
-      _ <- body.withdrawals.traverse_ { case (account, _) =>
-        account.credential match
-          case Credential.Key(_) =>
-            check(
-              pp.protocolMajor < 10 || state.accounts
-                .get(account.credential)
-                .forall(_.drep.isDefined),
-              "ConwayWdrlNotDelegatedToDRep",
-              account.credential.render
-            )
-          case _ => Right(())
-      }
-      drained <- body.withdrawals.foldLeftM(state) { case (s, (account, amount)) =>
-        for
-          _ <- check(
-            account.network == env.network,
-            "WrongNetworkWithdrawal",
-            account.credential.render
-          )
-          a <- s.accounts
-            .get(account.credential)
-            .toRight(fail("ConwayWithdrawalsMissingAccounts", account.credential.render))
-          _ <- check(
-            a.balance == amount,
-            "ConwayIncompleteWithdrawals",
-            s"${account.credential.render}: $amount != ${a.balance}"
-          )
-        yield s.copy(accounts = s.accounts.updated(account.credential, a.copy(balance = 0)))
+      _ <- check(
+        pv(state) < 10 || notDelegated.isEmpty,
+        PredicateFailure.WdrlNotDelegatedToDRep(notDelegated)
+      )
+      // From protocol version 11 the LEDGER rule checks the withdrawals; before, CERTS does so
+      // after the certificates.
+      _ <- check(
+        pv(state) < 11 || missing.isEmpty,
+        PredicateFailure.WithdrawalsMissingAccounts(missing.toMap)
+      )
+      _ <- check(
+        pv(state) < 11 || incomplete.isEmpty,
+        PredicateFailure.IncompleteWithdrawals(incomplete.toMap)
+      )
+      drained = body.withdrawals.foldLeft(state) { case (s, (account, _)) =>
+        s.copy(accounts = s.accounts.updatedWith(account.credential)(_.map(_.copy(balance = 0))))
       }
       expiries = updateExpiries(drained, tx, env.epoch)
       afterCerts <- body.certificates.foldLeftM(expiries)((s, cert) =>
         ConwayCerts(s, cert, env.epoch, env.network, id)
+      )
+      _ <- check(
+        pv(state) >= 11 || (missing.isEmpty && incomplete.isEmpty),
+        PredicateFailure.Certs(
+          CertsFailure.WithdrawalsNotInRewards(
+            (missing.map { case (a, c) => a -> c } ++ incomplete.map { case (a, m) =>
+              a -> m.supplied
+            }).toMap
+          )
+        )
       )
       afterGov <- ConwayGov(afterCerts, tx, env)
     yield
@@ -267,6 +295,8 @@ object ConwayRules:
         deposited = afterGov.deposited + deposits - refunds,
         donation = afterGov.donation + body.donation
       )
+
+  private def pv(s: LedgerState): BigInt = s.params.protocolMajor
 
   /** `updateDormantDRepExpiries` and `updateVotingDRepExpiries`. */
   private def updateExpiries(s: LedgerState, tx: Tx, epoch: BigInt): LedgerState =
@@ -305,9 +335,9 @@ private[ledger] object ConwayCerts:
   ): Result[LedgerState] =
     val pp = s.params
     val bootstrap = pp.protocolMajor == 9
-    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else invalid(rule, detail)
+    def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
+    def check(ok: Boolean, failure: => PredicateFailure): Result[Unit] =
+      if ok then Right(()) else refuse(failure)
 
     /** Move `cred` from the reverse delegation set of `old` to that of `new` (both optional). */
     def redelegate(
@@ -328,11 +358,17 @@ private[ledger] object ConwayCerts:
 
     def register(st: LedgerState, c: Credential, declared: Option[BigInt]): Result[LedgerState] =
       for
-        _ <- check(!st.accounts.contains(c), "StakeKeyRegistered", c.render)
+        _ <- check(
+          !st.accounts.contains(c),
+          PredicateFailure.deleg(DelegFailure.StakeKeyRegistered(c))
+        )
         _ <- check(
           declared.forall(_ == pp.keyDeposit),
-          if pp.protocolMajor > 10 then "DepositIncorrectDELEG" else "IncorrectDepositDELEG",
-          s"$declared"
+          if pp.protocolMajor > 10 then
+            PredicateFailure.deleg(
+              DelegFailure.DepositIncorrect(Mismatch(declared.getOrElse(pp.keyDeposit), pp.keyDeposit))
+            )
+          else PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared.getOrElse(pp.keyDeposit)))
         )
       yield st.copy(accounts = st.accounts.updated(c, Account(0, pp.keyDeposit, None, None)))
 
@@ -346,16 +382,20 @@ private[ledger] object ConwayCerts:
       for
         a <- st.accounts
           .get(c)
-          .toRight(LedgerFailure.Invalid(id, "StakeKeyNotRegisteredDELEG", c.render))
+          .toRight(
+            LedgerFailure.Rejected(id, PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(c)))
+          )
         _ <- pool.traverse_(p =>
-          check(st.pools.contains(p), "DelegateeStakePoolNotRegisteredDELEG", p.hex)
+          check(
+            st.pools.contains(p),
+            PredicateFailure.deleg(DelegFailure.DelegateeStakePoolNotRegistered(p))
+          )
         )
         _ <- drep.traverse_ {
           case DRep.Registered(d) =>
             check(
               bootstrap || st.dreps.contains(d),
-              "DelegateeDRepNotRegisteredDELEG",
-              d.render
+              PredicateFailure.deleg(DelegFailure.DelegateeDRepNotRegistered(d))
             )
           case _ => Right(())
         }
@@ -383,13 +423,22 @@ private[ledger] object ConwayCerts:
         for
           a <- s.accounts
             .get(c)
-            .toRight(LedgerFailure.Invalid(id, "StakeKeyNotRegisteredDELEG", c.render))
+            .toRight(
+              LedgerFailure
+                .Rejected(id, PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(c)))
+            )
           _ <- check(
             declared.forall(_ == a.deposit),
-            if pp.protocolMajor > 10 then "RefundIncorrectDELEG" else "IncorrectDepositDELEG",
-            s"$declared"
+            if pp.protocolMajor > 10 then
+              PredicateFailure.deleg(
+                DelegFailure.RefundIncorrect(Mismatch(declared.getOrElse(a.deposit), a.deposit))
+              )
+            else PredicateFailure.deleg(DelegFailure.IncorrectDeposit(declared.getOrElse(a.deposit)))
           )
-          _ <- check(a.balance == 0, "StakeKeyNonZeroAccountBalanceDELEG", s"${a.balance}")
+          _ <- check(
+            a.balance == 0,
+            PredicateFailure.deleg(DelegFailure.StakeKeyHasNonZeroAccountBalance(a.balance))
+          )
         yield s.copy(
           accounts = s.accounts - c,
           dreps = redelegate(s.dreps, c, a.drep, None)
@@ -405,12 +454,19 @@ private[ledger] object ConwayCerts:
           case None => delegate(s, c, pool, drep, fresh = false)
       case Certificate.RegisterPool(p) =>
         for
-          _ <- check(p.cost >= pp.minPoolCost, "StakePoolCostTooLowPOOL", s"${p.cost}")
-          _ <- check(p.rewardAccount.network == network, "WrongNetworkPOOL", p.operator.hex)
+          _ <- check(
+            p.cost >= pp.minPoolCost,
+            PredicateFailure.pool(PoolFailure.StakePoolCostTooLow(Mismatch(p.cost, pp.minPoolCost)))
+          )
+          _ <- check(
+            p.rewardAccount.network == network,
+            PredicateFailure.pool(
+              PoolFailure.WrongNetworkPool(Mismatch(p.rewardAccount.network, network), p.operator)
+            )
+          )
           _ <- check(
             pp.protocolMajor <= 10 || ConwayRules.vrfAvailable(s, p),
-            "VRFKeyHashAlreadyRegistered",
-            s"${p.operator.hex} ${p.vrfKeyHash.hex}"
+            PredicateFailure.pool(PoolFailure.VRFKeyHashAlreadyRegistered(p.operator, p.vrfKeyHash))
           )
         yield
           if s.pools.contains(p.operator) then
@@ -421,17 +477,32 @@ private[ledger] object ConwayCerts:
           else s.copy(pools = s.pools.updated(p.operator, PoolState(p, pp.poolDeposit)))
       case Certificate.RetirePool(pool, e) =>
         for
-          _ <- check(s.pools.contains(pool), "StakePoolNotRegisteredOnKeyPOOL", pool.hex)
+          _ <- check(
+            s.pools.contains(pool),
+            PredicateFailure.pool(PoolFailure.StakePoolNotRegisteredOnKey(pool))
+          )
           _ <- check(
             epoch < e && e <= epoch + pp.eMax,
-            "StakePoolRetirementWrongEpochPOOL",
-            s"$e"
+            PredicateFailure.pool(
+              PoolFailure.StakePoolRetirementWrongEpoch(
+                Mismatch(e, epoch),
+                Mismatch(e, epoch + pp.eMax)
+              )
+            )
           )
         yield s.copy(retiring = s.retiring.updated(pool, e))
       case Certificate.RegisterDRep(c, deposit, anchor) =>
         for
-          _ <- check(!s.dreps.contains(c), "ConwayDRepAlreadyRegistered", c.render)
-          _ <- check(deposit == pp.drepDeposit, "ConwayDRepIncorrectDeposit", s"$deposit")
+          _ <- check(
+            !s.dreps.contains(c),
+            PredicateFailure.govCert(GovCertFailure.DRepAlreadyRegistered(c))
+          )
+          _ <- check(
+            deposit == pp.drepDeposit,
+            PredicateFailure.govCert(
+              GovCertFailure.DRepIncorrectDeposit(Mismatch(deposit, pp.drepDeposit))
+            )
+          )
         yield
           // From protocol version 10 the expiry accounts for the dormant epochs.
           val expiry =
@@ -442,8 +513,16 @@ private[ledger] object ConwayCerts:
         for
           d <- s.dreps
             .get(c)
-            .toRight(LedgerFailure.Invalid(id, "ConwayDRepNotRegistered", c.render))
-          _ <- check(refund == d.deposit, "ConwayDRepIncorrectRefund", s"$refund")
+            .toRight(
+              LedgerFailure
+                .Rejected(id, PredicateFailure.govCert(GovCertFailure.DRepNotRegistered(c)))
+            )
+          _ <- check(
+            refund == d.deposit,
+            PredicateFailure.govCert(
+              GovCertFailure.DRepIncorrectRefund(Mismatch(refund, d.deposit))
+            )
+          )
         yield s.copy(
           dreps = s.dreps - c,
           // The reverse index decides who loses their delegation, as in the ledger.
@@ -454,7 +533,10 @@ private[ledger] object ConwayCerts:
       case Certificate.UpdateDRep(c, anchor) =>
         for d <- s.dreps
             .get(c)
-            .toRight(LedgerFailure.Invalid(id, "ConwayDRepNotRegistered", c.render))
+            .toRight(
+              LedgerFailure
+                .Rejected(id, PredicateFailure.govCert(GovCertFailure.DRepNotRegistered(c)))
+            )
         yield s.copy(dreps =
           s.dreps.updated(
             c,
@@ -474,7 +556,7 @@ private[ledger] object ConwayCerts:
       auth: CommitteeAuth,
       id: Bytes
   ): Result[LedgerState] =
-    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
+    def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
     val resigned = s.committeeState.get(cold).exists {
       case CommitteeAuth.Resigned(_) => true
       case _                         => false
@@ -485,8 +567,10 @@ private[ledger] object ConwayCerts:
         case GovAction.UpdateCommittee(_, _, added, _) => added.contains(cold)
         case _                                         => false
     }
-    if resigned then invalid("ConwayCommitteeHasPreviouslyResigned", cold.render)
-    else if !(current || future) then invalid("ConwayCommitteeIsUnknown", cold.render)
+    if resigned then
+      refuse(PredicateFailure.govCert(GovCertFailure.CommitteeHasPreviouslyResigned(cold)))
+    else if !(current || future) then
+      refuse(PredicateFailure.govCert(GovCertFailure.CommitteeIsUnknown(cold)))
     else Right(s.copy(committeeState = s.committeeState.updated(cold, auth)))
 
 /** GOV: proposals and votes of a transaction. */
@@ -518,9 +602,9 @@ private[ledger] object ConwayGov:
     val pp = s.params
     val epoch = env.epoch
     val bootstrap = pp.protocolMajor == 9
-    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else invalid(rule, detail)
+    def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
+    def check(ok: Boolean, failure: => GovFailure): Result[Unit] =
+      if ok then Right(()) else refuse(PredicateFailure.gov(failure))
     val guardrails = s.gov.constitution.script
 
     def addProposal(ps: Proposals, indexed: (Proposal, Int)): Result[Proposals] =
@@ -530,8 +614,7 @@ private[ledger] object ConwayGov:
       for
         _ <- check(
           !bootstrap || isBootstrapAction(action),
-          "DisallowedProposalDuringBootstrap",
-          action.toString.take(60)
+          GovFailure.DisallowedProposalDuringBootstrap(proposal)
         )
         _ <- action match
           case GovAction.HardFork(prev, major, minor) =>
@@ -546,8 +629,10 @@ private[ledger] object ConwayGov:
                     case _                           => None)
             check(
               reference.forall(canFollow(_, major -> minor)),
-              "ProposalCantFollow",
-              s"$major.$minor"
+              GovFailure.ProposalCantFollow(
+                prev,
+                Mismatch(major -> minor, reference.getOrElse(pp.protocolMajor -> pp.protocolMinor))
+              )
             )
           case _ => Right(())
         _ <- check(
@@ -555,50 +640,53 @@ private[ledger] object ConwayGov:
             case GovAction.ParameterChange(_, u, _) => wellFormed(pp, u)
             case _                                  => true
           ,
-          "MalformedProposal",
-          "parameter update"
+          GovFailure.MalformedProposal(action)
         )
         _ <-
           if bootstrap then Right(())
           else
             check(
               s.accounts.contains(proposal.returnAccount.credential),
-              "ProposalReturnAccountDoesNotExist",
-              proposal.returnAccount.credential.render
+              GovFailure.ProposalReturnAccountDoesNotExist(proposal.returnAccount)
             ) *> (action match
               case GovAction.TreasuryWithdrawals(ws, _) =>
+                val unknown = ws.map(_._1).filterNot(a => s.accounts.contains(a.credential))
                 check(
-                  ws.forall(w => s.accounts.contains(w._1.credential)),
-                  "TreasuryWithdrawalReturnAccountsDoNotExist",
-                  ""
+                  unknown.isEmpty,
+                  GovFailure.TreasuryWithdrawalReturnAccountsDoNotExist(unknown.distinct)
                 )
               case _ => Right(()))
         _ <- check(
           proposal.deposit == pp.govActionDeposit,
-          "ProposalDepositIncorrect",
-          s"${proposal.deposit} != ${pp.govActionDeposit}"
+          GovFailure.ProposalDepositIncorrect(Mismatch(proposal.deposit, pp.govActionDeposit))
         )
         _ <- check(
           proposal.returnAccount.network == env.network,
-          "ProposalProcedureNetworkIdMismatch",
-          proposal.returnAccount.credential.render
+          GovFailure.ProposalProcedureNetworkIdMismatch(proposal.returnAccount, env.network)
         )
         _ <- action match
           case GovAction.TreasuryWithdrawals(ws, policy) =>
             check(
               ws.forall(_._1.network == env.network),
-              "TreasuryWithdrawalsNetworkIdMismatch",
-              ""
-            ) *> check(policy == guardrails, "InvalidGuardrailsScriptHash", s"$policy") *>
-              check(ws.map(_._2).sum != 0, "ZeroTreasuryWithdrawals", "")
+              GovFailure.TreasuryWithdrawalsNetworkIdMismatch(
+                ws.map(_._1).filter(_.network != env.network).toSet,
+                env.network
+              )
+            ) *> check(
+              policy == guardrails,
+              GovFailure.InvalidGuardrailsScriptHash(policy, guardrails)
+            ) *>
+              check(ws.map(_._2).sum != 0, GovFailure.ZeroTreasuryWithdrawals(action))
           case GovAction.UpdateCommittee(_, removed, added, _) =>
             check(
               added.keySet.intersect(removed).isEmpty,
-              "ConflictingCommitteeUpdate",
-              ""
-            ) *> check(added.values.forall(_ > epoch), "ExpirationEpochTooSmall", "")
+              GovFailure.ConflictingCommitteeUpdate(added.keySet.intersect(removed))
+            ) *> check(
+              added.values.forall(_ > epoch),
+              GovFailure.ExpirationEpochTooSmall(added.filter(_._2 <= epoch))
+            )
           case GovAction.ParameterChange(_, _, policy) =>
-            check(policy == guardrails, "InvalidGuardrailsScriptHash", s"$policy")
+            check(policy == guardrails, GovFailure.InvalidGuardrailsScriptHash(policy, guardrails))
           case _ => Right(())
         added <- ps
           .add(
@@ -612,46 +700,55 @@ private[ledger] object ConwayGov:
               epoch + pp.govActionLifetime
             )
           )
-          .toRight(LedgerFailure.Invalid(id, "InvalidPrevGovActionId", gaid.index.toString))
+          .toRight(
+            LedgerFailure.Rejected(
+              id,
+              PredicateFailure.gov(GovFailure.InvalidPrevGovActionId(proposal))
+            )
+          )
       yield added
 
     val hotCredentials = s.committeeState.values.collect { case CommitteeAuth.Hot(h) => h }.toSet
     for
       _ <- check(
         pp.protocolMajor <= 10 || ConwayRules.unelectedCommitteeVoters(s, body).isEmpty,
-        "UnelectedCommitteeVoters",
-        ConwayRules.unelectedCommitteeVoters(s, body).mkString(",")
+        GovFailure.UnelectedCommitteeVoters(ConwayRules.unelectedCommitteeVoters(s, body))
       )
       proposals <- body.proposals.zipWithIndex.foldLeftM(s.gov.proposals)(addProposal)
-      _ <- body.votes.traverse_ { case (voter, _) =>
-        val known = voter match
-          case Voter.DRepVoter(c)    => s.dreps.contains(c)
-          case Voter.Pool(h)         => s.pools.contains(h)
-          case Voter.CommitteeHot(h) => hotCredentials(h)
-        check(known, "VotersDoNotExist", voter.toString)
+      unknownVoters = body.votes.map(_._1).filterNot {
+        case Voter.DRepVoter(c)    => s.dreps.contains(c)
+        case Voter.Pool(h)         => s.pools.contains(h)
+        case Voter.CommitteeHot(h) => hotCredentials(h)
       }
+      _ <- check(unknownVoters.isEmpty, GovFailure.VotersDoNotExist(unknownVoters))
       votes = body.votes.flatMap { case (voter, vs) => vs.map { case (aid, v) => (voter, aid, v) } }
       _ <- votes.traverse_ { case (voter, aid, v) =>
         for
           gas <- proposals.byId
             .get(aid)
-            .toRight(LedgerFailure.Invalid(id, "GovActionsDoNotExist", aid.txId.hex))
+            .toRight(
+              LedgerFailure.Rejected(
+                id,
+                PredicateFailure.gov(GovFailure.GovActionsDoNotExist(Vector(aid)))
+              )
+            )
           _ <- check(
             !bootstrap || (voter match
               case Voter.DRepVoter(_) => gas.action == GovAction.Info
               case _                  => isBootstrapAction(gas.action)),
-            "DisallowedVotesDuringBootstrap",
-            aid.txId.hex
+            GovFailure.DisallowedVotesDuringBootstrap(Vector(voter -> aid))
           )
-          _ <- check(epoch <= gas.expiresAfter, "VotingOnExpiredGovAction", aid.txId.hex)
+          _ <- check(
+            epoch <= gas.expiresAfter,
+            GovFailure.VotingOnExpiredGovAction(Vector(voter -> aid))
+          )
           _ <- check(
             voter match
               case Voter.CommitteeHot(_) => Ratify.isCommitteeVotingAllowed(gas.action)
               case Voter.DRepVoter(_)    => Ratify.isDRepVotingAllowed(gas.action)
               case Voter.Pool(_)         => Ratify.isPoolVotingAllowed(gas.action)
             ,
-            "DisallowedVoters",
-            voter.toString
+            GovFailure.DisallowedVoters(Vector(voter -> aid))
           )
         yield ()
       }
