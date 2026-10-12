@@ -26,3 +26,8 @@ python3 scripts/devnet.py --name csl-devnet down
 A Plutus V3 transaction refused with `CollectErrors (BadTranslation ReferenceInputsNotDisjointFromInputs)` is
 not kept here: replaying it needs the devnet's cost model for the script data hash; `ConwayRulesSuite` builds
 the same shape instead.
+
+## `lsq/`
+
+The genesis directory of a devnet and the reference node's answers to the LocalStateQuery queries
+that do not depend on activity, replayed by `QueryGoldenSuite`; see [lsq/README.md](lsq/README.md).

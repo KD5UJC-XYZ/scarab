@@ -71,6 +71,7 @@ with a pattern that matches your own shell command line.
 | Network (mini-protocols, mux, peer, chain selection) | `check`, plus `soak` and `relay` |
 | Storage (stores, snapshots, UTxO set) | `check` with the storage suites, plus a restart check (`follow --db`, stop, restart) and `soak` |
 | Forging or mempool | `check`, plus `pool` and `relay` |
+| Node-to-client (LocalStateQuery, LocalTxSubmission, the encoding of rejections) | `check`, plus `ntc` and `relay` |
 
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
 and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`

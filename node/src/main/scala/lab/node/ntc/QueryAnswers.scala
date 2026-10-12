@@ -136,14 +136,25 @@ object QueryAnswers:
       (PulsingSnapshot.empty, initialRatify(view.ledger))
     )
 
+  /** Before the first Conway epoch boundary the previous parameters, and the ones in the initial
+    * pulser state, are those of the era translation: without the PlutusV3 cost model that the
+    * Conway genesis adds to the current ones.
+    */
+  private def beforeUpgrade(p: ProtocolParams): ProtocolParams =
+    p.copy(costModels = p.costModels - 2)
+
+  /** The previous parameters as the governance state reports them. */
+  private def previous(s: LedgerState): ProtocolParams =
+    if s.gov.pulsed.isEmpty then beforeUpgrade(s.previousParams) else s.previousParams
+
   /** The pulser state before the first epoch boundary: the enact state of the current ledger. */
   private def initialRatify(s: LedgerState): RatifyState =
     RatifyState(
       EnactState(
         s.gov.committee,
         s.gov.constitution,
-        s.params,
-        s.previousParams,
+        beforeUpgrade(s.params),
+        beforeUpgrade(s.previousParams),
         s.treasury,
         Map.empty,
         s.gov.proposals.roots
@@ -260,7 +271,7 @@ object QueryAnswers:
           )
         )
       case GetConstitution => build(E.constitution(_, s.gov.constitution))
-      case GetGovState     => build(govState(_, view))
+      case GetGovState     => build(govState(_, env, view))
       case GetDRepState(credentials) =>
         build(
           E.map(_, restrict(drepStates(s), credentials).toVector, E.credentialOrdering)(
@@ -306,7 +317,7 @@ object QueryAnswers:
         }
       case GetRatifyState => build(E.ratifyState(_, pulsed(view)._2))
       case GetFuturePParams =>
-        build(E.maybe(_, futureParams(view))(E.protocolParams))
+        build(E.maybe(_, futureParams(env, view))(E.protocolParams))
       case QueryStakePoolDefaultVote(pool) => build(defaultVote(_, s, pool))
       case GetPoolDistr2(pools)            => build(poolDistr(_, s.poolDistribution, pools, None))
       case GetStakeDistribution2           =>
@@ -334,9 +345,41 @@ object QueryAnswers:
       .foreach(E.nonce(w, _))
     w
 
-  /** The parameters that take effect at the next boundary, when one is already decided. */
-  private def futureParams(view: QueryView): Option[ProtocolParams] =
-    view.ledger.gov.pulsed.map(_._2.enact.params).filter(_ != view.ledger.params)
+  /** `FuturePParams` of the governance state: nothing before the first epoch boundary; after it
+    * `Potential` right after the block that crossed a boundary and until two stability windows
+    * before the end of the epoch (the point of no return, when the tick solidifies it), then
+    * `Definite` when ratification enacted a parameter change or hard fork and `NoPParamsUpdate`
+    * otherwise. What it holds is the parameters of the ratification the pulser will finish.
+    */
+  private enum Future:
+    case NoUpdate
+    case Definite(params: ProtocolParams)
+    case Potential(params: Option[ProtocolParams])
+
+  private def future(env: QueryEnv, view: QueryView): Future =
+    view.ledger.gov.pulsed match
+      case None => Future.NoUpdate
+      case Some((_, ratify)) =>
+        val changes = ratify.enacted.exists(g =>
+          g.action match
+            case _: GovAction.ParameterChange | _: GovAction.HardFork => true
+            case _                                                    => false
+        )
+        val next = Option.when(changes)(ratify.enact.params)
+        val slot = view.point match
+          case Point.Block(s, _) => s.value
+          case Point.Origin      => BigInt(0)
+        val firstOfEpoch = view.ledger.blocksCurrent.valuesIterator.sum <= 1
+        val pointOfNoReturn =
+          env.geometry.firstSlot(view.ledger.epoch + 1) - 2 * env.geometry.stabilityWindow
+        if firstOfEpoch || slot < pointOfNoReturn then Future.Potential(next)
+        else next.fold(Future.NoUpdate)(Future.Definite(_))
+
+  private def futureParams(env: QueryEnv, view: QueryView): Option[ProtocolParams] =
+    future(env, view) match
+      case Future.NoUpdate     => None
+      case Future.Definite(p)  => Some(p)
+      case Future.Potential(p) => p
 
   private def defaultVote(w: CborOut, s: LedgerState, pool: Bytes): CborOut =
     // DefaultNo (0), DefaultAbstain (1) or DefaultNoConfidence (2), by the DRep the pool's reward
@@ -476,17 +519,20 @@ object QueryAnswers:
     E.maybe(w, s.gov.committee.map(_.threshold))(E.rational)
     w.uint(epoch)
 
-  private def govState(w: CborOut, view: QueryView): CborOut =
+  private def govState(w: CborOut, env: QueryEnv, view: QueryView): CborOut =
     val s = view.ledger
     w.array(7)
     E.proposals(w, s.gov.proposals)
     E.maybe(w, s.gov.committee)(E.committee)
     E.constitution(w, s.gov.constitution)
     E.protocolParams(w, s.params)
-    E.protocolParams(w, s.previousParams)
-    futureParams(view) match
-      case None     => w.array(1).uint(0)
-      case Some(pp) => w.array(2).uint(1); E.protocolParams(w, pp)
+    E.protocolParams(w, previous(s))
+    future(env, view) match
+      case Future.NoUpdate    => w.array(1).uint(0)
+      case Future.Definite(p) => w.array(2).uint(1); E.protocolParams(w, p)
+      case Future.Potential(p) =>
+        w.array(2).uint(2)
+        E.maybe(w, p)(E.protocolParams)
     val (snap, rs) = pulsed(view)
     w.array(2)
     w.array(4)

@@ -123,9 +123,9 @@ def battery(u):
     add("GetCBOR/GetStakeDistribution2", [9, [37]])
     add("GetCBOR/GetCurrentPParams", [9, [3]])
     add("GetCBOR/GetUTxOWhole", [9, [7]])
+    add("DebugChainDepState", [13])
+    add("GetCBOR/DebugChainDepState", [9, [13]])
     # not answered yet
-    add("DebugChainDepState", [13], False)
-    add("GetCBOR/DebugChainDepState", [9, [13]], False)
     add("DebugNewEpochState", [12], False)
     add("GetCBOR/DebugNewEpochState", [9, [12]], False)
     add("GetRewardInfoPools", [18], False)
@@ -164,9 +164,10 @@ def ask(session, query):
         return None
 
 
-def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe):
+def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None):
     """One round: acquire the Scala node's volatile tip on both nodes, ask the whole battery.
-    Returns (point, [(label, implemented, matched, reference_length, scala_length)])."""
+    Returns (point, [(label, implemented, matched, reference_length, scala_length)]). The two answers
+    of a query that differs are written to `dump_dir` when it is given."""
     with ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True) as probe:
         probe.acquire()
         point = tip_point(probe)
@@ -183,6 +184,10 @@ def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_
                     got = ask(s, query)
             except (RuntimeError, EOFError, OSError):
                 got = None
-            results.append((label, implemented, expected is not None and expected == got,
-                            len(expected or b""), len(got or b"")))
+            matched = expected is not None and expected == got
+            if not matched and implemented and dump_dir is not None and expected is not None and got is not None:
+                stem = f"diff-{label.replace('/', '_')}-{point[0]}"
+                (dump_dir / f"{stem}.reference").write_bytes(expected)
+                (dump_dir / f"{stem}.scala").write_bytes(got)
+            results.append((label, implemented, matched, len(expected or b""), len(got or b"")))
     return point, results

@@ -39,7 +39,7 @@ The devnet runs are against `cardano-node` 11.1.3 and are one developer's record
 commits in [docs/compatibility.md](docs/compatibility.md); they do not run in CI yet. Preview
 agreement shows the node accepts the real chain with full validation (no false rejections), not that its ledger state is identical to
 the Haskell node's (roadmap K1, db-analyser comparison); the devnet comparator covers identity on generated load. Things explicitly **not** checked include mainnet and preprod, Byron
-transactions, the full node-to-client query surface, Mithril import, the P2P governor and security
+transactions, `ledger-state` and the other node-to-client queries listed in the compatibility matrix, Mithril import, the P2P governor and security
 review.
 
 ## Quick start
@@ -76,7 +76,7 @@ What each scenario asserts is in [docs/running.md](docs/running.md). Run data go
 |---|---|
 | `core/` | Pure CBOR, Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, operational certificates |
 | `network/` | Pure Ouroboros mini-protocol codecs and state machines |
-| `network-runtime/` | fs2 tagless-final bearer, multiplexer, handshake, client and server roles of ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission |
+| `network-runtime/` | fs2 tagless-final bearer, multiplexer, handshake, client and server roles of ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery |
 | `node/` | Peer, volatile chain, follower, Praos/TPraos, Shelley to Conway ledger, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` |
 | `fixtures/` | Licensed test vectors and captured chain data, each directory with its provenance |
 | `scripts/` | `devnet.py` (scenarios), `sbtw` (pinned sbt launcher), `prepare_reference_image.py` |

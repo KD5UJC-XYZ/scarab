@@ -14,6 +14,7 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
      `cardano-cli transaction submit` prints.
 """
 import json
+import re
 import subprocess
 import sys
 import time
@@ -135,7 +136,8 @@ def query_rounds(args, root, stats, until, every):
     rounds = 0
     while time.monotonic() < until:
         try:
-            point, results = compare_round(args.name, f"{ENV}/socket/node1/sock", str(root / "scala-sock" / "node.socket"))
+            point, results = compare_round(args.name, f"{ENV}/socket/node1/sock",
+                                           str(root / "scala-sock" / "node.socket"), dump_dir=root)
         except (RuntimeError, EOFError, OSError) as e:
             print(json.dumps({"round": "failed", "error": str(e)[:200]}), flush=True)
             time.sleep(1)
@@ -197,9 +199,13 @@ def submit_scala_cli(args, tx):
     return out
 
 
-def rendered(text):
-    """The error line `cardano-cli` prints (without its call stack)."""
-    return next((l for l in text.splitlines() if l.startswith("Error:")), text.splitlines()[0] if text else "")
+def rendered(text, rule=""):
+    """The error line `cardano-cli` prints (without its call stack). The slot a validity interval is
+    judged at is the node's current slot, which differs between two submissions in time, so it is masked."""
+    line = next((l for l in text.splitlines() if l.startswith("Error:")), text.splitlines()[0] if text else "")
+    if rule == "OutsideValidityIntervalUTxO":
+        line = re.sub(r"\(SlotNo \d+\)(\)+) :\|", r"(SlotNo <current>)\1 :|", line)
+    return line
 
 
 def reasons(args, root, tx):
@@ -225,12 +231,12 @@ def submissions(args, root):
         raw = reasons(args, root, case.tx)
         text = submit_scala_cli(args, case.tx)
         # the slot a transaction is judged at differs by a block or two between the nodes
-        same_text = rendered(text["h"][1]) == rendered(text["s"][1])
+        same_text = rendered(text["h"][1], case.ledger_rule) == rendered(text["s"][1], case.ledger_rule)
         same_raw = raw["h"] == raw["s"]
         named = case.ledger_rule in text["h"][1]
         row = {"case": case.label, "rule": case.ledger_rule, "referenceNamesRule": named, "rawEqual": same_raw,
                "textEqual": same_text}
-        if not (same_raw and same_text) and case.ledger_rule != "OutsideValidityIntervalUTxO":
+        if not (same_raw and same_text):
             row["reference"] = rendered(text["h"][1])[:500]
             row["scala"] = rendered(text["s"][1])[:500]
         results.append(row)
@@ -340,8 +346,10 @@ def ntc(args):
             failures.append(f"cardano-cli outputs that differ: {badcli}")
         if any(r["case"] and not r["referenceNamesRule"] for r in sub_results):
             failures.append("a refusal was not the rule the case is built for (the case is wrong)")
-        ignored = {"OutsideValidityIntervalUTxO"}
-        if any(not (r["rawEqual"] and r["textEqual"]) and r["rule"] not in ignored for r in sub_results):
+        # the raw bytes of a validity-interval refusal hold the node's current slot, which moves
+        # between two submissions; the text is compared with the slot masked
+        if any(not r["textEqual"] or (not r["rawEqual"] and r["rule"] != "OutsideValidityIntervalUTxO")
+               for r in sub_results):
             failures.append("a rejection differs from the reference's")
         if not (valid["acceptedByScala"] and valid["reachedABlock"]):
             failures.append(f"the valid transaction did not reach a block: {valid}")

@@ -365,6 +365,12 @@ class NtcQueriesTest(unittest.TestCase):
             self.assertFalse(text.startswith("query "), label)
         self.assertEqual(ntc.rendered("x\nError: boom\nCallStack"), "Error: boom")
 
+    def test_the_current_slot_of_a_validity_refusal_is_masked(self):
+        text = "Error: (OutsideValidityIntervalUTxO (ValidityInterval {invalidHereafter = SJust (SlotNo 1)}) (SlotNo 18204))) :| []"
+        self.assertEqual(ntc.rendered(text, "OutsideValidityIntervalUTxO"),
+                         ntc.rendered(text.replace("18204", "18399"), "OutsideValidityIntervalUTxO"))
+        self.assertNotEqual(ntc.rendered(text), ntc.rendered(text.replace("18204", "18399")))
+
 
 class NtcQuerySessionTest(unittest.TestCase):
     def test_a_rejection_reason_is_what_follows_the_message_tag(self):
