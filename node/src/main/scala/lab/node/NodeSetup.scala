@@ -24,7 +24,11 @@ final case class NodeSetup(
     byron: Option[ByronGenesis],
     globals: LedgerGlobals,
     praos: PraosConfig,
-    start: NodeState
+    start: NodeState,
+    /** The Byron genesis parameters even when the chain has no Byron prefix (the era history of a
+      * node-to-client client still lists the empty Byron era).
+      */
+    byronParams: Option[ByronGenesis] = None
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byron.map(ByronRules.Config(_))
@@ -78,6 +82,7 @@ object NodeSetup:
         HardForkConfig.fromEpochs(config.hardForkEpochs)
       )
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley)
+      byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
     yield NodeSetup(
       genesis,
       config,
@@ -88,5 +93,6 @@ object NodeSetup:
         Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))),
         initial,
         BootstrapState.initial(lite)
-      )
+      ),
+      byronParams
     )

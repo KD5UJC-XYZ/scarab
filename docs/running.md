@@ -45,7 +45,7 @@ value except `--forge`. A repeated flag keeps its last value, except `--peer`, w
 | `--genesis-dir <dir>` | required | directory with `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, `byron-genesis.json` (needed when the chain starts in Byron) and optionally a node configuration (`configuration.yaml`, `configuration.json` or `config.json`) |
 | `--peer <host>:<port>` | required, repeatable | node-to-node peer to follow; with several peers each is followed and chain selection picks the best chain. One peer that keeps failing is fatal after 30 attempts, with several it is retried forever |
 | `--listen <host>:<port>` | off | accept node-to-node connections (versions 14 and 15) and serve our chain |
-| `--local-socket <path>` | off | Unix socket for node-to-client LocalTxSubmission |
+| `--local-socket <path>` | off | Unix socket for node-to-client LocalTxSubmission and LocalStateQuery (versions 16 to 23); `cardano-cli conway query ...` and `transaction submit` work against it, see "Node-to-client" below |
 | `--seconds N` | run until stopped | stop after N seconds |
 | `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`) |
 | `--db <dir>` | off (in-memory; replay from genesis on every start) | persistent chain: `immutable/`, `snapshots/`, `utxo/` |
@@ -113,6 +113,28 @@ scenarios mount them read-only with mode 0400). See [architecture.md](architectu
 forging design and [compatibility.md](compatibility.md) for what is not covered (no KES agent, no
 opcert issuing, never run on a public network).
 
+### Node-to-client
+
+With `--local-socket <path>` the node serves LocalTxSubmission and LocalStateQuery on a Unix socket, so
+the reference image's `cardano-cli` can talk to it:
+
+```sh
+docker run --rm -v <socket dir>:/sock --entrypoint /opt/reference/bin/cardano-cli cardano-reference-11.1.3:local \
+  conway query tip --testnet-magic <magic> --socket-path /sock/node.socket
+```
+
+Answered, with CBOR equal to the reference node's at the same block (the `ntc` scenario below):
+`tip`, `protocol-parameters`, `utxo` (whole, by address, by input), `stake-distribution`, `stake-pools`,
+`pool-params`, `pool-state`, `stake-snapshot`, `stake-address-info`, `gov-state`, `drep-state`,
+`drep-stake-distribution`, `committee-state`, `constitution`, `ratify-state`, `future-pparams`,
+`treasury`, `spo-stake-distribution`, `protocol-state`, `era-history`, `slot-number`, and the queries
+behind them (see [architecture.md](architecture.md#node-to-client---local-socket)). Not answered yet
+(the connection ends, the log line `inbound ... closed` names the query): `ledger-state`
+(`DebugNewEpochState` and `DebugEpochState`), `GetRewardInfoPools`, `GetNonMyopicMemberRewards`,
+`GetRewardProvenance`, `GetLedgerPeerSnapshot`, `DebugLedgerConfig`, and every query in an era other than
+Conway. A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+transaction submit` prints the same error as against the Haskell node.
+
 ### Query server
 
 `GET /tip` and `GET /state?slot=<n>&hash=<hex>` serve the node's projection of the ledger and
@@ -155,6 +177,7 @@ python3 scripts/devnet.py down                       # remove containers and the
 | `soak [--seconds 600] [--every 20] [--seed 1] [--governance-extended]` | `up` + Scala follower + ADA, staking and Conway governance/Plutus V3 load + periodic comparison; `--governance-extended` adds the scenarios of [`govextra.py`](../scripts/devnet/govextra.py) (below; needs `--seconds 900`) | exit status fails on any mismatched comparison or follower error; with `--governance-extended` also on a transaction the reference was expected to refuse but did not refuse for the named predicate failure, and on an extended stage that was not reached. Compares at matching tips: UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps, snapshots, reward update, Praos nonces, governance state |
 | `e2e [--timeout 1500] [--until-epoch N] [--keep] [--no-load] [--no-compare] [--min-comparisons 3]` | `up-eras` (Byron, Shelley, Allegra, Mary, Alonzo, Babbage, Conway) + follower from Origin + era-specific load + per-era ledger comparison | the `eraTransition` lines are exactly the seven eras at the configured epochs; every era applied blocks; all Byron signatures verified; no validation or fatal errors; every comparison matched, at least `--min-comparisons` per Shelley-based era. Writes `e2e-summary.json` and `compare.jsonl` |
 | `relay [--seconds 300] [--peers 3] [--relay-mode ...] [--keep]` | the Scala node follows the pools and serves a non-producing Haskell relay (`--listen`, `--db`, `--local-socket`); load is submitted through the relay | the Haskell relay syncs the whole chain from the Scala node and stays at the tip (lag samples every `--every` seconds), transactions travel relay, Scala mempool, pools, block, and one is submitted with `cardano-cli` to the Scala socket |
+| `ntc [--seconds 240] [--warmup 60] [--every 10]` | a fresh cluster, the Scala node following pool 1 with `--local-socket`, and the ordinary and governance load running. Rounds of LocalStateQuery: the Scala node's volatile tip is acquired on the reference node by point, and every query of the battery (`scripts/devnet/ntcqueries.py`, about 55 queries built from the live state) goes to both. Then `cardano-cli conway query ...` (24 commands) against both sockets, each pair accepted only when the tip read before and after is the same block on both nodes. Then 18 refused transactions (`scripts/devnet/ntccases.py`: fee too small, inputs spent, value not conserved, validity interval, missing witness, small and wrong-network outputs, treasury value, registration, delegation, DRep, pool retirement, proposal, vote, size) and one valid transaction through both sockets | every query that is implemented gives equal bytes in every round (matched / total per query); every `cardano-cli` pair equal; every refusal equal as raw `ApplyTxErr` bytes and as the text `cardano-cli transaction submit` prints; the valid transaction is accepted by the Scala node and reaches a block. Queries not answered yet are listed with their counts and do not fail the run. Writes `ntc-summary.json` |
 | `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event. Writes `pool-summary.json` |
 
 Building blocks (also runnable on their own): `up` (start the 3-pool cluster), `up-eras [--epoch-length 500 --active-slots-coeff 0.2 --byron-epochs 1 --byron-slot-ms 1000 --stall-seconds 90 --shelley-epochs 1 --min-utxo-value 0 --pool-margin 0 --cross-rewards]`, `capture-eras [--out fixtures/eras --conway-blocks 3]`, `tip [--node N]`, `follow [--seconds N] [--node N]`, `load [--seconds N --wallets 10 --stakers 4 ...]`, `govload [--seconds N]`, `compare`, `down`.
@@ -164,6 +187,11 @@ with k = 5, f = 0.05 and 500-slot epochs of 0.1 s (as recorded in the 2026-10-11
 cluster uses f = 0.2 by default, see [`fixtures/eras/README.md`](../fixtures/eras/README.md)). The genesis
 files are rewritten at cluster start, so a cluster is not reproducible from the repository alone;
 the committed `fixtures/eras` capture is the Docker-free replay of one `up-eras` run.
+
+Node-to-client evidence: `scripts/devnet/ntcquery.py` also speaks LocalTxSubmission (`submit`) and can
+connect to a socket on the host (`host=True`, used for the Scala node's socket directory); the unit
+tests of the query envelope, the predicate-failure encoding and the answers against recorded reference
+bytes (`fixtures/devnet/lsq`) need no Docker.
 
 Comparison method: `cardano-cli` 11.2.3 refuses `query ledger-state` and `query protocol-state`
 before Conway, so `scripts/devnet/ntcquery.py` speaks LocalStateQuery to the reference node directly and

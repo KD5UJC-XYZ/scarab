@@ -29,7 +29,11 @@ final case class PraosState(
     epochNonce: Nonce,
     lab: Nonce,
     lastEpochBlock: Nonce,
-    counters: Map[Bytes, BigInt]
+    counters: Map[Bytes, BigInt],
+    /** The epoch nonce of the epoch before (`praosStatePreviousEpochNonce`; it takes no part in
+      * validation, node-to-client clients read it with the chain-dependent state).
+      */
+    previousEpochNonce: Nonce = Nonce.Neutral
 )
 
 /** Stake and VRF key of each pool for the leader schedule of one epoch. */
@@ -51,7 +55,7 @@ object Praos:
   /** The chain starts with every nonce equal to the Shelley genesis hash. */
   def initial(shelleyGenesisHash: Bytes): PraosState =
     val n = Nonce.Hash(shelleyGenesisHash)
-    PraosState(0, n, n, n, Nonce.Neutral, Nonce.Neutral, Map.empty)
+    PraosState(0, n, n, n, Nonce.Neutral, Nonce.Neutral, Map.empty, previousEpochNonce = n)
 
   /** Epoch transition: the new epoch nonce mixes the frozen candidate with the last block's lab
     * (and, for TPraos, the protocol parameters' extra entropy).
@@ -62,7 +66,8 @@ object Praos:
       state.copy(
         epoch = epoch,
         epochNonce = state.candidate.combine(state.lastEpochBlock).combine(extraEntropy),
-        lastEpochBlock = state.lab
+        lastEpochBlock = state.lab,
+        previousEpochNonce = state.epochNonce
       )
 
   /** Validate `header` (already ticked to its epoch) and return the updated state. */

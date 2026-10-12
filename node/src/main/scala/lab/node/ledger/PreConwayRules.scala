@@ -146,9 +146,13 @@ object PreConwayRules:
       val recomputed = ScriptIntegrity.hash(tx, pp, languages)
       val stats = state.plutus.copy(integrityChecked = state.plutus.integrityChecked + 1)
       if recomputed != body.scriptDataHash then
-        invalid(
-          "PPViewHashesDontMatch",
-          s"body ${body.scriptDataHash.map(_.hex)}, recomputed ${recomputed.map(_.hex)}"
+        Left(
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.utxow(
+              UtxowFailure.PPViewHashesDontMatch(Mismatch(body.scriptDataHash, recomputed))
+            )
+          )
         )
       else if plutusPurposes.isEmpty then Right(stats)
       else
@@ -173,14 +177,31 @@ object PreConwayRules:
             case Phase2.Outcome.Passed(n) =>
               if tx.isValid then
                 Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))
-              else invalid("ValidationTagMismatch", "is_valid = false but every script succeeds")
+              else
+                Left(
+                  LedgerFailure.Rejected(
+                    id,
+                    PredicateFailure.utxo(
+                      UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None))
+                    )
+                  )
+                )
             case Phase2.Outcome.Failed(n, redeemer, reason) =>
               if !tx.isValid then
                 Right(stats.copy(failed = stats.failed + 1, scripts = stats.scripts + n + 1))
               else
-                invalid(
-                  "ValidationTagMismatch",
-                  s"is_valid = true but redeemer (${redeemer.tag}, ${redeemer.index}) fails: ${reason.message}"
+                Left(
+                  LedgerFailure.Rejected(
+                    id,
+                    PredicateFailure.utxo(
+                      UtxoFailure.Utxos(
+                        UtxosFailure.ValidationTagMismatch(
+                          true,
+                          Some(Vector(reason.message -> Bytes.empty))
+                        )
+                      )
+                    )
+                  )
                 )
           }
 
@@ -268,6 +289,37 @@ object PreConwayRules:
       )
     yield ()
 
+  /** The output checks of Babbage and Conway UTXO, each reporting every offending output: too small
+    * (with the minimum), too big (with the size and the limit) and on the wrong network.
+    */
+  private[ledger] def outputsOk(
+      pp: ProtocolParams,
+      env: Env,
+      outs: Vector[TxOut]
+  ): Either[PredicateFailure, Unit] =
+    val small = outs.filter(o => o.value.coin < minUTxO(pp, o)).map(o => o -> minUTxO(pp, o))
+    val big = outs.flatMap { o =>
+      maxOutputValueSize(pp).filter(max => BigInt(o.value.serializedSize) > max).map { max =>
+        (o.value.serializedSize, max.toInt, o)
+      }
+    }
+    val wrong = outs.filter(_.address.kind match
+      case Address.Kind.Shelley(n, _, _, _) => n != env.network
+      case Address.Kind.Byron(_)            => false)
+    for
+      _ <- Either.cond(
+        small.isEmpty,
+        (),
+        PredicateFailure.utxo(UtxoFailure.BabbageOutputTooSmall(small))
+      )
+      _ <- Either.cond(big.isEmpty, (), PredicateFailure.utxo(UtxoFailure.OutputTooBig(big)))
+      _ <- Either.cond(
+        wrong.isEmpty,
+        (),
+        PredicateFailure.utxo(UtxoFailure.WrongNetwork(env.network, wrong.map(_.address.raw).toSet))
+      )
+    yield ()
+
   /** Collateral rules (Alonzo+): only for transactions that carry redeemers. Returns the collateral
     * outputs and their ada balance after the return output.
     */
@@ -279,44 +331,47 @@ object PreConwayRules:
     val body = tx.body
     val pp = state.params
     val id = body.id
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
+    def check(ok: Boolean, failure: => UtxoFailure): Result[Unit] =
+      if ok then Right(())
+      else Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(failure)))
     if pp.protocolMajor < 5 || tx.witnesses.redeemers.isEmpty then Right(Collateral.none)
     else
+      val missing = body.collateral.filterNot(state.utxo.contains).toSet
       for
-        outs <- body.collateral.traverse(i =>
-          state.utxo.get(i).toRight(LedgerFailure.Invalid(id, "BadInputsUTxO", i.render))
-        )
+        _ <- check(missing.isEmpty, UtxoFailure.BadInputs(missing))
+        outs = body.collateral.flatMap(state.utxo.get)
         required = tx.witnesses.redeemers.nonEmpty
         _ <-
           if !required then Right(())
           else
             val total = outs.foldLeft(Value.zero)(_ + _.value)
             val balance = body.collateralReturn.fold(total)(r => total - r.value)
+            val needed = (body.fee * pp.collateralPercentage + 99) / 100
+            val scriptLocked = body.collateral.zip(outs).filter { case (_, o) =>
+              o.address.kind match
+                case Address.Kind.Shelley(_, Credential.Script(_), _, _) => true
+                case _                                                   => false
+            }
             for
               _ <- check(
                 body.collateral.size <= pp.maxCollateralInputs,
-                "TooManyCollateralInputs",
-                s"${body.collateral.size}"
+                UtxoFailure.TooManyCollateralInputs(
+                  Mismatch(body.collateral.size, pp.maxCollateralInputs.toInt)
+                )
               )
-              _ <- check(body.collateral.nonEmpty, "NoCollateralInputs", "")
-              _ <- check(
-                outs.forall(_.address.kind match
-                  case Address.Kind.Shelley(_, Credential.Script(_), _, _) => false
-                  case _                                                   => true),
-                "ScriptsNotPaidUTxO",
-                "collateral locked by a script"
-              )
-              _ <- check(balance.assets.isEmpty, "CollateralContainsNonADA", s"${balance.assets}")
+              _ <- check(body.collateral.nonEmpty, UtxoFailure.NoCollateralInputs)
+              _ <- check(scriptLocked.isEmpty, UtxoFailure.ScriptsNotPaid(scriptLocked.toMap))
+              _ <- check(balance.assets.isEmpty, UtxoFailure.CollateralContainsNonAda(balance))
               _ <- check(
                 balance.coin * 100 >= body.fee * pp.collateralPercentage,
-                "InsufficientCollateral",
-                s"${balance.coin} for fee ${body.fee}"
+                UtxoFailure.InsufficientCollateral(balance.coin, needed)
               )
               _ <- check(
                 body.totalCollateral.forall(_ == balance.coin),
-                "IncorrectTotalCollateralField",
-                s"${body.totalCollateral} != ${balance.coin}"
+                UtxoFailure.IncorrectTotalCollateralField(
+                  balance.coin,
+                  body.totalCollateral.getOrElse(balance.coin)
+                )
               )
             yield ()
       yield
@@ -364,6 +419,9 @@ object PreConwayRules:
     val wits = tx.witnesses
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
+    def checkWith(ok: Boolean, failure: => UtxowFailure): Result[Unit] =
+      if ok then Right(())
+      else Left(LedgerFailure.Rejected(id, PredicateFailure.utxow(failure)))
     if pv < 5 then
       check(
         wits.redeemers.isEmpty && wits.datums.isEmpty && body.scriptDataHash.isEmpty,
@@ -380,32 +438,50 @@ object PreConwayRules:
             Some(out.datum -> scripts(h).kind)
           case _ => None
       }
+      // Plutus purposes without a redeemer, with the script each one needs
+      val unredeemed = Purpose
+        .all(body, body.inputs.zip(spent).toMap)
+        .flatMap(p =>
+          p.scriptHash
+            .filter(h => scripts.get(h).exists(_.kind.isPlutus))
+            .filter(_ => !provided.contains((p.tag, BigInt(p.index))))
+            .map(p -> _)
+        )
       for
-        _ <- check(
-          plutusPurposes.subsetOf(provided),
-          "MissingRedeemers",
-          (plutusPurposes -- provided).mkString(",")
-        )
-        _ <- check(
+        _ <- checkWith(unredeemed.isEmpty, UtxowFailure.MissingRedeemers(unredeemed))
+        _ <- checkWith(
           provided.subsetOf(plutusPurposes),
-          "ExtraRedeemers",
-          (provided -- plutusPurposes).mkString(",")
+          UtxowFailure.ExtraRedeemers((provided -- plutusPurposes).toVector.sorted)
         )
-        _ <- required.traverse_ {
-          case (Datum.Hash(h), _) =>
-            check(wits.datumHashes.contains(h), "MissingRequiredDatums", h.hex)
-          case (Datum.Inline(_), _) =>
-            check(pv >= 7, "UnspendableUTxONoDatumHash", "inline datum before Babbage")
-          // Plutus V3 scripts need no datum (CIP-69)
-          case (Datum.NoDatum, kind) =>
-            check(kind == ScriptKind.PlutusV3, "UnspendableUTxONoDatumHash", "no datum hash")
+        // Datum hashes the spent outputs ask for and the witnesses do not carry
+        requiredHashes = required.collect { case (Datum.Hash(h), _) => h }.toSet
+        _ <- checkWith(
+          requiredHashes.subsetOf(wits.datumHashes),
+          UtxowFailure.MissingRequiredDatums(requiredHashes -- wits.datumHashes, wits.datumHashes)
+        )
+        // Outputs locked by a Plutus script without a usable datum hash
+        unspendable = spent.zip(body.inputs).flatMap { case (out, in) =>
+          out.address.kind match
+            case Address.Kind.Shelley(_, Credential.Script(h), _, _)
+                if scripts.get(h).exists(_.kind.isPlutus) =>
+              out.datum match
+                case Datum.Hash(_)   => None
+                case Datum.Inline(_) => Option.when(pv < 7)(in)
+                // Plutus V3 scripts need no datum (CIP-69)
+                case Datum.NoDatum => Option.when(scripts(h).kind != ScriptKind.PlutusV3)(in)
+            case _ => None
         }
+        _ <- checkWith(
+          unspendable.isEmpty,
+          UtxowFailure.UnspendableUTxONoDatumHash(unspendable.toSet)
+        )
         needsHash = wits.redeemers.nonEmpty || wits.datums.nonEmpty
-        _ <- check(
+        languages = scriptsNeeded(body, spent).keys.flatMap(scripts.get).map(_.kind).toSet
+        _ <- checkWith(
           body.scriptDataHash.isDefined == needsHash,
-          if needsHash then "MissingRequiredScriptIntegrityHash"
-          else "UnexpectedScriptIntegrityHash",
-          s"${body.scriptDataHash.map(_.hex)}"
+          UtxowFailure.PPViewHashesDontMatch(
+            Mismatch(body.scriptDataHash, ScriptIntegrity.hash(tx, state.params, languages))
+          )
         )
       yield ()
 
@@ -427,11 +503,15 @@ object PreConwayRules:
       }
       if bad.isEmpty then Right(())
       else
+        val hashes = bad.flatMap(b => Bytes.fromHex(b._1).toOption).toSet
         Left(
-          LedgerFailure.Invalid(
+          LedgerFailure.Rejected(
             tx.body.id,
-            rule,
-            bad.map((h, why) => s"$h: $why").mkString("; ")
+            PredicateFailure.utxow(
+              if rule == "MalformedScriptWitnesses" then
+                UtxowFailure.MalformedScriptWitnesses(hashes)
+              else UtxowFailure.MalformedReferenceScripts(hashes)
+            )
           )
         )
     if pv < 7 then Right(())
@@ -449,14 +529,28 @@ object PreConwayRules:
     (tx.body.auxDataHash, tx.auxiliary) match
       case (None, None) => Right(())
       case (Some(h), Some(aux)) =>
+        val computed = Blake2b.hash256.hash(aux)
         Either.cond(
-          Blake2b.hash256.hash(aux) == h,
+          computed == h,
           (),
-          LedgerFailure.Invalid(id, "ConflictingMetadataHash", h.hex)
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.utxow(UtxowFailure.ConflictingMetadataHash(Mismatch(h, computed)))
+          )
         )
-      case (Some(h), None) => Left(LedgerFailure.Invalid(id, "MissingTxMetadata", h.hex))
-      case (None, Some(_)) =>
-        Left(LedgerFailure.Invalid(id, "MissingTxBodyMetadataHash", "auxiliary data without hash"))
+      case (Some(h), None) =>
+        Left(
+          LedgerFailure.Rejected(id, PredicateFailure.utxow(UtxowFailure.MissingTxMetadata(h)))
+        )
+      case (None, Some(aux)) =>
+        Left(
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.utxow(
+              UtxowFailure.MissingTxBodyMetadataHash(Blake2b.hash256.hash(aux))
+            )
+          )
+        )
 
   /** Key hashes that must sign (`witsVKeyNeeded`) and the address roots that need a bootstrap
     * witness.
@@ -514,17 +608,29 @@ object PreConwayRules:
     val required =
       (inputKeys ++ withdrawalKeys ++ certKeys ++ voterKeys ++ updateKeys ++ body.requiredSigners).toSet
     val provided = vkeyHashes.toSet
+    val invalidKeys = wits.vkeys.collect {
+      case (vkey, signature) if !verdicts.witness(vkey, signature, id) => vkey
+    } ++ wits.bootstrap.collect {
+      case w if !verdicts.witness(w.vkey, w.signature, id) => w.vkey
+    }
     for
-      _ <- wits.vkeys.traverse_ { case (vkey, signature) =>
-        if verdicts.witness(vkey, signature, id) then Right(())
-        else Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", vkey.hex))
-      }
-      _ <- wits.bootstrap.traverse_ { w =>
-        if verdicts.witness(w.vkey, w.signature, id) then Right(())
-        else Left(LedgerFailure.Invalid(id, "InvalidWitnessesUTXOW", w.vkey.hex))
-      }
+      _ <- Either.cond(
+        invalidKeys.isEmpty,
+        (),
+        LedgerFailure.Rejected(
+          id,
+          PredicateFailure.utxow(UtxowFailure.InvalidWitnesses(invalidKeys))
+        )
+      )
       missing = required -- provided
-      _ <- check(missing.isEmpty, "MissingVKeyWitnessesUTXOW", missing.map(_.hex).mkString(","))
+      _ <- Either.cond(
+        missing.isEmpty,
+        (),
+        LedgerFailure.Rejected(
+          id,
+          PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(missing))
+        )
+      )
       bootProvided = wits.bootstrap.map(_.addressRoot).toSet
       missingBoot = bootRoots.toSet -- bootProvided
       _ <- check(
@@ -533,15 +639,17 @@ object PreConwayRules:
         missingBoot.map(_.hex).mkString(",")
       )
       // Native scripts (phase 1): the ones the transaction needs must hold.
-      _ <- needed.keys.toVector.traverse_ { h =>
-        scripts(h).native.fold(Right(()): Result[Unit]) { s =>
-          check(
-            s.eval(provided, body.validityStart, body.ttl),
-            "ScriptWitnessNotValidatingUTXOW",
-            h.hex
-          )
-        }
+      failing = needed.keys.toSet.filter { h =>
+        scripts(h).native.exists(s => !s.eval(provided, body.validityStart, body.ttl))
       }
+      _ <- Either.cond(
+        failing.isEmpty,
+        (),
+        LedgerFailure.Rejected(
+          id,
+          PredicateFailure.utxow(UtxowFailure.ScriptWitnessNotValidating(failing))
+        )
+      )
     yield ()
 
   // ---------------------------------------------------------------------------------------------

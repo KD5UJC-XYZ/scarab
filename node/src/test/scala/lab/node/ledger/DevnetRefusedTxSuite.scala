@@ -60,6 +60,29 @@ class DevnetRefusedTxSuite extends FunSuite:
     case Left(other)                             => other.message
     case Right(_)                                => "accepted"
 
+  /** The failure as `cardano-cli` prints it (Haskell `Show`), for the constructors of this fixture.
+    */
+  private def shown(r: Either[LedgerFailure, LedgerState]): String = r match
+    case Left(LedgerFailure.Rejected(_, f)) =>
+      def key(h: Bytes) = s"""KeyHash {unKeyHash = "${h.hex}"}"""
+      f match
+        case PredicateFailure.Certs(
+              CertsFailure.Cert(
+                CertFailure.Pool(PoolFailure.VRFKeyHashAlreadyRegistered(pool, vrf))
+              )
+            ) =>
+          s"""ConwayCertsFailure (CertFailure (PoolFailure (VRFKeyHashAlreadyRegistered (${key(
+              pool
+            )}) (VRFVerKeyHash {unVRFVerKeyHash = "${vrf.hex}"}))))"""
+        case PredicateFailure.Utxow(
+              UtxowFailure.Utxo(UtxoFailure.BabbageNonDisjointRefInputs(Vector(in)))
+            ) =>
+          s"""ConwayUtxowFailure (UtxoFailure (BabbageNonDisjointRefInputs (TxIn (TxId {unTxId = SafeHash "${in.id.hex}"}) (TxIx {unTxIx = ${in.index}}) :| [])))"""
+        case PredicateFailure.Gov(GovFailure.UnelectedCommitteeVoters(Vector(Credential.Key(h)))) =>
+          s"""ConwayGovFailure (UnelectedCommitteeVoters (KeyHashObj (${key(h)}) :| []))"""
+        case other => s"unrendered $other"
+    case other => other.toString
+
   test("the fixture has refusals of every kind and the accepted neighbours of the VRF sequence") {
     assertEquals(
       scenario("vrf").count(_.opt("outcome").contains("refused")),
@@ -105,6 +128,11 @@ class DevnetRefusedTxSuite extends FunSuite:
           result.fold(f => fail(s"${step.str("label")}: ${f.message}"), identity)
         case _ =>
           assertEquals(rule(result), "VRFKeyHashAlreadyRegistered", step.str("label"))
+          // the failure is the one the reference printed, payload included
+          assert(
+            step.str("error").contains(shown(result)),
+            s"${step.str("label")}: ${shown(result)} not in ${step.str("error")}"
+          )
           s
     }
   }
@@ -115,7 +143,9 @@ class DevnetRefusedTxSuite extends FunSuite:
     scenario("unelected").foreach { e =>
       val (_, tx) = e.tx
       val s11 = funded(withParams(state(11, Vector.empty), 11), tx)
-      assertEquals(rule(TxRules(s11, tx, env)), "UnelectedCommitteeVoters", e.str("label"))
+      val result = TxRules(s11, tx, env)
+      assertEquals(rule(result), "UnelectedCommitteeVoters", e.str("label"))
+      assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
     }
   }
 
@@ -125,7 +155,9 @@ class DevnetRefusedTxSuite extends FunSuite:
     scenario("refoverlap").foreach { e =>
       val (_, tx) = e.tx
       val s10 = funded(withParams(state(10, Vector.empty), 10), tx)
-      assertEquals(rule(TxRules(s10, tx, env)), "BabbageNonDisjointRefInputs", e.str("label"))
+      val result = TxRules(s10, tx, env)
+      assertEquals(rule(result), "BabbageNonDisjointRefInputs", e.str("label"))
+      assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
       val s11 = funded(withParams(state(11, Vector.empty), 11), tx)
       assertEquals(rule(TxRules(s11, tx, env)), "accepted", e.str("label"))
     }

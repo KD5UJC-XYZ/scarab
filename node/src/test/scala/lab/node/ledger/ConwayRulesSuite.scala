@@ -333,7 +333,7 @@ class ConwayRulesSuite extends FunSuite:
       reserves = base.reserves - 7 * ada
     )
     val account = RewardAccount(0, Credential.Script(script.hash))
-    def run(amount: BigInt, scripts: Vector[Script]) =
+    def run(amount: BigInt, scripts: Vector[Script], state: LedgerState = s) =
       val b = body(
         "wd",
         Vector(in),
@@ -341,10 +341,14 @@ class ConwayRulesSuite extends FunSuite:
         200,
         withdrawals = Vector(account -> amount)
       )
-      rule(TxRules(s, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)), env))
+      rule(TxRules(state, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)), env))
     assertEquals(run(5 * ada, Vector(script)), "accepted")
     assertEquals(run(5 * ada, Vector.empty), "MissingScriptWitnessesUTXOW")
-    assertEquals(run(4 * ada, Vector(script)), "ConwayIncompleteWithdrawals")
+    // up to protocol version 10 the CERTS rule reports a withdrawal that does not drain the
+    // account; from 11 the LEDGER rule names it ConwayIncompleteWithdrawals
+    assertEquals(run(4 * ada, Vector(script)), "WithdrawalsNotInRewardsCERTS")
+    val v11 = s.copy(params = s.params.copy(protocolMajor = 11))
+    assertEquals(run(4 * ada, Vector(script), v11), "ConwayIncompleteWithdrawals")
   }
 
   test("withdrawals from key accounts need a DRep delegation from protocol version 10") {

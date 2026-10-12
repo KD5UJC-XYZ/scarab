@@ -62,9 +62,9 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 
 ## F. Node-to-client (P1)
 
-- **F1** [#28](https://github.com/ottobot-ai/cardano-scala-lab/issues/28) LocalStateQuery across the full query surface. `cardano-cli`, db-sync, wallets and Ogmios depend on it.
+- **F1** [#28](https://github.com/ottobot-ai/cardano-scala-lab/issues/28) (done for the `cardano-cli` surface of the Conway era) LocalStateQuery across the full query surface. `cardano-cli`, db-sync, wallets and Ogmios depend on it. Protocol, server, the HFC envelope and 40 Conway queries answer byte-equal to the reference (`devnet.py ntc`). Remaining: `ledger-state` (`DebugNewEpochState` includes the non-myopic likelihoods, which are floating-point values accumulated per epoch that the ledger here does not track), `GetRewardInfoPools`, `GetNonMyopicMemberRewards`, `GetRewardProvenance`, `GetLedgerPeerSnapshot`, `DebugLedgerConfig`, answers for the eras before Conway, the era history of a version-triggered hard fork that preceded the run, and a read-only fork of the UTxO set for a state held across `k` blocks.
 - **F2** [#29](https://github.com/ottobot-ai/cardano-scala-lab/issues/29) LocalTxMonitor and local ChainSync.
-- **F3** [#30](https://github.com/ottobot-ai/cardano-scala-lab/issues/30) ApplyTxErr encoding. It must match the ledger's predicate-failure CBOR so `cardano-cli` can render rejections; today the reason is sent as plain text.
+- **F3** [#30](https://github.com/ottobot-ai/cardano-scala-lab/issues/30) (done for the Conway rules) ApplyTxErr encoding: the ledger's predicate-failure CBOR, so `cardano-cli transaction submit` prints the reference's error. The Conway rules raise a typed `PredicateFailure` tree and `devnet.py ntc` compares 18 refusals with the reference as raw bytes and as text. Remaining: the ledger reports every failure of a transaction and the Scala rules the first (equal for a transaction that breaks one rule); Plutus phase-2 failures (`ValidationTagMismatch` carries our message, `CollectErrors` is sent as free text), certifying purposes in `MissingRedeemers`, bootstrap witnesses.
 
 ## G. Networking (P1/P2)
 

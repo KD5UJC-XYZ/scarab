@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Transactions the ledger refuses, built with `cardano-cli` inside the reference container, for the
+`ntc` scenario: each is submitted to both nodes over their node-to-client sockets and the rejection
+(the raw `ApplyTxErr` bytes and the text `cardano-cli transaction submit` prints) must be equal.
+
+Every case violates exactly one rule. The ledger reports all the failures it finds, in the order
+CERTS, GOV, UTXOW; a case with one violation has one failure, which is what the Scala rules report.
+"""
+import json
+from dataclasses import dataclass
+
+from .util import ENV, MAGIC, in_ref
+
+CLI = "cardano-cli conway"
+ANCHOR = ("--anchor-url http://example.com/a --anchor-data-hash "
+          "0000000000000000000000000000000000000000000000000000000000000000")
+
+
+@dataclass
+class Case:
+    label: str
+    tx: bytes
+    ledger_rule: str  # the constructor the reference reports (checked against its text)
+
+
+class Builder:
+    def __init__(self, name, socket):
+        self.name, self.socket = name, socket
+        self.n = 0
+
+    def sh(self, script):
+        return in_ref(self.name, script).stdout.strip()
+
+    def wallet(self, number):
+        d = f"{ENV}/utxo-keys/utxo{number}"
+        addr = self.sh(f"{CLI} address build --payment-verification-key-file {d}/utxo.vkey --testnet-magic {MAGIC}")
+        utxo = json.loads(self.sh(f"{CLI} query utxo --address {addr} --testnet-magic {MAGIC} "
+                                  f"--socket-path {self.socket} --output-json"))
+        txin = max(utxo, key=lambda k: utxo[k]["value"]["lovelace"])
+        return {"addr": addr, "skey": f"{d}/utxo.skey", "txin": txin, "lovelace": utxo[txin]["value"]["lovelace"],
+                "vkey": f"{d}/utxo.vkey"}
+
+    def cert(self, args):
+        self.n += 1
+        self.sh(f"{CLI} {args} --out-file /work/c{self.n}.cert")
+        return f"--certificate-file /work/c{self.n}.cert"
+
+    def tx(self, w, deposit=0, fee=200000, extra="", sign=None, outs=None, ins=None):
+        """A transaction paying everything but `fee` and `deposit` back to the wallet."""
+        self.n += 1
+        ins = ins if ins is not None else [w["txin"]]
+        outs = outs if outs is not None else [(w["addr"], w["lovelace"] - fee - deposit)]
+        in_args = " ".join(f"--tx-in {i}" for i in ins)
+        out_args = " ".join(f"--tx-out {a}+{v}" for a, v in outs)
+        keys = " ".join(f"--signing-key-file {k}" for k in (sign or [w["skey"]]))
+        base = f"/work/case{self.n}"
+        self.sh(f"{CLI} transaction build-raw {in_args} {out_args} --fee {fee} {extra} --out-file {base}.body")
+        self.sh(f"{CLI} transaction sign --tx-body-file {base}.body {keys} --out-file {base}.signed")
+        return bytes.fromhex(json.loads(self.sh(f"cat {base}.signed"))["cborHex"])
+
+
+def corpus(name, socket):
+    """The refusal cases, in a fixed order."""
+    b = Builder(name, socket)
+    w = b.wallet(1)
+    other = b.wallet(2)
+    d1 = f"{ENV}/stake-delegators/delegator1"
+    pool1 = f"{ENV}/pools-keys/pool1"
+    drep1 = f"{ENV}/drep-keys/drep1"
+    b.sh(f"{CLI} stake-address key-gen --verification-key-file /work/newstake.vkey --signing-key-file /work/newstake.skey")
+    b.sh(f"{CLI} governance drep key-gen --verification-key-file /work/newdrep.vkey --signing-key-file /work/newdrep.skey")
+    b.sh(f"{CLI} node key-gen --cold-verification-key-file /work/coldx.vkey --cold-signing-key-file /work/coldx.skey "
+         f"--operational-certificate-issue-counter-file /work/coldx.counter")
+    main_addr = b.sh(f"{CLI} address build --payment-verification-key-file {w['vkey']} --mainnet")
+    cases = []
+
+    def add(label, rule, tx):
+        cases.append(Case(label, tx, rule))
+
+    add("fee-too-small", "FeeTooSmallUTxO", b.tx(w, fee=1))
+    add("all-inputs-spent", "ConwayMempoolFailure",
+        b.tx(w, ins=["0000000000000000000000000000000000000000000000000000000000000000#0"]))
+    add("value-not-conserved", "ValueNotConservedUTxO", b.tx(w, outs=[(w["addr"], w["lovelace"] - 300000)]))
+    add("expired", "OutsideValidityIntervalUTxO", b.tx(w, extra="--invalid-hereafter 1"))
+    add("not-yet-valid", "OutsideValidityIntervalUTxO", b.tx(w, extra="--invalid-before 9999999999"))
+    add("missing-witness", "MissingVKeyWitnessesUTXOW", b.tx(w, sign=[other["skey"]]))
+    add("output-too-small", "BabbageOutputTooSmallUTxO",
+        b.tx(w, outs=[(w["addr"], 1), (w["addr"], w["lovelace"] - 200001)]))
+    add("wrong-network-output", "WrongNetwork",
+        b.tx(w, outs=[(main_addr, 5000000), (w["addr"], w["lovelace"] - 200000 - 5000000)]))
+    add("treasury-mismatch", "ConwayTreasuryValueMismatch", b.tx(w, extra="--current-treasury-value 1"))
+    add("stake-key-registered", "StakeKeyRegisteredDELEG",
+        b.tx(w, deposit=400000, sign=[w["skey"], f"{d1}/staking.skey"],
+             extra=b.cert(f"stake-address registration-certificate --stake-verification-key-file {d1}/staking.vkey "
+                          f"--key-reg-deposit-amt 400000")))
+    add("stake-key-not-registered", "StakeKeyNotRegisteredDELEG",
+        b.tx(w, sign=[w["skey"], "/work/newstake.skey"],
+             extra=b.cert(f"stake-address stake-delegation-certificate --stake-verification-key-file "
+                          f"/work/newstake.vkey --cold-verification-key-file {pool1}/cold.vkey")))
+    add("delegate-to-unknown-pool", "DelegateeStakePoolNotRegisteredDELEG",
+        b.tx(w, sign=[w["skey"], f"{d1}/staking.skey"],
+             extra=b.cert(f"stake-address stake-delegation-certificate --stake-verification-key-file "
+                          f"{d1}/staking.vkey --cold-verification-key-file /work/coldx.vkey")))
+    add("drep-not-registered", "ConwayDRepNotRegistered",
+        b.tx(w, deposit=-1000000, sign=[w["skey"], "/work/newdrep.skey"],
+             extra=b.cert("governance drep retirement-certificate --drep-verification-key-file "
+                          "/work/newdrep.vkey --deposit-amt 1000000")))
+    add("drep-update-not-registered", "ConwayDRepNotRegistered",
+        b.tx(w, sign=[w["skey"], "/work/newdrep.skey"],
+             extra=b.cert("governance drep update-certificate --drep-verification-key-file /work/newdrep.vkey")))
+    add("pool-retirement-wrong-epoch", "StakePoolRetirementWrongEpochPOOL",
+        b.tx(w, sign=[w["skey"], f"{pool1}/cold.skey"],
+             extra=b.cert(f"stake-pool deregistration-certificate --cold-verification-key-file {pool1}/cold.vkey "
+                          f"--epoch 1")))
+    b.sh(f"{CLI} governance action create-info --testnet --governance-action-deposit 1000000 "
+         f"--deposit-return-stake-verification-key-file /work/newstake.vkey {ANCHOR} --out-file /work/p2.action")
+    add("proposal-return-account-unknown", "ProposalReturnAccountDoesNotExist",
+        b.tx(w, deposit=1000000, extra="--proposal-file /work/p2.action"))
+    fake = "1111111111111111111111111111111111111111111111111111111111111111"
+    b.sh(f"{CLI} governance vote create --yes --governance-action-tx-id {fake} --governance-action-index 0 "
+         f"--drep-verification-key-file {drep1}/drep.vkey --out-file /work/v1.vote")
+    add("vote-on-unknown-action", "GovActionsDoNotExist",
+        b.tx(w, extra="--vote-file /work/v1.vote", sign=[w["skey"], f"{drep1}/drep.skey"]))
+    # a transaction larger than maxTxSize (16384): padded with metadata
+    words = ", ".join(f'"{"x" * 60}"' for _ in range(300))
+    b.sh(f"echo '{{\"1\": [{words}]}}' > /work/big.json")
+    add("tx-too-large", "MaxTxSizeUTxO", b.tx(w, extra="--metadata-json-file /work/big.json"))
+    return cases

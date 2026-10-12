@@ -5,6 +5,26 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Node-to-client
+- LocalStateQuery server (roadmap F1): the mini-protocol (acquire at a point, the volatile or immutable
+  tip, re-acquire, release), the hard-fork-combinator query envelope and the Conway queries
+  `cardano-cli conway query` sends: tip, epoch, protocol parameters, UTxO (whole, by address, by
+  input), delegations and rewards, stake pools, pool parameters and state, stake snapshots,
+  constitution, governance state, DRep state, DRep stake distribution, committee state, vote
+  delegatees, treasury and reserves, SPO stake distribution, proposals, ratify state, future
+  parameters, pool and stake distributions, DRep delegations, genesis configuration, protocol
+  (chain-dependent) state, era history, system start, chain point and block number. The answers are
+  the same CBOR as the Haskell node's at the same block (`devnet.py ntc`). Not answered yet:
+  `ledger-state`, the reward-provenance and non-myopic queries, ledger peers, eras before Conway.
+- ApplyTxErr (roadmap F3): a refused transaction is sent as the ledger's predicate-failure CBOR, so
+  `cardano-cli transaction submit` prints the error the Haskell node gives. The Conway rules raise a
+  typed `PredicateFailure` tree with the ledger's payloads; the ledger's MEMPOOL rule (all inputs
+  spent) runs first; the CERTS and GOV checks run before UTXOW as in the ledger.
+- Protocol parameters read the `extraConfig.costModels` of the Alonzo genesis (PlutusV2); the Scala
+  parameters had two cost-model languages where the reference has three.
+- `PraosState` keeps the previous epoch nonce (the chain-dependent state a client reads); snapshots
+  written by earlier builds fail their schema check and are replayed.
+
 ### Ledger
 - Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
 - Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.
@@ -28,6 +48,14 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 - `PlutusCases` moved to `lab.node.tools` (roadmap M4).
 
 ### Devnet
+- `devnet.py ntc`: the Scala node's node-to-client interface against the reference's on a loaded
+  cluster: LocalStateQuery byte for byte at the same block (707 of 707 answers, 14 rounds), 23 of 24
+  `cardano-cli conway query` commands, 18 refused transactions as raw `ApplyTxErr` bytes and as
+  `cardano-cli` text, and a valid submission (`scripts/devnet/ntcqueries.py`, `ntccases.py`,
+  `scenarios/ntc.py`; `ntcquery.py` speaks LocalTxSubmission and host sockets).
+- Recorded reference answers for the activity-independent queries (`fixtures/devnet/lsq`, replayed by
+  `QueryGoldenSuite`) and the reference's rejection bytes (`PredicateFailureCborSuite`); the three
+  recorded refusals of `fixtures/devnet` are compared with the text `cardano-cli` printed.
 - `e2e`: three Shelley epochs, 1 ada minimum, pool margin 0.1, cross-paying pools, boundary load and expected-rejection checks.
 - `soak --governance-extended` (`govload --extended`, `scripts/devnet/govextra.py`): pool reward accounts
   with default votes, committee election with a term limit, a member that expires and `committeeMinSize`,

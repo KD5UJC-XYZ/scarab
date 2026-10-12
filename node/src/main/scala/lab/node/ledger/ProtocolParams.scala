@@ -197,7 +197,11 @@ object ProtocolParams:
       collateralPct <- anyInt(a, "collateralPercentage")
       maxCollateral <- anyInt(a, "maxCollateralInputs")
       entropy <- extraEntropy(s)
-      alonzoModels <- costModelsOf(a.downField("costModels"))
+      baseModels <- costModelsOf(a.downField("costModels"))
+      // Alonzo genesis files of Babbage-era clusters carry the later languages (PlutusV2) in
+      // `extraConfig.costModels`; the ledger merges them into the genesis parameters.
+      extraModels <- costModelsOf(a.downField("extraConfig").downField("costModels"))
+      alonzoModels = baseModels ++ extraModels
       v3Model = c.downField("plutusV3CostModel").as[Vector[BigInt]].toOption
       costModels = v3Model.fold(alonzoModels)(m => alonzoModels.updated(2, m))
       drepDeposit <- opt[BigInt](c, "dRepDeposit").map(_.getOrElse(BigInt(0)))

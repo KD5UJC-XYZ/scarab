@@ -9,7 +9,7 @@ see [findings.md](findings.md).
 | Module | sbt id | Contents | Effect style |
 |---|---|---|---|
 | `core/` | `core` | CBOR (`lab.cbor`), Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, operational certificates | Pure functions, no effects |
-| `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, era and header tags (`Era`, `NtNHeader`) | Pure |
+| `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, era and header tags (`Era`, `NtNHeader`) | Pure |
 | `network-runtime/` | `networkRuntime` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
 | `node/` | `node` | Peer, volatile chain, follower, Praos and TPraos consensus, ledger rules for Shelley to Conway, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
 
@@ -376,7 +376,9 @@ longer than `maxBlocks`). `KeepAliveServer` echoes cookies. `TxSubmissionClient`
 transactions (each once per connection, by ticket number) and hands out bodies on request; the
 server asks for ids with a blocking request, fetches the bodies it does not know (verifying the id
 against the body hash) and passes them to a `Sink`; one batch is fully processed and acknowledged
-before the next request. `LocalTxSubmissionServer` is the node-to-client submission protocol.
+before the next request. `LocalTxSubmissionServer` is the node-to-client submission protocol and
+`LocalStateQueryServer` the query protocol (see "Node-to-client" below); `NodeToClientServer.accept`
+runs the handshake (versions 16 to 23) and then both on one connection.
 
 **Served chain** (`relay/ServedChain.scala`, `relay/ChainServer.scala`). The ouroboros-consensus
 `ChainProducerState`: the volatile chain (last `k` blocks with their headers and raw bytes) plus
@@ -392,7 +394,10 @@ the invariant is that they apply in order to the ledger state at the tip through
 transactions, so a transaction may spend the output of one before it. Rejections are typed
 (`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `sync(ledger, slot)`
 runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
-transactions that a block contains leave as adopted. Capacity is counted in bytes. A transaction
+transactions that a block contains leave as adopted. Before the transaction rules, `add` applies the
+ledger's MEMPOOL rule: a transaction none of whose inputs is unspent is refused with that alone
+(`ConwayMempoolFailure`, "All inputs are spent..."), as is a vote of an unelected committee member
+before protocol version 11. Capacity is counted in bytes. A transaction
 is validated in the slot after the tip within the tip's epoch (it is not ticked over an epoch
 boundary). Transactions of rolled-back blocks are not put back. `Mempool[F]` serialises the
 operations, offers `source`/`sink` for TxSubmission2 and remembers recently refused ids so peers
@@ -417,8 +422,48 @@ inbound server, `--local-socket` the local one, `--mempool-bytes` sets the capac
 peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
 `mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolDropped` and `mempoolSynced`.
 
-Local rejections are sent as a CBOR text with the reason; `cardano-cli` accepts the submission
-but cannot render the reason, because it expects the ledger's own predicate-failure encoding.
+## Node-to-client (`--local-socket`)
+
+One Unix socket serves the two node-to-client mini-protocols a client such as `cardano-cli` uses.
+
+**Rejections** (`ledger/PredicateFailure.scala`, `ntc/PredicateFailureCbor.scala`). The Conway rules
+refuse a transaction with a `LedgerFailure.Rejected(txId, PredicateFailure)`: a closed tree that
+mirrors `ConwayLedgerPredFailure` (UTXOW, UTXO, UTXOS, CERTS, CERT, DELEG, POOL, GOVCERT and GOV
+failures and the LEDGER-level ones) with the payload the ledger reports (the offending inputs,
+`Mismatch` pairs, credentials, outputs with their minimum, governance action ids). A rule whose
+payload is not modelled raises `PredicateFailure.Unmapped(rule, detail)`, which is sent as the
+ledger's free-text `ConwayMempoolFailure` so the client still shows the reason. `PredicateFailureCbor`
+writes the shapes of the ledger's `EncCBOR` instances (constructor tag first, a `Mismatch` as two
+fields in line, reversed where the ledger swaps them, sets under tag 258, `StrictMaybe` as an empty or
+one-element list), and `LocalSubmission.reasonItem` wraps the failures as the hard-fork combinator's
+`ApplyTxErr`: `[[6, [failure, ...]]]`; a transaction of another era gets the era mismatch
+`[[era, name], [6, "Conway"]]`. The LEDGER-level checks (treasury value, reference-script size,
+withdrawals), CERTS and GOV run before UTXOW, as in the ledger, so a transaction with one violation
+gets the one failure the reference gives. The ledger accumulates every failure of a transaction; the
+Scala rules stop at the first (one failure in the list), which is the same list for a transaction that
+breaks one rule.
+
+**LocalStateQuery** (`network/LocalStateQuery.scala`, `network-runtime/LocalStateQueryServer.scala`,
+`node/ntc/`). The protocol codec is pure (states Idle, Acquiring, Acquired, Querying, Done; acquire at
+a point, the volatile tip or the immutable tip; re-acquire; release). The server asks a `Source` to
+acquire a target and gets a `Session`: the ledger state at that block, kept for as long as the client
+holds it, whatever the chain does meanwhile (`StateQuerySource` reads the retained states of the
+volatile chain: the tip, the anchor, or a block among the last `k`; an older point is `PointTooOld`,
+one not on the chain `PointNotOnChain`). `NtcQuery` decodes the envelope (`Query`: system start, chain
+block number, chain point; the hard-fork combinator's `QueryIfCurrent`, `QueryAnytime`,
+`QueryHardFork`; the Shelley block queries 0 to 39 with sets under tag 258), `QueryAnswers` computes the
+answer from the `NodeState` as a pure function and `LedgerEncoders` writes the ledger's CBOR (the
+31-element Conway protocol parameters, outputs in the canonical array or keyed form, the governance
+state with its DRep pulser, stake and pool distributions, ...; containers of more than 23 elements are
+indefinite as in the ledger's `variableListLenEncoding`). The only effect is reading UTxO entries not
+in the retained state from the backing store (`UtxoNeeds`). Only the current era (Conway) is
+answered; a query for another era gets the combinator's mismatch reply. The era history is built
+from the configured hard-fork epochs, the transitions this run observed and the safe zone of the
+current era (`EraHistory`); a version-triggered hard fork that happened before this run cannot be
+placed and is assumed to start with the previous era. The result size is bounded by the mux message
+limit (2.5 MB, about 25,000 UTxO entries). Queries the node does not answer end the connection with
+a protocol error that names the query (`inbound ... closed` in the log), where the reference would
+answer.
 
 Tests: servers against our own clients over in-memory bearers and loopback TCP (both directions,
 duplex, pipelining, timeouts, refusals); a property that every follower reconstructs the served chain
