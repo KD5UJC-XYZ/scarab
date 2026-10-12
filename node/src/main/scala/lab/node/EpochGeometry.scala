@@ -5,13 +5,26 @@ import java.time.Instant
 
 /** The Byron prefix of the era history: `epochs` Byron epochs of `epochSlots` slots, each slot
   * `slotLengthMillis` long, before the Shelley-based eras begin. A chain that starts in Shelley
-  * (Preview) has no Byron prefix.
+  * (Preview) has no Byron prefix. On a public network the number of Byron epochs is not configured:
+  * the Byron ledger's update state decides it, so until the chain has entered Shelley the span is
+  * `derived` (open-ended: every slot is a Byron slot) and `resolved` replaces it.
   */
-final case class ByronSpan(epochs: BigInt, epochSlots: BigInt, slotLengthMillis: Long):
+final case class ByronSpan(
+    epochs: BigInt,
+    epochSlots: BigInt,
+    slotLengthMillis: Long,
+    derived: Boolean = false
+):
   def slots: BigInt = epochs * epochSlots
 
 object ByronSpan:
   val Absent: ByronSpan = ByronSpan(0, 1, 1)
+
+  /** Placeholder epoch count of a span whose end is not yet known. */
+  private val Open: BigInt = 1000000
+
+  def derived(epochSlots: BigInt, slotLengthMillis: Long): ByronSpan =
+    ByronSpan(Open, epochSlots, slotLengthMillis, derived = true)
 
 /** The era history: slot/epoch arithmetic across the Byron prefix and the Shelley-based eras
   * (Shelley..Conway share one epoch length and slot length, only the protocol changes at their
@@ -27,6 +40,11 @@ final case class EpochGeometry(
     activeSlotsCoeff: BigDecimal,
     byron: ByronSpan = ByronSpan.Absent
 ):
+  /** The same history once the chain is known to enter Shelley at `firstShelleyEpoch`. */
+  def resolved(firstShelleyEpoch: BigInt): EpochGeometry =
+    if byron.derived then copy(byron = byron.copy(epochs = firstShelleyEpoch, derived = false))
+    else this
+
   /** First epoch (and absolute slot) of the Shelley-based eras. */
   def firstShelleyEpoch: BigInt = byron.epochs
   def firstShelleySlot: BigInt = byron.slots

@@ -161,7 +161,7 @@ object ChainServer:
   final case class Info(ntn: NtNHeader, blockNo: BigInt)
 
   /** Decode the header of a full block. For Byron the size hint is the block's byte size. */
-  def headerOfBlock(byronEpochSlots: BigInt = Header.DefaultByronEpochSlots): HeaderOf =
+  def headerOfBlock(byronEpochSlots: BigInt): HeaderOf =
     raw =>
       Block.decode(raw, byronEpochSlots).map { block =>
         block.header match
@@ -176,7 +176,7 @@ object ChainServer:
   def open[F[_]: Async](
       store: Option[ImmutableStore[F]],
       anchor: Option[BlockRef],
-      headerOf: HeaderOf = headerOfBlock()
+      headerOf: HeaderOf
   ): F[ChainServer[F]] =
     for
       state <- Ref.of[F, ServedChain](ServedChain.empty(anchor))

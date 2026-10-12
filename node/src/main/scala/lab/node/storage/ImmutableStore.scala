@@ -112,7 +112,13 @@ object FileImmutableStore:
       var count: Int
   )
 
-  def open[F[_]: Async](dir: Path, chunkSlots: Long = 21600)(using
+  /** Slots per chunk file. A storage granularity, independent of any era's epoch length (it is the
+    * length of a Byron epoch on mainnet and preprod by origin); changing it makes an existing
+    * database unreadable.
+    */
+  val DefaultChunkSlots: Long = 21_600L
+
+  def open[F[_]: Async](dir: Path, chunkSlots: Long = DefaultChunkSlots)(using
       Raise[F, StorageError]
   ): Resource[F, (ImmutableStore[F], ImmutableStore.OpenReport)] =
     val F = Async[F]

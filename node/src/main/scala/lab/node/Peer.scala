@@ -36,7 +36,7 @@ object Peer:
       readAhead: Int = 64,
       /** Slots per Byron epoch (10k of the Byron genesis), to place Byron headers on the slot axis.
         */
-      byronEpochSlots: BigInt = Header.DefaultByronEpochSlots
+      byronEpochSlots: BigInt
   )
 
   /** The most intersection candidates one FindIntersect carries. */

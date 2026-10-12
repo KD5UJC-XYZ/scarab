@@ -133,6 +133,11 @@ object Main extends IOApp:
         .flatMap(_.fold(fail, IO.pure))
       genesis = setup.genesis
       blocks <- Ref.of[IO, Long](0L)
+      // The rule configuration the signature pre-verification uses: a chain with a derived Byron
+      // span learns its first Shelley epoch from the state.
+      praosConfig <- Ref.of[IO, consensus.PraosConfig](setup.praos)
+      warm = (raw: Vector[lab.cbor.Bytes]) =>
+        praosConfig.get.flatMap(Verification.warm[IO](raw, _, Verification.defaultParallelism))
       connected <- Ref.of[IO, Boolean](false)
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
@@ -152,6 +157,9 @@ object Main extends IOApp:
         utxoStore = Some(store),
         afterBlock = Some { s =>
           IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
+            praosConfig
+              .update(c => c.copy(geometry = s.geometry(c.geometry)))
+              .whenA(s.byron.firstShelleyEpoch.isDefined) *>
             blocks.updateAndGet(_ + 1).flatMap { n =>
               IO.blocking(
                 System.err.println(
@@ -190,12 +198,19 @@ object Main extends IOApp:
             setup.start,
             JsonLog.storage,
             backing,
-            Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
+            warm
           )
           .map(r => (r.anchor, r.state, Some(r.persistence), Some(r.store)))
       }
       _ <- storage.use { (anchor, state, persistence, immutable) =>
+        // A chain whose Byron span is derived learns the first Shelley epoch when it enters
+        // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
+        // (the mempool and the forger need a restart after that, see docs/compatibility.md).
+        val geometry = state.geometry(genesis.geometry)
+        val globals =
+          state.byron.firstShelleyEpoch.fold(setup.globals)(e => setup.globals.copy(firstEpoch = e))
         for
+          _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
           ref <- Ref.of[IO, VolatileChain[NodeState]](
             VolatileChain(k, Anchor(anchor, state), Vector.empty, setup.origin)
           )
@@ -208,7 +223,7 @@ object Main extends IOApp:
           mempool <- Mempool.create[IO](
             state.ledger,
             anchor.fold(BigInt(0))(_.slot),
-            MempoolEnv(setup.globals, genesis.geometry),
+            MempoolEnv(globals, geometry),
             options.mempoolBytes,
             JsonLog.mempool,
             utxoStore = Some(store)
@@ -230,7 +245,8 @@ object Main extends IOApp:
               chain.tipRef.traverse_(t =>
                 mempool.sync(chain.state.ledger, t.slot, adopted.toSet).void
               )
-            )
+            ),
+            epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot))
           )
           handlers = ServerHandlers[IO, NtNHeader](
             NtNHeader.codec,
@@ -257,7 +273,7 @@ object Main extends IOApp:
                   follower,
                   Peer.nodeToNode[IO](
                     settings,
-                    Verification.warm[IO](_, setup.praos, Verification.defaultParallelism),
+                    warm,
                     Some(mempool.source)
                   ),
                   events,
@@ -299,8 +315,8 @@ object Main extends IOApp:
                 .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
                 .flatMap(_.fold(fail, IO.pure))
               forger <- Forger.create[IO](
-                setup.praos,
-                setup.globals,
+                setup.praos.copy(geometry = geometry),
+                globals,
                 credentials,
                 follower,
                 mempool,

@@ -101,6 +101,32 @@ but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other
 not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
 had reached 5.3 GB when the limit was raised.
 
+### Preprod
+
+The node follows the public preprod testnet (network magic 1) from genesis through its Byron era
+(an epoch 0 boundary block and 45 main blocks over four epochs) into Shelley and on:
+
+```sh
+mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config"
+docker run --rm --user "$(id -u):$(id -g)" -w /out \
+  -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  'for f in config.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+     curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+  --genesis-dir "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config" \
+  --peer preprod-node.play.dev.cardano.org:3001 \
+  --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod-db"
+```
+
+`config.json` has no `TestShelleyHardForkAtEpoch`, so the Byron ledger decides when the chain
+enters Shelley (epoch 4, from the update proposals the Byron blocks carry); `RequiresNetworkMagic`
+and `PBftSignatureThreshold` are read from it. The `started` line shows `"byronEpochs": null` until
+then, and the `eraTransition` line to Shelley the derived epoch. The mempool and the forger take the
+epoch history at start-up, so run them (`--listen`, `--forge`) from a database that is already past the
+transition (restart once after the Byron era); a node that starts from Origin and stays up through
+the transition validates correctly but would serve its mempool with the Byron-era history.
+The recorded run is in [performance.md](performance.md).
+
 ### Forging
 
 ```sh

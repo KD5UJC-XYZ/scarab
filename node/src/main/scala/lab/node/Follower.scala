@@ -38,12 +38,16 @@ enum FollowerEvent:
       unchecked: Long
   )
 
-  /** A Byron epoch is complete: its boundary and main blocks and how each main signature stood. */
+  /** A Byron epoch is complete: its boundary and main blocks (every main block is fully validated),
+    * how many of them were made by a genesis key other than the round-robin one for their slot, and
+    * the transactions they carried.
+    */
   case ByronEpochValidated(
       epoch: BigInt,
       boundary: Long,
       verified: Long,
-      unchecked: Long
+      offSchedule: Long,
+      txs: Long
   )
 
   /** The full ledger entered `epoch`: sizes, pots, protocol version and the running count of
@@ -90,7 +94,7 @@ object SelectViews:
 final class Follower[F[_]: Async, S] private (
     rules: BlockRules[F, S],
     events: FollowerEvents[F],
-    geometry: EpochGeometry,
+    epochOf: (S, BigInt) => BigInt,
     /** Extra events derived from a state transition (era changes, epoch summaries). */
     observe: (S, S, BlockRef) => List[FollowerEvent],
     /** Receives every applied block and rollback so the immutable part can be stored. */
@@ -251,9 +255,9 @@ final class Follower[F[_]: Async, S] private (
         for
           _ <- persistence.traverse_(_.extended(a.ref, a.raw, a.immutable, a.after.anchor))
           _ <- views.record(a.ref.hash, a.view)
-          epoch = geometry.epochOf(a.ref.slot)
+          epoch = epochOf(a.state, a.ref.slot)
           _ <- events.emit(FollowerEvent.Extended(a.ref, epoch, peerTip, a.era))
-          enteredEpoch = a.before.tipRef.forall(t => geometry.epochOf(t.slot) < epoch)
+          enteredEpoch = a.before.tipRef.forall(t => epochOf(a.state, t.slot) < epoch)
           _ <- events.emit(FollowerEvent.EpochEntered(epoch, a.ref)).whenA(enteredEpoch)
           _ <- observe(a.before.state, a.state, a.ref).traverse_(events.emit)
           _ <- a.immutable.traverse_(b => events.emit(FollowerEvent.Immutable(b)))
@@ -356,7 +360,10 @@ object Follower:
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
       onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]] = None,
-      tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor
+      tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
+      /** The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).
+        */
+      epochOf: Option[(S, BigInt) => BigInt] = None
   )(using
       Stateful[F, VolatileChain[S]],
       Raise[F, ChainError]
@@ -365,7 +372,7 @@ object Follower:
       new Follower[F, S](
         rules,
         events,
-        geometry,
+        epochOf.getOrElse((_: S, slot: BigInt) => geometry.epochOf(slot)),
         observe,
         persistence,
         onTip,

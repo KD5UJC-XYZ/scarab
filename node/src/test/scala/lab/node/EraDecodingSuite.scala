@@ -12,13 +12,16 @@ import scala.jdk.CollectionConverters.*
 
 /** Decodes real Preview (magic 2) and mainnet Byron blocks committed under `fixtures/`. */
 class EraDecodingSuite extends FunSuite:
+  /** Byron epoch length of mainnet: 10k slots, k = 2160. */
+  private val MainnetEpochSlots: BigInt = BigInt(2160) * 10
+
   private def hexLines(path: String): Vector[Bytes] =
     Files.readAllLines(Path.of(path)).asScala.toVector.filter(_.nonEmpty).map { l =>
       Bytes.fromHex(l).fold(e => fail(e), identity)
     }
 
   private def blocks(path: String): Vector[Block.Shelley] =
-    hexLines(path).map(Block.decode(_).fold(e => fail(e.message), identity)).map {
+    hexLines(path).map(Block.decodeShelley(_).fold(e => fail(e.message), identity)).map {
       case b: Block.Shelley => b
       case other            => fail(s"unexpected ${other.era} block")
     }
@@ -88,13 +91,13 @@ class EraDecodingSuite extends FunSuite:
       val wire = NtNHeader.codec
         .encode(NtNHeader(b.era, b.header.raw, None))
         .fold(e => fail(e), identity)
-      assertEquals(Header.fromEnvelope(wire).toOption, Some(b.header))
+      assertEquals(Header.fromEnvelope(wire, MainnetEpochSlots).toOption, Some(b.header))
   }
 
   test("an envelope declaring the wrong era layout is a decode error") {
     val b = blocks("fixtures/preview/conway.hex").head
     val wrong = NtNHeader.codec.encode(NtNHeader(Era.Alonzo, b.header.raw, None)).toOption.get
-    assert(Header.fromEnvelope(wrong).isLeft)
+    assert(Header.fromEnvelope(wrong, MainnetEpochSlots).isLeft)
   }
 
   test("Praos validation rejects TPraos headers with a typed error") {
@@ -108,16 +111,20 @@ class EraDecodingSuite extends FunSuite:
 
   test("Byron: header hash is Blake2b-256 of [subtag, header]; chain links by it") {
     val ebbRaw = hexLines("fixtures/mainnet/byron-ebb-header.hex").head
-    val ebb = Header.byronFromRaw(ebbRaw, boundary = true).fold(e => fail(e.message), identity)
+    val ebb = Header
+      .byronFromRaw(ebbRaw, boundary = true, MainnetEpochSlots)
+      .fold(e => fail(e.message), identity)
     assertEquals(
       ebb.hash.hex,
       "89d9b5a5b8ddc8d7e5a6795e9774d97faf1efea59b2caf7eaf9f8c5b32059df4"
     )
     assertEquals((ebb.epoch, ebb.slot, ebb.blockNo), (BigInt(0), BigInt(0), BigInt(0)))
-    val mains = hexLines("fixtures/mainnet/byron-main-blocks.hex").map(Block.decode(_)).map {
-      case Right(b: Block.Byron) => b
-      case other                 => fail(s"unexpected $other")
-    }
+    val mains = hexLines("fixtures/mainnet/byron-main-blocks.hex")
+      .map(Block.decode(_, MainnetEpochSlots))
+      .map {
+        case Right(b: Block.Byron) => b
+        case other                 => fail(s"unexpected $other")
+      }
     assertEquals(mains.size, 3)
     assert(mains.forall(!_.header.boundary))
     assertEquals(mains.head.header.prevHash, Some(ebb.hash))

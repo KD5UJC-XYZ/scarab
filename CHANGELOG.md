@@ -5,6 +5,22 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Byron
+- Byron ledger (roadmap C1): UTxO with witness signatures, address roots, network magic, value
+  conservation and the linear fee; AVVM and non-AVVM genesis UTxO; delegation certificates; the update
+  system; the Byron UTxO carried into the Shelley ledger. Real mainnet transactions (an AVVM redemption
+  and verification-key transactions) validate.
+- Byron consensus (C2): signer must be the current delegate of a genesis key, last-signed-slot rule,
+  PBFT window and `PBftSignatureThreshold`, body proofs; the `unchecked` header outcome and the
+  `signatureUnchecked` log field are gone (`offSchedule`, `transactions` added). Light delegation tags
+  are decode errors, as upstream.
+- The first Shelley epoch is derived from the Byron update state when the configuration has no
+  `TestShelleyHardForkAtEpoch` (preprod: epoch 4); `0` still means no Byron prefix.
+- Byron epoch length comes from the genesis everywhere (C3): `Block.decode`, `Header.fromEnvelope`
+  and friends take it, `Peer.Settings` and `ChainStorage.Config` require it. `CaptureMain` has
+  `--byron-epoch-slots`. Snapshot schema changed (old snapshots are rejected and recovery replays).
+- Preprod fixtures (`fixtures/preprod`) and mainnet Byron transaction fixtures.
+
 ### Ledger
 - Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
 - Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.

@@ -38,7 +38,10 @@ object JsonLog:
       "networkMagic" -> genesis.networkMagic.asJson,
       "epochLength" -> genesis.geometry.epochLength.asJson,
       "securityParam" -> genesis.geometry.securityParam.asJson,
-      "byronEpochs" -> genesis.geometry.byron.epochs.asJson,
+      // null while the Byron ledger has still to decide when the chain enters Shelley
+      "byronEpochs" -> Option
+        .unless(genesis.geometry.byron.derived)(genesis.geometry.byron.epochs)
+        .asJson,
       "byronEpochSlots" -> genesis.geometry.byron.epochSlots.asJson,
       "hardForkEpochs" -> config.hardForkEpochs.map((e, n) => e.toString -> n).asJson
     )
@@ -145,15 +148,16 @@ object JsonLog:
           "slot" -> first.slot.asJson,
           "block" -> block(first)
         )
-      case FollowerEvent.ByronEpochValidated(epoch, boundary, verified, unchecked) =>
+      case FollowerEvent.ByronEpochValidated(epoch, boundary, verified, offSchedule, txs) =>
         line(
           "epochValidated",
           "era" -> "Byron".asJson,
           "epoch" -> epoch.asJson,
-          "headers" -> (boundary + verified + unchecked).asJson,
+          "headers" -> (boundary + verified).asJson,
           "boundary" -> boundary.asJson,
           "signatureVerified" -> verified.asJson,
-          "signatureUnchecked" -> unchecked.asJson
+          "offSchedule" -> offSchedule.asJson,
+          "transactions" -> txs.asJson
         )
       case FollowerEvent.EpochValidated(epoch, era, threshold, overlay, unchecked) =>
         line(

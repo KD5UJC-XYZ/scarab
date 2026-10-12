@@ -26,6 +26,7 @@ pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are di
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
 | Consensus | `consensus/Praos.scala`, `TPraos.scala`, `OCertRules.scala`, `ByronRules.scala` | VRF leader check, KES, opcert counters, nonce evolution; TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
+| Byron ledger | `ledger/byron/` | Pure: addresses and roots, transactions and witnesses, the UTxO rules and fee policy, delegation certificates, the update system, the body proofs and the Byron to Shelley transition epoch |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, EPOCH (rewards, SNAP, POOLREAP, dormant epochs), and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
 | Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; Scalus interpreter; our own script contexts and cost-model selection |
@@ -112,29 +113,61 @@ epoch, its own slot length) followed by the Shelley-based eras, which share one 
 Epochs and slots are absolute, so `firstSlot(epoch)`, `epochOf(slot)`, the stability windows, the
 TPraos overlay, KES periods and PPUP deadlines all work across the boundary. `NodeSetup` derives
 it from `shelley-genesis.json`, `byron-genesis.json` and the node configuration
-(`Test<Era>HardForkAtEpoch`; an absent `TestShelleyHardForkAtEpoch` means the chain starts in
-Shelley, as on Preview). The era of each Shelley-based block is checked against
-`consensus/HardFork.scala` (`HardForkConfig`): an era with a `Test<Era>HardForkAtEpoch` key is
-entered at that epoch, any other when the ledger's protocol major version, ticked to the block's
-slot, reaches the era's first version (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9), as the
-HFC's `TriggerHardForkAtVersion` does. The same check carries the envelope rules (maximum
-supported major version 11, header and body size, Conway mainnet header version). Byron to Shelley
-remains a configured epoch.
+(`Test<Era>HardForkAtEpoch`). Byron slots per epoch are always `10 * k` of `byron-genesis.json`
+(`protocolConsts.k`); every decoder takes them as a parameter and nothing defaults them. The first
+Shelley epoch has three sources:
+
+- `TestShelleyHardForkAtEpoch: 0` (Preview, `cardano-testnet` clusters): the chain starts in Shelley,
+  no Byron prefix;
+- `TestShelleyHardForkAtEpoch: n`: a fixed Byron prefix of `n` epochs (the `up-eras` devnet);
+- the key absent (preprod, mainnet): the Byron ledger decides. The span is then `derived`
+  (open-ended) until the chain enters Shelley; the epoch is stored in `ByronState.firstShelleyEpoch`
+  and every consumer resolves the geometry from the state (`NodeState.geometry`).
+
+The era of each Shelley-based block is checked against `consensus/HardFork.scala`
+(`HardForkConfig`): an era with a `Test<Era>HardForkAtEpoch` key is entered at that epoch, any
+other when the ledger's protocol major version, ticked to the block's slot, reaches the era's first
+version (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9), as the HFC's `TriggerHardForkAtVersion`
+does. The same check carries the envelope rules (maximum supported major version 11, header and
+body size, Conway mainnet header version).
 
 - **Chain model:** `VolatileChain.origin` is the hash the first block names (the Byron genesis
   hash: `ByronGenesisHash` from the configuration, else Blake2b-256 of the canonical JSON of
   `byron-genesis.json`). A Byron epoch-boundary block repeats its predecessor's block number and
   the main block after it may share its slot.
-- **Byron rules** (`consensus/ByronRules.scala`): protocol magic, linkage, epoch/slot order, the
-  slot leader is a genesis key and the heavy delegation is the genesis one, and the delegate's
-  Ed25519 signature over `"01" ++ issuer ++ 0x09 ++ cbor(magic) ++ [prev, proof, slot, difficulty,
-  extra]` verifies. A header delegated differently (on-chain certificates are not tracked) is
-  accepted structurally and reported `unchecked`; the delegation certificate's own signature and
-  the block body proofs are not checked. The JSON log has an `epochValidated` line per Byron epoch
-  (`signatureVerified`, `signatureUnchecked`).
-- **Byron to Shelley:** the Praos state starts with every nonce equal to the Shelley genesis hash
-  and is untouched by Byron blocks; the first Shelley block ticks it to the first Shelley epoch.
-  The ledger starts at that epoch.
+- **Byron consensus** (`consensus/ByronRules.scala`, ouroboros-consensus `Protocol/PBFT.hs`): the
+  protocol magic, linkage and slot/epoch order; the delegate's Ed25519 signature over `"01" ++
+  genesis key ++ 0x09 ++ cbor(magic) ++ [prev, proof, slot, difficulty, extra]`; the signer is the
+  current delegate of a genesis key in the delegation map (activated up to the block's slot, see
+  below); the slot is not below the last signed one; the PBFT window (the last `k` signers) holds at
+  most `floor(PBftSignatureThreshold * k)` blocks of that genesis key (0.22 unless the node
+  configuration says otherwise). Only heavyweight delegation exists: the signature tags for no
+  delegation and light delegation do not decode, as upstream. Upstream does not require the
+  round-robin leader of a slot (`slot mod n` over the genesis keys in ascending hash order, which
+  only the forging side uses); each block's `onSchedule` is reported and counted per epoch.
+- **Byron ledger** (`ledger/byron`, cardano-ledger `Cardano.Chain.Block.Validation`, `UTxO`,
+  `Delegation`, `Update`): `ByronLedgerState` holds the UTxO (`Map[TxIn, ByronOut]`), the update
+  state and the delegation state. Per block: the tick to the block's slot (epoch change: the newest
+  candidate update stable for `4k` slots is adopted; delegations due take effect), header and block
+  size against the adopted parameters, the body proofs (transaction count, Merkle root and
+  witnesses hash, delegation payload hash, update payload hash; the SSC proof is not compared, as
+  upstream), delegation certificates (a genesis key, this or the next epoch, once per epoch and per
+  slot, valid signature, effective `2k` slots later, one-to-one map), transactions (inputs exist,
+  witness signature under the Byron signing tag and protocol magic, the address root of the
+  witnessed key, output network magic, size, value conservation, the linear fee `a + b * size`,
+  zero for redeem-only inputs), and the update payload (proposal, votes, the block's endorsement of
+  its version, confirmation, candidates). The genesis UTxO is the AVVM balances at the redeem
+  addresses of their keys and the non-AVVM balances; each entry spends from the pseudo transaction
+  whose id is the Blake2b-256 of the address.
+- **Byron to Shelley:** the transition epoch is the configured one or, on a public network, taken
+  from the update state exactly as the hard-fork combinator does (`byronTransition`): a candidate for
+  protocol major version 2 that is stable (`k` blocks since it became a candidate, or `2k` slots)
+  is adopted in the epoch after the one containing `candidate slot + 4k`. The first Shelley block
+  hands the final Byron UTxO to `GenesisState.initial` (Shelley `initialFunds` plus the Byron UTxO,
+  reserves the rest of the supply), sets the ledger epoch and drops the Byron state. The Praos state
+  starts with every nonce equal to the Shelley genesis hash and is untouched by Byron blocks; the
+  first Shelley block ticks it to the first Shelley epoch. The JSON log has an `epochValidated`
+  line per Byron epoch (`signatureVerified`, `offSchedule`, `transactions`).
 - **Logging:** every era transition is an `eraTransition` line (`from`, `to`, `epoch`, `slot`,
   `block`), the first one from no era; `extended` lines carry the block's `era`.
 

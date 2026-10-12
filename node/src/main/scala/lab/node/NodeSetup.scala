@@ -6,8 +6,9 @@ import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import lab.Blake2b
 import lab.cbor.Bytes
-import lab.node.consensus.{ByronRules, HardForkConfig, Praos, PraosConfig}
+import lab.node.consensus.{ByronRules, ByronRulesConfig, HardForkConfig, Praos, PraosConfig}
 import lab.node.ledger.{GenesisState, LedgerGlobals, LiteLedger, Rational}
+import lab.node.ledger.byron.ByronLedger
 import lab.vrf.PraosLeaderThreshold
 
 /** Everything the follower derives from a genesis directory before it sees a block: the era
@@ -24,15 +25,18 @@ final case class NodeSetup(
     byron: Option[ByronGenesis],
     globals: LedgerGlobals,
     praos: PraosConfig,
-    start: NodeState
+    start: NodeState,
+    byronConfig: Option[ByronRules.Config] = None
 ):
   def geometry: EpochGeometry = genesis.geometry
-  def byronRules: Option[ByronRules.Config] = byron.map(ByronRules.Config(_))
+  def byronRules: Option[ByronRules.Config] = byronConfig
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)
 
 object NodeSetup:
+  private val MainnetMagic = 764824073L
+
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
 
   def fromDirectory(dir: Path): Either[ConfigError, NodeSetup] =
@@ -55,15 +59,24 @@ object NodeSetup:
       firstShelley = config.firstShelleyEpoch
       byronBytes <- required("byron-genesis.json")
       byron <-
-        if firstShelley == 0 then Right(None)
+        if firstShelley.contains(BigInt(0)) then Right(None)
         else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
       genesis <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
+      byronJson <- json("byron-genesis.json", byronBytes)
+      // The network magic Byron addresses carry: the configuration says whether the network
+      // requires one; without it, mainnet does not and the test networks do.
+      requiresMagic = config.requiresNetworkMagic.getOrElse(
+        byron.map(_.protocolMagic).getOrElse(genesis.networkMagic) != MainnetMagic
+      )
+      addressMagic = Option.when(requiresMagic)(
+        byron.map(_.protocolMagic).getOrElse(genesis.networkMagic)
+      )
       files <- (
         json("shelley-genesis.json", shelleyBytes),
         required("alonzo-genesis.json").flatMap(json("alonzo-genesis.json", _)),
         required("conway-genesis.json").flatMap(json("conway-genesis.json", _)),
-        json("byron-genesis.json", byronBytes)
-      ).mapN(GenesisState.Files.apply)
+        byronJson.asRight[ConfigError]
+      ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
       globals <- GenesisState.globals(files, genesis)
       initial <- GenesisState.initial(files, globals)
       f = genesis.geometry.activeSlotsCoeff
@@ -77,7 +90,18 @@ object NodeSetup:
         active,
         HardForkConfig.fromEpochs(config.hardForkEpochs)
       )
-      lite <- LiteLedger.fromGenesis(files.shelley, firstShelley)
+      lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
+      byronRules <- byron.traverse { b =>
+        val ledgerConfig = ByronLedger.Config(b, requiresMagic)
+        ByronLedger.initial(ledgerConfig).leftMap(ConfigError(_)).map { ledger =>
+          ledger -> ByronRulesConfig(
+            ledgerConfig,
+            config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold),
+            firstShelley,
+            (state, g) => GenesisState.initial(files, g, Some(state.utxo)).leftMap(_.message)
+          )
+        }
+      }
     yield NodeSetup(
       genesis,
       config,
@@ -87,6 +111,8 @@ object NodeSetup:
       NodeState(
         Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))),
         initial,
-        BootstrapState.initial(lite)
-      )
+        BootstrapState.initial(lite),
+        byronRules.fold(ByronState.initial)((ledger, _) => ByronState.starting(ledger))
+      ),
+      byronRules.map(_._2)
     )
