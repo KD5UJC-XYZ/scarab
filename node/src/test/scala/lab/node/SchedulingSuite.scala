@@ -42,16 +42,23 @@ class SchedulingSuite extends CatsEffectSuite:
     while System.nanoTime() < end do x += 1
     x
 
-  test("a step runs on a CPU pool thread and is recorded under its label") {
+  test("an effect runs on a CPU pool thread; a timed step is recorded under its label") {
     SchedulingStats.create[IO].flatMap { stats =>
       Compute.pool[IO](2, stats).use { compute =>
         for
-          thread <- compute.run((_: String) => "named")(Thread.currentThread.getName)
-          _ <- compute.run((_: Long) => "spin")(spin(30))
+          thread <- compute.within(IO(Thread.currentThread.getName))
+          // a blocking call stays with the pool (the worker blocks in place, as on the compute pool)
+          blockingThread <- compute.within(IO.blocking(Thread.currentThread.getName))
+          back <- compute.within(IO.blocking(()) *> IO(Thread.currentThread.getName))
+          outside <- IO(Thread.currentThread.getName)
+          _ <- compute.timed((_: Long) => "spin")(spin(30))
           report <- stats.total
           _ <- IO {
             assert(thread.startsWith("csl-cpu-"), thread)
-            assertEquals(report.steps.keySet, Set("named", "spin"))
+            assert(blockingThread.startsWith("csl-cpu"), blockingThread)
+            assert(back.startsWith("csl-cpu-"), back)
+            assert(!outside.startsWith("csl-cpu-"), outside)
+            assertEquals(report.steps.keySet, Set("spin"))
             assertEquals(report.steps("spin").count, 1L)
             assert(report.steps("spin").maxMs >= 25, report.toString)
             assertEquals(report.longest.map(_._1), Some("spin"))
@@ -87,8 +94,8 @@ class SchedulingSuite extends CatsEffectSuite:
       Compute.pool[IO](3, stats).use { pooled =>
         val work = (1 to 200).toList
         for
-          a <- work.traverse(i => inline.run((_: Int) => "x")(i * i + 1))
-          b <- work.parTraverse(i => pooled.run((_: Int) => "x")(i * i + 1))
+          a <- work.traverse(i => inline.timed((_: Int) => "x")(i * i + 1))
+          b <- work.parTraverse(i => pooled.within(pooled.timed((_: Int) => "x")(i * i + 1)))
           _ <- IO(assertEquals(b, a))
         yield ()
       }
@@ -97,22 +104,20 @@ class SchedulingSuite extends CatsEffectSuite:
 
   /** The largest lateness of a 20 ms timer while `cpus` CPU-bound steps of 600 ms run in parallel.
     */
-  private def lateness(run: (=> Long) => IO[Long]): IO[Long] =
+  private def lateness(run: IO[Long] => IO[Long]): IO[Long] =
     SchedulingStats.create[IO].flatMap { stats =>
       Scheduling.monitor[IO](stats, 20.millis).use { _ =>
         IO.sleep(100.millis) *>
-          List.fill(cpus)(()).parTraverse_(_ => run(spin(600))) *>
+          List.fill(cpus)(()).parTraverse_(_ => run(IO(spin(600)))) *>
           stats.total.map(_.maxTimerLatenessMs)
       }
     }
 
-  test("CPU-bound steps on the pool leave the timers alone; inline they starve them") {
+  test("CPU-bound work on the pool leaves the timers alone; on the compute pool it starves them") {
     for
-      unpooled <- lateness(step => IO(step))
+      unpooled <- lateness(identity)
       pooled <- SchedulingStats.create[IO].flatMap { poolStats =>
-        Compute
-          .pool[IO](cpus, poolStats)
-          .use(c => lateness(step => c.run((_: Long) => "spin")(step)))
+        Compute.pool[IO](cpus, poolStats).use(c => lateness(c.within))
       }
       _ <- IO {
         // all compute threads are inside a step for 600 ms: no timer can fire

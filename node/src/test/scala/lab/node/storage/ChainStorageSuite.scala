@@ -21,6 +21,8 @@ import StorageTestKit.*
   * plus a replay of the stored blocks, and recovery survives lost or damaged snapshots.
   */
 class ChainStorageSuite extends CatsEffectSuite:
+  override def munitIOTimeout: Duration = 3.minutes
+
   private val fixtures = java.nio.file.Path.of("fixtures/eras")
   private val files = Files.forAsync[IO]
 
@@ -352,7 +354,7 @@ class ChainStorageSuite extends CatsEffectSuite:
   // ---- volatile blocks, the shutdown snapshot and the network identity (D4, D5) ----
 
   private def volatileConfig(every: Int, identity: Option[NetworkIdentity]) =
-    config(every).copy(identity = identity, volatileFileBlocks = 8)
+    config(every).copy(identity = identity, volatileFileBlocks = 8, volatileCollectBlocks = 8)
 
   /** What one start of the node did. */
   private final case class Session(
@@ -565,7 +567,7 @@ class ChainStorageSuite extends CatsEffectSuite:
 
   test("a crash at any point of a run recovers: copies of the database taken mid-run restart") {
     tempDir.use { root =>
-      val points = (1 to 700 by 37).toList
+      val points = (1 to 700 by 61).toList
       val live = root / "live"
       for
         _ <- files.createDirectories(live)

@@ -191,7 +191,11 @@ object Verification:
       prepared.put(b.header.hash, p)
     }
 
-  /** Warm the verdicts of `blocks` using up to `parallelism` threads. */
+  /** Warm the verdicts of `blocks` using up to `parallelism` threads. The work runs on `blocking`
+    * threads, beside the rules (which run on the CPU pool, see [[Compute]]): putting it on that
+    * pool too serialised the two behind each other and cost a third of the throughput
+    * (performance.md).
+    */
   def warm[F[_]: Async](blocks: Vector[Bytes], config: PraosConfig, parallelism: Int): F[Unit] =
     if blocks.isEmpty then Async[F].unit
     else

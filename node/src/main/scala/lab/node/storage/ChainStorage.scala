@@ -21,6 +21,7 @@ import lab.node.{
   StorageError,
   VolatileChain
 }
+import lab.node.Compute
 import lab.node.consensus.SelectView
 import scala.concurrent.duration.*
 
@@ -98,10 +99,14 @@ object ChainStorage:
       progressEvery: Int = 20000,
       /** The network the database must belong to; none: not recorded or checked (tests). */
       identity: Option[NetworkIdentity] = None,
-      /** Blocks per volatile log file; also how many blocks become immutable between two forced
-        * syncs of the immutable store and collections of the log.
+      /** Blocks per volatile log file. */
+      volatileFileBlocks: Int = 512,
+      /** Blocks that become immutable between two forced syncs of the immutable store, each
+        * followed by a collection of the log files wholly below the immutable tip. The sync is what
+        * makes collecting safe, and it is a disk flush on the apply path, so it is rare: the log
+        * keeps up to this many blocks beyond the `k` it needs.
         */
-      volatileFileBlocks: Int = 512
+      volatileCollectBlocks: Int = 4096
   )
 
   /** The node state recovered from disk, ready to anchor a [[lab.node.VolatileChain]]. */
@@ -131,7 +136,9 @@ object ChainStorage:
       /** Called with each batch of stored blocks just before they are applied (verification that
         * does not depend on the state can run ahead, in parallel).
         */
-      prepare: Vector[Bytes] => F[Unit]
+      prepare: Vector[Bytes] => F[Unit],
+      /** The CPU pool the replay runs on (D8); without one, on the calling fiber's pool. */
+      compute: Option[Compute[F]] = None
   )(using
       Codec[StateSnapshot[S]],
       Raise[F, StorageError],
@@ -214,7 +221,9 @@ object ChainStorage:
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
       replayed <- Resource.eval(
-        replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
+        compute.fold(identity[F[(Option[BlockRef], S)]])(c => c.within[(Option[BlockRef], S)])(
+          replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
+        )
       )
     yield Recovered(
       replayed._1,
@@ -254,7 +263,8 @@ object ChainStorage:
       rules: BlockRules[F, S],
       byronEpochSlots: BigInt,
       events: StorageEvents[F],
-      prepare: Vector[Bytes] => F[Unit]
+      prepare: Vector[Bytes] => F[Unit],
+      compute: Option[Compute[F]] = None
   )(using handle: Handle[F, NodeError]): F[Vector[Resumed[S]]] =
     val F = Async[F]
     val anchor = recovered.anchor
@@ -293,7 +303,9 @@ object ChainStorage:
     for
       began <- Clock[F].monotonic
       _ <- prepare(candidates.map(_._2))
-      resumed <- go(start, candidates.toList, Vector.empty)
+      resumed <- compute.fold(go(start, candidates.toList, Vector.empty))(
+        _.within(go(start, candidates.toList, Vector.empty))
+      )
       _ <- recovered.adopt(resumed.map(r => r.ref -> r.raw))
       dropped = after.size - resumed.size
       _ <- F.whenA(dropped > 0)(
@@ -405,7 +417,7 @@ object ChainStorage:
       */
     private def collect(added: Int, tip: Option[BlockRef]): F[Unit] =
       sinceCollect.updateAndGet(_ + added).flatMap { n =>
-        F.whenA(n >= config.volatileFileBlocks) {
+        F.whenA(n >= config.volatileCollectBlocks) {
           tip.traverse_(t => store.sync *> volatile.gc(t.slot)) *> sinceCollect.set(0)
         }
       }

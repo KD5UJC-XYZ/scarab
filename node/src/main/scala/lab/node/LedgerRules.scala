@@ -84,7 +84,7 @@ final class NodeRules[F[_]: Monad](
       * which epoch nonce is current).
       */
     afterBlock: Option[NodeState => F[Unit]] = None,
-    /** Where the pure rules run (D8); without one they run on the calling thread. */
+    /** Measures the pure rules (D8); without one they are not timed. */
     compute: Option[Compute[F]] = None
 )(using
     Raise[F, ValidationError]
@@ -95,7 +95,7 @@ final class NodeRules[F[_]: Monad](
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
     def run(s: NodeState, prepared: Option[NodeRules.Prepared]): F[NodeState] =
       cpu
-        .run(NodeRules.stepLabel(s))(
+        .timed(NodeRules.stepLabel(s))(
           NodeRules.applyBlock(
             s,
             header,
@@ -118,12 +118,10 @@ final class NodeRules[F[_]: Monad](
       case (Some(store), h: Header.Shelley) if !bootstrap =>
         // The read set: what the block's transactions spend or reference, fetched before the pure
         // rules run (the rules then see a complete view of the entries they need).
+        val prepared = NodeRules.prepare(h, raw)
+        val utxo = state.ledger.utxo
+        val wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
         for
-          prepared <- cpu.run((_: Option[NodeRules.Prepared]) => "decode")(
-            NodeRules.prepare(h, raw)
-          )
-          utxo = state.ledger.utxo
-          wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
           fetched <- if wanted.isEmpty then Map.empty[TxIn, TxOut].pure[F] else store.read(wanted)
           next <- run(
             state.copy(ledger = state.ledger.copy(utxo = utxo.withResident(fetched))),

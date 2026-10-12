@@ -379,8 +379,10 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
         command += ["--name", name]
     for mount in mounts:
         command += ["-v", mount]
-    return command + ["--entrypoint", "java", JDK_IMAGE, "-Xmx768m", "-cp", classpath,
-                      main_class, *program_args]
+    # G1 with a short pause goal also with one CPU, where the JVM would pick the serial collector:
+    # a collector pause stops every thread, so it is the timers' lateness (roadmap D8).
+    jvm = ["-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=20"]
+    return command + ["--entrypoint", "java", JDK_IMAGE, *jvm, "-cp", classpath, main_class, *program_args]
 
 
 def down(args, quiet=False):

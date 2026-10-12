@@ -5,9 +5,7 @@ import cats.Monad
 import cats.effect.{Async, Clock, Ref, Resource, Sync, Temporal}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
-import java.util.concurrent.{ExecutorService, Executors, ThreadFactory}
-import java.util.concurrent.atomic.AtomicInteger
-import scala.concurrent.ExecutionContext
+import cats.effect.unsafe.IORuntime
 import scala.concurrent.duration.*
 
 /** What the scheduling monitor and the CPU-bound steps have seen (D8): how late timers fired and
@@ -95,51 +93,74 @@ object SchedulingStats:
     )
       .mapN(new SchedulingStats(_, _))
 
-/** Where CPU-bound pure steps run (D8). The cats-effect compute pool has one thread per CPU; a pure
-  * step that takes hundreds of milliseconds (a block with Plutus scripts, an epoch boundary over
-  * all accounts) held on it delays every timer of the node: KeepAlive, protocol timeouts, the
-  * forger's slot clock. Steps run through this algebra execute on a separate bounded pool, so the
-  * compute pool keeps serving timers and the operating system, not the runtime, shares the CPUs
-  * between the two. The step is a by-name thunk of a pure function; its duration is recorded under
-  * the label `label` computes from the result (a block that crossed an epoch boundary says so).
+/** Where the CPU-bound part of the node runs (D8). The cats-effect compute pool has one thread per
+  * CPU; a pure step that takes hundreds of milliseconds (a block with Plutus scripts, an epoch
+  * boundary over all accounts) held on it delays every timer of the node: KeepAlive, protocol
+  * timeouts, the forger's slot clock. The part of the program that applies blocks runs through
+  * [[within]] on a separate bounded pool instead, so the compute pool keeps serving timers and the
+  * network fibers, and the operating system, not the runtime, shares the CPUs between the two.
+  *
+  * Moving an effect between pools costs a thread hand-off in and out, which on a busy host is a
+  * scheduler wake-up each: it is paid once per batch of blocks, not once per block. The pure steps
+  * inside are only measured ([[timed]]), on the thread they run on.
   */
 trait Compute[F[_]]:
-  def run[A](label: A => String)(step: => A): F[A]
+  /** Run `fa` on the CPU pool: its non-blocking steps execute there, and `blocking` calls leave it
+    * and come back.
+    */
+  def within[A](fa: F[A]): F[A]
+
+  /** Run a pure step on the current thread and record its duration under the label `label` computes
+    * from the result (a block that crossed an epoch boundary says so).
+    */
+  def timed[A](label: A => String)(step: => A): F[A]
 
 object Compute:
-  /** On the calling thread, unmeasured: tests and pure interpreters. */
+  /** Everything where it is, unmeasured: tests and pure interpreters. */
   def inline[F[_]: Monad]: Compute[F] = new Compute[F]:
-    def run[A](label: A => String)(step: => A): F[A] = Monad[F].unit.map(_ => step)
+    def within[A](fa: F[A]): F[A] = fa
+    def timed[A](label: A => String)(step: => A): F[A] = Monad[F].unit.map(_ => step)
 
-  /** A fixed pool of `threads` daemon threads, shut down with the resource. */
-  def pool[F[_]: Async](threads: Int, stats: SchedulingStats[F]): Resource[F, Compute[F]] =
-    val F = Async[F]
-    Resource
-      .make(F.delay(newPool(threads)))(ex => F.delay(ex.shutdown()))
-      .map { executor =>
-        val ec = ExecutionContext.fromExecutor(executor)
-        new Compute[F]:
-          def run[A](label: A => String)(step: => A): F[A] =
-            F.evalOn(
-              F.delay {
-                val began = System.nanoTime()
-                val result = step
-                (result, System.nanoTime() - began)
-              },
-              ec
-            ).flatMap((result, nanos) => stats.step(label(result), nanos).as(result))
+  /** No separate pool, but steps measured: what the node did before D8, kept as `--cpu-threads 0`
+    * to compare against.
+    */
+  def measured[F[_]: Sync](stats: SchedulingStats[F]): Compute[F] = new Compute[F]:
+    def within[A](fa: F[A]): F[A] = fa
+    def timed[A](label: A => String)(step: => A): F[A] = timeStep(stats, label, step)
+
+  private def timeStep[F[_]: Sync, A](
+      stats: SchedulingStats[F],
+      label: A => String,
+      step: => A
+  ): F[A] =
+    Sync[F]
+      .delay {
+        val began = System.nanoTime()
+        val result = step
+        (result, System.nanoTime() - began)
       }
+      .flatMap((result, nanos) => stats.step(label(result), nanos).as(result))
 
-  private def newPool(threads: Int): ExecutorService =
-    val count = new AtomicInteger(0)
-    Executors.newFixedThreadPool(
-      threads,
-      new ThreadFactory:
-        def newThread(r: Runnable): Thread =
-          val t = new Thread(r, s"csl-cpu-${count.incrementAndGet()}")
-          t.setDaemon(true)
-          t
-    )
+  /** A second cats-effect work-stealing pool of `threads` workers (`csl-cpu-N`), shut down with the
+    * resource. It is the same scheduler the compute pool is, so a hand-off to it is as cheap as a
+    * fiber moving between compute workers (a plain `ThreadPoolExecutor` parks a thread per
+    * continuation, which on a busy host costs a scheduler wake-up each and took a third of the
+    * throughput), and `blocking` inside it behaves as it does on the compute pool.
+    */
+  def pool[F[_]: Async](threads: Int, stats: SchedulingStats[F]): Resource[F, Compute[F]] =
+    Resource
+      .make(Async[F].delay {
+        IORuntime.createWorkStealingComputeThreadPool(
+          threads = threads,
+          threadPrefix = "csl-cpu",
+          blockerThreadPrefix = "csl-cpu-blocker"
+        )
+      })(pool => Async[F].delay(pool._3()))
+      .map { pool =>
+        new Compute[F]:
+          def within[A](fa: F[A]): F[A] = Async[F].evalOn(fa, pool._1)
+          def timed[A](label: A => String)(step: => A): F[A] = timeStep(stats, label, step)
+      }
 
 /** The node's scheduling facilities: the CPU pool and the timer monitor. */
 final case class Scheduling[F[_]](stats: SchedulingStats[F], compute: Compute[F])
@@ -160,13 +181,15 @@ object Scheduling:
     yield ()
     tick.foreverM[Unit].background.void
 
-  /** The CPU pool (`cpuThreads` threads), the timer monitor and the statistics, for the life of the
-    * resource.
+  /** The CPU pool (`cpuThreads` threads; 0: none, the steps run on the compute pool), the timer
+    * monitor and the statistics, for the life of the resource.
     */
   def resource[F[_]: Async](cpuThreads: Int): Resource[F, Scheduling[F]] =
     for
       stats <- Resource.eval(SchedulingStats.create[F])
-      compute <- Compute.pool[F](cpuThreads, stats)
+      compute <-
+        if cpuThreads <= 0 then Resource.pure[F, Compute[F]](Compute.measured[F](stats))
+        else Compute.pool[F](cpuThreads, stats)
       _ <- monitor[F](stats, 20.millis)
     yield Scheduling(stats, compute)
 

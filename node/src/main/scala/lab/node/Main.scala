@@ -65,7 +65,8 @@ object Main extends IOApp:
       utxoCacheMb: Int = 256,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
       readAhead: Int = 64,
-      /** Threads of the pool the CPU-bound rules run on (default: one per available CPU). */
+      /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
+        */
       cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors())
   )
 
@@ -206,7 +207,8 @@ object Main extends IOApp:
             setup.start,
             JsonLog.storage,
             backing,
-            warm
+            warm,
+            Some(scheduling.compute)
           )
           .evalMap { r =>
             ChainStorage
@@ -217,7 +219,8 @@ object Main extends IOApp:
                 rules,
                 genesis.geometry.byron.epochSlots,
                 JsonLog.storage,
-                warm
+                warm,
+                Some(scheduling.compute)
               )
               .map(resumed =>
                 Storage(r.anchor, r.state, resumed, Some(r.persistence), Some(r.store))
@@ -261,17 +264,23 @@ object Main extends IOApp:
             NodeRules.observe(genesis.geometry),
             Some(persistence.fold(served)(Persistence.both(_, served))),
             Some((chain, added) =>
-              val adopted = added.flatMap(raw =>
-                Block.decode(raw, genesis.geometry.byron.epochSlots).toOption.toVector.flatMap {
-                  case b: Block.Shelley => b.transactions.map(_.id)
-                  case _                => Vector.empty
-                }
-              )
-              chain.tipRef.traverse_(t =>
-                mempool.sync(chain.state.ledger, t.slot, adopted.toSet).void
-              )
+              // decoding the added blocks is CPU-bound: off the compute pool like the rules
+              scheduling.compute
+                .within(IO.delay {
+                  added.flatMap { raw =>
+                    Block.decode(raw, genesis.geometry.byron.epochSlots).toOption.toVector.flatMap {
+                      case b: Block.Shelley => b.transactions.map(_.id)
+                      case _                => Vector.empty
+                    }
+                  }.toSet
+                })
+                .flatMap(adopted =>
+                  chain.tipRef
+                    .traverse_(t => mempool.sync(chain.state.ledger, t.slot, adopted).void)
+                )
             ),
-            initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
+            initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
+            compute = Some(scheduling.compute)
           )
           handlers = ServerHandlers[IO, NtNHeader](
             NtNHeader.codec,
@@ -302,7 +311,8 @@ object Main extends IOApp:
                     Some(mempool.source)
                   ),
                   events,
-                  retry
+                  retry,
+                  Some(scheduling.compute)
                 )
               }
             )
@@ -459,7 +469,7 @@ object Main extends IOApp:
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
-              _.toIntOption.filter(_ > 0).toRight(usage)
+              _.toIntOption.filter(_ >= 0).toRight(usage)
             )
         yield Options(
           dir,
