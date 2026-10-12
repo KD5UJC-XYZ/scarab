@@ -25,8 +25,9 @@ object Stake:
   /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. A
     * credential without stake (no UTxO behind it and no rewards) is left out of both maps, as the
     * ledger's `resolveActiveInstantStakeCredentials` does (it keeps the non-zero active stake only;
-    * found by the db-analyser comparison, roadmap K1). Rewards and the leader schedule do not see
-    * the difference.
+    * found by the db-analyser comparison, roadmap K1), but its pool is remembered in `idlePools`
+    * because the ledger's pool distribution still lists a pool with such a delegator. Rewards and
+    * the leader schedule do not see the difference.
     */
   def snapshot(state: LedgerState, pointers: Boolean = true): Snapshot =
     val registered = state.accounts.iterator.flatMap { (c, a) =>
@@ -36,4 +37,5 @@ object Stake:
       case (c, coin) => coin > 0 && registered.contains(c)
     }
     val delegations = registered.filter((c, _) => stake.contains(c))
-    Snapshot(stake, delegations, state.pools.map { case (id, p) => id -> p.params })
+    val idle = registered.collect { case (c, p) if !stake.contains(c) => p }.toSet
+    Snapshot(stake, delegations, state.pools.map { case (id, p) => id -> p.params }, idle)
