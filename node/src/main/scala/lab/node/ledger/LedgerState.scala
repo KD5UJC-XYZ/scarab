@@ -33,11 +33,13 @@ final case class Snapshot(
 ):
   /** Total stake delegated to each registered pool. */
   lazy val poolStake: Map[Bytes, BigInt] =
-    delegations.iterator
+    val staked = delegations.iterator
       .collect { case (c, p) if pools.contains(p) => p -> stake.getOrElse(c, BigInt(0)) }
       .toVector
-      .groupMapReduce(_._1)(_._2)(_ + _) ++
-      idlePools.iterator.filter(pools.contains).map(_ -> BigInt(0))
+      .groupMapReduce(_._1)(_._2)(_ + _)
+    idlePools.iterator
+      .filter(p => pools.contains(p) && !staked.contains(p))
+      .foldLeft(staked)(_.updated(_, BigInt(0)))
   lazy val activeStake: BigInt = poolStake.values.sum
 
   /** The pool distribution as the leader check consumes it; built once per snapshot, not per block.
