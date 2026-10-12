@@ -67,6 +67,15 @@ object Main extends IOApp:
       readAhead: Int = 64
   )
 
+  /** What the chain database (or its absence) hands the node at start. */
+  private final case class Storage(
+      anchor: Option[BlockRef],
+      state: NodeState,
+      resumed: Vector[ChainStorage.Resumed[NodeState]],
+      persistence: Option[ChainPersistence[IO, NodeState]],
+      immutable: Option[ImmutableStore[IO]]
+  )
+
   /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
   final case class ForgeFiles(vrfSkey: Path, kesSkey: Path, opCert: Path)
 
@@ -163,41 +172,60 @@ object Main extends IOApp:
       )
       k = genesis.geometry.securityParam
       storage = options.db.fold(
-        Resource.pure[
-          IO,
-          (
-              Option[BlockRef],
-              NodeState,
-              Option[ChainPersistence[IO, NodeState]],
-              Option[ImmutableStore[IO]]
+        Resource.pure[IO, Storage](
+          Storage(
+            None,
+            setup.start,
+            Vector.empty,
+            Some(ChainPersistence.backingOnly[IO, NodeState](backing)),
+            None
           )
-        ](
-          (None, setup.start, Some(ChainPersistence.backingOnly[IO, NodeState](backing)), None)
         )
       ) { dir =>
         val every = options.snapshotEvery match
           case SnapshotInterval.Slots(n)  => BigInt(n)
           case SnapshotInterval.Epochs(n) => BigInt(n) * genesis.geometry.epochLength
+        val warm = Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
         ChainStorage
           .open[IO, NodeState](
             fs2.io.file.Path.fromNioPath(dir),
             ChainStorage.Config(
               every,
               options.keepSnapshots,
-              byronEpochSlots = genesis.geometry.byron.epochSlots
+              byronEpochSlots = genesis.geometry.byron.epochSlots,
+              identity = Some(setup.identity)
             ),
             rules,
             setup.start,
             JsonLog.storage,
             backing,
-            Verification.warm[IO](_, setup.praos, Verification.defaultParallelism)
+            warm
           )
-          .map(r => (r.anchor, r.state, Some(r.persistence), Some(r.store)))
+          .evalMap { r =>
+            ChainStorage
+              .resume[IO, NodeState](
+                r,
+                k,
+                setup.origin,
+                rules,
+                genesis.geometry.byron.epochSlots,
+                JsonLog.storage,
+                warm
+              )
+              .map(resumed =>
+                Storage(r.anchor, r.state, resumed, Some(r.persistence), Some(r.store))
+              )
+          }
       }
-      _ <- storage.use { (anchor, state, persistence, immutable) =>
+      _ <- storage.use { case Storage(anchor, state, resumed, persistence, immutable) =>
         for
           ref <- Ref.of[IO, VolatileChain[NodeState]](
-            VolatileChain(k, Anchor(anchor, state), Vector.empty, setup.origin)
+            VolatileChain(
+              k,
+              Anchor(anchor, state),
+              resumed.map(r => r.ref -> r.state),
+              setup.origin
+            )
           )
           given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
           server <- ChainServer.open[IO](
@@ -205,9 +233,14 @@ object Main extends IOApp:
             anchor,
             ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
           )
+          _ <- resumed.traverse_(r =>
+            server
+              .persistence[NodeState]
+              .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
+          )
           mempool <- Mempool.create[IO](
-            state.ledger,
-            anchor.fold(BigInt(0))(_.slot),
+            resumed.lastOption.fold(state)(_.state).ledger,
+            resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
             MempoolEnv(setup.globals, genesis.geometry),
             options.mempoolBytes,
             JsonLog.mempool,
@@ -230,7 +263,8 @@ object Main extends IOApp:
               chain.tipRef.traverse_(t =>
                 mempool.sync(chain.state.ledger, t.slot, adopted.toSet).void
               )
-            )
+            ),
+            initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
           )
           handlers = ServerHandlers[IO, NtNHeader](
             NtNHeader.codec,

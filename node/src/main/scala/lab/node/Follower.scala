@@ -73,8 +73,11 @@ final class SelectViews[F[_]: cats.effect.Sync] private (ref: Ref[F, Map[Bytes, 
   def retain(keep: Set[Bytes]): F[Unit] = ref.update(_.filter((h, _) => keep(h)))
 
 object SelectViews:
-  def create[F[_]: cats.effect.Sync]: F[SelectViews[F]] =
-    Ref.of[F, Map[Bytes, SelectView]](Map.empty).map(new SelectViews(_))
+  def create[F[_]: cats.effect.Sync]: F[SelectViews[F]] = create(Map.empty)
+
+  /** Starting from the views of a volatile chain that was restored from disk. */
+  def create[F[_]: cats.effect.Sync](initial: Map[Bytes, SelectView]): F[SelectViews[F]] =
+    Ref.of[F, Map[Bytes, SelectView]](initial).map(new SelectViews(_))
 
 /** Follows upstream peers. Each peer session keeps a candidate chain (the headers the peer
   * announced after the point where it joined ours); when a candidate is preferred to our chain by
@@ -356,12 +359,14 @@ object Follower:
       observe: (S, S, BlockRef) => List[FollowerEvent] = (_: S, _: S, _: BlockRef) => Nil,
       persistence: Option[ChainPersistence[F, S]] = None,
       onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]] = None,
-      tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor
+      tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
+      /** The select views of the blocks of a volatile chain restored from disk. */
+      initialViews: Map[Bytes, SelectView] = Map.empty
   )(using
       Stateful[F, VolatileChain[S]],
       Raise[F, ChainError]
   ): F[Follower[F, S]] =
-    (SelectViews.create[F], Mutex[F]).mapN { (views, lock) =>
+    (SelectViews.create[F](initialViews), Mutex[F]).mapN { (views, lock) =>
       new Follower[F, S](
         rules,
         events,

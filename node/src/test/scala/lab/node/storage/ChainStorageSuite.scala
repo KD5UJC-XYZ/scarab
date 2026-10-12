@@ -348,3 +348,381 @@ class ChainStorageSuite extends CatsEffectSuite:
       yield ()
     }
   }
+
+  // ---- volatile blocks, the shutdown snapshot and the network identity (D4, D5) ----
+
+  private def volatileConfig(every: Int, identity: Option[NetworkIdentity]) =
+    config(every).copy(identity = identity, volatileFileBlocks = 8)
+
+  /** What one start of the node did. */
+  private final case class Session(
+      resumed: Int,
+      dropped: Int,
+      replayed: Long,
+      restoredAnchor: Option[BlockRef],
+      anchor: Option[BlockRef],
+      chain: VolatileChain[NodeState],
+      offered: Vector[Vector[ChainSync.Point]],
+      events: Vector[StorageEvent]
+  )
+
+  /** Open the database as `Main` does (storage, then resume the volatile chain), follow the blocks
+    * up to `until` with the real follower (those after the resumed tip), and release the storage (a
+    * graceful stop). `tap(n)` runs before the follower's n-th event (0-based); the tests copy the
+    * database there to stand in for a crash at that point.
+    */
+  private def session(
+      dir: Path,
+      until: Int,
+      every: Int = 120,
+      identity: Option[NetworkIdentity] = Some(setup.identity),
+      tap: Int => IO[Unit] = _ => IO.unit
+  ): IO[Session] =
+    Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
+      Handle
+        .allow[NodeError] {
+          val backing = StateBacking.none[IO, NodeState]
+          val nodeRules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+          ChainStorage
+            .open[IO, NodeState](
+              dir,
+              volatileConfig(every, identity),
+              nodeRules,
+              setup.start,
+              storageEvents(log),
+              backing,
+              _ => IO.unit
+            )
+            .use { recovered =>
+              for
+                resumed <- ChainStorage.resume[IO, NodeState](
+                  recovered,
+                  k,
+                  setup.origin,
+                  nodeRules,
+                  geometry.byron.epochSlots,
+                  storageEvents(log),
+                  _ => IO.unit
+                )
+                chainRef <- Ref.of[IO, VolatileChain[NodeState]](
+                  VolatileChain(
+                    k,
+                    Anchor(recovered.anchor, recovered.state),
+                    resumed.map(r => r.ref -> r.state),
+                    setup.origin
+                  )
+                )
+                given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+                start <- chainRef.get.map(
+                  _.tipRef.fold(0)(t => headers.indexWhere(_.hash == t.hash) + 1)
+                )
+                queue <- Queue.unbounded[IO, SyncEvent]
+                _ <- (start until until).toList.traverse_(i =>
+                  queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
+                )
+                done <- Deferred[IO, Unit]
+                offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
+                count <- Ref.of[IO, Int](0)
+                bodies = headers.map(_.hash).zip(raws).toMap
+                peer = new Peer[IO]:
+                  def intersect(candidates: Vector[ChainSync.Point]) =
+                    offered.update(_ :+ candidates).as(candidates.headOption)
+                  def next = count.getAndUpdate(_ + 1).flatMap(tap) *> queue.tryTake.flatMap {
+                    case Some(event) => IO.pure(event)
+                    case None        => done.complete(()) *> IO.never[SyncEvent]
+                  }
+                  def fetch(header: Header) = IO.pure(bodies(header.hash))
+                follower <- Follower.create[IO, NodeState](
+                  nodeRules,
+                  noEvents,
+                  geometry,
+                  persistence = Some(recovered.persistence),
+                  initialViews = resumed.map(r => r.ref.hash -> r.view).toMap
+                )
+                _ <- IO.race(follower.session(peer), done.get.timeout(60.seconds))
+                chain <- chainRef.get
+                offers <- offered.get
+              yield (resumed, recovered.anchor, chain, offers)
+            }
+            .flatMap { (resumed, anchor, chain, offers) =>
+              // the storage is released by now: the shutdown snapshot has been taken
+              log.get.map { events =>
+                Session(
+                  resumed.size,
+                  events
+                    .collectFirst { case StorageEvent.VolatileResumed(_, d, _) => d }
+                    .getOrElse(-1),
+                  events
+                    .collectFirst { case StorageEvent.ReplayFinished(_, n, _) => n }
+                    .getOrElse(-1L),
+                  events.collectFirst { case StorageEvent.SnapshotRestored(_, a) => a }.flatten,
+                  anchor,
+                  chain,
+                  offers,
+                  events
+                ).asRight[NodeError]
+              }
+            }
+        }
+        .rescue(e => IO.pure(e.asLeft))
+        .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
+    }
+
+  /** The message of the refusal a session ends in. */
+  private def refusal(s: IO[Session]): IO[String] =
+    s.attempt.map {
+      case Left(e: AssertionError) => e.getMessage
+      case Left(other)             => fail(s"expected a refusal, got $other")
+      case Right(_)                => fail("expected a refusal, the database opened")
+    }
+
+  private def copyTree(from: Path, to: Path): IO[Unit] = IO.blocking {
+    val src = from.toNioPath
+    val walk = JFiles.walk(src)
+    try
+      walk.iterator.asScala.foreach { p =>
+        val target = to.toNioPath.resolve(src.relativize(p).toString)
+        if JFiles.isDirectory(p) then JFiles.createDirectories(target)
+        else JFiles.copy(p, target)
+      }
+    finally walk.close()
+  }
+
+  test("restart resumes at the previous tip: the volatile blocks are not fetched again") {
+    tempDir.use { dir =>
+      for
+        first <- session(dir, 500)
+        _ <- IO(assertEquals(first.resumed, 0))
+        second <- session(dir, 731)
+        // the last k blocks came back from the log, applied on top of the immutable state
+        _ <- IO(assertEquals(second.resumed, k))
+        _ <- IO(assertEquals(second.dropped, 0))
+        _ <- IO(assertEquals(second.chain.tip, headers(730).point))
+        _ <- IO(assertEquals(second.chain.state, states(731)))
+        // the first intersection offered the previous tip, not the immutable anchor
+        _ <- IO(assertEquals(second.offered.head.head, headers(499).point))
+        _ <- IO(assertEquals(second.anchor.map(_.hash), Some(ref(500 - k - 1).hash)))
+        // a restart without the log (the behaviour before D4) ends in the same state
+        _ <- files.deleteRecursively(dir / "volatile")
+        third <- session(dir, 731)
+        _ <- IO(assertEquals(third.resumed, 0))
+        _ <- IO(assertEquals(third.chain.state, states(731)))
+        _ <- IO(assertEquals(third.chain.tip, second.chain.tip))
+      yield ()
+    }
+  }
+
+  test("a graceful stop writes a snapshot at the immutable tip: the restart replays nothing") {
+    tempDir.use { dir =>
+      for
+        // the periodic policy never fires (a huge interval): only the shutdown snapshot exists
+        first <- session(dir, 500, every = 1000000)
+        _ <- IO(assertEquals(first.replayed, 0L))
+        shutdown = first.events.collect { case e: StorageEvent.ShutdownSnapshot => e }
+        _ <- IO(assertEquals(shutdown.map(_.written), Vector(true)))
+        snaps <- snapshotsIn(dir)
+        _ <- IO(assertEquals(snaps.size, 1))
+        second <- session(dir, 500, every = 1000000)
+        _ <- IO(assertEquals(second.replayed, 0L))
+        _ <- IO(assertEquals(second.restoredAnchor.map(_.hash), Some(ref(500 - k - 1).hash)))
+        _ <- IO(assertEquals(second.resumed, k))
+        _ <- IO(assertEquals(second.chain.state, states(500)))
+        // nothing new: the stop does not write the same snapshot again
+        _ <- IO(
+          assertEquals(
+            second.events.collect { case e: StorageEvent.ShutdownSnapshot => e.written },
+            Vector(false)
+          )
+        )
+      yield ()
+    }
+  }
+
+  test("without the shutdown snapshot the restart replays the stored blocks after the last one") {
+    tempDir.use { dir =>
+      for
+        _ <- session(dir, 500, every = 1000000)
+        snaps <- snapshotsIn(dir)
+        _ <- snaps.traverse_(files.delete)
+        second <- session(dir, 500, every = 1000000)
+        _ <- IO(assertEquals(second.replayed, (500 - k).toLong))
+      yield ()
+    }
+  }
+
+  test("a stop before any block becomes immutable writes no snapshot and restarts at the tip") {
+    tempDir.use { dir =>
+      for
+        _ <- session(dir, k - 1)
+        snaps <- snapshotsIn(dir)
+        _ <- IO(assertEquals(snaps, Nil))
+        second <- session(dir, k + 2)
+        _ <- IO(assertEquals(second.resumed, k - 1))
+        _ <- IO(assertEquals(second.chain.state, states(k + 2)))
+      yield ()
+    }
+  }
+
+  test("a crash at any point of a run recovers: copies of the database taken mid-run restart") {
+    tempDir.use { root =>
+      val points = (1 to 700 by 37).toList
+      val live = root / "live"
+      for
+        _ <- files.createDirectories(live)
+        taken <- Ref.of[IO, Vector[Int]](Vector.empty)
+        // background snapshots land before the copy, which stands in for the files at the crash
+        tap = (n: Int) =>
+          if points.contains(n) then
+            IO.sleep(60.millis) *> copyTree(live, root / s"crash-$n") *> taken.update(_ :+ n)
+          else IO.unit
+        _ <- session(live, 731, tap = tap)
+        copies <- taken.get
+        _ <- IO(assert(copies.size >= 10, copies.toString))
+        results <- copies.traverse(n => session(root / s"crash-$n", 731).map(s => (n, s)))
+        _ <- results.traverse_ { (n, s) =>
+          IO {
+            assertEquals(s.chain.state, states(731), s"restart from the copy at event $n")
+            assertEquals(s.chain.tip, headers(730).point)
+          }
+        }
+        // some of the copies resumed volatile blocks, so the log really was in use
+        _ <- IO(assert(results.exists(_._2.resumed > 0)))
+      yield ()
+    }
+  }
+
+  test("a crash that tears the volatile log at every cut keeps a consistent chain") {
+    tempDir.use { root =>
+      val live = root / "live"
+      for
+        _ <- files.createDirectories(live)
+        _ <- session(live, 300)
+        logs <- files
+          .list(live / "volatile")
+          .filter(_.fileName.toString.endsWith(".log"))
+          .compile
+          .toList
+          .map(_.sortBy(_.toString))
+        newest = logs.last
+        whole <- IO(JFiles.readAllBytes(newest.toNioPath))
+        offsets = VolatileStore.decodeAll(whole).map(_._2)
+        // cut the newest file at each record boundary and one byte either side
+        cuts = (offsets.flatMap(o => List(o - 1, o, o + 1)) :+ 0)
+          .filter(c => c >= 0 && c <= whole.length)
+          .distinct
+        _ <- cuts.traverse_ { cut =>
+          val copy = root / s"cut-$cut"
+          for
+            _ <- copyTree(live, copy)
+            _ <- IO(
+              JFiles.write(
+                (copy / "volatile" / newest.fileName.toString).toNioPath,
+                whole.take(cut)
+              )
+            )
+            s <- session(copy, 340)
+            _ <- IO(assertEquals(s.chain.state, states(340), s"cut at $cut"))
+            _ <- IO(assertEquals(s.chain.tip, headers(339).point))
+          yield ()
+        }
+      yield ()
+    }
+  }
+
+  test("a volatile log that holds a block that does not apply is cut back to the valid part") {
+    tempDir.use { dir =>
+      for
+        _ <- session(dir, 500)
+        // log a block that does not follow the tip (505 skips 500 to 504), then restart
+        _ <- Handle
+          .allow[StorageError] {
+            VolatileStore
+              .open[IO](dir / "volatile", 8)
+              .use((v, _) => v.append(ref(505), raws(505)))
+          }
+          .rescue(e => IO.raiseError(new AssertionError(e.message)))
+        again <- session(dir, 520)
+        _ <- IO(assertEquals(again.resumed, k))
+        _ <- IO(assertEquals(again.dropped, 1))
+        _ <- IO(assertEquals(again.chain.state, states(520)))
+        // the cut was logged: the next start does not see the refused block again
+        third <- session(dir, 520)
+        _ <- IO(assertEquals(third.dropped, 0))
+        _ <- IO(assertEquals(third.chain.state, states(520)))
+      yield ()
+    }
+  }
+
+  test("network identity: recorded at creation, accepted on reopen, refused on mismatch") {
+    tempDir.use { dir =>
+      val id = setup.identity
+      def hashOf(b: Byte) = lab.Blake2b.hash256.hash(Bytes.fromArray(Array[Byte](b)))
+      for
+        _ <- session(dir, 40)
+        recorded <- Handle
+          .allow[StorageError](NetworkIdentityFile.read[IO](dir).map(_.asRight[StorageError]))
+          .rescue(e => IO.pure(e.asLeft))
+        _ <- IO(assertEquals(recorded, Right(Some(id))))
+        _ <- session(dir, 60)
+        wrongs = List(
+          id.copy(magic = id.magic + 1),
+          id.copy(shelleyGenesis = hashOf(1)),
+          id.copy(byronGenesis = None),
+          id.copy(byronGenesis = Some(hashOf(2)))
+        )
+        _ <- wrongs.traverse_ { wrong =>
+          refusal(session(dir, 60, identity = Some(wrong))).map { message =>
+            assert(message.contains("belongs to another network"), message)
+            assert(message.contains(s"magic ${id.magic}"), message)
+          }
+        }
+        // the refusals changed nothing
+        again <- session(dir, 80)
+        _ <- IO(assertEquals(again.chain.state, states(80)))
+      yield ()
+    }
+  }
+
+  test("network identity: a database from before the identity existed is adopted or refused") {
+    tempDir.use { root =>
+      val id = setup.identity
+      for
+        // the old behaviour: no identity configured, so none is recorded
+        _ <- session(root / "old", 120, identity = None)
+        _ <- IO(assert(!JFiles.exists((root / "old" / NetworkIdentityFile.FileName).toNioPath)))
+        _ <- copyTree(root / "old", root / "foreign")
+        adopted <- session(root / "old", 140)
+        _ <- IO(assertEquals(adopted.chain.state, states(140)))
+        _ <- IO(
+          assertEquals(
+            adopted.events.collect { case StorageEvent.NetworkRecorded(_, a) => a },
+            Vector(true)
+          )
+        )
+        _ <- IO(assert(JFiles.exists((root / "old" / NetworkIdentityFile.FileName).toNioPath)))
+        // the same database with another Byron genesis: its first block names another predecessor
+        other = id.copy(byronGenesis =
+          Some(lab.Blake2b.hash256.hash(Bytes.fromArray(Array[Byte](9))))
+        )
+        message <- refusal(session(root / "foreign", 140, identity = Some(other)))
+        _ <- IO(assert(message.contains("first block names"), message))
+        _ <- IO(
+          assert(!JFiles.exists((root / "foreign" / NetworkIdentityFile.FileName).toNioPath))
+        )
+        // an empty database simply records the identity
+        _ <- files.createDirectories(root / "empty")
+        _ <- session(root / "empty", 3)
+        _ <- IO(assert(JFiles.exists((root / "empty" / NetworkIdentityFile.FileName).toNioPath)))
+      yield ()
+    }
+  }
+
+  test("network identity text round trips and rejects anything else") {
+    val id = setup.identity
+    assertEquals(NetworkIdentity.parse("f", id.render), Right(id))
+    val shelleyOnly = id.copy(byronGenesis = None)
+    assertEquals(NetworkIdentity.parse("f", shelleyOnly.render), Right(shelleyOnly))
+    assert(NetworkIdentity.parse("f", "garbage").isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("v1", "v2")).isLeft)
+  }

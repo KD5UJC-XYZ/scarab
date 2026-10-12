@@ -24,7 +24,9 @@ final case class NodeSetup(
     byron: Option[ByronGenesis],
     globals: LedgerGlobals,
     praos: PraosConfig,
-    start: NodeState
+    start: NodeState,
+    /** Which network this configuration describes (recorded in a database, see D5). */
+    identity: NetworkIdentity
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byron.map(ByronRules.Config(_))
@@ -88,5 +90,10 @@ object NodeSetup:
         Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))),
         initial,
         BootstrapState.initial(lite)
+      ),
+      NetworkIdentity(
+        genesis.networkMagic,
+        Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
+        byron.map(_.hash)
       )
     )

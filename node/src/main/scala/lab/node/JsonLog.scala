@@ -226,3 +226,28 @@ object JsonLog:
           "replayed" -> replayed.asJson,
           "millis" -> millis.asJson
         )
+      case StorageEvent.NetworkRecorded(id, adopted) =>
+        line(
+          "networkRecorded",
+          "magic" -> id.magic.asJson,
+          "shelleyGenesis" -> id.shelleyGenesis.hex.asJson,
+          "byronGenesis" -> id.byronGenesis.map(_.hex).asJson,
+          "adoptedExisting" -> adopted.asJson
+        )
+      case StorageEvent.VolatileOpened(r) =>
+        line(
+          "volatileOpened",
+          "blocks" -> r.blocks.asJson,
+          "files" -> r.files.asJson,
+          "truncatedBytes" -> r.truncatedBytes.asJson,
+          "removedFiles" -> r.removedFiles.asJson
+        )
+      case StorageEvent.VolatileResumed(resumed, dropped, millis) =>
+        line(
+          "volatileResumed",
+          "resumed" -> resumed.asJson,
+          "dropped" -> dropped.asJson,
+          "millis" -> millis.asJson
+        )
+      case StorageEvent.ShutdownSnapshot(a, written) =>
+        line("shutdownSnapshot", "anchor" -> anchor(a), "written" -> written.asJson)
