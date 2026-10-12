@@ -42,7 +42,8 @@ def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
     up(args)
-    follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow"],
+    follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
+                                 *(["--dump-state"] if getattr(args, "oracle", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
                               stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
@@ -87,9 +88,15 @@ def soak(args):
     extended = extended_summary(root) if getattr(args, "governance_extended", False) else None
     if extended is not None:
         summary["governanceExtended"] = extended
+    failures = []
+    if getattr(args, "oracle", False):
+        from oracle import devnet as oracle_devnet
+        summary["oracle"], oracle_failures = oracle_devnet.run(
+            args.name, root, log=lambda m: print(json.dumps(m), flush=True))
+        summary["oracle"].pop("results", None)  # the per-epoch rows are in oracle-summary.json
+        failures += oracle_failures
     (root / "summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
-    failures = []
     if not summary["comparisons"]:
         failures.append("no ledger comparison completed")
     if summary["matched"] != summary["comparisons"]:

@@ -38,7 +38,7 @@ java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
 `forged`, ...).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/lab/node/Main.scala`). Every flag takes a
-value except `--forge`. A repeated flag keeps its last value, except `--peer`, which accumulates.
+value except `--forge` and `--dump-state-full`. A repeated flag keeps its last value, except `--peer`, which accumulates.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -54,6 +54,9 @@ value except `--forge`. A repeated flag keeps its last value, except `--peer`, w
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
 | `--utxo-cache-mb N` | `256` | RocksDB block cache |
 | `--read-ahead N` | `64` | ChainSync requests pipelined and blocks fetched per range while far behind (256 timed out against the public relay) |
+| `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
+| `--dump-state-at <points>` | `epoch-boundaries` | with `--dump-state`: `epoch-boundaries` (the first block of every epoch), `epoch-boundaries/N` (every Nth epoch) or `slot,slot,...` (the first block at or after each slot, what `db-analyser --store-ledger` stores) |
+| `--dump-state-full` | off | with `--dump-state`: also write the whole projection, UTxO included, as `<slot>-<hash>.full` (drill-down on small states only) |
 | `--mempool-bytes N` | `1048576` | mempool capacity in bytes |
 | `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |
 | `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
@@ -100,6 +103,67 @@ for the immutable blocks, RocksDB and checkpoints, and memory well above the hea
 but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other off-heap memory are
 not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
 had reached 5.3 GB when the limit was raised.
+
+### Ledger state against the Haskell node (the oracle, roadmap K1)
+
+Following a chain shows that valid blocks are accepted. The oracle shows that the ledger state is the
+same: at the first block of every epoch the Scala node writes a digest of its state (`--dump-state`), the
+reference image's `db-analyser` stores the Haskell ledger state after the same block, and
+`scripts/oracle_compare.py` decodes that snapshot (`scripts/oracle/`) into the same projection and
+compares. The projection is the one the devnet comparison uses (`Projection.node`): UTxO, fees,
+deposits, treasury, reserves, accounts, pools and their parameters, DReps, the three stake snapshots,
+the reward update, the pool distribution, protocol parameters, block counts, the Praos nonces and
+opcert counters and, from Conway, the whole governance state (proposals and votes, committee, constitution,
+ratification state, DRep distribution, committee hot keys, donations).
+
+A map with more than 64 entries is reduced to its entry count and the sum, modulo 2^256, of the
+SHA-256 of each entry's text (key, a NUL byte, compact JSON with sorted keys), plus that sum for each
+of sixteen buckets of the key hash; a difference names the buckets, which narrows it to a sixteenth of
+the entries. The UTxO set is one such map (`StateDump.scala`, `scripts/oracle/digest.py`; a
+shared test vector keeps the two in step). A difference is drilled down with `--dump-state-full` on the Scala
+side and `oracle_compare.py project --full` on the Haskell side.
+
+On a public network (Preview shown; the configuration files are those of "Preview" above):
+
+```sh
+# 1. A Haskell node that syncs the network. PraosMode and a plain topology (the peer snapshot and the
+#    checkpoints file of the official Preview configuration are not needed); 6 CPUs, db outside the checkout.
+D="${CSL_DATA_DIR:-/tmp/cardano-scala-lab}"
+mkdir -p "$D/haskell-preview-config" "$D/haskell-preview-db" "$D/haskell-preview-ipc"
+cp "$D"/preview/config/*.json "$D/haskell-preview-config/"
+#    edit config.json: "ConsensusMode": "PraosMode", remove CheckpointsFile and CheckpointsFileHash;
+#    topology.json: {"bootstrapPeers": null, "localRoots": [{"accessPoints": [{"address":
+#    "preview-node.play.dev.cardano.org", "port": 3001}], "advertise": false, "valency": 1, "trustable": true}],
+#    "publicRoots": [{"accessPoints": [], "advertise": false}]}
+docker run -d --name csl-k1-haskell-preview --cpus 6 --memory 32g --user "$(id -u):$(id -g)" \
+  -v "$D/haskell-preview-config":/config:ro -v "$D/haskell-preview-db":/db -v "$D/haskell-preview-ipc":/ipc \
+  --entrypoint cardano-node cardano-reference-11.1.3:local run --config /config/config.json \
+  --topology /config/topology.json --database-path /db --socket-path /ipc/node.socket --port 3001 --host-addr 0.0.0.0
+
+# 2. The Scala node from genesis, writing a digest at every epoch boundary (the same configuration as above).
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow --genesis-dir "$D/preview/config" \
+  --peer preview-node.play.dev.cardano.org:3001 --db "$D/preview-scala-db" --keep-snapshots 2000 \
+  --dump-state "$D/preview-dump" --dump-state-at epoch-boundaries
+
+# 3. db-analyser against a copy of the Haskell ImmutableDB (the finished chunks are copied; the node keeps running).
+python3 scripts/oracle_compare.py preview --config "$D/haskell-preview-config" --db "$D/haskell-preview-db" \
+  --work "$D/preview-oracle" --dump "$D/preview-dump" --results "$D/preview-oracle-results.jsonl" --follow
+```
+
+`oracle_compare.py preview` chains `db-analyser --store-ledger <slot> --analyse-from <previous snapshot>`
+(in Docker, `--cpus 4 --memory 24g`), so each epoch costs one snapshot load, one epoch of blocks and one
+snapshot write; the snapshot is projected in a worker process, compared, and the previous snapshot is
+deleted. Results are JSON lines (`matched`, the differing paths with both values, timings) and the run
+resumes from the file. `db-analyser` needs the snapshot's own copy of the ImmutableDB (it opens the
+newest chunk for writing), which `--work` holds. Only digests whose block is already in the copy are
+compared; with `--follow` the loop waits for the Haskell node and the Scala node to produce more.
+
+On a devnet cluster: `python3 scripts/devnet.py e2e --oracle` (or `soak --oracle`, or `follow --dump-state`
+then `oracle`) runs `db-analyser` inside the reference container on a copy of node 1's ImmutableDB and
+compares at every epoch boundary the follower digested (`scripts/oracle/devnet.py`); the summary is in
+`oracle-summary.json` of the run directory and in the `oracle` block of `e2e-summary.json`.
+The first epoch of a chain the follower started in Byron has no digest (the follower digests an epoch
+when it sees the epoch number change in Shelley-based blocks).
 
 ### Forging
 

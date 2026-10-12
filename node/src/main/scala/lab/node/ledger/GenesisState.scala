@@ -83,7 +83,13 @@ object GenesisState:
         .downField("nonAvvmBalances")
         .as[Map[String, String]]
         .leftMap(e => ConfigError(s"byron nonAvvmBalances: ${e.message}"))
-        .flatMap(_.toVector.traverse { case (b58, coin) =>
+        // Some testnets (Preview) inject Byron outputs of zero lovelace; the ledger's Byron to Shelley
+        // translation drops them (`translateUTxOByronToShelley`), so the Shelley UTxO never holds them.
+        .map(
+          _.toVector
+            .filterNot((_, coin) => scala.util.Try(BigInt(coin)).toOption.contains(BigInt(0)))
+        )
+        .flatMap(_.traverse { case (b58, coin) =>
           Base58
             .decode(b58)
             .toRight(ConfigError(s"byron address $b58"))

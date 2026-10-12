@@ -13,7 +13,10 @@ Evidence kinds:
 - **Devnet**: `scripts/devnet.py` scenarios against a Haskell cluster, see [running.md](running.md).
 - **Preview sync**: following the public Preview testnet from genesis (every block checked against
   our rules; the chain is the oracle, so it shows we do not reject valid blocks, not that our ledger
-  state is identical, see K1).
+  state is identical; the next kind does).
+- **Ledger oracle** (K1): at the first block of every epoch the Scala ledger state is compared field
+  by field (large maps by digest) with the state the Haskell `db-analyser` stores after the same block,
+  on a devnet cluster and on Preview. See [running.md](running.md) and the evidence log.
 
 Status values: **implemented**, **partial**, **not implemented**.
 

@@ -22,12 +22,18 @@ object Stake:
       c -> (fromUtxo.getOrElse(c, BigInt(0)) + a.balance)
     }.toMap
 
-  /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. */
+  /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. A
+    * credential without stake (no UTxO behind it and no rewards) is left out of both maps, as the
+    * ledger's `resolveActiveInstantStakeCredentials` does (it keeps the non-zero active stake only;
+    * found by the db-analyser comparison, roadmap K1). Rewards and the leader schedule do not see
+    * the difference.
+    */
   def snapshot(state: LedgerState, pointers: Boolean = true): Snapshot =
-    val delegations = state.accounts.iterator.flatMap { (c, a) =>
+    val registered = state.accounts.iterator.flatMap { (c, a) =>
       a.pool.filter(state.pools.contains).map(c -> _)
     }.toMap
     val stake = instantWith(state, pointers && state.params.protocolMajor < 9).filter {
-      case (c, _) => delegations.contains(c)
+      case (c, coin) => coin > 0 && registered.contains(c)
     }
+    val delegations = registered.filter((c, _) => stake.contains(c))
     Snapshot(stake, delegations, state.pools.map { case (id, p) => id -> p.params })

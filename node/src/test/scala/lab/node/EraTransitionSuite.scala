@@ -608,8 +608,9 @@ class EraTransitionSuite extends CatsEffectSuite:
               setup.globals,
               setup.byronRules,
               utxoStore = Some(store),
-              afterBlock =
-                Some(s => IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
+              afterBlock = Some((_, s) =>
+                IO.delay(Verification.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce))
+              )
             )
             last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.start) { (state, batch) =>
               Verification.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>

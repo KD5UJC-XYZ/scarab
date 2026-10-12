@@ -16,8 +16,14 @@ def follow(args):
                "--query-port", str(QUERY_PORT)]
     if args.seconds:
         program += ["--seconds", str(args.seconds)]
+    mounts = [f"{root / 'genesis'}:/genesis:ro"]
+    if getattr(args, "dump_state", False):
+        # state digests at every epoch boundary for the db-analyser comparison (`devnet.py oracle`)
+        (root / "dump").mkdir(exist_ok=True)
+        program += ["--dump-state", "/dump", "--dump-state-at", "epoch-boundaries"]
+        mounts.append(f"{root / 'dump'}:/dump")
     command = scala_container(args, root, classpath, "lab.node.Main", program,
-                              mounts=[f"{root / 'genesis'}:/genesis:ro"], name=f"{args.name}-scala")
+                              mounts=mounts, name=f"{args.name}-scala")
     with log.open("a") as out:
         proc = subprocess.Popen(["docker", *command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in proc.stdout:
@@ -27,8 +33,9 @@ def follow(args):
         sys.exit(proc.wait())
 
 
-def start_follower(name, root):
-    return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow"],
+def start_follower(name, root, oracle=False):
+    return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow",
+                             *(["--dump-state"] if oracle else [])],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

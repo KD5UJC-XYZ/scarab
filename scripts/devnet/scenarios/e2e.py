@@ -169,7 +169,7 @@ def e2e(args):
 
         def nodes_up(_root):
             nonlocal follower
-            follower = start_follower(args.name, root)
+            follower = start_follower(args.name, root, oracle=args.oracle)
 
         def pools_ready(driver):
             nonlocal loader, worker
@@ -234,6 +234,14 @@ def e2e(args):
             failures.append(f"stopped without reaching Conway epoch {target}: {reason}")
         if not args.no_compare:
             failures += judge_comparisons(comparisons, args.min_comparisons, loader is not None)
+        if args.oracle:
+            from oracle import devnet as oracle_devnet
+            docker("rm", "-f", f"{args.name}-scala", check=False)  # no digests are written during the comparison
+            follower.wait()
+            summary["oracle"], oracle_failures = oracle_devnet.run(
+                args.name, root, log=lambda m: print(json.dumps(m), flush=True))
+            summary["oracle"].pop("results", None)  # the per-epoch rows are in oracle-summary.json
+            failures += oracle_failures
         if loader is not None and loader.stats.get("unexpected"):
             failures.append(f"{loader.stats['unexpected']} submissions that must be rejected were accepted or "
                             f"rejected for another reason: {[e for e in loader.evidence if e['verdict'] != 'expected'][:3]}")

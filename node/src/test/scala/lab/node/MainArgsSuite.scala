@@ -34,3 +34,23 @@ class MainArgsSuite extends munit.FunSuite:
   test("a flag without a value is a ConfigError") {
     assert(Main.parse(base ++ List("--seconds")).isLeft)
   }
+
+  test("--dump-state takes a directory and optional points; the points alone are refused") {
+    val on = Main.parse(base ++ List("--dump-state", "/d")).toOption.get
+    assertEquals(
+      on.dumpState,
+      Some((java.nio.file.Path.of("/d"), StateDump.Targets.EpochBoundaries(1)))
+    )
+    assertEquals(on.dumpStateFull, false)
+    val slots = Main
+      .parse(base ++ List("--dump-state", "/d", "--dump-state-at", "100,200", "--dump-state-full"))
+      .toOption
+      .get
+    assertEquals(
+      slots.dumpState.map(_._2),
+      Some(StateDump.Targets.Slots(List(BigInt(100), BigInt(200))))
+    )
+    assertEquals(slots.dumpStateFull, true)
+    assert(Main.parse(base ++ List("--dump-state-at", "100")).isLeft)
+    assert(Main.parse(base ++ List("--dump-state", "/d", "--dump-state-at", "later")).isLeft)
+  }
