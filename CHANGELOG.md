@@ -115,6 +115,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20` (running.md); the devnet node does.
 
 ### Verification
+- Upstream Plutus conformance (roadmap I1): `PlutusConformanceSuite` runs the 1009 evaluation cases of
+  `plutus-conformance` at plutus 1.70.0.0 (commit 507cab8, vendored under
+  `node/src/test/resources/plutus-conformance-1.70.0.0`) through `ScalusEvaluator` (Plutus V3,
+  protocol 11, semantics variant E): parse errors, evaluation failures, result terms up to renaming
+  and budgets, also of failing evaluations. 987 pass; the 22 that do not are listed with their
+  class in `plutus-conformance-1.70.0.0-known.txt` and the suite fails on any change in either
+  direction. `ScalusConformanceReproducersSuite` reproduces the Scalus deviations found (malformed
+  `value` constants accepted, `case` on `Data.Constr`, `hashToGroup` with long or arbitrary DSTs,
+  BLS constants in flat, wrapped spent units). Part of `check` (about 5 s). The plutus parameter-name
+  lists used as test data were missing four constructors and are regenerated from the source.
 - Ledger-state oracle (roadmap K1, `scripts/oracle/`, `scripts/oracle_compare.py`): `follow --dump-state`
   writes a digest of the ledger state at every epoch boundary (or at chosen slots); the reference image's
   `db-analyser` stores the Haskell state after the same block, which is decoded (UTxO-HD `MemPack`

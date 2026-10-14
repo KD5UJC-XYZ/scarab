@@ -7,3 +7,8 @@ Data from IntersectMBO/plutus tag 1.70.0.0 (Apache-2.0), unmodified except where
   the on-chain cost model parameter list), one per line.
 
 Used by `BuiltinCostingSuite`.
+
+The parameter-name lists were regenerated for `PlutusConformanceSuite` from all constructors of
+`data ParamName`; the first version missed the first constructor after a comment (`| -- Plomin`).
+`PlutusConformanceSuite` also uses `V3-param-names.txt`, `builtinCostModelE.json` and
+`cekMachineCostsE.json`.

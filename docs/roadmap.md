@@ -86,7 +86,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 
 ## I. Plutus (P2)
 
-- **I1** [#42](https://github.com/KD5UJC-XYZ/scarab/issues/42) Conformance: run the upstream Plutus conformance suite against our `ScriptEvaluator`.
+- **I1** [#42](https://github.com/KD5UJC-XYZ/scarab/issues/42) (done) Conformance: run the upstream Plutus conformance suite against our `ScriptEvaluator`. `PlutusConformanceSuite` runs the 1009 evaluation cases of `plutus-conformance` at plutus 1.70.0.0 (commit 507cab8) through `ScalusEvaluator` (Plutus V3, protocol 11, semantics variant E, cost model from the plutus JSON): 987 pass (result term and budget), 22 fail for known reasons, all listed with their classification (`plutus-conformance-1.70.0.0-known.txt`; 11 cases of 4 Scalus deviations, reproduced in `ScalusConformanceReproducersSuite`, and 11 cases out of scope for the evaluator path). It runs in about 5 s and is part of `check`.
 - **I2** [#43](https://github.com/KD5UJC-XYZ/scarab/issues/43) Own evaluator. Decide on our own CEK machine versus staying on Scalus, then differential-test it against Scalus and the conformance suite.
 
 - **I3** [#44](https://github.com/KD5UJC-XYZ/scarab/issues/44) Drive Plutus V1 and V2 scripts in the devnet load (`scripts/devnet/eraload.py` TODO) so the Haskell comparator covers them; today they are verified by the Preview sync and unit/oracle tests only.

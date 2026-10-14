@@ -1,0 +1,25 @@
+# Conformance cases of plutus 1.70.0.0 that fail through ScalusEvaluator (Scalus 1.2.0), one per line:
+# <case><TAB><class><TAB><reason>. Classes: (ii) a Scalus deviation, reproduced in
+# ScalusConformanceReproducersSuite; (iii) a suite feature out of scope for the evaluator path.
+builtin/parser/bls12-381/G1/on-curve-bit3-clear	(iii)	BLS12-381 constants have no flat encoding; Scalus's encoder writes an uncompress application
+builtin/parser/bls12-381/G1/on-curve-bit3-set	(iii)	same
+builtin/parser/bls12-381/G1/zero	(iii)	same
+builtin/parser/bls12-381/G2/on-curve-bit3-clear	(iii)	same
+builtin/parser/bls12-381/G2/on-curve-bit3-set	(iii)	same
+builtin/parser/bls12-381/G2/zero	(iii)	same
+builtin/parser/value/currencyIDs-unordered	(ii)	flat decoding accepts a value with unordered currency symbols
+builtin/parser/value/duplicate-currencyIDs	(ii)	flat decoding accepts a value with a repeated currency symbol
+builtin/parser/value/duplicate-tokenIDs	(ii)	flat decoding accepts a value with a repeated token name
+builtin/parser/value/empty-tokens	(ii)	flat decoding accepts a value with an empty inner map
+builtin/parser/value/tokenIDs-unordered	(ii)	flat decoding accepts a value with unordered token names
+builtin/parser/value/zero-asset	(ii)	flat decoding accepts a value with a zero quantity
+builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst	(ii)	hashToGroup with the 32 byte hash of an oversize DST differs
+builtin/semantics/bls12_381_G1_hashToGroup/hash-dst-len-255	(ii)	hashToGroup with a DST of 255 bytes differs
+builtin/semantics/bls12_381_G2_hashToGroup/hash-dst-len-255	(ii)	same for G2
+builtin/semantics/dropList/dropList-09	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget as the suite says it may
+builtin/semantics/dropList/dropList-10	(iii)	same
+builtin/semantics/dropList/dropList-14	(iii)	same
+builtin/semantics/dropList/dropList-15	(iii)	same
+builtin/semantics/dropList/dropList-16	(iii)	same
+term/constant-case/data/data-01	(ii)	case on Data.Constr applies the branch to the tag and the fields, the reference to the fields
+term/constant-case/data/data-02	(ii)	same
