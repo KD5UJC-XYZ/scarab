@@ -57,6 +57,21 @@ class GeneratorSuite extends munit.FunSuite:
     assertEquals(schema.rule(QName("byron", "u16")).body, RuleBody.Type(RT.IntRange(0, 65535)))
   }
 
+  test(
+    "the RFC 8610 prelude names that cuddle's postlude defines resolve (found by the cross-check)"
+  ) {
+    // byron.cddl uses `bigint` and `encoded-cbor` without defining them
+    // resolving used to throw UnresolvedName("byron", "bigint")
+    assert(schema.rule(QName("byron", "bvermod")).body.isInstanceOf[RuleBody.Type])
+    val out = generateFrom(
+      "r = [bigint, encoded-cbor, tdate, uri]\n",
+      "root t:r\n"
+    ).fold(e => fail(e.message), identity)
+    val text = out.values.mkString
+    assert(text.contains("rt.Codec.tagged(BigInt(24), rt.Codec.bytes)"), text)
+    assert(text.contains("case Tag2(value: rt.Bytes)") && text.contains("case Tag3"), text)
+  }
+
   test("sockets accumulate: $x /= a, $x /= b is a choice") {
     assertEquals(
       schema.rule(QName("features", "$crypto_alg")).body,

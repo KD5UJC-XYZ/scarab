@@ -139,6 +139,13 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   reference node's mempool does; from 11 the GOV rule does (`ConwayMempoolFailure`).
 
 ### Build, CI and structure
+- Models cross-check against cuddle, upstream's Haskell CDDL tool (roadmap K10): `docker/cuddle.Dockerfile`
+  builds cuddle 1.8.1.0 (pinned GHC, Hackage index and base images), `scripts/cddl_crosscheck.py` runs
+  cuddle-generated terms through the generated codecs (byte-exact re-encoding, plus indefinite-length
+  variants), our sampler's terms through `cuddle validate-cbor`, and compares the rule sets of all 27
+  vendored CDDL files; known divergences are asserted in `models-spike/cuddle-allowlist.tsv`.
+  Workflow `cuddle-crosscheck.yml` (on CDDL and generator changes, and nightly). Found and fixed: the
+  generator lacked the RFC 8610 prelude (`bigint`, `encoded-cbor`, `tdate`, ...), which Byron's CDDL uses.
 - Dependabot alerts: http4s 0.23.30 to 0.23.37 (ember request smuggling and HTTP/2 denial of
   service), circe 0.14.10 to 0.14.16 (brings jawn-parser 1.7.0), fs2 3.11.0 to 3.14.0 (the 3.12.2
   fix; http4s 0.23.37 resolves 3.14.0), cats-effect 3.6.3 to 3.7.1, cats-mtl 1.6.0 to 1.7.0. fs2 3.13

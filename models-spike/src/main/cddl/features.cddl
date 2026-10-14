@@ -100,3 +100,7 @@ key_descriptor = [$crypto_alg, bytes .size 32]
 
 ; A text-keyed map and booleans/nulls.
 person = { "name" : tstr, ? "age" : uint .size 1, ? "tags" : [* tstr], "active" : bool, ? "parent" : person / nil }
+
+; Names of the RFC 8610 prelude (appendix D). cuddle's postlude defines them; the cuddle cross-check found that the
+; generator's own prelude did not (the Byron specification uses `bigint` and `encoded-cbor`).
+prelude_use = [amount : bigint, embedded : encoded-cbor, when : tdate, count : unsigned, total : integer]
