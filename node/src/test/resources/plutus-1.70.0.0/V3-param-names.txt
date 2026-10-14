@@ -249,6 +249,7 @@ ByteStringToInteger'cpu'arguments'c1
 ByteStringToInteger'cpu'arguments'c2
 ByteStringToInteger'memory'arguments'intercept
 ByteStringToInteger'memory'arguments'slope
+AndByteString'cpu'arguments'intercept
 AndByteString'cpu'arguments'slope1
 AndByteString'cpu'arguments'slope2
 AndByteString'memory'arguments'intercept
@@ -294,6 +295,7 @@ FindFirstSetBit'memory'arguments
 Ripemd_160'cpu'arguments'intercept
 Ripemd_160'cpu'arguments'slope
 Ripemd_160'memory'arguments
+ExpModInteger'cpu'arguments'coefficient00
 ExpModInteger'cpu'arguments'coefficient11
 ExpModInteger'cpu'arguments'coefficient12
 ExpModInteger'memory'arguments'intercept
@@ -346,6 +348,7 @@ ScaleValue'cpu'arguments'intercept
 ScaleValue'cpu'arguments'slope
 ScaleValue'memory'arguments'intercept
 ScaleValue'memory'arguments'slope
+MultiIndexArray'cpu'arguments'c0
 MultiIndexArray'cpu'arguments'c1
 MultiIndexArray'cpu'arguments'c2
 MultiIndexArray'memory'arguments'intercept

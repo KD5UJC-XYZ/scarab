@@ -164,6 +164,7 @@ UnMapData'memory'arguments
 VerifyEd25519Signature'cpu'arguments'intercept
 VerifyEd25519Signature'cpu'arguments'slope
 VerifyEd25519Signature'memory'arguments
+SerialiseData'cpu'arguments'intercept
 SerialiseData'cpu'arguments'slope
 SerialiseData'memory'arguments'intercept
 SerialiseData'memory'arguments'slope
@@ -329,6 +330,7 @@ ScaleValue'cpu'arguments'intercept
 ScaleValue'cpu'arguments'slope
 ScaleValue'memory'arguments'intercept
 ScaleValue'memory'arguments'slope
+MultiIndexArray'cpu'arguments'c0
 MultiIndexArray'cpu'arguments'c1
 MultiIndexArray'cpu'arguments'c2
 MultiIndexArray'memory'arguments'intercept
