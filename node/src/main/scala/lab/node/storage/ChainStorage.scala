@@ -2,15 +2,27 @@
 package lab.node.storage
 
 import cats.effect.{Async, Clock, Ref, Resource}
-import cats.effect.std.Supervisor
+import cats.effect.std.{Mutex, Supervisor}
 import cats.effect.syntax.all.*
-import cats.mtl.Raise
+import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
 import lab.cbor.Bytes
 import lab.network.ChainSync
-import lab.node.{Anchor, Block, BlockRef, BlockRules, ChainError, StorageError}
+import lab.node.{
+  Anchor,
+  Block,
+  BlockRef,
+  BlockRules,
+  ChainError,
+  NetworkIdentity,
+  NodeError,
+  StorageError,
+  VolatileChain
+}
+import lab.node.Compute
+import lab.node.consensus.SelectView
 import scala.concurrent.duration.*
 
 /** Observable storage milestones, for the JSON log. */
@@ -23,6 +35,19 @@ enum StorageEvent:
   case ReplayStarted(from: Option[BlockRef], tip: Option[BlockRef])
   case ReplayProgress(at: BlockRef, replayed: Long, millis: Long)
   case ReplayFinished(at: Option[BlockRef], replayed: Long, millis: Long)
+  case NetworkRecorded(identity: NetworkIdentity, adopted: Boolean)
+  case VolatileOpened(report: VolatileStore.OpenReport)
+
+  /** The volatile chain was rebuilt from the log: `resumed` blocks applied on top of the immutable
+    * state, `dropped` logged blocks after the immutable tip that were not (they do not apply, or
+    * there were more than `k`) and will be fetched again.
+    */
+  case VolatileResumed(resumed: Int, dropped: Int, millis: Long)
+
+  /** The shutdown snapshot: `written` is false when the last snapshot already was at the immutable
+    * tip (or there was nothing to snapshot).
+    */
+  case ShutdownSnapshot(anchor: Option[BlockRef], written: Boolean)
 
 trait StorageEvents[F[_]]:
   def emit(event: StorageEvent): F[Unit]
@@ -50,10 +75,15 @@ object ChainPersistence:
       cats.Applicative[F].unit
     def rolledBack(to: ChainSync.Point) = cats.Applicative[F].unit
 
-/** The ChainDB: an [[ImmutableStore]] and [[LedgerSnapshots]] under one directory. The volatile
-  * part (the last `k` blocks) stays in memory and is re-fetched from the peer after a restart.
+/** The ChainDB: an [[ImmutableStore]], [[LedgerSnapshots]] and a [[VolatileStore]] under one
+  * directory, and the network identity the database was created for ([[NetworkIdentityFile]]).
   *
-  * Layout: `<dir>/immutable/` and `<dir>/snapshots/`.
+  * The volatile part (the last `k` blocks) lives in memory, with a log of its updates on disk:
+  * after a restart [[resume]] applies the logged blocks on top of the immutable state, so the node
+  * continues at its previous tip. A graceful stop (the resource is released) writes a snapshot at
+  * the immutable tip, so the next start replays no stored block.
+  *
+  * Layout: `<dir>/network-identity`, `<dir>/immutable/`, `<dir>/snapshots/`, `<dir>/volatile/`.
   */
 object ChainStorage:
   /** Stored blocks are prepared this many at a time during replay. */
@@ -68,7 +98,17 @@ object ChainStorage:
         */
       byronEpochSlots: BigInt,
       /** Replay progress is reported every this many blocks. */
-      progressEvery: Int = 20000
+      progressEvery: Int = 20000,
+      /** The network the database must belong to; none: not recorded or checked (tests). */
+      identity: Option[NetworkIdentity] = None,
+      /** Blocks per volatile log file. */
+      volatileFileBlocks: Int = 512,
+      /** Blocks that become immutable between two forced syncs of the immutable store, each
+        * followed by a collection of the log files wholly below the immutable tip. The sync is what
+        * makes collecting safe, and it is a disk flush on the apply path, so it is rare: the log
+        * keeps up to this many blocks beyond the `k` it needs.
+        */
+      volatileCollectBlocks: Int = 4096
   )
 
   /** The node state recovered from disk, ready to anchor a [[lab.node.VolatileChain]]. */
@@ -76,8 +116,17 @@ object ChainStorage:
       anchor: Option[BlockRef],
       state: S,
       persistence: ChainPersistence[F, S],
-      store: ImmutableStore[F]
+      store: ImmutableStore[F],
+      /** The chain the volatile log describes, not yet validated (see [[resume]]). */
+      volatile: Vector[(BlockRef, Bytes)],
+      /** Make `blocks` (a prefix of the logged chain that was validated) the persistence's pending
+        * blocks, and cut the log back to them.
+        */
+      adopt: Vector[(BlockRef, Bytes)] => F[Unit]
   )
+
+  /** A volatile block rebuilt by [[resume]]. */
+  final case class Resumed[S](ref: BlockRef, raw: Bytes, state: S, view: SelectView)
 
   def open[F[_]: Async, S](
       dir: Path,
@@ -89,7 +138,9 @@ object ChainStorage:
       /** Called with each batch of stored blocks just before they are applied (verification that
         * does not depend on the state can run ahead, in parallel).
         */
-      prepare: Vector[Bytes] => F[Unit]
+      prepare: Vector[Bytes] => F[Unit],
+      /** The CPU pool the replay runs on (D8); without one, on the calling fiber's pool. */
+      compute: Option[Compute[F]] = None
   )(using
       Codec[StateSnapshot[S]],
       Raise[F, StorageError],
@@ -97,9 +148,26 @@ object ChainStorage:
   ): Resource[F, Recovered[F, S]] =
     val F = Async[F]
     for
+      // The recorded identity is checked before anything else is opened.
+      recorded <- Resource.eval(
+        config.identity.fold(F.pure(true))(NetworkIdentityFile.verify[F](dir, _))
+      )
       opened <- FileImmutableStore.open[F](dir / "immutable", config.chunkSlots)
       (store, report) = opened
       _ <- Resource.eval(events.emit(StorageEvent.ImmutableOpened(report)))
+      // A database from before the identity existed is adopted if its first block fits the genesis.
+      _ <- Resource.eval(
+        config.identity.traverse_ { identity =>
+          F.unlessA(recorded)(
+            NetworkIdentityFile
+              .adopt[F](dir, identity, firstPredecessor(store, config.byronEpochSlots))
+              .productR(events.emit(StorageEvent.NetworkRecorded(identity, report.blocks > 0)))
+          )
+        }
+      )
+      volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
+      (volatile, logged) = volatileOpened
+      _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
       snapshots <- Resource.eval(
         FileLedgerSnapshots.open[F, S](dir / "snapshots", config.keepSnapshots)
       )
@@ -129,24 +197,125 @@ object ChainStorage:
       pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
       busy <- Resource.eval(Ref.of[F, Boolean](false))
+      latest <- Resource.eval(Ref.of[F, Option[(BlockRef, S)]](None))
+      written <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
+      sinceCollect <- Resource.eval(Ref.of[F, Int](0))
+      snapshotLock <- Resource.eval(Mutex[F])
       persistence = new Persistence[F, S](
         store,
         snapshots,
+        volatile,
         supervisor,
         events,
         config,
         pending,
         lastSlot,
         busy,
+        latest,
+        written,
+        sinceCollect,
+        snapshotLock,
         backing
       )
+      // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
+      _ <- Resource.onFinalize(persistence.shutdownSnapshot)
       end <- Resource.eval(store.tip)
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
       replayed <- Resource.eval(
-        replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
+        compute.fold(identity[F[(Option[BlockRef], S)]])(c => c.within[(Option[BlockRef], S)])(
+          replay(store, rules, persistence, config, events, prepare, start._1, start._2, began)
+        )
       )
-    yield Recovered(replayed._1, replayed._2, persistence, store)
+    yield Recovered(
+      replayed._1,
+      replayed._2,
+      persistence,
+      store,
+      logged.chain,
+      persistence.adopt
+    )
+
+  /** What the first stored block names as its predecessor (none: the store holds no block). */
+  private def firstPredecessor[F[_]: Async](
+      store: ImmutableStore[F],
+      byronEpochSlots: BigInt
+  )(using Raise[F, StorageError]): F[Option[Option[Bytes]]] =
+    store.stream(ChainSync.Point.Origin).take(1).compile.last.flatMap {
+      case None => Async[F].pure(None)
+      case Some(stored) =>
+        Block.decode(stored.raw, byronEpochSlots) match
+          case Right(b) => Async[F].pure(Some(b.header.prevHash))
+          case Left(e) =>
+            StorageError
+              .Corrupt("first immutable block", e.message)
+              .raise[F, Option[Option[Bytes]]]
+    }
+
+  /** Rebuild the volatile chain from the log: apply the logged blocks after the immutable tip, in
+    * order, on top of the recovered state. Blocks that do not connect or that the rules refuse end
+    * the chain there (the rest is fetched again, and the log is cut back); a log with more than `k`
+    * blocks after the immutable tip (the immutable store lost an unforced tail) resumes the first
+    * `k`. The result is the volatile chain the node continues from.
+    */
+  def resume[F[_]: Async, S](
+      recovered: Recovered[F, S],
+      k: Int,
+      origin: Option[Bytes],
+      rules: BlockRules[F, S],
+      byronEpochSlots: BigInt,
+      events: StorageEvents[F],
+      prepare: Vector[Bytes] => F[Unit],
+      compute: Option[Compute[F]] = None
+  )(using handle: Handle[F, NodeError]): F[Vector[Resumed[S]]] =
+    val F = Async[F]
+    val anchor = recovered.anchor
+    val after = anchor.fold(recovered.volatile) { a =>
+      val i = recovered.volatile.indexWhere(_._1.hash == a.hash)
+      if i >= 0 then recovered.volatile.drop(i + 1)
+      else recovered.volatile.dropWhile(_._1.slot <= a.slot)
+    }
+    val candidates = after.take(k)
+    val start = VolatileChain[S](k, Anchor(anchor, recovered.state), Vector.empty, origin)
+    def go(
+        chain: VolatileChain[S],
+        todo: List[(BlockRef, Bytes)],
+        done: Vector[Resumed[S]]
+    ): F[Vector[Resumed[S]]] = todo match
+      case Nil => F.pure(done)
+      case (ref, raw) :: rest =>
+        Block.decode(raw, byronEpochSlots) match
+          case Left(_) => F.pure(done)
+          case Right(block) =>
+            val header = block.header
+            if header.hash != ref.hash then F.pure(done)
+            else
+              handle.attempt(rules(chain.state, header, raw)).flatMap {
+                case Left(_) => F.pure(done)
+                case Right(next) =>
+                  chain.extend(header, next) match
+                    case Left(_) => F.pure(done)
+                    case Right((grown, _)) =>
+                      F.cede *> go(
+                        grown,
+                        rest,
+                        done :+ Resumed(ref, raw, next, SelectView.of(header))
+                      )
+              }
+    for
+      began <- Clock[F].monotonic
+      _ <- prepare(candidates.map(_._2))
+      resumed <- compute.fold(go(start, candidates.toList, Vector.empty))(
+        _.within(go(start, candidates.toList, Vector.empty))
+      )
+      _ <- recovered.adopt(resumed.map(r => r.ref -> r.raw))
+      dropped = after.size - resumed.size
+      _ <- F.whenA(dropped > 0)(
+        recovered.persistence.rolledBack(resumed.lastOption.fold(start.anchor.point)(_.ref.point))
+      )
+      done <- Clock[F].monotonic
+      _ <- events.emit(StorageEvent.VolatileResumed(resumed.size, dropped, (done - began).toMillis))
+    yield resumed
 
   /** Re-apply the stored blocks after `from`, with no network. */
   private def replay[F[_]: Async, S](
@@ -177,6 +346,8 @@ object ChainStorage:
             case Left(e)  => e.raise[F, Block]
           next <- rules(acc.state, block.header, stored.raw)
           _ <- persistence.advanced(stored.ref, next)
+          // Replay is one long loop: let the other fibers (timers, the query server) run.
+          _ <- F.cede
           count = acc.count + 1
           _ <- F.whenA(count % config.progressEvery == 0)(
             elapsed.flatMap(ms => events.emit(StorageEvent.ReplayProgress(stored.ref, count, ms)))
@@ -195,77 +366,142 @@ object ChainStorage:
   private final class Persistence[F[_]: Async, S](
       store: ImmutableStore[F],
       snapshots: LedgerSnapshots[F, S],
+      volatile: VolatileStore[F],
       supervisor: Supervisor[F],
       events: StorageEvents[F],
       config: Config,
       pending: Ref[F, Vector[(BlockRef, Bytes)]],
       lastSlot: Ref[F, BigInt],
       busy: Ref[F, Boolean],
+      /** The immutable tip and the state after it, as the backing store stands. */
+      latest: Ref[F, Option[(BlockRef, S)]],
+      /** The anchor of the newest snapshot on disk. */
+      written: Ref[F, Option[BlockRef]],
+      /** Blocks that became immutable since the volatile log was last collected. */
+      sinceCollect: Ref[F, Int],
+      snapshotLock: Mutex[F],
       backing: StateBacking[F, S]
   )(using Raise[F, StorageError])
       extends ChainPersistence[F, S]:
     private val F = Async[F]
 
+    /** A block is logged, kept pending, and when blocks age past `k` appended to the immutable
+      * store and the backing store moved: all or nothing, so a stop (cancellation) never leaves the
+      * stores between two blocks.
+      */
     def extended(
         ref: BlockRef,
         raw: Bytes,
         immutable: Vector[BlockRef],
         anchor: Anchor[S]
     ): F[Unit] =
-      pending.update(_ :+ (ref -> raw)) *>
-        F.whenA(immutable.nonEmpty) {
-          for
-            batch <- pending.modify(p => (p.drop(immutable.size), p.take(immutable.size)))
-            _ <- F.unlessA(batch.map(_._1) == immutable)(
-              StorageError
-                .OutOfOrder("volatile blocks do not match the new immutable ones")
-                .raise[F, Unit]
-            )
-            _ <- batch.traverse_((r, b) => store.append(r, b))
-            _ <- anchor.block.traverse_(advanced(_, anchor.state))
-          yield ()
+      F.uncancelable { _ =>
+        volatile.append(ref, raw) *>
+          pending.update(_ :+ (ref -> raw)) *>
+          F.whenA(immutable.nonEmpty) {
+            for
+              batch <- pending.modify(p => (p.drop(immutable.size), p.take(immutable.size)))
+              _ <- F.unlessA(batch.map(_._1) == immutable)(
+                StorageError
+                  .OutOfOrder("volatile blocks do not match the new immutable ones")
+                  .raise[F, Unit]
+              )
+              _ <- batch.traverse_((r, b) => store.append(r, b))
+              _ <- anchor.block.traverse_(advanced(_, anchor.state))
+              _ <- collect(batch.size, anchor.block)
+            yield ()
+          }
+      }
+
+    /** The volatile log keeps blocks that are already immutable until a file is wholly below the
+      * immutable tip. Collecting forces the immutable store first: the log is what protects a block
+      * the immutable store has not yet made durable.
+      */
+    private def collect(added: Int, tip: Option[BlockRef]): F[Unit] =
+      sinceCollect.updateAndGet(_ + added).flatMap { n =>
+        F.whenA(n >= config.volatileCollectBlocks) {
+          tip.traverse_(t => store.sync *> volatile.gc(t.slot)) *> sinceCollect.set(0)
         }
+      }
 
     def rolledBack(to: ChainSync.Point): F[Unit] =
-      pending.update { p =>
-        val index = p.indexWhere(_._1.point == to)
-        if index >= 0 then p.take(index + 1) else Vector.empty
+      F.uncancelable { _ =>
+        volatile.rollback(to) *> pending.update { p =>
+          val index = p.indexWhere(_._1.point == to)
+          if index >= 0 then p.take(index + 1) else Vector.empty
+        }
       }
+
+    /** The logged chain after the immutable tip (validated by the caller) becomes pending. */
+    def adopt(blocks: Vector[(BlockRef, Bytes)]): F[Unit] = pending.set(blocks)
 
     /** The immutable tip is now `ref`, with `state` after it: bring the backing store to it and
       * snapshot when the policy says so. The backing checkpoint is taken here, before the snapshot
       * is written in the background, because the store keeps moving with the chain.
       */
     def advanced(ref: BlockRef, state: S): F[Unit] =
-      backing.advance(state) *> lastSlot.get.flatMap { last =>
-        F.whenA(ref.slot - last >= config.snapshotEverySlots) {
-          busy.getAndSet(true).flatMap {
-            case true => F.unit
-            case false =>
-              (for
-                _ <- lastSlot.set(ref.slot)
-                settled <- backing.settled(state)
-                _ <- backing.checkpoint(ref)
-                _ <- supervisor.supervise(snapshot(ref, settled).guarantee(busy.set(false)))
-              yield ()).onError(_ => busy.set(false))
+      F.uncancelable(_ => backing.advance(state) *> latest.set(Some(ref -> state))) *>
+        lastSlot.get.flatMap { last =>
+          F.whenA(ref.slot - last >= config.snapshotEverySlots) {
+            busy.getAndSet(true).flatMap {
+              case true => F.unit
+              case false =>
+                (for
+                  _ <- lastSlot.set(ref.slot)
+                  settled <- backing.settled(state)
+                  _ <- backing.checkpoint(ref)
+                  _ <- supervisor.supervise(
+                    snapshotLock.lock
+                      .surround(snapshot(ref, settled))
+                      .void
+                      .guarantee(busy.set(false))
+                  )
+                yield ()).onError(_ => busy.set(false))
+            }
           }
         }
-      }
 
-    private def snapshot(ref: BlockRef, state: S): F[Unit] =
+    /** Write a snapshot of `state` at `ref`; true if it was written (a failure is reported, not
+      * raised). Run under `snapshotLock`.
+      */
+    private def snapshot(ref: BlockRef, state: S): F[Boolean] =
       val began = Clock[F].monotonic
       (for
         t0 <- began
         _ <- store.sync
-        written <- snapshots.write(StateSnapshot(Some(ref), state))
+        written0 <- snapshots.write(StateSnapshot(Some(ref), state))
+        _ <- written.set(Some(ref))
         names <- snapshots.list
         _ <- backing.retain(names.map(_.stripSuffix(".bin")).toSet)
         t1 <- Clock[F].monotonic
         _ <- events.emit(
           StorageEvent
-            .SnapshotWritten(written.name, written.anchor, written.bytes, (t1 - t0).toMillis)
+            .SnapshotWritten(written0.name, written0.anchor, written0.bytes, (t1 - t0).toMillis)
         )
       yield ()).attempt.flatMap {
-        case Right(_) => F.unit
-        case Left(e)  => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e)))
+        case Right(_) => F.pure(true)
+        case Left(e)  => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e))).as(false)
       }
+
+    /** On release: wait for a snapshot in flight, then snapshot the immutable tip unless the newest
+      * snapshot already is there. Never fails: a snapshot that cannot be written only costs the
+      * next start a replay.
+      */
+    def shutdownSnapshot: F[Unit] =
+      val idle = (F.sleep(20.millis) *> busy.get).iterateUntil(b => !b)
+      val body = snapshotLock.lock.surround {
+        (latest.get, written.get).flatMapN {
+          case (Some((ref, state)), done) if !done.contains(ref) =>
+            (for
+              settled <- backing.settled(state)
+              _ <- backing.checkpoint(ref)
+              ok <- snapshot(ref, settled)
+              _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
+            yield ()).attempt.flatMap {
+              case Right(_) => F.unit
+              case Left(e)  => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e)))
+            }
+          case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
+        }
+      }
+      (idle.timeoutTo(2.minutes, F.pure(true)) *> body).attempt.void

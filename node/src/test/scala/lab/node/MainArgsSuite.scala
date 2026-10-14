@@ -34,3 +34,11 @@ class MainArgsSuite extends munit.FunSuite:
   test("a flag without a value is a ConfigError") {
     assert(Main.parse(base ++ List("--seconds")).isLeft)
   }
+
+  test("--cpu-threads takes zero (no pool) or a positive number, nothing else") {
+    assertEquals(Main.parse(base ++ List("--cpu-threads", "0")).toOption.get.cpuThreads, 0)
+    assertEquals(Main.parse(base ++ List("--cpu-threads", "3")).toOption.get.cpuThreads, 3)
+    assert(Main.parse(base ++ List("--cpu-threads", "-1")).isLeft)
+    assert(Main.parse(base ++ List("--cpu-threads", "many")).isLeft)
+    assert(Main.parse(base).toOption.get.cpuThreads >= 1)
+  }

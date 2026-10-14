@@ -30,7 +30,9 @@ final case class NodeSetup(
       * node-to-client client still lists the empty Byron era).
       */
     byronParams: Option[ByronGenesis] = None,
-    byronConfig: Option[ByronRules.Config] = None
+    byronConfig: Option[ByronRules.Config] = None,
+    /** Which network this configuration describes (recorded in a database, see D5). */
+    identity: NetworkIdentity
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
@@ -118,6 +120,11 @@ object NodeSetup:
         initial,
         BootstrapState.initial(lite),
         byronRules.fold(ByronState.initial)((ledger, _) => ByronState.starting(ledger))
+      ),
+      identity = NetworkIdentity(
+        genesis.networkMagic,
+        Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
+        byron.map(_.hash)
       ),
       byronParams = byronParams,
       byronConfig = byronRules.map(_._2)

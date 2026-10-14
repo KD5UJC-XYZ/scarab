@@ -155,3 +155,121 @@ it), slot 22,441,191, 0 error events, database 1.5 GB (immutable blocks, RocksDB
 Byron: 46 blocks, derived transition epoch 4; eras entered at epochs 4 (Shelley), 5, 6, 7 and 12.
 The tip (slot ~136M, about 6M blocks) was not reached; an earlier 50-minute run on a slightly earlier
 build (restart from the db after two minutes) agreed (epoch 54, 0 errors).
+
+## 6. Restart and scheduling (D4, D8)
+
+Measured on this branch (the commit is in [compatibility.md](compatibility.md) with the other
+evidence) against `origin/main` at 5ec40f8, "base", extracted and built separately. The sync runs:
+Preview from genesis, fresh `--db`, `follow --db`, 1860 s, `--seconds` ending the run (a graceful stop).
+**The host had a load average of 25 to 35 on 24 cores (other work, several syncs and clusters at the
+same time), so the absolute rates are about half of section 3's and only runs that were started
+together are comparable.** The base and the final build of each pair were started at the same second.
+Reproduce with the commands under "How to repeat" below.
+
+### Restart (D4)
+
+Preview, 6 CPUs, `-Xmx3g`, the database of the 6-CPU run above (epochs 74 to 80), the `k` = 432
+volatile blocks, `kill -9` with `docker kill -s KILL`:
+
+| start | what the log says | time from JVM start to the volatile chain being back |
+|---|---|---|
+| after the run's graceful stop (`--seconds`) | snapshot restored at the immutable tip, `replayFinished` 0 blocks, `volatileResumed` 432, 0 dropped | 4.7 s |
+| the same again, then `kill -9` 22 s later | restart: `replayFinished` 0, `volatileResumed` 432; the ChainSync intersection offered to the peer is the last block applied before the kill (slot 6,669,177), the next `extended` is the following block | 5.2 s |
+| after that `kill -9` (no shutdown snapshot) | newest periodic snapshot restored, `replayFinished` 16 stored blocks in 0.7 s, `volatileResumed` 432, 0 dropped; no error event | 3.3 s |
+| `docker stop` 23 s after start (an earlier run at epoch 44: stop to exit 1.2 s) | `shutdownSnapshot` written | |
+| start after that | `replayFinished` 0, `volatileResumed` 432 | 3.7 s |
+
+The 2.3 s restart recorded before D4 measured the snapshot restore; the node then reconnected and
+fetched and applied the last `k` blocks. It now applies those blocks from the log before it connects
+(2 to 5 s here, JVM still cold, the same rules), so the time to the tip is about the same and the
+range fetch is saved. A `kill -9` earlier in this branch's life, with the newest periodic snapshot an
+epoch behind, replayed 4,014 stored blocks in 66 s on a cold JVM and the loaded host; the shutdown
+snapshot is what removes that case for a graceful stop.
+
+Cost of the volatile log on the sync path (D4 only, `--cpu-threads 0`, 6 CPUs, started with the base):
+30,423 blocks against 31,617 after 120 s (-3.8%) and 69,809 against 70,787 after 300 s (-1.4%). The log forces
+the immutable store and collects its old files every 4,096 immutable blocks; at every 512 it was a flush
+on the apply path.
+
+### Scheduling (D8)
+
+**6 CPUs, `-Xmx3g`** (the flags of section 3), base and final together:
+
+| | base | final |
+|---|---|---|
+| blocks after 300 s / 600 s / 1200 s / 1800 s | 99,064 / 156,564 / 211,602 / 309,766 | 95,264 / 150,565 / 205,747 / 299,718 |
+| blocks in 1860 s, epochs reached | 318,481, 0 to 76 | 308,025, 0 to 74 |
+| difference after 1800 s | | -3.2% |
+| starvation warnings | 0 | 0 |
+| timer lateness (final, 88,524 samples of a 20 ms timer) | | max 116 ms, 45 over 50 ms, 4 over 100 ms |
+| longest CPU-bound step | | 167 ms (a block with Plutus scripts, epoch 58) |
+
+**1 CPU** (`--cpus 1`). The JVM then picks the serial collector, and its pauses stop every thread:
+
+| JVM flags | build | result |
+|---|---|---|
+| default (serial), `-Xmx3g` | early design (rules of each block on a thread pool) | 13 starvation warnings in 1,405 s, worst timer 674 ms; the GC log of a 420 s run of that kind: 7,595 collections, 11 of them full, longest 396 ms |
+| `-Xms3g -Xmx3g -XX:+UseG1GC` | base / final | 1 / 4 starvation warnings in 1860 s; 204 / 187 collections over 100 ms (the pause goal is 200 ms) |
+| the same, 10 min each, goal 200 / 40 / 20 ms | final | 1 / 0 / 0 warnings; timers over 100 ms: 19 / 1 / 0; 152 / 150 / 161 blocks/s |
+| `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, 1860 s | base | 205,713 blocks after 1800 s, **0** starvation warnings, longest collection 138 ms |
+| the same | final | 206,192 blocks after 1800 s (+0.2%), **0** starvation warnings, 0 timers over 100 ms (max 89 ms) of 75,426, 2,222 over 50 ms, longest collection 100 ms, longest CPU-bound step 512 ms (a Plutus block in epoch 8, cold JIT) |
+
+So with one CPU the starvation warnings came from the collector, not from the rules: with the flags in
+the last two rows the base build has none either. What the pool adds is that the follower's own work
+is not on the thread that serves the timers; the numbers above cannot show a gain from it, only that
+it costs less than 4%.
+
+Devnet `pool`, the Scala node as one of three pools (500-slot epochs of 0.1 s, f = 0.05; the oracle is
+the reference node's `query leadership-schedule`), final build, 480 s each, G1 with a 20 ms pause goal:
+
+| Scala container | runs | passed | scheduled slots per run | missed in the others | starvation warnings | worst timer lateness | longest step |
+|---|---|---|---|---|---|---|---|
+| 2 CPUs | 1 | 1 | 72 | | 0 | 22 ms | 39 ms |
+| 1 CPU | 14 | 11 | 58 to 93 | 17 of 71, 19 of 69, 16 of 88 | 0 in all 14 | 69 to 134 ms | 20 to 93 ms |
+| 1 CPU, base build (`5ec40f8`, scenario edited to give the container 1 CPU and the same JVM flags) | 6 | 5 | 73 to 95 | 24 of 89 | not measured | | |
+
+All comparisons matched (16/16 in each run). The three failing runs of the final build and the one of the
+base build have the same signature, and it is not the CPU: the forger logs nothing for the missed slots,
+and the Scala node's slot clock was one second behind the network's. In the runs whose log was kept, the
+blocks of the other pools reached the Scala node 0.99 s before their slot began by its clock (the
+final build's forged blocks were logged 1.0 s after their slot, in healthy runs 5 ms), so a leader slot of
+the Scala node finds the tip already at a later slot and is skipped without an event. Healthy runs show
+the forge at +5 ms and the arrivals at +14 ms. I did not find what makes the offset (the Scala node
+and the Haskell nodes read the same `systemStart`, and the base build has it too); the `pool` summary now
+carries `slotClock` (`forgeLatencyMs`, `arrivalMs`) and a failure that names it. So the 1-CPU check passes
+whenever the clocks agree, and the scheduling numbers of the failed runs are as good as the others'.
+
+### What did not work (the order matters)
+
+Each row is an earlier build of this branch, started at about the same time as a base run (the first
+two rows together with it, the others a few minutes later, so their percentages are less exact), blocks
+after 300 s (120 s where noted) against that base run's:
+
+| change | 6 CPUs | 1 CPU |
+|---|---|---|
+| the rules of each block and the verification on one fixed `ThreadPoolExecutor` | -33% (21.7k against 32.3k at 120 s) | -36% (10.4k against 16.3k at 120 s) |
+| the rules of each block on that pool, verification back on `blocking` threads | -48% (37.1k against 70.8k) | -23% (32.5k against 42.2k) |
+| the blocks of a ChainSync step applied as one `within` (fixed pool) | -18% (70.2k against 85.3k) | -15% (44.1k against 52.0k) |
+| the same on a second cats-effect work-stealing pool | -15% (72.6k against 85.3k) | -17% (43.4k against 52.0k) |
+| **the whole peer session on the work-stealing pool** (final) | **-3.8%** (95.3k against 99.1k) | **-1.9%** (53.6k against 54.6k) |
+
+(The session applies one header at a time, so a "batch" was one block and the third and fourth rows
+still crossed once per block.) Every hand-off between pools is a thread wake-up, which on a busy host
+is a scheduler delay in a chain of 400 sequential blocks a second; the cost is in how often the work crosses, not in what it
+does. Moving verification onto the same pool serialised it behind the rules, and putting it back on
+`blocking` threads recovered the throughput.
+
+### How to repeat
+
+```sh
+# base: git archive 5ec40f8 into a directory, build it there, freeze its classes (as devnet.py does)
+# final: freeze this checkout's classes; then, for each CPU count and JVM flags, in parallel:
+docker run --rm --cpus 1 --memory 10g -v <frozen classes>:/run/classes:ro ... cardano-scala-jdk:local \
+  java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -cp <classpath> lab.node.Main follow \
+  --genesis-dir <preview config> --peer preview-node.play.dev.cardano.org:3001 --db <fresh dir> --seconds 1860
+```
+
+The log's `extended` lines give blocks per second, the `scheduling` object of each `ledgerEpoch` and
+`epochValidated` line the timer lateness and the longest step, `-Xlog:gc` the collector's pauses, and the
+starvation warnings are lines containing `starvation-and-tuning`. `python3 scripts/devnet.py pool
+--scala-cpus 1 --max-starvation-warnings 0` is the devnet check.

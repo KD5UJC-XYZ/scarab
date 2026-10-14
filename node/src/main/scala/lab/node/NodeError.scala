@@ -60,12 +60,24 @@ enum StorageError extends NodeError:
   /** An append that does not extend the stored chain. */
   case OutOfOrder(reason: String)
 
+  /** The database was created for another network than the one this node is configured for. */
+  case NetworkMismatch(found: NetworkIdentity, expected: NetworkIdentity)
+
+  /** A database without a recorded identity whose first block does not follow the configured
+    * genesis (it belongs to another network, or to another genesis of the same one).
+    */
+  case ForeignChain(firstBlockPredecessor: String, expectedPredecessor: String)
+
   def message: String = this match
     case Corrupt(w, r)            => s"corrupt $w: $r"
     case Io(w, r)                 => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
     case Missing(w)               => s"missing $w"
     case OutOfOrder(r)            => s"out of order: $r"
+    case NetworkMismatch(f, e) =>
+      s"the database belongs to another network: it was created for ${f.describe}, this node is configured for ${e.describe}; use the matching --genesis-dir or another --db"
+    case ForeignChain(f, e) =>
+      s"the database holds a chain whose first block names $f as its predecessor, the configured genesis requires $e; use the matching --genesis-dir or another --db"
 
 /** Why this node cannot (or did not) forge a block. [[NotLeader]] is the ordinary answer of most
   * slots; the others are real problems with the keys, the ledger view or the assembled block.

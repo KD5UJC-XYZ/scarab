@@ -61,7 +61,9 @@ class FollowerSuite extends CatsEffectSuite:
   private def runPeers(
       peers: List[List[List[Either[PeerError, SyncEvent]]]],
       invalid: Set[Bytes] = Set.empty,
-      retries: Int = 3
+      retries: Int = 3,
+      compute: Option[Compute[IO]] = None,
+      applied: Option[Ref[IO, List[String]]] = None
   ): IO[(Either[NodeError, Unit], VolatileChain[BigInt], List[Vector[ChainSync.Point]])] =
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
@@ -70,13 +72,28 @@ class FollowerSuite extends CatsEffectSuite:
       outcome <- Handle
         .allow[NodeError] {
           for
-            follower <- Follower.create[IO, BigInt](rules(invalid), noEvents, geometry)
+            follower <- Follower.create[IO, BigInt](
+              applied.fold(rules(invalid))(log =>
+                (state, header, block) =>
+                  IO(Thread.currentThread.getName).flatMap(n => log.update(_ :+ n)) *>
+                    rules(invalid).apply(state, header, block)
+              ),
+              noEvents,
+              geometry,
+              compute = compute
+            )
             result <- Handle
               .allow[PeerError](
                 peers.parTraverse_ { sessions =>
                   scriptedPeers(sessions, offered).flatMap(connect =>
                     Follower
-                      .supervise(follower, connect, noEvents, Follower.Retry(retries, 1.milli))
+                      .supervise(
+                        follower,
+                        connect,
+                        noEvents,
+                        Follower.Retry(retries, 1.milli),
+                        compute
+                      )
                   )
                 }
               )
@@ -106,6 +123,27 @@ class FollowerSuite extends CatsEffectSuite:
         assertEquals(chain.tip, fork.last.point)
         assertEquals(chain.state, fork.last.blockNo)
         assertEquals(chain.anchor.block.map(_.hash), Some(main(3).hash))
+    }
+  }
+
+  test("with a CPU pool the sessions apply the blocks on it, and the chain is the same") {
+    val main = Fixtures.chain(8)
+    val fork = Fixtures.chain(3, salt = 1, from = Some(main(5)))
+    val script = main.map(forward).toList ++ List(backward(main(5))) ++ fork.map(forward)
+    SchedulingStats.create[IO].flatMap { stats =>
+      Compute.pool[IO](2, stats).use { pool =>
+        for
+          log <- Ref.of[IO, List[String]](Nil)
+          result <- runPeers(List(List(script)), compute = Some(pool), applied = Some(log))
+          names <- log.get
+          _ <- IO {
+            val (outcome, chain, _) = result
+            assertEquals(outcome, Right(()))
+            assertEquals(chain.tip, fork.last.point)
+            assert(names.nonEmpty && names.forall(_.startsWith("csl-cpu")), names.toString)
+          }
+        yield ()
+      }
     }
   }
 

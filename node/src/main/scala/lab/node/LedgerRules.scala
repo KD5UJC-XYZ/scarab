@@ -108,18 +108,36 @@ final class NodeRules[F[_]: Monad](
     /** Called with each state the rules produce (the node uses it to tell the verification pipeline
       * which epoch nonce is current).
       */
-    afterBlock: Option[NodeState => F[Unit]] = None
+    afterBlock: Option[NodeState => F[Unit]] = None,
+    /** Measures the pure rules (D8); without one they are not timed. */
+    compute: Option[Compute[F]] = None
 )(using
     Raise[F, ValidationError]
 ) extends BlockRules[F, NodeState]:
 
+  private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
+
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
     def run(s: NodeState, prepared: Option[NodeRules.Prepared]): F[NodeState] =
-      NodeRules
-        .applyBlock(s, header, raw, config, globals, byron, bootstrap, phase2Observer, prepared)
-        .fold(
-          (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
-          next => afterBlock.fold(next.pure[F])(f => f(next).as(next))
+      cpu
+        .timed(NodeRules.stepLabel(s))(
+          NodeRules.applyBlock(
+            s,
+            header,
+            raw,
+            config,
+            globals,
+            byron,
+            bootstrap,
+            phase2Observer,
+            prepared
+          )
+        )
+        .flatMap(
+          _.fold(
+            (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
+            next => afterBlock.fold(next.pure[F])(f => f(next).as(next))
+          )
         )
     (utxoStore, header) match
       case (Some(store), h: Header.Shelley) if !bootstrap =>
@@ -139,6 +157,20 @@ final class NodeRules[F[_]: Monad](
       case _ => run(state, None)
 
 object NodeRules:
+  /** The label a block application is recorded under: a block that crossed an epoch boundary or ran
+    * Plutus scripts says so, as those are the steps that take long.
+    */
+  private[node] def stepLabel(
+      before: NodeState
+  )(result: Either[(String, String), NodeState]): String =
+    result match
+      case Left(_) => "rejected"
+      case Right(after) =>
+        if after.ledger.epoch != before.ledger.epoch || after.boot.completed != before.boot.completed
+        then "epochBoundary"
+        else if after.ledger.plutus.scripts != before.ledger.plutus.scripts then "plutus"
+        else "block"
+
   /** A block decoded once for both the read-set fetch and the rules. */
   final case class Prepared(block: Block.Shelley, txs: Vector[Either[String, Tx]]):
     /** Everything the transactions can read from the UTxO set (not what the block itself creates).

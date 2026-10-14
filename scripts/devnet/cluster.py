@@ -366,8 +366,12 @@ def freeze_classes(root):
     return ":".join(entries)
 
 
-def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=2):
-    """`docker run` arguments for a JVM of the frozen classes in the reference network namespace."""
+def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=None):
+    """`docker run` arguments for a JVM of the frozen classes in the reference network namespace.
+
+    The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2.
+    """
+    cpus = cpus if cpus is not None else getattr(args, "scala_cpus", 2)
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
                f"--cpus={cpus}", "--memory=2g", "--user", USER,
                "-v", f"{REPO}:/work:ro", "-v", f"{root / 'classes'}:/run/classes:ro"]
@@ -375,8 +379,10 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
         command += ["--name", name]
     for mount in mounts:
         command += ["-v", mount]
-    return command + ["--entrypoint", "java", JDK_IMAGE, "-Xmx768m", "-cp", classpath,
-                      main_class, *program_args]
+    # G1 with a short pause goal also with one CPU, where the JVM would pick the serial collector:
+    # a collector pause stops every thread, so it is the timers' lateness (roadmap D8).
+    jvm = ["-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=20"]
+    return command + ["--entrypoint", "java", JDK_IMAGE, *jvm, "-cp", classpath, main_class, *program_args]
 
 
 def down(args, quiet=False):

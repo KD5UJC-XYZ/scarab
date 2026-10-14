@@ -35,8 +35,8 @@ import scala.concurrent.duration.*
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
-  * [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file>
-  * --kes-skey <file> --opcert <file>]`
+  * [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge
+  * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -65,7 +65,19 @@ object Main extends IOApp:
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
-      readAhead: Int = 64
+      readAhead: Int = 64,
+      /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
+        */
+      cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors())
+  )
+
+  /** What the chain database (or its absence) hands the node at start. */
+  private final case class Storage(
+      anchor: Option[BlockRef],
+      state: NodeState,
+      resumed: Vector[ChainStorage.Resumed[NodeState]],
+      persistence: Option[ChainPersistence[IO, NodeState]],
+      immutable: Option[ImmutableStore[IO]]
   )
 
   /** `--forge --vrf-skey <file> --kes-skey <file> --opcert <file>`: the pool's key files. */
@@ -120,15 +132,20 @@ object Main extends IOApp:
           )
 
   private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
-    (utxoBacking(options), VerificationCache.resource[IO]()).tupled.use {
-      case ((store, backing), cache) => followWith(options, store, backing, cache)
+    (
+      utxoBacking(options),
+      VerificationCache.resource[IO](),
+      Scheduling.resource[IO](options.cpuThreads)
+    ).tupled.use { case ((store, backing), cache, scheduling) =>
+      followWith(options, store, backing, cache, scheduling)
     }
 
   private def followWith(
       options: Options,
       store: UtxoStore[IO],
       backing: StateBacking[IO, NodeState],
-      cache: VerificationCache
+      cache: VerificationCache,
+      scheduling: Scheduling[IO]
   )(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     for
@@ -144,6 +161,7 @@ object Main extends IOApp:
       warm = (raw: Vector[lab.cbor.Bytes]) => praosConfig.get.flatMap(cache.warm[IO](raw, _))
       connected <- Ref.of[IO, Boolean](false)
       eraStarts <- Ref.of[IO, Map[lab.network.Era, BigInt]](Map.empty)
+      logged = JsonLog.events(Some(scheduling.stats))
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
           (event match
@@ -151,7 +169,7 @@ object Main extends IOApp:
             case FollowerEvent.EraEntered(_, to, _, epoch) =>
               eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
             case _ => IO.unit
-          ) *> JsonLog.events.emit(event)
+          ) *> logged.emit(event)
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
         tools.PlutusCases(dir, perKind = 2, max = 400)
@@ -162,6 +180,7 @@ object Main extends IOApp:
         setup.byronRules,
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
+        compute = Some(scheduling.compute),
         afterBlock = Some { s =>
           IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
             praosConfig
@@ -178,16 +197,14 @@ object Main extends IOApp:
       )
       k = genesis.geometry.securityParam
       storage = options.db.fold(
-        Resource.pure[
-          IO,
-          (
-              Option[BlockRef],
-              NodeState,
-              Option[ChainPersistence[IO, NodeState]],
-              Option[ImmutableStore[IO]]
+        Resource.pure[IO, Storage](
+          Storage(
+            None,
+            setup.start,
+            Vector.empty,
+            Some(ChainPersistence.backingOnly[IO, NodeState](backing)),
+            None
           )
-        ](
-          (None, setup.start, Some(ChainPersistence.backingOnly[IO, NodeState](backing)), None)
         )
       ) { dir =>
         val every = options.snapshotEvery match
@@ -199,17 +216,34 @@ object Main extends IOApp:
             ChainStorage.Config(
               every,
               options.keepSnapshots,
-              byronEpochSlots = genesis.geometry.byron.epochSlots
+              byronEpochSlots = genesis.geometry.byron.epochSlots,
+              identity = Some(setup.identity)
             ),
             rules,
             setup.start,
             JsonLog.storage,
             backing,
-            warm
+            warm,
+            Some(scheduling.compute)
           )
-          .map(r => (r.anchor, r.state, Some(r.persistence), Some(r.store)))
+          .evalMap { r =>
+            ChainStorage
+              .resume[IO, NodeState](
+                r,
+                k,
+                setup.origin,
+                rules,
+                genesis.geometry.byron.epochSlots,
+                JsonLog.storage,
+                warm,
+                Some(scheduling.compute)
+              )
+              .map(resumed =>
+                Storage(r.anchor, r.state, resumed, Some(r.persistence), Some(r.store))
+              )
+          }
       }
-      _ <- storage.use { (anchor, state, persistence, immutable) =>
+      _ <- storage.use { case Storage(anchor, state, resumed, persistence, immutable) =>
         // A chain whose Byron span is derived learns the first Shelley epoch when it enters
         // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
         // (the mempool and the forger need a restart after that, see docs/compatibility.md).
@@ -219,7 +253,12 @@ object Main extends IOApp:
         for
           _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
           ref <- Ref.of[IO, VolatileChain[NodeState]](
-            VolatileChain(k, Anchor(anchor, state), Vector.empty, setup.origin)
+            VolatileChain(
+              k,
+              Anchor(anchor, state),
+              resumed.map(r => r.ref -> r.state),
+              setup.origin
+            )
           )
           given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
           server <- ChainServer.open[IO](
@@ -227,9 +266,14 @@ object Main extends IOApp:
             anchor,
             ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
           )
+          _ <- resumed.traverse_(r =>
+            server
+              .persistence[NodeState]
+              .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
+          )
           mempool <- Mempool.create[IO](
-            state.ledger,
-            anchor.fold(BigInt(0))(_.slot),
+            resumed.lastOption.fold(state)(_.state).ledger,
+            resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
             MempoolEnv(globals, geometry),
             options.mempoolBytes,
             JsonLog.mempool,
@@ -243,17 +287,24 @@ object Main extends IOApp:
             NodeRules.observe(genesis.geometry),
             Some(persistence.fold(served)(Persistence.both(_, served))),
             Some((chain, added) =>
-              val adopted = added.flatMap(raw =>
-                Block.decode(raw, genesis.geometry.byron.epochSlots).toOption.toVector.flatMap {
-                  case b: Block.Shelley => b.transactions.map(_.id)
-                  case _                => Vector.empty
-                }
-              )
-              chain.tipRef.traverse_(t =>
-                mempool.sync(chain.state.ledger, t.slot, adopted.toSet).void
-              )
+              // decoding the added blocks is CPU-bound: off the compute pool like the rules
+              scheduling.compute
+                .within(IO.delay {
+                  added.flatMap { raw =>
+                    Block.decode(raw, genesis.geometry.byron.epochSlots).toOption.toVector.flatMap {
+                      case b: Block.Shelley => b.transactions.map(_.id)
+                      case _                => Vector.empty
+                    }
+                  }.toSet
+                })
+                .flatMap(adopted =>
+                  chain.tipRef
+                    .traverse_(t => mempool.sync(chain.state.ledger, t.slot, adopted).void)
+                )
             ),
-            epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot))
+            epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
+            initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
+            compute = Some(scheduling.compute)
           )
           handlers = ServerHandlers[IO, NtNHeader](
             NtNHeader.codec,
@@ -284,7 +335,8 @@ object Main extends IOApp:
                     Some(mempool.source)
                   ),
                   events,
-                  retry
+                  retry,
+                  Some(scheduling.compute)
                 )
               }
             )
@@ -362,7 +414,12 @@ object Main extends IOApp:
           }
           production = forging.fold(Resource.unit[IO])(_.background.void)
           run = QueryServer
-            .resource[IO](ChainView.fromRef(ref), options.queryPort, Some(store))
+            .resource[IO](
+              ChainView.fromRef(ref),
+              options.queryPort,
+              Some(store),
+              Some(scheduling.stats.total.map(JsonLog.schedulingTotal))
+            )
             .flatMap(_ => relay)
             .flatMap(_ => local)
             .flatMap(_ => production)
@@ -376,7 +433,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -392,6 +449,7 @@ object Main extends IOApp:
     "utxo-store",
     "utxo-cache-mb",
     "read-ahead",
+    "cpu-threads",
     "local-socket",
     "vrf-skey",
     "kes-skey",
@@ -459,6 +517,11 @@ object Main extends IOApp:
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
+          cpuThreads <- flags
+            .get("cpu-threads")
+            .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
+              _.toIntOption.filter(_ >= 0).toRight(usage)
+            )
         yield Options(
           dir,
           peers,
@@ -474,6 +537,7 @@ object Main extends IOApp:
           forge,
           utxoKind,
           cacheMb,
-          readAhead
+          readAhead,
+          cpuThreads
         )
       case _ => Left(usage)

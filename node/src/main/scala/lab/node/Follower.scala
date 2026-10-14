@@ -77,8 +77,11 @@ final class SelectViews[F[_]: cats.effect.Sync] private (ref: Ref[F, Map[Bytes, 
   def retain(keep: Set[Bytes]): F[Unit] = ref.update(_.filter((h, _) => keep(h)))
 
 object SelectViews:
-  def create[F[_]: cats.effect.Sync]: F[SelectViews[F]] =
-    Ref.of[F, Map[Bytes, SelectView]](Map.empty).map(new SelectViews(_))
+  def create[F[_]: cats.effect.Sync]: F[SelectViews[F]] = create(Map.empty)
+
+  /** Starting from the views of a volatile chain that was restored from disk. */
+  def create[F[_]: cats.effect.Sync](initial: Map[Bytes, SelectView]): F[SelectViews[F]] =
+    Ref.of[F, Map[Bytes, SelectView]](initial).map(new SelectViews(_))
 
 /** Follows upstream peers. Each peer session keeps a candidate chain (the headers the peer
   * announced after the point where it joined ours); when a candidate is preferred to our chain by
@@ -105,7 +108,9 @@ final class Follower[F[_]: Async, S] private (
     onTip: Option[(VolatileChain[S], Vector[Bytes]) => F[Unit]],
     tiebreaker: Era => ChainSelection.Tiebreaker,
     views: SelectViews[F],
-    lock: Mutex[F]
+    lock: Mutex[F],
+    /** Where a block forged by this node is applied (the CPU pool, see [[Compute]]). */
+    cpu: Compute[F]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     raise: Raise[F, ChainError]
@@ -311,7 +316,7 @@ final class Follower[F[_]: Async, S] private (
           case Right((at, depth)) =>
             for
               rolled <- before.rollback(at).fold(_.raise[F, VolatileChain[S]], _.pure[F])
-              outcome <- handle.attempt(rules(rolled.state, header, raw)).flatMap {
+              outcome <- handle.attempt(cpu.within(rules(rolled.state, header, raw))).flatMap {
                 case Left(e: ValidationError) => F.pure(Follower.Adoption.Invalid(e).asLeft[S])
                 case Left(other)              => other.raise[F, Either[Follower.Adoption, S]]
                 case Right(next)              => F.pure(next.asRight[Follower.Adoption])
@@ -363,12 +368,16 @@ object Follower:
       tiebreaker: Era => ChainSelection.Tiebreaker = ChainSelection.tiebreakerFor,
       /** The epoch of a slot as the state sees it (a chain whose Byron span is derived learns it).
         */
-      epochOf: Option[(S, BigInt) => BigInt] = None
+      epochOf: Option[(S, BigInt) => BigInt] = None,
+      /** The select views of the blocks of a volatile chain restored from disk. */
+      initialViews: Map[Bytes, SelectView] = Map.empty,
+      /** The CPU pool the blocks are applied on; without one, on the calling fiber's pool. */
+      compute: Option[Compute[F]] = None
   )(using
       Stateful[F, VolatileChain[S]],
       Raise[F, ChainError]
   ): F[Follower[F, S]] =
-    (SelectViews.create[F], Mutex[F]).mapN { (views, lock) =>
+    (SelectViews.create[F](initialViews), Mutex[F]).mapN { (views, lock) =>
       new Follower[F, S](
         rules,
         events,
@@ -378,7 +387,8 @@ object Follower:
         onTip,
         tiebreaker,
         views,
-        lock
+        lock,
+        compute.getOrElse(Compute.inline[F])
       )
     }
 
@@ -389,19 +399,26 @@ object Follower:
       follower: Follower[F, S],
       connect: Resource[F, Peer[F]],
       events: FollowerEvents[F],
-      retry: Retry
+      retry: Retry,
+      /** Runs the session (header handling, chain selection, applying and persisting blocks) on the
+        * CPU pool, while the connection itself (multiplexer, KeepAlive, the pipelined fetch) stays
+        * on the pool it was opened on, so a long step cannot hold up their timers.
+        */
+      compute: Option[Compute[F]] = None
   )(using chain: Stateful[F, VolatileChain[S]], handle: Handle[F, PeerError]): F[Unit] =
     def loop(attempt: Int): F[Unit] =
       chain.get.map(_.tip).flatMap { before =>
-        connect.use(follower.session).handleWith[PeerError] { error =>
-          chain.get.map(_.tip).flatMap { after =>
-            val next = if after != before then 1 else attempt + 1
-            if next > retry.maxAttempts then error.raise[F, Unit]
-            else
-              events.emit(FollowerEvent.Reconnecting(error, next)) *> Temporal[F].sleep(
-                retry.delay
-              ) *> loop(next)
+        connect
+          .use(peer => compute.fold(follower.session(peer))(_.within(follower.session(peer))))
+          .handleWith[PeerError] { error =>
+            chain.get.map(_.tip).flatMap { after =>
+              val next = if after != before then 1 else attempt + 1
+              if next > retry.maxAttempts then error.raise[F, Unit]
+              else
+                events.emit(FollowerEvent.Reconnecting(error, next)) *> Temporal[F].sleep(
+                  retry.delay
+                ) *> loop(next)
+            }
           }
-        }
       }
     loop(1)

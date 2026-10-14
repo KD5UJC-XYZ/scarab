@@ -2,6 +2,7 @@
 package lab.node
 
 import cats.effect.IO
+import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
 import com.comcast.ip4s.{Host, SocketAddress}
@@ -123,71 +124,106 @@ object JsonLog:
           "message" -> error.message.asJson
         )
 
-  val events: FollowerEvents[IO] = new FollowerEvents[IO]:
-    def emit(event: FollowerEvent): IO[Unit] = event match
-      case FollowerEvent.Connected(p) => line("connected", "intersection" -> point(p))
-      case FollowerEvent.Extended(b, epoch, tip, era) =>
-        line(
-          "extended",
-          "block" -> block(b),
-          "epoch" -> epoch.asJson,
-          "era" -> era.toString.asJson,
-          "peerTip" -> point(tip.point)
-        )
-      case FollowerEvent.RolledBack(from, to, depth) =>
-        line("rolledBack", "from" -> point(from), "to" -> point(to), "depth" -> depth.asJson)
-      case FollowerEvent.EpochEntered(epoch, first) =>
-        line("epoch", "epoch" -> epoch.asJson, "first" -> block(first))
-      case FollowerEvent.Immutable(_) => IO.unit
-      case FollowerEvent.EraEntered(from, to, first, epoch) =>
-        line(
-          "eraTransition",
-          "from" -> from.map(_.toString).asJson,
-          "to" -> to.toString.asJson,
-          "epoch" -> epoch.asJson,
-          "slot" -> first.slot.asJson,
-          "block" -> block(first)
-        )
-      case FollowerEvent.ByronEpochValidated(epoch, boundary, verified, offSchedule, txs) =>
-        line(
-          "epochValidated",
-          "era" -> "Byron".asJson,
-          "epoch" -> epoch.asJson,
-          "headers" -> (boundary + verified).asJson,
-          "boundary" -> boundary.asJson,
-          "signatureVerified" -> verified.asJson,
-          "offSchedule" -> offSchedule.asJson,
-          "transactions" -> txs.asJson
-        )
-      case FollowerEvent.EpochValidated(epoch, era, threshold, overlay, unchecked) =>
-        line(
-          "epochValidated",
-          "era" -> era.toString.asJson,
-          "epoch" -> epoch.asJson,
-          "headers" -> (threshold + overlay + unchecked).asJson,
-          "thresholdChecked" -> threshold.asJson,
-          "overlay" -> overlay.asJson,
-          "leaderUnchecked" -> unchecked.asJson
-        )
-      case FollowerEvent.LedgerEpoch(epoch, utxo, accounts, pools, treasury, reserves, pv, u) =>
-        line(
-          "ledgerEpoch",
-          "epoch" -> epoch.asJson,
-          "utxo" -> utxo.asJson,
-          "accounts" -> accounts.asJson,
-          "pools" -> pools.asJson,
-          "treasury" -> treasury.asJson,
-          "reserves" -> reserves.asJson,
-          "protocolVersion" -> s"${pv._1}.${pv._2}".asJson,
-          "phase2" -> Json.obj(
-            "evaluatedSuccess" -> u.succeeded.asJson,
-            "evaluatedFailure" -> u.failed.asJson,
-            "scripts" -> u.scripts.asJson
-          ),
-          "scriptIntegrityHashChecked" -> u.integrityChecked.asJson
-        )
-      case FollowerEvent.Reconnecting(reason, attempt) =>
-        line("reconnecting", "reason" -> reason.message.asJson, "attempt" -> attempt.asJson)
+  /** The scheduling measurements of a window (one epoch of the log), see [[SchedulingReport]]. */
+  def scheduling(r: SchedulingReport): Json =
+    val longest = r.longest
+    Json.obj(
+      "timerSamples" -> r.samples.asJson,
+      "maxTimerLatenessMs" -> r.maxTimerLatenessMs.asJson,
+      "timersLateOver50Ms" -> r.timersLateOver50.asJson,
+      "timersLateOver100Ms" -> r.timersLateOver100.asJson,
+      "cpuSteps" -> r.stepCount.asJson,
+      "longestStepMs" -> longest.fold(0L)(_._2.maxMs).asJson,
+      "longestStep" -> longest.map(_._1).asJson
+    )
+
+  /** The measurements of the whole run, with every step label, for the query server. */
+  def schedulingTotal(r: SchedulingReport): Json =
+    scheduling(r).deepMerge(
+      Json.obj(
+        "steps" -> Json.obj(r.steps.toList.sortBy(_._1).map { (label, step) =>
+          label -> Json.obj(
+            "count" -> step.count.asJson,
+            "maxMs" -> step.maxMs.asJson,
+            "totalMs" -> step.totalMs.asJson
+          )
+        }*)
+      )
+    )
+
+  /** The follower's events as log lines. With `sched`, the lines that close an epoch carry the
+    * scheduling measurements of that epoch (`maxTimerLatenessMs`, `longestStepMs`, ...).
+    */
+  def events(sched: Option[SchedulingStats[IO]] = None): FollowerEvents[IO] =
+    new FollowerEvents[IO]:
+      private def epochLine(kind: String, fields: (String, Json)*): IO[Unit] =
+        sched
+          .traverse(_.window.map(r => "scheduling" -> scheduling(r)))
+          .flatMap(extra => line(kind, (fields ++ extra.toList)*))
+      def emit(event: FollowerEvent): IO[Unit] = event match
+        case FollowerEvent.Connected(p) => line("connected", "intersection" -> point(p))
+        case FollowerEvent.Extended(b, epoch, tip, era) =>
+          line(
+            "extended",
+            "block" -> block(b),
+            "epoch" -> epoch.asJson,
+            "era" -> era.toString.asJson,
+            "peerTip" -> point(tip.point)
+          )
+        case FollowerEvent.RolledBack(from, to, depth) =>
+          line("rolledBack", "from" -> point(from), "to" -> point(to), "depth" -> depth.asJson)
+        case FollowerEvent.EpochEntered(epoch, first) =>
+          line("epoch", "epoch" -> epoch.asJson, "first" -> block(first))
+        case FollowerEvent.Immutable(_) => IO.unit
+        case FollowerEvent.EraEntered(from, to, first, epoch) =>
+          line(
+            "eraTransition",
+            "from" -> from.map(_.toString).asJson,
+            "to" -> to.toString.asJson,
+            "epoch" -> epoch.asJson,
+            "slot" -> first.slot.asJson,
+            "block" -> block(first)
+          )
+        case FollowerEvent.ByronEpochValidated(epoch, boundary, verified, offSchedule, txs) =>
+          epochLine(
+            "epochValidated",
+            "era" -> "Byron".asJson,
+            "epoch" -> epoch.asJson,
+            "headers" -> (boundary + verified).asJson,
+            "boundary" -> boundary.asJson,
+            "signatureVerified" -> verified.asJson,
+            "offSchedule" -> offSchedule.asJson,
+            "transactions" -> txs.asJson
+          )
+        case FollowerEvent.EpochValidated(epoch, era, threshold, overlay, unchecked) =>
+          epochLine(
+            "epochValidated",
+            "era" -> era.toString.asJson,
+            "epoch" -> epoch.asJson,
+            "headers" -> (threshold + overlay + unchecked).asJson,
+            "thresholdChecked" -> threshold.asJson,
+            "overlay" -> overlay.asJson,
+            "leaderUnchecked" -> unchecked.asJson
+          )
+        case FollowerEvent.LedgerEpoch(epoch, utxo, accounts, pools, treasury, reserves, pv, u) =>
+          epochLine(
+            "ledgerEpoch",
+            "epoch" -> epoch.asJson,
+            "utxo" -> utxo.asJson,
+            "accounts" -> accounts.asJson,
+            "pools" -> pools.asJson,
+            "treasury" -> treasury.asJson,
+            "reserves" -> reserves.asJson,
+            "protocolVersion" -> s"${pv._1}.${pv._2}".asJson,
+            "phase2" -> Json.obj(
+              "evaluatedSuccess" -> u.succeeded.asJson,
+              "evaluatedFailure" -> u.failed.asJson,
+              "scripts" -> u.scripts.asJson
+            ),
+            "scriptIntegrityHashChecked" -> u.integrityChecked.asJson
+          )
+        case FollowerEvent.Reconnecting(reason, attempt) =>
+          line("reconnecting", "reason" -> reason.message.asJson, "attempt" -> attempt.asJson)
 
   val storage: StorageEvents[IO] = new StorageEvents[IO]:
     private def anchor(b: Option[BlockRef]): Json = b.fold(Json.Null)(block)
@@ -230,3 +266,28 @@ object JsonLog:
           "replayed" -> replayed.asJson,
           "millis" -> millis.asJson
         )
+      case StorageEvent.NetworkRecorded(id, adopted) =>
+        line(
+          "networkRecorded",
+          "magic" -> id.magic.asJson,
+          "shelleyGenesis" -> id.shelleyGenesis.hex.asJson,
+          "byronGenesis" -> id.byronGenesis.map(_.hex).asJson,
+          "adoptedExisting" -> adopted.asJson
+        )
+      case StorageEvent.VolatileOpened(r) =>
+        line(
+          "volatileOpened",
+          "blocks" -> r.blocks.asJson,
+          "files" -> r.files.asJson,
+          "truncatedBytes" -> r.truncatedBytes.asJson,
+          "removedFiles" -> r.removedFiles.asJson
+        )
+      case StorageEvent.VolatileResumed(resumed, dropped, millis) =>
+        line(
+          "volatileResumed",
+          "resumed" -> resumed.asJson,
+          "dropped" -> dropped.asJson,
+          "millis" -> millis.asJson
+        )
+      case StorageEvent.ShutdownSnapshot(a, written) =>
+        line("shutdownSnapshot", "anchor" -> anchor(a), "written" -> written.asJson)

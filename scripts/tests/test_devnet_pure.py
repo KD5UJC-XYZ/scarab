@@ -379,3 +379,54 @@ class NtcQuerySessionTest(unittest.TestCase):
 
     def test_transactions_travel_as_cbor_in_cbor(self):
         self.assertEqual(cbor.enc([0, [6, cbor.Tag(24, b"\x01\x02")]]), bytes.fromhex("82008206d818420102"))
+
+
+class SchedulingSummaryTest(unittest.TestCase):
+    def test_summary_takes_the_worst_epoch_window_and_counts_warnings(self):
+        import argparse
+        from devnet import util
+        events = [{"event": "extended"},
+                  {"event": "ledgerEpoch", "scheduling": {"maxTimerLatenessMs": 12, "timersLateOver100Ms": 0,
+                                                          "longestStepMs": 40, "longestStep": "block"}},
+                  {"event": "ledgerEpoch", "scheduling": {"maxTimerLatenessMs": 35, "timersLateOver100Ms": 1,
+                                                          "longestStepMs": 310, "longestStep": "epochBoundary"}}]
+        with tempfile.TemporaryDirectory() as d:
+            log = pathlib.Path(d) / "follower.jsonl"
+            log.write_text("starvation-and-tuning\n")
+            s = util.scheduling_summary(events, log, argparse.Namespace(scala_cpus=1.0))
+        self.assertEqual(s["scalaCpus"], 1.0)
+        self.assertEqual(s["cpuStarvationWarnings"], 1)
+        self.assertEqual(s["epochWindows"], 2)
+        self.assertEqual(s["maxTimerLatenessMs"], 35)
+        self.assertEqual(s["timersLateOver100Ms"], 1)
+        self.assertEqual((s["longestStepMs"], s["longestStep"]), (310, "epochBoundary"))
+
+    def test_scala_container_uses_the_scenario_cpus(self):
+        import argparse
+        args = argparse.Namespace(name="n", scala_cpus=1.0)
+        root = pathlib.Path("/r")
+        self.assertIn("--cpus=1.0", cluster.scala_container(args, root, "cp", "M", []))
+        self.assertIn("--cpus=2", cluster.scala_container(argparse.Namespace(name="n"), root, "cp", "M", []))
+        self.assertIn("--cpus=3", cluster.scala_container(args, root, "cp", "M", [], cpus=3))
+
+
+class SlotClockTest(unittest.TestCase):
+    SHELLEY = {"systemStart": "2026-10-11T12:00:00Z", "slotLength": 0.1}
+    START = 1791720000  # 2026-10-11T12:00:00Z
+
+    def event(self, kind, at_slot, millis, **extra):
+        import datetime
+        total = self.START + (at_slot * 100 + millis) / 1000
+        stamp = datetime.datetime.fromtimestamp(total, datetime.timezone.utc).isoformat()
+        return {"event": kind, "at": stamp, **extra}
+
+    def test_a_clock_in_step_and_a_clock_a_second_behind(self):
+        in_step = [self.event("forged", 10, 12, hash="a", slot=10),
+                   self.event("extended", 20, 8, block={"slot": 20, "hash": "b"})]
+        self.assertEqual(pool.slot_clock(in_step, self.SHELLEY), {"forgeLatencyMs": 12, "arrivalMs": 8})
+        behind = [self.event("forged", 10, 1010, hash="a", slot=10),
+                  self.event("extended", 20, 9, block={"slot": 20, "hash": "b"}),
+                  self.event("extended", 10, 12, block={"slot": 10, "hash": "a"})]
+        clock = pool.slot_clock(behind, self.SHELLEY)
+        self.assertEqual((clock["forgeLatencyMs"], clock["arrivalMs"]), (1010, 9))
+        self.assertEqual(pool.slot_clock([], self.SHELLEY), {"forgeLatencyMs": None, "arrivalMs": None})

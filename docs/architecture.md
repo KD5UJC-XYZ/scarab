@@ -31,10 +31,11 @@ pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are di
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
 | Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; Scalus interpreter; our own script contexts and cost-model selection |
 | UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `RocksUtxoStore.scala` | The UTxO set behind `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure view |
-| Storage | `storage/` | `ImmutableStore`, `LedgerSnapshots`, `ChainStorage`, derived `Codec`s |
+| Storage | `storage/` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `NetworkIdentityFile`, derived `Codec`s |
+| Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
 | Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
 | Forging | `forge/`, `Follower.adoptForged`, `core/.../vrf/Draft03Prover`, `core/.../kes/Sum6KesSigning` | Praos block production |
-| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator) |
+| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator), `GET /scheduling` |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
 staking) is read from the genesis files; nothing assumes a particular network. Ledger arithmetic
@@ -50,6 +51,8 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 | `BlockRules[F, S]` | validate and apply one block to a state | `NodeRules` (full ledger), bootstrap mode (headers only) |
 | `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
 | `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
+| `VolatileStore[F]` | crash-safe log of the volatile chain's updates | `VolatileStore.open` (file log) |
+| `Compute[F]` | run the follower (CPU-bound) on its own pool, time pure steps | `Compute.pool` (work-stealing pool, a `Resource`), `Compute.measured`, `Compute.inline` (tests) |
 | `LedgerSnapshots[F, S]` | atomic checksummed snapshots of the node state | `FileLedgerSnapshots` |
 | `ScriptEvaluator[F]` | evaluate one Plutus script request | `ScalusEvaluator` (pure `Id` and suspended `F` forms) |
 | `Mempool[F]` | validated transaction pool, TxSubmission2 source and sink | `Mempool` over pure `MempoolState` |
@@ -329,10 +332,11 @@ Modelled on the ouroboros-consensus ChainDB, as tagless-final algebras in `node/
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
 | `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `NodeState` at an immutable point; newest valid wins |
-| `ChainStorage` | `ChainStorage.scala` | Opens both, restores the newest usable snapshot, replays the stored blocks after it, and hands the follower a `ChainPersistence` hook |
-| Volatile part | `VolatileChain` (memory) | The last `k` blocks are not stored; after a restart the peer re-sends them from the immutable tip |
+| `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
+| `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
+| `ChainStorage` | `ChainStorage.scala` | Checks the identity, opens the stores, restores the newest usable snapshot, replays the stored blocks after it, rebuilds the volatile chain (`resume`), hands the follower a `ChainPersistence` hook, and snapshots the immutable tip when it is released |
 | `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to `LedgerState` is persisted with no codec change |
-| `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
+| `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`, `NetworkMismatch`, `ForeignChain`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
 
 ```sh
 follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
@@ -340,7 +344,8 @@ follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|
 
 Without `--db` nothing changes: the node is in-memory and replays from genesis. With `--db` the
 JSON log gains `immutableOpened`, `snapshotRestored`, `snapshotSkipped`, `snapshotWritten`,
-`snapshotFailed`, `replayStarted`, `replayProgress` and `replayFinished`.
+`snapshotFailed`, `replayStarted`, `replayProgress`, `replayFinished`, `networkRecorded`,
+`volatileOpened`, `volatileResumed` and `shutdownSnapshot`.
 
 **Immutable store format** (`<db>/immutable/`). `format` names the version and chunk size
 (`chunkSlots`, 21600); a different chunk size is a `VersionMismatch`. Blocks of slots
@@ -370,12 +375,75 @@ and the next older one is tried; with none usable the stored blocks are replayed
 stored blocks after the chosen snapshot are re-applied through the same `NodeRules` with no
 network, then ChainSync resumes with the replayed anchor as the intersection candidate.
 
+**Volatile blocks** (`<db>/volatile/<seq>.log`). The last `k` blocks are kept in memory with their
+states, and every update of that chain is also appended to a log, the ouroboros-consensus VolatileDB
+as an append-only file instead of a block store with a successor map: a record is
+`crc u32 | kind u8 | flags u8 | length u32 | slot u64 | blockNo u64 | hash[32] | payload`, the CRC-32
+covering everything after it. `kind` is a block (payload: the raw block) or a rollback to a point
+(Origin or a block; no payload), so the chain a log describes is a fold over its records
+(`VolatileStore.chainOf`) and forks need no extra structure. A file rolls over after 512 blocks.
+The store is a hint, not a source of truth, and is built so that it can only be wrong by missing
+blocks:
+
+- Opening validates the files in order and cuts the first damaged one at its last good record
+  (`volatileOpened` reports the bytes and the files removed); a record is never returned unless its
+  checksum matches. Appends are not forced one by one: a crash loses at most the unforced tail, and
+  those blocks are fetched again.
+- Collection never loses a block the immutable store lacks. Blocks reach the immutable store when
+  they age past `k`; every 512 of those the immutable store is forced (`sync`) and the log files
+  whose blocks are all at or below the new immutable tip are deleted (oldest first, the newest file
+  stays). A rollback marker whose target was collected leaves an empty chain, which is where the
+  volatile chain starts after the immutable tip anyway.
+- On start, after the snapshot is restored and the immutable blocks replayed, `ChainStorage.resume`
+  takes the logged chain after the immutable tip (at most `k` blocks) and applies each block through
+  the node's rules on top of the recovered state (`Verification.warm` first), rebuilding the exact
+  `VolatileChain`. A block that does not connect or that the rules refuse ends the chain there; the
+  log is cut back with a rollback marker and the rest is fetched from the peer (`volatileResumed`
+  reports `resumed` and `dropped`). The relay's served chain and the mempool start from that tip, so
+  the first ChainSync intersection offered to the peer is the previous tip, not the immutable
+  boundary. The states are not stored (they are a pure function of the blocks), only re-derived.
+
+**Shutdown.** Releasing the storage resource (SIGTERM or SIGINT through the IOApp's cancellation,
+`--seconds`, or a fatal error) first waits for a snapshot in flight and then, unless the newest
+snapshot already is at the immutable tip, forces the immutable store and writes a snapshot with its
+UTxO checkpoint at the tip (`shutdownSnapshot`). The stores are released after that. Persisting one
+block (log, pending list, immutable append, backing store, tip bookkeeping) is uncancelable, so a stop
+never lands between two stores. The next start restores that snapshot, replays no stored block
+(`replayFinished` with `replayed` 0) and resumes the volatile chain from the log. After `kill -9`
+nothing of this runs: the start restores the newest periodic snapshot, replays the stored blocks after
+it, and resumes the volatile chain from whatever the log holds.
+
+**Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
+database is created:
+
+```
+cardano-scala-lab network identity v1
+magic 2
+shelley-genesis <blake2b-256 of the Shelley genesis file as read>
+byron-genesis <hash, or none for a chain that starts in Shelley>
+```
+
+`ChainStorage.open` compares it with the identity of the genesis directory before anything else is
+opened; a difference raises `StorageError.NetworkMismatch` with both identities in the message (use
+the matching `--genesis-dir` or another `--db`). A database from before this existed has no file:
+if its immutable store holds a block, the first block must name the configured Byron genesis hash as
+its predecessor (none for a Shelley-start chain), else `StorageError.ForeignChain`; then the identity
+is recorded (`networkRecorded` with `adoptedExisting`). An empty database just records it. For a
+Shelley-start network the adoption check cannot tell two networks apart (neither names a hash); it
+then only rules out a Byron-start database.
+
 Tests (`node/src/test/.../storage`): round-trip properties for every persisted type from generators
 derived by the same `Mirror`s (so new fields are covered automatically), prefix/trailing/random-byte
 rejection, golden encodings and a golden digest and schema fingerprint, the store's crash cases
 (torn data, torn index entry, garbage, flipped bytes, lost chunk, every cut point of the newest
 chunk), snapshot corruption at many points and fallback, and restart equivalence over the Byron to
-Conway capture (`fixtures/eras`) through the real follower.
+Conway capture (`fixtures/eras`) through the real follower. `VolatileStoreSuite` checks the log against
+its pure model over random appends, rollbacks, collections and reopens, every crash cut point of the
+newest file, and damage in an older file. `ChainStorageSuite` adds restart equivalence with and
+without the volatile log, a graceful stop followed by a start that replays 0 blocks, copies of the
+database taken at 12 points of a run (standing in for a crash there) that all restart to the same
+final state, the volatile log torn at every record boundary, a logged block that does not apply, and
+the identity cases (created, reopened, four kinds of mismatch, adoption, refusal).
 
 ## Relay (`follow --listen`, `--local-socket`)
 
@@ -634,3 +702,48 @@ follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-
 
 `rocksdb` is the default with `--db`; without it the node uses the memory store. The query server
 completes the UTxO from the store for `/state`.
+
+## Scheduling: CPU-bound work off the timer path (D8)
+
+cats-effect gives the compute pool one thread per CPU. A pure step that holds one of them for
+hundreds of milliseconds (the rules of a block full of Plutus scripts, an epoch boundary over all
+accounts) delays every timer on the pool: KeepAlive, protocol timeouts, the forger's slot clock
+(0.1 s slots on the devnet). With one CPU there is a single such thread. RocksDB calls and the
+file stores already use `blocking`; the CPU-bound part was the follower: header handling, chain
+selection, the pure rules, persisting.
+
+- `Compute[F]` (`Scheduling.scala`) has `within(fa)`, which runs an effect on a second cats-effect
+  work-stealing pool (`IORuntime.createWorkStealingComputeThreadPool`, workers `csl-cpu-N`, default one
+  per CPU, `--cpu-threads`) allocated and shut down as a `Resource`, and `timed(label)(step)`, which
+  runs a pure step where it is and records its duration. `Follower.supervise` runs each peer session on
+  the pool (`connect.use(peer => compute.within(follower.session(peer)))`); the connection itself
+  (multiplexer, KeepAlive, the pipelined ChainSync and BlockFetch producer) is opened outside and stays
+  on the compute pool, as do the relay servers, the forger loop and the timer monitor. The replay of
+  stored blocks and the resume of the volatile chain run within the pool too, and so does the
+  application of a block this node forged. `NodeRules` times `applyBlock` through `timed`.
+- Where the boundary is drawn matters. A first version moved each block's rules to a plain fixed
+  thread pool and cost a third of the throughput; the second moved each block to a work-stealing pool
+  and cost a fifth: every hand-off is a thread wake-up, and on a busy host each wake-up is a
+  scheduler delay in the middle of a sequential chain of 400 blocks a second. A session that stays on
+  the pool across blocks pays a hand-off only when it waits for the network (performance.md section 6).
+- A step is timed on the thread it ran on and recorded under a label computed from its result:
+  `block`, `plutus` (the block evaluated scripts), `epochBoundary` (it crossed an epoch), `rejected`.
+  `--cpu-threads 0` runs everything on the compute pool as before, still measured.
+- `Scheduling.monitor` is a fiber that sleeps 20 ms over and over and records how late it wakes: the
+  lateness of every timer on the compute pool, which is what the cats-effect starvation warning
+  reports. `SchedulingStats` keeps a window (read and reset at each epoch line of the log) and the
+  totals (a commutative monoid, law-tested).
+- The epoch lines `epochValidated` (Byron, bootstrap) and `ledgerEpoch` carry a `scheduling` object:
+  `maxTimerLatenessMs`, `timersLateOver50Ms`, `timersLateOver100Ms`, `cpuSteps`, `longestStepMs`,
+  `longestStep`. `GET /scheduling` on the query port returns the run totals with every label.
+- Long loops yield with `cede`: the replay of stored blocks and the resume of the volatile chain.
+- Batch verification (`Verification.warm`) stays on `blocking` threads beside the session. Putting it
+  on the CPU pool as well queued the rules behind it and cost a third of the throughput.
+
+A step is still one uninterrupted call of a pure function, so the longest step is reported, not
+bounded; what the pool buys is that the compute pool is not the thread that runs it. It does not
+bound what the kernel does: a container limited to one CPU is throttled by the cgroup whenever its
+threads together use more than the quota, and a JVM that finds one CPU picks the serial collector,
+whose pauses stop every thread. Both showed up as late timers in the measurements, and the second is
+fixed by JVM flags, not code (`-Xms` equal to `-Xmx` and `-XX:+UseG1GC`, see
+[running.md](running.md) and [performance.md](performance.md)).
