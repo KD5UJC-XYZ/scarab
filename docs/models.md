@@ -155,7 +155,7 @@ A preserved type is `final case class Header(headerBody: HeaderBody, bodySignatu
   re-encodes to the received bytes there.
 - `canonical(members…)` is the explicit way to build a *new* value (forging, tests): it encodes the members
   canonically and that encoding becomes `raw`.
-- The hash of a header is `Blake2b-256(header.raw)`. The tests check this against the hand-written decoder.
+- The hash of a Shelley-era header is `Blake2b-256(header.raw)`; the tests check this against the hand-written decoder. (A Byron header hashes the `[subtag, header]` pair as `NtNHeader` frames it, as `Header.byronFromRaw` does; the Byron golden test checks `raw` only, not that hash.)
 
 Everything not marked is encoded canonically: shortest integers and lengths, definite-length containers, map entries in
 rule order. Known gaps: `preserve` is only on arrays and maps (not on choices such as `auxiliary_data`; workaround:

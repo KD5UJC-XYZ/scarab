@@ -36,7 +36,8 @@ final case class DecodeError(
   /** The most specific failure: for a choice, the cause that got furthest into the input. */
   def deepest: DecodeError = kind match
     case DecodeError.Kind.NoAlternative(causes) if causes.nonEmpty =>
-      causes.map(_.deepest).maxBy(e => (e.offset, e.path.size))
+      val best = causes.map(_.deepest).maxBy(e => (e.offset, e.path.size))
+      best.copy(path = path ++ best.path)
     case _ => this
 
   def render: String = s"${path.mkString("/")} @$offset: ${DecodeError.describe(kind)}"
