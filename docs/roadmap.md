@@ -82,7 +82,8 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **H2** [#38](https://github.com/KD5UJC-XYZ/scarab/issues/38) KES lifecycle: a KES agent, KES evolution that persists across restarts, and opcert issuing / rotation tooling.
 - **H3** [#39](https://github.com/KD5UJC-XYZ/scarab/issues/39) TPraos forging, for historical or test eras only (low priority).
 - **H4** [#40](https://github.com/KD5UJC-XYZ/scarab/issues/40) Mempool: epoch-boundary ticking; whether txs from rolled-back blocks should be re-added.
-- **H5** [#41](https://github.com/KD5UJC-XYZ/scarab/issues/41) Forging-loop hardening: timing, a missed-slot metric, and slot-battle stats.
+- **H5** [#41](https://github.com/KD5UJC-XYZ/scarab/issues/41) (done) Forging-loop hardening: per-epoch counters (`ForgeStats`: slots checked, leader slots, forged, adopted, lost slot battles, failed, skips by reason, forge latency from slot start to adoption), logged as `forgeEpoch` lines, served at `GET /forging` and checked by the `pool` scenario against the log, with a budget of five slots from a slot's start to adoption. Not done: a slot the loop overran is still not forged late; no Prometheus metric (J3).
+- **H6** [#67](https://github.com/KD5UJC-XYZ/scarab/issues/67) (done) The Scala node's slot clock was sometimes exactly 1.0 s behind the network's: the reference starts its clock at the Byron genesis' `startTime` and the node used the Shelley `systemStart`, which the pool scenario wrote a second apart in some runs. The node follows the Byron start, the scenario writes both (`--byron-start-offset` skews them on purpose), tests pin the conversions. Slots lost to a host stall ("the forger was busy") are a different failure; the scenario records the host load and reports such a run as inconclusive when the host is oversubscribed.
 
 ## I. Plutus (P2)
 
@@ -125,7 +126,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **M7** [#61](https://github.com/KD5UJC-XYZ/scarab/issues/61) (P2, partly done: organisation is `io.github.ottobot-ai`) Naming: the Scala package root `lab` and sbt organisation `dev.cardano.research` imply namespaces the project does not own; decide a final project name (owner will choose one later) before any release artefact is published to a package registry.
 - **M8** [#62](https://github.com/KD5UJC-XYZ/scarab/issues/62) (P2) Serial test execution (`Tags.limit(Test, 1)`): find which suites share global state and run modules in parallel in CI.
 - **M9** [#63](https://github.com/KD5UJC-XYZ/scarab/issues/63) (P2, done) READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`.
-- **M10** [#66](https://github.com/KD5UJC-XYZ/scarab/issues/66) (P1) Flaky `FollowerSuite` two-peer chain-selection test (one failure in a clean-container `check`, then 8/8 passes): find the race, make it deterministic with `TestControl`, 500 consecutive passes.
+- **M10** [#66](https://github.com/KD5UJC-XYZ/scarab/issues/66) (P1, done) Flaky `FollowerSuite` two-peer chain-selection test: the scripted peers ignored the intersection and replayed their chains from the start, so a peer that joined after the other had applied the common blocks hit "does not extend" and had nothing left after its reconnect (a test artefact; chain selection showed no ordering bug). The test now serves chains the way a node does and runs on `TestControl` over 64 join/pause orders and 4 seeds.
 - **M11** [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) (P1) Reorg: the Scarab rename (`xyz.kd5ujc.scarab`), the module split and CDDL-generated models (design in docs/models.md).
 
 ## N. Ouroboros Leios (v0.3)

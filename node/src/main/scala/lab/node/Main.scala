@@ -597,9 +597,9 @@ object Main extends IOApp:
                 connected.get,
                 utxoStore = Some(store)
               )
-            yield forger.run
+            yield forger
           }
-          production = forging.fold(Resource.unit[IO])(_.background.void)
+          production = forging.fold(Resource.unit[IO])(_.run.background.void)
           run = QueryServer
             .resource[IO](
               ChainView.fromRef(ref),
@@ -608,7 +608,8 @@ object Main extends IOApp:
               Some(scheduling.stats.total.map(JsonLog.schedulingTotal)),
               Some(
                 (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
-              )
+              ),
+              forging.map(_.stats.byEpoch.map(JsonLog.forgeReport))
             )
             .flatMap(_ => relay)
             .flatMap(_ => local)

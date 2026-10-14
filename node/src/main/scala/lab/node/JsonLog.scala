@@ -39,6 +39,9 @@ object JsonLog:
       "peer" -> peers.headOption.map(_.toString).asJson,
       "peers" -> peers.map(_.toString).asJson,
       "networkMagic" -> genesis.networkMagic.asJson,
+      // where slot 0 starts: the Byron genesis' startTime when there is one (the reference's
+      // clock), else the Shelley genesis' systemStart
+      "systemStart" -> genesis.geometry.systemStart.toString.asJson,
       "epochLength" -> genesis.geometry.epochLength.asJson,
       "securityParam" -> genesis.geometry.securityParam.asJson,
       // null while the Byron ledger has still to decide when the chain enters Shelley
@@ -206,7 +209,10 @@ object JsonLog:
           "stake" -> stake.asJson,
           "totalStake" -> total.asJson
         )
-      case ForgeEvent.Adopted(b) => line("adopted", "block" -> block(b))
+      case ForgeEvent.Adopted(b, latency) =>
+        line("adopted", "block" -> block(b), "latencyMs" -> latency.asJson)
+      case ForgeEvent.EpochSummary(epoch, stats) =>
+        line("forgeEpoch", ("epoch" -> epoch.asJson) +: forgeStats(stats)*)
       case ForgeEvent.Lost(slot, hash, reason) =>
         line("lost", "slot" -> slot.asJson, "hash" -> hash.hex.asJson, "reason" -> reason.asJson)
       case ForgeEvent.KesEvolved(period, rel) =>
@@ -220,6 +226,35 @@ object JsonLog:
           "kind" -> error.getClass.getSimpleName.asJson,
           "message" -> error.message.asJson
         )
+
+  /** The counters of one epoch (or of the whole run), see [[lab.node.forge.ForgeEpochStats]]. */
+  def forgeStats(s: lab.node.forge.ForgeEpochStats): List[(String, Json)] =
+    List(
+      "slotsChecked" -> s.slotsChecked.asJson,
+      "leaderSlots" -> s.leaderSlots.asJson,
+      "forged" -> s.forged.asJson,
+      "adopted" -> s.adopted.asJson,
+      "lostSlotBattles" -> s.lost.asJson,
+      "failed" -> s.failed.asJson,
+      "skipped" -> s.skippedTotal.asJson,
+      "skippedByReason" -> s.skipped.toList.sortBy(_._1).toMap.asJson,
+      "forgeLatencyMs" -> Json.obj(
+        "count" -> s.latencyCount.asJson,
+        "mean" -> (if s.latencyCount == 0 then Json.Null
+                   else (s.latencyTotalMs.toDouble / s.latencyCount).asJson),
+        "max" -> (if s.latencyCount == 0 then Json.Null else s.latencyMaxMs.asJson)
+      )
+    )
+
+  /** The forger's counters per epoch and for the run, served at `/forging`. */
+  def forgeReport(
+      byEpoch: scala.collection.immutable.SortedMap[BigInt, lab.node.forge.ForgeEpochStats]
+  ): Json =
+    val total = byEpoch.values.foldLeft(lab.node.forge.ForgeEpochStats())(_.merge(_))
+    Json.obj(
+      "total" -> Json.obj(forgeStats(total)*),
+      "epochs" -> Json.obj(byEpoch.toList.map((e, s) => e.toString -> Json.obj(forgeStats(s)*))*)
+    )
 
   /** The scheduling measurements of a window (one epoch of the log), see [[SchedulingReport]]. */
   def scheduling(r: SchedulingReport): Json =

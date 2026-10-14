@@ -105,6 +105,25 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `--genesis-dir`. `--genesis-dir` and `--peer` work as before. Tested with the public Preview, preprod and
   mainnet files (`fixtures/*/genesis`).
 
+### Block production
+- Slot clock (roadmap H6): the node starts its clock at the Byron genesis' `startTime` when there is a
+  Byron genesis, as the reference's hard-fork combinator does, and at the Shelley `systemStart`
+  otherwise. The devnet pool scenario wrote the two a second apart in some runs, which put the node
+  exactly 1.0 s (ten slots) off the network's and silently skipped its leader slots (`started` logs
+  `systemStart`; `SystemStartSuite`, geometry properties for fractional starts and slot lengths, a
+  forger loop test on a clock off the whole second). The scenario writes both files and takes
+  `--byron-start-offset`; it records the host load and reports a run whose only misses are busy slots on an
+  oversubscribed host as inconclusive (exit status 2).
+- Forging-loop counters (roadmap H5): per epoch, slots checked, leader slots, forged, adopted, lost slot
+  battles, failed, slots not checked by reason (`busy`, `tipTooOld`, `slotOccupied`, `notConnected`) and the
+  forge latency from the slot's start to adoption. `forgeEpoch` log lines, `latencyMs` on `adopted`, and
+  `GET /forging` on the query port; the `pool` scenario checks them against the log and enforces a budget of
+  five slots to adoption.
+- `FollowerSuite` two-peer test (roadmap M10): the scripted peers replayed their chains from the start
+  whatever the intersection, so a peer joining after the other had applied the common blocks failed with
+  "does not extend" and the test flaked. Peers now serve chains as a node does and the test runs on
+  `TestControl` over 64 join and pause orders and four seeds; the old behaviour is pinned as its own test.
+
 ### Byron
 - Byron ledger (roadmap C1): UTxO with witness signatures, address roots, network magic, value
   conservation and the linear fee; AVVM and non-AVVM genesis UTxO; delegation certificates; the update

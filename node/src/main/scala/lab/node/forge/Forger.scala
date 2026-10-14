@@ -35,7 +35,7 @@ enum ForgeEvent:
   )
 
   /** The forged block is now the tip of our chain (and is served to peers). */
-  case Adopted(block: BlockRef)
+  case Adopted(block: BlockRef, latencyMs: Option[Long] = None)
 
   /** The forged block did not become part of our chain, or was replaced by another one later. */
   case Lost(slot: BigInt, hash: Bytes, reason: String)
@@ -48,6 +48,9 @@ enum ForgeEvent:
 
   /** A real problem (not simply losing the leader lottery). */
   case Failed(slot: BigInt, error: ForgeError)
+
+  /** The forger's counters for an epoch that has just ended (see [[ForgeStats]]). */
+  case EpochSummary(epoch: BigInt, stats: ForgeEpochStats)
 
 trait ForgeEvents[F[_]]:
   def emit(event: ForgeEvent): F[Unit]
@@ -80,7 +83,9 @@ final class Forger[F[_]: Async](
     cache: Ref[F, Option[Forger.Crossed]],
     pending: Ref[F, Vector[Forger.Forged]],
     /** The backing store of the UTxO set: the read set of the candidates is fetched from it. */
-    utxoStore: Option[UtxoStore[F]]
+    utxoStore: Option[UtxoStore[F]],
+    /** Per-epoch counters (H5): checked and led slots, blocks, skips by reason, forge latency. */
+    val stats: ForgeStats[F]
 )(using chain: Stateful[F, VolatileChain[NodeState]], handle: Handle[F, NodeError]):
   private val F = Async[F]
   private val geometry = config.geometry
@@ -106,15 +111,25 @@ final class Forger[F[_]: Async](
           .take(Forger.MaxReportedMissed)
           .toList
           .traverse_(missed =>
-            events.emit(ForgeEvent.Skipped(missed, "the forger was busy with an earlier slot"))
+            skipped(missed, ForgeEpochStats.Busy, "the forger was busy with an earlier slot")
           )
       )
+      // the epoch the previous slot was in has ended: its counters are final
+      _ <- last.traverse_ { l =>
+        val ended = geometry.epochOf(l)
+        if geometry.epochOf(slot) > ended then
+          stats.epoch(ended).flatMap(s => events.emit(ForgeEvent.EpochSummary(ended, s)))
+        else F.unit
+      }
       _ <- if last.exists(_ >= slot) then F.unit else step(slot)
       after <- now
       untilNext = Duration.between(after, geometry.slotStart(slot + 1))
       _ <- sleep(untilNext.toMillis.max(1L).millis)
       _ <- loop(Some(slot))
     yield ()
+
+  private def skipped(slot: BigInt, key: String, reason: String): F[Unit] =
+    stats.skipped(geometry.epochOf(slot), key) *> events.emit(ForgeEvent.Skipped(slot, reason))
 
   /** Everything for one slot; nothing escapes (a failure is reported and the next slot goes on). */
   private[forge] def step(slot: BigInt): F[Unit] =
@@ -123,15 +138,15 @@ final class Forger[F[_]: Async](
       .flatMap {
         case Right(_)                      => F.unit
         case Left(e: ForgeError.NotLeader) => F.unit
-        case Left(e: ForgeError)           => events.emit(ForgeEvent.Failed(slot, e))
-        case Left(other) =>
-          events.emit(ForgeEvent.Failed(slot, ForgeError.Assembly(other.message)))
+        case Left(e: ForgeError)           => failed(slot, e)
+        case Left(other)                   => failed(slot, ForgeError.Assembly(other.message))
       }
       .handleErrorWith(t =>
-        events.emit(
-          ForgeEvent.Failed(slot, ForgeError.Assembly(s"${t.getClass.getName}: ${t.getMessage}"))
-        )
+        failed(slot, ForgeError.Assembly(s"${t.getClass.getName}: ${t.getMessage}"))
       ) *> watch
+
+  private def failed(slot: BigInt, error: ForgeError): F[Unit] =
+    stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
 
   private def attempt(slot: BigInt)(using Handle[F, NodeError]): F[Unit] =
     for
@@ -139,15 +154,15 @@ final class Forger[F[_]: Async](
       connected <- ready
       tipSlot = current.tipRef.map(_.slot)
       _ <-
-        if !connected then F.unit
+        if !connected then stats.skipped(geometry.epochOf(slot), ForgeEpochStats.NotConnected)
         else if tipSlot.exists(_ >= slot) then
-          F.unit // a block already occupies this slot or a later one
+          // a block already occupies this slot or a later one
+          stats.skipped(geometry.epochOf(slot), ForgeEpochStats.SlotOccupied)
         else if slot - tipSlot.getOrElse(BigInt(0)) > maxTipAge then
-          events.emit(
-            ForgeEvent.Skipped(
-              slot,
-              s"the tip (${tipSlot.fold("genesis")(t => s"slot $t")}) is too old to forge from"
-            )
+          skipped(
+            slot,
+            ForgeEpochStats.TipTooOld,
+            s"the tip (${tipSlot.fold("genesis")(t => s"slot $t")}) is too old to forge from"
           )
         else forge(current, slot)
     yield ()
@@ -159,6 +174,7 @@ final class Forger[F[_]: Async](
     val tip = current.tipRef
     for
       crossed <- crossedTo(current, epoch, slot)
+      _ <- stats.checked(epoch)
       pools = PoolDistributionOf(crossed.ledger)
       stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
       // a pool must be registered with this very VRF key to be elected
@@ -181,6 +197,7 @@ final class Forger[F[_]: Async](
           )
         )
         .flatMap(lift)
+      _ <- stats.leader(epoch)
       ticked = Epoch.tick(crossed.ledger, slot, geometry.firstSlot(epoch), globals)
       _ <- lift(
         Either.cond(
@@ -226,10 +243,10 @@ final class Forger[F[_]: Async](
       _ <- outcome match
         case Left(e @ ForgeError.SelfRejected(rule, reason)) if chosen.nonEmpty =>
           // never let a transaction we mis-judged cost the block: try again without any
-          events.emit(ForgeEvent.Failed(slot, e)) *>
+          failed(slot, e) *>
             build(current, tip, slot, epoch, ticked, cert, Vector.empty, stake, pools.total)
-              .flatMap(_.fold(e2 => events.emit(ForgeEvent.Failed(slot, e2)), _ => F.unit))
-        case Left(e)  => events.emit(ForgeEvent.Failed(slot, e))
+              .flatMap(_.fold(e2 => failed(slot, e2), _ => F.unit))
+        case Left(e)  => failed(slot, e)
         case Right(_) => F.unit
     yield ()
 
@@ -309,12 +326,18 @@ final class Forger[F[_]: Async](
                     stake,
                     totalStake
                   )
-                  events.emit(forged) *> follower.adoptForged(h, raw).flatMap {
+                  stats.forged(epoch) *> events
+                    .emit(forged) *> follower.adoptForged(h, raw).flatMap {
                     case Follower.Adoption.Adopted(ref) =>
-                      pending.update(_ :+ Forger.Forged(ref, slot)) *>
-                        events.emit(ForgeEvent.Adopted(ref)).as(Right(()))
+                      now.flatMap { at =>
+                        val latency = Duration.between(geometry.slotStart(slot), at).toMillis
+                        stats.adopted(epoch, latency.max(0L)) *>
+                          pending.update(_ :+ Forger.Forged(ref, slot)) *>
+                          events.emit(ForgeEvent.Adopted(ref, Some(latency))).as(Right(()))
+                      }
                     case Follower.Adoption.Lost(reason) =>
-                      events.emit(ForgeEvent.Lost(slot, h.hash, reason)).as(Right(()))
+                      stats.lost(epoch) *>
+                        events.emit(ForgeEvent.Lost(slot, h.hash, reason)).as(Right(()))
                     case Follower.Adoption.Invalid(e) =>
                       F.pure(Left(ForgeError.SelfRejected(e.rule, e.reason)))
                   }
@@ -377,9 +400,14 @@ final class Forger[F[_]: Async](
           val settled = keep.filter(f => tipNo.exists(_ >= f.ref.blockNo + current.k))
           pending.set(keep.filterNot(settled.contains)) *>
             lost.traverse_(f =>
-              events.emit(
-                ForgeEvent.Lost(f.slot, f.ref.hash, "replaced by another block at the same height")
-              )
+              stats.lost(geometry.epochOf(f.slot)) *>
+                events.emit(
+                  ForgeEvent.Lost(
+                    f.slot,
+                    f.ref.hash,
+                    "replaced by another block at the same height"
+                  )
+                )
             )
         }
     }
@@ -413,23 +441,27 @@ object Forger:
       sleep: Option[FiniteDuration => F[Unit]] = None,
       utxoStore: Option[UtxoStore[F]] = None
   )(using Stateful[F, VolatileChain[NodeState]], Handle[F, NodeError]): F[Forger[F]] =
-    (Ref.of[F, Option[Crossed]](None), Ref.of[F, Vector[Forged]](Vector.empty)).mapN {
-      (cache, pending) =>
-        new Forger[F](
-          config,
-          globals,
-          credentials,
-          follower,
-          mempool,
-          events,
-          maxTipAge.getOrElse(config.geometry.stabilityWindow),
-          ready,
-          now.getOrElse(Clock[F].realTimeInstant),
-          sleep.getOrElse(d => Async[F].sleep(d)),
-          cache,
-          pending,
-          utxoStore
-        )
+    (
+      Ref.of[F, Option[Crossed]](None),
+      Ref.of[F, Vector[Forged]](Vector.empty),
+      ForgeStats.create[F]
+    ).mapN { (cache, pending, stats) =>
+      new Forger[F](
+        config,
+        globals,
+        credentials,
+        follower,
+        mempool,
+        events,
+        maxTipAge.getOrElse(config.geometry.stabilityWindow),
+        ready,
+        now.getOrElse(Clock[F].realTimeInstant),
+        sleep.getOrElse(d => Async[F].sleep(d)),
+        cache,
+        pending,
+        utxoStore,
+        stats
+      )
     }
 
 /** The leader schedule's view of a ledger: stake and VRF key hash per pool. */

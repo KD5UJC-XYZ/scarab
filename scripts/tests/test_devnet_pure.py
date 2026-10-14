@@ -431,6 +431,12 @@ class SlotClockTest(unittest.TestCase):
         self.assertEqual((clock["forgeLatencyMs"], clock["arrivalMs"]), (1010, 9))
         self.assertEqual(pool.slot_clock([], self.SHELLEY), {"forgeLatencyMs": None, "arrivalMs": None})
 
+    def test_the_host_is_overloaded_when_its_load_exceeds_its_cpus(self):
+        calm = {"load1": 3.0, "load5": 4.0, "cpus": 24}
+        busy = {"load1": 30.0, "load5": 20.0, "cpus": 24}
+        self.assertFalse(pool.overloaded(calm, calm))
+        self.assertTrue(pool.overloaded(calm, busy))
+        self.assertEqual(set(pool.host_load()), {"load1", "load5", "cpus"})
 
 class NtcLocalTest(unittest.TestCase):
     """The pure parts of the LocalTxMonitor and local ChainSync comparisons."""
