@@ -46,8 +46,9 @@ object JsonLog:
         .asJson,
       "byronEpochSlots" -> genesis.geometry.byron.epochSlots.asJson,
       "hardForkEpochs" -> config.hardForkEpochs.map((e, n) => e.toString -> n).asJson,
-      // the genesis hashes the configuration listed (all of them were verified)
-      "verifiedGenesisHashes" -> List(
+      // the genesis hashes the configuration lists; start-up refused a mismatch (the Dijkstra and
+      // checkpoints files are compared only when they are there)
+      "genesisHashes" -> List(
         "Byron" -> config.hashes.byron,
         "Shelley" -> config.hashes.shelley,
         "Alonzo" -> config.hashes.alonzo,
