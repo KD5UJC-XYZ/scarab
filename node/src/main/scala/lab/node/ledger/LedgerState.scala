@@ -24,14 +24,22 @@ final case class DRepState(
 final case class Snapshot(
     stake: Map[Credential, BigInt],
     delegations: Map[Credential, Bytes],
-    pools: Map[Bytes, PoolParams]
+    pools: Map[Bytes, PoolParams],
+    /** Pools with a registered delegator that has no stake. Such a credential is in neither `stake`
+      * nor `delegations` (the ledger's active stake holds non-zero amounts only), but the pool
+      * still counts it as a delegator and so appears, with no stake, in the pool distribution.
+      */
+    idlePools: Set[Bytes] = Set.empty
 ):
   /** Total stake delegated to each registered pool. */
   lazy val poolStake: Map[Bytes, BigInt] =
-    delegations.iterator
+    val staked = delegations.iterator
       .collect { case (c, p) if pools.contains(p) => p -> stake.getOrElse(c, BigInt(0)) }
       .toVector
       .groupMapReduce(_._1)(_._2)(_ + _)
+    idlePools.iterator
+      .filter(p => pools.contains(p) && !staked.contains(p))
+      .foldLeft(staked)(_.updated(_, BigInt(0)))
   lazy val activeStake: BigInt = poolStake.values.sum
 
   /** The pool distribution as the leader check consumes it; built once per snapshot, not per block.

@@ -32,6 +32,9 @@ trait UtxoStore[F[_]]:
   /** Every entry (tools and tests; a disk store streams it into memory, so only for small sets). */
   def all: F[Map[TxIn, TxOut]]
 
+  /** Visit every entry without collecting them (the state digests of `--dump-state`). */
+  def scan(visit: (TxIn, TxOut) => Unit): F[Unit]
+
   /** Number of entries. */
   def size: F[Long]
 
@@ -142,6 +145,8 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
 
   def flushed: F[Long] = state.get.map(_.stamp)
   def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
+  def scan(visit: (TxIn, TxOut) => Unit): F[Unit] =
+    state.get.map(_.entries.foreach((k, v) => visit(k, v)))
   def size: F[Long] = state.get.map(_.entries.size.toLong)
   def reset: F[Unit] = state.set(Contents(Map.empty, -1))
 

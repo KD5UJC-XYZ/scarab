@@ -112,6 +112,18 @@ final class RocksUtxoStore[F[_]: Sync] private (
     finally it.close()
   }
 
+  def scan(visit: (TxIn, TxOut) => Unit): F[Unit] = guard("utxo scan") {
+    val it = db.get.newIterator()
+    try
+      it.seekToFirst()
+      while it.isValid do
+        val k = it.key()
+        if k.length == 36 then
+          Coding.decodeValue(it.value()).foreach(out => visit(Coding.decodeKey(k), out))
+        it.next()
+    finally it.close()
+  }
+
   def size: F[Long] = guard("utxo count") {
     val it = db.get.newIterator()
     try

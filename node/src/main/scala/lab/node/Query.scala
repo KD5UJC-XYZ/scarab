@@ -81,7 +81,7 @@ object Projection:
       })
     })
 
-  private def txOut(o: TxOut): Json =
+  private[node] def txOut(o: TxOut): Json =
     val base = Json.obj("address" -> o.address.raw.hex.asJson, "lovelace" -> o.value.coin.asJson)
     val multi = if o.value.assets.isEmpty then Json.obj() else Json.obj("assets" -> assets(o.value))
     val datum = o.datum match

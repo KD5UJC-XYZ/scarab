@@ -85,7 +85,20 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 - With one CPU the JVM's serial collector, not the rules, made timers late: run with
   `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20` (running.md); the devnet node does.
 
+### Verification
+- Ledger-state oracle (roadmap K1, `scripts/oracle/`, `scripts/oracle_compare.py`): `follow --dump-state`
+  writes a digest of the ledger state at every epoch boundary (or at chosen slots); the reference image's
+  `db-analyser` stores the Haskell state after the same block, which is decoded (UTxO-HD `MemPack`
+  tables, `NewEpochState`, the Conway governance state) and compared, with differences narrowed by
+  bucket digests. `devnet.py e2e --oracle`, `soak --oracle` and `devnet.py oracle` run it against a
+  cluster; `oracle_compare.py reference` and `diff` against a Haskell node's ChainDB on a public network.
+
 ### Ledger
+- Byron genesis outputs of zero lovelace (Preview has seven) are not put into the UTxO; the ledger's
+  Byron to Shelley translation drops them.
+- The stake snapshots leave out a credential without stake (no UTxO and no rewards), as the ledger's
+  active-stake resolution does.
+- The Conway translation keeps the genesis delegations in the delegation state, unused, as the ledger does.
 - Before Allegra an account with a leader and a member reward keeps the leader reward (it kept the member reward).
 - Reward prefilter confirmed against the source (registered at the first block after 4k/f); now applied when the update is created, as the reference shows it.
 - Mary scaled minimum output: divisor 27 and distinct asset names; Allegra and Mary only call ada-only outputs too small, as the reference does.
