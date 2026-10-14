@@ -1,0 +1,13 @@
+; Local refinements of network.base. The ouroboros-network specification leaves the payloads of the
+; mini-protocols as `any` ("we instantiate them using any"). Cardano instantiates them as below:
+;   header: the hard-fork-combinator header (ouroboros-consensus node-to-node/chainsync/header.cddl)
+;   point:  [] / [slot, hash]               (ouroboros-consensus base.cddl)
+;   tip:    [point, block number]           (ouroboros-network Protocol/ChainSync tip encoding)
+; Everything else stays as upstream defines it.
+;# import base as chain
+;# import chainsync-header as hfc
+
+header = hfc.header
+point = chain.point
+blockno = chain.blockno
+tip = [point, blockno]
