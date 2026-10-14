@@ -35,6 +35,17 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--seconds")).isLeft)
   }
 
+  test("--header-first, --max-inbound and --inbound-sync have defaults and refuse bad values") {
+    val defaults = Main.parse(base).toOption.get
+    assert(defaults.headerFirst && defaults.inboundSync)
+    assertEquals(defaults.maxInbound, 64)
+    assert(!Main.parse(base ++ List("--header-first", "off")).toOption.get.headerFirst)
+    assert(!Main.parse(base ++ List("--inbound-sync", "off")).toOption.get.inboundSync)
+    assertEquals(Main.parse(base ++ List("--max-inbound", "5")).toOption.get.maxInbound, 5)
+    assert(Main.parse(base ++ List("--header-first", "maybe")).isLeft)
+    assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
+  }
+
   test("--cpu-threads takes zero (no pool) or a positive number, nothing else") {
     assertEquals(Main.parse(base ++ List("--cpu-threads", "0")).toOption.get.cpuThreads, 0)
     assertEquals(Main.parse(base ++ List("--cpu-threads", "3")).toOption.get.cpuThreads, 3)

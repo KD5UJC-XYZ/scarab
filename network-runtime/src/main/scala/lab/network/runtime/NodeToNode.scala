@@ -71,11 +71,32 @@ object NodeToNode:
       _ <- serve.filter(_ => !agreed.data.initiatorOnly).traverse_ { handlers =>
         NodeToNodeServer.start(mux, handlers)
       }
-      _ <- transactions.traverse_(source => TxSubmissionClient.background(mux, source))
-      chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync))
-      blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch))
-      keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive))
+      connection <- clients(mux, settings.mux.role, agreed.version, codec, settings, transactions)
+    yield connection
+
+  /** Our own clients (ChainSync, BlockFetch, KeepAlive and, with `transactions`, TxSubmission2) on
+    * an established multiplexer, as the initiator side of each mini-protocol. A connection we
+    * opened has them by default; on a connection the peer opened (an inbound duplex connection, see
+    * [[NodeToNodeServer.accept]]) they run beside our servers, `role` being the side of the
+    * mini-protocols that is ours: always `Initiator` for a client. The clients live as long as the
+    * resource; closing it does not close the multiplexer.
+    */
+  def clients[F[_]: Async, P](
+      mux: Mux[F],
+      role: Mux.Role,
+      version: Int,
+      codec: ChainSync.PayloadCodec[P],
+      settings: Settings = Settings(),
+      transactions: Option[TxSubmissionClient.Source[F]] = None
+  )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
+    for
+      _ <- transactions.traverse_(source =>
+        TxSubmissionClient.background(mux, source, role = Some(role))
+      )
+      chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
+      blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
+      keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
       _ <- KeepAliveClient.background(keepAliveChannel, mux, settings.keepAlive)
       chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
       blockFetch <- Resource.eval(BlockFetchClient(blockFetchChannel, settings.blockFetch))
-    yield NodeToNodeConnection(agreed.version, chainSync, blockFetch, mux)
+    yield NodeToNodeConnection(version, chainSync, blockFetch, mux)

@@ -18,7 +18,7 @@ import scala.concurrent.duration.*
   */
 trait HeaderGate[F[_]]:
   /** Validate the instructions of one ChainSync batch, in order. */
-  def accept(batch: Vector[SyncEvent]): F[Unit]
+  def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit]
 
   /** How the headers so far were established. */
   def counts: F[HeaderGate.Counts]
@@ -30,7 +30,7 @@ object HeaderGate:
   final case class Counts(validated: Long, unchecked: Long, waited: Long)
 
   def none[F[_]: Applicative]: HeaderGate[F] = new HeaderGate[F]:
-    def accept(batch: Vector[SyncEvent]) = Applicative[F].unit
+    def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]) = Applicative[F].unit
     def counts = Applicative[F].pure(Counts(0, 0, 0))
 
 /** Makes a [[HeaderGate]] for a session that has found its intersection with our chain. */
@@ -61,8 +61,7 @@ object HeaderCheck:
       retained: Int = 4096,
       observe: Option[HeaderGate.Counts => F[Unit]] = None
   )(using
-      chain: Stateful[F, VolatileChain[S]],
-      raise: Raise[F, PeerError]
+      chain: Stateful[F, VolatileChain[S]]
   ): HeaderCheck[F] = new HeaderCheck[F]:
     private val F = Async[F]
 
@@ -75,10 +74,13 @@ object HeaderCheck:
         tally <- Ref.of[F, HeaderGate.Counts](HeaderGate.Counts(0, 0, 0))
       yield gate(state, tally)
 
-    private def invalid[A](header: Header, error: lab.node.consensus.HeaderError): F[A] =
+    private def invalid[A](header: Header, error: lab.node.consensus.HeaderError)(using
+        Raise[F, PeerError]
+    ): F[A] =
       PeerError.InvalidHeader(header.point, error).raise[F, A]
 
-    private def protocol[A](reason: String): F[A] = PeerError.Protocol(reason).raise[F, A]
+    private def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
+      PeerError.Protocol(reason).raise[F, A]
 
     private def gate(
         state: Ref[F, HeaderChain[H]],
@@ -87,7 +89,7 @@ object HeaderCheck:
       new HeaderGate[F]:
         def counts = tally.get
 
-        def accept(batch: Vector[SyncEvent]): F[Unit] =
+        def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
           // The signatures of the leading headers are verified in parallel first; the rules below
           // then find the verdicts ready.
           val leading = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
@@ -104,7 +106,7 @@ object HeaderCheck:
           ) *> tally.get.flatMap(c => observe.traverse_(_(c))))
 
         /** The candidate chain returns to `point`: a header of ours or of the peer's. */
-        private def rollback(point: ChainSync.Point): F[Unit] =
+        private def rollback(point: ChainSync.Point)(using Raise[F, PeerError]): F[Unit] =
           state.get.flatMap { hc =>
             hc.rollback(point) match
               case Some(back) => state.set(back)
@@ -119,7 +121,7 @@ object HeaderCheck:
                 }
           }
 
-        private def forward(header: Header): F[Unit] =
+        private def forward(header: Header)(using Raise[F, PeerError]): F[Unit] =
           resolve(header, waited = false, since = None).flatMap { case (outcome, waited) =>
             outcome match
               case Outcome.Valid(next) =>
@@ -132,7 +134,7 @@ object HeaderCheck:
               case Outcome.Later(_)       => protocol("header validation did not settle")
           }
 
-        private def record(header: Header, next: Option[H]): F[Unit] =
+        private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =
           state.get.flatMap(hc =>
             hc.extend(header, next).fold(protocol[Unit], g => state.set(g.pruned(retained)))
           )
@@ -144,7 +146,7 @@ object HeaderCheck:
             header: Header,
             waited: Boolean,
             since: Option[(Option[BlockRef], FiniteDuration)]
-        ): F[(Outcome[H], Boolean)] =
+        )(using Raise[F, PeerError]): F[(Outcome[H], Boolean)] =
           for
             hc <- state.get
             current <- chain.get
@@ -195,7 +197,7 @@ object HeaderCheck:
             reason: String,
             since: Option[(Option[BlockRef], FiniteDuration)],
             current: VolatileChain[S]
-        ): F[(Outcome[H], Boolean)] =
+        )(using Raise[F, PeerError]): F[(Outcome[H], Boolean)] =
           for
             now <- F.monotonic
             progress = current.tipRef

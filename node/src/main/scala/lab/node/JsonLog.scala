@@ -7,6 +7,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import lab.network.ChainSync
+import lab.network.runtime.ConnectionEvent
 import lab.node.forge.{ForgeEvent, ForgeEvents}
 import lab.node.mempool.{MempoolEvent, MempoolEvents}
 import lab.node.storage.{StorageEvent, StorageEvents}
@@ -69,6 +70,47 @@ object JsonLog:
 
   def inbound(remote: String, what: String, reason: Option[String] = None): IO[Unit] =
     line("inbound", "remote" -> remote.asJson, "state" -> what.asJson, "reason" -> reason.asJson)
+
+  /** What the inbound governor did on a connection (G2). */
+  def inboundEvent(remote: String, event: InboundEvent): IO[Unit] = event match
+    case InboundEvent.Accepted       => inbound(remote, "accepted")
+    case InboundEvent.Duplex         => inbound(remote, "duplex")
+    case InboundEvent.Unidirectional => inbound(remote, "unidirectional")
+    case InboundEvent.Following(p)   => inbound(remote, "following", Some(Points.show(p)))
+    case InboundEvent.SessionEnded(reason, dropped) =>
+      inbound(remote, if dropped then "sessionDropped" else "sessionEnded", Some(reason))
+    case InboundEvent.Closed(reason)  => inbound(remote, "closed", Some(reason))
+    case InboundEvent.Refused(reason) => inbound(remote, "refused", Some(reason))
+
+  /** What the connection manager did (G2): a connection opened, moved to another state, was refused
+    * or closed.
+    */
+  def connection(event: ConnectionEvent): IO[Unit] = event match
+    case ConnectionEvent.Opened(remote, provenance) =>
+      line(
+        "connection",
+        "remote" -> remote.asJson,
+        "what" -> "opened".asJson,
+        "provenance" -> provenance.toString.asJson
+      )
+    case ConnectionEvent.Changed(remote, from, to) =>
+      line(
+        "connection",
+        "remote" -> remote.asJson,
+        "what" -> "changed".asJson,
+        "from" -> from.toString.asJson,
+        "to" -> to.toString.asJson
+      )
+    case ConnectionEvent.Refused(error) =>
+      line("connection", "what" -> "refused".asJson, "reason" -> error.message.asJson)
+    case ConnectionEvent.Closed(remote, provenance, reason) =>
+      line(
+        "connection",
+        "remote" -> remote.asJson,
+        "what" -> "closed".asJson,
+        "provenance" -> provenance.toString.asJson,
+        "reason" -> reason.asJson
+      )
 
   val mempool: MempoolEvents[IO] = new MempoolEvents[IO]:
     def emit(event: MempoolEvent): IO[Unit] = event match
