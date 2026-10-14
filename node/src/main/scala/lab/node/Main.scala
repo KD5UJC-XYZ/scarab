@@ -38,7 +38,7 @@ import scala.concurrent.duration.*
 /** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
   * [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
-  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]
+  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N]
   * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
   * [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>]
   * [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file>
@@ -82,6 +82,9 @@ object Main extends IOApp:
       /** `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without. */
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
+      /** Log a `memory` event (heap, buffers, process, container, RocksDB) every N seconds; 0: off.
+        */
+      memoryReportSeconds: Int = 0,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
       readAhead: Int = 128,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
@@ -600,6 +603,14 @@ object Main extends IOApp:
             yield forger.run
           }
           production = forging.fold(Resource.unit[IO])(_.background.void)
+          reporting =
+            if options.memoryReportSeconds <= 0 then Resource.unit[IO]
+            else
+              val stores = Handle
+                .allow[NodeError](store.memory)
+                .rescue(_ => IO.pure(Map.empty[String, Long]))
+              (IO.sleep(options.memoryReportSeconds.seconds) *>
+                MemoryReport.sample(stores).flatMap(JsonLog.memory)).foreverM.background.void
           run = QueryServer
             .resource[IO](
               ChainView.fromRef(ref),
@@ -613,6 +624,7 @@ object Main extends IOApp:
             .flatMap(_ => relay)
             .flatMap(_ => local)
             .flatMap(_ => production)
+            .flatMap(_ => reporting)
             .surround(sync)
           _ <- JsonLog.started(options.peers, genesis, setup.config, topology)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
@@ -640,6 +652,7 @@ object Main extends IOApp:
     "mempool-bytes",
     "utxo-store",
     "utxo-cache-mb",
+    "memory-report-seconds",
     "read-ahead",
     "header-first",
     "max-inbound",
@@ -717,6 +730,9 @@ object Main extends IOApp:
           cacheMb <- flags
             .get("utxo-cache-mb")
             .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
+          memoryReport <- flags
+            .get("memory-report-seconds")
+            .fold(Right(0))(_.toIntOption.filter(_ >= 0).toRight(usage))
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
@@ -760,6 +776,7 @@ object Main extends IOApp:
           forge,
           utxoKind,
           cacheMb,
+          memoryReport,
           readAhead,
           cpuThreads,
           dump,
