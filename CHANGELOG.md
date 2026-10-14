@@ -62,13 +62,14 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   stored blocks yields with `cede`.
 - With one CPU the JVM's serial collector, not the rules, made timers late: run with
   `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20` (running.md); the devnet node does.
+
 ### Verification
 - Ledger-state oracle (roadmap K1, `scripts/oracle/`, `scripts/oracle_compare.py`): `follow --dump-state`
   writes a digest of the ledger state at every epoch boundary (or at chosen slots); the reference image's
   `db-analyser` stores the Haskell state after the same block, which is decoded (UTxO-HD `MemPack`
   tables, `NewEpochState`, the Conway governance state) and compared, with differences narrowed by
   bucket digests. `devnet.py e2e --oracle`, `soak --oracle` and `devnet.py oracle` run it against a
-  cluster; `oracle_compare.py preview` against a Haskell node's ImmutableDB on a public network.
+  cluster; `oracle_compare.py reference` and `diff` against a Haskell node's ChainDB on a public network.
 
 ### Ledger
 - Byron genesis outputs of zero lovelace (Preview has seven) are not put into the UTxO; the ledger's

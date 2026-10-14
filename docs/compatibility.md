@@ -77,6 +77,9 @@ are pending (see the placeholder in the README and K5).
 | `devnet.py soak --seconds 480`, `relay --seconds 300` | soak: 24/24 comparisons matched, no error; relay: passed (180 transactions into the Scala mempool, 179 in blocks), both with the Scala node in a 2-CPU container | c177e09 | same |
 | Preview sync, genesis to tip | 4,747,639 blocks, epoch 1447, 551 blocks/s average, no rule failure; **the run was assembled from 12 restarts across different builds** (see [performance.md](performance.md)) | perf branch, merged in 5cfdefd | 8 CPUs, `-Xmx3g`, RocksDB UTxO |
 | Preview sync, uninterrupted, one build | 4,748,226 blocks, epochs 0 to 1447 in 3h36m42s (about 365 blocks/s), then 32.8 min at the live tip; 0 error events; 242 failing Plutus evaluations all equal to `is_valid`; final tip identical to Koios; RSS peak 5.66 GB, disk 14.8 GB (see [performance.md](performance.md)); accepts the real chain, ledger identity vs Haskell not shown (K1) | 5cfdefd (tag v0.1.0 will be on a later docs/CI commit) | 6 CPUs, `-Xmx3g`, container limit raised to 10 GiB, RocksDB UTxO |
+| Ledger oracle, devnet `e2e --oracle` (Byron to Conway, 50-slot Byron and 500-slot Shelley epochs) | 16/16 epoch-boundary digests (epochs 2 to 17) equal to the `db-analyser` state of the reference node, 0 differences; the first Shelley epoch has no digest; the e2e itself passed | this branch (K1 merge) | 2026-10-14, `.workspace/data/2026-10-14-k1-devnet/e2e.log` |
+| Ledger oracle, devnet `soak --seconds 480 --oracle` | 10/10 digests equal, 23/23 ledger comparisons matched, 0 mismatches | same | same, `soak.log` |
+| Ledger oracle, Preview from genesis against a Haskell cardano-node 11.1.3 (PraosMode) that synced the same relay | see the K1 line of [roadmap.md](roadmap.md); results in `.workspace/data/2026-10-14-k1-haskell-preview/diff.json` | this branch | Scala 6 CPUs `-Xms3g -Xmx3g`, db-analyser 2 CPUs each |
 
 The Scala unit and property suites run in CI (`.github/workflows/ci.yml`) via `scripts/sbtw check`
 on every pull request; the devnet scenarios do not run in CI yet (roadmap A3).
@@ -85,7 +88,7 @@ on every pull request; the devnet scenarios do not run in CI yet (roadmap A3).
 
 Collected from the table, for quick scanning:
 
-- ledger state equality with `db-analyser` at epoch boundaries (K1); today Preview only shows valid blocks are not rejected;
+- ledger state equality with `db-analyser` beyond the Preview epochs and devnet runs of the evidence log (K1), and on preprod and mainnet;
 - upstream conformance suites for the ledger, ouroboros-network and Plutus (K2, I1);
 - fuzzing of the CBOR decoders, transaction/block decoding and mini-protocol codecs (K3);
 - days-long stability, memory growth, file handles, reconnect behaviour (K4);
