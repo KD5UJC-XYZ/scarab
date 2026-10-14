@@ -278,8 +278,8 @@ starvation warnings are lines containing `starvation-and-tuning`. `python3 scrip
 
 The uninterrupted run of section 3 grew from 1 GB to a container RSS of 5.66 GB with `-Xmx3g`. This
 section says where the memory is and what bounds it. Measurements are one developer's, on a host that
-was busy with other work (load average 2 at the start of the 45-minute profile, 25 to 37 later), so the
-blocks per second are only comparable between runs started together.
+was busy with other work (load average 2 when the 45-minute profile started, 25 to 37 in the hours after), so
+the blocks per second are only comparable between runs started together.
 
 **Method.** Commit 1c13c5a added `--memory-report-seconds N`: a `memory` log line with the JVM's own
 accounting (heap used and committed, non-heap, metaspace, the direct and mapped buffer pools, thread
@@ -322,9 +322,9 @@ table above has the nearest memory line, a few MB earlier):
 | left over | about 660 | glibc malloc arenas: about 230 with `MALLOC_ARENA_MAX=2`; the default run's part grew by about 30 MB per minute from minute 15, the other's by about 8 MB per minute and was flat in the last 5 minutes |
 | **`RssAnon`** | 4286 (default), 3862 (2 arenas) | |
 
-Direct buffers were about 1 MiB (27 buffers), mapped buffers 0: the NIO and Netty-style off-heap pools are
-not involved. The page cache is not memory the node holds: it is the 14 GB of blocks and SST files it
-writes, and the kernel gives it back under a memory limit (`docker stats` reports the cgroup usage minus
+Direct buffers were about 1 MiB (27 buffers), mapped buffers 0: the NIO off-heap pools are not involved.
+The page cache is not memory the node holds: it is the blocks and SST files it writes (14 GB at the tip),
+and the kernel gives it back under a memory limit (`docker stats` reports the cgroup usage minus
 the inactive file pages, which here tracks `RssAnon`: 3.70 GiB while the cgroup's `current` was 5.4 GB).
 
 **What caused the 5.66 GB.** The heap is bounded by `-Xmx`, the JVM's own native memory is flat at about
@@ -348,20 +348,21 @@ is the cache size however many tables there are. The cap holds: cache usage afte
 and 255.5 MB for `--utxo-cache-mb` 8, 32 and 256 (`block-cache-usage` of the `memory` lines). The cost of a
 small cache, measured from copies of one database at epoch 138 (live RocksDB 157 MB) restarted together for
 8 minutes with the build before D1 (`MALLOC_ARENA_MAX=2`, 6 CPUs): 25,951, 26,192 and 27,658 blocks for 8, 32
-and 256 MB (-6.2%, -5.3%, 0). That database is a third of the size at the tip (466 MB of RocksDB), so a
-cache of the size of the live data is what these numbers show, not a cache of half of it; the cost at the tip
-with a small cache has not been measured.
+and 256 MB (-6.2%, -5.3%, 0). The live database was 157 MB, so the 8 and 32 MB caches held 5% and 20% of
+it and the 256 MB cache all of it; at the tip (466 MB of RocksDB) the default cache holds 55%, and what that
+costs has not been measured.
 
 **The bound.** With two arenas, `RssAnon` is the heap limit plus about 0.8 GB: 3.86 GB at minute 45
 of the profile with `-Xmx3g` (3072 heap, 296 JVM, 260 RocksDB, 230 other). The recommended container
 limit is `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`): the 0.9 to 1.1 GB of native memory, kernel memory and
-head room for the page cache the kernel can always give back. The long run below ran under exactly that
-limit.
+head room for the page cache the kernel can always give back. The long run at the end of this section ran under
+exactly that limit.
 
 ## 8. Accounts, pools, DReps and stake snapshots on disk (D1)
 
-Builds: 419d3c6 (the long run, the restart runs, the first throughput pair) and 002302d (the final commit:
-it also fetches the rows a block names before applying it; the second pair and the devnet gates). The
+Builds: 419d3c6 (the long run, the restart runs, the first throughput pair), 002302d (it also fetches the rows
+a block names before applying it: the second pair, e2e, ntc, relay and the first soak) and 74ada98 (the last
+code commit: the boundary fetches the `set` snapshot; the last soak and the refetch counts). The
 design is in [architecture.md](architecture.md) ("The other ledger maps behind the same store"): the ledger
 state holds a `Table` per map (the changes of the last `k` blocks, the counters, nothing else) and
 RocksDB holds the rows, one column family per table in the database of the UTxO set.
@@ -369,7 +370,7 @@ RocksDB holds the rows, one column family per table in the database of the UTxO 
 **Equivalence.** The ledger summary line of every epoch (`ledgerEpoch`: UTxO count, accounts, pools, treasury,
 reserves, protocol version, Plutus counters) of the D1 build equals the build before it in every epoch both
 reached: 139 epochs of the long run (the other build was stopped at epoch 139), 46 of the restart runs
-below and 28 to 33 of each paired run. The devnet gates pass with the final commit: `e2e` (Shelley 12,
+below and 28 to 33 of each paired run. The devnet gates pass (on 002302d, soak also on 74ada98): `e2e` (Shelley 12,
 Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30 comparisons matched, 0 mismatched), `soak --seconds 480`
 (22 of 22 comparisons; 23 of 23 on the last code commit, 74ada98), `ntc` (814 of 814 query answers byte-equal over 16 rounds, 18 of 18 refusals, 23
 of 24 `cardano-cli` queries; `ledger-state` is not answered) and `relay` pass. **`pool` did not pass** on this
@@ -409,7 +410,7 @@ block after the 4k/f cut-off of a pre-Babbage epoch records the registered crede
 asks for the accounts whole. A JFR profile of the D1 build at epoch 46
 (11k samples) has no frame of `Table` or `LedgerStore` among the hot ones (they are 0.4% of the samples); Ed25519 (32.6%), `Bytes`
 (9.5%), Plutus (9.1%) and VRF (3.4%) dominate as in section 1. The epoch boundary runs once per epoch
-and read the tables whole (fetched at once before the block is applied): 89 boundary steps in the first
+and reads the tables whole (fetched at once before the block is applied): 89 boundary steps in the first
 90 epochs took 16 ms on average, 112 ms at most. (The fetch before a boundary of the builds measured here
 took the `go` snapshot, which the rotation replaces; the boundary read the `set` snapshot that becomes `go`
 and so was applied again (part of the `refetch` count). The final commit fetches `set`, with a test that
