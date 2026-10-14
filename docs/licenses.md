@@ -74,7 +74,7 @@ regenerated here.
 | io.bullet:borer-derivation_3 | 1.18.0 | MPL-2.0 | transitive | As borer-core_3. |
 | dev.optics:monocle-core_3 | 3.3.0 | MIT | transitive |  |
 | dev.optics:monocle-macro_3 | 3.3.0 | MIT | transitive |  |
-| foundation.icon:blst-java | 0.3.2 | Apache-2.0 | transitive | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
+| foundation.icon:blst-java | 0.3.2 | Apache-2.0 | direct (core, Leios BLS); also transitive via Scalus | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
 | org.scalus:scalus-secp256k1-jni | 0.6.0 | Apache-2.0 | transitive | Bundles native secp256k1 (bitcoin-core, MIT) for Linux and macOS; the POM states Apache-2.0 for the wrapper. |
 | io.circe:circe-jawn_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | io.circe:circe-core_3 | 0.14.16 | Apache-2.0 | transitive |  |

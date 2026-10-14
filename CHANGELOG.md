@@ -5,6 +5,20 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Leios (roadmap N2, N3 groundwork)
+- `lab.bls` in `core` (pure): BLS12-381 MinSig voting keys over blst-java (now a direct dependency):
+  key generation from a seed, proofs of possession and votes with the `cardano-base` POP tags,
+  signature and key aggregation, strict compressed decoding (length, flag, curve, subgroup,
+  identity), `Committee` seating and `Certificate` aggregation and verification, `Vote` and
+  `Certificate` CBOR. Opaque `Seed`, `SeatId`, `RbHash`, `Signers`, `Weight`; closed `BlsError`.
+  Checked against the Leios proto-devnet pool keys and genesis proofs (byte-exact), cardano-base
+  serialisation negatives and the prototype's golden `LeiosVote`; tamper, replay, duplicate and
+  rogue-key properties; 900-seat certificate verification about 2 ms (`docs/leios.md` section 9).
+- `LeiosNotify` and `LeiosFetch` pure codecs (mini-protocols 18 and 19, Blueprint CDDL), clients in
+  `network-runtime`, and a read-only probe of the public Leios testnet relay (`LeiosProbe`, test
+  sources): the relay closed the connection on the first protocol-18 request, recorded in
+  `docs/leios.md` section 10.
+
 ### Network
 - Header-first validation (roadmap G6): the pipelined peer validates each ChainSync batch before any
   of its blocks is fetched. `NodeHeaderRules` (pure) checks the envelope, the Praos or TPraos

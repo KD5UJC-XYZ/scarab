@@ -1,0 +1,5 @@
+# label	reply (hex)	proposal
+query	8203a30e8418a4f401f40f8418a4f401f4108518a4f401f4f4	versions 14,15,16 with the query flag
+accept-14	83010e8418a4f500f4	version 14, initiator only, no peer sharing
+accept-15	83010f8418a4f500f4	version 15, same data
+accept-16	8301108518a4f500f4f4	version 16, same data plus the Peras flag (false)

@@ -41,6 +41,13 @@ attribution files in fixtures/witness/licenses. The curve25519-elisabeth 0.1.3
 arithmetic artifact is a runtime dependency (see "Third-party runtime dependencies"); no
 signing implementation or private-key corpus is vendored.
 
+Leios (fixtures/leios): serialisation test vectors from IntersectMBO/cardano-base
+(Apache-2.0; fixtures/licenses/cardano-base-LICENSE and -NOTICE), the golden LeiosVote of
+IntersectMBO/ouroboros-consensus branch leios-prototype (Apache-2.0), and the throwaway
+proto-devnet BLS test keys and genesis proofs of input-output-hk/ouroboros-leios (Apache-2.0).
+Provenance per file is in fixtures/leios/README.md. The recorded testnet handshake replies are
+protocol bytes.
+
 Operational certificates (fixtures/opcert): the exact ledger OCert source and
 four public Amaru header fixtures with their Apache-2.0 LICENSE/NOTICE files
 under fixtures/opcert/evidence. The Scala adapter is original public-only code.
