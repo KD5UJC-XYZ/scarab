@@ -31,6 +31,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   connection the slow receive held the next batch's ChainSync replies behind the block data.
 
 ### Node-to-client
+- LocalTxMonitor and local ChainSync (roadmap F2, #29). `--local-socket` also serves mini-protocol 9
+  (`cardano-cli conway query tx-mempool info | next-tx | tx-exists`, and `GetMeasures`) and mini-protocol 5
+  (whole blocks as `#6.24(bytes)`, from the immutable store and the volatile chain, with 2.5 MB messages
+  where node-to-node allows 65535). The mempool snapshot is the reference server's in numbers: the slot after
+  the tip, each transaction at its ledger size plus 4 bytes, the capacity a whole number of block-sized
+  units, `GetMeasures` over the transactions `NextTx` has not handed out. `Mempool.awaitChange` wakes
+  `AwaitAcquire` (and `sync` now signals a change). The first instruction after an intersection is a
+  roll-back to the point found, as the reference's follower sends it, on node-to-node too (found by
+  comparing the two servers). `devnet.py ntc` compares both protocols with the reference node byte for
+  byte (`scripts/devnet/ntclocal.py`).
 - LocalStateQuery server (roadmap F1): the mini-protocol (acquire at a point, the volatile or immutable
   tip, re-acquire, release), the hard-fork-combinator query envelope and the Conway queries
   `cardano-cli conway query` sends: tip, epoch, protocol parameters, UTxO (whole, by address, by
@@ -49,6 +59,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   parameters had two cost-model languages where the reference has three.
 - `PraosState` keeps the previous epoch nonce (the chain-dependent state a client reads); snapshots
   written by earlier builds fail their schema check and are replayed.
+
+### Configuration
+- `follow --config <config.json> --topology <topology.json>` (roadmap J1, #45): the Haskell node's
+  configuration is read as `cardano-node run` reads it (genesis file names relative to the file,
+  `Test<Era>HardForkAtEpoch`, `RequiresNetworkMagic`, `PBftSignatureThreshold`, `LastKnownBlockVersion-*`,
+  `ExperimentalHardForksEnabled`, `ConsensusMode`, `SocketPath`, `DatabasePath`,
+  `MempoolCapacityBytesOverride`, ...) and its P2P topology (`localRoots`, `publicRoots`, `bootstrapPeers`,
+  `useLedgerAfterSlot`; the local roots and bootstrap peers are followed). Every genesis hash the
+  configuration lists is verified: Byron (canonical JSON), Shelley, Alonzo, Conway, and Dijkstra and the
+  checkpoints when the file is there; a mismatch is a `ConfigError` of kind `GenesisHashMismatch`, also for
+  `--genesis-dir`. `--genesis-dir` and `--peer` work as before. Tested with the public Preview, preprod and
+  mainnet files (`fixtures/*/genesis`).
 
 ### Byron
 - Byron ledger (roadmap C1): UTxO with witness signatures, address roots, network magic, value

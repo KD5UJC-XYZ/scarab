@@ -16,6 +16,12 @@ redeem address and the genesis UTxO (the pseudo transaction id and address equal
 spent), and validates every transaction: witness signatures under the Byron signing tags and the
 protocol magic, address roots, value conservation and the minimum fee.
 
+`genesis/` holds the public mainnet node configuration from
+https://book.play.dev.cardano.org/environments/mainnet/ unchanged, downloaded 2026-10-14: `config.json`,
+`topology.json`, `shelley-genesis.json`, `alonzo-genesis.json` and `conway-genesis.json`. The Byron genesis file
+(1 MB) is not kept: `ConfigSuite` checks the Shelley, Alonzo and Conway hashes against the files, and the
+Byron hash against the full file when one is present at .workspace/data/2026-10-14-configs/mainnet.
+
 ## Provenance and licence
 
 Public Cardano mainnet chain data, fetched over node-to-node from the public IOG backbone relay and

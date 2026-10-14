@@ -13,7 +13,7 @@
                                    pool 1's keys (pool 1's Haskell node is never started), forges in
                                    its leader slots, and the Haskell pools adopt its blocks
     devnet.py ntc [--seconds N]    the Scala node's node-to-client interface against the reference node's:
-                                   LocalStateQuery byte for byte, `cardano-cli query`, refused transactions
+                                   LocalStateQuery, local ChainSync and LocalTxMonitor byte for byte, `cardano-cli query`, refused transactions
     devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
     devnet.py capture-eras         capture the up-eras chain as test fixtures (fixtures/eras)
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
@@ -130,11 +130,13 @@ def main():
     rl.add_argument("--keep", action="store_true", help="leave the cluster running")
     rl.add_argument("--keep-data", action="store_true", help="keep the run directory")
     rl.set_defaults(run=relay)
-    nt = sub.add_parser("ntc", help="node-to-client: LocalStateQuery and transaction rejections against the reference")
+    nt = sub.add_parser("ntc", help="node-to-client: LocalStateQuery, local ChainSync, LocalTxMonitor and transaction rejections against the reference")
     nt.add_argument("--seconds", type=int, default=240, help="length of the LocalStateQuery comparison phase (with load)")
     nt.add_argument("--warmup", type=int, default=60, help="seconds of load before the first comparison round")
     nt.add_argument("--every", type=int, default=10, help="seconds between comparison rounds")
     nt.add_argument("--seed", type=int, default=1, help="random seed of the load")
+    nt.add_argument("--chain-sync-blocks", type=int, default=60, help="blocks followed from Origin on both sockets")
+    nt.add_argument("--monitor-burst", type=int, default=4, help="chained transactions per LocalTxMonitor burst")
     nt.set_defaults(run=ntc)
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
     pl.add_argument("--seconds", type=int, default=480, help="load phase length")

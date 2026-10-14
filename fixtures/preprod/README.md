@@ -13,7 +13,7 @@ java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.tools.CaptureMain c
 | File | Contents |
 |---|---|
 | `blocks.hex` | The first 70 blocks from Origin, contiguous: the epoch 0 boundary block (tag 0), the 45 Byron main blocks (tag 1) that are the whole Byron era of preprod, and the first 24 Shelley blocks (tag 2, TPraos headers, protocol 2). 117 KB. |
-| `genesis/` | The public preprod configuration (`config.json`, `byron-genesis.json`, `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`) from https://book.play.dev.cardano.org/environments/preprod/, unchanged. `shelley-genesis.json` must stay byte-identical: the initial Praos nonce is its hash. |
+| `genesis/` | The public preprod configuration (`topology.json`, `config.json`, `byron-genesis.json`, `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`) from https://book.play.dev.cardano.org/environments/preprod/, unchanged. `shelley-genesis.json` must stay byte-identical: the initial Praos nonce is its hash. |
 
 What the Byron blocks contain (decoded with `analyze` of the capture, pinned by `ByronPreprodSuite`):
 

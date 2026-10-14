@@ -57,19 +57,36 @@ object ChainSync:
     case Failed(error: String)
     case Decoded(value: A, consumed: Int)
 
-  /** Bounds are local policy. 65535 is the pinned network smallByteLimit per message. */
+  /** Bounds are local policy. 65535 is the pinned network smallByteLimit per message on
+    * node-to-node. `local` lifts the message and string bound to the 2.5 MB of a mux message, for
+    * the node-to-client protocol, which carries whole blocks and has no byte limit upstream.
+    */
   final case class Limits(
       maxMessageBytes: Int = 65535,
       maxDepth: Int = 24,
       maxItems: Int = 8192,
       maxStringBytes: Int = 65535,
       maxCandidates: Int = 64,
-      maxHashBytes: Int = 64
+      maxHashBytes: Int = 64,
+      local: Boolean = false
   ):
     private[network] def valid: Boolean =
-      maxMessageBytes > 0 && maxMessageBytes <= 65535 && maxDepth >= 0 && maxDepth <= 64 &&
-        maxItems > 0 && maxItems <= 65535 && maxStringBytes >= 0 && maxStringBytes <= 65535 &&
-        maxCandidates >= 0 && maxCandidates <= 1024 && maxHashBytes >= 0 && maxHashBytes <= 65535
+      val ceiling = if local then 2500000 else 65535
+      maxMessageBytes > 0 && maxMessageBytes <= ceiling && maxDepth >= 0 && maxDepth <= 64 &&
+      maxItems > 0 && maxItems <= 65535 && maxStringBytes >= 0 && maxStringBytes <= ceiling &&
+      maxCandidates >= 0 && maxCandidates <= 1024 && maxHashBytes >= 0 && maxHashBytes <= 65535
+
+  object Limits:
+    /** The node-to-client profile: whole blocks (`RawNtNBlock`s up to 2499991 bytes) and the
+      * longest intersection list a client sends.
+      */
+    val NodeToClient: Limits =
+      Limits(
+        maxMessageBytes = 2500000,
+        maxStringBytes = 2500000,
+        maxCandidates = 1024,
+        local = true
+      )
 
   /** A payload adapter receives exactly one bounded syntactically valid CBOR item. */
   trait PayloadCodec[P]:

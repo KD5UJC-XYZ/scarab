@@ -178,6 +178,72 @@ class ChainServerSuite extends CatsEffectSuite:
     }
   }
 
+  test("the node-to-client cursor serves the stored block bytes, immutable and volatile") {
+    tempDir.use { dir =>
+      ok {
+        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+          for
+            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            persistence = server.persistence[Unit]
+            _ <- (1 to 8).toList.traverse_ { i =>
+              val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
+              immutable.traverse_(r => store.append(r, raw(r.blockNo.toInt))) *>
+                persistence.extended(
+                  ref(i),
+                  raw(i),
+                  immutable,
+                  Anchor[Unit](immutable.headOption, ())
+                )
+            }
+            blocks <- server.blockSource.use { source =>
+              def loop(acc: List[Bytes]): IO[List[Bytes]] =
+                source.poll.flatMap {
+                  case Some(Update.RollForward(b, _))  => loop(acc :+ b.bytes)
+                  case Some(Update.RollBackward(_, _)) => loop(acc)
+                  case None                            => IO.pure(acc)
+                }
+              source.intersect(Vector(Point.Origin)) *> loop(Nil)
+            }
+          yield assertEquals(blocks, (1 to 8).toList.map(i => raw(i)))
+        }
+      }
+    }
+  }
+
+  test("the first instruction after an intersection is a roll-back to the point found") {
+    tempDir.use { dir =>
+      ok {
+        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+          for
+            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            persistence = server.persistence[Unit]
+            _ <- (1 to 4).toList.traverse_(i =>
+              persistence.extended(ref(i), raw(i), Vector.empty, Anchor[Unit](None, ()))
+            )
+            first <- server.source.use { source =>
+              for
+                _ <- source.intersect(Vector(ref(2).point))
+                a <- source.poll
+                b <- source.poll
+              yield (a, b)
+            }
+            origin <- server.blockSource.use { source =>
+              source.intersect(Vector(Point.Origin)) *> source.poll
+            }
+          yield
+            first match
+              case (Some(Update.RollBackward(p, _)), Some(Update.RollForward(h, _))) =>
+                assertEquals(p, ref(2).point)
+                assertEquals(h.raw, raw(3))
+              case other => fail(other.toString)
+            origin match
+              case Some(Update.RollBackward(Point.Origin, _)) => ()
+              case other                                      => fail(other.toString)
+        }
+      }
+    }
+  }
+
   test("a client waiting at the tip is woken by the next block and by a rollback") {
     tempDir.use { dir =>
       ok {
@@ -191,6 +257,7 @@ class ChainServerSuite extends CatsEffectSuite:
             outcome <- server.source.use { source =>
               for
                 _ <- source.intersect(Vector(ref(2).point))
+                _ <- source.poll // the roll-back to the intersection
                 waiting <- source.await.start
                 _ <- IO.sleep(20.millis)
                 _ <- persistence.extended(ref(3), raw(3), Vector.empty, Anchor[Unit](None, ()))

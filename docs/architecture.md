@@ -9,7 +9,7 @@ see [findings.md](findings.md).
 | Module | sbt id | Contents | Effect style |
 |---|---|---|---|
 | `core/` | `core` | CBOR (`lab.cbor`), Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, operational certificates | Pure functions, no effects |
-| `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, era and header tags (`Era`, `NtNHeader`) | Pure |
+| `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, era and header tags (`Era`, `NtNHeader`) | Pure |
 | `network-runtime/` | `networkRuntime` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
 | `node/` | `node` | Peer, volatile chain, follower, Praos and TPraos consensus, ledger rules for Shelley to Conway, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
 
@@ -85,7 +85,7 @@ Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled 
 | `ValidationError(point, rule, reason)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
 | `StorageError` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
 | `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
-| `ConfigError` | bad genesis or configuration | fatal at start |
+| `ConfigError(reason, problem)` | bad genesis, configuration or topology; `problem` is `Invalid`, `FileMissing`, `GenesisHashMismatch` (role, file, listed and actual hash) or `UnsupportedTopology` | fatal at start |
 
 A few programmer-error guards still throw (`Bytes`, the `Sum6Kes` hash contract, `Constants.checked` at class init). See the audit items
 in the [roadmap](roadmap.md) (M2).
@@ -116,6 +116,37 @@ blocks sequentially; snapshots are written by a background fiber from the immuta
 shared) anchor state; the forger, the servers and the query server run as resources next to the
 sync.
 
+
+## Configuration and topology files (`--config`, `--topology`)
+
+`NodeConfig` (`NodeConfig.scala`) reads the Haskell node's `config.json` as `Cardano.Node.Configuration.POM`
+does: the genesis file names (`ByronGenesisFile` or `GenesisFile`, `ShelleyGenesisFile`, `AlonzoGenesisFile`,
+`ConwayGenesisFile`, `DijkstraGenesisFile`, `CheckpointsFile`) with their hashes, `Test<Era>HardForkAtEpoch`,
+`RequiresNetworkMagic`, `PBftSignatureThreshold`, `LastKnownBlockVersion-*`, `MaxKnownMajorProtocolVersion`,
+`ExperimentalHardForksEnabled`, `ConsensusMode`, `PeerSharing`, `DiffusionMode`, `SocketPath`, `DatabasePath`
+and `MempoolCapacityBytesOverride`. Parsing is pure (`NodeConfig.parse(text, strict)`; `strict`, used for
+`--config`, insists on what `cardano-node run` insists on), and a failure is a `ConfigError`. The keys that do
+not shape the node are kept in `ConfigSettings` and logged; `ConfigSettings.unsupported` names the ones that ask
+for something not implemented (the Dijkstra era, Genesis syncing, hard forks triggered by a version, peer
+sharing).
+
+`NodeSetup.verifyHashes(config, read)` checks every hash the configuration lists against the file it names: the
+Byron hash is the blake2b-256 of the canonical JSON (sorted keys, no whitespace), the Shelley, Alonzo, Conway
+(and Dijkstra and checkpoints, when the file is present) hashes the blake2b-256 of the file's bytes. A
+mismatch is `ConfigProblem.GenesisHashMismatch(role, file, expected, actual)`. It runs for a genesis
+directory and for `--config`, before anything is derived from the files; the Shelley hash is also the initial
+Praos nonce, so the bytes hashed are the bytes used. `NodeSetup.fromConfigFile(config, genesisDir)` resolves
+the names against the configuration's directory (or `genesisDir`), as the reference does; `Main.configured`
+completes the options (the peers of the topology after the `--peer` ones, and, with `--config` only, the socket,
+database and mempool capacity of the file as defaults of their flags).
+
+`Topology` (`Topology.scala`) is the P2P `topology.json` (`Cardano.Node.Configuration.TopologyP2P` and
+`Ouroboros.Network.OrphanInstances`): `localRoots` (groups with `accessPoints`, `valency` or `hotValency`,
+`warmValency`, `advertise`, `behindFirewall`, `diffusionMode`, `trustable`), `publicRoots`, `bootstrapPeers`,
+`useLedgerAfterSlot` and `peerSnapshotFile`. `Topology.peers` is what this node follows: local roots, then
+bootstrap peers, then (only if neither names one) public roots, without repeats. The reference's refusals are
+kept (no port: a DNS SRV name, here `UnsupportedTopology`; the unspecified address; an empty bootstrap list
+with no trustable local root; the legacy `Producers` format).
 
 ## Era history and Byron
 
@@ -483,9 +514,10 @@ longer than `maxBlocks`). `KeepAliveServer` echoes cookies. `TxSubmissionClient`
 transactions (each once per connection, by ticket number) and hands out bodies on request; the
 server asks for ids with a blocking request, fetches the bodies it does not know (verifying the id
 against the body hash) and passes them to a `Sink`; one batch is fully processed and acknowledged
-before the next request. `LocalTxSubmissionServer` is the node-to-client submission protocol and
-`LocalStateQueryServer` the query protocol (see "Node-to-client" below); `NodeToClientServer.accept`
-runs the handshake (versions 16 to 23) and then both on one connection.
+before the next request. `LocalTxSubmissionServer` is the node-to-client submission protocol,
+`LocalStateQueryServer` the query protocol, `LocalTxMonitorServer` the mempool monitor and the node-to-client
+ChainSync the `ChainSyncServer` with whole blocks (see "Node-to-client" below); `NodeToClientServer.accept`
+runs the handshake (versions 16 to 23) and then those on one connection.
 
 **Served chain** (`relay/ServedChain.scala`, `relay/ChainServer.scala`). The ouroboros-consensus
 `ChainProducerState`: the volatile chain (last `k` blocks with their headers and raw bytes) plus
@@ -643,7 +675,9 @@ is the last header, only the batches before it were fetched).
 
 ## Node-to-client (`--local-socket`)
 
-One Unix socket serves the two node-to-client mini-protocols a client such as `cardano-cli` uses.
+One Unix socket serves four node-to-client mini-protocols: LocalTxSubmission and LocalStateQuery (what
+`cardano-cli` uses), LocalTxMonitor (`cardano-cli query tx-mempool`, wallets) and ChainSync of whole blocks
+(db-sync, Ogmios and the followers of `cardano-cli`).
 
 **Rejections** (`ledger/PredicateFailure.scala`, `ntc/PredicateFailureCbor.scala`). The Conway rules
 refuse a transaction with a `LedgerFailure.Rejected(txId, PredicateFailure)`: a closed tree that
@@ -683,6 +717,30 @@ placed and is assumed to start with the previous era. The result size is bounded
 limit (2.5 MB, about 25,000 UTxO entries). Queries the node does not answer end the connection with
 a protocol error that names the query (`inbound ... closed` in the log), where the reference would
 answer.
+
+**LocalTxMonitor** (`network/LocalTxMonitor.scala`, `network-runtime/LocalTxMonitorServer.scala`,
+`node/mempool/LocalMonitor.scala`). The codec is pure (states Idle, Acquiring, Acquired and Busy of four kinds;
+`AwaitAcquire` has the wire form of `Acquire`, `[1]`, and the state tells them apart; `GetMeasures`, tag 11,
+is answered on every version as the reference's codec does). The server asks a `Source` for a `Snapshot`
+(slot, transactions in arrival order with their measures, membership, capacity) and serves `NextTx`, `HasTx`,
+`GetSizes` and `GetMeasures` from that frozen value; `AwaitAcquire` waits until the pool's slot or
+transactions differ (`Mempool.awaitChange`, woken by `add` and by `sync`). `LocalMonitor` is the reference's
+server in numbers: the snapshot's slot is the one after the tip; a transaction counts for its ledger size (the
+serialised transaction without the `is_valid` byte, `sizeTxF`) plus 4 bytes, its execution units and the bytes
+of the reference scripts of its inputs and reference inputs (`Entry.refScriptBytes`, measured when it was
+added); the capacity is `computeMempoolCapacity`: a whole number of units, a unit being `maxBlockBodySize -
+1024` bytes, `maxBlockExUnits` and 1 MiB of reference scripts, and the number of units `ceil(--mempool-bytes /
+unit)` (the reference's override rule, and 2 without one). `GetSizes` describes the whole snapshot,
+`GetMeasures` only the transactions `NextTx` has not handed out (the reference's quirk). A transaction is
+`[6, #6.24(tx)]`, an id `[6, h'32 bytes']`.
+
+**Local ChainSync** (mini-protocol 5) is the `ChainSyncServer` of node-to-node with the payload
+`#6.24(block)` (`CardanoBlockFetch.payloadCodec`, the block as stored, `[era, block]`) and the node-to-client
+limits (`ChainSync.Limits.NodeToClient`: 2.5 MB messages, 1024 intersection candidates, where node-to-node
+allows 65535 bytes). `ChainServer.blockSource` is the same cursor over the immutable store and the volatile
+chain as `source`, projecting blocks instead of headers. As the reference's follower does, the first
+instruction after an intersection is a roll-back to the point found (also on node-to-node); devnet `ntc` found
+this by comparing the two servers.
 
 Tests: servers against our own clients over in-memory bearers and loopback TCP (both directions,
 duplex, pipelining, timeouts, refusals); a property that every follower reconstructs the served chain

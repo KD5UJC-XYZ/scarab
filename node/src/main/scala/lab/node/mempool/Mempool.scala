@@ -47,6 +47,11 @@ trait Mempool[F[_]]:
 
   def contains(id: Bytes): F[Boolean]
 
+  /** The first state for which `same` is false, waiting for the pool to change (a transaction added
+    * or removed, a new tip). Cancelable.
+    */
+  def awaitChange(same: MempoolState => Boolean): F[MempoolState]
+
   /** The transactions a block of at most `maxBytes` of transaction bytes can take, in order. */
   def forBlock(maxBytes: Long): F[Vector[Entry]]
 
@@ -133,6 +138,14 @@ object Mempool:
 
       def contains(id: Bytes) = state.get.map(_.contains(id))
 
+      def awaitChange(same: MempoolState => Boolean): F[MempoolState] =
+        version.get.flatMap { seen =>
+          state.get.flatMap { s =>
+            if !same(s) then F.pure(s)
+            else version.waitUntil(_ > seen) *> awaitChange(same)
+          }
+        }
+
       def forBlock(maxBytes: Long) = state.get.map(_.forBlock(maxBytes))
 
       def sync(ledger: LedgerState, tipSlot: BigInt, adopted: Set[Bytes]) = lock.lock.surround {
@@ -146,6 +159,7 @@ object Mempool:
           result <- F.blocking(current.sync(ledger.copy(utxo = completed), tipSlot, env))
           (next, dropped) = result
           _ <- state.set(next)
+          _ <- version.update(_ + 1)
           (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))
           _ <- inBlock.traverse_ { (entry, _) =>
             seen.update(_.add(entry.id, seenLimit)) *> events.emit(MempoolEvent.Adopted(entry.id))

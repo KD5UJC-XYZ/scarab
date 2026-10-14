@@ -30,17 +30,24 @@ import lab.network.runtime.{
   ServerHandlers
 }
 import lab.node.forge.{Forger, KeyFiles}
-import lab.node.mempool.{LocalSubmission, Mempool, MempoolEnv}
+import lab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
 import lab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import lab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
-/** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
-  * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
-  * [--utxo-cache-mb N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync
-  * on|off] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file>
-  * --opcert <file>]`
+/** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
+  * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
+  * [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
+  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]
+  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert
+  * <file>]`
+  *
+  * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
+  * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
+  * `RequiresNetworkMagic`, `PBftSignatureThreshold`, and, unless given as flags, `SocketPath`,
+  * `DatabasePath` and `MempoolCapacityBytesOverride`) and with `--topology` its P2P `topology.json`
+  * (the peers of the local roots and the bootstrap peers). `--genesis-dir` and `--peer` keep
+  * working; with `--config` too, `--genesis-dir` is where the named genesis files are looked up.
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -53,7 +60,7 @@ import scala.concurrent.duration.*
   */
 object Main extends IOApp:
   final case class Options(
-      genesisDir: Path,
+      genesisDir: Option[Path],
       peers: List[SocketAddress[Host]],
       seconds: Option[Long],
       queryPort: Int,
@@ -62,7 +69,12 @@ object Main extends IOApp:
       snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
       keepSnapshots: Int = 3,
       listen: Option[SocketAddress[Host]] = None,
-      mempoolBytes: Long = 1048576L,
+      /** `None`: the configuration's `MempoolCapacityBytesOverride`, else 1 MiB. */
+      mempoolBytes: Option[Long] = None,
+      /** `--config`: the Haskell node's configuration file. */
+      configFile: Option[Path] = None,
+      /** `--topology`: the Haskell node's P2P topology file. */
+      topologyFile: Option[Path] = None,
       localSocket: Option[Path] = None,
       forge: Option[ForgeFiles] = None,
       /** `memory` or `rocksdb`; the default is rocksdb with `--db` and memory without. */
@@ -82,6 +94,8 @@ object Main extends IOApp:
         */
       inboundSync: Boolean = true
   )
+
+  val DefaultMempoolBytes: Long = 1048576L
 
   /** What the chain database (or its absence) hands the node at start. */
   private final case class Storage(
@@ -143,29 +157,76 @@ object Main extends IOApp:
             )
           )
 
-  private def follow(options: Options)(using Handle[IO, NodeError]): IO[Unit] =
-    (
-      utxoBacking(options),
-      VerificationCache.resource[IO](),
-      Scheduling.resource[IO](options.cpuThreads)
-    ).tupled.use { case ((store, backing), cache, scheduling) =>
-      followWith(options, store, backing, cache, scheduling)
-    }
+  /** The node configuration and topology the options point to, and the options completed from them:
+    * the peers of the topology follow the `--peer` ones, and, with `--config`, the socket, database
+    * and mempool capacity the file names are the defaults of the flags.
+    */
+  private[node] def configured(
+      options: Options
+  ): Either[ConfigError, (Options, NodeSetup, Option[Topology])] =
+    for
+      setup <- options.configFile match
+        case Some(file) => NodeSetup.fromConfigFile(file, options.genesisDir)
+        case None =>
+          options.genesisDir
+            .toRight(ConfigError("neither --config nor --genesis-dir given"))
+            .flatMap(NodeSetup.fromDirectory)
+      topology <- options.topologyFile.traverse(Topology.read)
+      settings = setup.config.settings
+      fromFile = options.configFile.isDefined
+      peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
+      _ <- Either.cond(
+        peers.nonEmpty,
+        (),
+        ConfigError("no peer to follow: the topology names no local root, bootstrap or public root")
+      )
+    yield (
+      options.copy(
+        peers = peers,
+        db =
+          options.db.orElse(Option.when(fromFile)(settings.databasePath).flatten.map(Path.of(_))),
+        localSocket = options.localSocket.orElse(
+          Option.when(fromFile)(settings.socketPath).flatten.map(Path.of(_))
+        ),
+        mempoolBytes = options.mempoolBytes.orElse(
+          Option.when(fromFile)(settings.mempoolCapacityBytes).flatten
+        )
+      ),
+      setup,
+      topology
+    )
+
+  private def follow(requested: Options)(using Handle[IO, NodeError]): IO[Unit] =
+    IO.blocking(configured(requested))
+      .flatMap(
+        _.fold(
+          e => Handle[IO, NodeError].raise[NodeError, (Options, NodeSetup, Option[Topology])](e),
+          IO.pure
+        )
+      )
+      .flatMap { (options, setup, topology) =>
+        (
+          utxoBacking(options),
+          VerificationCache.resource[IO](),
+          Scheduling.resource[IO](options.cpuThreads)
+        ).tupled.use { case ((store, backing), cache, scheduling) =>
+          followWith(options, setup, topology, store, backing, cache, scheduling)
+        }
+      }
 
   private def followWith(
       options: Options,
+      loaded: NodeSetup,
+      topology: Option[Topology],
       store: UtxoStore[IO],
       backing: StateBacking[IO, NodeState],
       cache: VerificationCache,
       scheduling: Scheduling[IO]
   )(using Handle[IO, NodeError]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
+    val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     for
-      setup <- IO
-        .blocking(NodeSetup.fromDirectory(options.genesisDir))
-        .flatMap(_.fold(fail, IO.pure))
-        .map(s => s.copy(praos = s.praos.copy(verdicts = cache)))
-      genesis = setup.genesis
+      genesis <- IO.pure(setup.genesis)
       blocks <- Ref.of[IO, Long](0L)
       headersLogged <- Ref.of[IO, Long](0L)
       rounds <- Ref.of[IO, (Long, Long, Long, Long, Int)]((0L, 0L, 0L, 0L, 0))
@@ -289,7 +350,7 @@ object Main extends IOApp:
             resumed.lastOption.fold(state)(_.state).ledger,
             resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
             MempoolEnv(globals, geometry),
-            options.mempoolBytes,
+            options.mempoolBytes.getOrElse(DefaultMempoolBytes),
             JsonLog.mempool,
             utxoStore = Some(store)
           )
@@ -483,7 +544,9 @@ object Main extends IOApp:
                         bearer,
                         genesis.networkMagic,
                         LocalSubmission.handler(mempool),
-                        Some(StateQuerySource[IO](ref, queryEnv, store))
+                        Some(StateQuerySource[IO](ref, queryEnv, store)),
+                        chainSync = Some(server.blockSource),
+                        txMonitor = Some(LocalMonitor.source(mempool))
                       )
                     )
                     .rescue(e => IO.pure(e.message))
@@ -523,7 +586,7 @@ object Main extends IOApp:
             .flatMap(_ => local)
             .flatMap(_ => production)
             .surround(sync)
-          _ <- JsonLog.started(options.peers, genesis, setup.config)
+          _ <- JsonLog.started(options.peers, genesis, setup.config, topology)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
           last <- ref.get
           _ <- JsonLog.finished(last)
@@ -532,11 +595,13 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
     "genesis-dir",
+    "config",
+    "topology",
     "seconds",
     "query-port",
     "plutus-cases",
@@ -585,9 +650,12 @@ object Main extends IOApp:
         for
           multi <- go(rest, Map.empty)
           flags = multi.view.mapValues(_.last).toMap
-          dir <- flags.get("genesis-dir").toRight(usage).map(Path.of(_))
+          dir = flags.get("genesis-dir").map(Path.of(_))
+          config = flags.get("config").map(Path.of(_))
+          topology = flags.get("topology").map(Path.of(_))
+          _ <- Either.cond(dir.isDefined || config.isDefined, (), usage)
           peerTexts = multi.getOrElse("peer", Nil)
-          _ <- Either.cond(peerTexts.nonEmpty, (), usage)
+          _ <- Either.cond(peerTexts.nonEmpty || topology.isDefined, (), usage)
           peers <- peerTexts.traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
           port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
@@ -601,7 +669,7 @@ object Main extends IOApp:
           localSocket = flags.get("local-socket").map(Path.of(_))
           mempool <- flags
             .get("mempool-bytes")
-            .fold(Right(1048576L))(_.toLongOption.filter(_ > 0).toRight(usage))
+            .traverse(_.toLongOption.filter(_ > 0).toRight(usage))
           forge <-
             if !flags.contains("forge") then Right(None)
             else
@@ -644,6 +712,8 @@ object Main extends IOApp:
           keep,
           listen,
           mempool,
+          config,
+          topology,
           localSocket,
           forge,
           utxoKind,

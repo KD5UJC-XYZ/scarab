@@ -93,6 +93,30 @@ private[network] object ProtocolWire:
       val value = input.slice(pos, pos + n).compact
       pos += n
       value
+    def mapLength(): Int =
+      val h = read()
+      if h / 32 != 5 || (h & 31) == 31 then bad("expected definite map")
+      bounded(argument(h & 31), limits.maxItems, "map")
+    def bool(): Boolean = read() match
+      case 0xf4 => false
+      case 0xf5 => true
+      case _    => bad("expected boolean")
+    def text(max: Int): String =
+      val h = read()
+      if h / 32 != 3 || (h & 31) == 31 then bad("expected definite text string")
+      val n = bounded(argument(h & 31), math.min(max, limits.maxStringBytes), "string")
+      need(n)
+      val decoded =
+        try
+          StandardCharsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(input.value.slice(pos, pos + n).toArray))
+            .toString
+        catch case NonFatal(_) => bad("invalid UTF-8")
+      pos += n
+      decoded
     def point(): Point = arrayLength() match
       case 0 => Point.Origin
       case 2 => Point.Block(uint(), bytes(limits.maxHashBytes))
@@ -202,6 +226,11 @@ private[network] object ProtocolWire:
           case 4 => 26
           case _ => 27))
         (0 until width).reverse.foreach(i => byte(((value >> (i * 8)) & 255).toInt))
+    def bool(value: Boolean): Unit = byte(if value then 0xf5 else 0xf4)
+    def text(value: String): Unit =
+      val encoded = value.getBytes(StandardCharsets.UTF_8)
+      head(3, encoded.length)
+      encoded.foreach(b => byte(b & 255))
     def point(point: Point): Unit = point match
       case Point.Origin => head(4, 0)
       case Point.Block(slot, hash) =>

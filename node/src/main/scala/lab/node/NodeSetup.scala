@@ -50,25 +50,122 @@ object NodeSetup:
       Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
     fromFiles(read)
 
+  /** The setup `cardano-node run --config` would have: the configuration is read as the reference
+    * reads it (`strict`), the genesis files it names are looked up next to it (or in `genesisDir`,
+    * when given) and every hash it lists is verified.
+    */
+  def fromConfigFile(
+      config: Path,
+      genesisDir: Option[Path] = None
+  ): Either[ConfigError, NodeSetup] =
+    for
+      bytes <- Either
+        .catchNonFatal(Files.readAllBytes(config))
+        .leftMap(e =>
+          ConfigError(
+            s"cannot read the configuration $config: ${e.getMessage}",
+            ConfigProblem.FileMissing("configuration", config.toString)
+          )
+        )
+      parsed <- NodeConfig.parse(new String(bytes, "UTF-8"), strict = true)
+      base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
+      read = (name: String) =>
+        Option.when(Files.exists(base.resolve(name)))(Files.readAllBytes(base.resolve(name)))
+      setup <- assemble(parsed, read)
+    yield setup
+
   def fromFiles(read: String => Option[Array[Byte]]): Either[ConfigError, NodeSetup] =
-    def required(name: String): Either[ConfigError, Array[Byte]] =
-      read(name).toRight(ConfigError(s"missing $name"))
+    def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
+    ConfigNames
+      .collectFirst(Function.unlift(n => read(n)))
+      .fold(Right(NodeConfig.empty))(b => NodeConfig.parse(text(b)))
+      .flatMap(assemble(_, read))
+
+  /** Check every hash the configuration lists against the genesis file it names: the Byron one is
+    * the hash of the canonical JSON, the Shelley, Alonzo, Conway, Dijkstra and checkpoints ones the
+    * blake2b-256 of the file's bytes. A mismatch is a `GenesisHashMismatch`. The four genesis files
+    * the node needs must exist; the Dijkstra and checkpoints files are checked when present.
+    */
+  def verifyHashes(
+      config: NodeConfig,
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, Unit] =
+    def hashOf(bytes: Array[Byte]) = Blake2b.hash256.hash(Bytes.fromArray(bytes))
+    def check(
+        role: String,
+        file: String,
+        expected: Option[Bytes],
+        required: Boolean,
+        actual: Array[Byte] => Either[ConfigError, Bytes]
+    ): Either[ConfigError, Unit] =
+      read(file) match
+        case None =>
+          Either.cond(
+            !required,
+            (),
+            ConfigError(
+              s"missing $role genesis file $file",
+              ConfigProblem.FileMissing(role, file)
+            )
+          )
+        case Some(bytes) =>
+          expected.traverse_ { want =>
+            actual(bytes).flatMap { got =>
+              Either.cond(
+                got == want,
+                (),
+                ConfigError(
+                  s"$role genesis file $file has hash ${got.hex}, the configuration lists ${want.hex}",
+                  ConfigProblem.GenesisHashMismatch(role, file, want.hex, got.hex)
+                )
+              )
+            }
+          }
+    val byron = (bytes: Array[Byte]) =>
+      parser
+        .parse(new String(bytes, "UTF-8"))
+        .leftMap(e => ConfigError(s"byron genesis is not JSON: ${e.message}"))
+        .map(j => hashOf(ByronGenesisFile.canonical(j).getBytes("UTF-8")))
+    val plain = (bytes: Array[Byte]) => Right(hashOf(bytes))
+    val files = config.files
+    val hashes = config.hashes
+    for
+      _ <- check("Byron", files.byron, hashes.byron, required = true, byron)
+      _ <- check("Shelley", files.shelley, hashes.shelley, required = true, plain)
+      _ <- check("Alonzo", files.alonzo, hashes.alonzo, required = true, plain)
+      _ <- check("Conway", files.conway, hashes.conway, required = true, plain)
+      _ <- files.dijkstra.traverse_(f =>
+        check("Dijkstra", f, hashes.dijkstra, required = false, plain)
+      )
+      _ <- files.checkpoints.traverse_(f =>
+        check("Checkpoints", f, hashes.checkpoints, required = false, plain)
+      )
+    yield ()
+
+  /** The setup from a configuration and the genesis files it names (read by name). */
+  def assemble(
+      config: NodeConfig,
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, NodeSetup] =
+    val names = config.files
+    def required(role: String, name: String): Either[ConfigError, Array[Byte]] =
+      read(name).toRight(
+        ConfigError(s"missing $name", ConfigProblem.FileMissing(role, name))
+      )
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
     def json(name: String, bytes: Array[Byte]): Either[ConfigError, Json] =
       parser.parse(text(bytes)).leftMap(e => ConfigError(s"$name: ${e.message}"))
     for
-      shelleyBytes <- required("shelley-genesis.json")
+      _ <- verifyHashes(config, read)
+      shelleyBytes <- required("Shelley", names.shelley)
       shelleyBase <- Genesis.shelley(text(shelleyBytes))
-      config <- ConfigNames
-        .collectFirst(Function.unlift(n => read(n)))
-        .fold(Right(NodeConfig.empty))(b => NodeConfig.parse(text(b)))
       firstShelley = config.firstShelleyEpoch
-      byronBytes <- required("byron-genesis.json")
+      byronBytes <- required("Byron", names.byron)
       byron <-
         if firstShelley.contains(BigInt(0)) then Right(None)
         else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
       genesis <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
-      byronJson <- json("byron-genesis.json", byronBytes)
+      byronJson <- json(names.byron, byronBytes)
       // The network magic Byron addresses carry: the configuration says whether the network
       // requires one; without it, mainnet does not and the test networks do.
       requiresMagic = config.requiresNetworkMagic.getOrElse(
@@ -78,9 +175,9 @@ object NodeSetup:
         byron.map(_.protocolMagic).getOrElse(genesis.networkMagic)
       )
       files <- (
-        json("shelley-genesis.json", shelleyBytes),
-        required("alonzo-genesis.json").flatMap(json("alonzo-genesis.json", _)),
-        required("conway-genesis.json").flatMap(json("conway-genesis.json", _)),
+        json(names.shelley, shelleyBytes),
+        required("Alonzo", names.alonzo).flatMap(json(names.alonzo, _)),
+        required("Conway", names.conway).flatMap(json(names.conway, _)),
         byronJson.asRight[ConfigError]
       ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
       globals <- GenesisState.globals(files, genesis)

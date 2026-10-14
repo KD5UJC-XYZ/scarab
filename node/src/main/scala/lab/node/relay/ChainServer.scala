@@ -9,6 +9,7 @@ import fs2.Stream
 import fs2.concurrent.SignallingRef
 import lab.cbor.Bytes
 import lab.network.{Era, NtNHeader}
+import lab.network.CardanoBlockFetch.RawNtNBlock
 import lab.network.ChainSync.{Point, Tip, UInt64}
 import lab.network.runtime.{BlockFetchServer, ChainSyncServer}
 import lab.node.{Anchor, Block, BlockRef, ChainError, Header}
@@ -57,24 +58,42 @@ final class ChainServer[F[_]: Async] private (
     case p if chain.containsVolatile(p) => F.pure(true)
     case p                              => store.fold(F.pure(false))(_.get(p).map(_.isDefined))
 
-  /** One cursor per connected ChainSync client, closed with the connection. */
+  /** One cursor per connected node-to-node ChainSync client: headers. */
   def source: Resource[F, ChainSyncServer.Source[F, NtNHeader]] =
+    cursor(s => Some(s.header), raw => headerOf(raw).toOption.map(_.ntn))
+
+  /** One cursor per connected node-to-client ChainSync client: whole blocks, as stored. */
+  def blockSource: Resource[F, ChainSyncServer.Source[F, RawNtNBlock]] =
+    cursor(served => RawNtNBlock.from(served.raw).toOption, raw => RawNtNBlock.from(raw).toOption)
+
+  /** One cursor per connected ChainSync client, closed with the connection. `ofServed` and
+    * `ofStored` give what the client is sent for a volatile and an immutable block (a block that
+    * cannot be sent is skipped as if absent, which cannot happen for a validated chain).
+    */
+  private def cursor[P](
+      ofServed: Served => Option[P],
+      ofStored: Bytes => Option[P]
+  ): Resource[F, ChainSyncServer.Source[F, P]] =
     Resource
       .make(state.modify(_.open()))(id => state.update(_.close(id)))
       .map { id =>
-        new ChainSyncServer.Source[F, NtNHeader]:
+        new ChainSyncServer.Source[F, P]:
           def intersect(points: Vector[Point]) =
             state.get.flatMap { chain =>
               points
                 .findM(onChain(chain, _))
                 .flatMap {
                   case Some(found) =>
-                    state.update(_.move(id, Cursor.At(found))).as(Right(found -> chain.tip))
+                    // as the reference's follower: the first instruction after an intersection
+                    // is a roll-back to the point found
+                    state
+                      .update(_.move(id, Cursor.RollbackTo(found)))
+                      .as(Right(found -> chain.tip))
                   case None => F.pure(Left(chain.tip))
                 }
             }
 
-          def poll: F[Option[ChainSyncServer.Update[NtNHeader]]] =
+          def poll: F[Option[ChainSyncServer.Update[P]]] =
             state
               .modify { chain =>
                 chain.followers.get(id).map(chain.read) match
@@ -87,14 +106,14 @@ final class ChainServer[F[_]: Async] private (
               }
               .flatMap {
                 case Read.Forward(b) =>
-                  tip.map(t => Some(ChainSyncServer.Update.RollForward(b.header, t)))
+                  tip.map(t => ofServed(b).map(ChainSyncServer.Update.RollForward(_, t)))
                 case Read.Backward(p) =>
                   tip.map(t => Some(ChainSyncServer.Update.RollBackward(p, t)))
                 case Read.AtTip     => F.pure(None)
-                case Read.Behind(p) => immutableNext(id, p)
+                case Read.Behind(p) => immutableNext(id, p, ofStored)
               }
 
-          def await: F[ChainSyncServer.Update[NtNHeader]] =
+          def await: F[ChainSyncServer.Update[P]] =
             version.get.flatMap { seen =>
               poll.flatMap {
                 case Some(update) => F.pure(update)
@@ -104,10 +123,11 @@ final class ChainServer[F[_]: Async] private (
       }
 
   /** The block after `point` in the immutable store, for a client that has not caught up. */
-  private def immutableNext(
+  private def immutableNext[P](
       id: Long,
-      point: Point
-  ): F[Option[ChainSyncServer.Update[NtNHeader]]] =
+      point: Point,
+      ofStored: Bytes => Option[P]
+  ): F[Option[ChainSyncServer.Update[P]]] =
     store match
       case None => F.pure(None)
       case Some(s) =>
@@ -115,10 +135,9 @@ final class ChainServer[F[_]: Async] private (
           case None => F.pure(None)
           case Some(stored) =>
             for
-              header <- headerOf(stored.raw).fold(_ => F.pure(None), h => F.pure(Some(h)))
               chain <- state.get
               _ <- state.update(_.move(id, Cursor.At(stored.ref.point)))
-            yield header.map(h => ChainSyncServer.Update.RollForward(h.ntn, chain.tip))
+            yield ofStored(stored.raw).map(ChainSyncServer.Update.RollForward(_, chain.tip))
         }
 
   /** Blocks for BlockFetch: the range must lie on our chain (immutable then volatile). */
