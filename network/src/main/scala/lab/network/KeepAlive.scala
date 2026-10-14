@@ -127,7 +127,7 @@ object KeepAlive:
           val cookie = get(Cookie.from(value.toInt))
           if request then Message.Request(cookie) else Message.Response(cookie)
       get(transition(state, sender, message))
-      get(ProtocolWire.validateItem(Bytes(bytes.value.take(r.position)), bounds))
+      get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
       DecodeResult.Decoded(message, r.position)
     catch
       case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore

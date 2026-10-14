@@ -65,6 +65,37 @@ def tip_at(name, socket):
         return None
 
 
+def scala_connections(args):
+    """The Scala node's connection table and inbound sessions (`GET /connections`), or None."""
+    url = f"http://127.0.0.1:{QUERY_PORT}/connections"
+    script = f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen('{url}',timeout=20).read().decode())"
+    r = docker("exec", f"{args.name}-scala", "python3", "-c", script, check=False, timeout=60)
+    try:
+        return json.loads(r.stdout) if r.returncode == 0 and r.stdout else None
+    except json.JSONDecodeError:
+        return None
+
+
+def inbound_session(connections):
+    """The inbound session of the Haskell relay (the only inbound peer), if it exists."""
+    sessions = (connections or {}).get("inboundSessions") or []
+    return sessions[0] if sessions else None
+
+
+def wait_inbound_session(args, timeout):
+    """Wait for the Scala node's own ChainSync client to follow the Haskell relay over the relay's
+    inbound duplex connection: an intersection found and headers received."""
+    deadline = time.monotonic() + timeout
+    seen = None
+    while time.monotonic() < deadline:
+        seen = scala_connections(args)
+        session = inbound_session(seen)
+        if session and session.get("intersection") and session.get("headers", 0) > 0:
+            return seen
+        time.sleep(1)
+    return seen
+
+
 def log_counts(path):
     """Event counts of the Scala node's JSON log."""
     counts = {}
@@ -152,6 +183,10 @@ def relay(args):
         if synced_at is None:
             raise SystemExit(f"the Haskell relay did not sync from the Scala node within {args.sync_timeout} s")
         print(json.dumps({"relaySynced": tip_at(args.name, RELAY_SOCKET)}), flush=True)
+        # G2: the Haskell relay connected to us; our own clients follow it over that same connection
+        duplex = args.relay_mode == "InitiatorAndResponder"
+        at_sync = wait_inbound_session(args, 90) if duplex else scala_connections(args)
+        print(json.dumps({"connectionsAtSync": at_sync}), flush=True)
         local = submit_through_local_socket(args, root)
         print(json.dumps({"localSubmit": local}), flush=True)
         command = [sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed),
@@ -193,6 +228,8 @@ def relay(args):
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         epochs = sorted({p["pool1"]["epoch"] for p in samples if p["pool1"]})
         relay_log = in_ref(args.name, f"cat {RELAY_DIR}/node.log | tail -c 3000").stdout
+        final_connections = scala_connections(args)
+        first, last = inbound_session(at_sync), inbound_session(final_connections)
         local["adopted"] = any(e["event"] == "mempoolAdopted" and e["tx"] == local["txid"] for e in events)
         local["addedToMempool"] = any(e["event"] == "mempoolAdded" and e["tx"] == local["txid"] for e in events)
         summary = {
@@ -217,6 +254,16 @@ def relay(args):
                             ("extended", "rolledBack", "reconnecting", "error", "inbound", "mempoolAdded",
                              "mempoolAdopted", "mempoolRejected", "mempoolDropped")},
             "unparsedScalaOutput": other[:10],
+            "inbound": {
+                "mode": args.relay_mode,
+                "connectionsAtSync": at_sync,
+                "connectionsAtEnd": final_connections,
+                "sessionHeadersAtSync": first and first.get("headers"),
+                "sessionHeadersAtEnd": last and last.get("headers"),
+                "events": {k: sum(1 for e in events if e["event"] == "inbound" and e.get("state") == k)
+                           for k in ("accepted", "duplex", "unidirectional", "following", "sessionEnded",
+                                     "sessionDropped", "refused", "reused", "closed")},
+            },
         }
         if not agree:
             failures.append(f"final tips differ: {final_hashes}")
@@ -234,6 +281,22 @@ def relay(args):
             failures.append("no transaction passing through the Scala mempool was included in a block")
         if local["exitCode"] != 0 or not local["addedToMempool"] or not local["adopted"]:
             failures.append(f"the transaction submitted over the node-to-client socket did not reach a block: {local}")
+        if duplex:
+            # the relay's inbound connection is duplex and our client on it followed the relay all along
+            states = [c["state"].replace(" ", "") for c in (final_connections or {}).get("connections", [])]
+            if not any("Established(Inbound,Duplex)" in x for x in states):
+                failures.append(f"no established inbound duplex connection at the end: {states}")
+            if not first or not first.get("intersection") or first.get("headers", 0) < 1:
+                failures.append("the Scala node did not follow the Haskell relay over its inbound connection")
+            elif not last or last.get("ended") or last.get("headers", 0) <= first.get("headers", 0):
+                failures.append(f"the session on the inbound connection did not keep following: {first} -> {last}")
+            else:
+                pool_tip = (final.get("pool1") or {}).get("block", 0)
+                if last.get("peerTipBlock") is None or pool_tip - int(last["peerTipBlock"]) > 3:
+                    failures.append(f"the relay's tip seen over the inbound connection ({last.get('peerTipBlock')}) "
+                                    f"is behind the pool's ({pool_tip})")
+            if summary["inbound"]["events"]["duplex"] < 1 or summary["inbound"]["events"]["following"] < 1:
+                failures.append(f"missing inbound events: {summary['inbound']['events']}")
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
         if other:

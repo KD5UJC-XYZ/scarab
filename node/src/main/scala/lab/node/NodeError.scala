@@ -17,10 +17,18 @@ enum PeerError extends NodeError:
   case Protocol(reason: String)
   case Unavailable(reason: String)
 
+  /** The peer's chain shares no point with ours (it is behind, or on another network). */
+  case NoIntersection
+
+  /** A header the peer announced breaks a header rule; its block was not fetched (G6). */
+  case InvalidHeader(point: ChainSync.Point, error: lab.node.consensus.HeaderError)
+
   def message: String = this match
-    case Handshake(r)   => s"handshake: $r"
-    case Protocol(r)    => s"protocol: $r"
-    case Unavailable(r) => s"unavailable: $r"
+    case Handshake(r)        => s"handshake: $r"
+    case Protocol(r)         => s"protocol: $r"
+    case Unavailable(r)      => s"unavailable: $r"
+    case NoIntersection      => "the peer's chain shares no point with ours"
+    case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:

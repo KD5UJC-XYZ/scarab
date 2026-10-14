@@ -125,7 +125,7 @@ final class Follower[F[_]: Async, S] private (
     for
       current <- chain.get
       found <- peer.intersect(current.candidates)
-      point <- found.fold(ChainError.NoIntersection.raise[F, ChainSync.Point])(_.pure[F])
+      point <- found.fold(PeerError.NoIntersection.raise[F, ChainSync.Point])(_.pure[F])
       _ <- events.emit(FollowerEvent.Connected(point))
       candidate <- Ref.of[F, ChainSelection.Candidate](
         ChainSelection.Candidate(point, Vector.empty)

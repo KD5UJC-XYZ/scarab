@@ -21,9 +21,12 @@ import com.comcast.ip4s.{Host, Port, SocketAddress}
 import lab.network.NtNHeader
 import lab.network.runtime.{
   BearerServer,
-  NetworkError,
+  ConnectionEvent,
+  ConnectionEvents,
+  ConnectionManager,
   NodeToClientServer,
   NodeToNodeServer,
+  NetworkError,
   ServerHandlers
 }
 import lab.node.forge.{Forger, KeyFiles}
@@ -36,9 +39,10 @@ import scala.concurrent.duration.*
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
   * [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]
-  * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
-  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
+  * [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>]
+  * [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file>
+  * --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -79,7 +83,7 @@ object Main extends IOApp:
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
-      readAhead: Int = 64,
+      readAhead: Int = 128,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
         */
       cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors()),
@@ -90,7 +94,15 @@ object Main extends IOApp:
       dumpState: Option[(Path, StateDump.Targets)] = None,
       /** `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
         */
-      dumpStateFull: Boolean = false
+      dumpStateFull: Boolean = false,
+      /** Validate the headers a peer announces before the blocks are fetched (G6). */
+      headerFirst: Boolean = true,
+      /** The most inbound connections accepted at once (G2). */
+      maxInbound: Int = 64,
+      /** Run our own clients on inbound duplex connections, so that the peer is a source of blocks
+        * as well (G2).
+        */
+      inboundSync: Boolean = true
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -226,6 +238,8 @@ object Main extends IOApp:
     for
       genesis <- IO.pure(setup.genesis)
       blocks <- Ref.of[IO, Long](0L)
+      headersLogged <- Ref.of[IO, Long](0L)
+      rounds <- Ref.of[IO, (Long, Long, Long, Long, Int)]((0L, 0L, 0L, 0L, 0))
       // The rule configuration the signature pre-verification uses: a chain with a derived Byron
       // span learns its first Shelley epoch from the state.
       praosConfig <- Ref.of[IO, consensus.PraosConfig](setup.praos)
@@ -398,6 +412,84 @@ object Main extends IOApp:
             maxAttempts = if options.peers.size > 1 then Int.MaxValue else 30,
             delay = 2.seconds
           )
+          // header-first validation (G6): signatures are verified through the cache's keeping
+          // view, so the block's own validation does not repeat them
+          headerCheck = Option.when(options.headerFirst)(
+            HeaderCheck.forChain[IO, NodeState, consensus.PraosState](
+              NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
+              scheduling.compute,
+              warm = Some((headers, state) =>
+                praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
+              ),
+              observe = Some(counts =>
+                headersLogged
+                  .modify(last =>
+                    if counts.validated - last >= 50000 then (counts.validated, true)
+                    else (last, false)
+                  )
+                  .flatMap(
+                    JsonLog
+                      .headersChecked(counts.validated, counts.unchecked, counts.waited)
+                      .whenA(_)
+                  )
+              )
+            )
+          )
+          // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
+          observeRounds = (requested: Int, received: Int, millis: Long) =>
+            rounds
+              .modify { case (n, headers, total, max, depth) =>
+                val next = (
+                  n + 1,
+                  headers + received,
+                  total + millis,
+                  max.max(millis),
+                  depth.max(requested)
+                )
+                if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
+              }
+              .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
+                JsonLog.chainSyncRounds(n, headers, total / n, max, depth)
+              })
+          observePeer = (o: Peer.Observation) =>
+            o match
+              case Peer.Observation.Fetched(millis) =>
+                JsonLog.slowFetch(millis).whenA(millis >= 250)
+              case Peer.Observation.Round(requested, received, millis) =>
+                observeRounds(requested, received, millis)
+          // the connection manager (G2): one connection per peer address, limits, accounting
+          manager <- ConnectionManager.create[IO](
+            ConnectionManager.Limits(maxInbound = options.maxInbound),
+            Some(
+              new ConnectionEvents[IO]:
+                def emit(event: ConnectionEvent) = JsonLog.connection(event)
+            )
+          )
+          governor <- InboundGovernor.create[IO](
+            manager,
+            InboundGovernor.Config(
+              genesis.networkMagic,
+              NodeToNodeServer.Settings(),
+              Peer.Settings(
+                SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+                genesis.networkMagic,
+                readAhead = options.readAhead,
+                byronEpochSlots = genesis.geometry.byron.epochSlots
+              ),
+              runClients = options.inboundSync
+            ),
+            handlers,
+            // the session of a peer that connected to us runs like one on a connection we opened
+            follow = peer => scheduling.compute.within(follower.session(peer)),
+            prepare = warm,
+            headers = headerCheck,
+            transactions = Some(mempool.source),
+            events = Some(
+              new InboundEvents[IO]:
+                def emit(remote: String, event: InboundEvent) = JsonLog.inboundEvent(remote, event)
+            ),
+            observe = Some(observePeer)
+          )
           // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
           sync = Handle
             .allow[PeerError](
@@ -410,10 +502,24 @@ object Main extends IOApp:
                 )
                 Follower.supervise(
                   follower,
-                  Peer.nodeToNode[IO](
-                    settings,
-                    warm,
-                    Some(mempool.source)
+                  Outbound.connect[IO](
+                    manager,
+                    address,
+                    Peer.nodeToNode[IO](
+                      settings,
+                      warm,
+                      Some(mempool.source),
+                      headerCheck,
+                      Some(observePeer)
+                    ),
+                    Some { case Outbound.Event.Reused(remote) =>
+                      JsonLog.inbound(
+                        remote,
+                        "reused",
+                        Some(s"outbound $address served by the inbound duplex connection")
+                      )
+                    },
+                    reuseInbound = options.inboundSync
                   ),
                   events,
                   retry,
@@ -424,14 +530,12 @@ object Main extends IOApp:
             .rescue(error => fail[Unit](error))
           relay = options.listen.fold(Resource.unit[IO])(address =>
             BearerServer
-              .listen[IO](Some(address.host), Some(address.port)) { (bearer, remote) =>
-                JsonLog.inbound(remote.toString, "accepted") *>
-                  Handle
-                    .allow[NetworkError](
-                      NodeToNodeServer.accept(bearer, genesis.networkMagic, handlers)
-                    )
-                    .rescue(e => IO.pure(e.message))
-                    .flatMap(reason => JsonLog.inbound(remote.toString, "closed", Some(reason)))
+              .listen[IO](
+                Some(address.host),
+                Some(address.port),
+                maxConnections = options.maxInbound * 2
+              ) { (bearer, remote) =>
+                governor.serve(bearer, remote).void
               }
               .evalMap(bound => JsonLog.listening(bound.toString))
           )
@@ -501,7 +605,10 @@ object Main extends IOApp:
               ChainView.fromRef(ref),
               options.queryPort,
               Some(store),
-              Some(scheduling.stats.total.map(JsonLog.schedulingTotal))
+              Some(scheduling.stats.total.map(JsonLog.schedulingTotal)),
+              Some(
+                (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
+              )
             )
             .flatMap(_ => relay)
             .flatMap(_ => local)
@@ -516,7 +623,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -534,6 +641,9 @@ object Main extends IOApp:
     "utxo-store",
     "utxo-cache-mb",
     "read-ahead",
+    "header-first",
+    "max-inbound",
+    "inbound-sync",
     "cpu-threads",
     "dump-state",
     "dump-state-at",
@@ -609,7 +719,16 @@ object Main extends IOApp:
             .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
           readAhead <- flags
             .get("read-ahead")
+            .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
+          headerFirst <- flags
+            .get("header-first")
+            .fold(Right(true))(v => Map("on" -> true, "off" -> false).get(v).toRight(usage))
+          maxInbound <- flags
+            .get("max-inbound")
             .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
+          inboundSync <- flags
+            .get("inbound-sync")
+            .fold(Right(true))(v => Map("on" -> true, "off" -> false).get(v).toRight(usage))
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
@@ -644,6 +763,9 @@ object Main extends IOApp:
           readAhead,
           cpuThreads,
           dump,
-          flags.contains("dump-state-full")
+          flags.contains("dump-state-full"),
+          headerFirst,
+          maxInbound,
+          inboundSync
         )
       case _ => Left(usage)

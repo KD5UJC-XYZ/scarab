@@ -109,11 +109,17 @@ object TxSubmissionClient:
   def background[F[_]: cats.effect.Async](
       mux: Mux[F],
       source: Source[F],
-      settings: Settings = Settings()
+      settings: Settings = Settings(),
+      /** The side of the protocol to run: the multiplexer's own by default. */
+      role: Option[Mux.Role] = None
   ): cats.effect.Resource[F, Unit] =
     import cats.effect.syntax.all.*
     val program = cats.mtl.Handle
-      .allow[NetworkError](mux.channel(Protocols.TxSubmission2).flatMap(run(_, source, settings)))
+      .allow[NetworkError](
+        role
+          .fold(mux.channel(Protocols.TxSubmission2))(mux.channel(Protocols.TxSubmission2, _))
+          .flatMap(run(_, source, settings))
+      )
       .rescue(error => mux.abort(error.message))
       .handleErrorWith(t =>
         mux.abort(s"tx-submission: ${Option(t.getMessage).getOrElse(t.getClass.getSimpleName)}")

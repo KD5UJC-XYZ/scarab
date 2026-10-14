@@ -117,7 +117,7 @@ object Mux:
       def step(state: Feed, chunk: Chunk[Byte]): F[(Feed, Unit)] = state match
         case Left(_) => F.pure((state, ()))
         case Right(current) =>
-          current.feed(Bytes(chunk.toVector)) match
+          current.feed(Bytes.wrap(chunk.toArray)) match
             case Left(reason) => F.pure((Left(reason), ()))
             case Right((next, sdus)) =>
               route(sdus.toList).map(failed => (failed.toLeft(next), ()))
@@ -154,7 +154,7 @@ object Mux:
               frames match
                 case Left(reason) => F.pure(s"mux write: $reason")
                 case Right(encoded) =>
-                  bearer.write(Chunk.array(encoded.flatMap(_.value).toArray)) *> writeLoop
+                  bearer.write(Chunk.array(concat(encoded))) *> writeLoop
             }
         }
       val writer: F[String] = writeLoop.handleError(t => s"bearer failed: ${describe(t)}")
@@ -187,6 +187,16 @@ object Mux:
         def closed = done.get
         def abort(reason: String) = done.complete(reason).void
     }
+
+  /** The parts one after the other in one array. */
+  private def concat(parts: Vector[Bytes]): Array[Byte] =
+    val out = new Array[Byte](parts.map(_.size).sum)
+    var at = 0
+    parts.foreach { part =>
+      part.copyTo(out, at)
+      at += part.size
+    }
+    out
 
   private def channel[F[_]: Async](
       id: Int,
@@ -239,12 +249,11 @@ object Mux:
           buffer.get.flatMap { held =>
             decode(held) match
               case DecodeResult.Decoded(value, consumed) =>
-                buffer.set(Bytes(held.value.drop(consumed))).as(value)
+                buffer.set(held.drop(consumed)).as(value)
               case DecodeResult.Failed(reason) => NetworkError.Decode(id, reason).raise[F, A]
               case DecodeResult.NeedMore =>
                 if held.size > maxBytes then NetworkError.IngressLimit(id, held.size).raise[F, A]
-                else
-                  nextPayload.flatMap(more => buffer.set(Bytes(held.value ++ more.value)) *> loop)
+                else nextPayload.flatMap(more => buffer.set(held ++ more) *> loop)
           }
         loop
       }

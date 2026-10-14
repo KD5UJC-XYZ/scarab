@@ -48,12 +48,12 @@ private[network] object ProtocolWire:
       if n > input.size - pos then throw Failure("truncated CBOR", true)
     def read(): Int =
       need(1)
-      val b = input.value(pos) & 255
+      val b = input(pos) & 255
       pos += 1
       b
     private def peek: Int =
       need(1)
-      input.value(pos) & 255
+      input(pos) & 255
     private def argument(ai: Int): BigInt =
       if ai < 24 then BigInt(ai)
       else
@@ -90,7 +90,7 @@ private[network] object ProtocolWire:
       if h / 32 != 2 || (h & 31) == 31 then bad("expected definite byte string")
       val n = bounded(argument(h & 31), math.min(max, limits.maxStringBytes), "string")
       need(n)
-      val value = Bytes(input.value.slice(pos, pos + n))
+      val value = input.slice(pos, pos + n).compact
       pos += n
       value
     def mapLength(): Int =
@@ -154,7 +154,7 @@ private[network] object ProtocolWire:
             .newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(input.value.slice(pos, pos + n).toArray))
+            .decode(ByteBuffer.wrap(input.slice(pos, pos + n).toArray))
         catch case NonFatal(_) => bad("invalid UTF-8")
       pos += n
       n
@@ -200,7 +200,7 @@ private[network] object ProtocolWire:
     def item(): Bytes =
       val start = pos
       skip(0)
-      Bytes(input.value.slice(start, pos))
+      input.slice(start, pos).compact
 
   class Writer(limits: Limits):
     if !limits.valid then bad("invalid local limits")
@@ -210,7 +210,7 @@ private[network] object ProtocolWire:
       out.write(b)
     def raw(bytes: Bytes): Unit =
       if bytes.size > limits.maxMessageBytes - out.size() then bad("message byte limit exceeded")
-      bytes.value.foreach(b => byte(b & 255))
+      bytes.withRange((array, offset, length) => out.write(array, offset, length))
     def head(major: Int, value: BigInt): Unit =
       if value < 0 || value > UInt64.Max then bad("CBOR argument outside uint64")
       if value < 24 then byte(major * 32 + value.toInt)

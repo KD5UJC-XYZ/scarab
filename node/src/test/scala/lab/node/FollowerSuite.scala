@@ -224,3 +224,26 @@ class FollowerSuite extends CatsEffectSuite:
       assertEquals(offers.size, 2)
     }
   }
+
+  test("a peer that shares no point with our chain is a peer error, retried and then given up") {
+    val strangers: Resource[IO, Peer[IO]] = Resource.pure(new Peer[IO]:
+      def intersect(candidates: Vector[ChainSync.Point]) = IO.pure(None)
+      def next = IO.never
+      def fetch(header: Header) = IO.pure(Bytes.empty))
+    for
+      ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)
+      outcome <- Handle
+        .allow[NodeError] {
+          for
+            follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
+            result <- Handle
+              .allow[PeerError](
+                Follower.supervise(follower, strangers, noEvents, Follower.Retry(2, 1.milli))
+              )
+              .rescue(e => Handle[IO, NodeError].raise(e))
+          yield result.asRight[NodeError]
+        }
+        .rescue(e => IO.pure(e.asLeft[Unit]))
+    yield assertEquals(outcome, Left(PeerError.NoIntersection))
+  }

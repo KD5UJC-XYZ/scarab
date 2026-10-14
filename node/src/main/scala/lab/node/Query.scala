@@ -361,7 +361,9 @@ object QueryServer:
       port: Int,
       utxoStore: Option[lab.node.storage.UtxoStore[F]] = None,
       /** The whole-run scheduling measurements, served at `/scheduling`. */
-      scheduling: Option[F[Json]] = None
+      scheduling: Option[F[Json]] = None,
+      /** The connection manager's table and the inbound sessions, served at `/connections`. */
+      connections: Option[F[Json]] = None
   ): Resource[F, Server] =
     val dsl = Http4sDsl[F]
     import dsl.*
@@ -379,6 +381,8 @@ object QueryServer:
         view.tip.flatMap { case (p, s) =>
           Ok(Json.obj("point" -> Projection.point(p), "epoch" -> s.ledger.epoch.asJson))
         }
+      case GET -> Root / "connections" =>
+        connections.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case GET -> Root / "scheduling" =>
         scheduling.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case GET -> Root / "state" :? SlotParam(slot) +& HashParam(hash) =>
