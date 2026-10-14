@@ -5,6 +5,22 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Memory and storage (K6, D1)
+- K6: the RSS growth to 5.66 GB on a Preview sync was glibc's per-thread malloc arenas. `docker/jdk.Dockerfile`
+  and the devnet node set `MALLOC_ARENA_MAX=2`; running.md says to set it outside a container. With it
+  `RssAnon` was the heap limit plus 0.8 GB (3.86 GB with `-Xmx3g` after 45 minutes) against 4.29 GB and
+  growing without. New `--memory-report-seconds N` logs the JVM's, the process's, the cgroup's and RocksDB's
+  figures; `--utxo-cache-mb` is now the native-memory budget of the whole store (one block cache for all
+  tables, the memtables charged to it). Container limit: `-Xmx` plus 2 GiB. performance.md section 7.
+- D1: the accounts, pools, DReps and the three stake snapshots moved behind the ledger store. The ledger
+  state holds a `Table` of each (the changes of the last `k` blocks, a count and sums) and RocksDB a column
+  family each, in the database of the UTxO set (`LedgerStore`, `RocksLedgerStore`, `MemoryLedgerStore`;
+  the classes were `UtxoStore` interpreters). The pure rules are unchanged: a row the state does not
+  hold is fetched and the block applied again, and the rows a block names are fetched first. The
+  snapshot schema changed (older snapshots are rejected and the node replays from the immutable blocks);
+  the snapshots written are about a quarter smaller. Throughput on Preview: -2.7% over the first 29 epochs.
+  An epoch boundary still reads the accounts and the `go` snapshot whole. performance.md section 8.
+
 ### Node-to-client
 - LocalStateQuery server (roadmap F1): the mini-protocol (acquire at a point, the volatile or immutable
   tip, re-acquire, release), the hard-fork-combinator query envelope and the Conway queries

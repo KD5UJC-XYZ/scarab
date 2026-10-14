@@ -53,7 +53,8 @@ value except `--forge`. A repeated flag keeps its last value, except `--peer`, w
 | `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
 | `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
-| `--utxo-cache-mb N` | `256` | RocksDB block cache |
+| `--utxo-cache-mb N` | `256` | native-memory budget of the RocksDB store (it holds the UTxO set and the ledger tables): one LRU block cache shared by all tables, holding data, index and filter blocks, to which the memtables are charged, so the store stays near this figure. A smaller cache costs throughput, see [performance.md](performance.md) section 7 |
+| `--memory-report-seconds N` | `0` (off) | log a `memory` event every N seconds: heap, non-heap, buffer pools, `/proc/self/status` (`RssAnon`, `RssFile`), the cgroup's `memory.current` and its `anon`/`file`, and the RocksDB properties (block cache usage, memtables). Use it with `-XX:NativeMemoryTracking=summary` and `jcmd <pid> VM.native_memory` to see where memory is |
 | `--read-ahead N` | `64` | ChainSync requests pipelined and blocks fetched per range while far behind (256 timed out against the public relay) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`csl-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--mempool-bytes N` | `1048576` | mempool capacity in bytes |
@@ -107,10 +108,17 @@ docker run --rm --user "$(id -u):$(id -g)" -w /out \
 Only `ByronGenesisHash` from `config.json` is checked against its file today; the Shelley, Alonzo
 and Conway hashes are not yet verified (roadmap J1). Preview starts in Alonzo at epoch 0. The recorded
 genesis-to-tip numbers are in [performance.md](performance.md). The run needs about 14 GB of disk
-for the immutable blocks, RocksDB and checkpoints, and memory well above the heap limit: an earlier multi-restart run measured 2.2 GB RSS at the tip,
-but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other off-heap memory are
-not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
-had reached 5.3 GB when the limit was raised.
+for the immutable blocks, RocksDB and checkpoints.
+
+**Memory.** The resident anonymous memory of the process is the heap limit plus about 0.8 GB: with
+`-Xmx3g` it was 3.86 GB after 45 minutes of a Preview sync (heap 3.0, the JVM's own native memory 0.3,
+RocksDB 0.26, malloc 0.23), and the page cache of the files the node writes comes on top and is given
+back by the kernel under a limit. **Set `MALLOC_ARENA_MAX=2`** (the `cardano-scala-jdk` image and the
+devnet do): with glibc's default of one arena per thread the same sync grew by 0.9 GB in 30 minutes and
+had reached 5.66 GB in the uninterrupted run (roadmap K6, [performance.md](performance.md) section 7).
+A container limit of `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`) is enough; `--utxo-cache-mb` is the other
+number that moves native memory. The page cache shows in `docker stats` only partly (as the cgroup's
+active file pages) and in `memory.current` fully: bound `RssAnon`, not `memory.current`.
 
 ### Preprod
 

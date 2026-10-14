@@ -113,8 +113,8 @@ change, all gates re-run); the sync ran on 5cfdefd.
   ledger: 3,195,803 UTxO, 112,205 accounts, 726 pools, protocol 11.0.
 - Memory: container RSS grew from about 1 GB to a peak of 5.66 GB with `-Xmx3g`. The container limit
   was raised from 6 GiB to 10 GiB at 17:20 with `docker update` (no restart, no code change).
-  Heap after GC was not measured in this run, so the split between heap, RocksDB block cache and
-  other off-heap memory is unknown (roadmap K6). Disk: 14.8 GB.
+  Heap after GC was not measured in this run. Section 7 profiles the growth (glibc malloc arenas, not
+  the heap or RocksDB) and bounds it. Disk: 14.8 GB.
 
 What this shows: the node accepts the real Preview chain with full validation and no false
 rejections, on a single build. It does not by itself show that the ledger state equals the Haskell
@@ -127,16 +127,16 @@ Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted 
 - UTxO: 3,195,803 entries; RocksDB 466 MB; checkpoints 454 MB for two snapshots (hard links share
   most); one ledger snapshot file 52 MB; immutable blocks 14 GB.
 - Heap after a full GC: 272 MB (class histogram top: `byte[]` 64 MB, `Bytes` 20 MB, `BigInt` 17 MB);
-  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; the composition is not yet profiled (roadmap K6).
+  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; section 7 has the composition and the bound.
 - Verification verdicts found ahead (since the last restart, 300k blocks): witnesses 99.9997%,
   operational certificates 99.9997%, VRF 99.8%.
 - Counts: 112k accounts, 726 pools; 3.23M Plutus transactions evaluated, 11.2M scripts.
 
 ## 5. Known gaps
 
-- The ledger maps other than the UTxO (accounts, pools, DReps, the three stake snapshots, the pulsed
-  DRep distribution) are still in memory and in the snapshot file; mainnet has about 1.3M stake
-  credentials (roadmap D1).
+- The accounts, pools, DReps and the three stake snapshots are behind the store since D1 (section 8),
+  but an epoch boundary still reads the accounts and the `go` snapshot whole, and the pulsed DRep state
+  and the pre-Babbage `rewardRegistered` set are plain maps; mainnet has about 1.3M stake credentials.
 - The apply thread is sequential: VRF is warmed, but the rules, Plutus evaluation and the leader
   threshold are not (D2).
 - Ed25519 verification is half of the CPU time and only parallelised. A faster verifier that can only
@@ -273,3 +273,145 @@ The log's `extended` lines give blocks per second, the `scheduling` object of ea
 `epochValidated` line the timer lateness and the longest step, `-Xlog:gc` the collector's pauses, and the
 starvation warnings are lines containing `starvation-and-tuning`. `python3 scripts/devnet.py pool
 --scala-cpus 1 --max-starvation-warnings 0` is the devnet check.
+
+## 7. Memory (K6)
+
+The uninterrupted run of section 3 grew from 1 GB to a container RSS of 5.66 GB with `-Xmx3g`. This
+section says where the memory is and what bounds it. Measurements are one developer's, on a host that
+was busy with other work (load average 2 at the start of the 45-minute profile, 25 to 37 later), so the
+blocks per second are only comparable between runs started together.
+
+**Method.** Commit 1c13c5a added `--memory-report-seconds N`: a `memory` log line with the JVM's own
+accounting (heap used and committed, non-heap, metaspace, the direct and mapped buffer pools, thread
+count, collections), the kernel's view of the process (`/proc/self/status`: `RssAnon`, `RssFile`),
+the container's (cgroup v2 `memory.current` and its `anon`/`file` split) and the RocksDB properties of
+the store (block cache usage and pinned usage, memtables, table-reader memory). Native Memory Tracking
+(`-XX:NativeMemoryTracking=summary`, `jcmd 1 VM.native_memory summary.diff`) and `jcmd 1
+GC.class_histogram` / `GC.run` were taken from outside every 5 to 15 minutes. NMT does not see
+`malloc` calls made through JNI, which is what RocksDB does: the attribution below is RSS minus
+what NMT and the store report, so it names glibc's arenas as what is left (and the run with
+`MALLOC_ARENA_MAX=2` shows how much of that is arena fragmentation).
+
+**Profile: Preview from genesis, 45 minutes, fresh database, two runs started together** (`--cpus 6`,
+container limit 10 GiB, `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, the build before D1,
+commit 1c13c5a, `--utxo-cache-mb 256`), one with glibc's default arenas and one with
+`MALLOC_ARENA_MAX=2`. `RssAnon` is the resident anonymous memory of the process (heap, malloc,
+thread stacks); the cgroup `current` adds the page cache of the files the node wrote and read:
+
+| minute | blocks (default / 2 arenas) | epoch | `RssAnon` MiB (default / 2 arenas) | cgroup `current` MiB (default / 2 arenas) | page cache, default MiB |
+|---:|---:|---:|---|---|---:|
+| 2 | 46,241 / 48,368 | 11 / 12 | 2292 / 2264 | 2373 / 2354 | 70 |
+| 5 | 100,506 / 101,920 | 24 / 25 | 2659 / 2563 | 2984 / 2913 | 306 |
+| 10 | 158,239 / 161,073 | 38 / 39 | 2996 / 2925 | 3776 / 3707 | 746 |
+| 15 | 190,945 / 190,650 | 46 / 46 | 3352 / 3576 | 4727 / 4940 | 1323 |
+| 20 | 209,955 / 207,505 | 50 / 50 | 3450 / 3662 | 5100 / 5330 | 1590 |
+| 25 | 251,843 / 247,632 | 60 / 59 | 3624 / 3691 | 5492 / 5493 | 1802 |
+| 30 | 287,732 / 282,694 | 69 / 68 | 3845 / 3703 | 5854 / 5697 | 1937 |
+| 35 | 341,010 / 335,615 | 82 / 81 | 4019 / 3770 | 6281 / 6013 | 2183 |
+| 40 | 369,819 / 365,796 | 90 / 89 | 4168 / 3858 | 6619 / 6280 | 2366 |
+| 45 | 419,242 / 404,320 | 104 / 100 | 4259 / 3862 | 6957 / 6507 | 2608 |
+
+Where the 4.29 GB of `RssAnon` of the default run is, at the NMT sample of minute 45 (16:36:51; the
+table above has the nearest memory line, a few MB earlier):
+
+| | MiB | what |
+|---|---:|---|
+| Java heap | 3072 | `-Xms3g`: G1 touches all of it; the live set after a full GC is 270 to 520 MB (histogram total 366 MB at epoch 138 with the base build) |
+| JVM, not heap | 296 | NMT committed: GC structures (G1 remembered sets) 111, code cache 63, metaspace 62, symbols 21, class space 10, shared class space 13, thread stacks 6, other 10 |
+| RocksDB | 260 | block cache 255 (full from minute 19: the cap holds), memtables 5, table-reader memory 0 (index and filter blocks live in the cache) |
+| left over | about 660 | glibc malloc arenas: about 230 with `MALLOC_ARENA_MAX=2`; the default run's part grew by about 30 MB per minute from minute 15, the other's by about 8 MB per minute and was flat in the last 5 minutes |
+| **`RssAnon`** | 4286 (default), 3862 (2 arenas) | |
+
+Direct buffers were about 1 MiB (27 buffers), mapped buffers 0: the NIO and Netty-style off-heap pools are
+not involved. The page cache is not memory the node holds: it is the 14 GB of blocks and SST files it
+writes, and the kernel gives it back under a memory limit (`docker stats` reports the cgroup usage minus
+the inactive file pages, which here tracks `RssAnon`: 3.70 GiB while the cgroup's `current` was 5.4 GB).
+
+**What caused the 5.66 GB.** The heap is bounded by `-Xmx`, the JVM's own native memory is flat at about
+0.3 GB, and RocksDB was already bounded (one 256 MB block cache that holds index and filter blocks,
+memtables of up to 3 x 64 MB, 512 open files). The growth is glibc: each of the node's threads
+(cats-effect workers, the blocking pool, the verification pool, RocksDB's compaction threads) gets its
+own malloc arena, and the arenas fragment and keep their memory. In the default run `RssAnon` grew by
+0.9 GB between minutes 15 and 45 with the heap and the RocksDB cache at their caps; restarted from that
+database (epoch 108) it went on to 4.47 GB at epoch 138 within 36 minutes of the restart. With
+`MALLOC_ARENA_MAX=2` the growth over the same 30 minutes is 0.29 GB, and flat at the end. The 2-arena
+run was 1 to 4% behind in blocks at every sample from minute 20 (404,320 against 419,242 at minute 45):
+the size of the noise between two runs on this host, no paired repeat was made. `MALLOC_ARENA_MAX=2` is set in `docker/jdk.Dockerfile`
+and in the devnet node's `docker run`; outside a container export it before starting the JVM.
+jemalloc was not tried: two arenas bring the left-over part to about 0.3 GB, which is the same size as the
+rest of the JVM.
+
+**The bounded configuration.** RocksDB is now one `RocksLedgerStore` with a column family per table
+(section 8): all families share one LRU block cache (data, index and filter blocks, `--utxo-cache-mb`,
+default 256) and a write buffer manager charges every memtable to that cache, so the store's native memory
+is the cache size however many tables there are. The cap holds: cache usage after 8 minutes was 6.9, 30.4
+and 255.5 MB for `--utxo-cache-mb` 8, 32 and 256 (`block-cache-usage` of the `memory` lines). The cost of a
+small cache, measured from copies of one database at epoch 138 (live RocksDB 157 MB) restarted together for
+8 minutes with the build before D1 (`MALLOC_ARENA_MAX=2`, 6 CPUs): 25,951, 26,192 and 27,658 blocks for 8, 32
+and 256 MB (-6.2%, -5.3%, 0). That database is a third of the size at the tip (466 MB of RocksDB), so a
+cache of the size of the live data is what these numbers show, not a cache of half of it; the cost at the tip
+with a small cache has not been measured.
+
+**The bound.** With two arenas, `RssAnon` is the heap limit plus about 0.8 GB: 3.86 GB at minute 45
+of the profile with `-Xmx3g` (3072 heap, 296 JVM, 260 RocksDB, 230 other). The recommended container
+limit is `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`): the 0.9 to 1.1 GB of native memory, kernel memory and
+head room for the page cache the kernel can always give back. The long run below ran under exactly that
+limit.
+
+## 8. Accounts, pools, DReps and stake snapshots on disk (D1)
+
+Builds: 419d3c6 (the long run, the restart runs, the first throughput pair) and 002302d (the final commit:
+it also fetches the rows a block names before applying it; the second pair and the devnet gates). The
+design is in [architecture.md](architecture.md) ("The other ledger maps behind the same store"): the ledger
+state holds a `Table` per map (the changes of the last `k` blocks, the counters, nothing else) and
+RocksDB holds the rows, one column family per table in the database of the UTxO set.
+
+**Equivalence.** The ledger summary line of every epoch (`ledgerEpoch`: UTxO count, accounts, pools, treasury,
+reserves, protocol version, Plutus counters) of the D1 build equals the build before it in every epoch both
+reached: 139 epochs of the long run (the other build was stopped at epoch 139), 46 of the restart runs
+below and 28 to 33 of each paired run. The devnet gates pass with the final commit: `e2e` (Shelley 12,
+Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30 comparisons matched, 0 mismatched), `soak --seconds 480`
+(22 of 22 comparisons), `ntc` (814 of 814 query answers byte-equal over 16 rounds, 18 of 18 refusals, 23
+of 24 `cardano-cli` queries; `ledger-state` is not answered), `relay` and `pool` (see compatibility.md).
+
+**Restart on Preview** (fresh database, 15 minutes to epoch 43, then): a graceful stop (`--seconds`)
+wrote the shutdown snapshot (1.0 MB, against 1.3 MB for the build before D1 at epoch 43, and 2.1 MB
+against 2.8 MB at epoch 100: the snapshot holds the diffs of the last `k` blocks, not the accounts); the restart restored it, replayed 0 blocks
+and resumed the 432 volatile blocks in 17.7 s (the host was at load average 37: the 4.7 s of section 6
+was on a quiet host). A `kill -9` 4,000 blocks later (block 187,500, epoch 45) restored the snapshot
+3,076 blocks older, replayed those from the stored blocks in 72.5 s (42 blocks/s on that host), resumed
+the 432 and extended the chain at the next block, no error event; the `ledgerEpoch` lines after it equal
+the other build's. The unit tests (`ChainStorageSuite`: restart with the tables in a memory and in a
+RocksDB store, a snapshot without its checkpoint skipped) cover the same paths.
+
+**Throughput.** Two builds started together on fresh databases, 6 CPUs each, `-Xms3g -Xmx3g`, on a host at
+load average 35 (so absolute rates are less than half of section 3's); blocks after 60, 120, 300 and 600 s
+(epochs 0 to 29):
+
+| build | 60 s | 120 s | 300 s | 600 s |
+|---|---:|---:|---:|---:|
+| before D1 (1c13c5a) | 15,809 | 33,985 | 77,201 | 115,663 |
+| D1 (419d3c6) | 15,553 | 33,409 | 74,156 | 110,166 |
+| | -1.6% | -1.7% | -3.9% | -4.8% |
+| before D1 | 16,257 | 34,649 | 83,736 | 120,720 |
+| D1 with the prefetch (002302d) | 16,321 | 34,681 | 82,322 | 117,476 |
+| | +0.4% | +0.1% | -1.7% | -2.7% |
+
+The cost is the step the rules run twice: a block that reads a row the state does not hold is applied
+again after the row is fetched (`refetch` in `/scheduling`). Two builds started together, 330 s,
+epochs 0 to 26: 1,041 of 106,940 steps (1.0%), 2.7 s of 97 s of step time (2.7%) without the prefetch
+(419d3c6); 76 steps (0.07%), 0.2 s (0.2%) with it (002302d), which fetches the credentials and pool ids of
+the block's certificates, withdrawals, votes and proposals before the first attempt (108,402 against
+106,065 blocks in the 400 s of that pair, +2.2%). A JFR profile of the D1 build at epoch 46
+(11k samples) has no frame of `Table` or `LedgerStore` among the hot ones (they are 0.4% of the samples); Ed25519 (32.6%), `Bytes`
+(9.5%), Plutus (9.1%) and VRF (3.4%) dominate as in section 1. The epoch boundary runs once per epoch
+and read the tables whole (fetched at once before the block is applied): 89 boundary steps in the first
+90 epochs took 16 ms on average, 112 ms at most.
+
+**Heap.** The live set is not where the memory goes at Preview's size, which is the honest result.
+`jcmd GC.class_histogram` (it runs a full GC; the total is the live set), both builds long-running at
+epoch 138 to 139 (block 536,559 and 537,888): 366 MB for the build before D1, 294 MB for D1, -72 MB (-20%):
+`byte[]` 128 to 98 MB, `Bytes` 1.13M to 0.88M objects. The rest is the Plutus script caches (about 100 MB of
+`scalus.uplc` terms), the volatile window and the verification caches, none of which D1 touches. At the
+tip: TBD-TIP. The reason to move the maps is mainnet's 1.3M stake credentials, each a `Credential`, an
+`Account` and a `Map` node in each of four maps and three snapshots, not Preview's 112k.
