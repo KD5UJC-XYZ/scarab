@@ -10,11 +10,16 @@ type Node = CborNode
 type Decoded[+A] = Either[DecodeError, A]
 
 /** Why a CBOR item does not match its CDDL type. `path` lists the CDDL member names from the
-  * outermost item inwards; `offset` is the byte offset of the offending item from the start of
-  * the innermost enclosing byte string that was decoded as CBOR (the whole input for top-level
-  * items). Errors are plain data: nothing here is rendered to text except by [[render]].
+  * outermost item inwards; `offset` is the byte offset of the offending item from the start of the
+  * innermost enclosing byte string that was decoded as CBOR (the whole input for top-level items).
+  * Errors are plain data: nothing here is rendered to text except by [[render]].
   */
-final case class DecodeError(kind: DecodeError.Kind, path: List[String], offset: Int, rooted: Boolean = false):
+final case class DecodeError(
+    kind: DecodeError.Kind,
+    path: List[String],
+    offset: Int,
+    rooted: Boolean = false
+):
   /** Prefix the path with the member `segment` this error was found under. */
   def at(segment: String): DecodeError = copy(path = segment :: path)
 
@@ -23,14 +28,15 @@ final case class DecodeError(kind: DecodeError.Kind, path: List[String], offset:
     if rooted then this
     else
       val kind2 = kind match
-        case DecodeError.Kind.NoAlternative(causes) => DecodeError.Kind.NoAlternative(causes.map(_.rebased(root)))
-        case other                                  => other
+        case DecodeError.Kind.NoAlternative(causes) =>
+          DecodeError.Kind.NoAlternative(causes.map(_.rebased(root)))
+        case other => other
       copy(kind = kind2, offset = offset - root, rooted = true)
 
   /** The most specific failure: for a choice, the cause that got furthest into the input. */
   def deepest: DecodeError = kind match
     case DecodeError.Kind.NoAlternative(causes) if causes.nonEmpty =>
-      causes.map(_.deepest).maxBy(e => (e.path.size, e.offset))
+      causes.map(_.deepest).maxBy(e => (e.offset, e.path.size))
     case _ => this
 
   def render: String = s"${path.mkString("/")} @$offset: ${DecodeError.describe(kind)}"
@@ -49,22 +55,23 @@ object DecodeError:
     case DuplicateKey(key: String)
     case UnexpectedKey(key: String)
     case NoAlternative(causes: Vector[DecodeError])
+
     /** A decoder threw. This is a bug in a decoder, reported rather than propagated. */
     case Internal(exception: String)
 
   def describe(kind: Kind): String = kind match
-    case Kind.Syntax(m)                => s"malformed CBOR: $m"
-    case Kind.TypeMismatch(e, f)       => s"expected $e, found $f"
-    case Kind.BadSize(e, a)            => s"expected size $e, got $a"
-    case Kind.OutOfRange(e, a)         => s"expected $e, got $a"
-    case Kind.LiteralMismatch(e, a)    => s"expected literal $e, got $a"
-    case Kind.BadArity(e, a)           => s"expected $e elements, got $a"
-    case Kind.BadTag(e, a)             => s"expected tag $e, got $a"
-    case Kind.MissingKey(k)            => s"missing key $k"
-    case Kind.DuplicateKey(k)          => s"duplicate key $k"
-    case Kind.UnexpectedKey(k)         => s"unexpected key $k"
-    case Kind.NoAlternative(cs)        => s"no alternative matched (${cs.size} tried)"
-    case Kind.Internal(e)              => s"internal error: $e"
+    case Kind.Syntax(m)             => s"malformed CBOR: $m"
+    case Kind.TypeMismatch(e, f)    => s"expected $e, found $f"
+    case Kind.BadSize(e, a)         => s"expected size $e, got $a"
+    case Kind.OutOfRange(e, a)      => s"expected $e, got $a"
+    case Kind.LiteralMismatch(e, a) => s"expected literal $e, got $a"
+    case Kind.BadArity(e, a)        => s"expected $e elements, got $a"
+    case Kind.BadTag(e, a)          => s"expected tag $e, got $a"
+    case Kind.MissingKey(k)         => s"missing key $k"
+    case Kind.DuplicateKey(k)       => s"duplicate key $k"
+    case Kind.UnexpectedKey(k)      => s"unexpected key $k"
+    case Kind.NoAlternative(cs)     => s"no alternative matched (${cs.size} tried)"
+    case Kind.Internal(e)           => s"internal error: $e"
 
   def at(node: Node, kind: Kind): DecodeError = DecodeError(kind, Nil, node.original.unsafeOffset)
 

@@ -144,3 +144,10 @@ ADACOIN, ADAPAY, CARDANO and CARDANO FOUNDATION, plus the logos.
   namespace refers to the marks (the sbt organisation is `io.github.ottobot-ai`).
 - The disclaimer names the Cardano Partners the policy lists (Cardano Foundation, IOHK/IOG, EMURGO)
   and also Intersect.
+
+## Vendored specification files
+
+`models-spike/src/main/cddl/upstream/` holds verbatim copies of CDDL files from three Apache-2.0 repositories
+(IntersectMBO/ouroboros-network, ouroboros-consensus, cardano-ledger) at the commits listed in its `SOURCES`
+file. Their LICENSE and NOTICE texts are in [fixtures/licenses](../fixtures/licenses). The build-time tool that
+reads them (`models-gen`) uses cats-parse 1.1.0 (MIT) and nothing else beyond what `core` already uses.

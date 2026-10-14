@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
-/** Surface syntax of CDDL (RFC 8610), as parsed. Names are unresolved; generics are not expanded. */
+/** Surface syntax of CDDL (RFC 8610), as parsed. Names are unresolved; generics are not expanded.
+  */
 object Ast:
   enum Lit:
     case IntL(value: BigInt)

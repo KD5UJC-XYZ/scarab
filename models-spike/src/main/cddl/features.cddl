@@ -1,0 +1,102 @@
+; Feature coverage schema (written for this project, not upstream CDDL).
+; Its shapes mirror the Conway ledger specification: an integer-keyed transaction body with optional
+; entries and tag-258 sets, outputs in two styles, nested multi-assets, auxiliary data in three styles,
+; certificates as a group choice, embedded CBOR, sockets and a text-keyed map. It exists so that every
+; generator feature has a test even where the two bounded spike targets (handshake/ChainSync, headers)
+; do not need it; the property tests sample it from this very file.
+
+hash32 = bytes .size 32
+coin = uint
+positive_coin = 1 .. 18446744073709551615
+slot = uint .size 8
+
+set<a> = #6.258([* a]) / [* a]
+
+transaction = [transaction_body, witness_set, bool, auxiliary_data / nil]
+
+; The body is hashed to obtain the transaction id, so its original bytes are preserved.
+transaction_body =
+  { 0 : set<transaction_input>
+  , 1 : [* transaction_output]
+  , 2 : coin
+  , ? 3 : slot
+  , ? 4 : [* certificate]
+  , ? 7 : hash32
+  , ? 9 : multiasset<positive_coin>
+  , ? 22 : positive_coin
+  }
+
+transaction_input = [transaction_id : hash32, index : uint .size 2]
+
+transaction_output = legacy_output / post_alonzo_output
+
+legacy_output = [address, amount : value, ? datum_hash : hash32]
+
+post_alonzo_output =
+  { 0 : address
+  , 1 : value
+  , ? 2 : datum_option
+  , ? 3 : #6.24(bytes .cbor script)
+  }
+
+address = bytes
+
+value = coin / [coin, multiasset<positive_coin>]
+
+multiasset<a> = { + policy_id => { + asset_name => a } }
+policy_id = bytes .size 28
+asset_name = bytes .size (0 .. 32)
+
+datum_option = [0, hash32] / [1, #6.24(bytes .cbor plutus_data)]
+
+plutus_data = any
+
+script = [0, native_script] / [1, bytes]
+native_script = [* native_script_leaf]
+native_script_leaf = [0, hash28] / [4, slot]
+hash28 = bytes .size 28
+
+witness_set =
+  { ? 0 : [+ vkeywitness]
+  , ? 1 : [* native_script]
+  , ? 5 : [* [redeemer_tag, uint .size 4]]
+  }
+
+vkeywitness = [vkey, signature]
+vkey = bytes .size 32
+signature = bytes .size 64
+redeemer_tag = 0 .. 5
+
+; Three serialisation styles of the same thing.
+auxiliary_data = metadata / auxiliary_data_array / auxiliary_data_map
+metadata = { * metadatum_label => metadatum }
+metadatum_label = uint .size 8
+metadatum =
+  { * metadatum => metadatum }
+  / [* metadatum]
+  / int
+  / bytes .size (0 .. 64)
+  / text .size (0 .. 64)
+auxiliary_data_array = [transaction_metadata : metadata, auxiliary_scripts : [* native_script]]
+auxiliary_data_map = #6.259({ ? 0 : metadata, ? 1 : [* native_script] })
+
+; Certificates: a choice of groups, each spliced into its array.
+certificate =
+  [ stake_registration
+  // stake_deregistration
+  // stake_delegation
+  ]
+stake_registration = (0, stake_credential)
+stake_deregistration = (1, stake_credential)
+stake_delegation = (2, stake_credential, pool_keyhash)
+stake_credential = [0, hash28] / [1, hash28]
+pool_keyhash = hash28
+
+; Sockets (extensible choices).
+$crypto_alg /= 0
+$crypto_alg /= 1
+$crypto_alg /= 2
+key_descriptor = [$crypto_alg, bytes .size 32]
+
+; A text-keyed map and booleans/nulls.
+person = { "name" : tstr, ? "age" : uint .size 1, ? "tags" : [* tstr], "active" : bool, ? "parent" : person / nil }

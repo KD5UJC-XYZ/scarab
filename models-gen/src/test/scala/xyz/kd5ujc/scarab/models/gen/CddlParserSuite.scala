@@ -6,7 +6,8 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.models.gen.Ast.*
 
 class CddlParserSuite extends munit.FunSuite:
-  private def parse(text: String): File = CddlParser.parse(text).fold(e => fail(e.getMessage), identity)
+  private def parse(text: String): File =
+    CddlParser.parse(text).fold(e => fail(e.getMessage), identity)
   private def body(text: String): Ty = parse(text).rules.head.body
 
   test("rules, size control and bytes") {
@@ -27,7 +28,10 @@ class CddlParserSuite extends munit.FunSuite:
   test("arrays with named entries, occurrence indicators and nested choices") {
     val Ty.Array(g) = body("x = [ a : uint, ? b : bytes, * c, 2* d, +e, 1*3 f ]"): @unchecked
     val es = g.choices.head
-    assertEquals(es.map(_.occ), Vector(Occ.Once, Occ.Optional, Occ.Star, Occ(2, None), Occ.Plus, Occ(1, Some(3))))
+    assertEquals(
+      es.map(_.occ),
+      Vector(Occ.Once, Occ.Optional, Occ.Star, Occ(2, None), Occ.Plus, Occ(1, Some(3)))
+    )
     assertEquals(es.head.key, Some(Key.Bare("a")))
   }
 
@@ -56,10 +60,17 @@ class CddlParserSuite extends munit.FunSuite:
   test("tags, generics, sockets, extensions and comments") {
     assertEquals(
       body("s<a> = #6.258([* a]) ; set"),
-      Ty.Tag(6, Some(BigInt(258)), Some(Ty.Array(Group(Vector(Vector(Entry(Occ.Star, None, Ty.Name("a", Vector.empty))))))))
+      Ty.Tag(
+        6,
+        Some(BigInt(258)),
+        Some(Ty.Array(Group(Vector(Vector(Entry(Occ.Star, None, Ty.Name("a", Vector.empty)))))))
+      )
     )
     val f = parse("$x /= 1\n$x /= 2\ng<a, b> = [a, b]\nh = g<uint, tstr>\n")
-    assertEquals(f.rules.map(_.assign), Vector(Assign.TypeChoice, Assign.TypeChoice, Assign.Eq, Assign.Eq))
+    assertEquals(
+      f.rules.map(_.assign),
+      Vector(Assign.TypeChoice, Assign.TypeChoice, Assign.Eq, Assign.Eq)
+    )
     assertEquals(f.rules(2).params, Vector("a", "b"))
     assert(body("a = #6.24(bytes .cbor foo)").isInstanceOf[Ty.Tag])
   }
@@ -71,7 +82,10 @@ class CddlParserSuite extends munit.FunSuite:
 
   test("pragmas are collected") {
     val f = parse(";# import network.base as base\n;# include byron as byron\na = 1\n")
-    assertEquals(f.pragmas, Vector(Pragma("import", "network.base", "base"), Pragma("include", "byron", "byron")))
+    assertEquals(
+      f.pragmas,
+      Vector(Pragma("import", "network.base", "base"), Pragma("include", "byron", "byron"))
+    )
   }
 
   test("errors carry a position") {
@@ -79,7 +93,8 @@ class CddlParserSuite extends munit.FunSuite:
     assert(e.line >= 1 && e.column >= 1)
   }
 
-  private val roots = Vector(Paths.get("models-spike/src/main/cddl"), Paths.get("../models-spike/src/main/cddl"))
+  private val roots =
+    Vector(Paths.get("models-spike/src/main/cddl"), Paths.get("../models-spike/src/main/cddl"))
 
   test("every pinned upstream .cddl file parses") {
     val root = roots.find(Files.isDirectory(_)).getOrElse(fail("cddl directory not found"))

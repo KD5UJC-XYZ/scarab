@@ -30,19 +30,24 @@ object CddlParser:
   /** RFC 8610 `id`: dots and dashes only between alphanumerics, so `a..b` is not one identifier. */
   private val ident: Parser[String] =
     (idStart ~ idRest).string.flatMap { s =>
-      val bad = s.endsWith(".") || s.endsWith("-") || s.contains("..") || s.contains(".-") || s.contains("-.")
+      val bad =
+        s.endsWith(".") || s.endsWith("-") || s.contains("..") || s.contains(".-") || s.contains(
+          "-."
+        )
       if bad then Parser.failWith("malformed identifier") else Parser.pure(s)
     }.backtrack
 
   private val digits: Parser[String] = Numbers.digits
   private val uintBig: Parser[BigInt] = digits.map(BigInt(_))
   private def isHex(c: Char) = isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-  private val hexInt: Parser[BigInt] = (Parser.string("0x") *> Parser.charsWhile(isHex)).map(BigInt(_, 16))
+  private val hexInt: Parser[BigInt] =
+    (Parser.string("0x") *> Parser.charsWhile(isHex)).map(BigInt(_, 16))
   private val binInt: Parser[BigInt] =
     (Parser.string("0b") *> Parser.charsWhile(c => c == '0' || c == '1')).map(BigInt(_, 2))
   private val intLit: Parser[BigInt] =
-    (Parser.char('-').string.?.with1 ~ (hexInt.backtrack | binInt.backtrack | uintBig)).map { (neg, n) =>
-      if neg.isDefined then -n else n
+    (Parser.char('-').string.?.with1 ~ (hexInt.backtrack | binInt.backtrack | uintBig)).map {
+      (neg, n) =>
+        if neg.isDefined then -n else n
     }
   private val floatLit: Parser[String] =
     (Parser.char('-').?.with1 ~ digits ~ Parser.char('.') ~ digits ~
@@ -55,15 +60,19 @@ object CddlParser:
     case c   => c
   }
   private val strChar: Parser[Char] = escape | Parser.charWhere(c => c != '"' && c != '\\')
-  private val textLit: Parser[String] = (Parser.char('"') *> strChar.rep0 <* Parser.char('"')).map(_.mkString)
+  private val textLit: Parser[String] =
+    (Parser.char('"') *> strChar.rep0 <* Parser.char('"')).map(_.mkString)
   private def hexBytes(s: String): Vector[Byte] =
     s.filterNot(_.isWhitespace).grouped(2).map(h => Integer.parseInt(h, 16).toByte).toVector
   private val bytesLit: Parser[Vector[Byte]] =
     (Parser.string("h'") *> Parser.charsWhile0(_ != '\'') <* Parser.char('\'')).map(hexBytes) |
-      (Parser.char('\'') *> Parser.charsWhile0(_ != '\'') <* Parser.char('\'')).map(_.getBytes("UTF-8").toVector)
+      (Parser.char('\'') *> Parser.charsWhile0(_ != '\'') <* Parser.char('\''))
+        .map(_.getBytes("UTF-8").toVector)
 
   private val lit: Parser[Lit] =
-    textLit.map(Lit.TextL(_)) | bytesLit.backtrack.map(Lit.BytesL(_)) | floatLit.map(Lit.FloatL(_)) |
+    textLit.map(Lit.TextL(_)) | bytesLit.backtrack.map(Lit.BytesL(_)) | floatLit.map(
+      Lit.FloatL(_)
+    ) |
       intLit.map(Lit.IntL(_))
 
   // Types and groups ---------------------------------------------------------------------------
@@ -71,7 +80,9 @@ object CddlParser:
   private val occ: Parser[Occ] =
     tok("?").as(Occ.Optional) |
       tok("+").as(Occ.Plus) |
-      (((bound.?.with1 <* Parser.char('*')) ~ bound.?) <* sp).map((lo, hi) => Occ(lo.getOrElse(0), hi)).backtrack
+      (((bound.?.with1 <* Parser.char('*')) ~ bound.?) <* sp)
+        .map((lo, hi) => Occ(lo.getOrElse(0), hi))
+        .backtrack
 
   private val slashChoice: Parser[Unit] =
     ((Parser.char('/') ~ Parser.not(Parser.charIn("/="))).void *> sp).backtrack
@@ -85,10 +96,13 @@ object CddlParser:
     val ty: Parser[Ty] = self.repSep(slashChoice).map(choiceOf)
     val genericArgs: Parser[Vector[Ty]] =
       (Parser.char('<') *> sp *> ty.repSep(tok(",")) <* tok(">")).map(_.toList.toVector)
-    val nameRef: Parser[Ty] = (ident ~ genericArgs.?).map((n, a) => Ty.Name(n, a.getOrElse(Vector.empty)))
+    val nameRef: Parser[Ty] =
+      (ident ~ genericArgs.?).map((n, a) => Ty.Name(n, a.getOrElse(Vector.empty)))
 
     val bareKey: Parser[Key] =
-      (ident <* sp <* Parser.char(':') <* Parser.not(Parser.char(':')) <* sp).map(Key.Bare(_)).backtrack
+      (ident <* sp <* Parser.char(':') <* Parser.not(Parser.char(':')) <* sp)
+        .map(Key.Bare(_))
+        .backtrack
     val valueKey: Parser[Key] = (lit <* sp <* Parser.char(':') <* sp).map(Key.Value(_)).backtrack
     val cut: Parser0[Boolean] = (Parser.char('^') *> sp).as(true).orElse(Parser.pure(false))
     val arrow: Parser[Boolean] = (cut.with1 <* Parser.string("=>") <* sp).backtrack
@@ -99,14 +113,16 @@ object CddlParser:
     val typeKeyOrPlain: Parser[Entry] =
       (occ.?.with1 ~ self ~
         (arrow ~ ty).map(Left(_)).orElse((slashChoice *> self).rep0.map(Right(_)))).map {
-        case ((o, first), Left((c, v))) => Entry(o.getOrElse(Occ.Once), Some(Key.OfType(first, c)), v)
+        case ((o, first), Left((c, v))) =>
+          Entry(o.getOrElse(Occ.Once), Some(Key.OfType(first, c)), v)
         case ((o, first), Right(rest)) =>
           val value = if rest.isEmpty then first else Ty.Choice(first +: rest.toVector)
           Entry(o.getOrElse(Occ.Once), None, value)
       }
     val entry: Parser[Entry] = keyed.backtrack | typeKeyOrPlain
     val choice: Parser0[Vector[Entry]] = (entry <* comma.?).rep0.map(_.toVector)
-    val grp: Parser0[Group] = (choice ~ (groupSep *> choice).rep0).map((h, t) => Group(h +: t.toVector))
+    val grp: Parser0[Group] =
+      (choice ~ (groupSep *> choice).rep0).map((h, t) => Group(h +: t.toVector))
 
     val tagP: Parser[Ty] =
       (Parser.char('#') *> ((digits.? ~ (Parser.char('.') *> uintBig).?) ~
@@ -117,12 +133,14 @@ object CddlParser:
     val paren: Parser[Ty] = (Parser.char('(') *> sp *> grp <* sp <* Parser.char(')')).map { g =>
       g.choices match
         case Vector(Vector(Entry(o, None, t))) if o.isOnce => t
-        case _                                              => Ty.GroupT(g)
+        case _                                             => Ty.GroupT(g)
     }
     val enumP = (Parser.char('&') *> sp *> (paren | nameRef)).map(Ty.Enumeration(_))
     val unwrapP = (Parser.char('~') *> sp *> nameRef).map(Ty.Unwrap(_))
     val ty2: Parser[Ty] =
-      lexeme(tagP | arrayP | mapP | paren | enumP | unwrapP | lit.backtrack.map(Ty.Literal(_)) | nameRef)
+      lexeme(
+        tagP | arrayP | mapP | paren | enumP | unwrapP | lit.backtrack.map(Ty.Literal(_)) | nameRef
+      )
     val rangeOp: Parser[Boolean] = tok("...").as(false) | tok("..").as(true)
     val ctrlName: Parser[String] = lexeme(Parser.char('.') *> ident)
     val tail: Parser[Ty => Ty] =
@@ -136,7 +154,8 @@ object CddlParser:
   private val assign: Parser[Assign] =
     tok("//=").as(Assign.GroupChoice) | tok("/=").as(Assign.TypeChoice) | tok("=").as(Assign.Eq)
   private val params: Parser[Vector[String]] =
-    (Parser.char('<') *> sp *> lexeme(ident).repSep(tok(",")) <* Parser.char('>')).map(_.toList.toVector)
+    (Parser.char('<') *> sp *> lexeme(ident).repSep(tok(",")) <* Parser.char('>'))
+      .map(_.toList.toVector)
   private val rule: Parser[Rule] =
     (ident ~ params.? <* sp).flatMap { case (n, ps) =>
       (assign ~ tyAll).map((a, b) => Rule(n, ps.getOrElse(Vector.empty), a, b))
@@ -149,7 +168,10 @@ object CddlParser:
     fileP.parse(text) match
       case Right((_, rules)) =>
         val pragmas =
-          pragmaRe.findAllMatchIn(text).map(m => Pragma(m.group(1), m.group(2), m.group(3))).toVector
+          pragmaRe
+            .findAllMatchIn(text)
+            .map(m => Pragma(m.group(1), m.group(2), m.group(3)))
+            .toVector
         Right(File(rules, pragmas))
       case Left(err) =>
         val off = err.failedAtOffset

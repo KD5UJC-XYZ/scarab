@@ -9,7 +9,9 @@ import scala.util.Random
   * rule order. `maxDepth` bounds recursion; beyond it the first (shortest) alternative is taken.
   */
 final class CddlSampler(schema: Schema, maxDepth: Int = 7):
-  private def fail(what: String): Nothing = throw GenException(GenError.Unsupported("sampler", what))
+  private def fail(what: String): Nothing = throw GenException(
+    GenError.Unsupported("sampler", what)
+  )
 
   private final class Enc:
     val out = new ByteArrayOutputStream()
@@ -42,8 +44,8 @@ final class CddlSampler(schema: Schema, maxDepth: Int = 7):
 
   private def rule(q: QName, rnd: Random, e: Enc, depth: Int): Unit =
     schema.rule(q).body match
-      case RuleBody.Type(t)       => ty(t, rnd, e, depth + 1)
-      case RuleBody.GroupBody(_)  => fail(s"group rule $q has no standalone encoding")
+      case RuleBody.Type(t)      => ty(t, rnd, e, depth + 1)
+      case RuleBody.GroupBody(_) => fail(s"group rule $q has no standalone encoding")
 
   private def big(rnd: Random, lo: BigInt, hi: BigInt): BigInt =
     val span = hi - lo + 1
@@ -60,8 +62,9 @@ final class CddlSampler(schema: Schema, maxDepth: Int = 7):
     a
 
   private def ty(t: RT, rnd: Random, e: Enc, depth: Int): Unit = t match
-    case RT.Prim(PrimKind.Uint)  => e.head(0, big(rnd, 0, BigInt(1) << rnd.nextInt(64)))
-    case RT.Prim(PrimKind.Int)   => e.int(big(rnd, -(BigInt(1) << rnd.nextInt(40)), BigInt(1) << rnd.nextInt(40)))
+    case RT.Prim(PrimKind.Uint) => e.head(0, big(rnd, 0, BigInt(1) << rnd.nextInt(64)))
+    case RT.Prim(PrimKind.Int) =>
+      e.int(big(rnd, -(BigInt(1) << rnd.nextInt(40)), BigInt(1) << rnd.nextInt(40)))
     case RT.Prim(PrimKind.Nint)  => e.int(-1 - big(rnd, 0, BigInt(1) << rnd.nextInt(40)))
     case RT.Prim(PrimKind.Bytes) => e.bytes(randBytes(rnd, rnd.nextInt(10)))
     case RT.Prim(PrimKind.Text)  => e.text(rnd.alphanumeric.take(rnd.nextInt(10)).mkString)
@@ -79,9 +82,14 @@ final class CddlSampler(schema: Schema, maxDepth: Int = 7):
     case RT.LitBool(b)           => e.raw(Array((if b then 0xf5 else 0xf4).toByte))
     case RT.LitBytes(bs)         => e.bytes(bs.toArray)
     case RT.IntRange(lo, hi)     => e.int(big(rnd, lo, hi))
-    case RT.SizedBytes(lo, hi)   => e.bytes(randBytes(rnd, lo + (if hi == lo then 0 else rnd.nextInt(math.min(hi - lo, 8) + 1))))
+    case RT.SizedBytes(lo, hi) =>
+      e.bytes(randBytes(rnd, lo + (if hi == lo then 0 else rnd.nextInt(math.min(hi - lo, 8) + 1))))
     case RT.SizedText(lo, hi) =>
-      e.text(rnd.alphanumeric.take(lo + (if hi == lo then 0 else rnd.nextInt(math.min(hi - lo, 8) + 1))).mkString)
+      e.text(
+        rnd.alphanumeric
+          .take(lo + (if hi == lo then 0 else rnd.nextInt(math.min(hi - lo, 8) + 1)))
+          .mkString
+      )
     case RT.Ref(q) => rule(q, rnd, e, depth)
     case RT.Choice(alts) =>
       val pick = if depth > maxDepth then alts.head else alts(rnd.nextInt(alts.size))
@@ -98,10 +106,10 @@ final class CddlSampler(schema: Schema, maxDepth: Int = 7):
         (0 until n).flatMap { _ =>
           val k = new Enc
           en.key match
-            case Some(RKey.IntKey(v))    => k.int(v)
-            case Some(RKey.TextKey(s))   => k.text(s)
+            case Some(RKey.IntKey(v))     => k.int(v)
+            case Some(RKey.TextKey(s))    => k.text(s)
             case Some(RKey.OfType(kt, _)) => ty(kt, rnd, k, depth + 1)
-            case None                    => fail("map entry without key")
+            case None                     => fail("map entry without key")
           val kb = k.result
           if seen.add(kb.toSeq) then
             val v = new Enc
@@ -111,7 +119,9 @@ final class CddlSampler(schema: Schema, maxDepth: Int = 7):
         }
       }
       e.head(5, pairs.size)
-      pairs.foreach { (k, v) => e.raw(k); e.raw(v) }
+      pairs.foreach { (k, v) =>
+        e.raw(k); e.raw(v)
+      }
     case RT.Tagged(n, inner) =>
       e.head(6, n)
       ty(inner, rnd, e, depth)

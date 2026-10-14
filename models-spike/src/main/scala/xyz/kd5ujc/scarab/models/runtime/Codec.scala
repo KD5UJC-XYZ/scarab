@@ -5,24 +5,29 @@ import lab.cbor.{Cbor, Value}
 import scala.util.control.NonFatal
 import DecodeError.Kind
 
-/** A CBOR codec for one model type. Decoding works on the byte-preserving `Node` tree of
-  * `lab.cbor` and reports typed, located errors; encoding is canonical (shortest forms, definite
-  * lengths) except where a type declares that its original bytes are preserved.
+/** A CBOR codec for one model type. Decoding works on the byte-preserving `Node` tree of `lab.cbor`
+  * and reports typed, located errors; encoding is canonical (shortest forms, definite lengths)
+  * except where a type declares that its original bytes are preserved.
   */
 trait Codec[A]:
   def decode(node: Node): Decoded[A]
   def encode(a: A, out: Writer): Unit
 
-  /** `Some(constraint)` when `a` violates this codec's value constraint (used by smart constructors). */
+  /** `Some(constraint)` when `a` violates this codec's value constraint (used by smart
+    * constructors).
+    */
   def check(a: A): Option[String] = None
 
-  /** Decode a complete CBOR item: syntax errors, trailing bytes and decoder exceptions are errors, never thrown. */
+  /** Decode a complete CBOR item: syntax errors, trailing bytes and decoder exceptions are errors,
+    * never thrown.
+    */
   final def decodeBytes(bytes: Bytes, limits: Cbor.Limits = Codec.DefaultLimits): Decoded[A] =
     Cbor.decode(bytes, limits) match
       case Left(message) => Left(DecodeError(Kind.Syntax(message), Nil, 0, rooted = true))
       case Right(root) =>
         try decode(root).left.map(_.rebased(root.original.unsafeOffset))
-        catch case NonFatal(e) => Left(DecodeError(Kind.Internal(e.toString), Nil, 0, rooted = true))
+        catch
+          case NonFatal(e) => Left(DecodeError(Kind.Internal(e.toString), Nil, 0, rooted = true))
 
   final def encodeBytes(a: A): Bytes =
     val w = new Writer
@@ -70,9 +75,9 @@ object Codec:
     def decode(n: Node) = n.value match
       case Value.UInt(v) if v <= hi && v >= lo => Right(v.toInt)
       case Value.NInt(v) if v >= lo && v <= hi => Right(v.toInt)
-      case Value.UInt(v) => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
-      case Value.NInt(v) => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
-      case _             => Left(mismatch("integer", n))
+      case Value.UInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case Value.NInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case _                                   => Left(mismatch("integer", n))
     def encode(a: Int, out: Writer) = out.int(BigInt(a))
     override def check(a: Int) = Option.when(a < lo || a > hi)(what)
 
@@ -82,8 +87,8 @@ object Codec:
     private val what = values.mkString(" / ")
     def decode(n: Node) = n.value match
       case Value.UInt(v) if v.isValidInt && set(v.toInt) => Right(v.toInt)
-      case Value.UInt(v)                                  => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
-      case _                                              => Left(mismatch("unsigned integer", n))
+      case Value.UInt(v) => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case _             => Left(mismatch("unsigned integer", n))
     def encode(a: Int, out: Writer) = out.uint(a.toLong)
     override def check(a: Int) = Option.unless(set(a))(what)
 
@@ -98,6 +103,31 @@ object Codec:
       case _                         => Left(mismatch("unsigned integer", n))
     def encode(a: Long, out: Writer) = out.uint(a)
     override def check(a: Long) = Option.when(a < 0 || a > max)(what)
+
+  /** An integer in `lo..hi` as a `Long` (signed range; negative values are CBOR negative integers).
+    */
+  def longRange(lo: Long, hi: Long): Codec[Long] = new Codec[Long]:
+    private val what = s"$lo..$hi"
+    def decode(n: Node) = n.value match
+      case Value.UInt(v) if v >= lo && v <= hi => Right(v.toLong)
+      case Value.NInt(v) if v >= lo && v <= hi => Right(v.toLong)
+      case Value.UInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case Value.NInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case _                                   => Left(mismatch("integer", n))
+    def encode(a: Long, out: Writer) = out.int(BigInt(a))
+    override def check(a: Long) = Option.when(a < lo || a > hi)(what)
+
+  /** An integer in `lo..hi` as a `BigInt`. */
+  def bigRange(lo: BigInt, hi: BigInt): Codec[BigInt] = new Codec[BigInt]:
+    private val what = s"$lo..$hi"
+    def decode(n: Node) = n.value match
+      case Value.UInt(v) if v >= lo && v <= hi => Right(v)
+      case Value.NInt(v) if v >= lo && v <= hi => Right(v)
+      case Value.UInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case Value.NInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
+      case _                                   => Left(mismatch("integer", n))
+    def encode(a: BigInt, out: Writer) = out.int(a)
+    override def check(a: BigInt) = Option.when(a < lo || a > hi)(what)
 
   def uintBig(max: BigInt): Codec[BigInt] = new Codec[BigInt]:
     private val what = s"0..$max"
@@ -121,7 +151,8 @@ object Codec:
     def decode(n: Node) = n.value match
       case Value.Text(s) =>
         val len = s.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
-        if len >= lo && len <= hi then Right(s) else Left(DecodeError.at(n, Kind.BadSize(what, len.toLong)))
+        if len >= lo && len <= hi then Right(s)
+        else Left(DecodeError.at(n, Kind.BadSize(what, len.toLong)))
       case _ => Left(mismatch("text string", n))
     def encode(a: String, out: Writer) = out.text(a)
     override def check(a: String) =
@@ -134,7 +165,8 @@ object Codec:
     private val what = if lo == hi then lo.toString else s"$lo..$hi"
     def decode(n: Node) = n.value match
       case Value.ByteString(b) =>
-        if b.size >= lo && b.size <= hi then Right(b) else Left(DecodeError.at(n, Kind.BadSize(what, b.size.toLong)))
+        if b.size >= lo && b.size <= hi then Right(b)
+        else Left(DecodeError.at(n, Kind.BadSize(what, b.size.toLong)))
       case _ => Left(mismatch("byte string", n))
     def encode(a: Bytes, out: Writer) = out.bytes(a)
     override def check(a: Bytes) = Option.when(a.size < lo || a.size > hi)(s"size $what")
@@ -147,26 +179,35 @@ object Codec:
   // Combinators -----------------------------------------------------------------------------
 
   /** `[* x]`, `[+ x]`, `[n*m x]`. */
-  def vec[A](inner: => Codec[A], min: Int = 0, max: Int = Int.MaxValue): Codec[Vector[A]] = new Codec[Vector[A]]:
-    private lazy val c = inner
-    def decode(n: Node) = n.value match
-      case Value.Arr(items) =>
-        if items.size < min || items.size > max then
-          Left(DecodeError.at(n, Kind.BadArity(s"$min..${if max == Int.MaxValue then "*" else max.toString}", items.size)))
-        else
-          val out = Vector.newBuilder[A]
-          var i = 0
-          var failure: DecodeError = null
-          while failure == null && i < items.size do
-            c.decode(items(i)) match
-              case Right(a) => out += a
-              case Left(e)  => failure = e.at(s"[$i]")
-            i += 1
-          if failure == null then Right(out.result()) else Left(failure)
-      case _ => Left(mismatch("array", n))
-    def encode(a: Vector[A], out: Writer) =
-      out.arrayHead(a.size)
-      a.foreach(c.encode(_, out))
+  def vec[A](inner: => Codec[A], min: Int = 0, max: Int = Int.MaxValue): Codec[Vector[A]] =
+    new Codec[Vector[A]]:
+      private lazy val c = inner
+      def decode(n: Node) = n.value match
+        case Value.Arr(items) =>
+          if items.size < min || items.size > max then
+            Left(
+              DecodeError.at(
+                n,
+                Kind.BadArity(
+                  s"$min..${if max == Int.MaxValue then "*" else max.toString}",
+                  items.size
+                )
+              )
+            )
+          else
+            val out = Vector.newBuilder[A]
+            var i = 0
+            var failure: DecodeError = null
+            while failure == null && i < items.size do
+              c.decode(items(i)) match
+                case Right(a) => out += a
+                case Left(e)  => failure = e.at(s"[$i]")
+              i += 1
+            if failure == null then Right(out.result()) else Left(failure)
+        case _ => Left(mismatch("array", n))
+      def encode(a: Vector[A], out: Writer) =
+        out.arrayHead(a.size)
+        a.foreach(c.encode(_, out))
 
   /** `x / nil`: CBOR null is `None`. */
   def nullable[A](inner: => Codec[A]): Codec[Option[A]] = new Codec[Option[A]]:
@@ -190,6 +231,19 @@ object Codec:
       c.encode(a, out)
     override def check(a: A) = c.check(a)
 
+  /** `#6.n(x) / x`: the tag is optional on input (Conway sets and non-empty lists), written on
+    * output.
+    */
+  def maybeTagged[A](tag: BigInt, inner: => Codec[A]): Codec[A] = new Codec[A]:
+    private lazy val c = inner
+    def decode(n: Node) = n.value match
+      case Value.Tag(t, v) if t == tag => c.decode(v)
+      case _                           => c.decode(n)
+    def encode(a: A, out: Writer) =
+      out.tag(tag)
+      c.encode(a, out)
+    override def check(a: A) = c.check(a)
+
   /** `bytes .cbor x`: a byte string whose content is the encoding of `x`. */
   def embedded[A](inner: => Codec[A]): Codec[A] = new Codec[A]:
     private lazy val c = inner
@@ -208,13 +262,16 @@ object Codec:
       out.bytes(w.result)
 
   /** `{ * k => v }`: all pairs, in wire order (duplicates kept). */
-  def pairs[K, V](key: => Codec[K], value: => Codec[V]): Codec[Vector[(K, V)]] = new Codec[Vector[(K, V)]]:
-    private lazy val kc = key
-    private lazy val vc = value
-    def decode(n: Node) = Maps.pairs(n).flatMap(Maps.decodePairs(_, kc, vc))
-    def encode(a: Vector[(K, V)], out: Writer) =
-      out.mapHead(a.size)
-      a.foreach { (k, v) => kc.encode(k, out); vc.encode(v, out) }
+  def pairs[K, V](key: => Codec[K], value: => Codec[V]): Codec[Vector[(K, V)]] =
+    new Codec[Vector[(K, V)]]:
+      private lazy val kc = key
+      private lazy val vc = value
+      def decode(n: Node) = Maps.pairs(n).flatMap(Maps.decodePairs(_, kc, vc))
+      def encode(a: Vector[(K, V)], out: Writer) =
+        out.mapHead(a.size)
+        a.foreach { (k, v) =>
+          kc.encode(k, out); vc.encode(v, out)
+        }
 
 private val ok: Decoded[Unit] = Right(())
 
@@ -222,12 +279,13 @@ private val ok: Decoded[Unit] = Right(())
 object Lit:
   def uint(n: Node, expected: Long): Decoded[Unit] = n.value match
     case Value.UInt(v) if v == expected => ok
-    case Value.UInt(v)                  => Left(DecodeError.at(n, Kind.LiteralMismatch(expected.toString, v.toString)))
-    case _                              => Left(Codec.mismatch("unsigned integer", n))
+    case Value.UInt(v) =>
+      Left(DecodeError.at(n, Kind.LiteralMismatch(expected.toString, v.toString)))
+    case _ => Left(Codec.mismatch("unsigned integer", n))
   def text(n: Node, expected: String): Decoded[Unit] = n.value match
     case Value.Text(s) if s == expected => ok
-    case Value.Text(s)                  => Left(DecodeError.at(n, Kind.LiteralMismatch(expected, s)))
-    case _                              => Left(Codec.mismatch("text string", n))
+    case Value.Text(s) => Left(DecodeError.at(n, Kind.LiteralMismatch(expected, s)))
+    case _             => Left(Codec.mismatch("text string", n))
   def bool(n: Node, expected: Boolean): Decoded[Unit] = n.value match
     case Value.Bool(b) if b == expected => ok
     case _                              => Left(Codec.mismatch(expected.toString, n))
@@ -238,8 +296,8 @@ object Lit:
 object Arr:
   def exact(n: Node, size: Int): Decoded[Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size == size => Right(xs)
-    case Value.Arr(xs)                    => Left(DecodeError.at(n, Kind.BadArity(size.toString, xs.size)))
-    case _                                => Left(Codec.mismatch("array", n))
+    case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(size.toString, xs.size)))
+    case _             => Left(Codec.mismatch("array", n))
   def between(n: Node, min: Int, max: Int): Decoded[Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size >= min && xs.size <= max => Right(xs)
     case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity(s"$min..$max", xs.size)))
@@ -250,10 +308,17 @@ object MapKey:
   final case class IntKey(value: Long) extends MapKey
   final case class TextKey(value: String) extends MapKey
 
-/** The entries of a map struct: literal keys get a slot each, `* k => v` entries collect by key type. */
+/** The entries of a map struct: literal keys get a slot each, `* k => v` entries collect by key
+  * type.
+  */
 final class MapSpec(val literals: Array[MapKey], val typed: Array[Node => Boolean])
 
-final class MapParts(val owner: Node, val slots: Array[Node], val typed: Array[Vector[(Node, Node)]], spec: MapSpec):
+final class MapParts(
+    val owner: Node,
+    val slots: Array[Node],
+    val typed: Array[Vector[(Node, Node)]],
+    spec: MapSpec
+):
   private def name(i: Int): String = spec.literals(i) match
     case MapKey.IntKey(v)  => v.toString
     case MapKey.TextKey(s) => s"\"$s\""
@@ -275,7 +340,11 @@ object Maps:
     case Value.Map(ps) => Right(ps)
     case _             => Left(Codec.mismatch("map", n))
 
-  def decodePairs[K, V](ps: Vector[(Node, Node)], kc: Codec[K], vc: Codec[V]): Decoded[Vector[(K, V)]] =
+  def decodePairs[K, V](
+      ps: Vector[(Node, Node)],
+      kc: Codec[K],
+      vc: Codec[V]
+  ): Decoded[Vector[(K, V)]] =
     val out = Vector.newBuilder[(K, V)]
     var i = 0
     var failure: DecodeError = null
@@ -291,11 +360,13 @@ object Maps:
     if failure == null then Right(out.result()) else Left(failure)
 
   private def matches(key: MapKey, n: Node): Boolean = (key, n.value) match
-    case (MapKey.IntKey(k), Value.UInt(v)) => v == k
+    case (MapKey.IntKey(k), Value.UInt(v))  => v == k
     case (MapKey.TextKey(k), Value.Text(s)) => s == k
     case _                                  => false
 
-  /** Distribute the pairs of the map over the spec: literal keys first, then typed entries in order. */
+  /** Distribute the pairs of the map over the spec: literal keys first, then typed entries in
+    * order.
+    */
   def split(n: Node, spec: MapSpec): Decoded[MapParts] = pairs(n).flatMap { ps =>
     val slots = new Array[Node](spec.literals.length)
     val typed = Array.fill(spec.typed.length)(Vector.newBuilder[(Node, Node)])
@@ -307,7 +378,8 @@ object Maps:
       var placed = false
       while !placed && j < spec.literals.length do
         if matches(spec.literals(j), k) then
-          if slots(j) != null then failure = DecodeError.at(k, Kind.DuplicateKey(k.original.toString))
+          if slots(j) != null then
+            failure = DecodeError.at(k, Kind.DuplicateKey(k.original.toString))
           else slots(j) = v
           placed = true
         j += 1
@@ -318,10 +390,12 @@ object Maps:
       if !placed && failure == null then
         failure = DecodeError.at(k, Kind.UnexpectedKey(Codec.describe(k)))
       i += 1
-    if failure == null then Right(new MapParts(n, slots, typed.map(_.result()), spec)) else Left(failure)
+    if failure == null then Right(new MapParts(n, slots, typed.map(_.result()), spec))
+    else Left(failure)
   }
 
-/** Ordered choice: the first alternative that decodes wins; if none does, all causes are reported. */
+/** Ordered choice: the first alternative that decodes wins; if none does, all causes are reported.
+  */
 final class Alternatives[A](alts: Array[Node => Decoded[A]]):
   def apply(n: Node): Decoded[A] =
     var i = 0

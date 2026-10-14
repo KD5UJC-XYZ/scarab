@@ -31,7 +31,9 @@ final case class Config(
 object Config:
   final case class ModuleSpec(name: String, subpackage: String, files: Vector[String])
 
-  private def err(line: Int, message: String): Nothing = throw GenException(GenError.BadConfig(line, message))
+  private def err(line: Int, message: String): Nothing = throw GenException(
+    GenError.BadConfig(line, message)
+  )
 
   def parse(text: String): Config =
     var pkg = ""
@@ -50,17 +52,17 @@ object Config:
       val line = i + 1
       val words = raw.takeWhile(_ != '#').trim.split("\\s+").toVector.filter(_.nonEmpty)
       words match
-        case Vector()                         => ()
-        case Vector("package", p)             => pkg = p
+        case Vector()                                        => ()
+        case Vector("package", p)                            => pkg = p
         case "module" +: n +: sub +: files if files.nonEmpty => modules += ModuleSpec(n, sub, files)
-        case Vector("root", r)                => roots += q(line, r)
-        case Vector("preserve", r)            => preserve += q(line, r)
-        case Vector("rename", r, n)           => rename += q(line, r) -> n
-        case "cases" +: r +: names if names.nonEmpty => cases += q(line, r) -> names
-        case "strip" +: r +: ps if ps.nonEmpty => strip += q(line, r) -> ps
-        case Vector("field", r, k, n)         => fields += (q(line, r), k) -> n
-        case Vector("external", r)            => external += q(line, r)
-        case other                            => err(line, s"unrecognised directive: ${other.mkString(" ")}")
+        case Vector("root", r)                               => roots += q(line, r)
+        case Vector("preserve", r)                           => preserve += q(line, r)
+        case Vector("rename", r, n)                          => rename += q(line, r) -> n
+        case "cases" +: r +: names if names.nonEmpty         => cases += q(line, r) -> names
+        case "strip" +: r +: ps if ps.nonEmpty               => strip += q(line, r) -> ps
+        case Vector("field", r, k, n)                        => fields += (q(line, r), k) -> n
+        case Vector("external", r)                           => external += q(line, r)
+        case other => err(line, s"unrecognised directive: ${other.mkString(" ")}")
     }
     if pkg.isEmpty then err(0, "missing `package`")
     Config(pkg, modules.result(), roots.result(), preserve, rename, cases, strip, fields, external)

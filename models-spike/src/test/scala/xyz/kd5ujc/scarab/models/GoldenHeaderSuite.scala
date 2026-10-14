@@ -22,7 +22,9 @@ object Fixtures:
     val Value.Arr(parts) = body.value: @unchecked
     parts.head.original
 
-/** What every era's generated header exposes, read out for comparison with the hand-written decoder. */
+/** What every era's generated header exposes, read out for comparison with the hand-written
+  * decoder.
+  */
 final case class HeaderView(
     blockNo: BigInt,
     slot: BigInt,
@@ -132,7 +134,9 @@ object HeaderView:
       h.bodyRaw
     )
 
-/** The generated header codecs decode the real Preview chain exactly as the hand-written decoder does. */
+/** The generated header codecs decode the real Preview chain exactly as the hand-written decoder
+  * does.
+  */
 class GoldenHeaderSuite extends munit.FunSuite:
   import xyz.kd5ujc.scarab.models.runtime.Codec
 
@@ -155,31 +159,72 @@ class GoldenHeaderSuite extends munit.FunSuite:
   private def canonical(era: Era, raw: Bytes): Bytes = era match
     case Era.Conway =>
       val h = conway.Header.decodeBytes(raw).toOption.get
-      conway.Header.canonical(conway.HeaderBody.canonical(
-        h.headerBody.blockNumber, h.headerBody.slot, h.headerBody.prevHash, h.headerBody.issuerVkey,
-        h.headerBody.vrfVkey, h.headerBody.vrfResult, h.headerBody.blockBodySize, h.headerBody.blockBodyHash,
-        h.headerBody.operationalCert, h.headerBody.protocolVersion
-      ), h.bodySignature).raw
+      conway.Header
+        .canonical(
+          conway.HeaderBody.canonical(
+            h.headerBody.blockNumber,
+            h.headerBody.slot,
+            h.headerBody.prevHash,
+            h.headerBody.issuerVkey,
+            h.headerBody.vrfVkey,
+            h.headerBody.vrfResult,
+            h.headerBody.blockBodySize,
+            h.headerBody.blockBodyHash,
+            h.headerBody.operationalCert,
+            h.headerBody.protocolVersion
+          ),
+          h.bodySignature
+        )
+        .raw
     case Era.Babbage =>
       val h = babbage.Header.decodeBytes(raw).toOption.get
       val b = h.headerBody
-      babbage.Header.canonical(babbage.HeaderBody.canonical(
-        b.blockNumber, b.slot, b.prevHash, b.issuerVkey, b.vrfVkey, b.vrfResult, b.blockBodySize,
-        b.blockBodyHash, b.operationalCert, b.protocolVersion
-      ), h.bodySignature).raw
+      babbage.Header
+        .canonical(
+          babbage.HeaderBody.canonical(
+            b.blockNumber,
+            b.slot,
+            b.prevHash,
+            b.issuerVkey,
+            b.vrfVkey,
+            b.vrfResult,
+            b.blockBodySize,
+            b.blockBodyHash,
+            b.operationalCert,
+            b.protocolVersion
+          ),
+          h.bodySignature
+        )
+        .raw
     case Era.Alonzo =>
       val h = alonzo.Header.decodeBytes(raw).toOption.get
       val b = h.headerBody
-      alonzo.Header.canonical(alonzo.HeaderBody.canonical(
-        b.blockNumber, b.slot, b.prevHash, b.issuerVkey, b.vrfVkey, b.nonceVrf, b.leaderVrf, b.blockBodySize,
-        b.blockBodyHash, b.operationalCert, b.protocolVersion
-      ), h.bodySignature).raw
+      alonzo.Header
+        .canonical(
+          alonzo.HeaderBody.canonical(
+            b.blockNumber,
+            b.slot,
+            b.prevHash,
+            b.issuerVkey,
+            b.vrfVkey,
+            b.nonceVrf,
+            b.leaderVrf,
+            b.blockBodySize,
+            b.blockBodyHash,
+            b.operationalCert,
+            b.protocolVersion
+          ),
+          h.bodySignature
+        )
+        .raw
     case other => fail(s"no generated header for $other")
 
   private val files = Vector("alonzo-first-20", "babbage-transition", "conway")
 
   for file <- files do
-    test(s"fixtures/preview/$file.hex: generated headers equal the hand-written decode, field by field") {
+    test(
+      s"fixtures/preview/$file.hex: generated headers equal the hand-written decode, field by field"
+    ) {
       val blocks = Fixtures.hexLines(s"fixtures/preview/$file.hex")
       assert(blocks.nonEmpty)
       blocks.foreach { block =>
@@ -196,7 +241,9 @@ class GoldenHeaderSuite extends munit.FunSuite:
       }
     }
 
-    test(s"fixtures/preview/$file.hex: re-encoding preserves bytes; canonical encoding reproduces them") {
+    test(
+      s"fixtures/preview/$file.hex: re-encoding preserves bytes; canonical encoding reproduces them"
+    ) {
       Fixtures.hexLines(s"fixtures/preview/$file.hex").foreach { block =>
         val era = Block.decodeShelley(block).toOption.get.era
         val raw = Fixtures.headerBytes(block)

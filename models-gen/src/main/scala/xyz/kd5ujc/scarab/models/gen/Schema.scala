@@ -15,14 +15,15 @@ enum GenError:
   case BadConfig(line: Int, detail: String)
 
   def message: String = this match
-    case Parse(f, e)                 => s"$f: ${e.getMessage}"
-    case Io(p, c)                    => s"$p: $c"
-    case UnknownModule(m, from)      => s"unknown module `$m` (referenced from $from)"
-    case UnresolvedName(s, n)        => s"unresolved name `$n` in $s"
-    case ArityMismatch(r, e, a)      => s"rule `$r` takes $e type arguments, got $a"
-    case Unsupported(r, f)           => s"unsupported CDDL feature in `$r`: $f"
-    case NameClash(s, n, rs)         => s"in $s the rules ${rs.mkString(", ")} all map to the Scala name `$n`"
-    case BadConfig(l, m)             => s"config line $l: $m"
+    case Parse(f, e)            => s"$f: ${e.getMessage}"
+    case Io(p, c)               => s"$p: $c"
+    case UnknownModule(m, from) => s"unknown module `$m` (referenced from $from)"
+    case UnresolvedName(s, n)   => s"unresolved name `$n` in $s"
+    case ArityMismatch(r, e, a) => s"rule `$r` takes $e type arguments, got $a"
+    case Unsupported(r, f)      => s"unsupported CDDL feature in `$r`: $f"
+    case NameClash(s, n, rs) =>
+      s"in $s the rules ${rs.mkString(", ")} all map to the Scala name `$n`"
+    case BadConfig(l, m) => s"config line $l: $m"
 
 final case class GenException(error: GenError) extends RuntimeException(error.message)
 
@@ -40,6 +41,7 @@ enum RT:
   case LitText(value: String)
   case LitBool(value: Boolean)
   case LitBytes(value: Vector[Byte])
+
   /** An integer in `lo..hi` (inclusive); from `uint .size n` or a `lo..hi` range. */
   case IntRange(lo: BigInt, hi: BigInt)
   case SizedBytes(lo: Int, hi: Int)
@@ -49,8 +51,10 @@ enum RT:
   case Arr(entries: Vector[REntry])
   case MapT(entries: Vector[REntry])
   case Tagged(tag: BigInt, inner: RT)
+
   /** `bytes .cbor inner`: a byte string holding the encoding of `inner`. */
   case CborOf(inner: RT)
+
   /** A reference to a group rule, spliced into the enclosing array or map when encoded. */
   case GroupRef(target: QName)
   case Unsupported(why: String)
@@ -60,7 +64,8 @@ enum RKey:
   case TextKey(value: String)
   case OfType(ty: RT, cut: Boolean)
 
-/** An array or map entry. `label` is the CDDL member name (a comment in arrays, the key in maps). */
+/** An array or map entry. `label` is the CDDL member name (a comment in arrays, the key in maps).
+  */
 final case class REntry(occ: Occ, label: Option[String], key: Option[RKey], value: RT)
 
 enum RuleBody:
@@ -80,7 +85,8 @@ final class Schema(val modules: Map[String, Module]):
 
   def modulesNamed: Set[String] = modules.keySet
 
-  def lookup(q: QName): Option[(Vector[Ast.Rule], Scope)] = modules.get(q.module).flatMap(_.rules.get(q.name))
+  def lookup(q: QName): Option[(Vector[Ast.Rule], Scope)] =
+    modules.get(q.module).flatMap(_.rules.get(q.name))
 
   def rule(q: QName): RuleDef =
     cache.getOrElseUpdate(q, resolveRule(q))
@@ -91,15 +97,20 @@ final class Schema(val modules: Map[String, Module]):
     val (defs, scope) = lookup(q).getOrElse(fail(GenError.UnresolvedName(q.module, q.name)))
     if defs.head.params.nonEmpty then
       fail(GenError.Unsupported(q.toString, "generic rule used without type arguments"))
-    val isGroup = defs.exists(r => r.assign == Assign.GroupChoice || r.body.isInstanceOf[Ast.Ty.GroupT])
+    val isGroup =
+      defs.exists(r => r.assign == Assign.GroupChoice || r.body.isInstanceOf[Ast.Ty.GroupT])
     if isGroup then
       val alts = defs.flatMap { r =>
         r.body match
           case Ast.Ty.GroupT(g) => g.choices
           case other            => Vector(Vector(Ast.Entry(Occ.Once, None, other)))
       }
-      if alts.size != 1 then fail(GenError.Unsupported(q.toString, "group rule with `//` alternatives"))
-      RuleDef(q, RuleBody.GroupBody(entries(alts.head, scope, Map.empty, q.toString, inMap = false)))
+      if alts.size != 1 then
+        fail(GenError.Unsupported(q.toString, "group rule with `//` alternatives"))
+      RuleDef(
+        q,
+        RuleBody.GroupBody(entries(alts.head, scope, Map.empty, q.toString, inMap = false))
+      )
     else
       val tys = defs.map(r => ty(r.body, scope, Map.empty, q.toString))
       RuleDef(q, RuleBody.Type(if tys.size == 1 then tys.head else flattenChoice(tys)))
@@ -131,7 +142,9 @@ final class Schema(val modules: Map[String, Module]):
     "float64" -> RT.Prim(PrimKind.Float)
   )
 
-  /** Find the rule an identifier names from `scope`: a local rule, or `alias.rule` through an import. */
+  /** Find the rule an identifier names from `scope`: a local rule, or `alias.rule` through an
+    * import.
+    */
   private def locate(id: String, scope: Scope): Option[QName] =
     val local = QName(scope.module, id)
     if lookup(local).isDefined then Some(local)
@@ -146,9 +159,17 @@ final class Schema(val modules: Map[String, Module]):
           else fail(GenError.UnknownModule(m, scope.module))
         }
 
-  private def intOf(t: Ast.Ty, ctx: String): BigInt = t match
+  /** An integer bound: a literal, or a name of a rule that is one (`max_word64 =
+    * 18446744073709551615`).
+    */
+  private def intOf(t: Ast.Ty, scope: Scope, env: Map[String, RT], ctx: String): BigInt = t match
     case Ast.Ty.Literal(Ast.Lit.IntL(n)) => n
-    case _                               => fail(GenError.Unsupported(ctx, s"non-literal bound $t"))
+    case Ast.Ty.Name(id, Vector()) if !env.contains(id) =>
+      locate(id, scope).flatMap(q => lookup(q).map(q -> _)) match
+        case Some((_, (Vector(r), defScope))) if r.params.isEmpty =>
+          intOf(r.body, defScope, Map.empty, ctx)
+        case _ => fail(GenError.Unsupported(ctx, s"non-literal bound $id"))
+    case _ => fail(GenError.Unsupported(ctx, s"non-literal bound $t"))
 
   def ty(t: Ast.Ty, scope: Scope, env: Map[String, RT], ctx: String): RT = t match
     case Ast.Ty.Literal(l) =>
@@ -169,27 +190,28 @@ final class Schema(val modules: Map[String, Module]):
                 if args.nonEmpty then fail(GenError.ArityMismatch(q.toString, 0, args.size))
                 RT.Ref(q)
               else
-                if params.size != args.size then fail(GenError.ArityMismatch(q.toString, params.size, args.size))
+                if params.size != args.size then
+                  fail(GenError.ArityMismatch(q.toString, params.size, args.size))
                 val bound = params.zip(args.map(ty(_, scope, env, ctx))).toMap
                 val tys = defs.map(r => this.ty(r.body, defScope, bound, q.toString))
                 flattenChoice(tys)
             case None =>
               prelude.getOrElse(id, fail(GenError.UnresolvedName(scope.module, id)))
     case Ast.Ty.Range(lo, hi, inclusive) =>
-      val a = intOf(lo, ctx)
-      val b = intOf(hi, ctx)
+      val a = intOf(lo, scope, env, ctx)
+      val b = intOf(hi, scope, env, ctx)
       RT.IntRange(a, if inclusive then b else b - 1)
     case Ast.Ty.Ctrl(base, op, arg) => control(base, op, arg, scope, env, ctx)
-    case Ast.Ty.Choice(alts) => flattenChoice(alts.map(ty(_, scope, env, ctx)))
-    case Ast.Ty.Array(g) => composite(g, scope, env, ctx, inMap = false)
-    case Ast.Ty.MapT(g)  => composite(g, scope, env, ctx, inMap = true)
+    case Ast.Ty.Choice(alts)        => flattenChoice(alts.map(ty(_, scope, env, ctx)))
+    case Ast.Ty.Array(g)            => composite(g, scope, env, ctx, inMap = false)
+    case Ast.Ty.MapT(g)             => composite(g, scope, env, ctx, inMap = true)
     case Ast.Ty.Tag(major, number, inner) =>
       (major, number, inner) match
         case (6, Some(n), Some(i)) => RT.Tagged(n, ty(i, scope, env, ctx))
         case (6, Some(n), None)    => RT.Tagged(n, RT.Prim(PrimKind.Any))
         case (-1, None, None)      => RT.Prim(PrimKind.Any)
         case _                     => RT.Unsupported(s"tag form #$major")
-    case Ast.Ty.GroupT(_)       => RT.Unsupported("group in type position")
+    case Ast.Ty.GroupT(_) => RT.Unsupported("group in type position")
     case Ast.Ty.Enumeration(of) =>
       of match
         case Ast.Ty.GroupT(g) if g.choices.size == 1 =>
@@ -210,12 +232,14 @@ final class Schema(val modules: Map[String, Module]):
       case (RT.Prim(PrimKind.Uint), "size") =>
         arg match
           case Ast.Ty.Literal(Ast.Lit.IntL(n)) => RT.IntRange(0, (BigInt(1) << (8 * n.toInt)) - 1)
-          case _                                => RT.Unsupported("uint .size with a range")
-      case (RT.Prim(PrimKind.Bytes), "size") => sizes(arg, ctx).fold(RT.Unsupported("bad .size"))(RT.SizedBytes(_, _))
-      case (RT.Prim(PrimKind.Text), "size")  => sizes(arg, ctx).fold(RT.Unsupported("bad .size"))(RT.SizedText(_, _))
+          case _                               => RT.Unsupported("uint .size with a range")
+      case (RT.Prim(PrimKind.Bytes), "size") =>
+        sizes(arg, ctx).fold(RT.Unsupported("bad .size"))(RT.SizedBytes(_, _))
+      case (RT.Prim(PrimKind.Text), "size") =>
+        sizes(arg, ctx).fold(RT.Unsupported("bad .size"))(RT.SizedText(_, _))
       case (RT.Prim(PrimKind.Bytes), "cbor") => RT.CborOf(ty(arg, scope, env, ctx))
-      case (RT.Prim(PrimKind.Uint), "lt") => RT.IntRange(0, intOf(arg, ctx) - 1)
-      case (RT.Prim(PrimKind.Uint), "le") => RT.IntRange(0, intOf(arg, ctx))
+      case (RT.Prim(PrimKind.Uint), "lt")    => RT.IntRange(0, intOf(arg, scope, env, ctx) - 1)
+      case (RT.Prim(PrimKind.Uint), "le")    => RT.IntRange(0, intOf(arg, scope, env, ctx))
       case (_, "default")                    => b
       case _                                 => RT.Unsupported(s".$op")
 
@@ -225,7 +249,13 @@ final class Schema(val modules: Map[String, Module]):
       Some((a.toInt, if inc then b.toInt else b.toInt - 1))
     case _ => None
 
-  private def composite(g: Ast.Group, scope: Scope, env: Map[String, RT], ctx: String, inMap: Boolean): RT =
+  private def composite(
+      g: Ast.Group,
+      scope: Scope,
+      env: Map[String, RT],
+      ctx: String,
+      inMap: Boolean
+  ): RT =
     val alts = g.choices.map { es =>
       val xs = entries(es, scope, env, ctx, inMap)
       if inMap then RT.MapT(xs) else RT.Arr(xs)
@@ -243,7 +273,8 @@ final class Schema(val modules: Map[String, Module]):
       e.value match
         case Ast.Ty.GroupT(g) if g.choices.size == 1 && e.key.isEmpty =>
           entries(g.choices.head, scope, env, ctx, inMap)
-        case Ast.Ty.Name(id, Vector()) if e.key.isEmpty && env.get(id).isEmpty && isGroupRule(id, scope) =>
+        case Ast.Ty.Name(id, Vector())
+            if e.key.isEmpty && env.get(id).isEmpty && isGroupRule(id, scope) =>
           Vector(REntry(e.occ, None, None, RT.GroupRef(locate(id, scope).get)))
         case value =>
           val v = ty(value, scope, env, ctx)
@@ -251,9 +282,12 @@ final class Schema(val modules: Map[String, Module]):
             case None => (None, None)
             case Some(Ast.Key.Bare(n)) =>
               if inMap then (Some(n), Some(RKey.TextKey(n))) else (Some(n), None)
-            case Some(Ast.Key.Value(Ast.Lit.IntL(n))) => (None, if inMap then Some(RKey.IntKey(n)) else None)
-            case Some(Ast.Key.Value(Ast.Lit.TextL(s))) => (None, if inMap then Some(RKey.TextKey(s)) else None)
-            case Some(Ast.Key.Value(_)) => fail(GenError.Unsupported(ctx, "non-integer, non-text literal key"))
+            case Some(Ast.Key.Value(Ast.Lit.IntL(n))) =>
+              (None, if inMap then Some(RKey.IntKey(n)) else None)
+            case Some(Ast.Key.Value(Ast.Lit.TextL(s))) =>
+              (None, if inMap then Some(RKey.TextKey(s)) else None)
+            case Some(Ast.Key.Value(_)) =>
+              fail(GenError.Unsupported(ctx, "non-integer, non-text literal key"))
             case Some(Ast.Key.OfType(kt, cut)) =>
               (None, if inMap then Some(RKey.OfType(ty(kt, scope, env, ctx), cut)) else None)
           Vector(REntry(e.occ, label, key, v))
@@ -266,7 +300,9 @@ final class Schema(val modules: Map[String, Module]):
     }
 
 object Schema:
-  /** Build a schema from parsed files: module name -> (files in override order, with their pragmas). */
+  /** Build a schema from parsed files: module name -> (files in override order, with their
+    * pragmas).
+    */
   def build(modules: Vector[(String, Vector[Ast.File])]): Schema =
     val known = modules.map(_._1).toSet
     val built = modules.map { (name, files) =>
@@ -282,7 +318,8 @@ object Schema:
         }
         perFile.foreach { (n, rs) =>
           val extending = rs.forall(_.assign != Assign.Eq)
-          val merged = if extending then rules.get(n).map(_._1).getOrElse(Vector.empty) ++ rs else rs
+          val merged =
+            if extending then rules.get(n).map(_._1).getOrElse(Vector.empty) ++ rs else rs
           rules(n) = (merged, scope)
         }
       }

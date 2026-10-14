@@ -12,7 +12,8 @@ final class Writer(initial: Int = 256):
   private var len = 0
 
   private def ensure(extra: Int): Unit =
-    if len + extra > buf.length then buf = java.util.Arrays.copyOf(buf, math.max(buf.length * 2, len + extra))
+    if len + extra > buf.length then
+      buf = java.util.Arrays.copyOf(buf, math.max(buf.length * 2, len + extra))
 
   private def put(b: Int): Unit =
     ensure(1)
@@ -21,7 +22,8 @@ final class Writer(initial: Int = 256):
 
   def head(major: Int, n: Long): Unit =
     val m = major << 5
-    if n < 0 then headBig(major, BigInt(n) + (BigInt(1) << 64)) // an unsigned 64-bit value held in a Long
+    if n < 0 then
+      headBig(major, BigInt(n) + (BigInt(1) << 64)) // an unsigned 64-bit value held in a Long
     else if n < 24 then put(m | n.toInt)
     else if n <= 0xffL then { put(m | 24); put(n.toInt) }
     else if n <= 0xffffL then { put(m | 25); put((n >> 8).toInt); put(n.toInt) }

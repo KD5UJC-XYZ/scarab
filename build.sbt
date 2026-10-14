@@ -124,13 +124,19 @@ lazy val modelsSpike = project
       val genRunner = (modelsGen / Compile / runner).value
       val generatorClasses = ((modelsGen / Compile / classDirectory).value ** "*.class").get
       val inputs = ((cddl ** "*").filter(_.isFile).get ++ generatorClasses).toSet
-      val cached = FileFunction.cached(streams.value.cacheDirectory / "models-gen", FilesInfo.hash) { _ =>
-        IO.delete(out)
-        val code = genRunner
-          .run("xyz.kd5ujc.scarab.models.gen.Main", cp, Seq(cddl.getAbsolutePath, out.getAbsolutePath), log)
-        code.failed.foreach(e => sys.error(s"models generator failed: ${e.getMessage}"))
-        (out ** "*.scala").get.toSet
-      }
+      val cached =
+        FileFunction.cached(streams.value.cacheDirectory / "models-gen", FilesInfo.hash) { _ =>
+          IO.delete(out)
+          val code = genRunner
+            .run(
+              "xyz.kd5ujc.scarab.models.gen.Main",
+              cp,
+              Seq(cddl.getAbsolutePath, out.getAbsolutePath),
+              log
+            )
+          code.failed.foreach(e => sys.error(s"models generator failed: ${e.getMessage}"))
+          (out ** "*.scala").get.toSet
+        }
       cached(inputs).toSeq
     }.taskValue,
     libraryDependencies ++= Seq(
