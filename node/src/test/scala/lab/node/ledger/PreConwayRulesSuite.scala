@@ -633,28 +633,33 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(PreConwayRules.minUTxO(params(5), valued(0, Map.empty)), BigInt(29 * 34482))
   }
 
+  /** The bytes of `serialize v` as cardano-ledger-binary writes them: minimal heads, and a map of
+    * more than 23 entries indefinite-length (`variableMapLenEncoding`), independent of `Value`.
+    */
   private def cborValue(v: Value): Int =
-    import lab.cbor.{Cbor, Node, Value as C}
-    def n(x: C) = Node(x, Bytes.empty)
-    val ada = C.UInt(v.coin)
-    val value =
+    def head(major: Int, n: BigInt): Vector[Byte] =
+      def be(len: Int) = (len - 1 to 0 by -1).map(i => (n >> (8 * i)).toByte).toVector
+      if n < 24 then Vector(((major << 5) | n.toInt).toByte)
+      else if n < 256 then ((major << 5) | 24).toByte +: be(1)
+      else if n < 65536 then ((major << 5) | 25).toByte +: be(2)
+      else if n < (BigInt(1) << 32) then ((major << 5) | 26).toByte +: be(4)
+      else ((major << 5) | 27).toByte +: be(8)
+    def bytes(b: Bytes) = head(2, b.size) ++ b.value
+    def map(entries: Iterable[(Vector[Byte], Vector[Byte])]) =
+      val body = entries.flatMap { case (k, x) => k ++ x }.toVector
+      if entries.size <= 23 then head(5, entries.size) ++ body
+      else Vector(0xbf.toByte) ++ body :+ 0xff.toByte
+    val ada = head(0, v.coin)
+    val encoded =
       if v.assets.isEmpty then ada
       else
-        C.Arr(
-          Vector(
-            n(ada),
-            n(
-              C.Map(
-                v.assets.toVector.map { case (p, names) =>
-                  n(C.ByteString(p)) -> n(
-                    C.Map(names.toVector.map { case (k, q) => n(C.ByteString(k)) -> n(C.UInt(q)) })
-                  )
-                }
-              )
-            )
-          )
-        )
-    Cbor.encode(value).toOption.get.size
+        head(4, 2) ++ ada ++ map(v.assets.map { case (p, names) =>
+          bytes(p) -> map(names.map { case (k, q) => bytes(k) -> head(0, q) })
+        })
+    encoded.size
+
+  private def bigNames(n: Int): Map[Bytes, BigInt] =
+    (0 until n).map(i => assetName(f"$i%08d") -> BigInt(1)).toMap
 
   test("the serialised value size matches the CBOR encoding") {
     val names = (0 until 30).map(i => Bytes(Vector.fill(i % 33)(i.toByte))).distinct
@@ -675,9 +680,43 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
           policy -> names.map(x => x -> BigInt(5)).toMap,
           Bytes(Vector.fill(28)(0x33)) -> Map(assetName("z") -> BigInt("5000000000"))
         )
-      )
+      ),
+      // maps of 23, 24, 255 and 256 entries: exact head, then indefinite (2 bytes) whatever the count
+      Value(1, Map(policy -> bigNames(23))),
+      Value(1, Map(policy -> bigNames(24))),
+      Value(1, Map(policy -> bigNames(255))),
+      Value(1, Map(policy -> bigNames(256))),
+      Value(1, Map(policy -> bigNames(500)))
     )
     shapes.foreach(v => assertEquals(v.serializedSize, cborValue(v), v.toString))
+  }
+
+  test(
+    "preprod tx 06869a76 (block 1558703): a 5001-byte definite value is 5000 bytes as the ledger writes it"
+  ) {
+    import lab.cbor.{Cbor, Value as C}
+    val hex =
+      java.nio.file.Files.readString(java.nio.file.Path.of("fixtures/preprod/tx-06869a76.hex")).trim
+    val tx = Cbor.decode(Bytes.fromHex(hex).toOption.get).toOption.get
+    val body = tx.value match
+      case C.Arr(items) => TxBody.decode(items.head.original).fold(e => fail(e), identity)
+      case other        => fail(s"not a transaction: $other")
+    assertEquals(
+      Blake2b.hash256.hash(body.raw).hex,
+      "06869a76132665a0667fd26edbc7adc6cd241a794416777e752829653f4a9c3c"
+    )
+    val big = body.outputs.head
+    assertEquals(big.value.assets.values.map(_.size).toList.sorted, List(1, 500))
+    // 500 names in one map: definite head 3 bytes, the ledger's indefinite form 2 bytes (+ break counted)
+    assertEquals(big.value.serializedSize, 5000)
+    assertEquals(cborValue(big.value), 5000)
+    // Babbage on preprod, maxValueSize 5000: accepted; one byte less allowed and it would be refused
+    assertEquals(outputRule(params(8), big), "accepted")
+    assertEquals(
+      outputRule(params(8).copy(maxValueSize = 4999), big),
+      "OutputTooBigUTxO"
+    )
+    body.outputs.foreach(o => assert(o.value.serializedSize <= 5000, o.toString))
   }
 
   test("output value size: 4000 bytes in Mary, maxValueSize from Alonzo, none in Shelley") {
