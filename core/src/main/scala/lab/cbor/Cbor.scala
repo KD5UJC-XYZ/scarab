@@ -20,13 +20,26 @@ object Cbor:
   private final case class Failure(message: String) extends RuntimeException(message)
   private def fail(message: String): Nothing = throw Failure(message)
 
+  /** The message of the error for an item nested deeper than the thread's stack allows. */
+  val TooDeep = "nesting exceeds the stack"
+
+  /** Run a recursive function over decoded items; a nesting that exhausts the stack (an item of
+    * `Limits.maxDepth` levels needs far more stack than a typical thread has) is an error value,
+    * not a `StackOverflowError`.
+    */
+  def stackSafe[A](body: => Either[String, A]): Either[String, A] =
+    try body
+    catch case _: StackOverflowError => Left(TooDeep)
+
   def decode(bytes: Bytes, limits: Limits = Limits()): Either[String, Node] =
     if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
     then Left("limits must be nonnegative")
     else if bytes.size > limits.maxInputBytes then Left("input byte limit exceeded")
     else
       try Right(new Decoder(bytes, limits).run())
-      catch case Failure(message) => Left(message)
+      catch
+        case Failure(message)      => Left(message)
+        case _: StackOverflowError => Left(TooDeep)
 
   private final class Decoder(input: Bytes, limits: Limits):
     // Read-only view of the input: nodes keep zero-copy windows onto it as their `original`.
@@ -223,4 +236,6 @@ object Cbor:
           case Value.Null    => write(246)
       go(value, 0)
       Right(Bytes.fromArray(out.toByteArray))
-    catch case Failure(message) => Left(message)
+    catch
+      case Failure(message)      => Left(message)
+      case _: StackOverflowError => Left(TooDeep)

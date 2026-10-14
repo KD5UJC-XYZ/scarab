@@ -19,6 +19,21 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   sources): the relay closed the connection on the first protocol-18 request, recorded in
   `docs/leios.md` section 10.
 
+### Verification
+- Fuzzing of the decoders (K3): the `fuzz` project, 53 entry points (CBOR, handshakes, mux, ChainSync,
+  BlockFetch, TxSubmission2, KeepAlive, LocalStateQuery, LocalTxSubmission, LocalTxMonitor, headers and blocks
+  per era, transaction bodies, witnesses and submitted transactions, addresses, scripts, Plutus data,
+  node-to-client queries, protocol-parameter updates). ScalaCheck generators mutate the committed fixtures and
+  valid items sampled from the pinned CDDL; properties: no exception, time and allocation bounds, decode-encode
+  round trips, a 2^60 declared length is refused without allocating. `check` runs 20,000 cases per target (about
+  35 s); `fuzz <cases> <seed> <seeds> [target]` and the nightly workflow `fuzz.yml` run more, with the seed and
+  the shrunk input printed on failure ([running.md](docs/running.md#fuzzing-the-decoders-roadmap-k3)).
+- Fixed by it: `StackOverflowError` from `Cbor.encode`/`decode` and `PlutusData.decode` on deeply nested items
+  (now the error `Cbor.TooDeep`), and quadratic time and memory in the decoding of pointer addresses with a long
+  run of continuation bytes (now linear, same value; the ledger's Word32/Word16 pointer fields are an open
+  difference). See [findings.md](docs/findings.md).
+- READMEs with source, licence and how produced for `fixtures/network`, `praos`, `sum6` and `vrf` (M9).
+
 ### Network
 - Header-first validation (roadmap G6): the pipelined peer validates each ChainSync batch before any
   of its blocks is fetched. `NodeHeaderRules` (pure) checks the envelope, the Praos or TPraos
