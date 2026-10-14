@@ -37,6 +37,8 @@ object Protocols:
   val LocalTxSubmission = 6
   val LocalStateQuery = 7
   val LocalTxMonitor = 9
+  val LeiosNotify = 18
+  val LeiosFetch = 19
 
   def name(protocol: Int): String = protocol match
     case Handshake         => "handshake"
@@ -48,4 +50,6 @@ object Protocols:
     case LocalTxSubmission => "local-tx-submission"
     case LocalStateQuery   => "local-state-query"
     case LocalTxMonitor    => "local-tx-monitor"
+    case LeiosNotify       => "leios-notify"
+    case LeiosFetch        => "leios-fetch"
     case other             => s"protocol-$other"

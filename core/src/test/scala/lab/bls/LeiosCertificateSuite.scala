@@ -372,9 +372,10 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
   test("quorum threshold is an exact ceiling") {
     val c = right(Committee.fromSeats(Vector.fill(3)((Weight.fromNatural(BigInt(10)).get, None))))
     assertEquals(c.totalWeight.value, BigInt(30))
-    assertEquals(c.quorum(2, 3).map(_.value), Some(BigInt(20)))
-    assertEquals(c.quorum(1, 7).map(_.value), Some(BigInt(5)))
-    assertEquals(c.quorum(1, 0), None)
-    assertEquals(c.quorum(-1, 2), None)
+    val total = c.totalWeight
+    assertEquals(Weight.fractionCeil(total, 2, 3).map(_.value), Some(BigInt(20)))
+    assertEquals(Weight.fractionCeil(total, 1, 7).map(_.value), Some(BigInt(5)))
+    assertEquals(Weight.fractionCeil(total, 1, 0), None)
+    assertEquals(Weight.fractionCeil(total, -1, 2), None)
   }
 end LeiosCertificateSuite

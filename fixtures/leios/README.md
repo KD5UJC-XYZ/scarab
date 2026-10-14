@@ -19,3 +19,13 @@ Not used: `bls_sig_aug_test_vectors` (cardano-base) is the NUL/AUG ciphersuite f
 (MinPk); the Leios scheme is the POP ciphersuite in MinSig, and cardano-base's API deliberately
 does not expose augmentation. There is no seed-to-key golden vector upstream: key generation from a
 seed is `blst_keygen` (checked indirectly: the devnet keys come from the same library).
+
+## `testnet/` (N3 groundwork)
+
+| File | Provenance | Used by |
+|---|---|---|
+| `testnet/handshake-replies.tsv` | Four handshake replies of the public Leios testnet relay `leios-node.play.dev.cardano.org:3001` (network magic 164, node version string `11.1.0.164-prototype-2026w38a` per its live config), read-only, 2026-10-14, owner-approved: a version query reply and the acceptance of versions 14, 15, 16 | `LeiosTestnetHandshakeSuite` |
+
+No LeiosNotify or LeiosFetch message was captured: the relay closed the connection on the first
+request on protocol 18 (docs/leios.md section 10), so there are no raw announcement, vote or
+certificate fixtures yet.

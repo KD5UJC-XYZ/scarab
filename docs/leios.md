@@ -1,7 +1,8 @@
 # Ouroboros Leios: design note (roadmap N1)
 
-Status: research and design only. **Leios is not implemented in this repository**, and nothing
-here has been checked against a Leios node beyond one handshake (section 8). The protocol is
+Status: design note plus the pure N2 crypto (section 9). **Leios is not implemented in this
+repository beyond BLS keys, votes, certificates and two wire codecs**, and nothing here has been
+checked against a Leios node beyond a handshake and one refused exchange (sections 8 and 10). The protocol is
 still moving: every statement below carries the source and revision it was read from, and where
 the sources disagree the disagreement is recorded rather than resolved. Unofficial research
 software, not audited. Read together with [architecture.md](architecture.md),
@@ -228,7 +229,7 @@ It also bears on G4 (our client offers only version 14 today; the pure `Handshak
 | Dijkstra headers (announcement, cert flag, version info) | `node/Header.scala`, `Block.scala` | New era variant next to Conway; header hash and KES body-signature validation reuse `Praos`; body hash must cover the new body fields (L1 to confirm) |
 | Certificate verification in block validation | `LedgerRules.scala` (`NodeRules`), `consensus/` | A new pure `LeiosCertificate` rule: committee lookup in the ledger view, signer-stake sum against `tau`, aggregate-signature check. The committee is a pure function of the mark snapshot, so it belongs in the ledger state with `ledger/Stake.scala` and `consensus/LedgerView.scala` |
 | Committee and pool BLS keys | `ledger/Stake.scala`, certificate decoding in `ledger/Tx.scala`, `ledger/ProtocolParams.scala` (keys 40 to 48; Peras adds 49 and 50) | Pool-registration CDDL has `bls_key`; SNAP-time seating with the stable sort (stake descending, pool id ascending) |
-| BLS keys, vote signing, aggregation, verification | new `core/.../bls/` next to `vrf/`, `kes/` | `foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on the classpath through Scalus 1.2.0 and exposes `supranational.blst.{SecretKey,P1,P2,P1_Affine,P2_Affine,Pairing}`: `keygen`, `sign_with`, `hash_to` (with DST), `aggregate`/`add`, `in_group`, `compress`, `serialize`, `core_verify` taking a G2 key (MinSig works: G1 signatures, G2 keys), and `Pairing` aggregate/commit/finalverify. Covers key generation, signing, proof of possession, aggregation, subgroup checks and verification. Not checked yet: deserialisation entry points for the compressed forms (`P1_Affine(byte[])` constructors), constant-time behaviour, thread safety, and the exact DST strings. N2 should take blst-java as a direct dependency (not through Scalus) and record the licence in `docs/licenses.md` |
+| BLS keys, vote signing, aggregation, verification | new `core/.../bls/` next to `vrf/`, `kes/` | `foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on the classpath through Scalus 1.2.0 and exposes `supranational.blst.{SecretKey,P1,P2,P1_Affine,P2_Affine,Pairing}`: `keygen`, `sign_with`, `hash_to` (with DST), `aggregate`/`add`, `in_group`, `compress`, `serialize`, `core_verify` taking a G2 key (MinSig works: G1 signatures, G2 keys), and `Pairing` aggregate/commit/finalverify. Covers key generation, signing, proof of possession, aggregation, subgroup checks and verification. Checked in N2 (section 9): the `P1_Affine(byte[])`/`P2_Affine(byte[])` constructors decode (and accept uncompressed forms and do not check the subgroup, so we check length, flag and `in_group` ourselves), the DST strings, and handle use as local accumulators; `aggregate` repeats the subgroup check on every call, so sums use `add`. Not checked: constant-time behaviour. blst-java is now a direct dependency of `core` |
 | Forging: announce an EB, vote, build certificates | `forge/` (`Forger`, `BlockBuilder`, `Leadership`) | New pure `EbBuilder` from mempool snapshots, a vote-casting step with the node-local timers `L_hdr`/`L_vote`, a vote store with tally per announcing RB, certificate aggregation at forge time, key-file reading for the BLS key (`KeyFiles`) |
 | Mempool | `mempool/Mempool.scala`, `MempoolState.scala` | Capacity and validation-latency requirements change (section 4.4); the "validated once, flagged" transaction set `S` of the CIP maps to a validation-verdict cache beside `VerificationCache`. The existing `--mempool-bytes` flag is the knob |
 | EB store, transaction cache, closures | `storage/` | New `EbStore[F]` algebra: EBs and their transaction closures by hash for volatile forks, durable for certified EBs on the immutable chain (served to syncing peers, inlined for N2C). The prototype uses SQLite (`LeiosDB`); we would key it in RocksDB or files like `ImmutableStore`. Open question in the design: whether the committee is materialised in ledger state or recomputed |
@@ -280,7 +281,7 @@ Dependencies: **L1** (Dijkstra era: header, body, pool parameters, protocol para
 **G4** (handshake versions 15 and 16, client side) is a prerequisite for N3 if the testnet
 requires them; today the client offers 14 only. N2 depends on neither.
 
-**N2: BLS keys, votes and certificates (pure, in `core`).** Acceptance:
+**N2: BLS keys, votes and certificates (pure, in `core`).** Done 2026-10-14, results and deviations in section 9. Acceptance:
 
 1. `core` has `LeiosBls` (MinSig): secret-key generation from a seed, public key (G2, 96 bytes),
    `sign`, `verify`, proof of possession (`create`, `verify`), `aggregate` signatures and public
@@ -344,9 +345,10 @@ Acceptance:
 
 Scope: network handshake only; no ledger work, no data kept beyond the bytes below. Done with
 our own pure `Handshake` codec and the runtime's `Bearer.tcp` and `Mux` (a throwaway program built
-against the compiled classes of the checkout, not part of the repository). An attempt to open
-mini-protocol 18 after the handshake was not run (it was declined by the session's safety
-policy), so section 4's protocol numbers rest on the Blueprint, not on a live exchange.
+against the compiled classes of the checkout). An attempt to open mini-protocol 18 after the
+handshake was first declined by the session's safety policy; after the owner approved it on
+2026-10-14 it was run (section 10): the relay closed the connection, so section 4's protocol numbers
+still rest on the Blueprint and the prototype source, not on a live exchange.
 
 Target: `leios-node.play.dev.cardano.org:3001` (resolves to 34.251.133.12), network magic 164.
 
@@ -366,3 +368,110 @@ characteristics for N3: Shelley genesis `epochLength` 21600, `slotLength` 1, `se
 to Conway at epoch 0, `ExperimentalHardForksEnabled` and `ExperimentalProtocolsEnabled`, a
 `LeiosDbConfig` SQLite file; peer snapshot point slot 280825 / hash
 `85f25eb3...c91d69`.
+
+## 9. N2 results: BLS keys, votes and certificates (2026-10-14)
+
+Implemented in `core/src/main/scala/lab/bls/` (pure; the only effect is the native library call,
+confined to `MinSig.guard`). Roadmap item N2 / issue 71. Not audited; research software.
+
+### API
+
+- `MinSig`: `sign`, `verify`, `provePossession`, `verifyPossession`, `aggregateSignatures`,
+  `aggregateKeys`, `verifyAggregate`; the tags are `BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_`
+  and `BLS_POP_BLS12381G1_XMD:SHA-256_SSWU_RO_POP_` (the `BLS12381MinSigDSIGN` choice in
+  `cardano-base` `Cardano.Crypto.DSIGN.BLS12381.Internal`: no augmentation, tags fixed per curve).
+  The signed message of a vote is the 32 raw bytes of the announcing RB hash; the message of a
+  proof of possession is the 96 compressed bytes of the key.
+- Typed values with private constructors and strict decoders: `Seed` (32 bytes), `SecretKey`
+  (non-zero scalar below the group order; `generate(seed)` is `blst_keygen` as `genKeyDSIGN`),
+  `VerificationKey` (96-byte compressed G2), `Signature` and `ProofOfPossession` (48-byte
+  compressed G1). Decoding requires the exact length, the compression flag, a valid point, the
+  prime-order subgroup check, and rejects the identity. Opaque types: `Seed`, `SeatId` (16 bits),
+  `RbHash`, `Signers` (bitfield, at most 8192 bytes), `Weight` (non-negative stake).
+- `Committee.fromSeats` (checks each proof of possession once; a failing proof makes a keyless seat,
+  as `mkLeiosCommittee`), `Committee.select(candidates, N_c)` (stake descending, pool id ascending,
+  truncated), `Weight.fractionCeil(totalActiveStake, num, den)` (exact `tau`), `Vote` (`sign`,
+  `verify`, `encode`, `decode`), `Certificate` (`aggregate`, `verify`, `encode`, `decode`).
+  `Certificate.verify` follows `verifyLeiosCert`: committee size, bitfield length, keyless signers,
+  weight against `required`, then one pairing check against the sum of the signers' keys.
+- Every failure is a `BlsError` case (closed ADT; no strings, no exceptions). The CBOR codecs are
+  strict (shortest form, definite length, no trailing bytes) and fail with `CborFault`.
+
+### Decisions where the sources are silent or differ (all recorded here, none silent)
+
+- **Proof of possession is 48 bytes** (one G1 signature), not the 96-byte pair of the older Rust
+  specification in `ouroboros-leios/crypto-benchmarks.rs`: the proofs in the proto-devnet genesis
+  are 48 bytes and verify, and regenerate byte for byte from the secret keys.
+- **Padding bits of the signer bitfield must be clear** (`SignersPaddingSet`). `cardano-base`
+  ignores bits at or beyond the committee size. No honest producer sets them, so valid certificates
+  are the same set; a node that wants the reference's exact acceptance can drop the check in
+  `Signers.members`. Flag for N4.
+- **A signature or proof that is the identity is rejected at decode**; `cardano-base` rejects it
+  later (at verification and aggregation). Same accepted set.
+- **Quorum is `tau` of total active stake** (`leios-committee.md` in the Blueprint), not of the
+  stake seated on the committee: the caller passes `required`.
+- Not modelled here (ledger-side, N3/L1): expiry of a registered key after
+  `ceil(slotsPerKESPeriod * maxKESEvolutions / epochLength) + 2` epochs (Blueprint), activation at
+  the epoch boundary, the choice of the announcing RB.
+
+### Vectors
+
+| Source | What it proves |
+|---|---|
+| Proto-devnet pools 1 to 3 (`ouroboros-leios/demo/proto-devnet`: `bls.skey`/`bls.vkey` and the `blsKey` proofs in `shelley-genesis.json`, made by `cardano-cli` on `cardano-base`) | secret key to verification key; each registered proof verifies under the `BLS_POP_` tag with the key bytes as message; **our regenerated proof equals the registered one byte for byte** (BLS signing is deterministic, so this fixes tag, message framing and the 48-byte size) |
+| `cardano-base` `serde_test_vectors` | off-curve, not-in-subgroup and uncompressed G1/G2 encodings are rejected with the right reason |
+| Golden `LeiosVote` of the consensus prototype (`leios-prototype` `cef41f6b`) | `[hash, 1000, signature]` decodes, the signature is a valid G1 point, and re-encoding gives the same bytes |
+| Not used | `bls_sig_aug_test_vectors` (NUL/AUG ciphersuite for G2 signatures, a different scheme); no seed-to-key golden exists upstream, so key generation from a seed is covered by the same library call and by determinism only |
+
+Properties (ScalaCheck, `LeiosCertificateSuite`): any valid vote verifies; an aggregate of valid
+votes is a certificate that verifies with the signers' weight; flipping any single bit of the
+signature, the signer bitfield, a key, a proof or the hash fails; another announcing hash fails; a
+duplicated signature, an added or removed signer, a signature moved to another seat fail; a
+signature made under another tag fails; certificate size is `ceil(N/8) + 48 + 5` (166 bytes for 900
+seats); a rogue-key aggregate verifies when keys are aggregated without proofs and is stopped by the
+committee (`SignerWithoutKey`); committee seating equals a model sort.
+
+### Benchmark: 900 seats
+
+`core/Test/runMain lab.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
+with other jobs (indicative only):
+
+| Operation | Time |
+|---|---|
+| verify a certificate, 700 signers (at least 3/4) | median 1.7 ms (min 1.2, max 2.9) |
+| verify a certificate, 900 signers | median 1.6 ms (min 1.4, max 2.6) |
+| verify one vote | 0.6 ms |
+| aggregate 900 signatures | 0.5 ms |
+| sign a vote | 0.19 ms |
+| build the committee (900 decoded keys, 900 proof checks), once per epoch | 0.7 s |
+
+The first version used blst-java's `aggregate`, which re-runs the subgroup check on every call, and
+took 45 ms; keys are validated once when decoded, so the sum uses `add`. A certificate is cheap
+enough for the RB critical path; the committee build belongs to the epoch boundary.
+
+## 10. N3 probe of the public testnet relay (2026-10-14, owner-approved)
+
+Read-only connection to `leios-node.play.dev.cardano.org:3001`, magic 164, with our runtime
+(`Bearer.tcp`, `Mux`, `HandshakeClient`, `KeepAliveClient`) and the new pure codecs
+`LeiosNotify`/`LeiosFetch` (`network/`, Blueprint `messages.cddl`; round-trip, state-admission and
+malformed-input tests) with clients `LeiosNotifyClient`/`LeiosFetchClient` (`network-runtime/`).
+The probe is `LeiosProbe` in the test sources of `network-runtime`
+(`networkRuntime/Test/runMain lab.network.runtime.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
+
+| Attempt | Result |
+|---|---|
+| Versions 14, 15, 16, initiator only, KeepAlive only, 40 s | handshake accepts 16; the connection stays up (pings answered) |
+| Same, then `MsgLeiosNotificationRequestNext` `[3]` on protocol 18 | the relay **closes the connection** within a second, before any reply |
+| Version 16 only with the Peras flag set | accepted; closed the same way on protocol 18 |
+| Duplex (initiator and responder) connection, listening on 18 and 19 for 60 s without sending | handshake accepted, no bytes on 18 or 19 (the relay does not start its Leios client toward a connection it has not promoted) |
+
+So **no EB announcement, offer, vote or certificate was received, and nothing was verified against
+real data**: the relay does not serve LeiosNotify to an initiator-only follower that has not run
+the Praos protocols, or does not offer protocol 18 on versions 14 to 16 at all. The first
+possibility fits an on-demand responder that exists only for a warm or hot peer; the second fits
+the gating being something other than the version (section 4.3). N3 must settle which by driving
+ChainSync, BlockFetch and TxSubmission first (needs Dijkstra header decoding, L1) or by asking the
+Leios team; this note makes no claim beyond the table. The recorded handshake replies are now a
+test (`fixtures/leios/testnet/handshake-replies.tsv`, `LeiosTestnetHandshakeSuite`). Even with real
+votes, verification needs the committee: the Shelley genesis of the testnet has one pool with
+`blsKey: null`, so the voting keys exist only in on-chain pool registrations (N3 with L1).

@@ -26,16 +26,6 @@ final class Committee private (val seats: Vector[Seat]):
 
   def seat(id: SeatId): Option[Seat] = seats.lift(id.index)
 
-  /** `required = ceil(totalWeight * numerator / denominator)`: the smallest integer weight W with
-    * `W * denominator >= totalWeight * numerator` (the CIP's `tau`, kept exact). `None` when the
-    * denominator is not positive or the fraction is negative.
-    */
-  def quorum(numerator: BigInt, denominator: BigInt): Option[Weight] =
-    if denominator.signum <= 0 || numerator.signum < 0 then None
-    else
-      val n = totalWeight.value * numerator
-      Weight.fromNatural((n + denominator - 1) / denominator)
-
 object Committee:
   /** Seats in the given order. A key whose proof of possession fails is dropped (keyless seat), as
     * `mkLeiosCommittee` does; each proof is checked once, here.

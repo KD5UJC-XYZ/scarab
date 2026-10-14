@@ -25,7 +25,6 @@ object BlsBenchmark:
     }
     val (committee, tBuild) = time(right(Committee.fromSeats(registered)))
     val (sigs, tSign) = time(keys.map(k => right(MinSig.sign(k._1, h.bytes))))
-    val quorum = right(Signers.of(seats, (0 until 600).map(i => right(SeatId.fromInt(i))).toSet))
     def cert(n: Int) =
       right(
         Certificate.aggregate(
@@ -34,8 +33,8 @@ object BlsBenchmark:
         )
       )
     val full = cert(seats)
-    val two3 = cert(600)
-    val need = committee.quorum(2, 3).get
+    val two3 = cert(700)
+    val need = Weight.fractionCeil(committee.totalWeight, 3, 4).get
     // warm-up
     (0 until 30).foreach(_ => right(Certificate.verify(committee, need, h, full)))
     def bench(label: String, c: Certificate): Unit =
@@ -52,7 +51,7 @@ object BlsBenchmark:
     println(
       f"sign $seats votes                     ${tSign}%8.1f ms  (${tSign / seats}%.3f ms each)"
     )
-    bench("verify, 600 signers (2/3)", two3)
+    bench("verify, 700 signers (>= 3/4)", two3)
     bench("verify, 900 signers", full)
     val (_, tAgg) = time(right(MinSig.aggregateSignatures(sigs)))
     println(f"aggregate $seats signatures            ${tAgg}%8.2f ms")
@@ -61,5 +60,4 @@ object BlsBenchmark:
     println(f"verify one vote                      median ${median(tv)}%7.3f ms")
     val tp = (0 until 100).map(_ => time(right(VerificationKey.fromBytes(keys(0)._2.bytes)))._2)
     println(f"decode one key (subgroup check)      median ${median(tp)}%7.3f ms")
-    val _ = quorum
 end BlsBenchmark
