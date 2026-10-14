@@ -90,6 +90,7 @@ What each scenario asserts is in [docs/running.md](docs/running.md). Run data go
 - [docs/performance.md](docs/performance.md): sync numbers, profiles, memory and disk.
 - [docs/findings.md](docs/findings.md): facts learned against real data, the six Preview bugs.
 - [docs/roadmap.md](docs/roadmap.md): tracked work items with stable IDs.
+- [docs/leios.md](docs/leios.md): Ouroboros Leios (CIP-164) design note: sources, protocol changes, mapping onto this codebase, staged plan (research only, not implemented).
 - [docs/reference-image.md](docs/reference-image.md): building the Haskell reference image.
 - [CHANGELOG.md](CHANGELOG.md).
 
