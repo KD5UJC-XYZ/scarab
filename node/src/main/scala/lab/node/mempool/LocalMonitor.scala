@@ -15,8 +15,9 @@ import lab.node.ntc.CborOut
   *
   * What the reference reports, reproduced here:
   *   - the slot is the one after the tip (the state is ticked to the successor slot);
-  *   - a transaction counts for its size plus 4 bytes (`perTxOverhead`), its execution units and
-  *     its reference-script bytes;
+  *   - a transaction counts for its ledger size (the serialised transaction without its `is_valid`
+  *     flag, `sizeTxF`) plus 4 bytes (`perTxOverhead`), its execution units and its
+  *     reference-script bytes;
   *   - the capacity is `computeMempoolCapacity`: a whole number of block-sized units, two by
   *     default, `ceil(bytes / unit)` of them when the byte capacity is overridden, where a unit is
   *     the maximum block body less 1024 bytes, the maximum block execution units and the 1 MiB
@@ -74,7 +75,9 @@ object LocalMonitor:
 
   def measure(entry: Entry): TxMeasure =
     val units = entry.tx.witnesses.totalExUnits
-    TxMeasure(entry.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes.toLong)
+    // the ledger's size of the transaction (`sizeTxF`, which leaves out the is_valid flag), not the
+    // bytes received
+    TxMeasure(entry.tx.size + PerTxOverhead, units.mem, units.steps, entry.refScriptBytes.toLong)
 
   /** The snapshot of a pool state. Pure. */
   def snapshot(state: MempoolState): Snapshot =

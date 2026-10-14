@@ -101,61 +101,6 @@ final case class ByronGenesis(
   /** A Byron epoch has 10k slots. */
   def epochSlots: BigInt = BigInt(securityParam) * 10
 
-/** The node configuration keys that shape the era history: the Byron genesis hash and the epochs at
-  * which each Shelley-based era starts (`Test<Era>HardForkAtEpoch`). An absent
-  * `TestShelleyHardForkAtEpoch` means the Byron ledger decides when the chain enters Shelley (a
-  * public network); `0` means the chain starts in Shelley (no Byron prefix), as on Preview. The
-  * Byron rules also read `RequiresNetworkMagic` and `PBftSignatureThreshold`.
-  */
-final case class NodeConfig(
-    byronGenesisHash: Option[Bytes],
-    hardForkEpochs: Map[Era, BigInt],
-    requiresNetworkMagic: Option[Boolean] = None,
-    pbftSignatureThreshold: Option[Double] = None
-):
-  /** The configured first Shelley epoch, if the configuration fixes it. */
-  def firstShelleyEpoch: Option[BigInt] = hardForkEpochs.get(Era.Shelley)
-
-object NodeConfig:
-  val empty: NodeConfig = NodeConfig(None, Map.empty)
-
-  /** The ouroboros-consensus default (`defaultPBftSignatureThreshold`). */
-  val DefaultPBftSignatureThreshold: Double = 0.22
-
-  def parse(text: String): Either[ConfigError, NodeConfig] =
-    for
-      json <- parser
-        .parse(text)
-        .leftMap(e => ConfigError(s"configuration is not JSON: ${e.message}"))
-      c = json.hcursor
-      hash <- c
-        .downField("ByronGenesisHash")
-        .as[Option[String]]
-        .leftMap(e => ConfigError(s"ByronGenesisHash: ${e.message}"))
-        .flatMap(_.traverse(h => Bytes.fromHex(h).leftMap(ConfigError(_))))
-      forks <- Vector(Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
-        .traverse(era =>
-          c.downField(s"Test${era}HardForkAtEpoch")
-            .as[Option[BigInt]]
-            .leftMap(e => ConfigError(s"Test${era}HardForkAtEpoch: ${e.message}"))
-            .map(_.map(era -> _))
-        )
-      magic <- c
-        .downField("RequiresNetworkMagic")
-        .as[Option[String]]
-        .leftMap(e => ConfigError(s"RequiresNetworkMagic: ${e.message}"))
-        .flatMap {
-          case None                    => Right(None)
-          case Some("RequiresMagic")   => Right(Some(true))
-          case Some("RequiresNoMagic") => Right(Some(false))
-          case Some(other)             => Left(ConfigError(s"RequiresNetworkMagic: $other"))
-        }
-      threshold <- c
-        .downField("PBftSignatureThreshold")
-        .as[Option[Double]]
-        .leftMap(e => ConfigError(s"PBftSignatureThreshold: ${e.message}"))
-    yield NodeConfig(hash, forks.flatten.toMap, magic, threshold)
-
 object ByronGenesisFile:
   /** Canonical JSON as the Byron genesis hash defines it: object keys sorted, no whitespace. */
   def canonical(json: Json): String =
@@ -186,7 +131,10 @@ object ByronGenesisFile:
         Either.cond(
           h == computed,
           h,
-          ConfigError(s"ByronGenesisHash ${h.hex} differs from the genesis file's ${computed.hex}")
+          ConfigError(
+            s"ByronGenesisHash ${h.hex} differs from the genesis file's ${computed.hex}",
+            ConfigProblem.GenesisHashMismatch("Byron", "byron genesis", h.hex, computed.hex)
+          )
         )
       )
       magic <- Genesis.field[Long](c.downField("protocolConsts"), "protocolMagic")

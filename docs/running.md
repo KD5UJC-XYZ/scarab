@@ -29,7 +29,7 @@ after any dependency change: a stale file lacked rocksdb.
 
 ```sh
 java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
-  --genesis-dir <dir> --peer <host>:<port> [options]
+  (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> | --topology <topology.json>) [options]
 ```
 
 (Inside the JDK image with the checkout mounted, or on a host with JDK 21.) The sbt form is
@@ -43,20 +43,22 @@ value except `--forge`. A repeated flag keeps its last value, except `--peer`, w
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--genesis-dir <dir>` | required | directory with `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, `byron-genesis.json` (needed when the chain starts in Byron) and optionally a node configuration (`configuration.yaml`, `configuration.json` or `config.json`) |
-| `--peer <host>:<port>` | required, repeatable | node-to-node peer to follow; with several peers each is followed and chain selection picks the best chain. One peer that keeps failing is fatal after 30 attempts, with several it is retried forever |
+| `--genesis-dir <dir>` | required unless `--config` | directory with `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, `byron-genesis.json` (needed when the chain starts in Byron) and optionally a node configuration (`configuration.yaml`, `configuration.json` or `config.json`). Every hash that configuration lists is verified. With `--config` it is where the files the configuration names are looked up |
+| `--config <config.json>` | off | read the Haskell node's configuration as `cardano-node run` does, see "Configuration and topology files" below |
+| `--peer <host>:<port>` | required unless `--topology`, repeatable | node-to-node peer to follow; with several peers each is followed and chain selection picks the best chain. One peer that keeps failing is fatal after 30 attempts, with several it is retried forever |
+| `--topology <topology.json>` | off | the Haskell node's P2P topology: its local roots and bootstrap peers are followed after the `--peer` ones |
 | `--listen <host>:<port>` | off | accept node-to-node connections (versions 14 and 15) and serve our chain |
-| `--local-socket <path>` | off | Unix socket for node-to-client LocalTxSubmission and LocalStateQuery (versions 16 to 23); `cardano-cli conway query ...` and `transaction submit` work against it, see "Node-to-client" below |
+| `--local-socket <path>` | off (`SocketPath` with `--config`) | Unix socket for the node-to-client protocols LocalStateQuery, LocalTxSubmission, LocalTxMonitor and ChainSync of whole blocks (versions 16 to 23); `cardano-cli conway query ...`, `transaction submit` and `query tx-mempool` work against it, see "Node-to-client" below |
 | `--seconds N` | run until stopped | stop after N seconds |
 | `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`) |
-| `--db <dir>` | off (in-memory; replay from genesis on every start) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `snapshots/`, `utxo/` |
+| `--db <dir>` | off (in-memory; replay from genesis on every start; `DatabasePath` with `--config`) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `snapshots/`, `utxo/` |
 | `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
 | `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
 | `--utxo-cache-mb N` | `256` | RocksDB block cache |
 | `--read-ahead N` | `64` | ChainSync requests pipelined and blocks fetched per range while far behind (256 timed out against the public relay) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`csl-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
-| `--mempool-bytes N` | `1048576` | mempool capacity in bytes |
+| `--mempool-bytes N` | `1048576` (`MempoolCapacityBytesOverride` with `--config`) | mempool capacity in bytes; LocalTxMonitor reports it as the reference does, a whole number of block-sized units |
 | `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |
 | `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
 | `--vrf-skey <file>` | with `--forge` | `cardano-cli` text envelope `VrfSigningKey_PraosVRF` |
@@ -81,31 +83,62 @@ Caveats:
   blocks after it, and takes the volatile chain from the log as far as the log reached the disk.
   Run the node so that the signal reaches the JVM (`docker stop`, not a shell wrapper that eats it).
 
+### Configuration and topology files
+
+`--config <config.json>` reads the Haskell node's configuration file (JSON; a YAML file written in JSON
+syntax works, full YAML does not) the way `cardano-node run` reads it (`Cardano.Node.Configuration.POM`),
+and `--topology <topology.json>` its P2P topology (`Cardano.Node.Configuration.TopologyP2P`). The public
+Preview, preprod and mainnet files are the tests (`ConfigSuite` over `fixtures/<network>/genesis`).
+
+What the configuration does:
+
+| Key | Use |
+|---|---|
+| `ByronGenesisFile` (or `GenesisFile`), `ShelleyGenesisFile` (or `GenesisFile`), `AlonzoGenesisFile`, `ConwayGenesisFile` | the genesis files, looked up next to the configuration (or in `--genesis-dir`); required; `GenesisFile` next to the specific name is an error |
+| `ByronGenesisHash`, `ShelleyGenesisHash`, `AlonzoGenesisHash`, `ConwayGenesisHash` | verified against the files: the Byron hash is that of the canonical JSON of the file, the others the blake2b-256 of the file's bytes (`cardano-cli genesis hash`). A mismatch is a `ConfigError` of kind `GenesisHashMismatch` that names the file, the listed and the actual hash; a hash that is not 64 hexadecimal digits is refused. The check runs for `--genesis-dir` too |
+| `DijkstraGenesisFile`/`Hash`, `CheckpointsFile`/`Hash` | the hash is verified when the file is present; the Dijkstra era and checkpoints are not implemented |
+| `TestShelleyHardForkAtEpoch` ... `TestConwayHardForkAtEpoch` | the first epoch of each era (`0` for all of them: the chain starts in that era, as Preview); absent for Shelley: the Byron ledger decides |
+| `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
+| `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ExperimentalProtocolsEnabled`, `ConsensusMode`, `PeerSharing`, `DiffusionMode` | read, validated and logged (`started`); the node does not act on them. `configUnsupported` in the `started` line lists the ones that ask for something not implemented: experimental hard forks (the Dijkstra era), `GenesisMode` (no Genesis syncing: the configured peers are followed as in Praos mode), `Test<Era>HardForkAtVersion`, peer sharing |
+| `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
+| everything else (`TraceOptions`, `LedgerDB`, peer targets, ...) | ignored |
+
+The topology needs `localRoots` and `publicRoots`; `bootstrapPeers` (a list or `null`), `useLedgerAfterSlot`
+(above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point is
+`{"address": <name or IP>, "port": <number>}`; an access point without a port (a DNS SRV name), the
+unspecified address, a port that is not a number, the legacy `Producers` format, and an empty
+`bootstrapPeers` with no trustable local root are `ConfigError`s. The peers followed are the access points
+of the local roots, then the bootstrap peers (the public roots when there are none of those), after the
+`--peer` ones and without repeats; the node follows all of them rather than keeping `hotValency` of them
+active. `useLedgerAfterSlot`, `peerSnapshotFile`, `advertise`, `behindFirewall`, `trustable` and the
+valencies are read and logged (`started.topology`), not acted on: there are no ledger peers or peer
+sharing.
+
 ### Preview
 
 The node follows the public Preview testnet from genesis (network magic 2):
 
 ```sh
 java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
-  --genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001 \
+  --config <preview config dir>/config.json --topology <preview config dir>/topology.json \
   --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview-db"
 ```
 
-The Preview genesis files (Byron, Shelley, Alonzo, Conway) and `config.json` come from the official
-Cardano network configuration and are not all committed here (`fixtures/preview/genesis/` holds only
-`shelley-genesis.json` for the tests). Fetch them into the config directory, in a container like
-everything else:
+(`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works.)
+The Preview genesis files (Byron, Shelley, Alonzo, Conway), `config.json` and `topology.json` come from the
+official Cardano network configuration (`fixtures/preview/genesis/` holds a copy for the tests). Fetch them
+into the config directory, in a container like everything else:
 
 ```sh
 mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
   -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config":/out --entrypoint bash cardano-scala-jdk:local -c \
-  'for f in config.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+  'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preview/$f"; done'
 ```
 
-Only `ByronGenesisHash` from `config.json` is checked against its file today; the Shelley, Alonzo
-and Conway hashes are not yet verified (roadmap J1). Preview starts in Alonzo at epoch 0. The recorded
+Every hash `config.json` lists is verified against its file (Byron, Shelley, Alonzo, Conway). Preview
+starts in Alonzo at epoch 0. The recorded
 genesis-to-tip numbers are in [performance.md](performance.md). The run needs about 14 GB of disk
 for the immutable blocks, RocksDB and checkpoints, and memory well above the heap limit: an earlier multi-restart run measured 2.2 GB RSS at the tip,
 but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other off-heap memory are
@@ -121,11 +154,11 @@ The node follows the public preprod testnet (network magic 1) from genesis throu
 mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
   -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config":/out --entrypoint bash cardano-scala-jdk:local -c \
-  'for f in config.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+  'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
 java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
-  --genesis-dir "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config" \
-  --peer preprod-node.play.dev.cardano.org:3001 \
+  --config "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/config.json" \
+  --topology "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/topology.json" \
   --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod-db"
 ```
 
@@ -166,8 +199,9 @@ opcert issuing, never run on a public network).
 
 ### Node-to-client
 
-With `--local-socket <path>` the node serves LocalTxSubmission and LocalStateQuery on a Unix socket, so
-the reference image's `cardano-cli` can talk to it:
+With `--local-socket <path>` the node serves four node-to-client protocols on a Unix socket: LocalStateQuery,
+LocalTxSubmission, LocalTxMonitor and ChainSync of whole blocks. The reference image's `cardano-cli` can talk
+to it:
 
 ```sh
 docker run --rm -v <socket dir>:/sock --entrypoint /opt/reference/bin/cardano-cli cardano-reference-11.1.3:local \
@@ -185,6 +219,19 @@ behind them (see [architecture.md](architecture.md#node-to-client---local-socket
 `GetRewardProvenance`, `GetLedgerPeerSnapshot`, `DebugLedgerConfig`, and every query in an era other than
 Conway. A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
+
+LocalTxMonitor (mini-protocol 9) gives `cardano-cli conway query tx-mempool info | next-tx | tx-exists` and
+the protocol's `GetMeasures` (no CLI command): a client acquires a snapshot of the mempool (the slot after
+the tip, the transactions in arrival order), walks it with `NextTx`, asks `HasTx`, `GetSizes` and
+`GetMeasures`, and `AwaitAcquire` waits until the pool differs. The sizes are those of the reference's server:
+each transaction counts for its size plus 4 bytes, and the capacity is a whole number of block-sized units
+(`2 * (maxBlockBodySize - 1024)` by default for the reference; here `ceil(--mempool-bytes / unit)` units, so
+start the node with `--mempool-bytes` equal to the reference's to see the same `capacityInBytes`).
+Local ChainSync (mini-protocol 5, what db-sync, Ogmios and `cardano-cli`'s followers use) serves each block as
+`#6.24(bytes)` of the block as stored (`[era, block]`), from the immutable store (with `--db`) and the volatile
+chain, with the same intersection, roll-forward, roll-backward and await behaviour as on node-to-node.
+Without `--db` only the last `k` blocks can be served, so a client that starts from Origin once the chain is
+longer than that is told there is no intersection.
 
 ### Query server
 

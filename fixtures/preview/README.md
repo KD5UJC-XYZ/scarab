@@ -60,6 +60,8 @@ The blocks are public Preview testnet chain data fetched from the public relay n
 unchanged. `conway-governance.json`, the `plutus/` cases and the points used to find the blocks
 contain data from the Koios public API (https://koios.rest: `proposal_list`, `vote_list`,
 `drep_updates`, `tx_info`, `block_info`, `utxo_info`, `/tip`), which itself reports public chain state;
-Koios is credited as the source and is not affiliated with this project. `genesis/shelley-genesis.json`
-is the public Preview genesis file. No private data and no third-party code is included. The repository's
+Koios is credited as the source and is not affiliated with this project. `genesis/` is the public Preview network configuration from
+https://book.play.dev.cardano.org/environments/preview/ unchanged (`config.json`, `topology.json`,
+`byron-genesis.json`, `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, downloaded
+2026-10-14); `ConfigSuite` reads them with `--config`/`--topology` and verifies every hash. No private data and no third-party code is included. The repository's
 Apache-2.0 applies to our own selection, re-encoding and packaging. See `../../NOTICE`.

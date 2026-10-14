@@ -30,7 +30,8 @@ object JsonLog:
   def started(
       peers: List[SocketAddress[Host]],
       genesis: ShelleyGenesis,
-      config: NodeConfig = NodeConfig.empty
+      config: NodeConfig = NodeConfig.empty,
+      topology: Option[Topology] = None
   ): IO[Unit] =
     line(
       "started",
@@ -44,7 +45,27 @@ object JsonLog:
         .unless(genesis.geometry.byron.derived)(genesis.geometry.byron.epochs)
         .asJson,
       "byronEpochSlots" -> genesis.geometry.byron.epochSlots.asJson,
-      "hardForkEpochs" -> config.hardForkEpochs.map((e, n) => e.toString -> n).asJson
+      "hardForkEpochs" -> config.hardForkEpochs.map((e, n) => e.toString -> n).asJson,
+      // the genesis hashes the configuration listed (all of them were verified)
+      "verifiedGenesisHashes" -> List(
+        "Byron" -> config.hashes.byron,
+        "Shelley" -> config.hashes.shelley,
+        "Alonzo" -> config.hashes.alonzo,
+        "Conway" -> config.hashes.conway,
+        "Dijkstra" -> config.hashes.dijkstra,
+        "Checkpoints" -> config.hashes.checkpoints
+      ).collect { case (role, Some(hash)) => role -> hash.hex }.toMap.asJson,
+      "configUnsupported" -> config.settings.unsupported.asJson,
+      "topology" -> topology
+        .map(t =>
+          Json.obj(
+            "localRoots" -> t.localRoots.map(_.accessPoints.map(_.toString)).asJson,
+            "bootstrapPeers" -> t.bootstrapPeers.map(_.map(_.toString)).asJson,
+            "publicRoots" -> t.publicRoots.map(_.accessPoints.map(_.toString)).asJson,
+            "useLedgerAfterSlot" -> t.useLedgerAfterSlot.toString.asJson
+          )
+        )
+        .asJson
     )
 
   def finished[S](chain: VolatileChain[S]): IO[Unit] =

@@ -126,8 +126,29 @@ enum ForgeError extends NodeError:
     case Assembly(r)                    => s"block assembly: $r"
     case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
 
-final case class ConfigError(reason: String) extends NodeError:
+/** A configuration failure. `problem` says which one for the callers that act on it (a genesis file
+  * whose hash differs from the configured one, a topology the node cannot follow); `reason` is the
+  * text.
+  */
+final case class ConfigError(reason: String, problem: ConfigProblem = ConfigProblem.Invalid)
+    extends NodeError:
   def message: String = s"config: $reason"
+
+/** What kind of configuration failure a [[ConfigError]] is. */
+enum ConfigProblem:
+  /** Anything else: a malformed file, a missing or invalid field, a bad flag. */
+  case Invalid
+
+  /** A file the configuration lists could not be read. */
+  case FileMissing(role: String, file: String)
+
+  /** The blake2b-256 of a genesis file differs from the hash the configuration lists. */
+  case GenesisHashMismatch(role: String, file: String, expected: String, actual: String)
+
+  /** A topology in a format this node does not read (the legacy `Producers` one) or an access point
+    * it cannot connect to.
+    */
+  case UnsupportedTopology
 
 object Points:
   def show(point: ChainSync.Point): String = point match

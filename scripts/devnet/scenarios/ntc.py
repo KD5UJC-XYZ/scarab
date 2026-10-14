@@ -12,6 +12,14 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
   3. Submission: a valid transaction through the Scala socket (it must reach a block), and each
      refused transaction of `ntccases` to both nodes, comparing the raw rejection and the text
      `cardano-cli transaction submit` prints.
+  4. Local ChainSync, byte for byte: while the load runs, both sockets are followed from Origin (the
+     Scala node serves its immutable store and then its volatile chain), then from the tip, and
+     again from a recent block (a backlog); the whole blocks (`#6.24(bytes)` items) must be equal.
+  5. LocalTxMonitor, byte for byte: bursts of chained transactions are submitted through the Scala
+     socket (it forwards them to the reference node); one snapshot of each node is walked (sizes,
+     measures, every transaction, membership) and, when both hold the same slot and transactions,
+     every raw answer must be equal. `cardano-cli conway query tx-mempool info|next-tx|tx-exists`
+     is compared as text on both sockets, and AwaitAcquire must wake on both.
 """
 import json
 import re
@@ -20,10 +28,12 @@ import sys
 import time
 
 from .. import ntcquery
+from ..ntclocal import Session, compare_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import freeze_classes, scala_container, up
-from ..ntccases import CLI, corpus
+from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
-from ..util import ENTRY, ENV, JDK_IMAGE, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, read_log, ref
+from ..util import ENTRY, ENV, JDK_IMAGE, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, query, read_log, ref
+import threading
 
 SCALA_CLI = "/opt/reference/bin/cardano-cli"
 
@@ -59,17 +69,28 @@ CLI_QUERIES = [
 NOT_IMPLEMENTED = {"ledger-state"}
 
 
+def mempool_bytes(args):
+    """The Scala mempool capacity that LocalTxMonitor reports as the reference does by default: two
+    block units (`2 * (maxBlockBodySize - 1024)`), the capacity `cardano-node` computes without an override."""
+    return 2 * (query(args.name, "protocol-parameters")["maxBlockBodySize"] - 1024)
+
+
 def start_scala(args, root):
     """The Scala node following pool 1 with a node-to-client socket the host can reach."""
     classpath = freeze_classes(root)
     sock = root / "scala-sock"
     sock.mkdir(exist_ok=True)
     sock.chmod(0o777)
+    db = root / "scala-db"
+    db.mkdir(exist_ok=True)
+    db.chmod(0o777)
     ports = json.loads((root / "ports.json").read_text())
-    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
+    program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT), "--db", "/db",
+               "--mempool-bytes", str(mempool_bytes(args)),
                "--local-socket", "/sock/node.socket", "--peer", f"127.0.0.1:{ports['1']}"]
     command = scala_container(args, root, classpath, "lab.node.Main", program,
-                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{sock}:/sock"], name=f"{args.name}-scala")
+                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
+                              name=f"{args.name}-scala")
     log = (root / "follower.jsonl").open("a")
     return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)
 
@@ -279,6 +300,132 @@ def valid_submission(args, root):
     return result
 
 
+def open_h(args):
+    return Session(ref(args.name), f"{ENV}/socket/node1/sock", MAGIC)
+
+
+def open_s(root):
+    return Session(None, str(root / "scala-sock" / "node.socket"), MAGIC, host=True)
+
+
+def chain_sync_comparison(args, root, out):
+    """Local ChainSync on both sockets: from Origin (the Scala node reads its immutable store, then its
+    volatile chain), from the tip as it moves, and from a recent block (served as a backlog)."""
+    def opener_h():
+        return open_h(args)
+
+    def opener_s():
+        return open_s(root)
+
+    try:
+        out["fromOrigin"] = compare_follow(opener_h, opener_s, None, args.chain_sync_blocks, 150)
+        tip = point_of(args, "s", root)
+        if tip:
+            out["live"] = compare_follow(opener_h, opener_s, (tip[0], bytes.fromhex(tip[1])), 12, 150)
+            points = out["live"]["points"]
+            if len(points) >= 5:
+                slot, hash_hex = points[-5]
+                out["backlog"] = compare_follow(opener_h, opener_s, (slot, bytes.fromhex(hash_hex)), 4, 60)
+    except Exception as e:  # noqa: BLE001 - reported as a failure of the scenario
+        out["error"] = repr(e)
+    for key in ("fromOrigin", "live", "backlog"):
+        if key in out:
+            out[key].pop("points", None)
+    print(json.dumps({"chainSync": out}), flush=True)
+
+
+def mempool_chain(builder, wallet_number, count):
+    """`count` chained transactions of one wallet: each spends the output of the one before it, so all of
+    them are valid in one mempool."""
+    from ..ntclocal import raw_tx_id
+    w = builder.wallet(wallet_number)
+    txin, lovelace, txs = w["txin"], w["lovelace"], []
+    for _ in range(count):
+        tx = builder.tx({**w, "txin": txin, "lovelace": lovelace}, fee=200000)
+        txs.append(tx)
+        txin, lovelace = f"{raw_tx_id(tx).hex()}#0", lovelace - 200000
+    return txs
+
+
+def cli_script(args, which, commands):
+    """The outputs of several `cardano-cli conway` commands run in one `docker exec` against one socket."""
+    if which == "h":
+        calls = [f"{CLI} {c} --testnet-magic {MAGIC} --socket-path {ENV}/socket/node1/sock 2>&1" for c in commands]
+        container = ref(args.name)
+    else:
+        calls = [f"{SCALA_CLI} conway {c} --testnet-magic {MAGIC} --socket-path /sock/node.socket 2>&1" for c in commands]
+        container = f"{args.name}-cli"
+    script = "( " + "; echo @@@; ".join(calls) + " )"
+    r = docker("exec", container, "/bin/sh", "-c", script, check=False, timeout=120)
+    return [part.strip() for part in r.stdout.split("@@@")]
+
+
+def cli_mempool(args, ident):
+    """`cardano-cli conway query tx-mempool info | next-tx | tx-exists` on both sockets, run at the same
+    time (one `docker exec` each): counted when `info` is the same on both before and after, so the
+    mempool did not change in between, and then every output must be equal."""
+    labels = ["info", "next-tx", "tx-exists held", "tx-exists absent", "info after"]
+    commands = ["query tx-mempool info", "query tx-mempool next-tx", f"query tx-mempool tx-exists {ident}",
+                f"query tx-mempool tx-exists {'0' * 64}", "query tx-mempool info"]
+    outputs = {}
+    threads = [threading.Thread(target=lambda w=w: outputs.__setitem__(w, cli_script(args, w, commands))) for w in "hs"]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    h, s = outputs["h"], outputs["s"]
+    complete = len(h) == len(s) == len(commands)
+    bracketed = complete and h[0] == s[0] == h[-1] == s[-1]
+    return {"bracketed": bracketed, "nonEmpty": complete and '"numberOfTxs": 0' not in h[0],
+            "equal": {label: h[i] == s[i] for i, label in enumerate(labels)} if complete else {},
+            "answers": {label: [h[i][:160], s[i][:160]] for i, label in enumerate(labels)} if complete else {"h": h, "s": s}}
+
+
+def monitor_comparison(args, root, out):
+    """LocalTxMonitor on both sockets: empty mempools, then bursts of chained transactions submitted
+    through the Scala socket (it forwards them to the reference node)."""
+    builder = Builder(args.name, f"{ENV}/socket/node1/sock")
+    bursts = [mempool_chain(builder, n, args.monitor_burst) for n in (1, 2, 3)]
+    stats = {"rounds": 0, "comparable": 0, "nonEmpty": 0, "differences": [], "maxTxs": 0}
+    clis = []
+    with open_h(args) as h, open_s(root) as s:
+        monitor_rounds(h, s, time.monotonic() + 4, stats=stats)
+        out["quiet"] = {"comparable": stats["comparable"], "rounds": stats["rounds"]}
+        clis.append({"state": "quiet", **cli_mempool(args, "0" * 64)})
+        for number, burst in enumerate(bursts, 1):
+            with open_s(root) as submitter:
+                refused = [r for r in (submitter.submit(tx) for tx in burst) if r is not None]
+            ids = [tx_id_of(tx) for tx in burst]
+            before = stats["nonEmpty"]
+            deadline = time.monotonic() + 30
+            attempt = {}
+            cli_thread = threading.Thread(target=lambda: attempt.update(cli_mempool(args, ids[0])))
+            cli_thread.start()
+            monitor_rounds(h, s, deadline, stats=stats,
+                           stop=lambda: stats["nonEmpty"] > before + 2 and stats["last"] == (0, 0))
+            cli_thread.join()
+            clis.append({"state": f"burst {number}", **attempt})
+            print(json.dumps({"monitorBurst": number, "refused": len(refused), "rounds": stats["rounds"],
+                              "comparable": stats["comparable"], "nonEmpty": stats["nonEmpty"]}), flush=True)
+    out.update({"rounds": stats["rounds"], "comparable": stats["comparable"], "nonEmpty": stats["nonEmpty"],
+                "maxTxs": stats["maxTxs"], "differences": stats["differences"][:5], "cli": clis})
+    # AwaitAcquire: after one acquire, both wait; a transaction through the Scala socket changes both pools
+    extra = mempool_chain(builder, 1, 1)
+    with open_h(args) as h2, open_s(root) as s2:
+        def trigger():
+            time.sleep(1)
+            with open_s(root) as submitter:
+                submitter.submit(extra[0])
+        first, answers = await_wakes(h2, s2, trigger)
+    out["awaitAcquire"] = {"slotsHeld": list(first), "answers": {k: v for k, v in answers.items()}}
+    print(json.dumps({"monitor": out}, default=str), flush=True)
+
+
+def tx_id_of(tx):
+    from ..ntclocal import raw_tx_id
+    return raw_tx_id(tx).hex()
+
+
 def ntc(args):
     root = data_root(args.name)
     up(args)
@@ -296,7 +443,11 @@ def ntc(args):
         started = time.monotonic()
         # let the load build some state (stake, pools, DReps, proposals) before the first round
         time.sleep(args.warmup)
+        chain_sync = {}
+        follower_thread = threading.Thread(target=chain_sync_comparison, args=(args, root, chain_sync))
+        follower_thread.start()
         rounds = query_rounds(args, root, stats, started + args.seconds, args.every)
+        follower_thread.join(300)
         for loader in loaders:
             loader.terminate()
             loader.wait()
@@ -316,6 +467,11 @@ def ntc(args):
         sub_results = submissions(args, root)
         valid = valid_submission(args, root)
         print(json.dumps({"validSubmission": valid}), flush=True)
+        monitor = {}
+        try:
+            monitor_comparison(args, root, monitor)
+        except (RuntimeError, EOFError, OSError, AssertionError) as e:
+            monitor["error"] = repr(e)
 
         implemented = {k: v for k, v in stats.items() if v["implemented"]}
         gaps = {k: v for k, v in stats.items() if not v["implemented"]}
@@ -334,6 +490,8 @@ def ntc(args):
                             "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in sub_results),
                             "differences": [r for r in sub_results if not (r["rawEqual"] and r["textEqual"])]},
             "validSubmission": valid,
+            "chainSync": chain_sync,
+            "txMonitor": monitor,
         }
         mismatched = [k for k, v in implemented.items() if v["matched"] != v["total"]]
         if mismatched:
@@ -353,6 +511,22 @@ def ntc(args):
             failures.append("a rejection differs from the reference's")
         if not (valid["acceptedByScala"] and valid["reachedABlock"]):
             failures.append(f"the valid transaction did not reach a block: {valid}")
+        for key in ("fromOrigin", "live", "backlog"):
+            part = chain_sync.get(key)
+            if part is None or part["differing"] or part["compared"] == 0 or part["scala"]["error"] \
+                    or part["reference"]["error"] or not part["sameFirstInstruction"] \
+                    or part["scala"]["first"][0] != 3:
+                failures.append(f"local ChainSync {key}: {part}")
+        if chain_sync.get("error"):
+            failures.append(f"local ChainSync: {chain_sync['error']}")
+        if monitor.get("error") or monitor.get("differences") or monitor.get("nonEmpty", 0) < 3:
+            failures.append(f"LocalTxMonitor: {json.dumps(monitor, default=str)[:600]}")
+        wake = monitor.get("awaitAcquire", {}).get("answers", {})
+        if not all(isinstance(wake.get(k), int) for k in ("h", "s")):
+            failures.append(f"AwaitAcquire did not wake on both nodes: {wake}")
+        counted = [c for c in monitor.get("cli", []) if c["bracketed"]]
+        if not any(c["nonEmpty"] for c in counted) or any(not all(c["equal"].values()) for c in counted):
+            failures.append(f"tx-mempool cardano-cli outputs: {monitor.get('cli')}")
     finally:
         for loader in loaders:
             loader.terminate()

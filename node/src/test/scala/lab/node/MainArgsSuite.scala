@@ -8,7 +8,8 @@ class MainArgsSuite extends munit.FunSuite:
     val options = Main.parse(base).toOption.get
     assertEquals(options.queryPort, 7071)
     assertEquals(options.keepSnapshots, 3)
-    assertEquals(options.mempoolBytes, 1048576L)
+    assertEquals(options.mempoolBytes, None)
+    assertEquals(Main.DefaultMempoolBytes, 1048576L)
   }
 
   test("a repeated --peer is allowed") {

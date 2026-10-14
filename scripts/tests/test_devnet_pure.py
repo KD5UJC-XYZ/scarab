@@ -12,7 +12,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntcqueries, ntcquery, refused_fixture  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntclocal, ntcqueries, ntcquery, refused_fixture  # noqa: E402
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 
@@ -430,3 +430,40 @@ class SlotClockTest(unittest.TestCase):
         clock = pool.slot_clock(behind, self.SHELLEY)
         self.assertEqual((clock["forgeLatencyMs"], clock["arrivalMs"]), (1010, 9))
         self.assertEqual(pool.slot_clock([], self.SHELLEY), {"forgeLatencyMs": None, "arrivalMs": None})
+
+
+class NtcLocalTest(unittest.TestCase):
+    """The pure parts of the LocalTxMonitor and local ChainSync comparisons."""
+
+    BODY = cbor.enc({0: [[bytes(32), 0]], 1: [], 2: 170000})
+    TX = bytes([0x84]) + BODY + cbor.enc({}) + b"\xf5\xf6"
+
+    def test_transaction_id_is_the_hash_of_the_original_body_bytes(self):
+        self.assertEqual(ntclocal.raw_tx_id(self.TX), ntclocal.blake(self.BODY))
+        item = cbor.enc([6, cbor.Tag(24, self.TX)])
+        self.assertEqual(ntclocal.tx_id(item), ntclocal.blake(self.BODY))
+
+    def test_block_point_is_the_slot_and_the_hash_of_the_header(self):
+        header = [[7, 4242, bytes(32), bytes(32)], b"signature"]
+        block = bytes([0x82, 0x06, 0x85]) + cbor.enc(header) + cbor.enc([]) * 4
+        item = cbor.enc(cbor.Tag(24, block))
+        self.assertEqual(ntclocal.block_point(item), (4242, ntclocal.blake(cbor.enc(header))))
+
+    def test_block_item_is_the_second_element_of_a_roll_forward(self):
+        item = cbor.enc(cbor.Tag(24, b"abc"))
+        raw = cbor.enc([2, cbor.Raw(item), [[1, bytes(32)], 1]])
+        self.assertEqual(ntclocal.block_item(raw), item)
+
+    def snapshot(self, slot, txs, replies=(("sizes", b"a"),)):
+        return {"slot": slot, "txs": list(txs), "steps": list(replies)}
+
+    def test_snapshots_compare_only_with_the_same_slot_and_transactions(self):
+        a = self.snapshot(5, [b"t1"])
+        self.assertEqual(ntclocal.compare_snapshots(a, self.snapshot(5, [b"t1"])), (True, []))
+        self.assertEqual(ntclocal.compare_snapshots(a, self.snapshot(6, [b"t1"])), (False, []))
+        self.assertEqual(ntclocal.compare_snapshots(a, self.snapshot(5, [b"t1", b"t2"])), (False, []))
+
+    def test_a_differing_answer_of_comparable_snapshots_is_reported_by_step(self):
+        a = self.snapshot(5, [], [("sizes", b"1"), ("measures", b"2")])
+        b = self.snapshot(5, [], [("sizes", b"1"), ("measures", b"3")])
+        self.assertEqual(ntclocal.compare_snapshots(a, b), (True, [("measures", b"2", b"3")]))

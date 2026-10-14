@@ -46,12 +46,16 @@ class LocalMonitorSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
   }
 
-  test("a transaction counts for its size plus 4 bytes, and the sizes are those of the snapshot") {
+  test(
+    "a transaction counts for its ledger size plus 4 bytes, and the sizes are those of the snapshot"
+  ) {
     val (t1, _) = pay(1)
     val (t2, _) = pay(2)
     val snap = LocalMonitor.snapshot(held(t1, t2))
-    assertEquals(snap.txs.map(_.measure.bytes), Vector(t1.size + 4L, t2.size + 4L))
-    assertEquals(snap.sizes.sizeInBytes, t1.size + t2.size + 8L)
+    // the ledger's `sizeTxF` leaves out the one byte of the is_valid flag (devnet: 200 of 201 bytes)
+    val (s1, s2) = (t1.size - 1L, t2.size - 1L)
+    assertEquals(snap.txs.map(_.measure.bytes), Vector(s1 + 4, s2 + 4))
+    assertEquals(snap.sizes.sizeInBytes, s1 + s2 + 8L)
     assertEquals(snap.sizes.numberOfTxs, 2L)
     assertEquals(snap.txs.map(_.measure.exUnitsMemory), Vector(BigInt(0), BigInt(0)))
   }
@@ -91,10 +95,10 @@ class LocalMonitorSuite extends CatsEffectSuite with ScalaCheckSuite:
     val all = LocalTxMonitorServer.measures(snap.txs, snap.capacity)
     assertEquals(all.txCount, 2L)
     assertEquals(all.byName.keys.toList, LocalTxMonitorServer.MeasureNames)
-    assertEquals(all.byName("transaction_bytes").size, BigInt(t1.size + t2.size + 8))
+    assertEquals(all.byName("transaction_bytes").size, BigInt(t1.size - 1 + t2.size - 1 + 8))
     val rest = LocalTxMonitorServer.measures(snap.txs.drop(1), snap.capacity)
     assertEquals(rest.txCount, 1L)
-    assertEquals(rest.byName("transaction_bytes").size, BigInt(t2.size + 4))
+    assertEquals(rest.byName("transaction_bytes").size, BigInt(t2.size - 1 + 4))
     assertEquals(rest.byName("transaction_bytes").capacity, BigInt(snap.capacity.bytes))
   }
 

@@ -84,7 +84,11 @@ final class ChainServer[F[_]: Async] private (
                 .findM(onChain(chain, _))
                 .flatMap {
                   case Some(found) =>
-                    state.update(_.move(id, Cursor.At(found))).as(Right(found -> chain.tip))
+                    // as the reference's follower: the first instruction after an intersection
+                    // is a roll-back to the point found
+                    state
+                      .update(_.move(id, Cursor.RollbackTo(found)))
+                      .as(Right(found -> chain.tip))
                   case None => F.pure(Left(chain.tip))
                 }
             }
