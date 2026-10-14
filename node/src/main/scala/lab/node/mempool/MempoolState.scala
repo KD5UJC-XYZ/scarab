@@ -42,9 +42,11 @@ enum Rejection:
     case WrongEra(e)     => s"era $e is not Conway"
 
 /** A held transaction. `ticket` grows with arrival order and is how peers are given each
-  * transaction once.
+  * transaction once. `refScriptBytes` is the size of the reference scripts the transaction names
+  * (spent and reference inputs, counted per input as the ledger's `txNonDistinctRefScriptsSize`),
+  * measured against the state it was added to; LocalTxMonitor reports it.
   */
-final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long):
+final case class Entry(id: Bytes, raw: Bytes, tx: Tx, ticket: Long, refScriptBytes: Int = 0):
   def size: Int = raw.size
 
 /** What the transaction rules need besides the ledger state. */
@@ -123,7 +125,7 @@ final case class MempoolState(
       next <- TxRules(current, tx, env.txEnv(tipSlot, base, entries.size))
         .leftMap(Rejection.Ledger(_))
     yield
-      val entry = Entry(id, raw, tx, nextTicket)
+      val entry = Entry(id, raw, tx, nextTicket, MempoolState.refScriptBytes(current, tx))
       (
         copy(
           current = next,
@@ -185,6 +187,15 @@ object MempoolState:
   def showCredential(c: Credential): String = c match
     case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"
     case Credential.Script(h) => "ScriptHashObj (ScriptHash \"" + h.hex + "\")"
+
+  /** The reference-script bytes of the transaction's inputs and reference inputs in `ledger`, an
+    * output counted once per set it appears in.
+    */
+  def refScriptBytes(ledger: LedgerState, tx: Tx): Int =
+    (tx.body.inputs.iterator ++ tx.body.referenceInputs.iterator)
+      .flatMap(ledger.utxo.get)
+      .map(_.referenceScriptSize)
+      .sum
 
   def empty(ledger: LedgerState, tipSlot: BigInt, capacityBytes: Long): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityBytes)

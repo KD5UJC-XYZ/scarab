@@ -32,8 +32,14 @@ object ChainSyncServer:
   /** `idleTimeout` is the upstream bound on a client that sends nothing (3373 s). */
   final case class Settings(
       limits: ChainSync.Limits = ChainSync.Limits(),
-      idleTimeout: FiniteDuration = 3373.seconds
+      idleTimeout: FiniteDuration = 3373.seconds,
+      /** The mini-protocol number, for error messages: 2 on node-to-node, 5 on node-to-client. */
+      protocol: Int = Protocols.ChainSync
   )
+
+  /** The node-to-client profile: whole blocks, so the message bound is that of a mux message. */
+  val NodeToClient: Settings =
+    Settings(ChainSync.Limits.NodeToClient, protocol = Protocols.LocalChainSync)
 
   def run[F[_]: Temporal, P](
       channel: MuxChannel[F],
@@ -42,7 +48,7 @@ object ChainSyncServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
-    val id = Protocols.ChainSync
+    val id = settings.protocol
     def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: State, message: Message[P]): F[State] =

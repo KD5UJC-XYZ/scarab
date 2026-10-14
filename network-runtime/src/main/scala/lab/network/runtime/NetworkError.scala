@@ -26,21 +26,26 @@ enum NetworkError:
     case IllegalTransition(p, d) => s"${Protocols.name(p)} protocol violation: $d"
     case BearerClosed(r)         => s"connection closed: $r"
 
-/** Node-to-node mini-protocol numbers. */
+/** Mini-protocol numbers: the node-to-node ones and the node-to-client ones (5, 6, 7 and 9). */
 object Protocols:
   val Handshake = 0
   val ChainSync = 2
   val BlockFetch = 3
   val TxSubmission2 = 4
   val KeepAlive = 8
+  val LocalChainSync = 5
   val LocalTxSubmission = 6
   val LocalStateQuery = 7
+  val LocalTxMonitor = 9
 
   def name(protocol: Int): String = protocol match
-    case Handshake       => "handshake"
-    case ChainSync       => "chain-sync"
-    case BlockFetch      => "block-fetch"
-    case TxSubmission2   => "tx-submission-2"
-    case KeepAlive       => "keep-alive"
-    case LocalStateQuery => "local-state-query"
-    case other           => s"protocol-$other"
+    case Handshake         => "handshake"
+    case ChainSync         => "chain-sync"
+    case BlockFetch        => "block-fetch"
+    case TxSubmission2     => "tx-submission-2"
+    case KeepAlive         => "keep-alive"
+    case LocalChainSync    => "local-chain-sync"
+    case LocalTxSubmission => "local-tx-submission"
+    case LocalStateQuery   => "local-state-query"
+    case LocalTxMonitor    => "local-tx-monitor"
+    case other             => s"protocol-$other"

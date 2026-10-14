@@ -27,7 +27,7 @@ import lab.network.runtime.{
   ServerHandlers
 }
 import lab.node.forge.{Forger, KeyFiles}
-import lab.node.mempool.{LocalSubmission, Mempool, MempoolEnv}
+import lab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
 import lab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import lab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
@@ -387,7 +387,9 @@ object Main extends IOApp:
                         bearer,
                         genesis.networkMagic,
                         LocalSubmission.handler(mempool),
-                        Some(StateQuerySource[IO](ref, queryEnv, store))
+                        Some(StateQuerySource[IO](ref, queryEnv, store)),
+                        chainSync = Some(server.blockSource),
+                        txMonitor = Some(LocalMonitor.source(mempool))
                       )
                     )
                     .rescue(e => IO.pure(e.message))

@@ -178,6 +178,38 @@ class ChainServerSuite extends CatsEffectSuite:
     }
   }
 
+  test("the node-to-client cursor serves the stored block bytes, immutable and volatile") {
+    tempDir.use { dir =>
+      ok {
+        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+          for
+            server <- ChainServer.open[IO](Some(store), None, headerOf)
+            persistence = server.persistence[Unit]
+            _ <- (1 to 8).toList.traverse_ { i =>
+              val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
+              immutable.traverse_(r => store.append(r, raw(r.blockNo.toInt))) *>
+                persistence.extended(
+                  ref(i),
+                  raw(i),
+                  immutable,
+                  Anchor[Unit](immutable.headOption, ())
+                )
+            }
+            blocks <- server.blockSource.use { source =>
+              def loop(acc: List[Bytes]): IO[List[Bytes]] =
+                source.poll.flatMap {
+                  case Some(Update.RollForward(b, _))  => loop(acc :+ b.bytes)
+                  case Some(Update.RollBackward(_, _)) => loop(acc)
+                  case None                            => IO.pure(acc)
+                }
+              source.intersect(Vector(Point.Origin)) *> loop(Nil)
+            }
+          yield assertEquals(blocks, (1 to 8).toList.map(i => raw(i)))
+        }
+      }
+    }
+  }
+
   test("a client waiting at the tip is woken by the next block and by a rollback") {
     tempDir.use { dir =>
       ok {
