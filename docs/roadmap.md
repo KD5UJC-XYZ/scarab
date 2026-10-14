@@ -55,6 +55,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **D6** [#25](https://github.com/ottobot-ai/cardano-scala-lab/issues/25) Mainnet sync. About 12M blocks: measure throughput and memory, then optimise.
 - **D7** [#26](https://github.com/ottobot-ai/cardano-scala-lab/issues/26) Ed25519 throughput. Only parallelism is used. A faster path that can only accept was correctly rejected as a security weakening, so any speedup must keep strict semantics.
 - **D8** [#65](https://github.com/ottobot-ai/cardano-scala-lab/issues/65) (P1, done, with the caveats below; numbers in [performance.md](performance.md) section 6) Scheduling fairness: the peer session runs on its own work-stealing pool (`Compute[F]`, `--cpu-threads`) instead of the cats-effect compute pool; timer lateness and the longest CPU-bound step per epoch are measured and logged (`scheduling` on the epoch lines, `GET /scheduling`). Evidence: Preview from genesis for 31 min, started together with the base build, -3.2% blocks at 6 CPUs and +0.2% at 1 CPU, 0 starvation warnings in both; devnet `pool --scala-cpus 1` 0 missed leader slots in 11 of 14 runs (the base build: 5 of 6); the others missed 16 to 19 of 69 to 88 scheduled slots because the node's slot clock was 1.0 s behind the network's, cause not found, also seen on the base build (the pool summary now reports `slotClock`). Remaining: the 1-CPU starvation warnings were the serial collector's pauses and need `-XX:+UseG1GC -XX:MaxGCPauseMillis=20` (the base build has none either with those flags, so the pool is not what removed them); a step is one uninterrupted pure call (the longest is reported, not bounded: 167 ms at 6 CPUs, 512 ms at 1 CPU); the mempool revalidation and the forger still run on the compute pool; no Prometheus metric (J3).
+- **D9** [#69](https://github.com/ottobot-ai/cardano-scala-lab/issues/69) (P1) Mainnet: start from a Mithril snapshot (E1), follow to the tip and stay there for a week, comparing the ledger at every epoch boundary (K7).
 
 ## E. Fast start (P1)
 
@@ -104,6 +105,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **K4** [#51](https://github.com/ottobot-ai/cardano-scala-lab/issues/51) Long-run stability: days at the tip, checking for memory growth, file handles and reconnect behaviour.
 - **K5** [#52](https://github.com/ottobot-ai/cardano-scala-lab/issues/52) Single-build evidence. Keep running uninterrupted genesis-to-tip syncs on tagged builds.
 - **K6** [#53](https://github.com/ottobot-ai/cardano-scala-lab/issues/53) Memory profile of the RSS growth to 5.66 GB (RocksDB block cache/off-heap vs heap) and a bounded configuration.
+- **K7** [#68](https://github.com/ottobot-ai/cardano-scala-lab/issues/68) (P1) Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence.
 
 ## L. Future eras (P2)
 
@@ -121,3 +123,23 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **M8** [#62](https://github.com/ottobot-ai/cardano-scala-lab/issues/62) (P2) Serial test execution (`Tags.limit(Test, 1)`): find which suites share global state and run modules in parallel in CI.
 - **M9** [#63](https://github.com/ottobot-ai/cardano-scala-lab/issues/63) (P2) READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`.
 - **M10** [#66](https://github.com/ottobot-ai/cardano-scala-lab/issues/66) (P1) Flaky `FollowerSuite` two-peer chain-selection test (one failure in a clean-container `check`, then 8/8 passes): find the race, make it deterministic with `TestControl`, 500 consecutive passes.
+
+## N. Ouroboros Leios (v0.3)
+
+Linear Leios (CIP-164) is planned for the Dijkstra hard fork (L1).
+
+- **N1** [#70](https://github.com/ottobot-ai/cardano-scala-lab/issues/70) (P1) Study CIP-164, the Leios formal specification and the reference prototypes; write a design note (`docs/leios.md`) mapping the changes onto this codebase.
+- **N2** [#71](https://github.com/ottobot-ai/cardano-scala-lab/issues/71) (P2) BLS12-381 key registration, voting and certificate verification, pure and tested against reference vectors.
+- **N3** [#72](https://github.com/ottobot-ai/cardano-scala-lab/issues/72) (P2) Follow the public Leios testnet: decode, validate what is specified, report the gaps.
+- **N4** [#73](https://github.com/ottobot-ai/cardano-scala-lab/issues/73) (P2) A devnet prototype against the reference Leios implementation, compared like soak and e2e.
+
+## O. Review readiness and operations (v0.3)
+
+- **O1** [#74](https://github.com/ottobot-ai/cardano-scala-lab/issues/74) (P1) Threat model and security-review scope.
+- **O2** [#75](https://github.com/ottobot-ai/cardano-scala-lab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images.
+- **O3** [#76](https://github.com/ottobot-ai/cardano-scala-lab/issues/76) (P2) Operator packaging: container image, compose and Kubernetes manifests.
+
+## Milestones
+
+- **v0.2, reference-grade evidence**: ledger-state identity with the Haskell node at every epoch (K1 and K7), full preprod (C4) and mainnet (D6, D9) syncs, upstream conformance suites (K2, I1), fuzzing (K3), public-network block production (H1), bounded memory and on-disk ledger state (K6, D1), fast start (E1), metrics (J3), peer governance and limits (G1, G5).
+- **v0.3, Leios and audit readiness**: Leios (N1 to N4), Dijkstra (L1), Ouroboros Genesis (G3), our own Plutus evaluator decision (I2), KES lifecycle (H2), protocol versions (G4), review readiness and packaging (O1 to O3).
