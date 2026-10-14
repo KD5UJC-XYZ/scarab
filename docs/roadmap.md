@@ -106,6 +106,8 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **K5** [#52](https://github.com/ottobot-ai/cardano-scala-lab/issues/52) Single-build evidence. Keep running uninterrupted genesis-to-tip syncs on tagged builds.
 - **K6** [#53](https://github.com/ottobot-ai/cardano-scala-lab/issues/53) Memory profile of the RSS growth to 5.66 GB (RocksDB block cache/off-heap vs heap) and a bounded configuration.
 - **K7** [#68](https://github.com/ottobot-ai/cardano-scala-lab/issues/68) (P1) Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence.
+- **K8** [#77](https://github.com/ottobot-ai/cardano-scala-lab/issues/77) (P1) Align the ledger-state projection with the canonical ledger state CIP.
+- **K9** [#78](https://github.com/ottobot-ai/cardano-scala-lab/issues/78) (P2) Deterministic simulation of several nodes under adversarial schedules (Antithesis-style).
 
 ## L. Future eras (P2)
 
@@ -132,12 +134,14 @@ Linear Leios (CIP-164) is planned for the Dijkstra hard fork (L1).
 - **N2** [#71](https://github.com/ottobot-ai/cardano-scala-lab/issues/71) (P2) BLS12-381 key registration, voting and certificate verification, pure and tested against reference vectors.
 - **N3** [#72](https://github.com/ottobot-ai/cardano-scala-lab/issues/72) (P2) Follow the public Leios testnet: decode, validate what is specified, report the gaps.
 - **N4** [#73](https://github.com/ottobot-ai/cardano-scala-lab/issues/73) (P2) A devnet prototype against the reference Leios implementation, compared like soak and e2e.
+- **N5** [#79](https://github.com/ottobot-ai/cardano-scala-lab/issues/79) (P1) A Leios-grade mempool: 12 MB capacity and per-transaction validation latency against the 1–100 µs target.
 
 ## O. Review readiness and operations (v0.3)
 
 - **O1** [#74](https://github.com/ottobot-ai/cardano-scala-lab/issues/74) (P1) Threat model and security-review scope.
 - **O2** [#75](https://github.com/ottobot-ai/cardano-scala-lab/issues/75) (P1) Reproducible, signed releases with an SBOM and published images.
 - **O3** [#76](https://github.com/ottobot-ai/cardano-scala-lab/issues/76) (P2) Operator packaging: container image, compose and Kubernetes manifests.
+- **O4** [#80](https://github.com/ottobot-ai/cardano-scala-lab/issues/80) (P1) Join the node-diversity conformance and benchmarking efforts (leaderboard, Cardano Blueprint).
 
 ## Milestones
 
