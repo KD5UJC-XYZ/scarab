@@ -108,7 +108,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **K7** [#68](https://github.com/KD5UJC-XYZ/scarab/issues/68) (P1) Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence.
 - **K8** [#77](https://github.com/KD5UJC-XYZ/scarab/issues/77) (P1) Align the ledger-state projection with the canonical ledger state CIP.
 - **K9** [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78) (P2) Deterministic simulation of several nodes under adversarial schedules (Antithesis-style).
-- **K10** [#81](https://github.com/KD5UJC-XYZ/scarab/issues/81) (P1) Cross-check the generated CDDL codecs against cuddle (upstream's CDDL tool) in CI, in both directions.
+- **K10** [#81](https://github.com/KD5UJC-XYZ/scarab/issues/81) (P1, done) Cross-check the generated CDDL codecs against cuddle (upstream's CDDL tool) in CI, in both directions. `cuddle-crosscheck.yml` (on changes to the vendored CDDL, the generator or the runtime, and nightly) builds cuddle 1.8.1.0 from `docker/cuddle.Dockerfile` and runs `scripts/cddl_crosscheck.py`: 23 targets, cuddle-generated terms decode and re-encode byte-exactly, our sampler's terms validate in cuddle, rule names and arities agree on all 27 vendored files, and every divergence is in `models-spike/cuddle-allowlist.tsv` and asserted ([models.md](models.md), section 13).
 
 ## L. Future eras (P2)
 

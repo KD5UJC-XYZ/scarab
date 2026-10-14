@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: Apache-2.0
+name: CDDL cross-check (cuddle)
+
+# The generated CDDL codecs against cuddle, upstream's independent CDDL tool (docs/models.md, section 13):
+# cuddle-generated terms must decode with the generated codecs, our sampler's terms must validate in cuddle,
+# and both tools must read the same rules from the vendored files. Runs on every change to the vendored CDDL,
+# the generator or the cross-check itself, and nightly (a new cuddle behaviour cannot arrive unnoticed because
+# the image is pinned, but the sampler seeds and the sbt dependencies move).
+on:
+  pull_request:
+    paths:
+      - 'models-spike/src/main/cddl/**'
+      - 'models-spike/src/main/scala/**'
+      - 'models-spike/src/test/scala/**/CuddleCrossCheck.scala'
+      - 'models-spike/cuddle-allowlist.tsv'
+      - 'models-gen/**'
+      - 'core/src/main/scala/lab/cbor/**'
+      - 'scripts/cddl_crosscheck.py'
+      - 'docker/cuddle.Dockerfile'
+      - 'build.sbt'
+      - 'project/**'
+      - '.github/workflows/cuddle-crosscheck.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'models-spike/src/main/cddl/**'
+      - 'models-spike/src/main/scala/**'
+      - 'models-spike/src/test/scala/**/CuddleCrossCheck.scala'
+      - 'models-spike/cuddle-allowlist.tsv'
+      - 'models-gen/**'
+      - 'core/src/main/scala/lab/cbor/**'
+      - 'scripts/cddl_crosscheck.py'
+      - 'docker/cuddle.Dockerfile'
+      - 'build.sbt'
+      - 'project/**'
+      - '.github/workflows/cuddle-crosscheck.yml'
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cuddle-crosscheck-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  crosscheck:
+    name: cuddle 1.8.1.0 against the generated codecs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      IMAGE: scarab-cuddle:1.8.1.0
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tested JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10.0.LTS'
+          check-latest: false
+          overwrite-settings: false
+      - name: Cache sbt launcher, boot, ivy and coursier
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/cardano-scala-lab
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
+          restore-keys: |
+            sbt-${{ runner.os }}-
+      # Building cuddle takes about 15 minutes of GHC; the image only changes with the Dockerfile.
+      - name: Cache the cuddle image
+        id: image-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ${{ runner.temp }}/cuddle-image.tar
+          key: cuddle-image-${{ hashFiles('docker/cuddle.Dockerfile') }}
+      - name: Load the cached image
+        if: steps.image-cache.outputs.cache-hit == 'true'
+        run: docker load --input "$RUNNER_TEMP/cuddle-image.tar"
+      - name: Build the cuddle image (pinned GHC, pinned Hackage index)
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        run: |
+          docker build -f docker/cuddle.Dockerfile -t "$IMAGE" docker
+          docker save --output "$RUNNER_TEMP/cuddle-image.tar" "$IMAGE"
+      - name: Cross-check
+        run: python3 scripts/cddl_crosscheck.py run --count 40 --image "$IMAGE" --jobs 4
+      - name: Keep the report and the first failing terms
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cuddle-crosscheck
+          path: |
+            target/crosscheck/report.json
+            target/crosscheck/decode.tsv
+            target/crosscheck/results.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -122,7 +122,35 @@ final class Schema(val modules: Map[String, Module]):
     }
     if flat.size == 1 then flat.head else RT.Choice(flat)
 
-  private val prelude: Map[String, RT] = Map(
+  // The standard prelude of RFC 8610 appendix D (what cuddle's postlude also defines). `time`, `number`, `decfrac`
+  // and `bigfloat` are left out: they need floats or tag content this generator does not model.
+  private val tagged: Map[String, RT] =
+    val bytes = RT.Prim(PrimKind.Bytes)
+    val text = RT.Prim(PrimKind.Text)
+    val any = RT.Prim(PrimKind.Any)
+    val biguint = RT.Tagged(2, bytes)
+    val bignint = RT.Tagged(3, bytes)
+    val bigint = RT.Choice(Vector(biguint, bignint))
+    Map(
+      "tdate" -> RT.Tagged(0, text),
+      "biguint" -> biguint,
+      "bignint" -> bignint,
+      "bigint" -> bigint,
+      "integer" -> RT.Choice(Vector(RT.Prim(PrimKind.Int), biguint, bignint)),
+      "unsigned" -> RT.Choice(Vector(RT.Prim(PrimKind.Uint), biguint)),
+      "eb64url" -> RT.Tagged(21, any),
+      "eb64legacy" -> RT.Tagged(22, any),
+      "eb16" -> RT.Tagged(23, any),
+      "encoded-cbor" -> RT.Tagged(24, bytes),
+      "uri" -> RT.Tagged(32, text),
+      "b64url" -> RT.Tagged(33, text),
+      "b64legacy" -> RT.Tagged(34, text),
+      "regexp" -> RT.Tagged(35, text),
+      "mime-message" -> RT.Tagged(36, text),
+      "cbor-any" -> RT.Tagged(55799, any)
+    )
+
+  private val prelude: Map[String, RT] = tagged ++ Map(
     "uint" -> RT.Prim(PrimKind.Uint),
     "nint" -> RT.Prim(PrimKind.Nint),
     "int" -> RT.Prim(PrimKind.Int),

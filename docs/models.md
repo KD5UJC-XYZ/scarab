@@ -10,7 +10,8 @@ Contents: [tooling](#1-tooling-survey-and-decision) | [architecture](#2-architec
 [naming](#3-naming) | [leaf types](#4-leaf-types-opaque-types-and-refinements) |
 [original bytes and canonical encoding](#5-original-bytes-and-canonical-encoding) | [errors](#6-typed-errors) |
 [eras](#7-modelling-eras) | [coverage](#8-cddl-feature-coverage) | [hand-written](#9-what-stays-hand-written) |
-[results](#10-results-on-real-data) | [effort](#11-effort-to-roll-out) | [migration](#12-migration-plan-and-risks)
+[results](#10-results-on-real-data) | [effort](#11-effort-to-roll-out) | [migration](#12-migration-plan-and-risks) |
+[cuddle cross-check](#13-cross-check-against-cuddle)
 
 ## 1. Tooling survey and decision
 
@@ -35,7 +36,7 @@ weeks; compatible with Scala 3.3.8, and already in the local dependency cache). 
 4. The risk of an own parser is silent mis-parsing. It is covered by parsing every pinned upstream file (979 rules) and
    by sampling random CBOR from our resolved AST against the generated codecs (section 10).
 
-`cuddle` stays on the list as an independent conformance oracle (open item in section 11).
+`cuddle` is the independent conformance oracle: section 13 runs it in CI, in both directions.
 
 ## 2. Architecture
 
@@ -215,16 +216,18 @@ Supported = parsed, resolved, emitted, compiled with `-Werror` and exercised by 
 | `bool`, `nil`, `any`, literals (int, text, bool), `x / nil` | supported | |
 | `;# import/include` namespaces, per-module overrides | supported | |
 | required member after an optional one (`[a, ? b, c]`) | **not yet** | Dijkstra `pool_params`; needs a backtracking array decoder (12 rules) |
-| `.gt .ge .eq .ne .regexp .and .within .cborseq .bits`, floats, `~` unwrap, `&` as a type | **not yet** | 3 rules use `.gt`; none of the rest in the pinned files except as noted |
+| `.gt .ge .eq .ne .regexp .and .within .cborseq .bits`, floats, `~` unwrap, `&` as a type | **not yet** | 8 rules use `.gt` and 5 `.ne` (all Byron, on a named `u8`); none of the rest in the pinned files except as noted |
+| the RFC 8610 prelude (`bigint`, `encoded-cbor`, `tdate`, `uri`, …) | supported | `features:prelude_use`; found missing by the cuddle cross-check (section 13) |
 | `preserve` on a choice | **not yet** | `auxiliary_data` |
 | `bytes` chunking limit (`bounded_bytes`) | cannot be expressed in CDDL | overridden, section 10 |
 | indefinite-length output as a per-rule property | **not yet** | |
 | recursive types | supported (lazy codecs) | `metadatum`, `plutus_data`, `person` |
 
 Whole-specification coverage, measured by generating each non-generic rule as a root of its own (`GeneratorSuite`):
-**934 of 979 rules** (95%) across the 16 modules; per era: Shelley 80/81, Allegra 84/87, Mary 88/91, Alonzo 107/110,
-Babbage 112/115, Conway 147/150, Dijkstra 153/169, Byron 51/64. The failures are the "required after optional" cases,
-three `.gt` bounds and group rules that have no standalone encoding (they are spliced, never roots).
+**955 of 980 rules** (97%) across the 16 modules; Shelley, Allegra, Mary, Alonzo, Babbage and Conway generate
+completely, Dijkstra 157/169, Byron 51/64. The 25 failures are the 12 "required after optional" cases (Dijkstra), 8 `.gt`
+and 5 `.ne` bounds (Byron); they are listed one by one in `models-spike/cuddle-allowlist.tsv` and the cross-check fails
+when the set changes.
 Six whole eras' blocks compile (about 14,000 lines of generated code for headers, blocks and transactions of
 Shelley to Conway, the Dijkstra header, Byron headers and the network protocols).
 
@@ -307,7 +310,7 @@ and per-protocol rows.
 | All NtN mini-protocols from their CDDL (KeepAlive, BlockFetch, TxSubmission2, PeerSharing, handshake) | 3 to 4 | the policy and state machines stay |
 | NtC protocols (LocalStateQuery, LocalTxSubmission, LocalTxMonitor) incl. the query/result tables of the consensus CDDL | 5 to 7 | query results are partly `any` upstream |
 | Disk formats (consensus `disk/**`: ledger state, header state, praos/tpraos state, chunk files) | 5 to 8 | telescopes, indefinite lists; replace our own snapshot codecs only if worthwhile |
-| Conformance in CI with `cuddle validate-cbor` against our fixtures | 1 to 2 | optional, needs the Haskell tool in an image |
+| Conformance in CI with cuddle, generating and validating (section 13) | 1 to 2 | done (issue K10) |
 | `Cbor` typed errors (needed anyway by plan section 4) | 2 | removes `Syntax(message)` |
 | Docs, review, performance pass on blocks | 3 | |
 
@@ -356,3 +359,87 @@ Risks and answers:
 - **Single point of failure.** A generator bug is a bug in every model. That is why the property tests sample from the
   CDDL with an independent sampler, and why the golden tests compare with the hand-written decoders until those are
   deleted.
+
+## 13. Cross-check against cuddle
+
+Issue K10. cuddle is upstream's own Haskell CDDL tool (the ledger's `*.cddl` files are generated with it), a second
+implementation of the same schemas that shares no code with ours. The generator is a single point of failure, so CI runs
+it against cuddle on every change to the vendored CDDL, the generator or the runtime, and nightly
+(`.github/workflows/cuddle-crosscheck.yml`).
+
+**Tool and image.** cuddle 1.8.1.0 (Hackage, uploaded 2026-07-15; the version `cardano-ledger-binary` needs, `>=1.8`),
+built by `docker/cuddle.Dockerfile` from the Hackage source with GHC 9.10.3 and cabal-install 3.14.1.1 (the official
+`haskell` image, pinned by digest) against the Hackage index as of 2026-09-20 (`--index-state`), so the dependency plan
+is reproducible; the runtime image is `debian:bookworm-slim` (pinned by digest) with the one executable, `libgmp` and
+Python for the worker (195 MB). The build takes about 9 minutes on 4 CPUs; CI caches the image as a tarball keyed on
+the Dockerfile. Both base images are rebuilt by their maintainers, so the pinned digests are from 2026-10-05/06, less
+than two weeks before the check was written; the tool versions in them (GHC, cabal, cuddle, the Hackage index) are older.
+No upstream binary or image of cuddle is published, hence the build. The commands used (cuddle 1.8.1.0, checked in
+`bin/Main.hs`): `cuddle format FILE`, `cuddle validate FILE` (parse and resolve), `cuddle gen [-f hex] [--seed N]
+[--size N] [--no-twiddle] RULE FILE` (one random term per call; by default with indefinite lengths and non-shortest
+integers, "twiddled"), `cuddle validate-cbor -f binary RULE CBOR_FILE CDDL_FILE` (the `-f` is ignored for the input in
+1.8.1.0, which is always read as raw bytes). cuddle reads one self-contained file and knows no `;# import`, so the
+driver writes, per target, the transitive closure of its rules from the vendored files with module-qualified names
+(`conway__block`); the rule text is upstream's, only identifiers are renamed, and the same module and override
+semantics as `models.conf` apply (`overrides/bounded-bytes.cddl` is part of the closure).
+
+**Driver.** `scripts/cddl_crosscheck.py run` (standard library, like `devnet.py`) orchestrates, because neither tool can
+host the other: cuddle only exists in Docker and the generated codecs only on the JVM. It calls the Scala half
+(`CuddleCrossCheck` in `models-spike/src/test`, run through `sbt modelsSpike/Test/runMain`) to export our sampler's
+terms and our parser's rule lists, runs cuddle in one container with a parallel worker (the same script, `worker`
+subcommand), calls the Scala half again to decode and re-encode what cuddle produced, and compares everything with
+`models-spike/cuddle-allowlist.tsv`. The whole run takes about 25 seconds warm.
+
+| Direction | What is asserted |
+|---|---|
+| a. cuddle to us | N terms per target from `cuddle gen --no-twiddle` decode with the generated codec and re-encode byte for byte; N terms with indefinite lengths and non-shortest integers decode, and their re-encoding is a stable value (decode of it is equal, its encoding a fixed point) |
+| b. us to cuddle | N terms per target from `CddlSampler` pass `cuddle validate-cbor` for the same rule; a control (`false` against every rule) must fail, so the validator is known to discriminate |
+| c. rule sets | for every vendored file, the set of (rule name, generic arity) of `cuddle format` equals the one of our parser; every module (all rules, not only the roots) resolves in `cuddle validate` |
+| d. coverage | the set of rules our generator cannot produce on their own equals the allowlist |
+
+Targets: every `root` of `models.conf` (14, `models.conf` and the target list must agree or the export fails) plus the
+generated types the sampled tests exercise (headers of Shelley to Dijkstra, the hard-fork envelope, point and tip), 23
+in all.
+
+**Result** (N = 40, seed 1, cuddle size 12; the same on a re-run, since every seed is fixed):
+
+| Target | cuddle to us (byte-exact) | twiddled (non-canonical inputs) | us to cuddle |
+|---|---|---|---|
+| handshake v14, ChainSync messages | 40/40 (40), 40/40 (40) | 40/40 (37), 40/40 (32) | 40/40, 40/40 |
+| `conway` header, block, transaction | 40/40 (40) each | 40/40 (0 for the preserved header, 38, 29) | 40/40 each |
+| `shelley`, `allegra`, `mary`, `alonzo`, `babbage` blocks | 40/40 (40) each | 40/40 (38) each | 40/40 each |
+| `shelley`..`babbage`, `dijkstra` headers | 40/40 (40) each | 40/40 (0: preserved, rewritten verbatim) | 40/40 each |
+| `features` transaction, key_descriptor, prelude_use | 40/40 (40) each | 40/40 (40, 29, 37) | 40/40 each |
+| `features:person` | 40/40 (0, listed below) | 40/40 (40) | 40/40 |
+| hard-fork header (`chainsync-header`) | 37/40 (37, 3 hold floats, listed below) | 37/40 (32) | 40/40 |
+| `network.base:tip`, `base:point` | 40/40 (40) each | 40/40 (29, 24) | 40/40 each |
+
+The rule sets agree on all 27 files (1,108 rule name and arity pairs); cuddle resolves all 16 modules completely.
+
+**Allowlist** (`models-spike/cuddle-allowlist.tsv`; each entry is asserted, an entry that no longer holds fails the run
+as stale, a divergence that is not listed fails it as new):
+
+| Entry | Why |
+|---|---|
+| `override` alonzo, babbage, conway `bounded_bytes` | Upstream `bytes .size (0 .. 64)` is stricter than the chain (64-byte chunks of an indefinite string, finding 1). The driver sends a 65-byte string through cuddle with the upstream rule (must be rejected) and with the override (must be accepted) |
+| `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `lab.cbor` has no floating-point item, so such a term is rejected. Cardano data contains none |
+| `not-byte-exact` `features:person` | cuddle writes map entries sorted by key, the generated writer in rule order (the canonical-order option of section 5 is a listed gap); the value is equal |
+| `unsupported` x25 | 12 Dijkstra rules with a required member after an optional one, 8 Byron `.gt` and 5 `.ne` bounds on a named `u8` (section 8) |
+
+**Found and fixed.** The cross-check found one generator bug: the RFC 8610 prelude (appendix D) was missing, so Byron's
+`bigint` and `encoded-cbor` (which `byron.cddl` uses without defining) did not resolve although cuddle's postlude
+defines them. `Schema` now knows `biguint`, `bignint`, `bigint`, `integer`, `unsigned`, `tdate`, `encoded-cbor`, `uri`,
+`b64url`, `b64legacy`, `regexp`, `mime-message`, `eb64url`, `eb64legacy`, `eb16` and `cbor-any`. Regression tests: the
+`GeneratorSuite` prelude test and `features:prelude_use` (a root of `features.cddl`, sampled and cross-checked). The
+other divergences are properties of the tools, listed above; none was an error in the generated decoders or in the
+parser.
+
+Run it locally:
+
+```
+docker build -f docker/cuddle.Dockerfile -t scarab-cuddle:1.8.1.0 docker     # once
+python3 scripts/cddl_crosscheck.py run --count 40                            # uses scripts/sbtw
+```
+
+(`--sbt "docker exec NAME /work/.cache/tools/sbtd --client"` runs the Scala half in an sbt container; `--count`, `--seed`
+and `--size` widen the search; `target/crosscheck/` keeps the terms, `report.json` and `results.json`.)

@@ -48,6 +48,21 @@ class FeaturesSuite extends munit.FunSuite:
   semantic("key_descriptor", KeyDescriptor)
   semantic("certificate", Certificate)
   semantic("value", Value)
+  semantic("prelude_use", PreludeUse)
+
+  test(
+    "RFC 8610 prelude names (bigint, encoded-cbor, tdate, unsigned, integer) resolve and round trip"
+  ) {
+    // Regression for a gap the cuddle cross-check found: the Byron CDDL uses `bigint` and `encoded-cbor`
+    // without defining them. [#6.2(h'01'), #6.24(h'02'), #6.0("2020"), 5, #6.3(h'ff')]
+    val bytes = hex("85 c2 41 01  d8 18 41 02  c0 64 32303230  05  c3 41 ff")
+    val value = PreludeUse.decodeBytes(bytes).fold(e => fail(e.render), identity)
+    assertEquals(value.amount, PreludeUseAmount.Tag2(hex("01")))
+    assertEquals(value.embedded, hex("02"))
+    assertEquals(value.when, "2020")
+    assertEquals(value.total, PreludeUseTotal.Tag3(hex("ff")))
+    assertEquals(PreludeUse.encodeBytes(value), bytes)
+  }
 
   // Integer-keyed maps, preserved bytes ----------------------------------------------------------------------
 
