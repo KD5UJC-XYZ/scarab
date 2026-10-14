@@ -150,7 +150,8 @@ class CodecSuite extends ScalaCheckSuite:
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
-  // the Byron ledger state (UTxO, delegation, update system) carried in NodeState.
+  // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
+  // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
   private val GoldenInitialState =
-    ("1effccf563e8c6192ab709b3da9915c1abf63ef18be122a9e001239cb89bdca5", 3154)
-  private val GoldenFingerprint = "b572d8e64e513021"
+    ("228a41672061e4a01954a3a41c706932aa13f0e89185fc5c6636796b56428a4a", 3158)
+  private val GoldenFingerprint = "2293c5cf7bb77492"

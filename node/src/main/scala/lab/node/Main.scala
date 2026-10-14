@@ -35,8 +35,9 @@ import scala.concurrent.duration.*
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
-  * [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge
-  * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--dump-state <dir> [--dump-state-at
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -68,7 +69,15 @@ object Main extends IOApp:
       readAhead: Int = 64,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
         */
-      cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors())
+      cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors()),
+      /** `--dump-state <dir> [--dump-state-at epoch-boundaries|epoch-boundaries/N|<slot,slot,...>]`:
+        * write a ledger-state digest ([[StateDump]]) at those points, for the db-analyser
+        * comparison.
+        */
+      dumpState: Option[(Path, StateDump.Targets)] = None,
+      /** `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
+        */
+      dumpStateFull: Boolean = false
   )
 
   /** What the chain database (or its absence) hands the node at start. */
@@ -174,6 +183,15 @@ object Main extends IOApp:
         java.nio.file.Files.createDirectories(dir)
         tools.PlutusCases(dir, perKind = 2, max = 400)
       }
+      dumper <- options.dumpState.traverse { (dir, targets) =>
+        StateDump.Dumper.create[IO](
+          dir,
+          targets,
+          Some(store),
+          json => IO.println(json.noSpaces),
+          options.dumpStateFull
+        )
+      }
       rules = NodeRules[IO](
         setup.praos,
         setup.globals,
@@ -181,8 +199,9 @@ object Main extends IOApp:
         phase2Observer = cases.map(c => c.observe),
         utxoStore = Some(store),
         compute = Some(scheduling.compute),
-        afterBlock = Some { s =>
+        afterBlock = Some { (header, s) =>
           IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
+            dumper.traverse_(_.afterBlock(header, s)) *>
             praosConfig
               .update(c => c.copy(geometry = s.geometry(c.geometry)))
               .whenA(s.byron.firstShelleyEpoch.isDefined) *>
@@ -433,7 +452,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -450,6 +469,8 @@ object Main extends IOApp:
     "utxo-cache-mb",
     "read-ahead",
     "cpu-threads",
+    "dump-state",
+    "dump-state-at",
     "local-socket",
     "vrf-skey",
     "kes-skey",
@@ -469,6 +490,9 @@ object Main extends IOApp:
         case "--forge" :: tail =>
           if acc.contains("forge") then bad("duplicate flag --forge")
           else go(tail, acc.updated("forge", List("true")))
+        case "--dump-state-full" :: tail =>
+          if acc.contains("dump-state-full") then bad("duplicate flag --dump-state-full")
+          else go(tail, acc.updated("dump-state-full", List("true")))
         case "--peer" :: value :: tail =>
           go(tail, acc.updated("peer", acc.getOrElse("peer", Nil) :+ value))
         case flag :: value :: tail if flag.startsWith("--") =>
@@ -522,6 +546,15 @@ object Main extends IOApp:
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
               _.toIntOption.filter(_ >= 0).toRight(usage)
             )
+          dump <- flags.get("dump-state").traverse { d =>
+            flags
+              .get("dump-state-at")
+              .fold(Right(StateDump.Targets.EpochBoundaries(1)))(t =>
+                StateDump.Targets.parse(t).toRight(usage)
+              )
+              .map(Path.of(d) -> _)
+          }
+          _ <- Either.cond(dump.isDefined || !flags.contains("dump-state-at"), (), usage)
         yield Options(
           dir,
           peers,
@@ -538,6 +571,8 @@ object Main extends IOApp:
           utxoKind,
           cacheMb,
           readAhead,
-          cpuThreads
+          cpuThreads,
+          dump,
+          flags.contains("dump-state-full")
         )
       case _ => Left(usage)

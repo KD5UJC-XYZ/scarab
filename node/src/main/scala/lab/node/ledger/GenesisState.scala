@@ -104,7 +104,9 @@ object GenesisState:
             ByronLedger.genesisUtxo(avvm, nonAvvm, files.byronNetworkMagic).leftMap(ConfigError(_))
           )
       )(Right(_))
-      byronFunds <- byronEntries.toVector.traverse { (in, out) =>
+      // Some testnets (Preview) inject Byron outputs of zero lovelace; the ledger's Byron to Shelley
+      // translation drops them (`translateUTxOByronToShelley`), so the Shelley UTxO never holds them.
+      byronFunds <- byronEntries.toVector.filter(_._2.value != 0).traverse { (in, out) =>
         Address
           .decode(out.address)
           .leftMap(ConfigError(_))

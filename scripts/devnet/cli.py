@@ -20,6 +20,9 @@
                                    era transition was followed with no validation error
     devnet.py refused-fixture      write fixtures/devnet/refused-txs.jsonl from a finished
                                    `soak --governance-extended` run directory
+    devnet.py oracle               compare the Scala node's epoch-boundary state digests (written by
+                                   `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
+                                   Haskell ledger state db-analyser stores in the reference container
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>. The Scala node shares the
@@ -30,6 +33,7 @@ from .cluster import down, tip, up, up_eras
 from .compare import compare
 from .follower import follow
 from .load import govload, load
+from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.ntc import ntc
@@ -80,6 +84,9 @@ def main():
     e2.add_argument("--no-compare", action="store_true", help="skip the per-era ledger comparisons")
     e2.add_argument("--min-comparisons", type=int, default=3,
                     help="matched ledger comparisons required in each Shelley-based era")
+    e2.add_argument("--oracle", action="store_true",
+                    help="the follower writes a state digest at every epoch boundary; afterwards db-analyser "
+                         "states of the reference node are compared with them (needs a reference container still up)")
     e2.set_defaults(run=e2e, shelley_epochs=3, min_utxo_value=1_000_000, pool_margin="0.1", cross_rewards=True)
     t = sub.add_parser("tip", help="print the reference tip as JSON")
     t.add_argument("--node", type=int, default=1, help="reference node 1..3")
@@ -87,6 +94,8 @@ def main():
     f = sub.add_parser("follow", parents=[scala_options], help="run the Scala follower against a reference node (logs to the run dir)")
     f.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
+    f.add_argument("--dump-state", action="store_true",
+                   help="write a ledger-state digest at every epoch boundary to <run dir>/dump (for `oracle`)")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
@@ -114,6 +123,8 @@ def main():
     sk.add_argument("--seed", type=int, default=1, help="random seed of the load")
     sk.add_argument("--governance-extended", action="store_true",
                     help="the governance load also runs the extended scenarios (about 16 epochs of 500 slots; use --seconds 900)")
+    sk.add_argument("--oracle", action="store_true",
+                    help="follower writes epoch-boundary state digests; compared with db-analyser at the end")
     sk.set_defaults(run=soak)
     rl = sub.add_parser("relay", parents=[scala_options], help="Scala node as a relay serving a Haskell relay; load through the relay")
     rl.add_argument("--seconds", type=int, default=300, help="load phase length")
@@ -152,6 +163,8 @@ def main():
                                                 "`soak --governance-extended`")
     rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")
     rf.set_defaults(run=refused_fixture)
+    sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
+                   ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
     args = p.parse_args()
     args.name = args.name or ("csl-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "csl-pool" if args.command == "pool" else "csl-devnet")

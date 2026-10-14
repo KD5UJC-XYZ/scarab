@@ -217,7 +217,9 @@ object Mir:
 
 /** Era translation into Conway at the epoch boundary where the protocol version reaches 9. The
   * Conway-only parameters come from the Conway genesis; the DRep state starts empty and the
-  * pre-Conway update, delegation and pointer state is dropped. Unverified against a reference node.
+  * pre-Conway update, instantaneous reward and pointer state is dropped. The genesis delegations
+  * stay in the delegation state, unused, as in the reference node (found by the db-analyser
+  * comparison, roadmap K1, which also checks the rest of this translation).
   */
 object Translate:
   def toConway(state: LedgerState, globals: LedgerGlobals): LedgerState =
@@ -242,7 +244,6 @@ object Translate:
     )
     val translated = state.copy(
       params = params,
-      genDelegs = Map.empty,
       futureGenDelegs = Vector.empty,
       ppup = Ppup.empty,
       mir = InstantRewards.empty,

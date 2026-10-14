@@ -126,9 +126,13 @@ class ByronPreprodSuite extends FunSuite:
     )
   }
 
-  test("the Shelley ledger starts from the Byron UTxO: the eight genesis balances") {
+  test(
+    "the Shelley ledger starts from the Byron UTxO; the zero-lovelace genesis outputs are dropped"
+  ) {
     val ledger = states(byronCount + 1).ledger
-    assertEquals(ledger.utxo.size, 8)
+    // Eight genesis balances, seven of them zero lovelace: the ledger's Byron to Shelley translation
+    // (`translateUTxOByronToShelley`) drops those, as the Haskell node does on Preview.
+    assertEquals(ledger.utxo.size, 1)
     val byronTotal = states(byronCount).byron.ledger.get.utxo.values.map(_.value).sum
     assertEquals(ledger.utxo.coin, byronTotal)
     assertEquals(ledger.reserves, setup.genesis.maxLovelaceSupply - byronTotal)
