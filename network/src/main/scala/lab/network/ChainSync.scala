@@ -127,7 +127,7 @@ object ChainSync:
     try
       val reader = new ChainSyncWire.Reader(bytes, limits)
       val value = body(reader)
-      get(validateItem(Bytes(bytes.value.take(reader.position)), limits))
+      get(validateItem(bytes.take(reader.position), limits))
       DecodeResult.Decoded(value, reader.position)
     catch
       case Failure(_, true)        => DecodeResult.NeedMore

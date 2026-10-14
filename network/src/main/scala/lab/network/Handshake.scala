@@ -201,7 +201,7 @@ object Handshake:
     try
       val parser = new Parser(bytes)
       val term = parser.term(0)
-      Right((message(suite, state, term), Bytes(bytes.value.drop(parser.position))))
+      Right((message(suite, state, term), bytes.drop(parser.position)))
     catch case Failure(e) => Left(e)
   def decode(suite: Suite, state: State, bytes: Bytes): Either[DecodeError, Message] =
     decodePrefix(suite, state, bytes).flatMap { case (m, rest) =>
@@ -286,10 +286,10 @@ object Handshake:
     private def read(): Int =
       if pos >= MaxMessageBytes then bad("handshake byte limit exceeded")
       if pos >= input.size then throw Failure(DecodeError("incomplete CBOR", incomplete = true))
-      val b = input.value(pos) & 255
+      val b = input(pos) & 255
       pos += 1
       b
-    private def peekBreak: Boolean = pos < input.size && (input.value(pos) & 255) == 255
+    private def peekBreak: Boolean = pos < input.size && (input(pos) & 255) == 255
     private def argument(ai: Int): BigInt =
       if ai < 24 then BigInt(ai)
       else

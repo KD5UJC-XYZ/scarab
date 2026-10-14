@@ -79,7 +79,7 @@ object Mux:
   ): Either[String, Header] =
     if bytes.size != HeaderBytes then Left("mux header must contain exactly 8 bytes")
     else
-      def u(index: Int): Int = bytes.value(index) & 0xff
+      def u(index: Int): Int = bytes(index) & 0xff
       val timestamp = (u(0).toLong << 24) | (u(1).toLong << 16) | (u(2).toLong << 8) | u(3).toLong
       val protocol = (u(4) << 8) | u(5)
       val header = Header(
@@ -91,7 +91,7 @@ object Mux:
       validate(header, maxPayloadBytes).map(_ => header)
 
   def encode(sdu: Sdu): Either[String, Bytes] =
-    encodeHeader(sdu.header).map(header => Bytes(header.value ++ sdu.payload.value))
+    encodeHeader(sdu.header).map(header => header ++ sdu.payload)
 
   /** Exact single-frame decode; trailing bytes are an error. For a stream use Decoder. */
   def decode(
@@ -99,7 +99,7 @@ object Mux:
       maxPayloadBytes: Int = WireMaxPayloadBytes
   ): Either[String, Sdu] =
     for
-      header <- decodeHeader(Bytes(bytes.value.take(HeaderBytes)), maxPayloadBytes)
+      header <- decodeHeader(bytes.take(HeaderBytes), maxPayloadBytes)
       _ <- Either.cond(
         bytes.size == HeaderBytes + header.payloadLength,
         (),
@@ -109,7 +109,7 @@ object Mux:
       header.timestamp,
       header.protocol,
       header.direction,
-      Bytes(bytes.value.drop(HeaderBytes))
+      bytes.drop(HeaderBytes).compact
     )
 
   /** Segment one bounded handshake message. Timestamp is supplied explicitly; it is a remote wire
@@ -133,10 +133,8 @@ object Mux:
         Header(timestamp, protocol, direction, math.min(payload.size, maxPayloadBytes)),
         maxPayloadBytes
       )
-    yield payload.value
-      .grouped(maxPayloadBytes)
-      .map(part => Sdu(timestamp, protocol, direction, Bytes(part)))
-      .toVector
+    yield (0 until payload.size by maxPayloadBytes).toVector
+      .map(from => Sdu(timestamp, protocol, direction, payload.slice(from, from + maxPayloadBytes)))
 
   /** General bounded segmentation; message and SDU limits are independent. */
   def segmentBounded(
@@ -181,10 +179,8 @@ object Mux:
         Header(timestamp, protocol, direction, math.min(payload.size, maxPayloadBytes)),
         maxPayloadBytes
       )
-    yield payload.value
-      .grouped(maxPayloadBytes)
-      .map(part => Sdu(timestamp, protocol, direction, Bytes(part)))
-      .toVector
+    yield (0 until payload.size by maxPayloadBytes).toVector
+      .map(from => Sdu(timestamp, protocol, direction, payload.slice(from, from + maxPayloadBytes)))
 
   /** Immutable partial-frame state. Failed feeds publish neither state nor partially decoded
     * output. An empty feed is a no-op, not EOF; finish explicitly verifies EOF. Retained data is at
@@ -193,9 +189,9 @@ object Mux:
     */
   final class Decoder private (
       val limits: Limits,
-      private val partialHeader: Vector[Byte],
+      private val partialHeader: Bytes,
       private val activeHeader: Option[Header],
-      private val partialPayload: Vector[Byte]
+      private val partialPayload: Bytes
   ):
     def pendingBytes: Int =
       partialHeader.size + activeHeader.fold(0)(_ => HeaderBytes) + partialPayload.size
@@ -215,17 +211,17 @@ object Mux:
           header match
             case None =>
               val count = math.min(HeaderBytes - headerBytes.size, bytes.size - offset)
-              headerBytes = headerBytes ++ bytes.value.slice(offset, offset + count)
+              headerBytes = headerBytes ++ bytes.slice(offset, offset + count)
               offset += count
               if headerBytes.size == HeaderBytes then
-                decodeHeader(Bytes(headerBytes), limits.maxPayloadBytes) match
+                decodeHeader(headerBytes, limits.maxPayloadBytes) match
                   case Left(reason) => error = Some(reason)
                   case Right(decoded) =>
                     header = Some(decoded)
-                    headerBytes = Vector.empty
+                    headerBytes = Bytes.empty
             case Some(current) =>
               val count = math.min(current.payloadLength - payload.size, bytes.size - offset)
-              payload = payload ++ bytes.value.slice(offset, offset + count)
+              payload = payload ++ bytes.slice(offset, offset + count)
               offset += count
               if payload.size == current.payloadLength then
                 if emitted >= limits.maxFramesPerFeed then
@@ -235,10 +231,10 @@ object Mux:
                     current.timestamp,
                     current.protocol,
                     current.direction,
-                    Bytes(payload)
+                    payload
                   )
                   emitted += 1
-                  payload = Vector.empty
+                  payload = Bytes.empty
                   header = None
         error match
           case Some(reason) => Left(reason)
@@ -255,4 +251,4 @@ object Mux:
         _ <- validPayloadLimit(limits.maxPayloadBytes)
         _ <- Either.cond(limits.maxInputBytes > 0, (), "invalid mux input byte limit")
         _ <- Either.cond(limits.maxFramesPerFeed > 0, (), "invalid mux frame count limit")
-      yield new Decoder(limits, Vector.empty, None, Vector.empty)
+      yield new Decoder(limits, Bytes.empty, None, Bytes.empty)

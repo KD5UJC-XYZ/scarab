@@ -21,7 +21,9 @@ pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are di
 | Layer | Where | Style |
 |---|---|---|
 | Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
-| Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network-runtime` |
+| Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network-runtime`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
+| Header-first | `HeaderGate.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
+| Connections | `InboundGovernor.scala`, `Outbound.scala`, `network-runtime/ConnectionManager.scala`, `network/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per peer address, limits, typed refusals), the governor that runs our clients on inbound duplex connections, and the outbound dialler that reuses them (G2) |
 | Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
@@ -35,7 +37,7 @@ pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are di
 | Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
 | Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
 | Forging | `forge/`, `Follower.adoptForged`, `core/.../vrf/Draft03Prover`, `core/.../kes/Sum6KesSigning` | Praos block production |
-| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator), `GET /scheduling` |
+| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator), `GET /scheduling`, `GET /connections` (connection table and inbound sessions) |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
 staking) is read from the genesis files; nothing assumes a particular network. Ledger arithmetic
@@ -47,7 +49,9 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 
 | Algebra | Role | Interpreters |
 |---|---|---|
-| `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP (pipelined), scripted peers in tests |
+| `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP or over any negotiated connection (pipelined), scripted peers in tests |
+| `HeaderRules[S, H]`, `HeaderCheck[F]` | forecast the ledger view and validate a header against it; per session, validate each batch before it is fetched | `NodeHeaderRules` (pure), `HeaderCheck.forChain` (the gate over the node's chain), `HeaderCheck.none` |
+| `ConnectionManager[F]` | one connection per peer address, limits, accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
 | `BlockRules[F, S]` | validate and apply one block to a state | `NodeRules` (full ledger), bootstrap mode (headers only) |
 | `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
 | `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
@@ -75,7 +79,8 @@ Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled 
 
 | ADT | Meaning | Handling |
 |---|---|---|
-| `PeerError` | the peer misbehaved or the connection failed; recoverable | `Follower.supervise` reconnects |
+| `PeerError` | the peer misbehaved or the connection failed (`Handshake`, `Protocol`, `Unavailable`, `InvalidHeader`: a header broke a header rule, G6); recoverable | `Follower.supervise` reconnects; on an inbound connection the governor drops the peer for `Protocol` and `InvalidHeader` |
+| `ConnectionError` (`network-runtime`) | the connection manager refused: `InboundLimit`, `OutboundLimit`, `AlreadyConnected`, `IllegalTransition` (G2) | a refusal of an inbound connection closes it; an outbound one becomes `PeerError.Unavailable` and is retried |
 | `ChainError` | chain-level inconsistency (for example a candidate that no longer joins our chain) | per-session or fatal |
 | `ValidationError(point, rule, reason)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
 | `StorageError` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
@@ -89,6 +94,7 @@ in the [roadmap](roadmap.md) (M2).
 
 ```
 peer(s) --ChainSync headers--> candidate chain (per session)
+        --HeaderGate: header rules against a forecast ledger view (G6; invalid: drop the peer, fetch nothing)-->
         --BlockFetch ranges--> Verification.warm (parallel Ed25519 / opcert / KES / VRF verdicts)
                                       |
                                       v
@@ -465,8 +471,8 @@ queued has been written, used so that a handshake refusal is not lost when the c
 reports the agreed data. `initiatorOnly` in the agreed data is false only if both sides allow a
 duplex connection. `NodeToNode.over(..., serve = Some(handlers))` offers InitiatorAndResponder and
 runs our servers next to our clients when the peer agrees; `NodeToNodeServer.accept` is the inbound
-side (the node's inbound connections are served, and duplex is accepted, but it does not start
-clients on them).
+side: the node's inbound connections are served, and on a duplex one the inbound governor also
+runs our clients (see "Connections" below).
 
 **Servers.** `ChainSyncServer.run` answers FindIntersect and RequestNext in order (so pipelining
 clients work), sends AwaitReply at the tip and then waits for the chain to change. It reads through
@@ -522,6 +528,112 @@ keeps failing is retried forever, with one it is fatal after 30 attempts), `--li
 inbound server, `--local-socket` the local one, `--mempool-bytes` sets the capacity. The followed
 peers get our mempool through TxSubmission2. The JSON log gains `listening`, `inbound`,
 `mempoolAdded`, `mempoolRejected`, `mempoolAdopted`, `mempoolDropped` and `mempoolSynced`.
+
+## Connections: the manager and the inbound governor (G2)
+
+A peer that connects to us is also a source of blocks. Before this, an inbound duplex connection
+(InitiatorAndResponder) was accepted and served, but only the connections the node opened ran our
+clients. Now:
+
+**`ConnectionState`** (`network`, pure). The life of one connection: `Reserved` (an outbound slot
+is taken), `Unnegotiated(provenance)`, `Established(provenance, flow)` with the flow the handshake
+agreed (`Unidirectional` or `Duplex`), `Terminating`, `Terminated`; `transition(state, event)`
+allows `Connected`, `Negotiated(flow)`, `Close` (from any live state, idempotent) and `Released`
+and returns a typed `Illegal` for anything else. `canRunClients` is the rule for who may run our
+clients: every established outbound connection and an inbound one that agreed duplex. `Counters.of`
+gives inbound, outbound, duplex and established counts from a table. `ConnectionStateSuite`
+checks the transitions, the idempotent close, that nothing but `Close`/`Released` is allowed once
+terminating, and the counters.
+
+**`ConnectionManager`** (`network-runtime`). A `Ref` table from the peer's socket address to its
+connection. `inbound(remote)` and `outbound(remote)` are `Resource`s: admission is atomic with the
+checks (one live connection per address in either direction, `maxInbound` and `maxOutbound`), the
+refusals are typed (`ConnectionError.InboundLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
+through `Raise`, and releasing the resource, however it ends (normally, by failure or by
+cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot
+leak. Every change of state is reported (`ConnectionEvent`, logged as `connection` lines);
+`lookup` lets a caller wait for a connection to end; `snapshot` is the table for `GET /connections`.
+A peer that dials from its own listening port (the reference node does) is thereby the same
+address we would dial; one that dials from an ephemeral port is not recognised as the peer we also
+dial (the limits still apply).
+
+**`InboundGovernor`** (`node`). `serve(bearer, remote)` is the inbound handler of `--listen`: it
+admits the connection to the manager, runs `NodeToNodeServer.accept` (handshake, our servers) and,
+when the handshake agreed duplex and `--inbound-sync` is on, starts in the `negotiated` hook the
+same pieces that run on a connection we open: `NodeToNode.clients` (ChainSync, BlockFetch,
+KeepAlive and the TxSubmission2 client on the side of the mini-protocols that is ours), then
+`Peer.over` (the pipelined producer, header-first validation, ranges of blocks) and the follower
+session of `Follower`, so the peer's chain competes in chain selection like any other candidate.
+The session is a background fiber of the connection: when the multiplexer closes the clients, the
+producer and every supervised fiber are released with it. A session that ends because the peer broke
+the protocol or announced an invalid header aborts the connection; one that ends for any other reason
+(the peer does not serve ChainSync, say) leaves the serving side running. Each session counts the
+headers and rollbacks it saw and the peer's tip (`GET /connections`, `inbound` log events
+`accepted`, `duplex`, `following`, `sessionEnded`, `sessionDropped`, `closed`).
+
+**Outbound.** `Outbound.connect` puts the connections we open through the same manager. If the
+peer we are asked to dial already has a duplex connection to us on which our client runs, no second
+connection is opened: the dialler waits until that connection ends (the `reused` log event) and then
+dials; a manager refusal is a `PeerError.Unavailable`, which the supervisor retries. Connections we
+open still offer initiator-only: a peer we dial is not served over that connection.
+
+Tests: `ConnectionManagerSuite` (admission, one connection per address, limits per direction,
+release after failure and cancellation, illegal events, waiting for a connection to end, and a
+model-based property over random open/negotiate/release sequences that checks the counters against
+the table and the limits after every step); `InboundGovernorSuite` (a duplex peer that only connects
+to us over in-memory bearers is followed to its tip and its blocks applied; an initiator-only peer is
+served and not followed; a second connection from one address is refused; the table is empty again
+when the peer lets go). The devnet `relay` scenario asserts it against the reference node (see
+[running.md](running.md)).
+
+## Header-first validation (G6)
+
+A header is checked before its block is wanted, as the ouroboros-consensus ChainSync client does
+(`Ouroboros.Consensus.MiniProtocol.ChainSync.Client`). In the pipelined peer each batch of
+ChainSync instructions passes the session's `HeaderGate` before any block of the batch is requested;
+a header that breaks a rule raises `PeerError.InvalidHeader` (the point and a closed `HeaderError`:
+`Envelope`, `Praos`, `TPraos`, `Structure`), which ends the session and disconnects the peer, and no
+block of that batch is fetched. The candidate chain of a session is thereby a chain of validated
+headers (`HeaderChain`: the join point, the header state there and the header state after every
+header announced since, with rollbacks and pruning).
+
+**What is checked** (`NodeHeaderRules`, pure; the same functions `NodeRules` uses when it applies
+the block): the envelope (era for the epoch, protocol version, header and body size against the
+parameters), then for Praos the VRF key and proof, the leader threshold, the operational
+certificate and KES signature and the certificate counter, and for TPraos the overlay schedule, both
+VRF proofs, the threshold, the certificate and counter; the nonces evolve along the header chain
+(`PraosState` is the header state). The result is compared with the state the block rules reach in
+`HeaderRulesSuite`, for every header of a forged chain and from any anchor a few blocks behind.
+
+**The ledger view is forecast** from the newest ledger state of ours on the peer's chain (the
+`anchor`), valid within the stability window of the anchor's tip (`3k/f` slots, upstream's
+`forecastFor` horizon): in the anchor's epoch the pool distribution, parameters and genesis
+delegations are the anchor's (a genesis delegation that becomes due on the way is adopted); in the
+next epoch the pool distribution is the anchor's newest stake snapshot (`mark`, which the boundary only
+rotates into place) and, for TPraos, `d` and the extra entropy come from the update proposals the
+boundary would adopt. A header beyond the horizon waits (`Outcome.Later`) until the node's chain has
+advanced, and the session ends if the chain stands still for two minutes. The protocol-parameter
+envelope checks are left to the block's own validation for a header of a later epoch than the anchor's
+(the boundary, which can enact a version change, is not run for a forecast).
+
+**What is not checked header-first** (counted as `unchecked` in the `headersChecked` log line, the
+block is validated as before when it is applied): Byron headers (their PBFT checks need the Byron
+delegation state), the first Shelley header of a chain with a Byron prefix (the Shelley ledger does
+not exist before that block), and every header on a node run with `--header-first off`.
+
+**Cost.** The signatures are verified once. The gate's view of the `VerificationCache`
+(`forHeaders`) computes a verdict if it is not there and keeps it; the block's own validation, later,
+consumes the same verdict, and `warmBlock` no longer overwrites a verdict that is already there. The
+signatures of a batch's headers are verified in parallel before the rules fold over them
+(`VerificationCache.warmHeaders`). The measurement is in [performance.md](performance.md).
+
+Tests: `HeaderRulesSuite` (valid forged headers validate to the state the block gives, including across
+an epoch boundary; a property over eight kinds of tampered header; envelope, counter, horizon and
+structure cases), `HeaderGateSuite` (model rules: counting, an invalid header, a header that does
+not extend the chain, rollbacks inside the candidate and below the join point, waiting for the chain
+and giving up when it stands still, `HeaderChain` as a model), and `InboundGovernorSuite` (a header with a
+broken signature drops the peer and the peer's block-fetch server is never asked for a block; when it
+is the last header, only the batches before it were fetched).
 
 ## Node-to-client (`--local-socket`)
 

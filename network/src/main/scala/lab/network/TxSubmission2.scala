@@ -52,11 +52,11 @@ object TxSubmission2:
   def bodyId(original: Bytes): Either[String, Bytes] = attempt {
     get(advertisedSize(original.size))
     val r = new ProtocolWire.Reader(original, wire.copy(maxMessageBytes = MaxOriginalBytes))
-    val indefinite = (original.value.head & 255) == 0x9f
+    val indefinite = (original(0) & 255) == 0x9f
     if indefinite then r.read()
     else if r.arrayLength() != 4 then bad("expected four-member Conway transaction")
     val body = r.item()
-    if body.size == 0 || (body.value.head & 0xe0) != 0xa0 then bad("transaction body is not a map")
+    if body.size == 0 || (body(0) & 0xe0) != 0xa0 then bad("transaction body is not a map")
     r.item()
     val validity = r.read()
     if validity != 0xf4 && validity != 0xf5 then bad("transaction validity is not a Boolean")
@@ -120,7 +120,7 @@ object TxSubmission2:
         var n = 0
         def ended: Boolean =
           if r.position >= bytes.size then throw ProtocolWire.Failure("truncated list", true)
-          (bytes.value(r.position) & 255) == 0xff
+          (bytes(r.position) & 255) == 0xff
         while !ended do
           if n >= MaxBatch then bad("batch limit exceeded")
           out += f(); n += 1

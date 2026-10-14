@@ -168,7 +168,7 @@ object BlockFetch:
         case 5 => Message.BatchDone
         case _ => bad("unknown BlockFetch tag")
       get(transition(state, sender, message))
-      get(ProtocolWire.validateItem(Bytes(bytes.value.take(r.position)), bounds))
+      get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
       DecodeResult.Decoded(message, r.position)
     catch
       case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore
