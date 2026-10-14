@@ -589,6 +589,9 @@ class EraTransitionSuite extends CatsEffectSuite:
     given cats.mtl.Raise[IO, ValidationError] = new cats.mtl.Raise[IO, ValidationError]:
       def functor = cats.Functor[IO]
       def raise[E2 <: ValidationError, A](e: E2): IO[A] = IO.raiseError(RuntimeException(e.message))
+    given cats.mtl.Raise[IO, StorageError] = new cats.mtl.Raise[IO, StorageError]:
+      def functor = cats.Functor[IO]
+      def raise[E2 <: StorageError, A](e: E2): IO[A] = IO.raiseError(RuntimeException(e.message))
     val rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
     def apply(chain: VolatileChain[NodeState], range: Range): IO[VolatileChain[NodeState]] =
       range.toList.foldLeftM(chain) { (c, i) =>
@@ -626,13 +629,13 @@ class EraTransitionSuite extends CatsEffectSuite:
       .allow[NodeError] {
         val program =
           for
-            store <- storage.MemoryUtxoStore[IO]
+            store <- storage.MemoryLedgerStore[IO]
             cache = VerificationCache.unsafe(4)
             rules = NodeRules[IO](
               setup.praos.copy(verdicts = cache),
               setup.globals,
               setup.byronRules,
-              utxoStore = Some(store),
+              ledgerStore = Some(store),
               afterBlock =
                 Some(s => IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
             )
@@ -640,11 +643,12 @@ class EraTransitionSuite extends CatsEffectSuite:
               cache.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
                 batch.toVector.foldLeftM(state) { (s, i) =>
                   rules(s, headers(i), raws(i))
-                    .flatTap(n => storage.UtxoStore.advance(store, n.ledger.utxo))
+                    .flatTap(n => storage.LedgerStore.advance(store, n.ledger))
                 }
             }
             all <- storage.UtxoStore.materialize(store, last.ledger.utxo)
-          yield (last, all)
+            tables <- storage.LedgerStore.materialize(store, last.ledger)
+          yield (last.copy(ledger = tables.logical), all)
 
         program.map(_.asRight[NodeError])
       }
@@ -658,7 +662,7 @@ class EraTransitionSuite extends CatsEffectSuite:
         assertEquals(last.ledger.utxo.count, expected.ledger.utxo.count)
         assertEquals(
           last.ledger.copy(utxo = ledger.Utxo.empty),
-          expected.ledger.copy(utxo = ledger.Utxo.empty)
+          expected.ledger.logical.copy(utxo = ledger.Utxo.empty)
         )
         assertEquals(last.praos, expected.praos)
         assertEquals(last.boot, expected.boot)

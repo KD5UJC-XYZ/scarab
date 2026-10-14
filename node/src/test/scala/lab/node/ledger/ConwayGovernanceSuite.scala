@@ -82,9 +82,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       val utxo = (stakeUtxos :+ (fundIn -> out(payer.address(), fundCoin))).toMap
       val base = state(pv, utxo.toVector).copy(
         params = params,
-        accounts = accounts,
-        pools = poolStates,
-        dreps = drepStates,
+        accounts = accountTable(accounts),
+        pools = poolTable(poolStates),
+        dreps = drepTable(drepStates),
         treasury = 100000 * ada,
         epoch = 5,
         gov = GovState.empty.copy(committee = Some(Committee(Map.empty, Rational.zero)))
@@ -672,13 +672,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         result.foreach(r => st = ok(r))
         assertEquals(st.s.total, Supply)
         assertEquals(st.s.deposited, Epoch.obligation(st.s))
-        st.s.accounts.foreach { case (c, a) =>
+        st.s.accounts.toMap.foreach { case (c, a) =>
           a.drep.foreach {
             case DRep.Registered(d) => assert(st.s.dreps(d).delegs.contains(c))
             case _                  => ()
           }
         }
-        st.s.dreps.foreach { case (d, state) =>
+        st.s.dreps.toMap.foreach { case (d, state) =>
           state.delegs.foreach(c => assertEquals(st.s.accounts(c).drep, Some(DRep.Registered(d))))
         }
       }

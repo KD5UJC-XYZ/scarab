@@ -328,7 +328,8 @@ class ConwayRulesSuite extends FunSuite:
     val in = txIn(1)
     val base = withUtxo(conway, Vector(in -> out(alice.address(), 100 * ada)))
     val s = base.copy(
-      accounts = Map(Credential.Script(script.hash) -> Account(5 * ada, 2 * ada, None, None)),
+      accounts =
+        accountTable(Map(Credential.Script(script.hash) -> Account(5 * ada, 2 * ada, None, None))),
       deposited = 2 * ada,
       reserves = base.reserves - 7 * ada
     )
@@ -358,7 +359,7 @@ class ConwayRulesSuite extends FunSuite:
     def world(drep: Option[DRep], pv: Int) =
       base.copy(
         params = base.params.copy(protocolMajor = pv),
-        accounts = Map(staker.credential -> Account(3 * ada, 2 * ada, None, drep)),
+        accounts = accountTable(Map(staker.credential -> Account(3 * ada, 2 * ada, None, drep))),
         deposited = 2 * ada,
         reserves = base.reserves - 5 * ada
       )
@@ -381,7 +382,7 @@ class ConwayRulesSuite extends FunSuite:
     val staker = key()
     val s = s0.copy(
       params = s0.params.copy(govActionDeposit = 100 * ada),
-      accounts = Map(staker.credential -> Account(0, 2 * ada, None, None)),
+      accounts = accountTable(Map(staker.credential -> Account(0, 2 * ada, None, None))),
       deposited = 2 * ada,
       reserves = s0.reserves - 2 * ada
     )
@@ -453,8 +454,8 @@ class ConwayRulesSuite extends FunSuite:
     val s = s0.copy(
       params =
         s0.params.copy(govActionDeposit = 100 * ada, drepActivity = 20, govActionLifetime = 5),
-      accounts = Map(staker.credential -> Account(0, 2 * ada, None, None)),
-      dreps = Map(drep.credential -> DRepState(500 * ada, 30)),
+      accounts = accountTable(Map(staker.credential -> Account(0, 2 * ada, None, None))),
+      dreps = drepTable(Map(drep.credential -> DRepState(500 * ada, 30))),
       deposited = 502 * ada,
       reserves = s0.reserves - 502 * ada
     )

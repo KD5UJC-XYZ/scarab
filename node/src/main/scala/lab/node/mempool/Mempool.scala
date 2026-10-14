@@ -7,8 +7,10 @@ import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import lab.cbor.Bytes
 import lab.network.runtime.{TxSubmissionClient, TxSubmissionServer}
-import lab.node.ledger.LedgerState
-import lab.node.storage.UtxoStore
+import cats.mtl.Raise
+import lab.node.StorageError
+import lab.node.ledger.{LedgerState, Table}
+import lab.node.storage.{LedgerStore, UtxoStore}
 
 /** Observable mempool milestones, for the JSON log. */
 enum MempoolEvent:
@@ -85,11 +87,11 @@ object Mempool:
       capacityBytes: Long,
       events: MempoolEvents[F],
       seenLimit: Int = 8192,
-      /** Where the UTxO entries outside the ledger state's diff live; the pool fetches the read set
-        * of each transaction from it, as the block path does.
+      /** Where the UTxO entries and ledger table rows outside the ledger state's diffs live; the
+        * pool fetches the read set of each transaction from it, as the block path does.
         */
-      utxoStore: Option[UtxoStore[F]] = None
-  ): F[Mempool[F]] =
+      ledgerStore: Option[LedgerStore[F]] = None
+  )(using Raise[F, StorageError]): F[Mempool[F]] =
     for
       state <- Ref.of[F, MempoolState](MempoolState.empty(ledger, tipSlot, capacityBytes))
       seen <- Ref.of[F, Seen](Seen(Set.empty, Vector.empty))
@@ -98,22 +100,32 @@ object Mempool:
     yield new Mempool[F]:
       private val F = Async[F]
 
+      // The rows fetched for a step are not kept: the state goes back to what the store settles.
+      private def settle(l: LedgerState): F[LedgerState] =
+        ledgerStore.fold(F.pure(l))(_.flushed.map(l.settled(_)))
+
       def add(raw: Bytes) = lock.lock.surround {
         for
           held <- state.get
           current <- MempoolState.parse(raw) match
             case Right((_, tx)) =>
               UtxoStore
-                .complete(utxoStore, held.current.utxo, UtxoStore.readSet(Some(tx)))
+                .complete(ledgerStore, held.current.utxo, UtxoStore.readSet(Some(tx)))
                 .map(u => held.copy(current = held.current.copy(utxo = u)))
             case Left(_) => F.pure(held)
-          result <- F.blocking(current.add(raw, env))
+          done <- LedgerStore.completingF(ledgerStore, current.current) { l =>
+            F.blocking(Table.guarded(current.copy(current = l).add(raw, env)))
+          }
+          result = done._2
           out <- result match
-            case Right((next, entry)) =>
-              state.set(next) *> version.update(_ + 1) *>
-                events
-                  .emit(MempoolEvent.Added(entry.id, entry.size, next.entries.size, next.bytes))
-                  .as(entry.id.asRight[Rejection])
+            case Right((added, entry)) =>
+              settle(added.current).flatMap { l =>
+                val next = added.copy(current = l)
+                state.set(next) *> version.update(_ + 1) *>
+                  events
+                    .emit(MempoolEvent.Added(entry.id, entry.size, next.entries.size, next.bytes))
+                    .as(entry.id.asRight[Rejection])
+              }
             case Left(reason) =>
               val id = reason match
                 case Rejection.AlreadyHeld(i) => Some(i)
@@ -139,12 +151,17 @@ object Mempool:
         for
           current <- state.get
           completed <- UtxoStore.complete(
-            utxoStore,
+            ledgerStore,
             ledger.utxo,
             UtxoStore.readSet(current.entries.map(_.tx))
           )
-          result <- F.blocking(current.sync(ledger.copy(utxo = completed), tipSlot, env))
-          (next, dropped) = result
+          done <- LedgerStore.completingF(ledgerStore, ledger.copy(utxo = completed)) { l =>
+            F.blocking(Table.guarded(current.sync(l, tipSlot, env)))
+          }
+          (synced, dropped) = done._2
+          base <- settle(synced.base)
+          now <- settle(synced.current)
+          next = synced.copy(base = base, current = now)
           _ <- state.set(next)
           (inBlock, invalid) = dropped.partition((entry, _) => adopted(entry.id))
           _ <- inBlock.traverse_ { (entry, _) =>

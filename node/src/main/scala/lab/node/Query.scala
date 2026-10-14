@@ -2,6 +2,7 @@
 package lab.node
 
 import cats.effect.{Async, Ref, Resource}
+import cats.mtl.Raise
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, Port}
 import fs2.io.net.Network
@@ -41,9 +42,10 @@ object Projection:
       Json.obj("slot" -> slot.value.asJson, "hash" -> hash.hex.asJson)
 
   def snapshot(s: Snapshot): Json = Json.obj(
-    "stake" -> coinMap(s.stake, _.render),
-    "delegations" -> Json.fromFields(s.delegations.toVector.sortBy(_._1.render).map { case (c, p) =>
-      c.render -> p.hex.asJson
+    "stake" -> coinMap(s.stake.toMap, _.render),
+    "delegations" -> Json.fromFields(s.delegations.toMap.toVector.sortBy(_._1.render).map {
+      case (c, p) =>
+        c.render -> p.hex.asJson
     }),
     "pools" -> s.pools.keys.map(_.hex).toVector.sorted.asJson
   )
@@ -283,7 +285,7 @@ object Projection:
       i.render -> txOut(o)
     }),
     "params" -> params(s.params),
-    "poolParams" -> Json.fromFields(s.pools.toVector.sortBy(_._1.hex).map { case (id, ps) =>
+    "poolParams" -> Json.fromFields(s.pools.toMap.toVector.sortBy(_._1.hex).map { case (id, ps) =>
       id.hex -> pool(ps.params)
     }),
     "futurePools" -> Json.fromFields(s.futurePools.toVector.sortBy(_._1.hex).map { case (id, pp) =>
@@ -314,7 +316,7 @@ object Projection:
     "deposited" -> s.deposited.asJson,
     "treasury" -> s.treasury.asJson,
     "reserves" -> s.reserves.asJson,
-    "accounts" -> Json.fromFields(s.accounts.toVector.sortBy(_._1.render).map { case (c, a) =>
+    "accounts" -> Json.fromFields(s.accounts.toMap.toVector.sortBy(_._1.render).map { case (c, a) =>
       c.render -> Json.obj(
         "balance" -> a.balance.asJson,
         "deposit" -> a.deposit.asJson,
@@ -322,11 +324,11 @@ object Projection:
         "drep" -> a.drep.map(_.render).asJson
       )
     }),
-    "pools" -> Json.fromFields(s.pools.toVector.sortBy(_._1.hex).map { case (id, ps) =>
+    "pools" -> Json.fromFields(s.pools.toMap.toVector.sortBy(_._1.hex).map { case (id, ps) =>
       id.hex -> Json.obj("deposit" -> ps.deposit.asJson, "vrf" -> ps.params.vrfKeyHash.hex.asJson)
     }),
     "retiring" -> coinMap(s.retiring, (b: Bytes) => b.hex),
-    "dreps" -> Json.fromFields(s.dreps.toVector.sortBy(_._1.render).map { case (c, d) =>
+    "dreps" -> Json.fromFields(s.dreps.toMap.toVector.sortBy(_._1.render).map { case (c, d) =>
       c.render -> Json.obj(
         "deposit" -> d.deposit.asJson,
         "expiry" -> d.expiry.asJson,
@@ -359,18 +361,19 @@ object QueryServer:
   def resource[F[_]: Async: Network](
       view: ChainView[F, NodeState],
       port: Int,
-      utxoStore: Option[lab.node.storage.UtxoStore[F]] = None,
+      utxoStore: Option[lab.node.storage.LedgerStore[F]] = None,
       /** The whole-run scheduling measurements, served at `/scheduling`. */
       scheduling: Option[F[Json]] = None
-  ): Resource[F, Server] =
+  )(using Raise[F, StorageError]): Resource[F, Server] =
     val dsl = Http4sDsl[F]
     import dsl.*
     // With the UTxO set in a backing store the state holds only its recent changes: the whole set
     // is put back together for the projection.
     def complete(s: NodeState): F[NodeState] = utxoStore.fold(Async[F].pure(s)) { store =>
-      lab.node.storage.UtxoStore.materialize(store, s.ledger.utxo).map { all =>
-        s.copy(ledger = s.ledger.copy(utxo = lab.node.ledger.Utxo.fromMap(all)))
-      }
+      for
+        all <- lab.node.storage.UtxoStore.materialize(store, s.ledger.utxo)
+        tables <- lab.node.storage.LedgerStore.materialize(store, s.ledger)
+      yield s.copy(ledger = tables.copy(utxo = lab.node.ledger.Utxo.fromMap(all)))
     }
     object SlotParam extends QueryParamDecoderMatcher[Long]("slot")
     object HashParam extends QueryParamDecoderMatcher[String]("hash")

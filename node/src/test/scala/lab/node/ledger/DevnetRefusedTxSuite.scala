@@ -117,7 +117,7 @@ class DevnetRefusedTxSuite extends FunSuite:
       }
     val start =
       withParams(state(context.int("protocolMajor"), Vector.empty), context.int("protocolMajor"))
-        .copy(pools = pools)
+        .copy(pools = poolTable(pools))
     val steps = scenario("vrf").filter(_.opt("label").isDefined)
     assert(steps.size >= 10, steps.size)
     steps.foldLeft(start) { (s, step) =>

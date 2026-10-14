@@ -9,9 +9,9 @@ import java.time.{Duration, Instant}
 import lab.cbor.Bytes
 import lab.node.*
 import lab.node.consensus.{Praos, PraosConfig, PraosState}
-import lab.node.ledger.{Epoch, LedgerGlobals, LedgerState}
+import lab.node.ledger.{Epoch, LedgerGlobals, LedgerState, Table}
 import lab.node.mempool.Mempool
-import lab.node.storage.UtxoStore
+import lab.node.storage.{LedgerStore, UtxoStore}
 import scala.concurrent.duration.*
 
 /** What the forger reports, for the JSON log and for tests. */
@@ -79,8 +79,10 @@ final class Forger[F[_]: Async](
     sleep: FiniteDuration => F[Unit],
     cache: Ref[F, Option[Forger.Crossed]],
     pending: Ref[F, Vector[Forger.Forged]],
-    /** The backing store of the UTxO set: the read set of the candidates is fetched from it. */
-    utxoStore: Option[UtxoStore[F]]
+    /** The backing store of the UTxO set and the ledger tables: the read set of the candidates and
+      * the rows the epoch boundary reads are fetched from it.
+      */
+    ledgerStore: Option[LedgerStore[F]]
 )(using chain: Stateful[F, VolatileChain[NodeState]], handle: Handle[F, NodeError]):
   private val F = Async[F]
   private val geometry = config.geometry
@@ -197,21 +199,18 @@ final class Forger[F[_]: Async](
         ticked.params.maxBlockExUnits
       )
       readable <- UtxoStore.complete(
-        utxoStore,
+        ledgerStore,
         ticked.utxo,
         UtxoStore.readSet(held.entries.map(_.tx))
       )
-      chosen <- F.blocking(
-        BlockBuilder.select(
-          ticked.copy(utxo = readable),
-          slot,
-          epoch,
-          geometry,
-          globals,
-          held.entries,
-          limits
+      selected <- LedgerStore.completingF(ledgerStore, ticked.copy(utxo = readable)) { l =>
+        F.blocking(
+          Table.guarded(
+            BlockBuilder.select(l, slot, epoch, geometry, globals, held.entries, limits)
+          )
         )
-      )
+      }
+      chosen = selected._2
       outcome <- build(
         current,
         tip,
@@ -351,12 +350,16 @@ final class Forger[F[_]: Async](
               )
             )
           )
-          c <- F.blocking {
-            val ledger = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
-              Epoch.boundary(s, e, globals)
+          crossed <- LedgerStore.completingF(ledgerStore, state.ledger) { start =>
+            F.blocking(
+              Table.guarded(
+                (state.ledger.epoch + 1 to epoch).foldLeft(start)((s, e) =>
+                  Epoch.boundary(s, e, globals)
+                )
+              )
             )
-            Forger.Crossed(key, ledger, Praos.tick(state.praos, epoch))
           }
+          c = Forger.Crossed(key, crossed._2, Praos.tick(state.praos, epoch))
           _ <- cache.set(Some(c))
         yield c
     }
@@ -411,7 +414,7 @@ object Forger:
       maxTipAge: Option[BigInt] = None,
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None,
-      utxoStore: Option[UtxoStore[F]] = None
+      ledgerStore: Option[LedgerStore[F]] = None
   )(using Stateful[F, VolatileChain[NodeState]], Handle[F, NodeError]): F[Forger[F]] =
     (Ref.of[F, Option[Crossed]](None), Ref.of[F, Vector[Forged]](Vector.empty)).mapN {
       (cache, pending) =>
@@ -428,7 +431,7 @@ object Forger:
           sleep.getOrElse(d => Async[F].sleep(d)),
           cache,
           pending,
-          utxoStore
+          ledgerStore
         )
     }
 

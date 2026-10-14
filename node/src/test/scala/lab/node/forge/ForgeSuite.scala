@@ -71,11 +71,7 @@ class ForgeSuite extends CatsEffectSuite:
       None
     )
     base.copy(
-      poolDistribution = Snapshot(
-        Map(cred -> BigInt(1000000)),
-        Map(cred -> p.id),
-        Map(p.id -> params)
-      )
+      poolDistribution = StakeDistribution(Map(p.id -> BigInt(1000000)), Map(p.id -> params))
     )
 
   private def nodeState(ledger: LedgerState): NodeState =

@@ -29,12 +29,13 @@ object ConwayEpoch:
   def freshPulser(s: LedgerState, epoch: BigInt): (PulsingSnapshot, RatifyState) =
     val deposits = s.gov.proposals.depositsByCredential
     val stake = Stake.instant(s)
+    val registeredDReps = s.dreps.toMap
     val drepDistr = s.accounts.iterator
       .flatMap { case (c, a) =>
         a.drep
           .flatMap {
             case d @ DRep.Registered(cred) =>
-              Option.when(s.dreps.contains(cred))(d)
+              Option.when(registeredDReps.contains(cred))(d)
             case other => Some(other)
           }
           .map(d => d -> (stake.getOrElse(c, BigInt(0)) + deposits.getOrElse(c, BigInt(0))))
@@ -43,23 +44,23 @@ object ConwayEpoch:
       .groupMapReduce(_._1)(_._2)(_ + _)
     val mark = s.snapshots.mark
     val base = mark.poolStake
-    val (poolDistr, totalPoolStake) = s.accounts.foldLeft((base, mark.activeStake)) {
+    val (poolDistr, totalPoolStake) = s.accounts.iterator.foldLeft((base, mark.activeStake)) {
       case (acc @ (dist, total), (c, a)) =>
         (a.pool, deposits.get(c)) match
           case (Some(pool), Some(d)) if dist.contains(pool) =>
             (dist.updated(pool, dist(pool) + d), total + d)
           case _ => acc
     }
-    val snapshot = PulsingSnapshot(s.gov.proposals.actions, drepDistr, s.dreps, poolDistr)
+    val snapshot = PulsingSnapshot(s.gov.proposals.actions, drepDistr, registeredDReps, poolDistr)
     val env = Ratify.Env(
       drepDistr = drepDistr,
-      drepState = s.dreps,
+      drepState = registeredDReps,
       poolDistr = poolDistr,
       totalPoolStake = totalPoolStake,
       epoch = epoch,
       committeeState = s.committeeState,
-      accounts = s.accounts,
-      pools = s.pools
+      accounts = s.accounts.toMap,
+      pools = s.pools.toMap
     )
     snapshot -> Ratify.ratify(env, enactState(s), s.gov.proposals.actions)
 
@@ -111,7 +112,7 @@ object ConwayEpoch:
       blocksPrevious = state.blocksCurrent,
       blocksCurrent = Map.empty,
       rewardUpdate = None,
-      poolDistribution = state.snapshots.set
+      poolDistribution = state.snapshots.set.distr
     )
     val obligated = withGov.copy(deposited = Epoch.obligation(withGov))
     val forked =
@@ -125,12 +126,13 @@ object ConwayEpoch:
     * accounts and drop delegations to DReps that are not registered.
     */
   def updateDRepDelegations(s: LedgerState): LedgerState =
-    val cleared = s.dreps.view.mapValues(_.copy(delegs = Set.empty)).toMap
-    val (dreps, accounts) = s.accounts.foldLeft((cleared, s.accounts)) { case ((ds, as), (c, a)) =>
-      a.drep match
-        case Some(DRep.Registered(d)) =>
-          if ds.contains(d) then (ds.updated(d, ds(d).copy(delegs = ds(d).delegs + c)), as)
-          else (ds, as.updated(c, a.copy(drep = None)))
-        case _ => (ds, as)
+    val cleared = s.dreps.toMap.view.mapValues(_.copy(delegs = Set.empty)).toMap
+    val (dreps, accounts) = s.accounts.iterator.foldLeft((cleared, s.accounts)) {
+      case ((ds, as), (c, a)) =>
+        a.drep match
+          case Some(DRep.Registered(d)) =>
+            if ds.contains(d) then (ds.updated(d, ds(d).copy(delegs = ds(d).delegs + c)), as)
+            else (ds, as.updated(c, a.copy(drep = None)))
+          case _ => (ds, as)
     }
-    s.copy(dreps = dreps, accounts = accounts)
+    s.copy(dreps = s.dreps.mapRows((c, _) => dreps(c)), accounts = accounts)

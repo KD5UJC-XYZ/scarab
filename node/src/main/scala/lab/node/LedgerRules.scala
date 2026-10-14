@@ -11,7 +11,7 @@ import lab.network.Era
 import lab.node.consensus.*
 import lab.node.ledger.*
 import lab.node.ledger.byron.{ByronLedger, ByronLedgerState}
-import lab.node.storage.UtxoStore
+import lab.node.storage.LedgerStore
 
 /** Verdicts of one epoch's headers in bootstrap mode. */
 final case class EpochStats(
@@ -103,8 +103,10 @@ final class NodeRules[F[_]: Monad](
     byron: Option[ByronRules.Config] = None,
     bootstrap: Boolean = false,
     phase2Observer: Option[Phase2.Observation => Unit] = None,
-    /** The backing store of the UTxO set. Without one the state's [[Utxo]] holds the whole set. */
-    utxoStore: Option[UtxoStore[F]] = None,
+    /** The backing store of the UTxO set and the ledger tables. Without one the state holds them
+      * whole.
+      */
+    ledgerStore: Option[LedgerStore[F]] = None,
     /** Called with each state the rules produce (the node uses it to tell the verification pipeline
       * which epoch nonce is current).
       */
@@ -112,49 +114,55 @@ final class NodeRules[F[_]: Monad](
     /** Measures the pure rules (D8); without one they are not timed. */
     compute: Option[Compute[F]] = None
 )(using
-    Raise[F, ValidationError]
+    Raise[F, ValidationError],
+    Raise[F, StorageError]
 ) extends BlockRules[F, NodeState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
 
   def apply(state: NodeState, header: Header, raw: Bytes): F[NodeState] =
-    def run(s: NodeState, prepared: Option[NodeRules.Prepared]): F[NodeState] =
-      cpu
-        .timed(NodeRules.stepLabel(s))(
-          NodeRules.applyBlock(
-            s,
-            header,
-            raw,
-            config,
-            globals,
-            byron,
-            bootstrap,
-            phase2Observer,
-            prepared
-          )
-        )
-        .flatMap(
-          _.fold(
-            (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
-            next => afterBlock.fold(next.pure[F])(f => f(next).as(next))
-          )
-        )
-    (utxoStore, header) match
+    def pure(s: NodeState, prepared: Option[NodeRules.Prepared]) =
+      NodeRules.applyBlock(
+        s,
+        header,
+        raw,
+        config,
+        globals,
+        byron,
+        bootstrap,
+        phase2Observer,
+        prepared
+      )
+    def finish(result: Either[(String, String), NodeState]): F[NodeState] =
+      result.fold(
+        (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
+        next => afterBlock.fold(next.pure[F])(f => f(next).as(next))
+      )
+    (ledgerStore, header) match
       case (Some(store), h: Header.Shelley) if !bootstrap =>
         // The read set: what the block's transactions spend or reference, fetched before the pure
-        // rules run (the rules then see a complete view of the entries they need).
+        // rules run (the rules then see a complete view of the entries they need). The rows of the
+        // ledger tables they read are fetched on demand: a read the state cannot answer stops the
+        // rules, the rows it names are fetched and the block is applied again (`completingF`).
         val prepared = NodeRules.prepare(h, raw, config.verdicts)
         val utxo = state.ledger.utxo
         val wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
+        val crossing =
+          state.geometry(config.geometry).epochOf(h.slot) > state.ledger.epoch
         for
           fetched <- if wanted.isEmpty then Map.empty[TxIn, TxOut].pure[F] else store.read(wanted)
-          next <- run(
-            state.copy(ledger = state.ledger.copy(utxo = utxo.withResident(fetched))),
-            prepared
-          )
+          start = state.ledger.copy(utxo = utxo.withResident(fetched))
+          // An epoch boundary reads whole tables: fetch them at once rather than by misses.
+          loaded <- if crossing then LedgerStore.loadForBoundary(store, start) else start.pure[F]
+          done <- LedgerStore.completingF(Some(store), loaded) { ledger =>
+            val before = state.copy(ledger = ledger)
+            cpu.timed(NodeRules.guardedLabel(before))(Table.guarded(pure(before, prepared)))
+          }
+          (_, result) = done
+          next <- finish(result)
           flushed <- store.flushed
-        yield next.copy(ledger = next.ledger.copy(utxo = next.ledger.utxo.settled(flushed)))
-      case _ => run(state, None)
+        yield next.copy(ledger = next.ledger.settled(flushed))
+      case _ => cpu.timed(NodeRules.stepLabel(state))(pure(state, None)).flatMap(finish)
 
 object NodeRules:
   /** The label a block application is recorded under: a block that crossed an epoch boundary or ran
@@ -170,6 +178,11 @@ object NodeRules:
         then "epochBoundary"
         else if after.ledger.plutus.scripts != before.ledger.plutus.scripts then "plutus"
         else "block"
+
+  private[node] def guardedLabel(
+      before: NodeState
+  )(result: Either[Table.Miss, Either[(String, String), NodeState]]): String =
+    result.fold(_ => "refetch", stepLabel(before))
 
   /** A block decoded once for both the read-set fetch and the rules. */
   final case class Prepared(block: Block.Shelley, txs: Vector[Either[String, Tx]]):
@@ -496,18 +509,17 @@ object NodeRules:
         (),
         "structure" -> s"block epoch $epoch precedes ledger epoch"
       )
-      crossed = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
-        Epoch.boundary(s, e, globals)
-      )
+      // Changes made by this block (the boundary it crosses included) carry its number.
+      crossed = (state.ledger.epoch + 1 to epoch).foldLeft(
+        state.ledger.at(announced.blockNo.toLong)
+      )((s, e) => Epoch.boundary(s, e, globals))
       _ <- Either.cond(
         crossed.epoch == state.ledger.epoch || crossed.params.protocolMajor >= 9 ||
           crossed.total == globals.maxSupply,
         (),
         "ledger" -> s"supply invariant broken entering epoch $epoch: ${crossed.total} != ${globals.maxSupply}"
       )
-      ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
-      // Changes to the UTxO set made by this block are stamped with its number.
-      ticked = ticked0.copy(utxo = ticked0.utxo.at(announced.blockNo.toLong))
+      ticked = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
       _ <- config.forks
         .check(
           announced.era,

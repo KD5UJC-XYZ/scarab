@@ -16,6 +16,12 @@ import TestLedger.*
 
 /** Real transaction bytes over a synthetic Conway ledger. */
 object TxKit:
+  /** Storage failures are test failures. */
+  given cats.mtl.Raise[IO, lab.node.StorageError] = new cats.mtl.Raise[IO, lab.node.StorageError]:
+    def functor = cats.Functor[IO]
+    def raise[E2 <: lab.node.StorageError, A](e: E2): IO[A] =
+      IO.raiseError(RuntimeException(e.message))
+
   val alice: Key = key()
   val bob: Key = key()
   val ada: BigInt = 1000000
@@ -86,6 +92,7 @@ object TxKit:
 
 class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   import TxKit.*
+  import TxKit.given
 
   private def pool(ledger: LedgerState, capacity: Long = 100000) =
     MempoolState.empty(ledger, 1000, capacity)
@@ -346,18 +353,21 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
 /** The pool reads inputs from the UTxO store, like the block path does. */
 class MempoolStoreSuite extends CatsEffectSuite:
   import TxKit.*
+  import TxKit.given
   import lab.node.StorageError
-  import lab.node.storage.{MemoryUtxoStore, UtxoStore}
+  import lab.node.storage.{LedgerStore, MemoryLedgerStore}
 
-  private given cats.mtl.Raise[IO, StorageError] = new cats.mtl.Raise[IO, StorageError]:
-    def functor = cats.Functor[IO]
-    def raise[E2 <: StorageError, A](e: E2): IO[A] = IO.raiseError(new RuntimeException(e.message))
+  private given cats.mtl.Raise[IO, lab.node.StorageError] =
+    new cats.mtl.Raise[IO, lab.node.StorageError]:
+      def functor = cats.Functor[IO]
+      def raise[E2 <: lab.node.StorageError, A](e: E2): IO[A] =
+        IO.raiseError(new RuntimeException(e.message))
 
   test("add and sync fetch the inputs a ledger state does not hold from the store") {
     val full = ledger(3)
     val bare = full.copy(utxo = Utxo.empty)
     for
-      store <- MemoryUtxoStore[IO]
+      store <- MemoryLedgerStore[IO]
       _ <- store.write(full.utxo.toVector.map((i, o) => i -> Some(o)), 0L)
       mempool <- Mempool.create[IO](
         bare,
@@ -365,7 +375,7 @@ class MempoolStoreSuite extends CatsEffectSuite:
         env,
         100000,
         MempoolEvents.none[IO],
-        utxoStore = Some(store: UtxoStore[IO])
+        ledgerStore = Some(store: LedgerStore[IO])
       )
       (t1, id1) = pay(1)
       added <- mempool.add(t1)

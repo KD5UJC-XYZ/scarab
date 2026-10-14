@@ -66,8 +66,9 @@ class PreviewConwayRulesSuite extends FunSuite:
     val base = state(c.protocolMajor, utxo.toVector).copy(
       params = params,
       epoch = c.slot / 86400,
-      accounts =
-        credentials.distinct.map(_ -> Account(0, 2 * ada, None, None)).toMap ++ withdrawing,
+      accounts = accountTable(
+        credentials.distinct.map(_ -> Account(0, 2 * ada, None, None)).toMap ++ withdrawing
+      ),
       treasury = 1000000000L * ada,
       gov = GovState.empty.copy(
         constitution = Constitution(GovState.noAnchor, policy),

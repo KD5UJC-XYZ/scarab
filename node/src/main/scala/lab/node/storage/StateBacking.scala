@@ -9,9 +9,10 @@ import cats.syntax.all.*
 import fs2.io.file.Path
 import lab.node.{BlockRef, NodeState, StorageError}
 
-/** The part of the node state that lives outside the snapshot file: the UTxO set. It follows the
-  * immutable tip, and each ledger snapshot has a checkpoint of it taken at the same block, so a
-  * restored snapshot and its store always agree.
+/** The part of the node state that lives outside the snapshot file: the UTxO set and the ledger
+  * tables (accounts, pools, DReps, the stake snapshots). It follows the immutable tip, and each
+  * ledger snapshot has a checkpoint of it taken at the same block, so a restored snapshot and its
+  * store always agree.
   */
 trait StateBacking[F[_], S]:
   /** The immutable tip moved to `state`: make the store reflect it. */
@@ -49,8 +50,8 @@ object StateBacking:
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
   def stem(a: BlockRef): String = f"snapshot-${a.slot}%020d-${a.blockNo}"
 
-/** [[StateBacking]] for the node state over a [[UtxoStore]]; checkpoints live under `root`. */
-final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
+/** [[StateBacking]] for the node state over a [[LedgerStore]]; checkpoints live under `root`. */
+final class LedgerBacking[F[_]: Sync](store: LedgerStore[F], root: Path)(using
     Raise[F, StorageError]
 ) extends StateBacking[F, NodeState]:
   private val F = Sync[F]
@@ -63,16 +64,16 @@ final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
       case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
     }
 
-  def advance(state: NodeState): F[Unit] = UtxoStore.advance(store, state.ledger.utxo)
+  def advance(state: NodeState): F[Unit] = LedgerStore.advance(store, state.ledger)
 
   def settled(state: NodeState): F[NodeState] =
     store.flushed.map { at =>
-      state.copy(ledger = state.ledger.copy(utxo = state.ledger.utxo.settled(at, force = true)))
+      state.copy(ledger = state.ledger.settled(at, force = true))
     }
 
   def checkpoint(anchor: BlockRef): F[Unit] =
     val dir = dirOf(anchor)
-    guard(dir.toString)(RocksUtxoStore.deleteTree(dir.toNioPath)) *>
+    guard(dir.toString)(RocksLedgerStore.deleteTree(dir.toNioPath)) *>
       guard(root.toString)(java.nio.file.Files.createDirectories(root.toNioPath)) *>
       store.checkpoint(dir)
 
@@ -92,7 +93,7 @@ final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
       val dirs = java.nio.file.Files.list(nio)
       try
         dirs.forEach { d =>
-          if !stems.contains(d.getFileName.toString) then RocksUtxoStore.deleteTree(d)
+          if !stems.contains(d.getFileName.toString) then RocksLedgerStore.deleteTree(d)
         }
       finally dirs.close()
   }

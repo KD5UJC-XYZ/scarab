@@ -552,7 +552,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         staker1.credential -> Account(0, 0, Some(a.hash), None),
         staker2.credential -> Account(0, 0, Some(b.hash), None)
       )
-      val base = s0.copy(pools = pools, accounts = accounts)
+      val base = s0.copy(pools = poolTable(pools), accounts = accountTable(accounts))
       val snap = Stake.snapshot(base)
       val start = base.copy(
         snapshots = Snapshots(snap, snap, snap, 1000 * ada),

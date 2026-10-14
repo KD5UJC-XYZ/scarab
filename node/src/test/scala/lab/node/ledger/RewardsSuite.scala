@@ -62,7 +62,8 @@ class RewardsSuite extends ScalaCheckSuite:
     )
     val otherParams = params.copy(operator = other, owners = Set.empty)
     def rewardsWhenOwnerDelegates(to: Bytes): Map[Credential, BigInt] =
-      val go = Snapshot(
+      val go = Snapshot.of(
+        1,
         stake = Map(ownerCredential -> BigInt(5000000), member -> BigInt(5000000)),
         delegations = Map(ownerCredential -> to, member -> poolId),
         pools = Map(poolId -> params, other -> otherParams)
@@ -114,7 +115,8 @@ class RewardsSuite extends ScalaCheckSuite:
     val paramsB = pool(cost = 0, Rational(1, 10))
       .copy(operator = poolB, rewardAccount = RewardAccount(0, both))
     val stake = BigInt(10000000000000L)
-    val go = Snapshot(
+    val go = Snapshot.of(
+      1,
       stake = Map(aMember -> stake, shared -> stake, both -> stake, twin -> stake),
       delegations = Map(aMember -> poolA, shared -> poolB, both -> poolB, twin -> poolB),
       pools = Map(poolA -> paramsA, poolB -> paramsB)
@@ -160,14 +162,15 @@ class RewardsSuite extends ScalaCheckSuite:
         treasury = 0,
         reserves = 1000,
         rewardDraft = Some(update),
-        accounts = Map(account -> acc)
+        accounts = TestLedger.accountTable(Map(account -> acc))
       )
     // `tick` at the cutoff slot itself does not start the calculation, the next slot does
     val start = BigInt(500)
     val atCutoff = Epoch.tick(base, start + 40, start, g)
     assertEquals(atCutoff.rewardRegistered, None)
     val between =
-      if registeredAtStart then atCutoff else atCutoff.copy(accounts = Map.empty)
+      if registeredAtStart then atCutoff
+      else atCutoff.copy(accounts = TestLedger.accountTable(Map.empty))
     val started = Epoch.tick(between, start + 41, start, g)
     assertEquals(started.rewardRegistered.map(_.contains(account)), Some(registeredAtStart))
     // the update carries the filtered rewards, the skipped ones went back to the reserves
@@ -177,8 +180,9 @@ class RewardsSuite extends ScalaCheckSuite:
       Some(BigInt(if registeredAtStart then -110 else -10))
     )
     val later =
-      if registeredAtApply then started.copy(accounts = Map(account -> acc))
-      else started.copy(accounts = Map.empty)
+      if registeredAtApply then
+        started.copy(accounts = TestLedger.accountTable(Map(account -> acc)))
+      else started.copy(accounts = TestLedger.accountTable(Map.empty))
     (started, Epoch.boundary(later, later.epoch + 1, g))
 
   test("before Babbage the reward prefilter uses the accounts registered after the 4k/f slot") {

@@ -131,7 +131,7 @@ object Epoch:
       blocksCurrent = Map.empty,
       rewardUpdate = None,
       rewardRegistered = None,
-      poolDistribution = reaped.snapshots.set
+      poolDistribution = reaped.snapshots.set.distr
     )
     val entered =
       if next.params.protocolMajor >= 9 then Translate.toConway(next, globals) else next
@@ -149,18 +149,14 @@ object Epoch:
 
   /** Sum of all outstanding deposits: stake credentials, pools and DReps. */
   def obligation(state: LedgerState): BigInt =
-    state.accounts.valuesIterator.map(_.deposit).sum + state.pools.valuesIterator
-      .map(_.deposit)
-      .sum +
-      state.dreps.valuesIterator.map(_.deposit).sum + state.gov.proposals.totalDeposits
+    state.accounts.sumB + state.pools.sumB + state.dreps.sumB + state.gov.proposals.totalDeposits
 
   /** Apply a reward update: rewards of credentials that are no longer registered go to the treasury
     * (`filterAllRewards'`).
     */
   private def applyRewards(state: LedgerState, ru: RewardUpdate): LedgerState =
-    val (registered, unregistered) = ru.rewards.partition { case (c, _) =>
-      state.accounts.contains(c)
-    }
+    val known = state.accounts.toMap
+    val (registered, unregistered) = ru.rewards.partition { case (c, _) => known.contains(c) }
     state.copy(
       treasury = state.treasury + ru.deltaTreasury + unregistered.values.sum,
       reserves = state.reserves + ru.deltaReserves,
@@ -183,9 +179,11 @@ object Epoch:
         retiring = state.retiring -- retired,
         deposited = state.deposited - refunds.map(_._2).sum,
         treasury = state.treasury + unpaid.map(_._2).sum,
-        accounts = paid.foldLeft(state.accounts.map { case (c, a) =>
-          c -> (if a.pool.exists(retired) then a.copy(pool = None) else a)
-        }) { case (as, (c, d)) => as.updatedWith(c)(_.map(a => a.copy(balance = a.balance + d))) }
+        accounts = paid.foldLeft(
+          state.accounts.mapRows((_, a) =>
+            if a.pool.exists(retired) then a.copy(pool = None) else a
+          )
+        ) { case (as, (c, d)) => as.updatedWith(c)(_.map(a => a.copy(balance = a.balance + d))) }
       )
 
 /** MIR: instantaneous rewards and pot-to-pot transfers collected by certificates are applied at the
@@ -247,7 +245,7 @@ object Translate:
       ppup = Ppup.empty,
       mir = InstantRewards.empty,
       ptrs = Map.empty,
-      dreps = Map.empty,
+      // (the DRep table is empty before Conway)
       gov = gov,
       committeeState = Map.empty,
       donation = 0,
@@ -291,14 +289,15 @@ object Rewards:
     val r = rewardPot - deltaT1
     val totalStake = globals.maxSupply - state.reserves
     val activeStake = go.activeStake
-    val membersOf = go.delegations.groupMap(_._2)(_._1)
+    val membersOf = go.delegations.toMap.groupMap(_._2)(_._1)
+    val goStake = go.stake.toMap
 
     val rewards: Vector[Reward] =
       if totalStake <= 0 then Vector.empty
       else
         go.pools.toVector.flatMap { case (poolId, params) =>
           val members = membersOf.getOrElse(poolId, Iterable.empty).map { c =>
-            c -> go.stake.getOrElse(c, BigInt(0))
+            c -> goStake.getOrElse(c, BigInt(0))
           }
           val poolStake = members.map(_._2).sum
           val blocksN = blocks.getOrElse(poolId, BigInt(0))

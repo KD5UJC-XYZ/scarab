@@ -179,9 +179,9 @@ object QueryAnswers:
 
   /** DRep state as the query reports it: expiries brought forward by the dormant epochs. */
   private def drepStates(s: LedgerState): Map[Credential, DRepState] =
-    if s.dormantEpochs == 0 then s.dreps
+    if s.dormantEpochs == 0 then s.dreps.toMap
     else
-      s.dreps.view.mapValues { d =>
+      s.dreps.toMap.view.mapValues { d =>
         val actual = d.expiry + s.dormantEpochs
         if actual < s.epoch then d else d.copy(expiry = actual)
       }.toMap
@@ -221,7 +221,7 @@ object QueryAnswers:
       case GetCBOR(inner) =>
         ledgerAnswer(env, view, utxo, inner).map(r => CborOut.build(_.tag(24).bytes(r)))
       case GetFilteredDelegationsAndRewardAccounts(credentials) =>
-        val accounts = restrictAlways(s.accounts, credentials)
+        val accounts = restrictAlways(s.accounts.toMap, credentials)
         build { w =>
           w.array(2)
           E.map(
@@ -243,7 +243,7 @@ object QueryAnswers:
         build(
           E.map(
             _,
-            restrictAlways(s.pools, pools).map { case (id, p) => id -> p.params }.toVector,
+            restrictAlways(s.pools.toMap, pools).map { case (id, p) => id -> p.params }.toVector,
             E.bytesOrdering
           )(
             (k, h) => k.bytes(h),
@@ -254,7 +254,11 @@ object QueryAnswers:
         def pick[V](m: Map[Bytes, V]): Map[Bytes, V] = pools.fold(m)(restrictAlways(m, _))
         build { w =>
           w.array(4)
-          E.map(w, pick(s.pools).map { case (id, p) => id -> p.params }.toVector, E.bytesOrdering)(
+          E.map(
+            w,
+            pick(s.pools.toMap).map { case (id, p) => id -> p.params }.toVector,
+            E.bytesOrdering
+          )(
             (k, h) => k.bytes(h),
             E.poolParams
           )
@@ -266,7 +270,11 @@ object QueryAnswers:
             (k, h) => k.bytes(h),
             (k, e) => k.uint(e)
           )
-          E.map(w, pick(s.pools).map { case (id, p) => id -> p.deposit }.toVector, E.bytesOrdering)(
+          E.map(
+            w,
+            pick(s.pools.toMap).map { case (id, p) => id -> p.deposit }.toVector,
+            E.bytesOrdering
+          )(
             (k, h) => k.bytes(h),
             (k, d) => k.uint(d)
           )
@@ -276,7 +284,7 @@ object QueryAnswers:
         build(
           E.map(
             _,
-            restrict(s.accounts, credentials).map { case (c, a) => c -> a.deposit }.toVector,
+            restrict(s.accounts.toMap, credentials).map { case (c, a) => c -> a.deposit }.toVector,
             E.credentialOrdering
           )(
             E.credential,
@@ -305,7 +313,7 @@ object QueryAnswers:
         build(
           E.map(
             _,
-            restrict(s.accounts, credentials).collect {
+            restrict(s.accounts.toMap, credentials).collect {
               case (c, a) if a.drep.isDefined => c -> a.drep.get
             }.toVector,
             E.credentialOrdering
@@ -335,7 +343,7 @@ object QueryAnswers:
       case GetPoolDistr2(pools)            => build(poolDistr(_, s.poolDistribution, pools, None))
       case GetStakeDistribution2           =>
         // the current stake (not a snapshot), as a fraction of the lovelace in circulation
-        build(poolDistr(_, Stake.snapshot(s), None, Some(env.maxSupply - s.reserves)))
+        build(poolDistr(_, Stake.snapshot(s).distr, None, Some(env.maxSupply - s.reserves)))
       case GetMaxMajorProtocolVersion =>
         build(_.uint(env.forks.maxMajorProtVer))
       case GetDRepDelegations(dreps) => build(drepDelegations(_, s, dreps))
@@ -413,9 +421,9 @@ object QueryAnswers:
     val registered = dreps.collect { case DRep.Registered(c) => c }
     val result: Map[DRep, Set[Credential]] =
       if dreps.nonEmpty && registered.size == dreps.size then
-        s.dreps.collect { case (c, d) if registered(c) => DRep.Registered(c) -> d.delegs }
+        s.dreps.toMap.collect { case (c, d) if registered(c) => DRep.Registered(c) -> d.delegs }
       else
-        s.accounts.toVector
+        s.accounts.toMap.toVector
           .collect {
             case (c, a) if a.drep.exists(d => dreps.isEmpty || dreps(d)) => a.drep.get -> c
           }
@@ -433,7 +441,7 @@ object QueryAnswers:
     */
   private def poolDistr(
       w: CborOut,
-      dist: Snapshot,
+      dist: StakeDistribution,
       pools: Option[Set[Bytes]],
       circulation: Option[BigInt]
   ): CborOut =

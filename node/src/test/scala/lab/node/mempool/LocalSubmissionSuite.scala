@@ -13,6 +13,7 @@ import lab.network.runtime.*
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import TxKit.*
+import TxKit.given
 
 /** `cardano-cli transaction submit` as a client: node-to-client handshake, then LocalTxSubmission,
   * over a Unix socket into a real mempool.

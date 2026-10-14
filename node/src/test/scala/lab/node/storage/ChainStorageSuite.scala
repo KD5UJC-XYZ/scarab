@@ -10,6 +10,7 @@ import java.nio.file.Files as JFiles
 import lab.cbor.Bytes
 import lab.network.ChainSync
 import lab.node.*
+import lab.node.ledger.LedgerState
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
@@ -82,10 +83,11 @@ class ChainStorageSuite extends CatsEffectSuite:
       every: Int = 120,
       log: Ref[IO, Vector[StorageEvent]]
   ): IO[(Option[BlockRef], VolatileChain[NodeState])] =
-    runWith(dir, until, every, log, None).map((anchor, chain, _) => (anchor, chain))
+    runWith(dir, until, every, log, None).map((anchor, chain, _, _) => (anchor, chain))
 
-  /** As [[run]], with the UTxO set in a store (`memory` or `rocksdb`) under the database directory;
-    * the last component is the complete UTxO set at the end.
+  /** As [[run]], with the ledger in a store (`memory` or `rocksdb`) under the database directory;
+    * the last components are the complete UTxO set and the tip's ledger with its tables fetched
+    * whole and reduced to rows ([[LedgerState.logical]]) at the end.
     */
   private def runWith(
       dir: Path,
@@ -94,25 +96,30 @@ class ChainStorageSuite extends CatsEffectSuite:
       log: Ref[IO, Vector[StorageEvent]],
       store: Option[String]
   ): IO[
-    (Option[BlockRef], VolatileChain[NodeState], Map[lab.node.ledger.TxIn, lab.node.ledger.TxOut])
+    (
+        Option[BlockRef],
+        VolatileChain[NodeState],
+        Map[lab.node.ledger.TxIn, lab.node.ledger.TxOut],
+        LedgerState
+    )
   ] =
     Handle
       .allow[NodeError] {
-        val backed: Resource[IO, (Option[UtxoStore[IO]], StateBacking[IO, NodeState])] =
+        val backed: Resource[IO, (Option[LedgerStore[IO]], StateBacking[IO, NodeState])] =
           store match
             case None => Resource.pure((None, StateBacking.none[IO, NodeState]))
             case Some("memory") =>
-              Resource.eval(MemoryUtxoStore[IO]).map { s =>
-                (Some(s: UtxoStore[IO]), new UtxoBacking[IO](s, dir / "utxo" / "checkpoints"))
+              Resource.eval(MemoryLedgerStore[IO]).map { s =>
+                (Some(s: LedgerStore[IO]), new LedgerBacking[IO](s, dir / "utxo" / "checkpoints"))
               }
             case Some(_) =>
-              RocksUtxoStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
-                (Some(s: UtxoStore[IO]), new UtxoBacking[IO](s, dir / "utxo" / "checkpoints"))
+              RocksLedgerStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
+                (Some(s: LedgerStore[IO]), new LedgerBacking[IO](s, dir / "utxo" / "checkpoints"))
               }
         backed
           .use { (utxoStore, backing) =>
             val rules =
-              NodeRules[IO](setup.praos, setup.globals, setup.byronRules, utxoStore = utxoStore)
+              NodeRules[IO](setup.praos, setup.globals, setup.byronRules, ledgerStore = utxoStore)
             ChainStorage
               .open[IO, NodeState](
                 dir,
@@ -164,7 +171,10 @@ class ChainStorageSuite extends CatsEffectSuite:
                   all <- utxoStore.fold(IO.pure(chain.state.ledger.utxo.toMap))(s =>
                     UtxoStore.materialize(s, chain.state.ledger.utxo)
                   )
-                yield (recovered.anchor, chain.copy(blocks = chain.blocks), all)
+                  tables <- utxoStore.fold(IO.pure(chain.state.ledger))(s =>
+                    LedgerStore.materialize(s, chain.state.ledger)
+                  )
+                yield (recovered.anchor, chain.copy(blocks = chain.blocks), all, tables.logical)
               }
           }
           .map(_.asRight[NodeError])
@@ -289,12 +299,13 @@ class ChainStorageSuite extends CatsEffectSuite:
     }
   }
 
-  private def sameLedger(a: NodeState, b: NodeState): Unit =
+  /** `a` (its tables fetched whole, as `aLedger`) and `b` hold the same ledger. */
+  private def sameLedger(a: NodeState, aLedger: LedgerState, b: NodeState): Unit =
     assertEquals(a.praos, b.praos)
     assertEquals(a.boot, b.boot)
     assertEquals(
-      a.ledger.copy(utxo = lab.node.ledger.Utxo.empty),
-      b.ledger.copy(utxo = lab.node.ledger.Utxo.empty)
+      aLedger.copy(utxo = lab.node.ledger.Utxo.empty),
+      b.ledger.logical.copy(utxo = lab.node.ledger.Utxo.empty)
     )
     assertEquals(a.ledger.utxo.stake, b.ledger.utxo.stake)
     assertEquals(a.ledger.utxo.coin, b.ledger.utxo.coin)
@@ -306,7 +317,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         for
           log1 <- events(dir)
           first <- runWith(dir, 500, 120, log1, Some(kind))
-          _ <- IO(sameLedger(first._2.state, states(500)))
+          _ <- IO(sameLedger(first._2.state, first._4, states(500)))
           _ <- IO(assertEquals(first._3, states(500).ledger.utxo.toMap))
           checkpoints <- files
             .list(dir / "utxo" / "checkpoints")
@@ -317,7 +328,7 @@ class ChainStorageSuite extends CatsEffectSuite:
           second <- runWith(dir, 731, 120, log2, Some(kind))
           e2 <- log2.get
           _ <- IO(assert(e2.exists(_.isInstanceOf[StorageEvent.SnapshotRestored]), e2.toString))
-          _ <- IO(sameLedger(second._2.state, states(731)))
+          _ <- IO(sameLedger(second._2.state, second._4, states(731)))
           _ <- IO(assertEquals(second._3, states(731).ledger.utxo.toMap))
         yield ()
       }
@@ -332,7 +343,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- IO(assert(snaps.size >= 2, s"need two snapshots, have ${snaps.size}"))
         newest = snaps.head.fileName.toString.stripSuffix(".bin")
         _ <- IO(
-          RocksUtxoStore.deleteTree(
+          RocksLedgerStore.deleteTree(
             (dir / "utxo" / "checkpoints" / newest).toNioPath
           )
         )
@@ -345,7 +356,7 @@ class ChainStorageSuite extends CatsEffectSuite:
             List(snaps.head.fileName.toString)
           )
         )
-        _ <- IO(sameLedger(again._2.state, states(650)))
+        _ <- IO(sameLedger(again._2.state, again._4, states(650)))
         _ <- IO(assertEquals(again._3, states(650).ledger.utxo.toMap))
       yield ()
     }

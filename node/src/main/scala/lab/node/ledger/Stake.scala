@@ -24,10 +24,18 @@ object Stake:
 
   /** The SNAP rule's new mark snapshot: stake of credentials delegated to registered pools. */
   def snapshot(state: LedgerState, pointers: Boolean = true): Snapshot =
+    val registered = state.pools.toMap
     val delegations = state.accounts.iterator.flatMap { (c, a) =>
-      a.pool.filter(state.pools.contains).map(c -> _)
+      a.pool.filter(registered.contains).map(c -> _)
     }.toMap
     val stake = instantWith(state, pointers && state.params.protocolMajor < 9).filter {
       case (c, _) => delegations.contains(c)
     }
-    Snapshot(stake, delegations, state.pools.map { case (id, p) => id -> p.params })
+    // Each snapshot is a new generation of the stored rows (a rotation moves the values, not rows).
+    Snapshot.of(
+      state.snapshots.mark.gen + 1,
+      stake,
+      delegations,
+      registered.map { case (id, p) => id -> p.params },
+      state.accounts.stamp // the rows are changes of the block being applied
+    )

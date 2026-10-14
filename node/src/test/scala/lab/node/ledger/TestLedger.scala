@@ -64,6 +64,14 @@ object TestLedger:
 
   val Supply: BigInt = 45000000000000000L
 
+  /** The tables of a state built from plain maps (everything in the diff: no store needed). */
+  def accountTable(m: Map[Credential, Account]): Table[Credential, Account] =
+    Table.fromMap(LedgerState.accountsSpace, m)
+  def poolTable(m: Map[Bytes, PoolState]): Table[Bytes, PoolState] =
+    Table.fromMap(LedgerState.poolsSpace, m)
+  def drepTable(m: Map[Credential, DRepState]): Table[Credential, DRepState] =
+    Table.fromMap(LedgerState.drepsSpace, m)
+
   def txIn(n: Int): TxIn = TxIn(Blake2b.hash256.hash(Bytes(Vector(n.toByte))), 0)
 
   /** A state whose UTxO is `funds` and whose reserves make the total equal [[Supply]]. */
@@ -75,11 +83,11 @@ object TestLedger:
       utxo = Utxo(utxo),
       fees = 0,
       deposited = 0,
-      accounts = Map.empty,
-      pools = Map.empty,
+      accounts = accountTable(Map.empty),
+      pools = poolTable(Map.empty),
       futurePools = Map.empty,
       retiring = Map.empty,
-      dreps = Map.empty,
+      dreps = drepTable(Map.empty),
       dormantEpochs = 0,
       treasury = 0,
       reserves = Supply - utxo.valuesIterator.map(_.value.coin).sum,
@@ -87,7 +95,7 @@ object TestLedger:
       blocksCurrent = Map.empty,
       blocksPrevious = Map.empty,
       rewardUpdate = None,
-      poolDistribution = Snapshot.empty
+      poolDistribution = StakeDistribution.empty
     )
 
   val env: TxRules.Env =

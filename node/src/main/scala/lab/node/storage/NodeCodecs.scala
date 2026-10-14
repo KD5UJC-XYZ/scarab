@@ -54,6 +54,36 @@ object NodeCodecs:
 
   // Ledger.
   given account: Codec[Account] = Codec.auto
+  given tableSpace: Codec[Table.Space] = Codec.auto
+
+  /** A table is persisted as its diff and counters: a snapshot is written settled, so the read set
+    * (a cache fetched for one block) is empty and is not part of the format.
+    */
+  given table[K, V](using k: Codec[K], v: Codec[V]): Codec[Table[K, V]] = new Codec[Table[K, V]]:
+    private val space = summon[Codec[Table.Space]]
+    private val big = summon[Codec[BigInt]]
+    private val diff = summon[Codec[Map[K, Table.Change[V]]]]
+    def write(out: Out, t: Table[K, V]): Unit =
+      space.write(out, t.space)
+      diff.write(out, t.diff)
+      out.varint(t.count)
+      big.write(out, t.sumA)
+      big.write(out, t.sumB)
+      out.varint(t.stamp)
+      out.varint(t.flushed)
+    def read(in: In): Table[K, V] =
+      val sp = space.read(in)
+      val d = diff.read(in)
+      val count = in.varint()
+      val a = big.read(in)
+      val b = big.read(in)
+      val stamp = in.varint()
+      val flushed = in.varint()
+      Table(sp, d, Map.empty, loaded = false, count, a, b, stamp, flushed)
+    def shape: String = s"Table[${k.shape},${v.shape}]{space,diff,count,sumA,sumB,stamp,flushed}"
+
+  given tableChange[V](using v: Codec[V]): Codec[Table.Change[V]] = Codec.auto
+  given stakeDistribution: Codec[StakeDistribution] = Codec.auto
   given stakeSnapshot: Codec[Snapshot] = Codec.auto
   given rewardUpdate: Codec[RewardUpdate] = Codec.auto
   given ledger: Codec[LedgerState] = Codec.auto

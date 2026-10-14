@@ -66,9 +66,11 @@ class StakeSuite extends ScalaCheckSuite:
       val created = spent ++ more.zipWithIndex.map((o, i) => TestLedger.txIn(100 + i) -> o)
       base.copy(
         utxo = created,
-        accounts = registered.distinct
-          .map(n => Credential.Key(hash(n)) -> Account(balances(n), 0, None, None))
-          .toMap,
+        accounts = TestLedger.accountTable(
+          registered.distinct
+            .map(n => Credential.Key(hash(n)) -> Account(balances(n), 0, None, None))
+            .toMap
+        ),
         ptrs = pointed.distinct.map(n => Ptr(1, 2, n) -> Credential.Key(hash(n))).toMap
       )
 

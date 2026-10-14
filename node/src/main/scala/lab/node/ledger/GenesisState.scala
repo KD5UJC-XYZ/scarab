@@ -164,11 +164,11 @@ object GenesisState:
         utxo = Utxo.fromMap(utxo),
         fees = 0,
         deposited = deposited,
-        accounts = accounts,
-        pools = poolStates,
+        accounts = Table.fromMap(LedgerState.accountsSpace, accounts),
+        pools = Table.fromMap(LedgerState.poolsSpace, poolStates),
         futurePools = Map.empty,
         retiring = Map.empty,
-        dreps = drepsWithDelegs,
+        dreps = Table.fromMap(LedgerState.drepsSpace, drepsWithDelegs),
         dormantEpochs = 0,
         treasury = 0,
         reserves = 0,
@@ -176,7 +176,7 @@ object GenesisState:
         blocksCurrent = Map.empty,
         blocksPrevious = Map.empty,
         rewardUpdate = None,
-        poolDistribution = Snapshot.empty,
+        poolDistribution = StakeDistribution.empty,
         genDelegs = lite.genDelegs,
         prevParams = None
       )
@@ -189,7 +189,7 @@ object GenesisState:
         reserves = maxSupply - utxo.valuesIterator.map(_.value.coin).sum,
         snapshots = Snapshots(genesisStake, Snapshot.empty, Snapshot.empty, 0),
         // Epochs 0 and 1 elect leaders from the genesis staking injection.
-        poolDistribution = genesisStake
+        poolDistribution = genesisStake.distr
       )
       val seeded =
         if !startsInConway then seeded0

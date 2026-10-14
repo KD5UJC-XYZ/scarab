@@ -211,16 +211,16 @@ class UtxoStoreSuite extends ScalaCheckSuite:
 
   private def rocks[A](use: UtxoStore[IO] => IO[A])(using Handle[IO, StorageError]): IO[A] =
     val dir = tempDir()
-    RocksUtxoStore
+    RocksLedgerStore
       .resource[IO](Path.fromNioPath(dir) / "live", 8L * 1024 * 1024)
       .use(use)
-      .guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
+      .guarantee(IO.blocking(RocksLedgerStore.deleteTree(dir)))
 
   private val genActions: Gen[List[Action]] = Gen.choose(1, 40).flatMap(Gen.listOfN(_, genAction))
 
   property("memory store: apply/rollback/flush matches the model; stake, total, count are exact") {
     forAll(genActions) { actions =>
-      orFail(MemoryUtxoStore[IO].flatMap(run(_, actions)))
+      orFail(MemoryLedgerStore[IO].flatMap(run(_, actions)))
     }
   }
 
@@ -233,7 +233,7 @@ class UtxoStoreSuite extends ScalaCheckSuite:
   property("rocksdb and memory interpreters agree on every read after the same sequence") {
     forAll(genActions) { actions =>
       orFail(
-        MemoryUtxoStore[IO].flatMap(mem =>
+        MemoryLedgerStore[IO].flatMap(mem =>
           rocks { disk =>
             for
               a <- run(mem, actions)
@@ -270,12 +270,12 @@ class UtxoStoreSuite extends ScalaCheckSuite:
         stampAfter <- store.flushed
         missing <- store.restore(Path.fromNioPath(dir) / "nothing")
       yield restored && !missing && after == before && stampAfter == stampBefore)
-        .guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
+        .guarantee(IO.blocking(RocksLedgerStore.deleteTree(dir)))
     }
 
   property("checkpoint then restore returns the store to the checkpointed set (memory)") {
     forAll(genActions, genActions) { (actions, more) =>
-      orFail(checkpointRoundTrip(f => MemoryUtxoStore[IO].flatMap(f), actions, more))
+      orFail(checkpointRoundTrip(f => MemoryLedgerStore[IO].flatMap(f), actions, more))
     }
   }
 
@@ -305,6 +305,6 @@ class UtxoStoreSuite extends ScalaCheckSuite:
           assertEquals(restored.keySet, Set(a))
           assert(again)
           assertEquals(second.keySet, Set(a))
-      }.guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
+      }.guarantee(IO.blocking(RocksLedgerStore.deleteTree(dir)))
     }
   }

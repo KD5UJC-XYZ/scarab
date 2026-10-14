@@ -320,10 +320,10 @@ object ConwayRules:
       if body.proposals.nonEmpty && s.dormantEpochs != 0 then
         s.copy(
           dormantEpochs = 0,
-          dreps = s.dreps.view.mapValues { d =>
+          dreps = s.dreps.mapRows { (_, d) =>
             val actual = d.expiry + s.dormantEpochs
             if actual < epoch then d else d.copy(expiry = actual)
-          }.toMap
+          }
         )
       else s
     val voters = body.votes.collect { case (Voter.DRepVoter(c), _) => c }
@@ -356,11 +356,11 @@ private[ledger] object ConwayCerts:
 
     /** Move `cred` from the reverse delegation set of `old` to that of `new` (both optional). */
     def redelegate(
-        dreps: Map[Credential, DRepState],
+        dreps: Table[Credential, DRepState],
         cred: Credential,
         old: Option[DRep],
         next: Option[DRep]
-    ): Map[Credential, DRepState] =
+    ): Table[Credential, DRepState] =
       val removed = old match
         case Some(DRep.Registered(o)) if !next.contains(DRep.Registered(o)) =>
           dreps.updatedWith(o)(_.map(d => d.copy(delegs = d.delegs - cred)))

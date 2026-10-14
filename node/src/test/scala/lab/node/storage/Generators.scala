@@ -60,6 +60,25 @@ object Gens extends LowPriorityGens:
   given [K, V](using k: Gens[K], v: Gens[V]): Gens[Map[K, V]] =
     of(small.flatMap(Gen.listOfN(_, Gen.zip(k.gen, v.gen))).map(_.toMap))
 
+  given tableSpace: Gens[Table.Space] = auto
+  given tableChange[V](using Gens[V]): Gens[Table.Change[V]] = auto
+
+  /** Tables as a snapshot holds them: settled (no read set). */
+  given table[K, V](using k: Gens[K], v: Gens[V]): Gens[Table[K, V]] =
+    of(
+      for
+        space <- tableSpace.gen
+        diff <- summon[Gens[Map[K, Table.Change[V]]]].gen
+        count <- Gen.choose(0L, 10L)
+        a <- summon[Gens[BigInt]].gen
+        b <- summon[Gens[BigInt]].gen
+        stamp <- Gen.choose(0L, 100L)
+        flushed <- Gen.choose(-1L, 100L)
+      yield Table(space, diff, Map.empty, false, count, a, b, stamp, flushed)
+    )
+
+  given stakeDistribution: Gens[StakeDistribution] = auto
+
   given nativeScript: Gens[NativeScript] = of(nativeScripts(2))
   private def nativeScripts(depth: Int): Gen[NativeScript] =
     val leaf = Gen.oneOf(

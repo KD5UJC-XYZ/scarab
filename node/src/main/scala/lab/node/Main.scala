@@ -6,12 +6,12 @@ import lab.node.storage.{
   ChainPersistence,
   ChainStorage,
   ImmutableStore,
-  MemoryUtxoStore,
+  MemoryLedgerStore,
   NodeCodecs,
-  RocksUtxoStore,
+  RocksLedgerStore,
   StateBacking,
-  UtxoBacking,
-  UtxoStore
+  LedgerBacking,
+  LedgerStore
 }
 import NodeCodecs.given
 import cats.mtl.{Handle, Stateful}
@@ -114,22 +114,22 @@ object Main extends IOApp:
     */
   private def utxoBacking(
       options: Options
-  )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], StateBacking[IO, NodeState])] =
+  )(using Handle[IO, NodeError]): Resource[IO, (LedgerStore[IO], StateBacking[IO, NodeState])] =
     val kind = options.utxoStore.getOrElse(if options.db.isDefined then "rocksdb" else "memory")
     (kind, options.db) match
       case ("rocksdb", Some(dir)) =>
         val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
-        RocksUtxoStore
+        RocksLedgerStore
           .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
-          .map(s => (s: UtxoStore[IO]) -> (new UtxoBacking[IO](s, root / "checkpoints")))
+          .map(s => (s: LedgerStore[IO]) -> (new LedgerBacking[IO](s, root / "checkpoints")))
       case (_, db) =>
         val root =
           db.fold(fs2.io.file.Path("utxo-memory"))(d => fs2.io.file.Path.fromNioPath(d) / "utxo")
         Resource
-          .eval(MemoryUtxoStore[IO])
+          .eval(MemoryLedgerStore[IO])
           .map(s =>
-            (s: UtxoStore[IO]) -> (
-              if db.isDefined then new UtxoBacking[IO](s, root / "checkpoints")
+            (s: LedgerStore[IO]) -> (
+              if db.isDefined then new LedgerBacking[IO](s, root / "checkpoints")
               else StateBacking.none[IO, NodeState]
             )
           )
@@ -145,7 +145,7 @@ object Main extends IOApp:
 
   private def followWith(
       options: Options,
-      store: UtxoStore[IO],
+      store: LedgerStore[IO],
       backing: StateBacking[IO, NodeState],
       cache: VerificationCache,
       scheduling: Scheduling[IO]
@@ -182,7 +182,7 @@ object Main extends IOApp:
         setup.globals,
         setup.byronRules,
         phase2Observer = cases.map(c => c.observe),
-        utxoStore = Some(store),
+        ledgerStore = Some(store),
         compute = Some(scheduling.compute),
         afterBlock = Some { s =>
           IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
@@ -280,7 +280,7 @@ object Main extends IOApp:
             MempoolEnv(globals, geometry),
             options.mempoolBytes,
             JsonLog.mempool,
-            utxoStore = Some(store)
+            ledgerStore = Some(store)
           )
           served = server.persistence[NodeState]
           follower <- Follower.create[IO, NodeState](
@@ -411,7 +411,7 @@ object Main extends IOApp:
                 mempool,
                 JsonLog.forge,
                 connected.get,
-                utxoStore = Some(store)
+                ledgerStore = Some(store)
               )
             yield forger.run
           }
