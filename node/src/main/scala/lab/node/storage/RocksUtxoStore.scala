@@ -124,6 +124,22 @@ final class RocksUtxoStore[F[_]: Sync] private (
     finally it.close()
   }
 
+  def memory: F[Map[String, Long]] = guard("utxo memory") {
+    val d = db.get
+    def prop(name: String): Option[(String, Long)] =
+      Option(d.getProperty(s"rocksdb.$name")).flatMap(_.toLongOption).map(name -> _)
+    List(
+      "estimate-table-readers-mem",
+      "cur-size-all-mem-tables",
+      "size-all-mem-tables",
+      "block-cache-usage",
+      "block-cache-pinned-usage",
+      "block-cache-capacity",
+      "estimate-live-data-size",
+      "total-sst-files-size"
+    ).flatMap(prop).toMap
+  }
+
   def checkpoint(target: Path): F[Unit] = guard(target.toString) {
     val cp = Checkpoint.create(db.get)
     try cp.createCheckpoint(target.toString)

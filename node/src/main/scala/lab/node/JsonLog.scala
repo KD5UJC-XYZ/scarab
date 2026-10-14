@@ -54,6 +54,9 @@ object JsonLog:
     line("error", "kind" -> e.getClass.getSimpleName.asJson, "message" -> e.message.asJson)
 
   /** The node accepts inbound connections on `address`. */
+  /** A [[MemoryReport]] sample (`--memory-report-seconds`). */
+  def memory(sample: Json): IO[Unit] = line("memory", "sample" -> sample)
+
   def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
 
   def inbound(remote: String, what: String, reason: Option[String] = None): IO[Unit] =

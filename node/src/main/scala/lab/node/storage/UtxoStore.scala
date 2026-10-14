@@ -44,6 +44,11 @@ trait UtxoStore[F[_]]:
   /** Forget everything (a fresh store at stamp -1). */
   def reset: F[Unit]
 
+  /** Native memory the store holds, in bytes by name (RocksDB: table readers, memtables, block
+    * cache); empty for the memory store. For the memory report only.
+    */
+  def memory: F[Map[String, Long]]
+
 object UtxoStore:
   /** Flush the diff of an immutable state: write every change the store does not have yet. */
   def advance[F[_]: Sync](store: UtxoStore[F], utxo: Utxo): F[Unit] =
@@ -144,6 +149,7 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
   def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
   def size: F[Long] = state.get.map(_.entries.size.toLong)
   def reset: F[Unit] = state.set(Contents(Map.empty, -1))
+  def memory: F[Map[String, Long]] = F.pure(Map.empty)
 
   private def guard[A](what: String)(fa: => A): F[A] =
     F.blocking(fa).attempt.flatMap {
