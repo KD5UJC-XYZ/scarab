@@ -271,9 +271,10 @@ class InboundGovernorSuite extends CatsEffectSuite:
       assert(outcome._2.contains("invalid header"), outcome._2)
       assert(ranges.forall { case (_, to) => to != badHeader.point }, ranges.toString)
       // headers are checked a batch at a time, before any block of the batch: the batch with the
-      // bad header is not fetched at all, the batches before it were applied
+      // bad header is not fetched at all (how many blocks the batches before it held depends on the
+      // pipeline's timing), the bad block itself never is
       val applied = forged.headers.indexWhere(_.point == chain.tip)
-      assert(applied >= 0 && applied < n - 2, s"applied up to block $applied of $n")
+      assert(applied >= 0 && applied <= n - 2, s"applied up to block $applied of $n")
   }
 
   test("a peer that only reads from us (initiator-only) is served and not followed") {

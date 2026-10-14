@@ -72,7 +72,8 @@ object HeaderCheck:
         initial = HeaderChain.at[H](intersection, based.map(c => rules.at(c.state)))
         state <- Ref.of[F, HeaderChain[H]](initial)
         tally <- Ref.of[F, HeaderGate.Counts](HeaderGate.Counts(0, 0, 0))
-      yield gate(state, tally)
+        released <- Ref.of[F, Int](0)
+      yield gate(state, tally, released)
 
     private def invalid[A](header: Header, error: lab.node.consensus.HeaderError)(using
         Raise[F, PeerError]
@@ -82,9 +83,15 @@ object HeaderCheck:
     private def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
       PeerError.Protocol(reason).raise[F, A]
 
+    /** `released` counts the entries of the candidate chain that belong to earlier batches: their
+      * blocks are being fetched and applied, so waiting for them is possible. A header whose parent
+      * is in the batch being validated cannot wait for it: the batch is not released until all its
+      * headers have passed, so it is left to the block's own validation.
+      */
     private def gate(
         state: Ref[F, HeaderChain[H]],
-        tally: Ref[F, HeaderGate.Counts]
+        tally: Ref[F, HeaderGate.Counts],
+        released: Ref[F, Int]
     ): HeaderGate[F] =
       new HeaderGate[F]:
         def counts = tally.get
@@ -96,9 +103,10 @@ object HeaderCheck:
             case SyncEvent.RollForward(h, _) => h
           }
           (compute.within(
-            state.get
-              .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
-              .whenA(leading.size > 1) *>
+            state.get.flatMap(hc => released.set(hc.entries.size)) *>
+              state.get
+                .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
+                .whenA(leading.size > 1) *>
               batch.traverse_ {
                 case SyncEvent.RollBackward(point, _) => rollback(point)
                 case SyncEvent.RollForward(header, _) => forward(header)
@@ -109,15 +117,17 @@ object HeaderCheck:
         private def rollback(point: ChainSync.Point)(using Raise[F, PeerError]): F[Unit] =
           state.get.flatMap { hc =>
             hc.rollback(point) match
-              case Some(back) => state.set(back)
-              case None       =>
+              case Some(back) =>
+                state.set(back) *> released.update(math.min(_, back.entries.size))
+              case None =>
                 // before the join point: the peer's chain below it is ours while it is retained
                 chain.get.flatMap { current =>
                   current.rollback(point) match
-                    case Right(c) => state.set(HeaderChain.at(point, Some(rules.at(c.state))))
-                    case Left(_)  =>
+                    case Right(c) =>
+                      state.set(HeaderChain.at(point, Some(rules.at(c.state)))) *> released.set(0)
+                    case Left(_) =>
                       // Follower.session reports a rollback outside our chain
-                      state.set(HeaderChain.at[H](point, None))
+                      state.set(HeaderChain.at[H](point, None)) *> released.set(0)
                 }
           }
 
@@ -136,7 +146,14 @@ object HeaderCheck:
 
         private def record(header: Header, next: Option[H])(using Raise[F, PeerError]): F[Unit] =
           state.get.flatMap(hc =>
-            hc.extend(header, next).fold(protocol[Unit], g => state.set(g.pruned(retained)))
+            hc.extend(header, next)
+              .fold(
+                protocol[Unit],
+                g =>
+                  val kept = g.pruned(retained)
+                  val dropped = g.entries.size - kept.entries.size
+                  state.set(kept) *> released.update(r => (r - dropped).max(0))
+              )
           )
 
         /** Check `header`; when the ledger view cannot be forecast yet, wait for the node's chain
@@ -151,7 +168,7 @@ object HeaderCheck:
             hc <- state.get
             current <- chain.get
             result <-
-              if header.prevHash != hc.tipHash then
+              if !hc.canExtend(header) then
                 protocol[(Outcome[H], Boolean)](
                   s"header ${Points.show(header.point)} does not extend the peer's chain"
                 )
@@ -162,11 +179,29 @@ object HeaderCheck:
                   case (Some(prev), Some((anchorState, tip))) =>
                     F.delay(rules.validate(anchorState, tip, prev, header))
                       .flatMap {
-                        case Outcome.Later(reason) => wait(header, reason, since, current)
+                        case Outcome.Later(reason) => wait(header, reason, since, current, hc)
                         case other                 => F.pure(other -> waited)
                       }
                   case (None, Some(_)) =>
-                    wait(header, "the parent's header state is not known yet", since, current)
+                    released.get.flatMap { earlier =>
+                      if hc.entries.size > earlier then
+                        F.pure(
+                          (
+                            Outcome.Unchecked(
+                              "the parent is in the same batch and was not validated header-first",
+                              None
+                            ): Outcome[H]
+                          ) -> waited
+                        )
+                      else
+                        wait(
+                          header,
+                          "the parent's header state is not known yet",
+                          since,
+                          current,
+                          hc
+                        )
+                    }
                   case (_, None) =>
                     // no ledger state of ours lies on the peer's chain: the follower deals with it
                     F.pure(
@@ -196,19 +231,35 @@ object HeaderCheck:
             header: Header,
             reason: String,
             since: Option[(Option[BlockRef], FiniteDuration)],
-            current: VolatileChain[S]
+            current: VolatileChain[S],
+            hc: HeaderChain[H]
         )(using Raise[F, PeerError]): F[(Outcome[H], Boolean)] =
           for
             now <- F.monotonic
+            earlier <- released.get
             progress = current.tipRef
             moved = since match
               case Some((seen, at)) if seen == progress => (seen, at)
               case _                                    => (progress, now)
-            _ <-
-              if now - moved._2 > stall then
-                protocol[Unit](
-                  s"header ${Points.show(header.point)} cannot be validated, the chain stands still: $reason"
+            // our tip's place among the entries of earlier batches: everything of theirs is applied
+            applied =
+              if current.tip == hc.base then Some(0)
+              else
+                Some(hc.entries.indexWhere(e => progress.exists(_.hash == e.header.hash)) + 1)
+                  .filter(_ > 0)
+            nothingInFlight = applied.exists(_ >= earlier)
+            result <-
+              if nothingInFlight || now - moved._2 > stall then
+                // Nothing is left to wait for (every block of the earlier batches is applied, or the
+                // chain stood still): the block validates the header, rather than dropping a peer
+                // whose chain the forecast cannot reach (an honest gap, a limit of the forecast).
+                F.pure(
+                  (
+                    Outcome.Unchecked(
+                      s"not validated header-first, nothing left to wait for: $reason",
+                      None
+                    ): Outcome[H]
+                  ) -> true
                 )
-              else F.sleep(poll)
-            result <- resolve(header, waited = true, since = Some(moved))
+              else F.sleep(poll) *> resolve(header, waited = true, since = Some(moved))
           yield result

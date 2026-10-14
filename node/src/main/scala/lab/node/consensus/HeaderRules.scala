@@ -94,10 +94,17 @@ final case class HeaderChain[H](
 
   def contains(hash: Bytes): Boolean = stateAfter(hash).isDefined
 
+  /** The header can follow the tip. The first header of a chain that starts at Origin names the
+    * chain's origin (the Byron genesis hash on a chain with a Byron prefix) as its parent, which
+    * `VolatileChain` checks against the node's own origin; any parent is accepted there.
+    */
+  def canExtend(header: Header): Boolean =
+    header.prevHash == tipHash || (base == ChainSync.Point.Origin && entries.isEmpty)
+
   /** Append a header that extends the tip. */
   def extend(header: Header, state: Option[H]): Either[String, HeaderChain[H]] =
     Either.cond(
-      header.prevHash == tipHash,
+      canExtend(header),
       copy(entries = entries :+ HeaderChain.Entry(header, state)),
       s"header ${header.hash.hex.take(16)} does not extend the candidate chain"
     )

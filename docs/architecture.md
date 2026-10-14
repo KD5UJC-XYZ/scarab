@@ -611,15 +611,21 @@ VRF proofs, the threshold, the certificate and counter; the nonces evolve along 
 delegations are the anchor's (a genesis delegation that becomes due on the way is adopted); in the
 next epoch the pool distribution is the anchor's newest stake snapshot (`mark`, which the boundary only
 rotates into place) and, for TPraos, `d` and the extra entropy come from the update proposals the
-boundary would adopt. A header beyond the horizon waits (`Outcome.Later`) until the node's chain has
-advanced, and the session ends if the chain stands still for two minutes. The protocol-parameter
+boundary would adopt. A header beyond the horizon waits (`Outcome.Later`) for the blocks of earlier
+batches to be applied, which moves the horizon. A header can never wait for a block of its own batch (a
+batch is released only when all its headers have passed), so when every block of the earlier batches is
+applied, or the node's chain has stood still for two minutes, the header is left to its block's own
+validation (counted as `unchecked`) instead of dropping a peer whose chain the forecast cannot reach
+(an honest gap longer than the stability window, a limit of the forecast). The protocol-parameter
 envelope checks are left to the block's own validation for a header of a later epoch than the anchor's
 (the boundary, which can enact a version change, is not run for a forecast).
 
 **What is not checked header-first** (counted as `unchecked` in the `headersChecked` log line, the
 block is validated as before when it is applied): Byron headers (their PBFT checks need the Byron
 delegation state), the first Shelley header of a chain with a Byron prefix (the Shelley ledger does
-not exist before that block), and every header on a node run with `--header-first off`.
+not exist before that block) and the rest of its batch (their header state follows from the block, so
+the next batch waits for it to be applied and is validated from the applied state), a header left to its
+block as above, and every header on a node run with `--header-first off`.
 
 **Cost.** The signatures are verified once. The gate's view of the `VerificationCache`
 (`forHeaders`) computes a verdict if it is not there and keeps it; the block's own validation, later,
