@@ -139,7 +139,11 @@ final class InboundGovernor[F[_]: Async] private (
              else Resource.unit[F])
       }
 
-  /** Our clients on the connection and the follower session over them. */
+  /** Our clients on the connection and the follower session over them, for the life of the
+    * connection. A peer that shares no point with our chain (it is behind us, as a relay that is
+    * still syncing from us is) is tried again after `retryDelay`: the protocol is back in its idle
+    * state after a failed FindIntersect, so the connection is reusable.
+    */
   private def session(
       remote: SocketAddress[IpAddress],
       version: Int,
@@ -148,6 +152,15 @@ final class InboundGovernor[F[_]: Async] private (
     for
       n <- sessionTable.get.map(_.size.toLong)
       _ <- update(remote)(_ => InboundGovernor.Session(remote.toString, number = n + 1))
+      _ <- attempt(remote, version, mux)
+    yield ()
+
+  private def attempt(
+      remote: SocketAddress[IpAddress],
+      version: Int,
+      mux: Mux[F]
+  ): F[Unit] =
+    for
       outcome <- Handle
         .allow[PeerError] {
           // network failures of the clients become peer errors of this session
@@ -171,8 +184,17 @@ final class InboundGovernor[F[_]: Async] private (
             .as(Option.empty[PeerError])
         }
         .rescue(e => F.pure(Some(e)))
+        // anything else (an error the follower raises into the node's own scope, a defect) ends
+        // this session visibly instead of killing its fiber silently
+        .handleErrorWith(t =>
+          F.pure(Some(PeerError.Unavailable(s"session failed: ${InboundGovernor.describe(t)}")))
+        )
       _ <- outcome match
         case None => F.unit
+        case Some(PeerError.NoIntersection) =>
+          update(remote)(s => s.copy(retries = s.retries + 1)) *>
+            emit(remote, InboundEvent.SessionEnded(PeerError.NoIntersection.message, false)) *>
+            F.sleep(config.retryDelay) *> attempt(remote, version, mux)
         case Some(error) =>
           val drop = error match
             case _: PeerError.InvalidHeader | _: PeerError.Protocol => true
@@ -202,6 +224,19 @@ final class InboundGovernor[F[_]: Async] private (
   private def tipBlock(tip: ChainSync.Tip): Option[BigInt] = Some(tip.blockNo.value)
 
 object InboundGovernor:
+  /** A readable reason for a failure that escaped: a domain error raised outside its scope is a
+    * cats-mtl `Submarine` whose payload is the error.
+    */
+  private[node] def describe(t: Throwable): String =
+    val payload =
+      if t.getClass.getName.endsWith("Submarine") then
+        scala.util.Try(t.getClass.getMethod("e").invoke(t)).toOption.map {
+          case e: NodeError => e.message
+          case other        => String.valueOf(other)
+        }
+      else None
+    payload.getOrElse(Option(t.getMessage).getOrElse(t.toString))
+
   /** The connection table and the inbound sessions as JSON (`GET /connections`). */
   def json(
       snapshot: ConnectionManager.Snapshot,
@@ -225,6 +260,7 @@ object InboundGovernor:
           "intersection" -> s.intersection.asJson,
           "headers" -> s.headers.asJson,
           "rollbacks" -> s.rollbacks.asJson,
+          "retries" -> s.retries.asJson,
           "peerTipBlock" -> s.peerTip.map(_.toString).asJson,
           "ended" -> s.ended.asJson
         )
@@ -238,6 +274,8 @@ object InboundGovernor:
       intersection: Option[String] = None,
       headers: Long = 0,
       rollbacks: Long = 0,
+      /** Times the peer shared no point with our chain and the session was started again. */
+      retries: Long = 0,
       peerTip: Option[BigInt] = None,
       ended: Option[String] = None
   )
@@ -252,7 +290,10 @@ object InboundGovernor:
       magic: Long,
       server: NodeToNodeServer.Settings,
       peer: Peer.Settings,
-      runClients: Boolean = true
+      runClients: Boolean = true,
+      /** How long to wait before following a peer again that shared no point with our chain. */
+      retryDelay: scala.concurrent.duration.FiniteDuration =
+        scala.concurrent.duration.DurationInt(10).seconds
   )
 
   def create[F[_]: Async](

@@ -34,6 +34,12 @@ trait Peer[F[_]]:
   def fetch(header: Header): F[Bytes]
 
 object Peer:
+  /** One pipelined ChainSync round: `requested` RequestNext sent at once, `received` instructions
+    * back after `millis` (from the first request to the last reply). D3 uses it to see how long a
+    * relay takes to answer a deep pipeline.
+    */
+  final case class BatchObservation(requested: Int, received: Int, millis: Long)
+
   final case class Settings(
       address: SocketAddress[Host],
       magic: Long,
@@ -114,7 +120,8 @@ object Peer:
       settings: Settings,
       prepare: Prepare[F],
       transactions: Option[TxSubmissionClient.Source[F]] = None,
-      headers: Option[HeaderCheck[F]] = None
+      headers: Option[HeaderCheck[F]] = None,
+      observe: Option[Peer.BatchObservation => F[Unit]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -131,7 +138,7 @@ object Peer:
         settings.network,
         transactions
       )
-      .flatMap(over(_, settings, prepare, headers))
+      .flatMap(over(_, settings, prepare, headers, observe))
 
   /** The peer interface over a connection that is already negotiated: one we opened
     * ([[nodeToNode]]) or an inbound duplex connection on which we run our own clients (G2). The
@@ -145,7 +152,8 @@ object Peer:
       connection: NodeToNodeConnection[F, NtNHeader],
       settings: Settings,
       prepare: Prepare[F],
-      headers: Option[HeaderCheck[F]] = None
+      headers: Option[HeaderCheck[F]] = None,
+      observe: Option[Peer.BatchObservation => F[Unit]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -219,7 +227,10 @@ object Peer:
               (tip.blockNo.value - blockNo).max(0)
             }
             n = (ahead - 1).min(settings.readAhead).max(1).toInt
+            began <- F.monotonic
             updates <- connection.chainSync.requestNextBatch(n)
+            took <- F.monotonic.map(_ - began)
+            _ <- observe.traverse_(_(Peer.BatchObservation(n, updates.size, took.toMillis)))
             batch <- updates.traverse(decode)
             // header-first: nothing of this batch is fetched before its headers are valid
             _ <- gate.get.flatMap(_.accept(batch))

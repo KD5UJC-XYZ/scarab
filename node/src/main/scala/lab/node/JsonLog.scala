@@ -71,6 +71,25 @@ object JsonLog:
   def inbound(remote: String, what: String, reason: Option[String] = None): IO[Unit] =
     line("inbound", "remote" -> remote.asJson, "state" -> what.asJson, "reason" -> reason.asJson)
 
+  /** The ChainSync pipeline so far: rounds, instructions, and how long a round took from the first
+    * request to the last reply (D3).
+    */
+  def chainSyncRounds(
+      rounds: Long,
+      headers: Long,
+      avgMs: Long,
+      maxMs: Long,
+      maxDepth: Int
+  ): IO[Unit] =
+    line(
+      "chainSyncRounds",
+      "rounds" -> rounds.asJson,
+      "headers" -> headers.asJson,
+      "avgMs" -> avgMs.asJson,
+      "maxMs" -> maxMs.asJson,
+      "maxDepth" -> maxDepth.asJson
+    )
+
   /** What the inbound governor did on a connection (G2). */
   def inboundEvent(remote: String, event: InboundEvent): IO[Unit] = event match
     case InboundEvent.Accepted       => inbound(remote, "accepted")

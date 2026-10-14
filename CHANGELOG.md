@@ -5,6 +5,31 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Network
+- Header-first validation (roadmap G6): the pipelined peer validates each ChainSync batch before any
+  of its blocks is fetched. `NodeHeaderRules` (pure) checks the envelope, the Praos or TPraos
+  header rules and the nonces along the candidate header chain against a ledger view forecast from
+  the newest ledger state of ours on the peer's chain, within the stability window (`HeaderRules`,
+  `HeaderChain`, `HeaderGate`); an invalid header raises the new `PeerError.InvalidHeader`, the
+  session ends, the peer is dropped and none of the batch's blocks is requested. The signatures
+  are verified once: the gate's view of `VerificationCache` keeps its verdicts for the block's own
+  validation, and `warmBlock` keeps a verdict that is already there. `--header-first on|off`
+  (default on); `headersChecked` log line.
+- Connection manager and inbound governor (G2): `ConnectionState` (pure), `ConnectionManager` (one
+  connection per peer address, inbound and outbound limits, typed `ConnectionError`s, release on
+  failure and cancellation), `InboundGovernor` (our ChainSync, BlockFetch and KeepAlive clients run
+  on every inbound duplex connection through the same pipelined, header-validating peer, so the
+  peer is a block source; a protocol error or invalid header drops the peer), `Outbound.connect`
+  (the connections we open go through the manager and wait for a peer's inbound duplex connection
+  instead of dialling a second). `Peer.over`, `NodeToNode.clients`. `--max-inbound N`,
+  `--inbound-sync on|off`, `GET /connections`, `inbound` and `connection` log events. The devnet
+  `relay` scenario asserts that the Scala node follows the Haskell relay over the relay's own
+  connection.
+- Receive path (D3): the protocol reader read every byte through `Bytes.value`, which builds a
+  `Vector` of the whole buffer, and the multiplexer decoder copied through `Vector`s; a range of 100
+  blocks of 90 KB was received at 0.7 MB/s on a loaded machine and now at 48 MB/s. On the shared
+  connection the slow receive held the next batch's ChainSync replies behind the block data.
+
 ### Node-to-client
 - LocalStateQuery server (roadmap F1): the mini-protocol (acquire at a point, the volatile or immutable
   tip, re-acquire, release), the hard-fork-combinator query envelope and the Conway queries

@@ -40,7 +40,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
   /** The serving peer: its chain, and the block ranges it was asked for. */
   private final class Remote(
       val handlers: ServerHandlers[IO, NtNHeader],
-      val ranges: Ref[IO, Vector[(Point, Point)]]
+      val ranges: Ref[IO, Vector[(Point, Point)]],
+      val extend: Vector[Bytes] => IO[Unit]
   )
 
   private def serving(raws: Vector[Bytes]): IO[Remote] =
@@ -50,21 +51,24 @@ class InboundGovernorSuite extends CatsEffectSuite:
         None,
         ChainServer.headerOfBlock(ForgedChain.geometry.byron.epochSlots)
       )
-      _ <- Handle
-        .allow[ChainError] {
-          raws.traverse_ { raw =>
-            val header = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
-            server
-              .persistence[NodeState]
-              .extended(
-                BlockRef(header.slot, header.hash, header.blockNo),
-                raw,
-                Vector.empty,
-                Anchor(None, forged.genesis)
-              )
+      extend = (more: Vector[Bytes]) =>
+        Handle
+          .allow[ChainError] {
+            more.traverse_ { raw =>
+              val header =
+                Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
+              server
+                .persistence[NodeState]
+                .extended(
+                  BlockRef(header.slot, header.hash, header.blockNo),
+                  raw,
+                  Vector.empty,
+                  Anchor(None, forged.genesis)
+                )
+            }
           }
-        }
-        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+          .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+      _ <- extend(raws)
       ranges <- Ref.of[IO, Vector[(Point, Point)]](Vector.empty)
       counting = new BlockFetchServer.Blocks[IO]:
         def range(from: Point, to: Point, max: Int) =
@@ -74,7 +78,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
         def submit(originals: Vector[Bytes]) = IO.unit
     yield new Remote(
       ServerHandlers[IO, NtNHeader](NtNHeader.codec, server.source, counting, sink),
-      ranges
+      ranges,
+      extend
     )
 
   /** Our node: follower, connection manager and governor. */
@@ -85,7 +90,11 @@ class InboundGovernorSuite extends CatsEffectSuite:
       val applied: Ref[IO, Vector[Bytes]]
   )
 
-  private def local(headerFirst: Boolean = true, runClients: Boolean = true): IO[Local] =
+  private def local(
+      headerFirst: Boolean = true,
+      runClients: Boolean = true,
+      retryDelay: FiniteDuration = 10.seconds
+  ): IO[Local] =
     for
       ref <- Ref.of[IO, VolatileChain[NodeState]](
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
@@ -129,7 +138,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
           magic,
           NodeToNodeServer.Settings(),
           settings,
-          runClients
+          runClients,
+          retryDelay
         ),
         ServerHandlers[IO, NtNHeader](
           NtNHeader.codec,
@@ -296,4 +306,35 @@ class InboundGovernorSuite extends CatsEffectSuite:
         ) *> Bearer.inMemory[IO](64).flatMap((_, ours2) => us.governor.serve(ours2, remote))
       }
     yield assert(outcome._1.contains("already connected"), outcome._1)
+  }
+
+  test("a peer that shares no point with our chain is tried again on the same connection") {
+    for
+      first <- serving(forged.raws)
+      us <- local(retryDelay = 100.millis)
+      last = forged.headers.last
+      _ <- connect(Some(first), us) { _ =>
+        eventually("our chain reaches the peer's tip")(us.chain.get.map(_.tip))(_ == last.point)
+      }
+      // a peer with an empty chain shares nothing with ours (our anchor is past Origin)
+      behind <- serving(Vector.empty)
+      outcome <- connect(Some(behind), us) { _ =>
+        for
+          waiting <- eventually("the session is retried")(us.governor.sessions)(
+            _.exists(_.retries >= 2)
+          )
+          // the peer catches up: the next attempt finds our tip and follows
+          _ <- behind.extend(forged.raws)
+          following <- eventually("the session follows")(us.governor.sessions)(
+            _.exists(_.intersection.isDefined)
+          )
+          table <- us.manager.snapshot
+        yield (waiting, following, table)
+      }
+    yield
+      val ((waiting, following, table), _) = outcome
+      // retried without ending the session or the connection
+      assert(waiting.head.ended.isEmpty, waiting.toString)
+      assertEquals(following.head.intersection, Some(Points.show(last.point)))
+      assertEquals(table.counters.inbound, 1)
   }

@@ -168,6 +168,7 @@ object Main extends IOApp:
       genesis = setup.genesis
       blocks <- Ref.of[IO, Long](0L)
       headersLogged <- Ref.of[IO, Long](0L)
+      rounds <- Ref.of[IO, (Long, Long, Long, Long, Int)]((0L, 0L, 0L, 0L, 0))
       // The rule configuration the signature pre-verification uses: a chain with a derived Byron
       // span learns its first Shelley epoch from the state.
       praosConfig <- Ref.of[IO, consensus.PraosConfig](setup.praos)
@@ -353,6 +354,22 @@ object Main extends IOApp:
               )
             )
           )
+          // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
+          observeRounds = (o: Peer.BatchObservation) =>
+            rounds
+              .modify { case (n, headers, total, max, depth) =>
+                val next = (
+                  n + 1,
+                  headers + o.received,
+                  total + o.millis,
+                  max.max(o.millis),
+                  depth.max(o.requested)
+                )
+                if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
+              }
+              .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
+                JsonLog.chainSyncRounds(n, headers, total / n, max, depth)
+              })
           // the connection manager (G2): one connection per peer address, limits, accounting
           manager <- ConnectionManager.create[IO](
             ConnectionManager.Limits(maxInbound = options.maxInbound),
@@ -400,7 +417,13 @@ object Main extends IOApp:
                   Outbound.connect[IO](
                     manager,
                     address,
-                    Peer.nodeToNode[IO](settings, warm, Some(mempool.source), headerCheck),
+                    Peer.nodeToNode[IO](
+                      settings,
+                      warm,
+                      Some(mempool.source),
+                      headerCheck,
+                      Some(observeRounds)
+                    ),
                     Some { case Outbound.Event.Reused(remote) =>
                       JsonLog.inbound(
                         remote,
