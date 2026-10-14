@@ -25,6 +25,10 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `--inbound-sync on|off`, `GET /connections`, `inbound` and `connection` log events. The devnet
   `relay` scenario asserts that the Scala node follows the Haskell relay over the relay's own
   connection.
+- ChainSync depth (D3): `--read-ahead` defaults to 128 (was 64), from 16 runs against the public Preview
+  relay at 64 to 256 with no timeout; `chainSyncRounds` and `slowFetch` log lines; `devnet.py pool
+  --scala-flags`. `ChainError.NoIntersection` became `PeerError.NoIntersection` (an outbound peer that
+  shares no point is retried like any peer failure; it was fatal for the node).
 - Receive path (D3): the protocol reader read every byte through `Bytes.value`, which builds a
   `Vector` of the whole buffer, and the multiplexer decoder copied through `Vector`s; a range of 100
   blocks of 90 KB was received at 0.7 MB/s on a loaded machine and now at 48 MB/s. On the shared
