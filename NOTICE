@@ -108,3 +108,7 @@ Devnet LocalStateQuery goldens (fixtures/devnet/lsq): the genesis directory of a
 (see the README there); public data only, no secrets. Apache-2.0.
 
 This list is not legal advice and not a completed redistribution review.
+
+The Scarab name, logo and icon (docs/assets/scarab-logo.png, scarab-icon.png, favicon-64.png) are
+not licensed under Apache-2.0: © KD5UJC.XYZ, all rights reserved; they may be used to refer to this
+project.

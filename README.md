@@ -1,4 +1,10 @@
-# Cardano Scala Lab
+<p align="center">
+  <img src="docs/assets/scarab-logo.png" alt="Scarab logo" width="220">
+</p>
+
+<h1 align="center">Scarab</h1>
+
+<p align="center"><em>A Cardano™-compatible node in functional Scala</em></p>
 
 An independent, Cardano™-compatible node written in Scala 3 as tagless-final cats-effect code: effects are
 abstract (`F[_]`), domain errors are closed ADTs raised through cats-mtl (`Raise`, `Handle`), state
