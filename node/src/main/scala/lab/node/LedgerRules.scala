@@ -153,7 +153,13 @@ final class NodeRules[F[_]: Monad](
           fetched <- if wanted.isEmpty then Map.empty[TxIn, TxOut].pure[F] else store.read(wanted)
           start = state.ledger.copy(utxo = utxo.withResident(fetched))
           // An epoch boundary reads whole tables: fetch them at once rather than by misses.
-          loaded <- if crossing then LedgerStore.loadForBoundary(store, start) else start.pure[F]
+          loaded <-
+            if crossing then LedgerStore.loadForBoundary(store, start)
+            else
+              prepared.fold(start.pure[F]) { p =>
+                val keys = p.tableKeys
+                LedgerStore.prefetch(store, start, keys.accounts, keys.pools, keys.dreps)
+              }
           done <- LedgerStore.completingF(Some(store), loaded) { ledger =>
             val before = state.copy(ledger = ledger)
             cpu.timed(NodeRules.guardedLabel(before))(Table.guarded(pure(before, prepared)))
@@ -184,8 +190,63 @@ object NodeRules:
   )(result: Either[Table.Miss, Either[(String, String), NodeState]]): String =
     result.fold(_ => "refetch", stepLabel(before))
 
+  /** The rows of the ledger tables the transactions of a block name (what [[Prepared.tableKeys]]
+    * finds): stake credentials, pool ids, DRep credentials.
+    */
+  final case class TableKeys(
+      accounts: Set[Credential],
+      pools: Set[Bytes],
+      dreps: Set[Credential]
+  )
+
+  object TableKeys:
+    def of(bodies: Iterable[TxBody]): TableKeys =
+      val accounts = Set.newBuilder[Credential]
+      val pools = Set.newBuilder[Bytes]
+      val dreps = Set.newBuilder[Credential]
+      bodies.foreach { b =>
+        b.withdrawals.foreach((a, _) => accounts += a.credential)
+        b.certificates.foreach {
+          case Certificate.Register(c, _)   => accounts += c
+          case Certificate.Unregister(c, _) => accounts += c
+          case Certificate.Delegate(c, pool, drep, _) =>
+            accounts += c
+            pool.foreach(pools += _)
+            drep.foreach {
+              case DRep.Registered(d) => dreps += d
+              case _                  => ()
+            }
+          case Certificate.RegisterPool(p)       => pools += p.operator
+          case Certificate.RetirePool(p, _)      => pools += p
+          case Certificate.RegisterDRep(c, _, _) => dreps += c
+          case Certificate.UnregisterDRep(c, _)  => dreps += c
+          case Certificate.UpdateDRep(c, _)      => dreps += c
+          case _                                 => ()
+        }
+        b.votes.foreach {
+          case (Voter.DRepVoter(c), _) => dreps += c
+          case (Voter.Pool(h), _)      => pools += h
+          case _                       => ()
+        }
+        b.proposals.foreach { p =>
+          accounts += p.returnAccount.credential
+          p.action match
+            case GovAction.TreasuryWithdrawals(ws, _) =>
+              ws.foreach((a, _) => accounts += a.credential)
+            case _ => ()
+        }
+      }
+      TableKeys(accounts.result(), pools.result(), dreps.result())
+
   /** A block decoded once for both the read-set fetch and the rules. */
   final case class Prepared(block: Block.Shelley, txs: Vector[Either[String, Tx]]):
+    /** The rows of the accounts, pools and DRep tables the rules read for the certificates,
+      * withdrawals, votes and proposals of the transactions. Rows that depend on other rows (the
+      * DRep an account delegates to, the delegators of a DRep) are not listed: the rules ask for
+      * them and the block is applied again.
+      */
+    def tableKeys: TableKeys = TableKeys.of(txs.collect { case Right(t) => t.body })
+
     /** Everything the transactions can read from the UTxO set (not what the block itself creates).
       */
     def inputs: Vector[TxIn] =

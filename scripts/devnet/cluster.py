@@ -372,8 +372,9 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
     The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2.
     """
     cpus = cpus if cpus is not None else getattr(args, "scala_cpus", 2)
+    # MALLOC_ARENA_MAX=2: glibc's per-thread arenas fragment (roadmap K6); also set in the image
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
-               f"--cpus={cpus}", "--memory=2g", "--user", USER,
+               f"--cpus={cpus}", "--memory=2g", "--user", USER, "-e", "MALLOC_ARENA_MAX=2",
                "-v", f"{REPO}:/work:ro", "-v", f"{root / 'classes'}:/run/classes:ro"]
     if name:
         command += ["--name", name]

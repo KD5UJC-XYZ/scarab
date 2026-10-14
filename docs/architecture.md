@@ -30,7 +30,7 @@ pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are di
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, EPOCH (rewards, SNAP, POOLREAP, dormant epochs), and from Conway GOV, RATIFY, ENACT and the DRep pulser |
 | Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
 | Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; Scalus interpreter; our own script contexts and cost-model selection |
-| UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `RocksUtxoStore.scala` | The UTxO set behind `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure view |
+| UTxO set and ledger tables | `ledger/Utxo.scala`, `ledger/Table.scala`, `storage/UtxoStore.scala`, `LedgerStore.scala`, `RocksLedgerStore.scala`, `MemoryLedgerStore.scala` | The UTxO set, the accounts, the pools, the DReps and the stake snapshots behind `LedgerStore[F]` (memory or RocksDB); the ledger state holds a pure view of each (`Utxo`, `Table`) |
 | Storage | `storage/` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `NetworkIdentityFile`, derived `Codec`s |
 | Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
 | Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
@@ -49,7 +49,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 |---|---|---|
 | `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP (pipelined), scripted peers in tests |
 | `BlockRules[F, S]` | validate and apply one block to a state | `NodeRules` (full ledger), bootstrap mode (headers only) |
-| `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
+| `LedgerStore[F]` (extends `UtxoStore[F]`) | read, write (one atomic batch over every table), scan, checkpoint, restore the UTxO set and the ledger tables | `MemoryLedgerStore`, `RocksLedgerStore` |
 | `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
 | `VolatileStore[F]` | crash-safe log of the volatile chain's updates | `VolatileStore.open` (file log) |
 | `Compute[F]` | run the follower (CPU-bound) on its own pool, time pure steps | `Compute.pool` (work-stealing pool, a `Resource`), `Compute.measured`, `Compute.inline` (tests) |
@@ -650,8 +650,8 @@ the CBOR decoder gives every node a zero-copy window of the block (`original`) i
 integers are read as `Long` when they fit. The API is unchanged (`value` still gives a `Vector`).
 
 **The UTxO set behind an algebra (UTxO-HD).** `UtxoStore[F]` has `read(keys)`, `write(changes, stamp)`,
-`flushed`, `checkpoint(dir)`, `restore(dir)`, `all` and `reset`; `MemoryUtxoStore` (tests, the devnet,
-`follow` without `--db`) and `RocksUtxoStore` (RocksDB through its JNI, Maven `org.rocksdb:rocksdbjni`,
+`flushed`, `checkpoint(dir)`, `restore(dir)`, `all` and `reset`; `MemoryLedgerStore` (tests, the devnet,
+`follow` without `--db`) and `RocksLedgerStore` (RocksDB through its JNI, Maven `org.rocksdb:rocksdbjni`,
 native library bundled for linux x86_64) are the interpreters. The ledger state holds a pure `Utxo`:
 
 - `diff`: the changes made since the store's flushed point, newest per key, each stamped with the
@@ -701,7 +701,47 @@ follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-
 ```
 
 `rocksdb` is the default with `--db`; without it the node uses the memory store. The query server
-completes the UTxO from the store for `/state`.
+completes the UTxO and the ledger tables from the store for `/state`.
+
+**The other ledger maps behind the same store (D1).** The accounts (reward balance, deposit,
+delegations), the pools, the DReps and the three stake snapshots are `Table[K, V]` values
+(`ledger/Table.scala`) with the shape of `Utxo`: a `diff` of the changes since the store's flushed
+point (stamped with the block number, shared between the states of the last `k` blocks, trimmed when
+the store has them), a `read` set fetched for the block being applied, and a count and two sums kept
+incrementally (accounts: reward balances and deposits; pools and DReps: deposits), so the supply check
+and the obligation read a number instead of walking a map. `LedgerStore[F]` is `UtxoStore[F]` plus
+`readRows`, `scanRows` and `writeAll`; rows are bytes (`generation u64 | Codec of the key`), the typed
+layer (`LedgerStore.Slot`: lens into the state, key and value codecs) lives beside it. In RocksDB each
+table is a column family of the database that holds the UTxO set, so a flush is one `WriteBatch` over
+all of them and one `Checkpoint` covers the lot: a restored snapshot and its tables are the same block.
+The three stake snapshots are *generations* of two stored tables (`snapStake`, `snapDeleg`): a
+rotation moves values, not rows; the new mark is a new generation written once, the rows of
+generations older than `go` are deleted in the flush that retires them (`deleteRange`).
+
+The rules stay pure functions of the state. The read set is not computed by hand: a read of a row
+that the diff and the read set do not decide, in a table that has part of it in the store, throws
+`Table.Miss` (a `ControlThrowable`, a control signal and not a domain error), and `Table.guarded`
+turns it into a value. `LedgerStore.completingF` runs a pure step, fetches the rows a miss names
+(`readRows`, or the whole table for a scan: `scanRows`) and runs the step again, so nothing is ever
+answered from an incomplete view; after three point misses on one table it fetches the whole table.
+`NodeRules` does this for each block (and fetches the tables an epoch boundary reads whole before
+it starts: accounts, pools, DReps and the `go` snapshot), the mempool for each transaction and
+synchronisation, the forger for the epoch boundary and the candidate transactions, and the
+LocalStateQuery server for each query; `Projection` (`/state`) materialises every table. The rows
+fetched are dropped after the block (`LedgerState.settled`), so between epoch boundaries the heap
+holds the diffs of the last `k` blocks, the counters and the per-pool stake, not a map of every
+credential. **An epoch boundary still reads the accounts and the `go` snapshot whole** (the reward
+calculation, SNAP, the DRep distribution are folds over every credential), so the heap peaks at a
+boundary with what it held before D1 and drops back; streaming the boundary is future work. Pools
+and DReps are small and the pulsing snapshot of the DRep state (`PulsingSnapshot.drepState`) is a
+plain map.
+
+Properties (`LedgerTablesSuite`, `TableSuite`): random blocks of point writes, scanning bulk edits
+and snapshot rotations, rollbacks, flushes (with the diff forced empty as a snapshot does) and
+checkpoint/restore leave both interpreters equal to `Map` models at every step, with counts and sums
+exact and the rows of retired generations gone; the two interpreters hold the same rows; a read
+the state cannot answer is reported, never answered. The persisted shape changed (the schema
+fingerprint of the snapshots): older snapshots are rejected and the node replays.
 
 ## Scheduling: CPU-bound work off the timer path (D8)
 

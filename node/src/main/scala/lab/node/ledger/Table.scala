@@ -120,6 +120,11 @@ final case class Table[K, V](
       if n == v then t else t.updated(k, n)
     }
 
+  /** The keys of `ks` that a read would miss on: those neither the diff nor the read set decide. */
+  def undecided(ks: Iterable[K]): Set[K] =
+    if decided then Set.empty
+    else ks.iterator.filter(k => !diff.contains(k) && !read.contains(k)).toSet
+
   /** The table as just its rows, in the diff: equal for equal contents however they are split
     * between the store and the diff (tests and diagnostics; the whole table must be in view).
     */

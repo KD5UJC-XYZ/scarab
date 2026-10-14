@@ -5,10 +5,19 @@ import cats.Monad
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
-import lab.node.StorageError
-import lab.node.ledger.{Account, DRepState, LedgerState, PoolState, Snapshot, Table, TxIn, TxOut}
 import lab.cbor.Bytes
-import lab.node.ledger.Credential
+import lab.node.StorageError
+import lab.node.ledger.{
+  Account,
+  Credential,
+  DRepState,
+  LedgerState,
+  PoolState,
+  Snapshot,
+  Table,
+  TxIn,
+  TxOut
+}
 
 /** The backing store of the ledger state at the newest immutable block (roadmap D1): the UTxO set
   * and the tables of accounts, pools, DReps and the stake snapshots. Everything older than the last
@@ -129,8 +138,8 @@ object LedgerStore:
         )
       )
     val writes = slots.flatMap(s => of(s))
-    // Merging the slots of one space (a snapshot that is both `mark` and `set`, say) is not needed:
-    // equal spaces are equal values, so their identical changes are written twice.
+    // A generation is held by one snapshot at a time (each rotation makes a new one, the empty
+    // generation 0 has no rows), so no table is written twice.
     val live = Vector(state.snapshots.mark, state.snapshots.set, state.snapshots.go).map(_.gen)
     val retain = Vector(Snapshot.StakeTable, Snapshot.DelegTable).map(_ -> live.min)
     writes -> retain
@@ -227,6 +236,29 @@ object LedgerStore:
       f: LedgerState => A
   )(using Raise[F, StorageError]): F[(LedgerState, A)] =
     completingF(store, state)(s => Table.guarded(f(s)).pure[F])
+
+  /** The rows of the ledger tables a block is going to read, as far as they can be told from its
+    * transactions (`accountKeys`, `poolKeys`, `drepKeys`), fetched before the first attempt. A miss
+    * on a row that is missing from the list (one that depends on another row) is still handled, but
+    * costs a second attempt of the block.
+    */
+  def prefetch[F[_]: Monad](
+      store: LedgerStore[F],
+      state: LedgerState,
+      accountKeys: Set[Credential],
+      poolKeys: Set[Bytes],
+      drepKeys: Set[Credential]
+  )(using Raise[F, StorageError]): F[LedgerState] =
+    def fetch[K, V](slot: Slot[K, V], wanted: Set[K], s: LedgerState): F[LedgerState] =
+      val t = slot.get(s)
+      val missing = t.undecided(wanted)
+      if missing.isEmpty then s.pure[F]
+      else fill(store, s, Table.Miss(t.space, missing.toSet[Any], all = false))
+    for
+      a <- fetch(LedgerStore.accounts, accountKeys, state)
+      p <- fetch(LedgerStore.pools, poolKeys, a)
+      d <- fetch(LedgerStore.dreps, drepKeys, p)
+    yield d
 
   /** The tables an epoch boundary reads whole, fetched whole: the accounts, pools and DReps and the
     * snapshot the rewards are calculated from.

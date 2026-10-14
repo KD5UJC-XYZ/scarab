@@ -402,3 +402,64 @@ class LedgerTablesSuite extends ScalaCheckSuite:
     val scan = Table.guarded(settled.accounts.toMap).swap.getOrElse(fail("answered"))
     assert(scan.all)
   }
+
+  test("the rows a block names are fetched before it is applied; nothing else is") {
+    given_ {
+      MemoryLedgerStore[IO].flatMap { store =>
+        val l0 = TestLedger.state(8, Vector.empty)
+        val l1 = l0.copy(
+          accounts = l0.accounts
+            .updated(cred(1), account(5, 1, None))
+            .updated(cred(2), account(6, 1, None)),
+          pools = l0.pools.updated(poolId(1), PoolState(poolParams(1), 7))
+        )
+        for
+          _ <- LedgerStore.advance(store, l1.at(1))
+          l2 = l1.settled(1, force = true)
+          fetched <- LedgerStore.prefetch(
+            store,
+            l2,
+            Set(cred(1), cred(3)),
+            Set(poolId(1)),
+            Set.empty
+          )
+        yield
+          // asked for and now decided, present or absent; the other account stays in the store
+          assertEquals(fetched.accounts.read.keySet, Set(cred(1), cred(3)))
+          assertEquals(fetched.accounts.get(cred(3)), None)
+          assertEquals(fetched.pools.get(poolId(1)).map(_.deposit), Some(BigInt(7)))
+          assert(Table.guarded(fetched.accounts.get(cred(2))).isLeft)
+      }
+    }
+  }
+
+  test("the table keys of a block are its withdrawals, certificates, votes and proposals") {
+    val spent = TestLedger.txIn(1)
+    val reward = RewardAccount(0, cred(7))
+    val action = GovActionId(Bytes.wrap(be(1, 32)), 0)
+    val b = TestLedger.body(
+      "keys",
+      Vector(spent),
+      Vector.empty,
+      0,
+      certificates = Vector(
+        Certificate.Register(cred(1), None),
+        Certificate.Delegate(cred(2), Some(poolId(2)), Some(DRep.Registered(cred(3))), None),
+        Certificate.RetirePool(poolId(4), 9),
+        Certificate.UnregisterDRep(cred(5), 1)
+      ),
+      withdrawals = Vector(reward -> BigInt(3)),
+      votes = Vector(
+        (Voter.DRepVoter(cred(6)), Vector(action -> Vote.Yes)),
+        (Voter.Pool(poolId(8)), Vector(action -> Vote.No)),
+        (Voter.CommitteeHot(cred(9)), Vector(action -> Vote.No))
+      ),
+      proposals = Vector(
+        Proposal(1, RewardAccount(0, cred(10)), GovAction.NoConfidence(None))
+      )
+    )
+    val keys = NodeRules.TableKeys.of(Vector(b))
+    assertEquals(keys.accounts, Set(cred(1), cred(2), cred(7), cred(10)))
+    assertEquals(keys.pools, Set(poolId(2), poolId(4), poolId(8)))
+    assertEquals(keys.dreps, Set(cred(3), cred(5), cred(6)))
+  }
