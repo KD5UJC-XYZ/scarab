@@ -37,3 +37,13 @@ Public Cardano preprod testnet chain data, fetched over node-to-node from the pu
 stored unchanged. The genesis files are the public network configuration. No private data and no
 third-party code is included. The repository's Apache-2.0 applies to our own selection and packaging.
 Not affiliated with or endorsed by any Cardano organisation (see `../../NOTICE`).
+
+## tx-06869a76.hex
+
+The full transaction `06869a76132665a0667fd26edbc7adc6cd241a794416777e752829653f4a9c3c` (Babbage,
+protocol 8.0, 11,843 bytes, `[body, witnesses, is_valid, null]`) from preprod block 1,558,703
+(slot 43,488,253, epoch 104, hash `884ec6b99acebb6f6c9769fdc80efd220ada2b09c677c552dffb8ade811f9eed`),
+as hex. Source: Koios `tx_cbor` (`https://preprod.koios.rest/api/v1/tx_cbor`), fetched 2026-10-14.
+Output 0 carries 2 policies and 501 assets: its value is 5001 bytes in definite-length CBOR but
+5000 bytes as the ledger writes it (a map of more than 23 entries is indefinite-length), so it is
+within `maxValueSize` 5000. Used by `PreConwayRulesSuite`.

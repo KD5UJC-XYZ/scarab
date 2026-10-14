@@ -145,19 +145,22 @@ final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
 
   /** Bytes of the value as the ledger serialises it (`serialize v` in `validateOutputTooBigUTxO`):
     * a bare unsigned integer for an ada-only value, otherwise `[coin, {policy: {name: quantity}}]`
-    * in definite-length canonical form, whatever encoding the transaction arrived in.
+    * whatever encoding the transaction arrived in. A map of more than 23 entries is written
+    * indefinite-length (`encodeMap`, `variableMapLenEncoding`, `lengthThreshold = 23` in
+    * cardano-ledger-binary `Encoding/Encoder.hs`, every protocol major from 2): two bytes in total,
+    * one byte fewer than the definite head of a map of 256 entries or more.
     */
   def serializedSize: Int =
-    import Value.{headSize, uintSize}
+    import Value.{headSize, mapHead, uintSize}
     if assets.isEmpty then uintSize(coin)
     else
       val inner = assets.valuesIterator.map { names =>
         val entries = names.iterator.map { case (name, q) =>
           headSize(name.size) + name.size + uintSize(q.abs)
         }.sum
-        2 + 28 + headSize(names.size) + entries
+        2 + 28 + mapHead(names.size) + entries
       }.sum
-      1 + uintSize(coin) + headSize(assets.size) + inner
+      1 + uintSize(coin) + mapHead(assets.size) + inner
 
 object Value:
   /** Size of a CBOR head carrying `n` (a length or an unsigned integer up to 2^32). */
@@ -169,6 +172,10 @@ object Value:
     else 9
 
   private def uintSize(n: BigInt): Int = headSize(n)
+
+  /** Bytes of a map's length prefix (and break): exact head up to 23 entries, else `0xbf ... 0xff`.
+    */
+  private[ledger] def mapHead(n: Int): Int = if n <= 23 then headSize(n) else 2
 
   val zero: Value = Value(0, Map.empty)
   def coin(c: BigInt): Value = Value(c, Map.empty)
