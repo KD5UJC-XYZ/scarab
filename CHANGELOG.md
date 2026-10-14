@@ -162,6 +162,13 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   cluster; `oracle_compare.py reference` and `diff` against a Haskell node's ChainDB on a public network.
 
 ### Ledger
+- Plutus `serialiseData` follows the reference for a `Data` constructor index of 2^63 or more: Scalus
+  1.2.0 wrote it through a `Long` (`2^64 - 1` as `-1`), so the Hydra fanout of preprod transaction
+  2edd684f (slot 80,239,053, epoch 189), which hashes outputs with such indices, failed phase 2 and
+  stopped the preprod sync at block 3,050,799. The evaluator runs the machine with `DataSerialiser`
+  for that builtin (costing unchanged); a failing script's trace is now part of the failure reason
+  (`Error evaluated; trace: H41 | PT5`). Test: `PreprodConwayRulesSuite` over the real transaction
+  (`fixtures/preprod/plutus/tx-2edd684f.json`, `tx-2edd684f.hex`), `DataSerialiserSuite`.
 - Byron genesis outputs of zero lovelace (Preview has seven) are not put into the UTxO; the ledger's
   Byron to Shelley translation drops them.
 - The stake snapshots leave out a credential without stake (no UTxO and no rewards), as the ledger's

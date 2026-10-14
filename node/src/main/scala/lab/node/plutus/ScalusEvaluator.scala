@@ -11,6 +11,10 @@ import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, Ma
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.{ByteString, Data, platform}
 import scalus.uplc.eval.{
+  BudgetSpender,
+  CekMachine,
+  CekValue,
+  Logger,
   DefaultCostingFun,
   Log,
   MachineParams,
@@ -19,7 +23,16 @@ import scalus.uplc.eval.{
   RestrictingBudgetSpender,
   ThreeArguments
 }
-import scalus.uplc.{BuiltinSemanticsVariant, DeBruijnedProgram, DefaultFun, Term}
+import scalus.uplc.{
+  BuiltinRuntime,
+  BuiltinSemanticsVariant,
+  CardanoBuiltins,
+  Constant,
+  DeBruijn,
+  DeBruijnedProgram,
+  DefaultFun,
+  Term
+}
 
 /** The [[ScriptEvaluator]] interpreter backed by the Scalus UPLC machine (Apache-2.0). Scalus
   * supplies only the machine and its builtins (including BLS12-381 through `blst` and secp256k1
@@ -124,7 +137,14 @@ object ScalusEvaluator:
           language,
           protocol
         )
-        Right(PlutusVM(language, corrected(params, variant), variant, platform, protocol))
+        Right(
+          SerialisingVm(
+            language,
+            corrected(params, variant),
+            variant,
+            protocol
+          )
+        )
       catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
 
     /** Costing the on-chain parameters cannot express and Scalus gets wrong. Semantics variant A
@@ -208,13 +228,55 @@ object ScalusEvaluator:
               case _: OutOfExBudgetError =>
                 failure(EvalFailure.OutOfBudget, spent, log.getLogs.toVector)
               case NonFatal(e) =>
-                failure(
-                  EvalFailure.Script(Option(e.getMessage).getOrElse(e.getClass.getName)),
-                  spent,
-                  log.getLogs.toVector
-                )
+                val logs = log.getLogs.toVector
+                val cause = Option(e.getMessage).getOrElse(e.getClass.getName)
+                // the trace tells an operator which of the script's checks failed
+                val traced =
+                  if logs.isEmpty then cause else s"$cause; trace: ${logs.mkString(" | ")}"
+                failure(EvalFailure.Script(traced), spent, logs)
               case e: StackOverflowError =>
                 failure(EvalFailure.Script("stack overflow"), spent, log.getLogs.toVector)
+
+  /** A [[PlutusVM]] whose `serialiseData` is [[DataSerialiser]].
+    *
+    * Scalus 1.2.0 encodes the index of a `Data.Constr` through a `Long`, so a constructor outside
+    * `[0, 2^63)` (for example `2^64 - 1`, which the ledger lets a datum carry) serialises to other
+    * bytes than the reference's, and a script that hashes it (Hydra's fanout compares the hash of
+    * the serialised outputs with the closed head's) fails where the reference accepts. This is
+    * `PlutusVM.evaluateDeBruijnedTerm` with one builtin's meaning replaced: the typing scheme and
+    * costing function of Scalus's `SerialiseData` are kept, so the budget is unchanged.
+    *
+    * Reproducer: `ScalusConformanceReproducersSuite`; regression: `PreprodConwayRulesSuite`.
+    */
+  private final class SerialisingVm(
+      language: Language,
+      params: MachineParams,
+      variant: BuiltinSemanticsVariant,
+      protocol: MajorProtocolVersion
+  ) extends PlutusVM(language, params, variant, platform, protocol):
+    private val cardano = CardanoBuiltins(params.builtinCostModel, platform, variant)
+    private val serialiseData: BuiltinRuntime =
+      cardano.SerialiseData.copy(f =
+        (_, args) =>
+          CekValue.VCon(
+            Constant.ByteString(ByteString.fromArray(DataSerialiser.serialise(args.head.asData)))
+          )
+      )
+    private val caseOnBuiltins =
+      protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
+
+    private def runtime(fun: DefaultFun): BuiltinRuntime =
+      if fun == DefaultFun.SerialiseData then serialiseData else cardano.getBuiltinRuntime(fun)
+
+    override def evaluateDeBruijnedTerm(
+        term: Term,
+        spender: BudgetSpender,
+        logger: Logger,
+        debug: Boolean
+    ): Term =
+      val machine =
+        CekMachine(machineParams, spender, logger, runtime, caseOnBuiltins, tracing = debug)
+      DeBruijn.fromDeBruijnTerm(machine.evaluateTerm(term))
 
   /** Plutus data as the machine's `Data`. */
   private[node] def toData(d: PlutusData): Data = d match
