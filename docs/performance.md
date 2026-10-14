@@ -371,7 +371,7 @@ reserves, protocol version, Plutus counters) of the D1 build equals the build be
 reached: 139 epochs of the long run (the other build was stopped at epoch 139), 46 of the restart runs
 below and 28 to 33 of each paired run. The devnet gates pass with the final commit: `e2e` (Shelley 12,
 Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30 comparisons matched, 0 mismatched), `soak --seconds 480`
-(22 of 22 comparisons), `ntc` (814 of 814 query answers byte-equal over 16 rounds, 18 of 18 refusals, 23
+(22 of 22 comparisons; 23 of 23 on the last code commit, 74ada98), `ntc` (814 of 814 query answers byte-equal over 16 rounds, 18 of 18 refusals, 23
 of 24 `cardano-cli` queries; `ledger-state` is not answered) and `relay` pass. **`pool` did not pass** on this
 host, and does not for the build before D1 either (compatibility.md).
 
@@ -403,7 +403,10 @@ again after the row is fetched (`refetch` in `/scheduling`). Two builds started 
 epochs 0 to 26: 1,041 of 106,940 steps (1.0%), 2.7 s of 97 s of step time (2.7%) without the prefetch
 (419d3c6); 76 steps (0.07%), 0.2 s (0.2%) with it (002302d), which fetches the credentials and pool ids of
 the block's certificates, withdrawals, votes and proposals before the first attempt (108,402 against
-106,065 blocks in the 400 s of that pair, +2.2%). A JFR profile of the D1 build at epoch 46
+106,065 blocks in the 400 s of that pair, +2.2%); the final commit (the `set` snapshot fetched for the
+boundary, below) has 24 `refetch` steps in the same 330 s window, one per epoch, 0 ms in all: the first
+block after the 4k/f cut-off of a pre-Babbage epoch records the registered credentials (`Epoch.tick`) and
+asks for the accounts whole. A JFR profile of the D1 build at epoch 46
 (11k samples) has no frame of `Table` or `LedgerStore` among the hot ones (they are 0.4% of the samples); Ed25519 (32.6%), `Bytes`
 (9.5%), Plutus (9.1%) and VRF (3.4%) dominate as in section 1. The epoch boundary runs once per epoch
 and read the tables whole (fetched at once before the block is applied): 89 boundary steps in the first
