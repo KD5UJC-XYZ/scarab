@@ -281,6 +281,15 @@ class EraTransitionSuite extends CatsEffectSuite:
     assertEquals(states.last.byron.tip.map(_.hash), Some(headers(49).hash))
   }
 
+  test("the genesis delegations survive the translation to Conway, unused, as in the reference") {
+    // K1: db-analyser shows `dsGenDelegs` in every Conway state; clearing it differed at epoch 10.
+    val before = states(boundaries.last).ledger
+    val after = states(boundaries.last + 1).ledger
+    assert(before.params.protocolMajor < 9 && after.params.protocolMajor >= 9)
+    assert(before.genDelegs.nonEmpty)
+    assertEquals(after.genDelegs, before.genDelegs)
+  }
+
   test("Byron headers: boundary block structural, every main signature verified") {
     val checks = headers.indices.take(50).map(i => byronUpdate(i, byronBlock(i)))
     assert(checks.forall(_.isRight), checks.collectFirst { case Left(e) => e }.toString)
