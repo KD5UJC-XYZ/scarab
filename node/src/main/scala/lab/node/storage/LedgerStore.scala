@@ -261,12 +261,13 @@ object LedgerStore:
     yield d
 
   /** The tables an epoch boundary reads whole, fetched whole: the accounts, pools and DReps and the
-    * snapshot the rewards are calculated from.
+    * snapshot the rewards are calculated from. That is the `set` snapshot of the state before the
+    * boundary: the rotation makes it `go` and the reward calculation reads it there.
     */
   def loadForBoundary[F[_]: Monad](store: LedgerStore[F], state: LedgerState)(using
       Raise[F, StorageError]
   ): F[LedgerState] =
-    Vector[Slot[?, ?]](accounts, pools, dreps, goStake, goDeleg).foldLeftM(state) { (s, slot) =>
+    Vector[Slot[?, ?]](accounts, pools, dreps, setStake, setDeleg).foldLeftM(state) { (s, slot) =>
       def load[K, V](sl: Slot[K, V]): F[LedgerState] =
         if sl.get(s).flushed < 0 then s.pure[F] // all in its diff
         else fill(store, s, Table.Miss(sl.space(s), Set.empty[Any], all = true))

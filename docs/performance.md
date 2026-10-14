@@ -372,7 +372,8 @@ reached: 139 epochs of the long run (the other build was stopped at epoch 139), 
 below and 28 to 33 of each paired run. The devnet gates pass with the final commit: `e2e` (Shelley 12,
 Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30 comparisons matched, 0 mismatched), `soak --seconds 480`
 (22 of 22 comparisons), `ntc` (814 of 814 query answers byte-equal over 16 rounds, 18 of 18 refusals, 23
-of 24 `cardano-cli` queries; `ledger-state` is not answered), `relay` and `pool` (see compatibility.md).
+of 24 `cardano-cli` queries; `ledger-state` is not answered) and `relay` pass. **`pool` did not pass** on this
+host, and does not for the build before D1 either (compatibility.md).
 
 **Restart on Preview** (fresh database, 15 minutes to epoch 43, then): a graceful stop (`--seconds`)
 wrote the shutdown snapshot (1.0 MB, against 1.3 MB for the build before D1 at epoch 43, and 2.1 MB
@@ -406,12 +407,25 @@ the block's certificates, withdrawals, votes and proposals before the first atte
 (11k samples) has no frame of `Table` or `LedgerStore` among the hot ones (they are 0.4% of the samples); Ed25519 (32.6%), `Bytes`
 (9.5%), Plutus (9.1%) and VRF (3.4%) dominate as in section 1. The epoch boundary runs once per epoch
 and read the tables whole (fetched at once before the block is applied): 89 boundary steps in the first
-90 epochs took 16 ms on average, 112 ms at most.
+90 epochs took 16 ms on average, 112 ms at most. (The fetch before a boundary of the builds measured here
+took the `go` snapshot, which the rotation replaces; the boundary read the `set` snapshot that becomes `go`
+and so was applied again (part of the `refetch` count). The final commit fetches `set`, with a test that
+a boundary then reads nothing else.)
 
 **Heap.** The live set is not where the memory goes at Preview's size, which is the honest result.
 `jcmd GC.class_histogram` (it runs a full GC; the total is the live set), both builds long-running at
 epoch 138 to 139 (block 536,559 and 537,888): 366 MB for the build before D1, 294 MB for D1, -72 MB (-20%):
 `byte[]` 128 to 98 MB, `Bytes` 1.13M to 0.88M objects. The rest is the Plutus script caches (about 100 MB of
-`scalus.uplc` terms), the volatile window and the verification caches, none of which D1 touches. At the
-tip: TBD-TIP. The reason to move the maps is mainnet's 1.3M stake credentials, each a `Credential`, an
+`scalus.uplc` terms), the volatile window and the verification caches, none of which D1 touches. The
+D1 build was not at the Preview tip when this was written (see "The long run" below for where it was); the
+figure at the tip is not measured. The reason to move the maps is mainnet's 1.3M stake credentials, each a `Credential`, an
 `Account` and a `Map` node in each of four maps and three snapshots, not Preview's 112k.
+
+**The long run (D1 build 419d3c6 with two arenas, interim).** Fresh database, `follow --db`, `-Xms3g -Xmx3g
+-XX:+UseG1GC -XX:MaxGCPauseMillis=20`, `MALLOC_ARENA_MAX=2`, `--cpus 6`, **container limit 5 GiB** (`-Xmx` plus 2
+GiB), memory lines every 30 s, NMT every 5 minutes, started 16:43 UTC. `RssAnon` was 3.61 GB at epochs 148,
+161 and 358 (heap 3.07, the rest 0.54), the block cache at its 256 MB cap by epoch 90, the cgroup
+`current` at the 5 GiB limit (page cache the kernel reclaims; `docker stats` 3.61 GiB), 0 error events, no
+out-of-memory kill, and every `ledgerEpoch` summary equal to the build before D1 through epoch 139. The
+arena attribution rests on the paired 45-minute runs above (both builds before D1); this run shows the bound
+holds with the D1 build under the recommended limit.

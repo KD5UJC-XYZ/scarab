@@ -725,12 +725,12 @@ turns it into a value. `LedgerStore.completingF` runs a pure step, fetches the r
 (`readRows`, or the whole table for a scan: `scanRows`) and runs the step again, so nothing is ever
 answered from an incomplete view; after three point misses on one table it fetches the whole table.
 `NodeRules` does this for each block (and fetches the tables an epoch boundary reads whole before
-it starts: accounts, pools, DReps and the `go` snapshot), the mempool for each transaction and
+it starts: accounts, pools, DReps and the `set` snapshot, which the rotation makes `go`), the mempool for each transaction and
 synchronisation, the forger for the epoch boundary and the candidate transactions, and the
 LocalStateQuery server for each query; `Projection` (`/state`) materialises every table. The rows
 fetched are dropped after the block (`LedgerState.settled`), so between epoch boundaries the heap
 holds the diffs of the last `k` blocks, the counters and the per-pool stake, not a map of every
-credential. **An epoch boundary still reads the accounts and the `go` snapshot whole** (the reward
+credential. **An epoch boundary still reads the accounts and the snapshot the rewards come from whole** (the reward
 calculation, SNAP, the DRep distribution are folds over every credential), so the heap peaks at a
 boundary with what it held before D1 and drops back; streaming the boundary is future work. Pools
 and DReps are small and the pulsing snapshot of the DRep state (`PulsingSnapshot.drepState`) is a

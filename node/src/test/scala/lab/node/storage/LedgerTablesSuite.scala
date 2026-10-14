@@ -463,3 +463,41 @@ class LedgerTablesSuite extends ScalaCheckSuite:
     assertEquals(keys.pools, Set(poolId(2), poolId(4), poolId(8)))
     assertEquals(keys.dreps, Set(cred(3), cred(5), cred(6)))
   }
+
+  test("the tables an epoch boundary reads are the ones loadForBoundary fetches") {
+    given_ {
+      MemoryLedgerStore[IO].flatMap { store =>
+        val operator = poolId(1)
+        val owner = cred(1)
+        val s0 = TestLedger.state(5, Vector.empty)
+        val base = s0.copy(
+          pools = TestLedger.poolTable(Map(operator -> PoolState(poolParams(1), 0))),
+          accounts = TestLedger.accountTable(
+            Map(owner -> Account(0, 0, Some(operator), None), cred(2) -> Account(5, 0, None, None))
+          )
+        )
+        val taken = Stake.snapshot(base)
+        def generation(g: Long) =
+          Snapshot.of(g, taken.stake.toMap, taken.delegations.toMap, taken.pools)
+        val start = base.copy(
+          snapshots = Snapshots(generation(3), generation(2), generation(1), 10),
+          blocksCurrent = Map(operator -> BigInt(5)),
+          blocksPrevious = Map(operator -> BigInt(5))
+        )
+        val globals = LedgerGlobals(TestLedger.Supply, 100, Rational(1, 2), 0)
+        val ready = start.copy(rewardUpdate = Some(Rewards.update(start, globals)))
+        val boundary = (l: LedgerState) => Epoch.boundary(l.at(2), l.epoch + 1, globals)
+        for
+          _ <- LedgerStore.advance(store, ready.at(1))
+          stored = ready.at(1).settled(1, force = true)
+          bare = Table.guarded(boundary(stored))
+          loaded <- LedgerStore.loadForBoundary(store, stored)
+          after = Table.guarded(boundary(loaded))
+        yield
+          // without the fetch the boundary reads rows the state does not hold; with it, it does not
+          assert(bare.isLeft)
+          assert(after.isRight, after.left.map(_.getMessage).toString)
+          assertEquals(after.map(_.accounts.count), Right(2L))
+      }
+    }
+  }
