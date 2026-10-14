@@ -30,6 +30,8 @@ lazy val core = project
     libraryDependencies ++= Seq(
       "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",
       "com.weavechain" % "curve25519-elisabeth" % "0.1.3",
+      // BLS12-381 (MinSig voting keys of Leios); Apache-2.0, bundles libblst. Declared directly, not via Scalus.
+      "foundation.icon" % "blst-java" % "0.3.2",
       "org.typelevel" %% "cats-kernel" % catsVersion,
       "org.typelevel" %% "cats-kernel-laws" % catsVersion % Test,
       "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
