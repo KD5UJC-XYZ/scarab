@@ -108,6 +108,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **K7** [#68](https://github.com/KD5UJC-XYZ/scarab/issues/68) (P1) Continuous ledger-state verification on a live network: the K1 oracle at every epoch boundary, side by side with a Haskell node, with an append-only evidence log and an alert on the first divergence.
 - **K8** [#77](https://github.com/KD5UJC-XYZ/scarab/issues/77) (P1) Align the ledger-state projection with the canonical ledger state CIP.
 - **K9** [#78](https://github.com/KD5UJC-XYZ/scarab/issues/78) (P2) Deterministic simulation of several nodes under adversarial schedules (Antithesis-style).
+- **K10** [#81](https://github.com/KD5UJC-XYZ/scarab/issues/81) (P1) Cross-check the generated CDDL codecs against cuddle (upstream's CDDL tool) in CI, in both directions.
 
 ## L. Future eras (P2)
 
@@ -125,6 +126,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **M8** [#62](https://github.com/KD5UJC-XYZ/scarab/issues/62) (P2) Serial test execution (`Tags.limit(Test, 1)`): find which suites share global state and run modules in parallel in CI.
 - **M9** [#63](https://github.com/KD5UJC-XYZ/scarab/issues/63) (P2) READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`.
 - **M10** [#66](https://github.com/KD5UJC-XYZ/scarab/issues/66) (P1) Flaky `FollowerSuite` two-peer chain-selection test (one failure in a clean-container `check`, then 8/8 passes): find the race, make it deterministic with `TestControl`, 500 consecutive passes.
+- **M11** [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) (P1) Reorg: the Scarab rename (`xyz.kd5ujc.scarab`), the module split and CDDL-generated models (design in docs/models.md).
 
 ## N. Ouroboros Leios (v0.3)
 
