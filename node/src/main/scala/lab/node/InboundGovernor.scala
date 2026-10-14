@@ -89,7 +89,9 @@ final class InboundGovernor[F[_]: Async] private (
   def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[String] =
     Handle
       .allow[ConnectionError] {
-        manager.inbound(remote, alongsideOutbound = !config.runClients).use { connection =>
+        // a connection we opened is initiator-only: the peer can read our chain only over a
+        // connection it opens itself, so ours never refuses its inbound one
+        manager.inbound(remote, alongsideOutbound = true).use { connection =>
           emit(remote, InboundEvent.Accepted) *>
             Handle
               .allow[NetworkError] {

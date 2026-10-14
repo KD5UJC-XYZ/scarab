@@ -339,3 +339,20 @@ class InboundGovernorSuite extends CatsEffectSuite:
       assertEquals(following.head.intersection, Some(Points.show(last.point)))
       assertEquals(table.counters.inbound, 1)
   }
+
+  test("a connection we opened to the peer does not refuse the peer's own inbound connection") {
+    for
+      us <- local()
+      outcome <- Handle
+        .allow[ConnectionError](
+          us.manager.outbound(remote).use { _ =>
+            connect(None, us) { _ =>
+              eventually("the inbound connection is established")(us.manager.snapshot)(
+                _.counters.inbound == 1
+              ).map(_.counters)
+            }
+          }
+        )
+        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+    yield assertEquals(outcome._1.outbound -> outcome._1.inbound, (1, 1))
+  }

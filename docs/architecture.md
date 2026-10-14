@@ -580,8 +580,10 @@ terminating, and the counters.
 **`ConnectionManager`** (`network-runtime`). A `Ref` table from the peer's socket address to its
 connection (the key is the address and the direction). `inbound(remote)` and `outbound(remote)` are
 `Resource`s: admission is atomic with the checks (one live connection per address and direction, and
-none in the other direction while our clients use it: with `--inbound-sync off` the two coexist;
-`maxInbound` and `maxOutbound`), the
+none in the other direction while our clients use it: an outbound connection waits for an inbound
+duplex one that runs our clients, and with `--inbound-sync off` the two coexist; an inbound
+connection is never refused because we have an outbound one, see below; `maxInbound` and
+`maxOutbound`), the
 refusals are typed (`ConnectionError.InboundLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
 through `Raise`, and releasing the resource, however it ends (normally, by failure or by
 cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot
@@ -609,7 +611,11 @@ headers and rollbacks it saw and the peer's tip (`GET /connections`, `inbound` l
 peer we are asked to dial already has a duplex connection to us on which our client runs, no second
 connection is opened: the dialler waits until that connection ends (the `reused` log event) and then
 dials; a manager refusal is a `PeerError.Unavailable`, which the supervisor retries. Connections we
-open still offer initiator-only: a peer we dial is not served over that connection.
+open still offer initiator-only: a peer we dial is not served over that connection, so the peer can
+read our chain only over a connection it opens, and an outbound connection of ours therefore never
+refuses the peer's inbound one. When both exist (the peer dialled while our dial was up) the peer is
+followed by two sessions, one per connection, until one of them ends; chain selection treats them
+like any two peers.
 
 Tests: `ConnectionManagerSuite` (admission, one connection per address, limits per direction,
 release after failure and cancellation, illegal events, waiting for a connection to end, and a
