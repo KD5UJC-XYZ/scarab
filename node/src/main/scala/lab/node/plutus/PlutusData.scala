@@ -41,7 +41,7 @@ object PlutusData:
     )
 
   def decode(bytes: Bytes): Either[String, PlutusData] =
-    Cbor.decode(bytes, limits).flatMap(fromNode)
+    Cbor.stackSafe(Cbor.decode(bytes, limits).flatMap(fromNode))
 
   /** `plutus_data` of the Conway CDDL: constructors in tags 121 to 127, 1280 to 1400 and 102,
     * integers (with tag 2 and 3 big numbers), byte strings, lists and maps.

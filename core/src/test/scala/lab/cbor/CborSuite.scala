@@ -164,3 +164,37 @@ class CborSuite extends munit.FunSuite:
       case Value.Arr(values) => assertEquals(values.head.original.hex, "1801")
       case _                 => fail("array expected")
   }
+
+  /** Run `body` on a thread with a small stack, so that a deep item overflows it for certain. */
+  private def onSmallStack[A](body: => A): A =
+    var result: Option[Either[Throwable, A]] = None
+    val thread = new Thread(
+      null,
+      () =>
+        result = Some(
+          try Right(body)
+          catch case t: Throwable => Left(t)
+        ),
+      "small",
+      256 * 1024
+    )
+    thread.start()
+    thread.join()
+    result.get.fold(throw _, identity)
+
+  test(
+    "regression (fuzz K3): items nested beyond the stack are an error value, never a StackOverflowError"
+  ) {
+    // 2000 nested one-element arrays: within the 2048 depth limit, beyond a 256 KiB stack
+    val nested = bytes("81" * 2000 + "00")
+    val outcome = onSmallStack(Cbor.decode(nested).map(node => Cbor.encode(node.value)))
+    // either the decoder or the encoder gave up with the stack message; neither threw
+    outcome match
+      case Left(message)        => assertEquals(message, Cbor.TooDeep)
+      case Right(Left(message)) => assertEquals(message, Cbor.TooDeep)
+      case Right(Right(_))      => fail("a stack of 256 KiB should not hold 2000 nested arrays")
+    assertEquals(
+      onSmallStack(Cbor.stackSafe[Int](throw new StackOverflowError())),
+      Left(Cbor.TooDeep)
+    )
+  }

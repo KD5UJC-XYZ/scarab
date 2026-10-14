@@ -3,6 +3,7 @@ package lab.node.ledger
 
 import cats.syntax.all.*
 import lab.Blake2b
+import scala.util.chaining.*
 import lab.cbor.{Bytes, Cbor, Node}
 
 /** A 28-byte key or script hash identifying who may spend or who owns stake. */
@@ -38,13 +39,37 @@ final case class Ptr(slot: BigInt, txIx: BigInt, certIx: BigInt)
 object Ptr:
   given Ordering[Ptr] = Ordering.by(p => (p.slot, p.txIx, p.certIx))
 
-  /** Three variable-length naturals (7 bits per byte, high bit set on all but the last). */
+  /** The natural written as 7-bit groups, most significant first, in time linear in their number
+    * (the shift-and-add of a `BigInt` is quadratic: a pointer address as long as a transaction took
+    * gigabytes of allocation).
+    */
+  private def natural(groups: Vector[Byte]): BigInt =
+    val n = groups.size
+    if n <= 8 then groups.foldLeft(0L)((acc, g) => (acc << 7) | (g & 0x7f)).pipe(BigInt(_))
+    else
+      val little = new Array[Byte]((7 * n + 7) / 8)
+      var i = 0
+      while i < n do
+        val group = groups(n - 1 - i) & 0x7f
+        val at = 7 * i
+        val byte = at >> 3
+        val shift = at & 7
+        little(byte) = (little(byte) | (group << shift)).toByte
+        if shift > 1 then little(byte + 1) = (little(byte + 1) | (group >> (8 - shift))).toByte
+        i += 1
+      BigInt(1, little.reverse)
+
+  /** Three variable-length naturals (7 bits per byte, high bit set on all but the last), kept exact
+    * however long. The ledger differs for a value beyond its Word32 slot and Word16 index fields:
+    * it normalises the pointer to (0, 0, 0) before Conway and refuses the address from Conway on
+    * (`Cardano.Ledger.Address.decodePtr`); we keep the value, a pointer to no certificate either
+    * way (docs/findings.md, K3).
+    */
   def decode(bytes: Vector[Byte]): Either[String, Ptr] =
     def nat(rest: Vector[Byte]): Either[String, (BigInt, Vector[Byte])] =
       val (continued, tail) = rest.span(b => (b & 0x80) != 0)
       tail.headOption.toRight("pointer address: truncated natural").map { last =>
-        val digits = (continued :+ last).map(b => BigInt(b & 0x7f))
-        digits.foldLeft(BigInt(0))((acc, d) => (acc << 7) + d) -> tail.tail
+        natural(continued :+ last) -> tail.tail
       }
     for
       a <- nat(bytes)

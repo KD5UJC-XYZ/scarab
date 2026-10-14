@@ -145,11 +145,65 @@ lazy val modelsSpike = project
     )
   )
 
+// Structured fuzzing of every decoder entry point (roadmap K3; docs/running.md "Fuzzing"). Test-only. The
+// tests run in a forked JVM (a hang or an out-of-memory kills the fork, not the build server) from the
+// repository root; the defaults below are the budget of `check` (about a minute), the `fuzz` command
+// below turns them up.
+val fuzzCases = settingKey[Int]("Fuzz cases per target and seed")
+val fuzzSeed = settingKey[Long]("First fuzz seed")
+val fuzzSeeds = settingKey[Int]("Number of consecutive fuzz seeds")
+
+lazy val fuzz = project
+  .in(file("fuzz"))
+  .dependsOn(core, network, node % "compile->compile;test->test", modelsGen)
+  .settings(
+    name := "scarab-fuzz",
+    fuzzCases := 20000,
+    fuzzSeed := 1L,
+    fuzzSeeds := 1,
+    Test / fork := true,
+    Test / baseDirectory := (ThisBuild / baseDirectory).value,
+    Test / javaOptions ++= Seq(
+      "-Xmx1536m",
+      s"-Dfuzz.cases=${fuzzCases.value}",
+      s"-Dfuzz.seed=${fuzzSeed.value}",
+      s"-Dfuzz.seeds=${fuzzSeeds.value}"
+    ),
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
+      "org.scalameta" %% "munit" % munitVersion % Test
+    )
+  )
+
 lazy val root = project
   .in(file("."))
-  .aggregate(core, network, networkRuntime, node, modelsGen, modelsSpike)
+  .aggregate(core, network, networkRuntime, node, modelsGen, modelsSpike, fuzz)
+  .settings(
+    // fuzz [cases] [first-seed] [seeds] [target-glob]: the fuzz suite with more cases or other seeds than
+    // `check` uses; the settings change for this run only.
+    commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-glob]") { (state, args) =>
+      def number[A](i: Int, default: A)(parse: String => A): A = args.lift(i).fold(default)(parse)
+      val extracted = Project.extract(state)
+      val tuned = extracted.appendWithoutSession(
+        Seq(
+          fuzz / fuzzCases := number(0, 2000)(_.toInt),
+          fuzz / fuzzSeed := number(1, 1L)(_.toLong),
+          fuzz / fuzzSeeds := number(2, 1)(_.toInt)
+        ),
+        state
+      )
+      val glob = args.lift(3).fold("")(g => s" --tests=*$g*")
+      val run = s" lab.fuzz.FuzzSuite --$glob"
+      try {
+        Project.extract(tuned).runInputTask(fuzz / Test / testOnly, run, tuned)
+        state
+      } catch {
+        case _: Throwable => state.fail
+      }
+    }
+  )
 
 addCommandAlias(
   "check",
-  ";scalafmtCheckAll;core/Test/compile;network/Test/compile;networkRuntime/Test/compile;node/Test/compile;modelsGen/Test/compile;modelsSpike/Test/compile;core/Test/test;network/Test/test;networkRuntime/Test/test;node/Test/test;modelsGen/Test/test;modelsSpike/Test/test"
+  ";scalafmtCheckAll;core/Test/compile;network/Test/compile;networkRuntime/Test/compile;node/Test/compile;modelsGen/Test/compile;modelsSpike/Test/compile;fuzz/Test/compile;core/Test/test;network/Test/test;networkRuntime/Test/test;node/Test/test;modelsGen/Test/test;modelsSpike/Test/test;fuzz/Test/test"
 )

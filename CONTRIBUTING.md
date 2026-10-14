@@ -18,7 +18,7 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
 ```
 
 `check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources and runs the
-tests of the four modules; the compiler runs with `-Werror`. Dependencies and the sbt launcher are
+tests of all modules, the fuzz suite among them (about 35 s); the compiler runs with `-Werror`. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -69,6 +69,7 @@ with a pattern that matches your own shell command line.
 | Docs only | check that relative links resolve; no gate beyond review |
 | Scripts (`scripts/devnet/**`) | `python3 -m unittest discover -s scripts/tests` (CI runs it), plus the scenario the change touches |
 | Ledger or consensus (rules, rewards, governance, Plutus, nonces, headers) | `check`, plus `python3 scripts/devnet.py soak --seconds 480` and `e2e`; a Preview regression run through the affected region (use `fixtures/preview` or a `--db` follower) when the change was motivated by Preview data |
+| A decoder (CBOR, a mini-protocol codec, block, header, transaction or address decoding) | `check` (it includes the fuzz suite); add the target to `fuzz/.../Targets.scala` for a new entry point; for a change to a decoder also `scripts/sbtw "fuzz 100000 1 4"` ([running.md](docs/running.md#fuzzing-the-decoders-roadmap-k3)) |
 | Network (mini-protocols, mux, peer, chain selection) | `check`, plus `soak` and `relay` |
 | Storage (stores, snapshots, UTxO set) | `check` with the storage suites, plus a restart check (`follow --db`, stop, restart) and `soak` |
 | Forging or mempool | `check`, plus `pool` and `relay` |

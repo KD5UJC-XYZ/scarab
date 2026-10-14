@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Fuzz
+
+# Structured fuzzing of every decoder entry point (roadmap K3): the `fuzz` project, run for many more cases
+# than the one-minute budget of `check`, over a block of seeds that changes every day. A failure prints the seed,
+# the shrunk input in hex and the command that reproduces it (docs/running.md, "Fuzzing").
+on:
+  schedule:
+    - cron: '47 2 * * *'
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: 'Cases per target and seed'
+        required: false
+        default: '60000'
+      first-seed:
+        description: 'First seed (default: derived from the date)'
+        required: false
+        default: ''
+      seeds:
+        description: 'Number of consecutive seeds'
+        required: false
+        default: '8'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: fuzz the decoders
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tested JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10.0.LTS'
+          check-latest: false
+          overwrite-settings: false
+      - name: Cache sbt launcher, boot, ivy and coursier
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/cardano-scala-lab
+          key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
+          restore-keys: |
+            sbt-${{ runner.os }}-
+      - name: Choose the seeds
+        id: seeds
+        env:
+          INPUT_CASES: ${{ github.event.inputs.cases }}
+          INPUT_FIRST_SEED: ${{ github.event.inputs.first-seed }}
+          INPUT_SEEDS: ${{ github.event.inputs.seeds }}
+        run: |
+          cases="${INPUT_CASES:-60000}"
+          seeds="${INPUT_SEEDS:-8}"
+          first="${INPUT_FIRST_SEED:-}"
+          if [ -z "$first" ]; then first=$(( ( $(date -u +%s) * 1000 ) / 86400 )); fi
+          for v in "$cases" "$seeds" "$first"; do
+            case "$v" in ''|*[!0-9]*) echo "not a number: $v"; exit 1;; esac
+          done
+          {
+            echo "cases=$cases"
+            echo "seeds=$seeds"
+            echo "first=$first"
+          } >> "$GITHUB_OUTPUT"
+          echo "fuzz $cases $first $seeds (seeds $first to $(( first + seeds - 1 )))"
+      - name: Fuzz
+        env:
+          CASES: ${{ steps.seeds.outputs.cases }}
+          FIRST: ${{ steps.seeds.outputs.first }}
+          SEEDS: ${{ steps.seeds.outputs.seeds }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/logs"
+          bash scripts/sbtw "fuzz $CASES $FIRST $SEEDS" 2>&1 | tee "$RUNNER_TEMP/logs/fuzz.log"
+      - name: Upload the log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-${{ github.run_id }}
+          path: ${{ runner.temp }}/logs
+          retention-days: 30
