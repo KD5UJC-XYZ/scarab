@@ -95,25 +95,100 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
   def summary: String = s"witness=$witnessStats opCert=$opCertStats vrf=$vrfStats"
 
   private def warmVrf(header: Header.Shelley, config: PraosConfig): Unit =
-    val hint = epochNonce.get
+    warmVrf(header, config, epochNonce.get)
+
+  private def warmVrf(
+      header: Header.Shelley,
+      config: PraosConfig,
+      hint: (BigInt, Nonce)
+  ): Unit =
     if hint != null && config.geometry.epochOf(header.slot) == hint._1 then
       header.vrf match
         case HeaderVrf.Praos(cert) =>
           Praos.vrfInput(hint._2, header.slot).foreach { input =>
             Vrf.alpha(input).foreach { alpha =>
-              vrfs.put(
+              vrfs.computeIfAbsent(
                 VrfKey(0, alpha, header.vrfVkey, cert.proof, cert.output),
-                Vrf.verify(input, header.vrfVkey, cert.proof, cert.output)
+                _ => Vrf.verify(input, header.vrfVkey, cert.proof, cert.output)
               )
             }
           }
         case HeaderVrf.TPraos(nonceCert, leaderCert) =>
           for (uc, cert) <- Seq(TPraos.SeedEta -> nonceCert, TPraos.SeedL -> leaderCert) do
             val alpha = TPraos.seed(uc, header.slot, hint._2)
-            vrfs.put(
+            vrfs.computeIfAbsent(
               VrfKey(1, alpha, header.vrfVkey, cert.proof, cert.output),
-              Vrf.verifyAlpha(alpha, header.vrfVkey, cert.proof, cert.output)
+              _ => Vrf.verifyAlpha(alpha, header.vrfVkey, cert.proof, cert.output)
             )
+
+  /** The verdicts as header-first validation reads them (G6): computed once if they are not there
+    * yet and *kept*, so that the block's own validation, which comes later and consumes them
+    * through this cache, finds them and verifies nothing twice. Entries of blocks that are never
+    * fetched stay until the maps are cleared at their limits.
+    */
+  def forHeaders: Verdicts = new Verdicts:
+    def witness(vkey: Bytes, signature: Bytes, message: Bytes): Boolean =
+      VerificationCache.this.witness(vkey, signature, message)
+
+    def opCert(
+        header: Header.Shelley,
+        slotsPerKesPeriod: BigInt,
+        maxKesEvolutions: BigInt
+    ): Either[OCertError, Unit] =
+      if headers.size > Limit then headers.clear()
+      headers.computeIfAbsent(
+        HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions),
+        _ => Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
+      )
+
+    def praosVrf(input: Vrf.Input, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+      Vrf.alpha(input) match
+        case Right(alpha) =>
+          if vrfs.size > 16384 then vrfs.clear()
+          vrfs.computeIfAbsent(
+            VrfKey(0, alpha, vkey, proof, output),
+            _ => Verdicts.Direct.praosVrf(input, vkey, proof, output)
+          )
+        case Left(_) => Vrf.verify(input, vkey, proof, output)
+
+    def tpraosVrf(alpha: Bytes, vkey: Bytes, proof: Bytes, output: Bytes): Vrf.Result =
+      if vrfs.size > 16384 then vrfs.clear()
+      vrfs.computeIfAbsent(
+        VrfKey(1, alpha, vkey, proof, output),
+        _ => Verdicts.Direct.tpraosVrf(alpha, vkey, proof, output)
+      )
+
+    def keyHash(vkey: Bytes): Bytes = VerificationCache.this.keyHash(vkey)
+    def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = None
+
+  /** Verify the signatures of the leading headers of a ChainSync batch in parallel and keep the
+    * verdicts for [[forHeaders]]. `state` is the header state before the first header: its epoch
+    * nonce serves the headers of that epoch (the others are verified by the rules in order).
+    */
+  def warmHeaders[F[_]: Async](
+      batch: Vector[Header],
+      state: lab.node.consensus.PraosState,
+      config: PraosConfig
+  ): F[Unit] =
+    val shelley = batch.collect { case h: Header.Shelley => h }
+    if shelley.isEmpty then Async[F].unit
+    else
+      val epoch = config.geometry.epochOf(shelley.head.slot)
+      val nonce = lab.node.consensus.Praos.tick(state, epoch).epochNonce
+      shelley
+        .parTraverseN(parallelism)(h =>
+          Async[F].blocking(
+            try
+              headers.computeIfAbsent(
+                HeaderKey(h.hash, config.slotsPerKesPeriod, config.maxKesEvolutions),
+                _ =>
+                  OCertRules.verifySignatures(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
+              )
+              warmVrf(h, config, (epoch, nonce))
+            catch case scala.util.control.NonFatal(_) => ()
+          )
+        )
+        .void
 
   /** The block decoded while warming, if any (taken once). */
   override def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = Option(prepared.remove(hash))
@@ -175,9 +250,11 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
     NodeRules.decodeShelley(raw).foreach { p =>
       val b = p.block
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
-      headers.put(
+      // header-first validation may have computed it already (see forHeaders)
+      headers.computeIfAbsent(
         key,
-        OCertRules.verifySignatures(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+        _ =>
+          OCertRules.verifySignatures(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
       )
       p.txs.foreach(_.foreach { tx =>
         val id = tx.body.id

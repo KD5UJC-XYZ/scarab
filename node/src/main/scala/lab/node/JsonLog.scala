@@ -56,6 +56,17 @@ object JsonLog:
   /** The node accepts inbound connections on `address`. */
   def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
 
+  /** Header-first validation so far: headers that passed every header rule, headers left to their
+    * block's validation, and headers that waited for the chain to advance (G6).
+    */
+  def headersChecked(validated: Long, unchecked: Long, waited: Long): IO[Unit] =
+    line(
+      "headersChecked",
+      "validated" -> validated.asJson,
+      "unchecked" -> unchecked.asJson,
+      "waited" -> waited.asJson
+    )
+
   def inbound(remote: String, what: String, reason: Option[String] = None): IO[Unit] =
     line("inbound", "remote" -> remote.asJson, "state" -> what.asJson, "reason" -> reason.asJson)
 

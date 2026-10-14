@@ -35,8 +35,8 @@ import scala.concurrent.duration.*
 /** `follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>]
   * [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
-  * [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge
-  * --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--utxo-cache-mb N] [--read-ahead N] [--header-first on|off] [--cpu-threads N] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * Follows the peers from genesis, applying the full ledger rules and Praos chain selection among
   * the peers' chains, and serves the retained ledger states on loopback for comparison against a
@@ -68,7 +68,9 @@ object Main extends IOApp:
       readAhead: Int = 64,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
         */
-      cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors())
+      cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors()),
+      /** Validate the headers a peer announces before the blocks are fetched (G6). */
+      headerFirst: Boolean = true
   )
 
   /** What the chain database (or its absence) hands the node at start. */
@@ -155,6 +157,7 @@ object Main extends IOApp:
         .map(s => s.copy(praos = s.praos.copy(verdicts = cache)))
       genesis = setup.genesis
       blocks <- Ref.of[IO, Long](0L)
+      headersLogged <- Ref.of[IO, Long](0L)
       // The rule configuration the signature pre-verification uses: a chain with a derived Byron
       // span learns its first Shelley epoch from the state.
       praosConfig <- Ref.of[IO, consensus.PraosConfig](setup.praos)
@@ -320,24 +323,50 @@ object Main extends IOApp:
           // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
           sync = Handle
             .allow[PeerError](
-              options.peers.parTraverse_ { address =>
-                val settings = Peer.Settings(
-                  address,
-                  genesis.networkMagic,
-                  readAhead = options.readAhead,
-                  byronEpochSlots = genesis.geometry.byron.epochSlots
+              {
+                // header-first validation (G6): signatures are verified through the cache's
+                // keeping view, so the block's own validation does not repeat them
+                val headerCheck = Option.when(options.headerFirst)(
+                  HeaderCheck.forChain[IO, NodeState, consensus.PraosState](
+                    NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
+                    scheduling.compute,
+                    warm = Some((headers, state) =>
+                      praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
+                    ),
+                    observe = Some(counts =>
+                      headersLogged
+                        .modify(last =>
+                          if counts.validated - last >= 50000 then (counts.validated, true)
+                          else (last, false)
+                        )
+                        .flatMap(
+                          JsonLog
+                            .headersChecked(counts.validated, counts.unchecked, counts.waited)
+                            .whenA(_)
+                        )
+                    )
+                  )
                 )
-                Follower.supervise(
-                  follower,
-                  Peer.nodeToNode[IO](
-                    settings,
-                    warm,
-                    Some(mempool.source)
-                  ),
-                  events,
-                  retry,
-                  Some(scheduling.compute)
-                )
+                options.peers.parTraverse_ { address =>
+                  val settings = Peer.Settings(
+                    address,
+                    genesis.networkMagic,
+                    readAhead = options.readAhead,
+                    byronEpochSlots = genesis.geometry.byron.epochSlots
+                  )
+                  Follower.supervise(
+                    follower,
+                    Peer.nodeToNode[IO](
+                      settings,
+                      warm,
+                      Some(mempool.source),
+                      headerCheck
+                    ),
+                    events,
+                    retry,
+                    Some(scheduling.compute)
+                  )
+                }
               }
             )
             .rescue(error => fail[Unit](error))
@@ -433,7 +462,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow --genesis-dir <dir> --peer <host>:<port> [--peer ...] [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N] [--header-first on|off] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -449,6 +478,7 @@ object Main extends IOApp:
     "utxo-store",
     "utxo-cache-mb",
     "read-ahead",
+    "header-first",
     "cpu-threads",
     "local-socket",
     "vrf-skey",
@@ -517,6 +547,9 @@ object Main extends IOApp:
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
+          headerFirst <- flags
+            .get("header-first")
+            .fold(Right(true))(v => Map("on" -> true, "off" -> false).get(v).toRight(usage))
           cpuThreads <- flags
             .get("cpu-threads")
             .fold(Right(math.max(1, Runtime.getRuntime.availableProcessors())))(
@@ -538,6 +571,7 @@ object Main extends IOApp:
           utxoKind,
           cacheMb,
           readAhead,
-          cpuThreads
+          cpuThreads,
+          headerFirst
         )
       case _ => Left(usage)
