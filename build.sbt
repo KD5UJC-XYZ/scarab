@@ -94,9 +94,62 @@ lazy val node = project
     Compile / run / fork := true
   )
 
-lazy val root = project.in(file(".")).aggregate(core, network, networkRuntime, node)
+// Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).
+lazy val modelsGen = project
+  .in(file("models-gen"))
+  .settings(
+    name := "scarab-models-gen",
+    organization := "xyz.kd5ujc",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-parse" % "1.1.0",
+      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
+      "org.scalameta" %% "munit" % munitVersion % Test
+    )
+  )
+
+// Schema-first models, step 2: code generated from the pinned upstream CDDL at build time, its hand-written
+// runtime, and the equivalence tests against the hand-written decoders of `network` and `node`.
+lazy val modelsSpike = project
+  .in(file("models-spike"))
+  .dependsOn(core, modelsGen % "test->compile", network % "test->compile", node % "test->compile")
+  .settings(
+    name := "scarab-models-spike",
+    organization := "xyz.kd5ujc",
+    Compile / sourceGenerators += Def.task {
+      val log = streams.value.log
+      val cddl = (Compile / sourceDirectory).value / "cddl"
+      val out = (Compile / sourceManaged).value / "scarab-models"
+      (modelsGen / Compile / compile).value
+      val cp = (modelsGen / Compile / fullClasspath).value.files
+      val genRunner = (modelsGen / Compile / runner).value
+      val generatorClasses = ((modelsGen / Compile / classDirectory).value ** "*.class").get
+      val inputs = ((cddl ** "*").filter(_.isFile).get ++ generatorClasses).toSet
+      val cached =
+        FileFunction.cached(streams.value.cacheDirectory / "models-gen", FilesInfo.hash) { _ =>
+          IO.delete(out)
+          val code = genRunner
+            .run(
+              "xyz.kd5ujc.scarab.models.gen.Main",
+              cp,
+              Seq(cddl.getAbsolutePath, out.getAbsolutePath),
+              log
+            )
+          code.failed.foreach(e => sys.error(s"models generator failed: ${e.getMessage}"))
+          (out ** "*.scala").get.toSet
+        }
+      cached(inputs).toSeq
+    }.taskValue,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
+      "org.scalameta" %% "munit" % munitVersion % Test
+    )
+  )
+
+lazy val root = project
+  .in(file("."))
+  .aggregate(core, network, networkRuntime, node, modelsGen, modelsSpike)
 
 addCommandAlias(
   "check",
-  ";scalafmtCheckAll;core/Test/compile;network/Test/compile;networkRuntime/Test/compile;node/Test/compile;core/Test/test;network/Test/test;networkRuntime/Test/test;node/Test/test"
+  ";scalafmtCheckAll;core/Test/compile;network/Test/compile;networkRuntime/Test/compile;node/Test/compile;modelsGen/Test/compile;modelsSpike/Test/compile;core/Test/test;network/Test/test;networkRuntime/Test/test;node/Test/test;modelsGen/Test/test;modelsSpike/Test/test"
 )

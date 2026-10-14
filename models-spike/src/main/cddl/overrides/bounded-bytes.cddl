@@ -1,0 +1,6 @@
+; Local refinement of the ledger CDDL (alonzo, babbage, conway).
+; The upstream rule is `bounded_bytes = bytes .size (0 .. 64)`, and its own comment says: "The real
+; bounded_bytes does not have this limit. It instead has a different limit which cannot be expressed in CDDL."
+; On chain, Plutus data byte strings longer than 64 bytes are written as indefinite-length strings of
+; chunks of at most 64 bytes, which a CBOR reader that joins chunks (ours) sees as one long string.
+bounded_bytes = bytes

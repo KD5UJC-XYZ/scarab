@@ -1,0 +1,14 @@
+Verbatim copies of upstream CDDL files (read by the models generator, never edited here).
+All three repositories are Apache-2.0 (fixtures/licenses/ holds their LICENSE and NOTICE files).
+Local refinements live next to these files in ../overrides/, never inside them.
+
+ouroboros-network   https://github.com/IntersectMBO/ouroboros-network   branch main    commit 2fb69829a19b5c04e4fb212bdd78fb63f9d2d776
+  cardano-diffusion/protocols/cddl/specs/*.cddl       (obsolete/ not copied)
+ouroboros-consensus https://github.com/IntersectMBO/ouroboros-consensus branch main    commit 8f56bc899b48423316155aef64096cd56e32bfd7
+  ouroboros-consensus-cardano/cddl/base.cddl
+  ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl
+cardano-ledger      https://github.com/IntersectMBO/cardano-ledger      branch master  commit a51efc776146e696744a6c030826c542ee0e448c
+  eras/{byron,shelley,allegra,mary,alonzo,babbage,conway,dijkstra}/**/*.cddl   (one file per era)
+
+Obtained 2026-10-14 from a local checkout (.workspace/data/2026-10-14-upstream). To move to newer
+upstream: copy the files, update the commits above, run `sbt modelsSpike/test`.
