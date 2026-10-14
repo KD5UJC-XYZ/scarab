@@ -28,7 +28,11 @@ object Outbound:
       manager: ConnectionManager[F],
       address: SocketAddress[Host],
       open: Resource[F, Peer[F]],
-      report: Option[Event => F[Unit]] = None
+      report: Option[Event => F[Unit]] = None,
+      /** Wait for a peer's inbound duplex connection instead of dialling: only when the inbound
+        * governor runs our clients on it.
+        */
+      reuseInbound: Boolean = true
   )(using peerRaise: Raise[F, PeerError]): Resource[F, Peer[F]] =
     val F = Async[F]
     given Raise[F, ConnectionError] = new Raise[F, ConnectionError]:
@@ -51,7 +55,7 @@ object Outbound:
     def awaitReusable(remote: SocketAddress[IpAddress]): F[Unit] =
       manager.lookup(remote).flatMap {
         case Some(live)
-            if live.state.canRunClients && live.state.direction.contains(
+            if reuseInbound && live.state.canRunClients && live.state.direction.contains(
               ConnectionState.Provenance.Inbound
             ) =>
           report.traverse_(_(Event.Reused(remote.toString))) *> live.closed *> awaitReusable(remote)
@@ -61,7 +65,7 @@ object Outbound:
     for
       remote <- Resource.eval(resolved)
       _ <- Resource.eval(awaitReusable(remote))
-      connection <- manager.outbound(remote)
+      connection <- manager.outbound(remote, alongsideInbound = !reuseInbound)
       peer <- open
       _ <- Resource.eval(
         connection.connected *> connection.negotiated(ConnectionState.DataFlow.Unidirectional)

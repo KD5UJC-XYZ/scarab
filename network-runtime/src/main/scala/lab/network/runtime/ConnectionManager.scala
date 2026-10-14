@@ -72,13 +72,19 @@ trait Connection[F[_]]:
   * also dial.
   */
 trait ConnectionManager[F[_]]:
-  /** Admit an accepted connection from `remote` (state `Unnegotiated`). */
-  def inbound(remote: SocketAddress[IpAddress])(using
+  /** Admit an accepted connection from `remote` (state `Unnegotiated`). With `alongsideOutbound`
+    * the connection we opened to the same peer does not refuse it: we run no clients on inbound
+    * connections (`--inbound-sync off`), so the outbound one stays the source.
+    */
+  def inbound(remote: SocketAddress[IpAddress], alongsideOutbound: Boolean = false)(using
       Raise[F, ConnectionError]
   ): Resource[F, Connection[F]]
 
-  /** Reserve the outbound slot for `remote` (state `Reserved`). */
-  def outbound(remote: SocketAddress[IpAddress])(using
+  /** Reserve the outbound slot for `remote` (state `Reserved`). With `alongsideInbound` the peer's
+    * live inbound connection does not refuse it: the caller does not use that one for its clients
+    * (`--inbound-sync off`), so both are needed.
+    */
+  def outbound(remote: SocketAddress[IpAddress], alongsideInbound: Boolean = false)(using
       Raise[F, ConnectionError]
   ): Resource[F, Connection[F]]
 
@@ -88,6 +94,9 @@ trait ConnectionManager[F[_]]:
   def snapshot: F[ConnectionManager.Snapshot]
 
 object ConnectionManager:
+  /** A connection is known by the peer's address and the direction it was made in. */
+  type Key = (SocketAddress[IpAddress], Provenance)
+
   final case class Limits(maxInbound: Int = 64, maxOutbound: Int = 64)
 
   final case class Live[F[_]](
@@ -120,7 +129,7 @@ object ConnectionManager:
       events: Option[ConnectionEvents[F]] = None
   ): F[ConnectionManager[F]] =
     (
-      Ref.of[F, Map[SocketAddress[IpAddress], Entry[F]]](Map.empty),
+      Ref.of[F, Map[ConnectionManager.Key, Entry[F]]](Map.empty),
       Ref.of[F, Long](0L)
     ).mapN { (table, ids) =>
       val F = Async[F]
@@ -128,18 +137,19 @@ object ConnectionManager:
       def refuse[A](error: ConnectionError)(using Raise[F, ConnectionError]): F[A] =
         emit(ConnectionEvent.Refused(error)) *> error.raise[F, A]
 
-      def counters(m: Map[SocketAddress[IpAddress], Entry[F]]): Counters =
+      def counters(m: Map[ConnectionManager.Key, Entry[F]]): Counters =
         Counters.of(m.values.map(_.state))
 
       /** Apply `event` to our entry. */
       def apply(
-          remote: SocketAddress[IpAddress],
+          key: ConnectionManager.Key,
           id: Long,
           event: Event
       ): F[Either[ConnectionError, Unit]] =
+        val remote = key._1
         table
           .modify { m =>
-            m.get(remote).filter(_.id == id) match
+            m.get(key).filter(_.id == id) match
               case None =>
                 (
                   m,
@@ -155,7 +165,7 @@ object ConnectionManager:
                   case Left(problem) =>
                     (m, Left(ConnectionError.IllegalTransition(remote.toString, problem)))
                   case Right(next) =>
-                    (m.updated(remote, entry.copy(state = next)), Right((entry.state, next)))
+                    (m.updated(key, entry.copy(state = next)), Right((entry.state, next)))
           }
           .flatMap {
             case Left(error) => F.pure(Left(error))
@@ -165,10 +175,10 @@ object ConnectionManager:
                 .as(Right(()))
           }
 
-      def step(remote: SocketAddress[IpAddress], id: Long, event: Event)(using
+      def step(key: ConnectionManager.Key, id: Long, event: Event)(using
           Raise[F, ConnectionError]
       ): F[Unit] =
-        apply(remote, id, event).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
+        apply(key, id, event).flatMap(_.fold(refuse[Unit](_), _ => F.unit))
 
       def handle(
           at: SocketAddress[IpAddress],
@@ -176,32 +186,47 @@ object ConnectionManager:
           origin: Provenance,
           done: Deferred[F, Unit]
       ): Connection[F] = new Connection[F]:
+        private val key = (at, origin)
         def remote = at
         def provenance = origin
         def state = table.get.map(
-          _.get(at).filter(_.id == id).fold[ConnectionState](ConnectionState.Terminated)(_.state)
+          _.get(key).filter(_.id == id).fold[ConnectionState](ConnectionState.Terminated)(_.state)
         )
-        def connected(using Raise[F, ConnectionError]) = step(at, id, Event.Connected)
+        def connected(using Raise[F, ConnectionError]) = step(key, id, Event.Connected)
         def negotiated(flow: DataFlow)(using Raise[F, ConnectionError]) =
-          step(at, id, Event.Negotiated(flow))
+          step(key, id, Event.Negotiated(flow))
         def close(reason: String) =
           table.update(m =>
-            m.get(at)
+            m.get(key)
               .filter(e => e.id == id && e.reason.isEmpty)
-              .fold(m)(e => m.updated(at, e.copy(reason = Some(reason))))
-          ) *> apply(at, id, Event.Close).void
+              .fold(m)(e => m.updated(key, e.copy(reason = Some(reason))))
+          ) *> apply(key, id, Event.Close).void
         def closed = done.get
 
       /** Take the slot for `remote` or say why not (atomically, with the limits). */
       def admit(
           remote: SocketAddress[IpAddress],
-          provenance: Provenance
+          provenance: Provenance,
+          alongside: Boolean
       )(using Raise[F, ConnectionError]): F[Connection[F]] =
         for
           closed <- Deferred[F, Unit]
           id <- ids.updateAndGet(_ + 1)
           admitted <- table.modify { m =>
-            val taken = m.get(remote).filter(_.state.isLive)
+            val key = (remote, provenance)
+            val other = provenance match
+              case Provenance.Inbound  => (remote, Provenance.Outbound)
+              case Provenance.Outbound => (remote, Provenance.Inbound)
+            // one connection per address and direction; across directions the two only coexist
+            // when the caller says our clients do not run on the inbound one
+            val taken = m
+              .get(key)
+              .filter(_.state.isLive)
+              .orElse(
+                m.get(other)
+                  .filter(_.state.isLive)
+                  .filterNot(_ => alongside)
+              )
             val c = counters(m)
             if taken.isDefined then
               (m, Left(ConnectionError.AlreadyConnected(remote.toString, taken.get.state)))
@@ -212,7 +237,7 @@ object ConnectionManager:
             else
               (
                 m.updated(
-                  remote,
+                  key,
                   Entry(id, provenance, ConnectionState.initial(provenance), closed, None)
                 ),
                 Right(())
@@ -229,35 +254,41 @@ object ConnectionManager:
       /** Release: through Terminating to removal, whatever state the connection is in. */
       def release(c: Connection[F]): F[Unit] =
         val at = c.remote
-        table.get.map(_.get(at)).flatMap {
+        val key = (at, c.provenance)
+        table.get.map(_.get(key)).flatMap {
           _.traverse_ { e =>
             val reason = e.reason.getOrElse("released")
-            c.close(reason) *> apply(at, e.id, Event.Released) *>
-              table.update(m => m.get(at).filter(_.id == e.id).fold(m)(_ => m - at)) *>
+            c.close(reason) *> apply(key, e.id, Event.Released) *>
+              table.update(m => m.get(key).filter(_.id == e.id).fold(m)(_ => m - key)) *>
               e.closed.complete(()) *>
               emit(ConnectionEvent.Closed(at.toString, e.provenance, reason))
           }
         }
 
       new ConnectionManager[F]:
-        def inbound(remote: SocketAddress[IpAddress])(using Raise[F, ConnectionError]) =
-          Resource.make(admit(remote, Provenance.Inbound))(release)
+        def inbound(remote: SocketAddress[IpAddress], alongsideOutbound: Boolean)(using
+            Raise[F, ConnectionError]
+        ) =
+          Resource.make(admit(remote, Provenance.Inbound, alongsideOutbound))(release)
 
-        def outbound(remote: SocketAddress[IpAddress])(using Raise[F, ConnectionError]) =
-          Resource.make(admit(remote, Provenance.Outbound))(release)
+        def outbound(remote: SocketAddress[IpAddress], alongsideInbound: Boolean)(using
+            Raise[F, ConnectionError]
+        ) =
+          Resource.make(admit(remote, Provenance.Outbound, alongsideInbound))(release)
 
         def lookup(remote: SocketAddress[IpAddress]) =
-          table.get.map(
-            _.get(remote)
+          table.get.map { m =>
+            m.get((remote, Provenance.Inbound))
               .filter(_.state.isLive)
+              .orElse(m.get((remote, Provenance.Outbound)).filter(_.state.isLive))
               .map(e => Live[F](remote, e.state, e.closed.get))
-          )
+          }
 
         def snapshot =
           table.get.map(m =>
             Snapshot(
               counters(m),
-              m.toVector.map((a, e) => a -> e.state).sortBy(_._1.toString)
+              m.toVector.map((k, e) => k._1 -> e.state).sortBy(_._1.toString)
             )
           )
     }

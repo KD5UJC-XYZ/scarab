@@ -34,18 +34,25 @@ trait Peer[F[_]]:
   def fetch(header: Header): F[Bytes]
 
 object Peer:
-  /** One pipelined ChainSync round: `requested` RequestNext sent at once, `received` instructions
-    * back after `millis` (from the first request to the last reply). D3 uses it to see how long a
-    * relay takes to answer a deep pipeline.
-    */
-  final case class BatchObservation(requested: Int, received: Int, millis: Long)
+  /** What a session measured of its peer, for the log. */
+  enum Observation:
+    /** One pipelined ChainSync round: `requested` RequestNext sent at once, `received` instructions
+      * back after `millis` (from the first request to the last reply). D3 uses it to see how long a
+      * relay takes to answer a deep pipeline.
+      */
+    case Round(requested: Int, received: Int, millis: Long)
+
+    /** One block fetched on its own (at the tip), from the request to the block. */
+    case Fetched(millis: Long)
 
   final case class Settings(
       address: SocketAddress[Host],
       magic: Long,
       network: NodeToNode.Settings = NodeToNode.Settings(),
-      /** Most ChainSync requests pipelined at once while the peer is far ahead. */
-      readAhead: Int = 64,
+      /** Most ChainSync requests pipelined at once while the peer is far ahead (D3: 128, see
+        * docs/performance.md; 64 to 256 were measured against the public Preview relay).
+        */
+      readAhead: Int = 128,
       /** Slots per Byron epoch (10k of the Byron genesis), to place Byron headers on the slot axis.
         */
       byronEpochSlots: BigInt
@@ -121,7 +128,7 @@ object Peer:
       prepare: Prepare[F],
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       headers: Option[HeaderCheck[F]] = None,
-      observe: Option[Peer.BatchObservation => F[Unit]] = None
+      observe: Option[Peer.Observation => F[Unit]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -153,7 +160,7 @@ object Peer:
       settings: Settings,
       prepare: Prepare[F],
       headers: Option[HeaderCheck[F]] = None,
-      observe: Option[Peer.BatchObservation => F[Unit]] = None
+      observe: Option[Peer.Observation => F[Unit]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -230,7 +237,7 @@ object Peer:
             began <- F.monotonic
             updates <- connection.chainSync.requestNextBatch(n)
             took <- F.monotonic.map(_ - began)
-            _ <- observe.traverse_(_(Peer.BatchObservation(n, updates.size, took.toMillis)))
+            _ <- observe.traverse_(_(Peer.Observation.Round(n, updates.size, took.toMillis)))
             batch <- updates.traverse(decode)
             // header-first: nothing of this batch is fetched before its headers are valid
             _ <- gate.get.flatMap(_.accept(batch))
@@ -303,7 +310,13 @@ object Peer:
                   case Right(specific) =>
                     fetchLock.lock
                       .surround(
-                        connection.blockFetch.requestRange(specific.point, specific.point)
+                        for
+                          began <- F.monotonic
+                          fetched <- connection.blockFetch
+                            .requestRange(specific.point, specific.point)
+                          took <- F.monotonic.map(_ - began)
+                          _ <- observe.traverse_(_(Peer.Observation.Fetched(took.toMillis)))
+                        yield fetched
                       )
                       .flatMap {
                         case Some(Vector(block)) => F.pure(block)

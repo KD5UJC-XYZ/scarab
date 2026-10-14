@@ -578,8 +578,10 @@ checks the transitions, the idempotent close, that nothing but `Close`/`Released
 terminating, and the counters.
 
 **`ConnectionManager`** (`network-runtime`). A `Ref` table from the peer's socket address to its
-connection. `inbound(remote)` and `outbound(remote)` are `Resource`s: admission is atomic with the
-checks (one live connection per address in either direction, `maxInbound` and `maxOutbound`), the
+connection (the key is the address and the direction). `inbound(remote)` and `outbound(remote)` are
+`Resource`s: admission is atomic with the checks (one live connection per address and direction, and
+none in the other direction while our clients use it: with `--inbound-sync off` the two coexist;
+`maxInbound` and `maxOutbound`), the
 refusals are typed (`ConnectionError.InboundLimit`, `OutboundLimit`, `AlreadyConnected`) and raised
 through `Raise`, and releasing the resource, however it ends (normally, by failure or by
 cancellation), always runs `Close` and `Released` and removes the entry, so the accounting cannot
@@ -867,10 +869,12 @@ or compute it (`Verdicts.Direct` never remembers; a property test checks both ag
 string, so a stale nonce is only a miss. Replay of the stored blocks warms the next 64 while the
 current ones are applied; the peer warms each fetched range.
 
-**A pipelined peer.** `Peer.nodeToNode` runs a producer fiber that keeps up to three batches of 64
-in flight: it requests the headers of the next batch while the blocks of earlier ones are being
-fetched and verified, and publishes them in order; the consumer applies a batch meanwhile.
-`--read-ahead N` changes the batch size (the public relay timed out chain-sync at 256).
+**A pipelined peer.** `Peer.nodeToNode` (and `Peer.over` for any negotiated connection) runs a
+producer fiber that keeps up to three batches of `--read-ahead` (default 128) in flight: it requests
+the headers of the next batch, validates them (header-first, see above) while the blocks of earlier
+ones are being fetched and verified, and publishes them in order; the consumer applies a batch
+meanwhile. The depth was measured from 64 to 256 against the public relay (performance.md section 7):
+no timeout at any of them, 128 and above are 6 to 10% faster than 64.
 
 ```sh
 follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]

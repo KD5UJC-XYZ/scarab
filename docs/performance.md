@@ -48,8 +48,8 @@ blocks/s on one busy core (about 1.5 s fetch plus 1.2 s apply per batch of 64).
    certificates/KES and (with the epoch nonce the rules last saw) VRF proofs are verified for a whole
    fetched batch in parallel and the rules read the remembered verdict. Hit rates over 60k blocks:
    witnesses 99.99%, opcerts 99.998%, VRF 99.9% (92% before re-warming on an epoch change).
-4. The peer pipelines: a producer keeps three batches in flight; `--read-ahead 128` worked, 256 timed
-   out the ChainSync wait.
+4. The peer pipelines: a producer keeps three batches in flight (`--read-ahead`, default 128 since D3; an
+   earlier note that 256 timed out the ChainSync wait is examined in section 7).
 5. Per-block recomputation removed: `ln(1-f)` of the leader check, the pool distribution view, the
    stability window.
 
@@ -273,3 +273,99 @@ The log's `extended` lines give blocks per second, the `scheduling` object of ea
 `epochValidated` line the timer lateness and the longest step, `-Xlog:gc` the collector's pauses, and the
 starvation warnings are lines containing `starvation-and-tuning`. `python3 scripts/devnet.py pool
 --scala-cpus 1 --max-starvation-warnings 0` is the devnet check.
+
+## 7. ChainSync pipelining depth (D3) and header-first validation (G6)
+
+### What limits the depth
+
+The note that 256 pipelined ChainSync requests timed out against the public relay (while 64 to 128
+worked) was checked against the pinned upstream sources and against the relay:
+
+- **Protocol limits do not forbid 256.** `Cardano.Network.NodeToNode.defaultMiniProtocolParameters`
+  has `chainSyncPipeliningLowMark = 200` and `chainSyncPipeliningHighMark = 300`, and the reference
+  client (`pipelineDecisionLowHighMark 200 300`) keeps up to 300 requests outstanding. The ingress
+  queue limit of ChainSync (`chainSyncProtocolLimits`) is `1.1 * 300 * 1400 = 462,000` bytes, counted
+  on the payload bytes a peer has sent that its mini-protocol has not read yet; our requests are 2
+  bytes each, so 256 of them are 512 bytes. The time limits (`timeLimitsChainSync`) are 10 s for
+  `StIntersect` and `StNext StCanAwait` (`shortWait`), a random 135 to 269 s for `StNext StMustReply`
+  (untrusted peers) and the idle timeout for `StIdle`; our client uses the same 10 s, 10 s and 300 s,
+  with each reply of a pipelined round given its own 10 s from the previous one
+  (`ChainSyncClient.Settings`).
+- **The relay answers a deep round quickly.** The node now logs the time of the ChainSync rounds
+  (`chainSyncRounds`: from the first of `n` pipelined requests to the last reply). Over 15 minutes of
+  Preview from genesis, depth 64: 165 ms on average, 596 ms at most; 128: 162 to 187 ms, at most 757
+  ms; 200: 230 ms, 677 ms; 256: 262 ms, 805 ms (one run without header-first had one round of 2.3 s on
+  a host at load 40). The 10 s wait has a factor of 4 to spare at the worst round measured, and
+  40 or more for the typical one.
+- **No timeout occurred.** In 16 runs of 12 to 15 minutes against `preview-node.play.dev.cardano.org:3001`
+  (each from genesis to epoch 33 to 44, 139,000 to 183,000 blocks; depths 64, 128, 200 and 256, with
+  the build before this work and with it, `--header-first on` and `off`, and, with the base build on
+  2 CPUs with everything on the compute pool as before D8 (`--cpu-threads 0`), depth 256 (141,954
+  blocks) and 64 (139,223)) there was no `reconnecting` event, no timeout and no starvation warning.
+  The observation recorded in `findings.md` was made on a build from before the D8 scheduling work
+  and before the receive-path fix below, and was not reproduced: the regions of the chain
+  reached in 15 minutes (epochs up to 44) have small blocks, and the relay was not slow.
+
+### What was found: the receive path
+
+Looking for what can hold a ChainSync reply for 10 s on the connection that ChainSync shares with
+BlockFetch (the multiplexer reads one socket; a full ingress queue of any mini-protocol stops the
+reads for all of them), the receive path turned out to be quadratic. `ProtocolWire.Reader` read every
+byte through `Bytes.value`, which builds a `Vector[Byte]` of the whole buffer, and the multiplexer
+and its decoder copied through `Vector`s as well. A range of 100 blocks of 90 KB (9 MB) through
+`BlockFetchClient` over an in-memory bearer took **12.6 s (0.72 MB/s)** on a host at load 40; after
+reading bytes by index and slicing windows it takes **0.19 s (48 MB/s)** (`ClientSuite` pins it under
+5 s). A range that takes longer than 10 s to receive holds the next batch's ChainSync replies behind
+its data: that is how a deep pipeline of large blocks reaches the ChainSync wait, and it did not need
+more than the 8 MB range budget to do so. Preview's blocks are small (Koios samples of 60 blocks per
+epoch from epoch 8 to 1450 average 0.2 to 5 KB, with a burst of 63 KB blocks around epoch 7), which is why the runs above never came
+near it; a chain with large blocks (mainnet during busy epochs) does.
+
+### Depth against throughput
+
+15 minutes from genesis, `--cpus 6`, `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, fresh
+databases, on a host shared with other builds (load average 20 to 43, so only runs started
+together compare):
+
+| run | depth | blocks | blocks/s | epoch reached |
+|---|---|---|---|---|
+| base build, one after another | 256 | 183,050 | 194 | 44 |
+| | 200 | 181,047 | 191 | 43 |
+| | 128 | 181,198 | 191 | 43 |
+| | 64 | 165,148 | 174 | 40 |
+| this work, five together, header-first on | 256 | 156,837 | 164 | 38 |
+| | 200 | 158,276 | 165 | 38 |
+| | 128 | 150,992 | 158 | 36 |
+| | 64 | 141,641 | 148 | 34 |
+| this work, header-first off, together with the above | 128 | 155,919 | 163 | 37 |
+
+Depth 64 is 6 to 10% slower than 128 and above in both series; 128, 200 and 256 differ by less than
+the noise (the apply thread is the limit). The default is therefore **128**: the start of the plateau,
+twice the previous default, well inside the reference client's high mark of 300, and at least 4 times
+inside the 10 s wait at its slowest measured round (2.3 s; the typical round is 0.2 s). `--read-ahead 256` works and gains nothing
+measurable on Preview.
+
+### Header-first validation (G6): cost
+
+Started together (three containers, same host load), depth 128, 15 minutes from genesis:
+
+| build | blocks | blocks/s |
+|---|---|---|
+| base build (no header-first) | 175,279 | 183 |
+| this work, `--header-first on` | 175,492 | 183 |
+| this work, `--header-first off` | 175,677 | 183 |
+
+Header-first validation costs nothing measurable: the signatures are verified once, in parallel
+ahead of the rules, and the block's own validation consumes the same verdicts
+(`VerificationCache.forHeaders`); in an earlier pair at depth 128 (the base build then one with
+header-first, run one after the other) the difference was 2%, inside the noise of that host. Every
+run logged `headersChecked` with 150,000 headers validated and `unchecked: 0`, `waited: 0`: the
+whole Alonzo and Babbage region of Preview (TPraos from epoch 0, Praos from the epoch of the Babbage
+hard fork) validates header-first against the real chain, across 34 to 44 epoch boundaries, with
+no header refused.
+
+### How to repeat
+
+As in section 6, with `--read-ahead N` and `--header-first on|off`; the `chainSyncRounds` lines of the
+log give the round times (every 200 rounds, cumulative) and the `headersChecked` lines the validated,
+unchecked and waited header counts (every 50,000).

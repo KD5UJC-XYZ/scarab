@@ -148,6 +148,7 @@ def main():
     pl.add_argument("--seed", type=int, default=1, help="random seed of the load")
     pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
     pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
+    pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--inbound-sync off' (to compare builds or settings)")
     pl.add_argument("--keep", action="store_true", help="leave the cluster running")
     pl.set_defaults(run=pool)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "

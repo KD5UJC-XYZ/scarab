@@ -58,6 +58,7 @@ final class InboundGovernor[F[_]: Async] private (
     headers: Option[HeaderCheck[F]],
     transactions: Option[TxSubmissionClient.Source[F]],
     events: Option[InboundEvents[F]],
+    observe: Option[Peer.Observation => F[Unit]],
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
 ):
   private val F = Async[F]
@@ -88,7 +89,7 @@ final class InboundGovernor[F[_]: Async] private (
   def serve(bearer: Bearer[F], remote: SocketAddress[IpAddress]): F[String] =
     Handle
       .allow[ConnectionError] {
-        manager.inbound(remote).use { connection =>
+        manager.inbound(remote, alongsideOutbound = !config.runClients).use { connection =>
           emit(remote, InboundEvent.Accepted) *>
             Handle
               .allow[NetworkError] {
@@ -177,7 +178,7 @@ final class InboundGovernor[F[_]: Async] private (
               config.peer.network,
               transactions
             )
-            .flatMap(connection => Peer.over(connection, config.peer, prepare, headers))
+            .flatMap(connection => Peer.over(connection, config.peer, prepare, headers, observe))
             .use { peer =>
               follow(counted(remote, peer))
             }
@@ -304,7 +305,8 @@ object InboundGovernor:
       prepare: Peer.Prepare[F],
       headers: Option[HeaderCheck[F]] = None,
       transactions: Option[TxSubmissionClient.Source[F]] = None,
-      events: Option[InboundEvents[F]] = None
+      events: Option[InboundEvents[F]] = None,
+      observe: Option[Peer.Observation => F[Unit]] = None
   ): F[InboundGovernor[F]] =
     Ref
       .of[F, Map[String, Session]](Map.empty)
@@ -318,6 +320,7 @@ object InboundGovernor:
           headers,
           transactions,
           events,
+          observe,
           _
         )
       )

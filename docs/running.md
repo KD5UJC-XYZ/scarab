@@ -59,7 +59,7 @@ value except `--forge`. A repeated flag keeps its last value, except `--peer`, w
 | `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
 | `--utxo-cache-mb N` | `256` | RocksDB block cache |
-| `--read-ahead N` | `64` | ChainSync requests pipelined and blocks fetched per range while far behind (256 timed out against the public relay) |
+| `--read-ahead N` | `128` | ChainSync requests pipelined per round, and the blocks of a round fetched in ranges of at most 100, while far behind. 64, 128, 200 and 256 were each run for 15 minutes against the public Preview relay without a timeout (the relay answers a 256-header round in 0.26 s on average); 128 and above are about 6 to 10% faster than 64, see [performance.md](performance.md) section 7 (D3) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`csl-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--mempool-bytes N` | `1048576` (`MempoolCapacityBytesOverride` with `--config`) | mempool capacity in bytes; LocalTxMonitor reports it as the reference does, a whole number of block-sized units |
 | `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |

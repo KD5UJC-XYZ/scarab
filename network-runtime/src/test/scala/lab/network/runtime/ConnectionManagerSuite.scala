@@ -82,6 +82,45 @@ class ConnectionManagerSuite extends CatsEffectSuite with ScalaCheckSuite:
     }
   }
 
+  test("with our clients off the inbound connection, both directions to one peer coexist") {
+    managed() { cm =>
+      cm.inbound(peer(1)).use { _ =>
+        cm.outbound(peer(1), alongsideInbound = true).use { _ =>
+          for
+            snapshot <- cm.snapshot
+            // one per direction still: a second outbound is refused
+            again <- Handle
+              .allow[ConnectionError](
+                cm.outbound(peer(1), alongsideInbound = true).use(_ => IO.unit).as(None)
+              )
+              .rescue(e => IO.pure(Some(e)))
+          yield (snapshot.counters, again)
+        }
+      }
+    }.map { r =>
+      val (counters, again) = result(r)
+      assertEquals(counters, Counters(1, 1, 0, 0))
+      assert(again.exists(_.isInstanceOf[ConnectionError.AlreadyConnected]), again.toString)
+    }
+  }
+
+  test("an outbound connection refuses an inbound one unless our clients do not use it") {
+    managed() { cm =>
+      cm.outbound(peer(1)).use { _ =>
+        for
+          refused <- Handle
+            .allow[ConnectionError](cm.inbound(peer(1)).use(_ => IO.unit).as(None))
+            .rescue(e => IO.pure(Some(e)))
+          allowed <- cm.inbound(peer(1), alongsideOutbound = true).use(_ => IO.pure(true))
+        yield (refused, allowed)
+      }
+    }.map { r =>
+      val (refused, allowed) = result(r)
+      assert(refused.exists(_.isInstanceOf[ConnectionError.AlreadyConnected]), refused.toString)
+      assert(allowed)
+    }
+  }
+
   test("the limits of each direction are hard, and a released connection frees its slot") {
     val limits = ConnectionManager.Limits(maxInbound = 2, maxOutbound = 1)
     managed(limits) { cm =>

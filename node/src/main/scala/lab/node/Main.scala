@@ -39,8 +39,8 @@ import scala.concurrent.duration.*
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
   * [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]
-  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert
-  * <file>]`
+  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
+  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -81,7 +81,7 @@ object Main extends IOApp:
       utxoStore: Option[String] = None,
       utxoCacheMb: Int = 256,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
-      readAhead: Int = 64,
+      readAhead: Int = 128,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
         */
       cpuThreads: Int = math.max(1, Runtime.getRuntime.availableProcessors()),
@@ -416,21 +416,27 @@ object Main extends IOApp:
             )
           )
           // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
-          observeRounds = (o: Peer.BatchObservation) =>
+          observeRounds = (requested: Int, received: Int, millis: Long) =>
             rounds
               .modify { case (n, headers, total, max, depth) =>
                 val next = (
                   n + 1,
-                  headers + o.received,
-                  total + o.millis,
-                  max.max(o.millis),
-                  depth.max(o.requested)
+                  headers + received,
+                  total + millis,
+                  max.max(millis),
+                  depth.max(requested)
                 )
                 if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
               }
               .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
                 JsonLog.chainSyncRounds(n, headers, total / n, max, depth)
               })
+          observePeer = (o: Peer.Observation) =>
+            o match
+              case Peer.Observation.Fetched(millis) =>
+                JsonLog.slowFetch(millis).whenA(millis >= 250)
+              case Peer.Observation.Round(requested, received, millis) =>
+                observeRounds(requested, received, millis)
           // the connection manager (G2): one connection per peer address, limits, accounting
           manager <- ConnectionManager.create[IO](
             ConnectionManager.Limits(maxInbound = options.maxInbound),
@@ -461,7 +467,8 @@ object Main extends IOApp:
             events = Some(
               new InboundEvents[IO]:
                 def emit(remote: String, event: InboundEvent) = JsonLog.inboundEvent(remote, event)
-            )
+            ),
+            observe = Some(observePeer)
           )
           // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
           sync = Handle
@@ -483,7 +490,7 @@ object Main extends IOApp:
                       warm,
                       Some(mempool.source),
                       headerCheck,
-                      Some(observeRounds)
+                      Some(observePeer)
                     ),
                     Some { case Outbound.Event.Reused(remote) =>
                       JsonLog.inbound(
@@ -491,7 +498,8 @@ object Main extends IOApp:
                         "reused",
                         Some(s"outbound $address served by the inbound duplex connection")
                       )
-                    }
+                    },
+                    reuseInbound = options.inboundSync
                   ),
                   events,
                   retry,
@@ -686,7 +694,7 @@ object Main extends IOApp:
             .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(usage))
           readAhead <- flags
             .get("read-ahead")
-            .fold(Right(64))(_.toIntOption.filter(_ > 0).toRight(usage))
+            .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
           headerFirst <- flags
             .get("header-first")
             .fold(Right(true))(v => Map("on" -> true, "off" -> false).get(v).toRight(usage))

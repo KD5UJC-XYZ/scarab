@@ -112,6 +112,9 @@ object JsonLog:
       "maxDepth" -> maxDepth.asJson
     )
 
+  /** A block fetched on its own took this long from the request to the block. */
+  def slowFetch(millis: Long): IO[Unit] = line("slowFetch", "millis" -> millis.asJson)
+
   /** What the inbound governor did on a connection (G2). */
   def inboundEvent(remote: String, event: InboundEvent): IO[Unit] = event match
     case InboundEvent.Accepted       => inbound(remote, "accepted")
