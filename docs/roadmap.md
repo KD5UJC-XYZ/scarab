@@ -128,12 +128,15 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 
 ## N. Ouroboros Leios (v0.3)
 
-Linear Leios (CIP-164) is planned for the Dijkstra hard fork (L1).
+Linear Leios (CIP-164) is planned for the Dijkstra hard fork (L1). The design note, sources and
+the observed divergences between the CIP text and the prototype are in [leios.md](leios.md).
+N2 does not depend on L1 or G4; N3 needs L1 (Dijkstra decoding) and, if the testnet requires it,
+G4; N4 needs N3 and a buildable reference Leios node.
 
-- **N1** [#70](https://github.com/ottobot-ai/cardano-scala-lab/issues/70) (P1) Study CIP-164, the Leios formal specification and the reference prototypes; write a design note (`docs/leios.md`) mapping the changes onto this codebase.
-- **N2** [#71](https://github.com/ottobot-ai/cardano-scala-lab/issues/71) (P2) BLS12-381 key registration, voting and certificate verification, pure and tested against reference vectors.
-- **N3** [#72](https://github.com/ottobot-ai/cardano-scala-lab/issues/72) (P2) Follow the public Leios testnet: decode, validate what is specified, report the gaps.
-- **N4** [#73](https://github.com/ottobot-ai/cardano-scala-lab/issues/73) (P2) A devnet prototype against the reference Leios implementation, compared like soak and e2e.
+- **N1** [#70](https://github.com/ottobot-ai/cardano-scala-lab/issues/70) (P1, done: design note) Study CIP-164, the Leios formal specification and the reference prototypes; `docs/leios.md` records the revision of every source, the protocol and ledger changes, the mapping onto this codebase, risks, and the plan below. One handshake against the public testnet relay is recorded (versions 14 to 16, magic 164).
+- **N2** [#71](https://github.com/ottobot-ai/cardano-scala-lab/issues/71) (P2) BLS12-381 MinSig keys, proof of possession, votes, aggregation and certificate verification, with the committee order rule, in `core`, pure. Acceptance: strict decoding (subgroup, infinity, canonical); `cardano-base` BLS vectors and the golden `LeiosVote` file with provenance; the 96 versus 48 byte proof-of-possession discrepancy resolved against `dijkstra.cddl`; properties (aggregate of valid votes verifies, any tampering, duplicate or reordered signer, replay on another announcing hash, rogue key all fail); a 900-seat verification benchmark; `blst-java` declared directly and its licence recorded; `check` green; no node change.
+- **N3** [#72](https://github.com/ottobot-ai/cardano-scala-lab/issues/72) (P2, needs L1, maybe G4) Follow the public Leios testnet read-only: LeiosNotify (protocol 18) and LeiosFetch (19) codecs against the Blueprint CDDL with captured fixtures; Dijkstra headers and bodies decoded; certificates verified with N2; EB announcement, body and closure fetched and hash-checked; an evidence row in `compatibility.md` and a precise list of what is skipped. The first mini-protocol exchange with the public relay needs the owner's go-ahead.
+- **N4** [#73](https://github.com/ottobot-ai/cardano-scala-lab/issues/73) (P2, needs N3) A devnet scenario with Haskell Leios nodes and the Scala node: announcements, EBs, votes, certificates and the committee equal to the reference's, ledger state equal at epoch boundaries, the Scala node forging, voting and certifying; throughput and mempool numbers recorded; do-not-fetch and do-not-vote switches. If the reference is not stable enough, stop at a defined scenario plus the divergence list.
 - **N5** [#79](https://github.com/ottobot-ai/cardano-scala-lab/issues/79) (P1) A Leios-grade mempool: 12 MB capacity and per-transaction validation latency against the 1–100 µs target.
 
 ## O. Review readiness and operations (v0.3)
