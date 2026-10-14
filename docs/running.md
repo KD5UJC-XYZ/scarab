@@ -225,6 +225,12 @@ Haskell node synced from the Preview relay, the first 2,943 chunks (slots up to 
 of the export are identical byte for byte, files and indexes. `--chunk-slots` is ten times the security
 parameter of the Byron genesis (Preview 4320, Preprod and Mainnet 21600).
 
+The recorded Preview run (2026-10-14) kept everything under `.workspace/data/2026-10-14-k1-*`: the Haskell node
+(`csl-k1-haskell-preview`, `--cpus 6`), the Scala node from a frozen copy of the build (`csl-k1-scala-preview`,
+`--cpus 6 --memory 10g`, `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`; `run.sh` resumes from its
+database) and a loop (`watch.sh`) that repeats steps 3 and 4 every 20 minutes. About 1.8 epochs per minute on
+both sides while the other is also syncing.
+
 On a devnet cluster: `python3 scripts/devnet.py e2e --oracle` (or `soak --oracle`, or `follow --dump-state`
 then `oracle`) runs `db-analyser` inside the reference container on a copy of node 1's ImmutableDB and
 compares at every epoch boundary the follower digested (`scripts/oracle/devnet.py`); the summary is in
