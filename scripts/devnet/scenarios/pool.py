@@ -371,10 +371,11 @@ def pool(args):
         if forging_stats:
             total = forging_stats["total"]
             budget = 5 * shelley["slotLength"] * 1000  # a block is adopted within five slots of its slot's start
-            if total["forged"] != len(forged) or total["leaderSlots"] < total["forged"]:
+            # the counters were read a moment before the log: the node may have forged one more block since
+            if not 0 <= len(forged) - total["forged"] <= 2 or total["leaderSlots"] < total["forged"]:
                 failures.append(f"the forger's counters ({total['forged']} forged of {total['leaderSlots']} led slots) "
                                 f"disagree with the log ({len(forged)} forged blocks)")
-            if total["adopted"] != len(adopted):
+            if not 0 <= len(adopted) - total["adopted"] <= 2:
                 failures.append(f"the forger's counters say {total['adopted']} adopted, the log {len(adopted)}")
             slowest = total["forgeLatencyMs"]["max"]
             if slowest is not None and slowest > budget:
