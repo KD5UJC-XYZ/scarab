@@ -144,3 +144,31 @@ class ScalusConformanceReproducersSuite extends FunSuite:
       case EvalResult.Failure(EvalFailure.OutOfBudget, used, _) => assert(used.steps < 0, used)
       case other => fail(s"fixed upstream? now $other")
   }
+
+  // `PlutusCore.Data.encodeData`: a constructor index in the Word64 range is written as an unsigned
+  // integer after tag 102 (`d866 82 1bffffffffffffffff 80` for 2^64 - 1; the datum of preprod
+  // transaction 2edd684f carries one). Scalus writes the index through a Long: 2^64 - 1 becomes -1
+  // and 2^64 + 200 becomes 200, so two different Data have the same serialisation. The node's
+  // evaluator replaces the builtin (`DataSerialiser`, `DataSerialiserSuite`).
+  test("serialiseData writes a constructor index outside [0, 2^63) through a Long") {
+    def serialised(index: String) =
+      bytes(
+        evaluate(
+          s"(program 1.0.0 [ (builtin serialiseData) [ [ (builtin constrData) (con integer $index) ] (con (list data) []) ] ])"
+        )
+      )
+    assertEquals(serialised("200"), "d8668218c880")
+    assertNotEquals(serialised("18446744073709551615"), "d866821bffffffffffffffff80")
+    assertEquals(serialised("18446744073709551615"), "d866822080")
+    assertEquals(serialised("18446744073709551816"), serialised("200"))
+  }
+
+  // The same Long in the CBOR codec of `Data` constants: a program with a Data constant whose
+  // constructor index is 2^63 or more does not survive `cborEncoded` / `fromCbor`, so a script
+  // carrying one (the reference's flat decoder takes a Word64 index) is rejected as undecodable.
+  test("a Data constant with a constructor index of 2^63 or more does not round-trip") {
+    val program = Program
+      .parseUplc("(program 1.0.0 (con data (Constr 18446744073709551615 [])))")
+      .fold(sys.error, identity)
+    assert(Try(DeBruijnedProgram.fromCbor(program.cborEncoded)).isFailure, "fixed upstream?")
+  }

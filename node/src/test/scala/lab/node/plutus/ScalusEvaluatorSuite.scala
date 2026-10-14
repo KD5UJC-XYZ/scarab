@@ -149,3 +149,16 @@ class ScalusEvaluatorSuite extends FunSuite:
       case EvalResult.Failure(EvalFailure.Decode(_), _, _) => ()
       case other                                           => fail(other.toString)
   }
+
+  test("a failing script's trace output is part of the failure reason") {
+    val result = run(
+      """(lam ctx [ (lam _ (error)) [ [ (force (builtin trace)) (con string "H41") ] (con unit ()) ] ])""",
+      PlutusLanguage.V2,
+      protocol = 10
+    )
+    result match
+      case EvalResult.Failure(EvalFailure.Script(reason), _, logs) =>
+        assertEquals(logs, Vector("H41"))
+        assert(reason.contains("trace: H41"), reason)
+      case other => fail(other.toString)
+  }

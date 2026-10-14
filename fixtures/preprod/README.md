@@ -47,3 +47,22 @@ as hex. Source: Koios `tx_cbor` (`https://preprod.koios.rest/api/v1/tx_cbor`), f
 Output 0 carries 2 policies and 501 assets: its value is 5001 bytes in definite-length CBOR but
 5000 bytes as the ledger writes it (a map of more than 23 entries is indefinite-length), so it is
 within `maxValueSize` 5000. Used by `PreConwayRulesSuite`.
+
+## tx-2edd684f.hex and plutus/tx-2edd684f.json
+
+The full transaction `2edd684fb762fb4cc464367aa5a01b5e129e202e41b68f755a4e28d9ea293802` (Conway,
+protocol 10.0, 5,329 bytes, `[body, witnesses, true, auxiliary_data]`) from preprod block 3,050,799
+(slot 80,239,053, epoch 189, hash
+`be1582397ea3968930c07c48272e4131d9510c13acecd70ff38034e165361f8d`), as hex. A Hydra head fanout (Plutus
+V2, reference script) with a mint of the head tokens. Source: Koios `tx_cbor`, fetched 2026-10-14
+(`https://preprod.koios.rest/api/v1/tx_cbor`). The outputs carry inline datums with constructor
+indices of 2^64 - 1, 1313480702 and 2025506762; it is the transaction on which the first preprod sync
+of the Scala node stopped (`ValidationTagMismatch`, see `docs/findings.md`).
+
+`plutus/tx-2edd684f.json` is the case file of `PlutusCase` (the format of `fixtures/preview/plutus`):
+the body, witnesses and auxiliary data, the resolved inputs, reference inputs and collateral input
+and the cost models in force. The outputs are rebuilt from Koios `tx_info` (`_inputs`, `_scripts`,
+`_bytecode`; addresses from the payment credential, enterprise form; the reference script's hash was
+checked against the bytes) and the cost models are the V1, V2 and V3 arrays of Koios `epoch_params`
+for epoch 189 (166, 175 and 297 parameters). The clock has one sample, slot 80,239,018 (the lower
+bound of the validity interval) at POSIX 1,735,922,218,000 ms. Used by `PreprodConwayRulesSuite`.
