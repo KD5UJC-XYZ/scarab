@@ -286,8 +286,13 @@ object ProtocolParams:
           }
           .map(_.toMap)
 
-  /** Apply a protocol-parameter update (field index -> original CBOR). Crossing into Babbage
-    * derives `coinsPerUTxOByte` from the Alonzo per-word value, as the era translation does.
+  /** Apply a protocol-parameter update (field index -> original CBOR). Key 17 is the lovelace per
+    * UTxO word in the eras before Babbage (`Alonzo/PParams.hs:664`) and per byte from Babbage
+    * (`Babbage/PParams.hs`); which one is decided by the version of the parameters the update is
+    * applied to, not by the version it sets, because the update is applied by the rules of the era
+    * it was proposed in and the translation follows. Crossing into Babbage then derives
+    * `coinsPerUTxOByte` from the per-word value, rounded down (`upgradeBabbagePParams True`,
+    * `Babbage/PParams.hs:389-391`), also when the same update names key 17.
     */
   def update(p: ProtocolParams, u: ParamUpdate): Either[String, ProtocolParams] =
     def field(key: Int)(f: (ProtocolParams, Node) => Either[String, ProtocolParams])(
@@ -332,9 +337,9 @@ object ProtocolParams:
       field(15)(uint("minUTxOValue")((p, v) => p.copy(minUTxOValue = v))),
       field(16)(uint("minPoolCost")((p, v) => p.copy(minPoolCost = v))),
       field(17)(
-        uint("coinsPerUTxO")((p, v) =>
-          if p.protocolMajor >= 7 then p.copy(coinsPerUTxOByte = v)
-          else p.copy(coinsPerUTxOWord = v)
+        uint("coinsPerUTxO")((acc, v) =>
+          if p.protocolMajor >= 7 then acc.copy(coinsPerUTxOByte = v)
+          else acc.copy(coinsPerUTxOWord = v)
         )
       ),
       field(18)((p, n) => costModels(n).map(m => p.copy(costModels = p.costModels ++ m))),
@@ -371,7 +376,7 @@ object ProtocolParams:
     )
     for updated <- steps.foldLeftM(p)((acc, step) => step(acc))
     yield
-      if p.protocolMajor < 7 && updated.protocolMajor >= 7 && !u.fields.contains(17) then
+      if p.protocolMajor < 7 && updated.protocolMajor >= 7 then
         updated.copy(coinsPerUTxOByte = updated.coinsPerUTxOWord / 8)
       else updated
 

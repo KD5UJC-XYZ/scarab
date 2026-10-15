@@ -128,13 +128,28 @@ object LedgerMirror:
     case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
       p.copy(minUTxOValue = 0, coinsPerUTxOWord = 0)
 
-  private def eraFuture[E <: EraTag](f: FuturePParams)(using ShelleyBasedEra[E]): FuturePParams =
+  /** The future parameters as the era's `PParams` has them. Before Babbage they are also without
+    * `coinsPerUTxOByte`, which the node's update rule derives when the update crosses into Babbage
+    * (`ProtocolParams.update`): an Alonzo update that raises the version has the Alonzo parameters
+    * of the new version, and the translation to Babbage (`upgradeBabbagePParams`,
+    * `Babbage/PParams.hs:321-345`) comes when they take effect.
+    */
+  private def eraFuture[E <: EraTag](f: FuturePParams)(using
+      era: ShelleyBasedEra[E]
+  ): FuturePParams =
+    def fields(p: node.ProtocolParams): node.ProtocolParams =
+      val q = eraParams[E](p)
+      era match
+        case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+            ShelleyBasedEra.SAlonzo =>
+          q.copy(coinsPerUTxOByte = 0)
+        case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway => q
     f match
       case FuturePParams.NoPParamsUpdate => f
       case FuturePParams.DefinitePParamsUpdate(p) =>
-        FuturePParams.DefinitePParamsUpdate(eraParams[E](p))
+        FuturePParams.DefinitePParamsUpdate(fields(p))
       case FuturePParams.PotentialPParamsUpdate(next) =>
-        FuturePParams.PotentialPParamsUpdate(next.map(eraParams[E]))
+        FuturePParams.PotentialPParamsUpdate(next.map(fields))
 
   /** The accounts that delegate to each pool, stake or no stake. */
   private def accountDelegators(s: node.LedgerState): Map[Bytes, Vector[node.Credential]] =
