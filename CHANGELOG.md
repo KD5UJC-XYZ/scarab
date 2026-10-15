@@ -74,7 +74,7 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   section has only its own fields). (2) The read returns the state in a canonical form (`SnapshotV3.canonical`):
   an empty relay list of a pool, `80`, reads back as `Bytes.empty` (the Haskell codec writes both as the empty
   array and reads one back), and the enacted parameters of the DRep pulser have no field for the lovelace
-  per UTxO word or the minimum UTxO value in Conway. Neither is read by a rule. (3) The write reads its content
+  per UTxO word, the minimum UTxO value, the decentralisation or the extra entropy in Conway. Neither is read by a rule. (3) The write reads its content
   back and compares (about one extra read per snapshot, measured below), because the in-memory mirror holds
   more than the Haskell encoding can: a state of the eras fixture's Alonzo era with a pending update naming
   `coinsPerUTxOByte` cannot be restored, and such a snapshot is refused rather than written unreadable.

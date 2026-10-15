@@ -8,7 +8,7 @@ import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusExtras,
@@ -28,6 +28,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Snapshot,
   Snapshots,
   StorageError,
+  Nonce,
   Utxo
 }
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -84,8 +85,8 @@ object SnapshotV3:
     * that no rule reads. A pool registered with the empty relay list (`80`, the item as the
     * certificate gave it) reads back with no relays (`Bytes.empty`: the Haskell codec writes both
     * as the empty array and reads one back); and the enacted parameters of the DRep pulser, which
-    * the node keeps as full parameters, have no field for the lovelace per UTxO word or the minimum
-    * UTxO value in Conway.
+    * the node keeps as full parameters, have no field in Conway for the lovelace per UTxO word, the
+    * minimum UTxO value, the decentralisation or the extra entropy.
     */
   def canonical(env: ConsensusMirrorEnv, s: NodeState): NodeState =
     val n = StateMirror.normalised(env, s)
@@ -95,7 +96,12 @@ object SnapshotV3:
       val emptySequence = Bytes.fromArray(Array(0x80.toByte))
       def bare(p: PoolParams): PoolParams =
         if p.relays == emptySequence then p.copy(relays = Bytes.empty) else p
-      def conway(p: ProtocolParams): ProtocolParams = p.copy(minUTxOValue = 0, coinsPerUTxOWord = 0)
+      def conway(p: ProtocolParams): ProtocolParams = p.copy(
+        minUTxOValue = 0,
+        coinsPerUTxOWord = 0,
+        d = Rational.zero,
+        extraEntropy = Nonce.Neutral
+      )
       def snapshot(x: Snapshot): Snapshot = x.copy(pools = x.pools.view.mapValues(bare).toMap)
       n.copy(ledger =
         ledger.copy(
