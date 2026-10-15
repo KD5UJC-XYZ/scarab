@@ -158,6 +158,11 @@ final class InboundGovernor[F[_]: Async] private (
       _ <- attempt(remote, version, mux)
     yield ()
 
+  /** Our clients on the connection, for as long as the session lasts. They are started once: a
+    * retry after [[PeerError.NoIntersection]] follows again over the same clients, since starting
+    * them again would begin each mini-protocol a second time on the same channels (a second
+    * TxSubmission2 `MsgInit` mid-protocol makes the peer drop the connection).
+    */
   private def attempt(
       remote: SocketAddress[IpAddress],
       version: Int,
@@ -180,10 +185,7 @@ final class InboundGovernor[F[_]: Async] private (
               config.peer.network,
               transactions
             )
-            .flatMap(connection => Peer.over(connection, config.peer, prepare, headers, observe))
-            .use { peer =>
-              follow(counted(remote, peer))
-            }
+            .use(connection => following(remote, connection))
             .as(Option.empty[PeerError])
         }
         .rescue(e => F.pure(Some(e)))
@@ -192,20 +194,39 @@ final class InboundGovernor[F[_]: Async] private (
         .handleErrorWith(t =>
           F.pure(Some(PeerError.Unavailable(s"session failed: ${InboundGovernor.describe(t)}")))
         )
-      _ <- outcome match
+      _ <- outcome.traverse_ { error =>
+        val drop = error match
+          case _: PeerError.InvalidHeader | _: PeerError.Protocol => true
+          case _                                                  => false
+        update(remote)(_.copy(ended = Some(error.message))) *>
+          emit(remote, InboundEvent.SessionEnded(error.message, drop)) *>
+          mux.abort(error.message).whenA(drop)
+      }
+    yield ()
+
+  /** Follow the peer over `connection`; while it shares no point with our chain, try again after
+    * `retryDelay` on the same clients.
+    */
+  private def following(
+      remote: SocketAddress[IpAddress],
+      connection: NodeToNodeConnection[F, NtNHeader]
+  )(using Raise[F, PeerError]): F[Unit] =
+    Handle
+      .allow[PeerError] {
+        Peer
+          .over(connection, config.peer, prepare, headers, observe)
+          .use(peer => follow(counted(remote, peer)))
+          .as(Option.empty[PeerError])
+      }
+      .rescue(e => F.pure(Some(e)))
+      .flatMap {
         case None => F.unit
         case Some(PeerError.NoIntersection) =>
           update(remote)(s => s.copy(retries = s.retries + 1)) *>
             emit(remote, InboundEvent.SessionEnded(PeerError.NoIntersection.message, false)) *>
-            F.sleep(config.retryDelay) *> attempt(remote, version, mux)
-        case Some(error) =>
-          val drop = error match
-            case _: PeerError.InvalidHeader | _: PeerError.Protocol => true
-            case _                                                  => false
-          update(remote)(_.copy(ended = Some(error.message))) *>
-            emit(remote, InboundEvent.SessionEnded(error.message, drop)) *>
-            mux.abort(error.message).whenA(drop)
-    yield ()
+            F.sleep(config.retryDelay) *> following(remote, connection)
+        case Some(error) => Raise[F, PeerError].raise(error)
+      }
 
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:

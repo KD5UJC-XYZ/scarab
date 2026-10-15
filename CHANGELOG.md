@@ -5,6 +5,15 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (inbound duplex sessions)
+- A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
+  was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
+  second `MsgInit` mid-protocol and the Haskell peer dropped the connection (`codecTxSubmission2
+  (ClientHasAgency, SingTxIds SingBlocking) unexpected key (6, 1)`). The clients now start once per
+  session and only the following is retried. Seen as an intermittent `relay` gate failure (the
+  Haskell relay behind by up to 10 blocks while it reconnected); regression test in
+  `InboundGovernorSuite`.
+
 ### Fixed (B18, #84)
 - The paths that still limited nesting below the reference now bound it by size alone, as block decoding
   does since B17: the mempool (was 64), the block builder (32), local state query (`NtcQuery`, 32) and the

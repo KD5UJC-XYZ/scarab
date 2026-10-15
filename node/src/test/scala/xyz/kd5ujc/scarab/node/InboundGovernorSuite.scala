@@ -93,7 +93,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
   private def local(
       headerFirst: Boolean = true,
       runClients: Boolean = true,
-      retryDelay: FiniteDuration = 10.seconds
+      retryDelay: FiniteDuration = 10.seconds,
+      transactions: Option[TxSubmissionClient.Source[IO]] = None
   ): IO[Local] =
     for
       ref <- Ref.of[IO, VolatileChain[NodeState]](
@@ -156,7 +157,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
         ),
         follow = peer => follower.session(peer),
         prepare = _ => IO.unit,
-        headers = headerCheck
+        headers = headerCheck,
+        transactions = transactions
       )
     yield new Local(ref, manager, governor, applied)
 
@@ -309,10 +311,18 @@ class InboundGovernorSuite extends CatsEffectSuite:
     yield assert(outcome._1.contains("already connected"), outcome._1)
   }
 
+  /** A mempool that never holds a transaction: a blocking request for ids waits forever. */
+  private val nothingToOffer: TxSubmissionClient.Source[IO] = new TxSubmissionClient.Source[IO]:
+    def after(ticket: Long, max: Int) = IO.pure(Vector.empty)
+    def awaitAfter(ticket: Long) = IO.never
+    def body(id: Bytes) = IO.pure(None)
+
   test("a peer that shares no point with our chain is tried again on the same connection") {
     for
       first <- serving(forged.raws)
-      us <- local(retryDelay = 100.millis)
+      // with transactions to offer, our TxSubmission2 client runs beside ChainSync: a retry must
+      // not start it again (a second MsgInit mid-protocol makes the peer drop the connection)
+      us <- local(retryDelay = 100.millis, transactions = Some(nothingToOffer))
       last = forged.headers.last
       _ <- connect(Some(first), us) { _ =>
         eventually("our chain reaches the peer's tip")(us.chain.get.map(_.tip))(_ == last.point)
