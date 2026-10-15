@@ -150,7 +150,8 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   private val mirrorEnv: MirrorEnv =
     MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
   // the ledger half of the mirror on its own: these pieces are the ledger state's
-  private type Ledger[A] = Kleisli[[X] =>> Either[MirrorError, X], MirrorEnv, A]
+  private type Refused[A] = Either[MirrorError, A]
+  private type Ledger[A] = Kleisli[Refused, MirrorEnv, A]
   private val ledgerMirror: LedgerMirror[Ledger] = LedgerMirror[Ledger]
   private val queryEnv = QueryEnv(
     setup.byronParams
