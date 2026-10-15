@@ -116,7 +116,10 @@ object HaskellImportCommand:
         case None =>
           options.genesisDir.toRight(ConfigError("no genesis")).flatMap(NodeSetup.fromDirectory)
       chunkSlots <- ChunkSlots
-        .fromSecurityParam(setup.genesis.geometry.securityParam.toLong)
+        .fromSecurityParam(
+          // 10 * k of the first era: the Byron genesis when the chain starts in Byron.
+          setup.byron.fold(setup.genesis.geometry.securityParam.toLong)(_.securityParam.toLong)
+        )
         .toRight(ConfigError("the genesis security parameter gives no chunk size"))
     yield (setup, chunkSlots)
 
