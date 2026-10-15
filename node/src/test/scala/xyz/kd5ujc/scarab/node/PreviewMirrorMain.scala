@@ -131,7 +131,7 @@ object PreviewMirrorMain:
       .list(dir)
       .iterator
       .asScala
-      .filter(_.getFileName.toString.startsWith("snapshot-"))
+      .filter(f => FileLedgerSnapshots.isSnapshot(f.getFileName.toString))
       .toVector
       .sortBy(_.getFileName.toString)
       .zipWithIndex

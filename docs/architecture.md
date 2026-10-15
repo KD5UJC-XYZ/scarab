@@ -401,7 +401,8 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `NodeState` at an immutable point; newest valid wins |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `NodeState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV3`: the Haskell ledger state and a `SnapshotSidecar`; `SnapshotV2`: the frozen reader), a refusal of the format is a value (`SnapshotRefusal`) |
+| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Brings V1 and V2 snapshot files to V3 before they are opened |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `ChainStorage` | `ChainStorage.scala` | Checks the identity, opens the stores, restores the newest usable snapshot, replays the stored blocks after it, rebuilds the volatile chain (`resume`), hands the follower a `ChainPersistence` hook, and snapshots the immutable tip when it is released |
@@ -416,8 +417,9 @@ follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|
 Without `--db` nothing changes: the node is in-memory and replays from genesis. With `--db` the
 JSON log gains `immutableOpened`, `snapshotRestored`, `snapshotSkipped`, `snapshotWritten`,
 `snapshotFailed`, `replayStarted`, `replayProgress`, `replayFinished`, `networkRecorded`,
-`volatileOpened`, `volatileResumed`, `shutdownSnapshot` and, the first time an older database is
-opened, `formatMigrated` (`kind`, `from`, `to`, `count`; see "Format versions and migration").
+`volatileOpened`, `volatileResumed`, `shutdownSnapshot`, `snapshotRefused` (`file`, `anchor`, `reason`: the
+format refused the state, nothing was written) and, the first time an older database is opened,
+`formatMigrated` (`kind`, `from`, `to`, `count`; see "Format versions and migration").
 
 **Immutable store format** (`<db>/immutable/`). `format` names the version and chunk size
 (`chunkSlots`, 21600); a different chunk size is a `VersionMismatch`. Blocks of slots
@@ -454,15 +456,42 @@ continues after the tip of a non-empty target. Epoch-boundary blocks (Byron) are
 built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell database was available.
 
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
-default 3, are kept): `"CSLSNAP1" | format version u32 | schema fingerprint[8] | payload | SHA-256`.
-The payload is the codec of `StateSnapshot(anchor, NodeState)`; integers are LEB128 varints,
-`BigInt` is length-prefixed two's complement, containers are a count then the elements, sums a
-variant index then the variant. The fingerprint is the SHA-256 prefix of the codec's `shape` (the
-names and types of every persisted field), so changing any state type makes older snapshots fail
-with `VersionMismatch` rather than decode wrongly. A write goes to `*.tmp`, is fsynced, renamed
-(atomic) and the directory is fsynced; leftover `*.tmp` files are removed on open. Snapshots are
-written by a background fiber from the immutable (structurally shared) anchor state, so following
-does not pause.
+default 3, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
+the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
+decides what the content is. Format version 3 (`SnapshotV3`):
+
+```
+"SCRBSNP3" | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
+```
+
+The Haskell state bytes are a `state` file of a Haskell node (`[1, [ledger state telescope, header
+state]]`, `HaskellLedgerFile`) of the node's state as `StateMirror.toMirror` gives it, byte-proven
+against real files; the UTxO in it is `map(0)`, as in the reference's `state` file, and its entries
+stay in the RocksDB store under the checkpoint of the snapshot. The sidecar
+(`SnapshotSidecar`, derived `Codec`s, a fingerprint of its own) holds what the Haskell encoding has
+no place for: the anchor, the eras the node saw begin where the configuration does not say, the gaps
+of the mirror, the node's `Utxo` bookkeeping (stake by credential and pointer, count, total, stamps,
+diff), the node's full protocol parameters (they have every field in every era) and the
+extras of the mirror. A chain still in Byron has no Haskell section (the mirror does not model the
+Byron ledger state): the sidecar holds the node state whole. The read is `HaskellLedgerFile.decode`,
+the UTxO put back, `StateMirror.fromMirror` (which re-derives and checks everything it derives) and
+the parameters put back; the result is the state in the form `SnapshotV3.canonical` names (the mirror
+is lossless up to `StateMirror.normalised`; an empty relay list of a pool is `Bytes.empty` and the
+parameters of the DRep pulser have no pre-Babbage fields). A write reads its own content back and
+refuses (`snapshotRefused`, the snapshot is skipped, nothing is pruned) what would not restore to
+that state: a snapshot is an optimisation, so a refusal costs a replay at worst.
+
+Format version 2 (`SnapshotV2`, magic `CSLSNAP1`, now only read, by the migration) was
+`"CSLSNAP1" | format number u32 | schema fingerprint[8] | payload | SHA-256`, the payload the codec of
+`StateSnapshot(anchor, NodeState)`; integers are LEB128 varints, `BigInt` is length-prefixed two's
+complement, containers are a count then the elements, sums a variant index then the variant. The
+fingerprint is the SHA-256 prefix of the codec's `shape` (the names and types of every persisted
+field), so changing any state type makes older snapshots fail with `VersionMismatch` rather than
+decode wrongly. Version 1 differed in the number and the fingerprint only (written before the
+packages were renamed). A write goes to `*.tmp`, is fsynced, renamed (atomic) and the directory is
+fsynced; leftover `*.tmp` files are removed on open. Snapshots are written by a background fiber
+from the immutable (structurally shared) anchor state, so following does not pause.
 
 **Recovery.** Snapshots are tried newest first. One that fails its checksum, decodes badly, has
 another schema or names an anchor missing from the immutable store is reported (`snapshotSkipped`)
@@ -509,30 +538,44 @@ nothing of this runs: the start restores the newest periodic snapshot, replays t
 it, and resumes the volatile chain from whatever the log holds.
 
 **Format versions and migration.** The files whose first bytes name their format are the network
-identity, the immutable store's `format` file and every chunk `.index`. Their identifiers, per
-version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`):
+identity, the immutable store's `format` file, every chunk `.index` and every ledger snapshot. Their
+identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
+new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 |
-|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` |
+| file | format 1 (until the rename) | format 2 | format 3 |
+|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` |
 
-The layouts are the same in both; the format version only says which build wrote the file. The
-versions are a closed `enum FormatVersion` (a version this build does not know cannot be
-represented) and each kind of file is a `FileKind` with an identifier per version. On open,
-`Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of every
-file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
-rewritten), then steps each stale file to the next version until it is current. A step is
-`AtomicFile.replace`: a temporary file in the same directory, fsync, rename over the original, fsync
-of the directory; so a crash leaves every file whole at one version, and the next open finishes.
-The chunk indexes are migrated first and the `format` file last. Each kind migrated is reported once
-(`formatMigrated`); the second open reports nothing. Reading accepts format 1 and format 2 (the
-network identity parser does, and the index scan at open does once per file; the per-entry read
-path never looks at the magic). The migration is one way: an older build does not know format 2
-(keep a copy of a database to run an older build on it). The ledger snapshots are not part of this:
-they have their own schema fingerprint, and their migration is issue #83, which adds a `Migration`
-for them. `scripts/oracle/export.py` reads both index magics.
+The layouts of the first three are the same in every version; the format version only says which
+build wrote the file. Format 3 is the snapshot as the Haskell ledger state plus a sidecar (see
+"Snapshot format"). The versions are a closed `enum FormatVersion` (a version this build does not
+know cannot be represented) and each kind of file is a `FileKind` with its history of identifiers.
+On open, `Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of
+every file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
+rewritten), then steps each stale file to the next version until it is at the current version of its
+kind (so the 29,031 chunk indexes of a Preview database are not rewritten for a change of the
+snapshots). A step is `AtomicFile.replace`: a temporary file in the same directory, fsync, rename
+over the original, fsync of the directory; so a crash leaves every file whole at one version, and the
+next open finishes. The chunk indexes are migrated first and the `format` file last. Each kind
+migrated is reported once (`formatMigrated`); the second open reports nothing. Reading accepts every
+version (the network identity parser does, and the index scan at open does once per file; the
+per-entry read path never looks at the magic). The migration is one way: an older build does not
+know the newer formats (keep a copy of a database to run an older build on it).
+
+The snapshots are migrated by `SnapshotMigration` (storage), which `Main` hands to `ChainStorage.open`
+and which runs after the identity of the database is checked and before the snapshots are opened,
+because the conversion needs the node's configuration (`Ask[F, ConsensusMirrorEnv]`: the epoch
+geometry, the hard-fork configuration, the Byron parameters). Per file, atomically: a version 1 file
+gets its header and checksum rewritten in memory (the payload is the same bytes), a version 2 file is
+decoded with the frozen V2 reader (`SnapshotV2`, the derived codecs of `NodeCodecs`), turned into
+the mirror and written as V3 under the same name. No block is replayed. A file of a version of the
+family that this build does not know refuses the whole run before any file is rewritten
+(`UnknownVersion`); a file that is corrupt, of another schema or that the mirror refuses is left as it
+is and reported (`snapshotRefused`), and `restore` skips it as it always skipped a snapshot it could
+not read. The UTxO checkpoints are not touched. `scripts/oracle/export.py` reads both index magics.
 
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
 database is created (the first line is its format identifier, see "Format versions and

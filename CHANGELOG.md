@@ -38,6 +38,57 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   as before. `NodeExtras.pulserAbsent` stays: a state with no pulser and one whose pulser is the initial one
   differ in `FuturePParams` (the second is `Potential` early in the epoch), and the laws generate both.
 
+### Changed (ledger-state mirror, step 2, jump 1: the snapshot is the Haskell ledger state, format 3)
+- **Format 3 of the ledger snapshot** (`SnapshotV3`): `SCRBSNP3 | sidecar length | sidecar | Haskell state bytes |
+  SHA-256`. The Haskell section is `HaskellLedgerFile.encode` of the `ExtLedgerState` that `StateMirror.toMirror`
+  gives (the same bytes a Haskell node's `state` file has, the UTxO `map(0)`, its entries in the RocksDB
+  checkpoint as before); the sidecar (`SnapshotSidecar`, derived `Codec`, its own schema fingerprint) holds the
+  anchor, the eras the node saw begin, the gaps, the node's `Utxo` bookkeeping (the Haskell section has no
+  `tables`), the node's full protocol parameters and the extras of the mirror; a chain still in Byron has no
+  Haskell section and the sidecar holds the node state whole. The read is decode, UTxO and parameters put
+  back, `fromMirror` (which re-derives and checks every derived piece). `FileKind.SnapshotFile` (families
+  `CSLSNAP`, `SCRBSNP`), `FormatVersion.V3`, and `FileKind.current` so `Migrate` rewrites only the kinds that
+  changed: the index, `format` and identity files stay at version 2 (a Preview database's 29,031 chunk
+  indexes are not touched). `FileLedgerSnapshots.FormatVersion` is gone, folded into the enum.
+- **Migration on open** (`SnapshotMigration`, in `storage`, with `Ask[F, ConsensusMirrorEnv]`; `ChainStorage.open`
+  runs it after the identity check, `Main` wires it with the eras the node has seen): version 1 (written before the
+  package rename: the number and the fingerprint of the header differ, the payload is the same bytes) and version 2
+  snapshots are decoded with the frozen V2 reader (`SnapshotV2`, `NodeCodecs`, golden `2293c5cf7bb77492` kept),
+  turned into the mirror and written as V3 under the same name, atomically, one file at a time, with
+  `formatMigrated`. No block is replayed. An unknown version of the family refuses the open before anything is
+  rewritten. A snapshot that does not convert is left as it is and reported (`snapshotRefused`); `restore` skips
+  it as it skips any snapshot it cannot read. One way: copy `<db>/snapshots/` to keep an older build possible
+  (docs/running.md).
+- **A refusal is a value.** `SnapshotFormat[F, S]` is the content of a snapshot file (`encode` returns
+  `Either[SnapshotRefusal, ...]`); the store keeps the checksum, the atomic write, the pruning and the restore.
+  `toMirror` refusing, the Haskell encoding refusing a value, or a read back that does not restore to the state
+  (the write reads its content back) skip the snapshot with the typed event `snapshotRefused` (`file`, `anchor`,
+  `reason`); nothing is pruned. `ChainStorage.open` takes the format as a `using` and the migration as a
+  parameter; the storage tests use `SnapshotV2.format` for their toy states.
+- Deviations from the plan (§2.4), each with its reason. (1) The sidecar is not only `(extras, gaps)`: the
+  anchor (Byron has no Haskell tip), `observed` (the telescopes of the Haskell section were built with the eras
+  seen to begin; read under the environment of the restart a `ByVersion` hard fork would refuse the snapshot
+  as `Derived(TelescopeBounds)`), the node's `Utxo` (the handle does not survive the Haskell bytes: stake,
+  pointer stake, count, total, stamp, flushed and diff are not in a `map(0)`), and the node's `params` and
+  `prevParams` (the node has the parameters of every era from the start; the `PParams` of an era in the Haskell
+  section has only its own fields). (2) The read returns the state in a canonical form (`SnapshotV3.canonical`):
+  an empty relay list of a pool, `80`, reads back as `Bytes.empty` (the Haskell codec writes both as the empty
+  array and reads one back), and the enacted parameters of the DRep pulser have no field for the lovelace
+  per UTxO word or the minimum UTxO value in Conway. Neither is read by a rule. (3) The write reads its content
+  back and compares (about one extra read per snapshot, measured below), because the in-memory mirror holds
+  more than the Haskell encoding can: a state of the eras fixture's Alonzo era with a pending update naming
+  `coinsPerUTxOByte` cannot be restored, and such a snapshot is refused rather than written unreadable.
+- Evidence: all 1,451 snapshots of the K1 Scala Preview sync (18 GB, format version 1, epochs 1 to 1451, Alonzo to Conway; three runs of `PreviewMirrorMain` in forked JVMs of 24 GB, read-only on the corpus, migrated in scratch copies): each migrated V1 to V3, read back through the store and equal to the direct V2 read in canonical form (the mirror's view, which includes the UTxO bookkeeping, and structural equality), 0 differences; the mirror retracts on all 1,451 and refuses all 1,083 tampers applied; a 1,452nd file of the directory, an unfinished `.tmp`, is reported unreadable as it should be. The eras fixture (Byron to Conway, 732 states): every state that the writer accepts comes
+  back equal in canonical form; V1 and V2 files of states of each family of era migrate and read back; a
+  corrupt file is reported and left, an unknown version refuses (`SnapshotV3Suite`, `FormatMigrationSuite`,
+  `LedgerSnapshotsSuite`, `ChainStorageSuite` over V3 with restarts, crashes and a graceful stop). Goldens: the
+  V2 reader's fingerprint is unchanged; the sidecar's fingerprint `65d0043c049b7b7a` and the digest of the
+  sidecar of the eras fixture's initial state are new (`CodecSuite`).
+- Cost of a snapshot (R7): on the Preview states (V3 file 16.5 MB on average, 50 MB at epoch 1451; Haskell section 10.9 MB on average, 40 MB at the end) a write takes 2.3 s on average and 9.8 s at the largest (29 states, 1 of every 50): `toMirror` 0.46 s (1.9 s), the Haskell encoding 0.19 s (0.8 s), the rest is the read back that verifies the content (decode, `fromMirror`, canonical form, comparison) and JIT warm-up of a cold JVM. The full corpus run: 2.6 s on average, 12.5 s at most, over 1,451 states. The write runs in the background fiber on the blocking pool, once per snapshot (per epoch boundary by default), so following does not pause; a migrated snapshot costs 4.6 s on average (20 s at most) including the V1 header rewrite and the read back.
+- `scripts/devnet.py follow --db` keeps the follower's database in the run directory (`--snapshot-every`), so
+  that a second `follow --db` restarts from its snapshot; `PreviewMirrorMain` is the corpus gate of the
+  migration (`LegacySnapshots` is the V2 reader for the tools).
+
 ### Changed (persisted formats: version 2, migrated on open)
 - The persisted identifiers take the Scarab name: `scarab network identity v2`, `scarab immutable store v2`,
   index magic `SCRBIDX2` (format 1: `cardano-scala-lab ...`, `CSLIDX01`); the state dump format tag is
