@@ -319,9 +319,17 @@ def chain_sync_comparison(args, root, out):
 
     try:
         out["fromOrigin"] = compare_follow(opener_h, opener_s, None, args.chain_sync_blocks, 150)
-        tip = point_of(args, "s", root)
-        if tip:
+        # the tip can be rolled back (a fork switch) before both followers ask for it, and then neither
+        # node has it (both answer IntersectNotFound, 6): take a fresh tip then, a few times
+        for attempt in range(1, 4):
+            tip = point_of(args, "s", root)
+            if not tip:
+                break
             out["live"] = compare_follow(opener_h, opener_s, (tip[0], bytes.fromhex(tip[1])), 12, 150)
+            out["live"]["attempts"] = attempt
+            if not (out["live"]["reference"]["intersect"] == 6 and out["live"]["scala"]["intersect"] == 6):
+                break
+        if "live" in out:
             points = out["live"]["points"]
             if len(points) >= 5:
                 slot, hash_hex = points[-5]
