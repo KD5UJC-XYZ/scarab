@@ -2,6 +2,9 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, NodeState}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory}
+import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
   ByronGenesis,
   ByronGenesisFile,
@@ -53,6 +56,23 @@ final case class NodeSetup(
 ):
   def geometry: EpochGeometry = genesis.geometry
   def byronRules: Option[ByronRules.Config] = byronConfig
+
+  /** What the ledger-state mirror reads of this configuration (`StateMirror`); `observed` is the
+    * epoch in which each era was seen to begin, where the configuration does not say.
+    */
+  def mirrorEnv(observed: Map[Era, BigInt] = Map.empty): ConsensusMirrorEnv =
+    ConsensusMirrorEnv(
+      MirrorEnv(globals.network, geometry, globals.updateQuorum),
+      praos.forks,
+      byronParams.fold(
+        EraHistory.ByronParams(
+          BigInt(geometry.securityParam) * 10,
+          BigInt(20000),
+          BigInt(geometry.securityParam)
+        )
+      )(b => EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))),
+      observed
+    )
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)

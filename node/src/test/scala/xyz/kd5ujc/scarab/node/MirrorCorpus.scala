@@ -3,57 +3,35 @@ package xyz.kd5ujc.scarab.node
 
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
-import xyz.kd5ujc.scarab.ledger as node
-import xyz.kd5ujc.scarab.ledger.state.{
-  EraTag,
-  Gap,
-  LedgerImage,
-  LedgerMirror,
-  LedgerState,
-  MirrorError,
-  MirrorEnv,
-  MirrorLaws,
-  ShelleyBasedEra,
-  SlotNo,
-  WithOrigin
+import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ConsensusExtras,
+  ConsensusMirrorEnv,
+  EraLedgerState,
+  MirrorState,
+  StateMirror,
+  StateMirrorError,
+  StateTampers
 }
+import xyz.kd5ujc.scarab.ledger as node
+import xyz.kd5ujc.scarab.ledger.state.{Gap, LedgerState}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** What the ledger-side mirror does to a state of the node, observed: the shared body of the corpus
-  * checks (the eras fixture of the suite, the real Preview snapshots of the runner).
+/** What the whole mirror (`StateMirror`: the consensus side over the ledger side) does to a state
+  * of the node, observed: the shared body of the corpus checks (the eras fixture of the suite, the
+  * real Preview snapshots of the runner).
   */
 object MirrorCorpus:
-  type Result[A] = Either[MirrorError, A]
-  type M[A] = Kleisli[Result, MirrorEnv, A]
+  type Result[A] = Either[StateMirrorError, A]
+  type M[A] = Kleisli[Result, ConsensusMirrorEnv, A]
 
-  val mirror: LedgerMirror[M] = LedgerMirror[M]
-
-  /** An era of the mirror, whichever it is (an existential pack of the witness). */
-  enum SomeEra:
-    case Of[E <: EraTag](era: ShelleyBasedEra[E])
-
-  object SomeEra:
-    def ofBlock(era: Era): Option[SomeEra] = era match
-      case Era.Byron   => None
-      case Era.Shelley => Some(Of(ShelleyBasedEra.SShelley))
-      case Era.Allegra => Some(Of(ShelleyBasedEra.SAllegra))
-      case Era.Mary    => Some(Of(ShelleyBasedEra.SMary))
-      case Era.Alonzo  => Some(Of(ShelleyBasedEra.SAlonzo))
-      case Era.Babbage => Some(Of(ShelleyBasedEra.SBabbage))
-      case Era.Conway  => Some(Of(ShelleyBasedEra.SConway))
-
-    /** The era whose rules a state with this protocol version is under. */
-    def ofVersion(major: Int): SomeEra =
-      if major >= 9 then Of(ShelleyBasedEra.SConway)
-      else if major >= 7 then Of(ShelleyBasedEra.SBabbage)
-      else if major >= 5 then Of(ShelleyBasedEra.SAlonzo)
-      else if major == 4 then Of(ShelleyBasedEra.SMary)
-      else if major == 3 then Of(ShelleyBasedEra.SAllegra)
-      else Of(ShelleyBasedEra.SShelley)
+  val mirror: StateMirror[M] = StateMirror[M]
 
   /** What is observed of one state. */
   final case class Report(
-      error: Option[MirrorError],
+      error: Option[StateMirrorError],
+      era: Era,
+      eraAgrees: Boolean,
       residueEmpty: Boolean,
       gaps: Set[Gap],
       distributionIsSet: Boolean,
@@ -63,68 +41,72 @@ object MirrorCorpus:
       vrfKeyHashes: Int = 0
   ):
     def ok: Boolean =
-      error.isEmpty && residueEmpty && retraction && tampers.forall(_._2)
+      error.isEmpty && eraAgrees && residueEmpty && retraction && tampers.forall(_._2)
 
   /** The state as a comparison sees it: the UTxO is a handle over a RocksDB-backed set, compared by
     * what the mirror may not change (its totals and stake maps) and not entry by entry.
     */
-  private def view(s: node.LedgerState) =
+  private def view(s: NodeState) =
     (
-      s.copy(utxo = node.Utxo.empty),
-      s.utxo.count,
-      s.utxo.coin,
-      s.utxo.stake,
-      s.utxo.ptrStake,
-      s.utxo.stamp,
-      s.utxo.flushed,
-      s.utxo.diff.size
+      s.copy(ledger = s.ledger.copy(utxo = node.Utxo.empty)),
+      s.ledger.utxo.count,
+      s.ledger.utxo.coin,
+      s.ledger.utxo.stake,
+      s.ledger.utxo.ptrStake,
+      s.ledger.utxo.stamp,
+      s.ledger.utxo.flushed,
+      s.ledger.utxo.diff.size
     )
 
-  private def failed(e: MirrorError): Report =
-    Report(Some(e), false, Set.empty, false, false, Vector.empty)
+  /** The number of pools and of VRF key hashes of a mirror's Shelley-based state. */
+  private def poolCounts(m: MirrorState): (Int, Int) = m.ext.ledgerState.state match
+    case _: EraLedgerState.ByronCurrent => (0, 0)
+    case i: EraLedgerState.InShelleyEra[e] =>
+      val p = LedgerState.pState[e](using i.era).get(i.state.nes.es.ls)
+      (p.stakePools.size, p.vrfKeyHashes.size)
 
+  /** The report of the state `s` after `anchor`; `expected` is the era it should be in, where the
+    * corpus knows it (the era of the block, for the fixture).
+    */
   def check(
-      env: MirrorEnv,
-      era: SomeEra,
-      at: WithOrigin[SlotNo],
-      s: node.LedgerState,
+      env: ConsensusMirrorEnv,
+      anchor: Option[BlockRef],
+      s: NodeState,
+      expected: Option[Era] = None,
       withTampers: Boolean = true
-  ): Report = era match
-    case of: SomeEra.Of[e] => checkIn[e](env, at, s, withTampers)(using of.era)
-
-  private def checkIn[E <: EraTag](
-      env: MirrorEnv,
-      at: WithOrigin[SlotNo],
-      s: node.LedgerState,
-      withTampers: Boolean
-  )(using ShelleyBasedEra[E]): Report =
-    mirror.to[E](at, s).run(env) match
-      case Left(e) => failed(e)
+  ): Report =
+    val era = StateMirror.eraOf(env, s)
+    val agrees = expected.forall(_ == era)
+    mirror.toMirror(anchor, s).run(env) match
+      case Left(e) => Report(Some(e), era, agrees, false, Set.empty, false, false, Vector.empty)
       case Right(m) =>
-        val image: LedgerImage[E] = m.value
-        val back = mirror.from[E](at, image).run(env)
-        val retraction = back.exists(b => view(b) == view(LedgerMirror.normalised(s)))
-        val tampers = Option
-          .when(withTampers)(MirrorLaws.tampers[E])
-          .toList
-          .flatten
-          .flatMap { t =>
-            t.apply(image).map { bad =>
-              t.name -> (mirror.from[E](at, bad).run(env) == Left(
-                MirrorError.DerivedMismatch(t.field)
-              ))
-            }
-          }
-          .toVector
+        val back = mirror.fromMirror(m.value).run(env)
+        val retraction = back.exists((a, b) =>
+          a == anchor && view(b) == view(StateMirror.normalised(env, s))
+        )
+        val tampers =
+          if withTampers then
+            StateTampers
+              .all(s, m.value)
+              .map(t => t.name -> (mirror.fromMirror(t.state).run(env) == Left(t.expected)))
+              .toVector
+          else Vector.empty
+        val (residueEmpty, distributionIsSet) = m.value.extras match
+          case ConsensusExtras.InShelley(ledger, _, _, _) =>
+            (ledger.residue.isEmpty, ledger.poolDistribution.isEmpty)
+          case _: ConsensusExtras.InByron => (true, true)
+        val (pools, vrfs) = poolCounts(m.value)
         Report(
           back.left.toOption,
-          image.extras.residue.isEmpty,
+          era,
+          agrees,
+          residueEmpty,
           m.gaps,
-          image.extras.poolDistribution.isEmpty,
+          distributionIsSet,
           retraction,
           tampers,
-          LedgerState.pState[E].get(image.nes.es.ls).stakePools.size,
-          LedgerState.pState[E].get(image.nes.es.ls).vrfKeyHashes.size
+          pools,
+          vrfs
         )
 
   /** The era-independent summary of many reports, for the log. */
@@ -133,7 +115,10 @@ object MirrorCorpus:
     val gaps = reports.flatMap(_._2.gaps).groupBy(identity).view.mapValues(_.size).toMap
     val carried = reports.count(!_._2.distributionIsSet)
     val tampered = reports.flatMap(_._2.tampers)
+    val eras = reports.map(_._2.era).groupBy(identity).view.mapValues(_.size).toMap
     s"""$label: ${reports.size} states, ${bad.size} not ok
+       |  eras: ${eras.toList.sortBy(_._1.ordinal).map((e, n) => s"$e=$n").mkString(", ")}
+       |  era as expected: ${reports.count(_._2.eraAgrees)} of ${reports.size}
        |  residue empty: ${reports.count(_._2.residueEmpty)} of ${reports.size}
        |  retraction: ${reports.count(_._2.retraction)} of ${reports.size}
        |  nesPd != PoolDistr.of(set), carried in the extras: $carried
@@ -141,10 +126,16 @@ object MirrorCorpus:
         .map(r => s"${r._2.pools} / ${r._2.vrfKeyHashes}")
         .getOrElse("-")}
        |  gaps seen: ${gaps.toList.sortBy(_._1.ordinal).map((g, n) => s"$g=$n").mkString(", ")}
-       |  tampers applied: ${tampered.size}, refused with the right field: ${tampered.count(_._2)}
+       |  tampers applied: ${tampered.size}, refused as expected: ${tampered.count(_._2)}
+       |  tampers by kind: ${tampered
+        .groupBy(_._1)
+        .toList
+        .sortBy(_._1)
+        .map((n, ts) => s"$n ${ts.count(_._2)}/${ts.size}")
+        .mkString("; ")}
        |${bad
         .take(5)
         .map((n, r) =>
-          s"  FAILED $n: ${r.error} residue=${r.residueEmpty} retraction=${r.retraction} tampers=${r.tampers.filterNot(_._2)}"
+          s"  FAILED $n: ${r.error} era=${r.era} agrees=${r.eraAgrees} residue=${r.residueEmpty} retraction=${r.retraction} tampers=${r.tampers.filterNot(_._2)}"
         )
         .mkString("\n")}""".stripMargin

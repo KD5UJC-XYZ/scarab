@@ -7,13 +7,12 @@ import cats.effect.unsafe.implicits.global
 import cats.mtl.Handle.handleForApplicativeError
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.ledger.StorageError
-import xyz.kd5ujc.scarab.ledger.state.{MirrorEnv, SlotNo, WithOrigin}
-import xyz.kd5ujc.scarab.node.MirrorCorpus.{Report, SomeEra}
+import xyz.kd5ujc.scarab.node.MirrorCorpus.Report
 import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, NodeCodecs}
 
-/** Runs the ledger-side mirror over the ledger states of real snapshots of the node (a Preview
+/** Runs the whole mirror (consensus side and ledger side) over the ledger states of real snapshots of the node (a Preview
   * sync, one snapshot per epoch boundary), reading them one at a time so that a whole sync's 18 GB
   * is never held. Not a test: the input is data that is not in the repository, and it takes a large
   * heap.
@@ -46,7 +45,7 @@ object PreviewMirrorMain:
         fingerprint ++ payload
     body ++ java.security.MessageDigest.getInstance("SHA-256").digest(body)
 
-  private def read(file: Path): Either[StorageError, Option[(Option[Long], NodeState)]] =
+  private def read(file: Path): Either[StorageError, Option[(Option[BlockRef], NodeState)]] =
     val dir = Files.createTempDirectory("mirror-snapshot")
     try
       Files.write(dir.resolve(file.getFileName), upgraded(Files.readAllBytes(file)))
@@ -57,7 +56,7 @@ object PreviewMirrorMain:
         .unsafeRunSync()
         .map { restored =>
           restored.skipped.foreach(k => println(s"  skipped ${k.name}: ${k.error}"))
-          restored.snapshot.map((_, s) => (s.anchor.map(_.slot.toLong), s.state))
+          restored.snapshot.map((_, s) => (s.anchor, s.state))
         }
     finally
       Files.list(dir).iterator.asScala.foreach(Files.delete)
@@ -70,7 +69,7 @@ object PreviewMirrorMain:
     val setup = NodeSetup
       .fromDirectory(Path.of(args.lift(3).getOrElse("fixtures/preview/genesis")))
       .fold(e => sys.error(e.message), identity)
-    val env = MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
+    val env = setup.mirrorEnv()
     val files = Files
       .list(dir)
       .iterator
@@ -85,16 +84,13 @@ object PreviewMirrorMain:
       read(file) match
         case Left(e)     => println(s"${file.getFileName}: unreadable, $e")
         case Right(None) => println(s"${file.getFileName}: no snapshot")
-        case Right(Some((slot, state))) =>
-          val era = SomeEra.ofVersion(state.ledger.params.protocolMajor.toInt)
-          val at = slot.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(s =>
-            WithOrigin.At(SlotNo.fromUnsigned(s))
-          )
+        case Right(Some((anchor, state))) =>
           val report =
-            MirrorCorpus.check(env, era, at, state.ledger, withTampers = n % tamperStride == 0)
+            MirrorCorpus.check(env, anchor, state, withTampers = n % tamperStride == 0)
           val label =
             s"${file.getFileName} epoch ${state.ledger.epoch} v${state.ledger.params.protocolMajor}"
           reports += label -> report
-          if !report.ok || n % 25 == 0 then println(s"$label: ok=${report.ok} gaps=${report.gaps}")
+          if !report.ok || n % 25 == 0 then
+            println(s"$label: ok=${report.ok} era=${report.era} gaps=${report.gaps}")
     }
     println(MirrorCorpus.summary("preview snapshots", reports.result()))
