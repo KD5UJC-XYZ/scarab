@@ -41,7 +41,7 @@ issue template.
 
 - Never commit signing keys (`*.skey`, `*.key`, KES, VRF, cold or payment keys) or node sockets;
   `.gitignore` covers common patterns but is not a safeguard.
-- The devnet generates throwaway keys inside its run directory (`${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}`);
+- The devnet generates throwaway keys inside its run directory (`${SCARAB_DATA_DIR:-/tmp/scarab}`);
   the scenarios mount key files read-only with mode 0400. Fixtures contain public chain data or
   throwaway sandbox keys only.
 - If you committed a secret by mistake, treat it as compromised, tell a maintainer privately and

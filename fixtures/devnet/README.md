@@ -18,9 +18,9 @@ value that balances the transaction.
 Regenerate from the run directory of a finished extended soak:
 
 ```sh
-python3 scripts/devnet.py --name csl-devnet soak --seconds 900 --governance-extended   # leaves the run directory
-python3 scripts/devnet.py --name csl-devnet refused-fixture                              # writes this file
-python3 scripts/devnet.py --name csl-devnet down
+python3 scripts/devnet.py --name scarab-devnet soak --seconds 900 --governance-extended   # leaves the run directory
+python3 scripts/devnet.py --name scarab-devnet refused-fixture                              # writes this file
+python3 scripts/devnet.py --name scarab-devnet down
 ```
 
 A Plutus V3 transaction refused with `CollectErrors (BadTranslation ReferenceInputsNotDisjointFromInputs)` is

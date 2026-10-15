@@ -27,7 +27,7 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      SCARAB_DATA_DIR: ${{ github.workspace }}/../csl-data
+      SCARAB_DATA_DIR: ${{ github.workspace }}/../scarab-data
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,19 +37,19 @@ jobs:
       - name: Cache sbt launcher, boot, ivy and coursier
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: .cache/cardano-scala-lab
+          path: .cache/scarab
           key: sbt-e2e-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'scripts/sbtw') }}
           restore-keys: |
             sbt-e2e-${{ runner.os }}-
 
       - name: Build the JDK image (digest-pinned Temurin)
-        run: docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+        run: docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 
       - name: Compile the node in the JDK image
         run: |
           mkdir -p .cache/home
           docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" \
-            -e HOME=/work/.cache/home cardano-scala-jdk:local \
+            -e HOME=/work/.cache/home scarab-jdk:local \
             bash scripts/sbtw node/compile node/runtimeClasspathFile
 
       - name: Build the reference image from the downloaded, verified official release
@@ -59,19 +59,19 @@ jobs:
         run: mkdir -p "$SCARAB_DATA_DIR" "$RUNNER_TEMP/logs"
 
       - name: Soak (480 s of load, periodic ledger comparison)
-        run: python3 scripts/devnet.py --name csl-ci-soak soak --seconds 480 2>&1 | tee "$RUNNER_TEMP/logs/soak.log"
+        run: python3 scripts/devnet.py --name scarab-ci-soak soak --seconds 480 2>&1 | tee "$RUNNER_TEMP/logs/soak.log"
 
       - name: Era walk (Byron to Conway)
         if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name csl-ci-eras e2e 2>&1 | tee "$RUNNER_TEMP/logs/e2e.log"
+        run: python3 scripts/devnet.py --name scarab-ci-eras e2e 2>&1 | tee "$RUNNER_TEMP/logs/e2e.log"
 
       - name: Relay (Scala node serving a Haskell relay)
         if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name csl-ci-relay relay --seconds 300 2>&1 | tee "$RUNNER_TEMP/logs/relay.log"
+        run: python3 scripts/devnet.py --name scarab-ci-relay relay --seconds 300 2>&1 | tee "$RUNNER_TEMP/logs/relay.log"
 
       - name: Pool (Scala node forging among Haskell pools)
         if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name csl-ci-pool pool 2>&1 | tee "$RUNNER_TEMP/logs/pool.log"
+        run: python3 scripts/devnet.py --name scarab-ci-pool pool 2>&1 | tee "$RUNNER_TEMP/logs/pool.log"
 
       - name: Collect summaries and logs
         if: ${{ always() }}
@@ -87,7 +87,7 @@ jobs:
               -not -path '*/classes/*' -not -path '*/genesis/*' -not -path '*/keys/*' \
               -exec cp --parents {} "$RUNNER_TEMP/artifact/$name" \; 2>/dev/null || true
           done
-          for name in csl-ci-soak csl-ci-eras csl-ci-relay csl-ci-pool; do
+          for name in scarab-ci-soak scarab-ci-eras scarab-ci-relay scarab-ci-pool; do
             docker logs "$name-ref" > "$RUNNER_TEMP/artifact/$name-ref.docker.log" 2>&1 || true
           done
           du -sh "$RUNNER_TEMP/artifact"
@@ -104,7 +104,7 @@ jobs:
       - name: Tear down
         if: ${{ always() }}
         run: |
-          for name in csl-ci-soak csl-ci-eras csl-ci-relay csl-ci-pool; do
+          for name in scarab-ci-soak scarab-ci-eras scarab-ci-relay scarab-ci-pool; do
             python3 scripts/devnet.py --name "$name" down > /dev/null 2>&1 || true
           done
           docker ps -aq | xargs -r docker rm -f > /dev/null 2>&1 || true

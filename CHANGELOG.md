@@ -5,6 +5,15 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Changed (rename: the runtime names)
+- Data directory `/tmp/scarab` (was `/tmp/cardano-scala-lab`), cache `.cache/scarab`, image `scarab-jdk:local`,
+  containers and devnets `scarab-*` (`scarab-devnet`, `scarab-eras`, `scarab-pool`, `scarab-ci-*`,
+  `scarab-k1-*`), threads `scarab-cpu-N`. Fallbacks, so nothing is re-downloaded or lost: with
+  `SCARAB_DATA_DIR` and `CSL_DATA_DIR` unset, an existing `/tmp/cardano-scala-lab` is used (one line on
+  stderr) while `/tmp/scarab` is absent; the devnet scripts run `cardano-scala-jdk:local` while only that
+  image exists; `scripts/sbtw` moves `.cache/cardano-scala-lab` to `.cache/scarab` once and leaves a symlink
+  at the old path (the classpath files of running containers name it).
+
 ### Changed (storage: scodec for the Haskell ImmutableDB indices)
 - `SecondaryEntry` and `PrimaryIndex` carry their `scodec.Codec` (scodec-core 2.3.3) in the companion,
   citing `Secondary.hs`/`Primary.hs`; `SecondaryIndex.parse`/`PrimaryIndex.parse` read through them and

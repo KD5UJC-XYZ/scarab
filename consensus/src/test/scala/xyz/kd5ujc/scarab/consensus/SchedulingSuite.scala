@@ -54,10 +54,10 @@ class SchedulingSuite extends CatsEffectSuite:
           _ <- compute.timed((_: Long) => "spin")(spin(30))
           report <- stats.total
           _ <- IO {
-            assert(thread.startsWith("csl-cpu-"), thread)
-            assert(blockingThread.startsWith("csl-cpu"), blockingThread)
-            assert(back.startsWith("csl-cpu-"), back)
-            assert(!outside.startsWith("csl-cpu-"), outside)
+            assert(thread.startsWith("scarab-cpu-"), thread)
+            assert(blockingThread.startsWith("scarab-cpu"), blockingThread)
+            assert(back.startsWith("scarab-cpu-"), back)
+            assert(!outside.startsWith("scarab-cpu-"), outside)
             assertEquals(report.steps.keySet, Set("spin"))
             assertEquals(report.steps("spin").count, 1L)
             assert(report.steps("spin").maxMs >= 25, report.toString)

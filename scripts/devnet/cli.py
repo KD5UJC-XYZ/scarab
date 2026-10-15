@@ -25,7 +25,7 @@
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py down                 remove containers and the run directory
 
-Run data lives in ${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/<name>. The Scala node shares the
+Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares the
 reference container's network namespace because the reference nodes bind to loopback.
 """
 import argparse
@@ -45,7 +45,7 @@ from .util import REPO
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--name", help="container and run-directory name (default csl-devnet; csl-eras for up-eras, capture-eras, e2e; csl-pool for pool)")
+    p.add_argument("--name", help="container and run-directory name (default scarab-devnet; scarab-eras for up-eras, capture-eras, e2e; scarab-pool for pool)")
     scala_options = argparse.ArgumentParser(add_help=False)
     scala_options.add_argument("--scala-cpus", type=float, default=2,
                                help="CPUs of the Scala node's container (default 2; 1 shows how it behaves when the host is short of CPU)")
@@ -172,5 +172,5 @@ def main():
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
     args = p.parse_args()
-    args.name = args.name or ("csl-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "csl-pool" if args.command == "pool" else "csl-devnet")
+    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "scarab-pool" if args.command == "pool" else "scarab-devnet")
     args.run(args)

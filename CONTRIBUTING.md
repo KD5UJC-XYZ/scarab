@@ -12,9 +12,9 @@ No host JDK or sbt is needed. `scripts/sbtw` runs a sha256-pinned sbt launcher a
 run it in the JDK image:
 
 ```sh
-docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
-  cardano-scala-jdk:local bash scripts/sbtw check
+  scarab-jdk:local bash scripts/sbtw check
 ```
 
 `check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources and runs the
@@ -33,11 +33,11 @@ checkout, found as the parent of `git rev-parse --git-common-dir`. Mount the sam
 Starting sbt costs 40 to 60 seconds of JVM start and compile. For many small edits keep one
 container alive and talk to its sbt server:
 
-1. Start a long-lived container from `cardano-scala-jdk:local` with the checkout mounted at `/work`
-   and the same `HOME` as above (for example `docker run -d --name csl-sbt ... tail -f /dev/null`).
+1. Start a long-lived container from `scarab-jdk:local` with the checkout mounted at `/work`
+   and the same `HOME` as above (for example `docker run -d --name scarab-sbt ... tail -f /dev/null`).
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
-3. Send commands with `docker exec csl-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
+3. Send commands with `docker exec scarab-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
 
 Two traps: a running JVM loads classes lazily from `target/`, so never recompile under a live
 devnet run (`devnet.py` copies the classes it runs from for this reason), and do not `pkill -f`
@@ -148,6 +148,6 @@ A claim of compatibility needs evidence a reader can check:
 - Small, logical commits. The subject says what changed in the imperative or as a statement, and
   names the evidence when the change was driven by data (for example "... (Preview slot 65493476)").
 - Describe the why in the body when it is not obvious; reference roadmap IDs.
-- Do not rewrite shared history. Do not commit generated run data (`/tmp/cardano-scala-lab`
-  is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works).
+- Do not rewrite shared history. Do not commit generated run data (`/tmp/scarab`
+  is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works, and an existing `/tmp/cardano-scala-lab` is used while `/tmp/scarab` is absent).
 - Fill in the pull request template; it asks which gates you ran and which compatibility row changes.

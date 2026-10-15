@@ -4,13 +4,17 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 USER = f"{os.getuid()}:{os.getgid()}"  # containers run as the invoking user so mounted run directories stay writable
 ENTRY = REPO / "scripts" / "devnet.py"  # re-invoked by the scenarios as `devnet.py --name N load ...`
 REFERENCE_IMAGE = "cardano-reference-11.1.3:local"
-JDK_IMAGE = "cardano-scala-jdk:local"
+JDK_IMAGE = "scarab-jdk:local"
+FORMER_JDK_IMAGE = "cardano-scala-jdk:local"  # the image's name before the rename; used while only it exists
+DATA_DIR = pathlib.Path("/tmp/scarab")
+FORMER_DATA_DIR = pathlib.Path("/tmp/cardano-scala-lab")  # the data directory's name before the rename
 MAGIC = 1082026
 ENV = "/work/env"
 QUERY_PORT = 7071
@@ -41,7 +45,10 @@ def cache_dir(repo=REPO, env=None, common_dir=None):
 
     `SCARAB_CACHE_DIR` wins; else the checkout's own `.cache` if it holds anything; else, in a
     linked worktree (whose `.cache` is only the empty mount point the build container leaves), the
-    `.cache` of the main checkout. Jars are never copied into a worktree.
+    `.cache` of the main checkout. Jars are never copied into a worktree. The directory is the
+    parent of the cache proper, which is `.cache/scarab` (formerly `.cache/cardano-scala-lab`, kept
+    as a symlink to it after `scripts/sbtw` moved it), so both layouts resolve here and the
+    classpath files' `/work/.cache/...` paths work with either name.
     """
     env = os.environ if env is None else env
     if env.get("SCARAB_CACHE_DIR"):
@@ -53,8 +60,32 @@ def cache_dir(repo=REPO, env=None, common_dir=None):
     return shared if _populated(shared) else own
 
 
+def data_dir(env=None, exists=pathlib.Path.exists, notice=lambda text: print(text, file=sys.stderr)):
+    """The directory run data lives in: `SCARAB_DATA_DIR`, else its former name `CSL_DATA_DIR`, else
+    `/tmp/scarab`. If neither variable is set, `/tmp/scarab` is absent and `/tmp/cardano-scala-lab`
+    exists, the latter is used (one line on stderr), so a run directory made before the rename is
+    still found.
+    """
+    env = os.environ if env is None else env
+    chosen = env.get("SCARAB_DATA_DIR") or env.get("CSL_DATA_DIR")
+    if chosen:
+        return pathlib.Path(chosen)
+    if not exists(DATA_DIR) and exists(FORMER_DATA_DIR):
+        notice(f"using the former data directory {FORMER_DATA_DIR} ({DATA_DIR} does not exist; move it to rename)")
+        return FORMER_DATA_DIR
+    return DATA_DIR
+
+
 def data_root(name):
-    return pathlib.Path(os.environ.get("SCARAB_DATA_DIR") or os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / name
+    return data_dir() / name
+
+
+def jdk_image(present=None):
+    """The JDK image to run the node in: `scarab-jdk:local`, or the former `cardano-scala-jdk:local`
+    while only that one exists on this machine (`present` tells whether a tag exists).
+    """
+    present = present or (lambda tag: subprocess.run(["docker", "image", "inspect", tag], capture_output=True).returncode == 0)
+    return FORMER_JDK_IMAGE if not present(JDK_IMAGE) and present(FORMER_JDK_IMAGE) else JDK_IMAGE
 
 
 def docker(*args, check=True, capture=True, timeout=None):

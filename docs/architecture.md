@@ -970,7 +970,7 @@ file stores already use `blocking`; the CPU-bound part was the follower: header 
 selection, the pure rules, persisting.
 
 - `Compute[F]` (`Scheduling.scala`) has `within(fa)`, which runs an effect on a second cats-effect
-  work-stealing pool (`IORuntime.createWorkStealingComputeThreadPool`, workers `csl-cpu-N`, default one
+  work-stealing pool (`IORuntime.createWorkStealingComputeThreadPool`, workers `scarab-cpu-N`, default one
   per CPU, `--cpu-threads`) allocated and shut down as a `Resource`, and `timed(label)(step)`, which
   runs a pure step where it is and records its duration. `Follower.supervise` runs each peer session on
   the pool (`connect.use(peer => compute.within(follower.session(peer)))`); the connection itself

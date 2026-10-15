@@ -58,15 +58,15 @@ Needs Docker and Python 3 on the host. No host JDK or sbt is required.
 
 ```sh
 # 1. The JDK image used for building and running
-docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 
 # 2. Build and test (scalafmt check, compile, all tests)
 docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
-  cardano-scala-jdk:local bash scripts/sbtw check node/runtimeClasspathFile
+  scarab-jdk:local bash scripts/sbtw check node/runtimeClasspathFile
 
 # 3. Follow a network (flags, defaults and Preview in docs/running.md)
 java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
-  --genesis-dir <config dir> --peer <host>:<port> --db "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/db"
+  --genesis-dir <config dir> --peer <host>:<port> --db "${SCARAB_DATA_DIR:-/tmp/scarab}/db"
 ```
 
 Step 3 needs a JDK 21 (or run it inside the image). The scenarios against the Haskell node also need
@@ -78,8 +78,8 @@ python3 scripts/devnet.py soak --seconds 480    # also: e2e, relay, pool; then `
 ```
 
 What each scenario asserts is in [docs/running.md](docs/running.md). Run data goes to
-`${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}`, never into the checkout or your home directory (`CSL_DATA_DIR`, the former name, is still read when
-`SCARAB_DATA_DIR` is unset).
+`${SCARAB_DATA_DIR:-/tmp/scarab}`, never into the checkout or your home directory (`CSL_DATA_DIR`, the former name, is still read when
+`SCARAB_DATA_DIR` is unset, and an existing `/tmp/cardano-scala-lab` is used while `/tmp/scarab` is absent).
 
 ## Modules
 

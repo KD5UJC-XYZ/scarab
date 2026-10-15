@@ -141,9 +141,9 @@ object Compute:
       }
       .flatMap((result, nanos) => stats.step(label(result), nanos).as(result))
 
-  /** A second cats-effect work-stealing pool of `threads` workers (`csl-cpu-N`), shut down with the
-    * resource. It is the same scheduler the compute pool is, so a hand-off to it is as cheap as a
-    * fiber moving between compute workers (a plain `ThreadPoolExecutor` parks a thread per
+  /** A second cats-effect work-stealing pool of `threads` workers (`scarab-cpu-N`), shut down with
+    * the resource. It is the same scheduler the compute pool is, so a hand-off to it is as cheap as
+    * a fiber moving between compute workers (a plain `ThreadPoolExecutor` parks a thread per
     * continuation, which on a busy host costs a scheduler wake-up each and took a third of the
     * throughput), and `blocking` inside it behaves as it does on the compute pool.
     */
@@ -152,8 +152,8 @@ object Compute:
       .make(Async[F].delay {
         IORuntime.createWorkStealingComputeThreadPool(
           threads = threads,
-          threadPrefix = "csl-cpu",
-          blockerThreadPrefix = "csl-cpu-blocker"
+          threadPrefix = "scarab-cpu",
+          blockerThreadPrefix = "scarab-cpu-blocker"
         )
       })(pool => Async[F].delay(pool._3()))
       .map { pool =>

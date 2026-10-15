@@ -22,6 +22,8 @@ import tarfile
 import tempfile
 import urllib.request
 
+from devnet.util import data_dir
+
 BINARY_HASHES = {
     "cardano-node": "ee396604345cc07c7169391ef3f5364886d4b7fe0d539aff6919b470e7a336c3",
     "cardano-cli": "0ac45e874599fac4ee6ca4fd9602c0ddb9854a62be5f365dfa425eff9f4bd0ed",
@@ -76,8 +78,8 @@ def main():
     parser.add_argument("--download", action="store_true",
                         help="fetch the pinned official URL and verify size and SHA-256 before use")
     parser.add_argument("--download-dir", type=Path,
-                        default=Path(os.environ.get("SCARAB_DATA_DIR") or os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / "release",
-                        help="where --download stores the archive (default ${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/release)")
+                        default=data_dir() / "release",
+                        help="where --download stores the archive (default ${SCARAB_DATA_DIR:-/tmp/scarab}/release)")
     parser.add_argument("--pull-base", action="store_true", help="docker pull the digest-pinned base image first")
     args = parser.parse_args()
     if args.download == (args.archive is not None):

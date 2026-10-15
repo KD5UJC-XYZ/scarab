@@ -110,7 +110,7 @@ regenerated here.
 ## Re-running
 
 ```sh
-docker run --rm --user 1000:1000 -e HOME=/work/.cache/home -v "$PWD":/work -w /work cardano-scala-jdk:local \
+docker run --rm --user 1000:1000 -e HOME=/work/.cache/home -v "$PWD":/work -w /work scarab-jdk:local \
   bash scripts/sbtw node/runtimeClasspathFile
 ```
 

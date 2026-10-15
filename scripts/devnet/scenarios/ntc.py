@@ -32,7 +32,7 @@ from ..ntclocal import Session, compare_follow, monitor_rounds, await_wakes, tx_
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
-from ..util import ENTRY, ENV, JDK_IMAGE, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, query, read_log, ref
+from ..util import ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, query, read_log, ref
 import threading
 
 SCALA_CLI = "/opt/reference/bin/cardano-cli"

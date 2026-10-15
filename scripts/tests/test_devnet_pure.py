@@ -33,6 +33,27 @@ def bech32_text(hrp, data):
     return hrp + "1" + "".join(chars) + "qqqqqq"
 
 
+class RenameFallbackTest(unittest.TestCase):
+    def test_data_dir_prefers_the_variables_then_the_new_default(self):
+        told = []
+        self.assertEqual(util.data_dir({"SCARAB_DATA_DIR": "/a", "CSL_DATA_DIR": "/b"}, lambda p: True, told.append), pathlib.Path("/a"))
+        self.assertEqual(util.data_dir({"CSL_DATA_DIR": "/b"}, lambda p: True, told.append), pathlib.Path("/b"))
+        self.assertEqual(util.data_dir({}, lambda p: True, told.append), pathlib.Path("/tmp/scarab"))
+        self.assertEqual(util.data_dir({}, lambda p: False, told.append), pathlib.Path("/tmp/scarab"))
+        self.assertEqual(told, [])
+
+    def test_data_dir_falls_back_to_the_old_directory_with_a_notice(self):
+        told = []
+        old = pathlib.Path("/tmp/cardano-scala-lab")
+        self.assertEqual(util.data_dir({}, lambda p: p == old, told.append), old)
+        self.assertEqual(len(told), 1)
+
+    def test_jdk_image_falls_back_only_when_just_the_old_tag_exists(self):
+        self.assertEqual(util.jdk_image(lambda tag: True), "scarab-jdk:local")
+        self.assertEqual(util.jdk_image(lambda tag: False), "scarab-jdk:local")
+        self.assertEqual(util.jdk_image(lambda tag: tag == "cardano-scala-jdk:local"), "cardano-scala-jdk:local")
+
+
 class EncodingTest(unittest.TestCase):
     def test_bech32_roundtrip(self):
         for data in (b"\x01\x02\x03\x04\x05", bytes(range(29)), bytes(57)):
@@ -340,6 +361,15 @@ class CacheDirTest(unittest.TestCase):
     def test_no_shared_cache_falls_back_to_own(self):
         (self.main / ".cache" / "tools").rmdir()
         self.assertEqual(util.cache_dir(self.tree, {}, self.common), self.tree / ".cache")
+
+    def test_both_cache_layouts_resolve_to_the_parent(self):
+        # `.cache/scarab` (new), or `.cache/cardano-scala-lab` (old, or the symlink to the new): either way
+        # the directory mounted at /work/.cache is `.cache` itself
+        (self.main / ".cache" / "tools").rmdir()
+        for name in ("cardano-scala-lab", "scarab"):
+            (self.main / ".cache" / name).mkdir()
+            self.assertEqual(util.cache_dir(self.main, {}, ".git"), self.main / ".cache")
+            (self.main / ".cache" / name).rmdir()
 
     def test_main_checkout_from_relative_absolute_and_absent_common_dir(self):
         self.assertEqual(util.main_checkout(self.main, ".git"), self.main)

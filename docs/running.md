@@ -8,18 +8,18 @@ funds (see [SECURITY.md](../SECURITY.md)).
 
 | Image | Built from | Used for |
 |---|---|---|
-| `cardano-scala-jdk:local` | `docker/jdk.Dockerfile` (digest-pinned Temurin 21 plus Python 3) | building, running the node, `devnet.py` |
+| `scarab-jdk:local` | `docker/jdk.Dockerfile` (digest-pinned Temurin 21 plus Python 3) | building, running the node, `devnet.py` |
 | `cardano-reference-11.1.3:local` | the checksum-pinned official release archive, see [reference-image.md](reference-image.md) | the Haskell reference cluster for the scenarios |
 
 ```sh
-docker build -f docker/jdk.Dockerfile -t cardano-scala-jdk:local .
+docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 ```
 
 Compile once and write the runtime classpath (the scenarios and the commands below use it):
 
 ```sh
 docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
-  cardano-scala-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
+  scarab-jdk:local bash scripts/sbtw node/compile node/runtimeClasspathFile
 ```
 
 This writes `node/target/runtime-classpath.txt`. Regenerate it with `node/runtimeClasspathFile`
@@ -61,7 +61,7 @@ value except `--forge` and `--dump-state-full`. A repeated flag keeps its last v
 | `--utxo-cache-mb N` | `256` | native-memory budget of the RocksDB store (it holds the UTxO set and the ledger tables): one LRU block cache shared by all tables, holding data, index and filter blocks, to which the memtables are charged, so the store stays near this figure. A smaller cache costs throughput, see [performance.md](performance.md) section 7 |
 | `--memory-report-seconds N` | `0` (off) | log a `memory` event every N seconds: heap, non-heap, buffer pools, `/proc/self/status` (`RssAnon`, `RssFile`), the cgroup's `memory.current` and its `anon`/`file`, and the RocksDB properties (block cache usage, memtables). Use it with `-XX:NativeMemoryTracking=summary` and `jcmd <pid> VM.native_memory` to see where memory is |
 | `--read-ahead N` | `128` | ChainSync requests pipelined per round, and the blocks of a round fetched in ranges of at most 100, while far behind. 64, 128, 200 and 256 were each run for 15 minutes against the public Preview relay without a timeout (the relay answers a 256-header round in 0.26 s on average); 128 and above are about 6 to 10% faster than 64, see [performance.md](performance.md) section 7 (D3) |
-| `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`csl-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
+| `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`scarab-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
 | `--dump-state-at <points>` | `epoch-boundaries` | with `--dump-state`: `epoch-boundaries` (the first block of every epoch), `epoch-boundaries/N` (every Nth epoch) or `slot,slot,...` (the first block at or after each slot, what `db-analyser --store-ledger` stores) |
 | `--dump-state-full` | off | with `--dump-state`: also write the whole projection, UTxO included, as `<slot>-<hash>.full` (drill-down on small states only) |
@@ -128,7 +128,7 @@ The node follows the public Preview testnet from genesis (network magic 2):
 ```sh
 java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   --config <preview config dir>/config.json --topology <preview config dir>/topology.json \
-  --db "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preview-db"
+  --db "${SCARAB_DATA_DIR:-/tmp/scarab}/preview-db"
 ```
 
 (`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works.)
@@ -137,9 +137,9 @@ official Cardano network configuration (`fixtures/preview/genesis/` holds a copy
 into the config directory, in a container like everything else:
 
 ```sh
-mkdir -p "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config"
+mkdir -p "${SCARAB_DATA_DIR:-/tmp/scarab}/preview/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
-  -v "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  -v "${SCARAB_DATA_DIR:-/tmp/scarab}/preview/config":/out --entrypoint bash scarab-jdk:local -c \
   'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preview/$f"; done'
 ```
@@ -152,7 +152,7 @@ for the immutable blocks, RocksDB and checkpoints.
 **Memory.** The resident anonymous memory of the process is the heap limit plus about 0.8 GB: with
 `-Xmx3g` it was 3.86 GB after 45 minutes of a Preview sync (heap 3.0, the JVM's own native memory 0.3,
 RocksDB 0.26, malloc 0.23), and the page cache of the files the node writes comes on top and is given
-back by the kernel under a limit. **Set `MALLOC_ARENA_MAX=2`** (the `cardano-scala-jdk` image and the
+back by the kernel under a limit. **Set `MALLOC_ARENA_MAX=2`** (the `scarab-jdk` image and the
 devnet do): with glibc's default of one arena per thread the same sync grew by 0.9 GB in 30 minutes and
 had reached 5.66 GB in the uninterrupted run (roadmap K6, [performance.md](performance.md) section 7).
 A container limit of `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`) is enough; `--utxo-cache-mb` is the other
@@ -189,15 +189,15 @@ The node follows the public preprod testnet (network magic 1) from genesis throu
 (an epoch 0 boundary block and 45 main blocks over four epochs) into Shelley and on:
 
 ```sh
-mkdir -p "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config"
+mkdir -p "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
-  -v "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  -v "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config":/out --entrypoint bash scarab-jdk:local -c \
   'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
 java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
-  --config "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/config.json" \
-  --topology "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/topology.json" \
-  --db "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod-db"
+  --config "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config/config.json" \
+  --topology "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config/topology.json" \
+  --db "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod-db"
 ```
 
 `config.json` has no `TestShelleyHardForkAtEpoch`, so the Byron ledger decides when the chain
@@ -247,14 +247,14 @@ On a public network (Preview shown; the configuration files are those of "Previe
 ```sh
 # 1. A Haskell node that syncs the network. PraosMode and a plain topology (the peer snapshot and the
 #    checkpoints file of the official Preview configuration are not needed); 6 CPUs, db outside the checkout.
-D="${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}"
+D="${SCARAB_DATA_DIR:-/tmp/scarab}"
 mkdir -p "$D/haskell-preview-config" "$D/haskell-preview-db" "$D/haskell-preview-ipc"
 cp "$D"/preview/config/*.json "$D/haskell-preview-config/"
 #    edit config.json: "ConsensusMode": "PraosMode", remove CheckpointsFile and CheckpointsFileHash;
 #    topology.json: {"bootstrapPeers": null, "localRoots": [{"accessPoints": [{"address":
 #    "preview-node.play.dev.cardano.org", "port": 3001}], "advertise": false, "valency": 1, "trustable": true}],
 #    "publicRoots": [{"accessPoints": [], "advertise": false}]}
-docker run -d --name csl-k1-haskell-preview --cpus 6 --memory 32g --user "$(id -u):$(id -g)" \
+docker run -d --name scarab-k1-haskell-preview --cpus 6 --memory 32g --user "$(id -u):$(id -g)" \
   -v "$D/haskell-preview-config":/config:ro -v "$D/haskell-preview-db":/db -v "$D/haskell-preview-ipc":/ipc \
   --entrypoint cardano-node cardano-reference-11.1.3:local run --config /config/config.json \
   --topology /config/topology.json --database-path /db --socket-path /ipc/node.socket --port 3001 --host-addr 0.0.0.0
@@ -434,12 +434,12 @@ none is rolled back; `--blocks all` records up to 10 blocks behind the tip. The 
 
 `devnet.py` drives Docker containers: a `cardano-testnet` cluster of three Haskell pools from the
 reference image, and the Scala node running from a frozen copy of the compiled classes in
-`cardano-scala-jdk:local`. The Scala node shares a reference container's network namespace because
+`scarab-jdk:local`. The Scala node shares a reference container's network namespace because
 the reference nodes bind loopback. Requirements: both images, the classpath file from "Images", Docker,
 Python 3 (standard library only), roughly 10 minutes per scenario.
 
-Run data lives in `${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/<name>` (never in the checkout or the home
-directory). `--name` selects the cluster name (default `csl-devnet`, `csl-eras` for `up-eras`), so a
+Run data lives in `${SCARAB_DATA_DIR:-/tmp/scarab}/<name>` (never in the checkout or the home
+directory). `--name` selects the cluster name (default `scarab-devnet`, `scarab-eras` for `up-eras`), so a
 second cluster can run beside another. Directories and sockets that containers of other uids must
 write are made world-writable (mode 0777) on a local devnet; the key files are 0400.
 

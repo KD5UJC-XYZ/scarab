@@ -156,7 +156,7 @@ class FollowerSuite extends CatsEffectSuite:
             val (outcome, chain, _) = result
             assertEquals(outcome, Right(()))
             assertEquals(chain.tip, fork.last.point)
-            assert(names.nonEmpty && names.forall(_.startsWith("csl-cpu")), names.toString)
+            assert(names.nonEmpty && names.forall(_.startsWith("scarab-cpu")), names.toString)
           }
         yield ()
       }

@@ -8,7 +8,7 @@ Captured 2026-10-10 from a live 3-pool `cardano-node` 11.1.3 cluster with
 ```sh
 python3 scripts/devnet.py up-eras          # blocks until the first Conway block
 python3 scripts/devnet.py capture-eras     # writes this directory (node1, CaptureMain --blocks all)
-python3 scripts/devnet.py --name csl-eras down
+python3 scripts/devnet.py --name scarab-eras down
 ```
 
 ## Cluster parameters

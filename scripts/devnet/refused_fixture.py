@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Assemble `fixtures/devnet/refused-txs.jsonl` from the run directory of a `soak --governance-extended`.
 
-    python3 scripts/devnet.py refused-fixture --name csl-devnet [--out fixtures/devnet/refused-txs.jsonl]
+    python3 scripts/devnet.py refused-fixture --name scarab-devnet [--out fixtures/devnet/refused-txs.jsonl]
 
 The run directory holds `negative-txs.jsonl` (every transaction the reference refused as expected) and
 `vrf-txs.jsonl` (the whole VRF sequence, accepted and refused, in order, after a context line). The fixture

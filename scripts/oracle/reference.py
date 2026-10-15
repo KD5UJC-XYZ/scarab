@@ -138,7 +138,7 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
 
     def seed_chain():
         d = chain_dir("seed")
-        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, "csl-k1-seed"), "/db", "/config/config.json")
+        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, "scarab-k1-seed"), "/db", "/config/config.json")
         previous = None
         try:
             for i, segment in enumerate(segments):
@@ -170,7 +170,7 @@ def run(config_dir, db, work, out, epoch_slots, first_epoch, last_epoch, jobs=4,
         d = chain_dir(f"seg{i}")
         shutil.copytree(src, d / "ledger", dirs_exist_ok=True)
         previous = int(next(src.iterdir()).name.split("_")[0])
-        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, f"csl-k1-seg{i}"), "/db", "/config/config.json")
+        analyser = Analyser(docker_launch(config_dir, d, cpus, memory, f"scarab-k1-seg{i}"), "/db", "/config/config.json")
         try:
             for epoch, target in segments[i][1:]:
                 try:
