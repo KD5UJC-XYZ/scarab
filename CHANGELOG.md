@@ -5,6 +5,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Changed (storage: scodec for the Haskell ImmutableDB indices)
+- `SecondaryEntry` and `PrimaryIndex` carry their `scodec.Codec` (scodec-core 2.3.3) in the companion,
+  citing `Secondary.hs`/`Primary.hs`; `SecondaryIndex.parse`/`PrimaryIndex.parse` read through them and
+  return the same `ChunkFault`s with the same entry indices (a typed `Binary.Failure` maps to the fault).
+  `encode` now returns `Attempt` and refuses what it used to truncate: an offset beyond Word32, a header
+  offset or size beyond Word16, a hash that is not 32 bytes. Identical to the old parsers on random and
+  damaged files and on all 29,031 chunks of the K1 Preview ImmutableDB (4.76 M entries).
+- Goldens pin the persisted bytes of the file store index entry, the volatile log record and the Haskell
+  indices (hex computed outside the code). Those store formats, the UTxO key and the mux SDU header
+  stay hand-rolled: scodec measured 2 to 24 times slower on their per-block paths (CONTRIBUTING,
+  "Build tooling"). `FormatBenchSuite` is the harness.
+
 ### Added (ledger-state mirror, stage S0)
 - `ledger/state`: the vocabulary of the Haskell ledger state (opaque `Coin`, `DeltaCoin`, `CompactCoin`,
   `EpochNo`, `SlotNo`, `BlockNo`, `KeyHash[R]`, `ScriptHash`, `VRFVerKeyHash`, `Hash32`, `NonZero`, key-role

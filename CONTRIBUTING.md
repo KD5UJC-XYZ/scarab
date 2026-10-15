@@ -49,6 +49,23 @@ with a pattern that matches your own shell command line.
   and an empty `CompilerPlugin` (better-monadic-for and kind-projector do not apply on Scala 3).
   `build.sbt` only picks from `Libraries`; change a version there, then `reload; update`. The Scala
   version and the compiler options stay in `build.sbt`. Plugins are pinned in `project/plugins.sbt`.
+- **Binary formats: scodec for layouts that are read once, our codec for CBOR, hand-rolled code on
+  the per-block paths.** The fixed-layout files of a Haskell ImmutableDB (primary and secondary
+  index) are `scodec.Codec`s in the companions of their types (`org.scodec::scodec-core`, version in
+  `Dependencies.V`, compatible with the `scodec-bits` that fs2 brings; shared pieces and the typed
+  `Binary.Failure` in `storage/Binary.scala`). A failed field is a typed `Err` that the parser maps
+  to the closed `ChunkFault`, never text. CBOR keeps its own codec: it preserves the original bytes
+  of what it decodes, is stack-safe at 10k+ nesting, and the CDDL generator targets it. The file
+  store's index entry, the volatile log record, the UTxO key and the mux SDU header stay hand-rolled
+  because they run per block, per lookup or per SDU and scodec was slower there. The harness is
+  `FormatBenchSuite` (`SCARAB_BENCH=1 SCARAB_K1_DB=<haskell db> storage/testOnly *FormatBenchSuite`;
+  the scodec form of each is kept beside it, checked byte for byte): median ns per record,
+  hand-rolled / scodec, Linux x86-64, JDK 21, warmed, three interleaved rounds: file store entry
+  decode 36 / 560, encode 37 / 415; volatile record encode 150 / 1980 (300 B), 14,900 / 22,600
+  (64 KiB), decode 297 / 1170 (300 B), 20,500 / 18,000 (64 KiB); mux header decode 16 / 160;
+  UTxO key encode 13 / 310, decode 10 / 89; Haskell secondary entry 24 / 380 and primary offset
+  18 / 61 (read once per chunk at import: 4.76 M entries of the Preview database in 1.8 s against
+  0.11 s, small next to hashing the 15 GB). Re-measure before moving a format.
 - **scalafix** (`.scalafix.conf`, OrganizeImports; semanticdb is on): `scalafixAll --check` reports
   what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards.
 - **Coverage** is off by default: `coverage; test; coverageReport` (reports under
