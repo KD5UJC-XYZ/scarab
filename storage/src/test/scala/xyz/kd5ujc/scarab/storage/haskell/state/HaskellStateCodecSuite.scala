@@ -498,6 +498,28 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(c.check(Params.empty.copy(costModels = Map(1 -> Vector(BigInt(1) << 64)))).isDefined)
   }
 
+  test("an Alonzo update naming key 17 is the lovelace per word, and round-trips as it came") {
+    // `Alonzo/PParams.hs:664`: key 17 of the update is `coinsPerUTxOWord`; from Babbage it is
+    // `coinsPerUTxOByte`. The update is kept as written, so that either reading restores it.
+    val genesis = KeyHash.fromBytes[Genesis](hex(key28)).fold(e => fail(e.toString), identity)
+    val update = xyz.kd5ujc.scarab.ledger.ParamUpdate(Map(14 -> hex("820700"), 17 -> hex("199c40")))
+    val params = Params.empty.copy(coinsPerUTxOWord = 34482, protocolMajor = 6)
+    val future = params.copy(protocolMajor = 7)
+    val state = ShelleyGovState(
+      Sorted.map(Seq(genesis -> update)),
+      Sorted.map(Seq.empty[(KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.ParamUpdate)]),
+      params,
+      params,
+      FuturePParams.PotentialPParamsUpdate(Some(future))
+    )
+    val codec = shelleyGovState(Params.codec(ShelleyBasedEra.SAlonzo))(using version(6))
+    val bytes = codec.encodeUnchecked(state)
+    assertEquals(readOk(codec, bytes), state)
+    assert(bytes.hex.contains("a20e82070011199c40"), bytes.hex)
+    val alonzo = Params.codec(ShelleyBasedEra.SAlonzo)
+    assertEquals(readOk(alonzo, alonzo.encodeUnchecked(future)), future)
+  }
+
   test("a reward set cannot hold two rewards of one type and pool, as the reference's cannot") {
     val pool = KeyHash.fromBytes[StakePool](hex(key28)).fold(e => fail(e.toString), identity)
     val r1 = Reward(RewardType.MemberReward, pool, coinOf(1))

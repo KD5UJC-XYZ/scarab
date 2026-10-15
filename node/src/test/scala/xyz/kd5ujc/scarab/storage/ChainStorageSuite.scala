@@ -546,23 +546,21 @@ class ChainStorageSuite extends CatsEffectSuite:
     }
   }
 
-  // (at 731, in Conway: the writer refuses the Alonzo states of this fixture that have a pending
-  // update naming a parameter Alonzo lacks, see SnapshotV3Suite)
   test("a graceful stop writes a snapshot at the immutable tip: the restart replays nothing") {
     tempDir.use { dir =>
       for
         // the periodic policy never fires (a huge interval): only the shutdown snapshot exists
-        first <- session(dir, 731, every = 1000000)
+        first <- session(dir, 500, every = 1000000)
         _ <- IO(assertEquals(first.replayed, 0L))
         shutdown = first.events.collect { case e: StorageEvent.ShutdownSnapshot => e }
         _ <- IO(assertEquals(shutdown.map(_.written), Vector(true)))
         snaps <- snapshotsIn(dir)
         _ <- IO(assertEquals(snaps.size, 1))
-        second <- session(dir, 731, every = 1000000)
+        second <- session(dir, 500, every = 1000000)
         _ <- IO(assertEquals(second.replayed, 0L))
-        _ <- IO(assertEquals(second.restoredAnchor.map(_.hash), Some(ref(731 - k - 1).hash)))
+        _ <- IO(assertEquals(second.restoredAnchor.map(_.hash), Some(ref(500 - k - 1).hash)))
         _ <- IO(assertEquals(second.resumed, k))
-        _ <- IO(assertState(second.chain.state, states(731)))
+        _ <- IO(assertState(second.chain.state, states(500)))
         // nothing new: the stop does not write the same snapshot again
         _ <- IO(
           assertEquals(

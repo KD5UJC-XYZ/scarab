@@ -11,7 +11,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion, StorageError}
+import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion, ParamUpdate, StorageError}
 import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -87,13 +87,35 @@ class SnapshotV3Suite extends CatsEffectSuite:
     }
   }
 
-  test("the writer refuses what would not restore: the Alonzo states with a pending update only") {
-    // A parameter update of the fixture sets coinsPerUTxOByte (key 17) in the Alonzo era, whose
-    // PParams has no such field: the Haskell encoding cannot hold the future parameters of the node
+  test(
+    "the writer refuses no state of the eras fixture, Alonzo states with a pending update included"
+  ) {
     val refused = written.collect { case (era, s, Left(r)) => (era, s.anchor.map(_.blockNo), r) }
-    assert(refused.forall(_._1 == Era.Alonzo), refused.toString)
-    assert(refused.forall(_._3.isInstanceOf[SnapshotRefusal.WouldNotRead]), refused.toString)
-    assert(refused.size < written.count(_._1 == Era.Alonzo), refused.size.toString)
+    assertEquals(refused, Vector.empty)
+    // the capture does hold Alonzo states with an update that raises the version
+    val pending =
+      snapshots.count((era, s) => era == Era.Alonzo && s.state.ledger.ppup.current.nonEmpty)
+    assert(pending > 0, "the capture has no Alonzo state with a pending update")
+    assertEquals(written.size, snapshots.size)
+  }
+
+  test("an Alonzo update naming key 17, the lovelace per word, is written and comes back") {
+    val Some((_, base)) = snapshots.find((era, s) =>
+      era == Era.Alonzo && s.state.ledger.ppup.current.nonEmpty
+    ): @unchecked
+    val key17 = Bytes.fromHex("199c40").fold(e => fail(e), identity)
+    val raise = Bytes.fromHex("820700").fold(e => fail(e), identity)
+    List(Map(17 -> key17), Map(14 -> raise, 17 -> key17)).traverse_ { fields =>
+      val ledger = base.state.ledger
+      val ppup = ledger.ppup.copy(current =
+        ledger.ppup.current.view.mapValues(_ => ParamUpdate(fields)).toMap
+      )
+      val snapshot = base.copy(state = base.state.copy(ledger = ledger.copy(ppup = ppup)))
+      v3.encode(snapshot).flatMap {
+        case Right(bytes) => decoded(bytes).map(back => assertEquals(back, normalised(snapshot)))
+        case Left(r)      => IO(fail(s"refused $fields: $r"))
+      }
+    }
   }
 
   test("a Shelley-based snapshot has the Haskell state after the sidecar, Byron has none") {
