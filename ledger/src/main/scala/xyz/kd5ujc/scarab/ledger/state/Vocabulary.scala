@@ -112,11 +112,17 @@ opaque type Coin = BigInt
 object Coin:
   val zero: Coin = BigInt(0)
 
+  /** The one lovelace that stands in for an empty total (`knownNonZeroCoin @1`,
+    * `State/SnapShots.hs:391`, `State/Stake.hs:159`): a total used as a denominator is never zero.
+    */
+  val oneNonZero: NonZero[Coin] = BigInt(1)
+
   def fromBigInt(n: BigInt): Either[VocabError, Coin] =
     Either.cond(n.signum >= 0, n, VocabError.Negative(VocabError.Kind.Coin, n))
 
   extension (c: Coin) def value: BigInt = c
 
+  given HasZero[Coin] = HasZero.instance(_.signum == 0)
   given Order[Coin] = bigOrder
   given Show[Coin] = Show.show(c => s"Coin($c)")
 
@@ -148,6 +154,7 @@ object CompactCoin:
     def word: Word64 = c
     def toBigInt: BigInt = Word64.toBigInt(c)
 
+  given HasZero[CompactCoin] = HasZero.instance(Word64.isZero(_))
   given Order[CompactCoin] = Word64.order
   given Show[CompactCoin] = Show.show(c => s"CompactCoin(${Word64.decimal(c)})")
 
