@@ -5,6 +5,17 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (ledger-state mirror, stage S0)
+- `ledger/state`: the vocabulary of the Haskell ledger state (opaque `Coin`, `DeltaCoin`, `CompactCoin`,
+  `EpochNo`, `SlotNo`, `BlockNo`, `KeyHash[R]`, `ScriptHash`, `VRFVerKeyHash`, `Hash32`, `NonZero`, key-role
+  phantoms, `Credential[R]`, `DRep`, `WithOrigin`; smart constructors fail with a closed `VocabError`) with
+  hand-written `cats.Order` instances equal to the Haskell `Ord` (script credentials before key credentials;
+  DRep key < script < abstain < no confidence), and the era encoding (`ShelleyBasedEra[E]`, a closed witness,
+  and the match types `CertState`, `Accounts`, `InstantStake`, `GovState`, `StashedAVVM`; their records are
+  stubs for S1). New types beside the existing ones; no persisted type changes. Order-law tests, a
+  compile-time test of wrong-era access, and an agreement test with `LedgerEncoders`' sort keys.
+- Build: monocle, kittens and monocle-law in `ledger`; `storage` depends on `models`.
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
