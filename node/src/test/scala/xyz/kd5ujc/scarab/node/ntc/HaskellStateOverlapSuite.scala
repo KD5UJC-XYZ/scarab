@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import cats.data.Kleisli
+import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
