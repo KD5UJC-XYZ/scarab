@@ -109,6 +109,9 @@ class SchedulingSuite extends CatsEffectSuite:
       Scheduling.monitor[IO](stats, 20.millis).use { _ =>
         IO.sleep(100.millis) *>
           List.fill(cpus)(()).parTraverse_(_ => run(IO(spin(600)))) *>
+          // a tick that the steps delayed records its lateness only when it wakes, which can be
+          // after the steps end: wait a few periods so that it has, before reading
+          IO.sleep(100.millis) *>
           stats.total.map(_.maxTimerLatenessMs)
       }
     }
