@@ -53,7 +53,7 @@ import NodeCodecs.given
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
   * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--local-socket
   * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
@@ -110,6 +110,10 @@ object Main extends IOApp:
       /** `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
         */
       dumpStateFull: Boolean = false,
+      /** `--mirror-check`: at the first block and at every epoch boundary, turn the ledger state into
+        * the mirror of the Haskell state and back, and log the result ([[MirrorCheck]]).
+        */
+      mirrorCheck: Boolean = false,
       /** Validate the headers a peer announces before the blocks are fetched (G6). */
       headerFirst: Boolean = true,
       /** The most inbound connections accepted at once (G2). */
@@ -289,6 +293,11 @@ object Main extends IOApp:
           options.dumpStateFull
         )
       }
+      mirrorChecker <- Option
+        .when(options.mirrorCheck)(())
+        .traverse(_ =>
+          MirrorCheck.Checker.create[IO](eraStarts.get.map(setup.mirrorEnv), JsonLog.mirrorChecked)
+        )
       rules = NodeRules[IO](
         setup.praos,
         setup.globals,
@@ -299,6 +308,7 @@ object Main extends IOApp:
         afterBlock = Some { (header, s) =>
           IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
             dumper.traverse_(_.afterBlock(header, s)) *>
+            mirrorChecker.traverse_(_.afterBlock(header, s)) *>
             praosConfig
               .update(c => c.copy(geometry = s.geometry(c.geometry)))
               .whenA(s.byron.firstShelleyEpoch.isDefined) *>
@@ -580,6 +590,7 @@ object Main extends IOApp:
               ),
               setup.globals.maxSupply,
               genesis.raw,
+              setup.mirrorEnv(observed).ledger,
               observed
             )
           )
@@ -590,7 +601,6 @@ object Main extends IOApp:
                   Handle
                     .allow[NetworkError](
                       NodeToClientServer.accept(
-              setup.mirrorEnv(observed).ledger,
                         bearer,
                         genesis.networkMagic,
                         LocalSubmission.handler(mempool),
@@ -655,7 +665,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -699,6 +709,9 @@ object Main extends IOApp:
         case "--forge" :: tail =>
           if acc.contains("forge") then bad("duplicate flag --forge")
           else go(tail, acc.updated("forge", List("true")))
+        case "--mirror-check" :: tail =>
+          if acc.contains("mirror-check") then bad("duplicate flag --mirror-check")
+          else go(tail, acc.updated("mirror-check", List("true")))
         case "--dump-state-full" :: tail =>
           if acc.contains("dump-state-full") then bad("duplicate flag --dump-state-full")
           else go(tail, acc.updated("dump-state-full", List("true")))
@@ -801,6 +814,7 @@ object Main extends IOApp:
           cpuThreads,
           dump,
           flags.contains("dump-state-full"),
+          flags.contains("mirror-check"),
           headerFirst,
           maxInbound,
           inboundSync

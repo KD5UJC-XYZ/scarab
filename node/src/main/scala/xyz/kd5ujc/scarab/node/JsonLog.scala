@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.consensus.{
   SchedulingStats,
   VolatileChain
 }
-import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
+import xyz.kd5ujc.scarab.ledger.{Header, NodeError, Points, ShelleyGenesis}
 import cats.effect.IO
 import cats.syntax.all.*
 import io.circe.Json
@@ -98,6 +98,39 @@ object JsonLog:
   /** The node accepts inbound connections on `address`. */
   /** A [[MemoryReport]] sample (`--memory-report-seconds`). */
   def memory(sample: Json): IO[Unit] = line("memory", "sample" -> sample)
+
+  /** One result of `--mirror-check`: the state turned into the Haskell state mirror and back. */
+  def mirrorChecked(
+      header: Header,
+      epoch: BigInt,
+      outcome: MirrorCheck.Outcome,
+      millis: Long
+  ): IO[Unit] =
+    val where = List(
+      "slot" -> header.slot.asJson,
+      "hash" -> header.hash.hex.asJson,
+      "epoch" -> epoch.asJson,
+      "era" -> outcome.era.toString.asJson,
+      "millis" -> millis.asJson
+    )
+    outcome match
+      case MirrorCheck.Outcome.Checked(_, gaps, residueEmpty, retracts) =>
+        line(
+          "mirrorChecked",
+          where ++ List(
+            "gaps" -> gaps.toList.map(_.toString).sorted.asJson,
+            "residueEmpty" -> residueEmpty.asJson,
+            "retracts" -> retracts.asJson,
+            "ok" -> outcome.ok.asJson
+          )*
+        )
+      case MirrorCheck.Outcome.Refused(_, stage, error) =>
+        line(
+          "mirrorCheckFailed",
+          where ++ List("stage" -> stage.toString.asJson, "error" -> error.show.asJson)*
+        )
+      case MirrorCheck.Outcome.Crashed(_, message) =>
+        line("mirrorCheckFailed", where ++ List("stage" -> "Crashed".asJson, "error" -> message.asJson)*)
 
   def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
 
