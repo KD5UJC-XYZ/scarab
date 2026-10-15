@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Hash32,
   KeyHash,
   Mary,
+  NewEpochState,
   Shelley,
   ShelleyBasedEra,
   SlotNo,
@@ -26,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   WithOrigin,
   Word64
 }
+import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -50,9 +52,10 @@ object StateGen:
   )
   given Arbitrary[ShelleyTransition] = Arbitrary(arb[Word32].map(ShelleyTransition(_)))
 
-  def newEpochState[E <: EraTag]: Gen[NewEpochState[E]] = arb[EpochNo].map(NewEpochState[E](_))
+  def newEpochState[E <: EraTag](using ShelleyBasedEra[E]): Gen[NewEpochState[E]] =
+    arb[EpochNo].map(NewEpochState.empty[E](_, LedgerStateGen.params))
 
-  def shelleyLedgerState[E <: EraTag]: Gen[ShelleyLedgerState[E]] =
+  def shelleyLedgerState[E <: EraTag](using ShelleyBasedEra[E]): Gen[ShelleyLedgerState[E]] =
     for
       tip <- arb[WithOrigin[ShelleyTip]]
       nes <- newEpochState[E]

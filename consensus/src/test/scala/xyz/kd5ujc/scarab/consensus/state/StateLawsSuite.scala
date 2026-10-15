@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Babbage,
   Conway,
   EpochNo,
+  LedgerStateGen,
+  NewEpochState,
   ShelleyBasedEra,
   WithOrigin
 }
@@ -47,14 +49,14 @@ class StateLawsSuite extends DisciplineSuite:
     val babbage = EraLedgerState.inEra(
       ShelleyLedgerState[Babbage](
         WithOrigin.Origin,
-        NewEpochState[Babbage](EpochNo.fromUnsigned(7)),
+        NewEpochState.empty[Babbage](EpochNo.fromUnsigned(7), LedgerStateGen.params),
         ShelleyTransition(Word32.fromUnsigned(0))
       )
     )(using ShelleyBasedEra[Babbage])
     val allegra = EraLedgerState.inEra(
       ShelleyLedgerState[Allegra](
         WithOrigin.Origin,
-        NewEpochState[Allegra](EpochNo.fromUnsigned(7)),
+        NewEpochState.empty[Allegra](EpochNo.fromUnsigned(7), LedgerStateGen.params),
         ShelleyTransition(Word32.fromUnsigned(0))
       )
     )(using ShelleyBasedEra[Allegra])

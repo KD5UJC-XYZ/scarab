@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
   EraTag,
   Hash32,
+  NewEpochState,
   ShelleyBasedEra,
   SlotNo,
   Word64,

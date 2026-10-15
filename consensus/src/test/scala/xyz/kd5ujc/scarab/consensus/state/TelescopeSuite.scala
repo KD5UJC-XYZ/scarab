@@ -7,7 +7,14 @@ import org.scalacheck.Prop.*
 import org.scalacheck.Gen
 import xyz.kd5ujc.scarab.consensus.state.StateGen.*
 import xyz.kd5ujc.scarab.consensus.ByronState
-import xyz.kd5ujc.scarab.ledger.state.{Conway, EpochNo, ShelleyBasedEra, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  EpochNo,
+  LedgerStateGen,
+  NewEpochState,
+  ShelleyBasedEra,
+  WithOrigin
+}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The telescope: era `n` has `n` past eras, consecutive eras abut, and the smart constructor is
@@ -103,7 +110,7 @@ class TelescopeSuite extends ScalaCheckSuite:
     val conwayState = EraLedgerState.inEra(
       ShelleyLedgerState[Conway](
         WithOrigin.Origin,
-        NewEpochState[Conway](EpochNo.fromUnsigned(0)),
+        NewEpochState.empty[Conway](EpochNo.fromUnsigned(0), LedgerStateGen.params),
         ShelleyTransition(Word32.fromUnsigned(0))
       )
     )(using ShelleyBasedEra[Conway])
