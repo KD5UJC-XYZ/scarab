@@ -9,7 +9,7 @@ import scalus.cardano.ledger.MajorProtocolVersion
 import scalus.uplc.{Constant, DeBruijnedProgram, DefaultFun, Program, Term}
 import scalus.uplc.eval.{Log, NoBudgetSpender, PlutusVM}
 
-/** Minimal reproducers of the deviations of Scalus 1.2.0 from plutus 1.70.0.0 that the upstream
+/** Minimal reproducers of the deviations of Scalus (1.3.0) from plutus 1.70.0.0 that the upstream
   * conformance suite ([[PlutusConformanceSuite]]) found. Like [[ScalusReproducersSuite]] they
   * assert the deviation as it is today: an upgrade that fixes one fails here, and says that the
   * case can leave the known-failure list of the conformance suite
@@ -87,21 +87,22 @@ class ScalusConformanceReproducersSuite extends FunSuite:
   }
 
   // plutus 1.70.0.0 (`term/constant-case/data`): `case` on a `Data.Constr` selects the branch by
-  // the constructor tag and applies it to the list of fields, one argument. Scalus applies it to
-  // the tag and the fields.
-  test(
-    "case on a Data.Constr applies the branch to the tag and the fields (reference: the fields)"
-  ) {
-    // reference: 42. Scalus: the branch `lam fields 42` gets two arguments.
-    val reference =
-      evaluate("(program 1.1.0 (case (con data (Constr 0 [])) (lam fields (con integer 42))))")
-    assert(reference.isFailure, reference)
-    assert(reference.failed.get.getMessage.contains("Non-functional application"))
-    // the first argument is the tag, the second the list of fields
-    assertEquals(
-      evaluate("(program 1.1.0 (case (con data (Constr 0 [I 1])) (lam a (lam b a))))").get,
-      Term.Const(Constant.Integer(0))
+  // the constructor tag and applies it to the list of fields, one argument. Scalus 1.3.0 fixed the
+  // application (the fields only, 42) but enables it from protocol 12 (the Van Rossem hard fork);
+  // at protocol 11, where the conformance suite runs, the case is refused. The cases `data-01` and
+  // `data-02` stay in the known-failure list until the suite runs at protocol 12.
+  test("case on a Data.Constr is refused below protocol 12 and applies the fields from 12") {
+    val text = "(program 1.1.0 (case (con data (Constr 0 [])) (lam fields (con integer 42))))"
+    val program = Program.parseUplc(text).fold(sys.error, identity)
+    def at(pv: Int) = Try(
+      PlutusVM
+        .makePlutusV3VM(MajorProtocolVersion(pv))
+        .evaluateDeBruijnedTerm(program.deBruijnedProgram.term, NoBudgetSpender, Log(), false)
     )
+    val below = at(11)
+    assert(below.isFailure, below)
+    assert(below.failed.get.getMessage.contains("not supported before protocol version 12"), below)
+    assertEquals(at(12).get, Term.Const(Constant.Integer(42)))
   }
 
   // Plutus Core flat has no BLS12-381 constants (the reference cannot encode them; the suite
@@ -147,10 +148,10 @@ class ScalusConformanceReproducersSuite extends FunSuite:
 
   // `PlutusCore.Data.encodeData`: a constructor index in the Word64 range is written as an unsigned
   // integer after tag 102 (`d866 82 1bffffffffffffffff 80` for 2^64 - 1; the datum of preprod
-  // transaction 2edd684f carries one). Scalus writes the index through a Long: 2^64 - 1 becomes -1
-  // and 2^64 + 200 becomes 200, so two different Data have the same serialisation. The node's
-  // evaluator replaces the builtin (`DataSerialiser`, `DataSerialiserSuite`).
-  test("serialiseData writes a constructor index outside [0, 2^63) through a Long") {
+  // transaction 2edd684f carries one). Scalus 1.2.0 wrote the index through a Long (2^64 - 1 became
+  // -1, 2^64 + 200 became 200); 1.3.0 is fixed, and so is the codec of `Data` constants in flat.
+  // The evaluator's own `serialiseData` replacement was removed with the upgrade.
+  test("serialiseData and flat write a constructor index of 2^64 - 1 as the reference does") {
     def serialised(index: String) =
       bytes(
         evaluate(
@@ -158,17 +159,13 @@ class ScalusConformanceReproducersSuite extends FunSuite:
         )
       )
     assertEquals(serialised("200"), "d8668218c880")
-    assertNotEquals(serialised("18446744073709551615"), "d866821bffffffffffffffff80")
-    assertEquals(serialised("18446744073709551615"), "d866822080")
-    assertEquals(serialised("18446744073709551816"), serialised("200"))
-  }
-
-  // The same Long in the CBOR codec of `Data` constants: a program with a Data constant whose
-  // constructor index is 2^63 or more does not survive `cborEncoded` / `fromCbor`, so a script
-  // carrying one (the reference's flat decoder takes a Word64 index) is rejected as undecodable.
-  test("a Data constant with a constructor index of 2^63 or more does not round-trip") {
+    assertEquals(serialised("18446744073709551615"), "d866821bffffffffffffffff80")
+    assertNotEquals(serialised("18446744073709551816"), serialised("200"))
     val program = Program
       .parseUplc("(program 1.0.0 (con data (Constr 18446744073709551615 [])))")
       .fold(sys.error, identity)
-    assert(Try(DeBruijnedProgram.fromCbor(program.cborEncoded)).isFailure, "fixed upstream?")
+    assertEquals(
+      DeBruijnedProgram.fromCbor(program.cborEncoded).term,
+      program.deBruijnedProgram.term
+    )
   }

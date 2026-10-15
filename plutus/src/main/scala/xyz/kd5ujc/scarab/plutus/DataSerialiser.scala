@@ -15,8 +15,10 @@ import scalus.uplc.builtin.Data
   *   - integers within 64 bits are plain CBOR integers, others tag 2 or 3 over a byte string;
   *   - byte strings of up to 64 bytes are definite, longer ones indefinite in chunks of 64 bytes.
   *
-  * Scalus 1.2.0 writes the index of a constructor outside `[0, 2^63)` through a `Long`, which gives
-  * another encoding (and so another hash) than the reference; see `ScalusEvaluator.corrected`.
+  * Scalus 1.2.0 wrote the index of a constructor outside `[0, 2^63)` through a `Long` (fixed in
+  * 1.3.0, which agrees with this encoder on every `Data` of the property test); Scalus 1.3.0 still
+  * refuses more than 1000 levels of nesting, the reference does not. This encoder is the one the
+  * machine runs (`ScalusEvaluator.CorrectedVm`).
   */
 object DataSerialiser:
   private val Word64Max = (BigInt(1) << 64) - 1

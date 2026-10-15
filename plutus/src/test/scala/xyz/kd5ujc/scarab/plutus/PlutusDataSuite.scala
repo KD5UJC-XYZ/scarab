@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.plutus
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
+
 import PlutusData.*
 
 class PlutusDataSuite extends FunSuite:

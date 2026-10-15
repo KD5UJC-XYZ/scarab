@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-val catsVersion = "2.13.0"
-val catsEffectVersion = "3.7.1"
-val catsMtlVersion = "1.7.0"
-val fs2Version = "3.14.0"
-val munitVersion = "1.0.2"
-val circeVersion = "0.14.16"
+import Dependencies.*
 ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / version := "0.1.0"
 ThisBuild / organization := "xyz.kd5ujc"
@@ -25,20 +20,22 @@ ThisBuild / scalacOptions ++= Seq(
   // The generated models are not ours to tidy.
   "-Wconf:src=.*/src_managed/.*:silent"
 )
+// scalafix needs the semantic database of the compiler.
+ThisBuild / semanticdbEnabled := true
 ThisBuild / publish / skip := true
 ThisBuild / Test / parallelExecution := false
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
 
 // The tests of every module: munit, ScalaCheck, and the cats law and effect test kits.
 val testDependencies = Seq(
-  "org.typelevel" %% "cats-laws" % catsVersion % Test,
-  "org.typelevel" %% "cats-kernel-laws" % catsVersion % Test,
-  "org.typelevel" %% "cats-mtl-laws" % catsMtlVersion % Test,
-  "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
-  "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test,
-  "org.typelevel" %% "cats-effect-testkit" % catsEffectVersion % Test,
-  "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-  "org.scalameta" %% "munit" % munitVersion % Test
+  Libraries.catsLawsTest,
+  Libraries.catsKernelLawsTest,
+  Libraries.catsMtlLawsTest,
+  Libraries.disciplineMunitTest,
+  Libraries.munitCatsEffectTest,
+  Libraries.catsEffectTestkitTest,
+  Libraries.munitScalaCheckTest,
+  Libraries.munitTest
 )
 
 // Every module is the sbt project `<id>`, the directory `<id>` and the artifact `scarab-<id>`. The
@@ -49,20 +46,23 @@ val testDependencies = Seq(
 //   protocol, plutus <- ledger <- consensus <- storage
 //   storage, network <- node
 def scarab(id: String, dir: String = null): Project =
-  Project(id, file(Option(dir).getOrElse(id))).settings(
-    name := s"scarab-$id",
-    // Initialisation safety of objects (Scala 3.3 spells it -Ysafe-init; later versions -Wsafe-init).
-    // Main sources only: it raises 19 warnings in the test suites, all of them the munit idiom of
-    // registering the tests in the constructor, and none in main.
-    Compile / scalacOptions += "-Ysafe-init",
-    Test / scalacOptions -= "-Ysafe-init",
-    libraryDependencies ++= testDependencies
-  )
+  Project(id, file(Option(dir).getOrElse(id)))
+    // sbt-tpolecat would add its own option set; the options above are the whole set here.
+    .disablePlugins(TpolecatPlugin)
+    .settings(
+      name := s"scarab-$id",
+      // Initialisation safety of objects (Scala 3.3 spells it -Ysafe-init; later versions -Wsafe-init).
+      // Main sources only: it raises 19 warnings in the test suites, all of them the munit idiom of
+      // registering the tests in the constructor, and none in main.
+      Compile / scalacOptions += "-Ysafe-init",
+      Test / scalacOptions -= "-Ysafe-init",
+      libraryDependencies ++= testDependencies
+    )
 
 // CBOR with original-bytes preservation, the byte-string type and exact rationals.
 lazy val codec = scarab("codec")
   .settings(
-    libraryDependencies += "org.typelevel" %% "cats-kernel" % catsVersion
+    libraryDependencies += Libraries.catsKernel
   )
 
 // Ed25519, VRF, KES, BLS12-381, Blake2b and the operational certificate.
@@ -70,10 +70,9 @@ lazy val crypto = scarab("crypto")
   .dependsOn(codec % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
-      "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",
-      "com.weavechain" % "curve25519-elisabeth" % "0.1.3",
-      // BLS12-381 (MinSig voting keys of Leios); Apache-2.0, bundles libblst. Declared directly, not via Scalus.
-      "foundation.icon" % "blst-java" % "0.3.2"
+      Libraries.bouncyCastle,
+      Libraries.curve25519,
+      Libraries.blstJava
     )
   )
 
@@ -86,11 +85,11 @@ lazy val network = scarab("network")
   .dependsOn(protocol % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
-      "org.typelevel" %% "cats-effect" % catsEffectVersion,
-      "org.typelevel" %% "cats-mtl" % catsMtlVersion,
-      "co.fs2" %% "fs2-core" % fs2Version,
-      "co.fs2" %% "fs2-io" % fs2Version
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.catsMtl,
+      Libraries.fs2Core,
+      Libraries.fs2Io
     )
   )
 
@@ -99,10 +98,10 @@ lazy val plutus = scarab("plutus")
   .dependsOn(codec % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
-      "org.typelevel" %% "cats-effect" % catsEffectVersion,
-      "org.scalus" %% "scalus" % "1.2.0",
-      "io.circe" %% "circe-parser" % circeVersion % Test
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.scalus,
+      Libraries.circeParserTest
     )
   )
 
@@ -117,9 +116,8 @@ lazy val ledger = scarab("ledger")
     // Snapshot codecs are derived by inline `Mirror` recursion; ProtocolParams has 33 fields.
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
-      // circe 0.14.16 brings jawn-parser 1.7.0 (fixes jawn advisories)
-      "io.circe" %% "circe-parser" % circeVersion
+      Libraries.cats,
+      Libraries.circeParser
     )
   )
 
@@ -129,9 +127,9 @@ lazy val consensus = scarab("consensus")
   .settings(
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
-      "org.typelevel" %% "cats-effect" % catsEffectVersion,
-      "org.typelevel" %% "cats-mtl" % catsMtlVersion
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.catsMtl
     )
   )
 
@@ -141,34 +139,50 @@ lazy val storage = scarab("storage")
   .settings(
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
-      "org.typelevel" %% "cats-effect" % catsEffectVersion,
-      "org.typelevel" %% "cats-mtl" % catsMtlVersion,
-      "co.fs2" %% "fs2-core" % fs2Version,
-      "co.fs2" %% "fs2-io" % fs2Version,
-      // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
-      "org.rocksdb" % "rocksdbjni" % "10.2.1"
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.catsMtl,
+      Libraries.fs2Core,
+      Libraries.fs2Io,
+      Libraries.rocksdb
     )
   )
+
+// The short hash of HEAD; "unknown" outside a checkout, or without the tool (as in the build container).
+def gitCommit: String =
+  scala.util
+    .Try(scala.sys.process.Process("git rev-parse --short HEAD").!!.trim)
+    .toOption
+    .filter(_.nonEmpty)
+    .getOrElse("unknown")
 
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
 
 // Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
 lazy val node = scarab("node")
+  .enablePlugins(BuildInfoPlugin)
   .dependsOn(
     storage % "compile->compile;test->test",
     network % "compile->compile;test->test"
   )
   .settings(
+    // `xyz.kd5ujc.scarab.node.BuildInfo`: what the `started` log line says about this build.
+    buildInfoPackage := "xyz.kd5ujc.scarab.node",
+    buildInfoKeys := Seq[BuildInfoKey](
+      version,
+      scalaVersion,
+      sbtVersion,
+      BuildInfoKey.action("gitCommit")(gitCommit)
+    ),
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % catsVersion,
-      "org.typelevel" %% "cats-effect" % catsEffectVersion,
-      "org.typelevel" %% "cats-mtl" % catsMtlVersion,
-      "io.circe" %% "circe-parser" % circeVersion,
-      "org.http4s" %% "http4s-ember-server" % "0.23.37",
-      "org.http4s" %% "http4s-dsl" % "0.23.37",
-      "org.http4s" %% "http4s-circe" % "0.23.37"
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.catsMtl,
+      Libraries.circeParser,
+      Libraries.http4sEmberServer,
+      Libraries.http4sDsl,
+      Libraries.http4sCirce
     ),
     runtimeClasspathFile := {
       val output = target.value / "runtime-classpath.txt"
@@ -183,7 +197,7 @@ lazy val modelsGen = scarab("modelsGen", "models-gen")
   .settings(
     name := "scarab-models-gen",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-parse" % "1.1.0"
+      Libraries.catsParse
     )
   )
 
@@ -250,39 +264,65 @@ lazy val fuzz = scarab("fuzz")
 
 lazy val root = project
   .in(file("."))
-  .aggregate(codec, crypto, protocol, network, plutus, ledger, consensus, storage, node, modelsGen, models, fuzz)
+  .disablePlugins(TpolecatPlugin)
+  .aggregate(
+    codec,
+    crypto,
+    protocol,
+    network,
+    plutus,
+    ledger,
+    consensus,
+    storage,
+    node,
+    modelsGen,
+    models,
+    fuzz
+  )
   .settings(
     // fuzz [cases] [first-seed] [seeds] [target-glob]: the fuzz suite with more cases or other seeds than
     // `check` uses; the settings change for this run only.
-    commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-glob]") { (state, args) =>
-      def number[A](i: Int, default: A)(parse: String => A): A = args.lift(i).fold(default)(parse)
-      val extracted = Project.extract(state)
-      val tuned = extracted.appendWithoutSession(
-        Seq(
-          fuzz / fuzzCases := number(0, 2000)(_.toInt),
-          fuzz / fuzzSeed := number(1, 1L)(_.toLong),
-          fuzz / fuzzSeeds := number(2, 1)(_.toInt)
-        ),
-        state
-      )
-      val glob = args.lift(3).fold("")(g => s" --tests=*$g*")
-      val run = s" xyz.kd5ujc.scarab.fuzz.FuzzSuite --$glob"
-      try {
-        Project.extract(tuned).runInputTask(fuzz / Test / testOnly, run, tuned)
-        state
-      } catch {
-        case _: Throwable => state.fail
-      }
+    commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-glob]") {
+      (state, args) =>
+        def number[A](i: Int, default: A)(parse: String => A): A = args.lift(i).fold(default)(parse)
+        val extracted = Project.extract(state)
+        val tuned = extracted.appendWithoutSession(
+          Seq(
+            fuzz / fuzzCases := number(0, 2000)(_.toInt),
+            fuzz / fuzzSeed := number(1, 1L)(_.toLong),
+            fuzz / fuzzSeeds := number(2, 1)(_.toInt)
+          ),
+          state
+        )
+        val glob = args.lift(3).fold("")(g => s" --tests=*$g*")
+        val run = s" xyz.kd5ujc.scarab.fuzz.FuzzSuite --$glob"
+        try {
+          Project.extract(tuned).runInputTask(fuzz / Test / testOnly, run, tuned)
+          state
+        } catch {
+          case _: Throwable => state.fail
+        }
     }
   )
 
 val modules = Seq(
-  "codec", "crypto", "protocol", "network", "plutus", "ledger", "consensus", "storage", "node", "modelsGen",
-  "models", "fuzz"
+  "codec",
+  "crypto",
+  "protocol",
+  "network",
+  "plutus",
+  "ledger",
+  "consensus",
+  "storage",
+  "node",
+  "modelsGen",
+  "models",
+  "fuzz"
 )
 
 addCommandAlias(
   "check",
-  (";scalafmtCheckAll" +: (modules.map(m => s"$m/Test/compile") ++ modules.map(m => s"$m/Test/test")))
+  (";scalafmtCheckAll" +: (modules.map(m => s"$m/Test/compile") ++ modules
+    .map(m => s"$m/Test/test")))
     .mkString(";")
 )

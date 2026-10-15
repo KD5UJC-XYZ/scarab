@@ -10,8 +10,8 @@ import scalus.uplc.builtin.{Builtins, ByteString}
 
 /** The two secp256k1 builtins against the reference (`PlutusCore.Crypto.Secp256k1`): a malformed
   * argument fails the builtin, anything well-formed is a verdict. The ECDSA cases that Scalus 1.2.0
-  * gets wrong are pinned both ways: the reproducer shows the Scalus behaviour (drop the workaround
-  * when it fails), the rest runs [[Secp256k1.verifyEcdsa]]. Preprod transaction 97b31e35
+  * and 1.3.0 gets wrong are pinned both ways: the reproducer shows the Scalus behaviour (drop the
+  * workaround when it fails), the rest runs [[Secp256k1.verifyEcdsa]]. Preprod transaction 97b31e35
   * (`PreprodSecp256k1RulesSuite`) passes an all-zero signature and expects `False`.
   */
 class Secp256k1Suite extends FunSuite:
@@ -105,7 +105,9 @@ class Secp256k1Suite extends FunSuite:
     fails(ecdsa(sig = Array.empty[Byte]), "empty signature")
   }
 
-  test("reproducer: Scalus 1.2.0 fails on r = 0 or s = 0 where the reference answers False") {
+  test(
+    "reproducer: Scalus 1.2.0 and 1.3.0 fail on r = 0 or s = 0 where the reference answers False"
+  ) {
     def scalus(sig: Array[Byte]) =
       Builtins.verifyEcdsaSecp256k1Signature(
         ByteString.fromArray(pk),

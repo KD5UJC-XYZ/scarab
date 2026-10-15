@@ -37,6 +37,26 @@ Two traps: a running JVM loads classes lazily from `target/`, so never recompile
 devnet run (`devnet.py` copies the classes it runs from for this reason), and do not `pkill -f`
 with a pattern that matches your own shell command line.
 
+### Build tooling
+
+- **Versions live in `project/Dependencies.scala`**: `V` (versions), `Libraries` (every module id)
+  and an empty `CompilerPlugin` (better-monadic-for and kind-projector do not apply on Scala 3).
+  `build.sbt` only picks from `Libraries`; change a version there, then `reload; update`. The Scala
+  version and the compiler options stay in `build.sbt`. Plugins are pinned in `project/plugins.sbt`.
+- **scalafix** (`.scalafix.conf`, OrganizeImports; semanticdb is on): `scalafixAll --check` reports
+  what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards.
+- **Coverage** is off by default: `coverage; test; coverageReport` (reports under
+  `target/scala-3.3.8/scoverage-report`), then `coverageOff`.
+- **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads; the
+  Scalus artifacts move together). **`dependencyTree`** (also `node/dependencyTree`) prints the
+  resolved graph, to see where a transitive version comes from.
+- **sbt-buildinfo** generates `xyz.kd5ujc.scarab.node.BuildInfo` (version, Scala and sbt versions, git
+  commit; `unknown` without git, as in the build container). The `started` log line carries it as
+  `build`.
+- **sbt-tpolecat** is on the classpath but disabled per project: its option set would replace
+  the one in `build.sbt`. `show node/scalacOptions` before and after a build change shows whether
+  the effective options moved (`-Xsemanticdb` and its target are added for scalafix).
+
 ## Style rules
 
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are

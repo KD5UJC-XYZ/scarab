@@ -6,11 +6,12 @@ import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
+
 import TestLedger.*
 
 /** Preprod transaction 97b31e35 (block 3,498,869, epoch 217): a Plutus V2 spend whose script calls
   * `verifyEcdsaSecp256k1Signature` with an all-zero signature; the reference answers `False`,
-  * Scalus 1.2.0 fails (`Secp256k1`).
+  * Scalus 1.2.0 and 1.3.0 fail (`Secp256k1`).
   */
 class PreprodSecp256k1RulesSuite extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-97b31e35.json"))
