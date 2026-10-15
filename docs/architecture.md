@@ -6,24 +6,54 @@ see [findings.md](findings.md).
 
 ## Modules
 
-| Module | sbt id | Contents | Effect style |
-|---|---|---|---|
-| `core/` | `core` | CBOR (`lab.cbor`), Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, operational certificates | Pure functions, no effects |
-| `network/` | `network` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, era and header tags (`Era`, `NtNHeader`) | Pure |
-| `network-runtime/` | `networkRuntime` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
-| `node/` | `node` | Peer, volatile chain, follower, Praos and TPraos consensus, ledger rules for Shelley to Conway, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
+Every module is a directory, an sbt project of the same id and the artifact `scarab-<id>`
+(organisation `xyz.kd5ujc`); its package is `xyz.kd5ujc.scarab.<id>`. The dependency direction is
+enforced by sbt: a cycle does not load.
 
-Dependencies: `core` <- `network` <- `networkRuntime` <- `node`. Note that `network/Mux.scala` (the
-pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are different files.
+| Module | Contents | Effect style |
+|---|---|---|
+| `codec` | CBOR with original-bytes preservation (`Cbor`, `Node`, `Value`), `Bytes`, `Rational` | Pure |
+| `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios), operational certificates | Pure |
+| `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`) | Pure |
+| `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
+| `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
+| `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
+| `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `NodeState`, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
+| `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, the Haskell ImmutableDB reader | Algebras over `F[_]` |
+| `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
+| `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests (docs/models.md) | Build-time tool; pure |
+| `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
-## Layers (the `node` module)
+```
+codec <- crypto <- protocol <- network ------------------------.
+  ^                  ^                                          \
+  |                  '--- ledger <- consensus <- storage <------ node
+  '------ plutus <------'
+```
+
+`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus`;
+`node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
+import the node. Note that `protocol/Mux.scala` (the pure framing) and `protocol/Mux.scala` (the
+effectful multiplexer) are different files.
+
+Cycles that the old layout hid, and how they were cut (types moved down, nothing redesigned):
+the header error enums (`HeaderError`, `EnvelopeError`, `TPraosError`, `OCertError`) and `Nonce`,
+`PoolDistribution`, `LedgerView` live in `ledger` because `NodeError` (also in `ledger`) and the
+rules use them; `ExUnits` lives in `plutus`; `Rational` in `codec`; `Prepared` (a decoded block)
+in `ledger`; `NodeState` and the `BlockRules` interface in `consensus`, while `NodeRules`, which
+needs the `UtxoStore`, stays in `node`.
+
+## Layers
+
+Paths are file names within the module that holds them (see the module table; a layer can span
+several modules).
 
 | Layer | Where | Style |
 |---|---|---|
 | Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
-| Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network-runtime`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
+| Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
 | Header-first | `HeaderGate.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
-| Connections | `InboundGovernor.scala`, `Outbound.scala`, `network-runtime/ConnectionManager.scala`, `network/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per peer address, limits, typed refusals), the governor that runs our clients on inbound duplex connections, and the outbound dialler that reuses them (G2) |
+| Connections | `InboundGovernor.scala`, `Outbound.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per peer address, limits, typed refusals), the governor that runs our clients on inbound duplex connections, and the outbound dialler that reuses them (G2) |
 | Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
@@ -35,8 +65,8 @@ pure framing) and `network-runtime/Mux.scala` (the effectful multiplexer) are di
 | UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `RocksUtxoStore.scala` | The UTxO set behind `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure view |
 | Storage | `storage/` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `NetworkIdentityFile`, derived `Codec`s |
 | Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
-| Relay | `relay/`, `mempool/`, `network-runtime` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
-| Forging | `forge/`, `Follower.adoptForged`, `core/.../vrf/Draft03Prover`, `core/.../kes/Sum6KesSigning` | Praos block production |
+| Relay | `relay/`, `mempool/`, `network` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
+| Forging | `forge/`, `Follower.adoptForged`, `crypto/.../vrf/Draft03Prover`, `crypto/.../kes/Sum6KesSigning` | Praos block production |
 | Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator), `GET /scheduling`, `GET /connections` (connection table and inbound sessions) |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
@@ -80,7 +110,7 @@ Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled 
 | ADT | Meaning | Handling |
 |---|---|---|
 | `PeerError` | the peer misbehaved or the connection failed (`Handshake`, `Protocol`, `Unavailable`, `InvalidHeader`: a header broke a header rule, G6); recoverable | `Follower.supervise` reconnects; on an inbound connection the governor drops the peer for `Protocol` and `InvalidHeader` |
-| `ConnectionError` (`network-runtime`) | the connection manager refused: `InboundLimit`, `OutboundLimit`, `AlreadyConnected`, `IllegalTransition` (G2) | a refusal of an inbound connection closes it; an outbound one becomes `PeerError.Unavailable` and is retried |
+| `ConnectionError` (`network`) | the connection manager refused: `InboundLimit`, `OutboundLimit`, `AlreadyConnected`, `IllegalTransition` (G2) | a refusal of an inbound connection closes it; an outbound one becomes `PeerError.Unavailable` and is retried |
 | `ChainError` | chain-level inconsistency (for example a candidate that no longer joins our chain) | per-session or fatal |
 | `ValidationError(point, rule, reason)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
 | `StorageError` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
@@ -314,7 +344,7 @@ forger.
 
 ## Plutus evaluation
 
-`lab.node.plutus` holds the evaluator algebra and `lab.node.ledger` the ledger side.
+`xyz.kd5ujc.scarab.plutus` holds the evaluator algebra and `xyz.kd5ujc.scarab.ledger` the ledger side.
 
 - **Algebra** (`plutus/ScriptEvaluator.scala`): `ScriptEvaluator[F[_]]` has one method,
   `evaluate(EvalRequest): F[EvalResult]`. A request is the language (`PlutusV1`, `V2`, `V3`), the
@@ -513,7 +543,7 @@ serves its own chain; with `--local-socket <path>` local clients can submit tran
 socket. Everything it serves comes from its own validated chain and mempool, never from what a peer
 announced. The pieces, bottom up:
 
-**Multiplexer and duplex** (`network-runtime/Mux.scala`). Every channel has a side per
+**Multiplexer and duplex** (`network/Mux.scala`). Every channel has a side per
 mini-protocol, `Initiator` (client) or `Responder` (server), and an SDU carries the mode bit of its
 sender. `Mux.Config(duplex = true)` registers both sides of every protocol on one bearer, so a
 client and a server of the same protocol number never see each other's traffic;
@@ -601,7 +631,7 @@ gives inbound, outbound, duplex and established counts from a table. `Connection
 checks the transitions, the idempotent close, that nothing but `Close`/`Released` is allowed once
 terminating, and the counters.
 
-**`ConnectionManager`** (`network-runtime`). A `Ref` table from the peer's socket address to its
+**`ConnectionManager`** (`network`). A `Ref` table from the peer's socket address to its
 connection (the key is the address and the direction). `inbound(remote)` and `outbound(remote)` are
 `Resource`s: admission is atomic with the checks (one live connection per address and direction, and
 none in the other direction while our clients use it: an outbound connection waits for an inbound
@@ -728,7 +758,7 @@ gets the one failure the reference gives. The ledger accumulates every failure o
 Scala rules stop at the first (one failure in the list), which is the same list for a transaction that
 breaks one rule.
 
-**LocalStateQuery** (`network/LocalStateQuery.scala`, `network-runtime/LocalStateQueryServer.scala`,
+**LocalStateQuery** (`protocol/LocalStateQuery.scala`, `network/LocalStateQueryServer.scala`,
 `node/ntc/`). The protocol codec is pure (states Idle, Acquiring, Acquired, Querying, Done; acquire at
 a point, the volatile tip or the immutable tip; re-acquire; release). The server asks a `Source` to
 acquire a target and gets a `Session`: the ledger state at that block, kept for as long as the client
@@ -750,7 +780,7 @@ limit (2.5 MB, about 25,000 UTxO entries). Queries the node does not answer end 
 a protocol error that names the query (`inbound ... closed` in the log), where the reference would
 answer.
 
-**LocalTxMonitor** (`network/LocalTxMonitor.scala`, `network-runtime/LocalTxMonitorServer.scala`,
+**LocalTxMonitor** (`protocol/LocalTxMonitor.scala`, `network/LocalTxMonitorServer.scala`,
 `node/mempool/LocalMonitor.scala`). The codec is pure (states Idle, Acquiring, Acquired and Busy of four kinds;
 `AwaitAcquire` has the wire form of `Acquire`, `[1]`, and the state tells them apart; `GetMeasures`, tag 11,
 is answered on every version as the reference's codec does). The server asks a `Source` for a `Snapshot`
@@ -867,7 +897,7 @@ Syncing Preview with the whole ledger in memory fell from 350 blocks/s to 20 blo
 (UTxO of 1.25M entries, 2.7 GB live, 335 MB snapshots). The measurements are in
 [performance.md](performance.md); the changes, in the order they paid off:
 
-**Compact bytes.** `lab.cbor.Bytes` was a `Vector[Byte]` (boxed, about 6 times the size, hashing and
+**Compact bytes.** `xyz.kd5ujc.scarab.codec.Bytes` was a `Vector[Byte]` (boxed, about 6 times the size, hashing and
 equality walked the elements). It is now a window onto an immutable `Array[Byte]` with a cached hash;
 the CBOR decoder gives every node a zero-copy window of the block (`original`) instead of a copy, and
 integers are read as `Long` when they fit. The API is unchanged (`value` still gives a `Vector`).

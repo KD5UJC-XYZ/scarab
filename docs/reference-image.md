@@ -33,7 +33,7 @@ the size and SHA-256 match, and a present verified file is reused):
 python3 scripts/prepare_reference_image.py --download --pull-base
 ```
 
-`--download-dir` sets the location (default `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/release`) and
+`--download-dir` sets the location (default `${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/release`) and
 `--pull-base` pulls the digest-pinned base image first.
 
 An optional `--tag` changes the image name (default `cardano-reference-11.1.3:local`).

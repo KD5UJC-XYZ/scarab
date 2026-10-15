@@ -32,7 +32,7 @@ def start_scala_relay(args, root, peers):
                "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
     for port in peers:
         program += ["--peer", f"127.0.0.1:{port}"]
-    command = scala_container(args, root, classpath, "lab.node.Main", program,
+    command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                               mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
                               name=f"{args.name}-scala")
     log = (root / "follower.jsonl").open("a")

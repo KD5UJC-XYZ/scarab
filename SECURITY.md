@@ -22,7 +22,7 @@ In scope, and welcome as reports:
   transaction id if any, expected and actual result, and the source of truth;
 - crashes, hangs or unbounded resource use triggered by network input, files or CBOR;
 - mistakes in key handling (key material written, logged or exposed);
-- vulnerabilities in the vendored or adapted cryptographic code (`core/`).
+- vulnerabilities in the vendored or adapted cryptographic code (`crypto/`, `codec/`).
 
 Out of scope: vulnerabilities in third-party dependencies that are already public (report them
 upstream), and issues that require running the node as a mainnet block producer, which is
@@ -41,7 +41,7 @@ issue template.
 
 - Never commit signing keys (`*.skey`, `*.key`, KES, VRF, cold or payment keys) or node sockets;
   `.gitignore` covers common patterns but is not a safeguard.
-- The devnet generates throwaway keys inside its run directory (`${CSL_DATA_DIR:-/tmp/cardano-scala-lab}`);
+- The devnet generates throwaway keys inside its run directory (`${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}`);
   the scenarios mount key files read-only with mode 0400. Fixtures contain public chain data or
   throwaway sandbox keys only.
 - If you committed a secret by mistake, treat it as compromised, tell a maintainer privately and

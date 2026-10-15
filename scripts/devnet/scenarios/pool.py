@@ -213,7 +213,7 @@ def pool(args):
         for n in others:
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
         program += args.scala_flags.split()
-        command = scala_container(args, root, classpath, "lab.node.Main", program,
+        command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                                   mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db",
                                           f"{root / 'keys'}:/keys:ro"], name=f"{args.name}-scala")
         log = root / "follower.jsonl"

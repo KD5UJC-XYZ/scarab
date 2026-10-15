@@ -76,8 +76,8 @@ def main():
     parser.add_argument("--download", action="store_true",
                         help="fetch the pinned official URL and verify size and SHA-256 before use")
     parser.add_argument("--download-dir", type=Path,
-                        default=Path(os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / "release",
-                        help="where --download stores the archive (default ${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/release)")
+                        default=Path(os.environ.get("SCARAB_DATA_DIR") or os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / "release",
+                        help="where --download stores the archive (default ${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/release)")
     parser.add_argument("--pull-base", action="store_true", help="docker pull the digest-pinned base image first")
     args = parser.parse_args()
     if args.download == (args.archive is not None):

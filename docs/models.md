@@ -1,6 +1,6 @@
 # Models generated from the upstream CDDL
 
-Status: spike, merged behind two new sbt subprojects (`modelsGen`, `modelsSpike`); no existing module is changed.
+Status: spike, merged behind two new sbt subprojects (`modelsGen`, `models`, formerly `modelsSpike`); no existing module is changed.
 Question answered: can the wire, ledger and disk models of the node be generated from the upstream CDDL instead of
 being written by hand? Answer: yes, for the arrays, maps, choices, tags, sizes and ranges that make up the formats
 checked so far, with byte-exact decoding of real chain data. What is left is a list of named gaps (below), not an
@@ -53,14 +53,14 @@ hand-written runtime (rt): Codec, Writer, DecodeError, Alternatives, Maps, Lit  
 
 - `models-gen` (`scarab-models-gen`, package `xyz.kd5ujc.scarab.models.gen`): `Ast`, `CddlParser`, `Schema` (resolver;
   `RT` is the resolved type tree), `Emitter`, `Config`, `CddlSampler`, `Main`. No dependency on the node.
-- `models-spike` (`scarab-models-spike`): `src/main/cddl/` holds the vendored upstream files (`upstream/`, with a
+- `models` (`scarab-models`): `src/main/cddl/` holds the vendored upstream files (`upstream/`, with a
   `SOURCES` file recording repository and commit of each), our local refinements (`overrides/`), the schema we wrote to
   cover features the bounded targets do not use (`features.cddl`) and the configuration (`models.conf`).
   `Compile / sourceGenerators` runs `modelsGen` through sbt's `runner` on these inputs; the result goes to
   `src_managed` (not formatted, not committed) and is compiled with the same `-Werror` as everything else. The generator
   re-runs only when an input file or the generator's classes change. `src/main/scala/.../runtime` is the hand-written
   runtime the generated code calls (about 500 lines).
-- `check` covers both: `modelsGen/Test/compile`, `modelsSpike/Test/compile` and their tests are in the alias.
+- `check` covers both: `modelsGen/Test/compile`, `models/Test/compile` and their tests are in the alias.
 
 Pinned sources (the commit of each is in `SOURCES`): ouroboros-network `2fb6982`, ouroboros-consensus `8f56bc8`,
 cardano-ledger `a51efc7`. (`Handshake.scala` cites network commit `c45735a`; the CDDL used here is newer.)
@@ -176,10 +176,10 @@ enum Kind: Syntax, TypeMismatch, BadSize, OutOfRange, LiteralMismatch, BadArity,
 
 - `path` lists CDDL member names outermost first (`transaction_witness_sets/[5]/5`); only built on failure.
 - `offset` is the byte offset of the offending item from the start of the innermost document: the input, or the byte
-  string of an enclosing `.cbor`. It is free, since `lab.cbor` nodes are zero-copy windows.
+  string of an enclosing `.cbor`. It is free, since `xyz.kd5ujc.scarab.codec` nodes are zero-copy windows.
 - A choice reports **all** alternatives it tried (`NoAlternative`); `deepest` picks the cause that got furthest.
 - `decodeBytes` catches anything a decoder throws and returns `Kind.Internal`; the fuzz tests assert it never appears.
-- Limitation: `lab.cbor.Cbor.decode` still returns `Either[String, _]`, so a malformed-CBOR error is `Syntax(message)` with
+- Limitation: `xyz.kd5ujc.scarab.codec.Cbor.decode` still returns `Either[String, _]`, so a malformed-CBOR error is `Syntax(message)` with
   offset 0. Making `Cbor` return a typed error (planned in the plan's section 4) improves this at no cost to the generator.
 
 ## 7. Modelling eras
@@ -226,7 +226,7 @@ Supported = parsed, resolved, emitted, compiled with `-Werror` and exercised by 
 Whole-specification coverage, measured by generating each non-generic rule as a root of its own (`GeneratorSuite`):
 **955 of 980 rules** (97%) across the 16 modules; Shelley, Allegra, Mary, Alonzo, Babbage and Conway generate
 completely, Dijkstra 157/169, Byron 51/64. The 25 failures are the 12 "required after optional" cases (Dijkstra), 8 `.gt`
-and 5 `.ne` bounds (Byron); they are listed one by one in `models-spike/cuddle-allowlist.tsv` and the cross-check fails
+and 5 `.ne` bounds (Byron); they are listed one by one in `models/cuddle-allowlist.tsv` and the cross-check fails
 when the set changes.
 Six whole eras' blocks compile (about 14,000 lines of generated code for headers, blocks and transactions of
 Shelley to Conway, the Dijkstra header, Byron headers and the network protocols).
@@ -235,7 +235,7 @@ Shelley to Conway, the Dijkstra header, Byron headers and the network protocols)
 
 | What | Why |
 |---|---|
-| `lab.cbor` (the byte-preserving tree) and `Bytes` | the foundation; the generated code is a typed view over `Node` |
+| `xyz.kd5ujc.scarab.codec` (the byte-preserving tree) and `Bytes` | the foundation; the generated code is a typed view over `Node` |
 | The runtime (`Codec`, `Writer`, `Alternatives`, …) | about 500 lines, written once, reviewed once |
 | Anything CDDL cannot say | the 64-byte chunk limit of plutus byte strings, "the lengths of `transaction_bodies` and `transaction_witness_sets` are equal", "every `transaction_index` is below the number of bodies", cross-field rules in the block comment of `conway.cddl` |
 | Semantic validation | hashing, signatures, VRF, KES, ledger rules, the body hash commitment |
@@ -246,15 +246,15 @@ Shelley to Conway, the Dijkstra header, Byron headers and the network protocols)
 
 ## 10. Results on real data
 
-All of the following run in `modelsSpike/test` (`check` includes them).
+All of the following run in `models/test` (`check` includes them).
 
 **Golden tests against the hand-written decoders** (same bytes in, field-by-field comparison):
 
 - `fixtures/preview/*.hex`: every block of nine fixture files (Alonzo first 20, Alonzo and Babbage transactions, the
   Babbage transition, Conway, Conway governance, deeply nested datum, duplicate redeemer, empty redeemers) decodes
   through the generated `alonzo|babbage|conway.Block`. Header fields, VRF certificates (two for TPraos, one for Praos),
-  operational certificate and protocol version equal `lab.node.Header`; the transaction bodies and witness sets keep
-  the exact original bytes of `lab.node.Block.Transaction`; the transaction ids (Blake2b-256 of the preserved body)
+  operational certificate and protocol version equal `xyz.kd5ujc.scarab.ledger.Header`; the transaction bodies and witness sets keep
+  the exact original bytes of `xyz.kd5ujc.scarab.ledger.Block.Transaction`; the transaction ids (Blake2b-256 of the preserved body)
   equal; the auxiliary-data positions and invalid-transaction indexes equal.
 - Header hash = Blake2b-256 of `header.raw` equals `Header.hash`; `headerBody.raw` equals `bodyRaw` (the KES message).
   `encode(decode(x)) == x`, and `canonical(members)` reproduces real headers (they are canonical).
@@ -323,14 +323,14 @@ decoders) is about 12 to 16 days.
 Order (each step lands with the existing tests unchanged and green, the generated model proved equal first, as the
 spike does):
 
-1. Rename and module split (the reorg). Create `scarab-models` from `models-spike`: `runtime` plus generated code, the
-   vendored `upstream/` CDDL and `models.conf` move with it. `models-gen` becomes `scarab-models-gen`. Package roots
-   become `xyz.kd5ujc.scarab.models.*`.
+1. Rename and module split (the reorg; done). `models-spike` became `models` (`scarab-models`): `runtime` plus generated
+   code, the vendored `upstream/` CDDL and `models.conf`. `models-gen` is `scarab-models-gen`. Package roots are
+   `xyz.kd5ujc.scarab.models.*`.
 2. NtN handshake and ChainSync payloads: replace `network.Handshake.Term`/`decodeData`, `ChainSync.Point`/`Tip`,
    `NtNHeader` (keep the state machines and limits). Smallest, most testable surface.
-3. Headers: replace `lab.node.Header.fromRaw`, `Header.Shelley`/`HeaderVrf`/`OpCert` with the era headers; the
+3. Headers: replace `xyz.kd5ujc.scarab.ledger.Header.fromRaw`, `Header.Shelley`/`HeaderVrf`/`OpCert` with the era headers; the
    consensus code reads `headerBody` fields through the opaque types.
-4. Blocks and transactions: replace `lab.node.Block` and the transaction decoding in `ledger/Tx*.scala`, then the
+4. Blocks and transactions: replace `xyz.kd5ujc.scarab.ledger.Block` and the transaction decoding in `ledger/Tx*.scala`, then the
    witness, certificate and governance types in `ledger/`. Keep `Transaction.body: Bytes` semantics by reading `.raw`.
 5. Remaining mini-protocols; NtC; disk formats last.
 
@@ -354,7 +354,7 @@ Risks and answers:
   the lever; extension methods can add views by hand where a type is read often.
 - **`-Werror` and `-Xmax-inlines`.** Not an issue (no inline derivation is generated). The explicit `Codec` objects avoid
   the `Mirror` recursion the snapshot codecs of `node` need.
-- **Original bytes retention.** A preserved value pins the input buffer it was cut from, as `lab.cbor.Bytes` always
+- **Original bytes retention.** A preserved value pins the input buffer it was cut from, as `xyz.kd5ujc.scarab.codec.Bytes` always
   has; call `raw.compact` when storing long-term.
 - **Single point of failure.** A generator bug is a bug in every model. That is why the property tests sample from the
   CDDL with an independent sampler, and why the golden tests compare with the hand-written decoders until those are
@@ -385,10 +385,10 @@ semantics as `models.conf` apply (`overrides/bounded-bytes.cddl` is part of the 
 
 **Driver.** `scripts/cddl_crosscheck.py run` (standard library, like `devnet.py`) orchestrates, because neither tool can
 host the other: cuddle only exists in Docker and the generated codecs only on the JVM. It calls the Scala half
-(`CuddleCrossCheck` in `models-spike/src/test`, run through `sbt modelsSpike/Test/runMain`) to export our sampler's
+(`CuddleCrossCheck` in `models/src/test`, run through `sbt models/Test/runMain`) to export our sampler's
 terms and our parser's rule lists, runs cuddle in one container with a parallel worker (the same script, `worker`
 subcommand), calls the Scala half again to decode and re-encode what cuddle produced, and compares everything with
-`models-spike/cuddle-allowlist.tsv`. The whole run takes about 25 seconds warm.
+`models/cuddle-allowlist.tsv`. The whole run takes about 25 seconds warm.
 
 | Direction | What is asserted |
 |---|---|
@@ -416,13 +416,13 @@ in all.
 
 The rule sets agree on all 27 files (1,108 rule name and arity pairs); cuddle resolves all 16 modules completely.
 
-**Allowlist** (`models-spike/cuddle-allowlist.tsv`; each entry is asserted, an entry that no longer holds fails the run
+**Allowlist** (`models/cuddle-allowlist.tsv`; each entry is asserted, an entry that no longer holds fails the run
 as stale, a divergence that is not listed fails it as new):
 
 | Entry | Why |
 |---|---|
 | `override` alonzo, babbage, conway `bounded_bytes` | Upstream `bytes .size (0 .. 64)` is stricter than the chain (64-byte chunks of an indefinite string, finding 1). The driver sends a 65-byte string through cuddle with the upstream rule (must be rejected) and with the override (must be accepted) |
-| `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `lab.cbor` has no floating-point item, so such a term is rejected. Cardano data contains none |
+| `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `xyz.kd5ujc.scarab.codec` has no floating-point item, so such a term is rejected. Cardano data contains none |
 | `not-byte-exact` `features:person` | cuddle writes map entries sorted by key, the generated writer in rule order (the canonical-order option of section 5 is a listed gap); the value is equal |
 | `unsupported` x25 | 12 Dijkstra rules with a required member after an optional one, 8 Byron `.gt` and 5 `.ne` bounds on a named `u8` (section 8) |
 

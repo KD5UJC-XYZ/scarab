@@ -21,6 +21,24 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   fixture `fixtures/preprod/plutus/tx-97b31e35.json`, `PreprodSecp256k1RulesSuite`, `Secp256k1Suite`
   (which also pins `verifySchnorrSecp256k1Signature`, already conforming).
 
+### Changed (the reorg, #82)
+- Renamed: the Scala package root `lab` is `xyz.kd5ujc.scarab`, the sbt organisation `xyz.kd5ujc`, the
+  artifacts `scarab-<module>`. `models-spike` is `models` (`scarab-models`). `CSL_DATA_DIR` is
+  `SCARAB_DATA_DIR` (the old name is still read when the new one is unset). Docker image and container
+  names (`cardano-scala-jdk`, `csl-`) are unchanged for now. Main classes are
+  `xyz.kd5ujc.scarab.node.Main` and `xyz.kd5ujc.scarab.node.tools.CaptureMain`.
+- Module split, enforced by sbt (graph in docs/architecture.md): `core` became `codec` and `crypto`,
+  `network` became `protocol`, `network-runtime` became `network`, and `node` became `plutus`, `ledger`,
+  `consensus`, `storage` and `node`. Every file moved with `git mv`; tests moved with their code. Types
+  that closed a cycle moved down: the header error enums, `Nonce`, `PoolDistribution` and `LedgerView`
+  into `ledger`, `ExUnits` into `plutus`, `Rational` into `codec`, `NodeState` and `BlockRules` into
+  `consensus`; `HaskellImportCommand` moved to `node`. No behaviour change: the ledger snapshot schema
+  fingerprint is still `2293c5cf7bb77492` (snapshots written before the reorg restore), and the test
+  counts are unchanged.
+- Compiler: `-Wunused:imports,privates,locals,explicits,patvars` and `-Ysafe-init` (main sources) are on,
+  with `-Werror`. Left off, with their counts: `-Wunused:implicits` 13, `-Wvalue-discard` 243,
+  `-Wnonunit-statement` 308 (nearly all fluent `CborOut` calls in `node/ntc`).
+
 ### Fixed (B14)
 - Byron inputs: the address root is a needed key hash like any other, satisfied by a vkey witness
   whose key hashes to it or by a bootstrap witness with that root, as in cardano-ledger. The separate

@@ -22,7 +22,7 @@ def follow(args):
         (root / "dump").mkdir(exist_ok=True)
         program += ["--dump-state", "/dump", "--dump-state-at", "epoch-boundaries"]
         mounts.append(f"{root / 'dump'}:/dump")
-    command = scala_container(args, root, classpath, "lab.node.Main", program,
+    command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                               mounts=mounts, name=f"{args.name}-scala")
     with log.open("a") as out:
         proc = subprocess.Popen(["docker", *command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

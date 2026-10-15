@@ -27,7 +27,7 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      CSL_DATA_DIR: ${{ github.workspace }}/../csl-data
+      SCARAB_DATA_DIR: ${{ github.workspace }}/../csl-data
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,7 +56,7 @@ jobs:
         run: python3 scripts/prepare_reference_image.py --download --download-dir "$RUNNER_TEMP/release" --pull-base
 
       - name: Prepare the run directory
-        run: mkdir -p "$CSL_DATA_DIR" "$RUNNER_TEMP/logs"
+        run: mkdir -p "$SCARAB_DATA_DIR" "$RUNNER_TEMP/logs"
 
       - name: Soak (480 s of load, periodic ledger comparison)
         run: python3 scripts/devnet.py --name csl-ci-soak soak --seconds 480 2>&1 | tee "$RUNNER_TEMP/logs/soak.log"
@@ -78,7 +78,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/artifact"
           cp -r "$RUNNER_TEMP/logs" "$RUNNER_TEMP/artifact/stdout"
-          for dir in "$CSL_DATA_DIR"/*/; do
+          for dir in "$SCARAB_DATA_DIR"/*/; do
             [ -d "$dir" ] || continue
             name=$(basename "$dir")
             mkdir -p "$RUNNER_TEMP/artifact/$name"
@@ -108,4 +108,4 @@ jobs:
             python3 scripts/devnet.py --name "$name" down > /dev/null 2>&1 || true
           done
           docker ps -aq | xargs -r docker rm -f > /dev/null 2>&1 || true
-          rm -rf "$CSL_DATA_DIR"
+          rm -rf "$SCARAB_DATA_DIR"

@@ -8,7 +8,7 @@ the Cardano protocol (nominative use, Cardano Foundation Trademark Policy sectio
 respective owners.
 
 Original code, 2026, Apache-2.0, except the explicitly attributed MIT adaptations
-core/src/main/java/lab/vrf/Ed25519Point.java and Draft03Math.java. Their source
+crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Ed25519Point.java and Draft03Math.java. Their source
 notices and fixtures/vrf/licenses/CCL-LICENSE are retained unchanged.
 Third-party dependencies retain their own licenses.
 

@@ -25,7 +25,7 @@
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py down                 remove containers and the run directory
 
-Run data lives in ${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>. The Scala node shares the
+Run data lives in ${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/<name>. The Scala node shares the
 reference container's network namespace because the reference nodes bind to loopback.
 """
 import argparse
