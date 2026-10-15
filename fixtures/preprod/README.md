@@ -116,3 +116,16 @@ stopped at this block (`depth limit exceeded`, `docs/findings.md`); the Haskell 
 Source: Koios `block_tx_cbor` for the block, `tx_info` for the input (a plain 4 ADA output at the
 script address, rebuilt as `[address, lovelace]`), fetched 2026-10-14
 (`https://preprod.koios.rest/api/v1/`). Used by `DeepNestingSuite`.
+
+## tx-b1db2a41.hex and tx-b1db2a41-inputs.json
+
+Preprod transaction `b1db2a411cb651a413840d3c8b112895a5bda2519a8ba6a372b8dd1ffc7746c2` (block
+`8ddb2e9618495b11dc5bf2820d177ec38453faaf81afbfdb02ab99a7ebc9e2f8`, height 5,184,855, slot
+133,902,219, epoch 313, Conway, 163 bytes). Its witness set holds one native script,
+`[3, -1, [sig 3118644a..., sig e07caf4b...]]`: `script_n_of_k` with `n` = -1 (CBOR `20`), which
+the reference ledger decodes as an `Int` and which always holds. No vkey witnesses. The one input
+(`fa72e22e...#0`, 2 ADA) sits at the script address `70678f1c...`, the hash of that script. The
+Scala node's first full preprod sync stopped at this block (`script n: expected unsigned integer`,
+`docs/findings.md`); the Haskell nodes accepted it. Source: Koios `block_tx_cbor` for the block and
+`utxo_info` for the input (rebuilt as `[address, lovelace]`), fetched 2026-10-15
+(`https://preprod.koios.rest/api/v1/`). Used by `PreprodNOfKSuite`.

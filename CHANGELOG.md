@@ -5,6 +5,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (B19)
+- `n` of a native script `script_n_of_k` may be negative and is a signed 64-bit integer, as the reference
+  reads it (`TimelockMOf !Int`, CDDL `int`); the slots of `invalid_before` and `invalid_hereafter` are
+  unsigned 64-bit. The preprod sync stopped at block 5,184,855 (slot 133,902,219, epoch 313, transaction
+  b1db2a41, script `[3, -1, [sig, sig]]`, which always holds) with `script n: expected unsigned
+  integer`. `NativeScript.decode` now returns a typed `NativeScript.DecodeError` (`Malformed`,
+  `RequiredOutOfRange`, `SlotOutOfRange`) and rejects what the reference rejects; evaluation
+  (`isValidMOf`) already agreed. The snapshot schema fingerprint is unchanged. Fixture
+  `fixtures/preprod/tx-b1db2a41.hex`, `PreprodNOfKSuite`.
+
 ### Fixed (B17)
 - No nesting limit below the size of the block, as in the reference (`Timelock`, `decodeMetadatum` and
   `PlutusCore.Data.decodeData` have none). The preprod sync stopped at block 5,183,974 (slot

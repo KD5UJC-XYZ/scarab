@@ -140,7 +140,7 @@ class DeepNestingSuite extends FunSuite:
     val n = 30000 // 3 bytes a level
     onSmallStack {
       val root = Cbor.decode(nested(n)).fold(fail(_), identity)
-      val script = NativeScript.decode(root).fold(fail(_), identity)
+      val script = NativeScript.decode(root).fold(e => fail(e.message), identity)
       assertEquals(nativeDepth(script), n)
       assert(script.eval(Set(repeat(raw(0xab), 28)), None, None))
       assert(!script.eval(Set.empty, None, None))
@@ -162,7 +162,7 @@ class DeepNestingSuite extends FunSuite:
     onSmallStack {
       val n = 10000
       val ok = Cbor.decode(repeat(unit, n) ++ leaf).fold(fail(_), identity)
-      val script = NativeScript.decode(ok).fold(fail(_), identity)
+      val script = NativeScript.decode(ok).fold(e => fail(e.message), identity)
       assert(script.eval(Set.empty, Some(BigInt(5)), None))
       assert(!script.eval(Set.empty, Some(BigInt(4)), None))
       val bad = Cbor.decode(repeat(unit, n) ++ raw(0x82, 0x09, 0x00)).fold(fail(_), identity)

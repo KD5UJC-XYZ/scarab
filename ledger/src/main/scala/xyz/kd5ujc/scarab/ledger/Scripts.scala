@@ -72,32 +72,63 @@ object NativeScript:
   /** Decode with the nesting on the heap, so a script as deep as a block can hold decodes (see
     * [[NativeScript.eval]]); the reference has no limit on the depth of a native script.
     */
-  def decode(n: Node): Either[String, NativeScript] =
-    TreeFold.foldE[Node, NativeScript, String](n)(open)
+  def decode(n: Node): Either[DecodeError, NativeScript] =
+    TreeFold.foldE[Node, NativeScript, DecodeError](n)(open)
 
-  private def open(n: Node): Either[String, TreeFold.Step[Node, NativeScript, String]] =
+  /** Why bytes are not a native script. */
+  enum DecodeError:
+    /** The shape is wrong: a tag, an arity, a type, or a key hash of the wrong length. */
+    case Malformed(reason: String)
+
+    /** `n` of `script_n_of_k` is an `Int` in the reference: 64-bit signed, negative allowed. */
+    case RequiredOutOfRange(value: BigInt)
+
+    /** A slot is a `Word64` in the reference. */
+    case SlotOutOfRange(what: String, value: BigInt)
+
+    def message: String = this match
+      case Malformed(r)            => r
+      case RequiredOutOfRange(v)   => s"script n: $v does not fit a signed 64-bit integer"
+      case SlotOutOfRange(what, v) => s"$what: $v does not fit an unsigned 64-bit integer"
+
+  private val MinInt64 = -(BigInt(1) << 63)
+  private val MaxInt64 = (BigInt(1) << 63) - 1
+  private val MaxWord64 = (BigInt(1) << 64) - 1
+
+  private def malformed[A](r: Either[String, A]): Either[DecodeError, A] =
+    r.left.map(DecodeError.Malformed(_))
+
+  private def slot(n: Node, what: String): Either[DecodeError, BigInt] =
+    malformed(CborRead.uint(n, what)).flatMap(v =>
+      Either.cond(v <= MaxWord64, v, DecodeError.SlotOutOfRange(what, v))
+    )
+
+  private def required(n: Node): Either[DecodeError, BigInt] =
+    malformed(CborRead.int(n, "script n")).flatMap(v =>
+      Either.cond(v >= MinInt64 && v <= MaxInt64, v, DecodeError.RequiredOutOfRange(v))
+    )
+
+  private def open(n: Node): Either[DecodeError, TreeFold.Step[Node, NativeScript, DecodeError]] =
     import TreeFold.Step
-    CborRead.array(n, "native script").flatMap { xs =>
-      xs.headOption
-        .toRight("native script: empty")
-        .flatMap(CborRead.uint(_, "script tag"))
-        .flatMap { tag =>
-          def list(i: Int): Either[String, Vector[Node]] =
+    malformed(CborRead.array(n, "native script")).flatMap { xs =>
+      malformed(
+        xs.headOption.toRight("native script: empty").flatMap(CborRead.uint(_, "script tag"))
+      ).flatMap { tag =>
+        def list(i: Int): Either[DecodeError, Vector[Node]] =
+          malformed(
             xs.lift(i).toRight("native script: short").flatMap(CborRead.array(_, "scripts"))
-          (tag.toInt, xs.size) match
-            case (0, 2) => CborRead.bytesN(xs(1), 28, "script key hash").map(h => Step.Leaf(Sig(h)))
-            case (1, 2) => list(1).map(Step.Branch(_, ss => Right(AllOf(ss))))
-            case (2, 2) => list(1).map(Step.Branch(_, ss => Right(AnyOf(ss))))
-            case (3, 3) =>
-              CborRead
-                .uint(xs(1), "script n")
-                .flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
-            case (4, 2) =>
-              CborRead.uint(xs(1), "invalid before").map(s => Step.Leaf(InvalidBefore(s)))
-            case (5, 2) =>
-              CborRead.uint(xs(1), "invalid hereafter").map(s => Step.Leaf(InvalidHereafter(s)))
-            case (t, k) => Left(s"native script tag $t with $k elements")
-        }
+          )
+        (tag.toInt, xs.size) match
+          case (0, 2) =>
+            malformed(CborRead.bytesN(xs(1), 28, "script key hash")).map(h => Step.Leaf(Sig(h)))
+          case (1, 2) => list(1).map(Step.Branch(_, ss => Right(AllOf(ss))))
+          case (2, 2) => list(1).map(Step.Branch(_, ss => Right(AnyOf(ss))))
+          case (3, 3) =>
+            required(xs(1)).flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
+          case (4, 2) => slot(xs(1), "invalid before").map(s => Step.Leaf(InvalidBefore(s)))
+          case (5, 2) => slot(xs(1), "invalid hereafter").map(s => Step.Leaf(InvalidHereafter(s)))
+          case (t, k) => Left(DecodeError.Malformed(s"native script tag $t with $k elements"))
+      }
     }
 
 enum ScriptKind(val tag: Int):
@@ -127,6 +158,8 @@ object Script:
   def native(n: Node): Either[String, Script] =
     NativeScript
       .decode(n)
+      .left
+      .map(_.message)
       .map(s => Script(ScriptKind.Native, hashOf(ScriptKind.Native, n.original), Some(s)))
 
   def plutus(kind: ScriptKind, bytes: Bytes): Script =
