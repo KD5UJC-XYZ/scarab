@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Gap,
   LedgerImage,
   LedgerMirror,
+  LedgerState,
   MirrorError,
   MirrorEnv,
   MirrorLaws,
@@ -18,8 +19,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** What the ledger-side mirror does to a state of the node, observed: the shared body of the
-  * corpus checks (the eras fixture of the suite, the real Preview snapshots of the runner).
+/** What the ledger-side mirror does to a state of the node, observed: the shared body of the corpus
+  * checks (the eras fixture of the suite, the real Preview snapshots of the runner).
   */
 object MirrorCorpus:
   type Result[A] = Either[MirrorError, A]
@@ -57,7 +58,9 @@ object MirrorCorpus:
       gaps: Set[Gap],
       distributionIsSet: Boolean,
       retraction: Boolean,
-      tampers: Vector[(String, Boolean)]
+      tampers: Vector[(String, Boolean)],
+      pools: Int = 0,
+      vrfKeyHashes: Int = 0
   ):
     def ok: Boolean =
       error.isEmpty && residueEmpty && retraction && tampers.forall(_._2)
@@ -77,37 +80,51 @@ object MirrorCorpus:
       s.utxo.diff.size
     )
 
-  private def failed(e: MirrorError): Report = Report(Some(e), false, Set.empty, false, false, Vector.empty)
+  private def failed(e: MirrorError): Report =
+    Report(Some(e), false, Set.empty, false, false, Vector.empty)
 
   def check(
       env: MirrorEnv,
       era: SomeEra,
       at: WithOrigin[SlotNo],
-      s: node.LedgerState
+      s: node.LedgerState,
+      withTampers: Boolean = true
   ): Report = era match
-    case of: SomeEra.Of[e] => checkIn[e](env, at, s)(using of.era)
+    case of: SomeEra.Of[e] => checkIn[e](env, at, s, withTampers)(using of.era)
 
-  private def checkIn[E <: EraTag](env: MirrorEnv, at: WithOrigin[SlotNo], s: node.LedgerState)(
-      using ShelleyBasedEra[E]
-  ): Report =
+  private def checkIn[E <: EraTag](
+      env: MirrorEnv,
+      at: WithOrigin[SlotNo],
+      s: node.LedgerState,
+      withTampers: Boolean
+  )(using ShelleyBasedEra[E]): Report =
     mirror.to[E](at, s).run(env) match
       case Left(e) => failed(e)
       case Right(m) =>
         val image: LedgerImage[E] = m.value
         val back = mirror.from[E](at, image).run(env)
         val retraction = back.exists(b => view(b) == view(LedgerMirror.normalised(s)))
-        val tampers = MirrorLaws.tampers[E].flatMap { t =>
-          t.apply(image).map { bad =>
-            t.name -> (mirror.from[E](at, bad).run(env) == Left(MirrorError.DerivedMismatch(t.field)))
+        val tampers = Option
+          .when(withTampers)(MirrorLaws.tampers[E])
+          .toList
+          .flatten
+          .flatMap { t =>
+            t.apply(image).map { bad =>
+              t.name -> (mirror.from[E](at, bad).run(env) == Left(
+                MirrorError.DerivedMismatch(t.field)
+              ))
+            }
           }
-        }.toVector
+          .toVector
         Report(
           back.left.toOption,
           image.extras.residue.isEmpty,
           m.gaps,
           image.extras.poolDistribution.isEmpty,
           retraction,
-          tampers
+          tampers,
+          LedgerState.pState[E].get(image.nes.es.ls).stakePools.size,
+          LedgerState.pState[E].get(image.nes.es.ls).vrfKeyHashes.size
         )
 
   /** The era-independent summary of many reports, for the log. */
@@ -120,6 +137,14 @@ object MirrorCorpus:
        |  residue empty: ${reports.count(_._2.residueEmpty)} of ${reports.size}
        |  retraction: ${reports.count(_._2.retraction)} of ${reports.size}
        |  nesPd != PoolDistr.of(set), carried in the extras: $carried
+       |  pools / vrfKeyHashes of the last state: ${reports.lastOption
+        .map(r => s"${r._2.pools} / ${r._2.vrfKeyHashes}")
+        .getOrElse("-")}
        |  gaps seen: ${gaps.toList.sortBy(_._1.ordinal).map((g, n) => s"$g=$n").mkString(", ")}
        |  tampers applied: ${tampered.size}, refused with the right field: ${tampered.count(_._2)}
-       |${bad.take(5).map((n, r) => s"  FAILED $n: ${r.error} residue=${r.residueEmpty} retraction=${r.retraction} tampers=${r.tampers.filterNot(_._2)}").mkString("\n")}""".stripMargin
+       |${bad
+        .take(5)
+        .map((n, r) =>
+          s"  FAILED $n: ${r.error} residue=${r.residueEmpty} retraction=${r.retraction} tampers=${r.tampers.filterNot(_._2)}"
+        )
+        .mkString("\n")}""".stripMargin

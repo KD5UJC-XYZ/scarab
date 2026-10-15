@@ -43,7 +43,11 @@ object FlatStateGen:
   private val positive: Gen[BigInt] = Gen.choose(1L, 5000L).map(BigInt(_))
 
   private def subset[A](xs: Seq[A]): Gen[Vector[A]] =
-    Gen.sequence[Vector[Option[A]], Option[A]](xs.map(x => Gen.option(Gen.const(x)))).map(_.flatten)
+    Gen
+      .sequence[Vector[Option[A]], Option[A]](
+        xs.map(x => Gen.oneOf(true, false).map(keep => Option.when(keep)(x)))
+      )
+      .map(_.flatten)
 
   private def poolParams(i: Int, vrfIndex: Int): Gen[node.PoolParams] =
     for

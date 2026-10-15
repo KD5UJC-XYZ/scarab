@@ -7,6 +7,7 @@ import org.scalacheck.{Arbitrary, Prop}
 import org.scalacheck.Prop.{forAll, propBoolean}
 import org.typelevel.discipline.Laws
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.Ptr
 import xyz.kd5ujc.scarab.ledger as node
 
 /** A change to a mirror that must be refused: it breaks the piece `field` that `from` derives from
@@ -129,6 +130,22 @@ object MirrorLaws:
         ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
       i.copy(credentialStake = i.credentialStake.updated(fakeStaking, CompactCoin.fromUnsigned(7L)))
 
+  /** Another pointer for the first account, before Conway (a Conway account has none). */
+  private def withPointer[E <: EraTag](c: CertState[E])(using
+      era: ShelleyBasedEra[E]
+  ): Option[CertState[E]] = era match
+    case ShelleyBasedEra.SConway => None
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      c.dState.accounts.states.headOption.map { (credential, account) =>
+        val moved = account.copy(ptr = Ptr(account.ptr.slot + 1, 0, 0))
+        c.copy(dState =
+          c.dState.copy(accounts =
+            c.dState.accounts.copy(states = c.dState.accounts.states.updated(credential, moved))
+          )
+        )
+      }
+
   /** The changes of each derived piece, for any era. */
   def tampers[E <: EraTag](using era: ShelleyBasedEra[E]): List[Tamper[E]] =
     val ls = NewEpochState.ledger[E]
@@ -166,6 +183,15 @@ object MirrorLaws:
                 p.stakePools.updated(id, pool.copy(delegators = pool.delegators + fakeStaking))
               )
             )(i.nes)
+          )
+        )
+      ),
+      Tamper[E](
+        Derived.AccountPointer,
+        "a pointer that is not the account's registration",
+        one[E](i =>
+          withPointer[E](i.nes.es.ls.cert).map(c =>
+            ls.andThen(LedgerState.cert[E]).replace(c)(i.nes)
           )
         )
       ),

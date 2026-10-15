@@ -12,8 +12,8 @@ import xyz.kd5ujc.scarab.node.MirrorCorpus.{Report, SomeEra}
 
 /** The ledger-side mirror on the era-walking capture (`fixtures/eras`): the state of the node
   * before the first block and after every block, from Byron to the third Conway block, is turned
-  * into the mirror of the era of the block and back. Every state must come back, have no residue
-  * (a field with no place in its era) and refuse each tampered derived piece.
+  * into the mirror of the era of the block and back. Every state must come back, have no residue (a
+  * field with no place in its era) and refuse each tampered derived piece.
   */
 class EraMirrorSuite extends FunSuite:
   private val fixtures = Path.of("fixtures/eras")
@@ -42,7 +42,7 @@ class EraMirrorSuite extends FunSuite:
         val before = acc.lastOption.fold(setup.start)(_._2)
         val h = blocks(i).header
         NodeRules.applyBlock(before, h, raws(i), setup.praos, setup.globals, setup.byronRules) match
-          case Right(next) => acc :+ (blocks(i) -> next)
+          case Right(next)          => acc :+ (blocks(i) -> next)
           case Left((rule, reason)) => fail(s"block $i rejected by $rule: $reason")
       }
 

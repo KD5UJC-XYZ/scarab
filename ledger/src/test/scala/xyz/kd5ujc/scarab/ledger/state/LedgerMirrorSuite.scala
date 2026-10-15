@@ -106,6 +106,23 @@ class LedgerMirrorSuite extends DisciplineSuite:
     )
   }
 
+  private def applicable[E <: EraTag](conway: Boolean)(using ShelleyBasedEra[E]): Map[String, Int] =
+    val images = (1L to 300L)
+      .map(sampled(conway, _))
+      .flatMap(s => run(mirror.to[E](at, s)).toOption.map(_.value))
+    MirrorLaws.tampers[E].map(t => t.name -> images.count(i => t.apply(i).isDefined)).toMap
+
+  test("every tamper applies to some generated mirror, so none of the refusals is vacuous") {
+    val conway = applicable[Conway](conway = true)
+    val babbage = applicable[Babbage](conway = false)
+    // a Conway account has no pointer
+    val pointer = "a pointer that is not the account's registration"
+    assert(conway.removed(pointer).forall(_._2 >= 10), s"$conway")
+    assertEquals(conway(pointer), 0)
+    assert(babbage.forall(_._2 >= 10), s"$babbage")
+    assertEquals(conway.size, babbage.size)
+  }
+
   // ---- what is refused
 
   test("a hash of the wrong size is a vocabulary error") {
