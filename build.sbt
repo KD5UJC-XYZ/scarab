@@ -148,13 +148,10 @@ lazy val storage = scarab("storage")
     )
   )
 
-// The short hash of HEAD; "unknown" outside a checkout, or without the tool (as in the build container).
-def gitCommit: String =
-  scala.util
-    .Try(scala.sys.process.Process("git rev-parse --short HEAD").!!.trim)
-    .toOption
-    .filter(_.nonEmpty)
-    .getOrElse("unknown")
+// The short hash of HEAD, read from the repository's files (project/GitHead.scala) so that the build
+// container, which has no `git`, knows it too; "unknown" outside a checkout.
+def gitCommit(root: File): String =
+  GitHead.commit(root.toPath).map(_.take(8)).getOrElse("unknown")
 
 lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
 
@@ -168,12 +165,15 @@ lazy val node = scarab("node")
   .settings(
     // `xyz.kd5ujc.scarab.node.BuildInfo`: what the `started` log line says about this build.
     buildInfoPackage := "xyz.kd5ujc.scarab.node",
-    buildInfoKeys := Seq[BuildInfoKey](
-      version,
-      scalaVersion,
-      sbtVersion,
-      BuildInfoKey.action("gitCommit")(gitCommit)
-    ),
+    buildInfoKeys := {
+      val root = (ThisBuild / baseDirectory).value
+      Seq[BuildInfoKey](
+        version,
+        scalaVersion,
+        sbtVersion,
+        BuildInfoKey.action("gitCommit")(gitCommit(root))
+      )
+    },
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
       Libraries.cats,

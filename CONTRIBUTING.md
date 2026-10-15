@@ -51,7 +51,9 @@ with a pattern that matches your own shell command line.
   Scalus artifacts move together). **`dependencyTree`** (also `node/dependencyTree`) prints the
   resolved graph, to see where a transitive version comes from.
 - **sbt-buildinfo** generates `xyz.kd5ujc.scarab.node.BuildInfo` (version, Scala and sbt versions, git
-  commit; `unknown` without git, as in the build container). The `started` log line carries it as
+  commit, read from `.git` by `project/GitHead.scala` so the build container needs no `git`; `unknown`
+  outside a checkout, or in a worktree whose `gitdir` path the container cannot see). The `started`
+  log line carries it as
   `build`.
 - **sbt-tpolecat** is on the classpath but disabled per project: its option set would replace
   the one in `build.sbt`. `show node/scalacOptions` before and after a build change shows whether
