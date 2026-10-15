@@ -145,7 +145,9 @@ class MirrorAnswersSuite extends FunSuite:
     )
   }
 
-  test("both queries answer every state of every Shelley-based era, as the Haskell codec reads it") {
+  test(
+    "both queries answer every state of every Shelley-based era, as the Haskell codec reads it"
+  ) {
     shelleyBased.foreach { (block, state) =>
       val era = StateMirror.eraOf(setup.mirrorEnv(), state)
       MirrorRun
@@ -154,7 +156,8 @@ class MirrorAnswersSuite extends FunSuite:
         .ext
         .ledgerState
         .state match
-        case i: EraLedgerState.InShelleyEra[e] => inEra[e](era, block, state, i.state.nes)(using i.era)
+        case i: EraLedgerState.InShelleyEra[e] =>
+          inEra[e](era, block, state, i.state.nes)(using i.era)
         case _: EraLedgerState.ByronCurrent => fail(s"$era is Byron")
     }
   }
@@ -179,7 +182,10 @@ class MirrorAnswersSuite extends FunSuite:
       .getOrElse(fail("no answer"))
     // [[5, "Babbage"], [6, "Conway"]]: two eras named
     assertEquals(answer.value.head & 0xff, 0x82)
-    assertNotEquals(answer.hex, ask(Era.Conway, block, state, LedgerQuery.DebugNewEpochState).get.hex)
+    assertNotEquals(
+      answer.hex,
+      ask(Era.Conway, block, state, LedgerQuery.DebugNewEpochState).get.hex
+    )
   }
 
   test("a Byron state has no new-epoch state to answer") {

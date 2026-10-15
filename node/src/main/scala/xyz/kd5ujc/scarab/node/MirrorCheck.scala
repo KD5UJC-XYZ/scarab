@@ -101,7 +101,10 @@ object MirrorCheck:
             outcome <- Sync[F]
               .blocking(check(mirrorEnv, anchor, s))
               .handleError(t =>
-                Outcome.Crashed(StateMirror.eraOf(mirrorEnv, s), Option(t.getMessage).getOrElse(t.toString))
+                Outcome.Crashed(
+                  StateMirror.eraOf(mirrorEnv, s),
+                  Option(t.getMessage).getOrElse(t.toString)
+                )
               )
             took <- Sync[F].delay((System.nanoTime() - started) / 1000000)
             _ <- report(header, epoch, outcome, took)

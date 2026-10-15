@@ -53,8 +53,8 @@ import NodeCodecs.given
   * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
   * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
   * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--local-socket
-  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check]
+  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -110,8 +110,8 @@ object Main extends IOApp:
       /** `--dump-state-full`: also write the whole projection (UTxO included) next to each digest.
         */
       dumpStateFull: Boolean = false,
-      /** `--mirror-check`: at the first block and at every epoch boundary, turn the ledger state into
-        * the mirror of the Haskell state and back, and log the result ([[MirrorCheck]]).
+      /** `--mirror-check`: at the first block and at every epoch boundary, turn the ledger state
+        * into the mirror of the Haskell state and back, and log the result ([[MirrorCheck]]).
         */
       mirrorCheck: Boolean = false,
       /** Validate the headers a peer announces before the blocks are fetched (G6). */

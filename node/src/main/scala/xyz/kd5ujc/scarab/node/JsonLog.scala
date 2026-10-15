@@ -130,7 +130,10 @@ object JsonLog:
           where ++ List("stage" -> stage.toString.asJson, "error" -> error.show.asJson)*
         )
       case MirrorCheck.Outcome.Crashed(_, message) =>
-        line("mirrorCheckFailed", where ++ List("stage" -> "Crashed".asJson, "error" -> message.asJson)*)
+        line(
+          "mirrorCheckFailed",
+          where ++ List("stage" -> "Crashed".asJson, "error" -> message.asJson)*
+        )
 
   def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
 

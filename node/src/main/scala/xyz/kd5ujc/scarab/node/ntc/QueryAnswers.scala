@@ -114,8 +114,8 @@ object QueryAnswers:
       else if era != Era.Conway && !isStateDump(inner) then None
       else ledgerAnswer(env, view, utxo, inner).map(r => CborOut.build(_.array(1).raw(r)))
 
-  /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes it
-    * (the others are Conway's).
+  /** The queries answered in every Shelley-based era: the ledger state as the Haskell node writes
+    * it (the others are Conway's).
     */
   private def isStateDump(q: LedgerQuery): Boolean = q match
     case LedgerQuery.DebugEpochState | LedgerQuery.DebugNewEpochState => true
@@ -233,7 +233,7 @@ object QueryAnswers:
         MirrorAnswers.epochState(env.consensusMirror, view).toOption
       case DebugNewEpochState =>
         MirrorAnswers.newEpochState(env.consensusMirror, view).toOption
-      case GetUTxOWhole       => build(E.utxo(_, utxo))
+      case GetUTxOWhole => build(E.utxo(_, utxo))
       case GetUTxOByAddress(addresses) =>
         build(E.utxo(_, utxo.filter { case (_, o) => addresses(o.address.raw) }))
       case GetUTxOByTxIn(inputs) =>

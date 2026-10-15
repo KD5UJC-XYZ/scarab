@@ -5,11 +5,7 @@ import cats.Show
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.state.{
-  ConsensusMirrorEnv,
-  EraLedgerState,
-  StateMirrorError
-}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, StateMirrorError}
 import xyz.kd5ujc.scarab.node.MirrorRun
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, StateNotWritable}
@@ -44,8 +40,8 @@ object MirrorRefusal:
   * are listed in `scripts/devnet/gapmask.py`.
   */
 object MirrorAnswers:
-  /** The mirror of the state acquired by a query, anchored at the point it was acquired at, and
-    * the era it is in (a Shelley-based one: Byron has no new-epoch state).
+  /** The mirror of the state acquired by a query, anchored at the point it was acquired at, and the
+    * era it is in (a Shelley-based one: Byron has no new-epoch state).
     */
   private def mirrored(
       env: ConsensusMirrorEnv,
