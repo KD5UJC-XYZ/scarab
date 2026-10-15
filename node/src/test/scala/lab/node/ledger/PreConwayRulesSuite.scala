@@ -429,7 +429,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val ok = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(signed)), 100, true, None)
     assertEquals(rule(TxRules(s, ok, env)), "accepted")
     val unsigned = Tx(b, Witnesses.empty, 100, true, None)
-    assertEquals(rule(TxRules(s, unsigned, env)), "MissingBootstrapWitnessesUTXOW")
+    assertEquals(rule(TxRules(s, unsigned, env)), "MissingVKeyWitnessesUTXOW")
     val forged = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(witness)), 100, true, None)
     assertEquals(rule(TxRules(s, forged, env)), "InvalidWitnessesUTXOW")
   }

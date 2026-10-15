@@ -66,3 +66,14 @@ and the cost models in force. The outputs are rebuilt from Koios `tx_info` (`_in
 checked against the bytes) and the cost models are the V1, V2 and V3 arrays of Koios `epoch_params`
 for epoch 189 (166, 175 and 297 parameters). The clock has one sample, slot 80,239,018 (the lower
 bound of the validity interval) at POSIX 1,735,922,218,000 ms. Used by `PreprodConwayRulesSuite`.
+
+## tx-0c22edee.hex and tx-0c22edee-inputs.json
+
+The full transaction `0c22edee0ffd7c8f32d2fe4da1f144e9ef78dfb51e1678d5198493a83d6cf8ec` (Conway,
+280 bytes, `[body, witnesses, true, null]`) from preprod block 3,158,876 (slot 83,038,792, epoch 196,
+hash `a24ef424b670507eccd594170385a4da78abb6e1470637a9fe27a584f68c9fc6`), as hex. Source: Koios
+`tx_cbor` and `tx_info` (`https://preprod.koios.rest/api/v1/`), fetched 2026-10-15. It spends two
+5 ADA Byron outputs (inputs file: transaction id, index, address bytes, lovelace) whose address root
+`533bcb8d...` is the blake2b-224 hash of the vkey of its one vkey witness; there is no bootstrap
+witness. It is the transaction on which the preprod sync stopped (`MissingBootstrapWitnessesUTXOW`,
+see `docs/findings.md`). Used by `PreprodByronKeyWitnessSuite`.
