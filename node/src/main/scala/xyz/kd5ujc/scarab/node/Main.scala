@@ -590,6 +590,7 @@ object Main extends IOApp:
                   Handle
                     .allow[NetworkError](
                       NodeToClientServer.accept(
+              setup.mirrorEnv(observed).ledger,
                         bearer,
                         genesis.networkMagic,
                         LocalSubmission.handler(mempool),

@@ -35,7 +35,8 @@ class QueryGoldenSuite extends FunSuite:
       EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
     ),
     setup.globals.maxSupply,
-    setup.genesis.raw
+    setup.genesis.raw,
+    setup.mirrorEnv().ledger
   )
   private val view = QueryView(point, Some(1), setup.start)
 

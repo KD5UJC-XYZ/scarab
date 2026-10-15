@@ -22,10 +22,15 @@ import xyz.kd5ujc.scarab.protocol.Era
   * real Preview snapshots of the runner).
   */
 object MirrorCorpus:
-  type Result[A] = Either[StateMirrorError, A]
-  type M[A] = Kleisli[Result, ConsensusMirrorEnv, A]
+  type Result[A] = MirrorRun.Result[A]
+  type M[A] = MirrorRun.M[A]
 
-  val mirror: StateMirror[M] = StateMirror[M]
+  val mirror: StateMirror[M] = MirrorRun.mirror
+
+  /** The ledger side alone (`LedgerMirror`), for the checks that mirror a flat ledger state. */
+  type LedgerM[A] = Kleisli[[X] =>> Either[MirrorError, X], MirrorEnv, A]
+
+  val ledgerMirror: LedgerMirror[LedgerM] = LedgerMirror[LedgerM]
 
   type LedgerResult[A] = Either[MirrorError, A]
   type LedgerM[A] = Kleisli[LedgerResult, MirrorEnv, A]
@@ -48,21 +53,6 @@ object MirrorCorpus:
   ):
     def ok: Boolean =
       error.isEmpty && eraAgrees && residueEmpty && retraction && tampers.forall(_._2)
-
-  /** The state as a comparison sees it: the UTxO is a handle over a RocksDB-backed set, compared by
-    * what the mirror may not change (its totals and stake maps) and not entry by entry.
-    */
-  private def view(s: NodeState) =
-    (
-      s.copy(ledger = s.ledger.copy(utxo = node.Utxo.empty)),
-      s.ledger.utxo.count,
-      s.ledger.utxo.coin,
-      s.ledger.utxo.stake,
-      s.ledger.utxo.ptrStake,
-      s.ledger.utxo.stamp,
-      s.ledger.utxo.flushed,
-      s.ledger.utxo.diff.size
-    )
 
   /** The number of pools and of VRF key hashes of a mirror's Shelley-based state. */
   private def poolCounts(m: MirrorState): (Int, Int) = m.ext.ledgerState.state match
@@ -88,7 +78,9 @@ object MirrorCorpus:
       case Right(m) =>
         val back = mirror.fromMirror(m.value).run(env)
         val retraction =
-          back.exists((a, b) => a == anchor && view(b) == view(StateMirror.normalised(env, s)))
+          back.exists((a, b) =>
+            a == anchor && MirrorCheck.sameState(b, StateMirror.normalised(env, s))
+          )
         val tampers =
           if withTampers then
             StateTampers

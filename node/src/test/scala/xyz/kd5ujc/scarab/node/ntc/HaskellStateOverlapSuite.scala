@@ -156,7 +156,8 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
       EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
     ),
     setup.globals.maxSupply,
-    setup.genesis.raw
+    setup.genesis.raw,
+    setup.mirrorEnv().ledger
   )
 
   private val raws: Vector[Bytes] =

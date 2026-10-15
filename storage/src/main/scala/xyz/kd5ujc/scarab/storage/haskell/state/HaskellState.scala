@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, NewEpochState, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{EpochState, EraTag, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.{ConstraintViolation, Decoded}
 
 /** Why a `NewEpochState` cannot be written in the Haskell format: it holds a value outside the
@@ -32,6 +32,18 @@ object HaskellState:
       state: NewEpochState[E]
   )(using ShelleyBasedEra[E]): Either[StateNotWritable, Bytes] =
     HaskellStateCodecs.newEpochState[E].write(state).left.map(StateNotWritable(_))
+
+  /** The bytes of the epoch state alone (`Types.hs:136-142`), at the version of its era: what the
+    * node-to-client query `DebugEpochState` answers.
+    */
+  def encodeEpochState[E <: EraTag](
+      state: EpochState[E]
+  )(using era: ShelleyBasedEra[E]): Either[StateNotWritable, Bytes] =
+    HaskellStateCodecs
+      .epochState[E](using era, Versions.eraLow(era))
+      .write(state)
+      .left
+      .map(StateNotWritable(_))
 
   /** The state the bytes hold, or the first thing wrong with them and where it is. */
   def decode[E <: EraTag](bytes: Bytes)(using ShelleyBasedEra[E]): Decoded[NewEpochState[E]] =
