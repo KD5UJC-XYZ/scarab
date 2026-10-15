@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -17,3 +18,11 @@ enum Nonce:
   def render: Option[String] = this match
     case Neutral => None
     case Hash(b) => Some(b.hex)
+
+object Nonce:
+  given Eq[Nonce] = Eq.fromUniversalEquals
+
+  given Show[Nonce] = Show.show {
+    case Neutral => "Neutral"
+    case Hash(b) => s"Hash(${b.hex})"
+  }

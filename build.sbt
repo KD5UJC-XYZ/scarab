@@ -134,7 +134,11 @@ lazy val consensus = scarab("consensus")
     libraryDependencies ++= Seq(
       Libraries.cats,
       Libraries.catsEffect,
-      Libraries.catsMtl
+      Libraries.catsMtl,
+      Libraries.monocleCore,
+      Libraries.monocleMacro,
+      Libraries.kittens,
+      Libraries.monocleLawTest
     )
   )
 

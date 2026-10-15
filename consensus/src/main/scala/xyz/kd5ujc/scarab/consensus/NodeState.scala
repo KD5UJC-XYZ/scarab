@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.*
@@ -71,6 +72,10 @@ final case class ByronState(
 
 object ByronState:
   val initial: ByronState = ByronState(None, None, None)
+
+  // Structural equality and the default rendering: the mirror's `ByronCurrent` carries this value.
+  given Eq[ByronState] = Eq.fromUniversalEquals
+  given Show[ByronState] = Show.fromToString
 
   /** The state of a chain that starts in Byron, with the ledger of the genesis. */
   def starting(ledger: ByronLedgerState): ByronState = initial.copy(ledger = Some(ledger))
