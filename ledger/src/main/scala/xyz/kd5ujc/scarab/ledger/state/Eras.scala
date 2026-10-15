@@ -140,3 +140,16 @@ object EraInstances:
       case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
           ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
         Show[ShelleyInstantStake]
+
+  given stashedAvvmEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[StashedAVVM[E]] = era match
+    case ShelleyBasedEra.SShelley => Eq[UtxoTables]
+    case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary | ShelleyBasedEra.SAlonzo |
+        ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+      Eq[Unit]
+
+  given stashedAvvmShow[E <: EraTag](using era: ShelleyBasedEra[E]): Show[StashedAVVM[E]] =
+    era match
+      case ShelleyBasedEra.SShelley => Show[UtxoTables]
+      case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary | ShelleyBasedEra.SAlonzo |
+          ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        Show[Unit]

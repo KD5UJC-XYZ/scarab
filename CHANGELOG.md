@@ -31,6 +31,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `proposals`, and `LedgerState.pState` by the era witness). Lens, `Eq` and order tests.
 - `QueryAnswers` uses the mirror's `FuturePParams` instead of a private enum; no NtC byte changes.
 
+### Added (ledger-state mirror, stage S2)
+- `ledger/state`: the top of the Haskell ledger state: `NewEpochState[E]`, `EpochState[E]`,
+  `ChainAccountState`, `BlocksMade` (opaque over a sorted map of words), `SnapShots`/`SnapShot`/
+  `StakePoolSnapShot`/`ActiveStake` (the pinned ledger-1.21 shape; the total active stake and the mark pool
+  distribution are derived methods, as Haskell does not encode them), `PoolDistr`/`IndividualPoolStake`,
+  `NonMyopic` with `Likelihood`/`LogWeight` (a 32-bit float, with Haskell's normalising `Eq`), and the reward
+  types `Reward`, `RewardSet` (ordered as Haskell's `Set Reward`), `RewardUpdate`, `RewardSnapShot` and
+  `PulsingRewUpdate` (`Pulsing` keeps the snapshot only; exporting a pulsing state is refused). `StashedAVVM`
+  gets its `Eq`/`Show` by the era witness. One Monocle lens per field, Conway paths composed through all
+  three levels, an `Iso` for `BlocksMade` and `ChainAccountState`, a `Prism` for the completed update. Lens,
+  Iso, Prism and `Eq` law tests, and compile-time era tests. No node type changes.
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
