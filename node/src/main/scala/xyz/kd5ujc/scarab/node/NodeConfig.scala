@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.ConfigError
-
 import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes

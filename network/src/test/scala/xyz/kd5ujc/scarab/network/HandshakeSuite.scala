@@ -5,6 +5,7 @@ import cats.effect.IO
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Handshake
 import munit.CatsEffectSuite
+
 import Peers.*
 
 class HandshakeSuite extends CatsEffectSuite:

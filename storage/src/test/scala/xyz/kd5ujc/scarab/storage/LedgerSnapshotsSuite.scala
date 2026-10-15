@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError
 import munit.CatsEffectSuite
+
 import NodeCodecs.blockRef
 import StorageTestKit.*
 

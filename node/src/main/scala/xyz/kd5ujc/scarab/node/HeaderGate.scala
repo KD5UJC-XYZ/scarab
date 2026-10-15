@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Header, PeerError, Points}
-
 import cats.Applicative
 import cats.effect.{Async, Ref}
 import cats.mtl.{Raise, Stateful}

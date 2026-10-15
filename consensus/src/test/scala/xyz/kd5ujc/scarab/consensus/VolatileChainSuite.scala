@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{ChainError, Fixtures, Header}
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import munit.ScalaCheckSuite

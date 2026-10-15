@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.models.gen
 
 import scala.annotation.unused
-
 import scala.collection.mutable
 
 /** Turns a resolved [[Schema]] into Scala 3 source: one file per CDDL module.

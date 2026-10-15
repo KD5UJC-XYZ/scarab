@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.tools
 
 import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport, HaskellImportError}
-
 import cats.effect.{ExitCode, IO}
 import cats.mtl.Handle
 import cats.syntax.all.*

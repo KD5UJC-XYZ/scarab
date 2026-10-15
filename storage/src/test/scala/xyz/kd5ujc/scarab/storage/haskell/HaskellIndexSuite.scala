@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen, Prop}
 import org.scalacheck.Prop.forAll
+
 import HaskellDbKit.*
 
 /** Pure properties of the Haskell ImmutableDB index formats: round trips, and a typed fault for

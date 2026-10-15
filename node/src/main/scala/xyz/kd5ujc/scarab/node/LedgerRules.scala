@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.consensus.{
   NodeState
 }
 import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Header, Prepared, ValidationError, Verdicts}
-
 import cats.Monad
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*

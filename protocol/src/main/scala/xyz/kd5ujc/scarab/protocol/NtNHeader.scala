@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.*
 
 /** A node-to-node ChainSync header as carried by the hard-fork combinator: `[eraIndex, payload]`.

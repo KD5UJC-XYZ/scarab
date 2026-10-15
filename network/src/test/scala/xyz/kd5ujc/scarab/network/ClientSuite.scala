@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Message
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
+
 import Peers.*
 
 class ClientSuite extends CatsEffectSuite:

@@ -2,9 +2,10 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import scala.concurrent.duration.*
+
 import ChainSync.DecodeResult
 import ProtocolWire.{attempt, bad, get}
-import scala.concurrent.duration.*
 
 /** Pure KeepAlive codec v2 and agency. Pinned source provenance is in
   * docs/keepalive-direct-range.md. Cookie correlation is separate from decoding; no transport or

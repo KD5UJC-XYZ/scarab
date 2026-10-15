@@ -2,12 +2,11 @@
 package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
 import munit.FunSuite
+
 import TestLedger.*
 
 /** The Conway transaction rules on real Preview transactions: governance proposals that carry the

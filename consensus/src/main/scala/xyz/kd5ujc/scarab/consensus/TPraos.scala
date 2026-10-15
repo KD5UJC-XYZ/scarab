@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{LeaderCheck, LedgerView, Nonce, OCertRules, StakeView, TPraosError}
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes

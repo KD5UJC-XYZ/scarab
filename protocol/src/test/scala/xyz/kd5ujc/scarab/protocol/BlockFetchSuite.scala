@@ -2,10 +2,11 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import scala.concurrent.duration.*
+
 import ChainSync.{Point, UInt64, DecodeResult}
 import BlockFetch.*
 import CardanoBlockFetch.*
-import scala.concurrent.duration.*
 
 class BlockFetchSuite extends munit.FunSuite:
   private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)

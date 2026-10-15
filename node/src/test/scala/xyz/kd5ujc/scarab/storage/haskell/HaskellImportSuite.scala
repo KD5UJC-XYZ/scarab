@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.storage.StorageTestKit.{ok, tempDir}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+
 import HaskellDbKit.*
 
 /** The Haskell ImmutableDB reader and `import-haskell-db`, over three real finished chunks of the

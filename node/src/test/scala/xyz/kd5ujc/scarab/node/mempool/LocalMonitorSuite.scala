@@ -8,6 +8,7 @@ import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import scala.concurrent.duration.*
+
 import TxKit.*
 
 /** The mempool as LocalTxMonitor reports it, against the rules the reference's server applies. */

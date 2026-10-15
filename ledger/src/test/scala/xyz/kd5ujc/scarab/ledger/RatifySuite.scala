@@ -2,14 +2,13 @@
 package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.codec.Rational
-
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+
 import TestLedger.*
 
 /** RATIFY and ENACT as pure functions, and the proposal store. */

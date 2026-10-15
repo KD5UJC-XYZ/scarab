@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.ledger.Header
-
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import io.circe.Json

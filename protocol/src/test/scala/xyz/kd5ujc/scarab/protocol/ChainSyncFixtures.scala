@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.*
 
 /** These types attest only to bounded serialization envelopes (NtC block fixtures; the era-aware

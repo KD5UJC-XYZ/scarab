@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
-
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Conway-only parameters taken from the Conway genesis when the chain crosses into Conway. */

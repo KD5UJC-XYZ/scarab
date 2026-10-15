@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
 import munit.FunSuite
+
 import TestLedger.*
 
 /** Preprod tx 0c22edee (block 3,158,876, slot 83,038,792, epoch 196, Conway) spends two Byron

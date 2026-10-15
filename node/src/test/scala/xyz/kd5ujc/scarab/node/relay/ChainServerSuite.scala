@@ -15,6 +15,7 @@ import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 import scala.concurrent.duration.*
+
 import StorageTestKit.*
 
 object RelayKit:

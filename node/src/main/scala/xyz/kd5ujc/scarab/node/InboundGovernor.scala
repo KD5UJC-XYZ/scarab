@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PeerError, Points}
-
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}

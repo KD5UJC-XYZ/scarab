@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError}
-
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.{Mutex, Queue, Semaphore, Supervisor}
 import cats.mtl.Raise

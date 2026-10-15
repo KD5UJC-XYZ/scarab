@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.models.runtime
 
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import scala.util.control.NonFatal
+
 import DecodeError.Kind
 
 /** A CBOR codec for one model type. Decoding works on the byte-preserving `Node` tree of

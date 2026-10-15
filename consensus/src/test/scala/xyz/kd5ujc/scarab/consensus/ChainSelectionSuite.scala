@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, HeaderVrf, VrfCert}
-
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}

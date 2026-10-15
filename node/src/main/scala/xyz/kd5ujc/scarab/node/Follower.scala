@@ -18,7 +18,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Points,
   ValidationError
 }
-
 import cats.Monad
 import cats.effect.{Async, Ref, Resource, Temporal}
 import cats.effect.std.Mutex

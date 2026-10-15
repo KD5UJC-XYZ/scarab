@@ -3,13 +3,13 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+
 import TestLedger.*
 
 class PreConwayRulesSuite extends ScalaCheckSuite:

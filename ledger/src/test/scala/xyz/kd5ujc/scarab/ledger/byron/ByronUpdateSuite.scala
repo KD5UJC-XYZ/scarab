@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
+
 import ByronTestKit.*
 
 /** Delegation certificates (scheduling, activation, the bimap) and the update system (proposal,

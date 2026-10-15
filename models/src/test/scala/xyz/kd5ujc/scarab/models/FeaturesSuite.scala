@@ -7,6 +7,7 @@ import scala.util.Random
 import xyz.kd5ujc.scarab.models.features.*
 import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Generator, QName}
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
+
 import DecodeError.Kind
 
 /** The generator features that the two bounded targets do not need, on `features.cddl`: integer-

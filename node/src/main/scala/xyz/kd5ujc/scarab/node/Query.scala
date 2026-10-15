@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{NodeState, VolatileChain}
-
 import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, Port}

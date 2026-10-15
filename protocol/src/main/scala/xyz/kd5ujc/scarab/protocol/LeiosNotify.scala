@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.bls.Vote
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+
 import LeiosWire.*
 
 /** Pure codec of the LeiosNotify mini-protocol (number 18), after the Blueprint's

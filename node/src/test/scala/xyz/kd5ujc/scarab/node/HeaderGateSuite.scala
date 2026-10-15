@@ -2,10 +2,8 @@
 package xyz.kd5ujc.scarab.node
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.consensus.{BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, PeerError}
-
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import cats.mtl.{Handle, Stateful}

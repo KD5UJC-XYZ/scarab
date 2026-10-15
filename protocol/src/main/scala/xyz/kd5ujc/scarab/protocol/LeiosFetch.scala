@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+
 import LeiosWire.*
 
 /** Pure codec of the LeiosFetch mini-protocol (number 19), after the Blueprint's

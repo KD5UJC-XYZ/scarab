@@ -2,9 +2,10 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import scala.concurrent.duration.*
+
 import ChainSync.DecodeResult
 import KeepAlive.*
-import scala.concurrent.duration.*
 
 class KeepAliveSuite extends munit.FunSuite:
   private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)

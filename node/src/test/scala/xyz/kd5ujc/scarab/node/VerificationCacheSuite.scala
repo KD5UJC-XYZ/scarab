@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Prepared, Verdicts}
-
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import java.nio.file.{Files, Path}

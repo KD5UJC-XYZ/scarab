@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import cats.Id
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*

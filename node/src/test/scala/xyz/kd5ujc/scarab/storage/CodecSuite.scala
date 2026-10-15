@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
+
 import NodeCodecs.given
 import Gens.given
 

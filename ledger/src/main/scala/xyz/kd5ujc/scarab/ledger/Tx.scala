@@ -2,10 +2,8 @@
 package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}

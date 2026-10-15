@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import ChainSync.{DecodeResult, Role}
 import ProtocolWire.{attempt, bad, get}
 

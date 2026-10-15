@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.models
 
 import scala.annotation.unused
-
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}

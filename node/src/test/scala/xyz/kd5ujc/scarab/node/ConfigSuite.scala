@@ -2,9 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
-
 import io.circe.Json
 import io.circe.parser
 import java.nio.file.{Files, Path}

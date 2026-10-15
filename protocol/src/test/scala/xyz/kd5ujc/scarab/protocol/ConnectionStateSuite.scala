@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.protocol
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.protocol.ConnectionState.*
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}

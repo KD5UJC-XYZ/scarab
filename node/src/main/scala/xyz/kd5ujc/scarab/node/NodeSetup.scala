@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.ledger.{
   NetworkIdentity,
   ShelleyGenesis
 }
-
 import cats.syntax.all.*
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}

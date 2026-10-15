@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import scala.annotation.unused
-
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era

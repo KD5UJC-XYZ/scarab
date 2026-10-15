@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import scala.annotation.unused
-
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Stateful}
@@ -30,6 +29,7 @@ import xyz.kd5ujc.scarab.node.SyncEvent
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
+
 import NodeCodecs.given
 import StorageTestKit.*
 

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage
 
 import scala.annotation.unused
-
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.Bytes

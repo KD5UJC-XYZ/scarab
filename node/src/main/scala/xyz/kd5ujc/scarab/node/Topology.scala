@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
-
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import io.circe.{ACursor, Decoder, Json, parser}

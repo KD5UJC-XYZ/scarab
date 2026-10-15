@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.protocol
 
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import Handshake.*
 
 /** Handshake replies recorded from the public Leios testnet relay (provenance in

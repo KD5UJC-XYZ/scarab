@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.consensus
 import xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.storage
-
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   FollowerEvent,
@@ -20,7 +19,6 @@ import xyz.kd5ujc.scarab.ledger.{
   NodeError,
   ValidationError
 }
-
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Stateful}

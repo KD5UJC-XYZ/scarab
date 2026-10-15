@@ -16,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.{
   PeerError,
   ValidationError
 }
-
 import cats.effect.{IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl

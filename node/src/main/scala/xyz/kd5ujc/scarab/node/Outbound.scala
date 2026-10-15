@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.PeerError
-
 import cats.effect.{Async, Resource}
 import cats.mtl.Raise
 import cats.syntax.all.*

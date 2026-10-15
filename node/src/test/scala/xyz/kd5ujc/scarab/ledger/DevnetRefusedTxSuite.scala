@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
-
 import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
@@ -10,6 +9,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.mempool.MempoolState
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
+
 import TestLedger.*
 
 /** Transactions that the Haskell reference node refused on the devnet

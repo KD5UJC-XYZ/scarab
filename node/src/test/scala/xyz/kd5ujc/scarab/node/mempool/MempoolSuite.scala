@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
+
 import TestLedger.*
 
 /** Real transaction bytes over a synthetic Conway ledger. */

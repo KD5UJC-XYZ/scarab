@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.protocol.{
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
+
 import Peers.*
 
 /** Our servers against our own clients over in-memory bearers, in both directions. */

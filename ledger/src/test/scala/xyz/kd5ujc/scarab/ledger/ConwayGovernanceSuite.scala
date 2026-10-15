@@ -2,14 +2,13 @@
 package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.codec.Rational
-
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+
 import TestLedger.*
 
 /** Constructed governance scenarios: propose, vote, cross epoch boundaries, enact, with the supply

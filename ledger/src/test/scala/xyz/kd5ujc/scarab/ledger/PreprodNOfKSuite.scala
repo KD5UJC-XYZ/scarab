@@ -8,6 +8,7 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
+
 import TestLedger.*
 
 /** Preprod tx b1db2a41 (block 5,184,855, slot 133,902,219, epoch 313, Conway) carries the native

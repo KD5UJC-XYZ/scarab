@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
-
 import cats.effect.unsafe.implicits.global
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.HeaderError

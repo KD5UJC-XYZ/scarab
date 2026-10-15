@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.Genesis
-
 import java.nio.file.{Files, Path}
 import java.time.Instant
 import munit.FunSuite

@@ -5,6 +5,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import java.nio.ByteBuffer
 import java.nio.charset.{CodingErrorAction, StandardCharsets}
 import scala.util.control.NonFatal
+
 import ChainSync.{Point, Tip, UInt64}
 
 /** Bounded CBOR framing. It does not normalize or deserialize opaque payloads. */

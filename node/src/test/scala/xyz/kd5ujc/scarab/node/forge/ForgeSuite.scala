@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import scala.annotation.unused
-
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*

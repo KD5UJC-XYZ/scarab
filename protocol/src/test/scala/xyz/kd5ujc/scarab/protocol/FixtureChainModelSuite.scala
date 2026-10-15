@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import ChainSync.*
 import xyz.kd5ujc.scarab.codec.Bytes
+
+import ChainSync.*
 
 class FixtureChainModelSuite extends munit.FunSuite:
   private def right[A](e: Either[String, A]): A = e.fold(fail(_), identity)

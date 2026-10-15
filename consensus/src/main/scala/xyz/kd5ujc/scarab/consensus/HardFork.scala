@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.EnvelopeError
-
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** What makes the hard-fork combinator enter an era: the ledger's protocol major version reaching

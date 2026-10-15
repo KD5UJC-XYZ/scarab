@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, NodeState}
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
-
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era

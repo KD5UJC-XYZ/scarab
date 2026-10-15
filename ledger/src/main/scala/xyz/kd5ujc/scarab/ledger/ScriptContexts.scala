@@ -2,10 +2,10 @@
 package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
+
 import PlutusData.{B, I}
 
 /** The ledger refused to build a script context (a phase-1 failure in the reference ledger). */

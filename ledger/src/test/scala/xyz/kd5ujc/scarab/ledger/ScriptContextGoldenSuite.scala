@@ -2,9 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block

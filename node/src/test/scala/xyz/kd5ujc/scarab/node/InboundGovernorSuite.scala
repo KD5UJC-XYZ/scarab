@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, NodeState, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header, NodeError, Points}
-
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*

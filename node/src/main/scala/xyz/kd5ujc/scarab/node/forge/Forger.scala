@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import scala.annotation.unused
-
 import cats.effect.{Async, Clock, Ref}
 import cats.mtl.{Handle, Stateful}
 import cats.mtl.syntax.all.*

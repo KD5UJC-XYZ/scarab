@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 

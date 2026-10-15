@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, Header, HeaderVrf}
-
 import java.nio.file.{Files, Path}
 import java.time.Instant
 import xyz.kd5ujc.scarab.codec.Bytes

@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.network.*
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
+
 import TxKit.*
 
 /** `cardano-cli transaction submit` as a client: node-to-client handshake, then LocalTxSubmission,

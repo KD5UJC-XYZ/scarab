@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.models.gen
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.models.gen.Ast.{Assign, Occ}
 
 /** Closed error type of the generator. Rendering to text happens at the boundary (`Main`). */

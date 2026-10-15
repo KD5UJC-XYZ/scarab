@@ -2,9 +2,10 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+import scala.concurrent.duration.*
+
 import ChainSync.{Point, DecodeResult}
 import ProtocolWire.{bad, get, attempt}
-import scala.concurrent.duration.*
 
 /** Pure, non-pipelined BlockFetch. Wire contract derived from pinned upstream sources; see
   * provenance.md. No transport, negotiated capability or ledger-validity claim.

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus
-
 import xyz.kd5ujc.scarab.consensus.{
   Anchor,
   BlockRef,
@@ -13,7 +12,6 @@ import xyz.kd5ujc.scarab.consensus.{
   VolatileChain
 }
 import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, NodeError, PeerError}
-
 import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
@@ -26,7 +24,6 @@ import xyz.kd5ujc.scarab.storage.{
   UtxoBacking,
   UtxoStore
 }
-import NodeCodecs.given
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import java.nio.file.Path
@@ -47,6 +44,8 @@ import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, M
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
+
+import NodeCodecs.given
 
 /** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]

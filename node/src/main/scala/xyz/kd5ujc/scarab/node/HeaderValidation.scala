@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.ledger.Header
-
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.*

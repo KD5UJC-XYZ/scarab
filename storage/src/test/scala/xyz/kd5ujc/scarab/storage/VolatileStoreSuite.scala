@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.StorageError
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import scala.util.Random
+
 import StorageTestKit.*
 
 /** The volatile log: model equivalence over random operation sequences with reopening, collection,

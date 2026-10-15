@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{ChainError, Header}
-
 import cats.Eq
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes

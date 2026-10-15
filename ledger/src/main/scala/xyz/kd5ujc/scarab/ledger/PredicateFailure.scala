@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** A pair of values a rule compared (`Mismatch r a` in the ledger): what the transaction supplied

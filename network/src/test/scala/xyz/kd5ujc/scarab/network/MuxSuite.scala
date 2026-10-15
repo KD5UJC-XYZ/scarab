@@ -11,6 +11,7 @@ import munit.{CatsEffectSuite, ScalaCheckSuite}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.forAll
 import scala.concurrent.duration.*
+
 import Peers.*
 
 class MuxSuite extends CatsEffectSuite with ScalaCheckSuite:

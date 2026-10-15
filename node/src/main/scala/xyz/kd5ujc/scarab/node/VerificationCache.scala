@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf, Prepared, Verdicts}
-
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*

@@ -2,12 +2,12 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import scala.annotation.unused
-
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TxIn
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
+
 import ByronTestKit.*
 
 /** The Byron UTxO rules over synthetic transactions with real Ed25519 signatures: value

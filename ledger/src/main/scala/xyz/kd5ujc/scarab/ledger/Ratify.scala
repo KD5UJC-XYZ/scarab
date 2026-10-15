@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
-
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** RATIFY and ENACT: which proposals the DReps, pools and committee accept, and what enacting them

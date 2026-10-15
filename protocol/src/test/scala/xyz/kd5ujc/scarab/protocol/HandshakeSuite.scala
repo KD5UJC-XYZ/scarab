@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.protocol
 
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import Handshake.*
 
 class HandshakeSuite extends munit.FunSuite:

@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSyncFixtures
 import xyz.kd5ujc.scarab.protocol.ChainSync.Message
 import munit.CatsEffectSuite
+
 import Peers.*
 
 class NodeToNodeSuite extends CatsEffectSuite:
