@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.state
 import cats.syntax.all.*
 import munit.FunSuite
 import scala.compiletime.testing.typeCheckErrors
+import xyz.kd5ujc.scarab.ledger.Utxo
 
 /** The era witness and the match types: the right era's type compiles, any other does not. */
 class ErasSuite extends FunSuite:
@@ -13,13 +14,13 @@ class ErasSuite extends FunSuite:
   private def certName[E <: EraTag](era: ShelleyBasedEra[E], cert: CertState[E]): String = era match
     case SConway =>
       val c: ConwayCertState = cert
-      s"conway ${c.show}"
+      s"conway ${c.pState.stakePools.size}"
     case SShelley =>
       val c: ShelleyCertState = cert
-      s"shelley ${c.show}"
+      s"shelley ${c.pState.stakePools.size}"
     case SAllegra | SMary | SAlonzo | SBabbage =>
       val c: ShelleyCertState = cert
-      s"shelley-based ${c.show}"
+      s"shelley-based ${c.dState.genDelegs.size}"
 
   private def isConway[E <: EraTag](using era: ShelleyBasedEra[E]): Boolean = era match
     case SConway => true
@@ -38,51 +39,51 @@ class ErasSuite extends FunSuite:
   test("a using witness drives era-generic code") {
     assert(isConway[Conway])
     assert(!isConway[Babbage])
-    assertEquals(certName(SConway, ConwayCertState()), "conway ConwayCertState")
-    assertEquals(certName(SMary, ShelleyCertState()), "shelley-based ShelleyCertState")
+    assertEquals(certName(SConway, LedgerStateGen.conwayCert), "conway 0")
+    assertEquals(certName(SMary, LedgerStateGen.shelleyCert), "shelley-based 0")
   }
 
   test("the match types split the eras as the Haskell type families do") {
-    val conway: CertState[Conway] = ConwayCertState()
-    val babbage: CertState[Babbage] = ShelleyCertState()
-    val accounts: Accounts[Conway] = ConwayAccounts()
-    val stake: InstantStake[Babbage] = ShelleyInstantStake()
-    val gov: GovState[Conway] = ConwayGovState()
-    val avvm: StashedAVVM[Shelley] = StashedUtxo()
+    val conway: CertState[Conway] = LedgerStateGen.conwayCert
+    val babbage: CertState[Babbage] = LedgerStateGen.shelleyCert
+    val accounts: Accounts[Conway] = LedgerStateGen.conwayAccounts
+    val stake: InstantStake[Babbage] = LedgerStateGen.shelleyInstant
+    val gov: GovState[Conway] = LedgerStateGen.conwayGov
+    val avvm: StashedAVVM[Shelley] = UtxoTables(Utxo.empty)
     val none: StashedAVVM[Allegra] = ()
-    assertEquals(conway, ConwayCertState())
-    assertEquals(babbage, ShelleyCertState())
-    assertEquals(accounts, ConwayAccounts())
-    assertEquals(stake, ShelleyInstantStake())
-    assertEquals(gov, ConwayGovState())
-    assertEquals(avvm, StashedUtxo())
+    assertEquals(conway, LedgerStateGen.conwayCert)
+    assertEquals(babbage, LedgerStateGen.shelleyCert)
+    assertEquals(accounts, LedgerStateGen.conwayAccounts)
+    assertEquals(stake, LedgerStateGen.shelleyInstant)
+    assertEquals(gov, LedgerStateGen.conwayGov)
+    assertEquals(avvm, UtxoTables(Utxo.empty))
     assertEquals(none, ())
   }
 
   test("wrong-era access does not compile") {
-    assert(typeCheckErrors("val c: CertState[Conway] = ShelleyCertState()").nonEmpty)
-    assert(typeCheckErrors("val c: CertState[Babbage] = ConwayCertState()").nonEmpty)
-    assert(typeCheckErrors("val a: Accounts[Conway] = ShelleyAccounts()").nonEmpty)
+    assert(typeCheckErrors("val c: CertState[Conway] = LedgerStateGen.shelleyCert").nonEmpty)
+    assert(typeCheckErrors("val c: CertState[Babbage] = LedgerStateGen.conwayCert").nonEmpty)
+    assert(typeCheckErrors("val a: Accounts[Conway] = LedgerStateGen.shelleyAccounts").nonEmpty)
     assert(typeCheckErrors("val s: StashedAVVM[Shelley] = ()").nonEmpty)
     // in a branch of the witness, only that branch's era
     assert(
       typeCheckErrors(
-        "def f[E <: EraTag](era: ShelleyBasedEra[E], c: CertState[E]): ConwayCertState = era match { case ShelleyBasedEra.SShelley => c; case _ => ConwayCertState() }"
+        "def f[E <: EraTag](era: ShelleyBasedEra[E], c: CertState[E]): ConwayCertState = era match { case ShelleyBasedEra.SShelley => c; case _ => LedgerStateGen.conwayCert }"
       ).nonEmpty
     )
     // without a witness, an abstract era reduces nothing
     assert(typeCheckErrors("def g[E <: EraTag](c: CertState[E]): ConwayCertState = c").nonEmpty)
     // not an era
     assert(typeCheckErrors("val w = ShelleyBasedEra[String]").nonEmpty)
-    assert(typeCheckErrors("val c: CertState[String] = ConwayCertState()").nonEmpty)
+    assert(typeCheckErrors("val c: CertState[String] = LedgerStateGen.conwayCert").nonEmpty)
   }
 
   test("right-era access compiles") {
-    assertEquals(typeCheckErrors("val c: CertState[Conway] = ConwayCertState()"), Nil)
-    assertEquals(typeCheckErrors("val c: CertState[Alonzo] = ShelleyCertState()"), Nil)
+    assertEquals(typeCheckErrors("val c: CertState[Conway] = LedgerStateGen.conwayCert"), Nil)
+    assertEquals(typeCheckErrors("val c: CertState[Alonzo] = LedgerStateGen.shelleyCert"), Nil)
     assertEquals(
       typeCheckErrors(
-        "def f[E <: EraTag](era: ShelleyBasedEra[E], c: CertState[E]): ConwayCertState = era match { case ShelleyBasedEra.SConway => c; case _ => ConwayCertState() }"
+        "def f[E <: EraTag](era: ShelleyBasedEra[E], c: CertState[E]): ConwayCertState = era match { case ShelleyBasedEra.SConway => c; case _ => LedgerStateGen.conwayCert }"
       ),
       Nil
     )

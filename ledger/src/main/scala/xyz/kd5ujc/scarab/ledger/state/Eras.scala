@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import cats.{Eq, Show}
-import cats.derived.*
 
 /** The eras of the ledger-state mirror, as types (phantoms: never instantiated). The era-dependent
   * parts of the Haskell state are type families over the era (`CertState era`, `GovState era`,
@@ -47,22 +46,9 @@ object ShelleyBasedEra:
 
 // ---- the era-dependent parts of the state
 //
-// The records below are STUBS: the targets S1 fills in with the real Haskell fields
-// (`Shelley/State/CertState.hs`, `Conway/State/CertState.hs`, `Shelley/State/Stake.hs`,
-// `Conway/State/Stake.hs`, the Shelley and Conway `GovState`, `LedgerState/Types.hs:357`). They have
-// no fields yet and only fix the era split.
-
-final case class ShelleyCertState() derives Eq, Show // `(PState, DState)`
-final case class ConwayCertState() derives Eq, Show // `(VState, PState, DState)`
-final case class ShelleyAccounts() derives Eq, Show // per-account balance, deposit, pointer, pool
-final case class ConwayAccounts() derives Eq, Show // per-account balance, deposit, pool, DRep
-final case class ShelleyInstantStake() derives Eq, Show // credential stake and pointer stake
-final case class ConwayInstantStake() derives Eq, Show // credential stake
-final case class ShelleyGovState() derives Eq, Show // proposed updates, `PParams`
-final case class ConwayGovState()
-    derives Eq,
-      Show // proposals, committee, constitution, DRep pulser
-final case class StashedUtxo() derives Eq, Show // the genesis AVVM UTxO, held in Shelley only
+// The records themselves are in `CertState.scala` (`ShelleyCertState`, `ConwayCertState`),
+// `Stake.scala` (accounts, instant stake) and `GovState.scala` (`ShelleyGovState`,
+// `ConwayGovState`); here only the type families that choose between them.
 
 /** `CertState era`: the certificate state grew the voting state in Conway. */
 type CertState[E <: EraTag] = E match
@@ -101,11 +87,56 @@ type GovState[E <: EraTag] = E match
   case Babbage => ShelleyGovState
   case Conway  => ConwayGovState
 
-/** `StashedAVVMAddresses era`: the UTxO in Shelley, `()` after (`LedgerState/Types.hs:357-359`). */
+/** `StashedAVVMAddresses era`: the UTxO (the same opaque handle as the main one) in Shelley, `()`
+  * after (`LedgerState/Types.hs:357-359`).
+  */
 type StashedAVVM[E <: EraTag] = E match
-  case Shelley => StashedUtxo
+  case Shelley => UtxoTables
   case Allegra => Unit
   case Mary    => Unit
   case Alonzo  => Unit
   case Babbage => Unit
   case Conway  => Unit
+
+/** `Eq` and `Show` of the types the families select, by case analysis on the witness. They cannot
+  * be found by implicit search from an abstract `E` (a match type has no implicit scope to look
+  * in), so the era-generic composites import this object's givens.
+  */
+object EraInstances:
+  given certStateEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[CertState[E]] = era match
+    case ShelleyBasedEra.SConway => Eq[ConwayCertState]
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      Eq[ShelleyCertState]
+
+  given certStateShow[E <: EraTag](using era: ShelleyBasedEra[E]): Show[CertState[E]] = era match
+    case ShelleyBasedEra.SConway => Show[ConwayCertState]
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      Show[ShelleyCertState]
+
+  given govStateEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[GovState[E]] = era match
+    case ShelleyBasedEra.SConway => Eq[ConwayGovState]
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      Eq[ShelleyGovState]
+
+  given govStateShow[E <: EraTag](using era: ShelleyBasedEra[E]): Show[GovState[E]] = era match
+    case ShelleyBasedEra.SConway => Show[ConwayGovState]
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      Show[ShelleyGovState]
+
+  given instantStakeEq[E <: EraTag](using era: ShelleyBasedEra[E]): Eq[InstantStake[E]] =
+    era match
+      case ShelleyBasedEra.SConway => Eq[ConwayInstantStake]
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+        Eq[ShelleyInstantStake]
+
+  given instantStakeShow[E <: EraTag](using era: ShelleyBasedEra[E]): Show[InstantStake[E]] =
+    era match
+      case ShelleyBasedEra.SConway => Show[ConwayInstantStake]
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+        Show[ShelleyInstantStake]
