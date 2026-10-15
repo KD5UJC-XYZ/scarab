@@ -72,7 +72,11 @@ object ScalusEvaluator:
   )
 
   /** A decoded script with what the availability checks need, collected once per script. */
-  private final case class Decoded(program: DeBruijnedProgram, builtins: Set[DefaultFun])
+  private final case class Decoded(
+      program: DeBruijnedProgram,
+      builtins: Set[DefaultFun],
+      remainder: Int
+  )
 
   private final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
     // Deliberate instance-scoped caches (one Interpreter per evaluator value, not hidden in an object;
@@ -121,7 +125,15 @@ object ScalusEvaluator:
         language: PlutusLanguage,
         protocolMajor: Int
     ): Either[String, Unit] =
-      PlutusAvailability.decodeFailure(language, protocolMajor, decoded.builtins).toLeft(())
+      PlutusAvailability
+        .decodeFailure(language, protocolMajor, decoded.builtins)
+        .orElse(
+          // `deserialiseScript` tolerates bytes after the script's CBOR item in V1 and V2 only
+          Option.when(decoded.remainder > 0 && language == PlutusLanguage.V3)(
+            s"${decoded.remainder} bytes remain after the script (RemainderError)"
+          )
+        )
+        .toLeft(())
 
     private def vm(request: EvalRequest): Either[String, PlutusVM] =
       val key = VmKey(request.language, request.protocolMajor, request.costModel)
@@ -180,8 +192,11 @@ object ScalusEvaluator:
       programs.getOrElseUpdate(
         script,
         try
-          val p = DeBruijnedProgram.fromCbor(script.toArray)
-          Right(Decoded(p, builtinsOf(p.term)))
+          val bytes = script.toArray
+          // Scalus rejects bytes after the CBOR item, the reference keeps them as a remainder
+          val used = PlutusScriptBytes.cborItemLength(bytes)
+          val p = DeBruijnedProgram.fromCbor(bytes.take(used))
+          Right(Decoded(p, builtinsOf(p.term), bytes.length - used))
         catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
       )
 
@@ -214,7 +229,7 @@ object ScalusEvaluator:
         (vm(request), program(request.script).flatMap(admitted(_, request))) match
           case (Left(reason), _) => failure(EvalFailure.Unsupported(reason))
           case (_, Left(reason)) => failure(EvalFailure.Decode(reason))
-          case (Right(machine), Right(Decoded(script, _))) =>
+          case (Right(machine), Right(Decoded(script, _, _))) =>
             val spender = RestrictingBudgetSpender(
               ScalusExUnits(request.budget.mem.toLong, request.budget.steps.toLong)
             )

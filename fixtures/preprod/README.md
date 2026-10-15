@@ -90,3 +90,17 @@ collateral; extended) and `epoch_params` for epoch 217 (V1, V2, V3 cost models o
 parameters), fetched 2026-10-15 (`https://preprod.koios.rest/api/v1/`). The case file has the format
 of `plutus/tx-2edd684f.json`; the clock has one sample, the validity upper bound, slot 92,114,852.
 Used by `PreprodSecp256k1RulesSuite`.
+
+## tx-aee75c1c.hex and plutus/tx-aee75c1c.json
+
+The full transaction `aee75c1c595f90f893717d0186a96f09abf28579f08b76e412f327fa36bebf9b` (Conway,
+protocol 10.0, 2,463 bytes, `[body, witnesses, true, null]`) from preprod block 4,045,972 (slot
+105,654,302, epoch 248, hash `3a3e395f8dbf0ee1c8aac4436a1c3a0b2835fd4d46e6d17b49c174dc8befd7a5`), as
+hex. One input, two outputs, one vkey witness, no redeemers. Output 0 carries the Plutus V2
+reference script `5272e7132a75d7e314a75b1107b8a76a7fc0c284e48aa0b016251f7a`, 2,156 bytes: the
+1,078-byte CBOR byte string of the flat program twice, which the reference ledger accepts (bytes
+after the item are ignored for V1 and V2) and Scalus `fromCbor` rejects. The sync stopped on it
+(`MalformedReferenceScripts`, see `docs/findings.md`). Source: Koios `tx_cbor`, `script_info`,
+`utxo_info` (the one input, a plain ADA output rebuilt as `[address, lovelace]`) and `epoch_params`
+for epoch 248 (V1, V2, V3 cost models), fetched 2026-10-15 (`https://preprod.koios.rest/api/v1/`).
+Case file format as `plutus/tx-2edd684f.json`. Used by `PreprodMalformedRefScriptSuite`.
