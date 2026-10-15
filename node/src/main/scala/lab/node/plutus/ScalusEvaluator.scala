@@ -246,6 +246,10 @@ object ScalusEvaluator:
     * `PlutusVM.evaluateDeBruijnedTerm` with one builtin's meaning replaced: the typing scheme and
     * costing function of Scalus's `SerialiseData` are kept, so the budget is unchanged.
     *
+    * The same machine also replaces `verifyEcdsaSecp256k1Signature` with [[Secp256k1.verifyEcdsa]]
+    * (Scalus 1.2.0 raises an error on a signature with `r = 0` or `s = 0` where the reference
+    * returns `False`; preprod block 3,498,869).
+    *
     * Reproducer: `ScalusConformanceReproducersSuite`; regression: `PreprodConwayRulesSuite`.
     */
   private final class SerialisingVm(
@@ -262,11 +266,27 @@ object ScalusEvaluator:
             Constant.ByteString(ByteString.fromArray(DataSerialiser.serialise(args.head.asData)))
           )
       )
+    private val verifyEcdsa: BuiltinRuntime =
+      cardano.VerifyEcdsaSecp256k1Signature.copy(f =
+        (_, args) =>
+          CekValue.VCon(
+            Constant.Bool(
+              Secp256k1.verifyEcdsa(
+                args(0).asByteString.bytes,
+                args(1).asByteString.bytes,
+                args(2).asByteString.bytes
+              )
+            )
+          )
+      )
     private val caseOnBuiltins =
       protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
 
     private def runtime(fun: DefaultFun): BuiltinRuntime =
-      if fun == DefaultFun.SerialiseData then serialiseData else cardano.getBuiltinRuntime(fun)
+      fun match
+        case DefaultFun.SerialiseData                 => serialiseData
+        case DefaultFun.VerifyEcdsaSecp256k1Signature => verifyEcdsa
+        case _                                        => cardano.getBuiltinRuntime(fun)
 
     override def evaluateDeBruijnedTerm(
         term: Term,
