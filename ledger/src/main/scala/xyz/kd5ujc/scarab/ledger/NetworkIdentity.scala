@@ -24,6 +24,8 @@ final case class NetworkIdentity(magic: Long, shelleyGenesis: Bytes, byronGenesi
         .fold("none")(_.hex.take(16))}"
 
 object NetworkIdentity:
+  // Persisted format identifier (first line of `<db>/network-identity`): keeps the project's former name so
+  // that existing databases still open. Changing it would be a format version bump, not a rename.
   val Header = "cardano-scala-lab network identity v1"
 
   /** The inverse of [[NetworkIdentity.render]]; a different version line is a

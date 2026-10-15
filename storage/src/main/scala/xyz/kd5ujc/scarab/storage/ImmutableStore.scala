@@ -64,6 +64,8 @@ object ImmutableStore:
   * entry (contiguous offsets, data in bounds, CRC) and truncates both files to the last good entry.
   */
 object FileImmutableStore:
+  // Persisted format identifiers, written into the chunk index and the format file: they keep the
+  // project's former name so that existing databases still open (scripts/oracle/export.py reads the magic).
   val IndexMagic: Array[Byte] = "CSLIDX01".getBytes("US-ASCII")
   val FormatText = "cardano-scala-lab immutable store v1"
   val HeaderSize = 8
