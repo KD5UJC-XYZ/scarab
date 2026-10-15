@@ -65,17 +65,7 @@ object PpupRules:
     * difference moves to or from the reserves, and the update is skipped if they cannot pay.
     */
   def newEpoch(state: LedgerState, globals: LedgerGlobals): LedgerState =
-    val winners = state.ppup.current.values.toVector
-      .groupBy(identity)
-      .collect { case (u, vs) if vs.size >= globals.updateQuorum => u }
-      .toVector
-    val adopted: Option[ProtocolParams] = winners match
-      case Vector(u) =>
-        ProtocolParams
-          .update(state.params, u)
-          .toOption
-          .filter(p => p.maxTxSize + p.maxBlockHeaderSize < p.maxBlockBodySize)
-      case _ => None
+    val adopted = voted(state.params, state.ppup.current, globals.updateQuorum)
     val rotated = Ppup(legalFuture(state, adopted).getOrElse(Map.empty), Map.empty)
     adopted match
       case None => state.copy(ppup = rotated)
@@ -92,6 +82,27 @@ object PpupRules:
             ppup = rotated
           )
         else state.copy(ppup = rotated)
+
+  /** The parameters the proposals of the epoch vote for: the one update that at least `quorum`
+    * genesis delegates proposed identically, applied to `params` (`votedFuturePParams`,
+    * `Rules/Ppup.hs:205-225`).
+    */
+  private[ledger] def voted(
+      params: ProtocolParams,
+      current: Map[Bytes, ParamUpdate],
+      quorum: Int
+  ): Option[ProtocolParams] =
+    val winners = current.values.toVector
+      .groupBy(identity)
+      .collect { case (u, vs) if vs.size >= quorum => u }
+      .toVector
+    winners match
+      case Vector(u) =>
+        ProtocolParams
+          .update(params, u)
+          .toOption
+          .filter(p => p.maxTxSize + p.maxBlockHeaderSize < p.maxBlockBodySize)
+      case _ => None
 
   /** The future proposals survive only if every one has a legal protocol version successor of the
     * parameters in force next epoch.
