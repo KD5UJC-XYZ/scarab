@@ -14,6 +14,7 @@ object Dependencies {
     val catsParse = "1.1.0"
     val monocle = "3.3.0"
     val kittens = "3.5.0"
+    val scodec = "2.3.3" // needs scodec-bits 1.2.4; fs2 already brings 1.2.5
 
     val scalus = "1.3.0"
     val bouncyCastle = "1.85.2"
@@ -43,6 +44,8 @@ object Dependencies {
     val monocleCore = "dev.optics" %% "monocle-core" % V.monocle
     val monocleMacro = "dev.optics" %% "monocle-macro" % V.monocle
     val kittens = "org.typelevel" %% "kittens" % V.kittens
+    // Fixed-layout binary formats (index files, record headers, the mux header); CBOR has its own codec.
+    val scodecCore = "org.scodec" %% "scodec-core" % V.scodec
 
     // The UPLC machine and builtins; all Scalus artifacts move together.
     val scalus = "org.scalus" %% "scalus" % V.scalus

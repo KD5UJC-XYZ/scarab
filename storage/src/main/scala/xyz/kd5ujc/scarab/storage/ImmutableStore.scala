@@ -71,10 +71,10 @@ object FileImmutableStore:
   val HeaderSize = 8
   val EntrySize = 68
 
-  private final case class Entry(offset: Long, length: Int, crc: Int, ref: BlockRef):
+  private[storage] final case class Entry(offset: Long, length: Int, crc: Int, ref: BlockRef):
     def end: Long = offset + length
 
-  private def encode(e: Entry): Array[Byte] =
+  private[storage] def encode(e: Entry): Array[Byte] =
     val b = ByteBuffer.allocate(EntrySize)
     b.putLong(e.offset).putInt(e.length).putInt(e.crc)
     b.putLong(e.ref.slot.toLong).putLong(e.ref.blockNo.toLong)
@@ -99,7 +99,7 @@ object FileImmutableStore:
     c.update(a, from, len)
     c.getValue.toInt
 
-  private def entries(index: Array[Byte]): Vector[Entry] =
+  private[storage] def entries(index: Array[Byte]): Vector[Entry] =
     if index.length < HeaderSize then Vector.empty
     else
       val count = (index.length - HeaderSize) / EntrySize
