@@ -5,6 +5,15 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (B15)
+- `verifyEcdsaSecp256k1Signature` returns `False` for a signature with `r = 0` or `s = 0` (and for a
+  high `s`) and fails only for a malformed key, message or signature (length, key not on the curve,
+  `r` or `s` at least the group order), as the reference does; Scalus 1.2.0 and 1.3.0 raised an error
+  for a zero `r` or `s`. The evaluator replaces the builtin's meaning (`Secp256k1.verifyEcdsa`, costing
+  kept). The preprod sync stopped on this at block 3,498,869 (transaction 97b31e35, epoch 217);
+  fixture `fixtures/preprod/plutus/tx-97b31e35.json`, `PreprodSecp256k1RulesSuite`, `Secp256k1Suite`
+  (which also pins `verifySchnorrSecp256k1Signature`, already conforming).
+
 ### Fixed (B14)
 - Byron inputs: the address root is a needed key hash like any other, satisfied by a vkey witness
   whose key hashes to it or by a bootstrap witness with that root, as in cardano-ledger. The separate

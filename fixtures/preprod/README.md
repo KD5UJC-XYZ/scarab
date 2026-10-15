@@ -77,3 +77,16 @@ hash `a24ef424b670507eccd594170385a4da78abb6e1470637a9fe27a584f68c9fc6`), as hex
 `533bcb8d...` is the blake2b-224 hash of the vkey of its one vkey witness; there is no bootstrap
 witness. It is the transaction on which the preprod sync stopped (`MissingBootstrapWitnessesUTXOW`,
 see `docs/findings.md`). Used by `PreprodByronKeyWitnessSuite`.
+
+## tx-97b31e35.hex and plutus/tx-97b31e35.json
+
+The full transaction `97b31e354e1946203be90ae78cc1cba21a70a5cbd7b39b6b82d273a98e323531` (Conway,
+protocol 10, `[body, witnesses, true, auxiliary_data]`) from preprod block 3,498,869 (slot 92,114,397,
+epoch 217, hash `40b4012f8d5a38e24ce5bcce74fc214c9f667d24623349919e046dcf08e9a450`), as hex. Four
+inputs, three of them script-locked (Plutus V2, reference scripts), one collateral input. A script
+calls `verifyEcdsaSecp256k1Signature` with an all-zero signature (the first sync stop of
+epoch 217, see `docs/findings.md`). Source: Koios `tx_cbor`, `utxo_info` (inputs, reference inputs,
+collateral; extended) and `epoch_params` for epoch 217 (V1, V2, V3 cost models of 166, 175, 297
+parameters), fetched 2026-10-15 (`https://preprod.koios.rest/api/v1/`). The case file has the format
+of `plutus/tx-2edd684f.json`; the clock has one sample, the validity upper bound, slot 92,114,852.
+Used by `PreprodSecp256k1RulesSuite`.
