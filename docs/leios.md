@@ -222,6 +222,11 @@ It also bears on G4 (our client offers only version 14 today; the pure `Handshak
 
 ## 5. Mapping onto this codebase
 
+A proposal, mostly not built: of the rows below only the BLS keys (N2) and the pure codecs and clients of protocols 18 and
+19 exist. The file names are those of the codebase before the module split (#82; see
+[architecture.md](architecture.md#modules)): `Handshake.scala` is now in `protocol/`, `Header.scala` and `Block.scala` in
+`ledger/`. `blst-java` is declared directly by `crypto` (N2), no longer only through Scalus (now 1.3.0).
+
 | Leios change | Where it lands | Notes and reuse |
 |---|---|---|
 | Protocol ids 18, 19; pure codecs and state machines | `protocol/` (pure codecs, like `ChainSync`, `TxSubmission2`); `network` (`Protocols`, new `LeiosNotifyClient/Server`, `LeiosFetchClient/Server`, registered in `NodeToNodeServer.Protocol` and `NodeToNode.over`) | `Mux`, `MuxChannel.recv` with incremental decoders and `Timed` are reusable as is. Credit and pipelining do not exist for these two, so keep them simple. Per-protocol agency and size limits as for the existing ones |

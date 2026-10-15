@@ -156,7 +156,7 @@ Each module may depend only on those before it; sbt enforces the direction.
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, the consensus side of the state (`consensus.state`) |
 | `storage` | Immutable and volatile stores, ledger snapshots, the UTxO store, format migrations, the Haskell ImmutableDB reader and ledger-state codec |
 | `node` | Peers, follower, relay, mempool, forging, node-to-client, query server, `Main` |
-| `models-gen`, `models` | A CDDL parser and code generator; the models generated from the pinned upstream CDDL |
+| `models-gen`, `models` | A CDDL parser and code generator; the models generated from the pinned upstream CDDL (a spike: used by tests, and its runtime by the ledger-state codec in `storage`) |
 | `fuzz` | Structured fuzzing of every decoder |
 
 Alongside: `fixtures/` (test vectors and captured chain data, each with its provenance), `scripts/`
@@ -176,7 +176,7 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 | [Process](docs/process.md) | How work moves from idea to done; the definition of done |
 | [Decisions](docs/adr/README.md) | Architecture decision records |
 | [Designs](docs/design/README.md) | Approved plans for large work, by stage |
-| [Models](docs/models.md) | The schema-first models generated from CDDL |
+| [Models](docs/models.md) | The CDDL generator and the models generated from it (a spike: tests and the ledger-state codec use it, the node does not yet) |
 | [Leios](docs/leios.md) | Ouroboros Leios design note (research, not implemented) |
 | [Licences](docs/licenses.md) | Dependency licences, name and trademark wording |
 | [Reference image](docs/reference-image.md) | Building the Haskell reference node image |
