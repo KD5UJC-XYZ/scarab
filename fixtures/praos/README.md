@@ -1,6 +1,6 @@
 # Praos VRF certificate fixtures
 
-Public evidence for `lab.vrf.PraosVrfCertificate` (the Praos VRF input `alpha` and the check of a header's
+Public evidence for `xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate` (the Praos VRF input `alpha` and the check of a header's
 VRF certificate), read by `PraosVrfCertificateSuite`.
 
 | File | Contents |

@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.models.runtime.Codec
   *   - `check <dir>`: decodes the terms cuddle generated (`<dir>/cuddle/<mode>/<target>.hex`, one
   *     hex term per line) with the generated codecs and writes `<dir>/decode.tsv`.
   *
-  * Run with `sbt "modelsSpike/Test/runMain xyz.kd5ujc.scarab.models.CuddleCrossCheck export ..."`.
+  * Run with `sbt "models/Test/runMain xyz.kd5ujc.scarab.models.CuddleCrossCheck export ..."`.
   */
 object CuddleCrossCheck:
   private val cddlDir = Path.of("models/src/main/cddl")

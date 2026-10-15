@@ -1,7 +1,7 @@
 # VRF (ECVRF draft-03) fixtures
 
-Public evidence for the strict draft-03 verifier of the Cardano VRF (`lab.vrf.StrictDraft03`, with the Java
-arithmetic in `core/src/main/java/lab/vrf`). The verifier must give the
+Public evidence for the strict draft-03 verifier of the Cardano VRF (`xyz.kd5ujc.scarab.crypto.vrf.StrictDraft03`, with the Java
+arithmetic in `crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf`). The verifier must give the
 verdict of the Cardano fork of libsodium on every input, including the inputs that other implementations accept.
 
 | File | Contents |
@@ -28,7 +28,7 @@ equivalence (`docs/compatibility.md`).
 
 ## Provenance and licence
 
-`core/src/main/java/lab/vrf/Ed25519Point.java` and `Draft03Math.java` adapt Bloxbean cardano-client-lib
+`crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Ed25519Point.java` and `Draft03Math.java` adapt Bloxbean cardano-client-lib
 (commit `45906b783973b4c44ac6883253af26bdd07bc1b4`, MIT; the full notice is `licenses/CCL-LICENSE`). The helper C
 file includes internals of the Cardano libsodium fork (ISC, `licenses/sodium-LICENSE`); the library itself and its
 binaries are not redistributed. The IETF draft-03 examples are public specification data. The tables and the

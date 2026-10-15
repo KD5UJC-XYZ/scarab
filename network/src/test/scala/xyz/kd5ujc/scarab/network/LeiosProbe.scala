@@ -14,7 +14,7 @@ import scala.concurrent.duration.*
   * each. Every raw message is appended to a file as `ms<TAB>protocol<TAB>kind<TAB>hex`.
   *
   * Run, inside the build container:
-  * `networkRuntime/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`.
+  * `network/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`.
   * Throwaway tool: not part of the node, not run by `check`.
   */
 object LeiosProbe extends IOApp:

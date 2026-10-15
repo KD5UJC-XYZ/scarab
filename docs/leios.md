@@ -456,7 +456,7 @@ Read-only connection to `leios-node.play.dev.cardano.org:3001`, magic 164, with 
 `LeiosNotify`/`LeiosFetch` (`network/`, Blueprint `messages.cddl`; round-trip, state-admission and
 malformed-input tests) with clients `LeiosNotifyClient`/`LeiosFetchClient` (`network/`).
 The probe is `LeiosProbe` in the test sources of `network`
-(`networkRuntime/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
+(`network/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
 
 | Attempt | Result |
 |---|---|

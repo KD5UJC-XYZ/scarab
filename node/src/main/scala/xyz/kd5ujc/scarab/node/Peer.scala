@@ -120,7 +120,7 @@ object Peer:
         _: NetworkError.IllegalTransition =>
       PeerError.Protocol(error.message)
 
-  /** Node-to-node interpreter over `network-runtime`: ChainSync and BlockFetch share one
+  /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one
     * multiplexed connection (KeepAlive runs in the background). Every network failure surfaces as a
     * typed [[PeerError]].
     */

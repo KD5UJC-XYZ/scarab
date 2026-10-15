@@ -1,6 +1,6 @@
 # Sum6 KES fixtures
 
-Public evidence for `lab.kes.Sum6Kes` (verification of the 448-byte Sum6 KES signature of a block header),
+Public evidence for `xyz.kd5ujc.scarab.crypto.kes.Sum6Kes` (verification of the 448-byte Sum6 KES signature of a block header),
 read by `Sum6KesSuite`.
 
 | File | Contents |
