@@ -5,6 +5,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Memory (K6)
+- The RSS growth to 5.66 GB on a Preview sync was glibc's per-thread malloc arenas. `docker/jdk.Dockerfile`
+  and the devnet node set `MALLOC_ARENA_MAX=2`; running.md says to set it outside a container. With it
+  `RssAnon` was the heap limit plus 0.8 GB (3.86 GB with `-Xmx3g` after 45 minutes) against 4.29 GB and
+  growing without. New `--memory-report-seconds N` logs the JVM's, the process's, the cgroup's and RocksDB's
+  figures; `--utxo-cache-mb` bounds the whole store (the memtables are charged to the block cache).
+  Container limit: `-Xmx` plus 2 GiB. performance.md section 7.
+- The RocksDB UTxO key is the Haskell node's `txid ++ be16 ix` (34 bytes, was 36); the snapshot format
+  version is 2, so older snapshots are rejected and the node replays.
+
 ### Leios (roadmap N2, N3 groundwork)
 - `lab.bls` in `core` (pure): BLS12-381 MinSig voting keys over blst-java (now a direct dependency):
   key generation from a seed, proofs of possession and votes with the `cardano-base` POP tags,
