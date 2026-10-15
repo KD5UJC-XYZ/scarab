@@ -8,8 +8,8 @@ import xyz.kd5ujc.scarab.models.chainsync.ChainSyncMessage
 import xyz.kd5ujc.scarab.models.handshake.HandshakeMessage
 
 /** A timed loop (no JMH: that would add an sbt plugin). Run with
-  * `sbt "models/Test/runMain xyz.kd5ujc.scarab.models.DecodeBench"`. Each variant decodes the
-  * same bytes, including the CBOR parse, so the numbers compare like with like.
+  * `sbt "models/Test/runMain xyz.kd5ujc.scarab.models.DecodeBench"`. Each variant decodes the same
+  * bytes, including the CBOR parse, so the numbers compare like with like.
   */
 object DecodeBench:
   private var sink = 0L
