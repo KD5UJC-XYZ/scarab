@@ -462,14 +462,14 @@ object JsonLog:
       case StorageEvent.ReplayProgress(at, replayed, millis) =>
         line(
           "replayProgress",
-          "at" -> block(at),
+          "tip" -> block(at),
           "replayed" -> replayed.asJson,
           "millis" -> millis.asJson
         )
       case StorageEvent.ReplayFinished(at, replayed, millis) =>
         line(
           "replayFinished",
-          "at" -> anchor(at),
+          "tip" -> anchor(at),
           "replayed" -> replayed.asJson,
           "millis" -> millis.asJson
         )

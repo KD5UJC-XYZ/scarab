@@ -24,6 +24,8 @@
     devnet.py oracle               compare the Scala node's epoch-boundary state digests (written by
                                    `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
                                    Haskell ledger state db-analyser stores in the reference container
+    devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
+                                   start it again (it must restore the snapshot)
     devnet.py down                 remove containers and the run directory
 
 Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares the
@@ -40,6 +42,7 @@ from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.ntc import ntc
 from .scenarios.pool import pool
 from .scenarios.relay import relay
+from .scenarios.restart import restart
 from .scenarios.soak import soak
 from .util import REPO
 
@@ -178,6 +181,10 @@ def main():
                                                 "`soak --governance-extended`")
     rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")
     rf.set_defaults(run=refused_fixture)
+    rs = sub.add_parser("restart", parents=[scala_options],
+                        help="up + follow --db, SIGTERM (must exit within 30 s), follow --db again (must restore the snapshot)")
+    rs.add_argument("--seconds", type=int, default=20, help="seconds the follower runs after its first block, before each stop")
+    rs.set_defaults(run=restart)
     sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)

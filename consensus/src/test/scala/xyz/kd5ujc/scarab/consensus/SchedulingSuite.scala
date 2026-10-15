@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.consensus
 
 import cats.Eq
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.kernel.laws.discipline.CommutativeMonoidTests
 import cats.syntax.all.*
 import munit.{CatsEffectSuite, DisciplineSuite}
@@ -100,6 +100,36 @@ class SchedulingSuite extends CatsEffectSuite:
         yield ()
       }
     }
+  }
+
+  test("a fiber cancelled inside the pool still releases the pool, and what is released after it") {
+    // The follower runs its whole session inside `within`. A cancellation there ran the finalizers
+    // on the pool's own thread; the pool resource shut it down from there and the fiber's last
+    // finalizers were scheduled onto the dead pool and never ran: the node never exited (#89).
+    for
+      stats <- SchedulingStats.create[IO]
+      afterPool <- IO.deferred[Unit]
+      insideRelease <- IO.deferred[String]
+      started <- IO.deferred[Unit]
+      run = (Resource.onFinalize(afterPool.complete(()).void) *>
+        Compute.pool[IO](2, stats)).use(c =>
+        c.within(
+          Resource
+            .onFinalize(IO(Thread.currentThread.getName).flatMap(insideRelease.complete(_)).void)
+            .surround(started.complete(()) *> IO.never[Unit])
+        )
+      )
+      fiber <- run.start
+      _ <- started.get.timeout(10.seconds)
+      _ <- fiber.cancel.timeout(10.seconds)
+      outcome <- fiber.join
+      _ <- afterPool.get.timeout(10.seconds)
+      thread <- insideRelease.get
+      _ <- IO {
+        assert(outcome.isCanceled, outcome.toString)
+        assert(thread.startsWith("scarab-cpu-"), thread)
+      }
+    yield ()
   }
 
   /** The largest lateness of a 20 ms timer while `cpus` CPU-bound steps of 600 ms run in parallel.

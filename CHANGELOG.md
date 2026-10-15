@@ -5,6 +5,14 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (graceful stop, issue 89)
+- A SIGTERM no longer leaves the JVM hanging after the shutdown snapshot. `Compute.pool` ran the whole follower session as one
+  `evalOn` fiber on the CPU pool; a cancellation there ran the finalizers on the pool's own thread, the pool resource shut the
+  pool down from there, and the finalizers after it were scheduled onto the dead pool and never ran. `within` now runs the
+  effect as a fiber of its own on the pool and joins it from the caller's thread. New: `devnet.py restart` (stop within 30 s,
+  restart restores the snapshot) and a `SchedulingSuite` test. The `replayProgress` and `replayFinished` events name the block
+  `tip` (the field `at` shadowed the event's timestamp).
+
 ### Changed (ledger-state mirror, step 2, jump 1: the node-to-client answers)
 - `LedgerEncoders` is gone. `QueryAnswers` writes every ledger answer through `storage/haskell/state`: the
   node-type codecs of the state file (`HaskellStateCodecs`: credentials, DReps, pool parameters, the

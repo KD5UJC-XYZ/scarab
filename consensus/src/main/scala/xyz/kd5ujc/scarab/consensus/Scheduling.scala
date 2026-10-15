@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.consensus
 
 import cats.Monad
-import cats.effect.{Async, Clock, Ref, Resource, Sync, Temporal}
+import cats.effect.{Async, Clock, Outcome, Ref, Resource, Sync, Temporal}
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
 import cats.effect.unsafe.IORuntime
@@ -141,6 +141,26 @@ object Compute:
       }
       .flatMap((result, nanos) => stats.step(label(result), nanos).as(result))
 
+  /** `fa` on `pool`, as a fiber of its own that the caller joins from its own thread.
+    *
+    * A cancellation that reaches a fiber inside `evalOn` runs that fiber's finalizers on the pool's
+    * thread, and they stay there: the finalizer that shuts the pool down (see [[pool]]) then runs
+    * on the pool it shuts down, and the finalizers after it are scheduled onto the dead pool and
+    * never run, so the program never ends (issue 89). Here the caller is cancelled where it is; it
+    * cancels the pool fiber and waits for its finalizers, which run on the pool, and carries on its
+    * own on the thread it came from.
+    */
+  private def onPool[F[_]: Async, A](fa: F[A], pool: scala.concurrent.ExecutionContext): F[A] =
+    Async[F].uncancelable { poll =>
+      Async[F].evalOn(fa, pool).start.flatMap { fiber =>
+        poll(fiber.join).onCancel(fiber.cancel).flatMap {
+          case Outcome.Succeeded(result) => result
+          case Outcome.Errored(error)    => Async[F].raiseError[A](error)
+          case Outcome.Canceled()        => poll(Async[F].canceled) *> Async[F].never[A]
+        }
+      }
+    }
+
   /** A second cats-effect work-stealing pool of `threads` workers (`scarab-cpu-N`), shut down with
     * the resource. It is the same scheduler the compute pool is, so a hand-off to it is as cheap as
     * a fiber moving between compute workers (a plain `ThreadPoolExecutor` parks a thread per
@@ -158,7 +178,7 @@ object Compute:
       })(pool => Async[F].delay(pool._3()))
       .map { pool =>
         new Compute[F]:
-          def within[A](fa: F[A]): F[A] = Async[F].evalOn(fa, pool._1)
+          def within[A](fa: F[A]): F[A] = onPool(fa, pool._1)
           def timed[A](label: A => String)(step: => A): F[A] = timeStep(stats, label, step)
       }
 

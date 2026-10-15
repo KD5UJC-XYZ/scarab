@@ -240,6 +240,19 @@ class ReferenceImageTest(unittest.TestCase):
                 pri.verify_archive(bad)
 
 
+class RestartScenarioTest(unittest.TestCase):
+    def test_a_stop_that_reached_the_limit_is_a_hang(self):
+        from devnet.scenarios.restart import stop_problem
+        self.assertIsNone(stop_problem(3.2, True))
+        self.assertIn("did not exit", stop_problem(30.0, True))
+        self.assertIn("without a shutdown snapshot", stop_problem(3.0, False))
+
+    def test_the_restart_must_restore(self):
+        from devnet.scenarios.restart import restore_problem
+        self.assertIsNone(restore_problem([{"event": "snapshotRestored"}]))
+        self.assertIn("did not restore", restore_problem([{"event": "extended"}]))
+
+
 class PoolOracleTest(unittest.TestCase):
     """missed_leader_slots: every scheduled slot in the forger's window is forged or taken by another block."""
     SHELLEY = {"systemStart": "2026-01-01T00:00:00Z", "slotLength": 1, "epochLength": 100}
