@@ -74,8 +74,8 @@ object FileImmutableStore:
   // format file, in the current version. Version 1 spelled them with the project's former name
   // (`CSLIDX01`, `cardano-scala-lab immutable store v1`); opening migrates those files, and the read
   // path below only ever sees the current magic. scripts/oracle/export.py reads both.
-  val IndexMagic: Array[Byte] = magicOf(FormatVersion.Current)
-  val FormatText: String = FileKind.FormatFile.identifier(FormatVersion.Current)
+  val IndexMagic: Array[Byte] = magicOf(FileKind.IndexFile.current)
+  val FormatText: String = FileKind.FormatFile.identifier(FileKind.FormatFile.current)
   val HeaderSize = 8
   val EntrySize = 68
 
@@ -99,7 +99,7 @@ object FileImmutableStore:
           }
           .flatMap { header =>
             // A file shorter than a header is a crash during chunk creation: recovery owns it.
-            if header.length < HeaderSize then Sync[F].pure(FormatVersion.Current)
+            if header.length < HeaderSize then Sync[F].pure(kind.current)
             else
               kind
                 .versionOf(file.toString, new String(header, StandardCharsets.ISO_8859_1))

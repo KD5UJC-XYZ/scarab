@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 final case class NetworkIdentity(magic: Long, shelleyGenesis: Bytes, byronGenesis: Option[Bytes]):
 
   /** The text of the identity file, see [[NetworkIdentity.parse]], in the current format. */
-  def render: String = renderAs(FormatVersion.Current)
+  def render: String = renderAs(FileKind.IdentityFile.current)
 
   /** The text of the identity file as format `version` spells it (a test asks for an old one). */
   def renderAs(version: FormatVersion): String =

@@ -34,7 +34,9 @@ trait Migration[F[_]]:
   /** Rewrite `file`, which is at `from`, as `from.next`. */
   def step(file: Path, from: FormatVersion): F[Unit]
 
-/** Bring files to [[FormatVersion.Current]], one step at a time, each step atomic. */
+/** Bring files to the current version of their kind ([[FileKind.current]]), one step at a time,
+  * each step atomic. A kind that did not change at a newer shared version is not touched by it.
+  */
 object Migrate:
 
   /** Migrate `files`. The version of every file is read first, so a file of an unknown version
@@ -43,17 +45,18 @@ object Migrate:
     * (nothing to report when everything was current, which is every run after the first).
     */
   def apply[F[_]: Monad](migration: Migration[F], files: List[Path]): F[List[Migrated]] =
+    val current = migration.kind.current
     def steps(file: Path, at: FormatVersion): F[Unit] =
-      at.next.traverse_(next => migration.step(file, at) *> steps(file, next))
+      at.next.filter(_ <= current).traverse_(next => migration.step(file, at) *> steps(file, next))
     for
       found <- files.traverse(file => migration.detect(file).map(file -> _))
-      moving = found.filter(_._2 != FormatVersion.Current)
+      moving = found.filter(_._2 != current)
       _ <- moving.traverse_ { case (file, at) => steps(file, at) }
     yield moving
       .groupMapReduce(_._2)(_ => 1)(_ + _)
       .toList
       .sortBy(_._1)
-      .map((from, count) => Migrated(migration.kind, from, FormatVersion.Current, count))
+      .map((from, count) => Migrated(migration.kind, from, current, count))
 
 /** Writing a file so that a crash leaves either the old content or the new, never a mixture. */
 object AtomicFile:

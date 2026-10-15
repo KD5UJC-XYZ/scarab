@@ -86,7 +86,7 @@ enum StorageError extends NodeError:
     case Io(w, r)                 => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
     case UnknownVersion(w, k, f) =>
-      s"$w: unknown ${k.label} format '$f' (this build reads '${k.identifier(FormatVersion.V1)}' and '${k.identifier(FormatVersion.Current)}'); it was probably written by a newer build"
+      s"$w: unknown ${k.label} format '$f' (this build reads '${k.identifier(FormatVersion.V1)}' and '${k.identifier(k.current)}'); it was probably written by a newer build"
     case Missing(w)    => s"missing $w"
     case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>

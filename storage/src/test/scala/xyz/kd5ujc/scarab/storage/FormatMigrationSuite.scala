@@ -261,7 +261,7 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("the identity text of each version round trips and carries its version") {
     assertEquals(identity.renderAs(FormatVersion.V1).linesIterator.next(), v1Header)
     assertEquals(identity.render.linesIterator.next(), "scarab network identity v2")
-    for v <- FormatVersion.values do
+    for v <- FileKind.IdentityFile.history.toList.map(_._1) do
       assertEquals(NetworkIdentity.parseVersioned("f", identity.renderAs(v)), Right((v, identity)))
       val shelleyOnly = identity.copy(byronGenesis = None)
       assertEquals(NetworkIdentity.parse("f", shelleyOnly.renderAs(v)), Right(shelleyOnly))
@@ -320,10 +320,11 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
 
   /** Files held in memory as the version they are at; a step moves one file up by one version. */
   private def inMemory(
+      of: FileKind,
       state: Ref[IO, Map[Path, FormatVersion]],
       stepped: Ref[IO, List[(Path, FormatVersion)]]
   ): Migration[IO] = new Migration[IO]:
-    val kind = FileKind.IndexFile
+    val kind = of
     def detect(file: Path) = state.get.map(_(file))
     def step(file: Path, from: FormatVersion) =
       stepped.update(_ :+ (file -> from)) *>
@@ -332,29 +333,37 @@ class FormatMigrationSuite extends CatsEffectSuite with ScalaCheckSuite:
   property(
     "Migrate brings every file to the current version, steps each stale file once, reports the stale count"
   ) {
-    forAll(Gen.listOf(Gen.oneOf(FormatVersion.values.toList))) { versions =>
+    forAll(
+      Gen.oneOf(FileKind.values.toList).flatMap { kind =>
+        Gen
+          .listOf(Gen.oneOf(FormatVersion.values.toList.filter(_ <= kind.current)))
+          .map(kind -> _)
+      }
+    ) { case (kind, versions) =>
+      val current = kind.current
       val paths = versions.indices.map(i => Path(s"/f/$i")).toList
       val program =
         for
           state <- Ref.of[IO, Map[Path, FormatVersion]](paths.zip(versions).toMap)
           stepped <- Ref.of[IO, List[(Path, FormatVersion)]](Nil)
-          report <- Migrate(inMemory(state, stepped), paths)
+          report <- Migrate(inMemory(kind, state, stepped), paths)
           after <- state.get
           steps <- stepped.get
         yield (report, after, steps)
       val (report, after, steps) = program.unsafeRunSync()
-      val stale = versions.count(_ != FormatVersion.Current)
-      Prop(after.values.forall(_ == FormatVersion.Current)) :| "all current" &&
+      val stale = versions.count(_ != current)
+      Prop(after.values.forall(_ == current)) :| "all current" &&
       (report.map(_.count).sum ?= stale) :| "count" &&
       (steps.size ?= versions
-        .map(v => FormatVersion.values.length - 1 - v.ordinal)
+        .map(v => current.ordinal - v.ordinal)
         .sum) :| "steps" &&
-      (Migrate(inMemory2(after), paths).unsafeRunSync() ?= Nil) :| "idempotent"
+      (Migrate(inMemory2(kind, after), paths).unsafeRunSync() ?= Nil) :| "idempotent"
     }
   }
 
-  private def inMemory2(after: Map[Path, FormatVersion]): Migration[IO] = new Migration[IO]:
-    val kind = FileKind.IndexFile
-    def detect(file: Path) = IO.pure(after(file))
-    def step(file: Path, from: FormatVersion) =
-      IO.raiseError(new AssertionError("nothing is stale"))
+  private def inMemory2(of: FileKind, after: Map[Path, FormatVersion]): Migration[IO] =
+    new Migration[IO]:
+      val kind = of
+      def detect(file: Path) = IO.pure(after(file))
+      def step(file: Path, from: FormatVersion) =
+        IO.raiseError(new AssertionError("nothing is stale"))
