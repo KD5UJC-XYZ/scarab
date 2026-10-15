@@ -156,6 +156,15 @@ Byron: 46 blocks, derived transition epoch 4; eras entered at epochs 4 (Shelley)
 The tip (slot ~136M, about 6M blocks) was not reached; an earlier 50-minute run on a slightly earlier
 build (restart from the db after two minutes) agreed (epoch 54, 0 errors).
 
+**To the tip (2026-10-15).** Main 9ff0ca7d, frozen classes, fresh db, `follow --genesis-dir --db`
+against `preprod-node.play.dev.cardano.org:3001`, `-Xms3g -Xmx3g -XX:+UseG1GC
+-XX:MaxGCPauseMillis=20`, `MALLOC_ARENA_MAX=2`, container `--memory 10g` with no CPU limit (24 host
+threads, shared with test gates and other syncs for most of the run), no restart: 5,295,553 blocks
+from genesis to the tip in 4 h 52 min (about 300 blocks/s on average), 0 error events. Era entry
+times: Shelley to Alonzo within the first 2 minutes, Babbage at 5 min, Conway at 1 h 46 min; Conway
+(epochs 163 to 319) took the remaining 3 h 6 min. At the tip: container memory 5.6 GiB of 10 GiB,
+database 18 GB. Tip block 5,295,552 (slot 136,392,901, epoch 319) equal to Koios.
+
 ## 6. Restart and scheduling (D4, D8)
 
 Measured on this branch (the commit is in [compatibility.md](compatibility.md) with the other
