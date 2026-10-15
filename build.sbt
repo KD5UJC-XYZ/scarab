@@ -44,6 +44,7 @@ val testDependencies = Seq(
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
 //   protocol, plutus <- ledger <- consensus <- storage
+//   models <- storage (the Haskell ledger-state codec reuses the models runtime)
 //   storage, network <- node
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id)))
@@ -117,7 +118,11 @@ lazy val ledger = scarab("ledger")
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
       Libraries.cats,
-      Libraries.circeParser
+      Libraries.circeParser,
+      Libraries.monocleCore,
+      Libraries.monocleMacro,
+      Libraries.kittens,
+      Libraries.monocleLawTest
     )
   )
 
@@ -135,7 +140,10 @@ lazy val consensus = scarab("consensus")
 
 // Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader.
 lazy val storage = scarab("storage")
-  .dependsOn(consensus % "compile->compile;test->test")
+  .dependsOn(
+    consensus % "compile->compile;test->test",
+    models
+  )
   .settings(
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(

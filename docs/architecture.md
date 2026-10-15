@@ -31,8 +31,9 @@ codec <- crypto <- protocol <- network ------------------------.
   '------ plutus <------'
 ```
 
-`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus`;
-`node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
+`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
+`models` (the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
+its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
 effectful multiplexer) are different files.
 

@@ -12,6 +12,8 @@ object Dependencies {
     val circe = "0.14.16" // brings jawn-parser 1.7.0 (fixes jawn advisories)
     val http4s = "0.23.37"
     val catsParse = "1.1.0"
+    val monocle = "3.3.0"
+    val kittens = "3.5.0"
 
     val scalus = "1.3.0"
     val bouncyCastle = "1.85.2"
@@ -37,6 +39,10 @@ object Dependencies {
     val http4sDsl = "org.http4s" %% "http4s-dsl" % V.http4s
     val http4sCirce = "org.http4s" %% "http4s-circe" % V.http4s
     val catsParse = "org.typelevel" %% "cats-parse" % V.catsParse
+    // Optics and derived Eq/Show for the ledger-state mirror (ledger/state).
+    val monocleCore = "dev.optics" %% "monocle-core" % V.monocle
+    val monocleMacro = "dev.optics" %% "monocle-macro" % V.monocle
+    val kittens = "org.typelevel" %% "kittens" % V.kittens
 
     // The UPLC machine and builtins; all Scalus artifacts move together.
     val scalus = "org.scalus" %% "scalus" % V.scalus
@@ -56,6 +62,7 @@ object Dependencies {
     val catsEffectTestkitTest = "org.typelevel" %% "cats-effect-testkit" % V.catsEffect % Test
     val munitScalaCheckTest = "org.scalameta" %% "munit-scalacheck" % V.munitScalaCheck % Test
     val munitTest = "org.scalameta" %% "munit" % V.munit % Test
+    val monocleLawTest = "dev.optics" %% "monocle-law" % V.monocle % Test
     val circeParserTest = "io.circe" %% "circe-parser" % V.circe % Test
   }
 
