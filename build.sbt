@@ -118,6 +118,7 @@ lazy val ledger = scarab("ledger")
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
       Libraries.cats,
+      Libraries.catsMtl,
       Libraries.circeParser,
       Libraries.monocleCore,
       Libraries.monocleMacro,

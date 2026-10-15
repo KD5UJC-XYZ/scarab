@@ -24,8 +24,8 @@ enum VocabError derives Show:
 object VocabError:
   /** The vocabulary type a [[VocabError]] is about. */
   enum Kind derives Show:
-    case Coin, CompactCoin, EpochNo, SlotNo, BlockNo, KeyHash, ScriptHash, VRFVerKeyHash, Hash32,
-      NonZero
+    case Coin, CompactCoin, EpochNo, SlotNo, BlockNo, BlockCount, KeyHash, ScriptHash,
+      VRFVerKeyHash, Hash32, NonZero
 
 // ---- key roles (`Cardano.Ledger.Keys`: `KeyRole`, a phantom of key hashes and credentials)
 
@@ -231,6 +231,9 @@ object NonZero:
     Either.cond(!z.isZero(a), a, VocabError.Zero(VocabError.Kind.NonZero))
 
   extension [A](z: NonZero[A]) def value: A = z
+
+  /** The word 1, the count of a VRF key hash registered once (`knownNonZeroBounded @1`). */
+  val oneWord: NonZero[Word64] = Word64.fromUnsigned(1L)
 
   given [A: Order]: Order[NonZero[A]] = Order[A]
   given [A: Show]: Show[NonZero[A]] = Show.show(z => s"NonZero(${Show[A].show(z)})")
