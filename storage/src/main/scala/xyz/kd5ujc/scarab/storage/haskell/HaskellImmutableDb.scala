@@ -237,7 +237,7 @@ object SecondaryIndex:
     if bytes.length % EntrySize != 0 && !tolerateTornTail then
       Left(ChunkFault.SecondaryLength(bytes.length))
     else
-      Binary.decodeEach(entry, bytes, EntrySize, bytes.length / EntrySize).left.map {
+      Binary.decodeEach(entry, bytes, 0, EntrySize, bytes.length / EntrySize).left.map {
         case (i, Binary.Failure.OutOfRange(Binary.Field.BlockOffset, _, _)) =>
           ChunkFault.BlockOffsetRange(i)
         case (i, Binary.Failure.OutOfRange(Binary.Field.Slot, _, _)) => ChunkFault.SlotRange(i)

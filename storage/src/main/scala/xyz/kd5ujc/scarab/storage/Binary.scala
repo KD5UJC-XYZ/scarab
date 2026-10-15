@@ -19,7 +19,7 @@ object Binary:
 
   /** The fields a codec can reject. */
   enum Field:
-    case BlockOffset, Slot, BlockNo
+    case BlockOffset, Slot
 
   /** Why the bits of a field are not a value of its type. Extends scodec's `Err` so that it flows
     * through every combinator unchanged; consumers match on it instead of on text.
@@ -69,13 +69,14 @@ object Binary:
       _ => Attempt.successful(expected)
     )
 
-  /** `count` consecutive values of `codec`, each in its own `size` bytes of `bytes`, from the
-    * start; on the first failure its index and cause. Giving every value a window of its own keeps
-    * the bit vector that the codec reads small and flat.
+  /** `count` consecutive values of `codec`, each in its own `size` bytes of `bytes` from `from`; on
+    * the first failure its index and cause. Giving every value a window of its own keeps the bit
+    * vector that the codec reads small and flat.
     */
   def decodeEach[A](
       codec: Codec[A],
       bytes: Array[Byte],
+      from: Int,
       size: Int,
       count: Int
   ): Either[(Int, Err), Vector[A]] =
@@ -84,7 +85,7 @@ object Binary:
     @tailrec def go(i: Int): Either[(Int, Err), Vector[A]] =
       if i == count then Right(out.result())
       else
-        codec.decode(view.slice(i.toLong * size, (i + 1L) * size).bits) match
+        codec.decode(view.slice(from + i.toLong * size, from + (i + 1L) * size).bits) match
           case Attempt.Successful(DecodeResult(a, _)) =>
             out += a
             go(i + 1)

@@ -13,6 +13,9 @@ import xyz.kd5ujc.scarab.storage.haskell.*
   * bytes out for every value the old encoder wrote faithfully.
   */
 class HaskellFormatsDiffSuite extends ScalaCheckSuite:
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters.withMinSuccessfulTests(1000)
+
   private val chunkSlots = ChunkSlots.of(20).get
 
   private val entryGen: Gen[SecondaryEntry] =
