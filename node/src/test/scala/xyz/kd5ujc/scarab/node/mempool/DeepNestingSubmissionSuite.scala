@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalTxSubmission, TxSubmission2}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.node.forge.{BlockBuilder, MempoolStateFixture}
+
 import PreprodDeepTx.{bytes as tx, onSmallStack}
 import Peers.typed
 
