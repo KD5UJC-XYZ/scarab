@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.Id
 import java.nio.file.Path
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
 import TestLedger.*

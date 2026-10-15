@@ -1,7 +1,7 @@
 # Network fixtures
 
 Byte-exact mini-protocol and multiplexer messages for the codecs in `network/` and for the generated models
-(`models-spike`). One hex-encoded message per line (several lines in a file where a file holds a family of
+(`models`). One hex-encoded message per line (several lines in a file where a file holds a family of
 messages). Everything here is **specified or derived from sources, not recorded from a running node**: no
 file is a transcript of a live connection, and the directory is not interoperability evidence (interoperability
 is shown by the Preview sync and the devnet scenarios, see `docs/compatibility.md`).
@@ -20,7 +20,7 @@ The sources are from IntersectMBO/ouroboros-network at commit `c45735a56c567fa97
 (BlockFetch consensus side). The `manifest.json` files record `"upstreamRuntimeExecuted": false` and
 `"externalEndpointExecutedHere": false`: no upstream code was run and no endpoint was contacted to make them.
 
-Used by `BlockFetchGoldenSuite` (`network`), `NetworkGoldenSuite` (`models-spike`: the handshake files decode like
+Used by `BlockFetchGoldenSuite` (`network`), `NetworkGoldenSuite` (`models`: the handshake files decode like
 the hand-written codec and re-encode to the same bytes) and as seeds of the fuzzers (`fuzz`).
 
 ## Provenance and licence
