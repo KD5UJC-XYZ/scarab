@@ -228,6 +228,11 @@ def relay(args):
         load_stats = next((json.loads(l) for l in reversed(load_lines) if l.startswith("{") and "submitted" in l), {})
         epochs = sorted({p["pool1"]["epoch"] for p in samples if p["pool1"]})
         relay_log = in_ref(args.name, f"cat {RELAY_DIR}/node.log | tail -c 3000").stdout
+        # the relay's own verdict on what we sent it: a decoder failure on any mini-protocol means we
+        # broke the protocol (the connection is dropped and re-established, which the lag check only
+        # catches when it lasts long enough)
+        relay_errors = [line for line in in_ref(args.name, f"cat {RELAY_DIR}/node.log").stdout.splitlines()
+                        if "DecoderFailure" in line and "ExceptionExit" in line]
         final_connections = scala_connections(args)
         first, last = inbound_session(at_sync), inbound_session(final_connections)
         local["adopted"] = any(e["event"] == "mempoolAdopted" and e["tx"] == local["txid"] for e in events)
@@ -297,6 +302,9 @@ def relay(args):
                                     f"is behind the pool's ({pool_tip})")
             if summary["inbound"]["events"]["duplex"] < 1 or summary["inbound"]["events"]["following"] < 1:
                 failures.append(f"missing inbound events: {summary['inbound']['events']}")
+        if relay_errors:
+            failures.append(f"the Haskell relay failed to decode {len(relay_errors)} message(s) from us: "
+                            f"{relay_errors[0][-300:]}")
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
         if other:
