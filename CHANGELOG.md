@@ -5,6 +5,13 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (B16)
+- A Plutus V1 or V2 script may carry bytes after its CBOR byte string, as in `deserialiseScript`
+  (V3: `RemainderError`); Scalus `fromCbor` rejected them. The preprod sync stopped on this at block
+  4,045,972 (transaction aee75c1c, epoch 248, `MalformedReferenceScripts` for a V2 reference script
+  that is its CBOR item twice); `PlutusScriptBytes` cuts the first item before decoding. Fixture
+  `fixtures/preprod/plutus/tx-aee75c1c.json`, `PreprodMalformedRefScriptSuite`, `PlutusScriptBytesSuite`.
+
 ### Fixed (B15)
 - `verifyEcdsaSecp256k1Signature` returns `False` for a signature with `r = 0` or `s = 0` (and for a
   high `s`) and fails only for a malformed key, message or signature (length, key not on the curve,
