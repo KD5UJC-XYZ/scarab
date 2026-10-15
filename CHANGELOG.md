@@ -16,6 +16,21 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   compile-time test of wrong-era access, and an agreement test with `LedgerEncoders`' sort keys.
 - Build: monocle, kittens and monocle-law in `ledger`; `storage` depends on `models`.
 
+### Added (ledger-state mirror, stage S1)
+- `ledger/state`: an unsigned `Word64` (opaque over the two's-complement `Long`; unsigned `Order` and
+  `Show`; `fromBigInt` over [0, 2^64) with `Negative`/`OutOfRange`; total `fromUnsigned`) that `EpochNo`,
+  `SlotNo`, `BlockNo` and `CompactCoin` now wrap, as Haskell's are `Word64`; `EpochNo.next` is `None` at
+  2^64 - 1. `NonZero` takes a `HasZero` class (so `NonZero[Word64]` exists). The `WithOrigin` and `NonZero`
+  orderings are confirmed against cardano-slotting 0.2.2.0 (`Slot.hs:71-82`) and `NonZero.hs:76-78`.
+- `ledger/state`: the ledger tree of the mirror, with the real fields in place of S0's stubs: `LedgerState`,
+  `UTxOState`, `ShelleyCertState`/`ConwayCertState`, `DState` (parameterised by its accounts record),
+  `PState`, `StakePoolState`, `VState`, `DRepState`, `CommitteeState`, Shelley/Conway accounts and instant
+  stake, `ShelleyGovState`/`ConwayGovState`, `FuturePParams`, the completed DRep pulser and the opaque
+  `UtxoTables`; every map is a `SortedMap` in the Haskell key order. One Monocle `Focus` lens per field,
+  composed into the paths of a conversion (`ConwayLedgerState.pools`, `dreps`, `accounts`, `gov`,
+  `proposals`, and `LedgerState.pState` by the era witness). Lens, `Eq` and order tests.
+- `QueryAnswers` uses the mirror's `FuturePParams` instead of a private enum; no NtC byte changes.
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
