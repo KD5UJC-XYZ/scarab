@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.data.Kleisli
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
@@ -13,7 +14,9 @@ import xyz.kd5ujc.scarab.ledger.{Block, Nonce}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   DRepRole,
+  LedgerMirror,
   MirrorEnv,
+  MirrorError,
   ProtVer,
   ShelleyBasedEra,
   SlotNo,
@@ -22,7 +25,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   WithOrigin
 }
 import xyz.kd5ujc.scarab.models.runtime.Codec
-import xyz.kd5ujc.scarab.node.{MirrorCorpus, NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellStateCodecs,
@@ -146,6 +149,9 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val mirrorEnv: MirrorEnv =
     MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
+  // the ledger half of the mirror on its own: these pieces are the ledger state's
+  private type Ledger[A] = Kleisli[[X] =>> Either[MirrorError, X], MirrorEnv, A]
+  private val ledgerMirror: LedgerMirror[Ledger] = LedgerMirror[Ledger]
   private val queryEnv = QueryEnv(
     setup.byronParams
       .flatMap(_.startTime)
@@ -203,7 +209,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   private def mirrored(state: NodeState, block: Block) =
     val at = WithOrigin.At(SlotNo.fromUnsigned(block.header.slot.toLong))
     given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
-    MirrorCorpus.mirror.to[Conway](at, state.ledger).run(mirrorEnv) match
+    ledgerMirror.to[Conway](at, state.ledger).run(mirrorEnv) match
       case Right(m)    => m.value.nes
       case Left(error) => fail(s"the mirror refuses the state: $error")
 
