@@ -16,6 +16,9 @@ def follow(args):
                "--query-port", str(QUERY_PORT)]
     if args.seconds:
         program += ["--seconds", str(args.seconds)]
+    if getattr(args, "mirror_check", False):
+        # the round trip through the mirror of the Haskell state on the live state at each epoch boundary
+        program += ["--mirror-check"]
     mounts = [f"{root / 'genesis'}:/genesis:ro"]
     if getattr(args, "dump_state", False):
         # state digests at every epoch boundary for the db-analyser comparison (`devnet.py oracle`)

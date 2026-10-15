@@ -6,7 +6,7 @@ answers at one point.
 Both nodes are asked for the state at the same block (the Scala node's volatile tip, acquired by
 point on the reference), so the answers must be equal CBOR, not just equal after rendering.
 """
-from . import ntcquery
+from . import gapmask, ntcquery
 from .cbor import Tag, enc
 from .util import MAGIC
 
@@ -125,9 +125,12 @@ def battery(u):
     add("GetCBOR/GetUTxOWhole", [9, [7]])
     add("DebugChainDepState", [13])
     add("GetCBOR/DebugChainDepState", [9, [13]])
+    # the ledger state: answered from the mirror, compared with the documented gaps masked (`gapmask`)
+    add("DebugEpochState", [8])
+    add("DebugNewEpochState", [12])
+    add("GetCBOR/DebugEpochState", [9, [8]])
+    add("GetCBOR/DebugNewEpochState", [9, [12]])
     # not answered yet
-    add("DebugNewEpochState", [12], False)
-    add("GetCBOR/DebugNewEpochState", [9, [12]], False)
     add("GetRewardInfoPools", [18], False)
     add("GetNonMyopicMemberRewards", [2, sset([[0, 1000000000]])], False)
     add("GetLedgerPeerSnapshot", [34, 0], False)
@@ -164,10 +167,13 @@ def ask(session, query):
         return None
 
 
-def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None):
+def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None,
+                  masks=None):
     """One round: acquire the Scala node's volatile tip on both nodes, ask the whole battery.
     Returns (point, [(label, implemented, matched, reference_length, scala_length)]). The two answers
-    of a query that differs are written to `dump_dir` when it is given."""
+    of a query that differs are written to `dump_dir` when it is given. The ledger-state queries
+    (`gapmask.LABELS`) are equal when they are so outside the documented gaps; `masks`, when given, collects
+    per label what was masked (`gapmask.add_to`)."""
     with ntcquery.LocalStateQuery(None, scala_socket, MAGIC, host=True) as probe:
         probe.acquire()
         point = tip_point(probe)
@@ -185,6 +191,13 @@ def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_
             except (RuntimeError, EOFError, OSError):
                 got = None
             matched = expected is not None and expected == got
+            if gapmask.applies(label) and expected is not None and got is not None:
+                verdict = gapmask.compare(label, expected, got)
+                matched = verdict.equal
+                if masks is not None:
+                    gapmask.add_to(masks.setdefault(label, {}), verdict)
+                    if verdict.problems:
+                        masks[label].setdefault("problems", []).append(verdict.problems)
             if not matched and implemented and dump_dir is not None and expected is not None and got is not None:
                 stem = f"diff-{label.replace('/', '_')}-{point[0]}"
                 (dump_dir / f"{stem}.reference").write_bytes(expected)

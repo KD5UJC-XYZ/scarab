@@ -7,6 +7,7 @@
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
+                                   (--mirror-check: also the mirror round trip at each epoch boundary)
     devnet.py relay [--seconds N]  up + the Scala node as a relay (follows the pools, serves a
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
@@ -96,6 +97,9 @@ def main():
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",
                    help="write a ledger-state digest at every epoch boundary to <run dir>/dump (for `oracle`)")
+    f.add_argument("--mirror-check", action="store_true",
+                   help="the follower turns its ledger state into the mirror of the Haskell state and back at the "
+                        "first block and at each epoch boundary, and logs mirrorChecked (never affects the node)")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
@@ -125,6 +129,8 @@ def main():
                     help="the governance load also runs the extended scenarios (about 16 epochs of 500 slots; use --seconds 900)")
     sk.add_argument("--oracle", action="store_true",
                     help="follower writes epoch-boundary state digests; compared with db-analyser at the end")
+    sk.add_argument("--mirror-check", action="store_true",
+                    help="the follower runs with --mirror-check; the soak fails unless every check held")
     sk.set_defaults(run=soak)
     rl = sub.add_parser("relay", parents=[scala_options], help="Scala node as a relay serving a Haskell relay; load through the relay")
     rl.add_argument("--seconds", type=int, default=300, help="load phase length")

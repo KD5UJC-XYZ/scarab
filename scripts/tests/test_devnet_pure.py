@@ -421,7 +421,8 @@ class NtcQueriesTest(unittest.TestCase):
 
     def test_unimplemented_queries_are_marked(self):
         marked = {label for label, _, implemented in ntcqueries.battery(self.universe()) if not implemented}
-        self.assertIn("DebugNewEpochState", marked)
+        self.assertIn("GetRewardInfoPools", marked)
+        self.assertNotIn("DebugNewEpochState", marked)
         self.assertNotIn("GetCurrentPParams", marked)
 
     def test_the_cli_queries_name_their_arguments(self):

@@ -27,7 +27,7 @@ import subprocess
 import sys
 import time
 
-from .. import ntcquery
+from .. import gapmask, ntcquery
 from ..ntclocal import Session, compare_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -65,7 +65,9 @@ CLI_QUERIES = [
     ("ledger-state", "ledger-state"),
 ]
 
-# commands the Scala node does not answer yet (roadmap F1): reported, not failed on
+# `cardano-cli query ledger-state` prints the whole state: the Scala node answers it since the mirror (S9) but
+# differs from the reference inside the documented gaps (`gapmask`), which the LocalStateQuery comparison masks
+# and a text comparison cannot. Reported, not failed on.
 NOT_IMPLEMENTED = {"ledger-state"}
 
 
@@ -153,12 +155,13 @@ def settle(args, root, seconds=90):
     return None
 
 
-def query_rounds(args, root, stats, until, every):
+def query_rounds(args, root, stats, until, every, masks=None):
     rounds = 0
     while time.monotonic() < until:
         try:
             point, results = compare_round(args.name, f"{ENV}/socket/node1/sock",
-                                           str(root / "scala-sock" / "node.socket"), dump_dir=root)
+                                           str(root / "scala-sock" / "node.socket"), dump_dir=root,
+                                           masks=masks)
         except (RuntimeError, EOFError, OSError) as e:
             print(json.dumps({"round": "failed", "error": str(e)[:200]}), flush=True)
             time.sleep(1)
@@ -455,14 +458,14 @@ def ntc(args):
             log = root / f"{command[0]}.log"
             loaders.append(subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, *command],
                                             stdout=log.open("w"), stderr=subprocess.STDOUT))
-        stats = {}
+        stats, masks = {}, {}
         started = time.monotonic()
         # let the load build some state (stake, pools, DReps, proposals) before the first round
         time.sleep(args.warmup)
         chain_sync = {}
         follower_thread = threading.Thread(target=chain_sync_comparison, args=(args, root, chain_sync))
         follower_thread.start()
-        rounds = query_rounds(args, root, stats, started + args.seconds, args.every)
+        rounds = query_rounds(args, root, stats, started + args.seconds, args.every, masks)
         follower_thread.join(300)
         for loader in loaders:
             loader.terminate()
@@ -505,6 +508,7 @@ def ntc(args):
                             "textEqual": sum(r["textEqual"] for r in sub_results),
                             "referenceNamedTheRule": sum(r["referenceNamesRule"] for r in sub_results),
                             "differences": [r for r in sub_results if not (r["rawEqual"] and r["textEqual"])]},
+            "ledgerState": {"gaps": list(gapmask.GAPS), "perQuery": masks},
             "validSubmission": valid,
             "chainSync": chain_sync,
             "txMonitor": monitor,
@@ -514,6 +518,10 @@ def ntc(args):
             failures.append(f"queries that differ from the reference: {mismatched}")
         if not rounds:
             failures.append("no comparison round completed")
+        for label in gapmask.LABELS:
+            row = masks.get(label)
+            if row is None or row.get("equalMasked") != row.get("answers") or row.get("problems"):
+                failures.append(f"{label} is not equal to the reference's outside the documented gaps: {row}")
         badcli = [k for k, v in cli_results.items()
                   if v["total"] and not v["matched"] and k not in NOT_IMPLEMENTED]
         if badcli:

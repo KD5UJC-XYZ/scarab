@@ -38,12 +38,30 @@ def extended_summary(root):
     }
 
 
+def mirror_summary(log):
+    """What the follower's `--mirror-check` found: the checks that held, the eras and gaps they saw, and the
+    ones that did not hold or were refused."""
+    checked = [e for e in log if e.get("event") == "mirrorChecked"]
+    failed = [e for e in log if e.get("event") == "mirrorCheckFailed"]
+    return {
+        "checked": len(checked),
+        "ok": sum(1 for e in checked if e["ok"]),
+        "failed": failed,
+        "notOk": [e for e in checked if not e["ok"]],
+        "eras": sorted({e["era"] for e in checked}),
+        "epochs": sorted({e["epoch"] for e in checked}),
+        "gaps": sorted({g for e in checked for g in e["gaps"]}),
+        "maxMillis": max((e["millis"] for e in checked), default=0),
+    }
+
+
 def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
     up(args)
     follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
-                                 *(["--dump-state"] if getattr(args, "oracle", False) else [])],
+                                 *(["--dump-state"] if getattr(args, "oracle", False) else []),
+                                 *(["--mirror-check"] if getattr(args, "mirror_check", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
                               stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
@@ -85,6 +103,9 @@ def soak(args):
         "errors": [e for e in log if e.get("event") == "error"],
         "load": (root / "load.log").read_text().strip().splitlines()[-1:],
     }
+    mirror = mirror_summary(log) if getattr(args, "mirror_check", False) else None
+    if mirror is not None:
+        summary["mirrorCheck"] = mirror
     extended = extended_summary(root) if getattr(args, "governance_extended", False) else None
     if extended is not None:
         summary["governanceExtended"] = extended
@@ -105,6 +126,9 @@ def soak(args):
         failures.append("follower logged errors")
     if not follower_alive:
         failures.append("follower exited before the end")
+    if mirror is not None and (not mirror["checked"] or mirror["failed"] or mirror["notOk"]):
+        failures.append(f"mirror check: {mirror['checked']} checked, {len(mirror['failed'])} refused, "
+                        f"{len(mirror['notOk'])} not ok")
     if extended is not None:
         if extended["refusedUnexpectedly"]:
             failures.append("a transaction the reference was expected to refuse was not refused as expected")
