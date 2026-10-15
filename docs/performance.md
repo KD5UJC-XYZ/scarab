@@ -234,9 +234,11 @@ and the Scala node's slot clock was one second behind the network's. In the runs
 blocks of the other pools reached the Scala node 0.99 s before their slot began by its clock (the
 final build's forged blocks were logged 1.0 s after their slot, in healthy runs 5 ms), so a leader slot of
 the Scala node finds the tip already at a later slot and is skipped without an event. Healthy runs show
-the forge at +5 ms and the arrivals at +14 ms. I did not find what makes the offset (the Scala node
-and the Haskell nodes read the same `systemStart`, and the base build has it too); the `pool` summary now
-carries `slotClock` (`forgeLatencyMs`, `arrivalMs`) and a failure that names it. So the 1-CPU check passes
+the forge at +5 ms and the arrivals at +14 ms. The cause (roadmap H6, found afterwards): the Haskell
+nodes start their clock at the Byron genesis' `startTime`, not at the Shelley `systemStart` the Scala node
+used, and the scenario wrote the two a second apart in some runs (`create-env` stamps the Byron one, the
+scenario then rewrote only the Shelley one). The node now follows the Byron one, and the scenario writes both. The
+`pool` summary carries `slotClock` (`forgeLatencyMs`, `arrivalMs`) and a failure that names an offset. So the 1-CPU check passes
 whenever the clocks agree, and the scheduling numbers of the failed runs are as good as the others'.
 
 ### What did not work (the order matters)

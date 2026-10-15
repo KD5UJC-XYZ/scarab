@@ -156,6 +156,8 @@ def main():
     pl.add_argument("--compare-every", type=int, default=30, help="seconds between ledger comparisons")
     pl.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
     pl.add_argument("--start-delay", type=int, default=15, help="seconds from now to the system start")
+    pl.add_argument("--byron-start-offset", type=int, default=0,
+                    help="seconds the Byron genesis' startTime (the reference's clock) is set off the Shelley systemStart")
     pl.add_argument("--seed", type=int, default=1, help="random seed of the load")
     pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
     pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")

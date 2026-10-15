@@ -68,6 +68,21 @@ object Genesis:
           )
         )
 
+  /** The reference node's clock starts at the Byron genesis' `startTime` (whole seconds), which on
+    * a network started with `cardano-testnet` or by hand need not equal the Shelley genesis'
+    * `systemStart`: the hard-fork combinator takes its system start from the Byron genesis, and the
+    * Shelley value is only read for the Shelley parameters. A node that used the Shelley value
+    * would run a slot clock that differs from the network's by the difference of the two (found on
+    * the devnet, where the two were written a second apart). Without a Byron genesis the Shelley
+    * value stands.
+    */
+  def withSystemStart(genesis: ShelleyGenesis, byron: Option[ByronGenesis]): ShelleyGenesis =
+    byron
+      .flatMap(_.startTime)
+      .fold(genesis)(seconds =>
+        genesis.copy(geometry = genesis.geometry.copy(systemStart = Instant.ofEpochSecond(seconds)))
+      )
+
   private[node] def field[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name).as[A].leftMap(e => ConfigError(s"genesis field $name: ${e.message}"))
 

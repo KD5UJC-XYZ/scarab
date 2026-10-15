@@ -164,7 +164,10 @@ object NodeSetup:
       byron <-
         if firstShelley.contains(BigInt(0)) then Right(None)
         else ByronGenesisFile.parse(text(byronBytes), config.byronGenesisHash).map(Some(_))
-      genesis <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
+      prefixed <- Genesis.withByronPrefix(shelleyBase, byron, firstShelley)
+      // the Byron genesis of a chain that starts in Shelley is read only for its parameters
+      byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
+      genesis = Genesis.withSystemStart(prefixed, byronParams)
       byronJson <- json(names.byron, byronBytes)
       // The network magic Byron addresses carry: the configuration says whether the network
       // requires one; without it, mainnet does not and the test networks do.
@@ -194,7 +197,6 @@ object NodeSetup:
         HardForkConfig.fromEpochs(config.hardForkEpochs)
       )
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
-      byronParams = byron.orElse(ByronGenesisFile.parse(text(byronBytes), None).toOption)
       byronRules <- byron.traverse { b =>
         val ledgerConfig = ByronLedger.Config(b, requiresMagic)
         ByronLedger.initial(ledgerConfig).leftMap(ConfigError(_)).map { ledger =>

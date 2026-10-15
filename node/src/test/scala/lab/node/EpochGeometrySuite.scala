@@ -90,3 +90,50 @@ class EpochGeometrySuite extends ScalaCheckSuite:
     assertEquals(g.slotStart(50), start.plusMillis(50000))
     assertEquals(g.slotStart(51), start.plusMillis(50100))
   }
+
+  private val offsets: Gen[EpochGeometry] = for
+    millis <- Gen.choose(0L, 1999L)
+    slot <- Gen.oneOf(100L, 200L, 250L, 500L, 1000L, 20000L)
+    epochs <- Gen.choose(0, 3)
+    length <- Gen.choose(300, 2000)
+  yield EpochGeometry(
+    start.plusMillis(millis),
+    slot,
+    length,
+    5,
+    BigDecimal("0.2"),
+    if epochs == 0 then ByronSpan.Absent else ByronSpan(epochs, 50, 20000)
+  )
+
+  property(
+    "a slot starts exactly at its time: slotAt is the inverse of slotStart, to the millisecond"
+  ) {
+    forAll(offsets, Gen.choose(0L, 100000L)) { (g, slot) =>
+      val at = g.slotStart(slot)
+      g.slotAt(at) == BigInt(slot) &&
+      g.slotAt(at.plusMillis(g.slotLengthMillis.min(1000) - 1)) == BigInt(slot)
+    }
+  }
+
+  property(
+    "the instant before a slot start still belongs to the slot before (no whole-second rounding)"
+  ) {
+    forAll(offsets, Gen.choose(1L, 100000L)) { (g, slot) =>
+      g.slotAt(g.slotStart(slot).minusMillis(1)) == BigInt(slot - 1)
+    }
+  }
+
+  test("a fractional system start moves slot boundaries by the fraction, not by a second") {
+    val g = EpochGeometry(start.plusMillis(350), 100, 500, 5, BigDecimal("0.2"))
+    assertEquals(g.slotAt(start.plusMillis(349)), BigInt(0))
+    assertEquals(g.slotAt(start.plusMillis(449)), BigInt(0))
+    assertEquals(g.slotAt(start.plusMillis(450)), BigInt(1))
+    assertEquals(g.slotAt(start.plusMillis(1349)), BigInt(9))
+    assertEquals(g.slotAt(start.plusMillis(1350)), BigInt(10))
+    // a system start one whole second apart is ten slots apart
+    val earlier = g.copy(systemStart = start.minusMillis(650))
+    assertEquals(
+      earlier.slotAt(start.plusMillis(1350)) - g.slotAt(start.plusMillis(1350)),
+      BigInt(10)
+    )
+  }

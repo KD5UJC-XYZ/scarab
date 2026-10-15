@@ -3,6 +3,7 @@
 import calendar
 import datetime
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,14 +36,23 @@ def pool_topology(name, others, ports):
 
 
 def pool_environment(args):
-    """create-env, a short KES period and a system start a few seconds ahead; returns the node ports."""
+    """create-env, a short KES period and a system start a few seconds ahead; returns the node ports and the genesis as the network's clock sees it."""
     in_ref(args.name, f"cardano-testnet create-env --num-pool-nodes 3 --testnet-magic {MAGIC} "
                       f"--epoch-length {args.epoch_length} --output {ENV} > /work/create-env.log 2>&1")
     start = int(time.time()) + args.start_delay
     shelley = read_json(args.name, f"{ENV}/shelley-genesis.json")
     shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
     shelley["slotsPerKESPeriod"] = POOL_KES_SLOTS
+    # The reference nodes start their clock at the Byron genesis' startTime, not at the Shelley systemStart
+    # (create-env writes the Byron one a moment before this function writes the Shelley one: they used to
+    # differ by whole seconds, which is the slot-clock offset of roadmap H6). Both are written here;
+    # `--byron-start-offset` skews the Byron one on purpose to check that the Scala node follows the Byron one.
+    byron = read_json(args.name, f"{ENV}/byron-genesis.json")
+    byron["startTime"] = start + args.byron_start_offset
+    put_file(args.name, f"{ENV}/byron-genesis.json", json.dumps(byron, indent=2))
     put_file(args.name, f"{ENV}/shelley-genesis.json", json.dumps(shelley, indent=2))
+    # what the rest of the scenario measures slots against: the network's clock
+    shelley = dict(shelley, systemStart=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(byron["startTime"])))
     for n in (1, 2, 3):  # the load generator's wallets: the genesis keys' enterprise addresses
         in_ref(args.name, f"{CLI} address build --payment-verification-key-file {ENV}/utxo-keys/utxo{n}/utxo.vkey "
                           f"--testnet-magic {MAGIC} > {ENV}/utxo-keys/utxo{n}/utxo.addr")
@@ -147,6 +157,17 @@ def missed_leader_slots(events, schedules, shelley):
             "absentEpochs": [e for e in range(window[0] // length, window[1] // length + 1) if e not in schedules]}
 
 
+def host_load():
+    """The host's load average (1 and 5 minutes) and CPU count: a 0.1 s slot on one CPU is only a fair test on a host
+    that is not oversubscribed."""
+    one, five = open("/proc/loadavg").read().split()[:2]
+    return {"load1": float(one), "load5": float(five), "cpus": os.cpu_count()}
+
+
+def overloaded(*loads):
+    return any(l["load1"] > l["cpus"] for l in loads)
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
@@ -162,6 +183,7 @@ def pool(args):
     observer = others[0]
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
     failures, summary, scala, loader = [], {}, None, None
+    load_at_start = host_load()
     comparisons, samples = [], []
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
     try:
@@ -263,6 +285,15 @@ def pool(args):
                 break
         final = settled_tips()
         time.sleep(3)
+        # the forger's own per-epoch counters (H5), from the query server (the Scala container's loopback)
+        fetch = (f"import urllib.request,sys;sys.stdout.write(urllib.request.urlopen("
+                 f"'http://127.0.0.1:{QUERY_PORT}/forging',timeout=10).read().decode())")
+        got = docker("exec", f"{args.name}-scala", "python3", "-c", fetch, check=False, timeout=60)
+        try:
+            forging_stats = json.loads(got.stdout)
+        except ValueError:
+            forging_stats = None
+            failures.append(f"GET /forging gave no JSON: {got.stdout[:100]!r} {got.stderr[:200]!r}")
         events, other = read_log(log)
         counts = {}
         for e in events:
@@ -335,7 +366,21 @@ def pool(args):
             "unparsedScalaOutput": other[:10],
             "scheduling": scheduling_summary(events, log, args),
             "slotClock": slot_clock(events, shelley),
+            "forgerStats": forging_stats,
         }
+        if forging_stats:
+            total = forging_stats["total"]
+            budget = 5 * shelley["slotLength"] * 1000  # a block is adopted within five slots of its slot's start
+            # the counters were read a moment before the log: the node may have forged one more block since
+            if not 0 <= len(forged) - total["forged"] <= 2 or total["leaderSlots"] < total["forged"]:
+                failures.append(f"the forger's counters ({total['forged']} forged of {total['leaderSlots']} led slots) "
+                                f"disagree with the log ({len(forged)} forged blocks)")
+            if not 0 <= len(adopted) - total["adopted"] <= 2:
+                failures.append(f"the forger's counters say {total['adopted']} adopted, the log {len(adopted)}")
+            slowest = total["forgeLatencyMs"]["max"]
+            if slowest is not None and slowest > budget:
+                failures.append(f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)")
+            print(json.dumps({"forgerStats": forging_stats}), flush=True)
         if not forged:
             failures.append("the Scala node forged no block")
         if len(adopted) < len(forged) - len(lost):
@@ -395,6 +440,15 @@ def pool(args):
         summary["schedules"] = {str(e): v for e, v in schedules.items()}
         summary["failures"] = failures
         summary["passed"] = not failures
+        summary["host"] = {"atStart": load_at_start, "atEnd": host_load()}
+        # misses that are all "the forger was busy" on an oversubscribed host say nothing about the slot clock
+        busy_only = (summary.get("oracle", {}).get("missed") and
+                     set(summary["oracle"]["missedReasons"].values()) == {"the forger was busy with an earlier slot"} and
+                     all("scheduled leader slots were neither" in f for f in failures))
+        inconclusive = bool(failures) and busy_only and overloaded(load_at_start, summary["host"]["atEnd"])
+        summary["verdict"] = ("inconclusive: host overloaded (load average above the CPU count) and the only misses are "
+                              "slots the forger was busy for" if inconclusive else
+                              "passed" if not failures else "failed")
         if root.exists():
             (root / "pool-summary.json").write_text(json.dumps(summary, indent=2))
         print(json.dumps(summary, indent=2))
@@ -402,4 +456,4 @@ def pool(args):
             docker("rm", "-f", ref(args.name), check=False)
             shutil.rmtree(root / "classes", ignore_errors=True)
             shutil.rmtree(root / "keys", ignore_errors=True)
-    sys.exit(0 if not failures else 1)
+    sys.exit(0 if not failures else 2 if inconclusive else 1)

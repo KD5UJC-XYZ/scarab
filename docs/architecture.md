@@ -840,6 +840,21 @@ Errors are a closed ADT, `ForgeError`: `KeyFile`, `KeyMismatch`, `KeyPeriodOutOf
 stake), `adopted`, `lost` (the block did not join our chain, or was replaced at its height later),
 `kesEvolved`, `forgeSkipped`, `forgeFailed`.
 
+The slot clock starts at the Byron genesis' `startTime` (whole seconds) when there is a Byron genesis
+file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise
+(`Genesis.withSystemStart`; the `started` line logs the instant as `systemStart`). The two files agree on
+the public networks, but a hand-made network can write them apart, and a node that used the Shelley value
+then runs its slots a whole number of seconds away from the network's (roadmap H6).
+
+Counters (`ForgeStats`, per epoch; roadmap H5): slots checked for leadership, leader slots, forged, adopted,
+lost (slot battles lost at adoption, and blocks replaced later), failed, slots not checked by reason
+(`busy`: the loop was still on an earlier slot; `tipTooOld`; `slotOccupied`: a block already held the slot or
+a later one; `notConnected`), and the forge latency (slot start to adoption: count, mean, max). The first two
+reasons are also logged one by one as `forgeSkipped`. A `forgeEpoch` line carries an epoch's counters when
+the next epoch begins, an `adopted` line carries its `latencyMs`, and `GET /forging` on the query port
+serves the counters per epoch and in total (the `pool` scenario reads it and asserts it against the log:
+forged and adopted counts equal, no block took more than five slots from its slot's start to adoption).
+
 Tests: `ForgeSuite` forges with real keys against the real `NodeRules` over a synthetic Conway ledger (blocks are
 accepted, consecutive, counted for the pool, transactions leave the mempool, the KES key crosses period
 boundaries, an unregistered VRF key or a certificate outside its window never forges, lost and invalid

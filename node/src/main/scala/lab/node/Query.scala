@@ -363,7 +363,9 @@ object QueryServer:
       /** The whole-run scheduling measurements, served at `/scheduling`. */
       scheduling: Option[F[Json]] = None,
       /** The connection manager's table and the inbound sessions, served at `/connections`. */
-      connections: Option[F[Json]] = None
+      connections: Option[F[Json]] = None,
+      /** The forger's counters per epoch, served at `/forging` (only on a node that forges). */
+      forging: Option[F[Json]] = None
   ): Resource[F, Server] =
     val dsl = Http4sDsl[F]
     import dsl.*
@@ -383,6 +385,8 @@ object QueryServer:
         }
       case GET -> Root / "connections" =>
         connections.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
+      case GET -> Root / "forging" =>
+        forging.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case GET -> Root / "scheduling" =>
         scheduling.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case GET -> Root / "state" :? SlotParam(slot) +& HashParam(hash) =>

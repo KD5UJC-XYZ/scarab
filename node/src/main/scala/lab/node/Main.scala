@@ -605,9 +605,9 @@ object Main extends IOApp:
                 connected.get,
                 utxoStore = Some(store)
               )
-            yield forger.run
+            yield forger
           }
-          production = forging.fold(Resource.unit[IO])(_.background.void)
+          production = forging.fold(Resource.unit[IO])(_.run.background.void)
           reporting =
             if options.memoryReportSeconds <= 0 then Resource.unit[IO]
             else
@@ -624,7 +624,8 @@ object Main extends IOApp:
               Some(scheduling.stats.total.map(JsonLog.schedulingTotal)),
               Some(
                 (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
-              )
+              ),
+              forging.map(_.stats.byEpoch.map(JsonLog.forgeReport))
             )
             .flatMap(_ => relay)
             .flatMap(_ => local)

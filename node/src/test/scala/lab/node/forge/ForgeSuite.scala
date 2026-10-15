@@ -117,7 +117,8 @@ class ForgeSuite extends CatsEffectSuite:
       connected: Boolean = true,
       maxTipAge: BigInt = 1000000,
       live: Boolean = false,
-      ready: Option[IO[Boolean]] = None
+      ready: Option[IO[Boolean]] = None,
+      offsetMillis: Long = 0
   )(using Handle[IO, NodeError]): IO[Harness] =
     for
       ref <- Ref.of[IO, VolatileChain[NodeState]](
@@ -159,7 +160,8 @@ class ForgeSuite extends CatsEffectSuite:
         maxTipAge = Some(maxTipAge),
         // `live`: the real loop on the (test) clock, starting at slot 5000; else steps are driven by hand
         now = Some(
-          if live then IO.realTimeInstant.map(_.plusSeconds(5000)) else IO.pure(Instant.EPOCH)
+          if live then IO.realTimeInstant.map(_.plusSeconds(5000).plusMillis(offsetMillis))
+          else IO.pure(Instant.EPOCH)
         ),
         sleep = if live then None else Some(_ => IO.unit)
       )
@@ -228,6 +230,82 @@ class ForgeSuite extends CatsEffectSuite:
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
       }
     )
+  }
+
+  test(
+    "the loop follows a system start that is not on a whole second: no slot is lost or doubled"
+  ) {
+    val p = pool(kesStart = 50, seed = 9)
+    val leads = (5000 until 5200).filter(s =>
+      Leadership
+        .check(s, epochNonce, p.creds.vrf, 1000000, 1000000, config.activeSlotsCoeff)
+        .isRight
+    )
+    // the clock stands 437 ms into a slot's tenth of a second relative to the genesis' whole second
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 437)
+          fiber <- h.forger.run.start
+          _ <- IO.sleep(200500.millis)
+          _ <- fiber.cancel
+          forged <- forgedIn(h)
+          events <- h.seen
+        yield
+          assertEquals(forged.map(_.slot.toInt).filter(_ < 5200), leads.toVector)
+          assert(!events.exists(_.isInstanceOf[ForgeEvent.Skipped]), events.toString)
+      }
+    )
+  }
+
+  test("per-epoch counters: checked and led slots, blocks, latency; a summary closes each epoch") {
+    val p = pool(kesStart = 50, seed = 9)
+    // the clock starts 10 slots before the end of epoch 5 (slots 5000 to 5999)
+    TestControl.executeEmbed(
+      withHandle {
+        for
+          h <- harness(p, ledgerWith(p, 1), live = true, offsetMillis = 990000)
+          fiber <- h.forger.run.start
+          _ <- IO.sleep(30500.millis)
+          _ <- fiber.cancel
+          forged <- forgedIn(h)
+          events <- h.seen
+          fifth <- h.forger.stats.epoch(5)
+          sixth <- h.forger.stats.epoch(6)
+          total <- h.forger.stats.total
+        yield
+          val summaries = events.collect { case s: ForgeEvent.EpochSummary => s }
+          assertEquals(summaries.map(_.epoch), Vector(BigInt(5)))
+          assertEquals(summaries.head.stats, fifth)
+          assertEquals(fifth.slotsChecked, 10L)
+          assertEquals(sixth.slotsChecked, 21L)
+          assertEquals(total.leaderSlots, forged.size.toLong)
+          assertEquals(total.forged, forged.size.toLong)
+          assertEquals(total.adopted, forged.size.toLong)
+          assertEquals(fifth.forged, forged.count(_.epoch == 5).toLong)
+          assertEquals(sixth.forged, forged.count(_.epoch == 6).toLong)
+          assertEquals(total.latencyCount, forged.size.toLong)
+          assertEquals(total.latencyMaxMs, 0L) // the test clock does not move during a step
+          assertEquals(total.lost + total.failed + total.skippedTotal, 0L)
+      }
+    )
+  }
+
+  test("slots that cannot be checked are counted by reason") {
+    val p = pool(kesStart = 50, seed = 7)
+    withHandle {
+      for
+        h <- harness(p, ledgerWith(p, 1), connected = false)
+        _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
+        offline <- h.forger.stats.total
+        h2 <- harness(p, ledgerWith(p, 1), maxTipAge = 500)
+        _ <- (5000 until 5003).toList.traverse_(s => h2.forger.step(s))
+        old <- h2.forger.stats.total
+      yield
+        assertEquals(offline.skipped, Map(ForgeEpochStats.NotConnected -> 40L))
+        assertEquals(offline.slotsChecked, 0L)
+        assertEquals(old.skipped, Map(ForgeEpochStats.TipTooOld -> 3L))
+    }
   }
 
   test("slots that pass while a step is still running are reported as skipped") {
