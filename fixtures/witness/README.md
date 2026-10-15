@@ -64,8 +64,8 @@ while system sodium and the strict prototype reject them. All accept mixed-order
 
 The derived files were produced by `scripts/project-witness-fixtures.py` (a stdlib-only projector
 that pinned the source, archive, license and provenance hashes and regenerated `SHA256SUMS`). That
-tooling, and the provenance guide it referred to, were removed in commit `6d330b5` ("Remove research
-and evidence modules, scripts and docs"); see git history (`git show 6d330b5^:scripts/project-witness-fixtures.py`).
+tooling, and the provenance guide it referred to, were removed in commit `61f9119` ("Remove research
+and evidence modules, scripts and docs"); see git history (`git show 61f9119^:scripts/project-witness-fixtures.py`).
 The fixtures are frozen evidence: today they are checked by `SHA256SUMS` and consumed by the
 `core` tests (`StrictEd25519Suite`).
 

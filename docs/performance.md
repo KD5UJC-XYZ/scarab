@@ -10,7 +10,7 @@ Setup (all runs): 24-core host, Docker, JDK 21 Temurin, Preview via
 from the running node and aggregated over `jdk.ExecutionSample`; JFR samples a few threads per
 interval, so shares below are shares of samples.
 
-## 1. Baseline (commit 47f7208): where the time went
+## 1. Baseline (commit ef68faf): where the time went
 
 Replay of 526,726 stored Preview blocks from genesis (no network), 4 CPUs:
 
@@ -96,10 +96,10 @@ pipelined peer, 20 blocks/s before. The slowest stretches are the Plutus-dense b
 
 ### Final uninterrupted run
 
-One process on one build: commit 5cfdefd (frozen classes), fresh db, `follow --db`, no restarts, no
+One process on one build: commit d66b216 (frozen classes), fresh db, `follow --db`, no restarts, no
 code changes, `-Xmx3g`, 6 CPUs, peer `preview-node.play.dev.cardano.org:3001`, network magic 2. The
-tag `v0.1.0` will be on a later commit (hygiene, docs, CI on top of 5cfdefd, no intended behaviour
-change, all gates re-run); the sync ran on 5cfdefd.
+tag `v0.1.0` will be on a later commit (hygiene, docs, CI on top of d66b216, no intended behaviour
+change, all gates re-run); the sync ran on d66b216.
 
 - Start 2026-10-11 15:50:22Z, tip reached 19:27:04Z (3h36m42s): 4,748,226 blocks, epochs 0 to 1447,
   about 365 blocks/s average.
@@ -147,7 +147,7 @@ Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted 
 
 ## Preprod from genesis (C4)
 
-Commit 4606cf4, frozen classes, fresh db, `follow --db`, `-Xmx3g`, container `--cpus 4 --memory 10g`,
+Commit 6dd8be3, frozen classes, fresh db, `follow --db`, `-Xmx3g`, container `--cpus 4 --memory 10g`,
 2026-10-11, `--seconds 3600` against `preprod-node.play.dev.cardano.org:3001`, no restart: 697,724
 blocks in 60 minutes (about 195 blocks/s, slower than Preview because preprod's early epochs are dense
 and the full ledger runs from Shelley; the other devnet and sbt jobs shared the machine for part of
@@ -159,7 +159,7 @@ build (restart from the db after two minutes) agreed (epoch 54, 0 errors).
 ## 6. Restart and scheduling (D4, D8)
 
 Measured on this branch (the commit is in [compatibility.md](compatibility.md) with the other
-evidence) against `origin/main` at 5ec40f8, "base", extracted and built separately. The sync runs:
+evidence) against `origin/main` at 7842866, "base", extracted and built separately. The sync runs:
 Preview from genesis, fresh `--db`, `follow --db`, 1860 s, `--seconds` ending the run (a graceful stop).
 **The host had a load average of 25 to 35 on 24 cores (other work, several syncs and clusters at the
 same time), so the absolute rates are about half of section 3's and only runs that were started
@@ -226,7 +226,7 @@ the reference node's `query leadership-schedule`), final build, 480 s each, G1 w
 |---|---|---|---|---|---|---|---|
 | 2 CPUs | 1 | 1 | 72 | | 0 | 22 ms | 39 ms |
 | 1 CPU | 14 | 11 | 58 to 93 | 17 of 71, 19 of 69, 16 of 88 | 0 in all 14 | 69 to 134 ms | 20 to 93 ms |
-| 1 CPU, base build (`5ec40f8`, scenario edited to give the container 1 CPU and the same JVM flags) | 6 | 5 | 73 to 95 | 24 of 89 | not measured | | |
+| 1 CPU, base build (`7842866`, scenario edited to give the container 1 CPU and the same JVM flags) | 6 | 5 | 73 to 95 | 24 of 89 | not measured | | |
 
 All comparisons matched (16/16 in each run). The three failing runs of the final build and the one of the
 base build have the same signature, and it is not the CPU: the forger logs nothing for the missed slots,
@@ -264,7 +264,7 @@ does. Moving verification onto the same pool serialised it behind the rules, and
 ### How to repeat
 
 ```sh
-# base: git archive 5ec40f8 into a directory, build it there, freeze its classes (as devnet.py does)
+# base: git archive 7842866 into a directory, build it there, freeze its classes (as devnet.py does)
 # final: freeze this checkout's classes; then, for each CPU count and JVM flags, in parallel:
 docker run --rm --cpus 1 --memory 10g -v <frozen classes>:/run/classes:ro ... cardano-scala-jdk:local \
   java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -cp <classpath> xyz.kd5ujc.scarab.node.Main follow \
@@ -379,7 +379,7 @@ section says where the memory is and what bounds it. Measurements are one develo
 was busy with other work (load average 2 when the 45-minute profile started, 25 to 37 in the hours after), so
 the blocks per second are only comparable between runs started together.
 
-**Method.** Commit 1c13c5a added `--memory-report-seconds N`: a `memory` log line with the JVM's own
+**Method.** Commit 1e36a2d added `--memory-report-seconds N`: a `memory` log line with the JVM's own
 accounting (heap used and committed, non-heap, metaspace, the direct and mapped buffer pools, thread
 count, collections), the kernel's view of the process (`/proc/self/status`: `RssAnon`, `RssFile`),
 the container's (cgroup v2 `memory.current` and its `anon`/`file` split) and the RocksDB properties of
@@ -392,7 +392,7 @@ what NMT and the store report, so it names glibc's arenas as what is left (and t
 
 **Profile: Preview from genesis, 45 minutes, fresh database, two runs started together** (`--cpus 6`,
 container limit 10 GiB, `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, the build before D1,
-commit 1c13c5a, `--utxo-cache-mb 256`), one with glibc's default arenas and one with
+commit 1e36a2d, `--utxo-cache-mb 256`), one with glibc's default arenas and one with
 `MALLOC_ARENA_MAX=2`. `RssAnon` is the resident anonymous memory of the process (heap, malloc,
 thread stacks); the cgroup `current` adds the page cache of the files the node wrote and read:
 

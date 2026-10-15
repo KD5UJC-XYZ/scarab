@@ -336,7 +336,7 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [0.1.0] - 2026-10-11 - research preview
 
-The uninterrupted Preview genesis-to-tip sync ran on commit 5cfdefd (4,748,226 blocks in 3h36m42s,
+The uninterrupted Preview genesis-to-tip sync ran on commit d66b216 (4,748,226 blocks in 3h36m42s,
 0 error events, final tip identical to Koios; see [docs/performance.md](docs/performance.md)). The tag
 is on a later commit (hygiene, docs, CI, forge-loop reporting; no intended behaviour change). On the
 tagged code `check` (494 node tests), soak (24/24 and 30/30), e2e (every era matched), relay and
@@ -345,45 +345,45 @@ pool all passed; the pool scenario now asserts every scheduled leader slot again
 
 ### Foundation
 - Cleanup to a tagless-final code base: pure `core` and `network`, fs2 `network-runtime`, `node`
-  with cats-mtl typed errors; research modules, scripts and documents removed (6d330b5, history at 8dca66c).
-- Network runtime rebuilt on fs2 as algebras over one multiplexed connection (e04dc9a).
+  with cats-mtl typed errors; research modules, scripts and documents removed (61f9119, history at f4ce3f8).
+- Network runtime rebuilt on fs2 as algebras over one multiplexed connection (be15eed).
 
 ### Consensus
 - Praos header validation (VRF, KES, operational certificates, nonces) and TPraos validation with the
-  overlay schedule; Preview followed from genesis (6332426).
-- Era-aware headers and blocks for Byron, TPraos and Praos (d6122c7); Byron to Conway follow with
-  the Byron signature check (8c8258b).
-- Praos chain selection over several peers (bb38470).
+  overlay schedule; Preview followed from genesis (592399e).
+- Era-aware headers and blocks for Byron, TPraos and Praos (df0bbb4); Byron to Conway follow with
+  the Byron signature check (7b4b08f).
+- Praos chain selection over several peers (f2f8446).
 - Block forging: ECVRF draft-03 proving, Sum6 KES generation, signing and evolution, leader check,
-  block assembly from the mempool, adoption (00450a9, 803aefb).
+  block assembly from the mempool, adoption (840bbaf, d5a19b2).
 
 ### Ledger
-- Full Shelley to Babbage ledger: UTXO/UTXOW/DELEGS/PPUP, MIR, rewards, epoch boundary (baee535, f2e0d34).
+- Full Shelley to Babbage ledger: UTXO/UTXOW/DELEGS/PPUP, MIR, rewards, epoch boundary (7300951, 5de16ae).
 - Plutus V1 to V3 phase 2 via Scalus behind a `ScriptEvaluator` algebra, own script contexts and
-  script data hash (35ff3e6, 82ab9b3, be02666).
+  script data hash (fa907ac, 990f620, abf6b1e).
 - Conway: transaction rules, scripts, certificates, governance, ratification, enactment, DRep
-  pulser (a785baf, 87a36d4, 21bdedd); governance snapshot codecs (47f7208).
+  pulser (946d787, 788f51c, d7e0de0); governance snapshot codecs (ef68faf).
 - Block execution-unit limits validated on received blocks and enforced when forging.
-- Fixes found by syncing Preview: pledge owners' stake (ca925cf), pointer addresses at the Conway
-  boundary (ff735db), repeated redeemer purposes (aabb240, bd4871f), Plutus V1 with reference inputs
-  (e5beb60), `NewConstitution` context (73e5b4f), CBOR nesting depth (f3003aa); reward-update
-  activation (8d81d5c).
+- Fixes found by syncing Preview: pledge owners' stake (74a01ae), pointer addresses at the Conway
+  boundary (f133dcd), repeated redeemer purposes (d8dc65d, 32bc14f), Plutus V1 with reference inputs
+  (d8315bd), `NewConstitution` context (5bc16a2), CBOR nesting depth (429c8e0); reward-update
+  activation (1ff2934).
 
 ### Network and relay
 - Node-to-node servers: duplex mux, handshake, ChainSync, BlockFetch, KeepAlive, TxSubmission2 over
-  TCP (dad6087); the node serves its own chain and holds transactions in a mempool (aac9996).
-- Node-to-client LocalTxSubmission over a Unix socket (435d2fc).
-- BlockFetch ranges cut by body size and intersection candidates thinned (d0ed44d).
+  TCP (0f27403); the node serves its own chain and holds transactions in a mempool (b10f102).
+- Node-to-client LocalTxSubmission over a Unix socket (2cc9840).
+- BlockFetch ranges cut by body size and intersection candidates thinned (7351502).
 
 ### Storage and scale
-- `ImmutableStore`, `LedgerSnapshots`, restart recovery (b1a7f85); snapshot reader fix (24cef6b).
-- UTxO set behind `UtxoStore` with RocksDB and memory interpreters, incremental stake (a71db6a).
-- Compact array-backed bytes (1ef066d); parallel verification ahead of the rules (aee62d9); pipelined
-  peer (84d3e54, d97196f); cached per-block recomputation (1426627, 0cc6ef3).
+- `ImmutableStore`, `LedgerSnapshots`, restart recovery (b5d46ae); snapshot reader fix (ae5eb81).
+- UTxO set behind `UtxoStore` with RocksDB and memory interpreters, incremental stake (55bf406).
+- Compact array-backed bytes (5a8a3f9); parallel verification ahead of the rules (9225835); pipelined
+  peer (c139494, 8297223); cached per-block recomputation (eecdc02, 3cdac59).
 
 ### Tooling and evidence
-- `devnet.py`: `up-eras` and `e2e` (b5667f8, 8c8258b), per-era load and comparison (85721cb),
-  Conway governance load (6f6e659), `relay` (8f35379), `pool` (288582d); fixtures `fixtures/eras`
+- `devnet.py`: `up-eras` and `e2e` (c7054c9, 7b4b08f), per-era load and comparison (3a0da52),
+  Conway governance load (7d360ba), `relay` (ac025df), `pool` (b5fbec3); fixtures `fixtures/eras`
   and Preview governance/Plutus cases.
 - Documentation overhaul: README, architecture, running, compatibility matrix, performance,
   findings, roadmap; CONTRIBUTING, SECURITY, CODE_OF_CONDUCT; issue and pull request templates;

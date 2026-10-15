@@ -43,8 +43,8 @@ from historical state, or protocol-period values.
 
 The fixtures were admitted by `scripts/project-opcert-fixtures.py` (pinned the manifest digest of all
 evidence and projections before parsing, bounded reads and CBOR depth, for these four fixtures only)
-and exercised by `verify-opcert-projector.py`. Both were removed in commit `6d330b5`; see git
-history (`git show 6d330b5^:scripts/project-opcert-fixtures.py`). The fixtures are frozen evidence,
+and exercised by `verify-opcert-projector.py`. Both were removed in commit `61f9119`; see git
+history (`git show 61f9119^:scripts/project-opcert-fixtures.py`). The fixtures are frozen evidence,
 checked by `sha256.json` and consumed by the `core` tests.
 
 Neither finite positive agreement nor these controls establish a cryptographic security audit,

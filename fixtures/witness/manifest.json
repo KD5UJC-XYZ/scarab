@@ -231,10 +231,10 @@
     "vendored_seed_or_private_key_tables": false
   },
   "reproducibility": {
-    "default": "none: the projector scripts/project-witness-fixtures.py was removed in commit 6d330b5 (see git history); verify the files against SHA256SUMS",
+    "default": "none: the projector scripts/project-witness-fixtures.py was removed in commit 61f9119 (see git history); verify the files against SHA256SUMS",
     "external_packages_required": false,
     "offline_inputs_all_vendored": true,
-    "optional_original_source": "removed with the projector in commit 6d330b5",
+    "optional_original_source": "removed with the projector in commit 61f9119",
     "original_source_fetch": "Separate, optional, exact pinned raw URL; never part of the fixtures; keep seed-bearing source outside the repository."
   },
   "schema_version": 1,
