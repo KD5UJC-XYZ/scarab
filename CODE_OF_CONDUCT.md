@@ -21,7 +21,7 @@ which is incorporated here by reference. In short:
 
 Report unacceptable behavior privately to the maintainers: use a private GitHub security advisory
 on this repository (Security -> Report a vulnerability) and say it is a conduct report, or contact
-the maintainer ottobot-ai through the contact details on their GitHub profile. Reports are handled
+the maintainer [@scasplte2](https://github.com/scasplte2) on GitHub. Reports are handled
 promptly and fairly, and the reporter's privacy is respected. Maintainers follow the Contributor
 Covenant enforcement guidelines (correction, warning, temporary ban, permanent ban) described in the
 canonical text.
