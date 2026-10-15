@@ -501,3 +501,56 @@ class LedgerTablesSuite extends ScalaCheckSuite:
       }
     }
   }
+
+  /** A store that counts what is asked of it. */
+  private final class Counting(inner: LedgerStore[IO]) extends LedgerStore[IO]:
+    var scans = 0
+    var reads = 0
+    def read(keys: Iterable[TxIn]) = inner.read(keys)
+    def write(changes: Iterable[(TxIn, Option[TxOut])], stamp: Long) = inner.write(changes, stamp)
+    def flushed = inner.flushed
+    def all = inner.all
+    def size = inner.size
+    def checkpoint(dir: Path) = inner.checkpoint(dir)
+    def restore(dir: Path) = inner.restore(dir)
+    def reset = inner.reset
+    def memory = inner.memory
+    def readRows(space: Table.Space, keys: Vector[Array[Byte]]) =
+      IO { reads += 1 } *> inner.readRows(space, keys)
+    def scanRows(space: Table.Space) = IO { scans += 1 } *> inner.scanRows(space)
+    def writeAll(
+        utxo: Iterable[(TxIn, Option[TxOut])],
+        rows: Vector[LedgerStore.TableWrite],
+        retain: Vector[(String, Long)],
+        stamp: Long
+    ) = inner.writeAll(utxo, rows, retain, stamp)
+
+  test("a large table is fetched row by row for a few misses and whole only for many") {
+    assertEquals(LedgerStore.escalateAfter(100), 3L)
+    assertEquals(LedgerStore.escalateAfter(112000), 437L)
+    given_ {
+      MemoryLedgerStore[IO].flatMap { inner =>
+        val store = Counting(inner)
+        val l0 = TestLedger.state(8, Vector.empty)
+        val rows = 6000
+        val l1 = l0.copy(accounts =
+          TestLedger.accountTable((0 until rows).map(i => cred(i) -> account(i, 1, None)).toMap)
+        )
+        def step(n: Int)(l: LedgerState) =
+          Table.guarded((0 until n).map(i => l.accounts.get(cred(i))))
+        for
+          _ <- LedgerStore.advance(store, l1.at(1))
+          settled = l1.at(1).settled(1, force = true)
+          // 20 misses of a table of 6000 rows (limit 23): one fetch per miss, no scan
+          few <- LedgerStore.completingF(Some(store), settled)(l => IO.pure(step(20)(l)))
+          afterFew = (store.scans, store.reads)
+          // 40 misses: the 24th fetches the table whole
+          many <- LedgerStore.completingF(Some(store), settled)(l => IO.pure(step(40)(l)))
+        yield
+          assertEquals(afterFew, (0, 20))
+          assertEquals(store.scans, 1)
+          assertEquals(few._2.size, 20)
+          assertEquals(many._2.size, 40)
+      }
+    }
+  }

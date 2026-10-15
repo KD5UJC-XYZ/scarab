@@ -201,8 +201,20 @@ object LedgerStore:
         }
     slots.foldLeftM(state)((s, slot) => one(slot, s))
 
-  /** Misses of one table (by point reads) after which the whole table is fetched instead. */
-  private val Escalate = 3
+  /** Misses of one table (by point reads) after which the whole table is fetched instead: at least
+    * 3, and a 256th of the rows of a large table. Each miss costs a repeat of the step and a read
+    * of a row, a scan costs decoding every row (about 5 microseconds each), so a table of 100,000
+    * rows is fetched whole after about 400 misses and not after 3: on Preview's accounts the
+    * earlier rule made a block with four certificates cost half a second.
+    */
+  private[storage] def escalateAfter(rows: Long): Long = math.max(3L, rows / 256)
+
+  private def rowsOf(state: LedgerState, space: Table.Space): Long =
+    slots
+      .collectFirst {
+        case slot if slot.name == space.name && slot.space(state) == space => slot.get(state).count
+      }
+      .getOrElse(0L)
 
   /** Run `step` over `state` and, whenever it reports a row the state does not decide
     * ([[Table.guarded]]), fetch what the miss names and run it again: a pure rule never sees an
@@ -225,7 +237,8 @@ object LedgerStore:
             case Some(s) =>
               val n = seen.getOrElse(miss.space, 0) + 1
               val asked =
-                if !miss.all && n > Escalate then Table.Miss(miss.space, Set.empty[Any], all = true)
+                if !miss.all && n > escalateAfter(rowsOf(current, miss.space)) then
+                  Table.Miss(miss.space, Set.empty[Any], all = true)
                 else miss
               fill(s, current, asked).map(next => (next, seen.updated(miss.space, n)).asLeft)
       }

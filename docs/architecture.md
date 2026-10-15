@@ -723,7 +723,7 @@ that the diff and the read set do not decide, in a table that has part of it in 
 `Table.Miss` (a `ControlThrowable`, a control signal and not a domain error), and `Table.guarded`
 turns it into a value. `LedgerStore.completingF` runs a pure step, fetches the rows a miss names
 (`readRows`, or the whole table for a scan: `scanRows`) and runs the step again, so nothing is ever
-answered from an incomplete view; after three point misses on one table it fetches the whole table.
+answered from an incomplete view; after enough point misses on one table (3, or a 256th of the rows of a large one) it fetches the whole table.
 `NodeRules` does this for each block (and fetches the tables an epoch boundary reads whole before
 it starts: accounts, pools, DReps and the `set` snapshot, which the rotation makes `go`), the mempool for each transaction and
 synchronisation, the forger for the epoch boundary and the candidate transactions, and the
