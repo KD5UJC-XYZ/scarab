@@ -6,6 +6,7 @@ import cats.derived.*
 import cats.syntax.show.*
 import monocle.{Focus, Lens, Prism}
 import scala.collection.immutable.{SortedMap, SortedSet}
+import xyz.kd5ujc.scarab.codec.Bytes
 
 // The reward side of the epoch state: the non-myopic pool ranking, the reward update of the epoch
 // boundary and the state it is held in while it is computed. Sources: `Shelley/PoolRank.hs`,
@@ -168,16 +169,25 @@ final case class RewardSnapShot(
 ) derives Eq,
       Show
 
+/** The pulser of a reward update that is still being computed (`Pulser` of `RewardUpdate.hs:346`,
+  * the `RewardPulser` of `Pulsing.hs`: the free variables, the stake still to visit, the answer so
+  * far), as the CBOR item it was read as. The mirror does not model it (the node computes its
+  * rewards at the boundary), and what it does not model it keeps as the original bytes, so a state
+  * taken in the middle of an epoch is written again byte for byte. `item` is one complete, well
+  * formed CBOR item.
+  */
+final case class RewardPulser(item: Bytes) derives Eq, Show
+
 /** `PulsingRewUpdate` (`RewardUpdate.hs:341-344`, encoding `346-348`: `[0, snapshot, pulser]` or
   * `[1, update]`): a reward update that is either still being computed or complete.
   *
   * The node computes its rewards at the boundary (plan §7.5), so a mirror of our state is always
   * [[PulsingRewUpdate.Complete]]. [[PulsingRewUpdate.Pulsing]] keeps the snapshot a Haskell state
-  * was left with, and not the pulser (`RewardPulser`: the free variables, the balance still to do,
-  * the answer so far): exporting a pulsing state is refused, and importing one needs it.
+  * was left with and the pulser as the original bytes ([[RewardPulser]]): such a state round trips
+  * exactly, but a node cannot be made from it (importing one stays a refusal, `Gap`).
   */
 enum PulsingRewUpdate derives Eq, Show:
-  case Pulsing(snapshot: RewardSnapShot)
+  case Pulsing(snapshot: RewardSnapShot, pulser: RewardPulser)
   case Complete(update: RewardUpdate)
 
 object PulsingRewUpdate:

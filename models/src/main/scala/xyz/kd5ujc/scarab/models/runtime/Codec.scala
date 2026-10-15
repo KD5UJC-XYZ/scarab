@@ -14,10 +14,10 @@ trait Codec[A]:
   def decode(node: Node): Decoded[A]
   def encode(a: A, out: Writer): Unit
 
-  /** `Some(constraint)` when `a` violates this codec's value constraint (used by smart
-    * constructors).
+  /** The constraint `a` violates, if it violates this codec's value constraint (used by smart
+    * constructors, and by writers of formats that refuse a value they cannot write).
     */
-  def check(a: A): Option[String] = None
+  def check(a: A): Option[ConstraintViolation] = None
 
   /** Decode a complete CBOR item: syntax errors, trailing bytes and decoder exceptions are errors,
     * never thrown.
@@ -30,13 +30,32 @@ trait Codec[A]:
         catch
           case NonFatal(e) => Left(DecodeError(Kind.Internal(e.toString), Nil, 0, rooted = true))
 
-  final def encodeBytes(a: A): Bytes =
+  /** The bytes of `a`, or the constraint it violates: a value that [[check]] refuses is never
+    * written. This is the way to write a value of unknown origin.
+    */
+  final def write(a: A): Either[ConstraintViolation, Bytes] =
+    check(a).toLeft(encodeUnchecked(a))
+
+  /** The bytes of `a`, without [[check]]. Only for a value that is writable by construction (the
+    * decoded, or generated, or a literal) and for tests of the writer itself; [[write]] is the
+    * checked one.
+    */
+  final def encodeUnchecked(a: A): Bytes =
     val w = new Writer
     encode(a, w)
     w.result
 
 object Codec:
   val DefaultLimits: Cbor.Limits = Cbor.Limits()
+
+  /** The violation of `constraint` by `actual`, when `violated`. */
+  def refuse(
+      violated: Boolean,
+      typeName: String,
+      constraint: => String,
+      actual: Any
+  ): Option[ConstraintViolation] =
+    Option.when(violated)(ConstraintViolation(typeName, constraint, String.valueOf(actual)))
 
   def describe(n: Node): String = n.value match
     case Value.UInt(_)       => "unsigned integer"
@@ -61,7 +80,7 @@ object Codec:
       case Value.UInt(v) => Right(v)
       case _             => Left(mismatch("unsigned integer", n))
     def encode(a: BigInt, out: Writer) = out.uint(a)
-    override def check(a: BigInt) = Option.when(a.signum < 0)("0 <= x")
+    override def check(a: BigInt) = refuse(a.signum < 0, "unsigned integer", "0 <= x", a)
 
   /** An integer of either sign. */
   val int: Codec[BigInt] = new Codec[BigInt]:
@@ -81,7 +100,7 @@ object Codec:
       case Value.NInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
       case _                                   => Left(mismatch("integer", n))
     def encode(a: Int, out: Writer) = out.int(BigInt(a))
-    override def check(a: Int) = Option.when(a < lo || a > hi)(what)
+    override def check(a: Int) = refuse(a < lo || a > hi, "integer", what, a)
 
   /** An integer that is one of `values`, as an `Int`. */
   def intIn(values: Int*): Codec[Int] = new Codec[Int]:
@@ -92,7 +111,7 @@ object Codec:
       case Value.UInt(v) => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
       case _             => Left(mismatch("unsigned integer", n))
     def encode(a: Int, out: Writer) = out.uint(a.toLong)
-    override def check(a: Int) = Option.unless(set(a))(what)
+    override def check(a: Int) = refuse(!set(a), "integer", what, a)
 
   /** An unsigned integer up to `max`, as an `Int`, `Long` or `BigInt` chosen by the generator. */
   def uintInt(max: Int): Codec[Int] = intRange(0, max)
@@ -104,7 +123,7 @@ object Codec:
       case Value.UInt(v)             => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
       case _                         => Left(mismatch("unsigned integer", n))
     def encode(a: Long, out: Writer) = out.uint(a)
-    override def check(a: Long) = Option.when(a < 0 || a > max)(what)
+    override def check(a: Long) = refuse(a < 0 || a > max, "unsigned integer", what, a)
 
   /** An integer in `lo..hi` as a `Long` (signed range; negative values are CBOR negative integers).
     */
@@ -117,7 +136,7 @@ object Codec:
       case Value.NInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
       case _                                   => Left(mismatch("integer", n))
     def encode(a: Long, out: Writer) = out.int(BigInt(a))
-    override def check(a: Long) = Option.when(a < lo || a > hi)(what)
+    override def check(a: Long) = refuse(a < lo || a > hi, "integer", what, a)
 
   /** An integer in `lo..hi` as a `BigInt`. */
   def bigRange(lo: BigInt, hi: BigInt): Codec[BigInt] = new Codec[BigInt]:
@@ -129,7 +148,7 @@ object Codec:
       case Value.NInt(v)                       => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
       case _                                   => Left(mismatch("integer", n))
     def encode(a: BigInt, out: Writer) = out.int(a)
-    override def check(a: BigInt) = Option.when(a < lo || a > hi)(what)
+    override def check(a: BigInt) = refuse(a < lo || a > hi, "integer", what, a)
 
   def uintBig(max: BigInt): Codec[BigInt] = new Codec[BigInt]:
     private val what = s"0..$max"
@@ -138,7 +157,7 @@ object Codec:
       case Value.UInt(v)             => Left(DecodeError.at(n, Kind.OutOfRange(what, v)))
       case _                         => Left(mismatch("unsigned integer", n))
     def encode(a: BigInt, out: Writer) = out.uint(a)
-    override def check(a: BigInt) = Option.when(a.signum < 0 || a > max)(what)
+    override def check(a: BigInt) = refuse(a.signum < 0 || a > max, "unsigned integer", what, a)
 
   val bool: Codec[Boolean] = new Codec[Boolean]:
     def decode(n: Node) = n.value match
@@ -159,7 +178,7 @@ object Codec:
     def encode(a: String, out: Writer) = out.text(a)
     override def check(a: String) =
       val len = a.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
-      Option.when(len < lo || len > hi)(s"size $what")
+      refuse(len < lo || len > hi, "text string", s"size $what", a)
 
   val bytes: Codec[Bytes] = bytesSized(0, Int.MaxValue)
 
@@ -171,7 +190,8 @@ object Codec:
         else Left(DecodeError.at(n, Kind.BadSize(what, b.size.toLong)))
       case _ => Left(mismatch("byte string", n))
     def encode(a: Bytes, out: Writer) = out.bytes(a)
-    override def check(a: Bytes) = Option.when(a.size < lo || a.size > hi)(s"size $what")
+    override def check(a: Bytes) =
+      refuse(a.size < lo || a.size > hi, "byte string", s"size $what", a)
 
   /** `any`: the item as it is on the wire, original bytes included. */
   val any: Codec[Node] = new Codec[Node]:

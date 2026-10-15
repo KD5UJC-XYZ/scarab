@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Vote
 }
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted}
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
 
 import DecodeError.Kind
 import NodeOrders.given
@@ -79,7 +79,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         case Credential.Script(h) =>
           out.uint(1L)
           out.bytes(h)
-    override def check(a: Credential): Option[String] = hash28.check(a.hash)
+    override def check(a: Credential): Option[ConstraintViolation] = hash28.check(a.hash)
 
   given nodeDRep: Codec[DRep] = new Codec[DRep]:
     def decode(n: Node): Decoded[DRep] =
@@ -121,9 +121,12 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     def encode(a: RewardAccount, out: Writer): Unit =
       val base = if a.credential.isInstanceOf[Credential.Script] then 0xf0 else 0xe0
       out.bytes(Bytes(Vector((base | a.network).toByte) ++ a.credential.hash.value))
-    override def check(a: RewardAccount): Option[String] =
-      Option.unless(a.network >= 0 && a.network <= 15 && a.credential.hash.size == 28)(
-        "a network in 0..15 and a 28-byte hash"
+    override def check(a: RewardAccount): Option[ConstraintViolation] =
+      Codec.refuse(
+        !(a.network >= 0 && a.network <= 15 && a.credential.hash.size == 28),
+        "RewardAccount",
+        "a network in 0..15 and a 28-byte hash",
+        s"network ${a.network}, ${a.credential.hash.size} bytes"
       )
 
   given genDelegPair: Codec[GenDelegPair] =

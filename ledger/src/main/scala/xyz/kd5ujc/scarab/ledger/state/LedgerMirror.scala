@@ -742,9 +742,9 @@ object LedgerMirror:
                 u.deltaF.value
               )
             )
-          case Some(PulsingRewUpdate.Pulsing(_)) => None
+          case Some(PulsingRewUpdate.Pulsing(_, _)) => None
         val pulsing = nes.ru.exists {
-          case PulsingRewUpdate.Pulsing(_) => true
+          case PulsingRewUpdate.Pulsing(_, _) => true
           case _                           => false
         }
         val pulsed =

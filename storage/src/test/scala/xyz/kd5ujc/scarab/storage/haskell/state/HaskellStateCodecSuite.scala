@@ -48,11 +48,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   private def laws[A](name: String, gen: Gen[A], codec: Codec[A]): Unit =
     property(s"$name: decode after encode is the identity, and encode after decode is on bytes") {
       forAll(gen) { a =>
-        val bytes = codec.encodeBytes(a)
+        val bytes = codec.encodeUnchecked(a)
         assertEquals(codec.check(a), None, "a generated value is writable")
         val back = readOk(codec, bytes)
         assertEquals(back, a)
-        assertEquals(codec.encodeBytes(back), bytes)
+        assertEquals(codec.encodeUnchecked(back), bytes)
       }
     }
 
@@ -77,8 +77,8 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   test("amounts: Coin is written as an Integer and read as a Word64 (Coin.hs:93,111)") {
     val big = (BigInt(1) << 64) - 1
     val c = Coin.fromBigInt(big).fold(e => fail(e.toString), identity)
-    assertEquals(coin.encodeBytes(c).hex, "1bffffffffffffffff")
-    assertEquals(readOk(coin, coin.encodeBytes(c)), c)
+    assertEquals(coin.encodeUnchecked(c).hex, "1bffffffffffffffff")
+    assertEquals(readOk(coin, coin.encodeUnchecked(c)), c)
     // above 2^64 - 1 the writer would emit a bignum, which the Word64 reader refuses
     val over = bytesOf(_.integer(BigInt(1) << 64))
     assert(failure(coin, over).kind.isInstanceOf[Kind.TypeMismatch], "a bignum is not a Word64")
@@ -86,7 +86,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(failure(coin, negative).kind.isInstanceOf[Kind.TypeMismatch])
     // a DeltaCoin is an Integer both ways, bignums included
     val delta = DeltaCoin(-(BigInt(1) << 70))
-    assertEquals(readOk(deltaCoin, deltaCoin.encodeBytes(delta)), delta)
+    assertEquals(readOk(deltaCoin, deltaCoin.encodeUnchecked(delta)), delta)
   }
 
   test("hashes have the size of their type; a smart constructor's refusal is a located error") {
@@ -117,7 +117,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   }
 
   test("a protocol version has a major in 0..13 and a Word32 minor (Version.hs:55-110)") {
-    assertEquals(protVer.encodeBytes(ProtVer(Word64.fromUnsigned(9), Word64.zero)).hex, "820900")
+    assertEquals(protVer.encodeUnchecked(ProtVer(Word64.fromUnsigned(9), Word64.zero)).hex, "820900")
     val tooBig = bytesOf { w =>
       w.arrayHead(2); w.uint(14L); w.uint(0L)
     }
@@ -149,8 +149,8 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   test("sets: tag 258 from version 9, none before; either length form; the tag is optional") {
     val one = Sorted.set(Seq(stakingKey))
     val item = "8200581c" + key28
-    assertEquals(setAt(version(9)).encodeBytes(one).hex, "d9010281" + item)
-    assertEquals(setAt(version(7)).encodeBytes(one).hex, "81" + item)
+    assertEquals(setAt(version(9)).encodeUnchecked(one).hex, "d9010281" + item)
+    assertEquals(setAt(version(7)).encodeUnchecked(one).hex, "81" + item)
     // read: at 9 the tag is optional, at 7 it is not permitted
     assertEquals(readOk(setAt(version(9)), hex("81" + item)), one)
     assertEquals(readOk(setAt(version(9)), hex("9f" + item + "ff")), one)
@@ -168,7 +168,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     )
     val set = Sorted.set(credentials)
     val codec = setAt(version(9))
-    val bytes = codec.encodeBytes(set)
+    val bytes = codec.encodeUnchecked(set)
     assertEquals(bytes.hex.take(8), "d901029f")
     assertEquals(bytes.hex.takeRight(2), "ff")
     assertEquals(readOk(codec, bytes), set)
@@ -180,11 +180,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(readOk(codec, definite), set)
     val map = Sorted.map(credentials.map(_ -> 1))
     val mapCodec = mapAt(version(9))
-    assertEquals(mapCodec.encodeBytes(map).hex.take(2), "bf")
-    assertEquals(readOk(mapCodec, mapCodec.encodeBytes(map)), map)
+    assertEquals(mapCodec.encodeUnchecked(map).hex.take(2), "bf")
+    assertEquals(readOk(mapCodec, mapCodec.encodeUnchecked(map)), map)
     // 23 is the longest definite one
     assertEquals(
-      mapCodec.encodeBytes(Sorted.map(credentials.take(23).map(_ -> 1))).hex.take(2),
+      mapCodec.encodeUnchecked(Sorted.map(credentials.take(23).map(_ -> 1))).hex.take(2),
       "b7"
     )
   }
@@ -223,14 +223,14 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       c.encode(otherKey, w)
     }
     val codec = setAt(version(9))
-    assertEquals(codec.encodeBytes(readOk(codec, unordered)), ordered)
+    assertEquals(codec.encodeUnchecked(readOk(codec, unordered)), ordered)
   }
 
   test("ratios: plain ones are tagged from version 9, bounded ones always (Encoder.hs:301-306)") {
     val half = Rational(1, 2)
-    assertEquals(Wire.ratio(using version(9)).encodeBytes(half).hex, "d81e820102")
-    assertEquals(Wire.ratio(using version(7)).encodeBytes(half).hex, "820102")
-    assertEquals(Wire.unitInterval.encodeBytes(half).hex, "d81e820102")
+    assertEquals(Wire.ratio(using version(9)).encodeUnchecked(half).hex, "d81e820102")
+    assertEquals(Wire.ratio(using version(7)).encodeUnchecked(half).hex, "820102")
+    assertEquals(Wire.unitInterval.encodeUnchecked(half).hex, "d81e820102")
     assertEquals(readOk(Wire.ratio(using version(9)), hex("820102")), half)
     assert(failure(Wire.ratio(using version(7)), hex("d81e820102")).kind.isInstanceOf[Kind.BadTag])
     // a bounded ratio needs its tag, and the interval
@@ -249,18 +249,18 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     def g(s: String): String = s.filterNot(_ == ' ')
     // ChainAccountState: array(2)[treasury, reserves] (State/ChainAccount.hs:46-48)
     assertEquals(
-      chainAccountState.encodeBytes(ChainAccountState(coinOf(5), coinOf(10))).hex,
+      chainAccountState.encodeUnchecked(ChainAccountState(coinOf(5), coinOf(10))).hex,
       "82050a"
     )
     // Credential, key: [0, hash] (Credential.hs:322-325)
     assertEquals(
-      credential[Staking].encodeBytes(Credential.KeyHashObj(keyHash28)).hex,
+      credential[Staking].encodeUnchecked(Credential.KeyHashObj(keyHash28)).hex,
       g(cred)
     )
     // ConwayAccountState: [balance, deposit, null, [2]] (Conway/State/Account.hs:127-134)
     assertEquals(
       conwayAccountState
-        .encodeBytes(
+        .encodeUnchecked(
           ConwayAccountState(
             CompactCoin.fromUnsigned(1),
             CompactCoin.fromUnsigned(2),
@@ -272,20 +272,20 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       "840102f68102"
     )
     // an empty PState and VState (State/CertState.hs:253-255, Conway/State/VState.hs:101-107)
-    assertEquals(pState.encodeBytes(LedgerStateGen.emptyPState).hex, "84a0a0a0a0")
-    assertEquals(vState.encodeBytes(LedgerStateGen.emptyVState).hex, "83a0a000")
+    assertEquals(pState.encodeUnchecked(LedgerStateGen.emptyPState).hex, "84a0a0a0a0")
+    assertEquals(vState.encodeUnchecked(LedgerStateGen.emptyVState).hex, "83a0a000")
     // the empty pool distribution is `def`: no pools and a total of 1 (State/PoolDistr.hs:108-122)
-    assertEquals(poolDistr.encodeBytes(PoolDistr.empty).hex, "82a001")
+    assertEquals(poolDistr.encodeUnchecked(PoolDistr.empty).hex, "82a001")
     // the empty snapshot: [no stake, no pools] (State/SnapShots.hs:290-296)
-    assertEquals(snapShot.encodeBytes(SnapShot.empty).hex, "82a0a0")
+    assertEquals(snapShot.encodeUnchecked(SnapShot.empty).hex, "82a0a0")
     // FuturePParams, no update: [0] (State/Governance.hs:148-159)
     assertEquals(
-      futurePParams(Params.conwayCodec).encodeBytes(FuturePParams.NoPParamsUpdate).hex,
+      futurePParams(Params.conwayCodec).encodeUnchecked(FuturePParams.NoPParamsUpdate).hex,
       "8100"
     )
     // a unit interval (BaseTypes.hs:384) and a pointer (Credential.hs:353-357)
-    assertEquals(Wire.unitInterval.encodeBytes(Rational(3, 10)).hex, "d81e82030a")
-    assertEquals(ptr.encodeBytes(xyz.kd5ujc.scarab.ledger.Ptr(1, 2, 3)).hex, "83010203")
+    assertEquals(Wire.unitInterval.encodeUnchecked(Rational(3, 10)).hex, "d81e82030a")
+    assertEquals(ptr.encodeUnchecked(xyz.kd5ujc.scarab.ledger.Ptr(1, 2, 3)).hex, "83010203")
   }
 
   test("golden: a DRepState with a delegator is [expiry, [], deposit, #258[credential]]") {
@@ -297,10 +297,10 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     )
     // DRep.hs:165-198: expiry 7, a StrictMaybe anchor (empty: array(0)), deposit 500, the set
     assertEquals(
-      drepState.encodeBytes(d).hex,
+      drepState.encodeUnchecked(d).hex,
       ("84 07 80 1901f4 d90102 81 82 00 581c" + key28).filterNot(_ == ' ')
     )
-    assertEquals(readOk(drepState, drepState.encodeBytes(d)), d)
+    assertEquals(readOk(drepState, drepState.encodeUnchecked(d)), d)
   }
 
   test("golden: a reward update writes deltaR and deltaF negated (RewardUpdate.hs:125-132)") {
@@ -312,12 +312,12 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       NonMyopic.empty
     )
     // [1, 3, {}, 4, [{}, 0]]
-    assertEquals(rewardUpdate.encodeBytes(u).hex, "850103a00482a000")
-    assertEquals(readOk(rewardUpdate, rewardUpdate.encodeBytes(u)), u)
+    assertEquals(rewardUpdate.encodeUnchecked(u).hex, "850103a00482a000")
+    assertEquals(readOk(rewardUpdate, rewardUpdate.encodeUnchecked(u)), u)
     // and a positive delta is written as a negative integer
     val up = u.copy(deltaR = DeltaCoin(BigInt(3)))
-    assertEquals(rewardUpdate.encodeBytes(up).hex, "850122a00482a000")
-    assertEquals(readOk(rewardUpdate, rewardUpdate.encodeBytes(up)), up)
+    assertEquals(rewardUpdate.encodeUnchecked(up).hex, "850122a00482a000")
+    assertEquals(readOk(rewardUpdate, rewardUpdate.encodeUnchecked(up)), up)
   }
 
   test(
@@ -329,16 +329,16 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       coinOf(5)
     )
     assertEquals(
-      nonMyopic.encodeBytes(nm).hex,
+      nonMyopic.encodeUnchecked(nm).hex,
       ("82 a1 581c" + key28 + "82 fa3f800000 fa3f000000 05").filterNot(_ == ' ')
     )
-    assertEquals(readOk(nonMyopic, nonMyopic.encodeBytes(nm)), nm)
+    assertEquals(readOk(nonMyopic, nonMyopic.encodeUnchecked(nm)), nm)
     // 100 samples, as the node computes them: an indefinite array, as the real Preview state has
     val hundred = NonMyopic(
       Sorted.map(Seq(pool -> Likelihood(Vector.fill(100)(LogWeight(0.25f))))),
       coinOf(0)
     )
-    val bytes = nonMyopic.encodeBytes(hundred)
+    val bytes = nonMyopic.encodeUnchecked(hundred)
     assert(bytes.hex.startsWith(("82 a1 581c" + key28 + "9f fa3e800000").filterNot(_ == ' ')))
     assertEquals(readOk(nonMyopic, bytes), hundred)
     // a half-precision float is read, a double is not (decodeFloat)
@@ -386,10 +386,10 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       )
     )
     val c = stakePoolSnapShot
-    val bytes = c.encodeBytes(snap.copy(numDelegators = Word64.fromUnsigned(Long.MaxValue)))
+    val bytes = c.encodeUnchecked(snap.copy(numDelegators = Word64.fromUnsigned(Long.MaxValue)))
     assertEquals(readOk(c, bytes).numDelegators, Word64.fromUnsigned(Long.MaxValue))
     assertEquals(c.check(snap.copy(numDelegators = Word64.fromUnsigned(-1L))).isDefined, true)
-    val encoded = c.encodeBytes(snap.copy(numDelegators = Word64.zero)).hex
+    val encoded = c.encodeUnchecked(snap.copy(numDelegators = Word64.zero)).hex
     val tooBig = hex(encoded.dropRight(2 + 64) + "1b8000000000000000" + encoded.takeRight(64))
     assert(read(c, tooBig).left.exists(_.kind.isInstanceOf[Kind.OutOfRange]), tooBig.hex)
   }
@@ -414,28 +414,31 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(failure(vote, hex("03")).kind.isInstanceOf[Kind.OutOfRange])
   }
 
-  test("a pulsing reward update is read as unsupported and cannot be written") {
-    val pulsing = bytesOf { w =>
+  test("a pulsing reward update keeps its pulser as the original bytes and writes them back") {
+    // a pulser the mirror has no model of: an indefinite array holding an odd mix of items
+    val pulser = bytesOf { w =>
+      w.raw(xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array(0x9f.toByte, 1, 0xa0.toByte, 0xff.toByte)))
+    }
+    val snapshot = arb[RewardSnapShot].sample.get
+    val written = bytesOf { w =>
       w.arrayHead(3)
       w.uint(0L)
-      w.nul()
-      w.nul()
+      rewardSnapShot.encode(snapshot, w)
+      w.raw(pulser)
     }
-    assert(failure(pulsingRewUpdate, pulsing).kind.isInstanceOf[Kind.Unsupported])
-    val snapshot = arb[RewardSnapShot].sample.get
-    val ru = PulsingRewUpdate.Pulsing(snapshot)
-    assert(pulsingRewUpdate.check(ru).isDefined)
+    val read = readOk(pulsingRewUpdate, written)
+    assertEquals(read, PulsingRewUpdate.Pulsing(snapshot, RewardPulser(pulser)))
+    assertEquals(pulsingRewUpdate.encodeUnchecked(read), written)
+    assertEquals(pulsingRewUpdate.check(read), None)
     given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
-    val state = StateGen.newEpochState[Conway].sample.get.copy[Conway](ru = Some(ru))
-    assert(HaskellState.encode(state).isLeft)
-    val fine = state.copy[Conway](ru = None)
-    assert(HaskellState.encode(fine).isRight)
+    val state = StateGen.newEpochState[Conway].sample.get.copy[Conway](ru = Some(read))
+    assert(HaskellState.encode(state).isRight)
   }
 
   test(
     "UTxO entries in a state file are refused (they are in the tables file); the handle writes map(0)"
   ) {
-    assertEquals(utxoTables.encodeBytes(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty)).hex, "a0")
+    assertEquals(utxoTables.encodeUnchecked(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty)).hex, "a0")
     val entries = bytesOf { w =>
       w.mapHead(1)
       w.uint(1L)
@@ -455,24 +458,24 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     "the parameters of an era are an array of the size of its list, and decode under the right era only"
   ) {
     def size(c: Codec[xyz.kd5ujc.scarab.ledger.ProtocolParams]): Int =
-      c.encodeBytes(Params.empty).value.head & 0x1f
+      c.encodeUnchecked(Params.empty).value.head & 0x1f
     assertEquals(size(Params.codec(ShelleyBasedEra.SShelley)), 17)
     assertEquals(size(Params.codec(ShelleyBasedEra.SAllegra)), 17)
     assertEquals(size(Params.codec(ShelleyBasedEra.SMary)), 17)
     assertEquals(size(Params.codec(ShelleyBasedEra.SAlonzo)), 24)
     assertEquals(size(Params.codec(ShelleyBasedEra.SBabbage)), 22)
     // 31 does not fit in the five bits of a short head: 0x98 0x1f
-    assertEquals(Params.conwayCodec.encodeBytes(Params.empty).hex.take(4), "981f")
-    val conway = Params.conwayCodec.encodeBytes(Params.empty)
+    assertEquals(Params.conwayCodec.encodeUnchecked(Params.empty).hex.take(4), "981f")
+    val conway = Params.conwayCodec.encodeUnchecked(Params.empty)
     assert(failure(Params.codec(ShelleyBasedEra.SBabbage), conway).kind.isInstanceOf[Kind.BadArity])
   }
 
   test("a parameter out of the range of its Haskell type is refused, with its name in the path") {
-    val ok = Params.conwayCodec.encodeBytes(Params.empty)
+    val ok = Params.conwayCodec.encodeUnchecked(Params.empty)
     // the maximum header size is a Word16 (the fifth parameter)
     val params = Params.empty.copy(maxBlockHeaderSize = BigInt(70000))
-    assert(Params.conwayCodec.check(params).exists(_.contains("maxBHSize")))
-    val bytes = Params.conwayCodec.encodeBytes(params)
+    assert(Params.conwayCodec.check(params).exists(_.path == List("maxBHSize")))
+    val bytes = Params.conwayCodec.encodeUnchecked(params)
     val e = failure(Params.conwayCodec, bytes)
     assert(e.kind.isInstanceOf[Kind.OutOfRange], e.render)
     assertEquals(e.path, List("maxBHSize"))
@@ -482,7 +485,7 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   test("cost models: languages are a Word8, parameters an Int64, and a language may not repeat") {
     val c = Params.codec(ShelleyBasedEra.SAlonzo)
     val withModel = Params.empty.copy(costModels = Map(1 -> Vector(BigInt(-1), BigInt(2))))
-    assertEquals(readOk(c, c.encodeBytes(withModel)), withModel)
+    assertEquals(readOk(c, c.encodeUnchecked(withModel)), withModel)
     assert(c.check(Params.empty.copy(costModels = Map(256 -> Vector.empty))).isDefined)
     assert(c.check(Params.empty.copy(costModels = Map(1 -> Vector(BigInt(1) << 64)))).isDefined)
   }

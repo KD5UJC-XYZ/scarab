@@ -151,9 +151,9 @@ class GoldenHeaderSuite extends munit.FunSuite:
     case other => fail(s"no generated header for $other")
 
   private def reencode(era: Era, raw: Bytes): Bytes = era match
-    case Era.Conway  => conway.Header.encodeBytes(conway.Header.decodeBytes(raw).toOption.get)
-    case Era.Babbage => babbage.Header.encodeBytes(babbage.Header.decodeBytes(raw).toOption.get)
-    case Era.Alonzo  => alonzo.Header.encodeBytes(alonzo.Header.decodeBytes(raw).toOption.get)
+    case Era.Conway  => conway.Header.encodeUnchecked(conway.Header.decodeBytes(raw).toOption.get)
+    case Era.Babbage => babbage.Header.encodeUnchecked(babbage.Header.decodeBytes(raw).toOption.get)
+    case Era.Alonzo  => alonzo.Header.encodeUnchecked(alonzo.Header.decodeBytes(raw).toOption.get)
     case other       => fail(s"no generated header for $other")
 
   /** Canonical re-encoding of the decoded members, bypassing the preserved bytes. */

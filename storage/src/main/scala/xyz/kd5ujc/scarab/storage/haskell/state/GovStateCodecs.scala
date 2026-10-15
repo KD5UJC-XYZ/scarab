@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Value
 import xyz.kd5ujc.scarab.ledger.ProtocolParams
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
 
 import DecodeError.Kind
 import Wire.*
@@ -37,7 +37,7 @@ trait GovStateCodecs extends CertStateCodecs:
           out.arrayHead(2); out.uint(1L); params.encode(p, out)
         case FuturePParams.PotentialPParamsUpdate(p) =>
           out.arrayHead(2); out.uint(2L); maybeParams.encode(p, out)
-      override def check(a: FuturePParams): Option[String] = a match
+      override def check(a: FuturePParams): Option[ConstraintViolation] = a match
         case FuturePParams.NoPParamsUpdate           => None
         case FuturePParams.DefinitePParamsUpdate(p)  => params.check(p)
         case FuturePParams.PotentialPParamsUpdate(p) => maybeParams.check(p)

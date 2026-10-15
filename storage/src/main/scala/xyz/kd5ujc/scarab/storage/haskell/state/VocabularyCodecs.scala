@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.ledger.{Anchor, Nonce, Ptr}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
 
 import Wire.*
 
@@ -125,12 +125,13 @@ trait VocabularyCodecs:
       out.uint(a.slot)
       out.uint(a.txIx)
       out.uint(a.certIx)
-    override def check(a: Ptr): Option[String] =
-      Option.unless(
-        a.slot.bitLength <= 32 && a.txIx.bitLength <= 16 && a.certIx.bitLength <= 16 &&
-          a.slot.signum >= 0 && a.txIx.signum >= 0 && a.certIx.signum >= 0
-      )(
-        "a pointer of a Word32 and two Word16s"
+    override def check(a: Ptr): Option[ConstraintViolation] =
+      Codec.refuse(
+        !(a.slot.bitLength <= 32 && a.txIx.bitLength <= 16 && a.certIx.bitLength <= 16 &&
+          a.slot.signum >= 0 && a.txIx.signum >= 0 && a.certIx.signum >= 0),
+        "Ptr",
+        "a pointer of a Word32 and two Word16s",
+        s"(${a.slot}, ${a.txIx}, ${a.certIx})"
       )
 
   /** `ProtVer` (`BaseTypes.hs:211-244`, a `CBORGroup`): `[major, minor]`, the major in the
@@ -149,9 +150,12 @@ trait VocabularyCodecs:
       out.arrayHead(2)
       out.uint(a.major.toBigInt)
       out.uint(a.minor.toBigInt)
-    override def check(a: ProtVer): Option[String] =
-      Option.unless(a.major.toBigInt <= maxMajor && a.minor.toBigInt.bitLength <= 32)(
-        "a major version in 0..13 and a Word32 minor"
+    override def check(a: ProtVer): Option[ConstraintViolation] =
+      Codec.refuse(
+        !(a.major.toBigInt <= maxMajor && a.minor.toBigInt.bitLength <= 32),
+        "ProtVer",
+        "a major version in 0..13 and a Word32 minor",
+        s"(${a.major.toBigInt}, ${a.minor.toBigInt})"
       )
 
   /** `Anchor` (`BaseTypes.hs:996-1010`): `[url, data hash]`; the url is at most 128 bytes from
@@ -171,7 +175,8 @@ trait VocabularyCodecs:
       out.arrayHead(2)
       out.text(a.url)
       out.bytes(a.hash)
-    override def check(a: Anchor): Option[String] = url.check(a.url).orElse(dataHash.check(a.hash))
+    override def check(a: Anchor): Option[ConstraintViolation] =
+      url.check(a.url).map(_.at("url")).orElse(dataHash.check(a.hash).map(_.at("dataHash")))
 
   /** `Nonce` (`BaseTypes.hs:574-577`): `[0]` for the neutral nonce, `[1, hash]`. */
   given nonce: Codec[Nonce] = Wire.nonce

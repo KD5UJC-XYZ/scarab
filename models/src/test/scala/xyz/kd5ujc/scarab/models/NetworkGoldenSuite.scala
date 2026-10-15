@@ -95,7 +95,7 @@ class NetworkGoldenSuite extends munit.FunSuite:
     val generated = HandshakeMessage.decodeBytes(bytes).fold(e => fail(e.render), identity)
     assertEquals(normGenerated(generated), normHand(bytes))
     // Canonical encoding of what was decoded gives the same bytes (definite, shortest, ascending versions).
-    assertEquals(HandshakeMessage.encodeBytes(generated), bytes)
+    assertEquals(HandshakeMessage.encodeUnchecked(generated), bytes)
 
   for name <- Vector(
       "ntn-accept14-preview",
@@ -186,7 +186,7 @@ class NetworkGoldenSuite extends munit.FunSuite:
           assertEquals(genTip(t), tip(tipPoint, handBlock.blockNo + 7))
         case other => fail(s"unexpected $other")
       // Re-encoding keeps the header's original bytes: the whole message is reproduced.
-      assertEquals(ChainSyncMessage.encodeBytes(message), bytes)
+      assertEquals(ChainSyncMessage.encodeUnchecked(message), bytes)
     }
   }
 
@@ -238,8 +238,8 @@ class NetworkGoldenSuite extends munit.FunSuite:
     decode(find) match
       case m @ ChainSyncMessage.FindIntersect(ps) =>
         assertEquals(ps.map(genPoint), candidates)
-        assertNotEquals(ChainSyncMessage.encodeBytes(m), find)
-        assertEquals(decode(ChainSyncMessage.encodeBytes(m)), m)
+        assertNotEquals(ChainSyncMessage.encodeUnchecked(m), find)
+        assertEquals(decode(ChainSyncMessage.encodeUnchecked(m)), m)
       case other => fail(s"unexpected $other")
   }
 

@@ -59,7 +59,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   ): Unit =
     property(s"$name: the new codec writes what LedgerEncoders writes") {
       forAll(gen) { a =>
-        assertEquals(codec.encodeBytes(a).hex, old(write(_, a)))
+        assertEquals(codec.encodeUnchecked(a).hex, old(write(_, a)))
         assertEquals(codec.check(a), None)
       }
     }
@@ -95,7 +95,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   property("a set of credentials: tag 258 and the variable-length framing, in Haskell order") {
     forAll(Gen.listOf(StateGen.nodeCredential).map(_.toSet)) { cs =>
       assertEquals(
-        Wire.setOf(nodeCredential).encodeBytes(Sorted.set(cs)).hex,
+        Wire.setOf(nodeCredential).encodeUnchecked(Sorted.set(cs)).hex,
         old(E.set(_, cs, E.credentialOrdering)(E.credential))
       )
     }
@@ -128,7 +128,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   test("the reference's GetCurrentPParams is read and written again byte for byte") {
     val bytes = result(answerOf("GetCurrentPParams"))
     val read = Params.conwayCodec.decodeBytes(bytes).fold(e => fail(e.render), identity)
-    assertEquals(Params.conwayCodec.encodeBytes(read), bytes)
+    assertEquals(Params.conwayCodec.encodeUnchecked(read), bytes)
     // and the old encoder agrees with both
     assertEquals(old(w => E.protocolParams(w, read)), bytes.hex)
   }
@@ -136,7 +136,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   test("the reference's GetConstitution is read and written again byte for byte") {
     val bytes = result(answerOf("GetConstitution"))
     val read = constitution.decodeBytes(bytes).fold(e => fail(e.render), identity)
-    assertEquals(constitution.encodeBytes(read), bytes)
+    assertEquals(constitution.encodeUnchecked(read), bytes)
   }
 
   // ---- the state of a Conway node, against the node's answers
@@ -221,7 +221,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   overConway("GetCurrentPParams is the current parameters") { (state, block) =>
     val nes = mirrored(state, block)
     assertEquals(
-      Params.conwayCodec.encodeBytes(nes.es.ls.utxo.gov.curPParams).hex,
+      Params.conwayCodec.encodeUnchecked(nes.es.ls.utxo.gov.curPParams).hex,
       ask(state, block, GetCurrentPParams).hex
     )
   }
@@ -229,7 +229,7 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   overConway("GetGovState is the governance state") { (state, block) =>
     val nes = mirrored(state, block)
     assertEquals(
-      conwayGovState.encodeBytes(nes.es.ls.utxo.gov).hex,
+      conwayGovState.encodeUnchecked(nes.es.ls.utxo.gov).hex,
       ask(state, block, GetGovState).hex
     )
   }
@@ -237,28 +237,28 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   overConway("GetConstitution, GetProposals and GetRatifyState are parts of it") { (state, block) =>
     val gov = mirrored(state, block).es.ls.utxo.gov
     assertEquals(
-      constitution.encodeBytes(gov.constitution).hex,
+      constitution.encodeUnchecked(gov.constitution).hex,
       ask(state, block, GetConstitution).hex
     )
     assertEquals(
-      ratifyState.encodeBytes(gov.drepPulsing.ratify).hex,
+      ratifyState.encodeUnchecked(gov.drepPulsing.ratify).hex,
       ask(state, block, GetRatifyState).hex
     )
     assertEquals(
-      Wire.seqOf(govActionState).encodeBytes(gov.drepPulsing.snapshot.proposals).hex,
+      Wire.seqOf(govActionState).encodeUnchecked(gov.drepPulsing.snapshot.proposals).hex,
       ask(state, block, GetProposals(Set.empty)).hex
     )
   }
 
   overConway("GetPoolDistr2 is the pool distribution of the state") { (state, block) =>
     val nes = mirrored(state, block)
-    assertEquals(poolDistr.encodeBytes(nes.pd).hex, ask(state, block, GetPoolDistr2(None)).hex)
+    assertEquals(poolDistr.encodeUnchecked(nes.pd).hex, ask(state, block, GetPoolDistr2(None)).hex)
   }
 
   overConway("GetAccountState is the chain account state") { (state, block) =>
     val nes = mirrored(state, block)
     assertEquals(
-      chainAccountState.encodeBytes(nes.es.chainAccount).hex,
+      chainAccountState.encodeUnchecked(nes.es.chainAccount).hex,
       ask(state, block, GetAccountState).hex
     )
   }
@@ -266,5 +266,5 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   overConway("GetDRepState is the map of the registered DReps") { (state, block) =>
     val dreps = mirrored(state, block).es.ls.cert.vState.dreps
     val codec = Wire.mapOf(credential[DRepRole], drepState)
-    assertEquals(codec.encodeBytes(dreps).hex, ask(state, block, GetDRepState(Set.empty)).hex)
+    assertEquals(codec.encodeUnchecked(dreps).hex, ask(state, block, GetDRepState(Set.empty)).hex)
   }

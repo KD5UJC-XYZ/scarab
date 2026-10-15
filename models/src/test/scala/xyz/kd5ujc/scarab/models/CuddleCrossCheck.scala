@@ -187,4 +187,4 @@ object CuddleCrossCheck:
       .mkString("\t")
 
   private def encode(codec: Codec[?], value: Any): Bytes =
-    codec.asInstanceOf[Codec[Any]].encodeBytes(value)
+    codec.asInstanceOf[Codec[Any]].encodeUnchecked(value)

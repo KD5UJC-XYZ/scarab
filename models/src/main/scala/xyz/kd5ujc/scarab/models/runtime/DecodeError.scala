@@ -88,8 +88,21 @@ object DecodeError:
 
   def at(node: Node, kind: Kind): DecodeError = DecodeError(kind, Nil, node.original.unsafeOffset)
 
-/** A value rejected by a smart constructor (`Hash32.from`): the constraint and what was offered. */
-final case class ConstraintViolation(typeName: String, constraint: String, actual: String)
+/** A value rejected by a smart constructor (`Hash32.from`) or refused by a writer: the constraint
+  * and what was offered, and where in the value it is (outermost member first; empty for the value
+  * itself).
+  */
+final case class ConstraintViolation(
+    typeName: String,
+    constraint: String,
+    actual: String,
+    path: List[String] = Nil
+):
+  /** The violation found under the member `segment`. */
+  def at(segment: String): ConstraintViolation = copy(path = segment :: path)
+
+  def render: String =
+    s"${if path.isEmpty then "" else path.mkString("/") + ": "}$typeName requires $constraint, got $actual"
 
 extension [A](d: Decoded[A])
   /** Record that `d` was decoding the member `segment` (only touches the error path). */

@@ -36,10 +36,10 @@ class FeaturesSuite extends munit.FunSuite:
         val bytes = Bytes.fromArray(sampler.sample(QName("features", rule), rnd))
         val value =
           codec.decodeBytes(bytes).fold(e => fail(s"${e.render} for ${bytes.hex}"), identity)
-        val again = codec.encodeBytes(value)
+        val again = codec.encodeUnchecked(value)
         assertEquals(codec.decodeBytes(again), Right(value))
         // Canonical encoding is a fixed point.
-        assertEquals(codec.encodeBytes(codec.decodeBytes(again).toOption.get), again)
+        assertEquals(codec.encodeUnchecked(codec.decodeBytes(again).toOption.get), again)
       }
     }
 
@@ -62,7 +62,7 @@ class FeaturesSuite extends munit.FunSuite:
     assertEquals(value.embedded, hex("02"))
     assertEquals(value.when, "2020")
     assertEquals(value.total, PreludeUseTotal.Tag3(hex("ff")))
-    assertEquals(PreludeUse.encodeBytes(value), bytes)
+    assertEquals(PreludeUse.encodeUnchecked(value), bytes)
   }
 
   // Integer-keyed maps, preserved bytes ----------------------------------------------------------------------
@@ -80,7 +80,7 @@ class FeaturesSuite extends munit.FunSuite:
     assertEquals(body.ttl, None)
     // The original encoding (indefinite array, tagged set) is what a transaction id is hashed from.
     assertEquals(body.raw, oddBody)
-    assertEquals(TransactionBody.encodeBytes(body), oddBody)
+    assertEquals(TransactionBody.encodeUnchecked(body), oddBody)
     // Canonical encoding of the same members differs: definite empty array.
     val canonical = TransactionBody.canonical(
       body.inputs,
@@ -128,7 +128,7 @@ class FeaturesSuite extends munit.FunSuite:
       .toOption
       .get
     assertEquals(withNull.parent, Some(None))
-    assertEquals(Person.decodeBytes(Person.encodeBytes(withNull)), Right(withNull))
+    assertEquals(Person.decodeBytes(Person.encodeUnchecked(withNull)), Right(withNull))
     // 300 does not fit `uint .size 1`.
     val big = Person
       .decodeBytes(hex("a3 64 6e616d65 61 61 66 616374697665 f5 63 616765 19 012c"))

@@ -640,15 +640,15 @@ final class Emitter(schema: Schema, cfg: Config):
         w(s"  private val codec: rt.Codec[$repr] = $codec")
         w(s"  def from(value: $repr): Either[rt.ConstraintViolation, $name] =")
         w(s"    codec.check(value) match")
-        w(s"      case None             => Right(value)")
+        w(s"      case None => Right(value)")
         w(
-          s"      case Some(constraint) => Left(rt.ConstraintViolation(${quote(name)}, constraint, String.valueOf(value)))"
+          s"      case Some(violation) => Left(violation.copy(typeName = ${quote(name)}, actual = String.valueOf(value)))"
         )
         w(s"  def unsafe(value: $repr): $name = value")
         w(s"  extension (self: $name) def value: $repr = self")
         w(s"  def decode(node: rt.Node): rt.Decoded[$name] = codec.decode(node)")
         w(s"  def encode(a: $name, out: rt.Writer): Unit = codec.encode(a, out)")
-        w(s"  override def check(a: $name): Option[String] = codec.check(a)")
+        w(s"  override def check(a: $name): Option[rt.ConstraintViolation] = codec.check(a)")
       case Decl.Alias(_, name, tpe, codec, _) =>
         w(doc)
         w(s"type $name = $tpe")

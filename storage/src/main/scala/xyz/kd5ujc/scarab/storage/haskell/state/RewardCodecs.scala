@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.Value
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
 
 import DecodeError.Kind
 import Wire.*
@@ -78,35 +78,32 @@ trait RewardCodecs extends SnapshotCodecs:
       )
     )
 
-  /** `PulsingRewUpdate` (`RewardUpdate.hs:346-348`): `[0, snapshot, pulser]` or `[1, update]`.
-    *
-    * Only the completed form is mirrored. The pulser of the other (`RSLP`: the free variables, the
-    * stake still to visit and the answer so far) is not, so reading `[0, ...]` is refused and a
-    * pulsing update is one the codec cannot write: [[Codec.check]] says so, and the codecs of the
-    * enclosing records pass it up. (`encode` writes the snapshot and a `null` for the pulser, which
-    * is no valid pulser; the callers check first.)
+  /** The pulser (`RSLP`: the free variables, the stake still to visit and the answer so far) is not
+    * mirrored: it is the CBOR item it was read as, and written back as it was.
     */
+  given rewardPulser: Codec[RewardPulser] = new Codec[RewardPulser]:
+    def decode(n: Node): Decoded[RewardPulser] = Right(RewardPulser(n.original))
+    def encode(a: RewardPulser, out: Writer): Unit = out.raw(a.item)
+
+  /** `PulsingRewUpdate` (`RewardUpdate.hs:346-348`): `[0, snapshot, pulser]` or `[1, update]`. */
   given pulsingRewUpdate(using ProtVer): Codec[PulsingRewUpdate] =
     new Codec[PulsingRewUpdate]:
       def decode(n: Node): Decoded[PulsingRewUpdate] =
         variant(n).flatMap {
           case (t, Vector(u)) if t == 1 =>
             rewardUpdate.decode(u).map(PulsingRewUpdate.Complete(_)).at("update")
-          case (t, Vector(_, _)) if t == 0 =>
-            Left(
-              DecodeError.at(
-                n,
-                Kind.Unsupported("a pulsing reward update (the pulser is not mirrored)")
-              )
-            )
+          case (t, Vector(s, p)) if t == 0 =>
+            for
+              snapshot <- rewardSnapShot.decode(s).at("snapshot")
+              pulser <- rewardPulser.decode(p).at("pulser")
+            yield PulsingRewUpdate.Pulsing(snapshot, pulser)
           case (t, xs) => unknownVariant(n, "PulsingRewUpdate", t, xs.size)
         }
       def encode(a: PulsingRewUpdate, out: Writer): Unit = a match
         case PulsingRewUpdate.Complete(u) =>
           out.arrayHead(2); out.uint(1L); rewardUpdate.encode(u, out)
-        case PulsingRewUpdate.Pulsing(s) =>
-          out.arrayHead(3); out.uint(0L); rewardSnapShot.encode(s, out); out.nul()
-      override def check(a: PulsingRewUpdate): Option[String] = a match
-        case PulsingRewUpdate.Complete(u) => rewardUpdate.check(u)
-        case PulsingRewUpdate.Pulsing(_) =>
-          Some("a pulsing reward update: the pulser is not mirrored")
+        case PulsingRewUpdate.Pulsing(s, p) =>
+          out.arrayHead(3); out.uint(0L); rewardSnapShot.encode(s, out); rewardPulser.encode(p, out)
+      override def check(a: PulsingRewUpdate): Option[ConstraintViolation] = a match
+        case PulsingRewUpdate.Complete(u)   => rewardUpdate.check(u)
+        case PulsingRewUpdate.Pulsing(s, _) => rewardSnapShot.check(s)

@@ -89,14 +89,14 @@ object Wire:
         def decode(n: Node): Decoded[A] =
           c.decode(n).flatMap(make(_).left.map(e => DecodeError.at(n, violation(e))))
         def encode(a: A, out: Writer): Unit = c.encode(unmake(a), out)
-        override def check(a: A): Option[String] = c.check(unmake(a))
+        override def check(a: A): Option[ConstraintViolation] = c.check(unmake(a))
 
     /** The codec of `A`, an exact image of `R` (no refusal possible). */
     def imap[A](to: R => A)(from: A => R): Codec[A] =
       new Codec[A]:
         def decode(n: Node): Decoded[A] = c.decode(n).map(to)
         def encode(a: A, out: Writer): Unit = c.encode(from(a), out)
-        override def check(a: A): Option[String] = c.check(from(a))
+        override def check(a: A): Option[ConstraintViolation] = c.check(from(a))
 
   /** A byte string of exactly `size` bytes. */
   def hash(size: Int): Codec[Bytes] = Codec.bytesSized(size, size)
@@ -155,11 +155,14 @@ object Wire:
       out.arrayHead(2)
       out.uint(a.numerator)
       out.uint(a.denominator)
-    override def check(a: Rational): Option[String] =
-      Option.unless(
-        a.numerator.signum >= 0 && a.numerator <= max && a.denominator <= max &&
-          hi.forall(a <= _)
-      )(what)
+    override def check(a: Rational): Option[ConstraintViolation] =
+      Codec.refuse(
+        !(a.numerator.signum >= 0 && a.numerator <= max && a.denominator <= max &&
+          hi.forall(a <= _)),
+        "ratio",
+        what,
+        s"${a.numerator}/${a.denominator}"
+      )
 
   /** `UnitInterval`: a ratio in 0..1. */
   val unitInterval: Codec[Rational] = bounded("a ratio in 0..1", Some(Rational.one))
@@ -181,7 +184,7 @@ object Wire:
       case Some(x) =>
         out.arrayHead(1)
         inner.encode(x, out)
-    override def check(a: Option[A]): Option[String] = a.flatMap(inner.check)
+    override def check(a: Option[A]): Option[ConstraintViolation] = a.flatMap(inner.check)
 
   /** `encodeNullStrictMaybe` (`Encoder.hs:340`): `null` or the value itself. */
   def nullable[A](inner: Codec[A]): Codec[Option[A]] = Codec.nullable(inner)
@@ -205,7 +208,7 @@ object Wire:
         out.arrayHead(2)
         out.uint(1L)
         h.encode(x, out)
-    override def check(a: Nonce): Option[String] = a match
+    override def check(a: Nonce): Option[ConstraintViolation] = a match
       case Nonce.Neutral => None
       case Nonce.Hash(x) => h.check(x)
 
@@ -240,7 +243,7 @@ object Wire:
       def encode(a: SortedSet[A], out: Writer): Unit =
         if v.atLeast(9) then out.tag(258)
         out.variableArray(a.size)(a.foreach(elem.encode(_, out)))
-      override def check(a: SortedSet[A]): Option[String] =
+      override def check(a: SortedSet[A]): Option[ConstraintViolation] =
         a.iterator.flatMap(elem.check).nextOption()
 
   /** A map, in key order, with the variable-length framing (`encodeMap`, `Encoder.hs:397-408`). The
@@ -264,7 +267,7 @@ object Wire:
           key.encode(k, out)
           value.encode(x, out)
         })
-      override def check(a: SortedMap[K, V]): Option[String] =
+      override def check(a: SortedMap[K, V]): Option[ConstraintViolation] =
         a.iterator.flatMap((k, x) => key.check(k).orElse(value.check(x))).nextOption()
 
   /** A sequence (`StrictSeq`, `encodeStrictSeq`, `Encoder.hs:516`): the variable-length framing in
@@ -276,7 +279,8 @@ object Wire:
       case _                => Left(Codec.mismatch("array", n))
     def encode(a: Vector[A], out: Writer): Unit =
       out.variableArray(a.size)(a.foreach(elem.encode(_, out)))
-    override def check(a: Vector[A]): Option[String] = a.iterator.flatMap(elem.check).nextOption()
+    override def check(a: Vector[A]): Option[ConstraintViolation] =
+      a.iterator.flatMap(elem.check).nextOption()
 
   /** The items of an array of known size, or the arity error. */
   def items(n: Node, size: Int): Decoded[Vector[Node]] =

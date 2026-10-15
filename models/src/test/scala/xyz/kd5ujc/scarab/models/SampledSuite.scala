@@ -46,7 +46,7 @@ class SampledSuite extends munit.FunSuite:
   private def roundTrip[A](codec: Codec[A], bytes: Bytes): Unit =
     val decoded =
       codec.decodeBytes(bytes).fold(e => fail(s"${e.render} for ${bytes.hex}"), identity)
-    val again = codec.encodeBytes(decoded)
+    val again = codec.encodeUnchecked(decoded)
     assertEquals(again, bytes, "canonical sample must re-encode to itself")
     assertEquals(codec.decodeBytes(again), Right(decoded))
 

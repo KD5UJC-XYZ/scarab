@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.state
 
 import org.scalacheck.{Arbitrary, Gen}
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen.{*, given}
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.{*, given}
 
@@ -131,7 +131,7 @@ object EpochStateGen:
 
   given Arbitrary[PulsingRewUpdate] = Arbitrary(
     Gen.oneOf(
-      arb[RewardSnapShot].map(PulsingRewUpdate.Pulsing(_)),
+      arb[RewardSnapShot].map(PulsingRewUpdate.Pulsing(_, RewardPulser(Bytes.fromArray(Array(0x82.toByte, 1, 2))))),
       arb[RewardUpdate].map(PulsingRewUpdate.Complete(_))
     )
   )

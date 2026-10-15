@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import scala.compiletime.{constValueTuple, summonAll}
 import scala.deriving.Mirror
-import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, Decoded, Node, Writer}
+import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, ConstraintViolation, Decoded, Node, Writer}
 
 /** The Haskell ledger writes a record as a definite array of its fields in declaration order (`Rec`
   * in `Cardano.Ledger.Binary.Coders`, or `encodeListLen n <> ...` by hand). The mirror's records
@@ -58,8 +58,8 @@ object Record:
         out.arrayHead(arity)
         fields.indices.foreach(i => fields(i).encode(p.productElement(i), out))
 
-      override def check(a: A): Option[String] =
+      override def check(a: A): Option[ConstraintViolation] =
         val p = a.asInstanceOf[Product]
         fields.indices.iterator
-          .flatMap(i => fields(i).check(p.productElement(i)).map(c => s"${labels(i)}: $c"))
+          .flatMap(i => fields(i).check(p.productElement(i)).map(_.at(labels(i))))
           .nextOption()

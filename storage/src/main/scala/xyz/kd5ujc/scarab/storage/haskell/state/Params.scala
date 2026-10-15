@@ -5,7 +5,7 @@ import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{DRepVotingThresholds, Nonce, PoolVotingThresholds, ProtocolParams}
 import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, EraTag}
-import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 import DecodeError.Kind
@@ -36,7 +36,8 @@ object Params:
     def write(p: ProtocolParams, out: Writer): Unit = codec.encode(get(p), out)
     def read(p: ProtocolParams, n: Node): Decoded[ProtocolParams] =
       codec.decode(n).map(set(p, _)).at(name)
-    def refuses(p: ProtocolParams): Option[String] = codec.check(get(p)).map(c => s"$name: $c")
+    def refuses(p: ProtocolParams): Option[ConstraintViolation] =
+      codec.check(get(p)).map(_.at(name))
 
   private def param[A](name: String, codec: Codec[A])(
       get: ProtocolParams => A
@@ -105,11 +106,14 @@ object Params:
         out.uint(k.toLong)
         values.encode(vs, out)
       })
-    override def check(a: Map[Int, Vector[BigInt]]): Option[String] =
-      Option.unless(
-        a.keys.forall(k => k >= 0 && k <= 255) &&
-          a.values.forall(_.forall(x => x >= Long.MinValue && x <= Long.MaxValue))
-      )("language 0..255 and Int64 parameters")
+    override def check(a: Map[Int, Vector[BigInt]]): Option[ConstraintViolation] =
+      Codec.refuse(
+        !(a.keys.forall(k => k >= 0 && k <= 255) &&
+          a.values.forall(_.forall(x => x >= Long.MinValue && x <= Long.MaxValue))),
+        "cost models",
+        "language 0..255 and Int64 parameters",
+        s"${a.size} languages"
+      )
 
   /** `PoolVotingThresholds`: five unit intervals. */
   private val poolThresholds: Codec[PoolVotingThresholds] =
@@ -316,7 +320,7 @@ object Params:
       def encode(a: ProtocolParams, out: Writer): Unit =
         out.arrayHead(params.size)
         params.foreach(_.write(a, out))
-      override def check(a: ProtocolParams): Option[String] =
+      override def check(a: ProtocolParams): Option[ConstraintViolation] =
         params.iterator.flatMap(_.refuses(a)).nextOption()
 
   private val shelley = listCodec(shelleyList)
