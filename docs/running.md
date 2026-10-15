@@ -151,6 +151,30 @@ but the uninterrupted run peaked at 5.66 GB RSS with `-Xmx3g` (RocksDB and other
 not yet profiled, roadmap K6). Give the container a 10 GiB limit with `-Xmx3g`; the run started with 6 GiB and RSS
 had reached 5.3 GB when the limit was raised.
 
+### `import-haskell-db`: start from a Haskell node's blocks
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main import-haskell-db \
+  --haskell-db <haskell db dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N]
+```
+
+Reads `<haskell db dir>/immutable` (a Haskell node's ImmutableDB; never written, so a running
+node's directory may be given, but copy it if you can) and appends its blocks to the immutable store
+of `--db`. A following `follow --db <dir>` replays them locally instead of downloading them, then
+intersects the peer at the imported tip. The command refuses a database whose `protocolMagicId` is not
+the configured network's, a first block that does not name the configured genesis, blocks that do
+not link or whose header hash or slot differ from the index, and a corrupt chunk (a typed error naming
+the chunk and the fault); the newest chunk, which the node may be writing, is cut back to its valid
+blocks and the number ignored is printed. `--stop-slot N` stops after the last block at or before slot
+`N`. A second run continues after the blocks already stored. It prints JSON lines
+(`importHaskellDb`: `progress`, `done` or `error`). The Haskell node's ledger snapshots are not read:
+the ledger state is rebuilt by the replay.
+
+Measured (2026-10-15, 3 CPUs, 200 Preview chunks copied from the Haskell node's database): 40,357
+blocks (slots 0 to 863,996, 46 MB) imported in 2 s; `follow` then replayed them in 42.7 s, connected
+with the intersection at the imported tip (slot 863,996), and went on to slot 3.33 M (epoch 38) in
+the following 6.5 minutes.
+
 ### Preprod
 
 The node follows the public preprod testnet (network magic 1) from genesis through its Byron era

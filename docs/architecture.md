@@ -374,6 +374,7 @@ Modelled on the ouroboros-consensus ChainDB, as tagless-final algebras in `node/
 | `ChainStorage` | `ChainStorage.scala` | Checks the identity, opens the stores, restores the newest usable snapshot, replays the stored blocks after it, rebuilds the volatile chain (`resume`), hands the follower a `ChainPersistence` hook, and snapshots the immutable tip when it is released |
 | `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to `LedgerState` is persisted with no codec change |
 | `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`, `NetworkMismatch`, `ForeignChain`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
+| `HaskellImmutableReader[F]` | `storage/haskell/` | Read-only view of a Haskell node's ImmutableDB (see below); `HaskellImport` appends its blocks to our `ImmutableStore` |
 
 ```sh
 follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
@@ -394,6 +395,29 @@ JSON log gains `immutableOpened`, `snapshotRestored`, `snapshotSkipped`, `snapsh
 On open the newest chunk is validated entry by entry (contiguous offsets, data in bounds, CRC) and
 both files are truncated to the last good entry; a chunk left with no good entry is removed, and
 data files without an index are deleted. Older chunks were synced at roll-over and are trusted.
+
+**Haskell ImmutableDB reader** (`node/.../storage/haskell/`, reader only; our store keeps its own
+format until roadmap step B). `HaskellImmutableDb.scala` holds the pure parts: the opaque `ChunkNo`,
+`ChunkSlots` (10 x k of the first era: 4,320 on Preview, 21,600 on mainnet and preprod) and
+`ByteOffset`; `PrimaryIndex` (version byte 1, big-endian `u32` offsets, one per relative slot plus
+one, a step of 56 for a filled slot; relative slot 0 is the EBB slot) and `SecondaryIndex` (56-byte
+entries: block offset u64, header offset u16, header size u16, CRC32 u32, header hash, slot or, for an
+EBB, epoch u64); `ChunkValidator` (offsets contiguous, block sizes from the next offset or, for the
+last block, from the CBOR item length, CRC32 of the block bytes, the Blake2b-256 of the header slice
+equal to the indexed hash for Shelley-based blocks, the slot equal to the one the primary index
+position implies); and the closed `ChunkFault` and `HaskellImmutableError` ADTs.
+`HaskellImmutableReader[F]` lists the chunks (they must be contiguous from 0), and `contents()` /
+`blocks()` stream `HaskellBlock(chunk, position, slot, hash, bytes)` in chain order. Every chunk but
+the newest must validate completely; the newest is cut back to its valid prefix, as the Haskell node
+does with `ValidateMostRecentChunk`, and what was ignored is reported (`ChunkContents.dropped`)
+because the node writes the chunk file before its two indexes. The reader never writes. Our chunk `c`
+(21,600 slots) holds the blocks of Haskell chunks `5c` to `5c + 4` byte for byte on Preview: the block
+bytes are the same `[era tag, block]` items. `import-haskell-db` (`HaskellImport`) additionally
+decodes every block, checks its header hash and slot against the index, the predecessor hash and the
+block numbering, the protocol magic (`protocolMagicId`) against the configured network and the first
+block's predecessor against the configured genesis, then appends to the `ImmutableStore`; it
+continues after the tip of a non-empty target. Epoch-boundary blocks (Byron) are covered by tests
+built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell database was available.
 
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 3, are kept): `"CSLSNAP1" | format version u32 | schema fingerprint[8] | payload | SHA-256`.

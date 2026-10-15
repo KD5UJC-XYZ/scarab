@@ -136,6 +136,11 @@ object Main extends IOApp:
       }
 
   def run(args: List[String]): IO[ExitCode] =
+    if args.headOption.contains("import-haskell-db") then
+      lab.node.storage.haskell.HaskellImportCommand.run(args.tail)
+    else runFollow(args)
+
+  private def runFollow(args: List[String]): IO[ExitCode] =
     parse(args) match
       case Left(error) => IO.println(error.message).as(ExitCode(2))
       case Right(options) =>
