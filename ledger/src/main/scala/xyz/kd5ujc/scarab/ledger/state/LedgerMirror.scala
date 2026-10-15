@@ -540,7 +540,7 @@ object LedgerMirror:
                 s.gov.committee,
                 s.gov.constitution,
                 eraParams[E](s.params),
-                eraParams[E](s.previousParams),
+                eraParams[E](node.ConwayEpoch.reportedPrevious(s)),
                 future,
                 pulser(s)
               )
@@ -559,29 +559,14 @@ object LedgerMirror:
             )
       }
 
-    /** The completed pulser; before the first boundary the node has none, and the mirror holds the
-      * ratification of nothing over the state it is in (`NodeExtras.pulserAbsent`).
+    /** The completed pulser as the governance state reports it (`ConwayEpoch.reportedPulser`, the
+      * pulser the node-to-client queries answer): before the first boundary the node has none, and
+      * the mirror holds the ratification of nothing over the state it is in
+      * (`NodeExtras.pulserAbsent`).
       */
     private def pulser(s: node.LedgerState): DRComplete =
-      s.gov.pulsed.fold(
-        DRComplete(
-          node.PulsingSnapshot.empty,
-          node.RatifyState(
-            node.EnactState(
-              s.gov.committee,
-              s.gov.constitution,
-              s.params,
-              s.previousParams,
-              BigInt(0),
-              Map.empty,
-              s.gov.proposals.roots
-            ),
-            Vector.empty,
-            Set.empty,
-            delayed = false
-          )
-        )
-      )((snapshot, ratify) => DRComplete(snapshot, ratify))
+      val (snapshot, ratify) = node.ConwayEpoch.reportedPulser(s)
+      DRComplete(snapshot, ratify)
 
     /** `utxosInstantStake`: the stake of the UTxO by credential (and by pointer before Conway). */
     private def instantStake[E <: EraTag](u: node.Utxo)(using
@@ -802,11 +787,21 @@ object LedgerMirror:
           case PulsingRewUpdate.Pulsing(_, _) => true
           case _                              => false
         }
+        val cur = x.params.cur.restore(gov.params)
+        // a Conway state with no previous parameters reports its pulser and previous parameters as of
+        // the era translation (`ConwayEpoch.reportedPulser`): put back what that took out
+        val beforeBoundary = conway && !x.prevParamsExplicit
+        val prev = node.ConwayEpoch.heldPrevious(
+          x.params.prev.restore(gov.prev),
+          cur,
+          beforeBoundary
+        )
         val pulsed =
           if x.pulserAbsent then None
-          else gov.conway.map((_, d) => (d.snapshot, d.ratify))
-        val cur = x.params.cur.restore(gov.params)
-        val prev = x.params.prev.restore(gov.prev)
+          else
+            gov.conway.map((_, d) =>
+              (d.snapshot, node.ConwayEpoch.heldRatify(d.ratify, cur, beforeBoundary))
+            )
         val rebuilt = node.LedgerState(
           epoch = nes.epoch.toBigInt,
           params = cur,

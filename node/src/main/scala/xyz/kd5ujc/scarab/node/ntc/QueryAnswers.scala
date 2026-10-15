@@ -148,50 +148,7 @@ object QueryAnswers:
   @unused private def coin(w: CborOut, c: BigInt): Unit = w.uint(c)
 
   private def pulsed(view: QueryView): (PulsingSnapshot, RatifyState) =
-    val (snapshot, ratify) = view.ledger.gov.pulsed.getOrElse(
-      (PulsingSnapshot.empty, initialRatify(view.ledger))
-    )
-    // the pulser the genesis seeded keeps the parameters of the era translation until the first boundary
-    if view.ledger.prevParams.isEmpty then
-      (
-        snapshot,
-        ratify.copy(enact =
-          ratify.enact.copy(
-            params = beforeUpgrade(ratify.enact.params),
-            prevParams = beforeUpgrade(ratify.enact.prevParams)
-          )
-        )
-      )
-    else (snapshot, ratify)
-
-  /** Before the first epoch boundary of a chain that starts in Conway the previous parameters, and
-    * the ones in the genesis-seeded pulser state, are those of the era translation: they carry the
-    * cost models of PlutusV1 and PlutusV3 but not the PlutusV2 model that the Alonzo genesis holds
-    * in `extraConfig` (as the reference reports them).
-    */
-  private def beforeUpgrade(p: ProtocolParams): ProtocolParams =
-    p.copy(costModels = p.costModels - 1)
-
-  /** The previous parameters as the governance state reports them. */
-  private def previous(s: LedgerState): ProtocolParams =
-    if s.prevParams.isEmpty then beforeUpgrade(s.previousParams) else s.previousParams
-
-  /** The pulser state before the first epoch boundary: the enact state of the current ledger. */
-  private def initialRatify(s: LedgerState): RatifyState =
-    RatifyState(
-      EnactState(
-        s.gov.committee,
-        s.gov.constitution,
-        beforeUpgrade(s.params),
-        beforeUpgrade(s.previousParams),
-        s.treasury,
-        Map.empty,
-        s.gov.proposals.roots
-      ),
-      Vector.empty,
-      Set.empty,
-      delayed = false
-    )
+    ConwayEpoch.reportedPulser(view.ledger)
 
   /** DRep state as the query reports it: expiries brought forward by the dormant epochs. */
   private def drepStates(s: LedgerState): Map[Credential, DRepState] =
@@ -552,7 +509,7 @@ object QueryAnswers:
     E.maybe(w, s.gov.committee)(E.committee)
     E.constitution(w, s.gov.constitution)
     E.protocolParams(w, s.params)
-    E.protocolParams(w, previous(s))
+    E.protocolParams(w, ConwayEpoch.reportedPrevious(s))
     future(env, view) match
       case FuturePParams.NoPParamsUpdate          => w.array(1).uint(0)
       case FuturePParams.DefinitePParamsUpdate(p) => w.array(2).uint(1); E.protocolParams(w, p)

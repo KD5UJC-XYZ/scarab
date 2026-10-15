@@ -6,10 +6,9 @@ import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.ledger.{Block, Nonce}
+import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   DRepRole,
@@ -22,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   WithOrigin
 }
 import xyz.kd5ujc.scarab.models.runtime.Codec
-import xyz.kd5ujc.scarab.node.{MirrorCorpus, NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.MirrorCorpus
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellStateCodecs,
@@ -141,131 +140,97 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
 
   // ---- the state of a Conway node, against the node's answers
 
-  private val fixtures = Path.of("fixtures/eras")
-  private val setup: NodeSetup =
-    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
-  private val mirrorEnv: MirrorEnv =
-    MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
-  private val queryEnv = QueryEnv(
-    setup.byronParams
-      .flatMap(_.startTime)
-      .fold(setup.geometry.systemStart)(java.time.Instant.ofEpochSecond),
-    setup.geometry,
-    setup.praos.forks,
-    setup.byronParams.fold(EraHistory.ByronParams(50, 1000, 5))(b =>
-      EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
-    ),
-    setup.globals.maxSupply,
-    setup.genesis.raw,
-    setup.mirrorEnv().ledger
-  )
+  private val mirrorEnv: MirrorEnv = NtcGolden.mirrorEnv
 
-  private val raws: Vector[Bytes] =
-    Files
-      .readAllLines(fixtures.resolve("blocks.hex"))
-      .asScala
-      .toVector
-      .filter(_.nonEmpty)
-      .map(l => hex(l))
+  private type Subject = (String, NodeState, Point, Option[BigInt])
 
-  private val blocks: Vector[Block] =
-    raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity))
-
-  /** The Conway states of the capture, each with the block that made it. */
-  private lazy val conwayStates: Vector[(Block, NodeState)] =
-    blocks.indices
-      .foldLeft(Vector.empty[(Block, NodeState)]) { (acc, i) =>
-        val before = acc.lastOption.fold(setup.start)(_._2)
-        NodeRules.applyBlock(
-          before,
-          blocks(i).header,
-          raws(i),
-          setup.praos,
-          setup.globals,
-          setup.byronRules
-        ) match
-          case Right(next)          => acc :+ (blocks(i) -> next)
-          case Left((rule, reason)) => fail(s"block $i rejected by $rule: $reason")
-      }
-      .filter(_._1.era == xyz.kd5ujc.scarab.protocol.Era.Conway)
-
-  private def ask(state: NodeState, block: Block, query: LedgerQuery): Bytes =
-    val view = QueryView(Point.Origin, Some(block.header.blockNo), state)
+  private def ask(subject: Subject, query: LedgerQuery): Bytes =
+    val (_, state, point, blockNo) = subject
     QueryAnswers
       .answer(
-        queryEnv,
-        view,
+        NtcGolden.queryEnv,
+        QueryView(point, blockNo, state),
         Map.empty,
         NtcQuery.IfCurrent(xyz.kd5ujc.scarab.protocol.Era.Conway.index, query)
       )
       .map(result)
       .getOrElse(fail(s"$query is not answered"))
 
-  private def mirrored(state: NodeState, block: Block) =
-    val at = WithOrigin.At(SlotNo.fromUnsigned(block.header.slot.toLong))
+  private def mirrored(subject: Subject) =
+    val (_, state, point, _) = subject
+    val slot = point match
+      case Point.Block(s, _) => s.value
+      case Point.Origin      => BigInt(0)
+    val at = WithOrigin.At(SlotNo.fromUnsigned(slot.toLong))
     given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
     MirrorCorpus.ledgerMirror.to[Conway](at, state.ledger).run(mirrorEnv) match
       case Right(m)    => m.value.nes
       case Left(error) => fail(s"the mirror refuses the state: $error")
 
   test("the capture has Conway states") {
-    assert(conwayStates.nonEmpty)
+    assert(NtcGolden.conwayStates.nonEmpty)
   }
 
-  private def overConway(name: String)(piece: (NodeState, Block) => Unit): Unit =
-    test(s"Conway states of the capture: $name") {
-      conwayStates.foreach { (block, state) => piece(state, block) }
+  /** The Conway states of the capture and the two built on the last one, see [[NtcGolden]]. */
+  private def overConway(name: String)(piece: Subject => Unit): Unit =
+    test(s"Conway states: $name") {
+      NtcGolden.subjects.foreach(piece)
     }
 
   import LedgerQuery.*
 
-  overConway("GetCurrentPParams is the current parameters") { (state, block) =>
-    val nes = mirrored(state, block)
+  overConway("GetCurrentPParams is the current parameters") { subject =>
+    val nes = mirrored(subject)
     assertEquals(
       Params.conwayCodec.encodeUnchecked(nes.es.ls.utxo.gov.curPParams).hex,
-      ask(state, block, GetCurrentPParams).hex
+      ask(subject, GetCurrentPParams).hex
     )
   }
 
-  overConway("GetGovState is the governance state") { (state, block) =>
-    val nes = mirrored(state, block)
+  overConway("GetGovState is the governance state") { subject =>
+    val nes = mirrored(subject)
     assertEquals(
       conwayGovState.encodeUnchecked(nes.es.ls.utxo.gov).hex,
-      ask(state, block, GetGovState).hex
+      ask(subject, GetGovState).hex,
+      subject._1
     )
   }
 
-  overConway("GetConstitution, GetProposals and GetRatifyState are parts of it") { (state, block) =>
-    val gov = mirrored(state, block).es.ls.utxo.gov
+  overConway("GetConstitution, GetProposals and GetRatifyState are parts of it") { subject =>
+    val gov = mirrored(subject).es.ls.utxo.gov
     assertEquals(
       constitution.encodeUnchecked(gov.constitution).hex,
-      ask(state, block, GetConstitution).hex
+      ask(subject, GetConstitution).hex
     )
     assertEquals(
       ratifyState.encodeUnchecked(gov.drepPulsing.ratify).hex,
-      ask(state, block, GetRatifyState).hex
+      ask(subject, GetRatifyState).hex,
+      subject._1
     )
     assertEquals(
       Wire.seqOf(govActionState).encodeUnchecked(gov.drepPulsing.snapshot.proposals).hex,
-      ask(state, block, GetProposals(Set.empty)).hex
+      ask(subject, GetProposals(Set.empty)).hex
     )
   }
 
-  overConway("GetPoolDistr2 is the pool distribution of the state") { (state, block) =>
-    val nes = mirrored(state, block)
-    assertEquals(poolDistr.encodeUnchecked(nes.pd).hex, ask(state, block, GetPoolDistr2(None)).hex)
+  overConway("GetPoolDistr2 is the pool distribution of the state") { subject =>
+    val nes = mirrored(subject)
+    assertEquals(poolDistr.encodeUnchecked(nes.pd).hex, ask(subject, GetPoolDistr2(None)).hex)
   }
 
-  overConway("GetAccountState is the chain account state") { (state, block) =>
-    val nes = mirrored(state, block)
+  overConway("GetAccountState is the chain account state") { subject =>
+    val nes = mirrored(subject)
     assertEquals(
       chainAccountState.encodeUnchecked(nes.es.chainAccount).hex,
-      ask(state, block, GetAccountState).hex
+      ask(subject, GetAccountState).hex
     )
   }
 
-  overConway("GetDRepState is the map of the registered DReps") { (state, block) =>
-    val dreps = mirrored(state, block).es.ls.cert.vState.dreps
+  overConway("GetDRepState is the map of the registered DReps") { subject =>
+    val state = subject._2.ledger
+    val dreps = mirrored(subject).es.ls.cert.vState.dreps
     val codec = Wire.mapOf(credential[DRepRole], drepState)
-    assertEquals(codec.encodeUnchecked(dreps).hex, ask(state, block, GetDRepState(Set.empty)).hex)
+    // the query reports the expiries brought forward by the dormant epochs
+    if state.dormantEpochs == 0 then
+      assertEquals(codec.encodeUnchecked(dreps).hex, ask(subject, GetDRepState(Set.empty)).hex)
   }

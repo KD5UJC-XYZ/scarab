@@ -107,7 +107,9 @@ object DroppedParams:
   *   `prevParams` was set (the mirror's previous parameters are always there)
   * @param pulserAbsent
   *   the state is from before the first epoch boundary of the era, so there is no completed DRep
-  *   pulser (the mirror's is a placeholder)
+  *   pulser (the mirror's is `ConwayEpoch.initialRatify`). Not derivable from the mirror: a state
+  *   with no pulser and one whose pulser is the initial one differ in `FuturePParams` (the second
+  *   is `Potential` early in the epoch), but not in a late slot, and the laws generate both
   * @param snapshots
   *   the pool details of the three snapshots that `StakePoolSnapShot` has no place for
   * @param poolDistribution
