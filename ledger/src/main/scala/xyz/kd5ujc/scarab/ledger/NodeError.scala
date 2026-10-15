@@ -62,6 +62,11 @@ enum StorageError extends NodeError:
   /** The data was written by an incompatible format or schema version. */
   case VersionMismatch(what: String, found: String, expected: String)
 
+  /** A file names a format version of its kind that this build does not know (written by a newer
+    * build, most likely): it is not opened, and nothing is rewritten.
+    */
+  case UnknownVersion(what: String, kind: FileKind, found: String)
+
   /** A requested block or point is not stored. */
   case Missing(what: String)
 
@@ -80,8 +85,10 @@ enum StorageError extends NodeError:
     case Corrupt(w, r)            => s"corrupt $w: $r"
     case Io(w, r)                 => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
-    case Missing(w)               => s"missing $w"
-    case OutOfOrder(r)            => s"out of order: $r"
+    case UnknownVersion(w, k, f) =>
+      s"$w: unknown ${k.label} format '$f' (this build reads '${k.identifier(FormatVersion.V1)}' and '${k.identifier(FormatVersion.Current)}'); it was probably written by a newer build"
+    case Missing(w)    => s"missing $w"
+    case OutOfOrder(r) => s"out of order: $r"
     case NetworkMismatch(f, e) =>
       s"the database belongs to another network: it was created for ${f.describe}, this node is configured for ${e.describe}; use the matching --genesis-dir or another --db"
     case ForeignChain(f, e) =>

@@ -6,16 +6,16 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
-import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, StandardCopyOption, StandardOpenOption}
+import java.nio.file.Files
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{NetworkIdentity, StorageError}
+import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, NetworkIdentity, StorageError}
 
 /** The network identity a database records (`<db>/network-identity`), written when the database is
   * created and checked on every open, so a `--db` can never be followed with another network's
-  * genesis. Plain text (see [[NetworkIdentity.render]]), written atomically: temp file, fsync,
-  * rename, fsync of the directory.
+  * genesis. Plain text (see [[NetworkIdentity.render]]), written atomically ([[AtomicFile]]). A
+  * file of format 1 (the former name in its first line) is read as before and rewritten by
+  * [[migrate]].
   *
   * A database created before the identity existed has no file. It is adopted if its first block
   * names the configured genesis as its predecessor (the Byron genesis hash, or none for a chain
@@ -30,11 +30,7 @@ object NetworkIdentityFile:
 
   private def guard[F[_]: Sync, A](what: String)(body: => A)(using
       Raise[F, StorageError]
-  ): F[A] =
-    Sync[F].blocking(body).attempt.flatMap {
-      case Right(a) => Sync[F].pure(a)
-      case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
-    }
+  ): F[A] = AtomicFile.guard[F, A](what)(body)
 
   /** The recorded identity, if the file exists. */
   def read[F[_]: Sync](dir: Path)(using Raise[F, StorageError]): F[Option[NetworkIdentity]] =
@@ -49,29 +45,45 @@ object NetworkIdentityFile:
       )
     )
 
-  /** Record `identity` (replacing any file). */
+  /** Record `identity` in the current format (replacing any file). */
   def write[F[_]: Sync](dir: Path, identity: NetworkIdentity)(using
       Raise[F, StorageError]
   ): F[Unit] =
-    val file = fileOf(dir)
-    val tmp = file.resolveSibling(FileName + ".tmp")
-    guard[F, Unit](file.toString) {
-      Files.createDirectories(dir.toNioPath)
-      val ch = FileChannel.open(
-        tmp,
-        StandardOpenOption.CREATE,
-        StandardOpenOption.TRUNCATE_EXISTING,
-        StandardOpenOption.WRITE
+    guard[F, Unit](dir.toString)(Files.createDirectories(dir.toNioPath)) *>
+      AtomicFile.replace[F](
+        dir / FileName,
+        identity.render.getBytes(StandardCharsets.UTF_8)
       )
-      try
-        ch.write(java.nio.ByteBuffer.wrap(identity.render.getBytes(StandardCharsets.UTF_8)))
-        ch.force(true)
-      finally ch.close()
-      Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-      val d = FileChannel.open(dir.toNioPath, StandardOpenOption.READ)
-      try d.force(true)
-      finally d.close()
-    }
+
+  /** The identity file as a [[Migration]]: a rewrite in the next version's spelling. */
+  def migration[F[_]: Sync](using Raise[F, StorageError]): Migration[F] = new Migration[F]:
+    val kind = FileKind.IdentityFile
+
+    private def parsed(file: Path): F[(FormatVersion, NetworkIdentity)] =
+      guard[F, String](file.toString)(
+        new String(Files.readAllBytes(file.toNioPath), StandardCharsets.UTF_8)
+      ).flatMap(text =>
+        NetworkIdentity
+          .parseVersioned(file.toString, text)
+          .fold(_.raise[F, (FormatVersion, NetworkIdentity)], Sync[F].pure)
+      )
+
+    def detect(file: Path): F[FormatVersion] = parsed(file).map(_._1)
+
+    def step(file: Path, from: FormatVersion): F[Unit] =
+      parsed(file).flatMap((_, identity) =>
+        from.next.traverse_(next =>
+          AtomicFile.replace[F](file, identity.renderAs(next).getBytes(StandardCharsets.UTF_8))
+        )
+      )
+
+  /** Bring the identity file, if there is one, to the current format; what was migrated. Called
+    * before the identity is checked, so that everything below sees one format.
+    */
+  def migrate[F[_]: Sync](dir: Path)(using Raise[F, StorageError]): F[List[Migrated]] =
+    guard[F, Boolean](dir.toString)(Files.exists(fileOf(dir))).flatMap(present =>
+      Migrate(migration[F], if present then List(dir / FileName) else Nil)
+    )
 
   /** Check the recorded identity against `expected`, before anything else in the database is
     * touched: `true` if it is there and equal, `false` if there is no file, a

@@ -4,9 +4,11 @@
 Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
 import pathlib
+import shutil
 import struct
 import sys
 import unittest
+import zlib
 from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -189,6 +191,31 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(struct.unpack(">QHHI", e[:16]), (1234, 3, 11, 0xdeadbeef))
         self.assertEqual(e[16:48], bytes(range(32)))
         self.assertEqual(struct.unpack(">Q", e[48:])[0], 99)
+
+
+class ScalaIndexMagicTest(unittest.TestCase):
+    """The exporter reads a Scala immutable directory of either format version (magic CSLIDX01 or SCRBIDX2)."""
+
+    def directory(self, magic):
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        raw = b"\x82\x07\x80"
+        entry = struct.pack(">QIIQQ", 0, len(raw), zlib.crc32(raw), 5, 1) + bytes(range(32)) + b"\x00\x00\x00\x00"
+        (d / "00000.chunk").write_bytes(raw)
+        (d / "00000.index").write_bytes(magic + entry)
+        return d
+
+    def test_both_magics_read_the_same_block(self):
+        from oracle import export
+        for magic in (b"CSLIDX01", b"SCRBIDX2"):
+            blocks = list(export.scala_blocks(self.directory(magic)))
+            self.assertEqual(blocks, [(5, bytes(range(32)), zlib.crc32(b"\x82\x07\x80"), b"\x82\x07\x80")])
+
+    def test_another_magic_is_refused(self):
+        from oracle import export
+        with self.assertRaises(AssertionError):
+            list(export.scala_blocks(self.directory(b"SCRBIDX9")))
 
 
 class CompareDirsTest(unittest.TestCase):

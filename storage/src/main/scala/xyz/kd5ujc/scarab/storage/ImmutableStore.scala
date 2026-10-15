@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Async, Ref, Resource}
+import cats.effect.{Async, Ref, Resource, Sync}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -11,12 +11,14 @@ import cats.effect.syntax.all.*
 import fs2.io.file.{FileHandle, Files, Flag, Flags, Path}
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files as JFiles
 import java.nio.file.StandardOpenOption
 import java.util.zip.CRC32
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
 
 /** Append-only storage of the blocks older than `k`: the ImmutableDB of ouroboros-consensus. */
 trait ImmutableStore[F[_]]:
@@ -48,7 +50,11 @@ object ImmutableStore:
       blocks: Long,
       chunks: Int,
       truncatedEntries: Int,
-      truncatedBytes: Long
+      truncatedBytes: Long,
+      /** The files rewritten from an older format version on this open (none from the second open
+        * on).
+        */
+      migrated: List[Migrated] = Nil
   )
 
 /** Chunked files: blocks of slots `[c * chunkSlots, (c + 1) * chunkSlots)` live in `<c>.chunk`
@@ -64,12 +70,90 @@ object ImmutableStore:
   * entry (contiguous offsets, data in bounds, CRC) and truncates both files to the last good entry.
   */
 object FileImmutableStore:
-  // Persisted format identifiers, written into the chunk index and the format file: they keep the
-  // project's former name so that existing databases still open (scripts/oracle/export.py reads the magic).
-  val IndexMagic: Array[Byte] = "CSLIDX01".getBytes("US-ASCII")
-  val FormatText = "cardano-scala-lab immutable store v1"
+  // Persisted format identifiers (see FileKind): the magic of the chunk index and the text of the
+  // format file, in the current version. Version 1 spelled them with the project's former name
+  // (`CSLIDX01`, `cardano-scala-lab immutable store v1`); opening migrates those files, and the read
+  // path below only ever sees the current magic. scripts/oracle/export.py reads both.
+  val IndexMagic: Array[Byte] = magicOf(FormatVersion.Current)
+  val FormatText: String = FileKind.FormatFile.identifier(FormatVersion.Current)
   val HeaderSize = 8
   val EntrySize = 68
+
+  private def magicOf(v: FormatVersion): Array[Byte] =
+    FileKind.IndexFile.identifier(v).getBytes(StandardCharsets.US_ASCII)
+
+  /** The chunk index files as a [[Migration]]: only the 8 magic bytes differ between versions, so a
+    * step is the file with its header replaced. Reading the version looks at the header alone, once
+    * per file at open: the per-entry read path never checks the magic.
+    */
+  private[storage] def indexMigration[F[_]: Sync](using Raise[F, StorageError]): Migration[F] =
+    new Migration[F]:
+      val kind = FileKind.IndexFile
+
+      def detect(file: Path): F[FormatVersion] =
+        AtomicFile
+          .guard[F, Array[Byte]](file.toString) {
+            val in = JFiles.newInputStream(file.toNioPath)
+            try in.readNBytes(HeaderSize)
+            finally in.close()
+          }
+          .flatMap { header =>
+            // A file shorter than a header is a crash during chunk creation: recovery owns it.
+            if header.length < HeaderSize then Sync[F].pure(FormatVersion.Current)
+            else
+              kind
+                .versionOf(file.toString, new String(header, StandardCharsets.ISO_8859_1))
+                .fold(_.raise[F, FormatVersion], Sync[F].pure)
+          }
+
+      def step(file: Path, from: FormatVersion): F[Unit] =
+        from.next.traverse_ { next =>
+          AtomicFile
+            .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+            .flatMap(old => AtomicFile.replace[F](file, magicOf(next) ++ old.drop(HeaderSize)))
+        }
+
+  /** The `format` file (`<identifier> chunkSlots=<n>`) as a [[Migration]]. Reading it also checks
+    * that the database was made with this build's `chunkSlots`: a different value is a
+    * [[StorageError.VersionMismatch]], since the chunk a block lives in depends on it.
+    */
+  private[storage] def formatMigration[F[_]: Sync](chunkSlots: Long)(using
+      Raise[F, StorageError]
+  ): Migration[F] = new Migration[F]:
+    val kind = FileKind.FormatFile
+    private val Suffix = " chunkSlots="
+
+    def detect(file: Path): F[FormatVersion] =
+      AtomicFile
+        .guard[F, String](file.toString)(
+          new String(JFiles.readAllBytes(file.toNioPath), StandardCharsets.UTF_8).trim
+        )
+        .flatMap { text =>
+          val at = text.lastIndexOf(Suffix)
+          val (identifier, slots) = if at < 0 then (text, "") else text.splitAt(at)
+          kind
+            .versionOf(file.toString, identifier)
+            .fold(_.raise[F, FormatVersion], Sync[F].pure)
+            .flatMap { version =>
+              if slots == s"$Suffix$chunkSlots" then Sync[F].pure(version)
+              else
+                StorageError
+                  .VersionMismatch(
+                    file.toString,
+                    text,
+                    s"${kind.identifier(version)}$Suffix$chunkSlots"
+                  )
+                  .raise[F, FormatVersion]
+            }
+        }
+
+    def step(file: Path, from: FormatVersion): F[Unit] =
+      from.next.traverse_(next =>
+        AtomicFile.replace[F](
+          file,
+          s"${kind.identifier(next)}$Suffix$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
+        )
+      )
 
   private[storage] final case class Entry(offset: Long, length: Int, crc: Int, ref: BlockRef):
     def end: Long = offset + length
@@ -233,24 +317,16 @@ object FileImmutableStore:
       for
         _ <- guard(dir.toString)(files.createDirectories(dir))
         formatFile = dir / "format"
+        format = formatMigration[F](chunkSlots)
         present <- files.exists(formatFile)
+        // The format file is checked (version, chunkSlots) before any file is rewritten.
         _ <-
-          if present then
-            guard(formatFile.toString)(files.readUtf8Lines(formatFile).compile.string).flatMap {
-              text =>
-                val expected = s"$FormatText chunkSlots=$chunkSlots"
-                if text.trim == expected then F.unit
-                else
-                  fail[Unit](StorageError.VersionMismatch(formatFile.toString, text.trim, expected))
-            }
+          if present then format.detect(formatFile).void
           else
-            guard(formatFile.toString)(
-              Stream
-                .emit(s"$FormatText chunkSlots=$chunkSlots\n")
-                .through(files.writeUtf8(formatFile))
-                .compile
-                .drain
-            ) *> syncDir
+            AtomicFile.replace[F](
+              formatFile,
+              s"$FormatText chunkSlots=$chunkSlots\n".getBytes(StandardCharsets.UTF_8)
+            )
         names <- guard(dir.toString)(files.list(dir).map(_.fileName.toString).compile.toVector)
         numbered = names
           .collect { case n if n.endsWith(".index") => n.stripSuffix(".index").toIntOption }
@@ -262,6 +338,10 @@ object FileImmutableStore:
           .flatten
           .filterNot(numbered.contains)
         _ <- stray.traverse_(c => files.deleteIfExists(dataPath(c)))
+        // Version 1 databases: the indexes first, the format file last, each file atomically; a
+        // crash in between leaves every file whole at one version and the next open finishes.
+        migratedIndexes <- Migrate(indexMigration[F], numbered.map(indexPath).toList)
+        migratedFormat <- Migrate(format, if present then List(formatFile) else Nil)
         recovered <- recoverNewest(numbered, 0, 0L)
         (chunks, lastEntry, truncEntries, truncBytes) = recovered
         total <- chunks
@@ -274,7 +354,14 @@ object FileImmutableStore:
       yield (
         chunks,
         tip,
-        ImmutableStore.OpenReport(tip, total, chunks.size, truncEntries, truncBytes),
+        ImmutableStore.OpenReport(
+          tip,
+          total,
+          chunks.size,
+          truncEntries,
+          truncBytes,
+          migratedIndexes ++ migratedFormat
+        ),
         current
       )
 

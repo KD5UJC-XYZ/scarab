@@ -748,5 +748,5 @@ class ChainStorageSuite extends CatsEffectSuite:
     assertEquals(NetworkIdentity.parse("f", shelleyOnly.render), Right(shelleyOnly))
     assert(NetworkIdentity.parse("f", "garbage").isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
-    assert(NetworkIdentity.parse("f", id.render.replace("v1", "v2")).isLeft)
+    assert(NetworkIdentity.parse("f", id.render.replace("v2", "v3")).isLeft)
   }

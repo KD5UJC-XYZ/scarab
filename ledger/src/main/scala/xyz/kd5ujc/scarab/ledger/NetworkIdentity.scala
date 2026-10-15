@@ -10,9 +10,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
   */
 final case class NetworkIdentity(magic: Long, shelleyGenesis: Bytes, byronGenesis: Option[Bytes]):
 
-  /** The text of the identity file, see [[NetworkIdentity.parse]]. */
-  def render: String =
-    s"""${NetworkIdentity.Header}
+  /** The text of the identity file, see [[NetworkIdentity.parse]], in the current format. */
+  def render: String = renderAs(FormatVersion.Current)
+
+  /** The text of the identity file as format `version` spells it (a test asks for an old one). */
+  def renderAs(version: FormatVersion): String =
+    s"""${FileKind.IdentityFile.identifier(version)}
        |magic $magic
        |shelley-genesis ${shelleyGenesis.hex}
        |byron-genesis ${byronGenesis.fold("none")(_.hex)}
@@ -24,34 +27,43 @@ final case class NetworkIdentity(magic: Long, shelleyGenesis: Bytes, byronGenesi
         .fold("none")(_.hex.take(16))}"
 
 object NetworkIdentity:
-  // Persisted format identifier (first line of `<db>/network-identity`): keeps the project's former name so
-  // that existing databases still open. Changing it would be a format version bump, not a rename.
-  val Header = "cardano-scala-lab network identity v1"
-
-  /** The inverse of [[NetworkIdentity.render]]; a different version line is a
-    * [[StorageError.VersionMismatch]], any other deviation is [[StorageError.Corrupt]].
+  /** The inverse of [[NetworkIdentity.render]], for any known format version (the version read is
+    * returned, so that the migration knows what it found). An identifier of the family that no
+    * version spells is [[StorageError.UnknownVersion]], any other deviation is
+    * [[StorageError.Corrupt]].
     */
-  def parse(what: String, text: String): Either[StorageError, NetworkIdentity] =
-    def corrupt(reason: String): Either[StorageError, NetworkIdentity] =
+  def parseVersioned(
+      what: String,
+      text: String
+  ): Either[StorageError, (FormatVersion, NetworkIdentity)] =
+    def corrupt(reason: String): Either[StorageError, (FormatVersion, NetworkIdentity)] =
       Left(StorageError.Corrupt(what, reason))
     def hash(value: String): Option[Bytes] =
       Bytes.fromHex(value).toOption.filter(_.size == 32)
     text.linesIterator.map(_.trim).filter(_.nonEmpty).toList match
-      case header :: _ if header != Header && header.startsWith("cardano-scala-lab network") =>
-        Left(StorageError.VersionMismatch(what, header, Header))
-      case Header :: magic :: shelley :: byron :: Nil =>
-        (magic.split(' ').toList, shelley.split(' ').toList, byron.split(' ').toList) match
-          case (
-                "magic" :: m :: Nil,
-                "shelley-genesis" :: s :: Nil,
-                "byron-genesis" :: b :: Nil
-              ) =>
-            (
-              m.toLongOption,
-              hash(s),
-              if b == "none" then Some(None) else hash(b).map(Some(_))
-            ) match
-              case (Some(mm), Some(ss), Some(bb)) => Right(NetworkIdentity(mm, ss, bb))
-              case _                              => corrupt("malformed magic or genesis hash")
-          case _ => corrupt("unexpected lines")
-      case _ => corrupt("not a network identity file")
+      case header :: body =>
+        FileKind.IdentityFile.versionOf(what, header).flatMap { version =>
+          body match
+            case magic :: shelley :: byron :: Nil =>
+              (magic.split(' ').toList, shelley.split(' ').toList, byron.split(' ').toList) match
+                case (
+                      "magic" :: m :: Nil,
+                      "shelley-genesis" :: s :: Nil,
+                      "byron-genesis" :: b :: Nil
+                    ) =>
+                  (
+                    m.toLongOption,
+                    hash(s),
+                    if b == "none" then Some(None) else hash(b).map(Some(_))
+                  ) match
+                    case (Some(mm), Some(ss), Some(bb)) =>
+                      Right((version, NetworkIdentity(mm, ss, bb)))
+                    case _ => corrupt("malformed magic or genesis hash")
+                case _ => corrupt("unexpected lines")
+            case _ => corrupt("unexpected lines")
+        }
+      case Nil => corrupt("not a network identity file")
+
+  /** [[parseVersioned]] without the version. */
+  def parse(what: String, text: String): Either[StorageError, NetworkIdentity] =
+    parseVersioned(what, text).map(_._2)

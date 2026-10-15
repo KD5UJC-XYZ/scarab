@@ -19,6 +19,11 @@ import scala.concurrent.duration.*
 /** Observable storage milestones, for the JSON log. */
 enum StorageEvent:
   case ImmutableOpened(report: ImmutableStore.OpenReport)
+
+  /** Files of one kind were rewritten from an older format version (a database written by an older
+    * build, opened for the first time by this one): see [[Migrate]].
+    */
+  case FormatMigrated(migrated: Migrated)
   case SnapshotSkipped(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
   case SnapshotWritten(name: String, anchor: Option[BlockRef], bytes: Long, millis: Long)
@@ -141,12 +146,19 @@ object ChainStorage:
   ): Resource[F, Recovered[F, S]] =
     val F = Async[F]
     for
-      // The recorded identity is checked before anything else is opened.
+      // The identity file is brought to the current format, then checked, before anything else is opened.
+      migratedIdentity <- Resource.eval(NetworkIdentityFile.migrate[F](dir))
+      _ <- Resource.eval(
+        migratedIdentity.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
+      )
       recorded <- Resource.eval(
         config.identity.fold(F.pure(true))(NetworkIdentityFile.verify[F](dir, _))
       )
       opened <- FileImmutableStore.open[F](dir / "immutable", config.chunkSlots)
       (store, report) = opened
+      _ <- Resource.eval(
+        report.migrated.traverse_(m => events.emit(StorageEvent.FormatMigrated(m)))
+      )
       _ <- Resource.eval(events.emit(StorageEvent.ImmutableOpened(report)))
       // A database from before the identity existed is adopted if its first block fits the genesis.
       _ <- Resource.eval(

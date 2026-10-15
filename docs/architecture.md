@@ -414,12 +414,13 @@ follow --genesis-dir <dir> --peer <host>:<port> --db <dir> [--snapshot-every <N|
 Without `--db` nothing changes: the node is in-memory and replays from genesis. With `--db` the
 JSON log gains `immutableOpened`, `snapshotRestored`, `snapshotSkipped`, `snapshotWritten`,
 `snapshotFailed`, `replayStarted`, `replayProgress`, `replayFinished`, `networkRecorded`,
-`volatileOpened`, `volatileResumed` and `shutdownSnapshot`.
+`volatileOpened`, `volatileResumed`, `shutdownSnapshot` and, the first time an older database is
+opened, `formatMigrated` (`kind`, `from`, `to`, `count`; see "Format versions and migration").
 
 **Immutable store format** (`<db>/immutable/`). `format` names the version and chunk size
 (`chunkSlots`, 21600); a different chunk size is a `VersionMismatch`. Blocks of slots
 `[c * chunkSlots, (c + 1) * chunkSlots)` go to `<c>.chunk` (concatenated raw blocks) and
-`<c>.index`: the magic `CSLIDX01` then 68-byte big-endian entries
+`<c>.index`: the magic `SCRBIDX2` (`CSLIDX01` in format 1) then 68-byte big-endian entries
 `offset u64 | length u32 | crc32 u32 | slot u64 | blockNo u64 | hash[32] | flags u8 | zero[3]`
 (`flags` bit 0 marks a Byron epoch-boundary block). Appends write data then index without syncing;
 `sync` (before every snapshot, at chunk roll-over and on close) forces both and the directory.
@@ -505,12 +506,38 @@ never lands between two stores. The next start restores that snapshot, replays n
 nothing of this runs: the start restores the newest periodic snapshot, replays the stored blocks after
 it, and resumes the volatile chain from whatever the log holds.
 
+**Format versions and migration.** The files whose first bytes name their format are the network
+identity, the immutable store's `format` file and every chunk `.index`. Their identifiers, per
+version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`):
+
+| file | format 1 (until the rename) | format 2 |
+|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` |
+
+The layouts are the same in both; the format version only says which build wrote the file. The
+versions are a closed `enum FormatVersion` (a version this build does not know cannot be
+represented) and each kind of file is a `FileKind` with an identifier per version. On open,
+`Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of every
+file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
+rewritten), then steps each stale file to the next version until it is current. A step is
+`AtomicFile.replace`: a temporary file in the same directory, fsync, rename over the original, fsync
+of the directory; so a crash leaves every file whole at one version, and the next open finishes.
+The chunk indexes are migrated first and the `format` file last. Each kind migrated is reported once
+(`formatMigrated`); the second open reports nothing. Reading accepts format 1 and format 2 (the
+network identity parser does, and the index scan at open does once per file; the per-entry read
+path never looks at the magic). The migration is one way: an older build does not know format 2
+(keep a copy of a database to run an older build on it). The ledger snapshots are not part of this:
+they have their own schema fingerprint, and their migration is issue #83, which adds a `Migration`
+for them. `scripts/oracle/export.py` reads both index magics.
+
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
-database is created (the first line keeps the project's former name: it is a persisted format
-identifier, as is the `CSLIDX01` index magic):
+database is created (the first line is its format identifier, see "Format versions and
+migration"; format 1 began `cardano-scala-lab network identity v1`):
 
 ```
-cardano-scala-lab network identity v1
+scarab network identity v2
 magic 2
 shelley-genesis <blake2b-256 of the Shelley genesis file as read>
 byron-genesis <hash, or none for a chain that starts in Shelley>

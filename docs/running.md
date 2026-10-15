@@ -83,6 +83,13 @@ Caveats:
   names the configured Byron genesis hash (`ForeignChain` otherwise); on a Shelley-start network that
   check cannot tell two networks apart. The devnet rewrites its genesis at every cluster start, so a
   `--db` of an earlier cluster is refused too.
+- A database written before the rename (format 1: `cardano-scala-lab ...` identifiers, index magic
+  `CSLIDX01`) is migrated to format 2 the first time it opens: the identity file, every chunk index and the
+  `format` file are rewritten one by one (temporary file, fsync, rename), `formatMigrated` events say what,
+  and the second open does nothing. A crash in the middle is harmless, the next open finishes. The
+  migration is one way and an older build cannot open the result: keep a copy (the chunk files are not
+  touched, so copying `network-identity`, `immutable/format` and `immutable/*.index` is enough to go back).
+  A database of a format newer than the build refuses to open (`UnknownVersion`) and nothing is rewritten.
 - The volatile blocks (the last `k`) are kept in `<db>/volatile/` and applied again on start
   (`volatileResumed`), and a graceful stop (SIGTERM, SIGINT, `--seconds`) writes a snapshot at the
   immutable tip (`shutdownSnapshot`): the next start replays no stored block and continues at the

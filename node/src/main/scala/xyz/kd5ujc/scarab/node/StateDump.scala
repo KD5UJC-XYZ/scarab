@@ -30,8 +30,9 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
 object StateDump:
   /** Objects with more fields than this are digested. */
   val Threshold = 64
-  // Format tag written into the dump files; it keeps the former name so that dumps already written stay valid.
-  val Format = "csl-state-digest-1"
+  // Format tag written into the dump files (the digest definition above is unchanged; dumps written
+  // before the rename say `csl-state-digest-1` and are the same format).
+  val Format = "scarab-state-digest-1"
 
   /** Canonical text of a JSON value (numbers are integers here: ledger quantities). */
   def canon(j: Json): String =

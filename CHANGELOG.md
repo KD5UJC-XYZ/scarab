@@ -5,6 +5,19 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Changed (persisted formats: version 2, migrated on open)
+- The persisted identifiers take the Scarab name: `scarab network identity v2`, `scarab immutable store v2`,
+  index magic `SCRBIDX2` (format 1: `cardano-scala-lab ...`, `CSLIDX01`); the state dump format tag is
+  `scarab-state-digest-1`. Layouts are unchanged. A format 1 database is migrated the first time it is
+  opened, file by file and atomically (temporary file, fsync, rename), the `format` file last, so a crash
+  leaves whole files of either version and the next open finishes; the second open does nothing. A version
+  the build does not know (`StorageError.UnknownVersion`) refuses the open before anything is rewritten.
+  The JSON log reports `formatMigrated` (`kind`, `from`, `to`, `count`). The migration is one way: keep a
+  copy to run an older build.
+- New in `storage`: `Migration[F]` (read the version of a file, step it to the next) and `Migrate` (run it
+  over a kind's files), over a closed `FormatVersion`/`FileKind` in `ledger`; the first instance of the
+  snapshot-migration pattern of #83. `scripts/oracle/export.py` reads both index magics.
+
 ### Changed (rename: the runtime names)
 - Data directory `/tmp/scarab` (was `/tmp/cardano-scala-lab`), cache `.cache/scarab`, image `scarab-jdk:local`,
   containers and devnets `scarab-*` (`scarab-devnet`, `scarab-eras`, `scarab-pool`, `scarab-ci-*`,

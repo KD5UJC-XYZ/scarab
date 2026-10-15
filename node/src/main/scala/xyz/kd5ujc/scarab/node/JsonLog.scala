@@ -384,6 +384,14 @@ object JsonLog:
   val storage: StorageEvents[IO] = new StorageEvents[IO]:
     private def anchor(b: Option[BlockRef]): Json = b.fold(Json.Null)(block)
     def emit(event: StorageEvent): IO[Unit] = event match
+      case StorageEvent.FormatMigrated(m) =>
+        line(
+          "formatMigrated",
+          "kind" -> m.kind.toString.asJson,
+          "from" -> m.from.toString.asJson,
+          "to" -> m.to.toString.asJson,
+          "count" -> m.count.asJson
+        )
       case StorageEvent.ImmutableOpened(r) =>
         line(
           "immutableOpened",

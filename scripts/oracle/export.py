@@ -25,7 +25,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from devnet import ntcquery  # noqa: E402
 
-INDEX_MAGIC = b"CSLIDX01"
+INDEX_MAGICS = (b"CSLIDX01", b"SCRBIDX2")  # format 1 (the former name) and format 2; the entries are the same
 ENTRY = 68
 SECONDARY = 56
 
@@ -40,7 +40,7 @@ def scala_blocks(directory):
     """Yield (slot, hash, crc, raw block) for every block of a Scala immutable directory, in order."""
     for chunk, index in scala_chunks(directory):
         idx = index.read_bytes()
-        assert idx[:8] == INDEX_MAGIC, f"{index}: not a Scala index"
+        assert idx[:8] in INDEX_MAGICS, f"{index}: not a Scala index"
         data = chunk.read_bytes()
         for i in range((len(idx) - 8) // ENTRY):
             e = idx[8 + i * ENTRY: 8 + (i + 1) * ENTRY]
