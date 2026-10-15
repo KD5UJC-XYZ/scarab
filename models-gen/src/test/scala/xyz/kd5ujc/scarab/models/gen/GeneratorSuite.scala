@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path, Paths}
 
 class GeneratorSuite extends munit.FunSuite:
   private val cddlDir: Path =
-    Vector(Paths.get("models-spike/src/main/cddl"), Paths.get("../models-spike/src/main/cddl"))
+    Vector(Paths.get("models/src/main/cddl"), Paths.get("../models/src/main/cddl"))
       .find(Files.isDirectory(_))
       .getOrElse(fail("cddl directory not found"))
 

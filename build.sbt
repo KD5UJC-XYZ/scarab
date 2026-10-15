@@ -4,17 +4,20 @@ val catsEffectVersion = "3.7.1"
 val catsMtlVersion = "1.7.0"
 val fs2Version = "3.14.0"
 val munitVersion = "1.0.2"
+val circeVersion = "0.14.16"
 ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / version := "0.1.0"
-ThisBuild / organization := "io.github.ottobot-ai"
+ThisBuild / organization := "xyz.kd5ujc"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Werror")
 ThisBuild / publish / skip := true
 ThisBuild / Test / parallelExecution := false
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
 
-val lawTestDependencies = Seq(
+// The tests of every module: munit, ScalaCheck, and the cats law and effect test kits.
+val testDependencies = Seq(
   "org.typelevel" %% "cats-laws" % catsVersion % Test,
+  "org.typelevel" %% "cats-kernel-laws" % catsVersion % Test,
   "org.typelevel" %% "cats-mtl-laws" % catsMtlVersion % Test,
   "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
   "org.typelevel" %% "munit-cats-effect" % "2.0.0" % Test,
@@ -23,38 +26,44 @@ val lawTestDependencies = Seq(
   "org.scalameta" %% "munit" % munitVersion % Test
 )
 
-// Pure codecs and cryptography: CBOR, Blake2b, Ed25519, VRF, KES, operational certificates.
-lazy val core = project
-  .in(file("core"))
+// Every module is the sbt project `<id>`, the directory `<id>` and the artifact `scarab-<id>`. The
+// dependency direction below is enforced by sbt (a cycle does not load):
+//
+//   codec <- crypto <- protocol <- network
+//   codec <- plutus
+//   protocol, plutus <- ledger <- consensus <- storage
+//   storage, network <- node
+def scarab(id: String, dir: String = null): Project =
+  Project(id, file(Option(dir).getOrElse(id))).settings(
+    name := s"scarab-$id",
+    libraryDependencies ++= testDependencies
+  )
+
+// CBOR with original-bytes preservation, the byte-string type and exact rationals.
+lazy val codec = scarab("codec")
+  .settings(
+    libraryDependencies += "org.typelevel" %% "cats-kernel" % catsVersion
+  )
+
+// Ed25519, VRF, KES, BLS12-381, Blake2b and the operational certificate.
+lazy val crypto = scarab("crypto")
+  .dependsOn(codec % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.bouncycastle" % "bcprov-jdk18on" % "1.85.2",
       "com.weavechain" % "curve25519-elisabeth" % "0.1.3",
       // BLS12-381 (MinSig voting keys of Leios); Apache-2.0, bundles libblst. Declared directly, not via Scalus.
-      "foundation.icon" % "blst-java" % "0.3.2",
-      "org.typelevel" %% "cats-kernel" % catsVersion,
-      "org.typelevel" %% "cats-kernel-laws" % catsVersion % Test,
-      "org.typelevel" %% "discipline-munit" % "2.0.0" % Test,
-      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-      "org.scalameta" %% "munit" % munitVersion % Test
+      "foundation.icon" % "blst-java" % "0.3.2"
     )
   )
 
 // Pure Ouroboros mini-protocol codecs and state machines.
-lazy val network = project
-  .in(file("network"))
-  .dependsOn(core)
-  .settings(
-    libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-      "org.scalameta" %% "munit" % munitVersion % Test
-    )
-  )
+lazy val protocol = scarab("protocol")
+  .dependsOn(crypto % "compile->compile;test->test")
 
-// Tagless-final network runtime: fs2 bearer, multiplexer and mini-protocol clients.
-lazy val networkRuntime = project
-  .in(file("network-runtime"))
-  .dependsOn(network % "compile->compile;test->test")
+// Tagless-final network runtime: fs2 bearer, multiplexer and mini-protocol clients and servers.
+lazy val network = scarab("network")
+  .dependsOn(protocol % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsVersion,
@@ -62,32 +71,85 @@ lazy val networkRuntime = project
       "org.typelevel" %% "cats-mtl" % catsMtlVersion,
       "co.fs2" %% "fs2-core" % fs2Version,
       "co.fs2" %% "fs2-io" % fs2Version
-    ) ++ lawTestDependencies
+    )
   )
 
-lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
+// The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
+lazy val plutus = scarab("plutus")
+  .dependsOn(codec % "compile->compile;test->test")
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % catsVersion,
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,
+      "org.scalus" %% "scalus" % "1.2.0",
+      "io.circe" %% "circe-parser" % circeVersion % Test
+    )
+  )
 
-// Tagless-final node: algebras over F[_] with cats-mtl typed control flow.
-lazy val node = project
-  .in(file("node"))
-  .dependsOn(core, network, networkRuntime)
+// The pure ledger rules and types: blocks, headers, genesis, transactions, scripts, governance,
+// rewards, the pre-Conway and Byron rules.
+lazy val ledger = scarab("ledger")
+  .dependsOn(
+    protocol % "compile->compile;test->test",
+    plutus % "compile->compile;test->test"
+  )
   .settings(
     // Snapshot codecs are derived by inline `Mirror` recursion; ProtocolParams has 33 fields.
     scalacOptions += "-Xmax-inlines:512",
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsVersion,
+      // circe 0.14.16 brings jawn-parser 1.7.0 (fixes jawn advisories)
+      "io.circe" %% "circe-parser" % circeVersion
+    )
+  )
+
+// Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, the chain state.
+lazy val consensus = scarab("consensus")
+  .dependsOn(ledger % "compile->compile;test->test")
+  .settings(
+    scalacOptions += "-Xmax-inlines:512",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % catsVersion,
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,
+      "org.typelevel" %% "cats-mtl" % catsMtlVersion
+    )
+  )
+
+// Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader.
+lazy val storage = scarab("storage")
+  .dependsOn(consensus % "compile->compile;test->test")
+  .settings(
+    scalacOptions += "-Xmax-inlines:512",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % catsVersion,
       "org.typelevel" %% "cats-effect" % catsEffectVersion,
       "org.typelevel" %% "cats-mtl" % catsMtlVersion,
-      // Plutus (UPLC) machine and builtins only; the script context, ledger rules and plumbing are ours.
-      "org.scalus" %% "scalus" % "1.2.0",
+      "co.fs2" %% "fs2-core" % fs2Version,
+      "co.fs2" %% "fs2-io" % fs2Version,
       // The on-disk UTxO set (an embedded LSM tree; native library bundled in the jar).
-      "org.rocksdb" % "rocksdbjni" % "10.2.1",
-      // circe 0.14.16 brings jawn-parser 1.7.0 (fixes jawn advisories)
-      "io.circe" %% "circe-parser" % "0.14.16",
+      "org.rocksdb" % "rocksdbjni" % "10.2.1"
+    )
+  )
+
+lazy val runtimeClasspathFile = taskKey[File]("Write the resolved application runtime classpath")
+
+// Tagless-final node: wiring, mempool, forger, relay, node-to-client, the query server, the CLI.
+lazy val node = scarab("node")
+  .dependsOn(
+    storage % "compile->compile;test->test",
+    network % "compile->compile;test->test"
+  )
+  .settings(
+    scalacOptions += "-Xmax-inlines:512",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % catsVersion,
+      "org.typelevel" %% "cats-effect" % catsEffectVersion,
+      "org.typelevel" %% "cats-mtl" % catsMtlVersion,
+      "io.circe" %% "circe-parser" % circeVersion,
       "org.http4s" %% "http4s-ember-server" % "0.23.37",
       "org.http4s" %% "http4s-dsl" % "0.23.37",
       "org.http4s" %% "http4s-circe" % "0.23.37"
-    ) ++ lawTestDependencies,
+    ),
     runtimeClasspathFile := {
       val output = target.value / "runtime-classpath.txt"
       IO.write(output, (Runtime / fullClasspath).value.files.mkString(java.io.File.pathSeparator))
@@ -97,26 +159,25 @@ lazy val node = project
   )
 
 // Schema-first models, step 1: CDDL parser and Scala generator (build-time tool; see docs/models.md).
-lazy val modelsGen = project
-  .in(file("models-gen"))
+lazy val modelsGen = scarab("modelsGen", "models-gen")
   .settings(
     name := "scarab-models-gen",
-    organization := "xyz.kd5ujc",
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-parse" % "1.1.0",
-      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-      "org.scalameta" %% "munit" % munitVersion % Test
+      "org.typelevel" %% "cats-parse" % "1.1.0"
     )
   )
 
 // Schema-first models, step 2: code generated from the pinned upstream CDDL at build time, its hand-written
-// runtime, and the equivalence tests against the hand-written decoders of `network` and `node`.
-lazy val modelsSpike = project
-  .in(file("models-spike"))
-  .dependsOn(core, modelsGen % "test->compile", network % "test->compile", node % "test->compile")
+// runtime, and the equivalence tests against the hand-written decoders of `protocol` and `ledger`.
+lazy val models = scarab("models")
+  .dependsOn(
+    codec,
+    crypto,
+    modelsGen % "test->compile",
+    protocol % "test->compile",
+    ledger % "test->compile"
+  )
   .settings(
-    name := "scarab-models-spike",
-    organization := "xyz.kd5ujc",
     Compile / sourceGenerators += Def.task {
       val log = streams.value.log
       val cddl = (Compile / sourceDirectory).value / "cddl"
@@ -140,26 +201,20 @@ lazy val modelsSpike = project
           (out ** "*.scala").get.toSet
         }
       cached(inputs).toSeq
-    }.taskValue,
-    libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-      "org.scalameta" %% "munit" % munitVersion % Test
-    )
+    }.taskValue
   )
 
 // Structured fuzzing of every decoder entry point (roadmap K3; docs/running.md "Fuzzing"). Test-only. The
 // tests run in a forked JVM (a hang or an out-of-memory kills the fork, not the build server) from the
-// repository root; the defaults below are the budget of `check` (about a minute), the `fuzz` command
-// below turns them up.
+// repository root; the defaults below are the budget of `check` (about a minute), the `fuzz`
+// command below turns them up.
 val fuzzCases = settingKey[Int]("Fuzz cases per target and seed")
 val fuzzSeed = settingKey[Long]("First fuzz seed")
 val fuzzSeeds = settingKey[Int]("Number of consecutive fuzz seeds")
 
-lazy val fuzz = project
-  .in(file("fuzz"))
-  .dependsOn(core, network, node % "compile->compile;test->test", modelsGen)
+lazy val fuzz = scarab("fuzz")
+  .dependsOn(codec, protocol, node % "compile->compile;test->test", modelsGen)
   .settings(
-    name := "scarab-fuzz",
     fuzzCases := 20000,
     fuzzSeed := 1L,
     fuzzSeeds := 1,
@@ -170,16 +225,12 @@ lazy val fuzz = project
       s"-Dfuzz.cases=${fuzzCases.value}",
       s"-Dfuzz.seed=${fuzzSeed.value}",
       s"-Dfuzz.seeds=${fuzzSeeds.value}"
-    ),
-    libraryDependencies ++= Seq(
-      "org.scalameta" %% "munit-scalacheck" % "1.0.0" % Test,
-      "org.scalameta" %% "munit" % munitVersion % Test
     )
   )
 
 lazy val root = project
   .in(file("."))
-  .aggregate(core, network, networkRuntime, node, modelsGen, modelsSpike, fuzz)
+  .aggregate(codec, crypto, protocol, network, plutus, ledger, consensus, storage, node, modelsGen, models, fuzz)
   .settings(
     // fuzz [cases] [first-seed] [seeds] [target-glob]: the fuzz suite with more cases or other seeds than
     // `check` uses; the settings change for this run only.
@@ -195,7 +246,7 @@ lazy val root = project
         state
       )
       val glob = args.lift(3).fold("")(g => s" --tests=*$g*")
-      val run = s" lab.fuzz.FuzzSuite --$glob"
+      val run = s" xyz.kd5ujc.scarab.fuzz.FuzzSuite --$glob"
       try {
         Project.extract(tuned).runInputTask(fuzz / Test / testOnly, run, tuned)
         state
@@ -205,7 +256,13 @@ lazy val root = project
     }
   )
 
+val modules = Seq(
+  "codec", "crypto", "protocol", "network", "plutus", "ledger", "consensus", "storage", "node", "modelsGen",
+  "models", "fuzz"
+)
+
 addCommandAlias(
   "check",
-  ";scalafmtCheckAll;core/Test/compile;network/Test/compile;networkRuntime/Test/compile;node/Test/compile;modelsGen/Test/compile;modelsSpike/Test/compile;fuzz/Test/compile;core/Test/test;network/Test/test;networkRuntime/Test/test;node/Test/test;modelsGen/Test/test;modelsSpike/Test/test;fuzz/Test/test"
+  (";scalafmtCheckAll" +: (modules.map(m => s"$m/Test/compile") ++ modules.map(m => s"$m/Test/test")))
+    .mkString(";")
 )

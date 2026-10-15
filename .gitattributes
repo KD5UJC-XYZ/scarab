@@ -49,8 +49,8 @@ ledger/src/main/scala/lab/ledger/Coverage.scala -text
 ledger/src/main/scala/lab/ledger/Balance.scala -text
 ledger/src/main/scala/lab/ledger/FeeSize.scala -text
 core/src/main/scala/lab/witness/CardanoWitness.scala -text
-core/src/main/scala/lab/witness/StrictEd25519.scala -text
-core/src/main/scala/lab/cbor/Cbor.scala -text
+crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/witness/StrictEd25519.scala -text
+codec/src/main/scala/xyz/kd5ujc/scarab/codec/Cbor.scala -text
 scripts/project-ledger-fixtures.py -text
 fixtures/ledger/upstream/amaru-fork-ShelleyUtxoSpec.hs -text
 fixtures/coverage/upstream/generator-UtxowSpec.hs -text
