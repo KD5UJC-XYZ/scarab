@@ -49,12 +49,10 @@ object StateTampers:
     * one era longer (an empty era is inserted): the era a protocol state of the same family is in.
     */
   private def otherEra[A: EraIndexed](t: Telescope[A]): Option[Telescope[A]] =
-    val shorter = t.past.lastOption.flatMap(p =>
-      retarget(t.past.dropRight(1), Current(p.start, t.state))
-    )
-    lazy val longer = retarget(t.past :+ Past(t.current.start, t.current.start),
-      Current(t.current.start, t.state)
-    )
+    val shorter =
+      t.past.lastOption.flatMap(p => retarget(t.past.dropRight(1), Current(p.start, t.state)))
+    lazy val longer =
+      retarget(t.past :+ Past(t.current.start, t.current.start), Current(t.current.start, t.state))
     shorter.orElse(longer)
 
   private def withLedger(m: MirrorState, t: Telescope[EraLedgerState]): MirrorState =
@@ -86,21 +84,25 @@ object StateTampers:
       case WithOrigin.Origin => None
       case WithOrigin.At(tip) =>
         val info = tip.info match
-          case TipInfo.ByronTip(h, _) => TipInfo.ShelleyBasedTip(ShelleyBasedEra.SConway, h)
+          case TipInfo.ByronTip(h, _)        => TipInfo.ShelleyBasedTip(ShelleyBasedEra.SConway, h)
           case TipInfo.ShelleyBasedTip(_, h) => TipInfo.ByronTip(h, IsEBB.NotEBB)
         Some(withHeader(m, header.copy(tip = WithOrigin.At(tip.copy(info = info)))))
 
-    val lastSlot = flipLastSlot(header.chainDep.state).flatMap(d => moveState(header.chainDep, _ => d)).map(d =>
-      withHeader(m, header.copy(chainDep = d))
-    )
+    val lastSlot = flipLastSlot(header.chainDep.state)
+      .flatMap(d => moveState(header.chainDep, _ => d))
+      .map(d => withHeader(m, header.copy(chainDep = d)))
 
     val ledgerTip = m.ext.ledgerState.state match
       case _: EraLedgerState.ByronCurrent => None
       case i: EraLedgerState.InShelleyEra[e] =>
         val tip: WithOrigin[ShelleyTip] = i.state.tip match
-          case WithOrigin.Origin => WithOrigin.At(ShelleyTip(SlotNo.fromUnsigned(0L), BlockNo.fromUnsigned(0L), fakeHash))
-          case WithOrigin.At(_)  => WithOrigin.Origin
-        moveState(m.ext.ledgerState, _ => EraLedgerState.inEra[e](i.state.copy[e](tip = tip))(using i.era))
+          case WithOrigin.Origin =>
+            WithOrigin.At(ShelleyTip(SlotNo.fromUnsigned(0L), BlockNo.fromUnsigned(0L), fakeHash))
+          case WithOrigin.At(_) => WithOrigin.Origin
+        moveState(
+          m.ext.ledgerState,
+          _ => EraLedgerState.inEra[e](i.state.copy[e](tip = tip))(using i.era)
+        )
           .map(withLedger(m, _))
 
     List(
@@ -168,7 +170,11 @@ object StateTampers:
         )
       case _: ConsensusExtras.InShelley => Some(ConsensusExtras.InByron(s.ledger, s.praos, s.boot))
     val wrongKind = extras.map(e =>
-      Tampered("extras of the other kind of state", StateMirrorError.ExtrasMismatch(era), m.copy(extras = e))
+      Tampered(
+        "extras of the other kind of state",
+        StateMirrorError.ExtrasMismatch(era),
+        m.copy(extras = e)
+      )
     )
     val protocol = m.extras match
       case ConsensusExtras.InShelley(l, b, bo, ProtocolExtras.OfTPraos(e, _)) =>
@@ -177,7 +183,11 @@ object StateTampers:
         Some(ConsensusExtras.InShelley(l, b, bo, ProtocolExtras.OfTPraos(e, Nonce.Neutral)))
       case _: ConsensusExtras.InByron => None
     val wrongProtocol = protocol.map(e =>
-      Tampered("protocol extras of the other protocol", StateMirrorError.ChainDepFamily(era), m.copy(extras = e))
+      Tampered(
+        "protocol extras of the other protocol",
+        StateMirrorError.ChainDepFamily(era),
+        m.copy(extras = e)
+      )
     )
     List(eraMismatch, wrongKind, wrongProtocol).flatten
 
@@ -244,7 +254,9 @@ final class StateMirrorLaws[F[_]](
             val shelley = m.value.extras match
               case _: ConsensusExtras.InShelley => true
               case _: ConsensusExtras.InByron   => false
-            m.gaps == StateMirror.gaps(env, l.state) && m.gaps.contains(Gap.ShelleyTransition) == shelley
+            m.gaps == StateMirror.gaps(env, l.state) && m.gaps.contains(
+              Gap.ShelleyTransition
+            ) == shelley
           } :| s"$result"
         },
       "a mirror with a derived piece changed is refused" -> forAll { (l: Located) =>

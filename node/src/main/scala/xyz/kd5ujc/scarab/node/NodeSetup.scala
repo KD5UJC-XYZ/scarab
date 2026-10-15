@@ -70,7 +70,9 @@ final case class NodeSetup(
           BigInt(20000),
           BigInt(geometry.securityParam)
         )
-      )(b => EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))),
+      )(b =>
+        EraHistory.ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+      ),
       observed
     )
 

@@ -83,7 +83,8 @@ class StateMirrorSuite extends DisciplineSuite:
 
   test("the ledger side's refusals come through, wrapped") {
     val l = sample(NodeStateGen.inPraosEras, 1).head
-    val ledgerTampers = StateTampers.all(l.state, mirrored(l)).filter(_.name.startsWith("the ledger side"))
+    val ledgerTampers =
+      StateTampers.all(l.state, mirrored(l)).filter(_.name.startsWith("the ledger side"))
     assert(ledgerTampers.nonEmpty)
     ledgerTampers.foreach(t => assertEquals(run(mirror.fromMirror(t.state)), Left(t.expected)))
   }
@@ -92,7 +93,10 @@ class StateMirrorSuite extends DisciplineSuite:
     val byron = sample(NodeStateGen.inByron, 3).head
     assertEquals(run(mirror.toMirror(byron.anchor, byron.state)).map(_.gaps), Right(Set.empty))
     val shelley = sample(NodeStateGen.inPraosEras, 3).head
-    assert(run(mirror.toMirror(shelley.anchor, shelley.state)).exists(_.gaps.contains(xyz.kd5ujc.scarab.ledger.state.Gap.ShelleyTransition)))
+    assert(
+      run(mirror.toMirror(shelley.anchor, shelley.state))
+        .exists(_.gaps.contains(xyz.kd5ujc.scarab.ledger.state.Gap.ShelleyTransition))
+    )
   }
 
   test("a block with a Byron boundary flag after the chain left Byron is refused") {
@@ -106,17 +110,26 @@ class StateMirrorSuite extends DisciplineSuite:
   }
 
   test("a Byron boundary block comes back as one") {
-    val l = sample(NodeStateGen.inByron, 5).flatMap(l => l.anchor.map(a => l.copy(anchor = Some(a.copy(boundary = true))))).head
+    val l = sample(NodeStateGen.inByron, 5)
+      .flatMap(l => l.anchor.map(a => l.copy(anchor = Some(a.copy(boundary = true)))))
+      .head
     val back = run(mirror.toMirror(l.anchor, l.state).flatMap(m => mirror.fromMirror(m.value)))
     assertEquals(back.map(_._1), Right(l.anchor))
   }
 
   test("a state whose Praos counter is out of range is refused with the vocabulary") {
     val l = sample(NodeStateGen.inPraosEras, 1).head
-    val bad = l.state.copy(praos = l.state.praos.copy(counters = Map(l.state.praos.counters.headOption.fold(xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(28)(1.toByte)))(_._1) -> BigInt(-1))))
+    val bad = l.state.copy(praos =
+      l.state.praos.copy(counters =
+        Map(
+          l.state.praos.counters.headOption.fold(
+            xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(28)(1.toByte))
+          )(_._1) -> BigInt(-1)
+        )
+      )
+    )
     assert(run(mirror.toMirror(l.anchor, bad)).left.exists {
       case StateMirrorError.Ledger(xyz.kd5ujc.scarab.ledger.state.MirrorError.Vocab(_)) => true
-      case _ => false
+      case _                                                                            => false
     })
   }
-

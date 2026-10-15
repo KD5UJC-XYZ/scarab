@@ -176,6 +176,30 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   pulser is not in the mirror), a UTxO map with entries in the state file (they are in `tables`), the old
   three-field `SnapShot`. The Shelley-era stashed AVVM UTxO is written as `map(0)` like the main one.
 
+### Added (ledger-state mirror, stage S5)
+- `consensus/state`: `StateMirror[F]`, the node's whole `NodeState` to the Haskell `ExtLedgerState` of
+  the Cardano block and back, with `Ask[F, ConsensusMirrorEnv]` (the ledger side's `MirrorEnv`, the
+  hard-fork config, the Byron parameters, the observed era starts) and `Raise[F, StateMirrorError]`; the
+  ledger side (`LedgerMirror`) is composed through an adapted environment and a wrapped error. The
+  era is `StateMirror.eraOf` (Byron while the Byron ledger is held, else the bootstrap era, else
+  `forks.eraAt`: the rule of `GetCurrentEra`), dispatched to the witness by `SomeEra.of` with no cast.
+  Telescope bounds come from `EraHistory.summary`; the tips from the anchor (ledger `ShelleyTip`,
+  header `AnnTip`, `IsEBB` from the boundary flag); PBFT in Byron (window and derived counts), TPraos
+  (`lastEpochBlock` is `prevHashNonce`) or Praos by era. `fromMirror` recomputes everything derived and
+  refuses a disagreement with `Derived(field)` (`CurrentEra`, `TelescopeBounds`, `LedgerTip`,
+  `HeaderTip`, `ChainDep`, `Extras`); the ledger and header telescopes in different eras are
+  `EraMismatch`. `MirrorError` stays closed in `ledger`; `StateMirrorError` wraps it (the consensus
+  cases name `TelescopeError`, which `ledger` cannot see). `ConsensusExtras` keeps what has no place:
+  the ledger side's `NodeExtras`, the Byron remainder, `BootstrapState`, the TPraos previous epoch nonce
+  and `PraosState.epoch`; in Byron the flat ledger and chain state. `Gap.ShelleyTransition` (Word32 0,
+  `peras` None) is present in every Shelley-based mirror.
+- `NodeSetup.mirrorEnv`; `VocabError.Kind.OcertCounter`.
+- Laws (`StateMirrorLaws`, `StateTampers`): retraction, stability, exact gaps, tamper rejection (15
+  tampers of the consensus side and the lifted ledger-side ones, each counted as applied) on generated
+  states of Byron, the TPraos eras and the Praos eras. Corpus: the 732 states of the eras fixture
+  (Byron to Conway, the Byron-to-Shelley and Alonzo-to-Babbage boundaries, 10,305 tampers) and
+  `PreviewMirrorMain` over the Preview snapshots.
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a

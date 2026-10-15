@@ -81,9 +81,8 @@ object MirrorCorpus:
       case Left(e) => Report(Some(e), era, agrees, false, Set.empty, false, false, Vector.empty)
       case Right(m) =>
         val back = mirror.fromMirror(m.value).run(env)
-        val retraction = back.exists((a, b) =>
-          a == anchor && view(b) == view(StateMirror.normalised(env, s))
-        )
+        val retraction =
+          back.exists((a, b) => a == anchor && view(b) == view(StateMirror.normalised(env, s)))
         val tampers =
           if withTampers then
             StateTampers

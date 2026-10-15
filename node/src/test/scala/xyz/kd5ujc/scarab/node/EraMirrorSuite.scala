@@ -76,8 +76,12 @@ class EraMirrorSuite extends FunSuite:
 
   test("the boundaries between protocols are in the capture: Byron to Shelley, TPraos to Praos") {
     val eras = reports.map(_._2.era)
-    assert(eras.sliding(2).exists { case Vector(a, b) => a == Era.Byron && b == Era.Shelley; case _ => false })
-    assert(eras.sliding(2).exists { case Vector(a, b) => a == Era.Alonzo && b == Era.Babbage; case _ => false })
+    assert(eras.sliding(2).exists {
+      case Vector(a, b) => a == Era.Byron && b == Era.Shelley; case _ => false
+    })
+    assert(eras.sliding(2).exists {
+      case Vector(a, b) => a == Era.Alonzo && b == Era.Babbage; case _ => false
+    })
   }
 
   test("no tamper is left unexercised on the capture") {

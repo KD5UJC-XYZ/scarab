@@ -12,10 +12,10 @@ import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.node.MirrorCorpus.Report
 import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, NodeCodecs}
 
-/** Runs the whole mirror (consensus side and ledger side) over the ledger states of real snapshots of the node (a Preview
-  * sync, one snapshot per epoch boundary), reading them one at a time so that a whole sync's 18 GB
-  * is never held. Not a test: the input is data that is not in the repository, and it takes a large
-  * heap.
+/** Runs the whole mirror (consensus side and ledger side) over the ledger states of real snapshots
+  * of the node (a Preview sync, one snapshot per epoch boundary), reading them one at a time so
+  * that a whole sync's 18 GB is never held. Not a test: the input is data that is not in the
+  * repository, and it takes a large heap.
   *
   * {{{
   * java -Xmx24g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir]
