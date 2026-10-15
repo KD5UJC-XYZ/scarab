@@ -25,7 +25,7 @@ object VocabError:
   /** The vocabulary type a [[VocabError]] is about. */
   enum Kind derives Show:
     case Coin, CompactCoin, EpochNo, SlotNo, BlockNo, BlockCount, KeyHash, ScriptHash,
-      VRFVerKeyHash, Hash32, NonZero
+      VRFVerKeyHash, Hash32, NonZero, OcertCounter
 
 // ---- key roles (`Cardano.Ledger.Keys`: `KeyRole`, a phantom of key hashes and credentials)
 
