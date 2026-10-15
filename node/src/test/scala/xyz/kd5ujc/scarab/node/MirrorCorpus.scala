@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   StateTampers
 }
 import xyz.kd5ujc.scarab.ledger as node
-import xyz.kd5ujc.scarab.ledger.state.{Gap, LedgerState}
+import xyz.kd5ujc.scarab.ledger.state.{Gap, LedgerMirror, LedgerState, MirrorEnv, MirrorError}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** What the whole mirror (`StateMirror`: the consensus side over the ledger side) does to a state
@@ -26,6 +26,12 @@ object MirrorCorpus:
   type M[A] = Kleisli[Result, ConsensusMirrorEnv, A]
 
   val mirror: StateMirror[M] = StateMirror[M]
+
+  type LedgerResult[A] = Either[MirrorError, A]
+  type LedgerM[A] = Kleisli[LedgerResult, MirrorEnv, A]
+
+  /** The ledger half on its own, for the checks whose pieces are the ledger state's. */
+  val ledgerMirror: LedgerMirror[LedgerM] = LedgerMirror[LedgerM]
 
   /** What is observed of one state. */
   final case class Report(

@@ -86,7 +86,7 @@ object HaskellScalaCompareMain:
       case other => sys.error(s"not a Conway state: $other")
     val at =
       slot.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(s => WithOrigin.At(SlotNo.fromUnsigned(s)))
-    val scalaNes = MirrorCorpus.mirror.to[Conway](at, state.ledger).run(env) match
+    val scalaNes = MirrorCorpus.ledgerMirror.to[Conway](at, state.ledger).run(env) match
       case Left(e)  => sys.error(s"mirror refused: $e")
       case Right(m) => m.value.nes
     println(
