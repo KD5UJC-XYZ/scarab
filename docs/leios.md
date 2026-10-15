@@ -281,9 +281,9 @@ Dependencies: **L1** (Dijkstra era: header, body, pool parameters, protocol para
 **G4** (handshake versions 15 and 16, client side) is a prerequisite for N3 if the testnet
 requires them; today the client offers 14 only. N2 depends on neither.
 
-**N2: BLS keys, votes and certificates (pure, in `core`).** Done 2026-10-14, results and deviations in section 9. Acceptance:
+**N2: BLS keys, votes and certificates (pure, in `crypto`).** Done 2026-10-14, results and deviations in section 9. Acceptance:
 
-1. `core` has `LeiosBls` (MinSig): secret-key generation from a seed, public key (G2, 96 bytes),
+1. `crypto` has `LeiosBls` (MinSig): secret-key generation from a seed, public key (G2, 96 bytes),
    `sign`, `verify`, proof of possession (`create`, `verify`), `aggregate` signatures and public
    keys, and strict decoding that rejects off-curve, wrong-subgroup, infinity (where the scheme
    forbids it) and non-canonical encodings. Dependency: `blst-java` declared directly, licence
@@ -433,7 +433,7 @@ committee (`SignerWithoutKey`); committee seating equals a model sort.
 
 ### Benchmark: 900 seats
 
-`core/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
+`crypto/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
 with other jobs (indicative only):
 
 | Operation | Time |

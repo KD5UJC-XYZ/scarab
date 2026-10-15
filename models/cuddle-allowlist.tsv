@@ -9,7 +9,7 @@ override	babbage:bounded_bytes	upstream `bounded_bytes = bytes .size (0 .. 64)` 
 override	conway:bounded_bytes	upstream `bounded_bytes = bytes .size (0 .. 64)` cannot say the real limit (64-byte chunks of an indefinite string); overrides/bounded-bytes.cddl
 #
 # --- decoding cuddle's terms
-decode-float	chainsync-header:header	cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; lab.cbor has no floating-point item and rejects them. Cardano data holds none
+decode-float	chainsync-header:header	cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; the `codec` Cbor has no floating-point item and rejects them. Cardano data holds none
 not-byte-exact	features:person	cuddle writes map entries sorted by key (active, age, name, ...); the generated writer uses rule order (name, age, tags, ...). Same value, different key order; a per-rule canonical-order option is a listed gap (docs/models.md section 5)
 #
 # --- rules our generator cannot produce on their own (exact set; the cuddle side parses and resolves all of them)

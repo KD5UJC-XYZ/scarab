@@ -22,7 +22,7 @@ class DigestTest(unittest.TestCase):
         self.assertEqual(digest.canon(self.ENTRIES[0][1]), '{"a":[1,"z",null,true],"b":1,"c":{"x":0,"y":"é\\"q"}}')
 
     def test_vector_shared_with_the_scala_suite(self):
-        # node/src/test/scala/lab/node/StateDumpSuite.scala asserts the same digest
+        # node/src/test/scala/xyz/kd5ujc/scarab/node/StateDumpSuite.scala asserts the same digest
         d = digest.digest_of(self.ENTRIES)
         self.assertEqual(d["count"], 3)
         self.assertEqual(d["digest"], "a5b1f3f957573bb07fd0d8397839851cbc5245c80cac5d46ca04e58e0dda1cad")

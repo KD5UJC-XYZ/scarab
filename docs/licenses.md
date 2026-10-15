@@ -74,7 +74,7 @@ regenerated here.
 | io.bullet:borer-derivation_3 | 1.18.0 | MPL-2.0 | transitive | As borer-core_3. |
 | dev.optics:monocle-core_3 | 3.3.0 | MIT | transitive |  |
 | dev.optics:monocle-macro_3 | 3.3.0 | MIT | transitive |  |
-| foundation.icon:blst-java | 0.3.2 | Apache-2.0 | direct (core, Leios BLS); also transitive via Scalus | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
+| foundation.icon:blst-java | 0.3.2 | Apache-2.0 | direct (crypto, Leios BLS); also transitive via Scalus | Bundles native libblst (supranational/blst, Apache-2.0) for Linux amd64/aarch64 and macOS. |
 | org.scalus:scalus-secp256k1-jni | 0.6.0 | Apache-2.0 | transitive | Bundles native secp256k1 (bitcoin-core, MIT) for Linux and macOS; the POM states Apache-2.0 for the wrapper. |
 | io.circe:circe-jawn_3 | 0.14.16 | Apache-2.0 | transitive |  |
 | io.circe:circe-core_3 | 0.14.16 | Apache-2.0 | transitive |  |
@@ -129,12 +129,12 @@ ADACOIN, ADAPAY, CARDANO and CARDANO FOUNDATION, plus the logos.
 - Section 3.1 grants automatic permission for a software package title "exclusively intended to
   support the Cardano Code and Project" (or to "extend or improve" it) when no official sponsorship
   is implied. This repository is a free, open-source, unofficial compatible implementation, so the
-  name `cardano-scala-lab` falls under it. The policy's own permitted example is a free theme called
+  name `Scarab` falls under it. The policy's own permitted example is a free theme called
   "Gold Plated Cardano".
 - Section 3.3 requires written permission for domain names, company or organisation names,
   advertising and anything suggesting an official link. None apply. Section 2.2.8 prohibits using
-  the marks in one's own trademark or product name. For that reason the owner will choose a distinct
-  project name before this becomes a named product or a published artefact (roadmap M7).
+  the marks in one's own trademark or product name. For that reason the project is named Scarab, which
+  contains none of the marks (roadmap M7).
 - Section 2.2.2 asks for the attribution "'Cardano' is a trademark of the Cardano Foundation,
   CHE-184.477.354 …" wherever possible. It is in the README and `NOTICE`, with ™ (only the owner
   may use ®).
@@ -150,4 +150,4 @@ ADACOIN, ADAPAY, CARDANO and CARDANO FOUNDATION, plus the logos.
 `models/src/main/cddl/upstream/` holds verbatim copies of CDDL files from three Apache-2.0 repositories
 (IntersectMBO/ouroboros-network, ouroboros-consensus, cardano-ledger) at the commits listed in its `SOURCES`
 file. Their LICENSE and NOTICE texts are in [fixtures/licenses](../fixtures/licenses). The build-time tool that
-reads them (`models-gen`) uses cats-parse 1.1.0 (MIT) and nothing else beyond what `core` already uses.
+reads them (`models-gen`) uses cats-parse 1.1.0 (MIT) and nothing else beyond what `codec` already uses.

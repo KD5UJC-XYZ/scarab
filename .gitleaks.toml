@@ -12,7 +12,7 @@
 # Do not add `.skey`, `.key` or other signing material here. Those are never committed
 # (see CONTRIBUTING.md and .gitignore).
 
-title = "cardano-scala-lab gitleaks configuration"
+title = "Scarab gitleaks configuration"
 
 [extend]
 useDefault = true
@@ -26,7 +26,7 @@ paths = [
   # Fixtures are public chain data or throwaway keys (fixtures/*/README.md and NOTICE record provenance).
   '''^fixtures/''',
   # A public operational-certificate verification key used as an expected value.
-  '''^node/src/test/scala/lab/node/forge/KeyFilesSuite\.scala$''',
+  '''^node/src/test/scala/xyz/kd5ujc/scarab/node/forge/KeyFilesSuite\.scala$''',
 ]
 commits = [
   # 87cf584: removed nonce-epoch tooling; the match is the string "pre-anchor-supplied-verification-keys-v1".

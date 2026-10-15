@@ -55,7 +55,7 @@ def download_archive(directory):
         except ValueError:
             target.unlink()
     partial = directory / (ARCHIVE_NAME + ".part")
-    request = urllib.request.Request(ARCHIVE_URL, headers={"User-Agent": "cardano-scala-lab"})
+    request = urllib.request.Request(ARCHIVE_URL, headers={"User-Agent": "scarab"})
     with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as out:
         if not response.geturl().startswith("https://"):
             raise ValueError("download left HTTPS: " + response.geturl())

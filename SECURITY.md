@@ -2,7 +2,7 @@
 
 ## Disclaimer
 
-Cardano Scala Lab is **unofficial research software**. It is not audited, not affiliated with or
+Scarab is **unofficial research software**. It is not audited, not affiliated with or
 endorsed by Input Output Global, Intersect, the Cardano Foundation or Emurgo, and it is **not for
 mainnet funds or production stake pools**. It can forge blocks (`--forge`) and loads KES, VRF and
 operational-certificate files; do not point it at keys that protect real value. It has not been
