@@ -93,7 +93,7 @@ object Params:
     Record.of[(Rational, Rational)]((nonNegativeInterval, nonNegativeInterval))
 
   /** `ExUnits` (`ExUnits.hs:192-215`): `[memory, steps]`, each at most `maxBound :: Int64`. */
-  private val exUnits: Codec[ExUnits] =
+  val exUnits: Codec[ExUnits] =
     val natural = Codec.uintBig(BigInt(Long.MaxValue))
     Record.of[ExUnits]((natural, natural))
 

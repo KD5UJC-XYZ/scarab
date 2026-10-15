@@ -270,6 +270,54 @@ object Wire:
       override def check(a: SortedMap[K, V]): Option[ConstraintViolation] =
         a.iterator.flatMap((k, x) => key.check(k).orElse(value.check(x))).nextOption()
 
+  /** A map the caller holds unordered (the node's own `Map`), written in key order with the
+    * variable-length framing, as [[mapOf]]; read in either framing.
+    */
+  def sortedMapOf[K: Order, V](key: Codec[K], value: Codec[V])(using ProtVer): Codec[Map[K, V]] =
+    mapOf(key, value).imap(m => m: Map[K, V])(m => Sorted.map(m))
+
+  /** A set the caller holds unordered, written in element order, as [[setOf]]. */
+  def sortedSetOf[A: Order](elem: Codec[A])(using ProtVer): Codec[Set[A]] =
+    setOf(elem).imap(s => s: Set[A])(s => Sorted.set(s))
+
+  /** A set with a definite length whatever its size (tag 258 from version 9): how a few
+    * node-to-client answers write one, with the order and the reading of [[sortedSetOf]].
+    */
+  def definiteSetOf[A: Order](elem: Codec[A])(using v: ProtVer): Codec[Set[A]] =
+    val sorted = sortedSetOf(elem)
+    new Codec[Set[A]]:
+      def decode(n: Node): Decoded[Set[A]] = sorted.decode(n)
+      def encode(a: Set[A], out: Writer): Unit =
+        if v.atLeast(9) then out.tag(258)
+        out.arrayHead(a.size)
+        Sorted.set(a).foreach(elem.encode(_, out))
+      override def check(a: Set[A]): Option[ConstraintViolation] = sorted.check(a)
+
+  /** A map with a definite length whatever its size, with the order and the reading of
+    * [[sortedMapOf]].
+    */
+  def definiteMapOf[K: Order, V](key: Codec[K], value: Codec[V])(using
+      ProtVer
+  ): Codec[Map[K, V]] =
+    val sorted = sortedMapOf(key, value)
+    new Codec[Map[K, V]]:
+      def decode(n: Node): Decoded[Map[K, V]] = sorted.decode(n)
+      def encode(a: Map[K, V], out: Writer): Unit =
+        out.mapHead(a.size)
+        Sorted.map(a).foreach { (k, x) =>
+          key.encode(k, out)
+          value.encode(x, out)
+        }
+      override def check(a: Map[K, V]): Option[ConstraintViolation] = sorted.check(a)
+
+  /** The codec of a value that is only ever written (an answer of the node-to-client protocol that
+    * the reference never reads back): reading it is refused.
+    */
+  def writeOnly[A](shape: String)(put: (A, Writer) => Unit): Codec[A] = new Codec[A]:
+    def decode(n: Node): Decoded[A] =
+      Left(DecodeError.at(n, Kind.Unsupported(s"reading $shape (it is only written)")))
+    def encode(a: A, out: Writer): Unit = put(a, out)
+
   /** A sequence (`StrictSeq`, `encodeStrictSeq`, `Encoder.hs:516`): the variable-length framing in
     * order; the decoder reads either length form.
     */

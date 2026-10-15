@@ -41,9 +41,9 @@ import NodeOrders.given
 import Wire.*
 
 /** The codecs of the types the mirror shares with the node's own ledger (`Committee`, `Proposals`,
-  * `EnactState`, `PoolParams`, ...): the same shapes `LedgerEncoders` writes for the node-to-client
-  * answers, and their readers. The node's values keep maps and sets unordered and hashes as plain
-  * byte strings, so the codecs sort on writing (by [[NodeOrders]]) and check the sizes on reading.
+  * `EnactState`, `PoolParams`, ...): the shapes the node-to-client answers are written in, and
+  * their readers. The node's values keep maps and sets unordered and hashes as plain byte strings,
+  * so the codecs sort on writing (by [[NodeOrders]]) and check the sizes on reading.
   */
 trait NodeTypeCodecs extends VocabularyCodecs:
   // ---- byte strings and numbers the node keeps as `Bytes` and `BigInt`
@@ -144,8 +144,7 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   /** `StakePoolParams` (`StakePool.hs:550-571`): nine fields in a flat array, the owners a set, the
     * metadata `null` when there is none. The relays and the metadata are the registered items, as
-    * they came; no relays at all is `Bytes.empty`, written as an empty array and read back as it
-    * (`LedgerEncoders.poolParams` does the same).
+    * they came; no relays at all is `Bytes.empty`, written as an empty array and read back as it.
     */
   given poolParams(using ProtVer): Codec[PoolParams] =
     Record.of[PoolParams](
