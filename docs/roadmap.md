@@ -128,6 +128,7 @@ Each open item links to its GitHub issue; the pinned [tracking issue #64](https:
 - **M9** [#63](https://github.com/KD5UJC-XYZ/scarab/issues/63) (P2, done) READMEs for `fixtures/{network,praos,sum6,vrf}`; Koios attribution for the data in `fixtures/preview`.
 - **M10** [#66](https://github.com/KD5UJC-XYZ/scarab/issues/66) (P1, done) Flaky `FollowerSuite` two-peer chain-selection test: the scripted peers ignored the intersection and replayed their chains from the start, so a peer that joined after the other had applied the common blocks hit "does not extend" and had nothing left after its reconnect (a test artefact; chain selection showed no ordering bug). The test now serves chains the way a node does and runs on `TestControl` over 64 join/pause orders and 4 seeds.
 - **M11** [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) (P1) Reorg: the Scarab rename (`xyz.kd5ujc.scarab`), the module split and CDDL-generated models (design in docs/models.md).
+- **M12** [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85) (P2, after the ledger-state mirror and its step 2 under M11) Era-indexed consensus, as the Hard Fork Combinator does it: headers typed by protocol (PBFT, TPraos, Praos), one typed translation per era boundary, an era-tagged header from the decoders, typed node-to-client query results per era, closed reasons in place of the `String`s of `HeaderRules.Outcome`. Chain selection and the network runtime stay era-agnostic.
 
 ## N. Ouroboros Leios (v0.3)
 
