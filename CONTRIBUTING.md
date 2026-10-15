@@ -18,7 +18,7 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
 ```
 
 `check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources and runs the
-tests of all modules, the fuzz suite among them (about 35 s); the compiler runs with `-Werror`. Dependencies and the sbt launcher are
+tests of all modules, the fuzz suite among them (about 35 s); the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -31,7 +31,7 @@ container alive and talk to its sbt server:
    and the same `HOME` as above (for example `docker run -d --name csl-sbt ... tail -f /dev/null`).
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
-3. Send commands with `docker exec csl-sbt <that launcher> --client "node/testOnly lab.node.ledger.*"`.
+3. Send commands with `docker exec csl-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
 
 Two traps: a running JVM loads classes lazily from `target/`, so never recompile under a live
 devnet run (`devnet.py` copies the classes it runs from for this reason), and do not `pkill -f`
@@ -42,7 +42,7 @@ with a pattern that matches your own shell command line.
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
   chosen in `Main`. `IO` appears only in `Main`, `JsonLog` and tools. No hidden global state:
   the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
-  the pure rules through a read interface (`Verdicts`); tools live under `lab.node.tools`.
+  the pure rules through a read interface (`Verdicts`); tools live under `xyz.kd5ujc.scarab.node.tools`.
 - **Closed error ADTs through cats-mtl.** Domain errors are values of a closed ADT (`PeerError`,
   `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`) raised with
   `Raise[F, E]` and handled with lexically scoped `Handle.allow`. Never use `raiseError`/`throw` for
@@ -104,5 +104,5 @@ A claim of compatibility needs evidence a reader can check:
   names the evidence when the change was driven by data (for example "... (Preview slot 65493476)").
 - Describe the why in the body when it is not obvious; reference roadmap IDs.
 - Do not rewrite shared history. Do not commit generated run data (`/tmp/cardano-scala-lab`
-  is outside the checkout on purpose; set `CSL_DATA_DIR` to move it).
+  is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works).
 - Fill in the pull request template; it asks which gates you ran and which compatibility row changes.

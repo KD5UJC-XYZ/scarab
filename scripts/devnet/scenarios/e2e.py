@@ -29,7 +29,7 @@ def capture_chain(args, root, out_name, extra=()):
     classpath = freeze_classes(root)
     program = ["capture", "--peer", f"127.0.0.1:{ports['1']}", "--magic", str(MAGIC),
                "--blocks", "all", "--out", f"/run/out/{out_name}", *extra]
-    command = scala_container(args, root, classpath, "lab.node.tools.CaptureMain", program,
+    command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.tools.CaptureMain", program,
                               mounts=[f"{root}:/run/out"])
     r = subprocess.run(["docker", *command], text=True, capture_output=True, timeout=300)
     if r.returncode != 0:

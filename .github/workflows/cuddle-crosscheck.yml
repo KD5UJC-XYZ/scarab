@@ -9,12 +9,12 @@ name: CDDL cross-check (cuddle)
 on:
   pull_request:
     paths:
-      - 'models-spike/src/main/cddl/**'
-      - 'models-spike/src/main/scala/**'
-      - 'models-spike/src/test/scala/**/CuddleCrossCheck.scala'
-      - 'models-spike/cuddle-allowlist.tsv'
+      - 'models/src/main/cddl/**'
+      - 'models/src/main/scala/**'
+      - 'models/src/test/scala/**/CuddleCrossCheck.scala'
+      - 'models/cuddle-allowlist.tsv'
       - 'models-gen/**'
-      - 'core/src/main/scala/lab/cbor/**'
+      - 'codec/src/main/scala/**'
       - 'scripts/cddl_crosscheck.py'
       - 'docker/cuddle.Dockerfile'
       - 'build.sbt'
@@ -23,12 +23,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'models-spike/src/main/cddl/**'
-      - 'models-spike/src/main/scala/**'
-      - 'models-spike/src/test/scala/**/CuddleCrossCheck.scala'
-      - 'models-spike/cuddle-allowlist.tsv'
+      - 'models/src/main/cddl/**'
+      - 'models/src/main/scala/**'
+      - 'models/src/test/scala/**/CuddleCrossCheck.scala'
+      - 'models/cuddle-allowlist.tsv'
       - 'models-gen/**'
-      - 'core/src/main/scala/lab/cbor/**'
+      - 'codec/src/main/scala/**'
       - 'scripts/cddl_crosscheck.py'
       - 'docker/cuddle.Dockerfile'
       - 'build.sbt'

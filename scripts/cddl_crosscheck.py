@@ -5,7 +5,7 @@
     cddl_crosscheck.py run [--count N] [--seed S] [--size Z] [--sbt CMD] [--image IMG] [--build]
     cddl_crosscheck.py worker PLAN        (inside the cuddle image; not for direct use)
 
-For every target (each `root` of models-spike/src/main/cddl/models.conf, plus the generated types the sampled
+For every target (each `root` of models/src/main/cddl/models.conf, plus the generated types the sampled
 tests exercise) it checks, against `cuddle gen` / `cuddle validate-cbor` / `cuddle format` of the vendored CDDL:
 
   a. terms cuddle generates (canonical, and "twiddled" with indefinite lengths and non-shortest integers) are
@@ -15,7 +15,7 @@ tests exercise) it checks, against `cuddle gen` / `cuddle validate-cbor` / `cudd
   d. every module (all rules, not only the roots) resolves in cuddle; our generator's unsupported rules are
      exactly the allowlisted ones
 
-Known divergences live in models-spike/cuddle-allowlist.tsv and are asserted: an unlisted divergence fails the run,
+Known divergences live in models/cuddle-allowlist.tsv and are asserted: an unlisted divergence fails the run,
 and so does a listed one that no longer happens. The cuddle side runs in Docker (docker/cuddle.Dockerfile); the
 generated codecs live on the JVM, so the Scala half is a Test main (CuddleCrossCheck) run through sbt. Everything
 here is standard library. Cuddle reads one self-contained CDDL file, so for each target this script writes the
@@ -36,8 +36,8 @@ import tempfile
 import time
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CDDL_DIR = REPO / "models-spike" / "src" / "main" / "cddl"
-ALLOWLIST = REPO / "models-spike" / "cuddle-allowlist.tsv"
+CDDL_DIR = REPO / "models" / "src" / "main" / "cddl"
+ALLOWLIST = REPO / "models" / "cuddle-allowlist.tsv"
 SBT_MAIN = "xyz.kd5ujc.scarab.models.CuddleCrossCheck"
 DEFAULT_IMAGE = "scarab-cuddle:1.8.1.0"
 
@@ -247,7 +247,7 @@ def sh(cmd, **kw):
 
 
 def sbt(args, command):
-    sh([*shlex.split(args.sbt), f"modelsSpike/Test/runMain {SBT_MAIN} {command}"])
+    sh([*shlex.split(args.sbt), f"models/Test/runMain {SBT_MAIN} {command}"])
 
 
 def build_inputs(work, modules, roots, targets):
@@ -385,7 +385,7 @@ def judge(work, results, targets, kinds, args):
             if total == 0 or total != len(g["terms"]):
                 failures.append(f"{tid} {mode}: {total} terms checked, cuddle generated {len(g['terms'])}")
             if floats:
-                diverge("decode-float", tid, f"{mode}: {floats} of {total} terms hold a float, which lab.cbor cannot represent")
+                diverge("decode-float", tid, f"{mode}: {floats} of {total} terms hold a float, which xyz.kd5ujc.scarab.codec cannot represent")
             if accepted + floats < total:
                 diverge("decode-reject", tid, f"{mode}: {accepted + floats}/{total} accepted; first rejected {reject}")
             if stable < accepted:

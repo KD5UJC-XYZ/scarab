@@ -88,7 +88,7 @@ def start_scala(args, root):
     program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT), "--db", "/db",
                "--mempool-bytes", str(mempool_bytes(args)),
                "--local-socket", "/sock/node.socket", "--peer", f"127.0.0.1:{ports['1']}"]
-    command = scala_container(args, root, classpath, "lab.node.Main", program,
+    command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                               mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
                               name=f"{args.name}-scala")
     log = (root / "follower.jsonl").open("a")

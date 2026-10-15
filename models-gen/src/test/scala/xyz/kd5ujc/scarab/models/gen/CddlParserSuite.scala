@@ -94,7 +94,7 @@ class CddlParserSuite extends munit.FunSuite:
   }
 
   private val roots =
-    Vector(Paths.get("models-spike/src/main/cddl"), Paths.get("../models-spike/src/main/cddl"))
+    Vector(Paths.get("models/src/main/cddl"), Paths.get("../models/src/main/cddl"))
 
   test("every pinned upstream .cddl file parses") {
     val root = roots.find(Files.isDirectory(_)).getOrElse(fail("cddl directory not found"))

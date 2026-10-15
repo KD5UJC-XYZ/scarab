@@ -5,7 +5,7 @@ Research software, not legal advice. This is a record of what the build resolves
 
 ## How this was produced
 
-The Runtime classpath of the `node` project (which includes `core`, `network` and `network-runtime`)
+The Runtime classpath of the `node` project (which includes every other module)
 was written with `sbt node/runtimeClasspathFile` in the JDK image, at v0.1.0 plus this review. For every
 jar on it, the `<licenses>` element of its POM in the Coursier cache was read; where a POM declares
 none, the parent POM chain was followed. 59 third-party jars resolve, 15 of them direct dependencies.
@@ -141,13 +141,13 @@ ADACOIN, ADAPAY, CARDANO and CARDANO FOUNDATION, plus the logos.
 - Section 4 usage: "Cardano" is capitalised and used as an adjective ("a Cardano-compatible node",
   "the Cardano protocol"), never as a verb or a possessive.
 - Not used: the Cardano logo or other brand assets. No domain, organisation name or package
-  namespace refers to the marks (the sbt organisation is `io.github.ottobot-ai`).
+  namespace refers to the marks (the sbt organisation is `xyz.kd5ujc`).
 - The disclaimer names the Cardano Partners the policy lists (Cardano Foundation, IOHK/IOG, EMURGO)
   and also Intersect.
 
 ## Vendored specification files
 
-`models-spike/src/main/cddl/upstream/` holds verbatim copies of CDDL files from three Apache-2.0 repositories
+`models/src/main/cddl/upstream/` holds verbatim copies of CDDL files from three Apache-2.0 repositories
 (IntersectMBO/ouroboros-network, ouroboros-consensus, cardano-ledger) at the commits listed in its `SOURCES`
 file. Their LICENSE and NOTICE texts are in [fixtures/licenses](../fixtures/licenses). The build-time tool that
 reads them (`models-gen`) uses cats-parse 1.1.0 (MIT) and nothing else beyond what `core` already uses.

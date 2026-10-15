@@ -17,7 +17,7 @@ QUERY_PORT = 7071
 
 
 def data_root(name):
-    return pathlib.Path(os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / name
+    return pathlib.Path(os.environ.get("SCARAB_DATA_DIR") or os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / name
 
 
 def docker(*args, check=True, capture=True, timeout=None):

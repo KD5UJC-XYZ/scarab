@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""State digests: the Python twin of `lab.node.StateDump` (keep the two definitions identical).
+"""State digests: the Python twin of `xyz.kd5ujc.scarab.node.StateDump` (keep the two definitions identical).
 
 An object with more than THRESHOLD fields is replaced by {count, digest, buckets}: the entry count, the sum
 modulo 2^256 of SHA-256(key, NUL, canonical value text) over the entries, and the same sum per bucket of the

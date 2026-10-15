@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
+import scala.annotation.unused
+
 import scala.collection.mutable
 
 /** Turns a resolved [[Schema]] into Scala 3 source: one file per CDDL module.
@@ -494,7 +496,7 @@ final class Emitter(schema: Schema, cfg: Config):
     var pos = "0"
     def next(p: String, by: String): String =
       if isNumber(p) && isNumber(by) then (p.toInt + by.toInt).toString else s"$p + $by"
-    def seg(f: FieldInfo, p: String): String = quote(f.path)
+    def seg(f: FieldInfo, @unused p: String): String = quote(f.path)
     items.foreach { it =>
       val p = pos
       it match

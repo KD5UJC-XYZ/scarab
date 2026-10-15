@@ -61,8 +61,8 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
   cardano-scala-jdk:local bash scripts/sbtw check node/runtimeClasspathFile
 
 # 3. Follow a network (flags, defaults and Preview in docs/running.md)
-java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
-  --genesis-dir <config dir> --peer <host>:<port> --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/db"
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+  --genesis-dir <config dir> --peer <host>:<port> --db "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/db"
 ```
 
 Step 3 needs a JDK 21 (or run it inside the image). The scenarios against the Haskell node also need
@@ -74,16 +74,24 @@ python3 scripts/devnet.py soak --seconds 480    # also: e2e, relay, pool; then `
 ```
 
 What each scenario asserts is in [docs/running.md](docs/running.md). Run data goes to
-`${CSL_DATA_DIR:-/tmp/cardano-scala-lab}`, never into the checkout or your home directory.
+`${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}`, never into the checkout or your home directory (`CSL_DATA_DIR`, the former name, is still read when
+`SCARAB_DATA_DIR` is unset).
 
 ## Modules
 
 | Path | Contents |
 |---|---|
-| `core/` | Pure CBOR, Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, operational certificates |
-| `network/` | Pure Ouroboros mini-protocol codecs and state machines |
-| `network-runtime/` | fs2 tagless-final bearer, multiplexer, handshake, client and server roles of ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery |
-| `node/` | Peer, volatile chain, follower, Praos/TPraos, Shelley to Conway ledger, Plutus evaluation, storage, relay, mempool, forging, query server, `Main` |
+| `codec/` | CBOR with original-bytes preservation, `Bytes`, `Rational` |
+| `crypto/` | Blake2b, strict Ed25519, VRF (verify and prove), Sum6 KES, BLS12-381, operational certificates |
+| `protocol/` | Pure Ouroboros mini-protocol codecs and state machines |
+| `network/` | fs2 tagless-final bearer, multiplexer, handshake, client and server roles of ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery |
+| `plutus/` | The Plutus script evaluator algebra and its Scalus adapter |
+| `ledger/` | Blocks, headers, genesis, transactions and the Byron to Conway ledger rules |
+| `consensus/` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules |
+| `storage/` | Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader |
+| `node/` | Peer, follower, relay, mempool, forging, node-to-client, query server, `Main` |
+| `models-gen/`, `models/` | CDDL parser and generator; the generated models and their equivalence tests |
+| `fuzz/` | Structured fuzzing of the decoders |
 | `fixtures/` | Licensed test vectors and captured chain data, each directory with its provenance |
 | `scripts/` | `devnet.py` (scenarios), `sbtw` (pinned sbt launcher), `prepare_reference_image.py` |
 | `docs/` | The documents below |

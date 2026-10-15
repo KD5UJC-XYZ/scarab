@@ -1,11 +1,11 @@
 # Preprod testnet fixtures
 
 Raw node-to-node BlockFetch blocks (`[era_tag, block]`), one hex-encoded block per line, captured
-with `lab.node.tools.CaptureMain` from the public relay `preprod-node.play.dev.cardano.org:3001`
+with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from the public relay `preprod-node.play.dev.cardano.org:3001`
 (network magic 1) on 2026-10-11:
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.tools.CaptureMain capture \
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.tools.CaptureMain capture \
   --peer preprod-node.play.dev.cardano.org:3001 --magic 1 --blocks 70 --out blocks.hex \
   --byron-epoch-slots 21600
 ```

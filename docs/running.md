@@ -28,12 +28,12 @@ after any dependency change: a stale file lacked rocksdb.
 ## `follow`: the node
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> | --topology <topology.json>) [options]
 ```
 
 (Inside the JDK image with the checkout mounted, or on a host with JDK 21.) The sbt form is
-`sbt "node/runMain lab.node.Main follow ..."`. The node logs one JSON object per line on stdout
+`sbt "node/runMain xyz.kd5ujc.scarab.node.Main follow ..."`. The node logs one JSON object per line on stdout
 (`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
 `volatileResumed`, `shutdownSnapshot`, `forged`, ...). The epoch lines carry a `scheduling` object
 (timer lateness and the longest CPU-bound step of that epoch, see "Scheduling" below).
@@ -126,9 +126,9 @@ sharing.
 The node follows the public Preview testnet from genesis (network magic 2):
 
 ```sh
-java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   --config <preview config dir>/config.json --topology <preview config dir>/topology.json \
-  --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview-db"
+  --db "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preview-db"
 ```
 
 (`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works.)
@@ -137,9 +137,9 @@ official Cardano network configuration (`fixtures/preview/genesis/` holds a copy
 into the config directory, in a container like everything else:
 
 ```sh
-mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config"
+mkdir -p "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
-  -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  -v "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preview/config":/out --entrypoint bash cardano-scala-jdk:local -c \
   'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preview/$f"; done'
 ```
@@ -162,7 +162,7 @@ active file pages) and in `memory.current` fully: bound `RssAnon`, not `memory.c
 ### `import-haskell-db`: start from a Haskell node's blocks
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main import-haskell-db \
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-haskell-db \
   --haskell-db <haskell db dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N]
 ```
 
@@ -189,15 +189,15 @@ The node follows the public preprod testnet (network magic 1) from genesis throu
 (an epoch 0 boundary block and 45 main blocks over four epochs) into Shelley and on:
 
 ```sh
-mkdir -p "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config"
+mkdir -p "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config"
 docker run --rm --user "$(id -u):$(id -g)" -w /out \
-  -v "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config":/out --entrypoint bash cardano-scala-jdk:local -c \
+  -v "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config":/out --entrypoint bash cardano-scala-jdk:local -c \
   'for f in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
-java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow \
-  --config "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/config.json" \
-  --topology "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/topology.json" \
-  --db "${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/preprod-db"
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+  --config "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/config.json" \
+  --topology "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod/config/topology.json" \
+  --db "${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/preprod-db"
 ```
 
 `config.json` has no `TestShelleyHardForkAtEpoch`, so the Byron ledger decides when the chain
@@ -247,7 +247,7 @@ On a public network (Preview shown; the configuration files are those of "Previe
 ```sh
 # 1. A Haskell node that syncs the network. PraosMode and a plain topology (the peer snapshot and the
 #    checkpoints file of the official Preview configuration are not needed); 6 CPUs, db outside the checkout.
-D="${CSL_DATA_DIR:-/tmp/cardano-scala-lab}"
+D="${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}"
 mkdir -p "$D/haskell-preview-config" "$D/haskell-preview-db" "$D/haskell-preview-ipc"
 cp "$D"/preview/config/*.json "$D/haskell-preview-config/"
 #    edit config.json: "ConsensusMode": "PraosMode", remove CheckpointsFile and CheckpointsFileHash;
@@ -260,7 +260,7 @@ docker run -d --name csl-k1-haskell-preview --cpus 6 --memory 32g --user "$(id -
   --topology /config/topology.json --database-path /db --socket-path /ipc/node.socket --port 3001 --host-addr 0.0.0.0
 
 # 2. The Scala node from genesis, writing a digest at every epoch boundary (the same configuration as above).
-java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" lab.node.Main follow --genesis-dir "$D/preview/config" \
+java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow --genesis-dir "$D/preview/config" \
   --peer preview-node.play.dev.cardano.org:3001 --db "$D/preview-scala-db" --keep-snapshots 2000 \
   --dump-state "$D/preview-dump" --dump-state-at epoch-boundaries
 
@@ -408,7 +408,7 @@ command repeats the run.
 ```
 fuzz target address-and-output failed with seed 1 (reproduce: fuzz 3000 1 1 address-and-output)
 > ARG_0: Input(5512 bytes, hex 5b8181...)
-> Exception: lab.fuzz.Violation: address-and-output allocated 27450488 bytes (limit 27370624) for 5512 bytes
+> Exception: xyz.kd5ujc.scarab.fuzz.Violation: address-and-output allocated 27450488 bytes (limit 27370624) for 5512 bytes
 ```
 
 Run that command to see it again (the shrinking removes chunks of the input, then zeroes bytes). To keep it, paste
@@ -419,10 +419,10 @@ start it by hand with other values from the Actions tab (`cases`, `first-seed`, 
 
 ## `capture`: recording blocks
 
-`lab.node.tools.CaptureMain` records raw blocks (one hex-encoded block per line) for offline replay tests:
+`xyz.kd5ujc.scarab.node.tools.CaptureMain` records raw blocks (one hex-encoded block per line) for offline replay tests:
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" lab.node.tools.CaptureMain capture \
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.tools.CaptureMain capture \
   --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex>]
 ```
 
@@ -438,7 +438,7 @@ reference image, and the Scala node running from a frozen copy of the compiled c
 the reference nodes bind loopback. Requirements: both images, the classpath file from "Images", Docker,
 Python 3 (standard library only), roughly 10 minutes per scenario.
 
-Run data lives in `${CSL_DATA_DIR:-/tmp/cardano-scala-lab}/<name>` (never in the checkout or the home
+Run data lives in `${SCARAB_DATA_DIR:-/tmp/cardano-scala-lab}/<name>` (never in the checkout or the home
 directory). `--name` selects the cluster name (default `csl-devnet`, `csl-eras` for `up-eras`), so a
 second cluster can run beside another. Directories and sockets that containers of other uids must
 write are made world-writable (mode 0777) on a local devnet; the key files are 0400.

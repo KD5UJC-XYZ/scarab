@@ -267,7 +267,7 @@ does. Moving verification onto the same pool serialised it behind the rules, and
 # base: git archive 5ec40f8 into a directory, build it there, freeze its classes (as devnet.py does)
 # final: freeze this checkout's classes; then, for each CPU count and JVM flags, in parallel:
 docker run --rm --cpus 1 --memory 10g -v <frozen classes>:/run/classes:ro ... cardano-scala-jdk:local \
-  java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -cp <classpath> lab.node.Main follow \
+  java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -cp <classpath> xyz.kd5ujc.scarab.node.Main follow \
   --genesis-dir <preview config> --peer preview-node.play.dev.cardano.org:3001 --db <fresh dir> --seconds 1860
 ```
 

@@ -224,12 +224,12 @@ It also bears on G4 (our client offers only version 14 today; the pure `Handshak
 
 | Leios change | Where it lands | Notes and reuse |
 |---|---|---|
-| Protocol ids 18, 19; pure codecs and state machines | `network/` (pure codecs, like `ChainSync`, `TxSubmission2`); `network-runtime` (`Protocols`, new `LeiosNotifyClient/Server`, `LeiosFetchClient/Server`, registered in `NodeToNodeServer.Protocol` and `NodeToNode.over`) | `Mux`, `MuxChannel.recv` with incremental decoders and `Timed` are reusable as is. Credit and pipelining do not exist for these two, so keep them simple. Per-protocol agency and size limits as for the existing ones |
+| Protocol ids 18, 19; pure codecs and state machines | `protocol/` (pure codecs, like `ChainSync`, `TxSubmission2`); `network` (`Protocols`, new `LeiosNotifyClient/Server`, `LeiosFetchClient/Server`, registered in `NodeToNodeServer.Protocol` and `NodeToNode.over`) | `Mux`, `MuxChannel.recv` with incremental decoders and `Timed` are reusable as is. Credit and pipelining do not exist for these two, so keep them simple. Per-protocol agency and size limits as for the existing ones |
 | Handshake versions and flags | `network/Handshake.scala`, `HandshakeClient` | Today the client proposes version 14 only (`NodeToNode.over`); see G4 |
 | Dijkstra headers (announcement, cert flag, version info) | `node/Header.scala`, `Block.scala` | New era variant next to Conway; header hash and KES body-signature validation reuse `Praos`; body hash must cover the new body fields (L1 to confirm) |
 | Certificate verification in block validation | `LedgerRules.scala` (`NodeRules`), `consensus/` | A new pure `LeiosCertificate` rule: committee lookup in the ledger view, signer-stake sum against `tau`, aggregate-signature check. The committee is a pure function of the mark snapshot, so it belongs in the ledger state with `ledger/Stake.scala` and `consensus/LedgerView.scala` |
 | Committee and pool BLS keys | `ledger/Stake.scala`, certificate decoding in `ledger/Tx.scala`, `ledger/ProtocolParams.scala` (keys 40 to 48; Peras adds 49 and 50) | Pool-registration CDDL has `bls_key`; SNAP-time seating with the stable sort (stake descending, pool id ascending) |
-| BLS keys, vote signing, aggregation, verification | new `core/.../bls/` next to `vrf/`, `kes/` | `foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on the classpath through Scalus 1.2.0 and exposes `supranational.blst.{SecretKey,P1,P2,P1_Affine,P2_Affine,Pairing}`: `keygen`, `sign_with`, `hash_to` (with DST), `aggregate`/`add`, `in_group`, `compress`, `serialize`, `core_verify` taking a G2 key (MinSig works: G1 signatures, G2 keys), and `Pairing` aggregate/commit/finalverify. Covers key generation, signing, proof of possession, aggregation, subgroup checks and verification. Checked in N2 (section 9): the `P1_Affine(byte[])`/`P2_Affine(byte[])` constructors decode (and accept uncompressed forms and do not check the subgroup, so we check length, flag and `in_group` ourselves), the DST strings, and handle use as local accumulators; `aggregate` repeats the subgroup check on every call, so sums use `add`. Not checked: constant-time behaviour. blst-java is now a direct dependency of `core` |
+| BLS keys, vote signing, aggregation, verification | new `crypto/.../bls/` next to `vrf/`, `kes/` | `foundation.icon:blst-java:0.3.2` (Apache-2.0) is already on the classpath through Scalus 1.2.0 and exposes `supranational.blst.{SecretKey,P1,P2,P1_Affine,P2_Affine,Pairing}`: `keygen`, `sign_with`, `hash_to` (with DST), `aggregate`/`add`, `in_group`, `compress`, `serialize`, `core_verify` taking a G2 key (MinSig works: G1 signatures, G2 keys), and `Pairing` aggregate/commit/finalverify. Covers key generation, signing, proof of possession, aggregation, subgroup checks and verification. Checked in N2 (section 9): the `P1_Affine(byte[])`/`P2_Affine(byte[])` constructors decode (and accept uncompressed forms and do not check the subgroup, so we check length, flag and `in_group` ourselves), the DST strings, and handle use as local accumulators; `aggregate` repeats the subgroup check on every call, so sums use `add`. Not checked: constant-time behaviour. blst-java is now a direct dependency of `core` |
 | Forging: announce an EB, vote, build certificates | `forge/` (`Forger`, `BlockBuilder`, `Leadership`) | New pure `EbBuilder` from mempool snapshots, a vote-casting step with the node-local timers `L_hdr`/`L_vote`, a vote store with tally per announcing RB, certificate aggregation at forge time, key-file reading for the BLS key (`KeyFiles`) |
 | Mempool | `mempool/Mempool.scala`, `MempoolState.scala` | Capacity and validation-latency requirements change (section 4.4); the "validated once, flagged" transaction set `S` of the CIP maps to a validation-verdict cache beside `VerificationCache`. The existing `--mempool-bytes` flag is the knob |
 | EB store, transaction cache, closures | `storage/` | New `EbStore[F]` algebra: EBs and their transaction closures by hash for volatile forks, durable for certified EBs on the immutable chain (served to syncing peers, inlined for N2C). The prototype uses SQLite (`LeiosDB`); we would key it in RocksDB or files like `ImmutableStore`. Open question in the design: whether the committee is materialised in ledger state or recomputed |
@@ -371,7 +371,7 @@ to Conway at epoch 0, `ExperimentalHardForksEnabled` and `ExperimentalProtocolsE
 
 ## 9. N2 results: BLS keys, votes and certificates (2026-10-14)
 
-Implemented in `core/src/main/scala/lab/bls/` (pure; the only effect is the native library call,
+Implemented in `crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/bls/` (pure; the only effect is the native library call,
 confined to `MinSig.guard`). Roadmap item N2 / issue 71. Not audited; research software.
 
 ### API
@@ -433,7 +433,7 @@ committee (`SignerWithoutKey`); committee seating equals a model sort.
 
 ### Benchmark: 900 seats
 
-`core/Test/runMain lab.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
+`core/Test/runMain xyz.kd5ujc.scarab.crypto.bls.BlsBenchmark`, one thread, JDK in the build container, warm, host shared
 with other jobs (indicative only):
 
 | Operation | Time |
@@ -454,9 +454,9 @@ enough for the RB critical path; the committee build belongs to the epoch bounda
 Read-only connection to `leios-node.play.dev.cardano.org:3001`, magic 164, with our runtime
 (`Bearer.tcp`, `Mux`, `HandshakeClient`, `KeepAliveClient`) and the new pure codecs
 `LeiosNotify`/`LeiosFetch` (`network/`, Blueprint `messages.cddl`; round-trip, state-admission and
-malformed-input tests) with clients `LeiosNotifyClient`/`LeiosFetchClient` (`network-runtime/`).
-The probe is `LeiosProbe` in the test sources of `network-runtime`
-(`networkRuntime/Test/runMain lab.network.runtime.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
+malformed-input tests) with clients `LeiosNotifyClient`/`LeiosFetchClient` (`network/`).
+The probe is `LeiosProbe` in the test sources of `network`
+(`networkRuntime/Test/runMain xyz.kd5ujc.scarab.network.LeiosProbe <host> <port> <magic> <seconds> <outfile>`).
 
 | Attempt | Result |
 |---|---|
