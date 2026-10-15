@@ -1,0 +1,386 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.storage.haskell.state
+
+import munit.ScalaCheckSuite
+import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.Prop.forAll
+import scala.collection.immutable.{SortedMap, SortedSet}
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.state.EpochStateGen.given
+import xyz.kd5ujc.scarab.ledger.state.LedgerStateGen.given
+import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
+import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Writer}
+
+import DecodeError.Kind
+import HaskellStateCodecs.{*, given}
+import Wire.{mapOf, setOf}
+
+/** The Haskell ledger-state codecs: decode after encode is the identity on every type and every
+  * era, encode after decode is the identity on bytes, the decoders refuse what the Haskell ones do
+  * (with a typed error), and a few values are checked against bytes worked out by hand from the
+  * Haskell instances (cited in the tests).
+  */
+class HaskellStateCodecSuite extends ScalaCheckSuite:
+  // The version of a Conway state, which writes sets with tag 258.
+  given conwayVersion: ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
+
+  private def version(major: Long): ProtVer = ProtVer(Word64.fromUnsigned(major), Word64.zero)
+
+  private def hex(s: String): Bytes =
+    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(fail(_), identity)
+
+  private def bytesOf(body: Writer => Unit): Bytes = StateGen.item(body)
+
+  private def arb[A: Arbitrary]: Gen[A] = Arbitrary.arbitrary[A]
+
+  private val key28 = "01" * 28
+  private val keyHash28: KeyHash[Staking] =
+    KeyHash.fromBytes[Staking](hex(key28)).fold(e => fail(e.toString), identity)
+
+  private def read[A](codec: Codec[A], bytes: Bytes): Either[DecodeError, A] =
+    codec.decodeBytes(bytes, HaskellState.limits)
+
+  private def readOk[A](codec: Codec[A], bytes: Bytes): A =
+    read(codec, bytes).fold(e => fail(e.render), identity)
+
+  /** The two laws of a codec, on its generator. */
+  private def laws[A](name: String, gen: Gen[A], codec: Codec[A]): Unit =
+    property(s"$name: decode after encode is the identity, and encode after decode is on bytes") {
+      forAll(gen) { a =>
+        val bytes = codec.encodeBytes(a)
+        assertEquals(codec.check(a), None, "a generated value is writable")
+        val back = readOk(codec, bytes)
+        assertEquals(back, a)
+        assertEquals(codec.encodeBytes(back), bytes)
+      }
+    }
+
+  private def failure[A](codec: Codec[A], bytes: Bytes): DecodeError =
+    read(codec, bytes).fold(identity, a => fail(s"decoded $a"))
+
+  // ---- vocabulary
+
+  laws("Coin", arb[Coin], coin)
+  laws("DeltaCoin", arb[DeltaCoin], deltaCoin)
+  laws("CompactCoin", arb[CompactCoin], compactCoin)
+  laws("EpochNo", arb[EpochNo], epochNo)
+  laws("Credential[Staking]", arb[Credential[Staking]], credential[Staking])
+  laws("DRep", arb[DRep], drep)
+  laws("NonZero[Word64]", arb[NonZero[Word64]], nonZero[Word64])
+  laws("Anchor", StateGen.nodeAnchor, anchor)
+  laws("Rational (plain)", StateGen.nonNegative, Wire.ratio)
+  laws("UnitInterval", StateGen.unit, Wire.unitInterval)
+  laws("ProtVer", arb[ProtVer], protVer)
+  laws("Ptr", LedgerStateGen.ptr, ptr)
+
+  test("amounts: Coin is written as an Integer and read as a Word64 (Coin.hs:93,111)") {
+    val big = (BigInt(1) << 64) - 1
+    val c = Coin.fromBigInt(big).fold(e => fail(e.toString), identity)
+    assertEquals(coin.encodeBytes(c).hex, "1bffffffffffffffff")
+    assertEquals(readOk(coin, coin.encodeBytes(c)), c)
+    // above 2^64 - 1 the writer would emit a bignum, which the Word64 reader refuses
+    val over = bytesOf(_.integer(BigInt(1) << 64))
+    assert(failure(coin, over).kind.isInstanceOf[Kind.TypeMismatch], "a bignum is not a Word64")
+    val negative = bytesOf(_.int(BigInt(-1)))
+    assert(failure(coin, negative).kind.isInstanceOf[Kind.TypeMismatch])
+    // a DeltaCoin is an Integer both ways, bignums included
+    val delta = DeltaCoin(-(BigInt(1) << 70))
+    assertEquals(readOk(deltaCoin, deltaCoin.encodeBytes(delta)), delta)
+  }
+
+  test("hashes have the size of their type; a smart constructor's refusal is a located error") {
+    val short = bytesOf(_.bytes(hex("0102")))
+    val e = failure(keyHash[Staking], short)
+    assert(e.kind.isInstanceOf[Kind.BadSize], e.render)
+    assertEquals(
+      failure(vrfVerKeyHash, bytesOf(_.bytes(hex(key28)))).kind.getClass,
+      classOf[Kind.BadSize]
+    )
+    val zero = bytesOf(_.uint(0L))
+    assert(failure(nonZero[Word64], zero).kind.isInstanceOf[Kind.Violation])
+  }
+
+  test("pointers are strict from version 9 and normalised before (Credential.hs:360-364)") {
+    val outOfRange = bytesOf { w =>
+      w.arrayHead(3); w.uint(BigInt(1) << 40); w.uint(1L); w.uint(2L)
+    }
+    assert(failure(ptr(using version(9)), outOfRange).kind.isInstanceOf[Kind.OutOfRange])
+    assertEquals(
+      readOk(ptr(using version(7)), outOfRange),
+      xyz.kd5ujc.scarab.ledger.Ptr(0, 0, 0)
+    )
+    val wide = bytesOf { w =>
+      w.arrayHead(3); w.uint(1L); w.uint(70000L); w.uint(2L)
+    }
+    assert(failure(ptr(using version(9)), wide).kind.isInstanceOf[Kind.OutOfRange])
+  }
+
+  test("a protocol version has a major in 0..13 and a Word32 minor (Version.hs:55-110)") {
+    assertEquals(protVer.encodeBytes(ProtVer(Word64.fromUnsigned(9), Word64.zero)).hex, "820900")
+    val tooBig = bytesOf { w =>
+      w.arrayHead(2); w.uint(14L); w.uint(0L)
+    }
+    assert(failure(protVer, tooBig).kind.isInstanceOf[Kind.OutOfRange])
+    val bigMinor = bytesOf { w =>
+      w.arrayHead(2); w.uint(9L); w.uint(BigInt(1) << 32)
+    }
+    assert(failure(protVer, bigMinor).kind.isInstanceOf[Kind.OutOfRange])
+    assertEquals(
+      protVer.check(ProtVer(Word64.fromUnsigned(14), Word64.zero)).isDefined,
+      true
+    )
+  }
+
+  // ---- containers and versions
+
+  private def setAt(v: ProtVer): Codec[SortedSet[Credential[Staking]]] =
+    given ProtVer = v
+    setOf(credential[Staking])
+
+  private def mapAt(v: ProtVer): Codec[SortedMap[Credential[Staking], Int]] =
+    given ProtVer = v
+    mapOf(credential[Staking], Codec.uintInt(10))
+
+  private val stakingKey: Credential[Staking] = Credential.KeyHashObj(keyHash28)
+  private val otherKey: Credential[Staking] =
+    Credential.KeyHashObj(KeyHash.fromBytes[Staking](Bytes(Vector.fill(28)(2.toByte))).toOption.get)
+
+  test("sets: tag 258 from version 9, none before; either length form; the tag is optional") {
+    val one = Sorted.set(Seq(stakingKey))
+    val item = "8200581c" + key28
+    assertEquals(setAt(version(9)).encodeBytes(one).hex, "d9010281" + item)
+    assertEquals(setAt(version(7)).encodeBytes(one).hex, "81" + item)
+    // read: at 9 the tag is optional, at 7 it is not permitted
+    assertEquals(readOk(setAt(version(9)), hex("81" + item)), one)
+    assertEquals(readOk(setAt(version(9)), hex("9f" + item + "ff")), one)
+    assertEquals(readOk(setAt(version(9)), hex("d901029f" + item + "ff")), one)
+    assert(failure(setAt(version(7)), hex("d9010281" + item)).kind.isInstanceOf[Kind.BadTag])
+  }
+
+  test("sets and maps above 23 entries are indefinite, and either form reads (Encoder.hs:430-466)") {
+    val credentials: Vector[Credential[Staking]] = (0 until 24).toVector.map(i =>
+      Credential.KeyHashObj(KeyHash.fromBytes[Staking](Bytes(Vector.fill(28)(i.toByte))).toOption.get)
+    )
+    val set = Sorted.set(credentials)
+    val codec = setAt(version(9))
+    val bytes = codec.encodeBytes(set)
+    assertEquals(bytes.hex.take(8), "d901029f")
+    assertEquals(bytes.hex.takeRight(2), "ff")
+    assertEquals(readOk(codec, bytes), set)
+    val definite = bytesOf { w =>
+      w.tag(258)
+      w.arrayHead(24)
+      credentials.foreach(credential[Staking].encode(_, w))
+    }
+    assertEquals(readOk(codec, definite), set)
+    val map = Sorted.map(credentials.map(_ -> 1))
+    val mapCodec = mapAt(version(9))
+    assertEquals(mapCodec.encodeBytes(map).hex.take(2), "bf")
+    assertEquals(readOk(mapCodec, mapCodec.encodeBytes(map)), map)
+    // 23 is the longest definite one
+    assertEquals(mapCodec.encodeBytes(Sorted.map(credentials.take(23).map(_ -> 1))).hex.take(2), "b7")
+  }
+
+  test("a repeated element or key is refused from version 9 and ignored before (Decoder.hs:815-962)") {
+    val c = credential[Staking]
+    val twice = bytesOf { w =>
+      w.arrayHead(2)
+      c.encode(stakingKey, w)
+      c.encode(stakingKey, w)
+    }
+    assert(failure(setAt(version(9)), twice).kind.isInstanceOf[Kind.DuplicateElement])
+    assertEquals(readOk(setAt(version(7)), twice).size, 1)
+    val pairs = bytesOf { w =>
+      w.mapHead(2)
+      c.encode(stakingKey, w)
+      w.uint(1L)
+      c.encode(stakingKey, w)
+      w.uint(2L)
+    }
+    assert(failure(mapAt(version(9)), pairs).kind.isInstanceOf[Kind.DuplicateKey])
+    assertEquals(readOk(mapAt(version(7)), pairs).values.toList, List(2))
+    // elements out of order are accepted, then written in order
+    val unordered = bytesOf { w =>
+      w.tag(258)
+      w.arrayHead(2)
+      c.encode(otherKey, w)
+      c.encode(stakingKey, w)
+    }
+    val ordered = bytesOf { w =>
+      w.tag(258)
+      w.arrayHead(2)
+      c.encode(stakingKey, w)
+      c.encode(otherKey, w)
+    }
+    val codec = setAt(version(9))
+    assertEquals(codec.encodeBytes(readOk(codec, unordered)), ordered)
+  }
+
+  test("ratios: plain ones are tagged from version 9, bounded ones always (Encoder.hs:301-306)") {
+    val half = Rational(1, 2)
+    assertEquals(Wire.ratio(using version(9)).encodeBytes(half).hex, "d81e820102")
+    assertEquals(Wire.ratio(using version(7)).encodeBytes(half).hex, "820102")
+    assertEquals(Wire.unitInterval.encodeBytes(half).hex, "d81e820102")
+    assertEquals(readOk(Wire.ratio(using version(9)), hex("820102")), half)
+    assert(failure(Wire.ratio(using version(7)), hex("d81e820102")).kind.isInstanceOf[Kind.BadTag])
+    // a bounded ratio needs its tag, and the interval
+    assert(failure(Wire.unitInterval, hex("820102")).kind.isInstanceOf[Kind.TypeMismatch])
+    assert(failure(Wire.unitInterval, hex("d81e820302")).kind.isInstanceOf[Kind.OutOfRange])
+    assert(failure(Wire.unitInterval, hex("d81e820100")).kind.isInstanceOf[Kind.OutOfRange])
+    assertEquals(readOk(Wire.nonNegativeInterval, hex("d81e820302")), Rational(3, 2))
+    // numerator and denominator are normalised
+    assertEquals(readOk(Wire.unitInterval, hex("d81e820204")), half)
+  }
+
+  // ---- hand-worked bytes (the instance cited with each)
+
+  test("golden: the small records, as the Haskell instances write them") {
+    val cred = "82 00 581c " + key28
+    def g(s: String): String = s.filterNot(_ == ' ')
+    // ChainAccountState: array(2)[treasury, reserves] (State/ChainAccount.hs:46-48)
+    assertEquals(
+      chainAccountState.encodeBytes(ChainAccountState(coinOf(5), coinOf(10))).hex,
+      "82050a"
+    )
+    // Credential, key: [0, hash] (Credential.hs:322-325)
+    assertEquals(
+      credential[Staking].encodeBytes(Credential.KeyHashObj(keyHash28)).hex,
+      g(cred)
+    )
+    // ConwayAccountState: [balance, deposit, null, [2]] (Conway/State/Account.hs:127-134)
+    assertEquals(
+      conwayAccountState
+        .encodeBytes(
+          ConwayAccountState(
+            CompactCoin.fromUnsigned(1),
+            CompactCoin.fromUnsigned(2),
+            None,
+            Some(DRep.DRepAlwaysAbstain)
+          )
+        )
+        .hex,
+      "840102f68102"
+    )
+    // an empty PState and VState (State/CertState.hs:253-255, Conway/State/VState.hs:101-107)
+    assertEquals(pState.encodeBytes(LedgerStateGen.emptyPState).hex, "84a0a0a0a0")
+    assertEquals(vState.encodeBytes(LedgerStateGen.emptyVState).hex, "83a0a000")
+    // the empty pool distribution is `def`: no pools and a total of 1 (State/PoolDistr.hs:108-122)
+    assertEquals(poolDistr.encodeBytes(PoolDistr.empty).hex, "82a001")
+    // the empty snapshot: [no stake, no pools] (State/SnapShots.hs:290-296)
+    assertEquals(snapShot.encodeBytes(SnapShot.empty).hex, "82a0a0")
+    // FuturePParams, no update: [0] (State/Governance.hs:148-159)
+    assertEquals(
+      futurePParams(Params.conwayCodec).encodeBytes(FuturePParams.NoPParamsUpdate).hex,
+      "8100"
+    )
+    // a unit interval (BaseTypes.hs:384) and a pointer (Credential.hs:353-357)
+    assertEquals(Wire.unitInterval.encodeBytes(Rational(3, 10)).hex, "d81e82030a")
+    assertEquals(ptr.encodeBytes(xyz.kd5ujc.scarab.ledger.Ptr(1, 2, 3)).hex, "83010203")
+  }
+
+  test("golden: a DRepState with a delegator is [expiry, [], deposit, #258[credential]]") {
+    val d = DRepState(
+      EpochNo.fromUnsigned(7),
+      None,
+      CompactCoin.fromUnsigned(500),
+      Sorted.set(Seq(Credential.KeyHashObj[Staking](keyHash28)))
+    )
+    // DRep.hs:165-198: expiry 7, a StrictMaybe anchor (empty: array(0)), deposit 500, the set
+    assertEquals(
+      drepState.encodeBytes(d).hex,
+      ("84 07 80 1901f4 d90102 81 82 00 581c" + key28).filterNot(_ == ' ')
+    )
+    assertEquals(readOk(drepState, drepState.encodeBytes(d)), d)
+  }
+
+  test("golden: a reward update writes deltaR and deltaF negated (RewardUpdate.hs:125-132)") {
+    val u = RewardUpdate(
+      DeltaCoin(BigInt(1)),
+      DeltaCoin(BigInt(-3)),
+      Sorted.empty,
+      DeltaCoin(BigInt(-4)),
+      NonMyopic.empty
+    )
+    // [1, 3, {}, 4, [{}, 0]]
+    assertEquals(rewardUpdate.encodeBytes(u).hex, "850103a00482a000")
+    assertEquals(readOk(rewardUpdate, rewardUpdate.encodeBytes(u)), u)
+    // and a positive delta is written as a negative integer
+    val up = u.copy(deltaR = DeltaCoin(BigInt(3)))
+    assertEquals(rewardUpdate.encodeBytes(up).hex, "850122a00482a000")
+    assertEquals(readOk(rewardUpdate, rewardUpdate.encodeBytes(up)), up)
+  }
+
+  test("golden: likelihood weights are single-precision floats (PoolRank.hs:88; cborg encodeFloat)") {
+    val pool = KeyHash.fromBytes[StakePool](hex(key28)).fold(e => fail(e.toString), identity)
+    val nm = NonMyopic(
+      Sorted.map(Seq(pool -> Likelihood(Vector(LogWeight(1.0f), LogWeight(0.5f))))),
+      coinOf(5)
+    )
+    assertEquals(
+      nonMyopic.encodeBytes(nm).hex,
+      ("82 a1 581c" + key28 + "82 fa3f800000 fa3f000000 05").filterNot(_ == ' ')
+    )
+    assertEquals(readOk(nonMyopic, nonMyopic.encodeBytes(nm)), nm)
+    // 100 samples, as the node computes them: an indefinite array, as the real Preview state has
+    val hundred = NonMyopic(
+      Sorted.map(Seq(pool -> Likelihood(Vector.fill(100)(LogWeight(0.25f))))),
+      coinOf(0)
+    )
+    val bytes = nonMyopic.encodeBytes(hundred)
+    assert(bytes.hex.startsWith(("82 a1 581c" + key28 + "9f fa3e800000").filterNot(_ == ' ')))
+    assertEquals(readOk(nonMyopic, bytes), hundred)
+    // a half-precision float is read, a double is not (decodeFloat)
+    val half = bytesOf { w =>
+      w.arrayHead(1); w.float16(1.5f)
+    }
+    assertEquals(readOk(likelihood, half), Likelihood(Vector(LogWeight(1.5f))))
+    val double = bytesOf { w =>
+      w.arrayHead(1); w.float64(1.5)
+    }
+    assert(failure(likelihood, double).kind.isInstanceOf[Kind.Unsupported])
+    // and without the option to allow them, a float does not even parse
+    assert(likelihood.decodeBytes(bytes).isLeft)
+  }
+
+  private def coinOf(n: Long): Coin = Coin.fromBigInt(BigInt(n)).fold(e => fail(e.toString), identity)
+
+  // ---- the types, in every era
+
+  laws("StakePoolState", StateGen.stakePoolState, stakePoolState)
+  laws("PState", StateGen.pState, pState)
+  laws("DState[ShelleyAccounts]", LedgerStateGen.dState(arb[ShelleyAccounts]), dState[ShelleyAccounts])
+  laws("DState[ConwayAccounts]", LedgerStateGen.dState(arb[ConwayAccounts]), dState[ConwayAccounts])
+  laws("VState", arb[VState], vState)
+  laws("ShelleyCertState", StateGen.certState[Babbage], shelleyCertState)
+  laws("ConwayCertState", StateGen.certState[Conway], conwayCertState)
+  laws("ShelleyInstantStake", arb[ShelleyInstantStake], shelleyInstantStake)
+  laws("ConwayInstantStake", arb[ConwayInstantStake], conwayInstantStake)
+  laws("SnapShots", StateGen.snapShots, snapShots)
+  laws("PoolDistr", arb[PoolDistr], poolDistr)
+  laws("NonMyopic", arb[NonMyopic], nonMyopic)
+  laws("RewardUpdate", arb[RewardUpdate], rewardUpdate)
+  laws("RewardSnapShot", arb[RewardSnapShot], rewardSnapShot)
+  laws("BlocksMade", arb[BlocksMade], blocksMade)
+  laws("ConwayGovState", StateGen.conwayGov, conwayGovState)
+  laws("Proposals", StateGen.proposals, proposals)
+  laws("PulsingSnapshot", StateGen.pulsingSnapshot, pulsingSnapshot)
+  laws("RatifyState", StateGen.ratifyState, ratifyState)
+  laws("PoolParams", StateGen.poolParams, poolParams)
+
+  /** The two laws for the state of an era, at the version the reference writes it at. */
+  private def era[E <: EraTag](name: String)(using ShelleyBasedEra[E]): Unit =
+    val codec = HaskellStateCodecs.newEpochState[E]
+    laws(s"ProtocolParams of $name", StateGen.paramsOf[E], Params.codec(summon[ShelleyBasedEra[E]]))
+    laws(s"LedgerState[$name]", StateGen.ledgerState[E], {
+      given ProtVer = Versions.eraLow(summon[ShelleyBasedEra[E]])
+      HaskellStateCodecs.ledgerState[E]
+    })
+    laws(s"NewEpochState[$name]", StateGen.newEpochState[E], codec)
+
+  era[Shelley]("Shelley")
+  era[Allegra]("Allegra")
+  era[Mary]("Mary")
+  era[Alonzo]("Alonzo")
+  era[Babbage]("Babbage")
+  era[Conway]("Conway")
