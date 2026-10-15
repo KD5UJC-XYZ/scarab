@@ -49,7 +49,7 @@ object LedgerSnapshots:
   */
 object FileLedgerSnapshots:
   val Magic: Array[Byte] = "CSLSNAP1".getBytes("US-ASCII")
-  val FormatVersion = 1
+  val FormatVersion = 2
   val DigestSize = 32
   private val Prefix = "snapshot-"
   private val Suffix = ".bin"

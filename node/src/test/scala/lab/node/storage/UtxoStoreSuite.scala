@@ -308,3 +308,12 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       }.guarantee(IO.blocking(RocksUtxoStore.deleteTree(dir)))
     }
   }
+
+  test("the key is the Haskell node's: the 32-byte txid then the index as a big-endian u16") {
+    val id = Bytes.wrap(be(7, 32))
+    val key = UtxoStore.Coding.encodeKey(TxIn(id, 0x1234)).get
+    assertEquals(key.length, 34)
+    assertEquals(key.toSeq.drop(32), Seq(0x12.toByte, 0x34.toByte))
+    assertEquals(UtxoStore.Coding.decodeKey(key), TxIn(id, 0x1234))
+    assertEquals(UtxoStore.Coding.encodeKey(TxIn(id, 0x10000)), None)
+  }

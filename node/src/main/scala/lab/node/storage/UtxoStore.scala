@@ -47,6 +47,11 @@ trait UtxoStore[F[_]]:
   /** Forget everything (a fresh store at stamp -1). */
   def reset: F[Unit]
 
+  /** Native memory the store holds, in bytes by name (RocksDB: table readers, memtables, block
+    * cache); empty for the memory store. For the memory report only.
+    */
+  def memory: F[Map[String, Long]]
+
 object UtxoStore:
   /** Flush the diff of an immutable state: write every change the store does not have yet. */
   def advance[F[_]: Sync](store: UtxoStore[F], utxo: Utxo): F[Unit] =
@@ -104,22 +109,21 @@ object UtxoStore:
         TxOut.fromBytes(Bytes.wrap(java.util.Arrays.copyOfRange(bytes, 1, bytes.length)))
       else Codec.decode[TxOut](java.util.Arrays.copyOfRange(bytes, 1, bytes.length))
 
-    /** `id[32] | index` as a big-endian u32; an index that does not fit cannot exist in a set. */
+    /** `id[32] | index` as a big-endian u16, the key of the Haskell node's UTxO-HD tables (`TxIn =
+      * txid ++ be16 ix`); an index that does not fit cannot exist in a set.
+      */
     def encodeKey(in: TxIn): Option[Array[Byte]] =
-      if in.id.size != 32 || in.index < 0 || in.index > Int.MaxValue then None
+      if in.id.size != 32 || in.index < 0 || in.index > 0xffff then None
       else
-        val k = new Array[Byte](36)
+        val k = new Array[Byte](34)
         in.id.copyTo(k, 0)
         val i = in.index.toInt
-        k(32) = (i >>> 24).toByte
-        k(33) = (i >>> 16).toByte
-        k(34) = (i >>> 8).toByte
-        k(35) = i.toByte
+        k(32) = (i >>> 8).toByte
+        k(33) = i.toByte
         Some(k)
 
     def decodeKey(k: Array[Byte]): TxIn =
-      val i =
-        ((k(32) & 0xff) << 24) | ((k(33) & 0xff) << 16) | ((k(34) & 0xff) << 8) | (k(35) & 0xff)
+      val i = ((k(32) & 0xff) << 8) | (k(33) & 0xff)
       TxIn(Bytes.wrap(java.util.Arrays.copyOfRange(k, 0, 32)), BigInt(i))
 
 /** The UTxO set in memory: tests, the devnet and `follow` without `--db`. Checkpoints are files
@@ -149,6 +153,7 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
     state.get.map(_.entries.foreach((k, v) => visit(k, v)))
   def size: F[Long] = state.get.map(_.entries.size.toLong)
   def reset: F[Unit] = state.set(Contents(Map.empty, -1))
+  def memory: F[Map[String, Long]] = F.pure(Map.empty)
 
   private def guard[A](what: String)(fa: => A): F[A] =
     F.blocking(fa).attempt.flatMap {

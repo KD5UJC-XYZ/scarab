@@ -20,6 +20,7 @@ import org.rocksdb.{
   ReadOptions,
   RocksDB,
   WriteBatch,
+  WriteBufferManager,
   WriteOptions
 }
 import scala.jdk.CollectionConverters.*
@@ -39,7 +40,7 @@ import scala.jdk.CollectionConverters.*
   */
 final class RocksUtxoStore[F[_]: Sync] private (
     dir: java.nio.file.Path,
-    cache: LRUCache,
+    shared: RocksUtxoStore.Shared,
     // The handle is swapped when the database is reopened (see `open`); the holder is private to
     // this store and its lifetime is the enclosing Resource. A Ref would only add a suspension
     // around every JNI call on the hot read path.
@@ -105,7 +106,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
       val b = Map.newBuilder[TxIn, TxOut]
       while it.isValid do
         val k = it.key()
-        if k.length == 36 then
+        if k.length == 34 then
           Coding.decodeValue(it.value()).foreach(out => b += Coding.decodeKey(k) -> out)
         it.next()
       b.result()
@@ -118,7 +119,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
       it.seekToFirst()
       while it.isValid do
         val k = it.key()
-        if k.length == 36 then
+        if k.length == 34 then
           Coding.decodeValue(it.value()).foreach(out => visit(Coding.decodeKey(k), out))
         it.next()
     finally it.close()
@@ -130,10 +131,27 @@ final class RocksUtxoStore[F[_]: Sync] private (
       it.seekToFirst()
       var n = 0L
       while it.isValid do
-        if it.key().length == 36 then n += 1
+        if it.key().length == 34 then n += 1
         it.next()
       n
     finally it.close()
+  }
+
+  def memory: F[Map[String, Long]] = guard("utxo memory") {
+    val d = db.get
+    def prop(name: String): Option[(String, Long)] =
+      Option(d.getProperty(s"rocksdb.$name")).flatMap(_.toLongOption).map(name -> _)
+    List(
+      "estimate-table-readers-mem",
+      "cur-size-all-mem-tables",
+      "size-all-mem-tables",
+      "estimate-live-data-size",
+      "total-sst-files-size"
+    ).flatMap(prop).toMap ++ Map(
+      "block-cache-usage" -> shared.cache.getUsage,
+      "block-cache-pinned-usage" -> shared.cache.getPinnedUsage,
+      "block-cache-capacity" -> shared.capacity
+    )
   }
 
   def checkpoint(target: Path): F[Unit] = guard(target.toString) {
@@ -150,7 +168,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
       RocksUtxoStore.deleteTree(dir)
       Files.createDirectories(dir)
       RocksUtxoStore.cloneInto(from, dir)
-      db.set(RocksUtxoStore.open(dir, cache))
+      db.set(RocksUtxoStore.open(dir, shared))
       true
   }
 
@@ -158,26 +176,39 @@ final class RocksUtxoStore[F[_]: Sync] private (
     db.getAndSet(null).close()
     RocksUtxoStore.deleteTree(dir)
     Files.createDirectories(dir)
-    db.set(RocksUtxoStore.open(dir, cache))
+    db.set(RocksUtxoStore.open(dir, shared))
   }
 
   private def close(): Unit =
     val d = db.getAndSet(null)
     if d != null then d.close()
     writeOptions.close()
-    cache.close()
+    shared.close()
 
 object RocksUtxoStore:
   RocksDB.loadLibrary()
 
-  private[storage] def open(dir: java.nio.file.Path, cache: LRUCache): RocksDB =
+  /** What the store's native memory is bounded by: one LRU block cache (data, index and filter
+    * blocks) of `capacity` bytes, and a write buffer manager that charges the memtables to the same
+    * cache and flushes the largest once they hold half of it, so the store stays near `capacity`
+    * whatever the number of memtables (roadmap K6).
+    */
+  private[storage] final class Shared(val capacity: Long):
+    val cache = new LRUCache(capacity)
+    val writeBuffers = new WriteBufferManager(capacity / 2, cache)
+    def close(): Unit =
+      writeBuffers.close()
+      cache.close()
+
+  private[storage] def open(dir: java.nio.file.Path, shared: Shared): RocksDB =
     val table = new BlockBasedTableConfig()
-      .setBlockCache(cache)
+      .setBlockCache(shared.cache)
       .setFilterPolicy(new BloomFilter(10, false))
       .setCacheIndexAndFilterBlocks(true)
       .setBlockSize(16 * 1024)
     val options = new Options()
       .setCreateIfMissing(true)
+      .setWriteBufferManager(shared.writeBuffers)
       .setTableFormatConfig(table)
       .setCompressionType(CompressionType.LZ4_COMPRESSION)
       .setWriteBufferSize(64L * 1024 * 1024)
@@ -221,13 +252,13 @@ object RocksUtxoStore:
       Sync[F]
         .blocking {
           Files.createDirectories(dir.toNioPath)
-          val cache = new LRUCache(cacheBytes)
-          cache -> new AtomicReference(open(dir.toNioPath, cache))
+          val shared = new Shared(cacheBytes)
+          shared -> new AtomicReference(open(dir.toNioPath, shared))
         }
         .attempt
         .flatMap {
-          case Right((cache, ref)) =>
-            Sync[F].pure(new RocksUtxoStore[F](dir.toNioPath, cache, ref))
+          case Right((shared, ref)) =>
+            Sync[F].pure(new RocksUtxoStore[F](dir.toNioPath, shared, ref))
           case Left(e) =>
             StorageError.Io(dir.toString, String.valueOf(e)).raise[F, RocksUtxoStore[F]]
         }

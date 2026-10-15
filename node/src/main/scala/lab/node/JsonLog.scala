@@ -77,6 +77,9 @@ object JsonLog:
     line("error", "kind" -> e.getClass.getSimpleName.asJson, "message" -> e.message.asJson)
 
   /** The node accepts inbound connections on `address`. */
+  /** A [[MemoryReport]] sample (`--memory-report-seconds`). */
+  def memory(sample: Json): IO[Unit] = line("memory", "sample" -> sample)
+
   def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
 
   /** Header-first validation so far: headers that passed every header rule, headers left to their

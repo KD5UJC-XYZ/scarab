@@ -113,8 +113,8 @@ change, all gates re-run); the sync ran on 5cfdefd.
   ledger: 3,195,803 UTxO, 112,205 accounts, 726 pools, protocol 11.0.
 - Memory: container RSS grew from about 1 GB to a peak of 5.66 GB with `-Xmx3g`. The container limit
   was raised from 6 GiB to 10 GiB at 17:20 with `docker update` (no restart, no code change).
-  Heap after GC was not measured in this run, so the split between heap, RocksDB block cache and
-  other off-heap memory is unknown (roadmap K6). Disk: 14.8 GB.
+  Heap after GC was not measured in this run. Section 7 profiles the growth (glibc malloc arenas, not
+  the heap or RocksDB) and bounds it. Disk: 14.8 GB.
 
 What this shows: the node accepts the real Preview chain with full validation and no false
 rejections, on a single build. It does not by itself show that the ledger state equals the Haskell
@@ -127,7 +127,7 @@ Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted 
 - UTxO: 3,195,803 entries; RocksDB 466 MB; checkpoints 454 MB for two snapshots (hard links share
   most); one ledger snapshot file 52 MB; immutable blocks 14 GB.
 - Heap after a full GC: 272 MB (class histogram top: `byte[]` 64 MB, `Bytes` 20 MB, `BigInt` 17 MB);
-  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; the composition is not yet profiled (roadmap K6).
+  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; section 7 has the composition and the bound.
 - Verification verdicts found ahead (since the last restart, 300k blocks): witnesses 99.9997%,
   operational certificates 99.9997%, VRF 99.8%.
 - Counts: 112k accounts, 726 pools; 3.23M Plutus transactions evaluated, 11.2M scripts.
@@ -369,3 +369,90 @@ no header refused.
 As in section 6, with `--read-ahead N` and `--header-first on|off`; the `chainSyncRounds` lines of the
 log give the round times (every 200 rounds, cumulative) and the `headersChecked` lines the validated,
 unchecked and waited header counts (every 50,000).
+
+## 7. Memory (K6)
+
+The uninterrupted run of section 3 grew from 1 GB to a container RSS of 5.66 GB with `-Xmx3g`. This
+section says where the memory is and what bounds it. Measurements are one developer's, on a host that
+was busy with other work (load average 2 when the 45-minute profile started, 25 to 37 in the hours after), so
+the blocks per second are only comparable between runs started together.
+
+**Method.** Commit 1c13c5a added `--memory-report-seconds N`: a `memory` log line with the JVM's own
+accounting (heap used and committed, non-heap, metaspace, the direct and mapped buffer pools, thread
+count, collections), the kernel's view of the process (`/proc/self/status`: `RssAnon`, `RssFile`),
+the container's (cgroup v2 `memory.current` and its `anon`/`file` split) and the RocksDB properties of
+the store (block cache usage and pinned usage, memtables, table-reader memory). Native Memory Tracking
+(`-XX:NativeMemoryTracking=summary`, `jcmd 1 VM.native_memory summary.diff`) and `jcmd 1
+GC.class_histogram` / `GC.run` were taken from outside every 5 to 15 minutes. NMT does not see
+`malloc` calls made through JNI, which is what RocksDB does: the attribution below is RSS minus
+what NMT and the store report, so it names glibc's arenas as what is left (and the run with
+`MALLOC_ARENA_MAX=2` shows how much of that is arena fragmentation).
+
+**Profile: Preview from genesis, 45 minutes, fresh database, two runs started together** (`--cpus 6`,
+container limit 10 GiB, `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, the build before D1,
+commit 1c13c5a, `--utxo-cache-mb 256`), one with glibc's default arenas and one with
+`MALLOC_ARENA_MAX=2`. `RssAnon` is the resident anonymous memory of the process (heap, malloc,
+thread stacks); the cgroup `current` adds the page cache of the files the node wrote and read:
+
+| minute | blocks (default / 2 arenas) | epoch | `RssAnon` MiB (default / 2 arenas) | cgroup `current` MiB (default / 2 arenas) | page cache, default MiB |
+|---:|---:|---:|---|---|---:|
+| 2 | 46,241 / 48,368 | 11 / 12 | 2292 / 2264 | 2373 / 2354 | 70 |
+| 5 | 100,506 / 101,920 | 24 / 25 | 2659 / 2563 | 2984 / 2913 | 306 |
+| 10 | 158,239 / 161,073 | 38 / 39 | 2996 / 2925 | 3776 / 3707 | 746 |
+| 15 | 190,945 / 190,650 | 46 / 46 | 3352 / 3576 | 4727 / 4940 | 1323 |
+| 20 | 209,955 / 207,505 | 50 / 50 | 3450 / 3662 | 5100 / 5330 | 1590 |
+| 25 | 251,843 / 247,632 | 60 / 59 | 3624 / 3691 | 5492 / 5493 | 1802 |
+| 30 | 287,732 / 282,694 | 69 / 68 | 3845 / 3703 | 5854 / 5697 | 1937 |
+| 35 | 341,010 / 335,615 | 82 / 81 | 4019 / 3770 | 6281 / 6013 | 2183 |
+| 40 | 369,819 / 365,796 | 90 / 89 | 4168 / 3858 | 6619 / 6280 | 2366 |
+| 45 | 419,242 / 404,320 | 104 / 100 | 4259 / 3862 | 6957 / 6507 | 2608 |
+
+Where the 4.29 GB of `RssAnon` of the default run is, at the NMT sample of minute 45 (16:36:51; the
+table above has the nearest memory line, a few MB earlier):
+
+| | MiB | what |
+|---|---:|---|
+| Java heap | 3072 | `-Xms3g`: G1 touches all of it; the live set after a full GC is 270 to 520 MB (histogram total 366 MB at epoch 138 with the base build) |
+| JVM, not heap | 296 | NMT committed: GC structures (G1 remembered sets) 111, code cache 63, metaspace 62, symbols 21, class space 10, shared class space 13, thread stacks 6, other 10 |
+| RocksDB | 260 | block cache 255 (full from minute 19: the cap holds), memtables 5, table-reader memory 0 (index and filter blocks live in the cache) |
+| left over | about 660 | glibc malloc arenas: about 230 with `MALLOC_ARENA_MAX=2`; the default run's part grew by about 30 MB per minute from minute 15, the other's by about 8 MB per minute and was flat in the last 5 minutes |
+| **`RssAnon`** | 4286 (default), 3862 (2 arenas) | |
+
+Direct buffers were about 1 MiB (27 buffers), mapped buffers 0: the NIO off-heap pools are not involved.
+The page cache is not memory the node holds: it is the blocks and SST files it writes (14 GB at the tip),
+and the kernel gives it back under a memory limit (`docker stats` reports the cgroup usage minus
+the inactive file pages, which here tracks `RssAnon`: 3.70 GiB while the cgroup's `current` was 5.4 GB).
+
+**What caused the 5.66 GB.** The heap is bounded by `-Xmx`, the JVM's own native memory is flat at about
+0.3 GB, and RocksDB was already bounded (one 256 MB block cache that holds index and filter blocks,
+memtables of up to 3 x 64 MB, 512 open files). The growth is glibc: each of the node's threads
+(cats-effect workers, the blocking pool, the verification pool, RocksDB's compaction threads) gets its
+own malloc arena, and the arenas fragment and keep their memory. In the default run `RssAnon` grew by
+0.9 GB between minutes 15 and 45 with the heap and the RocksDB cache at their caps; restarted from that
+database (epoch 108) it went on to 4.47 GB at epoch 138 within 36 minutes of the restart. With
+`MALLOC_ARENA_MAX=2` the growth over the same 30 minutes is 0.29 GB, and flat at the end. The 2-arena
+run was 1 to 4% behind in blocks at every sample from minute 20 (404,320 against 419,242 at minute 45):
+the size of the noise between two runs on this host, no paired repeat was made. `MALLOC_ARENA_MAX=2` is set in `docker/jdk.Dockerfile`
+and in the devnet node's `docker run`; outside a container export it before starting the JVM.
+jemalloc was not tried: two arenas bring the left-over part to about 0.3 GB, which is the same size as the
+rest of the JVM.
+
+**The bounded configuration.** `RocksUtxoStore` uses one LRU block cache (data, index and filter blocks,
+`--utxo-cache-mb`, default 256) and a write buffer manager that charges the memtables to that cache, so the
+store's native memory is the cache size however many memtables there are. The cap holds: cache usage after 8
+minutes was 6.9, 30.4 and 255.5 MB for `--utxo-cache-mb` 8, 32 and 256 (`block-cache-usage` of the `memory`
+lines). The cost of a small cache, measured from copies of one database at epoch 138 (live RocksDB 157 MB)
+restarted together for 8 minutes (`MALLOC_ARENA_MAX=2`, 6 CPUs): 25,951, 26,192 and 27,658 blocks for 8, 32 and
+256 MB (-6.2%, -5.3%, 0). The live database was 157 MB, so the 8 and 32 MB caches held 5% and 20% of it and the
+256 MB cache all of it; at the tip (466 MB of RocksDB) the default cache holds 55%, and what that costs has
+not been measured. The UTxO key is now the Haskell node's, the 32-byte txid and the index as a big-endian u16
+(34 bytes, it was 36); the snapshot format version is 2, so older snapshots (whose checkpoints hold the old
+keys) are rejected and the node replays. The value is still the output's CBOR, not the Haskell node's
+MemPack `TxOut`; that is not done.
+
+**The bound.** With two arenas, `RssAnon` is the heap limit plus about 0.8 GB: 3.86 GB at minute 45
+of the profile with `-Xmx3g` (3072 heap, 296 JVM, 260 RocksDB, 230 other). The recommended container
+limit is `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`): the 0.9 to 1.1 GB of native memory, kernel memory and
+head room for the page cache the kernel can always give back. A long run to epoch 1303 and on (4.35M blocks) of the build with the ledger tables
+on disk (a separate branch, not this one) ran under that limit: `RssAnon` 3.61 GB at epochs 148, 161 and 358, 3.68 GB at epoch 902 with 3M UTxO entries, 0 errors, no out-of-memory kill; `docker stats` 3.61 GiB
+against the 5 GiB limit.
