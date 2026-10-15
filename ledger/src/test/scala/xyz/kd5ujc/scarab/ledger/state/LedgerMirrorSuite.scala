@@ -123,6 +123,57 @@ class LedgerMirrorSuite extends DisciplineSuite:
     assertEquals(conway.size, babbage.size)
   }
 
+  // ---- what a real Haskell state showed (S8)
+
+  private def withPools(s: node.LedgerState): node.LedgerState =
+    (1L to 200L).iterator.map(sampled(conway = true, _)).find(_.pools.size >= 2).fold(s)(identity)
+
+  test("a VRF key two pools share is counted twice in psVRFKeyHashes") {
+    val s = withPools(sample)
+    assume(s.pools.size >= 2)
+    val Seq(a, b) = s.pools.keys.toSeq.take(2)
+    val shared = s.pools(a).params.vrfKeyHash
+    val pools =
+      s.pools.updated(b, s.pools(b).copy(params = s.pools(b).params.copy(vrfKeyHash = shared)))
+    val bad = s.copy(pools = pools, futurePools = Map.empty)
+    val m = toConway(bad).fold(e => fail(e.show), identity)
+    val counts = LedgerState.pState[Conway].get(m.value.nes.es.ls).vrfKeyHashes
+    val key = VRFVerKeyHash.fromBytes(shared).fold(e => fail(e.show), identity)
+    assertEquals(counts(key).value.toBigInt, BigInt(2))
+    assertEquals(
+      run(mirror.from[Conway](at, m.value)).map(LedgerMirror.normalised(_)),
+      Right(LedgerMirror.normalised(bad))
+    )
+  }
+
+  test("the mark snapshot counts the delegators with no stake, exactly") {
+    val s = withPools(sample)
+    val pool = s.pools.keys.head
+    val lazyOne = node.Credential.Key(hash(77))
+    val bad = s.copy(accounts = s.accounts.updated(lazyOne, node.Account(0, 0, Some(pool), None)))
+    val m = toConway(bad).fold(e => fail(e.show), identity)
+    val staked = bad.snapshots.mark.delegations.count(_._2 == pool)
+    val registered = bad.accounts.count(_._2.pool.contains(pool))
+    bad.snapshots.mark.pools.get(pool).foreach { _ =>
+      val n = m.value.nes.es.snapshots.mark.pools.collectFirst {
+        case (id, p) if id.bytes == pool => p
+      }
+      assertEquals(n.map(_.numDelegators.toBigInt), Some(BigInt(registered).max(BigInt(staked))))
+    }
+    val back = run(mirror.from[Conway](at, m.value))
+    assertEquals(back.map(_.snapshots.mark), Right(bad.snapshots.mark))
+  }
+
+  test("parameters the era has no field for are zero in the mirror and come back") {
+    val s =
+      sample.copy(params = sample.params.copy(minUTxOValue = 1000000, coinsPerUTxOWord = 34482))
+    val m = toConway(s).fold(e => fail(e.show), identity)
+    val gov = m.value.nes.es.ls.utxo.gov
+    assertEquals(gov.curPParams.minUTxOValue, BigInt(0))
+    assertEquals(gov.curPParams.coinsPerUTxOWord, BigInt(0))
+    assertEquals(run(mirror.from[Conway](at, m.value)).map(_.params), Right(s.params))
+  }
+
   // ---- what is refused
 
   test("a hash of the wrong size is a vocabulary error") {

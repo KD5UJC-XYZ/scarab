@@ -72,7 +72,7 @@ object LedgerMirror:
 
   /** The gaps of the mirror of `s` (`Gap`), a function of the state alone. */
   def gaps(s: node.LedgerState): Set[Gap] =
-    val snapshots = List(s.snapshots.mark, s.snapshots.set, s.snapshots.go, s.poolDistribution)
+    val snapshots = List(s.snapshots.set, s.snapshots.go, s.poolDistribution)
     Set(Gap.NonMyopic) ++
       Option.when(s.rewardUpdate.exists(_.rewards.nonEmpty))(Gap.RewardAttribution) ++
       Option.when(s.rewardUpdate.isEmpty && s.rewardDraft.isDefined)(Gap.PendingPulsingUpdate) ++
@@ -114,6 +114,34 @@ object LedgerMirror:
         )
       }
     else settle(node.PpupRules.voted(s.params, s.ppup.current, env.quorum), potential = false)
+
+  /** The parameters as the era's `PParams` has them: the fields it has no place for are zero (the
+    * Haskell Alonzo parameters have no `minUTxOValue`, Babbage and Conway have neither it nor
+    * `coinsPerUTxOWord`); [[ParamFields]] keeps the originals.
+    */
+  private def eraParams[E <: EraTag](p: node.ProtocolParams)(using
+      era: ShelleyBasedEra[E]
+  ): node.ProtocolParams = era match
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary =>
+      p.copy(coinsPerUTxOWord = 0)
+    case ShelleyBasedEra.SAlonzo => p.copy(minUTxOValue = 0)
+    case ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+      p.copy(minUTxOValue = 0, coinsPerUTxOWord = 0)
+
+  private def eraFuture[E <: EraTag](f: FuturePParams)(using ShelleyBasedEra[E]): FuturePParams =
+    f match
+      case FuturePParams.NoPParamsUpdate => f
+      case FuturePParams.DefinitePParamsUpdate(p) =>
+        FuturePParams.DefinitePParamsUpdate(eraParams[E](p))
+      case FuturePParams.PotentialPParamsUpdate(next) =>
+        FuturePParams.PotentialPParamsUpdate(next.map(eraParams[E]))
+
+  /** The accounts that delegate to each pool, stake or no stake. */
+  private def accountDelegators(s: node.LedgerState): Map[Bytes, Vector[node.Credential]] =
+    s.accounts.iterator
+      .collect { case (c, node.Account(_, _, Some(p), _)) => p -> c }
+      .toVector
+      .groupMap(_._1)(_._2)
 
   private def isConway[E <: EraTag](using era: ShelleyBasedEra[E]): Boolean = era match
     case ShelleyBasedEra.SConway => true
@@ -339,18 +367,26 @@ object LedgerMirror:
       // `psVRFKeyHashes` is kept from protocol version 10 (the hard fork populates it,
       // `Conway/Rules/HardFork.hs:106-118`): the VRF key of every registered pool and of every
       // pending re-registration, once (`Shelley/Rules/Pool.hs:262-306`).
-      val vrfs: List[Bytes] =
+      // Haskell counts the registered pools that use a key: a key two pools share is 2.
+      val vrfs: List[(Bytes, Int)] =
         if s.params.protocolMajor >= 10 then
-          (s.pools.valuesIterator.map(_.params.vrfKeyHash) ++
-            s.futurePools.valuesIterator.map(_.vrfKeyHash)).toList.distinct
+          (s.pools.keySet ++ s.futurePools.keySet).iterator
+            .flatMap(id =>
+              (s.pools
+                .get(id)
+                .map(_.params.vrfKeyHash) ++ s.futurePools.get(id).map(_.vrfKeyHash)).toSet
+            )
+            .toList
+            .groupMapReduce(identity)(_ => 1)(_ + _)
+            .toList
         else Nil
-      val delegators: Map[Bytes, Vector[node.Credential]] =
-        s.accounts.iterator
-          .collect { case (c, node.Account(_, _, Some(p), _)) => p -> c }
-          .toVector
-          .groupMap(_._1)(_._2)
+      val delegators = accountDelegators(s)
       for
-        vrfKeys <- vrfs.traverse(vrfHash).map(hs => Sorted.map(hs.map(_ -> NonZero.oneWord)))
+        vrfKeys <- vrfs
+          .traverse((key, n) =>
+            (vrfHash(key), vocab(NonZero.from(Word64.fromUnsigned(n.toLong)))).tupled
+          )
+          .map(Sorted.map(_))
         stakePools <- sorted(s.pools) { (id, ps) =>
           val pp = ps.params
           for
@@ -495,7 +531,7 @@ object LedgerMirror:
         era: ShelleyBasedEra[E]
     ): F[GovState[E]] =
       asks.ask.flatMap { env =>
-        val future = futurePParams(env, at, s, conway = isConway[E])
+        val future = eraFuture[E](futurePParams(env, at, s, conway = isConway[E]))
         era match
           case ShelleyBasedEra.SConway =>
             monad.pure(
@@ -503,8 +539,8 @@ object LedgerMirror:
                 s.gov.proposals,
                 s.gov.committee,
                 s.gov.constitution,
-                s.params,
-                s.previousParams,
+                eraParams[E](s.params),
+                eraParams[E](s.previousParams),
                 future,
                 pulser(s)
               )
@@ -514,7 +550,13 @@ object LedgerMirror:
             for
               cur <- sorted(s.ppup.current)((k, u) => hash[Genesis](k).map(_ -> u))
               fut <- sorted(s.ppup.future)((k, u) => hash[Genesis](k).map(_ -> u))
-            yield ShelleyGovState(cur, fut, s.params, s.previousParams, future)
+            yield ShelleyGovState(
+              cur,
+              fut,
+              eraParams[E](s.params),
+              eraParams[E](s.previousParams),
+              future
+            )
       }
 
     /** The completed pulser; before the first boundary the node has none, and the mirror holds the
@@ -563,7 +605,14 @@ object LedgerMirror:
       * `StakePoolSnapShot`, `239-252`), whose delegators are the stake-bearing ones and whose idle
       * pools count one more.
       */
-    private def snapShot(snap: node.Snapshot): F[Snap] =
+    /** `exact`: the accounts' delegations, for the snapshot the node took from them (`mark`): the
+      * pool's delegators then include those with no stake, which `numDelegators` and the owners
+      * that delegate to the pool count. Without it (`set`, `go`), the count is a lower bound.
+      */
+    private def snapShot(
+        snap: node.Snapshot,
+        exact: Option[Map[Bytes, Vector[node.Credential]]] = None
+    ): F[Snap] =
       val delegators: Map[Bytes, Vector[node.Credential]] =
         snap.delegations.toVector.groupMap(_._2)(_._1)
       def shape(s: Shape): F[Unit] = fail(MirrorError.IllFormed(s))
@@ -596,11 +645,16 @@ object LedgerMirror:
         poolSnapshots <- sorted(snap.pools) { (id, pp) =>
           val members = delegators.getOrElse(id, Vector.empty)
           val stake = members.foldLeft(BigInt(0))((sum, c) => sum + snap.stake(c))
-          val selfOwners =
+          val registered = exact.map(_.getOrElse(id, Vector.empty))
+          val selfOwners = registered.fold(
             pp.owners.filter(o => snap.delegations.get(node.Credential.Key(o)).contains(id))
+          )(rs => pp.owners.filter(o => rs.contains(node.Credential.Key(o))))
           val selfStake =
-            selfOwners.foldLeft(BigInt(0))((sum, o) => sum + snap.stake(node.Credential.Key(o)))
-          val count = BigInt(members.size) + (if snap.idlePools.contains(id) then 1 else 0)
+            selfOwners.foldLeft(BigInt(0))((sum, o) =>
+              sum + snap.stake.getOrElse(node.Credential.Key(o), BigInt(0))
+            )
+          val idle = BigInt(members.size) + (if snap.idlePools.contains(id) then 1 else 0)
+          val count = registered.fold(idle)(rs => idle.max(BigInt(rs.size)))
           for
             key <- hash[StakePool](id)
             poolStake <- compact(stake)
@@ -669,11 +723,11 @@ object LedgerMirror:
         cert <- certState[E](s, p)
         gov <- govState[E](at, s)
         instant <- instantStake[E](s.utxo)
-        mark <- snapShot(s.snapshots.mark)
+        mark <- snapShot(s.snapshots.mark, Some(accountDelegators(s)))
         set <- snapShot(s.snapshots.set)
         go <- snapShot(s.snapshots.go)
         carried = Option.unless(s.poolDistribution == s.snapshots.set)(s.poolDistribution)
-        distr <- carried.traverse(snapShot)
+        distr <- carried.traverse(snapShot(_))
         ru <- rewardUpdate(s.rewardUpdate)
       yield
         val pd = PoolDistr.of(distr.fold(set.snapshot)(_.snapshot))
@@ -695,8 +749,9 @@ object LedgerMirror:
           s.rewardUpdate.fold(Map.empty[node.Credential, BigInt])(_.rewards),
           s.prevParams.isDefined,
           pulserAbsent = conway && s.gov.pulsed.isEmpty,
-          SnapshotsResidue(mark.residue, set.residue, go.residue),
+          SnapshotsResidue(mark.residue, set.residue, go.residue, s.snapshots.mark.idlePools),
           carried,
+          DroppedParams(ParamFields.of(s.params), ParamFields.of(s.previousParams)),
           residue(s, conway)
         )
         Mirrored(LedgerImage(nes, extras), gaps(s))
@@ -750,9 +805,11 @@ object LedgerMirror:
         val pulsed =
           if x.pulserAbsent then None
           else gov.conway.map((_, d) => (d.snapshot, d.ratify))
+        val cur = x.params.cur.restore(gov.params)
+        val prev = x.params.prev.restore(gov.prev)
         val rebuilt = node.LedgerState(
           epoch = nes.epoch.toBigInt,
-          params = gov.params,
+          params = cur,
           utxo = ls.utxo.utxo.utxo,
           fees = ls.utxo.fees.value,
           deposited = ls.utxo.deposited.value,
@@ -781,7 +838,8 @@ object LedgerMirror:
           treasury = nes.es.chainAccount.treasury.value,
           reserves = nes.es.chainAccount.reserves.value,
           snapshots = node.Snapshots(
-            snapshotBack(net, nes.es.snapshots.mark, x.snapshots.mark),
+            snapshotBack(net, nes.es.snapshots.mark, x.snapshots.mark)
+              .copy(idlePools = x.snapshots.markIdle),
             snapshotBack(net, set, x.snapshots.set),
             snapshotBack(net, nes.es.snapshots.go, x.snapshots.go),
             nes.es.snapshots.fee.value
@@ -802,7 +860,7 @@ object LedgerMirror:
             cert.iRewards.deltaTreasury.value
           ),
           ptrs = if conway then x.residue.ptrs else cert.ptrs,
-          prevParams = Option.when(x.prevParamsExplicit || gov.prev != gov.params)(gov.prev),
+          prevParams = Option.when(x.prevParamsExplicit || prev != cur)(prev),
           rewardRegistered = x.rewardRegistered,
           plutus = x.plutus,
           gov = gov.conway.fold(x.residue.gov)((g, _) => g.copy(pulsed = pulsed)),

@@ -194,6 +194,12 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   and `PraosState.epoch`; in Byron the flat ledger and chain state. `Gap.ShelleyTransition` (Word32 0,
   `peras` None) is present in every Shelley-based mirror.
 - `NodeSetup.mirrorEnv`; `VocabError.Kind.OcertCounter`.
+- `LedgerMirror`, from what a real Haskell Preview state showed (S8): `psVRFKeyHashes` counts the pools
+  that use a key (a shared key is 2); the `mark` snapshot's `numDelegators` and self-delegated owners
+  are exact (from the accounts, zero-stake delegators included; `set` and `go` stay a lower bound with
+  the gap, and `mark` no longer implies the gap); the parameters an era has no field for
+  (`minUTxOValue`, `coinsPerUTxOWord`) are zero in the mirror and kept in `NodeExtras.params`.
+  Not done: the parameters inside the pulser's `EnactState` are still the node's.
 - Laws (`StateMirrorLaws`, `StateTampers`): retraction, stability, exact gaps, tamper rejection (15
   tampers of the consensus side and the lifted ledger-side ones, each counted as applied) on generated
   states of Byron, the TPraos eras and the Praos eras. Corpus: the 732 states of the eras fixture

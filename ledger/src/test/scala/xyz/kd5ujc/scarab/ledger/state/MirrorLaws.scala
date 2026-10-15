@@ -49,7 +49,7 @@ final class MirrorLaws[F[_], E <: EraTag](
       Option.when(i.extras.rewardAmounts.nonEmpty)(Gap.RewardAttribution) ++
       Option.when(i.nes.ru.isEmpty && i.extras.rewardDraft.isDefined)(Gap.PendingPulsingUpdate) ++
       Option.when(
-        idle || List(snapshots.mark, snapshots.set, snapshots.go).exists(lowerBound)
+        idle || List(snapshots.set, snapshots.go).exists(lowerBound)
       )(Gap.NumDelegatorsLowerBound)
 
   def laws(using
