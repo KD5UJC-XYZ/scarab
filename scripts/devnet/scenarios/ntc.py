@@ -399,9 +399,10 @@ def monitor_comparison(args, root, out):
             before = stats["nonEmpty"]
             deadline = time.monotonic() + 30
             # The transactions reach the reference node by TxSubmission2, which it paces itself (it pulls
-            # them one request at a time, roughly a second for four): the cardano-cli queries start only
-            # once the monitor sees the whole burst in the reference node (the slower side), so that `info` before and after can
-            # agree. They run while the monitor keeps polling; a block may still empty the pools first.
+            # them a request at a time, a fraction of a second behind the Scala node): the cardano-cli
+            # queries start only once the monitor sees the whole burst in the reference node, so that
+            # `info` before and after can agree. They run while the monitor keeps polling; a block may
+            # still empty the pools first.
             submitted = time.monotonic()
             monitor_rounds(h, s, submitted + 10, stats=stats, stop=lambda: stats["last"][0] == len(burst))
             settle = time.monotonic() - submitted
