@@ -422,7 +422,7 @@ as stale, a divergence that is not listed fails it as new):
 | Entry | Why |
 |---|---|
 | `override` alonzo, babbage, conway `bounded_bytes` | Upstream `bytes .size (0 .. 64)` is stricter than the chain (64-byte chunks of an indefinite string, finding 1). The driver sends a 65-byte string through cuddle with the upstream rule (must be rejected) and with the override (must be accepted) |
-| `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `xyz.kd5ujc.scarab.codec` has no floating-point item, so such a term is rejected. Cardano data contains none |
+| `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `xyz.kd5ujc.scarab.codec` reads floats only when `Cbor.Limits.allowFloats` is set (off for every wire decoder; the ledger-state codec of `storage` sets it), so such a term is rejected here. Cardano data contains none |
 | `not-byte-exact` `features:person` | cuddle writes map entries sorted by key, the generated writer in rule order (the canonical-order option of section 5 is a listed gap); the value is equal |
 | `unsupported` x25 | 12 Dijkstra rules with a required member after an optional one, 8 Byron `.gt` and 5 `.ne` bounds on a named `u8` (section 8) |
 

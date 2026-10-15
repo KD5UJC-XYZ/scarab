@@ -115,6 +115,38 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   Preview sync and 3 Preprod states (retraction on all, residue empty, `nesPd` equals
   `PoolDistr.of(set)` on all).
 
+### Added (ledger-state mirror, stage S7)
+- `storage/haskell/state`: the Haskell CBOR codec of the ledger part of the state, `Codec`s of the models
+  runtime for every mirror type up to `NewEpochState[E]` (`HaskellStateCodecs`, `HaskellState.encode/decode`).
+  `Wire` holds the shapes of the ledger's binary layer with the version-dependent rules (tag 258 on sets and
+  tag 30 on plain rationals from version 9, pointers strict from 9, repeats refused from 9, either length
+  form read, containers over 23 entries indefinite); `Record.of[A]((c1, ...))` makes the codec of a record
+  from its `Mirror`; the instances are layered traits (vocabulary, shared node types, certificate state,
+  governance, snapshots, rewards, era-chosen epoch and new-epoch state) citing the Haskell instance of
+  each. Era-dependent parts are chosen by the `ShelleyBasedEra` witness (match types reduce in each branch,
+  no casts); the encoding version of a state is the era's lowest (`Versions.eraLow`, `eraProtVerLow`: a
+  Conway state at protocol 11 is still written at 9). The flat `ProtocolParams` is written as the `PParams`
+  of the era (17, 17, 17, 24, 22 and 31 parameters, `Params`), range-checked on reading. Decoding returns
+  typed `DecodeError`s (new kinds `DuplicateElement`, `Violation`, `Unsupported`); `Codec.check` says what
+  a value cannot be written as (`HaskellState.encode` is `Either[StateNotWritable, Bytes]`).
+- `codec`: `Cbor.Limits.allowFloats` (off by default: every wire decoder still refuses floats) reads
+  half, single and double floats as `Value.Float` with their width; `Float16`. `models` `Writer`:
+  `indefiniteArray/indefiniteMap/break`, `float16/32/64` (never shrunk, as cborg), `integer` (bignums beyond
+  64 bits) and `variableArray/variableMap` (the ledger's definite up to 23 else indefinite framing), all
+  additive: the canonical methods, the generated codecs and the models goldens are unchanged.
+- Checked against the reference: `HaskellStateOverlapSuite` (node) writes every shared piece (Conway
+  parameters, pool parameters, committee, constitution, proposals, enact and ratify state, governance
+  actions, credentials, rationals) with the codec and with `LedgerEncoders` and compares bytes; reads and
+  writes again the reference's own `GetCurrentPParams` and `GetConstitution` answers; and compares, on
+  the Conway states of the eras capture converted by the mirror, the bytes of the governance state, pool
+  distribution, DRep state, ratify state, proposals, constitution, parameters and chain account state
+  with the node's answers to the queries for them. `RealStateCheck` reads the `NewEpochState` of the two
+  Haskell Preview snapshots of the K1 run (40.6 MB, epoch 1451: 727 pools, 9,333 DReps, 112,394 accounts,
+  34 proposals, 727 non-myopic likelihoods of 100 floats) and writes it again: identical bytes.
+- Not mirrored, so refused with a typed error: a pulsing reward update (`[0, snapshot, pulser]`: the
+  pulser is not in the mirror), a UTxO map with entries in the state file (they are in `tables`), the old
+  three-field `SnapShot`. The Shelley-era stashed AVVM UTxO is written as `map(0)` like the main one.
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
