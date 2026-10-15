@@ -115,6 +115,35 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   Preview sync and 3 Preprod states (retraction on all, residue empty, `nesPd` equals
   `PoolDistr.of(set)` on all).
 
+### Added (ledger-state mirror, stage S8)
+- `storage/haskell/state`: the envelopes of the Haskell `ledger/<slot>/state` file. `HaskellLedgerFile`
+  decodes and encodes the whole file, `[1, [telescope of ledger states, header state]]`: the hard-fork
+  telescope (`Envelope.telescope`, built through `Telescope.make`, so a decoded one is consistent), `Bound`
+  (the time an `Integer`, a bignum past 2^64 ps), the Shelley ledger state `[2, [tip, new-epoch state,
+  transition, Peras round]]`, `AnnTip` as an `NS` (Byron's with the boundary flag), `HeaderState`, and the
+  chain-dependent states of PBFT (`[1, {key: [slots]}]`, counts recomputed), TPraos (`[1, ...]`) and Praos
+  (`[0, ...]`, counters in the plain definite form). Byron's ledger state is not modelled: it is kept as
+  the original item (`LedgerFileEra.ByronItem`) and written back as it was. `SnapshotMeta` reads the
+  `meta` JSON (backend, CRC32 checksum, tables codec version) into a closed ADT with typed errors.
+- Proven on real files: the 40.6 MB Preview Conway `state` of a Haskell node (slots 125383670 and
+  125400924) is written again byte for byte (read 1.2 s, written 0.3 to 1.1 s, 640 MB of heap is enough),
+  and so is a `state` of every era from Byron to Conway of a devnet (`fixtures/haskell-state`, node 11.1.3,
+  produced with `db-analyser`; the nodes write none in the 8 minutes of the walk), the TPraos and Babbage
+  shapes of S7 thereby shown against real bytes. `LedgerFileSuite` (41 tests) also has the laws per era
+  on generated files, bytes worked out from the Haskell instances and typed refusals; the real Preview
+  file is a test too when `HASKELL_STATE_FILE` names it, `RealLedgerFileCheck` runs it in a forked JVM.
+- `PulsingRewUpdate.Pulsing` carries the pulser as the original bytes (`RewardPulser`), so a state taken
+  in the middle of an epoch is written back exactly; importing one into the node is still refused (`Gap`).
+- Findings against the real Preview state (epoch 1451, `HaskellScalaCompareMain` and `Derivations`): see
+  `docs/findings.md` (VRF key hash counts, `numDelegators`, `nesPd`).
+
+### Changed (models runtime)
+- `Codec.check` returns the typed `Option[ConstraintViolation]` (with the path of the member) instead of
+  text, `StateNotWritable` carries it, and `models-gen` emits the same `from` behaviour. `Codec.write(a)`
+  is the checked encoder (`Either[ConstraintViolation, Bytes]`); the unchecked `encodeBytes` is now
+  `encodeUnchecked`, for values writable by construction and tests of the writer. Generated goldens are
+  unchanged.
+
 ### Added (ledger-state mirror, stage S7)
 - `storage/haskell/state`: the Haskell CBOR codec of the ledger part of the state, `Codec`s of the models
   runtime for every mirror type up to `NewEpochState[E]` (`HaskellStateCodecs`, `HaskellState.encode/decode`).
