@@ -26,7 +26,15 @@ import xyz.kd5ujc.scarab.ledger.{
   Vote
 }
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted}
-import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{
+  Codec,
+  ConstraintViolation,
+  DecodeError,
+  Decoded,
+  Node,
+  Writer,
+  at
+}
 
 import DecodeError.Kind
 import NodeOrders.given

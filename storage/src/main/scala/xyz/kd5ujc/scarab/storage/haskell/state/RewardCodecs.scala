@@ -3,7 +3,15 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import xyz.kd5ujc.scarab.codec.Value
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.models.runtime.{Codec, ConstraintViolation, DecodeError, Decoded, Node, Writer, at}
+import xyz.kd5ujc.scarab.models.runtime.{
+  Codec,
+  ConstraintViolation,
+  DecodeError,
+  Decoded,
+  Node,
+  Writer,
+  at
+}
 
 import DecodeError.Kind
 import Wire.*

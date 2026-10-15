@@ -484,9 +484,8 @@ object StateGen:
       .zip(arb[ChainAccountState], ledgerState[E], snapShots, arb[NonMyopic])
       .map(EpochState[E](_, _, _, _))
 
-  /** A reward update that is complete: a pulsing one cannot be written. */
-  val rewardUpdate: Gen[PulsingRewUpdate] =
-    arb[RewardUpdate].map(PulsingRewUpdate.Complete(_))
+  /** A reward update, complete or pulsing (the pulser kept as the original bytes). */
+  val rewardUpdate: Gen[PulsingRewUpdate] = arb[PulsingRewUpdate]
 
   def newEpochState[E <: EraTag](using era: ShelleyBasedEra[E]): Gen[NewEpochState[E]] =
     Gen

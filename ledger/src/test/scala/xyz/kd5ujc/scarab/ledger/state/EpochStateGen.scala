@@ -131,7 +131,9 @@ object EpochStateGen:
 
   given Arbitrary[PulsingRewUpdate] = Arbitrary(
     Gen.oneOf(
-      arb[RewardSnapShot].map(PulsingRewUpdate.Pulsing(_, RewardPulser(Bytes.fromArray(Array(0x82.toByte, 1, 2))))),
+      arb[RewardSnapShot].map(
+        PulsingRewUpdate.Pulsing(_, RewardPulser(Bytes.fromArray(Array(0x82.toByte, 1, 2))))
+      ),
       arb[RewardUpdate].map(PulsingRewUpdate.Complete(_))
     )
   )

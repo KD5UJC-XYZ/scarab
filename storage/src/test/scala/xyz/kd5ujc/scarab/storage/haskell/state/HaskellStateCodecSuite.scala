@@ -117,7 +117,10 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   }
 
   test("a protocol version has a major in 0..13 and a Word32 minor (Version.hs:55-110)") {
-    assertEquals(protVer.encodeUnchecked(ProtVer(Word64.fromUnsigned(9), Word64.zero)).hex, "820900")
+    assertEquals(
+      protVer.encodeUnchecked(ProtVer(Word64.fromUnsigned(9), Word64.zero)).hex,
+      "820900"
+    )
     val tooBig = bytesOf { w =>
       w.arrayHead(2); w.uint(14L); w.uint(0L)
     }
@@ -417,7 +420,9 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   test("a pulsing reward update keeps its pulser as the original bytes and writes them back") {
     // a pulser the mirror has no model of: an indefinite array holding an odd mix of items
     val pulser = bytesOf { w =>
-      w.raw(xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array(0x9f.toByte, 1, 0xa0.toByte, 0xff.toByte)))
+      w.raw(
+        xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array(0x9f.toByte, 1, 0xa0.toByte, 0xff.toByte))
+      )
     }
     val snapshot = arb[RewardSnapShot].sample.get
     val written = bytesOf { w =>
@@ -438,7 +443,10 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   test(
     "UTxO entries in a state file are refused (they are in the tables file); the handle writes map(0)"
   ) {
-    assertEquals(utxoTables.encodeUnchecked(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty)).hex, "a0")
+    assertEquals(
+      utxoTables.encodeUnchecked(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty)).hex,
+      "a0"
+    )
     val entries = bytesOf { w =>
       w.mapHead(1)
       w.uint(1L)

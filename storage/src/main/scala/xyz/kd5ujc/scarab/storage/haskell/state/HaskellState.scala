@@ -5,8 +5,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.{ConstraintViolation, Decoded}
 
-/** Why a `NewEpochState` cannot be written in the Haskell format: it holds a value outside the range
-  * of the Haskell type it is written as.
+/** Why a `NewEpochState` cannot be written in the Haskell format: it holds a value outside the
+  * range of the Haskell type it is written as.
   */
 final case class StateNotWritable(violation: ConstraintViolation)
 
