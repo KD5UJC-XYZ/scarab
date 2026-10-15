@@ -6,6 +6,7 @@ import cats.derived.*
 import cats.syntax.show.*
 import monocle.{Focus, Iso, Lens}
 import scala.collection.immutable.SortedMap
+import xyz.kd5ujc.scarab.ledger.ProtocolParams
 
 // The top of the ledger-state mirror: `NewEpochState` and the `EpochState` it holds
 // (`Shelley/LedgerState/Types.hs` of the pinned shelley impl 1.19.0.1, rev 4c81e90). The snapshots
@@ -111,6 +112,20 @@ object NewEpochState:
       s"es = ${Show[EpochState[E]].show(n.es)}, ru = ${n.ru.show}, pd = ${n.pd.show}, " +
       s"avvm = ${Show[StashedAVVM[E]].show(n.avvm)})"
   )
+
+  /** The state of an empty chain at `epoch`, of any era (see [[Empty]]). */
+  def empty[E <: EraTag](epoch: EpochNo, params: ProtocolParams)(using
+      ShelleyBasedEra[E]
+  ): NewEpochState[E] =
+    NewEpochState[E](
+      epoch,
+      BlocksMade.empty,
+      BlocksMade.empty,
+      Empty.epochState[E](params),
+      None,
+      PoolDistr.empty,
+      Empty.stashedAvvm[E]
+    )
 
   def epoch[E <: EraTag]: Lens[NewEpochState[E], EpochNo] = Focus[NewEpochState[E]](_.epoch)
   def bprev[E <: EraTag]: Lens[NewEpochState[E], BlocksMade] = Focus[NewEpochState[E]](_.bprev)
