@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models.gen
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.models.gen.Ast.{Assign, Occ}
 
 /** Closed error type of the generator. Rendering to text happens at the boundary (`Main`). */
@@ -271,7 +273,7 @@ final class Schema(val modules: Map[String, Module]):
       case (_, "default")                    => b
       case _                                 => RT.Unsupported(s".$op")
 
-  private def sizes(arg: Ast.Ty, ctx: String): Option[(Int, Int)] = arg match
+  private def sizes(arg: Ast.Ty, @unused ctx: String): Option[(Int, Int)] = arg match
     case Ast.Ty.Literal(Ast.Lit.IntL(n)) => Some((n.toInt, n.toInt))
     case Ast.Ty.Range(Ast.Ty.Literal(Ast.Lit.IntL(a)), Ast.Ty.Literal(Ast.Lit.IntL(b)), inc) =>
       Some((a.toInt, if inc then b.toInt else b.toInt - 1))

@@ -17,7 +17,6 @@ import org.rocksdb.{
   CompressionType,
   LRUCache,
   Options,
-  ReadOptions,
   RocksDB,
   WriteBatch,
   WriteBufferManager,

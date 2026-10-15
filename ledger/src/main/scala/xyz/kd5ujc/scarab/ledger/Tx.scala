@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
@@ -502,7 +504,7 @@ object Tx:
   /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
     * Alonzo, `[body, witnesses, aux]` before.
     */
-  def fromBlock(t: Block.Transaction, era: Era): Either[String, Tx] =
+  def fromBlock(t: Block.Transaction, @unused era: Era): Either[String, Tx] =
     for
       body <- TxBody.decode(t.body)
       witnesses <- Witnesses.decode(t.witnesses)

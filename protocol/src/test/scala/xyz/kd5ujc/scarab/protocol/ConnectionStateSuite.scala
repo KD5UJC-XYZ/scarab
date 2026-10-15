@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.protocol.ConnectionState.*
 import munit.ScalaCheckSuite
 import org.scalacheck.{Arbitrary, Gen}
@@ -25,7 +27,7 @@ class ConnectionStateSuite extends ScalaCheckSuite:
       ConnectionState.transition(s, e).getOrElse(s)
     )
 
-  private given Arbitrary[ConnectionState] = Arbitrary(reachable)
+  @unused private given Arbitrary[ConnectionState] = Arbitrary(reachable)
 
   test("an outbound connection goes reserved, unnegotiated, established") {
     val steps = List(Event.Connected, Event.Negotiated(DataFlow.Duplex))

@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.{ExitCode, IO, IOApp, Ref}
 import cats.mtl.Handle
-import cats.syntax.all.*
 import com.comcast.ip4s.*
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardOpenOption}
@@ -22,7 +21,7 @@ object LeiosProbe extends IOApp:
   private final case class Tally(counts: Map[String, Int], fetched: Int)
 
   def run(args: List[String]): IO[ExitCode] = args match
-    case host :: port :: magic :: seconds :: out :: rest if rest.contains("listen") =>
+    case host :: port :: magic :: seconds :: _ :: rest if rest.contains("listen") =>
       listen(host, port.toInt, magic.toLong, seconds.toInt.seconds).as(ExitCode.Success)
     case host :: port :: magic :: seconds :: out :: rest =>
       probe(

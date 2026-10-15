@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Ref, Temporal}
+import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*

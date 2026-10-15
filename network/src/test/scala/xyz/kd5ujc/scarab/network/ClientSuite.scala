@@ -235,7 +235,7 @@ class ClientSuite extends CatsEffectSuite:
   test("KeepAlive: a dead peer aborts the multiplexer so pending operations fail"):
     TestControl
       .executeEmbed(typed {
-        linked(protocols = Set(2, 8)).use { (client, server) =>
+        linked(protocols = Set(2, 8)).use { (client, _) =>
           for
             c <- client.channel(2)
             k <- client.channel(8)

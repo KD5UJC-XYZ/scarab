@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.{Gen, Test}
-import supranational.blst.{P2, P2_Affine}
+import supranational.blst.P2
 
 /** Properties of votes, aggregation and certificate verification over a 24-seat committee. */
 class LeiosCertificateSuite extends ScalaCheckSuite:

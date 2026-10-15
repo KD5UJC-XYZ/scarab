@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.consensus.{
   SchedulingStats,
   VolatileChain
 }
-import xyz.kd5ujc.scarab.ledger.{Block, Header, NodeError, Points, ShelleyGenesis}
+import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
 
 import cats.effect.IO
 import cats.syntax.all.*

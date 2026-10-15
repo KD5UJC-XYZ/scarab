@@ -124,7 +124,7 @@ class VolatileStoreSuite extends CatsEffectSuite:
     tempDir.use { dir =>
       ok {
         for
-          first <- open(dir).use { (store, opened) =>
+          _ <- open(dir).use { (store, opened) =>
             val bs = (0 until 12).map(block(_))
             for
               _ <- IO(assertEquals(opened.chain, Vector.empty))

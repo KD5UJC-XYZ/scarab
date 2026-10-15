@@ -567,7 +567,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val globals = LedgerGlobals(Supply, 100, Rational(1, 2), 0)
       val end =
         (1 to epochs).foldLeft(start.copy(rewardUpdate = Some(Rewards.update(start, globals)))) {
-          (st, e) =>
+          (st, _) =>
             val next = Epoch.boundary(st, st.epoch + 1, globals)
             // a block after the start of rewards creates the update
             next.copy(

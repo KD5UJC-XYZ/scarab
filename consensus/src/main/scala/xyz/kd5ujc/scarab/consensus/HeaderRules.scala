@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.HeaderError
 
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef

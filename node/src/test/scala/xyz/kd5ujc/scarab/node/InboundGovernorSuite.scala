@@ -5,11 +5,9 @@ import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, NodeState, Volati
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header, NodeError, Points}
 
 import cats.effect.{IO, Ref, Resource}
-import cats.effect.unsafe.implicits.global
 import cats.mtl.{Handle, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
-import fs2.Stream
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point

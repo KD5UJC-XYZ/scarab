@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
-import xyz.kd5ujc.scarab.crypto.bls.{BlsError, MinSig, SeatId, Seed, SecretKey, Vote}
+import xyz.kd5ujc.scarab.crypto.bls.{BlsError, SeatId, Seed, SecretKey, Vote}
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll

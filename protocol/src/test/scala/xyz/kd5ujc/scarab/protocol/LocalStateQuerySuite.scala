@@ -48,7 +48,7 @@ class LocalStateQuerySuite extends ScalaCheckSuite:
         messages(state).flatMap { m =>
           transition(state, who(state), m) match
             case Right(next) => go(next, left - 1, acc :+ (state -> m))
-            case Left(e)     => Gen.fail
+            case Left(_)     => Gen.fail
         }
     go(State.Idle, 40, Vector.empty)
 

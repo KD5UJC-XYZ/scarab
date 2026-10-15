@@ -2,11 +2,9 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.effect.{IO, Ref}
-import cats.syntax.all.*
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.network.TxSubmissionClient
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational

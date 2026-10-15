@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.ConfigError
-
 class MainArgsSuite extends munit.FunSuite:
   private val base = List("follow", "--genesis-dir", "/g", "--peer", "127.0.0.1:3001")
 

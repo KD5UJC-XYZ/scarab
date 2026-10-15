@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.codec.Rational
 
 import cats.syntax.all.*
-import io.circe.{ACursor, Decoder, Json}
+import io.circe.{ACursor, Decoder}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.ConfigError
 

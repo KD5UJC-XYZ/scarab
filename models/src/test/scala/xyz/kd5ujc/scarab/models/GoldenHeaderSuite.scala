@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.models
 
+import scala.annotation.unused
+
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
@@ -42,7 +44,7 @@ final case class HeaderView(
 )
 
 object HeaderView:
-  private def sized(h: Option[conway.Hash32]): Option[Bytes] = h.map(_.value)
+  @unused private def sized(h: Option[conway.Hash32]): Option[Bytes] = h.map(_.value)
 
   def ofConway(h: conway.Header): HeaderView =
     val b = h.headerBody

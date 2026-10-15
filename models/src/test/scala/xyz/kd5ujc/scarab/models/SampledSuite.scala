@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.models
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
 import scala.util.Random
-import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Config, Generator, QName}
+import xyz.kd5ujc.scarab.models.gen.{CddlSampler, Generator, QName}
 import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError}
 
 /** Property and fuzz tests driven by the CDDL itself: random valid CBOR is generated from the

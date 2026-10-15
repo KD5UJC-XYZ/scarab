@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{ByronGenesisFile, ConfigError, Genesis}
+import xyz.kd5ujc.scarab.ledger.ConfigError
 
 import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}

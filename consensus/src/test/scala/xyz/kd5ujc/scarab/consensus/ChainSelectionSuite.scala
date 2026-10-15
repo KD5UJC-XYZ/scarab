@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.consensus.ChainSelection.*
 import munit.ScalaCheckSuite
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
 class ChainSelectionSuite extends ScalaCheckSuite:

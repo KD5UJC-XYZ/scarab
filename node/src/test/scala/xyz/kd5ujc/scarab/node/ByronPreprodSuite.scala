@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.consensus.{ByronCheck, ByronRules}
+import xyz.kd5ujc.scarab.consensus.ByronRules
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronVersion}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*

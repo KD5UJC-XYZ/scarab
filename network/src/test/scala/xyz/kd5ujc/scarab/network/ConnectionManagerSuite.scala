@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{IO, Ref, Resource}
-import cats.effect.unsafe.implicits.global
 import cats.mtl.Handle
 import cats.syntax.all.*
 import com.comcast.ip4s.*

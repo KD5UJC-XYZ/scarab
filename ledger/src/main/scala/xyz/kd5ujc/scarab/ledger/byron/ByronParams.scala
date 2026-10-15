@@ -2,8 +2,8 @@
 package xyz.kd5ujc.scarab.ledger.byron
 
 import cats.syntax.all.*
-import io.circe.{ACursor, Json}
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import io.circe.ACursor
+import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.CborRead
 
 /** A Byron block/protocol version `major.minor.alt`, ordered lexicographically. */

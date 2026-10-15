@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import munit.FunSuite
@@ -14,7 +16,7 @@ class DecoderRobustnessSuite extends FunSuite:
   private def bytes(xs: Int*): Bytes = Bytes.fromArray(xs.map(_.toByte).toArray)
 
   /** Run `body` on a thread with a small stack, so that a deep item overflows it for certain. */
-  private def onSmallStack[A](body: => A, stack: Long = 256 * 1024): A =
+  @unused private def onSmallStack[A](body: => A, stack: Long): A =
     var result: Option[Either[Throwable, A]] = None
     val thread = new Thread(
       null,

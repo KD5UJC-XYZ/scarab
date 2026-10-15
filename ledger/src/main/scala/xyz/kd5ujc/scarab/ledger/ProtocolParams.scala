@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 
 import cats.syntax.all.*
 import io.circe.{ACursor, Decoder, Json}
-import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Cbor, Node}
 import xyz.kd5ujc.scarab.ledger.ConfigError
 import xyz.kd5ujc.scarab.ledger.Nonce
 

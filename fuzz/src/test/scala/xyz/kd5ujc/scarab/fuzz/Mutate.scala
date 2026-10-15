@@ -131,7 +131,6 @@ object Mutate:
           case 2 => insert(a, at(r, a), Array(0x5f, 0x61, 0x61, 0xff).map(_.toByte))
           case 3 => insert(a, at(r, a), Array(0x7f, 0x41, 0x00, 0xff).map(_.toByte))
           case _ =>
-            val heads = headPositions(a)
             if a.isEmpty then a
             else
               val c = a.clone(); val p = at(r, a)

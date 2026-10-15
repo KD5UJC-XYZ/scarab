@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import scala.annotation.unused
+
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.mtl.{Handle, Stateful}
@@ -20,7 +22,6 @@ import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.node.Main
 import xyz.kd5ujc.scarab.node.NodeRules
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.Peer
@@ -88,7 +89,7 @@ class ChainStorageSuite extends CatsEffectSuite:
       progressEvery = 100
     )
 
-  private def rules(using Handle[IO, NodeError]) =
+  @unused private def rules(using Handle[IO, NodeError]) =
     NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
 
   /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
@@ -192,7 +193,7 @@ class ChainStorageSuite extends CatsEffectSuite:
       .rescue(e => IO.pure(e.asLeft))
       .flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
 
-  private def events(dir: Path): IO[Ref[IO, Vector[StorageEvent]]] =
+  private def events(@unused dir: Path): IO[Ref[IO, Vector[StorageEvent]]] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty)
 
   private def snapshotsIn(dir: Path): IO[List[Path]] =

@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage.haskell
 
 import cats.effect.IO
-import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.file.{Files as JFiles, Path as JPath, StandardCopyOption}
 import java.security.MessageDigest

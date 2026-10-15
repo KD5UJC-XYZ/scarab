@@ -35,7 +35,7 @@ object NetworkIdentity:
     def hash(value: String): Option[Bytes] =
       Bytes.fromHex(value).toOption.filter(_.size == 32)
     text.linesIterator.map(_.trim).filter(_.nonEmpty).toList match
-      case header :: rest if header != Header && header.startsWith("cardano-scala-lab network") =>
+      case header :: _ if header != Header && header.startsWith("cardano-scala-lab network") =>
         Left(StorageError.VersionMismatch(what, header, Header))
       case Header :: magic :: shelley :: byron :: Nil =>
         (magic.split(' ').toList, shelley.split(' ').toList, byron.split(' ').toList) match

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{ByronGenesisFile, ConfigError, ConfigProblem}
+import scala.annotation.unused
 
-import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
+
 import io.circe.Json
 import io.circe.parser
 import java.nio.file.{Files, Path}
@@ -23,7 +24,7 @@ class ConfigSuite extends FunSuite:
     Option.when(Files.exists(dir(network).resolve(name)))(
       Files.readAllBytes(dir(network).resolve(name))
     )
-  private def hex(s: String) = Bytes.fromHex(s).toOption.get
+  @unused private def hex(s: String) = Bytes.fromHex(s).toOption.get
   private def blake(bytes: Array[Byte]) = Blake2b.hash256.hash(Bytes.fromArray(bytes))
 
   private def parsed(network: String) =

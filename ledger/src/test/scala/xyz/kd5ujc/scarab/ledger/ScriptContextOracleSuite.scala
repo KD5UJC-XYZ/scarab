@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.plutus.ExUnits
-
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage, ScalusEvaluator}
 import munit.FunSuite

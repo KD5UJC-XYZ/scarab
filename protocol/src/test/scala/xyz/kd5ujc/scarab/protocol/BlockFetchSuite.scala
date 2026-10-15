@@ -54,7 +54,7 @@ class BlockFetchSuite extends munit.FunSuite:
     for
       state <- State.values
       role <- Role.values
-      (hex, goodState, goodRole, message, next) <- literals
+      (hex, goodState, goodRole, message, _) <- literals
     do
       val valid = state == goodState && role == goodRole
       assertEquals(transition(state, role, message).isRight, valid, s"$state/$role/$message")

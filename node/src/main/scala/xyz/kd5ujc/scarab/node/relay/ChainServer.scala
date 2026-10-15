@@ -10,7 +10,7 @@ import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
-import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip, UInt64}
+import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Tip}
 import xyz.kd5ujc.scarab.network.{BlockFetchServer, ChainSyncServer}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef}
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header}

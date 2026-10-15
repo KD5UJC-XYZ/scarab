@@ -68,8 +68,8 @@ object VolatileStore:
     */
   def chainOf(records: Iterable[VolatileRecord]): Vector[(BlockRef, Bytes)] =
     records.foldLeft(Vector.empty[(BlockRef, Bytes)]) {
-      case (chain, VolatileRecord.Block(ref, raw))                  => chain :+ (ref -> raw)
-      case (chain, VolatileRecord.Rollback(ChainSync.Point.Origin)) => Vector.empty
+      case (chain, VolatileRecord.Block(ref, raw))              => chain :+ (ref -> raw)
+      case (_, VolatileRecord.Rollback(ChainSync.Point.Origin)) => Vector.empty
       case (chain, VolatileRecord.Rollback(ChainSync.Point.Block(slot, hash))) =>
         val i = chain.indexWhere((r, _) => r.hash == hash && r.slot == slot.value)
         if i >= 0 then chain.take(i + 1) else Vector.empty

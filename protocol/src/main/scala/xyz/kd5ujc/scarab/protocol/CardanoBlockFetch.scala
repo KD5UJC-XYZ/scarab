@@ -136,7 +136,7 @@ object CardanoBlockFetch:
     def accept(message: BlockFetch.Message[RawNtNBlock])(
         identify: RawNtNBlock => Either[String, SpecificPoint]
     ): Either[String, Batch] =
-      import BlockFetch.{Message, Role, State}
+      import BlockFetch.{Message, Role}
       if result != BatchResult.Pending then Left("request already completed")
       else
         BlockFetch.transition(state, Role.Server, message).flatMap { next =>

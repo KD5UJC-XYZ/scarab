@@ -27,7 +27,7 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
 
   test("the recorded replies decode") {
     assertEquals(rows.size, 4)
-    rows.foreach((label, hex, _) => read(hex))
+    rows.foreach((_, hex, _) => read(hex))
   }
 
   test("a version query lists exactly 14, 15 and 16, magic 164, peer sharing on, Peras off") {

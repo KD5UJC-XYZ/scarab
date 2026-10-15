@@ -5,7 +5,7 @@ import io.circe.{Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import munit.FunSuite
-import scalus.uplc.{Program, Term}
+import scalus.uplc.Program
 
 /** Differential test of the Scalus machine's costing of `modInteger`, `remainderInteger` (and
   * `addInteger`, `divideInteger`, `quotientInteger` as controls) against the Plutus cost model.

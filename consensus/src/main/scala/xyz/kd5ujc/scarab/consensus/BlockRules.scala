@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{Header, PeerError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.{Header, PeerError}
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}

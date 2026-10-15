@@ -73,8 +73,6 @@ object ConwayRules:
     val pp = state.params
     val pv = pp.protocolMajor
     def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
-    def refuseUtxo(failure: UtxoFailure) = refuse(PredicateFailure.utxo(failure))
-    def refuseUtxow(failure: UtxowFailure) = refuse(PredicateFailure.utxow(failure))
     def check(ok: Boolean, failure: => PredicateFailure): Result[Unit] =
       if ok then Right(()) else refuse(failure)
 
@@ -237,7 +235,6 @@ object ConwayRules:
   ): Result[LedgerState] =
     val body = tx.body
     val id = body.id
-    val pp = state.params
     def refuse(failure: PredicateFailure) = Left(LedgerFailure.Rejected(id, failure))
     def check(ok: Boolean, failure: => PredicateFailure): Result[Unit] =
       if ok then Right(()) else refuse(failure)
@@ -744,7 +741,7 @@ private[ledger] object ConwayGov:
       }
       _ <- check(unknownVoters.isEmpty, GovFailure.VotersDoNotExist(unknownVoters))
       votes = body.votes.flatMap { case (voter, vs) => vs.map { case (aid, v) => (voter, aid, v) } }
-      _ <- votes.traverse_ { case (voter, aid, v) =>
+      _ <- votes.traverse_ { case (voter, aid, _) =>
         for
           gas <- proposals.byId
             .get(aid)

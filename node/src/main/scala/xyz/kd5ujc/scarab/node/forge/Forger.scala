@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import scala.annotation.unused
+
 import cats.effect.{Async, Clock, Ref}
 import cats.mtl.{Handle, Stateful}
 import cats.mtl.syntax.all.*
@@ -11,7 +13,6 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
@@ -145,7 +146,7 @@ final class Forger[F[_]: Async](
       .attempt(attempt(slot))
       .flatMap {
         case Right(_)                      => F.unit
-        case Left(e: ForgeError.NotLeader) => F.unit
+        case Left(_: ForgeError.NotLeader) => F.unit
         case Left(e: ForgeError)           => failed(slot, e)
         case Left(other)                   => failed(slot, ForgeError.Assembly(other.message))
       }
@@ -259,7 +260,7 @@ final class Forger[F[_]: Async](
     yield ()
 
   private def build(
-      current: VolatileChain[NodeState],
+      @unused current: VolatileChain[NodeState],
       tip: Option[BlockRef],
       slot: BigInt,
       epoch: BigInt,

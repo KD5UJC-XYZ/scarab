@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import scala.annotation.unused
+
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
@@ -38,7 +40,7 @@ final case class QueryView(point: Point, blockNo: Option[BigInt], state: NodeSta
   * era get the era-mismatch reply, as the reference sends.
   */
 object QueryAnswers:
-  private val ConwayIndex = Era.Conway.index
+  @unused private val ConwayIndex = Era.Conway.index
 
   /** What the caller must fetch from the UTxO store before calling `answer`. */
   enum UtxoNeeds:
@@ -131,7 +133,7 @@ object QueryAnswers:
 
   // ---- the ledger queries
 
-  private def coin(w: CborOut, c: BigInt): Unit = w.uint(c)
+  @unused private def coin(w: CborOut, c: BigInt): Unit = w.uint(c)
 
   private def pulsed(view: QueryView): (PulsingSnapshot, RatifyState) =
     val (snapshot, ratify) = view.ledger.gov.pulsed.getOrElse(

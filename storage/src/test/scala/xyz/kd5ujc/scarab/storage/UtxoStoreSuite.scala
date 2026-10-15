@@ -7,7 +7,6 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import fs2.io.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.ledger.*
 import munit.ScalaCheckSuite

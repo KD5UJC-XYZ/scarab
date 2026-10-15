@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{ForgeError, VrfCert}
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.crypto.vrf.{

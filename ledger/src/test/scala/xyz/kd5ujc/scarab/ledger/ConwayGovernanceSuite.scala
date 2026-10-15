@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.Rational
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -154,7 +156,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
   private def encodedInt(v: BigInt): Bytes =
     Cbor.encode(CborValue.UInt(v)).fold(e => fail(e), identity)
 
-  private def returnAccount(w: World, i: Int = 0): RewardAccount =
+  @unused private def returnAccount(w: World, i: Int): RewardAccount =
     RewardAccount(0, w.stakes(i).credential)
 
   private def proposal(w: World, action: GovAction, i: Int = 0): Proposal =

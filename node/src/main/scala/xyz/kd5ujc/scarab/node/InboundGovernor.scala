@@ -6,7 +6,6 @@ import xyz.kd5ujc.scarab.ledger.{Header, NodeError, PeerError, Points}
 import cats.effect.{Async, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
-import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, NtNHeader}

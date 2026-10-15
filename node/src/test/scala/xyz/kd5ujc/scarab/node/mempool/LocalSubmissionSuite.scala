@@ -8,7 +8,7 @@ import com.comcast.ip4s.UnixSocketAddress
 import fs2.io.net.Network
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Handshake, LocalTxSubmission}
-import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Role}
+import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import xyz.kd5ujc.scarab.network.*
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
@@ -144,7 +144,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
                       .void
                   }
                 }
-                .rescue(e => IO.pure(()))
+                .rescue(_ => IO.pure(()))
                 *> server.joinWithNever.map(r => assert(r.nonEmpty))
             }
         }

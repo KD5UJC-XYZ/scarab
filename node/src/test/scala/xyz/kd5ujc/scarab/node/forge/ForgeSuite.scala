@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import scala.annotation.unused
+
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*
@@ -161,7 +163,7 @@ class ForgeSuite extends CatsEffectSuite:
               anchor: xyz.kd5ujc.scarab.consensus.Anchor[NodeState]
           ) = raws.update(_.updated(ref.hash, raw))
           def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point) = IO.unit),
-        onTip = Some((c, added) => mempool.sync(c.state.ledger, c.tipRef.get.slot, Set.empty).void)
+        onTip = Some((c, _) => mempool.sync(c.state.ledger, c.tipRef.get.slot, Set.empty).void)
       )
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       forger <- Forger.create[IO](
@@ -348,7 +350,7 @@ class ForgeSuite extends CatsEffectSuite:
 
   test("the mempool is synchronised after adoption: the included transactions leave it") {
     val p = pool(kesStart = 50, seed = 2)
-    val (t1, id1) = TxKit.pay(1)
+    val (t1, _) = TxKit.pay(1)
     withHandle {
       for
         h <- harness(p, ledgerWith(p, 2))
@@ -438,7 +440,7 @@ class ForgeSuite extends CatsEffectSuite:
       for
         h <- harness(p, ledgerWith(p, 1))
         _ <- (5000 until 5040).toList.traverse_(s => h.forger.step(s))
-        chain <- h.chain
+        _ <- h.chain
         // an identical second block on the old tip (the genesis block position)
         again <- h.follower.adoptForged(
           Block.decodeShelley(blockOnGenesis(p, h)).toOption.get.header,
@@ -451,7 +453,7 @@ class ForgeSuite extends CatsEffectSuite:
   }
 
   /** A valid-looking block with no predecessor (it extends the genesis, not the tip). */
-  private def blockOnGenesis(p: Pool, h: Harness): Bytes =
+  private def blockOnGenesis(p: Pool, @unused h: Harness): Bytes =
     val body = BlockBuilder.body(Vector.empty)
     val headerBody = BlockBuilder.headerBody(
       0,

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import scala.annotation.unused
+
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, InputStream, OutputStream}
 import java.nio.charset.StandardCharsets
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -344,7 +346,7 @@ object LowPriorityCodec:
   def sum[A](
       name: String,
       m: Mirror.SumOf[A],
-      labels: List[String],
+      @unused labels: List[String],
       codecs: List[Codec[?]]
   ): Codec[A] = new Codec[A]:
     private val variants = codecs.toArray.asInstanceOf[Array[Codec[Any]]]

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -11,7 +13,7 @@ import munit.FunSuite
 import scalus.cardano.ledger as sl
 import scalus.cardano.ledger.LedgerToPlutusTranslation as Oracle
 import scalus.serialization.cbor.Cbor as ScalusCbor
-import scalus.uplc.builtin.{ByteString, Data}
+import scalus.uplc.builtin.Data
 import scalus.uplc.builtin.Data.toData as dataOf
 
 /** Script contexts of a hand-built transaction, checked three ways: against literal expectations of
@@ -123,12 +125,12 @@ class ScriptContextGoldenSuite extends FunSuite:
   private val rewardKey = "e0" + hash28(40)
   private val rewardScript = "f0" + hash28(41)
   private val poolId = hash28(50)
-  private val vrf = hash32(51)
+  @unused private val vrf = hash32(51)
   private val govActionId = arr(bytes(hash32(60)), uint(2))
   private val committeeCold = arr(uint(0), bytes(hash28(61)))
   private val committeeHot = arr(uint(1), bytes(hash28(62)))
 
-  private def voteMap(voter: String, votes: (String, Int)*) =
+  @unused private def voteMap(voter: String, votes: (String, Int)*) =
     bytes("") -> bytes("") // placeholder never used
 
   private def certificates(conway: Boolean) =
@@ -290,7 +292,7 @@ class ScriptContextGoldenSuite extends FunSuite:
       uint(5) -> redeemerList(redeemers(language))
     )
 
-  private def fullTx(language: PlutusLanguage) =
+  @unused private def fullTx(language: PlutusLanguage) =
     arr(body(language), witnesses(language), "f5", Null)
 
   // ---- decoding both ways -----------------------------------------------------------------------

@@ -152,7 +152,7 @@ class ServerSuite extends CatsEffectSuite:
           _ <- IO.sleep(30.millis)
           _ <- chain.blocks.update(_ :+ 4)
           later <- waiting.joinWithNever
-          batch <- IO.pure(()) // no pipelining at the tip
+          _ <- IO.pure(()) // no pipelining at the tip
         yield (missing, found, first, later)
       }
     }.map { r =>

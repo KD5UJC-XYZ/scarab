@@ -249,7 +249,7 @@ object ScalusEvaluator:
                 val traced =
                   if logs.isEmpty then cause else s"$cause; trace: ${logs.mkString(" | ")}"
                 failure(EvalFailure.Script(traced), spent, logs)
-              case e: StackOverflowError =>
+              case _: StackOverflowError =>
                 failure(EvalFailure.Script("stack overflow"), spent, log.getLogs.toVector)
 
   /** A [[PlutusVM]] whose `serialiseData` is [[DataSerialiser]].

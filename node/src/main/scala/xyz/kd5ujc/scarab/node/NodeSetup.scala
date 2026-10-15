@@ -26,7 +26,6 @@ import xyz.kd5ujc.scarab.consensus.{
   PraosConfig
 }
 import xyz.kd5ujc.scarab.ledger.{GenesisState, LedgerGlobals, LiteLedger}
-import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 

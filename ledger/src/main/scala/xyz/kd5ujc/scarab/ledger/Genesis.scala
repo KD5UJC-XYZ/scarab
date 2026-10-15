@@ -7,7 +7,6 @@ import io.circe.parser
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.byron.ByronParams
 
 /** Network configuration read from the Shelley genesis file. */

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
@@ -412,7 +414,7 @@ object ScriptContexts:
       .traverse { case (r, p) => (purpose(p), decodeRedeemer(r)).mapN((a, b) => a -> b) }
       .map(PlutusData.Map(_))
 
-  private val signatoriesOrder = summon[Ordering[Bytes]]
+  @unused private val signatoriesOrder = summon[Ordering[Bytes]]
 
   /** `TxInfo` of one language; V1 and V2 for Alonzo and Babbage, V3 for Conway. */
   def txInfo(language: PlutusLanguage, tx: Tx, env: Environment): Result[PlutusData] =

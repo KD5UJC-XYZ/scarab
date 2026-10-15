@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.LedgerView
 import xyz.kd5ujc.scarab.ledger.StakeView
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
+import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 /** Full block validation: tick the ledger and Praos state to the block's epoch, validate the header
@@ -387,8 +387,8 @@ object NodeRules:
       raw: Bytes,
       config: PraosConfig,
       globals: LedgerGlobals,
-      phase2Observer: Option[Phase2.Observation => Unit] = None,
-      prepared: Option[Prepared] = None
+      phase2Observer: Option[Phase2.Observation => Unit],
+      prepared: Option[Prepared]
   ): Either[(String, String), NodeState] =
     val geometry = config.geometry
     val epoch = geometry.epochOf(announced.slot)

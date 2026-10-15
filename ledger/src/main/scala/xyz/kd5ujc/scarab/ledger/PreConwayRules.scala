@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.Rational
 
 import cats.syntax.all.*
@@ -25,9 +27,7 @@ object PreConwayRules:
     val id = body.id
     val pp = state.params
     val pv = pp.protocolMajor
-    val mary = pv >= 4
     val alonzo = pv >= 5
-    val babbage = pv >= 7
     def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
     def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
       if ok then Right(()) else invalid(rule, detail)
@@ -36,7 +36,6 @@ object PreConwayRules:
 
     val wits = tx.witnesses
     val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => env.verdicts.keyHash(w._1))
-    val hasRedeemers = wits.redeemers.nonEmpty
     val scriptFee =
       if alonzo then
         val u = wits.totalExUnits
@@ -139,7 +138,6 @@ object PreConwayRules:
     val body = tx.body
     val id = body.id
     val pp = state.params
-    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
     if pp.protocolMajor < 5 || (plutusPurposes.isEmpty && body.scriptDataHash.isEmpty) then
       Right(state.plutus)
     else
@@ -328,7 +326,7 @@ object PreConwayRules:
   private[ledger] def collateralChecks(
       state: LedgerState,
       tx: Tx,
-      env: Env
+      @unused env: Env
   ): Result[Collateral] =
     val body = tx.body
     val pp = state.params
@@ -411,7 +409,7 @@ object PreConwayRules:
       state: LedgerState,
       tx: Tx,
       spent: Vector[TxOut],
-      refOuts: Vector[TxOut],
+      @unused refOuts: Vector[TxOut],
       scripts: Map[Bytes, Script],
       plutusPurposes: Set[Pointer]
   ): Result[Unit] =

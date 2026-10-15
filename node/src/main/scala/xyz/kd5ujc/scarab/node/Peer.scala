@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError}
 
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.{Mutex, Queue, Semaphore, Supervisor}
-import cats.effect.syntax.all.*
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*

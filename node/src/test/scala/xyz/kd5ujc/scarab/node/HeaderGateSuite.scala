@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.consensus.{BlockRef, Compute, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{Fixtures, Header, PeerError}
 
@@ -40,7 +42,7 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
       else if header.blockNo > anchor + horizon then Outcome.Later("beyond the horizon")
       else Outcome.Valid(prev + 1)
 
-  private def ref(h: Header) = BlockRef(h.slot, h.hash, h.blockNo)
+  @unused private def ref(h: Header) = BlockRef(h.slot, h.hash, h.blockNo)
 
   private final class Rig(
       val chain: Ref[IO, VolatileChain[BigInt]],
@@ -244,7 +246,7 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
   }
 
-  private final case class Op(forward: Int, back: Int)
+  @unused private final case class Op(forward: Int, back: Int)
 
   property("the candidate chain is a model: extend, roll back and prune keep it a path") {
     forAll(Gen.choose(1, 40), Gen.choose(0, 40), Gen.choose(1, 12)) { (n, back, keep) =>

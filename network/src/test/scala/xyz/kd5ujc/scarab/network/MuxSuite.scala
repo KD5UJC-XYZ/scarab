@@ -2,8 +2,6 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.IO
-import cats.effect.std.CountDownLatch
-import cats.effect.unsafe.implicits.global
 import cats.syntax.all.*
 import fs2.Chunk
 import xyz.kd5ujc.scarab.codec.Bytes

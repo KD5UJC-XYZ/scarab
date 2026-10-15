@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.Rational
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -79,7 +81,7 @@ class RatifySuite extends ScalaCheckSuite:
 
   private val liveDRep = DRepState(500 * ada, 1000)
   private val treasuryAction = GovAction.TreasuryWithdrawals(Vector(account -> (10 * ada)), None)
-  private val infoAction = GovAction.Info
+  @unused private val infoAction = GovAction.Info
 
   test("DReps: abstaining stake is out, always-no-confidence counts against, silence is no") {
     val a = cred(1)

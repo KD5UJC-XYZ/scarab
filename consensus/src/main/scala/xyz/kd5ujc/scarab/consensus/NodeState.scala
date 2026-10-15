@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Verdicts}
+import xyz.kd5ujc.scarab.ledger.EpochGeometry
 
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.*

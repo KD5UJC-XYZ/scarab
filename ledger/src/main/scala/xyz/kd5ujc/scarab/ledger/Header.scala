@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
@@ -98,7 +100,7 @@ object Header:
 
   final case class OpCert(hotVkey: Bytes, sequence: BigInt, kesPeriod: BigInt, sigma: Bytes)
 
-  private val envelopeLimits = Cbor.Limits(65535, 24, 8192, 65535)
+  @unused private val envelopeLimits = Cbor.Limits(65535, 24, 8192, 65535)
   private val headerLimits = Cbor.Limits(4096, 16, 256, 4096)
 
   extension (h: Shelley)

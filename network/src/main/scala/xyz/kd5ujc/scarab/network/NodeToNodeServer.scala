@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
-import cats.effect.{Async, Resource, Temporal}
+import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*

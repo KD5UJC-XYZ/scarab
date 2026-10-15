@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.effect.{Async, Ref, Resource, Sync}
+import cats.effect.{Async, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*

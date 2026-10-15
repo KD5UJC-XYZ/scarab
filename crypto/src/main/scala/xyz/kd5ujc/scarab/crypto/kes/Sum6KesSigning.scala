@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.crypto.kes
 import java.util.Arrays
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import org.bouncycastle.crypto.params.{Ed25519PrivateKeyParameters, Ed25519PublicKeyParameters}
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.signers.Ed25519Signer
 
 /** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`,

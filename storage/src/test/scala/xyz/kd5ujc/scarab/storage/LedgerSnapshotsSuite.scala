@@ -5,7 +5,7 @@ import cats.effect.IO
 import cats.mtl.Raise
 import cats.syntax.all.*
 import fs2.Stream
-import fs2.io.file.{Files, Flag, Flags, Path}
+import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.StorageError

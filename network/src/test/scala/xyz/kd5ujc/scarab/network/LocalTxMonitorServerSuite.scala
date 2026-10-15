@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.Handle
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{
   CardanoBlockFetch,

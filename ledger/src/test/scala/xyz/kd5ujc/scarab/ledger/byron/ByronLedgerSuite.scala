@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TxIn
 import munit.ScalaCheckSuite
@@ -70,7 +72,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     assertEquals(ledger.update.adoptedVersion, ByronVersion.zero)
   }
 
-  private def spendAlice(out: Seq[(Bytes, Long)], fee: Option[Long] = None) =
+  private def spendAlice(out: Seq[(Bytes, Long)], @unused fee: Option[Long] = None) =
     aux(config, Seq((addrIn(aliceAddr), alice, false)), out)
 
   private def apply(a: ByronTxAux, u: Map[TxIn, ByronOut] = utxo0) =
@@ -81,7 +83,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   /** A payment from Alice that pays exactly the minimum fee (the size depends on the fee, so the
     * amount is found by iterating once).
     */
-  private def payment(change: Long): ByronTxAux =
+  @unused private def payment(change: Long): ByronTxAux =
     val first = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> change))
     first
 

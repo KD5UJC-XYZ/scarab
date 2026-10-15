@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState

@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node.tools
 
 import cats.effect.{ExitCode, IO, IOApp}
 import cats.mtl.{Handle, Raise}
-import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync

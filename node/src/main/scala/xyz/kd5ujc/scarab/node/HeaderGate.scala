@@ -6,7 +6,6 @@ import xyz.kd5ujc.scarab.ledger.{Header, PeerError, Points}
 
 import cats.Applicative
 import cats.effect.{Async, Ref}
-import cats.effect.syntax.all.*
 import cats.mtl.{Raise, Stateful}
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*

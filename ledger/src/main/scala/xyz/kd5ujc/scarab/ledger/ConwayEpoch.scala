@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.codec.Bytes
-
 /** The Conway part of the EPOCH rule: applying the ratification result the DRep pulser reached,
   * returning proposal deposits, the dormant-epoch counter, the new obligation, the HARDFORK rule
   * and starting a fresh pulser.

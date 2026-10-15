@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import scala.annotation.unused
+
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
@@ -80,7 +82,7 @@ class PreviewConwayRulesSuite extends FunSuite:
     val registered = base.copy(deposited = Epoch.obligation(base))
     registered.copy(reserves = Supply - (registered.total - registered.reserves))
 
-  private def envOf(c: PlutusCase, s: LedgerState): TxRules.Env =
+  private def envOf(c: PlutusCase, @unused s: LedgerState): TxRules.Env =
     TxRules.Env(
       slot = c.slot,
       epoch = c.slot / 86400,

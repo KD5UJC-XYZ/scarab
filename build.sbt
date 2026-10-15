@@ -9,7 +9,22 @@ ThisBuild / scalaVersion := "3.3.8"
 ThisBuild / version := "0.1.0"
 ThisBuild / organization := "xyz.kd5ujc"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
-ThisBuild / scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Werror")
+ThisBuild / scalacOptions ++= Seq(
+  "-deprecation",
+  "-feature",
+  "-unchecked",
+  "-Werror",
+  // Dead code the compiler can see. Left off for now (warning counts on this tree, Scala 3.3.8):
+  // -Wunused:implicits 13, -Wvalue-discard 243 and -Wnonunit-statement 308; the last two are almost
+  // all fluent CborOut calls in node/ntc.
+  "-Wunused:imports",
+  "-Wunused:privates",
+  "-Wunused:locals",
+  "-Wunused:explicits",
+  "-Wunused:patvars",
+  // The generated models are not ours to tidy.
+  "-Wconf:src=.*/src_managed/.*:silent"
+)
 ThisBuild / publish / skip := true
 ThisBuild / Test / parallelExecution := false
 Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
@@ -36,6 +51,11 @@ val testDependencies = Seq(
 def scarab(id: String, dir: String = null): Project =
   Project(id, file(Option(dir).getOrElse(id))).settings(
     name := s"scarab-$id",
+    // Initialisation safety of objects (Scala 3.3 spells it -Ysafe-init; later versions -Wsafe-init).
+    // Main sources only: it raises 19 warnings in the test suites, all of them the munit idiom of
+    // registering the tests in the constructor, and none in main.
+    Compile / scalacOptions += "-Ysafe-init",
+    Test / scalacOptions -= "-Ysafe-init",
     libraryDependencies ++= testDependencies
   )
 

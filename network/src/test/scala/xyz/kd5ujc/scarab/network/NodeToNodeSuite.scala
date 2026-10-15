@@ -5,10 +5,9 @@ import cats.effect.{IO, Ref, Resource}
 import com.comcast.ip4s.*
 import fs2.io.net.Network
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{ChainSync, ChainSyncFixtures}
+import xyz.kd5ujc.scarab.protocol.ChainSyncFixtures
 import xyz.kd5ujc.scarab.protocol.ChainSync.Message
 import munit.CatsEffectSuite
-import scala.concurrent.duration.*
 import Peers.*
 
 class NodeToNodeSuite extends CatsEffectSuite:
