@@ -142,7 +142,8 @@ Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted 
 - Ed25519 verification is half of the CPU time and only parallelised. A faster verifier that can only
   accept was designed and then rejected as a weakening of the strict profile; any speedup must keep
   strict semantics (D7).
-- One ChainSync stream per peer, 64 to 128 headers per round trip (D3). Mainnet (about 12M blocks) has
+- One ChainSync stream per peer, `--read-ahead` 128 headers per round trip by default (D3 measured 64 to 256 on Preview
+  only; the large-block regions of mainnet were not reached). Mainnet (about 12M blocks) has
   not been synced (D6).
 
 ## Preprod from genesis (C4)

@@ -20,7 +20,7 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
 ```
 
 `check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources and runs the
-tests of all modules, the fuzz suite among them (about 35 s); the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+tests of all modules, the fuzz suite among them (about a minute); the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 

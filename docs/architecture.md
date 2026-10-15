@@ -19,9 +19,9 @@ enforced by sbt: a cycle does not load.
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `NodeState`, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
-| `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, the Haskell ImmutableDB reader | Algebras over `F[_]` |
+| `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
 | `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
-| `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests (docs/models.md) | Build-time tool; pure |
+| `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
 ```
@@ -118,8 +118,8 @@ Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled 
 | `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
 | `ConfigError(reason, problem)` | bad genesis, configuration or topology; `problem` is `Invalid`, `FileMissing`, `GenesisHashMismatch` (role, file, listed and actual hash) or `UnsupportedTopology` | fatal at start |
 
-A few programmer-error guards still throw (`Bytes`, the `Sum6Kes` hash contract, `Constants.checked` at class init). See the audit items
-in the [roadmap](roadmap.md) (M2).
+A few programmer-error guards still throw (`Bytes`, the `Sum6Kes` hash contract, `Constants.checked` at class init); the
+audit that removed the others is M2 in the [roadmap](roadmap.md).
 
 ## Data flow
 
@@ -338,8 +338,9 @@ consumes its collateral and nothing else.
 `LedgerState` gained `gov`, `committeeState` and `donation` (plain case classes); `DRepState` has the
 anchor and the delegators.
 
-Not modelled: the VRF key hash uniqueness of protocol 11 (it only rejects transactions). The
-unelected-committee vote check is implemented but untested against a reference. Block execution-unit
+The protocol-11 rules (VRF key hash uniqueness, unelected-committee votes) are implemented and were
+checked against the reference's refusals on the devnet (roadmap B5); what remains open is listed there
+and in the compatibility matrix. Block execution-unit
 limits are validated on received blocks (`LedgerRules.scala`, protocol 5 and later) and enforced by the
 forger.
 
@@ -394,7 +395,8 @@ forger.
 
 ## Persistence (`follow --db <dir>`)
 
-Modelled on the ouroboros-consensus ChainDB, as tagless-final algebras in `node/.../storage/`:
+Modelled on the ouroboros-consensus ChainDB, as tagless-final algebras in the `storage` module (`ChainStorage` is the
+composition and `Follower` the consumer, both in `node`):
 
 | Part | Where | Role |
 |---|---|---|
@@ -428,8 +430,8 @@ On open the newest chunk is validated entry by entry (contiguous offsets, data i
 both files are truncated to the last good entry; a chunk left with no good entry is removed, and
 data files without an index are deleted. Older chunks were synced at roll-over and are trusted.
 
-**Haskell ImmutableDB reader** (`node/.../storage/haskell/`, reader only; our store keeps its own
-format until roadmap step B). `HaskellImmutableDb.scala` holds the pure parts: the opaque `ChunkNo`,
+**Haskell ImmutableDB reader** (`storage/.../haskell/`, reader only; our store keeps its own
+format, and writing the Haskell layout is not implemented: it belongs to the Haskell-format adoption of M11). `HaskellImmutableDb.scala` holds the pure parts: the opaque `ChunkNo`,
 `ChunkSlots` (10 x k of the first era: 4,320 on Preview, 21,600 on mainnet and preprod) and
 `ByteOffset`; `PrimaryIndex` (version byte 1, big-endian `u32` offsets, one per relative slot plus
 one, a step of 56 for a filled slot; relative slot 0 is the EBB slot) and `SecondaryIndex` (56-byte
@@ -552,7 +554,7 @@ is recorded (`networkRecorded` with `adoptedExisting`). An empty database just r
 Shelley-start network the adoption check cannot tell two networks apart (neither names a hash); it
 then only rules out a Byron-start database.
 
-Tests (`node/src/test/.../storage`): round-trip properties for every persisted type from generators
+Tests (`storage/src/test/.../storage`, and `ChainStorageSuite` in `node/src/test`): round-trip properties for every persisted type from generators
 derived by the same `Mirror`s (so new fields are covered automatically), prefix/trailing/random-byte
 rejection, golden encodings and a golden digest and schema fingerprint, the store's crash cases
 (torn data, torn index entry, garbage, flipped bytes, lost chunk, every cut point of the newest
@@ -635,7 +637,8 @@ equal fork leaves our chain alone). A switch rolls back at most `k` blocks (the 
 the limit; a candidate that no longer joins it is dropped as a protocol error of that peer, not of
 the node). The blocks of a preferred candidate are fetched from that peer, validated on a copy of
 the chain and committed together, so a rule violation leaves the chain at the last valid block
-(still fatal, as before). Headers are not validated before the blocks are fetched.
+(still fatal, as before). The headers of a candidate have already passed the header gate (see
+"Header-first validation (G6)" below), so a bad header never reaches the fetch.
 Several sessions can run at once; adoption is serialised.
 
 **Wiring** (`Main`). `--peer` may be given several times (with more than one peer a peer that

@@ -39,7 +39,7 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 (timer lateness and the longest CPU-bound step of that epoch, see "Scheduling" below).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala`). Every flag takes a
-value except `--forge`, `--dump-state-full` and `--mirror-check`. A repeated flag keeps its last value, except `--peer`, which accumulates.
+value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown flag, a repeated flag (except `--peer`, which accumulates) and a flag without its value are refused with a typed `ConfigError` (M1).
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -75,8 +75,6 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. A repeated fla
 
 Caveats:
 
-- The parser accepts any `--name value` pair and silently ignores flags it does not know, so a typo
-  such as `--db-dir` has no effect. Rejecting unknown flags is tracked as [M1](roadmap.md).
 - A `--db` records the network it was created for (`<db>/network-identity`: magic and the Shelley and
   Byron genesis hashes) and refuses to open with another genesis directory: `error` event `kind`
   `NetworkMismatch`, "the database belongs to another network: it was created for magic ..., this node
@@ -350,7 +348,7 @@ reward update; `scripts/devnet/gapmask.py`, [compatibility.md](compatibility.md)
 the reference leaves out too (`map(0)`). Not answered yet
 (the connection ends, the log line `inbound ... closed` names the query): `GetRewardInfoPools`, `GetNonMyopicMemberRewards`,
 `GetRewardProvenance`, `GetLedgerPeerSnapshot`, `DebugLedgerConfig`, and every query but `ledger-state` in an era other than
-Conway. A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
+Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
 LocalTxMonitor (mini-protocol 9) gives `cardano-cli conway query tx-mempool info | next-tx | tx-exists` and
@@ -405,7 +403,7 @@ cases: the seeds of every target are accepted by it, and a short input that decl
 (alone, nested, behind tags) fails within 4 MB of allocation in every decoder.
 
 ```sh
-scripts/sbtw check                    # includes fuzz/Test/test: 20,000 cases per target, seed 1, about 35 s
+scripts/sbtw check                    # includes fuzz/Test/test: 20,000 cases per target, seed 1, about a minute
 scripts/sbtw "fuzz"                   # the same suite with 2,000 cases, seed 1
 scripts/sbtw "fuzz 100000 1000 8"     # fuzz <cases per target and seed> <first seed> <number of seeds> [target]
 scripts/sbtw "fuzz 100000 1000 8 block-header"   # only targets whose name contains the text
@@ -521,7 +519,7 @@ reward calculation starts at `4k/f`. A submission that must be refused counts as
 the run) if the reference accepts it or names another reason; the replies are in `loadEvidence` of
 `e2e-summary.json`. The reference reward update is projected with the pre-Allegra choice (one reward
 per account) when the previous epoch's parameters are protocol 2.
-Plutus V1 and V2 scripts are not driven by the devnet load (`eraload.py` TODO); they are verified by
+Plutus V1 and V2 scripts are not driven by the devnet load (`eraload.py` TODO, roadmap I3); they are verified by
 the Preview sync and the unit and oracle tests only.
 
 `govload` (run by `soak` next to `load`, and in the Conway epochs of `e2e`) drives, one pass per
