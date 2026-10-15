@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
 
 /** Plutus `Data`: the one universal value passed to scripts. This is the node's own type; the
   * evaluator interpreters translate it to their VM's representation.
@@ -15,7 +16,41 @@ enum PlutusData:
   case I(value: BigInt)
   case B(value: Bytes)
 
+  // Structural and stack-safe (the generated ones recurse once per level of nesting); the string
+  // is truncated on purpose (see `Tree.render`).
+  override def equals(that: Any): Boolean = that match
+    case o: PlutusData => this.treeEquals(o)
+    case _             => false
+  override def hashCode(): Int = this.treeHash
+  override def toString: String = this.treeString
+
 object PlutusData:
+  given Tree[PlutusData] with
+    def children(d: PlutusData): IndexedSeq[PlutusData] = d match
+      case Constr(_, fs) => fs
+      case Map(kvs)      => TreeFold.flatten(kvs)
+      case List(xs)      => xs
+      case _             => Vector.empty
+    def sameLabel(x: PlutusData, y: PlutusData): Boolean = (x, y) match
+      case (Constr(a, _), Constr(b, _)) => a == b
+      case (Map(_), Map(_))             => true
+      case (List(_), List(_))           => true
+      case (I(a), I(b))                 => a == b
+      case (B(a), B(b))                 => a == b
+      case _                            => false
+    def labelHash(d: PlutusData): Int = d match
+      case Constr(a, _) => a.hashCode
+      case Map(_)       => 1
+      case List(_)      => 2
+      case I(a)         => 41 + a.hashCode
+      case B(a)         => a.hashCode
+    def name(d: PlutusData): String = d match
+      case Constr(a, _) => s"Constr($a)"
+      case Map(_)       => "Map"
+      case List(_)      => "List"
+      case I(a)         => s"I($a)"
+      case B(a)         => s"B(${Tree.shown(a)})"
+
   val unit: PlutusData = Constr(0, Vector.empty)
 
   def constr(tag: Int, fields: PlutusData*): PlutusData = Constr(tag, fields.toVector)

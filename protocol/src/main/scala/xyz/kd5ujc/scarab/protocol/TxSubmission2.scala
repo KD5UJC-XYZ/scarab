@@ -12,7 +12,13 @@ object TxSubmission2:
   val MaxOriginalBytes = 65536
   val MaxBatch = 8
   val MaxMessageBytes = 524400
-  private val wire = ProtocolWire.Limits(MaxMessageBytes, MaxOriginalBytes, 32, 32, 65535)
+  private val wire = ProtocolWire.Limits(
+    MaxMessageBytes,
+    MaxOriginalBytes,
+    32,
+    ProtocolWire.MaxItems,
+    ProtocolWire.MaxItems
+  )
 
   enum State:
     case Init, Idle, Txs, Done

@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
 
 /** Allegra timelock script; Shelley multi-signature scripts are the subset without the two time
   * constructors.
@@ -14,6 +15,14 @@ enum NativeScript:
   case NOfK(required: BigInt, scripts: Vector[NativeScript])
   case InvalidBefore(slot: BigInt)
   case InvalidHereafter(slot: BigInt)
+
+  // Structural and stack-safe (the generated ones recurse once per level of nesting); the string
+  // is truncated on purpose (see `Tree.render`).
+  override def equals(that: Any): Boolean = that match
+    case o: NativeScript => this.treeEquals(o)
+    case _               => false
+  override def hashCode(): Int = this.treeHash
+  override def toString: String = this.treeString
 
   /** `evalTimelock`: `signers` are the key hashes of the verified vkey witnesses and `[start, end)`
     * the transaction's validity interval (`invalid_before`, `invalid_hereafter`).
@@ -69,6 +78,35 @@ enum NativeScript:
     false
 
 object NativeScript:
+  given Tree[NativeScript] with
+    def children(s: NativeScript): IndexedSeq[NativeScript] = s match
+      case AllOf(ss)   => ss
+      case AnyOf(ss)   => ss
+      case NOfK(_, ss) => ss
+      case _           => Vector.empty
+    def sameLabel(x: NativeScript, y: NativeScript): Boolean = (x, y) match
+      case (Sig(a), Sig(b))                           => a == b
+      case (AllOf(_), AllOf(_))                       => true
+      case (AnyOf(_), AnyOf(_))                       => true
+      case (NOfK(a, _), NOfK(b, _))                   => a == b
+      case (InvalidBefore(a), InvalidBefore(b))       => a == b
+      case (InvalidHereafter(a), InvalidHereafter(b)) => a == b
+      case _                                          => false
+    def labelHash(s: NativeScript): Int = s match
+      case Sig(a)              => a.hashCode
+      case AllOf(_)            => 1
+      case AnyOf(_)            => 2
+      case NOfK(a, _)          => 43 + a.hashCode
+      case InvalidBefore(a)    => 47 + a.hashCode
+      case InvalidHereafter(a) => 53 + a.hashCode
+    def name(s: NativeScript): String = s match
+      case Sig(a)              => s"Sig(${Tree.shown(a)})"
+      case AllOf(_)            => "AllOf"
+      case AnyOf(_)            => "AnyOf"
+      case NOfK(a, _)          => s"NOfK($a)"
+      case InvalidBefore(a)    => s"InvalidBefore($a)"
+      case InvalidHereafter(a) => s"InvalidHereafter($a)"
+
   /** Decode with the nesting on the heap, so a script as deep as a block can hold decodes (see
     * [[NativeScript.eval]]); the reference has no limit on the depth of a native script.
     */

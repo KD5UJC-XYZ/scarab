@@ -5,6 +5,24 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (B18, #84)
+- The paths that still limited nesting below the reference now bound it by size alone, as block decoding
+  does since B17: the mempool (was 64), the block builder (32), local state query (`NtcQuery`, 32) and the
+  ledger encoders (64) use `Cbor.Limits` without a depth of their own, so the node accepts, relays and
+  forges a valid transaction such as preprod f90dce57 (5,383 levels of native script). The mini-protocol
+  framing (`ProtocolWire.Reader.skip`, used by LocalTxSubmission, LocalStateQuery, LocalTxMonitor and
+  TxSubmission2) keeps its open containers on the heap instead of recursing, and its tx-carrying limits
+  allow as many levels as items (65,535) within the message size (1 MiB local, 64 KiB node-to-node,
+  where a transaction is at most 16,384 bytes). Byron decoders are unchanged (their structure is fixed;
+  nothing in a Byron item nests freely).
+- Structural `==`, `hashCode` and `toString` of `Node`, `Value`, `PlutusData` and `NativeScript` walk
+  the tree on the heap (`codec.Tree` type class: children, shallow equality, shallow hash, shallow
+  name) and no longer overflow at about 5,000 levels. `toString` is truncated on purpose to 1,024
+  characters (`Tree.DefaultRenderLimit`, byte strings and text abbreviated, a `Node` shows its value
+  and not its original bytes). Regression tests: `DeepNestingSubmissionSuite` (f90dce57 through the
+  mempool, LocalTxSubmission, TxSubmission2 and a forged block), `DeepNestingSuite`,
+  `LocalTxSubmissionSuite`, `TxSubmission2Suite`.
+
 ### Fixed (B19)
 - `n` of a native script `script_n_of_k` may be negative and is a signed 64-bit integer, as the reference
   reads it (`TimelockMOf !Int`, CDDL `int`); the slots of `invalid_before` and `invalid_hereafter` are

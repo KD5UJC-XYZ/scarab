@@ -202,7 +202,6 @@ object MempoolState:
 
   private val limits = Cbor.Limits(
     maxInputBytes = 1048576,
-    maxDepth = 64,
     maxItems = 100000,
     maxStringBytes = 1048576
   )

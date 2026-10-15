@@ -203,6 +203,10 @@ class TxSubmission2Suite extends munit.FunSuite:
     assertEquals(exact.size, 65536)
     assertEquals(TxSubmission2.bodyId(exact), Right(id))
     assert(TxSubmission2.bodyId(Bytes(exact.value :+ 0.toByte)).isLeft)
-    val deep = hex("9fa0a0f5" + "81" * 34 + "00ff")
-    assert(TxSubmission2.bodyId(deep).isLeft)
+    // nesting is bounded by the transaction's size, not by a depth of its own (the reference has
+    // none): 30,000 levels fit the 64 KiB, while the item limit refuses more than it counts
+    val deep = hex("9fa0a0f5" + "81" * 30000 + "00ff")
+    assertEquals(TxSubmission2.bodyId(deep), TxSubmission2.bodyId(hex("9fa0a0f5f6ff")))
+    val tooMany = hex("9fa0a0f5" + "81" * 65535 + "00ff")
+    assert(tooMany.size > TxSubmission2.MaxOriginalBytes && TxSubmission2.bodyId(tooMany).isLeft)
   }

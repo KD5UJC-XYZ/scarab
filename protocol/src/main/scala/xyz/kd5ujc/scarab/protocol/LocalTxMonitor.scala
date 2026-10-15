@@ -26,7 +26,13 @@ import ProtocolWire.{attempt, bad, get}
 object LocalTxMonitor:
   val MiniProtocolId = 9
   val MaxMessageBytes = 1048576
-  private val wire = ProtocolWire.Limits(MaxMessageBytes, MaxMessageBytes, 32, 64, 65535)
+  private val wire = ProtocolWire.Limits(
+    MaxMessageBytes,
+    MaxMessageBytes,
+    32,
+    ProtocolWire.MaxItems,
+    ProtocolWire.MaxItems
+  )
   private val MaxWord32 = BigInt(0xffffffffL)
 
   enum Kind:

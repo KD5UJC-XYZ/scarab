@@ -23,10 +23,19 @@ private[protocol] object ProtocolWire:
       maxMessageBytes > 0 && maxMessageBytes <= 2500000 &&
         maxStringBytes >= 0 && maxStringBytes <= 2500000 &&
         maxHashBytes >= 0 && maxHashBytes <= 2500000 &&
-        maxDepth >= 0 && maxDepth <= 64 && maxItems > 0 && maxItems <= 65535 &&
+        maxDepth >= 0 && maxItems > 0 && maxItems <= 65535 &&
         maxCandidates >= 0 && maxCandidates <= 1024
   final case class Failure(message: String, incomplete: Boolean = false)
       extends RuntimeException(message)
+
+  /** The most items a message may hold. A level of nesting is an item, so this is also the deepest
+    * a transaction-carrying message may nest (the reference limits neither; the message size does),
+    * and the nesting is walked on the heap.
+    */
+  val MaxItems = 65535
+  private val IndefiniteArray = -1
+  private val IndefiniteKey = -2
+  private val IndefiniteValue = -3
   def bad(message: String): Nothing = throw Failure(message)
   def get[A](value: Either[String, A]): A = value.fold(bad, identity)
   def attempt[A](body: => A): Either[String, A] =
@@ -158,14 +167,44 @@ private[protocol] object ProtocolWire:
         catch case NonFatal(_) => bad("invalid UTF-8")
       pos += n
       n
+
+    /** Skip one item. The open containers are kept on the heap, not the stack, so a nesting of
+      * `maxDepth` levels (a level takes a byte, so the message size bounds it) cannot overflow the
+      * thread's stack. `pending` holds, for each open container, the children its parent still
+      * waits for; `remaining` is that count for the innermost one: a number of children, or
+      * [[IndefiniteArray]], [[IndefiniteKey]] or [[IndefiniteValue]].
+      */
     def skip(depth: Int): Unit =
-      if depth > limits.maxDepth then bad("CBOR depth limit exceeded")
+      val pending = scala.collection.mutable.ArrayBuffer.empty[Int]
+      var remaining = 1
+      while remaining != 0 || pending.nonEmpty do
+        if remaining == 0 then remaining = pending.remove(pending.size - 1)
+        else if (remaining == IndefiniteArray || remaining == IndefiniteKey) && peek == 255 then
+          read(); remaining = 0
+        else
+          if remaining > 0 then remaining -= 1
+          else if remaining == IndefiniteKey then remaining = IndefiniteValue
+          else if remaining == IndefiniteValue then remaining = IndefiniteKey
+          if depth + pending.size > limits.maxDepth then bad("CBOR depth limit exceeded")
+          opened() match
+            case Opened.Scalar => ()
+            case Opened.Container(children) =>
+              pending += remaining
+              remaining = children
+      end while
+
+    private enum Opened:
+      case Scalar
+      case Container(children: Int)
+
+    /** Read one item's head and its scalar payload; a container or tag is left open. */
+    private def opened(): Opened =
       count()
       val h = read()
       val major = h / 32
       val ai = h & 31
       major match
-        case 0 | 1 => argument(ai); ()
+        case 0 | 1 => argument(ai); Opened.Scalar
         case 2 | 3 =>
           if ai != 31 then { stringChunk(major, ai, limits.maxStringBytes); () }
           else
@@ -176,27 +215,21 @@ private[protocol] object ProtocolWire:
               if chunk / 32 != major || (chunk & 31) == 31 then bad("invalid string chunk")
               total += stringChunk(major, chunk & 31, limits.maxStringBytes - total)
             read(); ()
+          Opened.Scalar
         case 4 | 5 =>
           val multiplier = if major == 5 then 2 else 1
-          if ai == 31 then
-            while peek != 255 do
-              skip(depth + 1)
-              if multiplier == 2 then skip(depth + 1)
-            read(); ()
+          if ai == 31 then Opened.Container(if major == 5 then IndefiniteKey else IndefiniteArray)
           else
             val n = bounded(argument(ai), (limits.maxItems - items) / multiplier, "item")
-            var i = 0
-            while i < n do
-              skip(depth + 1)
-              if multiplier == 2 then skip(depth + 1)
-              i += 1
-        case 6 => argument(ai); skip(depth + 1)
-        case 7 =>
+            Opened.Container(n * multiplier)
+        case 6 => argument(ai); Opened.Container(1)
+        case _ =>
           ai match
             case 31 | 28 | 29 | 30 => bad("unexpected break or reserved simple value")
             case 24                => if read() < 32 then bad("invalid extended simple value")
             case 25 | 26 | 27      => argument(ai); ()
             case _                 => ()
+          Opened.Scalar
     def item(): Bytes =
       val start = pos
       skip(0)
