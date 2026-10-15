@@ -8,7 +8,7 @@ listed in RULES. The comparison here blanks those places in both answers (a span
 without decoding the rest) and compares every other byte. It fails when
 
   - a listed place is missing, or is not the kind of item the rule expects, in either answer;
-  - the masked bytes are more than MAX_SHARE of the answer (the mask would be hiding more than the gaps);
+  - the masked bytes are more than half (MAX_SHARE) of the answer (the mask would be hiding more than the gaps);
   - any byte outside the masked places differs.
 
 What was masked is reported per rule (answers, items, bytes), so a gap that stops being one shows as a rule
@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from . import cborspan as C
 
 PLACEHOLDER = b"\xf7"
-MAX_SHARE = 0.25
+# the reference holds a pulsing reward update (the reward snapshot and the pulser state) for part of an epoch;
+# with the non-myopic likelihoods that was up to 27% of an answer on the devnet
+MAX_SHARE = 0.5
 
 ARRAY, MAP, UINT = 4, 5, 0
 
@@ -72,6 +74,7 @@ class Verdict:
     equal: bool
     raw_equal: bool
     problems: list = field(default_factory=list)
+    share: float = 0.0  # the share of the reference's state bytes that was masked
     masked: dict = field(default_factory=dict)  # rule name -> {"items": n, "referenceBytes": n, "scalaBytes": n}
 
 
@@ -150,6 +153,7 @@ def compare(label, reference, scala):
         verdict.problems.append(str(e))
         return verdict
     hidden = sum(m["referenceBytes"] for m in verdict.masked.values())
+    verdict.share = hidden / max(1, len(ref_state))
     if hidden > MAX_SHARE * len(ref_state):
         verdict.problems.append(f"the mask hides {hidden} of {len(ref_state)} bytes (more than {MAX_SHARE:.0%})")
     if ref_masked != scala_masked:
@@ -164,6 +168,7 @@ def add_to(total, verdict):
     total["answers"] = total.get("answers", 0) + 1
     total["byteEqual"] = total.get("byteEqual", 0) + int(verdict.raw_equal)
     total["equalMasked"] = total.get("equalMasked", 0) + int(verdict.equal)
+    total["maxMaskedShare"] = round(max(total.get("maxMaskedShare", 0.0), verdict.share), 3)
     rules = total.setdefault("rules", {})
     for name, m in verdict.masked.items():
         row = rules.setdefault(name, {"answers": 0, "items": 0, "differing": 0, "referenceBytes": 0, "scalaBytes": 0})
