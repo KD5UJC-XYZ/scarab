@@ -3,12 +3,9 @@ package xyz.kd5ujc.scarab.node.ntc
 
 import io.circe.parser
 import java.nio.file.{Files, Path}
-import munit.ScalaCheckSuite
-import org.scalacheck.Gen
-import org.scalacheck.Prop.forAll
+import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   DRepRole,
@@ -16,89 +13,30 @@ import xyz.kd5ujc.scarab.ledger.state.{
   ProtVer,
   ShelleyBasedEra,
   SlotNo,
-  Sorted,
   Word64,
   WithOrigin
 }
-import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.node.MirrorCorpus
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.storage.haskell.state.{
-  HaskellStateCodecs,
-  NodeOrders,
-  Params,
-  StateGen,
-  Wire
-}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
 
 import HaskellStateCodecs.given
-import NodeOrders.given
 
-/** The Haskell ledger-state codec against `LedgerEncoders`, which is byte-proven against the
-  * reference node (the 763 node-to-client answers of the devnet soak). Where the two write the same
-  * thing they must write the same bytes:
+/** The node-to-client answers and the Haskell ledger-state codec, two paths to the same bytes. The
+  * answers are written from the node's own types ([[QueryAnswers]]); the mirror is the ledger-side
+  * conversion of the same state, written by the codec of the state file. Where a query asks for a
+  * piece of the state they must agree:
   *
-  *   - every shared piece, on generated values: the parameters, the governance records, the pool
-  *     parameters, the credentials and the rationals;
   *   - the reference's own answers (`fixtures/devnet/lsq/golden.json`) read and written again;
-  *   - the pieces of the state of a Conway node of the eras capture, converted by the ledger-side
-  *     mirror and written by the new codec, against the node's answer to the query that asks for
-  *     that piece.
+  *   - the pieces of the Conway states of the eras capture and of the two built on the last one
+  *     ([[NtcGolden]]), converted by the mirror and written by the codec, against the node's answer
+  *     to the query that asks for that piece.
+  *
+  * The bytes of the answers themselves are pinned by [[NtcGoldenSuite]] and `QueryGoldenSuite`.
   */
-class HaskellStateOverlapSuite extends ScalaCheckSuite:
-  private val E = LedgerEncoders
-
-  /** The version of a Conway state, which is where the old encoders write (protocol 9 and up). */
+class HaskellStateOverlapSuite extends FunSuite:
+  /** The version of a Conway state, which is where the answers are written (protocol 9 and up). */
   given conwayVersion: ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
-
-  private def old(body: CborOut => Unit): String = CborOut.build(body).hex
-
-  private def same[A](name: String, gen: Gen[A], codec: Codec[A])(
-      write: (CborOut, A) => Unit
-  ): Unit =
-    property(s"$name: the new codec writes what LedgerEncoders writes") {
-      forAll(gen) { a =>
-        assertEquals(codec.encodeUnchecked(a).hex, old(write(_, a)))
-        assertEquals(codec.check(a), None)
-      }
-    }
-
-  // ---- generated values
-
-  same("protocolParams (Conway)", StateGen.paramsOf[Conway], Params.conwayCodec)((w, p) =>
-    E.protocolParams(w, p)
-  )
-  same("poolParams", StateGen.poolParams, poolParams)((w, p) => E.poolParams(w, p))
-  same("committee", StateGen.committee, committee)((w, c) => E.committee(w, c))
-  same("constitution", StateGen.constitution, constitution)((w, c) => E.constitution(w, c))
-  same("anchor", StateGen.nodeAnchor, anchor)((w, a) => E.anchor(w, a))
-  same("govActionId", StateGen.govActionId, govActionId)((w, i) => E.govActionId(w, i))
-  same("govAction", StateGen.govAction, govAction)((w, a) => E.govAction(w, a))
-  same("proposalProcedure", StateGen.proposal, proposal)((w, p) => E.proposalProcedure(w, p))
-  same("govActionState", StateGen.govActionState, govActionState)((w, g) => E.govActionState(w, g))
-  same("prevIds (GovRelation)", StateGen.prevIds, prevIds)((w, p) => E.prevIds(w, p))
-  same("proposals", StateGen.proposals, proposals)((w, p) => E.proposals(w, p))
-  same("enactState", StateGen.enactState, enactState)((w, e) => E.enactState(w, e))
-  same("ratifyState", StateGen.ratifyState, ratifyState)((w, r) => E.ratifyState(w, r))
-  same("paramUpdate", StateGen.paramUpdate, paramUpdate)((w, u) => E.paramUpdate(w, u))
-  same("credential", StateGen.nodeCredential, nodeCredential)((w, c) => E.credential(w, c))
-  same("drep", StateGen.nodeDRep, nodeDRep)((w, d) => E.drep(w, d))
-  same("rewardAccount", StateGen.rewardAccount, rewardAccount)((w, a) => E.rewardAccount(w, a))
-  same("vote", StateGen.nodeVote, vote)((w, v) => E.vote(w, v))
-  same("nonce", Gen.oneOf(Nonce.Neutral, Nonce.Hash(Bytes(Vector.fill(32)(9.toByte)))), Wire.nonce)(
-    (w, n) => E.nonce(w, n)
-  )
-  same("unit interval", StateGen.unit, Wire.unitInterval)((w, r) => E.rational(w, r))
-  same("plain ratio (version 9)", StateGen.nonNegative, Wire.ratio)((w, r) => E.rational(w, r))
-
-  property("a set of credentials: tag 258 and the variable-length framing, in Haskell order") {
-    forAll(Gen.listOf(StateGen.nodeCredential).map(_.toSet)) { cs =>
-      assertEquals(
-        Wire.setOf(nodeCredential).encodeUnchecked(Sorted.set(cs)).hex,
-        old(E.set(_, cs, E.credentialOrdering)(E.credential))
-      )
-    }
-  }
 
   // ---- the reference's own answers
 
@@ -128,8 +66,6 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
     val bytes = result(answerOf("GetCurrentPParams"))
     val read = Params.conwayCodec.decodeBytes(bytes).fold(e => fail(e.render), identity)
     assertEquals(Params.conwayCodec.encodeUnchecked(read), bytes)
-    // and the old encoder agrees with both
-    assertEquals(old(w => E.protocolParams(w, read)), bytes.hex)
   }
 
   test("the reference's GetConstitution is read and written again byte for byte") {

@@ -1,9 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import cats.Order
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.node.ntc.LedgerEncoders as E
+import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.models.runtime.Codec
+import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellStateCodecs,
+  NodeOrders,
+  Params,
+  UtxoCodecs,
+  Versions,
+  Wire
+}
 
 /** The ledger's predicate-failure CBOR (`EncCBOR` of `ConwayLedgerPredFailure` and the rules it
   * nests), which `cardano-cli transaction submit` decodes to render a rejection.
@@ -39,19 +50,50 @@ object PredicateFailureCbor:
 
   // ---- helpers
 
-  private def list[A](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
-    E.listHead(w, xs.size)
-    xs.foreach(each(w, _))
-    E.end(w, xs.size)
+  /** The ledger values of a failure are written by the Haskell state codecs, at the version the
+    * reference writes the Conway era at; `W` is the failure's own writer.
+    */
+  private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
+  import NodeOrders.given
 
-  private def set[A](w: W, xs: Iterable[A], ordering: Ordering[A])(each: (W, A) => Unit): W =
-    E.set(w, xs, ordering)(each)
+  private def put[A](w: W, a: A)(using codec: Codec[A]): W = w.raw(codec.encodeUnchecked(a))
+
+  /** The codec of an item written by a function of the failure's writer. */
+  private def element[A](each: (W, A) => Unit): Codec[A] =
+    Wire.writeOnly("a failure item")((a, out) => out.raw(CborOut.build(each(_, a))))
+
+  private def list[A](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
+    put(w, xs.toVector)(using Wire.seqOf(element(each)))
+
+  private def set[A: Order](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
+    put(w, xs.toSet)(using Wire.sortedSetOf(element(each)))
+
+  private def map[K: Order, V](w: W, entries: Map[K, V])(
+      key: (W, K) => Unit,
+      value: (W, V) => Unit
+  ): W = put(w, entries)(using Wire.sortedMapOf(element(key), element(value)))
+
+  private def maybe[A](w: W, a: Option[A])(each: (W, A) => Unit): W =
+    put(w, a)(using Wire.strictMaybe(element(each)))
+
+  private def credential(w: W, c: Credential): W =
+    put(w, c)(using HaskellStateCodecs.nodeCredential)
+  private def txIn(w: W, i: TxIn): W = put(w, i)(using UtxoCodecs.txIn)
+  private def txOut(w: W, o: TxOut): W = put(w, o)(using UtxoCodecs.txOut)
+  private def rewardAccount(w: W, a: RewardAccount): W =
+    put(w, a)(using HaskellStateCodecs.rewardAccount)
+  private def govActionId(w: W, i: GovActionId): W =
+    put(w, i)(using HaskellStateCodecs.govActionId)
+  private def govAction(w: W, a: GovAction): W = put(w, a)(using HaskellStateCodecs.govAction)
+  private def proposalProcedure(w: W, p: Proposal): W =
+    put(w, p)(using HaskellStateCodecs.proposal)
+  private def exUnits(w: W, e: ExUnits): W = put(w, e)(using Params.exUnits)
 
   private def hash(w: W, h: Bytes): Unit = { w.bytes(h); () }
 
-  private def hashSet(w: W, hs: Set[Bytes]): W = set(w, hs, E.bytesOrdering)(hash)
+  private def hashSet(w: W, hs: Set[Bytes]): W = set(w, hs)(hash)
 
-  private def maybeHash(w: W, h: Option[Bytes]): W = E.maybe(w, h)((k, x) => k.bytes(x))
+  private def maybeHash(w: W, h: Option[Bytes]): W = maybe(w, h)((k, x) => k.bytes(x))
 
   /** A mismatch as a group: supplied, then expected. */
   private def group[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
@@ -75,13 +117,10 @@ object PredicateFailureCbor:
     list(w, vs) { case (k, (v, id)) =>
       k.array(2)
       voter(k, v)
-      E.govActionId(k, id)
+      govActionId(k, id)
     }
 
   private def protVer(w: W, v: (BigInt, BigInt)): Unit = { w.array(2).uint(v._1).uint(v._2); () }
-
-  private val txInOrdering = E.txInOrdering
-  private val accountOrdering = E.rewardAccountOrdering
 
   // ---- LEDGER
 
@@ -98,11 +137,11 @@ object PredicateFailureCbor:
     case PredicateFailure.Mempool(text) => w.array(2).uint(7).text(text)
     case PredicateFailure.WithdrawalsMissingAccounts(ws) =>
       w.array(2).uint(8)
-      E.map(w, ws, accountOrdering)(E.rewardAccount, coin)
+      map(w, ws)(rewardAccount, coin)
     case PredicateFailure.IncompleteWithdrawals(ms) =>
       w.array(2).uint(9)
-      E.map(w, ms, accountOrdering)(
-        E.rewardAccount,
+      map(w, ms)(
+        rewardAccount,
         (k, m) => { k.array(2); group(k, m)(coin) }
       )
     case PredicateFailure.Unmapped(rule, detail) => w.array(2).uint(7).text(s"$rule: $detail")
@@ -133,7 +172,7 @@ object PredicateFailureCbor:
     case UtxowFailure.PPViewHashesDontMatch(m) =>
       w.array(3).uint(13); group(w, m)(maybeHash(_, _))
     case UtxowFailure.UnspendableUTxONoDatumHash(ins) =>
-      w.array(2).uint(14); set(w, ins, txInOrdering)(E.txIn)
+      w.array(2).uint(14); set(w, ins)(txIn)
     case UtxowFailure.ExtraRedeemers(ps) =>
       w.array(2).uint(15)
       list(w, ps) { case (k, (tag, ix)) => k.array(2).uint(tag).uint(ix) }
@@ -144,25 +183,25 @@ object PredicateFailureCbor:
     * `[tag, item]`. A certifying purpose carries the certificate, which is not re-encoded here.
     */
   private def item(w: W, p: Purpose): Unit = p match
-    case Purpose.Spending(_, input, _)  => w.array(2).uint(0); E.txIn(w, input)
+    case Purpose.Spending(_, input, _)  => w.array(2).uint(0); txIn(w, input)
     case Purpose.Minting(_, policy)     => w.array(2).uint(1).bytes(policy)
     case Purpose.Certifying(_, _)       => w.array(2).uint(2); w.nul
-    case Purpose.Rewarding(_, account)  => w.array(2).uint(3); E.rewardAccount(w, account)
+    case Purpose.Rewarding(_, account)  => w.array(2).uint(3); rewardAccount(w, account)
     case Purpose.Voting(_, v)           => w.array(2).uint(4); voter(w, v)
-    case Purpose.Proposing(_, proposal) => w.array(2).uint(5); E.proposalProcedure(w, proposal)
+    case Purpose.Proposing(_, proposal) => w.array(2).uint(5); proposalProcedure(w, proposal)
 
   // ---- UTXO
 
-  private def value(w: W, v: Value): Unit = { E.value(w, v); () }
+  private def value(w: W, v: Value): Unit = { put(w, v)(using UtxoCodecs.value); () }
 
   private def utxo(w: W, f: UtxoFailure): Unit = f match
     case UtxoFailure.Utxos(u)       => w.array(2).uint(0); utxos(w, u)
-    case UtxoFailure.BadInputs(ins) => w.array(2).uint(1); set(w, ins, txInOrdering)(E.txIn)
+    case UtxoFailure.BadInputs(ins) => w.array(2).uint(1); set(w, ins)(txIn)
     case UtxoFailure.OutsideValidityInterval(notBefore, before, slot) =>
       w.array(3).uint(2)
       w.array(2)
-      E.maybe(w, notBefore)((k, s) => k.uint(s))
-      E.maybe(w, before)((k, s) => k.uint(s))
+      maybe(w, notBefore)((k, s) => k.uint(s))
+      maybe(w, before)((k, s) => k.uint(s))
       w.uint(slot)
     case UtxoFailure.MaxTxSize(m)         => w.array(3).uint(3); group(w, m)(coin)
     case UtxoFailure.InputSetEmpty        => w.array(1).uint(4)
@@ -170,24 +209,24 @@ object PredicateFailureCbor:
     case UtxoFailure.ValueNotConserved(m) => w.array(3).uint(6); group(w, m)(value)
     case UtxoFailure.WrongNetwork(expected, addresses) =>
       w.array(3).uint(7).uint(expected)
-      set(w, addresses, E.bytesOrdering)((k, a) => k.bytes(a))
+      set(w, addresses)((k, a) => k.bytes(a))
     case UtxoFailure.WrongNetworkWithdrawal(expected, accounts) =>
       w.array(3).uint(8).uint(expected)
-      set(w, accounts, accountOrdering)(E.rewardAccount)
-    case UtxoFailure.OutputTooSmall(outs)            => w.array(2).uint(9); list(w, outs)(E.txOut)
-    case UtxoFailure.OutputBootAddrAttrsTooBig(outs) => w.array(2).uint(10); list(w, outs)(E.txOut)
+      set(w, accounts)(rewardAccount)
+    case UtxoFailure.OutputTooSmall(outs)            => w.array(2).uint(9); list(w, outs)(txOut)
+    case UtxoFailure.OutputBootAddrAttrsTooBig(outs) => w.array(2).uint(10); list(w, outs)(txOut)
     case UtxoFailure.OutputTooBig(outs) =>
       w.array(2).uint(11)
       list(w, outs) { case (k, (size, max, out)) =>
-        k.array(3).uint(size).uint(max); E.txOut(k, out)
+        k.array(3).uint(size).uint(max); txOut(k, out)
       }
     case UtxoFailure.InsufficientCollateral(balance, required) =>
       w.array(3).uint(12).int(balance).uint(required)
     case UtxoFailure.ScriptsNotPaid(outs) =>
       w.array(2).uint(13)
-      E.map(w, outs.toVector, txInOrdering)(E.txIn, E.txOut)
+      map(w, outs)(txIn, txOut)
     case UtxoFailure.ExUnitsTooBig(m) =>
-      w.array(3).uint(14); swapped(w, m)(E.exUnits(_, _))
+      w.array(3).uint(14); swapped(w, m)(exUnits(_, _))
     case UtxoFailure.CollateralContainsNonAda(v) => w.array(2).uint(15); value(w, v)
     case UtxoFailure.WrongNetworkInTxBody(m)     => w.array(3).uint(16); swapped(w, m)(small)
     case UtxoFailure.OutsideForecast(slot)       => w.array(2).uint(17).uint(slot)
@@ -197,9 +236,9 @@ object PredicateFailureCbor:
       w.array(3).uint(20).int(provided).uint(declared)
     case UtxoFailure.BabbageOutputTooSmall(outs) =>
       w.array(2).uint(21)
-      list(w, outs) { case (k, (out, min)) => k.array(2); E.txOut(k, out); k.uint(min) }
+      list(w, outs) { case (k, (out, min)) => k.array(2); txOut(k, out); k.uint(min) }
     case UtxoFailure.BabbageNonDisjointRefInputs(ins) =>
-      w.array(2).uint(22); list(w, ins)(E.txIn)
+      w.array(2).uint(22); list(w, ins)(txIn)
 
   private def utxos(w: W, f: UtxosFailure): Unit = f match
     case UtxosFailure.ValidationTagMismatch(isValid, failures) =>
@@ -215,7 +254,7 @@ object PredicateFailureCbor:
   private def certs(w: W, f: CertsFailure): Unit = f match
     case CertsFailure.WithdrawalsNotInRewards(ws) =>
       w.array(2).uint(0)
-      E.map(w, ws, accountOrdering)(E.rewardAccount, coin)
+      map(w, ws)(rewardAccount, coin)
     case CertsFailure.Cert(c) =>
       w.array(2).uint(1)
       c match
@@ -225,10 +264,10 @@ object PredicateFailureCbor:
 
   private def deleg(w: W, f: DelegFailure): Unit = f match
     case DelegFailure.IncorrectDeposit(c)                 => w.array(2).uint(1).uint(c)
-    case DelegFailure.StakeKeyRegistered(c)               => w.array(2).uint(2); E.credential(w, c)
-    case DelegFailure.StakeKeyNotRegistered(c)            => w.array(2).uint(3); E.credential(w, c)
+    case DelegFailure.StakeKeyRegistered(c)               => w.array(2).uint(2); credential(w, c)
+    case DelegFailure.StakeKeyNotRegistered(c)            => w.array(2).uint(3); credential(w, c)
     case DelegFailure.StakeKeyHasNonZeroAccountBalance(c) => w.array(2).uint(4).uint(c)
-    case DelegFailure.DelegateeDRepNotRegistered(c)       => w.array(2).uint(5); E.credential(w, c)
+    case DelegFailure.DelegateeDRepNotRegistered(c)       => w.array(2).uint(5); credential(w, c)
     case DelegFailure.DelegateeStakePoolNotRegistered(p)  => w.array(2).uint(6).bytes(p)
     case DelegFailure.DepositIncorrect(m) => w.array(2).uint(7).array(2); group(w, m)(coin)
     case DelegFailure.RefundIncorrect(m)  => w.array(2).uint(8).array(2); group(w, m)(coin)
@@ -244,44 +283,44 @@ object PredicateFailureCbor:
       w.array(3).uint(6).bytes(p).bytes(vrf)
 
   private def govCert(w: W, f: GovCertFailure): Unit = f match
-    case GovCertFailure.DRepAlreadyRegistered(c)          => w.array(2).uint(0); E.credential(w, c)
-    case GovCertFailure.DRepNotRegistered(c)              => w.array(2).uint(1); E.credential(w, c)
+    case GovCertFailure.DRepAlreadyRegistered(c)          => w.array(2).uint(0); credential(w, c)
+    case GovCertFailure.DRepNotRegistered(c)              => w.array(2).uint(1); credential(w, c)
     case GovCertFailure.DRepIncorrectDeposit(m)           => w.array(3).uint(2); group(w, m)(coin)
-    case GovCertFailure.CommitteeHasPreviouslyResigned(c) => w.array(2).uint(3); E.credential(w, c)
+    case GovCertFailure.CommitteeHasPreviouslyResigned(c) => w.array(2).uint(3); credential(w, c)
     case GovCertFailure.DRepIncorrectRefund(m)            => w.array(3).uint(4); group(w, m)(coin)
-    case GovCertFailure.CommitteeIsUnknown(c)             => w.array(2).uint(5); E.credential(w, c)
+    case GovCertFailure.CommitteeIsUnknown(c)             => w.array(2).uint(5); credential(w, c)
 
   // ---- GOV
 
   private def gov(w: W, f: GovFailure): Unit = f match
     case GovFailure.GovActionsDoNotExist(ids) =>
-      w.array(2).uint(0); list(w, ids)(E.govActionId)
-    case GovFailure.MalformedProposal(a) => w.array(2).uint(1); E.govAction(w, a)
+      w.array(2).uint(0); list(w, ids)(govActionId)
+    case GovFailure.MalformedProposal(a) => w.array(2).uint(1); govAction(w, a)
     case GovFailure.ProposalProcedureNetworkIdMismatch(account, network) =>
-      w.array(3).uint(2); E.rewardAccount(w, account); w.uint(network)
+      w.array(3).uint(2); rewardAccount(w, account); w.uint(network)
     case GovFailure.TreasuryWithdrawalsNetworkIdMismatch(accounts, network) =>
-      w.array(3).uint(3); set(w, accounts, accountOrdering)(E.rewardAccount); w.uint(network)
+      w.array(3).uint(3); set(w, accounts)(rewardAccount); w.uint(network)
     case GovFailure.ProposalDepositIncorrect(m) => w.array(3).uint(4); group(w, m)(coin)
     case GovFailure.DisallowedVoters(vs)        => w.array(2).uint(5); votes(w, vs)
     case GovFailure.ConflictingCommitteeUpdate(members) =>
-      w.array(2).uint(6); set(w, members, E.credentialOrdering)(E.credential)
+      w.array(2).uint(6); set(w, members)(credential)
     case GovFailure.ExpirationEpochTooSmall(members) =>
       w.array(2).uint(7)
-      E.map(w, members.toVector, E.credentialOrdering)(E.credential, (k, e) => k.uint(e))
-    case GovFailure.InvalidPrevGovActionId(p)    => w.array(2).uint(8); E.proposalProcedure(w, p)
+      map(w, members)(credential, (k, e) => k.uint(e))
+    case GovFailure.InvalidPrevGovActionId(p)    => w.array(2).uint(8); proposalProcedure(w, p)
     case GovFailure.VotingOnExpiredGovAction(vs) => w.array(2).uint(9); votes(w, vs)
     case GovFailure.ProposalCantFollow(previous, m) =>
-      w.array(4).uint(10); E.maybe(w, previous)(E.govActionId); group(w, m)(protVer)
+      w.array(4).uint(10); maybe(w, previous)(govActionId); group(w, m)(protVer)
     case GovFailure.InvalidGuardrailsScriptHash(supplied, expected) =>
       w.array(3).uint(11); maybeHash(w, supplied); maybeHash(w, expected)
     case GovFailure.DisallowedProposalDuringBootstrap(p) =>
-      w.array(2).uint(12); E.proposalProcedure(w, p)
+      w.array(2).uint(12); proposalProcedure(w, p)
     case GovFailure.DisallowedVotesDuringBootstrap(vs) => w.array(2).uint(13); votes(w, vs)
     case GovFailure.VotersDoNotExist(vs)       => w.array(2).uint(14); list(w, vs)(voter(_, _))
-    case GovFailure.ZeroTreasuryWithdrawals(a) => w.array(2).uint(15); E.govAction(w, a)
+    case GovFailure.ZeroTreasuryWithdrawals(a) => w.array(2).uint(15); govAction(w, a)
     case GovFailure.ProposalReturnAccountDoesNotExist(a) =>
-      w.array(2).uint(16); E.rewardAccount(w, a)
+      w.array(2).uint(16); rewardAccount(w, a)
     case GovFailure.TreasuryWithdrawalReturnAccountsDoNotExist(as) =>
-      w.array(2).uint(17); list(w, as)(E.rewardAccount)
+      w.array(2).uint(17); list(w, as)(rewardAccount)
     case GovFailure.UnelectedCommitteeVoters(cs) =>
-      w.array(2).uint(18); list(w, cs)(E.credential)
+      w.array(2).uint(18); list(w, cs)(credential)

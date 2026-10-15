@@ -11,9 +11,17 @@ import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.HardForkConfig
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.state.{FuturePParams, MirrorEnv}
+import xyz.kd5ujc.scarab.ledger.state.{FuturePParams, MirrorEnv, ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.models.runtime.{Codec, Writer}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellStateCodecs,
+  Params,
+  Record,
+  UtxoCodecs,
+  Versions,
+  Wire
+}
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.node.ntc.LedgerEncoders as E
 
 /** What the answers to a query depend on besides the acquired state: the chain's static
   * configuration and the era transitions this node has seen.
@@ -34,6 +42,24 @@ final case class QueryEnv(
 /** The acquired state: the point it was taken at, the block number there and the node state. */
 final case class QueryView(point: Point, blockNo: Option[BigInt], state: NodeState):
   def ledger: LedgerState = state.ledger
+
+  // What several queries on the acquired state share, taken once per view.
+
+  /** The pulser the governance state reports ([[ConwayEpoch.reportedPulser]]). */
+  lazy val pulsed: (PulsingSnapshot, RatifyState) = ConwayEpoch.reportedPulser(ledger)
+
+  /** DRep state as the queries report it: expiries brought forward by the dormant epochs. */
+  lazy val drepStates: Map[Credential, DRepState] =
+    val s = ledger
+    if s.dormantEpochs == 0 then s.dreps
+    else
+      s.dreps.view.mapValues { d =>
+        val actual = d.expiry + s.dormantEpochs
+        if actual < s.epoch then d else d.copy(expiry = actual)
+      }.toMap
+
+  /** The current stake as a snapshot, which `GetStakeDistribution2` reports. */
+  lazy val currentStake: Snapshot = Stake.snapshot(ledger)
 
 /** Pure answers to node-to-client queries. `answer` returns the result item of the `MsgResult`
   * (`None` for a query this node does not answer; the connection then ends, as a decode failure
@@ -145,25 +171,45 @@ object QueryAnswers:
 
   // ---- the ledger queries
 
-  @unused private def coin(w: CborOut, c: BigInt): Unit = w.uint(c)
+  /** The version the answers are written at: the lowest of the Conway era, which is how the
+    * reference encodes them (`Versions.eraLow`): rationals under tag 30, sets under tag 258.
+    */
+  private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
 
-  private def pulsed(view: QueryView): (PulsingSnapshot, RatifyState) =
-    ConwayEpoch.reportedPulser(view.ledger)
+  import HaskellStateCodecs.{
+    anchor,
+    committee,
+    constitution,
+    futurePParams,
+    govActionState,
+    nodeCredential,
+    nodeDRep,
+    nodeDRepState,
+    poolParams,
+    proposals as proposalStore,
+    pulsingSnapshot,
+    ratifyState
+  }
+  import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders.given
 
-  /** DRep state as the query reports it: expiries brought forward by the dormant epochs. */
-  private def drepStates(s: LedgerState): Map[Credential, DRepState] =
-    if s.dormantEpochs == 0 then s.dreps
-    else
-      s.dreps.view.mapValues { d =>
-        val actual = d.expiry + s.dormantEpochs
-        if actual < s.epoch then d else d.copy(expiry = actual)
-      }.toMap
+  // the codecs of the answers: the node's own types, written in the ledger's orders
 
-  private def drepState(w: CborOut, d: DRepState): Unit =
-    w.array(4).uint(d.expiry)
-    E.maybe(w, d.anchor)(E.anchor)
-    w.uint(d.deposit)
-    E.set(w, d.delegs, E.credentialOrdering)(E.credential)
+  private val coin = Wire.word(64)
+  private val poolId = Wire.hash(28)
+  private val protocolParams = Params.conwayCodec
+  private val pools = Wire.sortedMapOf(poolId, poolParams)
+
+  /** The bytes of an answer, or none when its value is outside what the Haskell type holds. */
+  extension [A](codec: Codec[A]) private def answer(a: A): Option[Bytes] = codec.write(a).toOption
+
+  /** A pool's share of the stake: its ratio of the total, its stake and its VRF key hash. */
+  private final case class PoolShare(ratio: Rational, stake: BigInt, vrf: Bytes)
+
+  private val poolShare: Codec[PoolShare] =
+    Record.of[PoolShare]((Wire.ratio, coin, Wire.hash(32)))
+
+  private val poolDistribution: Codec[(Map[Bytes, PoolShare], BigInt)] =
+    Record.of[(Map[Bytes, PoolShare], BigInt)]((Wire.sortedMapOf(poolId, poolShare), coin))
 
   private def restrict[K, V](m: Map[K, V], keys: Set[K]): Map[K, V] =
     if keys.isEmpty then m else m.filter { case (k, _) => keys(k) }
@@ -179,161 +225,134 @@ object QueryAnswers:
   ): Option[Bytes] =
     val s = view.ledger
     import LedgerQuery.*
-    def build(f: CborOut => Unit): Option[Bytes] = Some(CborOut.build(f(_)))
     q match
-      case GetLedgerTip       => build(point(_, view.point))
-      case GetEpochNo         => build(_.uint(s.epoch))
-      case GetCurrentPParams  => build(E.protocolParams(_, s.params))
+      case GetLedgerTip       => Some(CborOut.build(point(_, view.point)))
+      case GetEpochNo         => coin.answer(s.epoch)
+      case GetCurrentPParams  => protocolParams.answer(s.params)
       case GetGenesisConfig   => GenesisConfig.encode(env.shelleyGenesis).toOption
-      case DebugChainDepState => build(chainDepState(_, view))
+      case DebugChainDepState => chainDepState(view)
       case DebugEpochState =>
         MirrorAnswers.epochState(env.consensusMirror, view).toOption
       case DebugNewEpochState =>
         MirrorAnswers.newEpochState(env.consensusMirror, view).toOption
-      case GetUTxOWhole => build(E.utxo(_, utxo))
+      case GetUTxOWhole => UtxoCodecs.utxo.answer(utxo)
       case GetUTxOByAddress(addresses) =>
-        build(E.utxo(_, utxo.filter { case (_, o) => addresses(o.address.raw) }))
+        UtxoCodecs.utxo.answer(utxo.filter { case (_, o) => addresses(o.address.raw) })
       case GetUTxOByTxIn(inputs) =>
-        build(E.utxo(_, utxo.filter { case (i, _) => inputs(i) }))
+        UtxoCodecs.utxo.answer(utxo.filter { case (i, _) => inputs(i) })
       case GetCBOR(inner) =>
         ledgerAnswer(env, view, utxo, inner).map(r => CborOut.build(_.tag(24).bytes(r)))
       case GetFilteredDelegationsAndRewardAccounts(credentials) =>
         val accounts = restrictAlways(s.accounts, credentials)
-        build { w =>
-          w.array(2)
-          E.map(
-            w,
-            accounts.collect { case (c, a) if a.pool.isDefined => c -> a.pool.get }.toVector,
-            E.credentialOrdering
-          )(
-            E.credential,
-            (k, p) => k.bytes(p)
+        delegationsAndRewards.answer(
+          (
+            accounts.collect { case (c, Account(_, _, Some(pool), _)) => c -> pool },
+            accounts.map { case (c, a) => c -> a.balance }
           )
-          E.map(w, accounts.map { case (c, a) => c -> a.balance }.toVector, E.credentialOrdering)(
-            E.credential,
-            (k, b) => k.uint(b)
-          )
-        }
+        )
       case GetStakePools =>
-        build(E.set(_, s.pools.keys, E.bytesOrdering, variable = false)((k, h) => k.bytes(h)))
-      case GetStakePoolParams(pools) =>
-        build(
-          E.map(
-            _,
-            restrictAlways(s.pools, pools).map { case (id, p) => id -> p.params }.toVector,
-            E.bytesOrdering
-          )(
-            (k, h) => k.bytes(h),
-            E.poolParams
+        Wire.definiteSetOf(poolId).answer(s.pools.keySet)
+      case GetStakePoolParams(ids) =>
+        pools.answer(restrictAlways(s.pools, ids).map { case (id, p) => id -> p.params })
+      case GetPoolState(ids) =>
+        def pick[V](m: Map[Bytes, V]): Map[Bytes, V] = ids.fold(m)(restrictAlways(m, _))
+        poolState.answer(
+          (
+            pick(s.pools).map { case (id, p) => id -> p.params },
+            pick(s.futurePools),
+            pick(s.retiring),
+            pick(s.pools).map { case (id, p) => id -> p.deposit }
           )
         )
-      case GetPoolState(pools) =>
-        def pick[V](m: Map[Bytes, V]): Map[Bytes, V] = pools.fold(m)(restrictAlways(m, _))
-        build { w =>
-          w.array(4)
-          E.map(w, pick(s.pools).map { case (id, p) => id -> p.params }.toVector, E.bytesOrdering)(
-            (k, h) => k.bytes(h),
-            E.poolParams
-          )
-          E.map(w, pick(s.futurePools).toVector, E.bytesOrdering)(
-            (k, h) => k.bytes(h),
-            E.poolParams
-          )
-          E.map(w, pick(s.retiring).toVector, E.bytesOrdering)(
-            (k, h) => k.bytes(h),
-            (k, e) => k.uint(e)
-          )
-          E.map(w, pick(s.pools).map { case (id, p) => id -> p.deposit }.toVector, E.bytesOrdering)(
-            (k, h) => k.bytes(h),
-            (k, d) => k.uint(d)
-          )
-        }
-      case GetStakeSnapshots(pools) => build(stakeSnapshots(_, s, pools))
+      case GetStakeSnapshots(ids) => stakeSnapshots.answer(stakeSnapshotsOf(s, ids))
       case GetStakeDelegDeposits(credentials) =>
-        build(
-          E.map(
-            _,
-            restrict(s.accounts, credentials).map { case (c, a) => c -> a.deposit }.toVector,
-            E.credentialOrdering
-          )(
-            E.credential,
-            (k, d) => k.uint(d)
-          )
-        )
-      case GetConstitution => build(E.constitution(_, s.gov.constitution))
-      case GetGovState     => build(govState(_, env, view))
+        Wire
+          .sortedMapOf(nodeCredential, coin)
+          .answer(restrict(s.accounts, credentials).map { case (c, a) => c -> a.deposit })
+      case GetConstitution => constitution.answer(s.gov.constitution)
+      case GetGovState     => govState.answer(govStateOf(env, view))
       case GetDRepState(credentials) =>
-        build(
-          E.map(_, restrict(drepStates(s), credentials).toVector, E.credentialOrdering)(
-            E.credential,
-            drepState
-          )
-        )
+        Wire
+          .sortedMapOf(nodeCredential, nodeDRepState)
+          .answer(restrict(view.drepStates, credentials))
       case GetDRepStakeDistr(dreps) =>
-        build(
-          E.map(_, restrict(pulsed(view)._1.drepDistr, dreps).toVector, E.drepOrdering)(
-            E.drep,
-            (k, c) => k.uint(c)
-          )
-        )
+        Wire.sortedMapOf(nodeDRep, coin).answer(restrict(view.pulsed._1.drepDistr, dreps))
       case GetCommitteeMembersState(cold, hot, statuses) =>
-        build(committeeMembersState(_, view, cold, hot, statuses))
+        committeeMembers.answer(committeeMembersState(view, cold, hot, statuses))
       case GetFilteredVoteDelegatees(credentials) =>
-        build(
-          E.map(
-            _,
-            restrict(s.accounts, credentials).collect {
-              case (c, a) if a.drep.isDefined => c -> a.drep.get
-            }.toVector,
-            E.credentialOrdering
-          )(E.credential, E.drep)
-        )
+        Wire
+          .sortedMapOf(nodeCredential, nodeDRep)
+          .answer(restrict(s.accounts, credentials).collect { case (c, Account(_, _, _, Some(d))) =>
+            c -> d
+          })
       case GetAccountState =>
-        build(_.array(2).uint(s.treasury).uint(s.reserves))
-      case GetSPOStakeDistr(pools) =>
-        build(
-          E.map(_, restrict(pulsed(view)._1.poolDistr, pools).toVector, E.bytesOrdering)(
-            (k, h) => k.bytes(h),
-            (k, c) => k.uint(c)
-          )
-        )
+        Record.of[(BigInt, BigInt)]((coin, coin)).answer((s.treasury, s.reserves))
+      case GetSPOStakeDistr(ids) =>
+        Wire.sortedMapOf(poolId, coin).answer(restrict(view.pulsed._1.poolDistr, ids))
       case GetProposals(ids) =>
-        val all = pulsed(view)._1.proposals
-        val chosen = if ids.isEmpty then all else all.filter(g => ids(g.id))
-        build { w =>
-          E.listHead(w, chosen.size)
-          chosen.foreach(E.govActionState(w, _))
-          E.end(w, chosen.size)
-        }
-      case GetRatifyState => build(E.ratifyState(_, pulsed(view)._2))
+        val all = view.pulsed._1.proposals
+        Wire.seqOf(govActionState).answer(if ids.isEmpty then all else all.filter(g => ids(g.id)))
+      case GetRatifyState => ratifyState.answer(view.pulsed._2)
       case GetFuturePParams =>
-        build(E.maybe(_, futureParams(env, view))(E.protocolParams))
-      case QueryStakePoolDefaultVote(pool) => build(defaultVote(_, s, pool))
-      case GetPoolDistr2(pools)            => build(poolDistr(_, s.poolDistribution, pools, None))
-      case GetStakeDistribution2           =>
+        Wire.strictMaybe(protocolParams).answer(futureParams(env, view))
+      case QueryStakePoolDefaultVote(pool) => Codec.intRange(0, 2).answer(defaultVote(s, pool))
+      case GetPoolDistr2(ids) =>
+        poolDistribution.answer(poolDistr(s.poolDistribution, ids, None))
+      case GetStakeDistribution2 =>
         // the current stake (not a snapshot), as a fraction of the lovelace in circulation
-        build(poolDistr(_, Stake.snapshot(s), None, Some(env.maxSupply - s.reserves)))
+        poolDistribution.answer(
+          poolDistr(view.currentStake, None, Some(env.maxSupply - s.reserves))
+        )
       case GetMaxMajorProtocolVersion =>
-        build(_.uint(env.forks.maxMajorProtVer))
-      case GetDRepDelegations(dreps) => build(drepDelegations(_, s, dreps))
-      case _                         => None
+        coin.answer(BigInt(env.forks.maxMajorProtVer))
+      case GetDRepDelegations(dreps) =>
+        Wire
+          .sortedMapOf(nodeDRep, Wire.sortedSetOf(nodeCredential))
+          .answer(drepDelegations(s, dreps))
+      case _ => None
+
+  private val delegationsAndRewards: Codec[(Map[Credential, Bytes], Map[Credential, BigInt])] =
+    Record.of[(Map[Credential, Bytes], Map[Credential, BigInt])](
+      (Wire.sortedMapOf(nodeCredential, poolId), Wire.sortedMapOf(nodeCredential, coin))
+    )
+
+  /** `QueryPoolState`: the pools' parameters, their future parameters, their retirements and their
+    * deposits.
+    */
+  private val poolState: Codec[
+    (Map[Bytes, PoolParams], Map[Bytes, PoolParams], Map[Bytes, BigInt], Map[Bytes, BigInt])
+  ] =
+    Record.of[
+      (Map[Bytes, PoolParams], Map[Bytes, PoolParams], Map[Bytes, BigInt], Map[Bytes, BigInt])
+    ]((pools, pools, Wire.sortedMapOf(poolId, coin), Wire.sortedMapOf(poolId, coin)))
 
   /** `PraosState` as `Serialise` writes it: a version tag, then the last slot, the operational
     * certificate counters and the six nonces.
     */
-  private def chainDepState(w: CborOut, view: QueryView): CborOut =
+  private def chainDepState(view: QueryView): Option[Bytes] =
     val p = view.state.praos
-    w.array(2).uint(0).array(8)
-    view.point match
-      case Point.Block(slot, _) => w.array(2).uint(1).uint(slot.value)
-      case Point.Origin         => w.array(1).uint(0)
-    E.map(w, p.counters.toVector, E.bytesOrdering, variable = false)(
-      (k, h) => k.bytes(h),
-      (k, n) => k.uint(n)
-    )
-    List(p.evolving, p.candidate, p.epochNonce, p.previousEpochNonce, p.lab, p.lastEpochBlock)
-      .foreach(E.nonce(w, _))
-    w
+    val counters = Wire.definiteMapOf(poolId, coin)
+    Some(build { w =>
+      w.arrayHead(2)
+      w.uint(0L)
+      w.arrayHead(8)
+      view.point match
+        case Point.Block(slot, _) =>
+          w.arrayHead(2)
+          w.uint(1L)
+          w.uint(slot.value)
+        case Point.Origin =>
+          w.arrayHead(1)
+          w.uint(0L)
+      counters.encode(p.counters, w)
+      List(p.evolving, p.candidate, p.epochNonce, p.previousEpochNonce, p.lab, p.lastEpochBlock)
+        .foreach(Wire.nonce.encode(_, w))
+    })
+
+  private def build(write: Writer => Unit): Bytes =
+    val w = new Writer
+    write(w)
+    w.result
 
   /** `FuturePParams` of the governance state (the mirror's [[FuturePParams]]): nothing before the
     * first epoch boundary; after it `PotentialPParamsUpdate` right after the block that crossed a
@@ -364,168 +383,231 @@ object QueryAnswers:
   private def futureParams(env: QueryEnv, view: QueryView): Option[ProtocolParams] =
     future(env, view).nextParams
 
-  private def defaultVote(w: CborOut, s: LedgerState, pool: Bytes): CborOut =
-    // DefaultNo (0), DefaultAbstain (1) or DefaultNoConfidence (2), by the DRep the pool's reward
-    // account delegates to.
-    val vote = s.pools.get(pool).flatMap { p =>
+  /** The governance state (`ConwayGovState`) as `GetGovState` answers it: the proposals, the
+    * committee, the constitution, the current, previous and future parameters, and the completed
+    * pulser.
+    */
+  private type GovAnswer = (
+      Proposals,
+      Option[Committee],
+      Constitution,
+      ProtocolParams,
+      ProtocolParams,
+      FuturePParams,
+      (PulsingSnapshot, RatifyState)
+  )
+
+  private val govState: Codec[GovAnswer] =
+    Record.of[GovAnswer](
+      (
+        proposalStore,
+        Wire.strictMaybe(committee),
+        constitution,
+        protocolParams,
+        protocolParams,
+        futurePParams(protocolParams),
+        Record.of[(PulsingSnapshot, RatifyState)]((pulsingSnapshot, ratifyState))
+      )
+    )
+
+  private def govStateOf(env: QueryEnv, view: QueryView): GovAnswer =
+    val s = view.ledger
+    (
+      s.gov.proposals,
+      s.gov.committee,
+      s.gov.constitution,
+      s.params,
+      ConwayEpoch.reportedPrevious(s),
+      future(env, view),
+      view.pulsed
+    )
+
+  /** The default vote of a pool: DefaultNo (0), DefaultAbstain (1) or DefaultNoConfidence (2), by
+    * the DRep the pool's reward account delegates to.
+    */
+  private def defaultVote(s: LedgerState, pool: Bytes): Int =
+    s.pools.get(pool).flatMap { p =>
       s.accounts.get(p.params.rewardAccount.credential).flatMap(_.drep)
     } match
       case Some(DRep.AlwaysAbstain)      => 1
       case Some(DRep.AlwaysNoConfidence) => 2
       case _                             => 0
-    w.uint(vote)
 
   /** `queryDRepDelegations`: for a non-empty set of registered DReps their reverse delegation sets;
     * otherwise (an empty set, or a set naming always-abstain or always-no-confidence) the accounts
     * grouped by the DRep they delegate to, restricted to the set when it is not empty.
     */
-  private def drepDelegations(w: CborOut, s: LedgerState, dreps: Set[DRep]): CborOut =
+  private def drepDelegations(s: LedgerState, dreps: Set[DRep]): Map[DRep, Set[Credential]] =
     val registered = dreps.collect { case DRep.Registered(c) => c }
-    val result: Map[DRep, Set[Credential]] =
-      if dreps.nonEmpty && registered.size == dreps.size then
-        s.dreps.collect { case (c, d) if registered(c) => DRep.Registered(c) -> d.delegs }
-      else
-        s.accounts.toVector
-          .collect {
-            case (c, a) if a.drep.exists(d => dreps.isEmpty || dreps(d)) => a.drep.get -> c
-          }
-          .groupMap(_._1)(_._2)
-          .view
-          .mapValues(_.toSet)
-          .toMap
-    E.map(w, result.toVector, E.drepOrdering)(
-      E.drep,
-      (k, creds) => E.set(k, creds, E.credentialOrdering)(E.credential)
-    )
+    if dreps.nonEmpty && registered.size == dreps.size then
+      s.dreps.collect { case (c, d) if registered(c) => DRep.Registered(c) -> d.delegs }
+    else
+      s.accounts.toVector
+        .collect { case (c, Account(_, _, _, Some(d))) if dreps.isEmpty || dreps(d) => d -> c }
+        .groupMap(_._1)(_._2)
+        .view
+        .mapValues(_.toSet)
+        .toMap
 
   /** `PoolDistr`: each pool's stake as a fraction of `denominator` (the snapshot's active stake
     * unless a circulating supply is given), its stake and its VRF key hash, then the active stake.
     */
   private def poolDistr(
-      w: CborOut,
       dist: Snapshot,
-      pools: Option[Set[Bytes]],
+      ids: Option[Set[Bytes]],
       circulation: Option[BigInt]
-  ): CborOut =
+  ): (Map[Bytes, PoolShare], BigInt) =
     val total = dist.activeStake
     val denominator = circulation.getOrElse(total)
-    val chosen = dist.poolStake.filter { case (id, _) => pools.forall(_(id)) }
-    w.array(2)
-    E.map(w, chosen.toVector.map { case (id, stake) => id -> (id, stake) }, E.bytesOrdering)(
-      (k, h) => k.bytes(h),
-      (k, entry) =>
-        val (id, stake) = entry
+    val shares = dist.poolStake.collect {
+      case (id, stake) if ids.forall(_(id)) =>
         val ratio = if denominator == 0 then Rational.zero else Rational(stake, denominator)
-        k.array(3)
-        E.rational(k, ratio)
-        k.uint(stake)
-        k.bytes(dist.pools.get(id).fold(Bytes.empty)(_.vrfKeyHash))
-    )
-    w.uint(total.max(1))
+        id -> PoolShare(ratio, stake, dist.pools.get(id).fold(Bytes.empty)(_.vrfKeyHash))
+    }
+    (shares, total.max(1))
 
-  private def stakeSnapshots(w: CborOut, s: LedgerState, pools: Option[Set[Bytes]]): CborOut =
+  /** `GetStakeSnapshots`: each pool's stake in the mark, set and go snapshots, and their totals. */
+  private type StakeSnapshotsAnswer =
+    (Map[Bytes, (BigInt, BigInt, BigInt)], BigInt, BigInt, BigInt)
+
+  private val stakeSnapshots: Codec[StakeSnapshotsAnswer] =
+    Record.of[StakeSnapshotsAnswer](
+      (
+        Wire.sortedMapOf(poolId, Record.of[(BigInt, BigInt, BigInt)]((coin, coin, coin))),
+        coin,
+        coin,
+        coin
+      )
+    )
+
+  private def stakeSnapshotsOf(s: LedgerState, ids: Option[Set[Bytes]]): StakeSnapshotsAnswer =
     val snaps = Vector(s.snapshots.mark, s.snapshots.set, s.snapshots.go)
     // Without a list of pools: before protocol version 11 the pools that have delegators in any
     // snapshot, from 11 those with stake.
-    val ids: Set[Bytes] = pools.getOrElse {
+    val chosen: Set[Bytes] = ids.getOrElse {
       if s.params.protocolMajor < 11 then
         snaps.flatMap(sn => sn.delegations.valuesIterator.filter(sn.pools.contains)).toSet
       else snaps.flatMap(_.poolStake.collect { case (p, st) if st > 0 => p }).toSet
     }
     def stakeOf(snap: Snapshot, p: Bytes): BigInt = snap.poolStake.getOrElse(p, BigInt(0))
-    val rows: Vector[(Bytes, Vector[BigInt])] =
-      ids.toVector.map(p => p -> snaps.map(stakeOf(_, p))).filter { case (_, st) =>
-        s.params.protocolMajor < 11 || st.exists(_ > 0)
-      }
-    w.array(4)
-    E.map(w, rows, E.bytesOrdering)(
-      (k, h) => k.bytes(h),
-      (k, st) => { k.array(3); st.foreach(k.uint) }
-    )
+    val rows = chosen.toVector
+      .map(p => p -> snaps.map(stakeOf(_, p)))
+      .filter { case (_, st) => s.params.protocolMajor < 11 || st.exists(_ > 0) }
+      .map { case (p, st) => p -> (st(0), st(1), st(2)) }
     // the totals are `NonZero`: an empty snapshot counts as 1
-    snaps.foreach(sn => w.uint(sn.activeStake.max(1)))
-    w
+    (
+      rows.toMap,
+      snaps(0).activeStake.max(1),
+      snaps(1).activeStake.max(1),
+      snaps(2).activeStake.max(1)
+    )
+
+  // ---- the committee members' state
+
+  /** Where a committee member stands (`MemberStatus`): the code is the constructor's index. */
+  private enum MemberStatus(val code: Int):
+    case Active extends MemberStatus(0)
+    case Expired extends MemberStatus(1)
+    case Unrecognized extends MemberStatus(2)
+
+  /** What the next epoch holds for a member (`NextEpochChange`). */
+  private enum NextChange:
+    case ToBeEnacted, ToBeRemoved, NoChangeExpected, ToBeExpired
+    case TermAdjusted(epoch: BigInt)
+
+  private final case class MemberRow(
+      auth: Option[CommitteeAuth],
+      status: MemberStatus,
+      expiry: Option[BigInt],
+      change: NextChange
+  )
+
+  /** `MemberAuthorization`: `[0, hot credential]`, `[1]` for none, `[2, anchor?]` for resigned. */
+  private val memberAuth: Codec[Option[CommitteeAuth]] =
+    Wire.writeOnly("a committee member's authorization") { (auth, w) =>
+      auth match
+        case Some(CommitteeAuth.Hot(h)) =>
+          w.arrayHead(2)
+          w.uint(0L)
+          nodeCredential.encode(h, w)
+        case Some(CommitteeAuth.Resigned(a)) =>
+          w.arrayHead(2)
+          w.uint(2L)
+          Wire.strictMaybe(anchor).encode(a, w)
+        case None =>
+          w.arrayHead(1)
+          w.uint(1L)
+    }
+
+  private val nextChange: Codec[NextChange] = Wire.writeOnly("a committee member's next change") {
+    (change, w) =>
+      def constructor(index: Long): Unit =
+        w.arrayHead(1)
+        w.uint(index)
+      change match
+        case NextChange.ToBeEnacted      => constructor(0)
+        case NextChange.ToBeRemoved      => constructor(1)
+        case NextChange.NoChangeExpected => constructor(2)
+        case NextChange.ToBeExpired      => constructor(3)
+        case NextChange.TermAdjusted(e) =>
+          w.arrayHead(2)
+          w.uint(4L)
+          w.uint(e)
+  }
+
+  private val memberRow: Codec[MemberRow] = Wire.writeOnly("a committee member's state") {
+    (row, w) =>
+      w.arrayHead(4)
+      memberAuth.encode(row.auth, w)
+      w.uint(row.status.code.toLong)
+      Wire.strictMaybe(coin).encode(row.expiry, w)
+      nextChange.encode(row.change, w)
+  }
+
+  private type CommitteeAnswer = (Map[Credential, MemberRow], Option[Rational], BigInt)
+
+  private val committeeMembers: Codec[CommitteeAnswer] =
+    Record.of[CommitteeAnswer](
+      (Wire.sortedMapOf(nodeCredential, memberRow), Wire.strictMaybe(Wire.ratio), coin)
+    )
 
   private def committeeMembersState(
-      w: CborOut,
       view: QueryView,
       cold: Set[Credential],
       hot: Set[Credential],
       statuses: Set[Int]
-  ): CborOut =
+  ): CommitteeAnswer =
     val s = view.ledger
     val members: Map[Credential, BigInt] =
       s.gov.committee.fold(Map.empty[Credential, BigInt])(_.members)
     val next: Map[Credential, BigInt] =
-      pulsed(view)._2.enact.committee.fold(Map.empty[Credential, BigInt])(_.members)
+      view.pulsed._2.enact.committee.fold(Map.empty[Credential, BigInt])(_.members)
     val stateMembers = s.committeeState
     def filterCold(c: Set[Credential]) = if cold.isEmpty then c else c.intersect(cold)
     val relevantCold: Set[Credential] =
-      if statuses.isEmpty || statuses.contains(2) then
+      if statuses.isEmpty || statuses.contains(MemberStatus.Unrecognized.code) then
         filterCold(members.keySet ++ stateMembers.keySet ++ next.keySet)
       else filterCold(members.keySet)
     val relevantHot: Set[Credential] =
       stateMembers.collect { case (c, CommitteeAuth.Hot(h)) if hot(h) => c }.toSet
     val relevant = if hot.isEmpty then relevantCold else relevantCold.intersect(relevantHot)
     val epoch = s.epoch
-    def status(c: Credential): Int = members.get(c) match
-      case None                 => 2
-      case Some(e) if epoch > e => 1
-      case Some(_)              => 0
-    def nextChange(c: Credential): Vector[BigInt] =
+    def status(c: Credential): MemberStatus = members.get(c) match
+      case None                 => MemberStatus.Unrecognized
+      case Some(e) if epoch > e => MemberStatus.Expired
+      case Some(_)              => MemberStatus.Active
+    def change(c: Credential): NextChange =
       val cur = members.get(c)
       val nxt = next.get(c)
       val expiringCurrent = cur.contains(epoch)
       val expiringNext = nxt.contains(epoch)
-      if cur.isEmpty && nxt.isDefined then Vector(0)
-      else if nxt.isEmpty then Vector(1)
-      else if cur.isDefined && nxt.isDefined && cur != nxt && !expiringNext then Vector(4, nxt.get)
-      else if expiringCurrent || expiringNext then Vector(3)
-      else Vector(2)
-    val rows = relevant.toVector.filter(c => statuses.isEmpty || statuses.contains(status(c)))
-    w.array(3)
-    E.map(w, rows.map(c => c -> c), E.credentialOrdering)(
-      E.credential,
-      (k, c) =>
-        k.array(4)
-        stateMembers.get(c) match
-          case Some(CommitteeAuth.Hot(h)) => k.array(2).uint(0); E.credential(k, h)
-          case Some(CommitteeAuth.Resigned(a)) =>
-            k.array(2).uint(2); E.maybe(k, a)(E.anchor)
-          case None => k.array(1).uint(1)
-        k.uint(status(c))
-        E.maybe(k, members.get(c))((k2, e) => k2.uint(e))
-        val change = nextChange(c)
-        if change.size == 2 then k.array(2).uint(change(0)).uint(change(1))
-        else k.array(1).uint(change(0))
-    )
-    E.maybe(w, s.gov.committee.map(_.threshold))(E.rational)
-    w.uint(epoch)
-
-  private def govState(w: CborOut, env: QueryEnv, view: QueryView): CborOut =
-    val s = view.ledger
-    w.array(7)
-    E.proposals(w, s.gov.proposals)
-    E.maybe(w, s.gov.committee)(E.committee)
-    E.constitution(w, s.gov.constitution)
-    E.protocolParams(w, s.params)
-    E.protocolParams(w, ConwayEpoch.reportedPrevious(s))
-    future(env, view) match
-      case FuturePParams.NoPParamsUpdate          => w.array(1).uint(0)
-      case FuturePParams.DefinitePParamsUpdate(p) => w.array(2).uint(1); E.protocolParams(w, p)
-      case FuturePParams.PotentialPParamsUpdate(p) =>
-        w.array(2).uint(2)
-        E.maybe(w, p)(E.protocolParams)
-    val (snap, rs) = pulsed(view)
-    w.array(2)
-    w.array(4)
-    E.listHead(w, snap.proposals.size)
-    snap.proposals.foreach(E.govActionState(w, _))
-    E.end(w, snap.proposals.size)
-    E.map(w, snap.drepDistr.toVector, E.drepOrdering)(E.drep, (k, c) => k.uint(c))
-    E.map(w, drepStatesOf(snap), E.credentialOrdering)(E.credential, drepState)
-    E.map(w, snap.poolDistr.toVector, E.bytesOrdering)((k, h) => k.bytes(h), (k, c) => k.uint(c))
-    E.ratifyState(w, rs)
-
-  private def drepStatesOf(snap: PulsingSnapshot): Vector[(Credential, DRepState)] =
-    snap.drepState.toVector
+      (cur, nxt) match
+        case (None, Some(_))                               => NextChange.ToBeEnacted
+        case (_, None)                                     => NextChange.ToBeRemoved
+        case (Some(a), Some(b)) if a != b && !expiringNext => NextChange.TermAdjusted(b)
+        case _ if expiringCurrent || expiringNext          => NextChange.ToBeExpired
+        case _                                             => NextChange.NoChangeExpected
+    val rows = relevant.toVector
+      .filter(c => statuses.isEmpty || statuses.contains(status(c).code))
+      .map(c => c -> MemberRow(stateMembers.get(c), status(c), members.get(c), change(c)))
+    (rows.toMap, s.gov.committee.map(_.threshold), epoch)

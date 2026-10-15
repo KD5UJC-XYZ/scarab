@@ -8,11 +8,15 @@ import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Credential as OldCredential, DRep as OldDRep}
 import xyz.kd5ujc.scarab.ledger.state as mirror
+import xyz.kd5ujc.scarab.storage.haskell.state.NodeOrders
 
-/** The orders of the ledger-state mirror agree with the sort keys `LedgerEncoders` writes maps and
-  * sets in (byte-proven against the Haskell node), so replacing one by the other changes no bytes.
+/** The orders of the ledger-state mirror agree with the orders the node-to-client answers write
+  * maps and sets in for the node's own types ([[NodeOrders]], byte-proven against the Haskell
+  * node), so converting one to the other changes no bytes.
   */
 class MirrorOrderAgreementSuite extends ScalaCheckSuite:
+  import NodeOrders.given
+
   private val hashes: Gen[Bytes] =
     for
       head <- Gen.oneOf(0, 1, 0x7f, 0x80, 0xff)
@@ -48,25 +52,25 @@ class MirrorOrderAgreementSuite extends ScalaCheckSuite:
     case OldDRep.AlwaysAbstain      => mirror.DRep.DRepAlwaysAbstain
     case OldDRep.AlwaysNoConfidence => mirror.DRep.DRepAlwaysNoConfidence
 
-  property("Credential: the mirror order is LedgerEncoders.credentialOrdering") {
+  property("Credential: the mirror order is the node's") {
     forAll(credentials, credentials) { (a, b) =>
-      Integer.signum(LedgerEncoders.credentialOrdering.compare(a, b)) ==
+      Integer.signum(Order[OldCredential].compare(a, b)) ==
         Integer.signum(
           Order[mirror.Credential[mirror.Staking]].compare(credential(a), credential(b))
         )
     }
   }
 
-  property("DRep: the mirror order is LedgerEncoders.drepOrdering") {
+  property("DRep: the mirror order is the node's") {
     forAll(dreps, dreps) { (a, b) =>
-      Integer.signum(LedgerEncoders.drepOrdering.compare(a, b)) ==
+      Integer.signum(Order[OldDRep].compare(a, b)) ==
         Integer.signum(Order[mirror.DRep].compare(drep(a), drep(b)))
     }
   }
 
   property("sorting a list agrees element for element") {
     forAll(Gen.listOf(dreps)) { ds =>
-      ds.sorted(using LedgerEncoders.drepOrdering).map(drep) ==
+      ds.sorted(using Order[OldDRep].toOrdering).map(drep) ==
         ds.map(drep).sorted(using Order[mirror.DRep].toOrdering)
     }
   }

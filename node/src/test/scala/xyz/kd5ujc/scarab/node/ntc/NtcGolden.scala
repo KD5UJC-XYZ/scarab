@@ -15,8 +15,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 /** The node-to-client answers over the Conway states of the eras capture, as a fixture
   * (`fixtures/ntc-golden`): what [[QueryAnswers]] answers to every ledger query on those states,
   * recorded from the encoders the answers were written with before the Haskell state codec took
-  * them over (`LedgerEncoders`, whose bytes the devnet comparison with the reference node proved).
-  * The answers must not change.
+  * them over (`LedgerEncoders`, deleted since, whose bytes the devnet comparison with the reference
+  * node proved). The answers must not change.
   *
   * The states are the three Conway states of the capture, and two built on the last one that hold
   * what a young chain does not: DReps, a committee, one proposal of each kind, a completed pulser

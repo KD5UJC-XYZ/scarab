@@ -6,7 +6,9 @@ import io.circe.{ACursor, Json}
 import java.time.{Instant, ZoneOffset}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.node.ntc.LedgerEncoders as E
+import xyz.kd5ujc.scarab.ledger.Nonce
+import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
 
 /** `GetGenesisConfig`: the compact Shelley genesis (`CompactGenesis`, whose initial funds and
   * staking are dropped) in the 15-field encoding of node-to-client version 15 and later (the one
@@ -17,6 +19,20 @@ import xyz.kd5ujc.scarab.node.ntc.LedgerEncoders as E
   */
 object GenesisConfig:
   private type R[A] = Either[String, A]
+
+  /** The version the answer is written at: the lowest of the Conway era (`Versions.eraLow`). */
+  private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
+  import NodeOrders.given
+
+  /** The genesis delegates: genesis key hash to the delegate's key hash and VRF key hash. */
+  private val delegateCodec = Wire.definiteMapOf(
+    xyz.kd5ujc.scarab.models.runtime.Codec.bytes,
+    Wire.writeOnly[(Bytes, Bytes)]("a genesis delegate") { (d, out) =>
+      out.arrayHead(2)
+      out.bytes(d._1)
+      out.bytes(d._2)
+    }
+  )
 
   private def get[A: io.circe.Decoder](c: ACursor, name: String): R[A] =
     c.downField(name).as[A].leftMap(e => s"genesis $name: ${e.message}")
@@ -71,10 +87,7 @@ object GenesisConfig:
       w.uint((slotLength * 1000000).toBigInt)
       w.uint(quorum).uint(supply)
       params(w)
-      E.map(w, delegates, E.bytesOrdering, variable = false)(
-        (k2, g) => k2.bytes(g),
-        (k2, d) => k2.array(2).bytes(d._1).bytes(d._2)
-      )
+      w.raw(delegateCodec.encodeUnchecked(delegates.toMap))
       w.map(0)
       w.array(2).map(0).map(0)
     }
@@ -112,9 +125,7 @@ object GenesisConfig:
       w.array(17)
       w.uint(minFeeA).uint(minFeeB).uint(maxBody).uint(maxTx).uint(maxHeader)
       w.uint(keyDeposit).uint(poolDeposit).uint(eMax).uint(nOpt)
-      E.rational(w, a0); E.rational(w, rho); E.rational(w, tau); E.rational(w, d)
-      entropy match
-        case None    => w.array(1).uint(0)
-        case Some(h) => w.array(2).uint(1).bytes(h)
+      List(a0, rho, tau, d).foreach(r => w.raw(Wire.ratio.encodeUnchecked(r)))
+      w.raw(Wire.nonce.encodeUnchecked(entropy.fold[Nonce](Nonce.Neutral)(Nonce.Hash(_))))
       w.array(2).uint(major).uint(minor)
       w.uint(minUtxo).uint(minPool)

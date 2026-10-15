@@ -5,6 +5,39 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Changed (ledger-state mirror, step 2, jump 1: the node-to-client answers)
+- `LedgerEncoders` is gone. `QueryAnswers` writes every ledger answer through `storage/haskell/state`: the
+  node-type codecs of the state file (`HaskellStateCodecs`: credentials, DReps, pool parameters, the
+  governance records, the ratify state, `Params.conwayCodec`), with maps and sets held unordered and
+  written in the ledger's orders (`NodeOrders`, new `Order[TxIn]`) at the lowest version of the Conway era.
+  New in `Wire`: `sortedMapOf`/`sortedSetOf` (unordered in, key order out), `definiteSetOf`/`definiteMapOf`
+  (the two answers the reference writes with a definite length above 23 entries: `GetStakePools` and the
+  genesis delegates), `writeOnly` (a shape that is only ever written: the committee members' state). The
+  UTxO answers (`GetUTxOByAddress`, `GetUTxOByTxIn`, `GetUTxOWhole`) are `UtxoCodecs.utxo`, ported byte for
+  byte (`txIn`, `value`, `txOut` with the datum and script items as created). `GenesisConfig` and
+  `PredicateFailureCbor` (which stays, with its own tags) write their ledger values through the same
+  codecs. `QueryView` holds what several queries share, once per acquired state (the pulser, the DRep
+  states with the dormant shift, the current stake).
+- **The answers do not change.** `fixtures/ntc-golden` records what `QueryAnswers` answered before, on the
+  three Conway states of the eras capture and two built on the last one (DReps, committee, a proposal of
+  every kind, a completed pulser, delegations of every DRep kind, hashes across the byte range): about fifty
+  queries each (`NtcGoldenSuite`); `QueryGoldenSuite` (the reference's own answers) is unchanged;
+  `HaskellStateOverlapSuite` now checks the two paths, the node's answers and the mirror written by the
+  state codec, on those five states.
+- Deviation from the plan: the answers are written from the node's own types, not from per-component
+  mirror conversions (`pState`, `vState`, `conwayAccounts`, `snapShot`). The node-type codecs already carry
+  those shapes, and `snapShot` refuses a snapshot shape (and divides by a zero total) where the old answer
+  wrote one; no conversion is run per query.
+- J1.1: the pulser the governance state reports is one function, `ConwayEpoch.reportedPulser` (with
+  `initialRatify`, `reportedPrevious` and their inverses `heldRatify`/`heldPrevious`), used by the queries
+  and by the mirror. The mirror's pulser used to hold the node's parameters and treasury 0; it now holds
+  what `GetRatifyState`/`GetGovState` report (the real treasury; before the first boundary the parameters of
+  the era translation without the PlutusV2 model), and `fromMirror` puts the PlutusV2 model back. Only the
+  `DebugEpochState`/`DebugNewEpochState` answers of a state with no completed pulser change (the
+  `rich-genesis` golden lines); a state with one, in particular every state of the eras capture, answers
+  as before. `NodeExtras.pulserAbsent` stays: a state with no pulser and one whose pulser is the initial one
+  differ in `FuturePParams` (the second is `Potential` early in the epoch), and the laws generate both.
+
 ### Changed (persisted formats: version 2, migrated on open)
 - The persisted identifiers take the Scarab name: `scarab network identity v2`, `scarab immutable store v2`,
   index magic `SCRBIDX2` (format 1: `cardano-scala-lab ...`, `CSLIDX01`); the state dump format tag is
