@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.storage
 import scala.annotation.unused
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Ask, Handle, Stateful}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import java.nio.file.Files as JFiles
@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.FollowerEvents
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.VolatileChain
+import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
@@ -30,7 +31,6 @@ import munit.CatsEffectSuite
 import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
-import NodeCodecs.given
 import StorageTestKit.*
 
 /** Restart behaviour over the committed Byron-to-Conway capture (`fixtures/eras`): the follower
@@ -46,6 +46,8 @@ class ChainStorageSuite extends CatsEffectSuite:
   private val setup: NodeSetup =
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
+  private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
+  private given SnapshotFormat[IO, NodeState] = SnapshotV3.format[IO]
   private val k = geometry.securityParam
 
   private val raws: Vector[Bytes] =
@@ -210,7 +212,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         log1 <- events(dir)
         r_chain1 <- run(dir, 500, log = log1)
         chain1 = r_chain1._2
-        _ <- IO(assertEquals(chain1.state, states(500)))
+        _ <- IO(assertState(chain1.state, states(500)))
         snaps <- snapshotsIn(dir)
         _ <- IO(assert(snaps.nonEmpty, "snapshots were written"))
         written <- log1.get.map(_.collect { case e: StorageEvent.SnapshotWritten => e })
@@ -226,7 +228,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- IO(assert(replayed >= 0 && replayed < 500 - k, s"replayed $replayed blocks"))
         // The immutable tip after run 1 is block 500 - k - 1; the restart anchors exactly there.
         _ <- IO(assertEquals(anchor.map(_.hash), Some(ref(500 - k - 1).hash)))
-        _ <- IO(assertEquals(chain2.state, states(731)))
+        _ <- IO(assertState(chain2.state, states(731)))
         _ <- IO(assertEquals(chain2.tip, headers.last.point))
       yield ()
     }
@@ -249,7 +251,7 @@ class ChainStorageSuite extends CatsEffectSuite:
             Some((300 - k).toLong)
           )
         )
-        _ <- IO(assertEquals(chain.state, states(400)))
+        _ <- IO(assertState(chain.state, states(400)))
       yield ()
     }
   }
@@ -279,7 +281,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- IO(assert(skipped.head.error.isInstanceOf[StorageError.Corrupt]))
         restored = e2.collect { case e: StorageEvent.SnapshotRestored => e.name }
         _ <- IO(assertEquals(restored.toList, List(snaps(1).fileName.toString)))
-        _ <- IO(assertEquals(chain.state, states(650)))
+        _ <- IO(assertState(chain.state, states(650)))
       yield ()
     }
   }
@@ -305,12 +307,21 @@ class ChainStorageSuite extends CatsEffectSuite:
         e2 <- log2.get
         opened = e2.collectFirst { case StorageEvent.ImmutableOpened(r) => r }.get
         _ <- IO(assert(opened.truncatedEntries >= 1, opened.toString))
-        _ <- IO(assertEquals(chain.state, states(500)))
+        _ <- IO(assertState(chain.state, states(500)))
       yield ()
     }
   }
 
-  private def sameLedger(a: NodeState, b: NodeState): Unit =
+  /** A snapshot returns the state in its canonical form (see [[SnapshotV3.canonical]]): the state
+    * replayed from the blocks is compared in that form.
+    */
+  private def canonical(s: NodeState): NodeState = SnapshotV3.canonical(setup.mirrorEnv(), s)
+
+  private def assertState(got: NodeState, want: NodeState, clue: => Any = "state"): Unit =
+    assertEquals(canonical(got), canonical(want), clue)
+
+  private def sameLedger(x: NodeState, y: NodeState): Unit =
+    val (a, b) = (canonical(x), canonical(y))
     assertEquals(a.praos, b.praos)
     assertEquals(a.boot, b.boot)
     assertEquals(
@@ -521,7 +532,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- IO(assertEquals(second.resumed, k))
         _ <- IO(assertEquals(second.dropped, 0))
         _ <- IO(assertEquals(second.chain.tip, headers(730).point))
-        _ <- IO(assertEquals(second.chain.state, states(731)))
+        _ <- IO(assertState(second.chain.state, states(731)))
         // the first intersection offered the previous tip, not the immutable anchor
         _ <- IO(assertEquals(second.offered.head.head, headers(499).point))
         _ <- IO(assertEquals(second.anchor.map(_.hash), Some(ref(500 - k - 1).hash)))
@@ -529,27 +540,29 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- files.deleteRecursively(dir / "volatile")
         third <- session(dir, 731)
         _ <- IO(assertEquals(third.resumed, 0))
-        _ <- IO(assertEquals(third.chain.state, states(731)))
+        _ <- IO(assertState(third.chain.state, states(731)))
         _ <- IO(assertEquals(third.chain.tip, second.chain.tip))
       yield ()
     }
   }
 
+  // (at 731, in Conway: the writer refuses the Alonzo states of this fixture that have a pending
+  // update naming a parameter Alonzo lacks, see SnapshotV3Suite)
   test("a graceful stop writes a snapshot at the immutable tip: the restart replays nothing") {
     tempDir.use { dir =>
       for
         // the periodic policy never fires (a huge interval): only the shutdown snapshot exists
-        first <- session(dir, 500, every = 1000000)
+        first <- session(dir, 731, every = 1000000)
         _ <- IO(assertEquals(first.replayed, 0L))
         shutdown = first.events.collect { case e: StorageEvent.ShutdownSnapshot => e }
         _ <- IO(assertEquals(shutdown.map(_.written), Vector(true)))
         snaps <- snapshotsIn(dir)
         _ <- IO(assertEquals(snaps.size, 1))
-        second <- session(dir, 500, every = 1000000)
+        second <- session(dir, 731, every = 1000000)
         _ <- IO(assertEquals(second.replayed, 0L))
-        _ <- IO(assertEquals(second.restoredAnchor.map(_.hash), Some(ref(500 - k - 1).hash)))
+        _ <- IO(assertEquals(second.restoredAnchor.map(_.hash), Some(ref(731 - k - 1).hash)))
         _ <- IO(assertEquals(second.resumed, k))
-        _ <- IO(assertEquals(second.chain.state, states(500)))
+        _ <- IO(assertState(second.chain.state, states(731)))
         // nothing new: the stop does not write the same snapshot again
         _ <- IO(
           assertEquals(
@@ -581,7 +594,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- IO(assertEquals(snaps, Nil))
         second <- session(dir, k + 2)
         _ <- IO(assertEquals(second.resumed, k - 1))
-        _ <- IO(assertEquals(second.chain.state, states(k + 2)))
+        _ <- IO(assertState(second.chain.state, states(k + 2)))
       yield ()
     }
   }
@@ -604,7 +617,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         results <- copies.traverse(n => session(root / s"crash-$n", 731).map(s => (n, s)))
         _ <- results.traverse_ { (n, s) =>
           IO {
-            assertEquals(s.chain.state, states(731), s"restart from the copy at event $n")
+            assertState(s.chain.state, states(731), s"restart from the copy at event $n")
             assertEquals(s.chain.tip, headers(730).point)
           }
         }
@@ -644,7 +657,7 @@ class ChainStorageSuite extends CatsEffectSuite:
               )
             )
             s <- session(copy, 340)
-            _ <- IO(assertEquals(s.chain.state, states(340), s"cut at $cut"))
+            _ <- IO(assertState(s.chain.state, states(340), s"cut at $cut"))
             _ <- IO(assertEquals(s.chain.tip, headers(339).point))
           yield ()
         }
@@ -667,11 +680,11 @@ class ChainStorageSuite extends CatsEffectSuite:
         again <- session(dir, 520)
         _ <- IO(assertEquals(again.resumed, k))
         _ <- IO(assertEquals(again.dropped, 1))
-        _ <- IO(assertEquals(again.chain.state, states(520)))
+        _ <- IO(assertState(again.chain.state, states(520)))
         // the cut was logged: the next start does not see the refused block again
         third <- session(dir, 520)
         _ <- IO(assertEquals(third.dropped, 0))
-        _ <- IO(assertEquals(third.chain.state, states(520)))
+        _ <- IO(assertState(third.chain.state, states(520)))
       yield ()
     }
   }
@@ -702,7 +715,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         }
         // the refusals changed nothing
         again <- session(dir, 80)
-        _ <- IO(assertEquals(again.chain.state, states(80)))
+        _ <- IO(assertState(again.chain.state, states(80)))
       yield ()
     }
   }
@@ -716,7 +729,7 @@ class ChainStorageSuite extends CatsEffectSuite:
         _ <- IO(assert(!JFiles.exists((root / "old" / NetworkIdentityFile.FileName).toNioPath)))
         _ <- copyTree(root / "old", root / "foreign")
         adopted <- session(root / "old", 140)
-        _ <- IO(assertEquals(adopted.chain.state, states(140)))
+        _ <- IO(assertState(adopted.chain.state, states(140)))
         _ <- IO(
           assertEquals(
             adopted.events.collect { case StorageEvent.NetworkRecorded(_, a) => a },

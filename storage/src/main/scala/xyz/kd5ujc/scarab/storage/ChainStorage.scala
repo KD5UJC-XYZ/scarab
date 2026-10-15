@@ -28,6 +28,12 @@ enum StorageEvent:
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
   case SnapshotWritten(name: String, anchor: Option[BlockRef], bytes: Long, millis: Long)
   case SnapshotFailed(reason: String)
+
+  /** A snapshot that was not written, or an old one not brought to the current format, because the
+    * format refused the state (`name` is the file; `anchor` the block of a write, none for a
+    * migration). It is an optimisation skipped, not an error.
+    */
+  case SnapshotRefused(name: String, anchor: Option[BlockRef], refusal: SnapshotRefusal)
   case ReplayStarted(from: Option[BlockRef], tip: Option[BlockRef])
   case ReplayProgress(at: BlockRef, replayed: Long, millis: Long)
   case ReplayFinished(at: Option[BlockRef], replayed: Long, millis: Long)
@@ -138,9 +144,13 @@ object ChainStorage:
         */
       prepare: Vector[Bytes] => F[Unit],
       /** The CPU pool the replay runs on (D8); without one, on the calling fiber's pool. */
-      compute: Option[Compute[F]] = None
+      compute: Option[Compute[F]] = None,
+      /** Brings the snapshot files of an older format to the current one, before they are opened
+        * (once the identity of the database is checked): [[SnapshotMigration.toV3]].
+        */
+      snapshotMigration: Option[SnapshotMigration[F]] = None
   )(using
-      Codec[StateSnapshot[S]],
+      SnapshotFormat[F, S],
       Raise[F, StorageError],
       Raise[F, ChainError]
   ): Resource[F, Recovered[F, S]] =
@@ -173,6 +183,15 @@ object ChainStorage:
       volatileOpened <- VolatileStore.open[F](dir / "volatile", config.volatileFileBlocks)
       (volatile, logged) = volatileOpened
       _ <- Resource.eval(events.emit(StorageEvent.VolatileOpened(logged.report)))
+      migratedSnapshots <- Resource.eval(
+        snapshotMigration.fold(F.pure(SnapshotMigration.Report.empty))(_.run(dir / "snapshots"))
+      )
+      _ <- Resource.eval(
+        migratedSnapshots.migrated.traverse_(m => events.emit(StorageEvent.FormatMigrated(m))) *>
+          migratedSnapshots.refused.traverse_(r =>
+            events.emit(StorageEvent.SnapshotRefused(r.name, None, r.refusal))
+          )
+      )
       snapshots <- Resource.eval(
         FileLedgerSnapshots.open[F, S](dir / "snapshots", config.keepSnapshots)
       )
@@ -474,18 +493,33 @@ object ChainStorage:
       (for
         t0 <- began
         _ <- store.sync
-        written0 <- snapshots.write(StateSnapshot(Some(ref), state))
-        _ <- written.set(Some(ref))
-        names <- snapshots.list
-        _ <- backing.retain(names.map(_.stripSuffix(".bin")).toSet)
-        t1 <- Clock[F].monotonic
-        _ <- events.emit(
-          StorageEvent
-            .SnapshotWritten(written0.name, written0.anchor, written0.bytes, (t1 - t0).toMillis)
+        outcome <- snapshots.write(StateSnapshot(Some(ref), state))
+        done <- outcome.fold(
+          refusal =>
+            events
+              .emit(
+                StorageEvent.SnapshotRefused(FileLedgerSnapshots.nameOf(ref), Some(ref), refusal)
+              )
+              .as(false),
+          written0 =>
+            for
+              _ <- written.set(Some(ref))
+              names <- snapshots.list
+              _ <- backing.retain(names.map(_.stripSuffix(".bin")).toSet)
+              t1 <- Clock[F].monotonic
+              _ <- events.emit(
+                StorageEvent.SnapshotWritten(
+                  written0.name,
+                  written0.anchor,
+                  written0.bytes,
+                  (t1 - t0).toMillis
+                )
+              )
+            yield true
         )
-      yield ()).attempt.flatMap {
-        case Right(_) => F.pure(true)
-        case Left(e)  => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e))).as(false)
+      yield done).attempt.flatMap {
+        case Right(done) => F.pure(done)
+        case Left(e)     => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e))).as(false)
       }
 
     /** On release: wait for a snapshot in flight, then snapshot the immutable tip unless the newest

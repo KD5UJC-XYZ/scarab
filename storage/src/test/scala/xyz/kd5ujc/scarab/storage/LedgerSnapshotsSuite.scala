@@ -37,6 +37,9 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
 
   private def snap(i: Int): StateSnapshot[Toy] = StateSnapshot(Some(block(i)._1), toy(i))
 
+  private given SnapshotFormat[IO, Toy] = SnapshotV2.format[IO, Toy]
+  private given SnapshotFormat[IO, ToyV2] = SnapshotV2.format[IO, ToyV2]
+
   private def open(dir: Path, keep: Int = 3)(using Raise[IO, StorageError]) =
     FileLedgerSnapshots.open[IO, Toy](dir, keep)
 
@@ -51,7 +54,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
         for
           s <- open(dir)
           written <- (1 to 3).toList.traverse(i => s.write(snap(i)))
-          _ <- IO(assert(written.forall(_.bytes > 0)))
+          _ <- IO(assert(written.forall(_.exists(_.bytes > 0))))
           restored <- s.restore(anyAnchor)
           _ <- IO(assertEquals(restored.snapshot.map(_._2), Some(snap(3))))
           _ <- IO(assertEquals(restored.skipped, Vector.empty))
@@ -175,6 +178,35 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
     }
   }
 
+  test(
+    "a state the format refuses is not written, nothing is pruned, and the refusal is the result"
+  ) {
+    val refusing = new SnapshotFormat[IO, Toy]:
+      private val inner = SnapshotV2.format[IO, Toy]
+      def encode(snapshot: StateSnapshot[Toy]) =
+        if snapshot.state.counter == 2000 then
+          IO.pure(Left(SnapshotRefusal.WouldNotRead(StorageError.Corrupt("test", "refused"))))
+        else inner.encode(snapshot)
+      def decode(content: Array[Byte]) = inner.decode(content)
+    tempDir.use { dir =>
+      ok {
+        FileLedgerSnapshots.open[IO, Toy](dir, keep = 2)(using summon, refusing, summon).flatMap {
+          s =>
+            for
+              first <- s.write(snap(1))
+              refused <- s.write(snap(2))
+              names <- s.list
+              restored <- s.restore(anyAnchor)
+              _ <- IO(assert(first.isRight))
+              _ <- IO(assert(refused.left.exists(_.isInstanceOf[SnapshotRefusal.WouldNotRead])))
+              _ <- IO(assertEquals(names.size, 1))
+              _ <- IO(assertEquals(restored.snapshot.map(_._2), Some(snap(1))))
+            yield ()
+        }
+      }
+    }
+  }
+
   test("a snapshot of another schema is a version mismatch, not garbage") {
     tempDir.use { dir =>
       ok {
@@ -201,8 +233,14 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
           s <- open(dir)
           _ <- s.write(snap(1))
           name <- newest(dir)
-          // the version is the u32 after the 8-byte magic
-          _ <- corrupt(dir / name, b => b.updated(11, 9.toByte))
+          // the version is the u32 after the 8-byte magic; the checksum is made to hold again
+          _ <- corrupt(
+            dir / name,
+            b =>
+              FileLedgerSnapshots.closed(
+                FileLedgerSnapshots.verified(b).getOrElse(b).updated(11, 9.toByte)
+              )
+          )
           restored <- s.restore(anyAnchor)
           _ <- IO(
             assert(

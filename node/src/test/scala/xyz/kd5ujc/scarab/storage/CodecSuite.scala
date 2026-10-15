@@ -150,11 +150,29 @@ class CodecSuite extends ScalaCheckSuite:
 
   test("golden: the schema fingerprint of the node snapshot") {
     val shape = summon[Codec[StateSnapshot[NodeState]]].shape
-    assertEquals(hex(FileLedgerSnapshots.fingerprint(shape)), GoldenFingerprint)
+    assertEquals(hex(SnapshotV2.fingerprint(shape)), GoldenFingerprint)
   }
 
-  // Regenerate (and bump FileLedgerSnapshots.FormatVersion if the layout itself changed) only when
+  test("golden: the schema fingerprint of the V3 sidecar") {
+    assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
+  }
+
+  test("golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest") {
+    val sidecar = SnapshotSidecar(
+      None,
+      Map.empty,
+      Set.empty,
+      SnapshotSidecar.Chain.InByron(initial)
+    )
+    val encoded = Codec.encode(sidecar)(using SnapshotSidecar.codec)
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(encoded)
+    assertEquals(hex(digest) -> encoded.length, GoldenSidecar)
+  }
+
+  // Regenerate (and add a FormatVersion with its migration if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
+  // GoldenFingerprint is the V2 reader's (frozen with the node state of its time, see
+  // SnapshotV2); the sidecar goldens are the V3 writer's.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
@@ -162,3 +180,6 @@ class CodecSuite extends ScalaCheckSuite:
   private val GoldenInitialState =
     ("228a41672061e4a01954a3a41c706932aa13f0e89185fc5c6636796b56428a4a", 3158)
   private val GoldenFingerprint = "2293c5cf7bb77492"
+  private val GoldenSidecarFingerprint = "c9d22eb57f782449"
+  private val GoldenSidecar =
+    ("7bc7dc357f2b64267b3bb7c8bb5b79e4275dca9bd84693d1db02a32d872242a4", 3161)

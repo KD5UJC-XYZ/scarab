@@ -9,7 +9,8 @@ import xyz.kd5ujc.scarab.consensus.state.{
   EraLedgerState,
   ExtLedgerState,
   HeaderState,
-  Telescope
+  Telescope,
+  TelescopeError
 }
 import xyz.kd5ujc.scarab.models.runtime.Decoded
 import xyz.kd5ujc.scarab.protocol.Era
@@ -65,6 +66,17 @@ final case class HaskellLedgerFile(ledger: Telescope[LedgerFileEra], header: Hea
           .map(ExtLedgerState(_, header))
 
 object HaskellLedgerFile:
+  /** The file of an extended ledger state of the mirror (the Shelley-based eras: the Byron ledger
+    * state is not modelled, so it is never a [[LedgerFileEra.ByronItem]] here).
+    */
+  def of(ext: ExtLedgerState): Either[TelescopeError, HaskellLedgerFile] =
+    Telescope
+      .make(
+        ext.ledgerState.past,
+        ext.ledgerState.current.copy(state = LedgerFileEra.Mirrored(ext.ledgerState.state))
+      )
+      .map(HaskellLedgerFile(_, ext.headerState))
+
   given Eq[HaskellLedgerFile] =
     Eq.instance((a, b) => a.ledger === b.ledger && a.header === b.header)
 
