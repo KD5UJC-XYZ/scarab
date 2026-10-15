@@ -129,7 +129,7 @@ object LedgerEncoders:
       )
 
   private val limits =
-    Cbor.Limits(maxInputBytes = 1048576, maxDepth = 64, maxItems = 100000, maxStringBytes = 1048576)
+    Cbor.Limits(maxInputBytes = 1048576, maxItems = 100000, maxStringBytes = 1048576)
 
   /** `BabbageTxOut`: `[address, value]`, `[address, value, datum hash]`, or the keyed form with an
     * inline datum or a reference script. The datum and script items are the ones the output was

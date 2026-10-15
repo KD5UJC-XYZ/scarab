@@ -75,3 +75,33 @@ class LocalTxSubmissionSuite extends FunSuite:
       DecodeResult.Decoded(Message.SubmitTx(tx), whole.size)
     )
   }
+
+  test("a transaction nested as deep as the message holds is carried, on a small stack") {
+    // the reference limits nesting by the size of the message only; here 100,000 levels of a
+    // 1 MiB message are refused by the item limit, 60,000 are not
+    def nested(levels: Int) =
+      Bytes.fromArray(Array.fill(levels)(0x81.toByte) :+ 0x00.toByte)
+    def roundTrip(item: Bytes) =
+      var result: Option[Either[String, Boolean]] = None
+      val thread = new Thread(
+        null,
+        () =>
+          result = Some(
+            encode(State.Idle, Role.Client, Message.SubmitTx(item)).map(b =>
+              decodePrefix(State.Idle, Role.Client, b) match
+                case DecodeResult.Decoded(Message.SubmitTx(got), _) => got == item
+                case _                                              => false
+            )
+          ),
+        "small",
+        256 * 1024
+      )
+      thread.start()
+      thread.join()
+      result.get
+    assertEquals(roundTrip(nested(60000)), Right(true))
+    assert(roundTrip(nested(100000)).isLeft)
+    // an indefinite map still holds whole pairs
+    assert(roundTrip(Bytes(Vector(0xbf, 0x00, 0xff).map(_.toByte))).isLeft)
+    assertEquals(roundTrip(Bytes(Vector(0xbf, 0x00, 0x01, 0xff).map(_.toByte))), Right(true))
+  }

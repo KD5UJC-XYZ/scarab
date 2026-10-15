@@ -12,7 +12,13 @@ import ProtocolWire.{attempt, bad, get}
 object LocalTxSubmission:
   val MiniProtocolId = 6
   val MaxMessageBytes = 1048576
-  private val wire = ProtocolWire.Limits(MaxMessageBytes, MaxMessageBytes, 32, 64, 65535)
+  private val wire = ProtocolWire.Limits(
+    MaxMessageBytes,
+    MaxMessageBytes,
+    32,
+    ProtocolWire.MaxItems,
+    ProtocolWire.MaxItems
+  )
 
   enum State:
     case Idle, Busy, Done

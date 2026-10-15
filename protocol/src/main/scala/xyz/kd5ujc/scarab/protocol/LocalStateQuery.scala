@@ -18,7 +18,13 @@ import ProtocolWire.{attempt, bad, get}
 object LocalStateQuery:
   val MiniProtocolId = 7
   val MaxMessageBytes = 2500000
-  private val wire = ProtocolWire.Limits(MaxMessageBytes, MaxMessageBytes, 32, 64, 65535)
+  private val wire = ProtocolWire.Limits(
+    MaxMessageBytes,
+    MaxMessageBytes,
+    32,
+    ProtocolWire.MaxItems,
+    ProtocolWire.MaxItems
+  )
 
   enum State:
     case Idle, Acquiring, Acquired, Querying, Done

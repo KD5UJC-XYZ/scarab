@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import io.circe.parser
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as C}
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, Value as C}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.plutus.{DataSerialiser, PlutusData, ScalusEvaluator}
 import munit.FunSuite
@@ -34,54 +32,11 @@ class DeepNestingSuite extends FunSuite:
   /** The depth of a 90,112-byte block body, the most a block can nest items. */
   private val MaxLevels = 90000
 
-  /** Run `body` on a thread whose stack is far too small for recursion at these depths. */
-  private def onSmallStack[A](body: => A): A =
-    var result: Option[Either[Throwable, A]] = None
-    val thread = new Thread(
-      null,
-      () =>
-        result = Some(
-          try Right(body)
-          catch case t: Throwable => Left(t)
-        ),
-      "small",
-      256 * 1024
-    )
-    thread.start()
-    thread.join()
-    result.get.fold(throw _, identity)
+  private def onSmallStack[A](body: => A): A = PreprodDeepTx.onSmallStack(body)
 
   // --- the recorded transaction ------------------------------------------------------------------
 
-  private val txBytes = hex(Files.readString(dir.resolve("tx-f90dce57.hex")).trim)
-
-  private def parsed: Tx =
-    val root = Cbor.decode(txBytes).fold(fail(_), identity)
-    root.value match
-      case C.Arr(xs) =>
-        Tx
-          .fromBlock(Block.Transaction(xs(0).original, xs(1).original, None, true), Era.Conway)
-          .fold(e => fail(e), identity)
-      case other => fail(s"not a transaction: $other")
-
-  private val input: (TxIn, TxOut) =
-    val e = parser
-      .parse(Files.readString(dir.resolve("tx-f90dce57-inputs.json")))
-      .toOption
-      .get
-      .hcursor
-      .downField("inputs")
-      .downArray
-    val lovelace = e.get[String]("lovelace").toOption.get.toLong
-    val addr = hex(e.get[String]("address").toOption.get)
-    val legacy = Bytes(
-      Vector(0x82, 0x58, addr.size).map(_.toByte) ++ addr.value ++
-        Vector(0x1a, lovelace >> 24, lovelace >> 16, lovelace >> 8, lovelace).map(_.toByte)
-    )
-    TxIn(
-      hex(e.get[String]("txHash").toOption.get),
-      BigInt(e.get[Int]("index").toOption.get)
-    ) -> TxOut.fromBytes(legacy).fold(e => fail(e), identity)
+  private def parsed: Tx = PreprodDeepTx.parsed
 
   private def nativeDepth(s: NativeScript): Int =
     var depth = 0
@@ -121,11 +76,8 @@ class DeepNestingSuite extends FunSuite:
   }
 
   test("the recorded transaction passes the ledger rules") {
-    val ada = BigInt(1000000)
-    val params = TestLedger.params(10).copy(minFeeA = 44, minFeeB = 155381, keyDeposit = 2 * ada)
-    val base = state(10, Vector(input)).copy(params = params, epoch = 313)
-    val world = base.copy(reserves = Supply - (base.total - base.reserves))
-    val e = env.copy(slot = 133883340, epoch = 313)
+    val world = PreprodDeepTx.ledger
+    val e = env.copy(slot = PreprodDeepTx.Slot, epoch = PreprodDeepTx.Epoch)
     val outcome = onSmallStack(TxRules(world, parsed, e))
     assert(outcome.isRight, outcome.toString)
   }
@@ -226,6 +178,59 @@ class DeepNestingSuite extends FunSuite:
       xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(root.original),
       xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(wire)
     )
+  }
+
+  // --- ==, hashCode, toString ---------------------------------------------------------------------
+
+  /** Two values equal in structure, one that differs only at the innermost level, and the rendering
+    * of the first: all computed on a small stack.
+    */
+  private def structural[A <: AnyRef](copy: Bytes => A, wire: Bytes, other: Bytes): Unit =
+    onSmallStack {
+      val (a, b, c) = (copy(wire), copy(wire), copy(other))
+      assertEquals(a, b)
+      assertNotEquals(a, c)
+      assertEquals(a.hashCode, b.hashCode)
+      assert(a.toString.length <= Tree.DefaultRenderLimit + 3, "a rendering is truncated")
+      assert(a.toString.endsWith("..."))
+    }
+
+  test("== hashCode and toString of a value nested 10,000 levels are stack-safe: CBOR nodes") {
+    val deep = (leaf: Int) => repeat(raw(0x81), 10000) ++ raw(leaf)
+    val decode = (b: Bytes) => Cbor.decode(b).fold(fail(_), identity)
+    structural(decode, deep(0x00), deep(0x01))
+    assert(decode(deep(0x00)).toString.startsWith("Arr[Arr[Arr["))
+    // the values alone, without the bytes they were read from
+    structural(b => decode(b).value, deep(0x00), deep(0x01))
+    // the bytes a node came from matter to the node: an indefinite array is not a definite one
+    assertNotEquals(decode(raw(0x9f, 0x00, 0xff)), decode(raw(0x81, 0x00)))
+    assertEquals(decode(raw(0x9f, 0x00, 0xff)).value, decode(raw(0x81, 0x00)).value)
+    assertEquals(decode(raw(0x81, 0xf6)), decode(raw(0x81, 0xf6)))
+    assertNotEquals(decode(raw(0x81, 0xf6)), decode(raw(0x81, 0xf4)))
+  }
+
+  test("== hashCode and toString of a value nested 10,000 levels are stack-safe: Plutus data") {
+    // constructors, 3 bytes a level
+    val deep = (leaf: Int) => repeat(raw(0xd8, 0x79, 0x81), 10000) ++ raw(leaf)
+    structural(decodeData, deep(0x00), deep(0x01))
+    structural(
+      decodeData,
+      repeat(raw(0xa1, 0x00), 10000) ++ raw(0x00),
+      repeat(raw(0xa1, 0x00), 10000) ++ raw(0x01)
+    )
+    assertNotEquals(decodeData(raw(0x81, 0x00)), decodeData(raw(0x9f, 0x00, 0x01, 0xff)))
+    assertEquals(decodeData(raw(0x9f, 0x00, 0xff)), decodeData(raw(0x81, 0x00)))
+  }
+
+  test("== hashCode and toString of a value nested 10,000 levels are stack-safe: native scripts") {
+    val script = (b: Bytes) =>
+      NativeScript
+        .decode(Cbor.decode(b).fold(fail(_), identity))
+        .fold(e => fail(e.message), identity)
+    structural(script, nested(10000), repeat(raw(0x82, 0x01, 0x81), 10000) ++ raw(0x82, 0x04, 0x05))
+    assertNotEquals(script(nested(2)), script(nested(3)))
+    assert(script(nested(2)).toString.startsWith("AllOf[AllOf[Sig("))
+    assertEquals(script(nested(2)).toString, "AllOf[AllOf[Sig(" + "ab" * 28 + ")]]")
   }
 
   // --- metadata ----------------------------------------------------------------------------------------

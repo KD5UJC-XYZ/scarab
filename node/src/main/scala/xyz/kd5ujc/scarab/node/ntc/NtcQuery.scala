@@ -72,7 +72,6 @@ object NtcQuery:
   private type R[A] = Either[String, A]
   private val limits = Cbor.Limits(
     maxInputBytes = 2000000,
-    maxDepth = 32,
     maxItems = 200000,
     maxStringBytes = 1000000
   )
