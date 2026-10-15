@@ -35,12 +35,22 @@ enum Value:
   case Bool(value: Boolean)
   case Null
 
+  /** A floating-point number, with the width it was (or is to be) written in. Only produced by a
+    * decoder whose [[Cbor.Limits]] allow floats; the value is held as a `Double`, which every width
+    * converts to exactly.
+    */
+  case Float(value: Double, width: FloatWidth)
+
   // As `Node`: structural and stack-safe, ignoring the original bytes of the nodes.
   override def equals(that: Any): Boolean = that match
     case o: Value => this.treeEquals(o)
     case _        => false
   override def hashCode(): Int = this.treeHash
   override def toString: String = this.treeString
+
+/** The IEEE 754 width of a CBOR float: additional information 25, 26 or 27 (RFC 8949 section 3.3). */
+enum FloatWidth:
+  case Half, Single, Double
 
 object Value:
   /** The children of a value: array items, map keys and values in turn, a tag's content. */
@@ -56,6 +66,9 @@ object Value:
     case (ByteString(a), ByteString(b)) => a == b
     case (Text(a), Text(b))             => a == b
     case (Bool(a), Bool(b))             => a == b
+    // the bits, so that a NaN equals itself and 0.0 differs from -0.0: the wire representation
+    case (Float(a, wa), Float(b, wb)) =>
+      wa == wb && java.lang.Double.doubleToLongBits(a) == java.lang.Double.doubleToLongBits(b)
     case (Tag(a, _), Tag(b, _))         => a == b
     case (Arr(_), Arr(_))               => true
     case (Map(_), Map(_))               => true
@@ -69,6 +82,7 @@ object Value:
     case ByteString(a) => a.hashCode
     case Text(a)       => a.hashCode
     case Bool(a)       => a.hashCode
+    case Float(a, _)   => 41 + java.lang.Double.hashCode(a)
     case Tag(a, _)     => 37 + a.hashCode
     case Arr(_)        => 1
     case Map(_)        => 2
@@ -80,6 +94,7 @@ object Value:
     case ByteString(a) => s"ByteString(${Tree.shown(a)})"
     case Text(a)       => s"Text(${Tree.shown(a)})"
     case Bool(a)       => s"Bool($a)"
+    case Float(a, w)   => s"Float($a, $w)"
     case Tag(a, _)     => s"Tag($a)"
     case Arr(_)        => "Arr"
     case Map(_)        => "Map"

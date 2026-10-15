@@ -6,8 +6,10 @@ import java.nio.CharBuffer
 import java.nio.charset.{CodingErrorAction, StandardCharsets}
 import scala.util.control.NonFatal
 
-/** Small byte-preserving CBOR subset. Floats, undefined and unassigned simple values are
-  * deliberately unsupported. Duplicate map keys and map order are retained.
+/** Small byte-preserving CBOR subset. Undefined and unassigned simple values are deliberately
+  * unsupported, and so are floats unless [[Limits.allowFloats]] says otherwise (Cardano's wire
+  * formats hold none; only the ledger state's pool-ranking likelihoods do). Duplicate map keys and
+  * map order are retained.
   *
   * Decoding and encoding keep their stack on the heap, so nesting is not limited by the thread's
   * stack. The reference has no nesting limit either; only the size of the block bounds it, and a
@@ -19,7 +21,9 @@ object Cbor:
       maxInputBytes: Int = 1048576,
       maxDepth: Int = Int.MaxValue,
       maxItems: Int = 100000,
-      maxStringBytes: Int = 1048576
+      maxStringBytes: Int = 1048576,
+      /** Accept half, single and double floats (as [[Value.Float]]). Off: they are refused. */
+      allowFloats: Boolean = false
   )
   private val MaxUInt = (BigInt(1) << 64) - 1
   private final case class Failure(message: String) extends RuntimeException(message)
@@ -82,6 +86,14 @@ object Cbor:
             n = (n << 8) | BigInt(read())
             i += 1
           n
+    /** The next `count` bytes as a big-endian number (the bits of a float). */
+    private def floatBits(count: Int): Long =
+      var n = 0L
+      var i = 0
+      while i < count do
+        n = (n << 8) | read().toLong
+        i += 1
+      n
     private def bounded(n: BigInt, bound: Int, what: String): Int =
       if n > BigInt(bound) then fail(s"$what limit exceeded")
       n.toInt
@@ -203,7 +215,16 @@ object Cbor:
                 case 20 => Value.Bool(false)
                 case 21 => Value.Bool(true)
                 case 22 => Value.Null
-                case _  => fail("unsupported simple value, float, or unexpected break")
+                case 25 if limits.allowFloats =>
+                  Value.Float(Float16.toFloat(floatBits(2).toInt).toDouble, FloatWidth.Half)
+                case 26 if limits.allowFloats =>
+                  Value.Float(
+                    java.lang.Float.intBitsToFloat(floatBits(4).toInt).toDouble,
+                    FloatWidth.Single
+                  )
+                case 27 if limits.allowFloats =>
+                  Value.Float(java.lang.Double.longBitsToDouble(floatBits(8)), FloatWidth.Double)
+                case _ => fail("unsupported simple value, float, or unexpected break")
               produced = Node(value, window(start))
         if produced != null then
           if stack.isEmpty then result = produced else stack.peek().add(produced)
@@ -289,6 +310,19 @@ object Cbor:
             stack.push(new Open(null, null, node))
           case Value.Bool(b) => write(if b then 245 else 244)
           case Value.Null    => write(246)
+          case Value.Float(x, FloatWidth.Half) =>
+            val bits = Float16.fromFloat(x.toFloat)
+            write(0xf9); write(bits >> 8); write(bits & 0xff)
+          case Value.Float(x, FloatWidth.Single) =>
+            val bits = java.lang.Float.floatToRawIntBits(x.toFloat)
+            write(0xfa)
+            var shift = 24
+            while shift >= 0 do { write((bits >>> shift) & 0xff); shift -= 8 }
+          case Value.Float(x, FloatWidth.Double) =>
+            val bits = java.lang.Double.doubleToRawLongBits(x)
+            write(0xfb)
+            var shift = 56
+            while shift >= 0 do { write(((bits >>> shift) & 0xff).toInt); shift -= 8 }
       emit(value, 0)
       while !stack.isEmpty do
         val top = stack.peek()

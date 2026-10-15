@@ -57,6 +57,15 @@ object DecodeError:
     case UnexpectedKey(key: String)
     case NoAlternative(causes: Vector[DecodeError])
 
+    /** A set holds the same element twice (`rendered` is a short rendering of it). */
+    case DuplicateElement(rendered: String)
+
+    /** A value that a smart constructor refuses (the hash length, a non-zero count, ...). */
+    case Violation(violation: ConstraintViolation)
+
+    /** A form this decoder does not read (named by `what`) though the format allows it. */
+    case Unsupported(what: String)
+
     /** A decoder threw. This is a bug in a decoder, reported rather than propagated. */
     case Internal(exception: String)
 
@@ -72,6 +81,9 @@ object DecodeError:
     case Kind.DuplicateKey(k)       => s"duplicate key $k"
     case Kind.UnexpectedKey(k)      => s"unexpected key $k"
     case Kind.NoAlternative(cs)     => s"no alternative matched (${cs.size} tried)"
+    case Kind.DuplicateElement(e)   => s"duplicate element $e"
+    case Kind.Violation(v) => s"${v.typeName} requires ${v.constraint}, got ${v.actual}"
+    case Kind.Unsupported(w)        => s"unsupported: $w"
     case Kind.Internal(e)           => s"internal error: $e"
 
   def at(node: Node, kind: Kind): DecodeError = DecodeError(kind, Nil, node.original.unsafeOffset)

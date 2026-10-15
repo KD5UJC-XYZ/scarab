@@ -287,3 +287,43 @@ class CborSuite extends munit.FunSuite:
       Left(Cbor.TooDeep)
     )
   }
+
+  private val Floats = Cbor.Limits(allowFloats = true)
+  private def floatDecoded(hex: String): Value =
+    Cbor.decode(bytes(hex), Floats).fold(fail(_), _.value)
+
+  test("floats are refused by default and read in all three widths when allowed") {
+    // RFC 8949 appendix A: 1.0 and 1.5 as halves, 100000.0 as a single, 1.1 as a double
+    assertEquals(floatDecoded("f93c00"), Value.Float(1.0, FloatWidth.Half))
+    assertEquals(floatDecoded("f93e00"), Value.Float(1.5, FloatWidth.Half))
+    assertEquals(floatDecoded("fa47c35000"), Value.Float(100000.0, FloatWidth.Single))
+    assertEquals(floatDecoded("fb3ff199999999999a"), Value.Float(1.1, FloatWidth.Double))
+    assertEquals(floatDecoded("f90001"), Value.Float(math.pow(2, -24), FloatWidth.Half))
+    assertEquals(floatDecoded("f97c00"), Value.Float(Double.PositiveInfinity, FloatWidth.Half))
+    assertEquals(floatDecoded("f9fc00"), Value.Float(Double.NegativeInfinity, FloatWidth.Half))
+    assertEquals(floatDecoded("f98000"), Value.Float(-0.0, FloatWidth.Half))
+    assertNotEquals(floatDecoded("f98000"), floatDecoded("f90000"))
+    assert(Cbor.decode(bytes("fa47c35000")).isLeft)
+  }
+
+  test("a float keeps the width it was read in, and floats nest in indefinite containers") {
+    assertEquals(
+      Cbor.encode(floatDecoded("9ffa3c816216fa3c801386ff")).map(_.hex),
+      Right("82fa3c816216fa3c801386")
+    )
+    Vector("f93c00", "fa47c35000", "fb3ff199999999999a", "f97bff", "f90400", "f98001")
+      .foreach(h => assertEquals(Cbor.encode(floatDecoded(h)).map(_.hex), Right(h)))
+  }
+
+  test("binary16: every half round trips through a float, and rounding is nearest-even") {
+    (0 to 0xffff).filterNot(b => (b & 0x7c00) == 0x7c00 && (b & 0x3ff) != 0).foreach { b =>
+      assertEquals(Float16.fromFloat(Float16.toFloat(b)), b)
+    }
+    assertEquals(Float16.fromFloat(65504f), 0x7bff)
+    assertEquals(Float16.fromFloat(65520f), 0x7c00) // rounds up to infinity
+    assertEquals(Float16.fromFloat(1.0f + math.pow(2, -11).toFloat), 0x3c00) // a tie goes to even
+    assertEquals(Float16.fromFloat(1.0f + 3 * math.pow(2, -11).toFloat), 0x3c02)
+    assertEquals(Float16.fromFloat(math.pow(2, -25).toFloat), 0) // the tie below the least subnormal
+    assertEquals(Float16.fromFloat(Float.NaN), 0x7e00)
+  }
+

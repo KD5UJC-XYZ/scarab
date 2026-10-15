@@ -48,6 +48,7 @@ object Codec:
     case Value.Tag(t, _)     => s"tag $t"
     case Value.Bool(_)       => "boolean"
     case Value.Null          => "null"
+    case Value.Float(_, w)   => s"float ($w)"
 
   def mismatch(expected: String, n: Node): DecodeError =
     DecodeError.at(n, Kind.TypeMismatch(expected, describe(n)))

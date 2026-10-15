@@ -2,10 +2,15 @@
 package xyz.kd5ujc.scarab.models.runtime
 
 import java.nio.charset.StandardCharsets
-import xyz.kd5ujc.scarab.codec.Bytes as CborBytes
+import xyz.kd5ujc.scarab.codec.{Float16, Bytes as CborBytes}
 
 /** A canonical CBOR writer: shortest integer and length forms, definite-length containers. Total:
   * the model types guarantee ranges, so writing cannot fail.
+  *
+  * The methods of the first group are the canonical ones every generated codec uses. The second
+  * group is for the formats that are not canonical: indefinite-length containers, floats, and the
+  * length policy of the Haskell ledger's binary layer. Nothing in the second group is reached by
+  * the first, so a codec that does not call it is unaffected.
   */
 final class Writer(initial: Int = 256):
   private var buf = new Array[Byte](initial)
@@ -74,3 +79,83 @@ final class Writer(initial: Int = 256):
     len += b.size
 
   def result: CborBytes = CborBytes.fromArray(java.util.Arrays.copyOf(buf, len))
+
+  // ---- not canonical: indefinite containers, floats, the ledger's length policy ----------------
+
+  /** The head of an indefinite-length array; the items follow, then [[break]]. */
+  def indefiniteArray(): Unit = put(0x9f)
+
+  /** The head of an indefinite-length map; the key-value pairs follow, then [[break]]. */
+  def indefiniteMap(): Unit = put(0xbf)
+
+  /** The break that closes an indefinite-length item. */
+  def break(): Unit = put(0xff)
+
+  /** A half-precision float (`0xf9`), as cborg's `encodeFloat16`: the nearest half to `f`. */
+  def float16(f: Float): Unit =
+    val bits = Float16.fromFloat(f)
+    put(0xf9)
+    put(bits >> 8)
+    put(bits & 0xff)
+
+  /** A single-precision float (`0xfa`), as cborg's `encodeFloat` and the ledger's `EncCBOR Float`:
+    * always four bytes, never shrunk to a half.
+    */
+  def float32(f: Float): Unit =
+    val bits = java.lang.Float.floatToRawIntBits(f)
+    put(0xfa)
+    var shift = 24
+    while shift >= 0 do
+      put((bits >>> shift) & 0xff)
+      shift -= 8
+
+  /** A double-precision float (`0xfb`), as cborg's `encodeDouble`: always eight bytes. */
+  def float64(d: Double): Unit =
+    val bits = java.lang.Double.doubleToRawLongBits(d)
+    put(0xfb)
+    var shift = 56
+    while shift >= 0 do
+      put(((bits >>> shift) & 0xff).toInt)
+      shift -= 8
+
+  /** An `Integer` of any size, as cborg's `encodeInteger`: a plain integer within 64 bits either
+    * way, and beyond them a bignum (tag 2 for a positive and tag 3 for a negative `-1 - n`).
+    */
+  def integer(n: BigInt): Unit =
+    val magnitude = if n.signum >= 0 then n else -1 - n
+    if magnitude.bitLength <= 64 then int(n)
+    else
+      head(6, if n.signum >= 0 then 2L else 3L)
+      val raw = magnitude.toByteArray
+      val minimal = if raw.head == 0 then raw.tail else raw // the sign byte of a magnitude
+      head(2, minimal.length.toLong)
+      minimal.foreach(b => put(b & 0xff))
+
+  /** An array of `n` items that `body` writes, framed as the ledger frames its lists, sets and
+    * sequences (`variableListLenEncoding`, cardano-ledger-binary `Encoder.hs:458-468`): a definite
+    * head up to [[Writer.LengthThreshold]] items, an indefinite one with its break above.
+    */
+  def variableArray(n: Int)(body: => Unit): Unit =
+    if n <= Writer.LengthThreshold then
+      arrayHead(n)
+      body
+    else
+      indefiniteArray()
+      body
+      break()
+
+  /** A map of `n` entries that `body` writes, framed as the ledger frames its maps
+    * (`variableMapLenEncoding`, `Encoder.hs:430-440`).
+    */
+  def variableMap(n: Int)(body: => Unit): Unit =
+    if n <= Writer.LengthThreshold then
+      mapHead(n)
+      body
+    else
+      indefiniteMap()
+      body
+      break()
+
+object Writer:
+  /** The ledger's `lengthThreshold` (`Encoder.hs:442-443`): above it a container is indefinite. */
+  val LengthThreshold: Int = 23
