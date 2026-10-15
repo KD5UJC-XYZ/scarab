@@ -20,6 +20,11 @@ def follow(args):
         # the round trip through the mirror of the Haskell state on the live state at each epoch boundary
         program += ["--mirror-check"]
     mounts = [f"{root / 'genesis'}:/genesis:ro"]
+    if getattr(args, "db", False):
+        # the chain database lives in the run directory, so a later `follow --db` restarts from its snapshot
+        (root / "db").mkdir(exist_ok=True)
+        program += ["--db", "/db", "--snapshot-every", getattr(args, "snapshot_every", None) or "1epochs"]
+        mounts.append(f"{root / 'db'}:/db")
     if getattr(args, "dump_state", False):
         # state digests at every epoch boundary for the db-analyser comparison (`devnet.py oracle`)
         (root / "dump").mkdir(exist_ok=True)

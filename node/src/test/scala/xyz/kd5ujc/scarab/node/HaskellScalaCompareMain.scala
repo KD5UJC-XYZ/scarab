@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.data.EitherT
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import cats.mtl.Handle.handleForApplicativeError
 import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, EraLedgerState}
-import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, LedgerFileEra}
-import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, NodeCodecs}
 
 /** Compares a Haskell `state` file of the Preview chain with a snapshot of the Scala node in the
   * same epoch, through the ledger-side mirror: the fields that are fixed for an epoch (the three
@@ -26,35 +19,8 @@ import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, NodeCodecs}
   * }}}
   */
 object HaskellScalaCompareMain:
-  import NodeCodecs.given
-
-  private type F[A] = EitherT[IO, StorageError, A]
-
-  private val fingerprint: Array[Byte] =
-    FileLedgerSnapshots.fingerprint(NodeCodecs.nodeSnapshot.shape)
-
-  private def upgraded(old: Array[Byte]): Array[Byte] =
-    val magic = FileLedgerSnapshots.Magic.length
-    val payload = old.slice(magic + 4 + fingerprint.length, old.length - 32)
-    val body =
-      FileLedgerSnapshots.Magic ++ Array[Byte](0, 0, 0, FileLedgerSnapshots.FormatVersion.toByte) ++
-        fingerprint ++ payload
-    body ++ java.security.MessageDigest.getInstance("SHA-256").digest(body)
-
   private def readScala(file: Path): Option[(Option[Long], NodeState)] =
-    val dir = Files.createTempDirectory("compare-snapshot")
-    try
-      Files.write(dir.resolve(file.getFileName), upgraded(Files.readAllBytes(file)))
-      FileLedgerSnapshots
-        .open[F, NodeState](fs2.io.file.Path.fromNioPath(dir), keep = 1)
-        .flatMap(_.restore(_ => EitherT.pure[IO, StorageError](true)))
-        .value
-        .unsafeRunSync()
-        .toOption
-        .flatMap(_.snapshot.map((_, s) => (s.anchor.map(_.slot.toLong), s.state)))
-    finally
-      Files.list(dir).iterator.asScala.foreach(Files.delete)
-      Files.delete(dir)
+    LegacySnapshots.read(file).toOption.map(s => (s.anchor.map(_.slot.toLong), s.state))
 
   /** The names of the fields in which two values of a case class differ. */
   private def fields(a: Product, b: Product): List[String] =

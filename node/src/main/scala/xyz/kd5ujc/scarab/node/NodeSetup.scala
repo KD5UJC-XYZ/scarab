@@ -15,6 +15,8 @@ import xyz.kd5ujc.scarab.ledger.{
   NetworkIdentity,
   ShelleyGenesis
 }
+import cats.{Applicative, Monad}
+import cats.mtl.Ask
 import cats.syntax.all.*
 import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
@@ -75,6 +77,16 @@ final case class NodeSetup(
       ),
       observed
     )
+
+  /** The mirror's environment as a capability: the configuration, with the eras seen to begin so
+    * far read from `observed` at each use.
+    */
+  def mirrorAsk[F[_]](
+      observed: F[Map[Era, BigInt]]
+  )(using monad: Monad[F]): Ask[F, ConsensusMirrorEnv] =
+    new Ask[F, ConsensusMirrorEnv]:
+      val applicative: Applicative[F] = monad
+      def ask[E2 >: ConsensusMirrorEnv]: F[E2] = monad.map(observed)(mirrorEnv(_))
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)

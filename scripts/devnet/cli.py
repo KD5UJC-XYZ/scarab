@@ -100,6 +100,10 @@ def main():
     f.add_argument("--mirror-check", action="store_true",
                    help="the follower turns its ledger state into the mirror of the Haskell state and back at the "
                         "first block and at each epoch boundary, and logs mirrorChecked (never affects the node)")
+    f.add_argument("--db", action="store_true",
+                   help="keep the follower's chain database in the run directory (<run dir>/db), snapshots at each "
+                        "epoch boundary, so that a second `follow --db` restarts from the snapshot")
+    f.add_argument("--snapshot-every", help="with --db: the snapshot interval of the node (default 1epochs)")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")

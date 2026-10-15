@@ -18,13 +18,16 @@ import xyz.kd5ujc.scarab.storage.{
   ChainStorage,
   ImmutableStore,
   MemoryUtxoStore,
-  NodeCodecs,
   RocksUtxoStore,
+  SnapshotFormat,
+  SnapshotMigration,
+  SnapshotV3,
   StateBacking,
   UtxoBacking,
   UtxoStore
 }
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Ask, Handle, Stateful}
+import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
@@ -44,8 +47,6 @@ import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, M
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
-
-import NodeCodecs.given
 
 /** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
@@ -322,6 +323,10 @@ object Main extends IOApp:
         }
       )
       k = genesis.geometry.securityParam
+      // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
+      // node has seen begin so far.
+      given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
+      given SnapshotFormat[IO, NodeState] = SnapshotV3.format[IO]
       storage = options.db.fold(
         Resource.pure[IO, Storage](
           Storage(
@@ -350,7 +355,8 @@ object Main extends IOApp:
             JsonLog.storage,
             backing,
             warm,
-            Some(scheduling.compute)
+            Some(scheduling.compute),
+            Some(SnapshotMigration.toV3[IO])
           )
           .evalMap { r =>
             ChainStorage

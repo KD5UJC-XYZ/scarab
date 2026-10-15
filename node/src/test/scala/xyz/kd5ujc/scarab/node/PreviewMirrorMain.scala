@@ -4,60 +4,101 @@ package xyz.kd5ujc.scarab.node
 import cats.data.EitherT
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
+import cats.mtl.Ask
 import cats.mtl.Handle.handleForApplicativeError
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, StateMirror}
+import xyz.kd5ujc.scarab.ledger.{FormatVersion, StorageError}
 import xyz.kd5ujc.scarab.node.MirrorCorpus.Report
-import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, NodeCodecs}
+import xyz.kd5ujc.scarab.storage.{
+  FileLedgerSnapshots,
+  SnapshotFormat,
+  SnapshotMigration,
+  SnapshotV3,
+  StateSnapshot
+}
 
-/** Runs the whole mirror (consensus side and ledger side) over the ledger states of real snapshots
-  * of the node (a Preview sync, one snapshot per epoch boundary), reading them one at a time so
-  * that a whole sync's 18 GB is never held. Not a test: the input is data that is not in the
-  * repository, and it takes a large heap.
+/** The corpus gate of the snapshot format V3 and of the mirror, over the real snapshots of a
+  * Preview sync (one per epoch boundary), read one at a time so that a whole sync's 18 GB is never
+  * held. Not a test: the input is data that is not in the repository, and it takes a large heap.
+  *
+  * Of each snapshot (the files of the Preview sync are format version 1, written before the
+  * packages were renamed):
+  *   - the V2 reader reads it directly ([[LegacySnapshots]]);
+  *   - the whole mirror runs on that state ([[MirrorCorpus.check]]: retraction, and the tampers);
+  *   - a copy in a scratch directory is migrated by [[SnapshotMigration]] (version 1 to 2 to 3),
+  *     the V3 file is read back through the store, and the state is compared with the direct read
+  *     as the mirror normalises it (the mirror is lossless up to [[StateMirror.normalised]]), both
+  *     by the mirror's own view of a state (which includes the UTxO bookkeeping) and by structural
+  *     equality;
+  *   - the cost of writing the V3 snapshot (the mirror and the encoding) and of reading it.
   *
   * {{{
-  * java -Xmx24g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir]
+  * java -Xmx32g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir]
   * }}}
   *
   * `stride` takes every n-th snapshot (default 1); the tampers, each a full conversion, are tried
   * on every `tamper-stride` -th of those (default 20); `genesis-dir` is the network's (default
-  * fixtures/preview/genesis).
+  * fixtures/preview/genesis). The snapshots directory is only read.
   */
 object PreviewMirrorMain:
-  import NodeCodecs.given
-
   private type F[A] = EitherT[IO, StorageError, A]
 
-  private val fingerprint: Array[Byte] =
-    FileLedgerSnapshots.fingerprint(NodeCodecs.nodeSnapshot.shape)
+  /** What the migration did to one snapshot, as compared with the direct read. */
+  final case class Gate(
+      migrated: Boolean,
+      sameView: Boolean,
+      equal: Boolean,
+      from: Option[FormatVersion],
+      v3Bytes: Long,
+      writeMillis: Long,
+      readMillis: Long
+  ):
+    def ok: Boolean = migrated && sameView && equal
 
-  /** The snapshot as the current format has it: the files of the Preview sync were written by the
-    * build before the packages were renamed (format version 1); the payload is the same, so only
-    * the version and the schema fingerprint of the header, and the checksum, change.
-    */
-  private def upgraded(old: Array[Byte]): Array[Byte] =
-    val magic = FileLedgerSnapshots.Magic.length
-    val payload = old.slice(magic + 4 + fingerprint.length, old.length - 32)
-    val body =
-      FileLedgerSnapshots.Magic ++ Array[Byte](0, 0, 0, FileLedgerSnapshots.FormatVersion.toByte) ++
-        fingerprint ++ payload
-    body ++ java.security.MessageDigest.getInstance("SHA-256").digest(body)
+  private def millis[A](body: => A): (A, Long) =
+    val began = System.nanoTime()
+    val result = body
+    (result, (System.nanoTime() - began) / 1000000)
 
-  private def read(file: Path): Either[StorageError, Option[(Option[BlockRef], NodeState)]] =
-    val dir = Files.createTempDirectory("mirror-snapshot")
+  /** Migrate a copy of `file`, read it back, and compare it with `direct`. */
+  private def gate(
+      env: ConsensusMirrorEnv,
+      file: Path,
+      direct: StateSnapshot[NodeState]
+  ): Either[StorageError, Gate] =
+    given Ask[F, ConsensusMirrorEnv] = Ask.const(env)
+    given SnapshotFormat[F, NodeState] = SnapshotV3.format[F]
+    val dir = Files.createTempDirectory("snapshot-gate")
     try
-      Files.write(dir.resolve(file.getFileName), upgraded(Files.readAllBytes(file)))
-      FileLedgerSnapshots
-        .open[F, NodeState](fs2.io.file.Path.fromNioPath(dir), keep = 1)
-        .flatMap(_.restore(_ => EitherT.pure[IO, StorageError](true)))
-        .value
-        .unsafeRunSync()
-        .map { restored =>
-          restored.skipped.foreach(k => println(s"  skipped ${k.name}: ${k.error}"))
-          restored.snapshot.map((_, s) => (s.anchor, s.state))
-        }
+      Files.copy(file, dir.resolve(file.getFileName))
+      val store = fs2.io.file.Path.fromNioPath(dir)
+      val program = for
+        report <- SnapshotMigration.toV3[F].run(store)
+        snapshots <- FileLedgerSnapshots.open[F, NodeState](store, keep = 1)
+        restored <- snapshots.restore(_ => EitherT.pure[IO, StorageError](true))
+      yield (report, restored)
+      val (outcome, readMillis) = millis(program.value.unsafeRunSync())
+      val expected = direct.copy(state = StateMirror.normalised(env, direct.state))
+      // The cost of the V3 write of this state, on its own: the mirror, the Haskell encoding.
+      val (encoded, writeMillis) =
+        millis(SnapshotV3.format[F].encode(direct).value.unsafeRunSync())
+      outcome.map { (report, restored) =>
+        val back = restored.snapshot.map(_._2)
+        Gate(
+          migrated = report.migrated.nonEmpty && report.refused.isEmpty,
+          sameView = back.exists(b =>
+            b.anchor == expected.anchor && MirrorCheck.sameState(b.state, expected.state)
+          ),
+          equal = back.contains(expected),
+          from = report.migrated.headOption.map(_.from),
+          v3Bytes = encoded.toOption.flatMap(_.toOption).fold(0L)(_.length.toLong),
+          writeMillis = writeMillis,
+          readMillis = readMillis
+        )
+      }
     finally
       Files.list(dir).iterator.asScala.foreach(Files.delete)
       Files.delete(dir)
@@ -80,17 +121,43 @@ object PreviewMirrorMain:
       .zipWithIndex
       .collect { case (f, i) if i % stride == 0 => f }
     val reports = Vector.newBuilder[(String, Report)]
+    val gates = Vector.newBuilder[(String, Gate)]
     files.zipWithIndex.foreach { case (file, n) =>
-      read(file) match
-        case Left(e)     => println(s"${file.getFileName}: unreadable, $e")
-        case Right(None) => println(s"${file.getFileName}: no snapshot")
-        case Right(Some((anchor, state))) =>
+      LegacySnapshots.read(file) match
+        case Left(e) => println(s"${file.getFileName}: unreadable, $e")
+        case Right(direct) =>
+          val state = direct.state
           val report =
-            MirrorCorpus.check(env, anchor, state, withTampers = n % tamperStride == 0)
+            MirrorCorpus.check(env, direct.anchor, state, withTampers = n % tamperStride == 0)
           val label =
             s"${file.getFileName} epoch ${state.ledger.epoch} v${state.ledger.params.protocolMajor}"
           reports += label -> report
-          if !report.ok || n % 25 == 0 then
-            println(s"$label: ok=${report.ok} era=${report.era} gaps=${report.gaps}")
+          val gated = gate(env, file, direct)
+          gated.foreach(g => gates += label -> g)
+          if !report.ok || !gated.exists(_.ok) || n % 25 == 0 then
+            println(s"$label: ok=${report.ok} era=${report.era} gaps=${report.gaps} gate=$gated")
     }
     println(MirrorCorpus.summary("preview snapshots", reports.result()))
+    val all = gates.result()
+    val bad = all.filterNot(_._2.ok)
+    def stats(xs: Seq[Long]): String =
+      if xs.isEmpty then "-"
+      else s"avg ${xs.sum / xs.size} max ${xs.max}"
+    println(s"""V3 migration gate: ${all.size} snapshots, ${bad.size} not equal after migration
+               |  migrated: ${all.count(_._2.migrated)}; from version ${all
+                .flatMap(_._2.from)
+                .groupBy(identity)
+                .view
+                .mapValues(_.size)
+                .toList
+                .sortBy(_._1)
+                .mkString(", ")}
+               |  equal up to StateMirror.normalised: view ${all.count(
+                _._2.sameView
+              )}, structural ${all
+                .count(_._2.equal)}
+               |  V3 size in bytes: ${stats(all.map(_._2.v3Bytes))}
+               |  write (toMirror + encode) ms: ${stats(all.map(_._2.writeMillis))}
+               |  migrate + read back ms: ${stats(all.map(_._2.readMillis))}
+               |${bad.take(5).map((n, g) => s"  FAILED $n: $g").mkString("\n")}""".stripMargin)
+    if bad.nonEmpty || all.size != files.size then sys.exit(1)

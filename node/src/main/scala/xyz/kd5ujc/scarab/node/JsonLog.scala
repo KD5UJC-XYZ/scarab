@@ -450,6 +450,13 @@ object JsonLog:
           "millis" -> millis.asJson
         )
       case StorageEvent.SnapshotFailed(reason) => line("snapshotFailed", "reason" -> reason.asJson)
+      case StorageEvent.SnapshotRefused(name, a, refusal) =>
+        line(
+          "snapshotRefused",
+          "file" -> name.asJson,
+          "anchor" -> anchor(a),
+          "reason" -> refusal.show.asJson
+        )
       case StorageEvent.ReplayStarted(from, tip) =>
         line("replayStarted", "from" -> anchor(from), "immutableTip" -> anchor(tip))
       case StorageEvent.ReplayProgress(at, replayed, millis) =>
