@@ -22,6 +22,12 @@ tests of all modules, the fuzz suite among them (about 35 s); the compiler runs 
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
+The classpath file names jars as `/work/.cache/...`. `scripts/devnet.py` mounts the dependency cache
+there itself: `SCARAB_CACHE_DIR` if set, else the checkout's own `.cache` if it holds anything, else
+(in a linked git worktree, whose `.cache` is only an empty mount point) the `.cache` of the main
+checkout, found as the parent of `git rev-parse --git-common-dir`. Mount the same directory at
+`/work/.cache` when you run sbt in a worktree, and never copy jars into the worktree.
+
 ### Fast iteration: a persistent sbt server (optional)
 
 Starting sbt costs 40 to 60 seconds of JVM start and compile. For many small edits keep one

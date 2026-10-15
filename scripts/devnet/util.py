@@ -16,6 +16,43 @@ ENV = "/work/env"
 QUERY_PORT = 7071
 
 
+def _populated(path):
+    return path.is_dir() and any(path.iterdir())
+
+
+def main_checkout(repo, common_dir=None):
+    """The main checkout of `repo`, a linked worktree or not: the parent of the repository's common
+    directory.
+
+    `common_dir` is the output of the repository query for it (asked of the repository when
+    omitted); a checkout without one resolves to itself.
+    """
+    if common_dir is None:
+        done = subprocess.run(["git", "-C", str(repo), "rev-parse", "--git-common-dir"], text=True, capture_output=True)
+        common_dir = done.stdout.strip() if done.returncode == 0 else ""
+    if not common_dir:
+        return repo
+    common = (repo / common_dir).resolve()  # an absolute value replaces `repo`
+    return common.parent if common.name == ".git" else repo
+
+
+def cache_dir(repo=REPO, env=None, common_dir=None):
+    """The shared dependency cache the classpath file points into (`/work/.cache/...`).
+
+    `SCARAB_CACHE_DIR` wins; else the checkout's own `.cache` if it holds anything; else, in a
+    linked worktree (whose `.cache` is only the empty mount point the build container leaves), the
+    `.cache` of the main checkout. Jars are never copied into a worktree.
+    """
+    env = os.environ if env is None else env
+    if env.get("SCARAB_CACHE_DIR"):
+        return pathlib.Path(env["SCARAB_CACHE_DIR"]).resolve()
+    own = repo / ".cache"
+    if _populated(own):
+        return own
+    shared = main_checkout(repo, common_dir) / ".cache"
+    return shared if _populated(shared) else own
+
+
 def data_root(name):
     return pathlib.Path(os.environ.get("SCARAB_DATA_DIR") or os.environ.get("CSL_DATA_DIR", "/tmp/cardano-scala-lab")) / name
 

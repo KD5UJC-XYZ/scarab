@@ -5,6 +5,7 @@ Run from the repository root:  python3 -m unittest discover -s scripts/tests -v
 """
 import json
 import pathlib
+import shutil
 import sys
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntclocal, ntcqueries, ntcquery, refused_fixture  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 
@@ -311,6 +312,39 @@ class RefusedFixtureTest(unittest.TestCase):
                 {"label": "xrefoverlap-v3-ef", "expected": ["ReferenceInputsNotDisjointFromInputs"], "tx": "03"})))
             lines = refused_fixture.build(run)
         self.assertEqual([l["scenario"] for l in lines], ["vrf", "vrf", "unelected", "refoverlap"])
+
+
+class CacheDirTest(unittest.TestCase):
+    """Where the dependency cache is, from a main checkout or a linked worktree."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.main = self.tmp / "main"
+        self.tree = self.main / ".claude" / "worktrees" / "w1"
+        (self.main / ".cache" / "tools").mkdir(parents=True)
+        (self.tree / ".cache").mkdir(parents=True)  # the empty mount point of a worktree
+        self.common = str(self.main / ".git")
+
+    def test_environment_variable_wins(self):
+        other = self.tmp / "elsewhere"
+        other.mkdir()
+        self.assertEqual(util.cache_dir(self.tree, {"SCARAB_CACHE_DIR": str(other)}, self.common), other.resolve())
+
+    def test_populated_own_cache_is_used(self):
+        self.assertEqual(util.cache_dir(self.main, {}, ".git"), self.main / ".cache")
+
+    def test_worktree_with_empty_cache_uses_the_main_checkout(self):
+        self.assertEqual(util.cache_dir(self.tree, {}, self.common), self.main / ".cache")
+
+    def test_no_shared_cache_falls_back_to_own(self):
+        (self.main / ".cache" / "tools").rmdir()
+        self.assertEqual(util.cache_dir(self.tree, {}, self.common), self.tree / ".cache")
+
+    def test_main_checkout_from_relative_absolute_and_absent_common_dir(self):
+        self.assertEqual(util.main_checkout(self.main, ".git"), self.main)
+        self.assertEqual(util.main_checkout(self.tree, self.common), self.main)
+        self.assertEqual(util.main_checkout(self.tree, ""), self.tree)
 
 
 class StarvationWarningTest(unittest.TestCase):

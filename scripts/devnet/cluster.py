@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 from . import util
-from .util import ENV, JDK_IMAGE, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
+from .util import ENV, cache_dir, JDK_IMAGE, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, data_root, docker, in_ref, put_file, query, read_json, ref
 
 
 def start_reference(name):
@@ -375,7 +375,8 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
     # MALLOC_ARENA_MAX=2: glibc's per-thread arenas fragment (roadmap K6); also set in the image
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
                f"--cpus={cpus}", "--memory=2g", "--user", USER, "-e", "MALLOC_ARENA_MAX=2",
-               "-v", f"{REPO}:/work:ro", "-v", f"{root / 'classes'}:/run/classes:ro"]
+               "-v", f"{REPO}:/work:ro", "-v", f"{cache_dir()}:/work/.cache:ro",
+               "-v", f"{root / 'classes'}:/run/classes:ro"]
     if name:
         command += ["--name", name]
     for mount in mounts:
