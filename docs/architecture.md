@@ -33,7 +33,7 @@ codec <- crypto <- protocol <- network ------------------------.
 
 `ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus`;
 `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
-import the node. Note that `protocol/Mux.scala` (the pure framing) and `protocol/Mux.scala` (the
+import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
 effectful multiplexer) are different files.
 
 Cycles that the old layout hid, and how they were cut (types moved down, nothing redesigned):

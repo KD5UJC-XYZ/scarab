@@ -326,7 +326,7 @@ spike does):
 1. Rename and module split (the reorg; done). `models-spike` became `models` (`scarab-models`): `runtime` plus generated
    code, the vendored `upstream/` CDDL and `models.conf`. `models-gen` is `scarab-models-gen`. Package roots are
    `xyz.kd5ujc.scarab.models.*`.
-2. NtN handshake and ChainSync payloads: replace `network.Handshake.Term`/`decodeData`, `ChainSync.Point`/`Tip`,
+2. NtN handshake and ChainSync payloads: replace `protocol.Handshake.Term`/`decodeData`, `ChainSync.Point`/`Tip`,
    `NtNHeader` (keep the state machines and limits). Smallest, most testable surface.
 3. Headers: replace `xyz.kd5ujc.scarab.ledger.Header.fromRaw`, `Header.Shelley`/`HeaderVrf`/`OpCert` with the era headers; the
    consensus code reads `headerBody` fields through the opaque types.
