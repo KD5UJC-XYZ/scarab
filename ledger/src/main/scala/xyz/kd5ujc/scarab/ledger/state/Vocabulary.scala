@@ -46,7 +46,6 @@ private val hashOrder: Order[Bytes] = Order.from(_ compareTo _)
 // The opaque types below are aliases inside this file, so their orders cannot be summoned from the
 // underlying type (the given would resolve to itself): these are the explicit ones.
 private val bigOrder: Order[BigInt] = Order.from(_ compare _)
-private val longOrder: Order[Long] = Order.from(java.lang.Long.compare(_, _))
 
 private def checked(kind: VocabError.Kind, size: Int, bytes: Bytes): Either[VocabError, Bytes] =
   Either.cond(bytes.size == size, bytes, VocabError.WrongHashLength(kind, size, bytes.size))
@@ -132,66 +131,97 @@ object DeltaCoin:
   given Order[DeltaCoin] = bigOrder
   given Show[DeltaCoin] = Show.show(d => s"DeltaCoin($d)")
 
-/** `CompactForm Coin` (`Coin.hs:148`, a `Word64`). Held in a `Long`: the whole supply (4.5e16) is
-  * far below 2^63, so a coin from 2^63 up is refused (`OutOfRange`) rather than carried.
+/** `CompactForm Coin` (`Coin.hs:148`, a `Word64`): the coin as accounts and stake keep it. The
+  * whole supply (4.5e16) is far below 2^63, but the type is the full word, as Haskell's.
   */
-opaque type CompactCoin = Long
+opaque type CompactCoin = Word64
 
 object CompactCoin:
-  def fromCoin(c: Coin): Either[VocabError, CompactCoin] =
-    val n = Coin.value(c)
-    Either.cond(n.isValidLong, n.toLong, VocabError.OutOfRange(VocabError.Kind.CompactCoin, n))
+  def fromBigInt(n: BigInt): Either[VocabError, CompactCoin] =
+    Word64.fromBigInt(VocabError.Kind.CompactCoin, n)
+
+  def fromCoin(c: Coin): Either[VocabError, CompactCoin] = fromBigInt(Coin.value(c))
+
+  def fromUnsigned(bits: Long): CompactCoin = Word64.fromUnsigned(bits)
 
   extension (c: CompactCoin)
-    def value: Long = c
-    def toCoin: Coin = BigInt(c)
+    def word: Word64 = c
+    def toBigInt: BigInt = Word64.toBigInt(c)
 
-  given Order[CompactCoin] = longOrder
-  given Show[CompactCoin] = Show.show(c => s"CompactCoin($c)")
+  given Order[CompactCoin] = Word64.order
+  given Show[CompactCoin] = Show.show(c => s"CompactCoin(${Word64.decimal(c)})")
 
-// ---- chain positions (`Cardano.Slotting`: Word64 newtypes; held in a `Long`, 0 <= n < 2^63)
+// ---- chain positions (`Cardano.Slotting`: `Word64` newtypes)
 
-private def nonNegative(kind: VocabError.Kind, n: Long): Either[VocabError, Long] =
-  Either.cond(n >= 0, n, VocabError.Negative(kind, BigInt(n)))
-
-opaque type EpochNo = Long
+opaque type EpochNo = Word64
 
 object EpochNo:
-  def fromLong(n: Long): Either[VocabError, EpochNo] = nonNegative(VocabError.Kind.EpochNo, n)
+  def fromBigInt(n: BigInt): Either[VocabError, EpochNo] =
+    Word64.fromBigInt(VocabError.Kind.EpochNo, n)
+
+  def fromUnsigned(bits: Long): EpochNo = Word64.fromUnsigned(bits)
 
   extension (e: EpochNo)
-    def value: Long = e
-    def next: EpochNo = e + 1
+    def word: Word64 = e
+    def toBigInt: BigInt = Word64.toBigInt(e)
 
-  given Order[EpochNo] = longOrder
-  given Show[EpochNo] = Show.show(e => s"EpochNo($e)")
+    /** The following epoch; `None` at 2^64 - 1 (`Enum EpochNo` would wrap). */
+    def next: Option[EpochNo] = Word64.successor(e)
 
-opaque type SlotNo = Long
+  given Order[EpochNo] = Word64.order
+  given Show[EpochNo] = Show.show(e => s"EpochNo(${Word64.decimal(e)})")
+
+opaque type SlotNo = Word64
 
 object SlotNo:
-  def fromLong(n: Long): Either[VocabError, SlotNo] = nonNegative(VocabError.Kind.SlotNo, n)
+  def fromBigInt(n: BigInt): Either[VocabError, SlotNo] =
+    Word64.fromBigInt(VocabError.Kind.SlotNo, n)
 
-  extension (s: SlotNo) def value: Long = s
+  def fromUnsigned(bits: Long): SlotNo = Word64.fromUnsigned(bits)
 
-  given Order[SlotNo] = longOrder
-  given Show[SlotNo] = Show.show(s => s"SlotNo($s)")
+  extension (s: SlotNo)
+    def word: Word64 = s
+    def toBigInt: BigInt = Word64.toBigInt(s)
 
-opaque type BlockNo = Long
+  given Order[SlotNo] = Word64.order
+  given Show[SlotNo] = Show.show(s => s"SlotNo(${Word64.decimal(s)})")
+
+opaque type BlockNo = Word64
 
 object BlockNo:
-  def fromLong(n: Long): Either[VocabError, BlockNo] = nonNegative(VocabError.Kind.BlockNo, n)
+  def fromBigInt(n: BigInt): Either[VocabError, BlockNo] =
+    Word64.fromBigInt(VocabError.Kind.BlockNo, n)
 
-  extension (b: BlockNo) def value: Long = b
+  def fromUnsigned(bits: Long): BlockNo = Word64.fromUnsigned(bits)
 
-  given Order[BlockNo] = longOrder
-  given Show[BlockNo] = Show.show(b => s"BlockNo($b)")
+  extension (b: BlockNo)
+    def word: Word64 = b
+    def toBigInt: BigInt = Word64.toBigInt(b)
 
-/** `NonZero a` (`Cardano.Ledger.BaseTypes`): a number that is not zero, by construction. */
+  given Order[BlockNo] = Word64.order
+  given Show[BlockNo] = Show.show(b => s"BlockNo(${Word64.decimal(b)})")
+
+/** `HasZero a` (`BaseTypes/NonZero.hs:80-91`): the types that have a zero to refuse. */
+trait HasZero[A]:
+  def isZero(a: A): Boolean
+
+object HasZero:
+  def instance[A](f: A => Boolean): HasZero[A] = f(_)
+
+  given HasZero[Int] = instance(_ == 0)
+  given HasZero[Long] = instance(_ == 0L)
+  given HasZero[BigInt] = instance(_.signum == 0)
+  given HasZero[Word64] = instance(Word64.isZero(_))
+
+/** `NonZero a` (`BaseTypes/NonZero.hs:76-78`: `newtype NonZero a`,
+  * `deriving newtype (Eq, Ord, ..)`, so it orders as the value does): a value that is not zero, by
+  * construction.
+  */
 opaque type NonZero[A] = A
 
 object NonZero:
-  def from[A](a: A)(using n: Numeric[A]): Either[VocabError, NonZero[A]] =
-    Either.cond(n.compare(a, n.zero) != 0, a, VocabError.Zero(VocabError.Kind.NonZero))
+  def from[A](a: A)(using z: HasZero[A]): Either[VocabError, NonZero[A]] =
+    Either.cond(!z.isZero(a), a, VocabError.Zero(VocabError.Kind.NonZero))
 
   extension [A](z: NonZero[A]) def value: A = z
 
@@ -236,8 +266,10 @@ object DRep:
     case (a, b)                                 => Integer.compare(a.ordinal, b.ordinal)
   }
 
-/** `WithOrigin a` (`Cardano.Slotting.Slot`, `deriving Ord`): the genesis point, or a value;
-  * `Origin` is the least.
+/** `WithOrigin a` (cardano-slotting `Slot.hs:71-82`, `data WithOrigin t = Origin | At !t deriving
+  * (Eq, Ord, ..)`): the genesis point, or a value. Derived `Ord` orders by constructor position, so
+  * `Origin` is the least; the sources are pinned in
+  * `2026-10-15-upstream-pinned/cardano-base-slotting-0.2.2.0`.
   */
 enum WithOrigin[+A]:
   case Origin

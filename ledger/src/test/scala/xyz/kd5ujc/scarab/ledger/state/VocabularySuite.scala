@@ -28,7 +28,9 @@ class VocabularySuite extends DisciplineSuite:
   given Cogen[EpochNo] = cogenShow
   given Cogen[SlotNo] = cogenShow
   given Cogen[BlockNo] = cogenShow
-  given Cogen[NonZero[Int]] = cogenShow
+  given nonZeroIntCogen: Cogen[NonZero[Int]] = cogenShow
+  given Cogen[Word64] = cogenShow
+  given nonZeroWordCogen: Cogen[NonZero[Word64]] = cogenShow
   given Cogen[WithOrigin[SlotNo]] = cogenShow
 
   checkAll("KeyHash", OrderTests[KeyHash[StakePool]].order)
@@ -43,7 +45,9 @@ class VocabularySuite extends DisciplineSuite:
   checkAll("EpochNo", OrderTests[EpochNo].order)
   checkAll("SlotNo", OrderTests[SlotNo].order)
   checkAll("BlockNo", OrderTests[BlockNo].order)
+  checkAll("Word64", OrderTests[Word64].order)
   checkAll("NonZero", OrderTests[NonZero[Int]].order)
+  checkAll("NonZero Word64", OrderTests[NonZero[Word64]].order)
   checkAll("WithOrigin", OrderTests[WithOrigin[SlotNo]].order)
 
   private def lt[A: Order](a: A, b: A): Boolean = Order[A].lt(a, b)
@@ -80,34 +84,106 @@ class VocabularySuite extends DisciplineSuite:
     assert(lt[Credential[DRepRole]](ScriptHashObj(script(5)), KeyHashObj(key(5))))
   }
 
-  test("WithOrigin: Origin is the least") {
+  test("WithOrigin: Origin is the least; At orders by the value (cardano-slotting Slot.hs:71-82)") {
     assert(lt[WithOrigin[Int]](WithOrigin.Origin, WithOrigin.At(0)))
+    assert(lt[WithOrigin[Int]](WithOrigin.Origin, WithOrigin.At(Int.MinValue)))
     assert(lt[WithOrigin[Int]](WithOrigin.At(1), WithOrigin.At(2)))
+    assert(!lt[WithOrigin[Int]](WithOrigin.At(0), WithOrigin.Origin))
+    // an unsigned value from the high half is still above Origin and above the low half
+    assert(lt(WithOrigin.Origin: WithOrigin[SlotNo], WithOrigin.At(SlotNo.fromUnsigned(-1L))))
+    assert(lt(WithOrigin.At(SlotNo.fromUnsigned(1L)), WithOrigin.At(SlotNo.fromUnsigned(-1L))))
+  }
+
+  test("NonZero orders as the value does (NonZero.hs:76-78, deriving newtype Ord)") {
+    assertEquals(
+      Order[NonZero[Int]].compare(NonZero.from(-2).toOption.get, NonZero.from(3).toOption.get),
+      Order[Int].compare(-2, 3)
+    )
+    val hi = NonZero.from(Word64.fromUnsigned(-1L)).toOption.get
+    val lo = NonZero.from(Word64.fromUnsigned(1L)).toOption.get
+    assert(lt(lo, hi))
   }
 
   property("Eq agrees with the order") {
     forAll((a: DRep, b: DRep) => (a === b) == (Order[DRep].compare(a, b) == 0))
   }
 
+  private val two64 = BigInt(2).pow(64)
+  private val two63 = BigInt(2).pow(63)
+
   test("smart constructors reject wrong values with a typed error") {
     import VocabError.*
     assertEquals(Coin.fromBigInt(BigInt(-1)), Left(Negative(Kind.Coin, BigInt(-1))))
-    assertEquals(SlotNo.fromLong(-1), Left(Negative(Kind.SlotNo, BigInt(-1))))
-    assertEquals(EpochNo.fromLong(-5), Left(Negative(Kind.EpochNo, BigInt(-5))))
-    assertEquals(BlockNo.fromLong(-1), Left(Negative(Kind.BlockNo, BigInt(-1))))
+    assertEquals(SlotNo.fromBigInt(BigInt(-1)), Left(Negative(Kind.SlotNo, BigInt(-1))))
+    assertEquals(EpochNo.fromBigInt(BigInt(-5)), Left(Negative(Kind.EpochNo, BigInt(-5))))
+    assertEquals(BlockNo.fromBigInt(BigInt(-1)), Left(Negative(Kind.BlockNo, BigInt(-1))))
+    assertEquals(CompactCoin.fromBigInt(BigInt(-1)), Left(Negative(Kind.CompactCoin, BigInt(-1))))
+    assertEquals(SlotNo.fromBigInt(two64), Left(OutOfRange(Kind.SlotNo, two64)))
+    assertEquals(EpochNo.fromBigInt(two64), Left(OutOfRange(Kind.EpochNo, two64)))
+    assertEquals(BlockNo.fromBigInt(two64 + 1), Left(OutOfRange(Kind.BlockNo, two64 + 1)))
+    assertEquals(CompactCoin.fromBigInt(two64), Left(OutOfRange(Kind.CompactCoin, two64)))
+    val big =
+      Coin.fromBigInt(two64).toOption.get // a Coin is an Integer: it fits, a compact one not
+    assertEquals(CompactCoin.fromCoin(big), Left(OutOfRange(Kind.CompactCoin, two64)))
     assertEquals(
       KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(27)(0.toByte))),
       Left(WrongHashLength(Kind.KeyHash, 28, 27))
     )
     assertEquals(Hash32.fromBytes(hash28(0)), Left(WrongHashLength(Kind.Hash32, 32, 28)))
     assertEquals(NonZero.from(0), Left(Zero(Kind.NonZero)))
-    val big = Coin.fromBigInt(BigInt(2).pow(63)).toOption.get
-    assertEquals(CompactCoin.fromCoin(big), Left(OutOfRange(Kind.CompactCoin, BigInt(2).pow(63))))
+    assertEquals(NonZero.from(Word64.zero), Left(Zero(Kind.NonZero)))
+  }
+
+  test("the whole range [0, 2^64) is accepted, and 2^63 and above are not negative") {
+    val edges = List(BigInt(0), BigInt(1), two63 - 1, two63, two63 + 1, two64 - 1)
+    edges.foreach { n =>
+      assertEquals(SlotNo.fromBigInt(n).map(_.toBigInt), Right(n))
+      assertEquals(EpochNo.fromBigInt(n).map(_.toBigInt), Right(n))
+      assertEquals(BlockNo.fromBigInt(n).map(_.toBigInt), Right(n))
+      assertEquals(CompactCoin.fromBigInt(n).map(_.toBigInt), Right(n))
+    }
+    assertEquals(SlotNo.fromBigInt(two64 - 1), Right(SlotNo.fromUnsigned(-1L)))
+    assertEquals(Word64.max.toBigInt, two64 - 1)
+  }
+
+  test("values from 2^63 up sort above the small ones, and render unsigned") {
+    val small = SlotNo.fromBigInt(BigInt(5)).toOption.get
+    val high = SlotNo.fromBigInt(two63).toOption.get
+    val top = SlotNo.fromBigInt(two64 - 1).toOption.get
+    assert(lt(small, high))
+    assert(lt(high, top))
+    assertEquals(
+      List(top, small, high).sorted(using Order[SlotNo].toOrdering),
+      List(small, high, top)
+    )
+    assertEquals(top.show, "SlotNo(18446744073709551615)")
+    assertEquals(EpochNo.fromUnsigned(Long.MinValue).show, "EpochNo(9223372036854775808)")
+  }
+
+  property("fromBigInt and toBigInt are inverse over the whole word") {
+    forAll { (w: SlotNo) =>
+      SlotNo.fromBigInt(w.toBigInt) == Right(w) && w.toBigInt.signum >= 0 && w.toBigInt < two64
+    }
+  }
+
+  property("the order is the order of the integers") {
+    forAll((a: EpochNo, b: EpochNo) =>
+      Order[EpochNo].compare(a, b) == a.toBigInt.compare(b.toBigInt)
+    )
   }
 
   test("accepted values round-trip") {
     assertEquals(Coin.fromBigInt(BigInt(7)).map(Coin.value), Right(BigInt(7)))
-    assertEquals(CompactCoin.fromCoin(Coin.zero).map(_.toCoin), Right(Coin.zero))
+    assertEquals(CompactCoin.fromCoin(Coin.zero).map(_.toBigInt), Right(BigInt(0)))
     assertEquals(NonZero.from(3).map(_.value), Right(3))
-    assertEquals(EpochNo.fromLong(4).map(_.next.value), Right(5L))
+    assertEquals(EpochNo.fromBigInt(BigInt(4)).map(_.next.map(_.toBigInt)), Right(Some(BigInt(5))))
+  }
+
+  test("next is refused at the top of the range instead of wrapping") {
+    assertEquals(EpochNo.fromUnsigned(-1L).next, None)
+    assertEquals(EpochNo.fromUnsigned(-2L).next, Some(EpochNo.fromUnsigned(-1L)))
+    assertEquals(
+      EpochNo.fromUnsigned(Long.MaxValue).next,
+      Some(EpochNo.fromUnsigned(Long.MinValue))
+    )
   }
