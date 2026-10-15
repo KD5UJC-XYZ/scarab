@@ -27,11 +27,6 @@ object MirrorCorpus:
 
   val mirror: StateMirror[M] = MirrorRun.mirror
 
-  /** The ledger side alone (`LedgerMirror`), for the checks that mirror a flat ledger state. */
-  type LedgerM[A] = Kleisli[[X] =>> Either[MirrorError, X], MirrorEnv, A]
-
-  val ledgerMirror: LedgerMirror[LedgerM] = LedgerMirror[LedgerM]
-
   type LedgerResult[A] = Either[MirrorError, A]
   type LedgerM[A] = Kleisli[LedgerResult, MirrorEnv, A]
 

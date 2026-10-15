@@ -115,6 +115,31 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   Preview sync and 3 Preprod states (retraction on all, residue empty, `nesPd` equals
   `PoolDistr.of(set)` on all).
 
+### Added (ledger-state mirror, stage S9: step 1 complete)
+- `DebugEpochState` (query 8) and `DebugNewEpochState` (12), and their `GetCBOR` forms, are answered
+  (`MirrorAnswers`): the state of the query goes through `StateMirror.toMirror` and is written with the S7/S8
+  codec at the version of its era (`HaskellState.encode`, `encodeEpochState`). Every Shelley-based era
+  answers these two (the other queries stay Conway's); Byron or an unmirrorable state is the same refusal as
+  an unanswered query (`MirrorRefusal`). `LedgerEncoders` and the other answers are untouched. The UTxO is
+  `map(0)`, as the reference answers it.
+- `follow --mirror-check` (`MirrorCheck`): at the first block and every epoch boundary the live state does
+  `toMirror`, `fromMirror`, and the log gets `mirrorChecked` (era, gaps, residue, retraction, ok) or
+  `mirrorCheckFailed`; read-only, off by default (the checker is not built). `devnet.py soak --mirror-check`
+  fails unless every check held.
+- `devnet.py ntc` compares the four ledger-state answers with the reference's through an explicit gap mask
+  (`scripts/devnet/gapmask.py`, `cborspan.py`): the places are found as byte spans, blanked in both answers,
+  and every other byte must be equal; a missing or mis-typed place, or a mask over half the answer, fails.
+  Gaps: `NonMyopic` (likelihoods and reward pot), `SnapshotNumDelegators` (mark, set, go), `VrfKeyHashes`
+  (the genesis pools are not in the reference's registry), `RewardUpdate` (while the reference holds a
+  pulsing one). Devnet: 987/987, nothing else differs.
+- Tests: `MirrorAnswersSuite` (answers decoded by the Haskell codec on every state of the eras capture,
+  Shelley to Conway), `MirrorCheckSuite`, `test_gapmask.py` (mask laws).
+- Step 1 of the mirror (#82) is complete. Step 2 must close, for byte-exact answers: the non-myopic
+  likelihoods (floats) and reward pot; per-pool reward attribution (`rs`) and the pulsing update; the
+  `numDelegators` of mark/set/go as of the snapshot; the VRF registry of genesis pools; the pulser's
+  `EnactState` parameters; the Shelley transition count; pool relays (kept as raw items, not held for
+  pools registered before the node started).
+
 ### Added (ledger-state mirror, stage S8)
 - `storage/haskell/state`: the envelopes of the Haskell `ledger/<slot>/state` file. `HaskellLedgerFile`
   decodes and encodes the whole file, `[1, [telescope of ledger states, header state]]`: the hard-fork
