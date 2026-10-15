@@ -34,3 +34,8 @@ Thumbs.db
 
 # Agent worktrees
 /.claude/
+
+# IDE (Metals/Bloop) and local sbt launcher files
+project/metals.sbt
+project/project/
+sbt-launch.jar
