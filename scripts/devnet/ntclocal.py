@@ -251,3 +251,25 @@ def compare_follow(open_h, open_s, point, count, seconds):
             "sameFirstInstruction": results["h"]["first"] == results["s"]["first"],
             "referenceBlocks": len(got["h"]), "scalaBlocks": len(got["s"]),
             "bytes": sum(len(got["s"][k][1]) for k in common)}
+
+
+INTERSECT_NOT_FOUND = 6
+
+
+def live_follow(take_tip, follow, attempts=5):
+    """Follow both nodes from the Scala node's tip, taking a fresh tip while either node no longer has
+    it. The tip can be rolled back (a fork switch) before the followers ask for it. The Scala node
+    follows the reference node and so trails it: the reference can drop the block first, and then it
+    answers IntersectNotFound while the Scala node still serves the block, rolls back and sends the
+    new branch, which the reference does not send from there. Nothing is compared in such a round,
+    so it is taken again; the rounds taken are recorded as `attempts`. None without a tip."""
+    result = None
+    for attempt in range(1, attempts + 1):
+        tip = take_tip()
+        if not tip:
+            break
+        result = follow(tip)
+        result["attempts"] = attempt
+        if INTERSECT_NOT_FOUND not in (result["reference"]["intersect"], result["scala"]["intersect"]):
+            break
+    return result

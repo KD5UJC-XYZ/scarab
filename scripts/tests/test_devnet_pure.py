@@ -525,6 +525,27 @@ class NtcLocalTest(unittest.TestCase):
         raw = cbor.enc([2, cbor.Raw(item), [[1, bytes(32)], 1]])
         self.assertEqual(ntclocal.block_item(raw), item)
 
+    @staticmethod
+    def followed(reference, scala):
+        return {"reference": {"intersect": reference}, "scala": {"intersect": scala}}
+
+    def test_live_follow_takes_a_fresh_tip_while_either_node_lacks_the_tip(self):
+        # the Scala node trails the reference: the reference can have dropped the tip (6) while the
+        # Scala node still serves it (5), which compares nothing
+        for first in ((6, 6), (6, 5), (5, 6)):
+            answers = iter([first, (5, 5)])
+            tips = iter([(1, "aa"), (2, "bb")])
+            seen = []
+            result = ntclocal.live_follow(lambda: next(tips), lambda tip: seen.append(tip) or self.followed(*next(answers)))
+            self.assertEqual(seen, [(1, "aa"), (2, "bb")])
+            self.assertEqual(result["attempts"], 2)
+            self.assertEqual(result["reference"]["intersect"], 5)
+
+    def test_live_follow_stops_after_its_attempts_and_without_a_tip(self):
+        result = ntclocal.live_follow(lambda: (1, "aa"), lambda tip: self.followed(6, 5), attempts=3)
+        self.assertEqual((result["attempts"], result["reference"]["intersect"]), (3, 6))
+        self.assertIsNone(ntclocal.live_follow(lambda: None, lambda tip: self.followed(5, 5)))
+
     def snapshot(self, slot, txs, replies=(("sizes", b"a"),)):
         return {"slot": slot, "txs": list(txs), "steps": list(replies)}
 

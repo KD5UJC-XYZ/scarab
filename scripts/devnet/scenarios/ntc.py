@@ -28,7 +28,7 @@ import sys
 import time
 
 from .. import gapmask, ntcquery
-from ..ntclocal import Session, compare_follow, monitor_rounds, await_wakes, tx_id
+from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
@@ -322,16 +322,10 @@ def chain_sync_comparison(args, root, out):
 
     try:
         out["fromOrigin"] = compare_follow(opener_h, opener_s, None, args.chain_sync_blocks, 150)
-        # the tip can be rolled back (a fork switch) before both followers ask for it, and then neither
-        # node has it (both answer IntersectNotFound, 6): take a fresh tip then, a few times
-        for attempt in range(1, 4):
-            tip = point_of(args, "s", root)
-            if not tip:
-                break
-            out["live"] = compare_follow(opener_h, opener_s, (tip[0], bytes.fromhex(tip[1])), 12, 150)
-            out["live"]["attempts"] = attempt
-            if not (out["live"]["reference"]["intersect"] == 6 and out["live"]["scala"]["intersect"] == 6):
-                break
+        live = live_follow(lambda: point_of(args, "s", root),
+                           lambda tip: compare_follow(opener_h, opener_s, (tip[0], bytes.fromhex(tip[1])), 12, 150))
+        if live:
+            out["live"] = live
         if "live" in out:
             points = out["live"]["points"]
             if len(points) >= 5:
