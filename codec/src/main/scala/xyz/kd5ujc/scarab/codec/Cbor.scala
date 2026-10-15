@@ -8,11 +8,16 @@ import scala.util.control.NonFatal
 
 /** Small byte-preserving CBOR subset. Floats, undefined and unassigned simple values are
   * deliberately unsupported. Duplicate map keys and map order are retained.
+  *
+  * Decoding and encoding keep their stack on the heap, so nesting is not limited by the thread's
+  * stack. The reference has no nesting limit either; only the size of the block bounds it, and a
+  * level takes at least one byte. `Limits.maxDepth` therefore defaults to no limit of its own:
+  * `maxInputBytes` and `maxItems` (every level is an item) bound the depth and the memory.
   */
 object Cbor:
   final case class Limits(
       maxInputBytes: Int = 1048576,
-      maxDepth: Int = 2048,
+      maxDepth: Int = Int.MaxValue,
       maxItems: Int = 100000,
       maxStringBytes: Int = 1048576
   )
@@ -117,55 +122,91 @@ object Cbor:
         read()
         if major == 2 then Value.ByteString(Bytes.wrap(chunks.toByteArray))
         else Value.Text(text.toString)
-    private def node(depth: Int): Node =
-      if depth > limits.maxDepth then fail("depth limit exceeded")
-      consumeItem()
-      val start = pos
-      val h = read()
-      val major = h / 32
-      val ai = h & 31
-      val value: Value = major match
-        case 0     => Value.UInt(argument(ai))
-        case 1     => Value.NInt(-1 - argument(ai))
-        case 2 | 3 => string(major, ai)
-        case 4 =>
-          val out = Vector.newBuilder[Node]
-          if ai == 31 then
-            while !isBreak do out += node(depth + 1)
-            read()
-          else
-            val size = bounded(argument(ai), limits.maxItems - items, "item")
-            var i = 0
-            while i < size do
-              out += node(depth + 1)
-              i += 1
-          Value.Arr(out.result())
-        case 5 =>
-          val out = Vector.newBuilder[(Node, Node)]
-          if ai == 31 then
-            while !isBreak do
-              val key = node(depth + 1)
-              if isBreak then fail("map has an unmatched key")
-              out += ((key, node(depth + 1)))
-            read()
-          else
-            val size = bounded(argument(ai), (limits.maxItems - items) / 2, "map pair")
-            var i = 0
-            while i < size do
-              val key = node(depth + 1)
-              out += ((key, node(depth + 1)))
-              i += 1
-          Value.Map(out.result())
-        case 6 => Value.Tag(argument(ai), node(depth + 1))
-        case 7 =>
-          ai match
-            case 20 => Value.Bool(false)
-            case 21 => Value.Bool(true)
-            case 22 => Value.Null
-            case _  => fail("unsupported simple value, float, or unexpected break")
-      Node(value, Bytes.wrap(data, start, pos - start))
+
+    /** An open container: its children so far, and how many are still to come (-1 for an indefinite
+      * container, which ends at a break).
+      */
+    private final class Frame(val major: Int, val start: Int, val tag: BigInt, var remaining: Long):
+      // Children are collected in a small array that doubles: a claimed length is a limit, not
+      // an allocation, and a one-element array (a level of deep nesting) stays small.
+      private var kids: Array[Node] = null
+      var count = 0
+      def add(n: Node): Unit =
+        if kids == null then kids = new Array[Node](2)
+        else if count == kids.length then kids = java.util.Arrays.copyOf(kids, count * 2)
+        kids(count) = n
+        count += 1
+      def items: Vector[Node] =
+        if count == 0 then Vector.empty
+        else Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(kids.take(count)))
+      def pairs: Vector[(Node, Node)] =
+        val out = new Array[(Node, Node)](count / 2)
+        var i = 0
+        while i < out.length do
+          out(i) = (kids(2 * i), kids(2 * i + 1))
+          i += 1
+        Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(out))
+      def only: Node = kids(0)
+
+    private def window(start: Int): Bytes = Bytes.wrap(data, start, pos - start)
+
+    private def finish(f: Frame): Node =
+      val value = f.major match
+        case 4 => Value.Arr(f.items)
+        case 5 => Value.Map(f.pairs)
+        case _ => Value.Tag(f.tag, f.only)
+      Node(value, window(f.start))
+
+    /** Decode the item at the cursor. Containers are frames on an explicit stack, not recursive
+      * calls, so the nesting an input can have is bounded by `maxDepth`, `maxItems` and its size
+      * (every level takes a byte), not by the thread's stack.
+      */
     def run(): Node =
-      val result = node(0)
+      val stack = new java.util.ArrayDeque[Frame]
+      var result: Node = null
+      while result == null do
+        val top = stack.peek()
+        var produced: Node = null
+        if top != null && top.remaining == 0 then
+          stack.pop()
+          produced = finish(top)
+        else if top != null && top.remaining < 0 && isBreak then
+          if top.major == 5 && top.count % 2 == 1 then fail("map has an unmatched key")
+          read()
+          stack.pop()
+          produced = finish(top)
+        else
+          if top != null && top.remaining > 0 then top.remaining -= 1
+          if stack.size > limits.maxDepth then fail("depth limit exceeded")
+          consumeItem()
+          val start = pos
+          val h = read()
+          val major = h / 32
+          val ai = h & 31
+          major match
+            case 0     => produced = Node(Value.UInt(argument(ai)), window(start))
+            case 1     => produced = Node(Value.NInt(-1 - argument(ai)), window(start))
+            case 2 | 3 => produced = Node(string(major, ai), window(start))
+            case 4 =>
+              val remaining =
+                if ai == 31 then -1L
+                else bounded(argument(ai), limits.maxItems - items, "item").toLong
+              stack.push(new Frame(4, start, null, remaining))
+            case 5 =>
+              val remaining =
+                if ai == 31 then -1L
+                else 2L * bounded(argument(ai), (limits.maxItems - items) / 2, "map pair")
+              stack.push(new Frame(5, start, null, remaining))
+            case 6 => stack.push(new Frame(6, start, argument(ai), 1L))
+            case _ =>
+              val value = ai match
+                case 20 => Value.Bool(false)
+                case 21 => Value.Bool(true)
+                case 22 => Value.Null
+                case _  => fail("unsupported simple value, float, or unexpected break")
+              produced = Node(value, window(start))
+        if produced != null then
+          if stack.isEmpty then result = produced else stack.peek().add(produced)
       if pos != end then fail("trailing bytes after CBOR item")
       result
 
@@ -200,7 +241,21 @@ object Cbor:
         if bytes.length > limits.maxStringBytes then fail("string byte limit exceeded")
         head(major, BigInt(bytes.length))
         bytes.foreach(b => write(b & 255))
-      def go(v: Value, depth: Int): Unit =
+      // An open container: the values still to write, by index (a map's keys and values
+      // alternate), without an iterator per level.
+      final class Open(val nodes: Vector[Node], val pairs: Vector[(Node, Node)], val node: Node):
+        var next = 0
+        val size: Int =
+          if nodes != null then nodes.size else if pairs != null then 2 * pairs.size else 1
+        def hasNext: Boolean = next < size
+        def take(): Value =
+          val i = next
+          next += 1
+          if nodes != null then nodes(i).value
+          else if pairs != null then (if i % 2 == 0 then pairs(i / 2)._1 else pairs(i / 2)._2).value
+          else node.value
+      val stack = new java.util.ArrayDeque[Open]
+      def emit(v: Value, depth: Int): Unit =
         if depth > limits.maxDepth then fail("depth limit exceeded")
         if items >= limits.maxItems then fail("item limit exceeded")
         items += 1
@@ -225,16 +280,20 @@ object Cbor:
             raw(3, bytes)
           case Value.Arr(nodes) =>
             head(4, BigInt(nodes.size))
-            nodes.foreach(n => go(n.value, depth + 1))
+            stack.push(new Open(nodes, null, null))
           case Value.Map(pairs) =>
             head(5, BigInt(pairs.size))
-            pairs.foreach { case (k, v) => go(k.value, depth + 1); go(v.value, depth + 1) }
+            stack.push(new Open(null, pairs, null))
           case Value.Tag(tag, node) =>
             head(6, tag)
-            go(node.value, depth + 1)
+            stack.push(new Open(null, null, node))
           case Value.Bool(b) => write(if b then 245 else 244)
           case Value.Null    => write(246)
-      go(value, 0)
+      emit(value, 0)
+      while !stack.isEmpty do
+        val top = stack.peek()
+        if top.hasNext then emit(top.take(), stack.size)
+        else stack.pop()
       Right(Bytes.fromArray(out.toByteArray))
     catch
       case Failure(message)      => Left(message)

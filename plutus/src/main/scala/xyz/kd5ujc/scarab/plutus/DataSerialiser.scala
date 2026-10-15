@@ -26,30 +26,43 @@ object DataSerialiser:
     write(out, data)
     out.toByteArray
 
-  private def write(out: ByteArrayOutputStream, data: Data): Unit = data match
-    case Data.Constr(i, fields) =>
-      if i >= 0 && i < 7 then head(out, 6, BigInt(121) + i)
-      else if i >= 7 && i < 128 then head(out, 6, BigInt(1280) + i - 7)
-      else
-        head(out, 6, 102)
-        head(out, 4, 2)
-        integer(out, i)
-      list(out, fields)
-    case Data.Map(entries) =>
-      val es = PList.asScala(entries)
-      head(out, 5, BigInt(es.size))
-      es.foreach { case (k, v) => write(out, k); write(out, v) }
-    case Data.List(items) => list(out, items)
-    case Data.I(v)        => integer(out, v)
-    case Data.B(b)        => bytes(out, b.bytes)
+  /** An open list or map: what is still to write, and the byte that closes it (-1 for none). */
+  private final class Open(val rest: Iterator[Data], val close: Int)
 
-  private def list(out: ByteArrayOutputStream, items: PList[Data]): Unit =
-    val xs = PList.asScala(items)
-    if xs.isEmpty then out.write(0x80)
-    else
-      out.write(0x9f)
-      xs.foreach(write(out, _))
-      out.write(0xff)
+  /** The nesting is walked on the heap: the reference has no depth limit, and a datum can be as
+    * deep as the block that carries it is long.
+    */
+  private def write(out: ByteArrayOutputStream, root: Data): Unit =
+    val stack = new java.util.ArrayDeque[Open]
+    def list(items: PList[Data]): Unit =
+      val xs = PList.asScala(items)
+      if xs.isEmpty then out.write(0x80)
+      else
+        out.write(0x9f)
+        stack.push(Open(xs.iterator, 0xff))
+    def emit(data: Data): Unit = data match
+      case Data.Constr(i, fields) =>
+        if i >= 0 && i < 7 then head(out, 6, BigInt(121) + i)
+        else if i >= 7 && i < 128 then head(out, 6, BigInt(1280) + i - 7)
+        else
+          head(out, 6, 102)
+          head(out, 4, 2)
+          integer(out, i)
+        list(fields)
+      case Data.Map(entries) =>
+        val es = PList.asScala(entries)
+        head(out, 5, BigInt(es.size))
+        stack.push(Open(es.iterator.flatMap { case (k, v) => Iterator(k, v) }, -1))
+      case Data.List(items) => list(items)
+      case Data.I(v)        => integer(out, v)
+      case Data.B(b)        => bytes(out, b.bytes)
+    emit(root)
+    while !stack.isEmpty do
+      val top = stack.peek()
+      if top.rest.hasNext then emit(top.rest.next())
+      else
+        stack.pop()
+        if top.close >= 0 then out.write(top.close)
 
   private def integer(out: ByteArrayOutputStream, v: BigInt): Unit =
     if v >= 0 && v <= Word64Max then head(out, 0, v)

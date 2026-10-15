@@ -46,14 +46,15 @@ class ScalusEvaluatorSuite extends FunSuite:
       uplc: String,
       language: PlutusLanguage = PlutusLanguage.V3,
       protocol: Int = 9,
-      budget: ExUnits = ExUnits(10000000, 10000000000L)
+      budget: ExUnits = ExUnits(10000000, 10000000000L),
+      argument: PlutusData = PlutusData.unit
   ) =
     evaluator.evaluate(
       EvalRequest(
         language,
         protocol,
         script(uplc),
-        Vector(PlutusData.unit),
+        Vector(argument),
         if language == PlutusLanguage.V3 then v3Model else v2Model,
         budget
       )
@@ -121,6 +122,46 @@ class ScalusEvaluatorSuite extends FunSuite:
     assert(ok.isSuccess, ok.toString)
     val tampered = run(s"(lam ctx ${verify(message.reverse)})", PlutusLanguage.V2, 8)
     assert(!tampered.isSuccess, tampered.toString)
+  }
+
+  test("a script argument as deep as a block holds is evaluated, on a small stack") {
+    // 45,000 nested one-element lists `[[[ ... 0 ]]]` (a 90 KB block holds 90,000 levels):
+    // the reference has no depth limit, and neither does the translation to the machine's Data
+    // or `serialiseData`; the machine itself is the evaluator's.
+    val levels = 45000
+    val wire = Bytes.fromArray(
+      Array.fill[Byte](levels)(0x9f.toByte) ++ Array(0.toByte) ++ Array.fill[Byte](levels)(
+        0xff.toByte
+      )
+    )
+    val datum = PlutusData.decode(wire).fold(sys.error, identity)
+    // 0x9f per level, 0xff per level, 0x00: 2 * levels + 1 bytes
+    val expected = 2 * levels + 1
+    var outcome: Option[Either[Throwable, EvalResult]] = None
+    val thread = new Thread(
+      null,
+      () =>
+        outcome = Some(
+          try
+            Right(
+              run(
+                s"(lam ctx ${assertion(
+                    s"[ (builtin equalsInteger) (con integer $expected) [ (builtin lengthOfByteString) [ (builtin serialiseData) ctx ] ] ]"
+                  )})",
+                budget = ExUnits(1000000000000L, 1000000000000000L),
+                argument = datum
+              )
+            )
+          catch case t: Throwable => Left(t)
+        ),
+      "small",
+      256 * 1024
+    )
+    thread.start()
+    thread.join()
+    outcome.get match
+      case Right(EvalResult.Success(_, _)) => ()
+      case other                           => fail(other.toString)
   }
 
   test("a script that exceeds its budget fails with OutOfBudget") {

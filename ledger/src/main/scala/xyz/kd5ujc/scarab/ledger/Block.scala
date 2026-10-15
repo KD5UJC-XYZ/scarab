@@ -44,7 +44,6 @@ object Block:
 
   private val limits = Cbor.Limits(
     maxInputBytes = 2500000,
-    maxDepth = 2048,
     maxItems = 1000000,
     maxStringBytes = 2500000
   )

@@ -119,18 +119,20 @@ class TxDecodingSuite extends FunSuite:
     assert(all.exists { case (_, tx) => tx.witnesses.datums.nonEmpty || tx.body.outputs.nonEmpty })
   }
 
-  test("CBOR nesting up to the limit decodes on an ordinary thread; one level more is an error") {
+  test("CBOR nesting decodes on an ordinary thread to the depth a block holds, or to a set limit") {
     def nested(levels: Int): Bytes = Bytes.wrap(Array.fill(levels)(0x81.toByte) :+ 0x00.toByte)
+    val wide = Cbor.Limits(maxItems = 1 << 20)
     var results = Vector.empty[Boolean]
     val t = new Thread(() =>
       results = Vector(
-        Cbor.decode(nested(2048)).isRight,
-        Cbor.decode(nested(2049)).isLeft
+        Cbor.decode(nested(90000), wide).isRight,
+        Cbor.decode(nested(2049), wide.copy(maxDepth = 2048)).isLeft,
+        Cbor.decode(nested(2048), wide.copy(maxDepth = 2048)).isRight
       )
     )
     t.start()
     t.join()
-    assertEquals(results, Vector(true, true))
+    assertEquals(results, Vector(true, true, true))
   }
 
   test(

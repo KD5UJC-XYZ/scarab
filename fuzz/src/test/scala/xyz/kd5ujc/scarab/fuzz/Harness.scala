@@ -57,15 +57,18 @@ object Probe:
   watchdog.start()
 
   /** Allocation allowed for an input: a fixed share (class loading, caches, a block's worth of
-    * nodes) plus a multiple of the input size, so that a declared length cannot buy memory.
+    * nodes) plus a multiple of the input size, so that a declared length cannot buy memory. The
+    * multiple is 1000 bytes since the decoders accept any nesting (B17): an input of `81` bytes is
+    * one node tree level a byte (a node, its value, window, vector and frame, about 200 bytes) in
+    * each of the decode, encode, decode and encode a target runs, where 2048 levels once capped it.
     */
-  def allocLimit(inputSize: Int, perByte: Long = 400): Long =
+  def allocLimit(inputSize: Int, perByte: Long = 1000): Long =
     24L * 1024 * 1024 + perByte * inputSize
 
   /** Run `body` on `input`: any exception, a run over the time limit or allocation over `limit` is
     * a `Violation`.
     */
-  def run(name: String, input: Input, limit: Long = -1, perByte: Long = 400)(body: => Unit): Unit =
+  def run(name: String, input: Input, limit: Long = -1, perByte: Long = 1000)(body: => Unit): Unit =
     val bound = if limit >= 0 then limit else allocLimit(input.size, perByte)
     val id = Thread.currentThread().threadId()
     val before = threads.getThreadAllocatedBytes(id)

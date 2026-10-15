@@ -50,9 +50,7 @@ object Targets:
         Cbor.decode(b, limits).foreach { node =>
           hit(name)
           req(node.original.size <= b.size, "node original is longer than the input")
-          // an item nested beyond the thread's stack may decode and still refuse to encode (typed)
           Cbor.encode(node.value) match
-            case Left(Cbor.TooDeep) => ()
             case Left(e) => throw new Violation(s"a decoded value does not re-encode: $e")
             case Right(encoded) =>
               val again = Cbor.decode(encoded) match

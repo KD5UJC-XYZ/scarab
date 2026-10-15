@@ -270,33 +270,60 @@ object Codec extends LowPriorityCodec:
       b.result()
     def shape: String = s"Map[${k.shape},${v.shape}]"
 
-  /** Recursive: the one persisted type that contains itself, so it cannot be derived inline. */
+  /** Recursive: the one persisted type that contains itself, so it cannot be derived inline. A
+    * script is as deep as the transaction that carried it allows (thousands of levels on preprod),
+    * so both directions keep their stack on the heap.
+    */
   given nativeScript: Codec[NativeScript] = new Codec[NativeScript]:
     private val bigInt = summon[Codec[BigInt]]
     private val bytes = summon[Codec[Bytes]]
     def write(out: Out, a: NativeScript): Unit =
-      out.byte(a.ordinal)
-      a match
-        case NativeScript.Sig(h)              => bytes.write(out, h)
-        case NativeScript.AllOf(ss)           => list(out, ss)
-        case NativeScript.AnyOf(ss)           => list(out, ss)
-        case NativeScript.NOfK(n, ss)         => bigInt.write(out, n); list(out, ss)
-        case NativeScript.InvalidBefore(s)    => bigInt.write(out, s)
-        case NativeScript.InvalidHereafter(s) => bigInt.write(out, s)
-    private def list(out: Out, ss: Vector[NativeScript]): Unit =
-      out.varint(ss.size.toLong)
-      ss.foreach(write(out, _))
-    private def readList(in: In): Vector[NativeScript] = Vector.fill(in.count())(read(in))
-    def read(in: In): NativeScript = in.byte() match
-      case 0 => NativeScript.Sig(bytes.read(in))
-      case 1 => NativeScript.AllOf(readList(in))
-      case 2 => NativeScript.AnyOf(readList(in))
-      case 3 =>
-        val n = bigInt.read(in)
-        NativeScript.NOfK(n, readList(in))
-      case 4 => NativeScript.InvalidBefore(bigInt.read(in))
-      case 5 => NativeScript.InvalidHereafter(bigInt.read(in))
-      case n => throw CodecException(s"invalid native script tag $n")
+      val stack = new java.util.ArrayDeque[Iterator[NativeScript]]
+      def head(s: NativeScript): Unit =
+        out.byte(s.ordinal)
+        s match
+          case NativeScript.Sig(h)              => bytes.write(out, h)
+          case NativeScript.AllOf(ss)           => list(ss)
+          case NativeScript.AnyOf(ss)           => list(ss)
+          case NativeScript.NOfK(n, ss)         => bigInt.write(out, n); list(ss)
+          case NativeScript.InvalidBefore(s)    => bigInt.write(out, s)
+          case NativeScript.InvalidHereafter(s) => bigInt.write(out, s)
+      def list(ss: Vector[NativeScript]): Unit =
+        out.varint(ss.size.toLong)
+        stack.push(ss.iterator)
+      head(a)
+      while !stack.isEmpty do
+        val top = stack.peek()
+        if top.hasNext then head(top.next()) else stack.pop()
+    private final class Open(val tag: Int, val required: BigInt, var left: Int):
+      val kids = Vector.newBuilder[NativeScript]
+      def build: NativeScript =
+        if tag == 1 then NativeScript.AllOf(kids.result())
+        else if tag == 2 then NativeScript.AnyOf(kids.result())
+        else NativeScript.NOfK(required, kids.result())
+    def read(in: In): NativeScript =
+      val stack = new java.util.ArrayDeque[Open]
+      var result: NativeScript = null
+      while result == null do
+        var done: NativeScript = null
+        val top = stack.peek()
+        if top != null && top.left == 0 then
+          stack.pop()
+          done = top.build
+        else
+          if top != null then top.left -= 1
+          in.byte() match
+            case 0 => done = NativeScript.Sig(bytes.read(in))
+            case 1 => stack.push(Open(1, 0, in.count()))
+            case 2 => stack.push(Open(2, 0, in.count()))
+            case 3 =>
+              val n = bigInt.read(in)
+              stack.push(Open(3, n, in.count()))
+            case 4 => done = NativeScript.InvalidBefore(bigInt.read(in))
+            case 5 => done = NativeScript.InvalidHereafter(bigInt.read(in))
+            case n => throw CodecException(s"invalid native script tag $n")
+        if done != null then if stack.isEmpty then result = done else stack.peek().kids += done
+      result
     def shape: String =
       "NativeScript{Sig(Bytes)|AllOf(Vector[NativeScript])|AnyOf(Vector[NativeScript])|" +
         "NOfK(BigInt,Vector[NativeScript])|InvalidBefore(BigInt)|InvalidHereafter(BigInt)}"

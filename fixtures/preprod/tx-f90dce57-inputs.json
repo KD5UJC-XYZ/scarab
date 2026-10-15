@@ -1,0 +1,10 @@
+{
+ "inputs": [
+  {
+   "txHash": "56f123b500ca30d51a3b65539a1a0980696531a4d53a416b485a4b9055ff0545",
+   "index": 0,
+   "address": "70ff3efca65569f6b0b868a3d34abdb1ad8eccf745e0da71fa94fb4f18",
+   "lovelace": "4000000"
+  }
+ ]
+}

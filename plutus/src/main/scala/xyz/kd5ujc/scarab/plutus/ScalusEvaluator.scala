@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.plutus
 import cats.Id
 import cats.effect.kernel.Sync
 import java.util.concurrent.ConcurrentHashMap
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, TreeFold}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import scala.util.control.NonFatal
 import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, MajorProtocolVersion}
@@ -313,14 +313,21 @@ object ScalusEvaluator:
         CekMachine(machineParams, spender, logger, runtime, caseOnBuiltins, tracing = debug)
       DeBruijn.fromDeBruijnTerm(machine.evaluateTerm(term))
 
-  /** Plutus data as the machine's `Data`. */
-  private[scarab] def toData(d: PlutusData): Data = d match
-    case PlutusData.Constr(tag, fields) => Data.Constr(tag, PList.from(fields.map(toData)))
-    case PlutusData.Map(entries) =>
-      Data.Map(PList.from(entries.map { case (k, v) => (toData(k), toData(v)) }))
-    case PlutusData.List(items) => Data.List(PList.from(items.map(toData)))
-    case PlutusData.I(v)        => Data.I(v)
-    case PlutusData.B(b)        => Data.B(ByteString.fromArray(b.toArray))
+  /** Plutus data as the machine's `Data`; the nesting is walked on the heap. */
+  private[scarab] def toData(root: PlutusData): Data =
+    import TreeFold.Step
+    TreeFold.fold[PlutusData, Data](root) {
+      case PlutusData.Constr(tag, fields) =>
+        Step.Branch(fields, ds => Right(Data.Constr(tag, PList.from(ds))))
+      case PlutusData.Map(entries) =>
+        Step.Branch(
+          TreeFold.flatten(entries),
+          ds => Right(Data.Map(PList.from(TreeFold.pairs(ds))))
+        )
+      case PlutusData.List(items) => Step.Branch(items, ds => Right(Data.List(PList.from(ds))))
+      case PlutusData.I(v)        => Step.Leaf(Data.I(v))
+      case PlutusData.B(b)        => Step.Leaf(Data.B(ByteString.fromArray(b.toArray)))
+    }
 
   /** A small synchronised LRU map. */
   private final class BoundedCache[K, V](limit: Int):

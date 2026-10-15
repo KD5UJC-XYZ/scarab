@@ -5,6 +5,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (B17)
+- No nesting limit below the size of the block, as in the reference (`Timelock`, `decodeMetadatum` and
+  `PlutusCore.Data.decodeData` have none). The preprod sync stopped at block 5,183,974 (slot
+  133,883,340, epoch 313, transaction f90dce57: a native script 5,383 levels deep, CBOR depth 10,772)
+  with `decode block: depth limit exceeded`, our limits being 2048 for blocks and 1024 for Plutus data.
+  `Cbor.decode` and `Cbor.encode` keep an explicit stack, `TreeFold` is a heap post-order fold used by
+  `NativeScript.decode`, `PlutusData.fromNode` and `ScalusEvaluator.toData`, and `NativeScript.eval`,
+  `Codec[NativeScript]` and `DataSerialiser` are loops; `Cbor.Limits.maxDepth` defaults to no limit of
+  its own (input size and `maxItems` bound depth and memory). The verdict on a deep item no longer
+  depends on the thread's stack size (the open question of K3). Fixture
+  `fixtures/preprod/tx-f90dce57.hex`, `DeepNestingSuite`, `CborSuite`.
+
 ### Fixed (B16)
 - A Plutus V1 or V2 script may carry bytes after its CBOR byte string, as in `deserialiseScript`
   (V3: `RemainderError`); Scalus `fromCbor` rejected them. The preprod sync stopped on this at block

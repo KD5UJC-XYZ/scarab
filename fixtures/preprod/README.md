@@ -104,3 +104,15 @@ after the item are ignored for V1 and V2) and Scalus `fromCbor` rejects. The syn
 `utxo_info` (the one input, a plain ADA output rebuilt as `[address, lovelace]`) and `epoch_params`
 for epoch 248 (V1, V2, V3 cost models), fetched 2026-10-15 (`https://preprod.koios.rest/api/v1/`).
 Case file format as `plutus/tx-2edd684f.json`. Used by `PreprodMalformedRefScriptSuite`.
+
+## tx-f90dce57.hex and tx-f90dce57-inputs.json
+
+Preprod transaction `f90dce5765108da976abdbb9fc618f9a6ffd9fa4d93b2f288eed1808545424c9` (block
+`bac1660208e7a8f63fc7caf97cfefcd3066a517d3ca4d971e1b316d1e43708e5`, height 5,183,974, slot
+133,883,340, epoch 313, Conway, 23 transactions, 16,382 bytes). Its witness set holds one native
+script, `all [all [all [ ... sig ]]]` nested 5,383 `all` levels deep (CBOR depth 10,772), which the
+one input's script address (`ff3efca6...`) is the hash of. The Scala node's first full preprod sync
+stopped at this block (`depth limit exceeded`, `docs/findings.md`); the Haskell nodes accepted it.
+Source: Koios `block_tx_cbor` for the block, `tx_info` for the input (a plain 4 ADA output at the
+script address, rebuilt as `[address, lovelace]`), fetched 2026-10-14
+(`https://preprod.koios.rest/api/v1/`). Used by `DeepNestingSuite`.

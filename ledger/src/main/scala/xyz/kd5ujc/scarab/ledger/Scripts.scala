@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, TreeFold, Value}
 
 /** Allegra timelock script; Shelley multi-signature scripts are the subset without the two time
   * constructors.
@@ -19,33 +18,84 @@ enum NativeScript:
   /** `evalTimelock`: `signers` are the key hashes of the verified vkey witnesses and `[start, end)`
     * the transaction's validity interval (`invalid_before`, `invalid_hereafter`).
     */
-  def eval(signers: Set[Bytes], start: Option[BigInt], end: Option[BigInt]): Boolean = this match
-    case Sig(h)                 => signers.contains(h)
-    case AllOf(ss)              => ss.forall(_.eval(signers, start, end))
-    case AnyOf(ss)              => ss.exists(_.eval(signers, start, end))
-    case NOfK(n, ss)            => BigInt(ss.count(_.eval(signers, start, end))) >= n
-    case InvalidBefore(lock)    => start.exists(lock <= _)
-    case InvalidHereafter(lock) => end.exists(_ <= lock)
+  def eval(signers: Set[Bytes], start: Option[BigInt], end: Option[BigInt]): Boolean =
+    // The scripts nest as deep as the transaction is long (a preprod transaction has 5,388
+    // levels), so the walk keeps its stack on the heap.
+    final class Open(val script: NativeScript, val children: Vector[NativeScript]):
+      var next = 0
+      var count = 0
+    val stack = new java.util.ArrayDeque[Open]
+    var cur: NativeScript = this
+    var value: Option[Boolean] = None
+    while true do
+      if value.isEmpty then
+        cur match
+          case Sig(h)                 => value = Some(signers.contains(h))
+          case InvalidBefore(lock)    => value = Some(start.exists(lock <= _))
+          case InvalidHereafter(lock) => value = Some(end.exists(_ <= lock))
+          case AllOf(ss)              => stack.push(Open(cur, ss))
+          case AnyOf(ss)              => stack.push(Open(cur, ss))
+          case NOfK(_, ss)            => stack.push(Open(cur, ss))
+      // A finished child is folded into its parent; a finished parent is a finished child.
+      var settled = false
+      while !settled do
+        val top = stack.peek()
+        if top == null then
+          if value.isDefined then return value.get
+          settled = true
+        else
+          value.foreach { v =>
+            top.script match
+              case AllOf(_) => value = if v then None else Some(false)
+              case AnyOf(_) => value = if v then Some(true) else None
+              case NOfK(_, _) =>
+                if v then top.count += 1
+                value = None
+              case _ => ()
+          }
+          val decided = value.isDefined
+          if decided then stack.pop()
+          else if top.next < top.children.size then
+            cur = top.children(top.next)
+            top.next += 1
+            settled = true
+          else
+            stack.pop()
+            value = Some(top.script match
+              case AllOf(_)   => true
+              case AnyOf(_)   => false
+              case NOfK(n, _) => BigInt(top.count) >= n
+              case _          => false)
+    false
 
 object NativeScript:
+  /** Decode with the nesting on the heap, so a script as deep as a block can hold decodes (see
+    * [[NativeScript.eval]]); the reference has no limit on the depth of a native script.
+    */
   def decode(n: Node): Either[String, NativeScript] =
+    TreeFold.foldE[Node, NativeScript, String](n)(open)
+
+  private def open(n: Node): Either[String, TreeFold.Step[Node, NativeScript, String]] =
+    import TreeFold.Step
     CborRead.array(n, "native script").flatMap { xs =>
       xs.headOption
         .toRight("native script: empty")
         .flatMap(CborRead.uint(_, "script tag"))
         .flatMap { tag =>
-          def list(i: Int) =
-            xs.lift(i)
-              .toRight("native script: short")
-              .flatMap(CborRead.array(_, "scripts"))
-              .flatMap(_.traverse(decode))
+          def list(i: Int): Either[String, Vector[Node]] =
+            xs.lift(i).toRight("native script: short").flatMap(CborRead.array(_, "scripts"))
           (tag.toInt, xs.size) match
-            case (0, 2) => CborRead.bytesN(xs(1), 28, "script key hash").map(Sig(_))
-            case (1, 2) => list(1).map(AllOf(_))
-            case (2, 2) => list(1).map(AnyOf(_))
-            case (3, 3) => (CborRead.uint(xs(1), "script n"), list(2)).mapN(NOfK(_, _))
-            case (4, 2) => CborRead.uint(xs(1), "invalid before").map(InvalidBefore(_))
-            case (5, 2) => CborRead.uint(xs(1), "invalid hereafter").map(InvalidHereafter(_))
+            case (0, 2) => CborRead.bytesN(xs(1), 28, "script key hash").map(h => Step.Leaf(Sig(h)))
+            case (1, 2) => list(1).map(Step.Branch(_, ss => Right(AllOf(ss))))
+            case (2, 2) => list(1).map(Step.Branch(_, ss => Right(AnyOf(ss))))
+            case (3, 3) =>
+              CborRead
+                .uint(xs(1), "script n")
+                .flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
+            case (4, 2) =>
+              CborRead.uint(xs(1), "invalid before").map(s => Step.Leaf(InvalidBefore(s)))
+            case (5, 2) =>
+              CborRead.uint(xs(1), "invalid hereafter").map(s => Step.Leaf(InvalidHereafter(s)))
             case (t, k) => Left(s"native script tag $t with $k elements")
         }
     }

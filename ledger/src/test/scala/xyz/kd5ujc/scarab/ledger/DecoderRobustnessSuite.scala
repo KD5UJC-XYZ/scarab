@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import scala.annotation.unused
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import munit.FunSuite
 
@@ -64,10 +64,11 @@ class DecoderRobustnessSuite extends FunSuite:
     }
   }
 
-  test("Plutus data nested beyond the stack is an error value, not a StackOverflowError") {
-    // 1000 maps nested as values {0: {0: ... 0}}, within PlutusData's depth limit of 1024; a 64 KiB stack
-    // holds neither the decoder nor the conversion of that
+  test("regression (fuzz K3): Plutus data nested beyond the stack decodes, on a small stack") {
+    // 1000 maps nested as values {0: {0: ... 0}}: a 64 KiB stack held neither the recursive
+    // decoder nor the conversion; the nesting is now on the heap, as deep as a block allows
     val nested = hex("a100" * 1000 + "00")
-    val result = onSmallStack(PlutusData.decode(nested), 64 * 1024)
-    assertEquals(result.left.toOption, Some(Cbor.TooDeep))
+    assert(onSmallStack(PlutusData.decode(nested), 64 * 1024).isRight)
+    val deeper = hex("a100" * 40000 + "00")
+    assert(onSmallStack(PlutusData.decode(deeper), 64 * 1024).isRight)
   }

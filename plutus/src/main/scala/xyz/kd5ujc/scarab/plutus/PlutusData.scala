@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, TreeFold, Value}
 
 /** Plutus `Data`: the one universal value passed to scripts. This is the node's own type; the
   * evaluator interpreters translate it to their VM's representation.
@@ -30,12 +29,12 @@ object PlutusData:
   def bool(b: Boolean): PlutusData = constr(if b then 1 else 0)
 
   /** Decoding limits are generous: datums are user-controlled, but a transaction is at most a few
-    * tens of kilobytes.
+    * tens of kilobytes. There is no depth limit of its own: a level takes a byte, so the input size
+    * and the item count bound it.
     */
   private val limits =
     Cbor.Limits(
       maxInputBytes = 1 << 24,
-      maxDepth = 1024,
       maxItems = 1 << 22,
       maxStringBytes = 1 << 24
     )
@@ -44,37 +43,47 @@ object PlutusData:
     Cbor.stackSafe(Cbor.decode(bytes, limits).flatMap(fromNode))
 
   /** `plutus_data` of the Conway CDDL: constructors in tags 121 to 127, 1280 to 1400 and 102,
-    * integers (with tag 2 and 3 big numbers), byte strings, lists and maps.
+    * integers (with tag 2 and 3 big numbers), byte strings, lists and maps. Nesting is unlimited,
+    * as in the reference (`PlutusCore.Data.decodeData` has only the 64-byte limit on leaves), and
+    * walked on the heap.
     */
-  def fromNode(n: Node): Either[String, PlutusData] = n.value match
-    case Value.UInt(v)       => Right(I(v))
-    case Value.NInt(v)       => Right(I(v))
-    case Value.ByteString(b) => Right(B(b))
-    case Value.Arr(xs)       => xs.traverse(fromNode).map(List(_))
+  def fromNode(n: Node): Either[String, PlutusData] =
+    TreeFold.foldE[Node, PlutusData, String](n)(open)
+
+  private type Opened = Either[String, TreeFold.Step[Node, PlutusData, String]]
+
+  private def leaf(d: PlutusData): Opened = Right(TreeFold.Step.Leaf(d))
+
+  private def constrOf(index: BigInt, fs: Node): Opened = fs.value match
+    case Value.Arr(xs) => Right(TreeFold.Step.Branch(xs, ds => Right(Constr(index, ds))))
+    case _             => Left("plutus data: constructor fields must be a list")
+
+  private def open(n: Node): Opened = n.value match
+    case Value.UInt(v)       => leaf(I(v))
+    case Value.NInt(v)       => leaf(I(v))
+    case Value.ByteString(b) => leaf(B(b))
+    case Value.Arr(xs)       => Right(TreeFold.Step.Branch(xs, ds => Right(List(ds))))
     case Value.Map(kvs) =>
-      kvs.traverse { case (k, v) => (fromNode(k), fromNode(v)).tupled }.map(Map(_))
+      Right(
+        TreeFold.Step.Branch(
+          TreeFold.flatten(kvs),
+          ds => Right(Map(TreeFold.pairs(ds)))
+        )
+      )
     case Value.Tag(t, inner) if t == 2 || t == 3 =>
       inner.value match
         case Value.ByteString(b) =>
           val magnitude = BigInt(1, b.toArray)
-          Right(I(if t == 2 then magnitude else -1 - magnitude))
+          leaf(I(if t == 2 then magnitude else -1 - magnitude))
         case _ => Left("plutus data: big number without bytes")
-    case Value.Tag(t, inner) if t >= 121 && t <= 127   => fields(inner).map(Constr(t - 121, _))
-    case Value.Tag(t, inner) if t >= 1280 && t <= 1400 => fields(inner).map(Constr(t - 1280 + 7, _))
+    case Value.Tag(t, inner) if t >= 121 && t <= 127   => constrOf(t - 121, inner)
+    case Value.Tag(t, inner) if t >= 1280 && t <= 1400 => constrOf(t - 1280 + 7, inner)
     case Value.Tag(t, inner) if t == 102 =>
       inner.value match
         case Value.Arr(Vector(ix, fs)) =>
-          (
-            ix.value match
-              case Value.UInt(i) => Right(i)
-              case _             => Left("plutus data: constructor index")
-            ,
-            fields(fs)
-          ).mapN(Constr(_, _))
+          ix.value match
+            case Value.UInt(i) => constrOf(i, fs)
+            case _             => Left("plutus data: constructor index")
         case _ => Left("plutus data: tag 102 expects [index, fields]")
     case Value.Tag(t, _) => Left(s"plutus data: unexpected tag $t")
     case other           => Left(s"plutus data: unexpected CBOR item $other")
-
-  private def fields(n: Node): Either[String, Vector[PlutusData]] = n.value match
-    case Value.Arr(xs) => xs.traverse(fromNode)
-    case _             => Left("plutus data: constructor fields must be a list")

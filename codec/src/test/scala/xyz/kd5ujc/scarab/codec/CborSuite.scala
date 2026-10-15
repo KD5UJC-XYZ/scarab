@@ -121,7 +121,7 @@ class CborSuite extends munit.FunSuite:
     assert(Cbor.decode(bytes("5bffffffffffffffff")).isLeft)
     assert(Cbor.decode(bytes("9bffffffffffffffff")).isLeft)
     assert(Cbor.decode(bytes("bbffffffffffffffff")).isLeft)
-    assert(Cbor.decode(bytes("81" * 2049 + "00")).isLeft)
+    assert(Cbor.decode(bytes("81" * 2049 + "00"), Cbor.Limits(maxDepth = 2048)).isLeft)
   }
   test("empty strings, null, booleans and selected values roundtrip") {
     val values = Vector(
@@ -182,17 +182,106 @@ class CborSuite extends munit.FunSuite:
     thread.join()
     result.get.fold(throw _, identity)
 
-  test(
-    "regression (fuzz K3): items nested beyond the stack are an error value, never a StackOverflowError"
-  ) {
-    // 2000 nested one-element arrays: within the 2048 depth limit, beyond a 256 KiB stack
-    val nested = bytes("81" * 2000 + "00")
-    val outcome = onSmallStack(Cbor.decode(nested).map(node => Cbor.encode(node.value)))
-    // either the decoder or the encoder gave up with the stack message; neither threw
-    outcome match
-      case Left(message)        => assertEquals(message, Cbor.TooDeep)
-      case Right(Left(message)) => assertEquals(message, Cbor.TooDeep)
-      case Right(Right(_))      => fail("a stack of 256 KiB should not hold 2000 nested arrays")
+  private def repeat(unit: String, times: Int): String = unit * times
+
+  private val Wide = Cbor.Limits(maxInputBytes = 1 << 20, maxItems = 1 << 20)
+
+  test("nesting is not limited by the stack: a block's worth of levels decodes and encodes") {
+    // regression (fuzz K3, preprod block 5,183,974): 90,000 nested arrays on a 256 KiB stack,
+    // where the recursive decoder overflowed at about 900 and gave up at 2048 levels
+    val nested = bytes(repeat("81", 90000) + "00")
+    val outcome = onSmallStack(
+      Cbor.decode(nested, Wide).flatMap(node => Cbor.encode(node.value).map(node -> _))
+    )
+    val (node, again) = outcome.fold(fail(_), identity)
+    assertEquals(node.original, nested)
+    assertEquals(again, nested)
+  }
+
+  test("a depth limit still applies when asked for, with the nesting on the heap") {
+    val nested = bytes(repeat("81", 5000) + "00")
+    assertEquals(
+      Cbor.decode(nested, Wide.copy(maxDepth = 4000)),
+      Left("depth limit exceeded")
+    )
+    assert(Cbor.decode(nested, Wide.copy(maxDepth = 5000)).isRight)
+  }
+
+  /** Random nestings of every container kind, `levels` deep, with an optional leaf at the bottom.
+    */
+  private def nesting(random: scala.util.Random, levels: Int): (String, Boolean) =
+    val open = new StringBuilder
+    val close = new java.util.ArrayDeque[String]
+    var definiteOnly = true
+    var i = 0
+    while i < levels do
+      random.nextInt(6) match
+        case 0 => open ++= "81"
+        case 1 => open ++= "a100"; // map {0: <next>}
+        case 2 => open ++= "c1" // tag 1
+        case 3 =>
+          open ++= "9f"
+          close.push("ff")
+          definiteOnly = false
+        case 4 =>
+          open ++= "bf00"
+          close.push("ff")
+          definiteOnly = false
+        case _ => open ++= "d90102" // tag 258
+      i += 1
+    (open.toString + "00" + close.toArray.mkString, definiteOnly)
+
+  test("property: random nestings up to a block's depth round-trip on a small stack") {
+    val random = new scala.util.Random(2026)
+    (1 to 25).foreach { round =>
+      val levels = if round <= 5 then 30000 + random.nextInt(15000) else random.nextInt(45000)
+      val (text, definiteOnly) = nesting(random, levels)
+      val wire = bytes(text)
+      onSmallStack {
+        val node = Cbor.decode(wire, Wide).fold(fail(_), identity)
+        assertEquals(node.original, wire)
+        val once = Cbor.encode(node.value).fold(fail(_), identity)
+        if definiteOnly then
+          // shortest widths: only a non-shortest input differs; this generator writes shortest
+          assertEquals(once, wire)
+        val reread = Cbor.decode(once, Wide).fold(fail(_), identity)
+        assertEquals(reread.original, once)
+        assertEquals(Cbor.encode(reread.value), Right(once))
+      }
+    }
+  }
+
+  test("a map or tag missing its second half, deep down, is an error") {
+    onSmallStack {
+      assertEquals(
+        Cbor.decode(bytes(repeat("9f", 20000) + "bf00ff" + repeat("ff", 20000)), Wide),
+        Left("map has an unmatched key")
+      )
+      assert(Cbor.decode(bytes(repeat("c1", 50000)), Wide).isLeft)
+      assert(Cbor.decode(bytes(repeat("81", 50000) + "00" + "00"), Wide).isLeft)
+      assert(Cbor.decode(bytes(repeat("9f", 50000) + "00"), Wide).isLeft)
+    }
+  }
+
+  test("a few bytes that claim huge lengths fail at once, without allocating for the claim") {
+    def timed(hex: String, limits: Cbor.Limits = Cbor.Limits()): Either[String, Node] =
+      val started = System.nanoTime()
+      val result = Cbor.decode(bytes(hex), limits)
+      assert((System.nanoTime() - started) / 1000000 < 500)
+      result
+    // arrays and maps claiming 2^64 - 1, 2^32 - 1 and 90,000 elements in at most 10 bytes
+    assertEquals(timed("9bffffffffffffffff"), Left("item limit exceeded"))
+    assertEquals(timed("ba7fffffff"), Left("map pair limit exceeded"))
+    assertEquals(timed("9a00015f90" + "00"), Left("unexpected end of input"))
+    assertEquals(timed("9a00015f90", Wide), Left("unexpected end of input"))
+    assertEquals(timed("5bffffffffffffffff"), Left("string byte limit exceeded"))
+    assertEquals(timed("7a7fffffff" + "00"), Left("string byte limit exceeded"))
+    assertEquals(timed("5a000fffff00"), Left("truncated string payload"))
+    // nested claims: each level asks for the whole remaining budget
+    assertEquals(timed("9a0001869f" * 2), Left("item limit exceeded"))
+  }
+
+  test("regression (fuzz K3): the guard that turns a stack overflow into an error value") {
     assertEquals(
       onSmallStack(Cbor.stackSafe[Int](throw new StackOverflowError())),
       Left(Cbor.TooDeep)
