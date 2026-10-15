@@ -1,6 +1,12 @@
 # Models generated from the upstream CDDL
 
-Status: spike, merged behind two new sbt subprojects (`modelsGen`, `models`, formerly `modelsSpike`); no existing module is changed.
+Status: **spike**. The generator (`modelsGen`) and the generated models with their runtime (`models`) are done and
+cross-checked (golden tests against the hand-written decoders, CDDL-sampled property tests, fuzzing, the cuddle
+cross-check of section 13). They are used today by tests, and the runtime (`models.runtime.{Codec, Writer, DecodeError}`)
+by the Haskell ledger-state codec in `storage`; **no node path decodes blocks, headers or protocol messages with
+generated code**. Adopting the generated models in the node (sections 11 and 12) has not started and is not
+scheduled; the known generator gaps (section 8) are tracked as [M13](roadmap.md) and the adoption as
+[M14](roadmap.md).
 Question answered: can the wire, ledger and disk models of the node be generated from the upstream CDDL instead of
 being written by hand? Answer: yes, for the arrays, maps, choices, tags, sizes and ranges that make up the formats
 checked so far, with byte-exact decoding of real chain data. What is left is a list of named gaps (below), not an
@@ -10,7 +16,7 @@ Contents: [tooling](#1-tooling-survey-and-decision) | [architecture](#2-architec
 [naming](#3-naming) | [leaf types](#4-leaf-types-opaque-types-and-refinements) |
 [original bytes and canonical encoding](#5-original-bytes-and-canonical-encoding) | [errors](#6-typed-errors) |
 [eras](#7-modelling-eras) | [coverage](#8-cddl-feature-coverage) | [hand-written](#9-what-stays-hand-written) |
-[results](#10-results-on-real-data) | [effort](#11-effort-to-roll-out) | [migration](#12-migration-plan-and-risks) |
+[results](#10-results-on-real-data) | [rollout effort (proposal)](#11-rollout-proposal-not-scheduled-effort) | [rollout order (proposal)](#12-rollout-proposal-not-scheduled-order-and-risks) |
 [cuddle cross-check](#13-cross-check-against-cuddle)
 
 ## 1. Tooling survey and decision
@@ -159,7 +165,7 @@ A preserved type is `final case class Header(headerBody: HeaderBody, bodySignatu
 - The hash of a Shelley-era header is `Blake2b-256(header.raw)`; the tests check this against the hand-written decoder. (A Byron header hashes the `[subtag, header]` pair as `NtNHeader` frames it, as `Header.byronFromRaw` does; the Byron golden test checks `raw` only, not that hash.)
 
 Everything not marked is encoded canonically: shortest integers and lengths, definite-length containers, map entries in
-rule order. Known gaps: `preserve` is only on arrays and maps (not on choices such as `auxiliary_data`; workaround:
+rule order. Known gaps (M13, section 8): `preserve` is only on arrays and maps (not on choices such as `auxiliary_data`; workaround:
 preserve the alternatives or decode the item as `any`); a per-rule "indefinite-length output" property is not
 modelled (the hand-written ChainSync writes `FindIntersect` points as an indefinite list, like the Haskell node; the
 generated writer writes a definite list; both decode, see the test "the other ChainSync messages").
@@ -180,7 +186,8 @@ enum Kind: Syntax, TypeMismatch, BadSize, OutOfRange, LiteralMismatch, BadArity,
 - A choice reports **all** alternatives it tried (`NoAlternative`); `deepest` picks the cause that got furthest.
 - `decodeBytes` catches anything a decoder throws and returns `Kind.Internal`; the fuzz tests assert it never appears.
 - Limitation: `xyz.kd5ujc.scarab.codec.Cbor.decode` still returns `Either[String, _]`, so a malformed-CBOR error is `Syntax(message)` with
-  offset 0. Making `Cbor` return a typed error (planned in the plan's section 4) improves this at no cost to the generator.
+  offset 0. Making `Cbor` return a typed error would improve this at no cost to the generator; it is not done and is part of the
+  adoption proposal (section 11, M14).
 
 ## 7. Modelling eras
 
@@ -192,8 +199,8 @@ Separate packages per era, generated from each era's own file: `shelley`, `alleg
 2. A field that exists only from one era on then cannot exist in earlier code, which is the plan's "era-indexed types".
 3. The generator is trivially parallel: one module per file, no merging logic.
 
-The cost is duplication (Shelley, Allegra and Mary are structurally identical: about 1,400 lines each). Remedy, not yet
-built: compare the resolved tree of a rule with the previous era's and emit `type X = prev.X` when equal, which
+The cost is duplication (Shelley, Allegra and Mary are structurally identical: about 1,400 lines each). Remedy, not built
+(M13): compare the resolved tree of a rule with the previous era's and emit `type X = prev.X` when equal, which
 keeps identical types identical and shrinks the output. The hard-fork envelope is generated too:
 `chain.hfc.Header` is an enum `Conway(conway.Header) | Babbage(…) | … | Byron(…)`, from the consensus
 `ns8<…>` generic, and `chain.Point` is `Origin | Block(slot, hash)`.
@@ -215,12 +222,14 @@ Supported = parsed, resolved, emitted, compiled with `-Werror` and exercised by 
 | `.cbor`, tags `#6.n(x)`, `#6.n` | supported | `serialisedShelleyHeader`, plutus data |
 | `bool`, `nil`, `any`, literals (int, text, bool), `x / nil` | supported | |
 | `;# import/include` namespaces, per-module overrides | supported | |
-| required member after an optional one (`[a, ? b, c]`) | **not yet** | Dijkstra `pool_params`; needs a backtracking array decoder (12 rules) |
-| `.gt .ge .eq .ne .regexp .and .within .cborseq .bits`, floats, `~` unwrap, `&` as a type | **not yet** | 8 rules use `.gt` and 5 `.ne` (all Byron, on a named `u8`); none of the rest in the pinned files except as noted |
+| required member after an optional one (`[a, ? b, c]`) | **not yet** (M13) | Dijkstra `pool_params`; needs a backtracking array decoder (12 rules) |
+| `.gt .ge .eq .ne .regexp .and .within .cborseq .bits`, floats, `~` unwrap, `&` as a type | **not yet** (M13) | 8 rules use `.gt` and 5 `.ne` (all Byron, on a named `u8`); none of the rest in the pinned files except as noted |
 | the RFC 8610 prelude (`bigint`, `encoded-cbor`, `tdate`, `uri`, …) | supported | `features:prelude_use`; found missing by the cuddle cross-check (section 13) |
-| `preserve` on a choice | **not yet** | `auxiliary_data` |
+| `preserve` on a choice | **not yet** (M13) | `auxiliary_data` |
 | `bytes` chunking limit (`bounded_bytes`) | cannot be expressed in CDDL | overridden, section 10 |
-| indefinite-length output as a per-rule property | **not yet** | |
+| indefinite-length output as a per-rule property | **not yet** (M13) | the hand-written ChainSync writes `FindIntersect` points as an indefinite list (section 5) |
+| map entries in canonical key order as an option | **not yet** (M13) | `features:person` in the cuddle allowlist (section 13) |
+| era dedup (`type X = prev.X` when the resolved tree equals the previous era's) | **not yet** (M13) | output size only, section 7 |
 | recursive types | supported (lazy codecs) | `metadatum`, `plutus_data`, `person` |
 
 Whole-specification coverage, measured by generating each non-generic rule as a root of its own (`GeneratorSuite`):
@@ -297,10 +306,11 @@ Reference point: `Cbor.decode` alone is 0.75 µs for a header. So the generated 
 parsing, and is not slower than the hand-written code, which hashes in the same call and (in the ChainSync path) copies
 byte vectors. No performance risk in headers; blocks were not benchmarked (the decoders are the same combinators).
 
-## 11. Effort to roll out
+## 11. Rollout proposal (not scheduled): effort
 
-Estimates in engineer-days of focused work, including tests against real data; agent work parallelises the per-era
-and per-protocol rows.
+A proposal and an estimate, not a plan of record: nothing below has started, and no part of it is scheduled (M14). The
+estimates were made in 2026-10, when the spike was finished, in engineer-days of focused work including tests against
+real data; the per-era and per-protocol rows are independent of each other. Row 1 is tracked as M13, the rest as M14.
 
 | Work | Days | Notes |
 |---|---|---|
@@ -310,20 +320,25 @@ and per-protocol rows.
 | All NtN mini-protocols from their CDDL (KeepAlive, BlockFetch, TxSubmission2, PeerSharing, handshake) | 3 to 4 | the policy and state machines stay |
 | NtC protocols (LocalStateQuery, LocalTxSubmission, LocalTxMonitor) incl. the query/result tables of the consensus CDDL | 5 to 7 | query results are partly `any` upstream |
 | Disk formats (consensus `disk/**`: ledger state, header state, praos/tpraos state, chunk files) | 5 to 8 | telescopes, indefinite lists; replace our own snapshot codecs only if worthwhile |
-| Conformance in CI with cuddle, generating and validating (section 13) | 1 to 2 | done (issue K10) |
+| Conformance in CI with cuddle, generating and validating (section 13) | 1 to 2 | done (K10) |
 | `Cbor` typed errors (needed anyway by plan section 4) | 2 | removes `Syntax(message)` |
 | Docs, review, performance pass on blocks | 3 | |
 
-Total: roughly 35 to 50 engineer-days, i.e. 7 to 10 weeks for one person, about 4 to 5 weeks when the era and protocol
-rows run in parallel. The first useful milestone (NtN protocols plus Conway headers and blocks replacing the hand
-decoders) is about 12 to 16 days.
+Rough total if all of it were done: 35 to 50 engineer-days (the one-person duration follows from that, shorter if the
+era and protocol rows are done side by side). A smaller first cut would be the node-to-node protocols plus Conway
+headers and blocks replacing the hand decoders, estimated at 12 to 16 days. These figures are unmeasured guesses from
+the spike, to be redone when the work is taken up.
 
-## 12. Migration plan and risks
+## 12. Rollout proposal (not scheduled): order and risks
 
-Order (each step lands with the existing tests unchanged and green, the generated model proved equal first, as the
-spike does):
+Proposed order (each step would land with the existing tests unchanged and green, the generated model proved equal
+first, as the spike does). Step 1 is done; steps 2 to 5 have not started. Issue #82 (M11) carried step 1 and states
+the node-to-node protocols and Conway headers and blocks as its first adoption target, but its current work is the
+ledger-state mirror, not this. Step 4 overlaps M12 (#85), which plans per-era `Tx[E]`, `TxOut[E]`, `TxCert[E]` and
+`Block[E]`: the generated per-era models are a possible source for those types, to be decided when that step is
+taken up (M14).
 
-1. Rename and module split (the reorg; done). `models-spike` became `models` (`scarab-models`): `runtime` plus generated
+1. Rename and module split (the reorg; **done**, M11). `models-spike` became `models` (`scarab-models`): `runtime` plus generated
    code, the vendored `upstream/` CDDL and `models.conf`. `models-gen` is `scarab-models-gen`. Package roots are
    `xyz.kd5ujc.scarab.models.*`.
 2. NtN handshake and ChainSync payloads: replace `protocol.Handshake.Term`/`decodeData`, `ChainSync.Point`/`Tip`,
@@ -357,8 +372,7 @@ Risks and answers:
 - **Original bytes retention.** A preserved value pins the input buffer it was cut from, as `xyz.kd5ujc.scarab.codec.Bytes` always
   has; call `raw.compact` when storing long-term.
 - **Single point of failure.** A generator bug is a bug in every model. That is why the property tests sample from the
-  CDDL with an independent sampler, and why the golden tests compare with the hand-written decoders until those are
-  deleted.
+  CDDL with an independent sampler, and why the golden tests compare with the hand-written decoders for as long as both exist.
 
 ## 13. Cross-check against cuddle
 
