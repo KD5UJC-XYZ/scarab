@@ -9,9 +9,10 @@ import cats.mtl.Handle.handleForApplicativeError
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, StateMirror}
+import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{FormatVersion, StorageError}
 import xyz.kd5ujc.scarab.node.MirrorCorpus.Report
+import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 import xyz.kd5ujc.scarab.storage.{
   FileLedgerSnapshots,
   SnapshotFormat,
@@ -30,18 +31,18 @@ import xyz.kd5ujc.scarab.storage.{
   *   - the whole mirror runs on that state ([[MirrorCorpus.check]]: retraction, and the tampers);
   *   - a copy in a scratch directory is migrated by [[SnapshotMigration]] (version 1 to 2 to 3),
   *     the V3 file is read back through the store, and the state is compared with the direct read
-  *     as the mirror normalises it (the mirror is lossless up to [[StateMirror.normalised]]), both
-  *     by the mirror's own view of a state (which includes the UTxO bookkeeping) and by structural
-  *     equality;
+  *     in its canonical form ([[SnapshotV3.canonical]]), both by the mirror's own view of a state
+  *     (which includes the UTxO bookkeeping) and by structural equality;
   *   - the cost of writing the V3 snapshot (the mirror and the encoding) and of reading it.
   *
   * {{{
-  * java -Xmx32g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir]
+  * java -Xmx32g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir] [offset]
   * }}}
   *
   * `stride` takes every n-th snapshot (default 1); the tampers, each a full conversion, are tried
   * on every `tamper-stride` -th of those (default 20); `genesis-dir` is the network's (default
-  * fixtures/preview/genesis). The snapshots directory is only read.
+  * fixtures/preview/genesis); `offset` starts the stride at that file (default 0), so that several
+  * runs can share a corpus. The snapshots directory is only read.
   */
 object PreviewMirrorMain:
   private type F[A] = EitherT[IO, StorageError, A]
@@ -54,7 +55,10 @@ object PreviewMirrorMain:
       from: Option[FormatVersion],
       v3Bytes: Long,
       writeMillis: Long,
-      readMillis: Long
+      readMillis: Long,
+      toMirrorMillis: Long,
+      haskellMillis: Long,
+      haskellBytes: Long
   ):
     def ok: Boolean = migrated && sameView && equal
 
@@ -81,10 +85,18 @@ object PreviewMirrorMain:
         restored <- snapshots.restore(_ => EitherT.pure[IO, StorageError](true))
       yield (report, restored)
       val (outcome, readMillis) = millis(program.value.unsafeRunSync())
-      val expected = direct.copy(state = StateMirror.normalised(env, direct.state))
+      val expected = direct.copy(state = SnapshotV3.canonical(env, direct.state))
       // The cost of the V3 write of this state, on its own: the mirror, the Haskell encoding.
       val (encoded, writeMillis) =
         millis(SnapshotV3.format[F].encode(direct).value.unsafeRunSync())
+      // ... and its parts: the mirror, and the Haskell encoding of the ledger state it gives
+      val (mirrored, toMirrorMillis) =
+        millis(MirrorRun.run(env)(_.toMirror(direct.anchor, direct.state)))
+      val (haskell, haskellMillis) = millis(
+        mirrored.toOption.flatMap(m =>
+          HaskellLedgerFile.of(m.value.ext).toOption.flatMap(HaskellLedgerFile.encode(_).toOption)
+        )
+      )
       outcome.map { (report, restored) =>
         val back = restored.snapshot.map(_._2)
         Gate(
@@ -96,7 +108,10 @@ object PreviewMirrorMain:
           from = report.migrated.headOption.map(_.from),
           v3Bytes = encoded.toOption.flatMap(_.toOption).fold(0L)(_.length.toLong),
           writeMillis = writeMillis,
-          readMillis = readMillis
+          readMillis = readMillis,
+          toMirrorMillis = toMirrorMillis,
+          haskellMillis = haskellMillis,
+          haskellBytes = haskell.fold(0L)(_.size.toLong)
         )
       }
     finally
@@ -107,6 +122,7 @@ object PreviewMirrorMain:
     val dir = Path.of(args(0))
     val stride = args.lift(1).fold(1)(_.toInt)
     val tamperStride = args.lift(2).fold(20)(_.toInt)
+    val offset = args.lift(4).fold(0)(_.toInt)
     val setup = NodeSetup
       .fromDirectory(Path.of(args.lift(3).getOrElse("fixtures/preview/genesis")))
       .fold(e => sys.error(e.message), identity)
@@ -119,7 +135,7 @@ object PreviewMirrorMain:
       .toVector
       .sortBy(_.getFileName.toString)
       .zipWithIndex
-      .collect { case (f, i) if i % stride == 0 => f }
+      .collect { case (f, i) if i % stride == offset => f }
     val reports = Vector.newBuilder[(String, Report)]
     val gates = Vector.newBuilder[(String, Gate)]
     files.zipWithIndex.foreach { case (file, n) =>
@@ -152,12 +168,18 @@ object PreviewMirrorMain:
                 .toList
                 .sortBy(_._1)
                 .mkString(", ")}
-               |  equal up to StateMirror.normalised: view ${all.count(
+               |  equal up to SnapshotV3.canonical: view ${all.count(
                 _._2.sameView
               )}, structural ${all
                 .count(_._2.equal)}
                |  V3 size in bytes: ${stats(all.map(_._2.v3Bytes))}
-               |  write (toMirror + encode) ms: ${stats(all.map(_._2.writeMillis))}
+               |  write (toMirror + encode + the read back that verifies it) ms: ${stats(
+                all.map(_._2.writeMillis)
+              )}
+               |    of which toMirror ms: ${stats(all.map(_._2.toMirrorMillis))}
+               |    of which the Haskell encoding ms: ${stats(
+                all.map(_._2.haskellMillis)
+              )}; its size in bytes: ${stats(all.map(_._2.haskellBytes))}
                |  migrate + read back ms: ${stats(all.map(_._2.readMillis))}
                |${bad.take(5).map((n, g) => s"  FAILED $n: $g").mkString("\n")}""".stripMargin)
     if bad.nonEmpty || all.size != files.size then sys.exit(1)

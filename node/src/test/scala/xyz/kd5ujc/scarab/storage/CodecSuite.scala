@@ -180,6 +180,6 @@ class CodecSuite extends ScalaCheckSuite:
   private val GoldenInitialState =
     ("228a41672061e4a01954a3a41c706932aa13f0e89185fc5c6636796b56428a4a", 3158)
   private val GoldenFingerprint = "2293c5cf7bb77492"
-  private val GoldenSidecarFingerprint = "c9d22eb57f782449"
+  private val GoldenSidecarFingerprint = "65d0043c049b7b7a"
   private val GoldenSidecar =
     ("7bc7dc357f2b64267b3bb7c8bb5b79e4275dca9bd84693d1db02a32d872242a4", 3161)
