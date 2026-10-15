@@ -19,11 +19,12 @@ import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, NodeCodecs}
   * heap.
   *
   * {{{
-  * java -Xmx24g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride]
+  * java -Xmx24g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir]
   * }}}
   *
   * `stride` takes every n-th snapshot (default 1); the tampers, each a full conversion, are tried
-  * on every `tamper-stride` -th of those (default 20).
+  * on every `tamper-stride` -th of those (default 20); `genesis-dir` is the network's (default
+  * fixtures/preview/genesis).
   */
 object PreviewMirrorMain:
   import NodeCodecs.given
@@ -67,7 +68,7 @@ object PreviewMirrorMain:
     val stride = args.lift(1).fold(1)(_.toInt)
     val tamperStride = args.lift(2).fold(20)(_.toInt)
     val setup = NodeSetup
-      .fromDirectory(Path.of("fixtures/preview/genesis"))
+      .fromDirectory(Path.of(args.lift(3).getOrElse("fixtures/preview/genesis")))
       .fold(e => sys.error(e.message), identity)
     val env = MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
     val files = Files
