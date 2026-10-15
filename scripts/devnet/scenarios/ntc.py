@@ -398,13 +398,20 @@ def monitor_comparison(args, root, out):
             ids = [tx_id_of(tx) for tx in burst]
             before = stats["nonEmpty"]
             deadline = time.monotonic() + 30
+            # The transactions reach the reference node by TxSubmission2, which it paces itself (it pulls
+            # them one request at a time, roughly a second for four): the cardano-cli queries start only
+            # once the monitor sees the whole burst in the reference node (the slower side), so that `info` before and after can
+            # agree. They run while the monitor keeps polling; a block may still empty the pools first.
+            submitted = time.monotonic()
+            monitor_rounds(h, s, submitted + 10, stats=stats, stop=lambda: stats["last"][0] == len(burst))
+            settle = time.monotonic() - submitted
             attempt = {}
             cli_thread = threading.Thread(target=lambda: attempt.update(cli_mempool(args, ids[0])))
             cli_thread.start()
             monitor_rounds(h, s, deadline, stats=stats,
                            stop=lambda: stats["nonEmpty"] > before + 2 and stats["last"] == (0, 0))
             cli_thread.join()
-            clis.append({"state": f"burst {number}", **attempt})
+            clis.append({"state": f"burst {number}", "secondsToFill": round(settle, 2), **attempt})
             print(json.dumps({"monitorBurst": number, "refused": len(refused), "rounds": stats["rounds"],
                               "comparable": stats["comparable"], "nonEmpty": stats["nonEmpty"]}), flush=True)
     out.update({"rounds": stats["rounds"], "comparable": stats["comparable"], "nonEmpty": stats["nonEmpty"],
