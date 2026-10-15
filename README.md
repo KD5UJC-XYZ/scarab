@@ -25,15 +25,19 @@ certificates, nonces, leader schedule) and applies the ledger rules of every She
 through Conway: native and Plutus V1 to V3 scripts, all certificates, governance (proposals, votes,
 ratification, enactment, DRep pulser) and treasury donations. It persists its chain (immutable blocks,
 snapshots, a RocksDB UTxO set), acts as a relay (node-to-node servers, mempool, local transaction
-submission) and can forge Praos blocks. Byron is supported from genesis (PBFT, ledger, update system) through to Shelley. What is checked against
-what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the next steps are in
+submission) and can forge Praos blocks. Byron is supported from genesis (PBFT, ledger, update system) through to Shelley. It has followed Preview and
+preprod from genesis to the tip, and its ledger state equals the Haskell node's at every epoch boundary of Preview.
+What is checked against what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the next steps are in
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Evidence
 
 | Check | Result |
 |---|---|
-| **Preview, genesis to tip, uninterrupted, one build** | Commit d66b216 (frozen classes), fresh db, no restarts, `-Xmx3g`, 6 CPUs, 2026-10-11: 4,748,226 blocks, epochs 0 to 1447 in 3h36m42s (about 365 blocks/s), then 32.8 min at the live tip; 0 error events; 3,229,757 successful and 242 failing Plutus evaluations, each equal to `is_valid`; final block 4748301 (slot 125092775, hash `c182c2d1...f733e`) identical to Koios `/tip`. Container RSS peaked at 5.66 GB (glibc malloc arenas; bounded since, see docs/performance.md section 7), disk 14.8 GB. Details in [docs/performance.md](docs/performance.md). The tag `v0.1.0` will sit on a later commit (hygiene, docs, CI; no intended behaviour change, gates re-run). |
+| **Preview, genesis to tip, uninterrupted, one build** | Commit d66b216 (frozen classes), fresh db, no restarts, `-Xmx3g`, 6 CPUs, 2026-10-11: 4,748,226 blocks, epochs 0 to 1447 in 3h36m42s (about 365 blocks/s), then 32.8 min at the live tip; 0 error events; 3,229,757 successful and 242 failing Plutus evaluations, each equal to `is_valid`; final block 4748301 (slot 125092775, hash `c182c2d1...f733e`) identical to Koios `/tip`. Container RSS peaked at 5.66 GB (glibc malloc arenas; bounded since, see docs/performance.md section 7), disk 14.8 GB. Details in [docs/performance.md](docs/performance.md). The tag `v0.1.0` (244d1c14) sits on a later commit (hygiene, docs, CI; no intended behaviour change, gates re-run). |
+| **Ledger state against `cardano-node` 11.1.3 (K1)** | The Scala state at the first block of every Preview epoch against the state `db-analyser` stores for the Haskell node: 1,451 of 1,451 epoch boundaries equal (Alonzo, Babbage and Conway, 806 epochs of Conway governance), 0 differences, 2026-10-15. Four differences found on the way were fixed (docs/roadmap.md K1). Devnet Byron to Conway: every epoch boundary equal. |
+| **Preprod, genesis to tip (C4)** | From genesis through Byron, the derived transition and every Shelley-based era to the tip. Run and numbers in [docs/performance.md](docs/performance.md) and [docs/compatibility.md](docs/compatibility.md). |
+| Plutus conformance (I1) | The upstream `plutus-conformance` suite at plutus 1.70.0.0 through the Scalus evaluator: 987 of 1,009 evaluation cases pass; the 22 that do not are classified: 11 cases of 4 Scalus deviations and 11 out of scope for the evaluator path. |
 | Preview, genesis to tip (earlier run, 12 restarts across builds) | 4,747,639 blocks, epoch 1447, no rule failure; every header leader-checked, 3.23M Plutus transactions evaluated with verdicts equal to `is_valid`; about 551 blocks/s average on 8 CPUs, 272 MB live heap at the tip. This run is not a single-build run, see [docs/performance.md](docs/performance.md). |
 | Devnet pool (`devnet.py pool`) | The Scala node as pool 1 among two Haskell pools: latest run (on d66b216): 80 forged, 79 adopted, 78 on the final chain; the Haskell ledger counts 78 blocks made by the pool, equal to the 78 Scala blocks on chain; 16/16 ledger comparisons matched. An earlier run (a3c6929): 86 forged, 85 adopted, Haskell blocks made 85 against 83.2 expected. |
 | Devnet e2e (`devnet.py e2e`) | Byron to Conway followed from Origin; every per-era ledger comparison against the Haskell node matched: Shelley 4, Allegra 4, Mary 4, Alonzo 8, Babbage 8, Conway 30. |
@@ -43,8 +47,8 @@ what, and what is not, is in [docs/compatibility.md](docs/compatibility.md); the
 
 The devnet runs are against `cardano-node` 11.1.3 and are one developer's recorded runs with the
 commits in [docs/compatibility.md](docs/compatibility.md); they do not run in CI yet. Preview
-agreement shows the node accepts the real chain with full validation (no false rejections), not that its ledger state is identical to
-the Haskell node's (roadmap K1, db-analyser comparison); the devnet comparator covers identity on generated load. Things explicitly **not** checked include mainnet, a preprod sync to the tip, Byron
+and preprod agreement shows the node accepts the real chain with full validation (no false rejections); ledger-state identity is
+shown on Preview (K1, above) and on generated devnet load, not yet on preprod or mainnet (roadmap K7). Things explicitly **not** checked include mainnet, Byron
 transactions on a contiguous chain (mainnet Byron blocks with transactions are validated individually), `ledger-state` and the other node-to-client queries listed in the compatibility matrix, Mithril import, the P2P governor and security
 review.
 
@@ -105,6 +109,8 @@ What each scenario asserts is in [docs/running.md](docs/running.md). Run data go
 - [docs/findings.md](docs/findings.md): facts learned against real data, the six Preview bugs.
 - [docs/roadmap.md](docs/roadmap.md): tracked work items with stable IDs.
 - [docs/leios.md](docs/leios.md): Ouroboros Leios (CIP-164) design note: sources, protocol changes, mapping onto this codebase, staged plan (research only, not implemented).
+- [docs/models.md](docs/models.md): the schema-first models generated from the pinned CDDL.
+- [docs/licenses.md](docs/licenses.md): dependency licences and the name and trademark wording.
 - [docs/reference-image.md](docs/reference-image.md): building the Haskell reference image.
 - [CHANGELOG.md](CHANGELOG.md).
 

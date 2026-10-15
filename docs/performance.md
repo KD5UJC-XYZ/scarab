@@ -98,8 +98,8 @@ pipelined peer, 20 blocks/s before. The slowest stretches are the Plutus-dense b
 
 One process on one build: commit d66b216 (frozen classes), fresh db, `follow --db`, no restarts, no
 code changes, `-Xmx3g`, 6 CPUs, peer `preview-node.play.dev.cardano.org:3001`, network magic 2. The
-tag `v0.1.0` will be on a later commit (hygiene, docs, CI on top of d66b216, no intended behaviour
-change, all gates re-run); the sync ran on d66b216.
+tag `v0.1.0` (244d1c14) is on a later commit (hygiene, docs, CI on top of d66b216, no intended
+behaviour change, all gates re-run); the sync ran on d66b216.
 
 - Start 2026-10-11 15:50:22Z, tip reached 19:27:04Z (3h36m42s): 4,748,226 blocks, epochs 0 to 1447,
   about 365 blocks/s average.

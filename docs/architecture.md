@@ -32,7 +32,7 @@ codec <- crypto <- protocol <- network ------------------------.
 ```
 
 `ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
-`models` (the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
+`models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
 its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
 effectful multiplexer) are different files.
@@ -506,7 +506,8 @@ nothing of this runs: the start restores the newest periodic snapshot, replays t
 it, and resumes the volatile chain from whatever the log holds.
 
 **Network identity** (`<db>/network-identity`). A plain-text file, written atomically when the
-database is created:
+database is created (the first line keeps the project's former name: it is a persisted format
+identifier, as is the `CSLIDX01` index magic):
 
 ```
 cardano-scala-lab network identity v1
@@ -825,7 +826,7 @@ envelopes `VrfSigningKey_PraosVRF` (64 bytes, seed then public key), `KesSigning
 which also gives the cold key, so the cold signing key is never needed). On start the three are
 cross-checked: the certificate must name this KES key and be signed by its cold key.
 
-**Cryptography** (`core`, pure, with vectors):
+**Cryptography** (`crypto`, pure, with vectors):
 
 - `Draft03Prover` is ECVRF-ED25519-SHA512-Elligator2 draft-03 proving as libsodium does it. It reproduces the
   IETF draft-03 vectors 16 and 17 (public key, 80-byte proof and 64-byte output), and a property test checks
