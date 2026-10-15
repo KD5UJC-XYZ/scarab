@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage.haskell
 
-import java.nio.ByteBuffer
 import java.util.zip.CRC32
+import scodec.{Attempt, Codec}
+import scodec.bits.BitVector
+import scodec.codecs.{int32, uint16, uint32, vector}
+import xyz.kd5ujc.scarab.storage.Binary
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -44,6 +47,9 @@ object ByteOffset:
 
   extension (o: ByteOffset) def value: Long = o
 
+  /** Eight big-endian bytes; a negative offset is [[Binary.Failure.OutOfRange]]. */
+  given Codec[ByteOffset] = Binary.nonNegative(Binary.Field.BlockOffset)
+
 /** What a block's place in the primary index says it is. */
 enum BlockPosition:
   /** The epoch-boundary block of a Byron epoch (relative slot 0). Its secondary entry carries the
@@ -67,6 +73,17 @@ final case class SecondaryEntry(
     headerHash: Bytes,
     slotOrEpoch: Long
 )
+
+object SecondaryEntry:
+  /** `getEntry` /`putEntry` of `Secondary.hs` (ouroboros-consensus 4.2.1.0, lines 108-133): the
+    * `Binary` instances of `BlockOffset`, `HeaderOffset` and `HeaderSize` (lines 64-82) are
+    * big-endian `Word64` and `Word16`, the checksum a `Word32`, the hash its raw 32 bytes, and
+    * `putBlockOrEBB` (line 88) a `Word64`, a slot or an epoch. `Word64` fields beyond `Long.Max`
+    * are not entries (no chain has such a slot), they fail as [[Binary.Failure.OutOfRange]].
+    */
+  given Codec[SecondaryEntry] =
+    (summon[Codec[ByteOffset]] :: uint16 :: uint16 :: int32 :: Binary.bytes(32) ::
+      Binary.nonNegative(Binary.Field.Slot)).as[SecondaryEntry]
 
 /** Why a chunk's index files or data do not validate. Every case is something the Haskell node's
   * own validation rejects or repairs.
@@ -127,11 +144,19 @@ object PrimaryIndex:
   val Version = 1
   val EntrySize = 56
 
-  def encode(index: PrimaryIndex): Array[Byte] =
-    val b = ByteBuffer.allocate(1 + 4 * index.offsets.size)
-    b.put(Version.toByte)
-    index.offsets.foreach(o => b.putInt(o.toInt))
-    b.array()
+  private val offsets: Codec[Vector[Long]] = vector(uint32)
+
+  /** `Primary.hs` (4.2.1.0): the version byte `currentVersionNumber = 1` (lines 155-156), then the
+    * `SecondaryOffset` s, each a big-endian `Word32` (lines 84-88), up to the end of the file
+    * (`get`, lines 313-323; `write`, lines 350-353). Offsets are kept as `Long`, so the full
+    * `Word32` range reads back unsigned.
+    */
+  given Codec[PrimaryIndex] =
+    (Binary.version(Version) ~> offsets).xmap(PrimaryIndex(_), _.offsets)
+
+  /** The file's bytes; an offset beyond `Word32` (a chunk of 4 GiB of index) does not fit. */
+  def encode(index: PrimaryIndex): Attempt[Array[Byte]] =
+    summon[Codec[PrimaryIndex]].encode(index).map(_.toByteArray)
 
   /** The index with the given filled relative slots among `slots` relative slots (a finished chunk
     * has `chunkSlots + 1`, the EBB slot included).
@@ -152,42 +177,57 @@ object PrimaryIndex:
       chunkSlots: ChunkSlots,
       tolerateTornTail: Boolean
   ): Either[ChunkFault, PrimaryIndex] =
-    if bytes.isEmpty then Left(ChunkFault.PrimaryEmpty)
-    else if bytes(0) != Version.toByte then Left(ChunkFault.PrimaryVersion(bytes(0) & 0xff))
-    else if (bytes.length - 1) % 4 != 0 && !tolerateTornTail then
-      Left(ChunkFault.PrimaryLength(bytes.length))
+    val max = chunkSlots.value + 2
+    for
+      _ <- Either.cond(bytes.nonEmpty, (), ChunkFault.PrimaryEmpty)
+      versioned <- Binary
+        .version(Version)
+        .decode(BitVector.view(bytes))
+        .toEither
+        .left
+        .map {
+          case Binary.Failure.UnknownVersion(found, _) => ChunkFault.PrimaryVersion(found)
+          case _                                       => ChunkFault.PrimaryLength(bytes.length)
+        }
+      _ <- Either.cond(
+        (bytes.length - 1) % 4 == 0 || tolerateTornTail,
+        (),
+        ChunkFault.PrimaryLength(bytes.length)
+      )
+      count = (bytes.length - 1) / 4
+      _ <- Either.cond(count.toLong <= max, (), ChunkFault.PrimaryTooLong(count, max))
+      decoded <- offsets
+        .decode(versioned.remainder.take(count * 32L))
+        .toEither
+        .left
+        .map(_ => ChunkFault.PrimaryLength(bytes.length))
+      index <- check(decoded.value)
+    yield index
+
+  /** The offsets of a file are an index only if they start at 0 and step by an entry or not at all.
+    */
+  private def check(offsets: Vector[Long]): Either[ChunkFault, PrimaryIndex] =
+    if offsets.headOption.exists(_ != 0L) then Left(ChunkFault.PrimaryFirstOffset(offsets.head))
     else
-      val count = (bytes.length - 1) / 4
-      val max = chunkSlots.value + 2
-      if count.toLong > max then Left(ChunkFault.PrimaryTooLong(count, max))
-      else
-        val b = ByteBuffer.wrap(bytes, 1, count * 4)
-        val offsets = Vector.fill(count)(b.getInt.toLong & 0xffffffffL)
-        if offsets.headOption.exists(_ != 0L) then Left(ChunkFault.PrimaryFirstOffset(offsets.head))
-        else
-          offsets
-            .zip(offsets.drop(1))
-            .zipWithIndex
-            .collectFirst {
-              case ((f, t), r) if t - f != 0L && t - f != EntrySize.toLong =>
-                ChunkFault.PrimaryStep(r, f, t)
-            }
-            .toLeft(PrimaryIndex(offsets))
+      offsets
+        .zip(offsets.drop(1))
+        .zipWithIndex
+        .collectFirst {
+          case ((f, t), r) if t - f != 0L && t - f != EntrySize.toLong =>
+            ChunkFault.PrimaryStep(r, f, t)
+        }
+        .toLeft(PrimaryIndex(offsets))
 
 object SecondaryIndex:
   val EntrySize = 56
 
-  def encode(entries: Seq[SecondaryEntry]): Array[Byte] =
-    val b = ByteBuffer.allocate(EntrySize * entries.size)
-    entries.foreach { e =>
-      b.putLong(e.blockOffset.value)
-      b.putShort(e.headerOffset.toShort)
-      b.putShort(e.headerSize.toShort)
-      b.putInt(e.crc)
-      b.put(e.headerHash.toArray)
-      b.putLong(e.slotOrEpoch)
-    }
-    b.array()
+  private val entry = summon[Codec[SecondaryEntry]]
+
+  /** The file's bytes; a header offset or size beyond `Word16`, or a hash that is not 32 bytes, has
+    * no encoding (it used to be truncated silently).
+    */
+  def encode(entries: Seq[SecondaryEntry]): Attempt[Array[Byte]] =
+    vector(entry).encode(entries.toVector).map(_.toByteArray)
 
   /** Parse a secondary index file. With `tolerateTornTail` a trailing partial entry is dropped. */
   def parse(
@@ -197,26 +237,12 @@ object SecondaryIndex:
     if bytes.length % EntrySize != 0 && !tolerateTornTail then
       Left(ChunkFault.SecondaryLength(bytes.length))
     else
-      val count = bytes.length / EntrySize
-      val b = ByteBuffer.wrap(bytes)
-      val out = Vector.newBuilder[SecondaryEntry]
-      var fault: Option[ChunkFault] = None
-      var i = 0
-      while fault.isEmpty && i < count do
-        val offset = b.getLong
-        val headerOffset = b.getShort & 0xffff
-        val headerSize = b.getShort & 0xffff
-        val crc = b.getInt
-        val hash = new Array[Byte](32)
-        b.get(hash)
-        val slot = b.getLong
-        ByteOffset.of(offset) match
-          case None                => fault = Some(ChunkFault.BlockOffsetRange(i))
-          case Some(_) if slot < 0 => fault = Some(ChunkFault.SlotRange(i))
-          case Some(off) =>
-            out += SecondaryEntry(off, headerOffset, headerSize, crc, Bytes.wrap(hash), slot)
-        i += 1
-      fault.toLeft(out.result())
+      Binary.decodeEach(entry, bytes, EntrySize, bytes.length / EntrySize).left.map {
+        case (i, Binary.Failure.OutOfRange(Binary.Field.BlockOffset, _, _)) =>
+          ChunkFault.BlockOffsetRange(i)
+        case (i, Binary.Failure.OutOfRange(Binary.Field.Slot, _, _)) => ChunkFault.SlotRange(i)
+        case _ => ChunkFault.SecondaryLength(bytes.length)
+      }
 
 /** The length of the CBOR data item that starts at `from`, without decoding it. */
 object CborItem:

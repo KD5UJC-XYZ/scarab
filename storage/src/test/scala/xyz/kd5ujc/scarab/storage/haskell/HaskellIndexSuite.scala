@@ -35,7 +35,7 @@ class HaskellIndexSuite extends ScalaCheckSuite:
 
   property("secondary entries round trip through 56-byte records") {
     forAll(Gen.listOf(entryGen)) { entries =>
-      val bytes = SecondaryIndex.encode(entries)
+      val bytes = SecondaryIndex.encode(entries).require
       assertEquals(bytes.length, 56 * entries.size)
       assertEquals(SecondaryIndex.parse(bytes, tolerateTornTail = false), Right(entries.toVector))
     }
@@ -48,7 +48,8 @@ class HaskellIndexSuite extends ScalaCheckSuite:
       assertEquals(index.filled, filled.toVector)
       assertEquals(index.offsets.last, 56L * filled.size)
       assertEquals(
-        PrimaryIndex.parse(PrimaryIndex.encode(index), chunkSlots, tolerateTornTail = false),
+        PrimaryIndex
+          .parse(PrimaryIndex.encode(index).require, chunkSlots, tolerateTornTail = false),
         Right(index)
       )
     }
@@ -66,7 +67,7 @@ class HaskellIndexSuite extends ScalaCheckSuite:
     assertEquals(entry.headerSize, 961)
     assertEquals(entry.crc, 0x65fb2a4d)
     assertEquals(entry.slotOrEpoch, 0L)
-    assertEquals(SecondaryIndex.encode(List(entry)).toSeq, bytes.toSeq)
+    assertEquals(SecondaryIndex.encode(List(entry)).require.toSeq, bytes.toSeq)
   }
 
   // ---- CBOR item lengths ----
@@ -310,12 +311,12 @@ class HaskellIndexSuite extends ScalaCheckSuite:
       val r = Math.floorMod(which, f.primary.offsets.size - 1)
       val tampered = f.primary.offsets.zipWithIndex.map((o, i) => if i > r then o + 3 else o)
       assert(
-        parse(PrimaryIndex.encode(PrimaryIndex(tampered))).isLeft,
+        parse(PrimaryIndex.encode(PrimaryIndex(tampered)).require).isLeft,
         "an offset step of 3 must be refused"
       )
       // More offsets than a chunk can have.
       val tooLong = PrimaryIndex(Vector.fill(chunkSlots.value.toInt + 3)(0L))
-      assert(parse(PrimaryIndex.encode(tooLong)).isLeft)
+      assert(parse(PrimaryIndex.encode(tooLong).require).isLeft)
     }
   }
 

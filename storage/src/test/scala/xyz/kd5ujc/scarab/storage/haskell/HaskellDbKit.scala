@@ -60,8 +60,8 @@ object HaskellDbKit:
     )
     ChunkFiles(
       items.flatMap(_.bytes).toArray,
-      PrimaryIndex.encode(primary),
-      SecondaryIndex.encode(entries)
+      PrimaryIndex.encode(primary).require,
+      SecondaryIndex.encode(entries).require
     )
 
   /** Write a database: every chunk from 0 to the last one (empty chunks included), plus

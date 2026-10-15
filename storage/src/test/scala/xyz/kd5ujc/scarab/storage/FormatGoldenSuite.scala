@@ -128,7 +128,7 @@ class FormatGoldenSuite extends FunSuite:
       hash,
       0x1122334455667788L
     )
-    assertEquals(hex(SecondaryIndex.encode(List(entry))), secondaryHex)
+    assertEquals(hex(SecondaryIndex.encode(List(entry)).require), secondaryHex)
     assertEquals(
       SecondaryIndex.parse(hex(secondaryHex), tolerateTornTail = false),
       Right(Vector(entry))
@@ -138,7 +138,7 @@ class FormatGoldenSuite extends FunSuite:
   test("haskell primary index: version byte, then big-endian u32 offsets") {
     val bytes = hex("01" + "00000000" + "00000038" + "00000038" + "00000070")
     val index = PrimaryIndex(Vector(0L, 56L, 56L, 112L))
-    assertEquals(hex(PrimaryIndex.encode(index)), "0100000000000000380000003800000070")
+    assertEquals(hex(PrimaryIndex.encode(index).require), "0100000000000000380000003800000070")
     assertEquals(
       PrimaryIndex.parse(bytes, ChunkSlots.of(20).get, tolerateTornTail = false),
       Right(index)
