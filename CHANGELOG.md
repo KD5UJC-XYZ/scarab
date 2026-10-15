@@ -122,6 +122,15 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 - Preprod fixtures (`fixtures/preprod`) and mainnet Byron transaction fixtures.
 
 ### Storage
+- Haskell ImmutableDB reader and `import-haskell-db` (roadmap step A of the Haskell mirror):
+  `lab.node.storage.haskell` parses the primary and secondary indexes of ouroboros-consensus
+  (opaque `ChunkNo`, `ChunkSlots`, `ByteOffset`; closed `ChunkFault` / `HaskellImmutableError`),
+  validates offsets, CRC32, header hashes and slots, cuts the newest chunk back to its valid prefix
+  and never writes. `import-haskell-db` appends the blocks to our ImmutableStore after checking the
+  protocol magic, genesis, chain links and block numbers, so `follow --db` replays them locally.
+  Golden test over three real Preview chunks (`fixtures/haskell-immutable/preview`), properties for
+  every index corruption, an EBB database built by the upstream rules. End to end: 40,357 Preview
+  blocks imported in 2 s and replayed in 42.7 s. The ImmutableStore format is unchanged.
 - D4: the volatile chain (the last `k` blocks) is logged in `<db>/volatile/` (`VolatileStore`: CRC per
   record, rollback markers, files collected once wholly below the forced immutable tip) and applied
   again on start, so a restart continues at the previous tip instead of fetching those blocks. A
