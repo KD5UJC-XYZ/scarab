@@ -345,6 +345,169 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
 
   private def coinOf(n: Long): Coin = Coin.fromBigInt(BigInt(n)).fold(e => fail(e.toString), identity)
 
+  // ---- what the decoders refuse, with a typed error
+
+  test("a block count is a Natural read as a Word64; a delegator count an Int read as non-negative") {
+    val tooMany = bytesOf { w =>
+      w.mapHead(1)
+      w.bytes(hex(key28))
+      w.integer(BigInt(1) << 64)
+    }
+    // a Natural beyond a Word64 is a bignum on the wire, which the Word64 reader does not take
+    assert(failure(blocksMade, tooMany).kind.isInstanceOf[Kind.TypeMismatch])
+    // a count above Int.maxBound cannot be a Haskell Int, and a negative one is not a mirror word
+    val pool = StateGen.snapShots.sample.get.mark.pools.headOption.map(_._2)
+    val snap = pool.getOrElse(
+      StakePoolSnapShot(
+        CompactCoin.fromUnsigned(1),
+        Rational.one,
+        Sorted.emptySet[KeyHash[Staking]],
+        coinOf(0),
+        VRFVerKeyHash.fromBytes(Bytes(Vector.fill(32)(1.toByte))).toOption.get,
+        coinOf(0),
+        coinOf(0),
+        Rational.zero,
+        Word64.zero,
+        Credential.KeyHashObj(keyHash28)
+      )
+    )
+    val c = stakePoolSnapShot
+    val bytes = c.encodeBytes(snap.copy(numDelegators = Word64.fromUnsigned(Long.MaxValue)))
+    assertEquals(readOk(c, bytes).numDelegators, Word64.fromUnsigned(Long.MaxValue))
+    assertEquals(c.check(snap.copy(numDelegators = Word64.fromUnsigned(-1L))).isDefined, true)
+    val encoded = c.encodeBytes(snap.copy(numDelegators = Word64.zero)).hex
+    val tooBig = hex(encoded.dropRight(2 + 64) + "1b8000000000000000" + encoded.takeRight(64))
+    assert(read(c, tooBig).left.exists(_.kind.isInstanceOf[Kind.OutOfRange]), tooBig.hex)
+  }
+
+  test("an epoch, a slot and an amount of 2^64 or more are refused") {
+    val big = bytesOf(_.integer(BigInt(1) << 64))
+    assert(failure(epochNo, big).kind.isInstanceOf[Kind.TypeMismatch])
+    assert(failure(compactCoin, big).kind.isInstanceOf[Kind.TypeMismatch])
+    assert(failure(epochNo, bytesOf(_.int(BigInt(-1)))).kind.isInstanceOf[Kind.TypeMismatch])
+  }
+
+  test("an alternative with a tag or arity the sum does not have is a typed error") {
+    assert(failure(drep, hex("820500")).kind.isInstanceOf[Kind.LiteralMismatch])
+    assert(failure(credential[Staking], hex("8202581c" + key28)).kind.isInstanceOf[Kind.LiteralMismatch])
+    assert(
+      failure(futurePParams(Params.conwayCodec), hex("8105")).kind.isInstanceOf[Kind.LiteralMismatch]
+    )
+    assert(failure(rewardType, hex("02")).kind.isInstanceOf[Kind.OutOfRange])
+    assert(failure(vote, hex("03")).kind.isInstanceOf[Kind.OutOfRange])
+  }
+
+  test("a pulsing reward update is read as unsupported and cannot be written") {
+    val pulsing = bytesOf { w =>
+      w.arrayHead(3)
+      w.uint(0L)
+      w.nul()
+      w.nul()
+    }
+    assert(failure(pulsingRewUpdate, pulsing).kind.isInstanceOf[Kind.Unsupported])
+    val snapshot = arb[RewardSnapShot].sample.get
+    val ru = PulsingRewUpdate.Pulsing(snapshot)
+    assert(pulsingRewUpdate.check(ru).isDefined)
+    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
+    val state = StateGen.newEpochState[Conway].sample.get.copy[Conway](ru = Some(ru))
+    assert(HaskellState.encode(state).isLeft)
+    val fine = state.copy[Conway](ru = None)
+    assert(HaskellState.encode(fine).isRight)
+  }
+
+  test("UTxO entries in a state file are refused (they are in the tables file); the handle writes map(0)") {
+    assertEquals(utxoTables.encodeBytes(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty)).hex, "a0")
+    val entries = bytesOf { w =>
+      w.mapHead(1)
+      w.uint(1L)
+      w.uint(2L)
+    }
+    assert(failure(utxoTables, entries).kind.isInstanceOf[Kind.Unsupported])
+    // the Shelley era's stashed AVVM addresses are a UTxO, the later eras' a null
+    val unitBytes = bytesOf(_.nul())
+    assertEquals(readOk(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), unitBytes), ())
+    assert(failure(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), hex("a0")).kind.isInstanceOf[Kind.TypeMismatch])
+  }
+
+  test("the parameters of an era are an array of the size of its list, and decode under the right era only") {
+    def size(c: Codec[xyz.kd5ujc.scarab.ledger.ProtocolParams]): Int =
+      c.encodeBytes(Params.empty).value.head & 0x1f
+    assertEquals(size(Params.codec(ShelleyBasedEra.SShelley)), 17)
+    assertEquals(size(Params.codec(ShelleyBasedEra.SAllegra)), 17)
+    assertEquals(size(Params.codec(ShelleyBasedEra.SMary)), 17)
+    assertEquals(size(Params.codec(ShelleyBasedEra.SAlonzo)), 24)
+    assertEquals(size(Params.codec(ShelleyBasedEra.SBabbage)), 22)
+    // 31 does not fit in the five bits of a short head: 0x98 0x1f
+    assertEquals(Params.conwayCodec.encodeBytes(Params.empty).hex.take(4), "981f")
+    val conway = Params.conwayCodec.encodeBytes(Params.empty)
+    assert(failure(Params.codec(ShelleyBasedEra.SBabbage), conway).kind.isInstanceOf[Kind.BadArity])
+  }
+
+  test("a parameter out of the range of its Haskell type is refused, with its name in the path") {
+    val ok = Params.conwayCodec.encodeBytes(Params.empty)
+    // the maximum header size is a Word16 (the fifth parameter)
+    val params = Params.empty.copy(maxBlockHeaderSize = BigInt(70000))
+    assert(Params.conwayCodec.check(params).exists(_.contains("maxBHSize")))
+    val bytes = Params.conwayCodec.encodeBytes(params)
+    val e = failure(Params.conwayCodec, bytes)
+    assert(e.kind.isInstanceOf[Kind.OutOfRange], e.render)
+    assertEquals(e.path, List("maxBHSize"))
+    assert(Params.conwayCodec.decodeBytes(ok).isRight)
+  }
+
+  test("cost models: languages are a Word8, parameters an Int64, and a language may not repeat") {
+    val c = Params.codec(ShelleyBasedEra.SAlonzo)
+    val withModel = Params.empty.copy(costModels = Map(1 -> Vector(BigInt(-1), BigInt(2))))
+    assertEquals(readOk(c, c.encodeBytes(withModel)), withModel)
+    assert(c.check(Params.empty.copy(costModels = Map(256 -> Vector.empty))).isDefined)
+    assert(c.check(Params.empty.copy(costModels = Map(1 -> Vector(BigInt(1) << 64)))).isDefined)
+  }
+
+  test("a reward set cannot hold two rewards of one type and pool, as the reference's cannot") {
+    val pool = KeyHash.fromBytes[StakePool](hex(key28)).fold(e => fail(e.toString), identity)
+    val r1 = Reward(RewardType.MemberReward, pool, coinOf(1))
+    val r2 = Reward(RewardType.MemberReward, pool, coinOf(2))
+    val twice = bytesOf { w =>
+      w.tag(258)
+      w.arrayHead(2)
+      reward.encode(r1, w)
+      reward.encode(r2, w)
+    }
+    assert(failure(rewardSet, twice).kind.isInstanceOf[Kind.DuplicateElement])
+    assertEquals(readOk(rewardSet(using version(7)), bytesOf { w =>
+      w.arrayHead(2)
+      reward.encode(r1, w)
+      reward.encode(r2, w)
+    }).rewards.size, 1)
+  }
+
+  test("a state with trailing bytes, or truncated, is a syntax error; a wrong era is an arity error") {
+    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
+    val state = StateGen.newEpochState[Conway].sample.get.copy[Conway](ru = None)
+    val bytes = HaskellState.encode(state).toOption.get
+    val trailing = Bytes(bytes.value :+ 0.toByte)
+    assert(HaskellState.decode[Conway](trailing).left.exists(_.kind.isInstanceOf[Kind.Syntax]))
+    val truncated = Bytes(bytes.value.dropRight(1))
+    assert(HaskellState.decode[Conway](truncated).left.exists(_.kind.isInstanceOf[Kind.Syntax]))
+    val wrong = HaskellState.decode[Babbage](bytes)(using ShelleyBasedEra.SBabbage)
+    assert(wrong.isLeft)
+    // the first thing wrong is located: the ledger state's certificate state has three fields
+    assert(wrong.left.exists(_.path.nonEmpty), wrong.toString)
+    assertEquals(HaskellState.decode[Conway](bytes), Right(state))
+  }
+
+  test("every era writes its state at its own lowest version (eraProtVerLow)") {
+    val eras = List(
+      (ShelleyBasedEra.SShelley, 2L),
+      (ShelleyBasedEra.SAllegra, 3L),
+      (ShelleyBasedEra.SMary, 4L),
+      (ShelleyBasedEra.SAlonzo, 5L),
+      (ShelleyBasedEra.SBabbage, 7L),
+      (ShelleyBasedEra.SConway, 9L)
+    )
+    eras.foreach((era, major) => assertEquals(Versions.eraLow(era).major.toBigInt, BigInt(major)))
+  }
+
   // ---- the types, in every era
 
   laws("StakePoolState", StateGen.stakePoolState, stakePoolState)
