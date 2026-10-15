@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import java.nio.file.Path
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
 import TestLedger.*

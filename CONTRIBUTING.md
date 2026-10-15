@@ -42,7 +42,7 @@ with a pattern that matches your own shell command line.
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
   chosen in `Main`. `IO` appears only in `Main`, `JsonLog` and tools. No hidden global state:
   the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
-  the pure rules through a read interface (`Verdicts`); tools live under `lab.node.tools`.
+  the pure rules through a read interface (`Verdicts`); tools live under `xyz.kd5ujc.scarab.node.tools`.
 - **Closed error ADTs through cats-mtl.** Domain errors are values of a closed ADT (`PeerError`,
   `ChainError`, `ValidationError`, `StorageError`, `ForgeError`, `ConfigError`) raised with
   `Raise[F, E]` and handled with lexically scoped `Handle.allow`. Never use `raiseError`/`throw` for
