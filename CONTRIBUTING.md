@@ -4,7 +4,9 @@ Thanks for looking. This is research software (see [SECURITY.md](SECURITY.md)); 
 is that they are checked against the reference node or real chain data wherever the behaviour is
 consensus-relevant. By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 Work items are tracked in [docs/roadmap.md](docs/roadmap.md) by stable ID (A1, B3, ...); reference
-the ID in issues and pull requests.
+the ID in issues and pull requests. How an item moves from idea to done, and the definition of done, are
+in [docs/process.md](docs/process.md); design decisions are recorded as [ADRs](docs/adr/README.md).
+Automated agent sessions also follow [AGENTS.md](AGENTS.md).
 
 ## Build: Docker only
 

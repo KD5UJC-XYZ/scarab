@@ -173,6 +173,9 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 | [Findings](docs/findings.md) | What real chain data taught us, with the tests that pin it |
 | [Performance](docs/performance.md) | Sync numbers, profiles, memory and disk |
 | [Roadmap](docs/roadmap.md) | Tracked work with stable IDs |
+| [Process](docs/process.md) | How work moves from idea to done; the definition of done |
+| [Decisions](docs/adr/README.md) | Architecture decision records |
+| [Designs](docs/design/README.md) | Approved plans for large work, by stage |
 | [Models](docs/models.md) | The schema-first models generated from CDDL |
 | [Leios](docs/leios.md) | Ouroboros Leios design note (research, not implemented) |
 | [Licences](docs/licenses.md) | Dependency licences, name and trademark wording |
@@ -182,7 +185,8 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 ## Contributing, security, licence
 
 Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (Docker-only build, style rules, the
-gates each kind of change must pass) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report
+gates each kind of change must pass), [docs/process.md](docs/process.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Agent
+sessions follow [AGENTS.md](AGENTS.md). Report
 vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Never commit signing keys.
 
 Licensed under [Apache-2.0](LICENSE). Third-party notices and fixture attributions are in

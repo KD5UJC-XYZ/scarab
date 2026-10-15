@@ -8,7 +8,7 @@ deleted). Priorities:
 - **P1** is needed for a full reference-compatible node.
 - **P2** is hardening or nice-to-have.
 
-Each open item links to its GitHub issue; the pinned [tracking issue #64](https://github.com/KD5UJC-XYZ/scarab/issues/64) groups them. How each area stands today is in [compatibility.md](compatibility.md).
+Each open item links to its GitHub issue, which carries its state (`status:` labels) and milestone; how items move from idea to done is in [process.md](process.md). Large items have a [design document](design/README.md), and the decisions behind them are [ADRs](adr/README.md). How each area stands today is in [compatibility.md](compatibility.md).
 
 
 ## A. Publication and project hygiene
