@@ -43,6 +43,23 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   three levels, an `Iso` for `BlocksMade` and `ChainAccountState`, a `Prism` for the completed update. Lens,
   Iso, Prism and `Eq` law tests, and compile-time era tests. No node type changes.
 
+### Added (ledger-state mirror, stage S3)
+- `consensus/state`: the hard-fork combinator and header state of the mirror. `Bound`, `Past`,
+  `Current[A]` and `Telescope[A]` (era `n` has `n` past eras, consecutive eras abut; `Telescope.make` is the
+  only constructor and fails with a closed `TelescopeError`; the era index is `protocol.Era`, Byron and the
+  six Shelley-based eras, tied to a state by an `EraIndexed` class). `ShelleyLedgerState[E]`, `ShelleyTip`,
+  `ShelleyTransition`, `EraLedgerState` (`ByronCurrent` | `InShelleyEra[E]`, an existential pack of the
+  witness and the state; equality by matching the witnesses, no cast), `CardanoLedgerState`,
+  `ExtLedgerState`, `HeaderState`, `AnnTip`, and `ChainDepState` (`PBft` | `TPraos` | `Praos`, the
+  Haskell fields, `PraosState` with its eight). Focus lenses per case class, `Eq`/`Show`; telescope
+  property tests, Eq laws and Monocle lens laws.
+- `Bound`, `EraSummary` and the `EraHistory.summary` interpreter moved from `node/ntc` to
+  `consensus/state` (the HFC `Bound` is the same type); `node` keeps the encoding and re-exports the
+  names; no NtC byte changes. `Nonce` gained `Eq`/`Show`.
+- `scripts/devnet.py` runs from a git worktree: it mounts the shared dependency cache
+  (`SCARAB_CACHE_DIR`, else the checkout's own populated `.cache`, else the main checkout's) at
+  `/work/.cache`; unit-tested, documented in CONTRIBUTING.
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
