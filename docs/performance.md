@@ -425,11 +425,15 @@ D1 build was not at the Preview tip when this was written (see "The long run" be
 figure at the tip is not measured. The reason to move the maps is mainnet's 1.3M stake credentials, each a `Credential`, an
 `Account` and a `Map` node in each of four maps and three snapshots, not Preview's 112k.
 
-**The long run (D1 build 419d3c6 with two arenas, interim).** Fresh database, `follow --db`, `-Xms3g -Xmx3g
+**The long run (D1 build 419d3c6 to epoch 1303, then ca057d1 to the tip).** Fresh database, `follow --db`, `-Xms3g -Xmx3g
 -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, `MALLOC_ARENA_MAX=2`, `--cpus 6`, **container limit 5 GiB** (`-Xmx` plus 2
-GiB), memory lines every 30 s, NMT every 5 minutes, started 16:43 UTC. `RssAnon` was 3.61 GB at epochs 148,
-161 and 358 (heap 3.07, the rest 0.54), the block cache at its 256 MB cap by epoch 90, the cgroup
-`current` at the 5 GiB limit (page cache the kernel reclaims; `docker stats` 3.61 GiB), 0 error events, no
-out-of-memory kill, and every `ledgerEpoch` summary equal to the build before D1 through epoch 139. The
-arena attribution rests on the paired 45-minute runs above (both builds before D1); this run shows the bound
-holds with the D1 build under the recommended limit.
+GiB), memory lines every 30 s, started 16:43 UTC, restarted four times from its own snapshots (a mistyped
+`--seconds`, then to change build). It reached the tip (epoch 1451, block 4,758,640, slot 125,370,188 = the
+peer's) with 0 error events, no out-of-memory kill, 3,201,612 UTxO entries, 112,357 accounts, 727 pools,
+242 failing Plutus evaluations. `RssAnon` was 3.61 GB at epochs 148, 161 and 358, 3.68 GB at epoch 902 and
+3.42 GB at the tip (docker stats 3.61 GiB of the 5 GiB). Live heap (histogram total after a full GC) at the
+tip: 329 MB, against 272 MB recorded for the build before D1 at its tip in section 4 (different runs; this
+process had run 150 epochs, with its Plutus script caches): **no heap saving at the tip is shown**. In
+epochs 1301 to 1303 the 419d3c6 build fell to 3.5 blocks/s: a block that read four distinct accounts fetched the
+whole table of 112k accounts (JFR: 41% of samples in `LedgerStore`, 40% in `Codec.decode`). ca057d1 fetches a
+large table whole only after a 256th of its rows missed; the same database ran there at about 200 blocks/s.
