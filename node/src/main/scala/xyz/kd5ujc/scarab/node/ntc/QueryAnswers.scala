@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.HardForkConfig
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.state.FuturePParams
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.node.ntc.LedgerEncoders as E
 
@@ -361,20 +362,16 @@ object QueryAnswers:
       .foreach(E.nonce(w, _))
     w
 
-  /** `FuturePParams` of the governance state: nothing before the first epoch boundary; after it
-    * `Potential` right after the block that crossed a boundary and until two stability windows
-    * before the end of the epoch (the point of no return, when the tick solidifies it), then
-    * `Definite` when ratification enacted a parameter change or hard fork and `NoPParamsUpdate`
-    * otherwise. What it holds is the parameters of the ratification the pulser will finish.
+  /** `FuturePParams` of the governance state (the mirror's [[FuturePParams]]): nothing before the
+    * first epoch boundary; after it `PotentialPParamsUpdate` right after the block that crossed a
+    * boundary and until two stability windows before the end of the epoch (the point of no return,
+    * when the tick solidifies it), then `DefinitePParamsUpdate` when ratification enacted a
+    * parameter change or hard fork and `NoPParamsUpdate` otherwise. What it holds is the parameters
+    * of the ratification the pulser will finish.
     */
-  private enum Future:
-    case NoUpdate
-    case Definite(params: ProtocolParams)
-    case Potential(params: Option[ProtocolParams])
-
-  private def future(env: QueryEnv, view: QueryView): Future =
+  private def future(env: QueryEnv, view: QueryView): FuturePParams =
     view.ledger.gov.pulsed match
-      case None => Future.NoUpdate
+      case None => FuturePParams.NoPParamsUpdate
       case Some((_, ratify)) =>
         val changes = ratify.enacted.exists(g =>
           g.action match
@@ -388,14 +385,11 @@ object QueryAnswers:
         val firstOfEpoch = view.ledger.blocksCurrent.valuesIterator.sum <= 1
         val pointOfNoReturn =
           env.geometry.firstSlot(view.ledger.epoch + 1) - 2 * env.geometry.stabilityWindow
-        if firstOfEpoch || slot < pointOfNoReturn then Future.Potential(next)
-        else next.fold(Future.NoUpdate)(Future.Definite(_))
+        if firstOfEpoch || slot < pointOfNoReturn then FuturePParams.PotentialPParamsUpdate(next)
+        else next.fold(FuturePParams.NoPParamsUpdate)(FuturePParams.DefinitePParamsUpdate(_))
 
   private def futureParams(env: QueryEnv, view: QueryView): Option[ProtocolParams] =
-    future(env, view) match
-      case Future.NoUpdate     => None
-      case Future.Definite(p)  => Some(p)
-      case Future.Potential(p) => p
+    future(env, view).nextParams
 
   private def defaultVote(w: CborOut, s: LedgerState, pool: Bytes): CborOut =
     // DefaultNo (0), DefaultAbstain (1) or DefaultNoConfidence (2), by the DRep the pool's reward
@@ -544,9 +538,9 @@ object QueryAnswers:
     E.protocolParams(w, s.params)
     E.protocolParams(w, previous(s))
     future(env, view) match
-      case Future.NoUpdate    => w.array(1).uint(0)
-      case Future.Definite(p) => w.array(2).uint(1); E.protocolParams(w, p)
-      case Future.Potential(p) =>
+      case FuturePParams.NoPParamsUpdate          => w.array(1).uint(0)
+      case FuturePParams.DefinitePParamsUpdate(p) => w.array(2).uint(1); E.protocolParams(w, p)
+      case FuturePParams.PotentialPParamsUpdate(p) =>
         w.array(2).uint(2)
         E.maybe(w, p)(E.protocolParams)
     val (snap, rs) = pulsed(view)
