@@ -14,9 +14,9 @@ import scalus.crypto.{NativeSecp256k1, Secp256k1Context}
   *     `False` for `r = 0` or `s = 0` (they parse), and for a high `s` (above `n / 2`), because
   *     libsecp256k1 verifies only normalised signatures and Plutus does not normalise.
   *
-  * Scalus 1.2.0 fails on `r = 0` or `s = 0` where the reference answers `False`; the preprod
-  * transaction 97b31e35 (block 3,498,869) passes an all-zero signature and the chain accepts the
-  * answer `False`. Failures are `IllegalArgumentException`, like Scalus's.
+  * Scalus 1.2.0 and 1.3.0 fail on `r = 0` or `s = 0` where the reference answers `False`; the
+  * preprod transaction 97b31e35 (block 3,498,869) passes an all-zero signature and the chain
+  * accepts the answer `False`. Failures are `IllegalArgumentException`, like Scalus's.
   */
 object Secp256k1:
   /** The order `n` of the secp256k1 group. */

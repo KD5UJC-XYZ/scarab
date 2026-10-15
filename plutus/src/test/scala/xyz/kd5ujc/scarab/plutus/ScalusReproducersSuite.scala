@@ -9,10 +9,10 @@ import scalus.uplc.builtin.{ByteString, Data}
 import scalus.uplc.builtin.Data.toData
 import scalus.uplc.eval.{MachineParams, ThreeArguments}
 
-/** Minimal reproducers of the two places where Scalus 1.2.0 deviates from the reference. They
-  * assert the deviation as it is today, so an upgrade that fixes it fails here and says that the
-  * workaround ([[ScalusEvaluator]]'s costing correction, `ScalusDeviations`) can go. The upstream
-  * issue drafts are in `.workspace/notes/scalus-issues.md`.
+/** Minimal reproducers of the two places where Scalus (1.2.0 and 1.3.0) deviates from the
+  * reference. They assert the deviation as it is today, so an upgrade that fixes it fails here and
+  * says that the workaround ([[ScalusEvaluator]]'s costing correction, `ScalusDeviations`) can go.
+  * The upstream issue drafts are in `.workspace/notes/scalus-issues.md`.
   */
 class ScalusReproducersSuite extends FunSuite:
   test(

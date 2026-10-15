@@ -9,9 +9,9 @@ import scalus.uplc.builtin.Data
   * tests use as an oracle.
   *
   * `Constitution` (the second field of a `NewConstitution` governance action) is a one-field data
-  * type of the ledger API, encoded `Constr 0 [Maybe ScriptHash]`. Scalus 1.2.0 puts the `Maybe` in
-  * its place. A real Preview transaction (slot 116688298, a Sundae cosponsor proposal) only
-  * validates with the wrapper: its script compares the context with a value it builds itself.
+  * type of the ledger API, encoded `Constr 0 [Maybe ScriptHash]`. Scalus 1.2.0 and 1.3.0 put the
+  * `Maybe` in its place. A real Preview transaction (slot 116688298, a Sundae cosponsor proposal)
+  * only validates with the wrapper: its script compares the context with a value it builds itself.
   *
   * Reproducer: `ScalusReproducersSuite`. Still present in Scalus 1.3.0 (reported as
   * https://github.com/scalus3/scalus/issues/388; B11).

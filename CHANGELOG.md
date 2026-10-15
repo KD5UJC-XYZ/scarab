@@ -5,6 +5,19 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Changed (build)
+- Scalus 1.3.0 (from 1.2.0). Its `serialiseData` and the flat codec of `Data` constants write a
+  constructor index as an unsigned 64-bit integer, but `serialiseData` still refuses more than 1000
+  levels of nesting (the reference has no limit), so the evaluator keeps `DataSerialiser`
+  (reproducer in `DataSerialiserSuite`). `case` on `Data` is fixed upstream but enabled
+  from protocol 12 only, so the Plutus conformance suite (protocol 11) still passes 987 of 1009 with
+  the same 22 known failures. The Ed25519 costing, `NewConstitution` and secp256k1 `r = 0` workarounds
+  remain (1.3.0 still has those deviations).
+- Versions and libraries moved from `build.sbt` to `project/Dependencies.scala` (`V`, `Libraries`).
+- Build plugins: sbt-scalafix with OrganizeImports (`.scalafix.conf`), sbt-buildinfo (the `started`
+  log line has a `build` object: version, Scala and sbt versions, commit), sbt-scoverage, sbt-updates,
+  `dependencyTree`, sbt-tpolecat (disabled: the compiler options of `build.sbt` are unchanged).
+
 ### Fixed (B19)
 - `n` of a native script `script_n_of_k` may be negative and is a signed 64-bit integer, as the reference
   reads it (`TimelockMOf !Int`, CDDL `int`); the slots of `invalid_before` and `invalid_hereafter` are

@@ -353,7 +353,7 @@ forger.
   `Failure(reason, spent, logs)` with a closed `EvalFailure` (`Decode`, `Unsupported`,
   `OutOfBudget`, `Script`).
 - **Interpreter** (`plutus/ScalusEvaluator.scala`): the UPLC machine and builtins of Scalus (Apache-2.0,
-  `org.scalus:scalus_3:1.2.0`); nothing else of Scalus is used by the node. BLS12-381 runs on blst
+  `org.scalus:scalus_3:1.3.0`); nothing else of Scalus is used by the node. BLS12-381 runs on blst
   (`foundation.icon:blst-java`) and secp256k1 on `scalus-secp256k1-jni`; both bundle linux x86_64
   libraries that the JVM extracts to its temporary directory, and `ScalusEvaluatorSuite` evaluates a
   BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).

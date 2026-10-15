@@ -51,7 +51,7 @@ regenerated here.
 | org.typelevel:cats-core_3 | 2.13.0 | MIT | direct |  |
 | org.typelevel:cats-effect_3 | 3.7.1 | Apache-2.0 | direct |  |
 | org.typelevel:cats-mtl_3 | 1.7.0 | Apache-2.0 | direct |  |
-| org.scalus:scalus_3 | 1.2.0 | Apache-2.0 | direct |  |
+| org.scalus:scalus_3 | 1.3.0 | Apache-2.0 | direct |  |
 | org.rocksdb:rocksdbjni | 10.2.1 | Apache-2.0 OR GPL-2.0-only | direct | Dual licence; Apache-2.0 elected. The jar bundles native libraries (see below). |
 | io.circe:circe-parser_3 | 0.14.16 | Apache-2.0 | direct |  |
 | org.http4s:http4s-ember-server_3 | 0.23.37 | Apache-2.0 | direct |  |

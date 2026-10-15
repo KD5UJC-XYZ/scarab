@@ -207,7 +207,7 @@ class BuiltinCostingSuite extends FunSuite:
 
   // The costing function is `linear_in_z` (the signature, always 8 words) under semantics variant A
   // and `linear_in_y` (the message) from B on: with the message varying, the cost is constant in A.
-  // Scalus 1.2.0 prices every variant by the message; `ScalusEvaluator` corrects variant A.
+  // Scalus 1.2.0 and 1.3.0 price every variant by the message; `ScalusEvaluator` corrects variant A.
   variants.foreach { v =>
     test(s"verifyEd25519Signature, variant ${v.letter} (${v.language} @ protocol ${v.protocol})") {
       val model =

@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.consensus.{
   VolatileChain
 }
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
-
 import cats.effect.IO
 import cats.syntax.all.*
 import io.circe.Json
@@ -46,6 +45,13 @@ object JsonLog:
   ): IO[Unit] =
     line(
       "started",
+      // what is running: the build of this jar (sbt-buildinfo)
+      "build" -> Json.obj(
+        "version" -> BuildInfo.version.asJson,
+        "scalaVersion" -> BuildInfo.scalaVersion.asJson,
+        "sbtVersion" -> BuildInfo.sbtVersion.asJson,
+        "gitCommit" -> BuildInfo.gitCommit.asJson
+      ),
       "peer" -> peers.headOption.map(_.toString).asJson,
       "peers" -> peers.map(_.toString).asJson,
       "networkMagic" -> genesis.networkMagic.asJson,

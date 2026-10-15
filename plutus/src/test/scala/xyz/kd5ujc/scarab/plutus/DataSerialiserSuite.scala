@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.plutus
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import munit.ScalaCheckSuite
+import scala.util.{Failure, Try}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.forAll
 import scalus.cardano.ledger.CardanoInfo
@@ -12,7 +13,7 @@ import scalus.uplc.Program
 import scalus.uplc.builtin.{Builtins, ByteString, Data}
 
 /** `serialiseData` as the reference writes it (`PlutusCore.Data.encodeData`), the builtin the Hydra
-  * fanout validator hashes its outputs with. Scalus 1.2.0 writes a constructor index outside
+  * fanout validator hashes its outputs with. Scalus 1.2.0 wrote a constructor index outside
   * `[0, 2^63)` through a `Long`; preprod transaction 2edd684f carries such a datum
   * (`PreprodConwayRulesSuite`).
   */
@@ -114,15 +115,31 @@ class DataSerialiserSuite extends ScalaCheckSuite:
     }
   }
 
-  property("it agrees with Scalus wherever Scalus is right (constructor indices below 2^63)") {
-    def small(d: Data): Boolean = d match
-      case Data.Constr(i, fs) => i >= 0 && i < Long.MaxValue && PList.asScala(fs).forall(small)
-      case Data.Map(es)       => PList.asScala(es).forall((k, v) => small(k) && small(v))
-      case Data.List(xs)      => PList.asScala(xs).forall(small)
-      case _                  => true
-    forAll(genData(3).suchThat(small)) { d =>
+  property("it agrees with Scalus (1.3.0 writes constructor indices as unsigned 64-bit)") {
+    forAll(genData(3)) { d =>
       Prop(Builtins.serialiseData(d).bytes.sameElements(DataSerialiser.serialise(d)))
     }
+  }
+
+  // Why the machine keeps this encoder after Scalus 1.3.0 fixed the constructor index: the borer
+  // encoder of Scalus stops at 1000 levels of nesting, `encodeData` of the reference has no limit
+  // (DeepNestingSuite: a datum can have 90,000 levels, as many as a block has bytes).
+  test("reproducer: Scalus's serialiseData fails above 1000 levels of nesting") {
+    def nested(levels: Int): Data =
+      (1 to levels).foldLeft(Data.I(0): Data)((inner, _) => Data.List(PList.singleton(inner)))
+    def onBigStack[A](body: => A): Try[A] =
+      var result: Try[A] = Failure(AssertionError("not run"))
+      val run: Runnable = () => result = Try(body)
+      val worker = Thread(null, run, "deep-serialise", 256L * 1024 * 1024)
+      worker.start()
+      worker.join()
+      result
+    val shallow = nested(900)
+    assert(Builtins.serialiseData(shallow).bytes.sameElements(DataSerialiser.serialise(shallow)))
+    val deep = nested(90000)
+    val scalus = onBigStack(Builtins.serialiseData(deep))
+    assert(scalus.failed.toOption.exists(_.getMessage.contains("nesting")), "fixed upstream?")
+    assertEquals(onBigStack(DataSerialiser.serialise(deep).length).toOption, Some(2 * 90000 + 1))
   }
 
   // The machine, not only the encoder: a script compares serialiseData of a constructor whose index

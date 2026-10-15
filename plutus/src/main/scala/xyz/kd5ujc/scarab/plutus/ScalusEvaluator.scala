@@ -150,7 +150,7 @@ object ScalusEvaluator:
           protocol
         )
         Right(
-          SerialisingVm(
+          CorrectedVm(
             language,
             corrected(params, variant),
             variant,
@@ -252,22 +252,23 @@ object ScalusEvaluator:
               case _: StackOverflowError =>
                 failure(EvalFailure.Script("stack overflow"), spent, log.getLogs.toVector)
 
-  /** A [[PlutusVM]] whose `serialiseData` is [[DataSerialiser]].
+  /** A [[PlutusVM]] with two builtins whose meaning Scalus gets wrong replaced. This is
+    * `PlutusVM.evaluateDeBruijnedTerm` with those meanings swapped in: the typing scheme and
+    * costing function of Scalus's builtins are kept, so the budget is unchanged.
     *
-    * Scalus 1.2.0 encodes the index of a `Data.Constr` through a `Long`, so a constructor outside
-    * `[0, 2^63)` (for example `2^64 - 1`, which the ledger lets a datum carry) serialises to other
-    * bytes than the reference's, and a script that hashes it (Hydra's fanout compares the hash of
-    * the serialised outputs with the closed head's) fails where the reference accepts. This is
-    * `PlutusVM.evaluateDeBruijnedTerm` with one builtin's meaning replaced: the typing scheme and
-    * costing function of Scalus's `SerialiseData` are kept, so the budget is unchanged.
+    *   - `serialiseData` is [[DataSerialiser]]. Scalus 1.2.0 encoded the index of a `Data.Constr`
+    *     through a `Long` (fixed in 1.3.0), but its encoder (borer) still stops at 1000 levels of
+    *     array nesting, where the reference has no limit and a datum can be as deep as the block
+    *     that carries it. A script that hashes such a datum (Hydra's fanout compares the hash of
+    *     the serialised outputs with the closed head's) must get the reference's bytes.
+    *   - `verifyEcdsaSecp256k1Signature` is [[Secp256k1.verifyEcdsa]] (Scalus 1.3.0 raises an error
+    *     on a signature with `r = 0` or `s = 0` where the reference returns `False`; preprod block
+    *     3,498,869).
     *
-    * The same machine also replaces `verifyEcdsaSecp256k1Signature` with [[Secp256k1.verifyEcdsa]]
-    * (Scalus 1.2.0 raises an error on a signature with `r = 0` or `s = 0` where the reference
-    * returns `False`; preprod block 3,498,869).
-    *
-    * Reproducer: `ScalusConformanceReproducersSuite`; regression: `PreprodConwayRulesSuite`.
+    * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`; regressions: `PreprodConwayRulesSuite`,
+    * `PreprodSecp256k1RulesSuite`.
     */
-  private final class SerialisingVm(
+  private final class CorrectedVm(
       language: Language,
       params: MachineParams,
       variant: BuiltinSemanticsVariant,
