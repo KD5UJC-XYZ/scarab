@@ -568,8 +568,6 @@ object PreConwayRules:
     val body = tx.body
     val id = body.id
     val wits = tx.witnesses
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
     val locked = spent ++ collateral.outputs
     val inputKeys = locked.flatMap(_.address.kind match
       case Address.Kind.Shelley(_, Credential.Key(h), _, _) => Some(h)
@@ -606,8 +604,11 @@ object PreConwayRules:
       _.proposals.keys.toVector.flatMap(g => state.genDelegs.get(g).map(_.delegate))
     )
     val required =
-      (inputKeys ++ withdrawalKeys ++ certKeys ++ voterKeys ++ updateKeys ++ body.requiredSigners).toSet
-    val provided = vkeyHashes.toSet
+      (inputKeys ++ bootRoots ++ withdrawalKeys ++ certKeys ++ voterKeys ++ updateKeys ++ body.requiredSigners).toSet
+    // `witsFromTxWitnesses`: the hashes of the vkey witnesses and the address roots of the bootstrap
+    // witnesses form one set, and a Byron input's `bootstrapKeyHash` is one of the needed hashes.
+    // A vkey witness whose key hashes to the root therefore also spends the Byron output.
+    val provided = vkeyHashes.toSet ++ wits.bootstrap.map(_.addressRoot)
     val invalidKeys = wits.vkeys.collect {
       case (vkey, signature) if !verdicts.witness(vkey, signature, id) => vkey
     } ++ wits.bootstrap.collect {
@@ -630,13 +631,6 @@ object PreConwayRules:
           id,
           PredicateFailure.utxow(UtxowFailure.MissingVKeyWitnesses(missing))
         )
-      )
-      bootProvided = wits.bootstrap.map(_.addressRoot).toSet
-      missingBoot = bootRoots.toSet -- bootProvided
-      _ <- check(
-        missingBoot.isEmpty,
-        "MissingBootstrapWitnessesUTXOW",
-        missingBoot.map(_.hex).mkString(",")
       )
       // Native scripts (phase 1): the ones the transaction needs must hold.
       failing = needed.keys.toSet.filter { h =>

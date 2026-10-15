@@ -5,6 +5,13 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (B14)
+- Byron inputs: the address root is a needed key hash like any other, satisfied by a vkey witness
+  whose key hashes to it or by a bootstrap witness with that root, as in cardano-ledger. The separate
+  `MissingBootstrapWitnessesUTXOW` rule is gone (an unwitnessed Byron input is
+  `MissingVKeyWitnessesUTXOW`). The preprod sync stopped on this at block 3,158,876 (transaction
+  0c22edee, epoch 196); fixture and `PreprodByronKeyWitnessSuite`.
+
 ### Memory (K6)
 - The RSS growth to 5.66 GB on a Preview sync was glibc's per-thread malloc arenas. `docker/jdk.Dockerfile`
   and the devnet node set `MALLOC_ARENA_MAX=2`; running.md says to set it outside a container. With it
