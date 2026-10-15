@@ -94,6 +94,27 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   (`SCARAB_CACHE_DIR`, else the checkout's own populated `.cache`, else the main checkout's) at
   `/work/.cache`; unit-tested, documented in CONTRIBUTING.
 
+### Added (ledger-state mirror, stage S4)
+- `ledger/state`: `LedgerMirror[F]`, the ledger side of the conversion between the node's flat
+  `LedgerState` and `NewEpochState[E]` of any Shelley-based era (by the witness), with the capabilities
+  `Ask[F, MirrorEnv]` (network, era geometry, update quorum) and `Raise[F, MirrorError]`; the tip is an
+  argument. `to` derives what Haskell holds and the node does not (`psVRFKeyHashes`, `spsDelegators`,
+  Shelley account pointers, `StakePoolSnapShot`, `nesPd`, instant stake, `FuturePParams`); `from`
+  recomputes them and refuses a mirror that disagrees with `DerivedMismatch(field)` (Haskell trusts what
+  it decodes). `Mirrored[A]` carries the `Gap`s of a mirror (`NonMyopic`, `RewardAttribution`,
+  `NumDelegatorsLowerBound`, `PendingPulsingUpdate`, a function of the source state; `ShelleyTransition`
+  is for S5); `MirrorError` is closed (`Vocab`, `NetworkMismatch`, `IllFormed`, `DerivedMismatch`).
+  `NodeExtras` keeps the node-only bookkeeping (plutus counters, reward draft and amounts, snapshot pool
+  details, `prevParams` presence, absent DRep pulser, a `poolDistribution` that is not the `set`
+  snapshot) and `Residue` the fields with no place in the era (empty on every real state).
+- `PpupRules.voted` is the quorum vote of `NEWPP`, extracted (no behaviour change). `ledger` depends on
+  cats-mtl.
+- Laws (`MirrorLaws`, a discipline `Laws`): retraction, stability of the mirror, exact gaps, tamper
+  rejection, on generated flat states of Conway, Alonzo and Shelley, and on the rule-suite states. Corpus:
+  681 states of the eras fixture, and `PreviewMirrorMain` over the 1,451 epoch-boundary states of a
+  Preview sync and 3 Preprod states (retraction on all, residue empty, `nesPd` equals
+  `PoolDistr.of(set)` on all).
+
 ### Fixed (inbound duplex sessions)
 - A session on an inbound duplex connection that shared no point with the peer (`NoIntersection`)
   was retried by starting all our clients again on the same multiplexer, so TxSubmission2 sent a
