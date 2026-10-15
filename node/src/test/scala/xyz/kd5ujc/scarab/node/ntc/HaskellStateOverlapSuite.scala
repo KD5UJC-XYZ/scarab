@@ -24,7 +24,13 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.node.{MirrorCorpus, NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, Params, StateGen, Wire}
+import xyz.kd5ujc.scarab.storage.haskell.state.{
+  HaskellStateCodecs,
+  NodeOrders,
+  Params,
+  StateGen,
+  Wire
+}
 
 import HaskellStateCodecs.given
 import NodeOrders.given
@@ -48,7 +54,9 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
 
   private def old(body: CborOut => Unit): String = CborOut.build(body).hex
 
-  private def same[A](name: String, gen: Gen[A], codec: Codec[A])(write: (CborOut, A) => Unit): Unit =
+  private def same[A](name: String, gen: Gen[A], codec: Codec[A])(
+      write: (CborOut, A) => Unit
+  ): Unit =
     property(s"$name: the new codec writes what LedgerEncoders writes") {
       forAll(gen) { a =>
         assertEquals(codec.encodeBytes(a).hex, old(write(_, a)))
@@ -58,8 +66,8 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
 
   // ---- generated values
 
-  same("protocolParams (Conway)", StateGen.paramsOf[Conway], Params.conwayCodec)(
-    (w, p) => E.protocolParams(w, p)
+  same("protocolParams (Conway)", StateGen.paramsOf[Conway], Params.conwayCodec)((w, p) =>
+    E.protocolParams(w, p)
   )
   same("poolParams", StateGen.poolParams, poolParams)((w, p) => E.poolParams(w, p))
   same("committee", StateGen.committee, committee)((w, c) => E.committee(w, c))
@@ -183,7 +191,12 @@ class HaskellStateOverlapSuite extends ScalaCheckSuite:
   private def ask(state: NodeState, block: Block, query: LedgerQuery): Bytes =
     val view = QueryView(Point.Origin, Some(block.header.blockNo), state)
     QueryAnswers
-      .answer(queryEnv, view, Map.empty, NtcQuery.IfCurrent(xyz.kd5ujc.scarab.protocol.Era.Conway.index, query))
+      .answer(
+        queryEnv,
+        view,
+        Map.empty,
+        NtcQuery.IfCurrent(xyz.kd5ujc.scarab.protocol.Era.Conway.index, query)
+      )
       .map(result)
       .getOrElse(fail(s"$query is not answered"))
 

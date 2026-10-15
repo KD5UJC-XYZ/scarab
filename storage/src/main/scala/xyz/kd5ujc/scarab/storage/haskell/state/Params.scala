@@ -3,12 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.{
-  DRepVotingThresholds,
-  Nonce,
-  PoolVotingThresholds,
-  ProtocolParams
-}
+import xyz.kd5ujc.scarab.ledger.{DRepVotingThresholds, Nonce, PoolVotingThresholds, ProtocolParams}
 import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, EraTag}
 import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, DecodeError, Decoded, Node, Writer, at}
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -20,8 +15,8 @@ import Wire.*
   * `Core/PParams.hs:198-203`): an array with one item per parameter of `eraPParams`, in the order
   * of that era's list. The mirror holds one flat [[ProtocolParams]] for every era, so the codec of
   * an era writes the parameters the era has and, reading, leaves the others at the value
-  * [[Params.empty]] gives them; decoding what an era wrote therefore gives the parameters
-  * projected onto that era (the other fields reset), and the codec is the identity on those.
+  * [[Params.empty]] gives them; decoding what an era wrote therefore gives the parameters projected
+  * onto that era (the other fields reset), and the codec is the identity on those.
   *
   * The lists: Shelley, Allegra and Mary 17 parameters (`Shelley/PParams.hs:506-524`), Alonzo 24
   * (`Alonzo/PParams.hs:344-369`), Babbage 22 (`Babbage/PParams.hs:203-226`), Conway 31
@@ -77,7 +72,9 @@ object Params:
   private val w16: Codec[BigInt] = word(16)
   private val w32: Codec[BigInt] = word(32)
 
-  /** `ProtVer` (`BaseTypes.hs:238-244`): `[major, minor]`, the major in 0..13, the minor a `Word32`. */
+  /** `ProtVer` (`BaseTypes.hs:238-244`): `[major, minor]`, the major in 0..13, the minor a
+    * `Word32`.
+    */
   private val protocolVersion: Codec[(BigInt, BigInt)] =
     Record.of[(BigInt, BigInt)]((Codec.uintBig(13), w32))
 
@@ -91,8 +88,8 @@ object Params:
     Record.of[ExUnits]((natural, natural))
 
   /** `CostModels` (`CostModels.hs:446-471`): a map from the language (a `Word8`) to its parameters,
-    * each an `Int64`; a list of more than 23 is indefinite. Keys are in order, and a repeated one is
-    * refused.
+    * each an `Int64`; a list of more than 23 is indefinite. Keys are in order, and a repeated one
+    * is refused.
     */
   private val costModels: Codec[Map[Int, Vector[BigInt]]] = new Codec[Map[Int, Vector[BigInt]]]:
     private val language = Codec.uintBig(255)
@@ -157,9 +154,7 @@ object Params:
   private val d = param("d", unitInterval)(_.d)((p, x) => p.copy(d = x))
 
   private val extraEntropy: Param[Nonce] =
-    param("extraEntropy", Wire.nonce)(_.extraEntropy)((p, x) =>
-      p.copy(extraEntropy = x)
-    )
+    param("extraEntropy", Wire.nonce)(_.extraEntropy)((p, x) => p.copy(extraEntropy = x))
 
   private val protocolVersionParam =
     param("protocolVersion", protocolVersion)(p => (p.protocolMajor, p.protocolMinor))((p, x) =>
@@ -167,7 +162,8 @@ object Params:
     )
   private val minUTxOValue =
     param("minUTxOValue", coin)(_.minUTxOValue)((p, x) => p.copy(minUTxOValue = x))
-  private val minPoolCost = param("minPoolCost", coin)(_.minPoolCost)((p, x) => p.copy(minPoolCost = x))
+  private val minPoolCost =
+    param("minPoolCost", coin)(_.minPoolCost)((p, x) => p.copy(minPoolCost = x))
   private val coinsPerUTxOWord =
     param("coinsPerUTxOWord", coin)(_.coinsPerUTxOWord)((p, x) => p.copy(coinsPerUTxOWord = x))
   private val coinsPerUTxOByte =
@@ -210,37 +206,99 @@ object Params:
     param("govActionLifetime", w32)(_.govActionLifetime)((p, x) => p.copy(govActionLifetime = x))
   private val govActionDeposit =
     param("govActionDeposit", coin)(_.govActionDeposit)((p, x) => p.copy(govActionDeposit = x))
-  private val drepDeposit = param("drepDeposit", coin)(_.drepDeposit)((p, x) => p.copy(drepDeposit = x))
+  private val drepDeposit =
+    param("drepDeposit", coin)(_.drepDeposit)((p, x) => p.copy(drepDeposit = x))
   private val drepActivity =
     param("drepActivity", w32)(_.drepActivity)((p, x) => p.copy(drepActivity = x))
   private val minFeeRefScriptCostPerByte =
-    param("minFeeRefScriptCostPerByte", nonNegativeInterval)(_.minFeeRefScriptCostPerByte)(
-      (p, x) => p.copy(minFeeRefScriptCostPerByte = x)
+    param("minFeeRefScriptCostPerByte", nonNegativeInterval)(_.minFeeRefScriptCostPerByte)((p, x) =>
+      p.copy(minFeeRefScriptCostPerByte = x)
     )
 
   // ---- the eras (`eraPParams`)
 
   private val shelleyList: Vector[Param[?]] = Vector(
-    txFeePerByte, txFeeFixed, maxBBSize, maxTxSize, maxBHSize, keyDeposit, poolDeposit, eMax, nOpt,
-    a0, rho, tau, d, extraEntropy, protocolVersionParam, minUTxOValue, minPoolCost
+    txFeePerByte,
+    txFeeFixed,
+    maxBBSize,
+    maxTxSize,
+    maxBHSize,
+    keyDeposit,
+    poolDeposit,
+    eMax,
+    nOpt,
+    a0,
+    rho,
+    tau,
+    d,
+    extraEntropy,
+    protocolVersionParam,
+    minUTxOValue,
+    minPoolCost
   )
 
   private val alonzoList: Vector[Param[?]] = Vector(
-    txFeePerByte, txFeeFixed, maxBBSize, maxTxSize, maxBHSize, keyDeposit, poolDeposit, eMax, nOpt,
-    a0, rho, tau, d, extraEntropy, protocolVersionParam, minPoolCost, coinsPerUTxOWord,
-    costModelsParam, pricesParam, maxTxExUnits, maxBlockExUnits, maxValSize, collateralPercentage,
+    txFeePerByte,
+    txFeeFixed,
+    maxBBSize,
+    maxTxSize,
+    maxBHSize,
+    keyDeposit,
+    poolDeposit,
+    eMax,
+    nOpt,
+    a0,
+    rho,
+    tau,
+    d,
+    extraEntropy,
+    protocolVersionParam,
+    minPoolCost,
+    coinsPerUTxOWord,
+    costModelsParam,
+    pricesParam,
+    maxTxExUnits,
+    maxBlockExUnits,
+    maxValSize,
+    collateralPercentage,
     maxCollateralInputs
   )
 
   private val babbageList: Vector[Param[?]] = Vector(
-    txFeePerByte, txFeeFixed, maxBBSize, maxTxSize, maxBHSize, keyDeposit, poolDeposit, eMax, nOpt,
-    a0, rho, tau, protocolVersionParam, minPoolCost, coinsPerUTxOByte, costModelsParam, pricesParam,
-    maxTxExUnits, maxBlockExUnits, maxValSize, collateralPercentage, maxCollateralInputs
+    txFeePerByte,
+    txFeeFixed,
+    maxBBSize,
+    maxTxSize,
+    maxBHSize,
+    keyDeposit,
+    poolDeposit,
+    eMax,
+    nOpt,
+    a0,
+    rho,
+    tau,
+    protocolVersionParam,
+    minPoolCost,
+    coinsPerUTxOByte,
+    costModelsParam,
+    pricesParam,
+    maxTxExUnits,
+    maxBlockExUnits,
+    maxValSize,
+    collateralPercentage,
+    maxCollateralInputs
   )
 
   private val conwayList: Vector[Param[?]] = babbageList ++ Vector(
-    poolVotingThresholds, drepVotingThresholds, committeeMinSize, committeeMaxTermLength,
-    govActionLifetime, govActionDeposit, drepDeposit, drepActivity, minFeeRefScriptCostPerByte
+    poolVotingThresholds,
+    drepVotingThresholds,
+    committeeMinSize,
+    committeeMaxTermLength,
+    govActionLifetime,
+    govActionDeposit,
+    drepDeposit,
+    drepActivity,
+    minFeeRefScriptCostPerByte
   )
 
   private def listCodec(params: Vector[Param[?]]): Codec[ProtocolParams] =
@@ -269,9 +327,9 @@ object Params:
   /** The `PParams` codec of an era. */
   def codec[E <: EraTag](era: ShelleyBasedEra[E]): Codec[ProtocolParams] = era match
     case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary => shelley
-    case ShelleyBasedEra.SAlonzo                                                       => alonzo
-    case ShelleyBasedEra.SBabbage                                                      => babbage
-    case ShelleyBasedEra.SConway                                                       => conway
+    case ShelleyBasedEra.SAlonzo                                                     => alonzo
+    case ShelleyBasedEra.SBabbage                                                    => babbage
+    case ShelleyBasedEra.SConway                                                     => conway
 
   /** The Conway `PParams` codec: the parameters of the governance state and of its enact state. */
   val conwayCodec: Codec[ProtocolParams] = conway

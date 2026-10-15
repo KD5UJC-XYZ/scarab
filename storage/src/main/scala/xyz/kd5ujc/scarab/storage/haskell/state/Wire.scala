@@ -18,18 +18,19 @@ import xyz.kd5ujc.scarab.models.runtime.{
 
 import DecodeError.Kind
 
-/** The encoding version the Haskell ledger's binary layer runs at (`Cardano.Ledger.Binary.Version`):
-  * `ProtVer` of the mirror, whose major number is what the format depends on. Consensus writes a
-  * state of an era at the lowest version of that era (`toEraCBOR`, `Core/Era.hs:233`), see
-  * [[Versions.eraLow]]; a decoder can be run at any version, as the reference's can.
+/** The encoding version the Haskell ledger's binary layer runs at
+  * (`Cardano.Ledger.Binary.Version`): `ProtVer` of the mirror, whose major number is what the
+  * format depends on. Consensus writes a state of an era at the lowest version of that era
+  * (`toEraCBOR`, `Core/Era.hs:233`), see [[Versions.eraLow]]; a decoder can be run at any version,
+  * as the reference's can.
   */
 extension (v: ProtVer)
   /** `ifEncodingVersionAtLeast (natVersion @major)`. */
   def atLeast(major: Int): Boolean = v.major.toBigInt >= major
 
 /** The combinators the Haskell ledger-state codecs are built from: the shapes of the ledger's
-  * `EncCBOR`/`DecCBOR` of numbers, containers and options, each with the decoder's checks. Instances
-  * for the mirror's own types are in [[HaskellStateCodecs]].
+  * `EncCBOR` /`DecCBOR` of numbers, containers and options, each with the decoder's checks.
+  * Instances for the mirror's own types are in [[HaskellStateCodecs]].
   *
   * Sources: `cardano-ledger-binary` 1.9.1.0 (`Encoding/Encoder.hs`, `Decoding/Decoder.hs`), and the
   * ledger packages named in each combinator.
@@ -53,7 +54,8 @@ object Wire:
       under.decode(n).map(v => Word64.fromUnsigned(v.toLong))
     def encode(a: Word64, out: Writer): Unit = out.uint(a.toBigInt)
 
-  /** An `Integer` (`encodeInteger`/`decodeInteger`): a plain integer, or a bignum (tags 2 and 3). */
+  /** An `Integer` (`encodeInteger`/`decodeInteger`): a plain integer, or a bignum (tags 2 and 3).
+    */
   val integer: Codec[BigInt] = new Codec[BigInt]:
     def decode(n: Node): Decoded[BigInt] = n.value match
       case Value.UInt(v) => Right(v)
@@ -80,7 +82,7 @@ object Wire:
 
   extension [R](c: Codec[R])
     /** The codec of `A`, written as `R` and read through a smart constructor whose refusal is a
-      * located decode error. `check` is `R`'s.
+      * located decode error. `check` is `R` 's.
       */
     def validated[A](make: R => Either[VocabError, A])(unmake: A => R): Codec[A] =
       new Codec[A]:
@@ -123,8 +125,8 @@ object Wire:
     def decode(n: Node): Decoded[Rational] =
       val body = n.value match
         case Value.Tag(t, inner) if v.atLeast(9) && t == 30 => Right(inner)
-        case Value.Tag(t, _)                               => Left(DecodeError.at(n, Kind.BadTag(30, t)))
-        case _                                             => Right(n)
+        case Value.Tag(t, _) => Left(DecodeError.at(n, Kind.BadTag(30, t)))
+        case _               => Right(n)
       body.flatMap(ratioItems(_).map((a, b) => Rational(a, b)))
     def encode(a: Rational, out: Writer): Unit =
       if v.atLeast(9) then out.tag(30)
@@ -133,8 +135,8 @@ object Wire:
       out.integer(a.denominator)
 
   /** A bounded ratio (`UnitInterval`, `NonNegativeInterval`): always tag 30, whatever the version
-    * (`Plain.encodeRatioWithTag`, `BaseTypes.hs:384`), both numbers `Word64`, and in `lo..hi`
-    * (`hi` absent: unbounded above). The decoder requires the tag (`decodeRationalWithTag`).
+    * (`Plain.encodeRatioWithTag`, `BaseTypes.hs:384`), both numbers `Word64`, and in `lo..hi` (`hi`
+    * absent: unbounded above). The decoder requires the tag (`decodeRationalWithTag`).
     */
   private def bounded(what: String, hi: Option[Rational]): Codec[Rational] = new Codec[Rational]:
     private val max = (BigInt(1) << 64) - 1
@@ -154,8 +156,10 @@ object Wire:
       out.uint(a.numerator)
       out.uint(a.denominator)
     override def check(a: Rational): Option[String] =
-      Option.unless(a.numerator.signum >= 0 && a.numerator <= max && a.denominator <= max &&
-        hi.forall(a <= _))(what)
+      Option.unless(
+        a.numerator.signum >= 0 && a.numerator <= max && a.denominator <= max &&
+          hi.forall(a <= _)
+      )(what)
 
   /** `UnitInterval`: a ratio in 0..1. */
   val unitInterval: Codec[Rational] = bounded("a ratio in 0..1", Some(Rational.one))
@@ -168,10 +172,10 @@ object Wire:
   /** `StrictMaybe a` and `Maybe a` (`encodeStrictMaybe`, `Encoder.hs:331`): `[]` or `[x]`. */
   def strictMaybe[A](inner: Codec[A]): Codec[Option[A]] = new Codec[Option[A]]:
     def decode(n: Node): Decoded[Option[A]] = n.value match
-      case Value.Arr(xs) if xs.isEmpty    => Right(None)
+      case Value.Arr(xs) if xs.isEmpty   => Right(None)
       case Value.Arr(xs) if xs.size == 1 => inner.decode(xs(0)).map(Some(_))
-      case Value.Arr(xs)                 => Left(DecodeError.at(n, Kind.BadArity("0 or 1", xs.size)))
-      case _                             => Left(Codec.mismatch("array", n))
+      case Value.Arr(xs) => Left(DecodeError.at(n, Kind.BadArity("0 or 1", xs.size)))
+      case _             => Left(Codec.mismatch("array", n))
     def encode(a: Option[A], out: Writer): Unit = a match
       case None => out.arrayHead(0)
       case Some(x) =>
@@ -218,15 +222,17 @@ object Wire:
       def decode(n: Node): Decoded[SortedSet[A]] =
         val body = n.value match
           case Value.Tag(t, inner) if v.atLeast(9) && t == 258 => Right(inner)
-          case Value.Tag(t, _)                                 => Left(DecodeError.at(n, Kind.BadTag(258, t)))
-          case _                                               => Right(n)
+          case Value.Tag(t, _) => Left(DecodeError.at(n, Kind.BadTag(258, t)))
+          case _               => Right(n)
         body.flatMap(b =>
           b.value match
             case Value.Arr(items) =>
               Elements.decodeAll(items, elem).flatMap { decoded =>
                 val set = Sorted.set(decoded)
                 if v.atLeast(9) && set.size != decoded.size then
-                  Left(DecodeError.at(b, Kind.DuplicateElement(s"${decoded.size - set.size} repeated")))
+                  Left(
+                    DecodeError.at(b, Kind.DuplicateElement(s"${decoded.size - set.size} repeated"))
+                  )
                 else Right(set)
               }
             case _ => Left(Codec.mismatch("array", b))
@@ -234,7 +240,8 @@ object Wire:
       def encode(a: SortedSet[A], out: Writer): Unit =
         if v.atLeast(9) then out.tag(258)
         out.variableArray(a.size)(a.foreach(elem.encode(_, out)))
-      override def check(a: SortedSet[A]): Option[String] = a.iterator.flatMap(elem.check).nextOption()
+      override def check(a: SortedSet[A]): Option[String] =
+        a.iterator.flatMap(elem.check).nextOption()
 
   /** A map, in key order, with the variable-length framing (`encodeMap`, `Encoder.hs:397-408`). The
     * decoder takes entries in any order and either length form (`decodeMapByKey`,
@@ -260,8 +267,8 @@ object Wire:
       override def check(a: SortedMap[K, V]): Option[String] =
         a.iterator.flatMap((k, x) => key.check(k).orElse(value.check(x))).nextOption()
 
-  /** A sequence (`StrictSeq`, `encodeStrictSeq`, `Encoder.hs:516`): the variable-length framing
-    * in order; the decoder reads either length form.
+  /** A sequence (`StrictSeq`, `encodeStrictSeq`, `Encoder.hs:516`): the variable-length framing in
+    * order; the decoder reads either length form.
     */
   def seqOf[A](elem: Codec[A]): Codec[Vector[A]] = new Codec[Vector[A]]:
     def decode(n: Node): Decoded[Vector[A]] = n.value match
@@ -272,7 +279,8 @@ object Wire:
     override def check(a: Vector[A]): Option[String] = a.iterator.flatMap(elem.check).nextOption()
 
   /** The items of an array of known size, or the arity error. */
-  def items(n: Node, size: Int): Decoded[Vector[Node]] = xyz.kd5ujc.scarab.models.runtime.Arr.exact(n, size)
+  def items(n: Node, size: Int): Decoded[Vector[Node]] =
+    xyz.kd5ujc.scarab.models.runtime.Arr.exact(n, size)
 
   /** A tagged alternative `[tag, field ...]`: the tag and the fields after it. */
   def variant(n: Node): Decoded[(BigInt, Vector[Node])] = n.value match
@@ -285,7 +293,9 @@ object Wire:
 
   /** An alternative with a tag or arity the sum does not have. */
   def unknownVariant[A](n: Node, sum: String, tag: BigInt, size: Int): Decoded[A] =
-    Left(DecodeError.at(n, Kind.LiteralMismatch(s"a $sum alternative", s"tag $tag with $size fields")))
+    Left(
+      DecodeError.at(n, Kind.LiteralMismatch(s"a $sum alternative", s"tag $tag with $size fields"))
+    )
 
   /** Decode a list of items with one codec, reporting the index of the first failure. */
   private[state] object Elements:

@@ -86,6 +86,7 @@ object Cbor:
             n = (n << 8) | BigInt(read())
             i += 1
           n
+
     /** The next `count` bytes as a big-endian number (the bits of a float). */
     private def floatBits(count: Int): Long =
       var n = 0L

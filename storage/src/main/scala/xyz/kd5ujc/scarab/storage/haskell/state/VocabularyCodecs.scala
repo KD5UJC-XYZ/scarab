@@ -7,9 +7,9 @@ import xyz.kd5ujc.scarab.models.runtime.{Codec, DecodeError, Decoded, Node, Writ
 
 import Wire.*
 
-/** The codecs of the vocabulary: hashes, amounts, positions, credentials, DReps, pointers,
-  * protocol versions, anchors and nonces. Each cites the `EncCBOR`/`DecCBOR` it follows
-  * (`CL` = `cardano-ledger` rev f649f97, `libs/cardano-ledger-core/src/Cardano/Ledger`).
+/** The codecs of the vocabulary: hashes, amounts, positions, credentials, DReps, pointers, protocol
+  * versions, anchors and nonces. Each cites the `EncCBOR` /`DecCBOR` it follows (`CL` =
+  * `cardano-ledger` rev f649f97, `libs/cardano-ledger-core/src/Cardano/Ledger`).
   */
 trait VocabularyCodecs:
   // ---- hashes: byte strings of the size of the hash (`Hashes.hs:166-232`, newtypes over `Hash`)
@@ -31,7 +31,9 @@ trait VocabularyCodecs:
   given coin: Codec[Coin] = new Codec[Coin]:
     private val under = word(64)
     def decode(n: Node): Decoded[Coin] =
-      under.decode(n).flatMap(v => Coin.fromBigInt(v).left.map(e => DecodeError.at(n, violation(e))))
+      under
+        .decode(n)
+        .flatMap(v => Coin.fromBigInt(v).left.map(e => DecodeError.at(n, violation(e))))
     def encode(a: Coin, out: Writer): Unit = out.integer(Coin.value(a))
 
   /** `DeltaCoin` (`Coin.hs:115-119`): an `Integer` both ways. */
@@ -57,7 +59,8 @@ trait VocabularyCodecs:
   given credential[R <: KeyRole]: Codec[Credential[R]] = new Codec[Credential[R]]:
     def decode(n: Node): Decoded[Credential[R]] =
       variant(n).flatMap {
-        case (t, Vector(h)) if t == 0 => keyHash[R].decode(h).map(Credential.KeyHashObj[R](_)).at("hash")
+        case (t, Vector(h)) if t == 0 =>
+          keyHash[R].decode(h).map(Credential.KeyHashObj[R](_)).at("hash")
         case (t, Vector(h)) if t == 1 =>
           scriptHash.decode(h).map(Credential.ScriptHashObj[R](_)).at("hash")
         case (t, xs) => unknownVariant(n, "Credential", t, xs.size)
@@ -94,8 +97,8 @@ trait VocabularyCodecs:
         out.arrayHead(1); out.uint(3L)
 
   /** `Ptr` (`Credential.hs:258-260,353-364`, a `CBORGroup`): `[slot, tx index, cert index]` as a
-    * `Word32` and two `Word16`s. From version 9 the decoder is strict; before it a value out of its
-    * range makes the pointer `Ptr 0 0 0` (`mkPtrNormalized`, `Credential.hs:279-285`), which is
+    * `Word32` and two `Word16` s. From version 9 the decoder is strict; before it a value out of
+    * its range makes the pointer `Ptr 0 0 0` (`mkPtrNormalized`, `Credential.hs:279-285`), which is
     * what an unreachable pointer was turned into.
     */
   given ptr(using v: ProtVer): Codec[Ptr] = new Codec[Ptr]:
@@ -123,8 +126,10 @@ trait VocabularyCodecs:
       out.uint(a.txIx)
       out.uint(a.certIx)
     override def check(a: Ptr): Option[String] =
-      Option.unless(a.slot.bitLength <= 32 && a.txIx.bitLength <= 16 && a.certIx.bitLength <= 16 &&
-        a.slot.signum >= 0 && a.txIx.signum >= 0 && a.certIx.signum >= 0)(
+      Option.unless(
+        a.slot.bitLength <= 32 && a.txIx.bitLength <= 16 && a.certIx.bitLength <= 16 &&
+          a.slot.signum >= 0 && a.txIx.signum >= 0 && a.certIx.signum >= 0
+      )(
         "a pointer of a Word32 and two Word16s"
       )
 

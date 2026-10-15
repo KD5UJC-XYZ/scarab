@@ -5,9 +5,9 @@ import scala.compiletime.{constValueTuple, summonAll}
 import scala.deriving.Mirror
 import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, Decoded, Node, Writer}
 
-/** The Haskell ledger writes a record as a definite array of its fields in declaration order
-  * (`Rec` in `Cardano.Ledger.Binary.Coders`, or `encodeListLen n <> ...` by hand). The mirror's
-  * records are declared in that order, so one codec shape serves them all, taken from the compiler's
+/** The Haskell ledger writes a record as a definite array of its fields in declaration order (`Rec`
+  * in `Cardano.Ledger.Binary.Coders`, or `encodeListLen n <> ...` by hand). The mirror's records
+  * are declared in that order, so one codec shape serves them all, taken from the compiler's
   * `Mirror` of the case class: the arity, the field names (for the path of a decode error) and the
   * way to build and take apart a value.
   *
@@ -17,7 +17,9 @@ import xyz.kd5ujc.scarab.models.runtime.{Arr, Codec, Decoded, Node, Writer}
   */
 object Record:
   /** The codec of `A` as a record, from the codec of each field. */
-  inline def of[A](using m: Mirror.ProductOf[A])(
+  inline def of[A](using
+      m: Mirror.ProductOf[A]
+  )(
       codecs: Tuple.Map[m.MirroredElemTypes, Codec]
   ): Codec[A] =
     build[A](

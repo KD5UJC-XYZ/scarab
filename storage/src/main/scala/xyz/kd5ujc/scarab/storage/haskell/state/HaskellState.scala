@@ -5,16 +5,16 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, NewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.Decoded
 
-/** Why a `NewEpochState` cannot be written in the Haskell format: it holds something the format
-  * has and the mirror does not (the pulser of a running reward update), or a value outside the
-  * range of the Haskell type it is written as.
+/** Why a `NewEpochState` cannot be written in the Haskell format: it holds something the format has
+  * and the mirror does not (the pulser of a running reward update), or a value outside the range of
+  * the Haskell type it is written as.
   */
 final case class StateNotWritable(constraint: String)
 
 /** The ledger part of the Haskell node's `state` file, as bytes: the `NewEpochState` of an era
-  * (`Types.hs:397-405`), written at the version the reference writes the era at ([[Versions]]).
-  * The envelopes around it (the snapshot version, the hard-fork telescope, the header state) are
-  * the next stage.
+  * (`Types.hs:397-405`), written at the version the reference writes the era at ([[Versions]]). The
+  * envelopes around it (the snapshot version, the hard-fork telescope, the header state) are the
+  * next stage.
   */
 object HaskellState:
   /** The limits for reading a state: no cap below the sizes a state has (tens of megabytes, and

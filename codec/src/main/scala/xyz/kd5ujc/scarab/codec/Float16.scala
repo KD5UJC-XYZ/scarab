@@ -13,13 +13,12 @@ object Float16:
     val fraction = bits & 0x3ff
     val magnitude: Float =
       if exponent == 0 then fraction * (1.0f / (1 << 24)) // zero and the subnormals, 2^-24 steps
-      else if exponent == 31 then
-        if fraction == 0 then Float.PositiveInfinity else Float.NaN
+      else if exponent == 31 then if fraction == 0 then Float.PositiveInfinity else Float.NaN
       else java.lang.Float.intBitsToFloat(((exponent + 112) << 23) | (fraction << 13))
     if sign == 1 then -magnitude else magnitude
 
-  /** The 16 bits nearest to `f` (round half to even; overflow is infinity, any NaN is the quiet
-    * NaN `0x7e00`).
+  /** The 16 bits nearest to `f` (round half to even; overflow is infinity, any NaN is the quiet NaN
+    * `0x7e00`).
     */
   def fromFloat(f: Float): Int =
     val bits = java.lang.Float.floatToRawIntBits(f)

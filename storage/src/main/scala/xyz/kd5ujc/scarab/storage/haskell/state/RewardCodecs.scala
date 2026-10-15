@@ -20,8 +20,9 @@ trait RewardCodecs extends SnapshotCodecs:
     def decode(n: Node): Decoded[LogWeight] = n.value match
       case Value.Float(x, w) if w != xyz.kd5ujc.scarab.codec.FloatWidth.Double =>
         Right(LogWeight(x.toFloat))
-      case Value.Float(_, _) => Left(DecodeError.at(n, Kind.Unsupported("a double where a Float is expected")))
-      case _                 => Left(Codec.mismatch("float", n))
+      case Value.Float(_, _) =>
+        Left(DecodeError.at(n, Kind.Unsupported("a double where a Float is expected")))
+      case _ => Left(Codec.mismatch("float", n))
     def encode(a: LogWeight, out: Writer): Unit = out.float32(a.float)
 
   /** `Likelihood` (`PoolRank.hs:101-103`, a `StrictSeq LogWeight`). */
@@ -82,8 +83,8 @@ trait RewardCodecs extends SnapshotCodecs:
     * Only the completed form is mirrored. The pulser of the other (`RSLP`: the free variables, the
     * stake still to visit and the answer so far) is not, so reading `[0, ...]` is refused and a
     * pulsing update is one the codec cannot write: [[Codec.check]] says so, and the codecs of the
-    * enclosing records pass it up. (`encode` writes the snapshot and a `null` for the pulser,
-    * which is no valid pulser; the callers check first.)
+    * enclosing records pass it up. (`encode` writes the snapshot and a `null` for the pulser, which
+    * is no valid pulser; the callers check first.)
     */
   given pulsingRewUpdate(using ProtVer): Codec[PulsingRewUpdate] =
     new Codec[PulsingRewUpdate]:
@@ -92,7 +93,12 @@ trait RewardCodecs extends SnapshotCodecs:
           case (t, Vector(u)) if t == 1 =>
             rewardUpdate.decode(u).map(PulsingRewUpdate.Complete(_)).at("update")
           case (t, Vector(_, _)) if t == 0 =>
-            Left(DecodeError.at(n, Kind.Unsupported("a pulsing reward update (the pulser is not mirrored)")))
+            Left(
+              DecodeError.at(
+                n,
+                Kind.Unsupported("a pulsing reward update (the pulser is not mirrored)")
+              )
+            )
           case (t, xs) => unknownVariant(n, "PulsingRewUpdate", t, xs.size)
         }
       def encode(a: PulsingRewUpdate, out: Writer): Unit = a match

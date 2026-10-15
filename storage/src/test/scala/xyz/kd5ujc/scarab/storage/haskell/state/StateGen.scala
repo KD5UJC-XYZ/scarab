@@ -64,9 +64,11 @@ object StateGen:
       .map((t, i) => node.GovActionId(t, BigInt(i)))
 
   def nodeAnchor: Gen[node.Anchor] =
-    Gen.zip(Gen.oneOf("", "https://example.invalid/a", "x" * 64), VocabularyGen.bytes(32)).map(
-      node.Anchor(_, _)
-    )
+    Gen
+      .zip(Gen.oneOf("", "https://example.invalid/a", "x" * 64), VocabularyGen.bytes(32))
+      .map(
+        node.Anchor(_, _)
+      )
 
   private def smallMap[K, V](key: Gen[K], value: Gen[V]): Gen[Map[K, V]] =
     Gen.choose(0, 3).flatMap(n => Gen.listOfN(n, Gen.zip(key, value)).map(_.toMap))
@@ -172,13 +174,15 @@ object StateGen:
   )
 
   val metadata: Gen[Option[Bytes]] = Gen.option(
-    VocabularyGen.bytes(32).map(h =>
-      item { w =>
-        w.arrayHead(2)
-        w.text("https://example.invalid/pool.json")
-        w.bytes(h)
-      }
-    )
+    VocabularyGen
+      .bytes(32)
+      .map(h =>
+        item { w =>
+          w.arrayHead(2)
+          w.text("https://example.invalid/pool.json")
+          w.bytes(h)
+        }
+      )
   )
 
   def poolParams: Gen[node.PoolParams] =
@@ -221,8 +225,14 @@ object StateGen:
     def w(bits: Int): Gen[BigInt] =
       Gen.oneOf(BigInt(0), BigInt(1), (BigInt(1) << bits) - 1, BigInt(2) << (bits - 4))
     val first = Gen.zip(w(64), w(64), w(32), w(32), w(16), w(64), w(64), w(32), w(16), nonNegative)
-    val second = Gen.zip(unit, unit, unit, Gen.oneOf(node.Nonce.Neutral, node.Nonce.Hash(Bytes(Vector.fill(32)(7.toByte)))))
-    val third = Gen.zip(Gen.choose(0, 13), w(32), w(64), w(64), w(64), costModels, nonNegative, nonNegative)
+    val second = Gen.zip(
+      unit,
+      unit,
+      unit,
+      Gen.oneOf(node.Nonce.Neutral, node.Nonce.Hash(Bytes(Vector.fill(32)(7.toByte))))
+    )
+    val third =
+      Gen.zip(Gen.choose(0, 13), w(32), w(64), w(64), w(64), costModels, nonNegative, nonNegative)
     val fourth = Gen.zip(w(63), w(63), w(63), w(63), w(32), w(16), w(16))
     val fifth = Gen.zip(
       Gen.listOfN(5, unit),
@@ -313,13 +323,16 @@ object StateGen:
           drepActivity = none.drepActivity,
           minFeeRefScriptCostPerByte = none.minFeeRefScriptCostPerByte
         )
-      val noDecentralisation = (q: node.ProtocolParams) =>
-        q.copy(d = none.d, extraEntropy = none.extraEntropy)
+      val noDecentralisation =
+        (q: node.ProtocolParams) => q.copy(d = none.d, extraEntropy = none.extraEntropy)
       era match
         case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary =>
           noGovernance(shelleyOnly(p)).copy(coinsPerUTxOByte = none.coinsPerUTxOByte)
         case ShelleyBasedEra.SAlonzo =>
-          noGovernance(p).copy(minUTxOValue = none.minUTxOValue, coinsPerUTxOByte = none.coinsPerUTxOByte)
+          noGovernance(p).copy(
+            minUTxOValue = none.minUTxOValue,
+            coinsPerUTxOByte = none.coinsPerUTxOByte
+          )
         case ShelleyBasedEra.SBabbage =>
           noDecentralisation(noGovernance(p)).copy(
             minUTxOValue = none.minUTxOValue,
@@ -405,8 +418,20 @@ object StateGen:
         arb[CompactCoin],
         sortedSet(arb[Credential[Staking]])
       )
-      .map { case ((vrf, pledge, cost, margin, account), owners, relays, meta, deposit, delegators) =>
-        StakePoolState(vrf, pledge, cost, margin, account, owners, relays, meta, deposit, delegators)
+      .map {
+        case ((vrf, pledge, cost, margin, account), owners, relays, meta, deposit, delegators) =>
+          StakePoolState(
+            vrf,
+            pledge,
+            cost,
+            margin,
+            account,
+            owners,
+            relays,
+            meta,
+            deposit,
+            delegators
+          )
       }
 
   def pState: Gen[PState] =
@@ -446,9 +471,11 @@ object StateGen:
     */
   val snapShots: Gen[SnapShots] =
     def cap(s: SnapShot): SnapShot = s.copy(pools =
-      Sorted.map(s.pools.iterator.map((k, p) =>
-        k -> p.copy(numDelegators = Word64.fromUnsigned(p.numDelegators.bits & Long.MaxValue))
-      ))
+      Sorted.map(
+        s.pools.iterator.map((k, p) =>
+          k -> p.copy(numDelegators = Word64.fromUnsigned(p.numDelegators.bits & Long.MaxValue))
+        )
+      )
     )
     arb[SnapShots].map(x => SnapShots(cap(x.mark), cap(x.set), cap(x.go), x.fee))
 

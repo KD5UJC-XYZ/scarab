@@ -9,8 +9,8 @@ import Wire.*
 
 /** The certificate state: accounts, delegation, pools, DReps and the committee state (the
   * `State/CertState.hs`, `State/Account.hs` and `State/StakePool.hs` of `cardano-ledger-core`, and
-  * the era packages' `CertState`s). Every codec takes the encoding version, which decides the
-  * tags of its sets and the shape of its pointers.
+  * the era packages' `CertState` s). Every codec takes the encoding version, which decides the tags
+  * of its sets and the shape of its pointers.
   */
 trait CertStateCodecs extends NodeTypeCodecs:
   /** `FutureGenDeleg` (`CertState.hs:110-112`): `[slot, genesis key hash]`. */
@@ -71,7 +71,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
 
   /** `StakePoolState` (`StakePool.hs:192-203`): the pool parameters less its id, with the deposit
     * and the delegators. Here the relays are a sequence and the metadata a `StrictMaybe` (a list of
-    * zero or one), where `StakePoolParams` writes it `null`able.
+    * zero or one), where `StakePoolParams` writes it `null` able.
     */
   given stakePoolState(using ProtVer): Codec[StakePoolState] =
     Record.of[StakePoolState](

@@ -46,8 +46,8 @@ trait SnapshotCodecs extends GovStateCodecs:
   given snapShot(using ProtVer): Codec[SnapShot] =
     Record.of[SnapShot]((activeStake, mapOf(keyHash[StakePool], stakePoolSnapShot)))
 
-  /** `SnapShots` (`SnapShots.hs:355-362`): `[mark, set, go, fee]`; the pool distribution of the mark
-    * snapshot is not written, the mirror derives it.
+  /** `SnapShots` (`SnapShots.hs:355-362`): `[mark, set, go, fee]`; the pool distribution of the
+    * mark snapshot is not written, the mirror derives it.
     */
   given snapShots(using ProtVer): Codec[SnapShots] = Record.auto[SnapShots]
 

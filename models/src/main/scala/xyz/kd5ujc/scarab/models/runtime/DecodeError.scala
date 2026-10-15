@@ -82,7 +82,7 @@ object DecodeError:
     case Kind.UnexpectedKey(k)      => s"unexpected key $k"
     case Kind.NoAlternative(cs)     => s"no alternative matched (${cs.size} tried)"
     case Kind.DuplicateElement(e)   => s"duplicate element $e"
-    case Kind.Violation(v) => s"${v.typeName} requires ${v.constraint}, got ${v.actual}"
+    case Kind.Violation(v)          => s"${v.typeName} requires ${v.constraint}, got ${v.actual}"
     case Kind.Unsupported(w)        => s"unsupported: $w"
     case Kind.Internal(e)           => s"internal error: $e"
 

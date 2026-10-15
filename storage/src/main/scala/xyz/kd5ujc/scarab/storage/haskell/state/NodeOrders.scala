@@ -5,10 +5,10 @@ import cats.Order
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Credential, DRep, GovActionId, RewardAccount}
 
-/** The orders of the ledger types that the mirror reuses from the node's own ledger. They are
-  * plain values of the node (`Credential.Key` before `Credential.Script`, maps and sets without an
+/** The orders of the ledger types that the mirror reuses from the node's own ledger. They are plain
+  * values of the node (`Credential.Key` before `Credential.Script`, maps and sets without an
   * order), so the order a map or a set is written in has to be given here, as Haskell's `Ord`.
-  * `LedgerEncoders` (the node-to-client answers) has the same orders as `Ordering`s; the overlap
+  * `LedgerEncoders` (the node-to-client answers) has the same orders as `Ordering` s; the overlap
   * suite of the node checks the two agree.
   */
 object NodeOrders:
@@ -46,5 +46,6 @@ object NodeOrders:
   /** `AccountAddress` (derived `Ord`, `Address.hs:182-187`): the network, then the credential. */
   given Order[RewardAccount] = Order.from { (a, b) =>
     val byNetwork = Integer.compare(a.network, b.network)
-    if byNetwork != 0 then byNetwork else summon[Order[Credential]].compare(a.credential, b.credential)
+    if byNetwork != 0 then byNetwork
+    else summon[Order[Credential]].compare(a.credential, b.credential)
   }

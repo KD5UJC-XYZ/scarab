@@ -74,8 +74,8 @@ trait EpochStateCodecs extends RewardCodecs:
   given blocksMade(using ProtVer): Codec[BlocksMade] =
     mapOf(keyHash[StakePool], word64Codec).imap(BlocksMade(_))(b => BlocksMade.blocks(b))
 
-  /** `UTxOState` (`Types.hs:253-266`): the UTxO, deposits, fees, governance state, instant stake and
-    * donations.
+  /** `UTxOState` (`Types.hs:253-266`): the UTxO, deposits, fees, governance state, instant stake
+    * and donations.
     */
   def utxoState[E <: EraTag](using era: ShelleyBasedEra[E], v: ProtVer): Codec[UTxOState[E]] =
     Record.of[UTxOState[E]](

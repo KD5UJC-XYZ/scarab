@@ -74,7 +74,8 @@ trait GovStateCodecs extends CertStateCodecs:
       (proposed, proposed, params, params, futurePParams(params))
     )
 
-  /** `ShelleyInstantStake` (`Shelley/State/Stake.hs:68-70`): `[credential stake, pointer stake]`. */
+  /** `ShelleyInstantStake` (`Shelley/State/Stake.hs:68-70`): `[credential stake, pointer stake]`.
+    */
   given shelleyInstantStake(using ProtVer): Codec[ShelleyInstantStake] =
     Record.of[ShelleyInstantStake](
       (mapOf(credential[Staking], compactCoin), mapOf(ptr, compactCoin))
@@ -91,8 +92,11 @@ trait GovStateCodecs extends CertStateCodecs:
     */
   given utxoTables: Codec[UtxoTables] = new Codec[UtxoTables]:
     def decode(n: Node): Decoded[UtxoTables] = n.value match
-      case Value.Map(pairs) if pairs.isEmpty => Right(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty))
+      case Value.Map(pairs) if pairs.isEmpty =>
+        Right(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty))
       case Value.Map(_) =>
-        Left(DecodeError.at(n, Kind.Unsupported("UTxO entries in the state file (they are in tables)")))
+        Left(
+          DecodeError.at(n, Kind.Unsupported("UTxO entries in the state file (they are in tables)"))
+        )
       case _ => Left(Codec.mismatch("map", n))
     def encode(a: UtxoTables, out: Writer): Unit = out.mapHead(0)

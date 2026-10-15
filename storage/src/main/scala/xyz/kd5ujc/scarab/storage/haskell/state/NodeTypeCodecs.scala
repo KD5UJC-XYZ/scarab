@@ -32,11 +32,10 @@ import DecodeError.Kind
 import NodeOrders.given
 import Wire.*
 
-/** The codecs of the types the mirror shares with the node's own ledger (`Committee`,
-  * `Proposals`, `EnactState`, `PoolParams`, ...): the same shapes `LedgerEncoders` writes for the
-  * node-to-client answers, and their readers. The node's values keep maps and sets unordered and
-  * hashes as plain byte strings, so the codecs sort on writing (by [[NodeOrders]]) and check the
-  * sizes on reading.
+/** The codecs of the types the mirror shares with the node's own ledger (`Committee`, `Proposals`,
+  * `EnactState`, `PoolParams`, ...): the same shapes `LedgerEncoders` writes for the node-to-client
+  * answers, and their readers. The node's values keep maps and sets unordered and hashes as plain
+  * byte strings, so the codecs sort on writing (by [[NodeOrders]]) and check the sizes on reading.
   */
 trait NodeTypeCodecs extends VocabularyCodecs:
   // ---- byte strings and numbers the node keeps as `Bytes` and `BigInt`
@@ -132,10 +131,10 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   // ---- pools
 
-  /** `StakePoolParams` (`StakePool.hs:550-571`): nine fields in a flat array, the owners a set,
-    * the metadata `null` when there is none. The relays and the metadata are the registered
-    * items, as they came; no relays at all is `Bytes.empty`, written as an empty array and read
-    * back as it (`LedgerEncoders.poolParams` does the same).
+  /** `StakePoolParams` (`StakePool.hs:550-571`): nine fields in a flat array, the owners a set, the
+    * metadata `null` when there is none. The relays and the metadata are the registered items, as
+    * they came; no relays at all is `Bytes.empty`, written as an empty array and read back as it
+    * (`LedgerEncoders.poolParams` does the same).
     */
   given poolParams(using ProtVer): Codec[PoolParams] =
     Record.of[PoolParams](
@@ -228,7 +227,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
             ws <- withdrawals.decode(w).at("withdrawals")
             pol <- policy.decode(p).at("policy")
           yield GovAction.TreasuryWithdrawals(Sorted.map(ws).toVector, pol)
-        case (t, Vector(g)) if t == 3 => previous.decode(g).at("previous").map(GovAction.NoConfidence(_))
+        case (t, Vector(g)) if t == 3 =>
+          previous.decode(g).at("previous").map(GovAction.NoConfidence(_))
         case (t, Vector(g, r, a, q)) if t == 4 =>
           for
             prev <- previous.decode(g).at("previous")
@@ -275,8 +275,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
   given proposal(using ProtVer): Codec[Proposal] =
     Record.of[Proposal]((amount, rewardAccount, govAction, anchor))
 
-  /** `GovActionState` (`Procedures.hs:318-333`): the id, the votes of the committee, the DReps
-    * and the pools, the proposal, and the epochs it was proposed in and expires after.
+  /** `GovActionState` (`Procedures.hs:318-333`): the id, the votes of the committee, the DReps and
+    * the pools, the proposal, and the epochs it was proposed in and expires after.
     */
   given govActionState(using ProtVer): Codec[GovActionState] =
     Record.of[GovActionState](
@@ -291,7 +291,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       )
     )
 
-  /** `GovRelation StrictMaybe` (`Procedures.hs:742-750`): the last enacted action of each lineage. */
+  /** `GovRelation StrictMaybe` (`Procedures.hs:742-750`): the last enacted action of each lineage.
+    */
   given prevIds: Codec[PrevIds] =
     val id = strictMaybe(govActionId)
     Record.of[PrevIds]((id, id, id, id))
@@ -300,9 +301,11 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     * proposals in order.
     */
   given proposals(using ProtVer): Codec[Proposals] =
-    Record.of[(PrevIds, Vector[GovActionState])]((prevIds, seqOf(govActionState))).imap {
-      case (roots, actions) => Proposals(actions, roots)
-    }(p => (p.roots, p.actions))
+    Record
+      .of[(PrevIds, Vector[GovActionState])]((prevIds, seqOf(govActionState)))
+      .imap { case (roots, actions) =>
+        Proposals(actions, roots)
+      }(p => (p.roots, p.actions))
 
   /** `EnactState` (`Internal.hs:229-239`), at the Conway parameters. */
   given enactState(using ProtVer): Codec[EnactState] =
@@ -318,8 +321,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
       )
     )
 
-  /** `RatifyState` (`Internal.hs:664-672`): the enact state, the actions to enact, the expired
-    * ones and whether a delaying action was enacted.
+  /** `RatifyState` (`Internal.hs:664-672`): the enact state, the actions to enact, the expired ones
+    * and whether a delaying action was enacted.
     */
   given ratifyState(using ProtVer): Codec[RatifyState] =
     Record.of[RatifyState](
@@ -330,11 +333,13 @@ trait NodeTypeCodecs extends VocabularyCodecs:
     * `StrictMaybe`), the deposit and the delegators (a set). The node holds the amounts as numbers.
     */
   given nodeDRepState(using ProtVer): Codec[DRepState] =
-    Record.of[(BigInt, Option[Anchor], BigInt, Set[Credential])](
-      (amount, strictMaybe(anchor), amount, sortedSet(nodeCredential))
-    ).imap { case (expiry, anchor, deposit, delegs) => DRepState(deposit, expiry, anchor, delegs) }(
-      d => (d.expiry, d.anchor, d.deposit, d.delegs)
-    )
+    Record
+      .of[(BigInt, Option[Anchor], BigInt, Set[Credential])](
+        (amount, strictMaybe(anchor), amount, sortedSet(nodeCredential))
+      )
+      .imap { case (expiry, anchor, deposit, delegs) =>
+        DRepState(deposit, expiry, anchor, delegs)
+      }(d => (d.expiry, d.anchor, d.deposit, d.delegs))
 
   /** `PulsingSnapshot` (`DRepPulser.hs:147-155`, `Rec`): the proposals, the DRep distribution, the
     * DRep states and the pool distribution.

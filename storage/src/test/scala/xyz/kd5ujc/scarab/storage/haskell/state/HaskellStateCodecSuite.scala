@@ -158,9 +158,13 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(failure(setAt(version(7)), hex("d9010281" + item)).kind.isInstanceOf[Kind.BadTag])
   }
 
-  test("sets and maps above 23 entries are indefinite, and either form reads (Encoder.hs:430-466)") {
+  test(
+    "sets and maps above 23 entries are indefinite, and either form reads (Encoder.hs:430-466)"
+  ) {
     val credentials: Vector[Credential[Staking]] = (0 until 24).toVector.map(i =>
-      Credential.KeyHashObj(KeyHash.fromBytes[Staking](Bytes(Vector.fill(28)(i.toByte))).toOption.get)
+      Credential.KeyHashObj(
+        KeyHash.fromBytes[Staking](Bytes(Vector.fill(28)(i.toByte))).toOption.get
+      )
     )
     val set = Sorted.set(credentials)
     val codec = setAt(version(9))
@@ -179,10 +183,15 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(mapCodec.encodeBytes(map).hex.take(2), "bf")
     assertEquals(readOk(mapCodec, mapCodec.encodeBytes(map)), map)
     // 23 is the longest definite one
-    assertEquals(mapCodec.encodeBytes(Sorted.map(credentials.take(23).map(_ -> 1))).hex.take(2), "b7")
+    assertEquals(
+      mapCodec.encodeBytes(Sorted.map(credentials.take(23).map(_ -> 1))).hex.take(2),
+      "b7"
+    )
   }
 
-  test("a repeated element or key is refused from version 9 and ignored before (Decoder.hs:815-962)") {
+  test(
+    "a repeated element or key is refused from version 9 and ignored before (Decoder.hs:815-962)"
+  ) {
     val c = credential[Staking]
     val twice = bytesOf { w =>
       w.arrayHead(2)
@@ -311,7 +320,9 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(readOk(rewardUpdate, rewardUpdate.encodeBytes(up)), up)
   }
 
-  test("golden: likelihood weights are single-precision floats (PoolRank.hs:88; cborg encodeFloat)") {
+  test(
+    "golden: likelihood weights are single-precision floats (PoolRank.hs:88; cborg encodeFloat)"
+  ) {
     val pool = KeyHash.fromBytes[StakePool](hex(key28)).fold(e => fail(e.toString), identity)
     val nm = NonMyopic(
       Sorted.map(Seq(pool -> Likelihood(Vector(LogWeight(1.0f), LogWeight(0.5f))))),
@@ -343,11 +354,14 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(likelihood.decodeBytes(bytes).isLeft)
   }
 
-  private def coinOf(n: Long): Coin = Coin.fromBigInt(BigInt(n)).fold(e => fail(e.toString), identity)
+  private def coinOf(n: Long): Coin =
+    Coin.fromBigInt(BigInt(n)).fold(e => fail(e.toString), identity)
 
   // ---- what the decoders refuse, with a typed error
 
-  test("a block count is a Natural read as a Word64; a delegator count an Int read as non-negative") {
+  test(
+    "a block count is a Natural read as a Word64; a delegator count an Int read as non-negative"
+  ) {
     val tooMany = bytesOf { w =>
       w.mapHead(1)
       w.bytes(hex(key28))
@@ -389,9 +403,12 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
 
   test("an alternative with a tag or arity the sum does not have is a typed error") {
     assert(failure(drep, hex("820500")).kind.isInstanceOf[Kind.LiteralMismatch])
-    assert(failure(credential[Staking], hex("8202581c" + key28)).kind.isInstanceOf[Kind.LiteralMismatch])
     assert(
-      failure(futurePParams(Params.conwayCodec), hex("8105")).kind.isInstanceOf[Kind.LiteralMismatch]
+      failure(credential[Staking], hex("8202581c" + key28)).kind.isInstanceOf[Kind.LiteralMismatch]
+    )
+    assert(
+      failure(futurePParams(Params.conwayCodec), hex("8105")).kind
+        .isInstanceOf[Kind.LiteralMismatch]
     )
     assert(failure(rewardType, hex("02")).kind.isInstanceOf[Kind.OutOfRange])
     assert(failure(vote, hex("03")).kind.isInstanceOf[Kind.OutOfRange])
@@ -415,7 +432,9 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assert(HaskellState.encode(fine).isRight)
   }
 
-  test("UTxO entries in a state file are refused (they are in the tables file); the handle writes map(0)") {
+  test(
+    "UTxO entries in a state file are refused (they are in the tables file); the handle writes map(0)"
+  ) {
     assertEquals(utxoTables.encodeBytes(UtxoTables(xyz.kd5ujc.scarab.ledger.Utxo.empty)).hex, "a0")
     val entries = bytesOf { w =>
       w.mapHead(1)
@@ -426,10 +445,15 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     // the Shelley era's stashed AVVM addresses are a UTxO, the later eras' a null
     val unitBytes = bytesOf(_.nul())
     assertEquals(readOk(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), unitBytes), ())
-    assert(failure(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), hex("a0")).kind.isInstanceOf[Kind.TypeMismatch])
+    assert(
+      failure(stashedAvvm[Allegra](using ShelleyBasedEra.SAllegra), hex("a0")).kind
+        .isInstanceOf[Kind.TypeMismatch]
+    )
   }
 
-  test("the parameters of an era are an array of the size of its list, and decode under the right era only") {
+  test(
+    "the parameters of an era are an array of the size of its list, and decode under the right era only"
+  ) {
     def size(c: Codec[xyz.kd5ujc.scarab.ledger.ProtocolParams]): Int =
       c.encodeBytes(Params.empty).value.head & 0x1f
     assertEquals(size(Params.codec(ShelleyBasedEra.SShelley)), 17)
@@ -474,14 +498,22 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       reward.encode(r2, w)
     }
     assert(failure(rewardSet, twice).kind.isInstanceOf[Kind.DuplicateElement])
-    assertEquals(readOk(rewardSet(using version(7)), bytesOf { w =>
-      w.arrayHead(2)
-      reward.encode(r1, w)
-      reward.encode(r2, w)
-    }).rewards.size, 1)
+    assertEquals(
+      readOk(
+        rewardSet(using version(7)),
+        bytesOf { w =>
+          w.arrayHead(2)
+          reward.encode(r1, w)
+          reward.encode(r2, w)
+        }
+      ).rewards.size,
+      1
+    )
   }
 
-  test("a state with trailing bytes, or truncated, is a syntax error; a wrong era is an arity error") {
+  test(
+    "a state with trailing bytes, or truncated, is a syntax error; a wrong era is an arity error"
+  ) {
     given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
     val state = StateGen.newEpochState[Conway].sample.get.copy[Conway](ru = None)
     val bytes = HaskellState.encode(state).toOption.get
@@ -512,7 +544,11 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
 
   laws("StakePoolState", StateGen.stakePoolState, stakePoolState)
   laws("PState", StateGen.pState, pState)
-  laws("DState[ShelleyAccounts]", LedgerStateGen.dState(arb[ShelleyAccounts]), dState[ShelleyAccounts])
+  laws(
+    "DState[ShelleyAccounts]",
+    LedgerStateGen.dState(arb[ShelleyAccounts]),
+    dState[ShelleyAccounts]
+  )
   laws("DState[ConwayAccounts]", LedgerStateGen.dState(arb[ConwayAccounts]), dState[ConwayAccounts])
   laws("VState", arb[VState], vState)
   laws("ShelleyCertState", StateGen.certState[Babbage], shelleyCertState)
@@ -535,10 +571,13 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
   private def era[E <: EraTag](name: String)(using ShelleyBasedEra[E]): Unit =
     val codec = HaskellStateCodecs.newEpochState[E]
     laws(s"ProtocolParams of $name", StateGen.paramsOf[E], Params.codec(summon[ShelleyBasedEra[E]]))
-    laws(s"LedgerState[$name]", StateGen.ledgerState[E], {
-      given ProtVer = Versions.eraLow(summon[ShelleyBasedEra[E]])
-      HaskellStateCodecs.ledgerState[E]
-    })
+    laws(
+      s"LedgerState[$name]",
+      StateGen.ledgerState[E], {
+        given ProtVer = Versions.eraLow(summon[ShelleyBasedEra[E]])
+        HaskellStateCodecs.ledgerState[E]
+      }
+    )
     laws(s"NewEpochState[$name]", StateGen.newEpochState[E], codec)
 
   era[Shelley]("Shelley")

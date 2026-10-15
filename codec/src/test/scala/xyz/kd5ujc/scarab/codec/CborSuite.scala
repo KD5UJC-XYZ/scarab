@@ -323,7 +323,9 @@ class CborSuite extends munit.FunSuite:
     assertEquals(Float16.fromFloat(65520f), 0x7c00) // rounds up to infinity
     assertEquals(Float16.fromFloat(1.0f + math.pow(2, -11).toFloat), 0x3c00) // a tie goes to even
     assertEquals(Float16.fromFloat(1.0f + 3 * math.pow(2, -11).toFloat), 0x3c02)
-    assertEquals(Float16.fromFloat(math.pow(2, -25).toFloat), 0) // the tie below the least subnormal
+    assertEquals(
+      Float16.fromFloat(math.pow(2, -25).toFloat),
+      0
+    ) // the tie below the least subnormal
     assertEquals(Float16.fromFloat(Float.NaN), 0x7e00)
   }
-

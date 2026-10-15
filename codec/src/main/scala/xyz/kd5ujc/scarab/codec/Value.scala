@@ -48,7 +48,8 @@ enum Value:
   override def hashCode(): Int = this.treeHash
   override def toString: String = this.treeString
 
-/** The IEEE 754 width of a CBOR float: additional information 25, 26 or 27 (RFC 8949 section 3.3). */
+/** The IEEE 754 width of a CBOR float: additional information 25, 26 or 27 (RFC 8949 section 3.3).
+  */
 enum FloatWidth:
   case Half, Single, Double
 
@@ -69,9 +70,9 @@ object Value:
     // the bits, so that a NaN equals itself and 0.0 differs from -0.0: the wire representation
     case (Float(a, wa), Float(b, wb)) =>
       wa == wb && java.lang.Double.doubleToLongBits(a) == java.lang.Double.doubleToLongBits(b)
-    case (Tag(a, _), Tag(b, _))         => a == b
-    case (Arr(_), Arr(_))               => true
-    case (Map(_), Map(_))               => true
+    case (Tag(a, _), Tag(b, _)) => a == b
+    case (Arr(_), Arr(_))       => true
+    case (Map(_), Map(_))       => true
     // not `case Null`: a stable identifier pattern compares with `==`, which is this walk
     case _ if (x eq Null) && (y eq Null) => true
     case _                               => false

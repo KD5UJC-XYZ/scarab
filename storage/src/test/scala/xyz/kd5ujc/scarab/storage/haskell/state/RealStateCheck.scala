@@ -91,6 +91,10 @@ object RealStateCheck:
               val b = again.toArray
               val at = a.indices.find(i => i >= b.length || a(i) != b(i)).getOrElse(b.length)
               println(s"DIFFERENT: ${a.length} vs ${b.length} bytes, first difference at $at")
-              println(s"  original: ${a.slice(math.max(0, at - 16), at + 32).map("%02x".format(_)).mkString}")
-              println(s"  written : ${b.slice(math.max(0, at - 16), at + 32).map("%02x".format(_)).mkString}")
+              println(
+                s"  original: ${a.slice(math.max(0, at - 16), at + 32).map("%02x".format(_)).mkString}"
+              )
+              println(
+                s"  written : ${b.slice(math.max(0, at - 16), at + 32).map("%02x".format(_)).mkString}"
+              )
               sys.exit(2)
