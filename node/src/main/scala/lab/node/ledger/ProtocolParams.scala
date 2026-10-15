@@ -7,14 +7,6 @@ import lab.cbor.{Cbor, Node, Value}
 import lab.node.ConfigError
 import lab.node.consensus.Nonce
 
-/** Execution units (Alonzo): memory and CPU steps. */
-final case class ExUnits(mem: BigInt, steps: BigInt):
-  def +(o: ExUnits): ExUnits = ExUnits(mem + o.mem, steps + o.steps)
-  def fits(limit: ExUnits): Boolean = mem <= limit.mem && steps <= limit.steps
-
-object ExUnits:
-  val zero: ExUnits = ExUnits(0, 0)
-
 /** Conway pool (SPO) voting thresholds, in the order of the protocol-parameter encoding. */
 final case class PoolVotingThresholds(
     motionNoConfidence: Rational,

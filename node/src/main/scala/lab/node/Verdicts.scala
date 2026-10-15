@@ -31,7 +31,7 @@ trait Verdicts:
   def keyHash(vkey: Bytes): Bytes
 
   /** A block decoded ahead of time, if any (taken once). */
-  def takePrepared(hash: Bytes): Option[NodeRules.Prepared]
+  def takePrepared(hash: Bytes): Option[Prepared]
 
 object Verdicts:
   /** No memory: every verdict is computed in place. The default for rules run outside the node
@@ -58,4 +58,4 @@ object Verdicts:
 
     def keyHash(vkey: Bytes): Bytes = lab.Blake2b.hash224.hash(vkey)
 
-    def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = None
+    def takePrepared(hash: Bytes): Option[Prepared] = None

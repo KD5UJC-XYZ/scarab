@@ -42,7 +42,7 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
   private val Limit = 100000
   private val witnesses = new ConcurrentHashMap[WitnessKey, java.lang.Boolean]()
   private val headers = new ConcurrentHashMap[HeaderKey, Either[OCertError, Unit]]()
-  private val prepared = new ConcurrentHashMap[Bytes, NodeRules.Prepared]()
+  private val prepared = new ConcurrentHashMap[Bytes, Prepared]()
 
   // VRF proofs depend on the epoch nonce, which only the sequential rules know; the verdicts are
   // keyed by the derived alpha string, so a block warmed under a wrong nonce is just a miss.
@@ -159,7 +159,7 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
       )
 
     def keyHash(vkey: Bytes): Bytes = VerificationCache.this.keyHash(vkey)
-    def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = None
+    def takePrepared(hash: Bytes): Option[Prepared] = None
 
   /** Verify the signatures of the leading headers of a ChainSync batch in parallel and keep the
     * verdicts for [[forHeaders]]. `state` is the header state before the first header: its epoch
@@ -191,7 +191,7 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
         .void
 
   /** The block decoded while warming, if any (taken once). */
-  override def takePrepared(hash: Bytes): Option[NodeRules.Prepared] = Option(prepared.remove(hash))
+  override def takePrepared(hash: Bytes): Option[Prepared] = Option(prepared.remove(hash))
 
   private def compute(key: WitnessKey): Boolean =
     Verdicts.Direct.witness(key.vkey, key.signature, key.message)

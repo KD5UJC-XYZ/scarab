@@ -8,37 +8,6 @@ import lab.node.{Header, HeaderVrf, Verdicts, VrfCert}
 import lab.node.ledger.Rational
 import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
-/** Why a TPraos (Shelley..Alonzo) header is rejected. Closed: every rule has its own case. */
-enum TPraosError:
-  case NotTPraos(era: String)
-  case Malformed(reason: String)
-  case VrfKeyUnknown(pool: Bytes)
-  case VrfKeyWrong(pool: Bytes)
-  case BadNonceVrf(reason: String)
-  case BadLeaderVrf(reason: String)
-  case LeaderValueTooBig(slot: BigInt)
-  case NotActiveOverlaySlot(slot: BigInt)
-  case UnknownGenesisKey(key: Bytes)
-  case WrongGenesisColdKey(issuer: Bytes, expected: Bytes)
-  case WrongGenesisVrfKey(got: Bytes, expected: Bytes)
-  case OCert(error: OCertError)
-
-  def message: String = this match
-    case NotTPraos(e)            => s"$e headers are not TPraos headers"
-    case Malformed(r)            => r
-    case VrfKeyUnknown(p)        => s"issuer ${p.hex} is not a registered pool"
-    case VrfKeyWrong(p)          => s"VRF key is not the registered key of pool ${p.hex}"
-    case BadNonceVrf(r)          => s"nonce VRF proof rejected: $r"
-    case BadLeaderVrf(r)         => s"leader VRF proof rejected: $r"
-    case LeaderValueTooBig(s)    => s"issuer not elected for slot $s: leader value above threshold"
-    case NotActiveOverlaySlot(s) => s"slot $s is a non-active overlay slot: no block allowed"
-    case UnknownGenesisKey(k)    => s"genesis key ${k.hex} has no delegation"
-    case WrongGenesisColdKey(i, e) =>
-      s"issuer ${i.hex} is not the genesis delegate ${e.hex} for this overlay slot"
-    case WrongGenesisVrfKey(g, e) =>
-      s"VRF key hash ${g.hex} is not the genesis delegate's ${e.hex}"
-    case OCert(e) => e.message
-
 /** TPraos header validation and chain-dependent state evolution: the Overlay, Prtcl, Updn, Tickn
   * and OCert rules of cardano-ledger, over the same [[PraosState]] that Praos continues from.
   */

@@ -7,20 +7,6 @@ import lab.cbor.Bytes
 import lab.node.{EpochGeometry, Header, HeaderVrf}
 import lab.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
-enum Nonce:
-  case Neutral
-  case Hash(bytes: Bytes)
-
-  /** `⭒`: Neutral is the identity; otherwise the hash of the concatenation. */
-  def combine(other: Nonce): Nonce = (this, other) match
-    case (Neutral, b)       => b
-    case (a, Neutral)       => a
-    case (Hash(a), Hash(b)) => Hash(Blake2b.hash256.hash(Bytes(a.value ++ b.value)))
-
-  def render: Option[String] = this match
-    case Neutral => None
-    case Hash(b) => Some(b.hex)
-
 /** Praos chain-dependent state (ouroboros-consensus `PraosState`). */
 final case class PraosState(
     epoch: BigInt,
@@ -35,10 +21,6 @@ final case class PraosState(
       */
     previousEpochNonce: Nonce = Nonce.Neutral
 )
-
-/** Stake and VRF key of each pool for the leader schedule of one epoch. */
-final case class PoolDistribution(stake: Map[Bytes, BigInt], vrf: Map[Bytes, Bytes]):
-  lazy val total: BigInt = stake.values.sum
 
 final case class PraosConfig(
     geometry: EpochGeometry,

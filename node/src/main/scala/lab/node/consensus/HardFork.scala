@@ -11,33 +11,6 @@ enum ForkTrigger:
   case AtVersion(major: Int)
   case AtEpoch(epoch: BigInt)
 
-/** Why a header fails the envelope checks (ouroboros-consensus `EnvelopeError`, plus the era
-  * history and the Conway ledger's header protocol-version rule). A closed set; `message` is the
-  * rendering used in validation errors.
-  */
-enum EnvelopeError:
-  /** The ledger (Praos) or the header (TPraos) announces a major version above what this node
-    * supports.
-    */
-  case ObsoleteNode(version: BigInt, maxSupported: BigInt)
-  case HeaderSizeTooLarge(size: BigInt, max: BigInt)
-  case BlockSizeTooLarge(size: BigInt, max: BigInt)
-
-  /** Conway BBODY on mainnet: the header's major version may exceed the ledger's by at most one. */
-  case HeaderProtVerTooHigh(supplied: BigInt, expected: BigInt)
-
-  /** The block's era is not the era the hard-fork combinator is in at its epoch. */
-  case WrongEra(header: Era, expected: Era, epoch: BigInt, ledgerMajor: BigInt)
-
-  def message: String = this match
-    case ObsoleteNode(v, max) =>
-      s"obsolete node: protocol major version $v exceeds the maximum $max this node supports"
-    case HeaderSizeTooLarge(s, max) => s"header size $s exceeds $max"
-    case BlockSizeTooLarge(s, max)  => s"body size $s exceeds $max"
-    case HeaderProtVerTooHigh(s, e) => s"header protocol major version $s exceeds the allowed $e"
-    case WrongEra(h, e, epoch, major) =>
-      s"$h block in epoch $epoch at protocol major version $major, the chain is in $e"
-
 /** The era history of the Shelley-based eras and the envelope checks that depend on it.
   *
   * Upstream (ouroboros-consensus 4.2.0.x, the version cardano-node 11.1.3 uses):

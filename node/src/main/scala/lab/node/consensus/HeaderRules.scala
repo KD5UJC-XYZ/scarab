@@ -6,28 +6,6 @@ import lab.cbor.Bytes
 import lab.network.ChainSync
 import lab.node.{BlockRef, Header}
 
-/** Why a header is refused before its block is fetched. Closed: every rule family has its case. */
-enum HeaderError:
-  /** The envelope rules (era, protocol version, header and body size). */
-  case Envelope(error: EnvelopeError)
-
-  /** The Praos rules: VRF key and proof, leader threshold, operational certificate and KES
-    * signature, certificate counter.
-    */
-  case Praos(reason: String)
-
-  /** The TPraos rules (Shelley to Alonzo): overlay schedule, VRF proofs, threshold, certificate. */
-  case TPraos(error: TPraosError)
-
-  /** The header cannot belong to the chain it claims to extend. */
-  case Structure(reason: String)
-
-  def message: String = this match
-    case Envelope(e)  => s"envelope: ${e.message}"
-    case Praos(r)     => s"praos: $r"
-    case TPraos(e)    => s"tpraos: ${e.message}"
-    case Structure(r) => s"structure: $r"
-
 /** Header-only validation of a chain, the work upstream's ChainSync client does before a block is
   * wanted (`Ouroboros.Consensus.MiniProtocol.ChainSync.Client`): each header is checked against a
   * forecast of the ledger view of its slot, taken from `anchor`, a ledger state of the same chain
