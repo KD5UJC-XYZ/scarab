@@ -78,7 +78,7 @@ object TxKit:
 
   /** The ledger with `n` outputs of `value` for alice, at txIn(1..n). */
   def ledger(n: Int, value: BigInt = 100 * ada): LedgerState =
-    state(10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
+    TestLedger.state(10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
 
   /** Alice pays `value - fee` to bob from `txIn(i)`. */
   def pay(i: Int, fee: BigInt = ada, value: BigInt = 100 * ada): (Bytes, Bytes) =
