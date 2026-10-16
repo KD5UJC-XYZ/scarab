@@ -32,7 +32,8 @@ names, normalised to SPDX identifiers where they are unambiguous.
 | Jar | Native content | Upstream licence | Note |
 |---|---|---|---|
 | `org.rocksdb:rocksdbjni:10.2.1` | `librocksdbjni` for Linux (x86, x86_64, aarch64, ppc64le, s390x, riscv64; glibc and musl), macOS (x86_64, arm64), Windows x64 | Apache-2.0 OR GPL-2.0-only (RocksDB) | The jar has no licence file. RocksDB statically links compression libraries (zlib, snappy, lz4, zstd, bzip2; BSD- or zlib-style licences) whose texts are not in the jar, so a binary distribution must add them (not verified here). Only the Linux x86_64 library is exercised by this project's Docker build. |
-| `foundation.icon:blst-java:0.3.2` | `libblst` for Linux amd64/aarch64, macOS x86_64/arm64 | Apache-2.0 (supranational/blst) | No licence file in the jar. |
+| `foundation.icon:blst-java:0.3.2` | `libblst` for Linux amd64/aarch64, macOS x86_64/arm64 | Apache-2.0 (supranational/blst) | No licence file in the jar. On Linux amd64 the library of `blst-native` (below) is loaded instead. |
+| `blst-native` (this repository) | `libblst` for Linux amd64, built from supranational/blst v0.3.15 with `-D__BLST_PORTABLE__` | Apache-2.0 (supranational/blst) | Licence text in `blst-native/LICENSE-blst`; recipe and checksum in [ADR 0012](adr/0012-portable-blst.md). |
 | `org.scalus:scalus-secp256k1-jni:0.6.0` | `libscalus_secp256k1` for Linux x86_64/arm64, macOS x86_64/arm64 | Wrapper Apache-2.0 per its POM; wraps bitcoin-core/secp256k1 (MIT) | No licence file in the jar; the MIT status of the wrapped library is upstream's, not read from the jar. |
 
 Earlier `NOTICE` text said these natives are bundled "for linux x86_64"; the jars hold several platforms

@@ -95,6 +95,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   0 divergences, a conversion 136 ms at most). The K1 UTxO checkpoints keep the key `txid ++ be32 ix` of before K6, so
   `PreviewDifferentialMain` loads them through the store of this build.
 
+### Fixed (SIGILL on CPUs without ADX/BMI2, issue 93, B25)
+- The BLS12-381 builtins no longer kill the JVM on a CPU without `adx`/`bmi2` (preprod follower on an older 2-core x86-64 CPU: SIGILL in
+  `libblst.so` `mulx_mont_384`, exit 134, no event). The library inside `blst-java:0.3.2` is blst v0.3.10 built with ADX
+  code and no run-time switch. New module `blst-native` ships blst v0.3.15 (the reference node's version) built with
+  `-D__BLST_PORTABLE__` (`docker/blst.Dockerfile`, reproducible) at the resource path `blstJNI` loads, ahead of blst-java on
+  the class paths of `crypto` and `plutus`; same speed on a CPU with ADX. `follow` checks the library and `/proc/cpuinfo`
+  before any script runs and refuses with a typed `NativeLibraryError` event instead of crashing; a `blst` event reports
+  the platform, CPU features and library. New tool `BlstCheckMain`. The bundle layout has a new directory,
+  `classes/blst-native`. ADR 0012, `BlstSuite`.
+
 ### Fixed (graceful stop, issue 89)
 - A SIGTERM no longer leaves the JVM hanging after the shutdown snapshot. `Compute.pool` ran the whole follower session as one
   `evalOn` fiber on the CPU pool; a cancellation there ran the finalizers on the pool's own thread, the pool resource shut the

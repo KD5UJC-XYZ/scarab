@@ -12,6 +12,7 @@ enforced by sbt: a cycle does not load.
 
 | Module | Contents | Effect style |
 |---|---|---|
+| `blst-native` | The portable libblst (ADR 0012) at the resource path blst-java loads, and `Blst`, the start-up check of the library and the CPU (sbt project `blstNative`) | `F[_]` with `Sync`/`Raise` |
 | `codec` | CBOR with original-bytes preservation (`Cbor`, `Node`, `Value`), `Bytes`, `Rational` | Pure |
 | `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios), operational certificates | Pure |
 | `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`) | Pure |
@@ -26,6 +27,8 @@ enforced by sbt: a cycle does not load.
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
 ```
+blst-native -> crypto, plutus (before blst-java on their class paths)
+
 codec <- crypto <- protocol <- network ------------------------.
   ^                  ^                                          \
   |                  '--- ledger <- consensus <- legacy <- storage <-- node
@@ -357,7 +360,8 @@ forger.
   `OutOfBudget`, `Script`).
 - **Interpreter** (`plutus/ScalusEvaluator.scala`): the UPLC machine and builtins of Scalus (Apache-2.0,
   `org.scalus:scalus_3:1.3.0`); nothing else of Scalus is used by the node. BLS12-381 runs on blst
-  (`foundation.icon:blst-java`) and secp256k1 on `scalus-secp256k1-jni`; both bundle linux x86_64
+  (`foundation.icon:blst-java`, with the portable `libblst` of `blst-native` loaded in place of the one
+  in its jar, so that no CPU needs ADX/BMI2: ADR 0012) and secp256k1 on `scalus-secp256k1-jni`; both bundle linux x86_64
   libraries that the JVM extracts to its temporary directory, and `ScalusEvaluatorSuite` evaluates a
   BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).
 - **Pure or effectful**: evaluation is a deterministic function of the request, so the ledger rules,

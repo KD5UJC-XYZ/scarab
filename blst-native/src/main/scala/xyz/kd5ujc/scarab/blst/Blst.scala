@@ -94,11 +94,11 @@ enum BlstProblem:
 
   def message: String = this match
     case LibraryNeedsMissingCpuFeatures(missing, build) =>
-      val what =
-        if missing.isEmpty then "an unreadable CPU"
-        else missing.map(_.flag).toList.sorted.mkString(", ")
-      s"the BLS12-381 library in use is not the portable build ($build) and the processor cannot be shown to have it ($what); " +
-        "put blst-native before blst-java on the classpath (docs/adr/0012-portable-blst.md)"
+      val cpu =
+        if missing.isEmpty then "the processor's features cannot be read"
+        else s"the processor lacks ${missing.map(_.flag).toList.sorted.mkString(", ")}"
+      s"the BLS12-381 library in use is not the portable build ($build) and $cpu; " +
+        "put blst-native before blst-java on the class path (docs/adr/0012-portable-blst.md)"
     case Unusable(answer, failure) =>
       s"the BLS12-381 library fails its known answer $answer: $failure"
 
