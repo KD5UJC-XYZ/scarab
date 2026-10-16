@@ -64,11 +64,70 @@ class StsSuite extends DisciplineSuite:
   checkAll("RuleT Local", LocalTests[R, Globals].local[Int, Int])
   checkAll("RuleT Handle", HandleTests[R, Fail].handle[Int])
 
+  // A few hundred thousand steps on a stack of 256 KiB: every way of sequencing rule steps must
+  // run in constant stack (owner requirement: strictly typed, stack-safe code).
+  private val Steps = 300000
+
+  private def onSmallStack[A](body: => A): A =
+    var result: Option[Either[Throwable, A]] = None
+    val thread = new Thread(
+      null,
+      () =>
+        result = Some(
+          try Right(body)
+          catch case t: Throwable => Left(t)
+        ),
+      "small",
+      256 * 1024
+    )
+    thread.start()
+    thread.join()
+    result.fold(fail("no result"))(_.fold(throw _, identity))
+
+  private val bump: R[Unit] = Stateful[R, Int].modify(_ + 1)
+
   test("tailRecM is stack safe") {
     val loop = Monad[R].tailRecM(0)(n =>
       if n < 1000000 then Monad[R].pure(Left(n + 1)) else Monad[R].pure(Right(n))
     )
-    assertEquals(loop.run(globals, 0), Right((0, 1000000)))
+    assertEquals(onSmallStack(loop.run(globals, 0)), Right((0, 1000000)))
+  }
+
+  test("a recursion through flatMap is stack safe, to the right and to the left") {
+    def right(n: Int): R[Unit] = if n == 0 then Monad[R].unit else bump.flatMap(_ => right(n - 1))
+    val left = (1 to Steps).foldLeft(Monad[R].unit)((acc, _) => acc.flatMap(_ => bump))
+    assertEquals(onSmallStack(right(Steps).run(globals, 0)), Right((Steps, ())))
+    assertEquals(onSmallStack(left.run(globals, 0)), Right((Steps, ())))
+  }
+
+  test("traverse_, traverse, foldM and sequence over a few hundred thousand steps are stack safe") {
+    val xs = List.range(0, Steps)
+    assertEquals(onSmallStack(xs.traverse_(_ => bump).run(globals, 0)), Right((Steps, ())))
+    assertEquals(
+      onSmallStack(xs.traverse(i => bump.as(i)).run(globals, 0).map((s, ys) => (s, ys.size))),
+      Right((Steps, Steps))
+    )
+    assertEquals(
+      onSmallStack(xs.foldM(0)((a, i) => bump.as(a + i)).run(globals, 0)),
+      Right((Steps, xs.sum))
+    )
+    assertEquals(
+      onSmallStack(xs.map(_ => bump).sequence_.run(globals, 0)),
+      Right((Steps, ()))
+    )
+  }
+
+  test("a failure at the end of a long sequence, and a handler around it, are stack safe") {
+    val long =
+      List.range(0, Steps).traverse_(_ => bump) *> Raise[R, Fail].raise[Fail, Unit](Fail.Big)
+    assertEquals(onSmallStack(long.run(globals, 0)), Left(Fail.Big))
+    val handled = Handle[R, Fail].handleWith(long)(_ => Stateful[R, Int].get.void)
+    assertEquals(onSmallStack(handled.run(globals, 5)), Right((5, ())))
+    // handlers nested a few thousand deep
+    val nested = (1 to 5000).foldLeft(long)((p, _) =>
+      Handle[R, Fail].handleWith(p)(e => Raise[R, Fail].raise[Fail, Unit](e))
+    )
+    assertEquals(onSmallStack(nested.run(globals, 0)), Left(Fail.Big))
   }
 
   test("the system adds its signal to the state and refuses what is too big") {

@@ -50,6 +50,31 @@ class DiffSuite extends ScalaCheckSuite:
     }
   }
 
+  test("the comparison of long collections runs in constant stack (256 KiB thread)") {
+    var found: Option[Either[Throwable, (Option[String], Option[String])]] = None
+    val thread = new Thread(
+      null,
+      () =>
+        found = Some(
+          try
+            val a = Vector.range(0, 300000)
+            val m = SortedMap.from(a.map(i => i -> i))
+            Right(
+              (
+                a.firstDifference(a.updated(299999, -1)).map(_.path.render),
+                m.firstDifference(m.updated(299999, -1)).map(_.path.render)
+              )
+            )
+          catch case t: Throwable => Left(t)
+        ),
+      "small",
+      256 * 1024
+    )
+    thread.start()
+    thread.join()
+    assertEquals(found.map(_.toOption), Some(Some((Some("[299999]"), Some("[299999]")))))
+  }
+
   test("a path renders fields, keys and positions") {
     val nested = Path.root / Step.Field("nes") / Step.Field("accounts") / Step.Key("ab12") /
       Step.Field("balance") / Step.Index(3)

@@ -382,6 +382,26 @@ As in section 6, with `--read-ahead N` and `--header-first on|off`; the `chainSy
 log give the round times (every 200 rounds, cumulative) and the `headersChecked` lines the validated,
 unchecked and waited header counts (every 50,000).
 
+## 9. The differential harness: what the conversion costs (J2.2)
+
+`--rules differential` (and `PreviewDifferentialMain`) converts the old state to the mirror (`StateMirror.toMirror`) at
+the sampling points: the first block, the first block of every epoch and era, every 2,160th block. While the new side is
+not ported the conversion is the whole cost. Linux x86-64, JDK 21, 8 CPUs, `-Xmx16g`, commit of the J2.2 harness,
+`PreviewDifferentialMain <K1 db> 72` (21 epochs of the Preview sync, each replayed from its snapshot and UTxO checkpoint, once
+with the old rules alone and once with the harness):
+
+| | |
+|---|---|
+| blocks replayed | 70,183 in 21 epochs (1, 73, 145, ..., 1441) |
+| replay, old rules alone / with the harness | 305.4 s / 317.4 s (+3.9%) |
+| conversions | 73; median 302 ms, p99 and maximum 1.39 s |
+| conversion per epoch | median 1.13 s, maximum 5.15 s (epoch 1441: 4 conversions of a state of about 3.2 M UTxO entries and 112 k accounts) |
+| eras fixture, every block sampled | 731 blocks, 0.40 ms median, 0.64 ms mean, 57.9 ms maximum per conversion |
+
+The cost grows with the state (121 ms at epoch 1, about 1.3 s at epoch 1441). Sampling is the design's D7 interval; a
+conversion after every block is out of the question on a real chain (twenty thousand blocks an epoch). Memory: the new side's
+states ride beside the old ones for the volatile window; while nothing is ported the harness keeps none.
+
 ## 8. Memory (K6)
 
 The uninterrupted run of section 3 grew from 1 GB to a container RSS of 5.66 GB with `-Xmx3g`. This

@@ -1,6 +1,6 @@
 # Ledger-state mirror, step 2
 
-**Status**: Accepted 2026-10-15 with the recommended decisions D1 to D10 ([ADR 0009](../adr/0009-ledger-mirror-step-2.md)); in progress (jump 1; J1.5, the consensus half live, done). Tracked in [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82); step 1 is [ledger-mirror.md](ledger-mirror.md).
+**Status**: Accepted 2026-10-15 with the recommended decisions D1 to D10 ([ADR 0009](../adr/0009-ledger-mirror-step-2.md)); in progress (jump 1 done; jump 2: J2.1 and J2.2 done). Tracked in [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82); step 1 is [ledger-mirror.md](ledger-mirror.md).
 
 This plan was written against `integrate/batch7` at 1f7ea8ef (worktree (local working data)). It draws on the step-1 plan, the inventory, the CHANGELOG sections S0–S9, `docs/findings.md`, the code, and the pinned upstream sources in (local working data).
 
@@ -87,6 +87,7 @@ final case class NodeState(ext: ExtLedgerState, extras: ConsensusExtras)
   - `Bbody.scala` (blocks made, ref-script and ex-units block limits, today in `LedgerRules.scala:474-529`)
 - Pure helpers (`tierRefScriptFee`, `minUTxO`, `scriptsNeeded`, `collateralChecks`, `Phase2`, `ScriptContexts`) are reused unchanged. They take `TxOut` and `ProtocolParams`, which are unchanged.
 - **Interpreter on the hot path:** the reference is `Kleisli[StateT[Either[LedgerFailure, *], S, *], Globals, *]`. If it costs more than 10% of block-apply time against today's `Either` on a Preview epoch (measured with the existing `Compute.timed(stepLabel)`), replace it by a fused `opaque type RuleT[S, A] = (Globals, S) => Either[LedgerFailure, (S, A)]` with hand-written cats-mtl instances. The algebras do not change.
+  - **As built (J2.1):** `Sts[Env, S, Sig, Fail]` is Haskell's `STS` class (`Extended.hs:209-268`): `transition[F[_]: Monad](env, signal)(using Ask[F, Globals], Stateful[F, S], Raise[F, Fail]): F[Unit]`. `Embed[S, S0, Fail, Fail0](state: Lens[S0, S], failure)` and `Sts.trans` are `Embed` and `trans` (`Extended.hs:270-286,475`): `Stateful.focus(lens)` and `Raise.contramap(wrap)` hand a sub-rule its part of the state and wrap its failures. `Sts.check` is `?!`. The interpreter is `RuleT[Fail, S, A]`, a **trampolined** program (data walked by a loop with an explicit typed stack of frames; instances `Monad`, `Local[_, Globals]`, `Stateful`, `Handle`, laws checked with cats-mtl-laws): stack-safe for any length of sequence (owner requirement; tested with 300,000 steps on a 256 KiB thread), where a first fused-function form overflowed. Nothing was ported to measure against, and the algebras do not change with the interpreter, so J2.4 measures the reference stack and a fused form against it on a Preview epoch. Haskell's events (`tellEvent`) are not modelled; the `Tell` capability comes with the first rule that needs it. `Globals(ledger: LedgerGlobals, geometry: EpochGeometry)` pairs the two records rather than copying their fields (`BaseTypes.hs:761-789`).
 - **Mempool and forger:** both are Conway-only today (`Rejection.WrongEra`, `ForgeError.UnsupportedProtocol`). They become `MempoolState(base, current: LedgerState[Conway], …)` and `BlockBuilder.select(ticked: NewEpochState[Conway], …)`, and the era is refused at the unpack point by the witness.
 - **Header-first validation:** `HeaderRules[S, P]` is already generic. `NodeHeaderRules` builds its `LedgerView` from `nesPd`, the governance-state parameters and `genDelegs`; the forecast stays within 3k/f.
 
@@ -145,6 +146,16 @@ final case class NodeState(ext: ExtLedgerState, extras: ConsensusExtras)
   - `NotPorted` reseeds and counts, so the harness is on from the first port and its coverage report shows what is left.
 - **Removal:** at J2.9 the flag, the package, the `legacy.NodeState` pairing and `MirrorCheck` go. `follow --mirror-check` becomes `--snapshot-check` (V3 encode, decode, `Eq` at each boundary), and `devnet.py soak --mirror-check` is renamed with it.
 
+**As built (J2.2), where it differs from the above:**
+- **The pair.** `Paired(old: NodeState, neu: Option[MirrorState], at: Option[BlockRef])`. `legacy.NodeState` is the frozen V1-V3 schema, not the live old side (stale since J1.5), and there is no `NodeState(ext, extras)` yet, so the new side is the mirror. `neu` is the new side's state *after* the block when it has one: a side that is not ported holds none (keeping a seeded copy nobody reads would double the memory of the run, R6), and is seeded from the old state when it is next needed.
+- **Not `VolatileChain[Paired]`.** That retypes every consumer of the chain (forger, mempool, query source, storage, header gate, relay) for a harness that goes at J2.9. `Shadowed` makes `DifferentialRules` the node's own `BlockRules[F, NodeState]` and keeps the new side's state by block hash, found through the header's parent hash; a rollback or a fork needs nothing, and what is older than 2k blocks is forgotten. The suites and the Preview tool use `Paired` directly.
+- **Sampling.** `Sampling.Boundaries(2160)` (D7): the first block the harness sees, the first block of every epoch and era, every 2,160th block; `EveryBlock` for the eras fixture. A conversion of a Preview state costs about a second (R7), so a per-block "reseed" is not an option on a real chain; verdicts are compared at every block.
+- **Stages.** One, `Stage.Block`. `Tick`, `Header`, `Tx` and `Bbody` need the old side to expose them, and only a ported rule has a state of its own to compare there: J2.3 splits `NodeRules.applyFull` for `Tick`.
+- **`Relation` (`Exact | NewRefines | Ignored`) is not built**: nothing is ported, so nothing needs a gap-aware comparison. It arrives with the first port that does.
+- **Policy** (`Halt | Reseed`, `--on-divergence`) is carried by `Raise[F, Divergence]` for the halt (exit status 3, event `rulesHalted`); `--repro-dir` defaults to `<db>/differential`.
+- **Repro bundle** (`Repro.scala`; the plan said V3): `pre.snapshot` is a format-4 snapshot of the state before the block with the UTxO set as its handle, `utxo.bin` the entries the block reads (state and store), `block.cbor`, `divergence.json` (`kind`, `path`, both values, block, era, stage). `DifferentialReplayMain <bundle> (--genesis-dir|--config)` reruns it; exit 1 means still diverging, the bisect predicate. `NewRules.current` is the one place the ports register. Small bundles go under `fixtures/differential/` when there is one to commit (none exists while nothing is ported).
+- **`PreviewDifferentialMain`** replays from the K1 snapshot of epoch e the blocks up to the snapshot of e+1 (read from the ImmutableDB files without opening it) on a scratch copy of the UTxO checkpoint of e, with and without the harness, and compares the end state with the snapshot. The K1 checkpoints keep the UTxO under the key `txid ++ be32 ix` of before K6 (`txid ++ be16 ix` now), so the tool loads them through the store of this build.
+
 ### 2.6 Feature work that must survive (gate owners)
 - **Relay, ChainServer, InboundGovernor:** they read only `VolatileChain` points, so the type parameter changes and nothing else. Gate: devnet `relay`.
 - **Forging, mempool, NtC LocalTxSubmission/Monitor:** J2.8. Gates: `pool`, `e2e`, `ntc`.
@@ -196,11 +207,11 @@ Goal: NtC answers from the mirror codec; the snapshot payload in Haskell bytes (
 
 Goal: `NodeState(ext: ExtLedgerState, extras)` is live; new era-indexed rules everywhere; old rules, the flat state and the conversion removed only after agreement on the eras fixture, every Preview state and a preprod replay.
 
-1. **J2.1 Infrastructure.**
+1. **J2.1 Infrastructure (done; sections 2.2 and 2.5, as built).** `BlockFailure` lives in `ledger` (`ValidationError(point, failure)` renders `rule` and `reason` byte for byte, pinned by `BlockFailureSuite`); the Byron, Praos, ledger-lite, hand-over and transaction-decode cases still carry their upstream's text (those return `String`) and go with it. `Diff` is `ledger/state/Diff.scala`, `derives Diff` on the records that `derives Eq`, the era-indexed ones by the witness in `EraInstances`.
    - `ledger/rules/Sts.scala` (capabilities, `focus`, `RuleT`), `Globals` (from `LedgerGlobals` plus geometry).
    - `BlockFailure` ADT in `NodeRules` (D6).
    - `Diff[A]` instances beside the `Eq` givens in `ledger/state/*` and `consensus/state/*`.
-2. **J2.2 Harness skeleton.**
+2. **J2.2 Harness skeleton (done; see section 2.5, as built).**
    - `node/differential/*`, `--rules`, `DifferentialErasSuite`, `PreviewDifferentialMain`, repro bundles.
    - The new side starts as "reseed everything" (`NotPorted`), which shows zero divergences and measures the conversion cost.
 3. **J2.3 Tick for all eras:** `Tick`, `NewEpoch`, `Rewards` (attributed `RewardSet`; `rewardDraft`/`rewardRegistered` stay in `NodeExtras`), `Translate` chain, Byron handover to `NewEpochState[Shelley]`, Conway HARDFORK at pv 10 (`updateDRepDelegations`; pv 11 `populateVRFKeyHashes` is J3.3).
@@ -280,6 +291,11 @@ Goal: debug-query answers byte-equal to the reference with no mask, on a node sy
 - **R8. Behaviour change hidden inside "refinement"** (VRF registry). Verdict changes are confined to jump 3, where they are flagged and tested on the devnet.
 
 ## 8. Hand-offs
+- **J2.3 (Tick for all eras), from J2.1 and J2.2:**
+  - `NodeRules.applyFull` does the epoch boundaries and the tick inline (`Epoch.boundary`, `Epoch.tick`): split it so the old side returns the ticked state before the header and the transactions, add `Stage.Tick(epochsCrossed)`, and compare there. `NewRules.Apply` takes a `MirrorState` and answers a whole block; a tick-only port needs a stage-shaped answer (`NewRules` per stage), and `Relation` for what the new side does better.
+  - Write the rules as `Sts` instances; the tick of several eras is a fold of `Translate`; run `RuleT` against the reference stack on a Preview epoch when the first rule exists (the 10% gate of 2.2).
+  - `PreviewDifferentialMain` is the gate; the K1 corpus (`.workspace/data/2026-10-14-k1-scala-preview/db`) works as it is. The cost of the conversion is in `docs/performance.md`.
+  - `Diff[UtxoTables]` and `Diff[NodeExtras]` are leaves (the handle, and the node's bookkeeping compared whole); the new side's UTxO is compared by the counts and stake maps (`comparable` in the Preview tool) until the UTxO is the store's.
 - **Step D (snapshots in Haskell layout, import and export):**
   - directory `ledger/<slot>[_suffix]/{state,tables,meta}`;
   - `tables` = `[ {34-byte key → MemPack TxOut} ]` sorted, streamed from RocksDB (the keys are already Haskell's `txid ++ be16 ix`); a MemPack encoder with `scripts/oracle/mempack.py` as the reference;

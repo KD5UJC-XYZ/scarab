@@ -5,6 +5,50 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (ledger-state mirror, step 2, jump 2: infrastructure and the differential harness, J2.1 and J2.2)
+- **`BlockFailure` (D6).** `NodeRules.applyBlock` returns `Either[BlockFailure, NodeState]`, a closed ADT in `ledger`
+  (structure, decode, byron, envelope, tpraos, praos and ledger cases that carry what the rule found); `ValidationError`
+  holds it and renders the same `rule` and `reason` as before, byte for byte (`BlockFailureSuite` pins the strings; the
+  devnet tools and the remote runs parse them). The cases whose upstream returns `String` (Byron rules, Praos, ledger-lite,
+  the hand-over, transaction decoding) carry that text, as `PredicateFailure.Unmapped` does, and go with it.
+- **`ledger.rules`: `Sts`, `RuleT`, `Globals`.** `Sts[Env, S, Sig, Fail]` is Haskell's `STS` class over cats-mtl
+  (`Ask[F, Globals]`, `Stateful[F, S]`, `Raise[F, Fail]`); `Embed` and `Sts.trans` run a sub-rule on a focused part of the
+  state (`Stateful.focus` over a Monocle lens) with its failures wrapped. `RuleT` is a trampolined interpreter: the
+  program is data and `run` walks it with an explicit typed stack of frames, so `flatMap` to the right and to the left,
+  `traverse`, `foldM` and nested handlers over 300,000 steps run on a 256 KiB thread (owner requirement: stack-safe code;
+  a fused function form, tried first, overflowed at that depth). The cats-mtl laws (`Stateful`, `Local`, `Handle`, and a
+  focused `Stateful`) hold. Deviation: the plan names the `Kleisli`/`StateT` stack the reference and a fused function the
+  fallback; neither was measured, as no rule is ported. J2.4 measures `RuleT` against the stack.
+- **`Diff[A]`.** The first difference of two states by its path (`es.ls.cert.dState.accounts.states[credential].drep`),
+  `derives Diff` on the records that derive `Eq`, the era-indexed ones by the witness beside their `Eq`, leaves from
+  `Eq` and `Show`. Properties: empty exactly when equal, the same place from either side, an edit made through a lens
+  found at the lens's path (on populated states), constant stack on 300,000-element collections.
+- **The differential harness (`--rules old|new|differential`, default `old`).** `DifferentialRules` runs the old rules
+  and a new side over `Paired(old, neu, at)` states; verdicts are compared at every block, the whole state (the old state
+  through the mirror, against the new side's, with `Diff`) at the first block, the first block of every epoch and era and
+  every 2,160 blocks. Nothing is ported, so the new side takes the old state at those points ("reseed everything"): zero
+  divergences by construction, and the cost of the conversion is measured. `--rules new` is refused at start.
+  `--on-divergence halt|reseed` (exit status 3 on halt) and `--repro-dir` (default `<db>/differential`): a divergence keeps
+  a repro bundle (`pre.snapshot`, `utxo.bin`, `block.cbor`, `divergence.json`) that `DifferentialReplayMain` reruns (exit 1:
+  still diverges, the bisect predicate). Log events `differentialSampled`, `differentialSummary`, `rulesDiverged`,
+  `rulesHalted`. `devnet.py --rules differential` (and `SCARAB_RULES`) runs any scenario with it; `soak` and
+  `e2e` fail on a divergence.
+- **Deviations from the plan, for the record.** (1) The pair is `(NodeState, Option[MirrorState])`, the new side being the
+  mirror until the node has `NodeState(ext, extras)` (`legacy.NodeState` is the frozen schema, not the live old side). (2)
+  The node does not hold `VolatileChain[Paired]`: `Shadowed` makes the harness the node's own `BlockRules[F, NodeState]` and
+  keeps the new side by block hash, which leaves the forger, mempool, query source, storage and relay alone. (3) Stages: one,
+  `Block`; `Tick` needs `NodeRules.applyFull` split (J2.3). (4) `Relation` is not built, nothing needs it yet. (5) Repro
+  pre-states are format-4 snapshots (the plan said V3).
+- **Evidence.** `check` and `scalafixAll --check` green. `DifferentialErasSuite` (the 731 blocks of the eras fixture, Byron
+  to Conway): 0 divergences, the old states equal to the states without the harness, a conversion of 0.40 ms median
+  (0.64 mean, 57.9 max) per block, sampled after every block. `PreviewDifferentialMain`, stride 72 (21 of the 1,451 epochs,
+  70,183 blocks, from the K1 snapshot and UTxO checkpoint of epoch e to the snapshot of e+1): 0 divergences, 21/21 end states
+  equal to the recorded snapshots, replay 305.4 s alone and 317.4 s with the harness (+3.9%); a conversion costs 302 ms
+  median, 1.39 s at most, about 3 to 4 per epoch (1.1 s median, 5.2 s at most per epoch). Devnet: `e2e` passed;
+  `soak --seconds 480` 24/24 comparisons matched, 254 to 257 blocks, and the same with `--rules differential` (12 samples,
+  0 divergences, a conversion 136 ms at most). The K1 UTxO checkpoints keep the key `txid ++ be32 ix` of before K6, so
+  `PreviewDifferentialMain` loads them through the store of this build.
+
 ### Fixed (graceful stop, issue 89)
 - A SIGTERM no longer leaves the JVM hanging after the shutdown snapshot. `Compute.pool` ran the whole follower session as one
   `evalOn` fiber on the CPU pool; a cancellation there ran the finalizers on the pool's own thread, the pool resource shut the
