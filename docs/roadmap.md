@@ -43,6 +43,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 - **B17** (P1, done) No nesting limit below the size of the block: transaction bodies and scripts are decoded, encoded and walked iteratively (preprod transaction f90dce57, block 5,183,974; `TreeFold`, `DeepNestingSuite`).
 - **B18** [#84](https://github.com/KD5UJC-XYZ/scarab/issues/84) (P1, done) The mempool, block-builder, local-query and Byron decoders limit nesting below the reference too (the remaining paths after B17).
 - **B19** (P1, done) The `n` of a native `script_n_of_k` and a slot are decoded as the reference does (`Int`, `Word64`), not as unsigned integers (preprod transaction b1db2a41, block 5,184,855; `PreprodNOfKSuite`).
+- **B20** (P1, done; one part open) A Byron address has no size limit of its own: the Byron decoders (address, transaction, body) are bounded by the body (8 MiB), not 4096 bytes (mainnet block at slot 1,769,882, transaction bc61865d, an address of 7,689 bytes; `ByronLargeAddressSuite`). Open: the Shelley-era `OutputBootAddrAttrsTooBig` rule (attributes of a new bootstrap output above 64 bytes) is not raised yet.
 
 ## C. Byron (P1, needed for preprod and mainnet)
 
