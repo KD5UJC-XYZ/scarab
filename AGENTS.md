@@ -45,6 +45,10 @@ scala code … I love the use of type parameters when I can use them"*.
   mirror its types and formats, cite the upstream file and line, and take a real improvement only with
   a written reason.
 - Pure rules; exact `Rational` arithmetic; anything hashed or signed is hashed over its original bytes.
+- Stack safety ([ADR 0011](docs/adr/0011-stack-safety.md)): recursion whose depth or width comes from outside
+  data (blocks, peers, files, queries) is a library fold/traversal, `@tailrec`, `tailRecM` over a typed
+  state, or an explicit stack machine; never recursion inside an `Either`/`Option` for-comprehension.
+  Test it on a small-stack thread.
 - Comment density and naming like the surrounding code; SPDX header on new files.
 
 ## Before you hand back
