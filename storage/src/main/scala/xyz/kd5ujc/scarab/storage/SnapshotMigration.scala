@@ -35,9 +35,9 @@ object SnapshotMigration:
 
   /** The migration of the snapshots of the node state to the current format (V4): a version 1 file
     * (written before the packages were renamed) and a version 2 file are decoded with the frozen
-    * reader of the `legacy` module and brought to the live state, a version 3 file keeps its
-    * Haskell section and has its sidecar converted ([[SnapshotV4.migrated]]); each is written again
-    * as V4 under the same name.
+    * reader of the `legacy` module and brought to the live state, a version 3 file has its Haskell
+    * section decoded and its sidecar converted ([[SnapshotV4.migrated]]); each is written again as
+    * V4 under the same name.
     *
     * A version this build does not know, in a file that starts like a snapshot, refuses the whole
     * run before any file is rewritten (it was written by a newer build). A file of a known version

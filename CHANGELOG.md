@@ -52,9 +52,9 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   Haskell-shaped values (`Codec.auto` derives the rest). The plan reserved V4 for jump 3's pulse counter; that
   becomes V5.
 - **Migration to V4** (`SnapshotMigration.toCurrent`, run on open as before): a V1 or V2 file is decoded by the
-  frozen reader and upgraded, a V3 file keeps its Haskell section and has its sidecar converted, and its `gaps`
-  and the eras it saw begin are carried over (nothing is invented; the telescopes are rebuilt under the eras the
-  old file saw). A value the live types cannot hold is a refusal (`snapshotRefused`) and the file is left. Tests:
+  frozen reader and upgraded, a V3 file's Haskell section is decoded, its sidecar converted, and the state
+  written again (read back to check it is equal); its `gaps` and the eras it saw begin are carried over
+  verbatim (nothing is invented; the telescopes are rebuilt under the eras the old file saw). A value the live types cannot hold is a refusal (`snapshotRefused`) and the file is left. Tests:
   `SnapshotV4Suite` migrates real V3 files of every era written by the previous build
   (`fixtures/snapshot-v3/eras`, Byron to Conway) and checks the result is the state the rules give; the
   frozen goldens are asserted in `legacy` and `LegacyFormatsSuite`.

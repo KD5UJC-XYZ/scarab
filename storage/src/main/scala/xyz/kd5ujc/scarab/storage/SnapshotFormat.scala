@@ -43,11 +43,11 @@ object SnapshotRefusal:
 
 /** The content of a snapshot file, without its checksum: what [[FileLedgerSnapshots]] stores around
   * (the SHA-256 of the content closes the file, and the file is written atomically). The format
-  * decides everything inside: [[SnapshotV4]] is the Haskell ledger state with a sidecar, and
-  * [[SnapshotV2]] the one-codec layout of the builds before it (kept to read, and for the stores'
-  * own tests).
+  * decides everything inside: [[SnapshotV4]] is the Haskell ledger state with a sidecar. The older
+  * layouts (the one-codec V2 and the V3 sidecar) are read only by the migration, through the frozen
+  * readers of the `legacy` module.
   *
-  * The effect `F` is where a format reads what it needs (the V3 format asks for the mirror's
+  * The effect `F` is where a format reads what it needs (the V4 format asks for the mirror's
   * environment); a refusal or an unreadable file is a value, not a failure of `F`.
   */
 trait SnapshotFormat[F[_], S]:

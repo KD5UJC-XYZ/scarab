@@ -345,10 +345,10 @@ object SnapshotV4:
     * without the checksum that closes the file), as a V4 snapshot.
     *
     * Versions 1 and 2 are decoded with the frozen reader and brought to the live state. Version 3
-    * is the Haskell section as it is and the old sidecar, whose extras are converted: nothing is
-    * recomputed that the file holds, and the gaps and the eras it saw begin are carried to the new
-    * sidecar. A state that the live types cannot hold is [[SnapshotRefusal.Unreadable]], and the
-    * file is left as it was.
+    * is the Haskell section, decoded, and the old sidecar, whose extras are converted; the state is
+    * written again as any (and read back to check it is equal), with the gaps and the eras it saw
+    * begin carried verbatim to the new sidecar: nothing is invented. A state that the live types
+    * cannot hold is [[SnapshotRefusal.Unreadable]], and the file is left as it was.
     */
   def migrated(
       env: ConsensusMirrorEnv,

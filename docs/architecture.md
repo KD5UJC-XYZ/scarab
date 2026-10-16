@@ -488,7 +488,8 @@ that state: a snapshot is an optimisation, so a refusal costs a replay at worst.
 Versions 1 to 3 are read only by the migration, through the frozen readers of the `legacy` module
 (`legacy.SnapshotV2`, `legacy.SnapshotV3`, the node state of their time and the binary `Codec` they were
 written with): a V1 or V2 file is decoded and `legacy.Upgrade` brings the state to the live one, a V3
-file keeps its Haskell section and has its sidecar converted, its gaps and observed eras carried over.
+file's Haskell section is decoded and its sidecar converted, the state is written again (and read back to check
+it is equal), and its gaps and observed eras are carried over verbatim.
 
 Format version 2 (`legacy.SnapshotV2`, magic `CSLSNAP1`) was
 `"CSLSNAP1" | format number u32 | schema fingerprint[8] | payload | SHA-256`, the payload the codec of

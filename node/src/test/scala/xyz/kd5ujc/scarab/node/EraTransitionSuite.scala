@@ -497,6 +497,14 @@ class EraTransitionSuite extends CatsEffectSuite:
     )
   }
 
+  test("the PBFT counts, kept up to date by every block, are those of the window") {
+    val byron = states.filter(_.byron.ledger.isDefined)
+    assert(byron.exists(_.byron.pbft.inWindow.nonEmpty))
+    byron.foreach { s =>
+      assertEquals(s.byron.pbft.counts, PBftState.ofWindow(s.byron.pbft.inWindow).counts)
+    }
+  }
+
   test("a Byron block signing more than the threshold of a window is rejected") {
     val b = byronBlock(5)
     val key = byronUpdate(5, b).toOption.get._1.pbft.inWindow.last.genesisKey
