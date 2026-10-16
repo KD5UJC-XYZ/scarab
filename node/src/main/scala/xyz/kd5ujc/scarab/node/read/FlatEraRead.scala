@@ -77,11 +77,14 @@ final class FlatEraRead[E <: EraTag] private (
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])] =
     Right((s.ppup.current, s.ppup.future))
 
+  def pulsed: Read[Option[DRComplete]] = Right(
+    s.gov.pulsed.map((snapshot, ratify) => DRComplete(snapshot, ratify))
+  )
+
   lazy val nes: Read[NewEpochState[E]] = run(_.to[E](at, s)).map(_.value.nes)
 
 object FlatEraRead:
-  /** The read of `s` in era `E`; refused when the epoch is outside the range of its Haskell
-    * type.
+  /** The read of `s` in era `E`; refused when the epoch is outside the range of its Haskell type.
     */
   def of[E <: EraTag](s: flat.LedgerState, at: WithOrigin[SlotNo], env: MirrorEnv)(using
       ShelleyBasedEra[E]

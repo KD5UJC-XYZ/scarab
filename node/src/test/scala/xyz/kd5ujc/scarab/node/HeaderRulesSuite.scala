@@ -6,7 +6,12 @@ import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.HeaderError
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv, MirrorState, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  ConsensusMirrorEnv,
+  MirrorState,
+  ProtocolState
+}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.node.ntc.EraHistory
 import xyz.kd5ujc.scarab.node.read.ChainRead

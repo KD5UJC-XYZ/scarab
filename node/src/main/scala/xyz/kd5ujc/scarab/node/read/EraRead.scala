@@ -94,6 +94,12 @@ trait EraRead[E <: EraTag]:
     */
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])]
 
+  /** The completed DRep pulser the state has run: none before Conway and, on a chain that entered
+    * Conway, before its first epoch boundary (the reference holds the pulser of the era translation
+    * then, which the mirror of a flat state shows as the pulser it reports).
+    */
+  def pulsed: Read[Option[DRComplete]]
+
   /** The whole new-epoch state (`DebugNewEpochState`). */
   def nes: Read[NewEpochState[E]]
 
@@ -156,7 +162,8 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
   lazy val poolCount: Int = EraLedger.pState(ls).stakePools.size
 
   def leaderPools(nextEpoch: Boolean): flat.PoolDistribution =
-    (if nextEpoch then EraRead.leaderPools(PoolDistr.of(state.es.snapshots.mark)) else state.leaderPools)
+    (if nextEpoch then EraRead.leaderPools(PoolDistr.of(state.es.snapshots.mark))
+     else state.leaderPools)
 
   def paramsNextEpoch(globals: flat.LedgerGlobals): flat.ProtocolParams =
     val g = ls.utxo.gov
@@ -200,5 +207,11 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
           g.curProposals.iterator.map((k, u) => k.bytes -> u).toMap,
           g.futureProposals.iterator.map((k, u) => k.bytes -> u).toMap
         ))
+
+  def pulsed: Read[Option[DRComplete]] = Right(era match
+    case ShelleyBasedEra.SConway => Some(ls.utxo.gov.drepPulsing)
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      None)
 
   def nes: Read[NewEpochState[E]] = Right(state)

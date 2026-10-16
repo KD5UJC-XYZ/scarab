@@ -81,9 +81,8 @@ final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(usin
       h: Header.Shelley
   ): Outcome[ProtocolState] =
     val firstShelley = anchor.consensus.byron.firstShelleyEpoch
-    val cfg = firstShelley.fold(config)(first =>
-      config.copy(geometry = config.geometry.resolved(first))
-    )
+    val cfg =
+      firstShelley.fold(config)(first => config.copy(geometry = config.geometry.resolved(first)))
     val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
     val geometry = cfg.geometry
     val ledgerEpoch = ledger.epoch.toBigInt

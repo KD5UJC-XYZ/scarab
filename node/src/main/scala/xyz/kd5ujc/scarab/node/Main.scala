@@ -401,7 +401,7 @@ object Main extends IOApp:
         tools.PlutusCases(dir, perKind = 2, max = 400)
       }
       dumper <- options.dumpState.traverse { (dir, targets) =>
-        StateDump.Dumper.create[IO](
+        StateDump.Dumper.create[IO, NodeState](
           dir,
           targets,
           Some(store),
@@ -806,7 +806,7 @@ object Main extends IOApp:
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
             run = QueryServer
-              .resource[IO](
+              .resource[IO, NodeState](
                 ChainView.fromRef(ref),
                 options.queryPort,
                 Some(store),

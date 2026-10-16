@@ -601,6 +601,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `memory` | `Node.Memory` | Info | `sample` |
 | `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
 | `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |
+| `stateDumpRefused` | `Node.StateDumpRefused` | Warning | `slot`, `hash`, `epoch`, `error` |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.node.log.NodeEvent
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.Header
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
@@ -146,7 +146,7 @@ object StateDump:
         if parts.nonEmpty && slots.size == parts.size then Some(Slots(slots.sorted)) else None
 
   /** The hook the follower runs after each block. */
-  final class Dumper[F[_]: Sync] private (
+  final class Dumper[F[_]: Sync, S] private (
       dir: Path,
       targets: Targets,
       store: Option[UtxoStore[F]],
@@ -154,10 +154,10 @@ object StateDump:
       pending: Ref[F, List[BigInt]],
       emit: NodeEvent => F[Unit],
       full: Boolean
-  ):
-    def afterBlock(header: Header, s: NodeState): F[Unit] = header match
+  )(using read: ChainRead[S]):
+    def afterBlock(header: Header, s: S): F[Unit] = header match
       case h: Header.Shelley =>
-        val epoch = s.ledger.epoch
+        val epoch = s.ledgerEpoch
         val due: F[Boolean] = targets match
           case Targets.EpochBoundaries(every) =>
             lastEpoch
@@ -171,57 +171,62 @@ object StateDump:
         due.flatMap(if _ then write(h, s) else Sync[F].unit)
       case _ => Sync[F].unit
 
-    private def write(h: Header.Shelley, s: NodeState): F[Unit] =
+    private def write(h: Header.Shelley, s: S): F[Unit] =
       val file = dir.resolve(f"${h.slot.toLong}%012d-${h.hash.hex}.json")
       Sync[F].blocking(Files.exists(file)).flatMap {
         case true => Sync[F].unit
         case false =>
-          val empty = s.copy(ledger = s.ledger.copy(utxo = Utxo.empty))
           for
             started <- Sync[F].delay(System.nanoTime())
-            utxo <- utxoDigest(store, s.ledger.utxo)
-            body <- Sync[F].delay(
-              reduce(Projection.node(h.point, empty))
-                .deepMerge(Json.obj("utxo" -> utxo, "format" -> Format.asJson))
-            )
-            _ <- Sync[F].blocking {
-              Files.createDirectories(dir)
-              val tmp = dir.resolve(file.getFileName.toString + ".tmp")
-              Files.writeString(tmp, body.noSpaces)
-              Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE)
-            }
-            // drill-down: the whole projection, UTxO included (small states only)
-            _ <-
-              if !full then Sync[F].unit
-              else
+            utxo <- utxoDigest(store, s.utxo)
+            projected <- Sync[F].delay(Projection.node(h.point, s, Utxo.empty))
+            _ <- projected match
+              case Left(refused) =>
+                emit(NodeEvent.StateDumpRefused(h.slot, h.hash, s.ledgerEpoch, refused.show))
+              case Right(projection) =>
                 for
-                  all <- store.fold(Sync[F].pure(s.ledger.utxo))(st =>
-                    UtxoStore.materialize(st, s.ledger.utxo).map(Utxo.fromMap)
+                  body <- Sync[F].delay(
+                    reduce(projection)
+                      .deepMerge(Json.obj("utxo" -> utxo, "format" -> Format.asJson))
                   )
                   _ <- Sync[F].blocking {
-                    val name = file.getFileName.toString.stripSuffix(".json") + ".full"
-                    Files.writeString(
-                      dir.resolve(name),
-                      Projection.node(h.point, s.copy(ledger = s.ledger.copy(utxo = all))).noSpaces
-                    )
+                    Files.createDirectories(dir)
+                    val tmp = dir.resolve(file.getFileName.toString + ".tmp")
+                    Files.writeString(tmp, body.noSpaces)
+                    Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE)
                   }
+                  // drill-down: the whole projection, UTxO included (small states only)
+                  _ <-
+                    if !full then Sync[F].unit
+                    else
+                      for
+                        all <- store.fold(Sync[F].pure(s.utxo))(st =>
+                          UtxoStore.materialize(st, s.utxo).map(Utxo.fromMap)
+                        )
+                        _ <- Projection.node(h.point, s, all).traverse_ { whole =>
+                          Sync[F].blocking {
+                            val name = file.getFileName.toString.stripSuffix(".json") + ".full"
+                            Files.writeString(dir.resolve(name), whole.noSpaces)
+                          }.void
+                        }
+                      yield ()
+                  took <- Sync[F].delay((System.nanoTime() - started) / 1000000)
+                  _ <- emit(NodeEvent.StateDumped(h.slot, h.hash, s.ledgerEpoch, took))
                 yield ()
-            took <- Sync[F].delay((System.nanoTime() - started) / 1000000)
-            _ <- emit(NodeEvent.StateDumped(h.slot, h.hash, s.ledger.epoch, took))
           yield ()
       }
 
   object Dumper:
-    def create[F[_]: Sync](
+    def create[F[_]: Sync, S: ChainRead](
         dir: Path,
         targets: Targets,
         store: Option[UtxoStore[F]],
         emit: NodeEvent => F[Unit],
         full: Boolean = false
-    ): F[Dumper[F]] =
+    ): F[Dumper[F, S]] =
       for
         last <- Ref.of[F, Option[BigInt]](None)
         pending <- Ref.of[F, List[BigInt]](targets match
           case Targets.Slots(ss) => ss
           case _                 => Nil)
-      yield new Dumper[F](dir, targets, store, last, pending, emit, full)
+      yield new Dumper[F, S](dir, targets, store, last, pending, emit, full)

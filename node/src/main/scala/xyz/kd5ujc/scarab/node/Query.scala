@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{NodeState, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.VolatileChain
 import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, Port, SocketAddress}
@@ -13,6 +13,11 @@ import xyz.kd5ujc.scarab.ledger.state.KeyHash.bytes
 import xyz.kd5ujc.scarab.ledger.state.Word64.toBigInt
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.{state => mirror}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, KeyRole, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, EraViews, InEra, Read}
+import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.codec.Rational
 import org.http4s.{HttpRoutes, Response, Status}
 import org.http4s.circe.*
@@ -38,7 +43,7 @@ object ChainView:
 
 /** Ledger state rendered with the field names `cardano-cli query ledger-state` uses. */
 object Projection:
-  private def coinMap[K](m: Iterable[(K, BigInt)], key: K => String): Json =
+  private[node] def coinMap[K](m: Iterable[(K, BigInt)], key: K => String): Json =
     Json.fromFields(m.toVector.sortBy(e => key(e._1)).map { case (k, v) => key(k) -> v.asJson })
 
   def point(p: ChainSync.Point): Json = p match
@@ -54,27 +59,48 @@ object Projection:
     "pools" -> s.pools.keys.map(_.hex).toVector.sorted.asJson
   )
 
-  def node(p: ChainSync.Point, n: NodeState): Json =
+  private def blockOf(p: ChainSync.Point): Option[BlockRef] = p match
+    case ChainSync.Point.Origin            => None
+    case ChainSync.Point.Block(slot, hash) => Some(BlockRef(slot.value, hash, BigInt(0)))
+
+  /** The projection of the chain state `n` at `p`, the UTxO set being `utxo` (the entries, which
+    * the state itself holds only as a diff over the backing store). Written over the read paths
+    * ([[ChainRead]], [[EraRead]]): the state is read in the vocabulary of the mirror, whether it is
+    * the node's flat state or a mirror. A chain still in Byron has no ledger state to project: the
+    * consensus part only.
+    */
+  def node[S](p: ChainSync.Point, n: S, utxo: Utxo)(using read: ChainRead[S]): Read[Json] =
     val praos = n.protocol.view
-    ledger(p, n.ledger).deepMerge(
-      Json.obj(
-        "protocolState" -> Json.obj(
-          "epochNonce" -> praos.epochNonce.render.asJson,
-          "evolvingNonce" -> praos.evolvingNonce.render.asJson,
-          "candidateNonce" -> praos.candidateNonce.render.asJson,
-          "labNonce" -> praos.labNonce.render.asJson,
-          "lastEpochBlockNonce" -> praos.lastEpochBlockNonce.render.asJson,
-          "oCertCounters" -> coinMap(
-            praos.ocertCounters.iterator.map((k, c) => k.bytes -> c.toBigInt).toMap,
-            (b: Bytes) => b.hex
-          )
-        ),
-        "stakeDistrib" -> Json.obj(
-          "total" -> n.ledger.poolDistribution.activeStake.max(BigInt(1)).asJson,
-          "pools" -> coinMap(n.ledger.poolDistribution.poolStake, (b: Bytes) => b.hex)
+    val consensus = Vector(
+      "protocolState" -> Json.obj(
+        "epochNonce" -> praos.epochNonce.render.asJson,
+        "evolvingNonce" -> praos.evolvingNonce.render.asJson,
+        "candidateNonce" -> praos.candidateNonce.render.asJson,
+        "labNonce" -> praos.labNonce.render.asJson,
+        "lastEpochBlockNonce" -> praos.lastEpochBlockNonce.render.asJson,
+        "oCertCounters" -> coinMap(
+          praos.ocertCounters.iterator.map((k, c) => k.bytes -> c.toBigInt).toMap,
+          (b: Bytes) => b.hex
         )
       )
     )
+    n.ledger(blockOf(p)).flatMap {
+      case None => Right(Json.obj("point" -> point(p)).deepMerge(Json.obj(consensus*)))
+      case Some(InEra.Of(era, l)) =>
+        ledger(p, l, utxo)(using era).map { ledgerJson =>
+          val leaders = l.leaderPools(nextEpoch = false)
+          ledgerJson.deepMerge(
+            Json.obj(
+              consensus :+ (
+                "stakeDistrib" -> Json.obj(
+                  "total" -> leaders.total.max(BigInt(1)).asJson,
+                  "pools" -> coinMap(leaders.stake, (b: Bytes) => b.hex)
+                )
+              )*
+            )
+          )
+        }
+    }
 
   private def ratio(r: Rational): Json = s"${r.numerator}/${r.denominator}".asJson
 
@@ -270,106 +296,187 @@ object Projection:
     "protocolVersion" -> Vector(r.enact.params.protocolMajor, r.enact.params.protocolMinor).asJson
   )
 
-  /** Governance state: proposals, committee, constitution and the pulser's ratification. */
-  def gov(s: LedgerState): Json = Json.obj(
-    "proposals" -> s.gov.proposals.actions.map(proposal).asJson,
-    "committee" -> committee(s.gov.committee),
-    "constitution" -> constitution(s.gov.constitution),
-    "committeeState" -> Json.fromFields(s.committeeState.toVector.sortBy(e => cred(e._1)).map {
-      case (c, CommitteeAuth.Hot(h)) => cred(c) -> Json.obj("hot" -> cred(h).asJson)
-      case (c, CommitteeAuth.Resigned(a)) =>
-        cred(c) -> Json.obj("resigned" -> true.asJson, "anchor" -> a.map(anchor).asJson)
-    }),
-    "prevGovActionIds" -> prevIds(s.gov.proposals.roots),
-    "ratify" -> s.gov.pulsed.fold(Json.Null)(p => ratifyState(p._2)),
-    "drepDistr" -> s.gov.pulsed.fold(Json.Null)(p => coinMap(p._1.drepDistr, drepKey)),
-    "donation" -> s.donation.asJson
+  private def credName[R <: KeyRole](c: mirror.Credential[R]): String =
+    EraRead.credential(c).render
+
+  private def keyHex[R <: KeyRole](k: mirror.KeyHash[R]): String = k.bytes.hex
+
+  private def poolState(ps: mirror.StakePoolState): Json = Json.obj(
+    "pledge" -> ps.pledge.value.asJson,
+    "cost" -> ps.cost.value.asJson,
+    "margin" -> ratio(ps.margin),
+    "rewardAccount" -> EraRead.credential(ps.accountId).hash.hex.asJson,
+    "owners" -> ps.owners.toVector.map(keyHex).sorted.asJson
   )
 
-  def ledger(p: ChainSync.Point, s: LedgerState): Json = Json.obj(
-    "point" -> point(p),
-    "epoch" -> s.epoch.asJson,
-    "utxo" -> Json.fromFields(s.utxo.toVector.sortBy(_._1.render).map { case (i, o) =>
-      i.render -> txOut(o)
-    }),
-    "params" -> params(s.params),
-    "poolParams" -> Json.fromFields(s.pools.toVector.sortBy(_._1.hex).map { case (id, ps) =>
-      id.hex -> pool(ps.params)
-    }),
-    "futurePools" -> Json.fromFields(s.futurePools.toVector.sortBy(_._1.hex).map { case (id, pp) =>
-      id.hex -> pool(pp)
-    }),
-    "genDelegs" -> Json.fromFields(s.genDelegs.toVector.sortBy(_._1.hex).map { case (g, d) =>
-      g.hex -> Json.obj("delegate" -> d.delegate.hex.asJson, "vrf" -> d.vrf.hex.asJson)
-    }),
-    "futureGenDelegs" -> s.futureGenDelegs
-      .sortBy(f => (f.slot, f.genesisKey.hex))
-      .map(f =>
-        Json.obj(
-          "slot" -> f.slot.asJson,
-          "genesisKey" -> f.genesisKey.hex.asJson,
-          "delegate" -> f.pair.delegate.hex.asJson,
-          "vrf" -> f.pair.vrf.hex.asJson
+  /** Governance state: proposals, committee, constitution and the pulser's ratification. The state
+    * of an era before Conway has none: the empty one.
+    */
+  private def govJson[E <: EraTag](
+      gov: mirror.GovState[E],
+      voting: Option[mirror.VState],
+      pulsed: Option[mirror.DRComplete],
+      donation: mirror.Coin
+  )(using ShelleyBasedEra[E]): Json =
+    val conway = EraViews.conwayGov(gov)
+    val proposals = conway.fold(flat.GovState.empty.proposals)(_.proposals)
+    Json.obj(
+      "proposals" -> proposals.actions.map(proposal).asJson,
+      "committee" -> committee(conway.flatMap(_.committee)),
+      "constitution" -> constitution(conway.fold(flat.GovState.empty.constitution)(_.constitution)),
+      "committeeState" -> Json.fromFields(
+        voting.toVector.flatMap(_.committeeState.creds.toVector).sortBy(e => credName(e._1)).map {
+          case (c, mirror.CommitteeAuthorization.CommitteeHotCredential(h)) =>
+            credName(c) -> Json.obj("hot" -> credName(h).asJson)
+          case (c, mirror.CommitteeAuthorization.CommitteeMemberResigned(a)) =>
+            credName(c) -> Json.obj("resigned" -> true.asJson, "anchor" -> a.map(anchor).asJson)
+        }
+      ),
+      "prevGovActionIds" -> prevIds(proposals.roots),
+      "ratify" -> pulsed.fold(Json.Null)(p => ratifyState(p.ratify)),
+      "drepDistr" -> pulsed.fold(Json.Null)(p => coinMap(p.snapshot.drepDistr, drepKey)),
+      "donation" -> donation.value.asJson
+    )
+
+  private def snapshotJson(s: mirror.SnapShot): Json =
+    val entries = s.activeStake.entries.toVector
+    Json.obj(
+      "stake" -> coinMap(entries.map((c, w) => c -> w.stake.value.toBigInt), credName),
+      "delegations" -> Json.fromFields(
+        entries
+          .sortBy(e => credName(e._1))
+          .map((c, w) => credName(c) -> w.delegation.bytes.hex.asJson)
+      ),
+      "pools" -> s.pools.keys.map(keyHex).toVector.sorted.asJson
+    )
+
+  /** The projection of the ledger state of one era. */
+  private def ledger[E <: EraTag](p: ChainSync.Point, l: EraRead[E], utxo: Utxo)(using
+      era: ShelleyBasedEra[E]
+  ): Read[Json] =
+    for
+      sc <- l.scalars
+      cert <- l.cert
+      gov <- l.gov
+      snaps <- l.snapshots
+      pulsed <- l.pulsed
+      due <- l.rewardsDue
+      proposed <- l.ppup
+    yield
+      val pools = EraViews.pState(cert)
+      val voting = EraViews.vState(cert)
+      val iRewards = EraViews.iRewards(cert)
+      Json.obj(
+        "point" -> point(p),
+        "epoch" -> l.epoch.toBigInt.asJson,
+        "utxo" -> Json.fromFields(utxo.toVector.sortBy(_._1.render).map { case (i, o) =>
+          i.render -> txOut(o)
+        }),
+        "params" -> params(l.params),
+        "poolParams" -> Json.fromFields(pools.stakePools.toVector.sortBy(_._1.bytes.hex).map {
+          case (id, ps) => id.bytes.hex -> poolState(ps)
+        }),
+        "futurePools" -> Json.fromFields(pools.future.toVector.sortBy(_._1.bytes.hex).map {
+          case (id, pp) => id.bytes.hex -> pool(pp)
+        }),
+        "genDelegs" -> Json.fromFields(
+          EraViews.genDelegs(cert).toVector.sortBy(_._1.bytes.hex).map { case (g, d) =>
+            g.bytes.hex -> Json.obj("delegate" -> d.delegate.hex.asJson, "vrf" -> d.vrf.hex.asJson)
+          }
+        ),
+        "futureGenDelegs" -> EraViews
+          .futureGenDelegs(cert)
+          .toVector
+          .sortBy((f, _) => (f.slot.toBigInt, f.genKeyHash.bytes.hex))
+          .map((f, pair) =>
+            Json.obj(
+              "slot" -> f.slot.toBigInt.asJson,
+              "genesisKey" -> f.genKeyHash.bytes.hex.asJson,
+              "delegate" -> pair.delegate.hex.asJson,
+              "vrf" -> pair.vrf.hex.asJson
+            )
+          )
+          .asJson,
+        "ppup" -> Json.obj("current" -> updates(proposed._1), "future" -> updates(proposed._2)),
+        "mir" -> Json.obj(
+          "reserves" -> coinMap(
+            iRewards.reserves.toVector.map((c, v) => c -> v.value),
+            credName
+          ),
+          "treasury" -> coinMap(
+            iRewards.treasury.toVector.map((c, v) => c -> v.value),
+            credName
+          ),
+          "deltaReserves" -> iRewards.deltaReserves.value.asJson,
+          "deltaTreasury" -> iRewards.deltaTreasury.value.asJson
+        ),
+        "fees" -> sc.fees.value.asJson,
+        "deposited" -> sc.deposited.value.asJson,
+        "treasury" -> sc.chainAccount.treasury.value.asJson,
+        "reserves" -> sc.chainAccount.reserves.value.asJson,
+        "accounts" -> Json.fromFields(
+          EraViews.accounts(cert).toVector.sortBy(e => credName(e._1)).map { case (c, a) =>
+            credName(c) -> Json.obj(
+              "balance" -> a.balance.toBigInt.asJson,
+              "deposit" -> a.deposit.toBigInt.asJson,
+              "spool" -> a.pool.map(keyHex).asJson,
+              "drep" -> a.drep.map(d => EraViews.drep(d).render).asJson
+            )
+          }
+        ),
+        "pools" -> Json.fromFields(pools.stakePools.toVector.sortBy(_._1.bytes.hex).map {
+          case (id, ps) =>
+            id.bytes.hex -> Json.obj(
+              "deposit" -> ps.deposit.toBigInt.asJson,
+              "vrf" -> ps.vrf.bytes.hex.asJson
+            )
+        }),
+        "retiring" -> coinMap(
+          pools.retiring.toVector.map((id, e) => id.bytes -> e.toBigInt),
+          (b: Bytes) => b.hex
+        ),
+        "dreps" -> Json.fromFields(
+          voting.toVector.flatMap(_.dreps.toVector).sortBy(e => credName(e._1)).map { case (c, d) =>
+            credName(c) -> Json.obj(
+              "deposit" -> d.deposit.toBigInt.asJson,
+              "expiry" -> d.expiry.toBigInt.asJson,
+              "anchor" -> d.anchor.map(anchor).asJson,
+              "delegators" -> d.delegators.toVector.map(credName).sorted.asJson
+            )
+          }
+        ),
+        "gov" -> govJson(gov, voting, pulsed, sc.donation),
+        "numDormantEpochs" -> voting.fold(BigInt(0))(_.numDormantEpochs.toBigInt).asJson,
+        "blocksCurrent" -> coinMap(
+          sc.bcur.blocks.toVector.map((k, n) => k.bytes -> n.toBigInt),
+          (b: Bytes) => b.hex
+        ),
+        "blocksBefore" -> coinMap(
+          sc.bprev.blocks.toVector.map((k, n) => k.bytes -> n.toBigInt),
+          (b: Bytes) => b.hex
+        ),
+        "snapshots" -> Json.obj(
+          "mark" -> snapshotJson(snaps.mark),
+          "set" -> snapshotJson(snaps.set),
+          "go" -> snapshotJson(snaps.go),
+          "fee" -> snaps.fee.value.asJson
+        ),
+        "rewardUpdate" -> due.fold(Json.Null)(ru =>
+          Json.obj(
+            "deltaT" -> ru.deltaT.value.asJson,
+            "deltaR" -> ru.deltaR.value.asJson,
+            "deltaF" -> ru.deltaF.value.asJson,
+            "rs" -> coinMap(ru.byCredential.toVector, credName)
+          )
         )
       )
-      .asJson,
-    "ppup" -> Json.obj("current" -> updates(s.ppup.current), "future" -> updates(s.ppup.future)),
-    "mir" -> Json.obj(
-      "reserves" -> coinMap(s.mir.reserves, (c: Credential) => c.render),
-      "treasury" -> coinMap(s.mir.treasury, (c: Credential) => c.render),
-      "deltaReserves" -> s.mir.deltaReserves.asJson,
-      "deltaTreasury" -> s.mir.deltaTreasury.asJson
-    ),
-    "fees" -> s.fees.asJson,
-    "deposited" -> s.deposited.asJson,
-    "treasury" -> s.treasury.asJson,
-    "reserves" -> s.reserves.asJson,
-    "accounts" -> Json.fromFields(s.accounts.toVector.sortBy(_._1.render).map { case (c, a) =>
-      c.render -> Json.obj(
-        "balance" -> a.balance.asJson,
-        "deposit" -> a.deposit.asJson,
-        "spool" -> a.pool.map(_.hex).asJson,
-        "drep" -> a.drep.map(_.render).asJson
-      )
-    }),
-    "pools" -> Json.fromFields(s.pools.toVector.sortBy(_._1.hex).map { case (id, ps) =>
-      id.hex -> Json.obj("deposit" -> ps.deposit.asJson, "vrf" -> ps.params.vrfKeyHash.hex.asJson)
-    }),
-    "retiring" -> coinMap(s.retiring, (b: Bytes) => b.hex),
-    "dreps" -> Json.fromFields(s.dreps.toVector.sortBy(_._1.render).map { case (c, d) =>
-      c.render -> Json.obj(
-        "deposit" -> d.deposit.asJson,
-        "expiry" -> d.expiry.asJson,
-        "anchor" -> d.anchor.map(anchor).asJson,
-        "delegators" -> d.delegs.toVector.map(_.render).sorted.asJson
-      )
-    }),
-    "gov" -> gov(s),
-    "numDormantEpochs" -> s.dormantEpochs.asJson,
-    "blocksCurrent" -> coinMap(s.blocksCurrent, (b: Bytes) => b.hex),
-    "blocksBefore" -> coinMap(s.blocksPrevious, (b: Bytes) => b.hex),
-    "snapshots" -> Json.obj(
-      "mark" -> snapshot(s.snapshots.mark),
-      "set" -> snapshot(s.snapshots.set),
-      "go" -> snapshot(s.snapshots.go),
-      "fee" -> s.snapshots.fee.asJson
-    ),
-    "rewardUpdate" -> s.rewardUpdate.fold(Json.Null)(ru =>
-      Json.obj(
-        "deltaT" -> ru.deltaTreasury.asJson,
-        "deltaR" -> ru.deltaReserves.asJson,
-        "deltaF" -> ru.deltaFees.asJson,
-        "rs" -> coinMap(ru.rewards, _.render)
-      )
-    )
-  )
 
 /** Loopback HTTP query service: `GET /tip`, `GET /state?slot=S&hash=H`, `GET /metrics` and the
   * others below.
   */
 object QueryServer:
-  def resource[F[_]: Async: Network](
-      view: ChainView[F, NodeState],
+  def resource[F[_]: Async: Network, S](
+      view: ChainView[F, S],
       port: Int,
       utxoStore: Option[xyz.kd5ujc.scarab.storage.UtxoStore[F]] = None,
       /** The whole-run scheduling measurements, served at `/scheduling`. */
@@ -381,22 +488,29 @@ object QueryServer:
       /** The metrics in the Prometheus text format, served at `/metrics` (see [[MetricsServer]]).
         */
       metrics: Option[F[String]] = None
-  ): Resource[F, Server] =
+  )(using read: ChainRead[S]): Resource[F, Server] =
     val dsl = Http4sDsl[F]
     import dsl.*
     // With the UTxO set in a backing store the state holds only its recent changes: the whole set
     // is put back together for the projection.
-    def complete(s: NodeState): F[NodeState] = utxoStore.fold(Async[F].pure(s)) { store =>
-      xyz.kd5ujc.scarab.storage.UtxoStore.materialize(store, s.ledger.utxo).map { all =>
-        s.copy(ledger = s.ledger.copy(utxo = xyz.kd5ujc.scarab.ledger.Utxo.fromMap(all)))
+    def complete(s: S): F[xyz.kd5ujc.scarab.ledger.Utxo] =
+      utxoStore.fold(Async[F].pure(s.utxo)) { store =>
+        xyz.kd5ujc.scarab.storage.UtxoStore
+          .materialize(store, s.utxo)
+          .map(xyz.kd5ujc.scarab.ledger.Utxo.fromMap)
       }
-    }
+    def projected(p: ChainSync.Point, s: S): F[Response[F]] =
+      complete(s).flatMap { utxo =>
+        Projection.node(p, s, utxo) match
+          case Right(json)   => Ok(json)
+          case Left(refused) => InternalServerError(s"the state cannot be projected: $refused")
+      }
     object SlotParam extends QueryParamDecoderMatcher[Long]("slot")
     object HashParam extends QueryParamDecoderMatcher[String]("hash")
     val routes = HttpRoutes.of[F] {
       case GET -> Root / "tip" =>
         view.tip.flatMap { case (p, s) =>
-          Ok(Json.obj("point" -> Projection.point(p), "epoch" -> s.ledger.epoch.asJson))
+          Ok(Json.obj("point" -> Projection.point(p), "epoch" -> s.ledgerEpoch.asJson))
         }
       case GET -> Root / "connections" =>
         connections.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
@@ -416,11 +530,11 @@ object QueryServer:
           case None => BadRequest("slot and 32-byte hex hash required")
           case Some(p) =>
             view.at(p).flatMap {
-              case Some(s) => complete(s).flatMap(c => Ok(Projection.node(p, c)))
+              case Some(s) => projected(p, s)
               case None    => Async[F].pure(Response[F](Status.NotFound))
             }
       case GET -> Root / "state" =>
-        view.tip.flatMap { case (p, s) => complete(s).flatMap(c => Ok(Projection.node(p, c))) }
+        view.tip.flatMap { case (p, s) => projected(p, s) }
     }
     EmberServerBuilder
       .default[F]

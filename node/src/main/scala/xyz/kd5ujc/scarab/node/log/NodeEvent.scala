@@ -48,6 +48,11 @@ enum NodeEvent:
   /** A ledger-state digest was written (`--dump-state`). */
   case StateDumped(slot: BigInt, hash: Bytes, epoch: BigInt, millis: Long)
 
+  /** A ledger-state digest was not written: the state is one the mirror cannot hold (a value
+    * outside the range of its Haskell type), so the projection cannot be read from it.
+    */
+  case StateDumpRefused(slot: BigInt, hash: Bytes, epoch: BigInt, error: String)
+
   /** The verification verdicts found ahead of the rules so far (every 20,000 blocks). */
   case VerificationCache(summary: String)
 
@@ -253,6 +258,13 @@ object NodeEvent:
         "hash" -> hash.hex.asJson,
         "epoch" -> epoch.asJson,
         "millis" -> millis.asJson
+      )
+    case StateDumpRefused(slot, hash, epoch, error) =>
+      EventKind.StateDumpRefused.line(
+        "slot" -> slot.asJson,
+        "hash" -> hash.hex.asJson,
+        "epoch" -> epoch.asJson,
+        "error" -> error.asJson
       )
     case VerificationCache(summary) =>
       EventKind.VerificationCache.line("summary" -> summary.asJson)

@@ -44,11 +44,13 @@ class ChainReadSuite extends FunSuite:
         x.effectiveD == y.effectiveD && x.extraEntropy == y.extraEntropy &&
         x.maxBlockHeaderSize == y.maxBlockHeaderSize && x.maxBlockBodySize == y.maxBlockBodySize
     List(
-      "scalars" -> (a.epoch === b.epoch && (a.scalars, b.scalars).mapN { (x, y) =>
-        x.epoch === y.epoch && x.bprev === y.bprev && x.bcur === y.bcur &&
-        x.chainAccount === y.chainAccount && x.deposited === y.deposited && x.fees === y.fees &&
-        x.donation === y.donation
-      }.getOrElse(false)),
+      "scalars" -> (a.epoch === b.epoch && (a.scalars, b.scalars)
+        .mapN { (x, y) =>
+          x.epoch === y.epoch && x.bprev === y.bprev && x.bcur === y.bcur &&
+          x.chainAccount === y.chainAccount && x.deposited === y.deposited && x.fees === y.fees &&
+          x.donation === y.donation
+        }
+        .getOrElse(false)),
       "parameters the forecast reads" ->
         readsSame(pa, pb),
       "counts" -> (a.accountCount == b.accountCount && a.poolCount == b.poolCount),
