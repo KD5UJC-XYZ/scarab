@@ -135,6 +135,43 @@ def runs_dashboard():
     p.line(
         (12, logs("Errors, exits and stack traces", '{' + SEL + ', event=~"error|exited|text"}')),
         (12, logs("Epochs", '{' + SEL + ', event=~"epoch|epochValidated|eraTransition"}')), h=10)
+    p.row("Node metrics (/metrics; runs started with --metrics-listen)")
+    M = 'host=~"$host", container=~"$container"'
+    p.line(
+        (6, stat("Synced (metrics)", PROM,
+                 f'100 * max by (host, container) (cardano_node_metrics_slotNum_int{{{M}}}) '
+                 f'/ max by (host, container) (scarab_peer_tip_slot{{{M}}})',
+                 unit="percent", decimals=2,
+                 thresholds=[{"color": "orange", "value": None}, {"color": "green", "value": 99.99}])),
+        (6, stat("Block (metrics)", PROM, f'max by (host, container) (cardano_node_metrics_blockNum_int{{{M}}})',
+                 decimals=0)),
+        (6, stat("Validation errors", PROM,
+                 f'sum by (host, container) (increase(scarab_validation_errors_total{{{M}}}[$__range]))',
+                 decimals=0, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
+        (6, stat("Connections established", PROM,
+                 f'sum by (host, container) (scarab_connections{{{M}, state="Established"}})', decimals=0)),
+        h=5)
+    p.line(
+        (8, series("Blocks applied per second", PROM, [(
+            f'sum by (host, container) (rate(scarab_blocks_applied_total{{{M}}}[5m]))', "{{host}} {{container}}")])),
+        (8, series("Block apply time", PROM, [
+            (f'sum by (host, container) (rate(scarab_block_apply_seconds_sum{{{M}}}[5m])) '
+             f'/ sum by (host, container) (rate(scarab_block_apply_seconds_count{{{M}}}[5m]))', "mean {{container}}"),
+            (f'histogram_quantile(0.99, sum by (host, container, le) (rate(scarab_block_apply_seconds_bucket{{{M}}}[5m])))',
+             "p99 {{container}}")], unit="s")),
+        (8, series("JVM heap and resident memory", PROM, [
+            (f'sum by (host, container) (jvm_memory_bytes_used{{{M}, area="heap"}})', "heap {{container}}"),
+            (f'max by (host, container) (process_resident_memory_bytes{{{M}}})', "rss {{container}}")], unit="bytes")))
+    p.line(
+        (8, series("GC time (fraction of wall time)", PROM, [(
+            f'sum by (host, container) (rate(jvm_gc_collection_seconds_total{{{M}}}[5m]))', "{{container}}")],
+            unit="percentunit")),
+        (8, series("Snapshot write time", PROM, [(
+            f'max by (host, container) (scarab_snapshot_last_write_seconds{{{M}}})', "{{container}}")], unit="s")),
+        (8, series("CPU pool: longest step and timer lateness", PROM, [
+            (f'max by (host, container) (scarab_cpu_longest_step_seconds{{{M}}})', "longest step {{container}}"),
+            (f'max by (host, container) (scarab_scheduling_timer_lateness_max_seconds{{{M}}})', "timer lateness {{container}}")],
+            unit="s")))
     p.row("Hosts and containers")
     p.line(
         (8, series("Container memory", PROM, [(

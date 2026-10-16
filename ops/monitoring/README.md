@@ -26,7 +26,7 @@ worker (worker-a, worker-b, ...)                 server (monitor-host)
   missing there; the node's own `/metrics` covers its memory and CPU. Docker Desktop also has no
   `/proc/net` for the agent, hence `UNIX_DISABLED_COLLECTORS` for that host.
 - **Node metrics**: the node's `/metrics` (roadmap J3, [#47](https://github.com/KD5UJC-XYZ/scarab/issues/47)),
-  scraped from every `scarab-*` container that carries the label `scarab.metrics.port=<port>`.
+  scraped every 15 s from every `scarab-*` container that carries the label `scarab.metrics.port=<port>`.
 
 ## Dashboards
 
@@ -64,6 +64,14 @@ To try the server locally: copy `server/.env.example` to `server/.env`, set a pa
 
 ## Runs
 
-Name run containers `scarab-<something>`; nothing else is needed for their logs. Once the node
-serves `/metrics`, start runs with `--label scarab.metrics.port=<port>` and bind the metrics server
-to `0.0.0.0` inside the container (see [docs/running.md](../../docs/running.md)).
+Name run containers `scarab-<something>`; nothing else is needed for their logs. For the node's
+metrics, give the container the label and the node the listener (only `/metrics` is served there;
+see "Metrics" in [docs/running.md](../../docs/running.md)):
+
+```bash
+docker run --name scarab-<run> --label scarab.metrics.port=12798 ... \
+  ... follow --metrics-listen 0.0.0.0:12798 ...
+```
+
+The port is not published; the agent reaches it on the container's bridge address. The "Node
+metrics" row of the dashboard reads these series.
