@@ -7,6 +7,9 @@ ouroboros-network   https://github.com/IntersectMBO/ouroboros-network   branch m
 ouroboros-consensus https://github.com/IntersectMBO/ouroboros-consensus branch main    commit 8f56bc899b48423316155aef64096cd56e32bfd7
   ouroboros-consensus-cardano/cddl/base.cddl
   ouroboros-consensus-cardano/cddl/node-to-node/chainsync/header.cddl
+  ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl
+    (one file from a newer commit: main 9b918f8a14a9564d0f95b7080a30dad30203a16b of 2026-10-16, the file last changed in
+    144cb4f13b9c31937e3f140d66bfbb93c4486ee9, 2026-10-14; obtained with the GitHub API, not in the local checkout; N3, docs/leios.md 11.5)
 cardano-ledger      https://github.com/IntersectMBO/cardano-ledger      branch master  commit a51efc776146e696744a6c030826c542ee0e448c
   eras/{byron,shelley,allegra,mary,alonzo,babbage,conway,dijkstra}/**/*.cddl   (one file per era)
 
