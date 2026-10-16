@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   StateMirrorError
 }
 import xyz.kd5ujc.scarab.ledger.{BlockFailure, BlockRule, Header, NodeError, ValidationError}
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayBlock, EraNes, Globals}
+import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, Globals}
 import xyz.kd5ujc.scarab.ledger.state.{
   Difference,
   MirrorError,
@@ -125,7 +125,7 @@ final class DifferentialRules[F[_]] private (
       case None => F.pure((None, 0L))
       case Some(rules) =>
         val context = ot.map(tick =>
-          ConwayBlock.Context(Globals(tick.globals, tick.config.geometry), tick.config.forks.eraAt)
+          EraBlock.Context(Globals(tick.globals, tick.config.geometry), tick.config.forks.eraAt)
         )
         for
           pre <- state.neu.fold(convert(state.old, state.at, ot).flatMap {

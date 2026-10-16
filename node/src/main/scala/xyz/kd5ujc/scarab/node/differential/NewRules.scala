@@ -9,13 +9,14 @@ import xyz.kd5ujc.scarab.consensus.state.{
   EraLedgerState,
   MirrorExtras,
   MirrorState,
+  ShelleyLedgerState,
   ShelleyTip,
   Telescope
 }
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, Header, Prepared, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.ByronOut
 import xyz.kd5ujc.scarab.ledger.rules.{
-  ConwayBlock,
+  EraBlock,
   EraNes,
   FromByron,
   Globals,
@@ -25,8 +26,8 @@ import xyz.kd5ujc.scarab.ledger.rules.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
-  Conway,
   EpochNo,
+  EraTag,
   Hash32,
   NewEpochState,
   ShelleyBasedEra,
@@ -69,15 +70,15 @@ enum NewOutcome:
   case NotPorted
 
 /** What the new side is asked of a block: the state before it, as the mirror, the block and its
-  * header, and what the rules read of the network ([[ConwayBlock.Context]]: the constants and the
-  * era history of the old side's tick of the block, its configuration's choice of era; none when
-  * the harness has no old tick to take them from, where the rules that need them are not asked).
+  * header, and what the rules read of the network ([[EraBlock.Context]]: the constants and the era
+  * history of the old side's tick of the block, its configuration's choice of era; none when the
+  * harness has no old tick to take them from, where the rules that need them are not asked).
   */
 final case class BlockInput(
     from: MirrorState,
     header: Header,
     raw: Bytes,
-    context: Option[ConwayBlock.Context]
+    context: Option[EraBlock.Context]
 )
 
 /** The era-indexed rules, as the harness sees them (design §2.5): given the state before a block,
@@ -135,14 +136,15 @@ object NewRules:
   /** The rules as far as they are ported: the one place that grows with the ports (J2.3 on). The
     * node's `--rules differential` and the replay of a repro bundle both run these.
     *
-    * Ported: the tick of every Shelley-based era (J2.3), and the blocks of Conway (J2.4: BBODY and
-    * the rules under it). `store` is the backing store of the UTxO set, where the node has one: the
-    * new side's read set is fetched from it, as the old side's is.
+    * Ported: the tick of every Shelley-based era (J2.3), and their blocks (J2.4: BBODY and the
+    * rules under it for Conway; J2.5: the same for Shelley to Babbage, one instance over the
+    * witness). `store` is the backing store of the UTxO set, where the node has one: the new side's
+    * read set is fetched from it, as the old side's is.
     */
   def current[F[_]: Monad](store: Option[UtxoStore[F]] = None): NewRules[F] = new NewRules[F]:
     def forEra(era: Era): Option[Apply[F]] = era match
-      case Era.Conway => Some(conway(store))
-      case _          => None
+      case Era.Byron => None
+      case _         => Some(shelleyBased(store))
 
     override def tick(era: Era): Option[Tick[F]] = era match
       case Era.Byron => None
@@ -184,33 +186,29 @@ object NewRules:
     val amounts = m.extras match
       case MirrorExtras.InShelley(ledger, _) => ledger.rewardAmounts
       case MirrorExtras.InByron(_, _, _, _)  => Map.empty
+    def carry[E <: EraTag](era: ShelleyBasedEra[E], state: ShelleyLedgerState[E]): EraLedgerState =
+      given ShelleyBasedEra[E] = era
+      Relations
+        .seed[E](state.nes, amounts)
+        .toOption
+        .fold(EraLedgerState.inEra[E](state))(nes =>
+          EraLedgerState.inEra[E](state.copy(nes = Relations.withoutDroppedFields[E](nes)))
+        )
     val moved: Option[EraLedgerState] = telescope.state match
-      case i: EraLedgerState.InShelleyEra[e] =>
-        i.era match
-          case ShelleyBasedEra.SConway =>
-            Relations
-              .seed[Conway](i.state.nes, amounts)
-              .toOption
-              .map(nes =>
-                EraLedgerState.inEra[Conway](
-                  i.state.copy(nes = Relations.withoutDroppedFields[Conway](nes))
-                )
-              )
-          case _ => None
-      case EraLedgerState.ByronCurrent(_) => None
+      case i: EraLedgerState.InShelleyEra[e] => Some(carry[e](i.era, i.state))
+      case EraLedgerState.ByronCurrent(_)    => None
     moved
       .flatMap(state =>
         Telescope.make(telescope.past, telescope.current.copy(state = state)).toOption
       )
       .fold(m)(next => m.copy(ext = m.ext.copy(ledgerState = next)))
 
-  /** The mirror with the new-epoch state of Conway `nes` (a block of Conway applied, the tip at it)
-    * and the node's phase-2 counters as the block left them; none where the mirror is not of
-    * Conway.
+  /** The mirror with the new-epoch state `nes` (a block applied, the tip at it) and the node's
+    * phase-2 counters as the block left them; none where the mirror is not of the era of `nes`.
     */
-  private def withConway(
+  private def withEra(
       m: MirrorState,
-      nes: NewEpochState[Conway],
+      nes: EraNes,
       header: Header.Shelley,
       plutus: xyz.kd5ujc.scarab.ledger.PlutusStats
   ): Option[MirrorState] =
@@ -221,17 +219,16 @@ object NewRules:
         BlockNo.fromBigInt(header.blockNo),
         Hash32.fromBytes(header.hash)
       ).tupled.toOption.map(ShelleyTip(_, _, _))
-    val moved: Option[EraLedgerState] = telescope.state match
-      case i: EraLedgerState.InShelleyEra[e] =>
-        i.era match
-          case ShelleyBasedEra.SConway =>
-            Some(
-              EraLedgerState.inEra[Conway](
-                i.state.copy(tip = tip.fold(i.state.tip)(WithOrigin.At(_)), nes = nes)
-              )
-            )
-          case _ => None
-      case EraLedgerState.ByronCurrent(_) => None
+    val moved: Option[EraLedgerState] = (telescope.state, nes) match
+      case (i: EraLedgerState.InShelleyEra[e], n: EraNes.InEra[f]) =>
+        NewEpochState
+          .retype(n.era, i.era)(n.nes)
+          .map(same =>
+            EraLedgerState.inEra[e](
+              i.state.copy(tip = tip.fold(i.state.tip)(WithOrigin.At(_)), nes = same)
+            )(using i.era)
+          )
+      case _ => None
     for
       state <- moved
       next <- Telescope.make(telescope.past, telescope.current.copy(state = state)).toOption
@@ -241,61 +238,65 @@ object NewRules:
         case MirrorExtras.InByron(_, _, _, _) => None
     yield MirrorState(m.ext.copy(ledgerState = next), extras)
 
-  /** The block of Conway on the new rules ([[ConwayBlock]]): decoded, its read set fetched from the
-    * store, applied to the new-epoch state of the mirror, the changes to the UTxO set settled as
-    * the old side settles its own.
+  /** The block of a Shelley-based era on the new rules ([[EraBlock]]): decoded, its read set
+    * fetched from the store, applied to the new-epoch state of the mirror, the changes to the UTxO
+    * set settled as the old side settles its own. A state of an earlier era than the block's (the
+    * first block of an era) is the old side's to take.
     */
-  private def conway[F[_]: Monad](store: Option[UtxoStore[F]]): Apply[F] = input =>
+  private def shelleyBased[F[_]: Monad](store: Option[UtxoStore[F]]): Apply[F] = input =>
     (input.header, nesOf(input.from), input.from.extras, input.context) match
       case (
             header: Header.Shelley,
             Some(pre: EraNes.InEra[e]),
             MirrorExtras.InShelley(ledger, _),
             Some(context)
-          ) =>
-        pre.era match
-          case ShelleyBasedEra.SConway =>
-            Block.decodeShelley(input.raw) match
-              case Left(error) =>
-                Monad[F].pure(NewOutcome.Refused(BlockFailure.Decode(error)))
-              case Right(_: Block.Byron) =>
-                Monad[F].pure(
-                  NewOutcome.Refused(BlockFailure.EraAnnounced(Era.Byron, header.era))
-                )
-              case Right(block: Block.Shelley) =>
-                val txs = ConwayBlock.decode(block)
-                val wanted = pre.nes.es.ls.utxo.utxo.utxo.missing(Prepared(block, txs).inputs)
-                for
-                  fetched <- store match
-                    case Some(s) if wanted.nonEmpty => s.read(wanted)
-                    case _                          => Monad[F].pure(Map.empty)
-                  result = ConwayBlock(context)(
-                    EraNes.InEra(pre.era, withUtxo(pre.nes, _.withResident(fetched))),
-                    header,
-                    block,
-                    txs,
-                    ledger.plutus
-                  )
-                  // read after the block, as the old side's rules do
-                  flushed <- store.traverse(_.flushed)
-                yield result match
-                  case ConwayBlock.Outcome.Applied(nes, plutus) =>
-                    val settled = withUtxo(nes, u => u.settled(flushed.getOrElse(u.flushed)))
-                    withConway(input.from, settled, header, plutus)
-                      .fold(NewOutcome.NotPorted)(NewOutcome.Applied(_))
-                  case ConwayBlock.Outcome.Refused(failure) => NewOutcome.Refused(failure)
-                  case ConwayBlock.Outcome.NotConway(_)     => NewOutcome.NotPorted
-          case _ => Monad[F].pure(NewOutcome.NotPorted)
+          ) if EraNes.eraOf(pre.era) == header.era =>
+        Block.decodeShelley(input.raw) match
+          case Left(error) =>
+            Monad[F].pure(NewOutcome.Refused(BlockFailure.Decode(error)))
+          case Right(_: Block.Byron) =>
+            Monad[F].pure(
+              NewOutcome.Refused(BlockFailure.EraAnnounced(Era.Byron, header.era))
+            )
+          case Right(block: Block.Shelley) =>
+            val txs = EraBlock.decode(block)
+            val wanted = pre.nes.es.ls.utxo.utxo.utxo.missing(Prepared(block, txs).inputs)
+            for
+              fetched <- store match
+                case Some(s) if wanted.nonEmpty => s.read(wanted)
+                case _                          => Monad[F].pure(Map.empty)
+              result = EraBlock(context)(
+                EraNes.InEra(pre.era, withUtxo[e](pre.nes, _.withResident(fetched))(using pre.era)),
+                header,
+                block,
+                txs,
+                ledger.plutus
+              )
+              // read after the block, as the old side's rules do
+              flushed <- store.traverse(_.flushed)
+            yield result match
+              case EraBlock.Outcome.Applied(applied, plutus) =>
+                val settled = settle(applied, flushed)
+                withEra(input.from, settled, header, plutus)
+                  .fold(NewOutcome.NotPorted)(NewOutcome.Applied(_))
+              case EraBlock.Outcome.Refused(failure) => NewOutcome.Refused(failure)
+              case EraBlock.Outcome.NotInEra(_)      => NewOutcome.NotPorted
       case _ => Monad[F].pure(NewOutcome.NotPorted)
 
+  /** The state with its UTxO set settled as far as the store has flushed. */
+  private def settle(nes: EraNes, flushed: Option[Long]): EraNes = nes match
+    case n: EraNes.InEra[e] =>
+      EraNes.InEra(
+        n.era,
+        withUtxo[e](n.nes, u => u.settled(flushed.getOrElse(u.flushed)))(using n.era)
+      )
+
   /** The state with its UTxO set changed by `f`. */
-  private def withUtxo(
-      nes: NewEpochState[Conway],
+  private def withUtxo[E <: EraTag](
+      nes: NewEpochState[E],
       f: xyz.kd5ujc.scarab.ledger.Utxo => xyz.kd5ujc.scarab.ledger.Utxo
-  ): NewEpochState[Conway] =
+  )(using ShelleyBasedEra[E]): NewEpochState[E] =
     val ls = nes.es.ls
     nes.copy(es =
-      nes.es.copy(ls =
-        ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(f(ls.utxo.utxo.utxo))))
-      )
+      nes.es.copy(ls = ls.copy[E](utxo = ls.utxo.copy[E](utxo = UtxoTables(f(ls.utxo.utxo.utxo)))))
     )

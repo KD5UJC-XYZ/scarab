@@ -128,18 +128,26 @@ class DifferentialErasSuite extends CatsEffectSuite:
     }
   }
 
-  // ---- the blocks of Conway (J2.4): the new side keeps its own state from the first of them
+  // ---- the blocks of every Shelley-based era (J2.4 Conway, J2.5 Shelley to Babbage): the new side
+  // keeps its own state from the first of them
 
-  test("the Conway blocks of the capture on the new rules: the verdicts and the states agree") {
-    val conwayBlocks = blocks.count(_.era == Era.Conway)
+  test(
+    "the blocks of every era of the capture on the new rules: the verdicts and the states agree"
+  ) {
+    val shelleyBased = blocks.filter(_.era != Era.Byron)
+    val eras = shelleyBased.map(_.era).distinct
     run(blocks.indices, NewRules.current[IO](), Policy.Halt, ticking = true).map { r =>
       assertEquals(r.halted, None)
       assertEquals(r.stats.failures, 0L)
-      // the first block of Conway meets a state of Babbage, which the new side leaves to the old
-      // one; the others are applied and compared with the old side's state after each
-      assertEquals(r.stats.newBlocks.count, (conwayBlocks - 1).toLong)
+      // the first block of each era meets a state of the one before (the first, Byron's), which the
+      // new side leaves to the old one; the others are applied and compared with the old side's
+      // state after each
+      assertEquals(r.stats.newBlocks.count, (shelleyBased.size - eras.size).toLong)
       assert(r.paired.neu.isDefined, "the pair carries the new side's own state")
-      assertEquals(r.stats.notPorted.get((Era.Conway, Stage.Block)), Some(1L))
+      assertEquals(
+        r.stats.notPorted.filter((k, _) => k._2 == Stage.Block && k._1 != Era.Byron),
+        eras.map(e => (e, Stage.Block) -> 1L).toMap
+      )
     }
   }
 
