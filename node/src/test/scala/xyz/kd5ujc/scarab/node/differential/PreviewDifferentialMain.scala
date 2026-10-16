@@ -29,7 +29,7 @@ import xyz.kd5ujc.scarab.ledger.NodeError
   * opening the database).
   *
   * {{{
-  * java -Xmx16g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.PreviewDifferentialMain <db> [stride] [genesis-dir] [offset[,offset...]] [scratch]
+  * java -Xmx16g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.PreviewDifferentialMain <db> [stride] [genesis-dir] [offset[,offset...]] [scratch] [sampling-blocks]
   * }}}
   *
   * `<db>` is the `db` directory of the K1 Scala Preview run (`snapshots`, `immutable`,
@@ -116,6 +116,7 @@ object PreviewDifferentialMain:
     val scratch =
       args.lift(4).map(Path.of(_)).getOrElse(Files.createTempDirectory("preview-differential"))
     val env = setup.mirrorEnv()
+    val sampling = args.lift(5).fold(Sampling.Default)(n => Sampling.Boundaries(n.toLong))
     val snapshots = Files
       .list(db.resolve("snapshots"))
       .iterator
@@ -166,9 +167,9 @@ object PreviewDifferentialMain:
             )
             harness <- DifferentialRules.create[IO](
               old,
-              NewRules.current[IO],
+              NewRules.current[IO](Some(store)),
               IO.pure(env),
-              Sampling.Default,
+              sampling,
               Policy.Reseed,
               Repro.none[IO],
               e =>
@@ -258,6 +259,8 @@ object PreviewDifferentialMain:
       s"${r.differentialMillis} ms differential; ${r.stats.sampled} samples, toMirror $toMirror ms; " +
       s"${r.stats.ticks.size} ticks compared (old ${r.stats.ticks.map(_.oldNanos).sum / 1000000} ms, " +
       s"new ${r.stats.ticks.map(_.newNanos).sum / 1000000} ms, seed ${r.stats.ticks.map(_.seedNanos).sum / 1000000} ms); " +
+      s"blocks old ${r.stats.oldBlocks.meanNanos / 1000} us, new ${r.stats.newBlocks.meanNanos / 1000} us " +
+      s"(p99 < ${r.stats.oldBlocks.quantileNanos(0.99) / 1000} / ${r.stats.newBlocks.quantileNanos(0.99) / 1000} us); " +
       s"${r.stats.failures} divergences; end state ${
           if r.stateAgrees then "= the snapshot's"
           else s"DIFFERS ${r.agrees.fold("")(d => d.path.render)}"
@@ -267,6 +270,7 @@ object PreviewDifferentialMain:
     val samples = rows.flatMap(_.stats.samples).toVector
     val toMirror = samples.map(_.toMirrorNanos).sorted
     val perEpoch = rows.map(_.stats.samples.map(_.toMirrorNanos).sum / 1000000)
+    val merged = if rows.isEmpty then List(Stats()) else rows.map(_.stats)
     println(
       s"""${rows.size} epochs replayed, ${rows
           .map(_.blocks)
@@ -283,6 +287,19 @@ object PreviewDifferentialMain:
          |  conversion per epoch ms: ${perEpoch.sorted
           .lift(perEpoch.size / 2)
           .getOrElse(0L)} median, ${perEpoch.maxOption.getOrElse(0L)} max
+         |  per block, old / new mean us: ${merged
+          .map(_.oldBlocks)
+          .reduce(_ merge _)
+          .meanNanos / 1000} / ${merged
+          .map(_.newBlocks)
+          .reduce(_ merge _)
+          .meanNanos / 1000}; p99 < ${merged
+          .map(_.oldBlocks)
+          .reduce(_ merge _)
+          .quantileNanos(0.99) / 1000} / ${merged
+          .map(_.newBlocks)
+          .reduce(_ merge _)
+          .quantileNanos(0.99) / 1000}
          |  not ported: ${rows
           .flatMap(_.stats.notPorted.toList)
           .groupMapReduce(_._1)(_._2)(_ + _)

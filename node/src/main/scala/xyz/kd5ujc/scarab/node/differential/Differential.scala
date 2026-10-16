@@ -59,6 +59,42 @@ final case class Cost(toMirrorNanos: Long, diffNanos: Long)
   */
 final case class TickCost(oldNanos: Long, seedNanos: Long, newNanos: Long, diffNanos: Long)
 
+/** The time of the blocks one side applied, in nanoseconds: how many, their total and largest, and
+  * a histogram by power of two (bucket `i` holds the blocks that took from 2^i to 2^(i+1) ns), for
+  * the median and the 99th percentile of a run of any length in constant memory.
+  */
+final case class Timing(
+    count: Long = 0,
+    totalNanos: Long = 0,
+    maxNanos: Long = 0,
+    buckets: Vector[Long] = Vector.fill(40)(0L)
+):
+  def add(nanos: Long): Timing =
+    val bucket =
+      math.min(buckets.size - 1, 63 - java.lang.Long.numberOfLeadingZeros(math.max(1L, nanos)))
+    Timing(
+      count + 1,
+      totalNanos + nanos,
+      math.max(maxNanos, nanos),
+      buckets.updated(bucket, buckets(bucket) + 1)
+    )
+
+  def meanNanos: Long = if count == 0 then 0L else totalNanos / count
+
+  def merge(o: Timing): Timing =
+    Timing(
+      count + o.count,
+      totalNanos + o.totalNanos,
+      math.max(maxNanos, o.maxNanos),
+      buckets.zip(o.buckets).map(_ + _)
+    )
+
+  /** The upper bound of the bucket the quantile `q` falls in. */
+  def quantileNanos(q: Double): Long =
+    val target = math.ceil(q * count).toLong
+    val reached = buckets.scanLeft(0L)(_ + _).drop(1).indexWhere(_ >= target)
+    if count == 0 || reached < 0 then 0L else 1L << (reached + 1)
+
 /** What the harness reports as it goes. */
 enum Event:
   /** The tick of `block` was compared (`Stage.Tick`): it crossed `epochsCrossed` epoch boundaries.
@@ -81,10 +117,18 @@ final case class Stats(
     samples: Vector[Cost] = Vector.empty,
     notPorted: Map[(Era, Stage), Long] = Map.empty,
     failures: Long = 0,
-    ticks: Vector[TickCost] = Vector.empty
+    ticks: Vector[TickCost] = Vector.empty,
+    oldBlocks: Timing = Timing(),
+    newBlocks: Timing = Timing()
 ):
   def sampled: Long = samples.size.toLong
   def ticked(c: TickCost): Stats = copy(ticks = ticks :+ c)
+
+  /** A block both sides applied: what each took (the old side's whole block, the new side's block
+    * and its read set).
+    */
+  def blockTimed(oldNanos: Long, newNanos: Long): Stats =
+    copy(oldBlocks = oldBlocks.add(oldNanos), newBlocks = newBlocks.add(newNanos))
 
   def block: Stats = copy(blocks = blocks + 1)
   def sample(c: Cost): Stats = copy(samples = samples :+ c)
@@ -106,6 +150,10 @@ object Stats:
     s"differential: ${s.blocks} blocks, ${s.sampled} sampled, ${s.ticks.size} ticks compared " +
       s"(old ms ${ms(s.ticks.map(_.oldNanos))}; new ms ${ms(s.ticks.map(_.newNanos))}), " +
       s"${s.failures} failures; " +
+      f"per block (${s.newBlocks.count} compared) old ms mean ${s.oldBlocks.meanNanos / 1e6}%.3f, p50 <${s.oldBlocks
+          .quantileNanos(0.5) / 1e6}%.3f, p99 <${s.oldBlocks.quantileNanos(0.99) / 1e6}%.3f, max ${s.oldBlocks.maxNanos / 1e6}%.1f; " +
+      f"new ms mean ${s.newBlocks.meanNanos / 1e6}%.3f, p50 <${s.newBlocks.quantileNanos(0.5) / 1e6}%.3f, p99 <${s.newBlocks
+          .quantileNanos(0.99) / 1e6}%.3f, max ${s.newBlocks.maxNanos / 1e6}%.1f; " +
       s"toMirror ms ${ms(s.samples.map(_.toMirrorNanos))}; diff ms ${ms(s.samples.map(_.diffNanos))}; " +
       s"not ported ${s.notPorted.toList.sortBy(_._1._1.ordinal).map { case ((e, st), n) => s"$e/$st=$n" }.mkString(", ")}"
   }

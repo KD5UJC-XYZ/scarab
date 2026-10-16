@@ -6,10 +6,23 @@ import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, BlockRules, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, StateMirrorError}
-import xyz.kd5ujc.scarab.ledger.{Header, NodeError, ValidationError}
-import xyz.kd5ujc.scarab.ledger.state.firstDifference
-import xyz.kd5ujc.scarab.node.MirrorRun
+import xyz.kd5ujc.scarab.consensus.state.{
+  ConsensusMirrorEnv,
+  MirrorExtras,
+  MirrorState,
+  StateMirrorError
+}
+import xyz.kd5ujc.scarab.ledger.{BlockFailure, BlockRule, Header, NodeError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.rules.{ConwayBlock, EraNes, Globals}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Difference,
+  MirrorError,
+  NewEpochState,
+  Path,
+  ShelleyBasedEra,
+  VocabError
+}
+import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules}
 
 /** The old rules and the new ones side by side on one chain (design `ledger-mirror-step2.md` §2.5):
   * the block rules over [[Paired]] states. Each block goes to the old rules (the node's, whose
@@ -35,6 +48,7 @@ final class DifferentialRules[F[_]] private (
     repro: Repro[F],
     observe: Event => F[Unit],
     counters: Ref[F, Stats],
+    oldTick: Option[TickStage.OldTicking],
     tickStage: Option[TickStage[F]]
 )(using F: Sync[F], failures: Handle[F, NodeError], halt: Raise[F, Divergence])
     extends BlockRules[F, Paired]:
@@ -45,10 +59,19 @@ final class DifferentialRules[F[_]] private (
   def apply(state: Paired, header: Header, raw: Bytes): F[Paired] =
     val block = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
     for
+      // the old side's tick of the block: the stage of its own, and the constants of the network
+      // the new side's block rules are given
+      ticking <- oldTick.traverse(f => F.delay(DifferentialRules.timed(f(state.old, header))))
+      began <- F.monotonic
       attempted <- failures.attempt(old(state.old, header, raw))
+      ended <- F.monotonic
       first <- counters.modify(s => (s.block, s.blocks == 0))
-      _ <- ticked(state, header, raw, block, first)
-      outcome <- newSide(state, header, raw, block)
+      _ <- ticked(state, header, raw, block, first, ticking)
+      timedOutcome <- newSide(state, header, raw, block, ticking.flatMap(_._1.toOption.flatten))
+      (outcome, newNanos) = timedOutcome
+      _ <- outcome
+        .filter(_ => attempted.isRight)
+        .traverse_(_ => counters.update(_.blockTimed((ended - began).toNanos, newNanos)))
       next <- attempted match
         case Left(refused: ValidationError) =>
           agree(Left(refused.failure), outcome, state, header, raw, block) *>
@@ -56,7 +79,16 @@ final class DifferentialRules[F[_]] private (
         case Left(other) => failures.raise[NodeError, Paired](other)
         case Right(after) =>
           agree(Right(()), outcome, state, header, raw, block) *>
-            following(state, after, header, raw, block, outcome, first)
+            following(
+              state,
+              after,
+              header,
+              raw,
+              block,
+              outcome,
+              first,
+              ticking.flatMap(_._1.toOption.flatten)
+            )
     yield next
 
   /** The `Tick` stage: the tick of the block on both sides, where the new side's is ported. */
@@ -65,10 +97,11 @@ final class DifferentialRules[F[_]] private (
       header: Header,
       raw: Bytes,
       block: BlockRef,
-      first: Boolean
+      first: Boolean,
+      ticking: Option[(Either[BlockFailure, Option[NodeRules.OldTick]], Long)]
   ): F[Unit] =
-    (tickStage, neu.tick(header.era)).tupled.traverse_ { (stage, port) =>
-      stage(port, state, header, block, first).flatMap(
+    (tickStage, neu.tick(header.era), ticking).tupled.traverse_ { (stage, port, tick) =>
+      stage(port, state, header, block, first, tick._1, tick._2).flatMap(
         _.traverse_ { compared =>
           counters.update(_.ticked(compared.cost)) *>
             observe(Event.TickCompared(block, compared.epochsCrossed, compared.cost)) *>
@@ -77,25 +110,40 @@ final class DifferentialRules[F[_]] private (
       )
     }
 
-  /** What the new rules say of the block, when they are ported for its era. A pre-state the new
-    * side does not hold is seeded from the old one first.
+  /** What the new rules say of the block, when they are ported for its era, and how long they took.
+    * A pre-state the new side does not hold is seeded from the old one first. A block they say
+    * nothing of ([[NewOutcome.NotPorted]]) is as one that is not ported.
     */
   private def newSide(
       state: Paired,
       header: Header,
       raw: Bytes,
-      block: BlockRef
-  ): F[Option[NewOutcome]] =
-    neu.forEra(header.era).flatTraverse { rules =>
-      state.neu
-        .fold(convert(state.old, state.at).flatMap {
-          case (Right(seeded), _) => F.pure(Some(seeded))
-          case (Left(error), _) =>
-            diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
-              .as(None)
-        })(pre => F.pure(Some(pre)))
-        .flatMap(_.traverse(rules(_, header, raw)))
-    }
+      block: BlockRef,
+      ot: Option[NodeRules.OldTick]
+  ): F[(Option[NewOutcome], Long)] =
+    neu.forEra(header.era) match
+      case None => F.pure((None, 0L))
+      case Some(rules) =>
+        val context = ot.map(tick =>
+          ConwayBlock.Context(Globals(tick.globals, tick.config.geometry), tick.config.forks.eraAt)
+        )
+        for
+          pre <- state.neu.fold(convert(state.old, state.at).flatMap {
+            case (Right(seeded), _) => F.pure(Option(seeded))
+            case (Left(error), _) =>
+              diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
+                .as(Option.empty[MirrorState])
+          })(m => F.pure(Option(m)))
+          began <- F.monotonic
+          outcome <- pre.traverse(m => rules(BlockInput(m, header, raw, context)))
+          ended <- F.monotonic
+        yield (
+          outcome.filter {
+            case NewOutcome.NotPorted => false
+            case _                    => true
+          },
+          (ended - began).toNanos
+        )
 
   /** The verdicts of the two sides, compared. */
   private def agree(
@@ -110,13 +158,20 @@ final class DifferentialRules[F[_]] private (
       val verdict: Verdict = o match
         case NewOutcome.Applied(_)   => Right(())
         case NewOutcome.Refused(why) => Left(why)
-      if verdict == old then F.unit
+        case NewOutcome.NotPorted    => old
+      // the new side judges the ledger's part of a block (the body and the rules under it); a
+      // block the old side refuses for its header (the envelope, TPraos, Praos) is not its to judge
+      if verdict == old || !DifferentialRules.ledgerFailure(old) then F.unit
       else diverge(Divergence.VerdictDiffers(block, Stage.Block, old, verdict), state, header, raw)
     }
 
   /** The pair after a block the old side accepted: the new side's state, compared with the old
     * one's where the block is a sampling point, or converted for the cost of it where the rules are
     * not ported (the new side then holds no state of its own).
+    *
+    * What is compared is the new-epoch state, the ledger's own (J2.4): the new side applies the
+    * ledger's part of a block, so the header state and the node's bookkeeping of the mirror are the
+    * old side's and are not compared, as at the `Tick` stage. The comparison is [[Relations]]'.
     */
   private def following(
       state: Paired,
@@ -125,7 +180,8 @@ final class DifferentialRules[F[_]] private (
       raw: Bytes,
       block: BlockRef,
       outcome: Option[NewOutcome],
-      first: Boolean
+      first: Boolean,
+      ot: Option[NodeRules.OldTick]
   ): F[Paired] =
     val due = sampling.due(state.old, after, block, first)
     def paired(neu: Option[MirrorState]) = Paired(after, neu, Some(block))
@@ -137,24 +193,48 @@ final class DifferentialRules[F[_]] private (
             diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
               .as(paired(Some(theirs)))
           case (Right(ours), toMirror) =>
-            timed(ours.firstDifference(theirs)).flatMap { (difference, diffNanos) =>
-              sampled(block, after, header, Cost(toMirror, diffNanos), seeded = false) *>
-                difference
-                  .traverse_(d =>
-                    diverge(
-                      Divergence.StateDiffers(block, header.era, Stage.Block, d),
-                      state,
-                      header,
-                      raw
-                    )
-                  )
-                  // a disagreement that does not halt adopts the old side
-                  .as(paired(Some(if difference.isDefined then ours else theirs)))
+            F.delay(
+              DifferentialRules.timed(
+                ledgerDifference(
+                  ours,
+                  theirs,
+                  header,
+                  state,
+                  ot,
+                  boundary = after.ledger.epoch != state.old.ledger.epoch
+                )
+              )
+            ).flatMap { (compared, diffNanos) =>
+              compared match
+                case Left(error) =>
+                  diverge(
+                    Divergence.Unconvertible(
+                      block,
+                      Stage.Block,
+                      StateMirrorError.Ledger(MirrorError.Vocab(error))
+                    ),
+                    state,
+                    header,
+                    raw
+                  ).as(paired(Some(theirs)))
+                case Right(difference) =>
+                  sampled(block, after, header, Cost(toMirror, diffNanos), seeded = false) *>
+                    difference
+                      .traverse_(d =>
+                        diverge(
+                          Divergence.StateDiffers(block, header.era, Stage.Block, d),
+                          state,
+                          header,
+                          raw
+                        )
+                      )
+                      // a disagreement that does not halt adopts the old side
+                      .as(paired(Some(if difference.isDefined then ours else theirs)))
             }
         }
       // the new side refused a block the old side took: reported by `agree`; seeded again later
       case Some(NewOutcome.Refused(_)) => F.pure(paired(None))
-      case None =>
+      case Some(NewOutcome.NotPorted) | None =>
         counters.update(_.notPortedIn(header.era, Stage.Block)) *>
           (if !due then F.pure(paired(None))
            else
@@ -192,6 +272,53 @@ final class DifferentialRules[F[_]] private (
       _ <- halt.raise[Divergence, Unit](divergence).whenA(policy == Policy.Halt)
     yield ()
 
+  /** The first difference of the new-epoch states of the two mirrors, where the old side's is
+    * `ours` (taken to the terms the old side can express, [[Relations]]).
+    */
+  private def ledgerDifference(
+      ours: MirrorState,
+      theirs: MirrorState,
+      header: Header,
+      state: Paired,
+      ot: Option[NodeRules.OldTick],
+      boundary: Boolean
+  ): Either[VocabError, Option[Difference]] =
+    // the slot after which the reward update starts (`RewardsTooEarly` until then)
+    val rewardsStarted = ot.forall { t =>
+      val globals = Globals(t.globals, t.config.geometry)
+      header.slot > globals.firstSlot(globals.epochOf(header.slot)) +
+        globals.randomnessStabilisationWindow
+    }
+    val amounts = ours.extras match
+      case MirrorExtras.InShelley(ledger, _) => ledger.rewardAmounts
+      case MirrorExtras.InByron(_, _, _, _)  => Map.empty
+    (NewRules.nesOf(ours), NewRules.nesOf(theirs)) match
+      case (Some(a: EraNes.InEra[p]), Some(b: EraNes.InEra[q])) =>
+        given ShelleyBasedEra[q] = b.era
+        NewEpochState.retype(a.era, b.era)(a.nes) match
+          case Some(same) =>
+            Relations.compare[q](
+              same,
+              amounts,
+              b.nes,
+              rewardsStarted,
+              handover = state.at.isEmpty,
+              carried = true,
+              boundary = boundary
+            )
+          case None =>
+            Right(
+              Some(
+                Difference(
+                  Path.root,
+                  s"era ${EraNes.eraOf(a.era)}",
+                  s"era ${EraNes.eraOf(b.era)}"
+                )
+              )
+            )
+      case (None, None) => Right(None)
+      case _ => Right(Some(Difference(Path.root, "a Shelley-based state", "a Byron state")))
+
   private def timed[A](body: => A): F[(A, Long)] =
     F.blocking {
       val began = System.nanoTime()
@@ -207,6 +334,26 @@ final class DifferentialRules[F[_]] private (
     env.flatMap(e => timed(MirrorRun.run(e)(_.toMirror(at, state)).map(_.value)))
 
 object DifferentialRules:
+  /** The value of a pure computation, with the nanoseconds it took. */
+  private[differential] def timed[A](body: => A): (A, Long) =
+    val began = System.nanoTime()
+    val result = body
+    (result, System.nanoTime() - began)
+
+  /** Whether a refusal of the old side is one of the ledger's part of a block, which the new rules
+    * judge: the decoding and the commitment of the body, the epoch, the transactions and the limits
+    * of the block. A refusal of the header (the envelope, TPraos, Praos) is not.
+    */
+  def ledgerFailure(verdict: Verdict): Boolean = verdict.fold(
+    {
+      case BlockFailure.HeaderDiffers | BlockFailure.BodyCommitment |
+          BlockFailure.EraAnnounced(_, _) | BlockFailure.EpochPrecedesLedger(_) =>
+        true
+      case other => other.rule == BlockRule.Ledger || other.rule == BlockRule.Decode
+    },
+    _ => true
+  )
+
   def create[F[_]](
       old: BlockRules[F, NodeState],
       neu: NewRules[F],
@@ -233,6 +380,7 @@ object DifferentialRules:
           repro,
           observe,
           _,
-          oldTick.map(new TickStage[F](env, sampling, _))
+          oldTick,
+          oldTick.map(_ => new TickStage[F](env, sampling))
         )
       )

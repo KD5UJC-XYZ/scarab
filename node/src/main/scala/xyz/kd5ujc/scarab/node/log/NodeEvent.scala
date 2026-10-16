@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
 import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, MirrorCheck, NodeConfig, Topology}
-import xyz.kd5ujc.scarab.node.differential.{Divergence, Stats, Verdict}
+import xyz.kd5ujc.scarab.node.differential.{Divergence, Stats, Timing, Verdict}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** What the node itself reports, apart from the event types of its parts (the follower, the chain
@@ -305,8 +305,19 @@ object NodeEvent:
           )
     case RulesHalted(d) => diverged(EventKind.RulesHalted, d, None)
     case DifferentialSummary(stats) =>
+      // the blocks both sides applied (the old side's whole block; the new side's ledger part, with
+      // the signatures and the block's decoding it does for itself), p50 and p99 to the power of two
+      def timing(t: Timing): Json = Json.obj(
+        "count" -> t.count.asJson,
+        "meanMillis" -> (t.meanNanos / 1e6).asJson,
+        "p50Millis" -> (t.quantileNanos(0.5) / 1e6).asJson,
+        "p99Millis" -> (t.quantileNanos(0.99) / 1e6).asJson,
+        "maxMillis" -> (t.maxNanos / 1e6).asJson
+      )
       EventKind.DifferentialSummary.line(
         "blocks" -> stats.blocks.asJson,
+        "blockOld" -> timing(stats.oldBlocks),
+        "blockNew" -> timing(stats.newBlocks),
         "sampled" -> stats.sampled.asJson,
         "failures" -> stats.failures.asJson,
         "toMirrorMillis" -> millis(stats.samples.map(_.toMirrorNanos)),

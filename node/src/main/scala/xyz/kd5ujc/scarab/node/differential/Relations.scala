@@ -30,6 +30,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
   *     was seeded with, has these fields of the old side's where the pool's stake is the same: the
   *     seed derived the delegators from the accounts as they are, and a delegation may have changed
   *     since the snapshot was taken.
+  *   - **Delegator counts of a carried state** (J2.4): as above, for all three snapshots, except
+  *     `mark` at the boundary that takes it.
   *   - **The VRF key hashes at protocol version 10**: the old mirror derives them for versions from
   *     10, where the reference populates them entering 11 (`HardFork.hs:75-78`; J3.3), so at
   *     version 10 they are not compared.
@@ -112,7 +114,9 @@ object Relations:
       oldAmounts: Map[node.Credential, BigInt],
       neu: NewEpochState[E],
       rewardsStarted: Boolean,
-      handover: Boolean
+      handover: Boolean,
+      carried: Boolean = false,
+      boundary: Boolean = true
   )(using ShelleyBasedEra[E]): Either[VocabError, Option[Difference]] =
     amounts(neu).map { sums =>
       sums
@@ -126,7 +130,13 @@ object Relations:
         )
         .orElse {
           val started = if rewardsStarted then old else old.copy(ru = None)
-          val (o, n) = normalise(if handover then sameFuture(started, neu) else started, neu)
+          val (o, n) =
+            normalise(
+              if handover then sameFuture(started, neu) else started,
+              neu,
+              carried,
+              boundary
+            )
           Diff[NewEpochState[E]].diff(o, n)
         }
     }
@@ -149,7 +159,12 @@ object Relations:
     )
 
   /** Both states, taken to the terms the old side can express. */
-  def normalise[E <: EraTag](old: NewEpochState[E], neu: NewEpochState[E])(using
+  def normalise[E <: EraTag](
+      old: NewEpochState[E],
+      neu: NewEpochState[E],
+      carried: Boolean = false,
+      boundary: Boolean = true
+  )(using
       era: ShelleyBasedEra[E]
   ): (NewEpochState[E], NewEpochState[E]) =
     val noRewards = neu.copy(ru = neu.ru.map {
@@ -201,10 +216,18 @@ object Relations:
     // the `mark` snapshot of a pool that has just retired: the old mirror derives its delegators
     // from the accounts, which the retirement has cleared
     val registered = EraLedger.pState(noRewards.es.ls).stakePools
+    // A state the new side carried on from block to block holds each snapshot as it was when it was
+    // taken, with the delegators the pool had then (`spsDelegators`); the old mirror derives them
+    // from the accounts as they are. They agree at the boundary that takes `mark`, and the
+    // delegators themselves are checked against the accounts at every block (`Invariants`).
     val snapshots = noRewards.es.snapshots.copy(
-      mark = lower(old.es.snapshots.mark, noRewards.es.snapshots.mark, !registered.contains(_)),
+      mark =
+        if carried && !boundary then seeded(old.es.snapshots.mark, noRewards.es.snapshots.mark)
+        else lower(old.es.snapshots.mark, noRewards.es.snapshots.mark, !registered.contains(_)),
       set = seeded(old.es.snapshots.set, noRewards.es.snapshots.set),
-      go = lower(old.es.snapshots.go, noRewards.es.snapshots.go)
+      go =
+        if carried then seeded(old.es.snapshots.go, noRewards.es.snapshots.go)
+        else lower(old.es.snapshots.go, noRewards.es.snapshots.go)
     )
     val handle: UtxoTables =
       if noRewards.es.ls.utxo.utxo.utxo.copy(stamp = old.es.ls.utxo.utxo.utxo.stamp) ==

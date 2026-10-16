@@ -442,7 +442,7 @@ object Main extends IOApp:
           DifferentialRules
             .create[IO](
               oldRules,
-              NewRules.current[IO],
+              NewRules.current[IO](Some(store)),
               eraStarts.get.map(setup.mirrorEnv),
               Sampling.Default,
               options.onDivergence,

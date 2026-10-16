@@ -10,9 +10,9 @@ import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.{MirrorState, StateMirrorError}
+import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState, StateMirrorError, Telescope}
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, BlockRule, Header, NodeError, ValidationError}
-import xyz.kd5ujc.scarab.ledger.state.WithOrigin
+import xyz.kd5ujc.scarab.ledger.state.Coin
 import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -114,7 +114,7 @@ class DifferentialErasSuite extends CatsEffectSuite:
   // ---- the tick stage (J2.3): the ticked ledger of the old rules and of the new, at every block
 
   test("the tick of every block of the capture: the new rules reach the old rules' state") {
-    run(blocks.indices, NewRules.current[IO], Policy.Reseed, ticking = true).map { r =>
+    run(blocks.indices, NewRules.current[IO](), Policy.Reseed, ticking = true).map { r =>
       val diverged = r.events.collect { case Event.Diverged(d, _) => Show[Divergence].show(d) }
       println(Show[Stats].show(r.stats))
       diverged.take(20).foreach(println)
@@ -125,6 +125,21 @@ class DifferentialErasSuite extends CatsEffectSuite:
       // and the epoch boundaries among them (the era changes are on boundaries)
       val crossings = r.events.collect { case Event.TickCompared(b, n, _) if n > 0 => b }
       assert(crossings.size >= 6, crossings.size.toString)
+    }
+  }
+
+  // ---- the blocks of Conway (J2.4): the new side keeps its own state from the first of them
+
+  test("the Conway blocks of the capture on the new rules: the verdicts and the states agree") {
+    val conwayBlocks = blocks.count(_.era == Era.Conway)
+    run(blocks.indices, NewRules.current[IO](), Policy.Halt, ticking = true).map { r =>
+      assertEquals(r.halted, None)
+      assertEquals(r.stats.failures, 0L)
+      // the first block of Conway meets a state of Babbage, which the new side leaves to the old
+      // one; the others are applied and compared with the old side's state after each
+      assertEquals(r.stats.newBlocks.count, (conwayBlocks - 1).toLong)
+      assert(r.paired.neu.isDefined, "the pair carries the new side's own state")
+      assertEquals(r.stats.notPorted.get((Era.Conway, Stage.Block)), Some(1L))
     }
   }
 
@@ -242,14 +257,34 @@ class DifferentialErasSuite extends CatsEffectSuite:
 
   /** A new side that answers for the blocks of `era` with `answer`, given the block's index. */
   private def answering(era: Era, answer: Int => NewOutcome): NewRules[IO] = e =>
-    Option.when(e == era)((_: MirrorState, h: Header, _: Bytes) =>
-      IO.pure(answer(headers.indexWhere(_.hash == h.hash)))
+    Option.when(e == era)((input: BlockInput) =>
+      IO.pure(answer(headers.indexWhere(_.hash == input.header.hash)))
     )
 
   private val conway = blocks.indexWhere(_.era == Era.Conway)
 
+  /** The mirror with one lovelace more in the treasury: a new side that is wrong about the ledger.
+    * (What is compared of two mirrors is their new-epoch state, as at the `Tick` stage.)
+    */
   private def untipped(m: MirrorState): MirrorState =
-    m.copy(ext = m.ext.copy(headerState = m.ext.headerState.copy(tip = WithOrigin.Origin)))
+    val state = m.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val nes = i.state.nes
+        val account = nes.es.chainAccount
+        val richer = Coin
+          .fromBigInt(account.treasury.value + 1)
+          .fold(e => fail(e.toString), identity)
+        EraLedgerState.InShelleyEra(
+          i.era,
+          i.state.copy(nes =
+            nes.copy(es = nes.es.copy(chainAccount = account.copy(treasury = richer)))
+          )
+        )
+      case other => other
+    val telescope = Telescope
+      .make(m.ext.ledgerState.past, m.ext.ledgerState.current.copy(state = state))
+      .fold(e => fail(e.toString), identity)
+    m.copy(ext = m.ext.copy(ledgerState = telescope))
 
   private def beforeConway = Paired.of(plain(conway), Some(ref(headers(conway - 1))))
 
@@ -272,7 +307,7 @@ class DifferentialErasSuite extends CatsEffectSuite:
           assertEquals(block, ref(headers(conway)))
           assertEquals(era, Era.Conway)
           assertEquals(stage, Stage.Block)
-          assertEquals(difference.path.render, "ext.headerState.tip")
+          assertEquals(difference.path.render, "es.chainAccount.treasury")
         case other => fail(s"expected a state divergence, got $other")
     }
   }
@@ -328,7 +363,7 @@ class DifferentialErasSuite extends CatsEffectSuite:
       assertEquals(read.header.hash, headers(conway).hash)
       assertEquals(read.pre.anchor, pre.at)
       assertEquals(read.description.hcursor.get[String]("kind"), Right("StateDiffers"))
-      assertEquals(read.description.hcursor.get[String]("path"), Right("ext.headerState.tip"))
+      assertEquals(read.description.hcursor.get[String]("path"), Right("es.chainAccount.treasury"))
       // the state in the bundle is the one before the block, and applying the block gives the
       // state after it
       val replayed = NodeRules.applyBlock(

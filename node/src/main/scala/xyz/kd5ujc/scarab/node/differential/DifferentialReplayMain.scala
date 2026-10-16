@@ -54,7 +54,7 @@ object DifferentialReplayMain extends IOApp:
                               configured.globals,
                               configured.byronRules
                             ),
-                            NewRules.current[IO],
+                            NewRules.current[IO](),
                             IO.pure(env),
                             Sampling.EveryBlock,
                             Policy.Reseed,

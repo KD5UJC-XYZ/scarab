@@ -34,8 +34,7 @@ import xyz.kd5ujc.scarab.node.{LedgerRun, NodeRules}
   */
 final class TickStage[F[_]](
     env: F[ConsensusMirrorEnv],
-    sampling: Sampling,
-    ticking: TickStage.OldTicking
+    sampling: Sampling
 )(using F: Sync[F]):
 
   /** What comparing a tick found: nothing to say for the block, or what it cost and the
@@ -46,13 +45,14 @@ final class TickStage[F[_]](
       state: Paired,
       header: Header,
       block: BlockRef,
-      first: Boolean
+      first: Boolean,
+      ticking: Either[BlockFailure, Option[NodeRules.OldTick]],
+      oldNanos: Long
   ): F[Option[TickStage.Compared]] =
-    F.delay(timed(ticking(state.old, header))).flatMap {
-      case (Right(Some(ot)), oldNanos) if due(state.old, ot, block, first) =>
+    ticking match
+      case Right(Some(ot)) if due(state.old, ot, block, first) =>
         compare(port, state, header, block, ot, oldNanos).map(Some(_))
       case _ => F.pure(None)
-    }
 
   /** Whether the tick of the block did anything: crossed an epoch boundary (or entered Shelley),
     * started the reward update, adopted genesis delegations, or falls on a sampling point.
@@ -90,7 +90,21 @@ final class TickStage[F[_]](
       state: Paired,
       ot: NodeRules.OldTick
   ): Option[Either[MirrorError, NewRules.TickFrom]] =
-    SomeEra.of(StateMirror.eraOf(e, state.old)) match
+    val era = StateMirror.eraOf(e, state.old)
+    // the new side's own state, where it holds one in the era the old state is in (J2.4: from the
+    // first ported block on, the pair carries it)
+    val own = state.neu.flatMap(NewRules.nesOf).filter(_.toEra == era)
+    own match
+      case Some(carried) => Some(Right(NewRules.TickFrom.Shelley(carried)))
+      case None          => fromOld(e, state, ot, era)
+
+  private def fromOld(
+      e: ConsensusMirrorEnv,
+      state: Paired,
+      ot: NodeRules.OldTick,
+      era: xyz.kd5ujc.scarab.protocol.Era
+  ): Option[Either[MirrorError, NewRules.TickFrom]] =
+    SomeEra.of(era) match
       case Some(pre: SomeEra.Of[p]) =>
         given ShelleyBasedEra[p] = pre.era
         Some(for
@@ -169,8 +183,10 @@ final class TickStage[F[_]](
                                     image.value.extras.rewardAmounts,
                                     same,
                                     rewardsStarted,
-                                    handover =
-                                      from.isInstanceOf[NewRules.TickFrom.Byron] || state.at.isEmpty
+                                    handover = from
+                                      .isInstanceOf[NewRules.TickFrom.Byron] || state.at.isEmpty,
+                                    carried = state.neu.isDefined,
+                                    boundary = ot.epochsCrossed > 0
                                   )
                                   .left
                                   .map(MirrorError.Vocab(_))
