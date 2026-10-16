@@ -61,6 +61,9 @@ per namespace a severity filter, backends and a frequency limit, looked up from 
   line; and there are new lines (`verificationCache`, which was a text line on stderr, and `slf4j`). The http4s
   server now logs one `slf4j` line at start ("service bound").
 - The long-run scripts can drop the shell pipe and `exec` the JVM (running.md, "Logging").
+- The usual severity of each kind is the node's own choice: the Haskell node's per-message severities (cardano-node
+  `Cardano/Node/Tracing/Tracers/*.hs`) were not compared one by one; the levels, the namespaces, the lookup and
+  the limiter are what is mirrored.
 - Not mirrored: deeper namespaces, detail levels, privacy, the forwarder to `cardano-tracer`, EKG, the Haskell
   node's JSON shape (`ns`, `sev`, `data`) and its configuration keys. A sink that cannot be written (a full disk)
   fails the run as `println` did. Revisit when a tool that reads the Haskell node's trace format must read ours, or

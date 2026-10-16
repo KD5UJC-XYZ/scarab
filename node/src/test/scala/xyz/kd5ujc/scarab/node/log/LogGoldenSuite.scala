@@ -91,6 +91,7 @@ class LogGoldenSuite extends CatsEffectSuite:
       val rendered = lines.map(Render.json(_, at)).toList
       val expected = Files.readString(golden, UTF_8).linesIterator.toList
       if rendered != expected then
+        Files.createDirectories(Path.of("target"))
         Files.writeString(
           Path.of("target/log-golden.actual.jsonl"),
           rendered.mkString("", "\n", "\n")
