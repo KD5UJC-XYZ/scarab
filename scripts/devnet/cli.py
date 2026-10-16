@@ -22,6 +22,8 @@
                                    LocalStateQuery, local ChainSync and LocalTxMonitor byte for byte, `cardano-cli query`, refused transactions
     devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
     devnet.py capture-eras         capture the up-eras chain as test fixtures (fixtures/eras)
+    devnet.py sample-chain-dep     next to up-eras: the reference's DebugChainDepState answers at chosen tips
+    devnet.py assemble-chain-dep   write answers.json of the sampled points that are in the captured chain
     devnet.py e2e [--keep]         up-eras + Scala follower from Origin; assert every era and
                                    era transition was followed with no validation error
     devnet.py refused-fixture      write fixtures/devnet/refused-txs.jsonl from a finished
@@ -39,6 +41,7 @@ reference container's network namespace because the reference nodes bind to loop
 """
 import argparse
 import os
+from .chaindep import assemble, sample
 from .cluster import down, tip, up, up_eras
 from .compare import compare
 from .follower import follow
@@ -70,27 +73,45 @@ def main():
                                     "SCARAB_RULES does the same for the followers that scenarios start")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("up", help="create genesis and start the 3-pool reference cluster").set_defaults(run=up)
-    eras_options = argparse.ArgumentParser(add_help=False)
-    eras_options.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
-    eras_options.add_argument("--active-slots-coeff", type=float, default=0.2, help="Praos active slot coefficient f")
-    eras_options.add_argument("--byron-epochs", type=int, default=1, help="epochs spent in Byron")
-    eras_options.add_argument("--byron-slot-ms", type=int, default=1000, help="Byron slot length in milliseconds")
-    eras_options.add_argument("--stall-seconds", type=int, default=90, help="fail when the chain does not grow for this long")
-    eras_options.add_argument("--shelley-epochs", type=int, default=1,
-                              help="epochs at protocol 2 (the fixture cluster has 1; e2e uses 3 so pre-Allegra rewards pay out)")
-    eras_options.add_argument("--min-utxo-value", type=int, default=0,
-                              help="Shelley genesis minUTxOValue (0 in the fixture cluster; e2e uses 1 ada)")
-    eras_options.add_argument("--pool-margin", default="0",
-                              help="margin of the three pools (0 in the fixture cluster; e2e uses 0.1)")
-    eras_options.add_argument("--cross-rewards", action="store_true",
-                              help="register the pools so reward accounts also delegate to other pools (e2e does)")
-    sub.add_parser("up-eras", parents=[eras_options],
+    def eras_options():
+        # a fresh parser each time: `set_defaults` of the e2e subparser would otherwise change the shared
+        # actions' defaults and turn the plain up-eras defaults into the e2e ones
+        eras = argparse.ArgumentParser(add_help=False)
+        eras.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
+        eras.add_argument("--active-slots-coeff", type=float, default=0.2, help="Praos active slot coefficient f")
+        eras.add_argument("--byron-epochs", type=int, default=1, help="epochs spent in Byron")
+        eras.add_argument("--byron-slot-ms", type=int, default=1000, help="Byron slot length in milliseconds")
+        eras.add_argument("--stall-seconds", type=int, default=90, help="fail when the chain does not grow for this long")
+        eras.add_argument("--shelley-epochs", type=int, default=1,
+                           help="epochs at protocol 2 (the fixture cluster has 1; e2e uses 3 so pre-Allegra rewards pay out)")
+        eras.add_argument("--min-utxo-value", type=int, default=0,
+                           help="Shelley genesis minUTxOValue (0 in the fixture cluster; e2e uses 1 ada)")
+        eras.add_argument("--pool-margin", default="0",
+                           help="margin of the three pools (0 in the fixture cluster; e2e uses 0.1)")
+        eras.add_argument("--cross-rewards", action="store_true",
+                           help="register the pools so reward accounts also delegate to other pools (e2e does)")
+        return eras
+    sub.add_parser("up-eras", parents=[eras_options()],
                    help="start in Byron and walk Shelley..Conway (one epoch per era step)").set_defaults(run=up_eras)
     ce = sub.add_parser("capture-eras", help="capture the running up-eras chain as fixtures")
     ce.add_argument("--out", default=str(REPO / "fixtures/eras"), help="fixture directory")
     ce.add_argument("--conway-blocks", type=int, default=3, help="Conway blocks to capture")
     ce.set_defaults(run=capture_eras)
-    e2 = sub.add_parser("e2e", parents=[eras_options, scala_options],
+    sc = sub.add_parser("sample-chain-dep", help="next to up-eras: record the reference's DebugChainDepState answers at chosen tips")
+    sc.add_argument("--out", required=True, help="JSON file of the recorded points")
+    sc.add_argument("--interval", type=float, default=0.8, help="seconds between acquires")
+    sc.add_argument("--spacing", type=int, default=100, help="slots between kept points inside an epoch")
+    sc.add_argument("--dense-per-epoch", type=int, default=6,
+                    help="tips kept while the clock is in an epoch the tip has not entered (after a hard fork, before the first block of the new era)")
+    sc.add_argument("--byron-epochs", type=int, default=1, help="Byron epochs of the cluster (as up-eras)")
+    sc.add_argument("--until-epoch", type=int, default=9, help="stop when the tip reaches this epoch")
+    sc.add_argument("--timeout", type=int, default=1800, help="overall time limit in seconds")
+    sc.set_defaults(run=sample)
+    ac = sub.add_parser("assemble-chain-dep", help="write answers.json: the sampled points whose block is in a capture-eras chain")
+    ac.add_argument("--points", required=True, help="the --out file of sample-chain-dep")
+    ac.add_argument("--out", default=str(REPO / "fixtures/chain-dep"), help="the capture-eras directory (blocks.hex); answers.json goes here")
+    ac.set_defaults(run=assemble)
+    e2 = sub.add_parser("e2e", parents=[eras_options(), scala_options],
                         help="up-eras, follow from Origin, assert every era and transition")
     e2.add_argument("--timeout", type=int, default=1500, help="overall time limit in seconds")
     e2.add_argument("--until-epoch", type=int,
@@ -224,5 +245,5 @@ def main():
     if getattr(args, "rules", None):
         # the followers that a scenario starts as child processes take it from the environment
         os.environ["SCARAB_RULES"] = args.rules
-    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
+    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
     args.run(args)
