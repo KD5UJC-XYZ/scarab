@@ -8,10 +8,12 @@ import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState, StateMirrorError, Telescope}
+import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, BlockRule, Header, NodeError, ValidationError}
+import xyz.kd5ujc.scarab.ledger.rules.EraNes
 import xyz.kd5ujc.scarab.ledger.state.Coin
 import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -330,6 +332,63 @@ class DifferentialErasSuite extends CatsEffectSuite:
       // the pair after the last block holds the old side's mirror (as the new side carries it), not the wrong one
       assertEquals(r.paired.neu, Some(NewRules.carried(mirrorAfter(conway + 2))))
     }
+  }
+
+  test(
+    "the state the new side is seeded with holds `mark` as it was taken, not as the accounts are"
+  ) {
+    // an owner that delegated to its pool when `mark` was taken and has left it since: Haskell
+    // keeps it in `spssSelfDelegatedOwners` (`mkStakePoolSnapShot`, `State/SnapShots.hs:187-217`),
+    // and the pool's pledge is met by it when the snapshot is `go` (preprod, epoch 165)
+    def key(n: Int) = Bytes.fromArray(Array.fill(28)(n.toByte))
+    val (operator, owner) = (key(0x11), key(0x22))
+    val params = flat.PoolParams(
+      operator,
+      Bytes.fromArray(Array.fill(32)(0x33.toByte)),
+      BigInt(1),
+      BigInt(340),
+      Rational(1, 10),
+      flat.RewardAccount(env.ledger.network, flat.Credential.Key(owner)),
+      Set(owner),
+      Bytes.empty,
+      None
+    )
+    val ledger = plain(conway).ledger
+    val mark = ledger.snapshots.mark
+    val seeded = plain(conway).copy(ledger =
+      ledger.copy(
+        pools = ledger.pools.updated(operator, flat.PoolState(params, BigInt(500))),
+        accounts =
+          ledger.accounts.updated(flat.Credential.Key(owner), flat.Account(0, 0, None, None)),
+        snapshots = ledger.snapshots.copy(mark =
+          mark.copy(
+            stake = mark.stake.updated(flat.Credential.Key(owner), BigInt(5)),
+            delegations = mark.delegations.updated(flat.Credential.Key(owner), operator),
+            pools = mark.pools.updated(operator, params)
+          )
+        )
+      )
+    )
+    for
+      input <- Ref.of[IO, Option[MirrorState]](None)
+      spy: NewRules[IO] = e =>
+        Option.when(e == Era.Conway)((in: BlockInput) =>
+          input.set(Some(in.from)).as(NewOutcome.NotPorted)
+        )
+      _ <- run(
+        conway until conway + 1,
+        spy,
+        from = Paired(seeded, None, Some(ref(headers(conway - 1))))
+      )
+      m <- input.get
+    yield m.flatMap(NewRules.nesOf) match
+      case Some(e: EraNes.InEra[p]) =>
+        val pool = e.nes.es.snapshots.mark.pools.collectFirst {
+          case (id, s) if id.bytes == operator => s
+        }
+        assertEquals(pool.map(_.selfDelegatedOwners.iterator.map(_.bytes).toSet), Some(Set(owner)))
+        assertEquals(pool.map(_.selfDelegatedOwnersStake.value), Some(BigInt(5)))
+      case None => fail("the new side was not asked, or holds no Shelley-based state")
   }
 
   test("a new side that refuses a block the old side took diverges in the verdict") {

@@ -135,5 +135,30 @@ enum MirrorError derives Show:
   * @param quorum
   *   the number of genesis delegates that must propose the same update (`quorum`,
   *   `Rules/Ppup.hs:190`), before Conway
+  * @param snapshots
+  *   where the delegators of the pools of the `mark` snapshot come from ([[SnapshotBasis]])
   */
-final case class MirrorEnv(network: Int, geometry: EpochGeometry, quorum: Int)
+final case class MirrorEnv(
+    network: Int,
+    geometry: EpochGeometry,
+    quorum: Int,
+    snapshots: SnapshotBasis = SnapshotBasis.Accounts
+)
+
+/** Where the delegator-derived fields of the pools of the `mark` snapshot (`numDelegators`,
+  * `selfDelegatedOwners` and their stake) come from. Haskell fixes them when the snapshot is taken
+  * (`mkStakePoolSnapShot`, `State/SnapShots.hs:187-217`, over the pool's `spsDelegators` of that
+  * moment); the node keeps the stake-bearing delegations of the snapshot only.
+  */
+enum SnapshotBasis:
+  /** The accounts as they are in the state converted, which agree with the snapshot at the boundary
+    * that takes it and count a delegator with no stake: what the comparison with the new side's
+    * tick needs.
+    */
+  case Accounts
+
+  /** The delegations of the snapshot itself, as `set` and `go` always are: what a state is seeded
+    * with (the new side carries it on, and what the accounts did since the snapshot was taken is
+    * not part of it). A delegator with no stake is not known, so the counts are a lower bound.
+    */
+  case AsTaken

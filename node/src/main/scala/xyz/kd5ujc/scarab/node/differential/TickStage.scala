@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Path,
   ShelleyBasedEra,
   SlotNo,
+  SnapshotBasis,
   WithOrigin
 }
 import xyz.kd5ujc.scarab.node.{LedgerRun, NodeRules}
@@ -110,7 +111,9 @@ final class TickStage[F[_]](
         Some(for
           at <- atSlot(state.at.map(_.slot))
           image <- LedgerRun
-            .run(e.ledger.copy(geometry = ot.config.geometry))(_.to[p](at, state.old.ledger))
+            .run(
+              e.ledger.copy(geometry = ot.config.geometry, snapshots = SnapshotBasis.AsTaken)
+            )(_.to[p](at, state.old.ledger))
           nes <- Relations
             .seed(image.value.nes, image.value.extras.rewardAmounts)
             .left

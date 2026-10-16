@@ -176,6 +176,9 @@ object NewRules:
     *   - the reward update attributed: the old mirror's `rs` is empty and what each credential is
     *     paid is in the node's extras, so each gets its amount as one reward of a placeholder pool
     *     ([[Relations.seed]]; the new side's own update, made at `RUPD`, is attributed);
+    *   - the snapshots as they were taken: the mirror it is made from reads the delegators of
+    *     `mark` as the snapshot holds them (`SnapshotBasis.AsTaken`), not from the accounts as they
+    *     are;
     *   - the pulser's parameters without the fields Conway's parameters have no place for
     *     ([[Relations.withoutDroppedFields]]): the old mirror keeps those in the pulser, and a
     *     state the new rules carry would adopt them as the parameters of the next epoch (the

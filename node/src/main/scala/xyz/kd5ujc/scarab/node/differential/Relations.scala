@@ -26,10 +26,15 @@ import xyz.kd5ujc.scarab.ledger.state.*
   *     be at least the old one, and the new owners include the old ones; each is then taken as the
   *     old one. The `mark` snapshot of a pool that retires at the boundary is the same: the old
   *     mirror derives its delegators from the accounts, and the retirement has cleared their
-  *     delegations. The `set` snapshot, which the new side takes from the `mark` of the state it
-  *     was seeded with, has these fields of the old side's where the pool's stake is the same: the
-  *     seed derived the delegators from the accounts as they are, and a delegation may have changed
-  *     since the snapshot was taken.
+  *     delegations. The `set` snapshot of a state the new side carried on, which it took from its
+  *     own `mark` (exact), has these fields of the old side's where the pool's stake is the same.
+  *   - **The seed holds the snapshots as they were taken** (`SnapshotBasis.AsTaken`): a state the
+  *     new side is seeded with takes the delegator-derived fields of `mark` from the snapshot's own
+  *     delegations, as `set` and `go` always are, not from the accounts as they are when the seed
+  *     is taken (Haskell fixes them when the snapshot is taken, `mkStakePoolSnapShot`,
+  *     `State/SnapShots.hs:187-217`; the accounts may have moved since, and the pledge of a pool is
+  *     judged on the owners the snapshot holds). They are then a lower bound, as the old mirror's
+  *     `set` and `go` are: a delegator with no stake is not in the snapshot.
   *   - **Delegator counts of a carried state** (J2.4): as above, for all three snapshots, except
   *     `mark` at the boundary that takes it.
   *   - **The reward update and the pulser's parameters of a seeded state** (J2.4): the new side's
@@ -204,10 +209,10 @@ object Relations:
           )
         }
       }))
-    // the `set` snapshot is the `mark` of the state the new side was seeded with, whose delegators
-    // the old mirror derived from the accounts as they were then, not as they were when the
-    // snapshot was taken: where the stake of the pool is the same, the delegator-derived fields
-    // are the old side's
+    // the `set` snapshot of a state the new side carried on is its own `mark`, with the delegators
+    // the pool had when it was taken (zero-stake ones included), which the old mirror's `set`
+    // does not list: where the stake of the pool is the same, the delegator-derived fields are
+    // the old side's
     def seeded(o: SnapShot, n: SnapShot): SnapShot =
       n.copy(pools = Sorted.map(n.pools.iterator.map { (id, p) =>
         id -> o.pools.get(id).filter(q => q.stake == p.stake).fold(p) { q =>

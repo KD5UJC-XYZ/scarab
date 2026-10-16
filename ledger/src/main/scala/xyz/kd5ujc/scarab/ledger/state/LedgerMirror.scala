@@ -619,9 +619,10 @@ object LedgerMirror:
       * `StakePoolSnapShot`, `239-252`), whose delegators are the stake-bearing ones and whose idle
       * pools count one more.
       */
-    /** `exact`: the accounts' delegations, for the snapshot the node took from them (`mark`): the
-      * pool's delegators then include those with no stake, which `numDelegators` and the owners
-      * that delegate to the pool count. Without it (`set`, `go`), the count is a lower bound.
+    /** `exact`: the accounts' delegations, for the snapshot the node took from them (`mark`, on the
+      * [[SnapshotBasis.Accounts]] basis): the pool's delegators then include those with no stake,
+      * which `numDelegators` and the owners that delegate to the pool count. Without it (`set`,
+      * `go`, and `mark` on [[SnapshotBasis.AsTaken]]), the count is a lower bound.
       */
     private def snapShot(
         snap: node.Snapshot,
@@ -736,10 +737,15 @@ object LedgerMirror:
         cert <- certState[E](s, p)
         gov <- govState[E](at, s)
         instant <- instantStake[E](s.utxo)
-        mark <- snapShot(s.snapshots.mark, Some(accountDelegators(s)))
+        env <- asks.ask
+        mark <- snapShot(
+          s.snapshots.mark,
+          env.snapshots match
+            case SnapshotBasis.Accounts => Some(accountDelegators(s))
+            case SnapshotBasis.AsTaken  => None
+        )
         set <- snapShot(s.snapshots.set)
         go <- snapShot(s.snapshots.go)
-        env <- asks.ask
         // the distribution as it comes back: its pools' accounts on the node's network
         distribution = poolsOn(env.network, s.poolDistribution)
         carried = Option.unless(distribution == poolsOn(env.network, s.snapshots.set))(

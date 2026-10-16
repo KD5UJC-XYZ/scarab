@@ -169,6 +169,45 @@ class LedgerMirrorSuite extends DisciplineSuite:
     assertEquals(back.map(_.snapshots.mark), Right(bad.snapshots.mark))
   }
 
+  test("a seeded mark snapshot is the snapshot's own: an owner that delegated then still does") {
+    // Haskell fixes `spssSelfDelegatedOwners` when the snapshot is taken (`mkStakePoolSnapShot`,
+    // `State/SnapShots.hs:187-217`), over the pool's delegators of that moment; a state seeded
+    // later must not read them off the accounts, which may have moved since (preprod, the first
+    // reward update after a seed in epoch 163: an owner that had left the pool in the accounts)
+    val found = (1L to 300L).iterator
+      .map(sampled(conway = true, _))
+      .flatMap { s =>
+        for
+          (id, p) <- s.snapshots.mark.pools.iterator
+          o <- p.owners.iterator
+          if s.snapshots.mark.delegations.get(node.Credential.Key(o)).contains(id)
+        yield (s, id, o)
+      }
+      .nextOption()
+    found match
+      case None => fail("no generated state has an owner that delegates to its pool")
+      case Some((s, pool, owner)) =>
+        val left = s.copy(accounts =
+          s.accounts.updated(node.Credential.Key(owner), node.Account(0, 0, None, None))
+        )
+        def owners(basis: SnapshotBasis, state: node.LedgerState): Set[Bytes] =
+          run(mirror.to[Conway](at, state).local[MirrorEnv](_.copy(snapshots = basis)))
+            .fold(
+              e => fail(e.show),
+              _.value.nes.es.snapshots.mark.pools
+                .collectFirst {
+                  case (id, p) if id.bytes == pool =>
+                    p.selfDelegatedOwners.iterator.map(_.bytes).toSet
+                }
+                .getOrElse(Set.empty)
+            )
+        // the accounts' reading (the comparison's, exact at the boundary) follows them
+        assert(!owners(SnapshotBasis.Accounts, left).contains(owner))
+        // the snapshot's reading does not
+        assert(owners(SnapshotBasis.AsTaken, left).contains(owner))
+        assertEquals(owners(SnapshotBasis.AsTaken, left), owners(SnapshotBasis.AsTaken, s))
+  }
+
   test("parameters the era has no field for are zero in the mirror and come back") {
     val s =
       sample.copy(params = sample.params.copy(minUTxOValue = 1000000, coinsPerUTxOWord = 34482))

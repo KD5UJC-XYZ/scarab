@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   NewEpochState,
   Path,
   ShelleyBasedEra,
+  SnapshotBasis,
   VocabError
 }
 import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules}
@@ -128,7 +129,7 @@ final class DifferentialRules[F[_]] private (
           EraBlock.Context(Globals(tick.globals, tick.config.geometry), tick.config.forks.eraAt)
         )
         for
-          pre <- state.neu.fold(convert(state.old, state.at, ot).flatMap {
+          pre <- state.neu.fold(convert(state.old, state.at, ot, SnapshotBasis.AsTaken).flatMap {
             case (Right(seeded), _) => F.pure(Option(NewRules.carried(seeded)))
             case (Left(error), _) =>
               diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
@@ -221,12 +222,20 @@ final class DifferentialRules[F[_]] private (
                           raw
                         )
                       )
-                      // a disagreement that does not halt adopts the old side
-                      .as(
-                        paired(
-                          Some(if difference.isDefined then NewRules.carried(ours) else theirs)
-                        )
-                      )
+                    // a disagreement that does not halt adopts the old side, seeded as a state
+                    // the new side starts from is
+                    *> adopted(
+                      difference.isDefined,
+                      state,
+                      after,
+                      header,
+                      raw,
+                      block,
+                      ot,
+                      ours,
+                      theirs
+                    )
+                      .map(m => paired(Some(m)))
             }
         }
       // the new side refused a block the old side took: reported by `agree`; seeded again later
@@ -244,6 +253,32 @@ final class DifferentialRules[F[_]] private (
                  diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
                    .as(paired(None))
              })
+
+  /** The state the new side carries on with after a comparison: its own where the two agreed, else
+    * the old side's seeded from the snapshots as they were taken ([[SnapshotBasis.AsTaken]]; the
+    * comparison's conversion `ours` reads the accounts as they are, which differ from what a
+    * snapshot holds). A state that does not convert twice is reported and `ours`, which did, is
+    * adopted.
+    */
+  private def adopted(
+      diverged: Boolean,
+      state: Paired,
+      after: NodeState,
+      header: Header,
+      raw: Bytes,
+      block: BlockRef,
+      ot: Option[NodeRules.OldTick],
+      ours: MirrorState,
+      theirs: MirrorState
+  ): F[MirrorState] =
+    if !diverged then F.pure(theirs)
+    else
+      convert(after, Some(block), ot, SnapshotBasis.AsTaken).flatMap {
+        case (Right(seeded), _) => F.pure(NewRules.carried(seeded))
+        case (Left(error), _) =>
+          diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
+            .as(NewRules.carried(ours))
+      }
 
   private def sampled(
       block: BlockRef,
@@ -327,15 +362,23 @@ final class DifferentialRules[F[_]] private (
   /** The old state in the mirror, with the nanoseconds the conversion took. The geometry is the
     * resolved one of the old side's tick where there is one (a chain that begins in Byron learns
     * its first Shelley epoch from the state, and the prediction of the future parameters of the
-    * mirror is read off the geometry), as the tick stage's conversions have it.
+    * mirror is read off the geometry), as the tick stage's conversions have it. `basis` is where
+    * the delegators of the `mark` snapshot come from: the accounts for a comparison, the snapshot
+    * for a state the new side is seeded with.
     */
   private def convert(
       state: NodeState,
       at: Option[BlockRef],
-      ot: Option[NodeRules.OldTick]
+      ot: Option[NodeRules.OldTick],
+      basis: SnapshotBasis = SnapshotBasis.Accounts
   ): F[(Either[StateMirrorError, MirrorState], Long)] =
     env.flatMap { e =>
-      val resolved = ot.fold(e)(t => e.copy(ledger = e.ledger.copy(geometry = t.config.geometry)))
+      val resolved = e.copy(ledger =
+        e.ledger.copy(
+          geometry = ot.fold(e.ledger.geometry)(_.config.geometry),
+          snapshots = basis
+        )
+      )
       timed(MirrorRun.run(resolved)(_.toMirror(at, state)).map(_.value))
     }
 
