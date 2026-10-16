@@ -74,6 +74,31 @@ object Corpus:
       case _ => None
     }
 
+  /** The column `column` (hex) of a tab-separated fixture of the Leios testnet. */
+  private def leiosColumn(file: String, column: Int): Vector[Array[Byte]] =
+    Files
+      .readAllLines(Path.of("fixtures", "leios", "testnet", file))
+      .asScala
+      .toVector
+      .filterNot(l => l.startsWith("#") || l.isEmpty)
+      .flatMap(l => Bytes.fromHex(l.split('\t')(column)).toOption.map(_.toArray))
+
+  /** Header envelopes `[era, tag24(header)]` of the public Leios testnet (HFC index 6 and 7). */
+  lazy val leiosEnvelopes: Vector[Array[Byte]] =
+    leiosColumn("headers-notable.tsv", 5) ++ leiosColumn("headers-from-origin.tsv", 4).take(40)
+
+  /** The 12-element Leios headers inside those envelopes. */
+  lazy val leiosHeaders: Vector[Array[Byte]] =
+    leiosEnvelopes.flatMap { e =>
+      xyz.kd5ujc.scarab.protocol.HfcHeader.decode(Bytes.fromArray(e)).toOption.collect {
+        case xyz.kd5ujc.scarab.protocol.HfcHeader.Supported(h) => h.raw.toArray
+        case xyz.kd5ujc.scarab.protocol.HfcHeader.Dijkstra(r)  => r.toArray
+      }
+    }
+
+  /** Blocks of tag 7 and 8 of the same chain. */
+  lazy val leiosBlocks: Vector[Array[Byte]] = leiosColumn("blocks.tsv", 5)
+
   def txBodies(era: Era): Vector[Array[Byte]] =
     shelleyBlocks.filter(_.era == era).flatMap(_.transactions.map(_.body.toArray))
   def txWitnesses(era: Era): Vector[Array[Byte]] =

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.fuzz
 
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.protocol.*
 import xyz.kd5ujc.scarab.protocol.ChainSync.{DecodeResult, Point, Tip, UInt64}
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
@@ -406,6 +407,35 @@ object Targets:
           Corpus.headerEnvelopes ++ Corpus.sampled("chainsync-header:header", 60) ++ Corpus.tricky,
         probe("header-envelope") { b =>
           seen("header-envelope", Header.fromEnvelope(b, Corpus.byronEpochSlots).isRight)
+        }
+      ),
+      Target(
+        "leios-header-envelope",
+        () => Corpus.leiosEnvelopes ++ Corpus.headerEnvelopes.take(10) ++ Corpus.tricky,
+        probe("leios-header-envelope") { b =>
+          seen("leios-header-envelope", HfcHeader.decode(b).isRight)
+          HfcHeader.decode(b).foreach { h =>
+            req(HfcHeader.encode(h) == Right(b), "an envelope does not re-encode to itself")
+          }
+        }
+      ),
+      Target(
+        "leios-header",
+        () => Corpus.leiosHeaders ++ Corpus.tricky,
+        probe("leios-header") { b =>
+          seen("leios-header", LeiosHeader.decode(b).isRight)
+          LeiosHeader.decode(b).foreach { h =>
+            req(h.raw == b, "the header does not keep its original bytes")
+            req(h.hash == Blake2b.hash256.hash(b), "the header hash is not over the input")
+          }
+        }
+      ),
+      Target(
+        "leios-block",
+        () => Corpus.leiosBlocks ++ Corpus.tricky,
+        probe("leios-block") { b =>
+          seen("leios-block", LeiosBlock.decode(b).isRight)
+          LeiosBlock.decode(b).foreach(_.faults)
         }
       ),
       Target(
