@@ -31,9 +31,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
   private given v3: SnapshotFormat[IO, NodeState] = SnapshotV3.format[IO]
-  private val v2: SnapshotFormat[IO, NodeState] =
-    given Codec[StateSnapshot[NodeState]] = NodeCodecs.nodeSnapshot
-    SnapshotV2.format[IO, NodeState]
+  private val v2: SnapshotFormat[IO, NodeState] = LegacyV2Format.format[IO]
 
   private val raws: Vector[Bytes] =
     JFiles

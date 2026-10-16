@@ -72,4 +72,3 @@ object NodeCodecs:
   // Roots.
   given blockRef: Codec[BlockRef] = Codec.auto
   given nodeState: Codec[NodeState] = Codec.auto
-  given nodeSnapshot: Codec[StateSnapshot[NodeState]] = Codec.auto

@@ -19,6 +19,7 @@ enforced by sbt: a cycle does not load.
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `NodeState`, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
+| `legacy` | The frozen readers of the snapshot formats before the current one (V1 to V3, the node state of their time, the binary `Codec` they were written with) and the upgrade of that state to the live one; deleted at its sunset (ADR 0006) | Pure |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
 | `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
@@ -27,11 +28,11 @@ enforced by sbt: a cycle does not load.
 ```
 codec <- crypto <- protocol <- network ------------------------.
   ^                  ^                                          \
-  |                  '--- ledger <- consensus <- storage <------ node
+  |                  '--- ledger <- consensus <- legacy <- storage <-- node
   '------ plutus <------'
 ```
 
-`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `storage` on `consensus` and
+`ledger` depends on `protocol` and `plutus`; `consensus` on `ledger`; `legacy` on `consensus`; `storage` on `legacy` and
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
 its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
@@ -570,7 +571,8 @@ and which runs after the identity of the database is checked and before the snap
 because the conversion needs the node's configuration (`Ask[F, ConsensusMirrorEnv]`: the epoch
 geometry, the hard-fork configuration, the Byron parameters). Per file, atomically: a version 1 file
 gets its header and checksum rewritten in memory (the payload is the same bytes), a version 2 file is
-decoded with the frozen V2 reader (`SnapshotV2`, the derived codecs of `NodeCodecs`), turned into
+decoded with the frozen V2 reader (`legacy.SnapshotV2`, the derived codecs of `legacy.NodeCodecs`, in
+the `legacy` module), brought to the live state (`legacy.Upgrade`), turned into
 the mirror and written as V3 under the same name. No block is replayed. A file of a version of the
 family that this build does not know refuses the whole run before any file is rewritten
 (`UnknownVersion`); a file that is corrupt, of another schema or that the mirror refuses is left as it

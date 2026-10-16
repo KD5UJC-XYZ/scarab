@@ -62,4 +62,11 @@ object SnapshotSidecar:
   given codec: Codec[SnapshotSidecar] = Codec.auto
 
   /** The schema fingerprint stored in front of the sidecar. */
-  def fingerprint: Array[Byte] = SnapshotV2.fingerprint(codec.shape)
+  def fingerprint: Array[Byte] =
+    java.security.MessageDigest
+      .getInstance("SHA-256")
+      .digest(codec.shape.getBytes("UTF-8"))
+      .take(FingerprintSize)
+
+  /** Bytes of the fingerprint. */
+  val FingerprintSize = 8

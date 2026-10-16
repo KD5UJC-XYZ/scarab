@@ -25,6 +25,9 @@ class CodecSuite extends ScalaCheckSuite:
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(60)
 
+  // the snapshot payload of the V2 reader, derived again here for the properties of the codec itself
+  private given Codec[StateSnapshot[NodeState]] = Codec.auto
+
   private def roundTrip[A](name: String)(using c: Codec[A], g: Gens[A]): Unit =
     property(s"round trip: $name") {
       forAll(g.gen) { a =>
@@ -142,17 +145,6 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.start)
 
-  test("golden: the initial state of the eras fixture encodes to a fixed digest") {
-    val encoded = Codec.encode(StateSnapshot(Option.empty[BlockRef], initial))
-    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(encoded)
-    assertEquals(hex(digest) -> encoded.length, GoldenInitialState)
-  }
-
-  test("golden: the schema fingerprint of the node snapshot") {
-    val shape = summon[Codec[StateSnapshot[NodeState]]].shape
-    assertEquals(hex(SnapshotV2.fingerprint(shape)), GoldenFingerprint)
-  }
-
   test("golden: the schema fingerprint of the V3 sidecar") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
   }
@@ -171,15 +163,12 @@ class CodecSuite extends ScalaCheckSuite:
 
   // Regenerate (and add a FormatVersion with its migration if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
-  // GoldenFingerprint is the V2 reader's (frozen with the node state of its time, see
-  // SnapshotV2); the sidecar goldens are the V3 writer's.
+  // The V2 reader's goldens (the fingerprint of the node snapshot and the digest of the initial state)
+  // are in the `legacy` module's suites, frozen with the node state of their time.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
-  private val GoldenInitialState =
-    ("228a41672061e4a01954a3a41c706932aa13f0e89185fc5c6636796b56428a4a", 3158)
-  private val GoldenFingerprint = "2293c5cf7bb77492"
   private val GoldenSidecarFingerprint = "65d0043c049b7b7a"
   private val GoldenSidecar =
     ("7bc7dc357f2b64267b3bb7c8bb5b79e4275dca9bd84693d1db02a32d872242a4", 3161)

@@ -37,8 +37,8 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
 
   private def snap(i: Int): StateSnapshot[Toy] = StateSnapshot(Some(block(i)._1), toy(i))
 
-  private given SnapshotFormat[IO, Toy] = SnapshotV2.format[IO, Toy]
-  private given SnapshotFormat[IO, ToyV2] = SnapshotV2.format[IO, ToyV2]
+  private given SnapshotFormat[IO, Toy] = ToyFormat.format[IO, Toy]
+  private given SnapshotFormat[IO, ToyV2] = ToyFormat.format[IO, ToyV2]
 
   private def open(dir: Path, keep: Int = 3)(using Raise[IO, StorageError]) =
     FileLedgerSnapshots.open[IO, Toy](dir, keep)
@@ -182,7 +182,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
     "a state the format refuses is not written, nothing is pruned, and the refusal is the result"
   ) {
     val refusing = new SnapshotFormat[IO, Toy]:
-      private val inner = SnapshotV2.format[IO, Toy]
+      private val inner = ToyFormat.format[IO, Toy]
       def encode(snapshot: StateSnapshot[Toy]) =
         if snapshot.state.counter == 2000 then
           IO.pure(Left(SnapshotRefusal.WouldNotRead(StorageError.Corrupt("test", "refused"))))

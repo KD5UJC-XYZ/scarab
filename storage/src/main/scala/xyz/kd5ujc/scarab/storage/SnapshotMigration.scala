@@ -8,9 +8,9 @@ import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files as JFiles
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{FileKind, FormatVersion, StorageError}
+import xyz.kd5ujc.scarab.legacy
 
 /** Bringing the snapshot files of a database to the current format ([[FileKind.SnapshotFile]]),
   * before the snapshots are opened. A migration is one-way: it rewrites the files, atomically and
@@ -35,7 +35,7 @@ object SnapshotMigration:
 
   /** The migration of the snapshots of the node state to V3: version 1 (written before the packages
     * were renamed) is first brought to version 2 in memory (its header, and the checksum), version
-    * 2 is decoded with [[SnapshotV2]] and written again as [[SnapshotV3]].
+    * 2 is decoded with [[legacy.SnapshotV2]] and written again as [[SnapshotV3]].
     *
     * A version this build does not know, in a file that starts like a snapshot, refuses the whole
     * run before any file is rewritten (it was written by a newer build). A file of a known version
@@ -57,25 +57,23 @@ object SnapshotMigration:
     val kind: FileKind = FileKind.SnapshotFile
     private val current = kind.current
 
-    private val v2 = SnapshotV2.format[F, NodeState](using F, NodeCodecs.nodeSnapshot)
     private val v3 = SnapshotV3.format[F]
-    private val schema = SnapshotV2.fingerprint(NodeCodecs.nodeSnapshot.shape)
 
     /** The version of the file, or why it has none. */
     private def probe(file: Path): F[Either[StorageError, FormatVersion]] =
       AtomicFile
         .guard[F, Array[Byte]](file.toString) {
           val in = JFiles.newInputStream(file.toNioPath)
-          try in.readNBytes(SnapshotV2.HeaderSize)
+          try in.readNBytes(legacy.SnapshotV2.HeaderSize)
           finally in.close()
         }
         .map { header =>
-          SnapshotV2.numberOf(header) match
-            case Some(number) => SnapshotV2.versionOf(file.toString, number)
+          legacy.SnapshotV2.numberOf(header) match
+            case Some(number) => legacy.SnapshotV2.versionOf(file.toString, number)
             case None =>
               kind.versionOf(
                 file.toString,
-                new String(header.take(SnapshotV2.Magic.length), StandardCharsets.ISO_8859_1)
+                new String(header.take(legacy.SnapshotV2.Magic.length), StandardCharsets.ISO_8859_1)
               )
         }
 
@@ -90,9 +88,12 @@ object SnapshotMigration:
             case Left(refusal) => F.pure(Left(refusal))
             case Right(content) =>
               val atV2 =
-                if at == FormatVersion.V1 then SnapshotV2.upgraded(content, schema) else content
+                if at == FormatVersion.V1 then legacy.SnapshotV2.upgraded(content) else content
               (for
-                snapshot <- v2.decode(atV2).map(_.leftMap(SnapshotRefusal.Unreadable(_)))
+                snapshot <- F
+                  .blocking(legacy.SnapshotV2.decodeNode(atV2))
+                  .map(_.map(s => StateSnapshot(s.anchor, legacy.Upgrade.node(s.state))))
+                  .map(_.leftMap(SnapshotRefusal.Unreadable(_)))
                 written <- snapshot.flatTraverse(v3.encode(_))
                 _ <- written
                   .traverse_(c => AtomicFile.replace[F](file, FileLedgerSnapshots.closed(c)))
@@ -114,7 +115,7 @@ object SnapshotMigration:
                 content =>
                   AtomicFile.replace[F](
                     file,
-                    FileLedgerSnapshots.closed(SnapshotV2.upgraded(content, schema))
+                    FileLedgerSnapshots.closed(legacy.SnapshotV2.upgraded(content))
                   )
               )
           }

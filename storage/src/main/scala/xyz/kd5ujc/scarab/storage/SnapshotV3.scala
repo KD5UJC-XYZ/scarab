@@ -39,6 +39,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UTxOState,
   UtxoTables
 }
+import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
@@ -237,12 +238,12 @@ object SnapshotV3:
   private def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Bytes)] =
     val kind = FileKind.SnapshotFile
     if content.length < HeaderSize || !content.startsWith(Magic) then
-      SnapshotV2.numberOf(content) match
+      legacy.SnapshotV2.numberOf(content) match
         case Some(n) =>
           Left(
             StorageError.VersionMismatch(
               "snapshot format",
-              s"${new String(SnapshotV2.Magic, "US-ASCII")} v$n",
+              s"${new String(legacy.SnapshotV2.Magic, "US-ASCII")} v$n",
               kind.identifier(kind.current)
             )
           )

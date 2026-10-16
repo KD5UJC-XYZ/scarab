@@ -43,7 +43,7 @@ val testDependencies = Seq(
 //
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
-//   protocol, plutus <- ledger <- consensus <- storage
+//   protocol, plutus <- ledger <- consensus <- legacy <- storage
 //   models <- storage (the Haskell ledger-state codec reuses the models runtime)
 //   storage, network <- node
 def scarab(id: String, dir: String = null): Project =
@@ -143,10 +143,24 @@ lazy val consensus = scarab("consensus")
     )
   )
 
+// The frozen readers of the snapshot formats before the current one (V1 to V3) with the node state
+// of their time, and the upgrade of that state to the current one: what `storage` migrates from. Data
+// and readers only; deleted at its sunset (ADR 0006, design ledger-mirror-step2.md D3).
+lazy val legacy = scarab("legacy")
+  .dependsOn(consensus % "compile->compile;test->test")
+  .settings(
+    // The snapshot codecs are derived by inline `Mirror` recursion.
+    scalacOptions += "-Xmax-inlines:512",
+    libraryDependencies ++= Seq(
+      Libraries.cats
+    )
+  )
+
 // Immutable and volatile stores, ledger snapshots, the UTxO store, the Haskell ImmutableDB reader.
 lazy val storage = scarab("storage")
   .dependsOn(
     consensus % "compile->compile;test->test",
+    legacy % "compile->compile;test->test",
     models
   )
   .settings(
@@ -287,6 +301,7 @@ lazy val root = project
     plutus,
     ledger,
     consensus,
+    legacy,
     storage,
     node,
     modelsGen,
@@ -327,6 +342,7 @@ val modules = Seq(
   "plutus",
   "ledger",
   "consensus",
+  "legacy",
   "storage",
   "node",
   "modelsGen",
