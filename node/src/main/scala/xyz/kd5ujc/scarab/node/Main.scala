@@ -69,6 +69,7 @@ import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, M
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
+import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -348,6 +349,9 @@ object Main extends IOApp:
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
+    // the read paths (queries, header-first checks, the K1 digest, the epoch line) read the state
+    // through this: the flat state of `--rules old`
+    given ChainRead[NodeState] = ChainRead.nodeState(setup.mirrorEnv())
     for
       _ <- fail[Unit](
         ConfigError(

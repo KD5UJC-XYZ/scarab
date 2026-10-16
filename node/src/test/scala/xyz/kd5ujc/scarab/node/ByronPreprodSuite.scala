@@ -23,6 +23,9 @@ class ByronPreprodSuite extends FunSuite:
       .fromDirectory(Path.of("fixtures/preprod/genesis"))
       .fold(e => fail(e.message), identity)
 
+  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
+    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
+
   private val raws: Vector[Bytes] =
     Files
       .readAllLines(Path.of("fixtures/preprod/blocks.hex"))

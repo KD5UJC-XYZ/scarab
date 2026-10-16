@@ -47,6 +47,8 @@ object GenesisDifferentialMain:
     val from = args.lift(5).fold(BigInt(0))(BigInt(_))
     val cache = VerificationCache.unsafe()
     val praos = setup.praos.copy(verdicts = cache)
+    given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
+      xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
 
     val program = Handle
       .allow[NodeError] {

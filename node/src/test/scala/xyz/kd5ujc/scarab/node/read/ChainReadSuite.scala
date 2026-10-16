@@ -3,7 +3,8 @@ package xyz.kd5ujc.scarab.node.read
 
 import cats.syntax.all.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.{FollowerEvent, NodeState}
+import xyz.kd5ujc.scarab.node.NodeRules
 import xyz.kd5ujc.scarab.ledger.ProtocolParams
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -132,4 +133,22 @@ class ChainReadSuite extends FunSuite:
       results.map(_._1).distinct,
       Vector(Era.Byron, Era.Shelley, Era.Allegra, Era.Mary, Era.Alonzo, Era.Babbage, Era.Conway)
     )
+  }
+
+  test("the follower's events are the same from the flat state and from its mirror") {
+    val all = ErasStates.samples
+    val geometry = ErasStates.setup.geometry
+    val pairs = all.indices.dropRight(1).filter { i =>
+      val (a, b) = (all(i), all(i + 1))
+      a.state.ledger.epoch != b.state.ledger.epoch || a.era != b.era || i % 25 == 0
+    }
+    val epochLines = pairs.map { i =>
+      val (a, b) = (all(i), all(i + 1))
+      val viaFlat = NodeRules.observe[NodeState](geometry)(a.state, b.state, b.anchor)
+      val viaMirror = NodeRules.observe[MirrorState](geometry)(a.mirror, b.mirror, b.anchor)
+      assertEquals(viaMirror, viaFlat, s"${b.era} block ${b.block.header.blockNo}")
+      viaFlat.count(_.isInstanceOf[FollowerEvent.LedgerEpoch])
+    }
+    // the epoch lines are among what was compared
+    assert(epochLines.sum >= 7, epochLines.sum.toString)
   }

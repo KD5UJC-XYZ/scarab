@@ -27,6 +27,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.storage.UtxoStore
+import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra}
 
 /** Full block validation: tick the ledger and Praos state to the block's epoch, validate the header
   * against the ticked pool distribution, then apply the body. Any failure rejects the block. Chains
@@ -134,39 +135,54 @@ object NodeRules:
       Prepared(b, b.transactions.map(t => Tx.fromBlock(t, b.era)))
     }
 
-  /** Era transitions and completed-epoch summaries visible between two states. */
-  def observe(geometry: EpochGeometry)(
-      before: NodeState,
-      after: NodeState,
+  /** Era transitions and completed-epoch summaries visible between two states, read through
+    * [[ChainRead]]: the epoch line is made from the ledger state of the era the chain is in, as the
+    * mirror holds it (a state the mirror cannot hold has no line; the snapshot writer reports it,
+    * `snapshotRefused`).
+    */
+  def observe[S](geometry: EpochGeometry)(using
+      read: ChainRead[S]
+  )(
+      before: S,
+      after: S,
       at: BlockRef
   ): List[FollowerEvent] =
-    val era = after.boot.era
-      .filter(e => !before.boot.era.contains(e))
+    val was = before.consensus
+    val now = after.consensus
+    val era = now.boot.era
+      .filter(e => !was.boot.era.contains(e))
       .map(to =>
-        FollowerEvent.EraEntered(before.boot.era, to, at, after.geometry(geometry).epochOf(at.slot))
+        FollowerEvent.EraEntered(
+          was.boot.era,
+          to,
+          at,
+          now.byron.firstShelleyEpoch.fold(geometry)(geometry.resolved).epochOf(at.slot)
+        )
       )
-    val byron = after.byron.completed
-      .filter(c => !before.byron.completed.contains(c))
+    val byron = now.byron.completed
+      .filter(c => !was.byron.completed.contains(c))
       .map(c =>
         FollowerEvent.ByronEpochValidated(c.epoch, c.boundary, c.verified, c.offSchedule, c.txs)
       )
-    val epoch = after.boot.completed
-      .filter(c => !before.boot.completed.contains(c))
+    val epoch = now.boot.completed
+      .filter(c => !was.boot.completed.contains(c))
       .map(c => FollowerEvent.EpochValidated(c.epoch, c.era, c.threshold, c.overlay, c.unchecked))
-    val ledger = Option
-      .when(after.ledger.epoch != before.ledger.epoch) {
-        val l = after.ledger
-        FollowerEvent.LedgerEpoch(
-          l.epoch,
-          l.utxo.size,
-          l.accounts.size,
-          l.pools.size,
-          l.treasury,
-          l.reserves,
-          l.params.version,
-          l.plutus
-        )
-      }
+    val ledger =
+      if after.ledgerEpoch == before.ledgerEpoch then None
+      else
+        after.ledger(Some(at)).toOption.flatten.map { case InEra.Of(_, l) =>
+          val pots = l.scalars.chainAccount
+          FollowerEvent.LedgerEpoch(
+            l.scalars.epoch.toBigInt,
+            l.utxo.size,
+            l.accountCount,
+            l.poolCount,
+            pots.treasury.value,
+            pots.reserves.value,
+            l.params.version,
+            after.plutus
+          )
+        }
     era.toList ++ byron.toList ++ epoch.toList ++ ledger.toList
 
   /** From Alonzo on, the execution units of all the redeemers of a block (valid transactions or

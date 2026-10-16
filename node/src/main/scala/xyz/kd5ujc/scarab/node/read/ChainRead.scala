@@ -30,6 +30,9 @@ trait ChainRead[S]:
       */
     def era: Era
 
+    /** The epoch of the ledger state (of the placeholder ledger while the chain is in Byron). */
+    def ledgerEpoch: BigInt
+
     /** The chain-dependent state of the protocol the chain runs, with what the node keeps beside
       * it.
       */
@@ -59,6 +62,7 @@ object ChainRead:
   def nodeState(env: ConsensusMirrorEnv): ChainRead[NodeState] = new ChainRead[NodeState]:
     extension (s: NodeState)
       def era: Era = StateMirror.eraOf(env, s)
+      def ledgerEpoch: BigInt = s.ledger.epoch
       def protocol: ProtocolState = s.protocol
       def consensus: ConsensusExtras = s.extras
       def plutus: flat.PlutusStats = s.ledger.plutus
@@ -84,6 +88,12 @@ object ChainRead:
   given ChainRead[MirrorState] with
     extension (m: MirrorState)
       def era: Era = m.ext.ledgerState.era
+      def ledgerEpoch: BigInt = m.ext.ledgerState.state match
+        case EraLedgerState.ByronCurrent(_) =>
+          m.extras match
+            case MirrorExtras.InByron(l, _, _, _) => l.epoch
+            case MirrorExtras.InShelley(_, _)     => BigInt(0)
+        case i: EraLedgerState.InShelleyEra[e] => i.state.nes.epoch.toBigInt
       def protocol: ProtocolState = ProtocolState(depState(m), consensus.protocol)
       def consensus: ConsensusExtras = m.extras match
         case MirrorExtras.InShelley(_, c) => c

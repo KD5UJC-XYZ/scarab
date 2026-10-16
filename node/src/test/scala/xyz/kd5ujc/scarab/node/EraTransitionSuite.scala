@@ -53,6 +53,9 @@ class EraTransitionSuite extends CatsEffectSuite:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
 
+  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
+    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
+
   private val raws: Vector[Bytes] =
     Files
       .readAllLines(fixtures.resolve("blocks.hex"))
