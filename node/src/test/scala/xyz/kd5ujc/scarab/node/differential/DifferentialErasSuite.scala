@@ -319,8 +319,8 @@ class DifferentialErasSuite extends CatsEffectSuite:
       assertEquals(r.stats.failures, 3L)
       assertEquals(r.events.count(_.isInstanceOf[Event.Diverged]), 3)
       assertEquals(r.paired.old, plain(conway + 3))
-      // the pair after the last block holds the old side's mirror, not the wrong one
-      assertEquals(r.paired.neu, Some(mirrorAfter(conway + 2)))
+      // the pair after the last block holds the old side's mirror (as the new side carries it), not the wrong one
+      assertEquals(r.paired.neu, Some(NewRules.carried(mirrorAfter(conway + 2))))
     }
   }
 

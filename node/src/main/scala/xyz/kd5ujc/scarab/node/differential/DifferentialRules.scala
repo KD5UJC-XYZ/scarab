@@ -129,7 +129,7 @@ final class DifferentialRules[F[_]] private (
         )
         for
           pre <- state.neu.fold(convert(state.old, state.at).flatMap {
-            case (Right(seeded), _) => F.pure(Option(seeded))
+            case (Right(seeded), _) => F.pure(Option(NewRules.carried(seeded)))
             case (Left(error), _) =>
               diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
                 .as(Option.empty[MirrorState])
@@ -222,7 +222,11 @@ final class DifferentialRules[F[_]] private (
                         )
                       )
                       // a disagreement that does not halt adopts the old side
-                      .as(paired(Some(if difference.isDefined then ours else theirs)))
+                      .as(
+                        paired(
+                          Some(if difference.isDefined then NewRules.carried(ours) else theirs)
+                        )
+                      )
             }
         }
       // the new side refused a block the old side took: reported by `agree`; seeded again later

@@ -169,6 +169,41 @@ object NewRules:
     case i: EraLedgerState.InShelleyEra[e] => Some(EraNes.InEra(i.era, i.state.nes))
     case EraLedgerState.ByronCurrent(_)    => None
 
+  /** The mirror of the old side's state as the new side carries it on:
+    *
+    *   - the reward update attributed: the old mirror's `rs` is empty and what each credential is
+    *     paid is in the node's extras, so each gets its amount as one reward of a placeholder pool
+    *     ([[Relations.seed]]; the new side's own update, made at `RUPD`, is attributed);
+    *   - the pulser's parameters without the fields Conway's parameters have no place for
+    *     ([[Relations.withoutDroppedFields]]): the old mirror keeps those in the pulser, and a
+    *     state the new rules carry would adopt them as the parameters of the next epoch (the
+    *     pulsers the new rules make themselves have none).
+    */
+  def carried(m: MirrorState): MirrorState =
+    val telescope = m.ext.ledgerState
+    val amounts = m.extras match
+      case MirrorExtras.InShelley(ledger, _) => ledger.rewardAmounts
+      case MirrorExtras.InByron(_, _, _, _)  => Map.empty
+    val moved: Option[EraLedgerState] = telescope.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        i.era match
+          case ShelleyBasedEra.SConway =>
+            Relations
+              .seed[Conway](i.state.nes, amounts)
+              .toOption
+              .map(nes =>
+                EraLedgerState.inEra[Conway](
+                  i.state.copy(nes = Relations.withoutDroppedFields[Conway](nes))
+                )
+              )
+          case _ => None
+      case EraLedgerState.ByronCurrent(_) => None
+    moved
+      .flatMap(state =>
+        Telescope.make(telescope.past, telescope.current.copy(state = state)).toOption
+      )
+      .fold(m)(next => m.copy(ext = m.ext.copy(ledgerState = next)))
+
   /** The mirror with the new-epoch state of Conway `nes` (a block of Conway applied, the tip at it)
     * and the node's phase-2 counters as the block left them; none where the mirror is not of
     * Conway.

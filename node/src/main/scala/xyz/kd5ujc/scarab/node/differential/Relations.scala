@@ -32,6 +32,11 @@ import xyz.kd5ujc.scarab.ledger.state.*
   *     since the snapshot was taken.
   *   - **Delegator counts of a carried state** (J2.4): as above, for all three snapshots, except
   *     `mark` at the boundary that takes it.
+  *   - **The reward update and the pulser's parameters of a seeded state** (J2.4): the new side's
+  *     seed is attributed like the tick stage's ([[seed]]), and the old mirror keeps in the pulser
+  *     the flat parameters with the fields Conway's have no place for, and a state the new rules
+  *     carry would adopt them as the next epoch's parameters, so the seed is taken to the same
+  *     terms the comparison takes both sides to ([[NewRules.carried]]).
   *   - **The VRF key hashes at protocol version 10**: the old mirror derives them for versions from
   *     10, where the reference populates them entering 11 (`HardFork.hs:75-78`; J3.3), so at
   *     version 10 they are not compared.
@@ -256,7 +261,7 @@ object Relations:
     * there the flat parameters, with the fields Conway's parameters have no place for, which the
     * mirror zeroes in the ones of the governance state but not in these.
     */
-  private def withoutDroppedFields[E <: EraTag](nes: NewEpochState[E])(using
+  private[differential] def withoutDroppedFields[E <: EraTag](nes: NewEpochState[E])(using
       era: ShelleyBasedEra[E]
   ): NewEpochState[E] = era match
     case ShelleyBasedEra.SConway =>
