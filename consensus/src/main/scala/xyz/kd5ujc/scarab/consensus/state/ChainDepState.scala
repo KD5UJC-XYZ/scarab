@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Show}
 import cats.derived.*
 import monocle.{Focus, Lens}
@@ -24,7 +25,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 // them, and `NodeState` holds them in its `HeaderState`.
 
 /** `PBftSigner` (`Protocol/PBFT/State.hs:146-149`): who signed the block of a slot. */
-final case class PBftSigner(slot: SlotNo, genesisKey: KeyHash[Genesis]) derives Eq, Show
+final case class PBftSigner(slot: SlotNo, genesisKey: KeyHash[Genesis]) derives Eq, Show, Diff
 
 object PBftSigner:
   val slot: Lens[PBftSigner, SlotNo] = Focus[PBftSigner](_.slot)
@@ -38,7 +39,8 @@ final case class PBftState(
     inWindow: Vector[PBftSigner],
     counts: SortedMap[KeyHash[Genesis], Word64]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object PBftState:
   /** No block signed yet. */
@@ -91,7 +93,8 @@ final case class PrtclState(
     evolvingNonce: Nonce,
     candidateNonce: Nonce
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object PrtclState:
   val ocertCounters: Lens[PrtclState, SortedMap[KeyHash[BlockIssuer], Word64]] =
@@ -102,7 +105,7 @@ object PrtclState:
 /** `TicknState` (`TPraos/Rules/Tickn.hs:32-35`): the epoch nonce and the hash nonce of the last
   * header of the previous epoch.
   */
-final case class TicknState(epochNonce: Nonce, prevHashNonce: Nonce) derives Eq, Show
+final case class TicknState(epochNonce: Nonce, prevHashNonce: Nonce) derives Eq, Show, Diff
 
 object TicknState:
   val epochNonce: Lens[TicknState, Nonce] = Focus[TicknState](_.epochNonce)
@@ -113,7 +116,8 @@ object TicknState:
   */
 final case class TPraosLedgerState(protocol: PrtclState, tickn: TicknState, labNonce: Nonce)
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object TPraosLedgerState:
   val protocol: Lens[TPraosLedgerState, PrtclState] = Focus[TPraosLedgerState](_.protocol)
@@ -125,7 +129,8 @@ object TPraosLedgerState:
   */
 final case class TPraosState(lastSlot: WithOrigin[SlotNo], chainDep: TPraosLedgerState)
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object TPraosState:
   val lastSlot: Lens[TPraosState, WithOrigin[SlotNo]] = Focus[TPraosState](_.lastSlot)
@@ -144,7 +149,8 @@ final case class PraosState(
     labNonce: Nonce,
     lastEpochBlockNonce: Nonce
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object PraosState:
   val lastSlot: Lens[PraosState, WithOrigin[SlotNo]] = Focus[PraosState](_.lastSlot)
@@ -160,7 +166,7 @@ object PraosState:
 /** The chain-dependent state of one era of the telescope (`ChainDepState (BlockProtocol blk)`): the
   * protocol that era runs.
   */
-enum ChainDepState derives Eq, Show:
+enum ChainDepState derives Eq, Show, Diff:
   case PBft(state: PBftState)
   case TPraos(state: TPraosState)
   case Praos(state: PraosState)

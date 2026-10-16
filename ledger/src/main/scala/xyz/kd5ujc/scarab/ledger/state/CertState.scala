@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{Anchor, GenDelegPair, PoolParams}
 /** `FutureGenDeleg` (`State/CertState.hs:100-104`, `deriving (Eq, Ord)`): a genesis delegation that
   * takes effect at a later slot. The fields are declared slot first, so that is the order.
   */
-final case class FutureGenDeleg(slot: SlotNo, genKeyHash: KeyHash[Genesis]) derives Eq, Show
+final case class FutureGenDeleg(slot: SlotNo, genKeyHash: KeyHash[Genesis]) derives Eq, Show, Diff
 
 object FutureGenDeleg:
   given Order[FutureGenDeleg] = Order.by(d => (d.slot, d.genKeyHash))
@@ -33,7 +33,8 @@ final case class InstantaneousRewards(
     deltaReserves: DeltaCoin,
     deltaTreasury: DeltaCoin
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object InstantaneousRewards:
   val reserves: Lens[InstantaneousRewards, SortedMap[Credential[Staking], Coin]] =
@@ -59,7 +60,8 @@ final case class DState[A <: AccountsRecord](
     genDelegs: SortedMap[KeyHash[Genesis], GenDelegPair],
     iRewards: InstantaneousRewards
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object DState:
   def accounts[A <: AccountsRecord]: Lens[DState[A], A] = Focus[DState[A]](_.accounts)
@@ -86,7 +88,8 @@ final case class StakePoolState(
     deposit: CompactCoin,
     delegators: SortedSet[Credential[Staking]]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object StakePoolState:
   val vrf: Lens[StakePoolState, VRFVerKeyHash] = Focus[StakePoolState](_.vrf)
@@ -110,7 +113,8 @@ final case class PState(
     future: SortedMap[KeyHash[StakePool], PoolParams],
     retiring: SortedMap[KeyHash[StakePool], EpochNo]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object PState:
   val vrfKeyHashes: Lens[PState, SortedMap[VRFVerKeyHash, NonZero[Word64]]] =
@@ -129,7 +133,8 @@ final case class DRepState(
     deposit: CompactCoin,
     delegators: SortedSet[Credential[Staking]]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object DRepState:
   val expiry: Lens[DRepState, EpochNo] = Focus[DRepState](_.expiry)
@@ -141,14 +146,15 @@ object DRepState:
 /** `CommitteeAuthorization` (`State/CertState.hs:302-307`): what the committee state records about
   * a cold credential.
   */
-enum CommitteeAuthorization derives Eq, Show:
+enum CommitteeAuthorization derives Eq, Show, Diff:
   case CommitteeHotCredential(credential: Credential[HotCommittee])
   case CommitteeMemberResigned(anchor: Option[Anchor])
 
 /** `CommitteeState` (`State/CertState.hs:328-331`, a newtype over the map). */
 final case class CommitteeState(creds: SortedMap[Credential[ColdCommittee], CommitteeAuthorization])
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object CommitteeState:
   val creds: Lens[CommitteeState, SortedMap[Credential[ColdCommittee], CommitteeAuthorization]] =
@@ -160,7 +166,8 @@ final case class VState(
     committeeState: CommitteeState,
     numDormantEpochs: EpochNo
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object VState:
   val dreps: Lens[VState, SortedMap[Credential[DRepRole], DRepState]] = Focus[VState](_.dreps)
@@ -170,7 +177,10 @@ object VState:
 /** `ShelleyCertState` (`Shelley/State/CertState.hs:48-52`): pools and delegation, Shelley to
   * Babbage.
   */
-final case class ShelleyCertState(pState: PState, dState: DState[ShelleyAccounts]) derives Eq, Show
+final case class ShelleyCertState(pState: PState, dState: DState[ShelleyAccounts])
+    derives Eq,
+      Show,
+      Diff
 
 object ShelleyCertState:
   val pState: Lens[ShelleyCertState, PState] = Focus[ShelleyCertState](_.pState)
@@ -179,7 +189,8 @@ object ShelleyCertState:
 /** `ConwayCertState` (`Conway/State/CertState.hs:56-61`): voting, pools and delegation. */
 final case class ConwayCertState(vState: VState, pState: PState, dState: DState[ConwayAccounts])
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object ConwayCertState:
   val vState: Lens[ConwayCertState, VState] = Focus[ConwayCertState](_.vState)

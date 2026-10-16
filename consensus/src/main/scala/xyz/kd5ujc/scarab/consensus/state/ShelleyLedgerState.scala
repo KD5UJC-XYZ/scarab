@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Order, Show}
 import cats.derived.*
 import cats.syntax.all.*
@@ -45,7 +46,7 @@ object PerasRoundNo:
 /** `ShelleyTip` (`Shelley/Ledger/Ledger.hs:258-263`): the last block applied. The Haskell
   * `HeaderHash (ShelleyBlock proto era)` is the 32-byte header hash.
   */
-final case class ShelleyTip(slot: SlotNo, blockNo: BlockNo, hash: Hash32) derives Eq, Show
+final case class ShelleyTip(slot: SlotNo, blockNo: BlockNo, hash: Hash32) derives Eq, Show, Diff
 
 object ShelleyTip:
   val slot: Lens[ShelleyTip, SlotNo] = Focus[ShelleyTip](_.slot)
@@ -55,7 +56,7 @@ object ShelleyTip:
 /** `ShelleyTransition` (`Ledger.hs:299-322`): the number of blocks in this epoch past the voting
   * deadline, from which the hard-fork combinator learns that a hard fork is certain.
   */
-final case class ShelleyTransition(afterVoting: Word32) derives Eq, Show
+final case class ShelleyTransition(afterVoting: Word32) derives Eq, Show, Diff
 
 object ShelleyTransition:
   val afterVoting: Lens[ShelleyTransition, Word32] = Focus[ShelleyTransition](_.afterVoting)
@@ -76,6 +77,13 @@ object ShelleyLedgerState:
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[ShelleyLedgerState[E]] = Eq.instance((a, b) =>
     StateEq.withOrigin(a.tip, b.tip) && a.nes === b.nes && a.transition === b.transition &&
       a.peras === b.peras
+  )
+
+  given [E <: EraTag](using ShelleyBasedEra[E]): Diff[ShelleyLedgerState[E]] = Diff.record(
+    Diff.at("tip")(_.tip),
+    Diff.at("nes")(_.nes),
+    Diff.at("transition")(_.transition),
+    Diff.at("peras")(_.peras)
   )
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[ShelleyLedgerState[E]] = Show.show(s =>

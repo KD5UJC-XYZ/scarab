@@ -19,7 +19,8 @@ final case class ShelleyAccountState(
     deposit: CompactCoin,
     pool: Option[KeyHash[StakePool]]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object ShelleyAccountState:
   val ptr: Lens[ShelleyAccountState, Ptr] = Focus[ShelleyAccountState](_.ptr)
@@ -39,7 +40,8 @@ final case class ConwayAccountState(
     pool: Option[KeyHash[StakePool]],
     drep: Option[DRep]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object ConwayAccountState:
   val balance: Lens[ConwayAccountState, CompactCoin] = Focus[ConwayAccountState](_.balance)
@@ -55,7 +57,8 @@ final case class ShelleyAccounts(
     states: SortedMap[Credential[Staking], ShelleyAccountState],
     ptrs: SortedMap[Ptr, Credential[Staking]]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object ShelleyAccounts:
   val states: Lens[ShelleyAccounts, SortedMap[Credential[Staking], ShelleyAccountState]] =
@@ -68,7 +71,8 @@ object ShelleyAccounts:
   */
 final case class ConwayAccounts(states: SortedMap[Credential[Staking], ConwayAccountState])
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object ConwayAccounts:
   val states: Lens[ConwayAccounts, SortedMap[Credential[Staking], ConwayAccountState]] =
@@ -81,7 +85,8 @@ final case class ShelleyInstantStake(
     credentialStake: SortedMap[Credential[Staking], CompactCoin],
     ptrStake: SortedMap[Ptr, CompactCoin]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object ShelleyInstantStake:
   val credentialStake: Lens[ShelleyInstantStake, SortedMap[Credential[Staking], CompactCoin]] =
@@ -94,7 +99,8 @@ object ShelleyInstantStake:
   */
 final case class ConwayInstantStake(credentialStake: SortedMap[Credential[Staking], CompactCoin])
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object ConwayInstantStake:
   val credentialStake: Lens[ConwayInstantStake, SortedMap[Credential[Staking], CompactCoin]] =

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.consensus.{ForkTrigger, HardForkConfig}
@@ -19,7 +20,8 @@ final case class EraSummary(
     safeZone: BigInt,
     genesisWindow: BigInt
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 /** The hard-fork combinator's view of time: the interpreter that `cardano-cli query tip` and every
   * wallet use to turn slots into epochs and wall-clock times. [[Bound]] is the same type the

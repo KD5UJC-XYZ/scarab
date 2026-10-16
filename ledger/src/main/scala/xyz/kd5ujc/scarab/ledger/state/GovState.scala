@@ -23,7 +23,7 @@ import xyz.kd5ujc.scarab.ledger.{
 /** `FuturePParams era` (`State/Governance.hs:90-102`): the prediction of a protocol-parameter
   * change at the next epoch boundary.
   */
-enum FuturePParams derives Eq, Show:
+enum FuturePParams derives Eq, Show, Diff:
   /** Definitely no update at the next boundary. */
   case NoPParamsUpdate
 
@@ -47,7 +47,7 @@ object FuturePParams:
   * snapshot it worked on and the ratification it reached. The mirror holds the pulser only in this
   * form, as Haskell encodes it (`DRepPulser.hs:455-459`).
   */
-final case class DRComplete(snapshot: PulsingSnapshot, ratify: RatifyState) derives Eq, Show
+final case class DRComplete(snapshot: PulsingSnapshot, ratify: RatifyState) derives Eq, Show, Diff
 
 object DRComplete:
   val snapshot: Lens[DRComplete, PulsingSnapshot] = Focus[DRComplete](_.snapshot)
@@ -63,7 +63,8 @@ final case class ConwayGovState(
     futurePParams: FuturePParams,
     drepPulsing: DRComplete
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object ConwayGovState:
   val proposals: Lens[ConwayGovState, Proposals] = Focus[ConwayGovState](_.proposals)
@@ -84,7 +85,8 @@ final case class ShelleyGovState(
     prevPParams: ProtocolParams,
     futurePParams: FuturePParams
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object ShelleyGovState:
   val curProposals: Lens[ShelleyGovState, SortedMap[KeyHash[Genesis], ParamUpdate]] =

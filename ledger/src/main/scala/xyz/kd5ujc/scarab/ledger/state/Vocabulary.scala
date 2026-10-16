@@ -293,6 +293,15 @@ object WithOrigin:
     case (At(a), At(b))   => Order[A].compare(a, b)
   }
 
+  given [A](using d: Diff[A]): Diff[WithOrigin[A]] = new Diff[WithOrigin[A]]:
+    def diff(a: WithOrigin[A], b: WithOrigin[A]): Option[Difference] = (a, b) match
+      case (Origin, Origin) => None
+      case (At(x), At(y))   => d.diff(x, y).map(_.under(Step.Field("value")))
+      case _                => Some(Difference(Path.root, show(a), show(b)))
+    def show(a: WithOrigin[A]): String = a match
+      case Origin => "Origin"
+      case At(x)  => s"At(${d.show(x)})"
+
   given [A: Show]: Show[WithOrigin[A]] = Show.show {
     case Origin => "Origin"
     case At(a)  => s"At(${Show[A].show(a)})"

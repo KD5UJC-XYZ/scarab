@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.Eq
 import cats.Show
 import cats.syntax.all.*
@@ -74,6 +75,7 @@ final case class ProtocolState(dep: ChainDepState, extras: ProtocolExtras):
 
 object ProtocolState:
   given Eq[ProtocolState] = Eq.instance((a, b) => a.dep === b.dep && a.extras === b.extras)
+  given Diff[ProtocolState] = Diff.record(Diff.at("dep")(_.dep), Diff.at("extras")(_.extras))
   given Show[ProtocolState] = Show.show(p => s"ProtocolState(${p.dep.show}, ${p.extras.show})")
 
   private val noNonces: PraosState =

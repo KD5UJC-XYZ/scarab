@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
   * always accompanied by the set of gaps it has; the set is a function of the source state alone
   * (`LedgerMirror.gaps`), so the laws can state it exactly.
   */
-enum Gap derives Eq, Show:
+enum Gap derives Eq, Show, Diff:
   /** `esNonMyopic` and the non-myopic part of the reward update (`PoolRank.hs:231-236`): the pool
     * ranking is not part of the protocol and the node does not compute it, so the mirror holds
     * `NonMyopic.empty`. Present in every mirror.
@@ -45,7 +45,7 @@ enum Gap derives Eq, Show:
   case ShelleyTransition
 
 /** A mirror with the gaps it has. A functor, so a conversion of the value keeps them. */
-final case class Mirrored[A](value: A, gaps: Set[Gap]) derives Eq, Show
+final case class Mirrored[A](value: A, gaps: Set[Gap]) derives Eq, Show, Diff
 
 object Mirrored:
   given Functor[Mirrored] with

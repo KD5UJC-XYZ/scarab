@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.ledger.ProtocolParams
 /** `ChainAccountState` (`State/ChainAccount.hs:39-42`, encoding `46-48`: `array(2)`): the treasury
   * and the reserves (`AccountState` before ledger 1.21).
   */
-final case class ChainAccountState(treasury: Coin, reserves: Coin) derives Eq, Show
+final case class ChainAccountState(treasury: Coin, reserves: Coin) derives Eq, Show, Diff
 
 object ChainAccountState:
   val treasury: Lens[ChainAccountState, Coin] = Focus[ChainAccountState](_.treasury)
@@ -45,6 +45,8 @@ object BlocksMade:
 
   // Explicit (not found from the map's instances): in this file the type is the map.
   given Eq[BlocksMade] = Eq.fromUniversalEquals
+  given Diff[BlocksMade] = Diff.sortedMap[KeyHash[StakePool], Word64]
+
   given Show[BlocksMade] =
     Show.show(b =>
       s"BlocksMade(${b.toList.map((k, n) => s"${k.show} -> ${n.show}").mkString(", ")})"
@@ -66,6 +68,13 @@ object EpochState:
       Eq[LedgerState[E]].eqv(a.ls, b.ls) &&
       Eq[SnapShots].eqv(a.snapshots, b.snapshots) &&
       Eq[NonMyopic].eqv(a.nonMyopic, b.nonMyopic)
+  )
+
+  given [E <: EraTag](using ShelleyBasedEra[E]): Diff[EpochState[E]] = Diff.record(
+    Diff.at("chainAccount")(_.chainAccount),
+    Diff.at("ls")(_.ls),
+    Diff.at("snapshots")(_.snapshots),
+    Diff.at("nonMyopic")(_.nonMyopic)
   )
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[EpochState[E]] = Show.show(e =>
@@ -105,6 +114,16 @@ object NewEpochState:
       Eq[Option[PulsingRewUpdate]].eqv(a.ru, b.ru) &&
       Eq[PoolDistr].eqv(a.pd, b.pd) &&
       Eq[StashedAVVM[E]].eqv(a.avvm, b.avvm)
+  )
+
+  given [E <: EraTag](using ShelleyBasedEra[E]): Diff[NewEpochState[E]] = Diff.record(
+    Diff.at("epoch")(_.epoch),
+    Diff.at("bprev")(_.bprev),
+    Diff.at("bcur")(_.bcur),
+    Diff.at("es")(_.es),
+    Diff.at("ru")(_.ru),
+    Diff.at("pd")(_.pd),
+    Diff.at("avvm")(_.avvm)
   )
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[NewEpochState[E]] = Show.show(n =>

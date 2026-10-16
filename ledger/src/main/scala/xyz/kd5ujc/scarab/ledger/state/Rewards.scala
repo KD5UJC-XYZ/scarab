@@ -63,7 +63,8 @@ final case class NonMyopic(
     likelihoods: SortedMap[KeyHash[StakePool], Likelihood],
     rewardPot: Coin
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object NonMyopic:
   /** `def` (`PoolRank.hs:238-239`). */
@@ -74,7 +75,7 @@ object NonMyopic:
   val rewardPot: Lens[NonMyopic, Coin] = Focus[NonMyopic](_.rewardPot)
 
 /** `RewardType` (`Rewards.hs:41-42`, encoded as the word 0 or 1, `50-52`). */
-enum RewardType derives Eq, Show:
+enum RewardType derives Eq, Show, Diff:
   case MemberReward, LeaderReward
 
 /** `Reward` (`cardano-ledger-core/.../Rewards.hs:68-72`, encoding `89-91`: `array(3)`): a reward of
@@ -82,7 +83,8 @@ enum RewardType derives Eq, Show:
   */
 final case class Reward(rewardType: RewardType, rewardPool: KeyHash[StakePool], rewardAmount: Coin)
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object Reward:
   /** The Haskell `Ord Reward` (`Rewards.hs:76-83`): member rewards sort above leader rewards (the
@@ -131,7 +133,8 @@ final case class RewardUpdate(
     deltaF: DeltaCoin,
     nonMyopic: NonMyopic
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object RewardUpdate:
   /** `emptyRewardUpdate` (`RewardUpdate.hs:154-156`). */
@@ -148,7 +151,7 @@ object RewardUpdate:
   * protocol version. Haskell bounds the major version (`Version`) and the minor is a `Word32`; both
   * are widened to a word here, and the codec is where the range is checked.
   */
-final case class ProtVer(major: Word64, minor: Word64) derives Eq, Show
+final case class ProtVer(major: Word64, minor: Word64) derives Eq, Show, Diff
 
 object ProtVer:
   val major: Lens[ProtVer, Word64] = Focus[ProtVer](_.major)
@@ -167,7 +170,8 @@ final case class RewardSnapShot(
     likelihoods: SortedMap[KeyHash[StakePool], Likelihood],
     leaders: SortedMap[Credential[Staking], RewardSet]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 /** The pulser of a reward update that is still being computed (`Pulser` of `RewardUpdate.hs:346`,
   * the `RewardPulser` of `Pulsing.hs`: the free variables, the stake still to visit, the answer so
@@ -176,7 +180,7 @@ final case class RewardSnapShot(
   * taken in the middle of an epoch is written again byte for byte. `item` is one complete, well
   * formed CBOR item.
   */
-final case class RewardPulser(item: Bytes) derives Eq, Show
+final case class RewardPulser(item: Bytes) derives Eq, Show, Diff
 
 /** `PulsingRewUpdate` (`RewardUpdate.hs:341-344`, encoding `346-348`: `[0, snapshot, pulser]` or
   * `[1, update]`): a reward update that is either still being computed or complete.
@@ -186,7 +190,7 @@ final case class RewardPulser(item: Bytes) derives Eq, Show
   * was left with and the pulser as the original bytes ([[RewardPulser]]): such a state round trips
   * exactly, but a node cannot be made from it (importing one stays a refusal, `Gap`).
   */
-enum PulsingRewUpdate derives Eq, Show:
+enum PulsingRewUpdate derives Eq, Show, Diff:
   case Pulsing(snapshot: RewardSnapShot, pulser: RewardPulser)
   case Complete(update: RewardUpdate)
 

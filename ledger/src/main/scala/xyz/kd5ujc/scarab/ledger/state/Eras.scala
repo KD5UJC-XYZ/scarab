@@ -153,3 +153,29 @@ object EraInstances:
       case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary | ShelleyBasedEra.SAlonzo |
           ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
         Show[Unit]
+
+  given certStateDiff[E <: EraTag](using era: ShelleyBasedEra[E]): Diff[CertState[E]] = era match
+    case ShelleyBasedEra.SConway => Diff[ConwayCertState]
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      Diff[ShelleyCertState]
+
+  given govStateDiff[E <: EraTag](using era: ShelleyBasedEra[E]): Diff[GovState[E]] = era match
+    case ShelleyBasedEra.SConway => Diff[ConwayGovState]
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      Diff[ShelleyGovState]
+
+  given instantStakeDiff[E <: EraTag](using era: ShelleyBasedEra[E]): Diff[InstantStake[E]] =
+    era match
+      case ShelleyBasedEra.SConway => Diff[ConwayInstantStake]
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+        Diff[ShelleyInstantStake]
+
+  given stashedAvvmDiff[E <: EraTag](using era: ShelleyBasedEra[E]): Diff[StashedAVVM[E]] =
+    era match
+      case ShelleyBasedEra.SShelley => Diff[UtxoTables]
+      case ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary | ShelleyBasedEra.SAlonzo |
+          ShelleyBasedEra.SBabbage | ShelleyBasedEra.SConway =>
+        Diff[Unit]

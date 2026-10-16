@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
@@ -10,7 +11,7 @@ import xyz.kd5ujc.scarab.ledger.state.{BlockNo, Hash32, ShelleyBasedEra, SlotNo,
 /** `IsEBB` (Byron epoch boundary blocks): a closed two-case type where Haskell has a two-case
   * `data`.
   */
-enum IsEBB derives Eq, Show:
+enum IsEBB derives Eq, Show, Diff:
   case EBB, NotEBB
 
 /** The annotation of the tip of the Cardano chain: `TipInfo` of each era under `OneEraTipInfo`
@@ -32,7 +33,7 @@ object TipInfo:
 /** `AnnTip` (`HeaderValidation.hs:115-119`): the tip's slot and block number with the era's
   * annotation.
   */
-final case class AnnTip(slot: SlotNo, blockNo: BlockNo, info: TipInfo) derives Eq, Show
+final case class AnnTip(slot: SlotNo, blockNo: BlockNo, info: TipInfo) derives Eq, Show, Diff
 
 object AnnTip:
   val slot: Lens[AnnTip, SlotNo] = Focus[AnnTip](_.slot)
@@ -47,6 +48,8 @@ final case class HeaderState(tip: WithOrigin[AnnTip], chainDep: Telescope[ChainD
 object HeaderState:
   given Eq[HeaderState] =
     Eq.instance((a, b) => StateEq.withOrigin(a.tip, b.tip) && a.chainDep === b.chainDep)
+
+  given Diff[HeaderState] = Diff.record(Diff.at("tip")(_.tip), Diff.at("chainDep")(_.chainDep))
 
   given Show[HeaderState] =
     Show.show(h => s"HeaderState(tip = ${h.tip.show}, chainDep = ${h.chainDep.show})")

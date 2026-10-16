@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Monad, Show}
 import cats.derived.*
 import cats.mtl.{Ask, Raise}
@@ -151,6 +152,8 @@ final case class MirrorState(ext: ExtLedgerState, extras: MirrorExtras)
 
 object MirrorState:
   given Eq[MirrorState] = Eq.instance((a, b) => a.ext === b.ext && a.extras === b.extras)
+
+  given Diff[MirrorState] = Diff.record(Diff.at("ext")(_.ext), Diff.at("extras")(_.extras))
 
   given Show[MirrorState] =
     Show.show(m => s"MirrorState(ext = ${m.ext.show}, extras = ${m.extras.show})")

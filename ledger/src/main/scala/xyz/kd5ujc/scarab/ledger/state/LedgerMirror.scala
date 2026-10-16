@@ -20,6 +20,9 @@ object LedgerImage:
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[LedgerImage[E]] =
     Eq.instance((a, b) => a.nes === b.nes && a.extras === b.extras)
 
+  given [E <: EraTag](using ShelleyBasedEra[E]): Diff[LedgerImage[E]] =
+    Diff.record(Diff.at("nes")(_.nes), Diff.at("extras")(_.extras))
+
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[LedgerImage[E]] =
     Show.show(i => s"LedgerImage(nes = ${i.nes.show}, extras = ${i.extras.show})")
 

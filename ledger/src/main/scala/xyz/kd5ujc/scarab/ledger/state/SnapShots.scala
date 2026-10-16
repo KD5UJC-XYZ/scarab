@@ -19,7 +19,8 @@ import xyz.kd5ujc.scarab.codec.Rational
   */
 final case class StakeWithDelegation(stake: NonZero[CompactCoin], delegation: KeyHash[StakePool])
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object StakeWithDelegation:
   val stake: Lens[StakeWithDelegation, NonZero[CompactCoin]] = Focus[StakeWithDelegation](_.stake)
@@ -31,7 +32,8 @@ object StakeWithDelegation:
   */
 final case class ActiveStake(entries: SortedMap[Credential[Staking], StakeWithDelegation])
     derives Eq,
-      Show
+      Show,
+      Diff
 
 object ActiveStake:
   val empty: ActiveStake = ActiveStake(Sorted.empty)
@@ -66,7 +68,8 @@ final case class StakePoolSnapShot(
     numDelegators: Word64,
     accountId: Credential[Staking]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object StakePoolSnapShot:
   val stake: Lens[StakePoolSnapShot, CompactCoin] = Focus[StakePoolSnapShot](_.stake)
@@ -92,7 +95,8 @@ final case class SnapShot(
     activeStake: ActiveStake,
     pools: SortedMap[KeyHash[StakePool], StakePoolSnapShot]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object SnapShot:
   /** `emptySnapShot` (`State/SnapShots.hs:390-391`). */
@@ -114,7 +118,8 @@ final case class IndividualPoolStake(
     totalPoolStake: CompactCoin,
     vrf: VRFVerKeyHash
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object IndividualPoolStake:
   val stake: Lens[IndividualPoolStake, Rational] = Focus[IndividualPoolStake](_.stake)
@@ -128,7 +133,8 @@ final case class PoolDistr(
     distribution: SortedMap[KeyHash[StakePool], IndividualPoolStake],
     totalActiveStake: NonZero[Coin]
 ) derives Eq,
-      Show
+      Show,
+      Diff
 
 object PoolDistr:
   /** `def` (`State/PoolDistr.hs:108-109`). */
@@ -154,7 +160,10 @@ object PoolDistr:
   * Haskell also holds `ssStakeMarkPoolDistr`, lazily, and does not encode it; here it is
   * [[SnapShots.markPoolDistr]].
   */
-final case class SnapShots(mark: SnapShot, set: SnapShot, go: SnapShot, fee: Coin) derives Eq, Show
+final case class SnapShots(mark: SnapShot, set: SnapShot, go: SnapShot, fee: Coin)
+    derives Eq,
+      Show,
+      Diff
 
 object SnapShots:
   /** `emptySnapShots` (`State/SnapShots.hs:393-395`). */

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.Diff
 import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
@@ -19,7 +20,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   * (`EraHistory`): the three numbers are `BigInt` s rather than `RelativeTime` /`SlotNo`/`EpochNo`,
   * and the Peras round (`boundPerasRound`, `NoPerasEnabled` on every Cardano era today) is absent.
   */
-final case class Bound(timePs: BigInt, slot: BigInt, epoch: BigInt) derives Eq, Show
+final case class Bound(timePs: BigInt, slot: BigInt, epoch: BigInt) derives Eq, Show, Diff
 
 object Bound:
   /** The bound of a telescope the node holds before it is put on the era history: see
@@ -32,7 +33,7 @@ object Bound:
   val epochLens: Lens[Bound, BigInt] = Focus[Bound](_.epoch)
 
 /** A past era (`Past`, `HardFork/Combinator/State/Types.hs:97-101`): where it started and ended. */
-final case class Past(start: Bound, end: Bound) derives Eq, Show
+final case class Past(start: Bound, end: Bound) derives Eq, Show, Diff
 
 object Past:
   val start: Lens[Past, Bound] = Focus[Past](_.start)
@@ -44,6 +45,9 @@ final case class Current[A](start: Bound, state: A)
 object Current:
   given [A: Eq]: Eq[Current[A]] = Eq.instance((a, b) => a.start === b.start && a.state === b.state)
 
+  given [A](using Diff[A]): Diff[Current[A]] =
+    Diff.record(Diff.at("start")(_.start), Diff.at("state")(_.state))
+
   given [A: Show]: Show[Current[A]] =
     Show.show(c => s"Current(start = ${c.start.show}, state = ${c.state.show})")
 
@@ -51,7 +55,7 @@ object Current:
   def state[A]: Lens[Current[A], A] = Focus[Current[A]](_.state)
 
 /** Why a telescope cannot be built. */
-enum TelescopeError derives Eq, Show:
+enum TelescopeError derives Eq, Show, Diff:
   /** More past eras than the chain has eras before the last (Byron and six Shelley-based eras). */
   case TooManyPast(count: Int)
 
@@ -123,6 +127,9 @@ object Telescope:
 
   given [A: Eq]: Eq[Telescope[A]] =
     Eq.instance((a, b) => a.past === b.past && a.current === b.current)
+
+  given [A](using Diff[A]): Diff[Telescope[A]] =
+    Diff.record(Diff.at("past")(_.past), Diff.at("current")(_.current))
 
   given [A: Show]: Show[Telescope[A]] =
     Show.show(t => s"Telescope(past = ${t.past.show}, current = ${t.current.show})")

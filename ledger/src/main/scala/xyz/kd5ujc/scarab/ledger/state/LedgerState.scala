@@ -45,6 +45,15 @@ object UTxOState:
       Eq[Coin].eqv(a.donation, b.donation)
   )
 
+  given [E <: EraTag](using ShelleyBasedEra[E]): Diff[UTxOState[E]] = Diff.record(
+    Diff.at("utxo")(_.utxo),
+    Diff.at("deposited")(_.deposited),
+    Diff.at("fees")(_.fees),
+    Diff.at("gov")(_.gov),
+    Diff.at("instantStake")(_.instantStake),
+    Diff.at("donation")(_.donation)
+  )
+
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[UTxOState[E]] = Show.show(u =>
     s"UTxOState(utxo = ${u.utxo.show}, deposited = ${u.deposited.show}, fees = ${u.fees.show}, " +
       s"gov = ${Show[GovState[E]].show(u.gov)}, " +
@@ -70,6 +79,9 @@ object LedgerState:
   given [E <: EraTag](using ShelleyBasedEra[E]): Eq[LedgerState[E]] = Eq.instance((a, b) =>
     Eq[CertState[E]].eqv(a.cert, b.cert) && Eq[UTxOState[E]].eqv(a.utxo, b.utxo)
   )
+
+  given [E <: EraTag](using ShelleyBasedEra[E]): Diff[LedgerState[E]] =
+    Diff.record(Diff.at("cert")(_.cert), Diff.at("utxo")(_.utxo))
 
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[LedgerState[E]] =
     Show.show(l => s"LedgerState(cert = ${Show[CertState[E]].show(l.cert)}, utxo = ${l.utxo.show})")

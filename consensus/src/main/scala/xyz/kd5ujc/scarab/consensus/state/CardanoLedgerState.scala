@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.ledger.state.{Diff, Difference, Path}
 import cats.{Eq, Show}
 import cats.syntax.all.*
 import monocle.{Focus, Lens}
@@ -62,6 +63,27 @@ object EraLedgerState:
     case _ => false
   }
 
+  /** The first difference of two states of one era; states of different eras differ at the root
+    * (`ExtLedgerState`'s telescope puts them in the same position only through the same era).
+    */
+  given Diff[EraLedgerState] = new Diff[EraLedgerState]:
+    def diff(a: EraLedgerState, b: EraLedgerState): Option[Difference] = (a, b) match
+      case (ByronCurrent(x), ByronCurrent(y)) => Diff[ByronState].diff(x, y)
+      case (InShelleyEra(ea, x), InShelleyEra(eb, y)) =>
+        import ShelleyBasedEra.*
+        (ea, eb) match
+          case (SShelley, SShelley) => diffIn(ea, x, y)
+          case (SAllegra, SAllegra) => diffIn(ea, x, y)
+          case (SMary, SMary)       => diffIn(ea, x, y)
+          case (SAlonzo, SAlonzo)   => diffIn(ea, x, y)
+          case (SBabbage, SBabbage) => diffIn(ea, x, y)
+          case (SConway, SConway)   => diffIn(ea, x, y)
+          case (_, _)               => Some(Difference(Path.root, show(a), show(b)))
+      case _ => Some(Difference(Path.root, show(a), show(b)))
+    def show(a: EraLedgerState): String = Difference.clipped(a match
+      case ByronCurrent(s)    => s"ByronCurrent(${s.toString})"
+      case InShelleyEra(e, s) => s"InShelleyEra(${e.show}, ${showIn(e, s)})")
+
   given Show[EraLedgerState] = Show.show {
     case ByronCurrent(s)    => s"ByronCurrent(${s.show})"
     case InShelleyEra(e, s) => s"InShelleyEra(${e.show}, ${showIn(e, s)})"
@@ -74,6 +96,14 @@ object EraLedgerState:
   ): Boolean =
     given ShelleyBasedEra[E] = era
     a === b
+
+  private def diffIn[E <: EraTag](
+      era: ShelleyBasedEra[E],
+      a: ShelleyLedgerState[E],
+      b: ShelleyLedgerState[E]
+  ): Option[Difference] =
+    given ShelleyBasedEra[E] = era
+    Diff[ShelleyLedgerState[E]].diff(a, b)
 
   private def showIn[E <: EraTag](era: ShelleyBasedEra[E], s: ShelleyLedgerState[E]): String =
     given ShelleyBasedEra[E] = era
@@ -90,6 +120,9 @@ final case class ExtLedgerState(ledgerState: CardanoLedgerState, headerState: He
 object ExtLedgerState:
   given Eq[ExtLedgerState] =
     Eq.instance((a, b) => a.ledgerState === b.ledgerState && a.headerState === b.headerState)
+
+  given Diff[ExtLedgerState] =
+    Diff.record(Diff.at("ledgerState")(_.ledgerState), Diff.at("headerState")(_.headerState))
 
   given Show[ExtLedgerState] = Show.show(e =>
     s"ExtLedgerState(ledgerState = ${e.ledgerState.show}, headerState = ${e.headerState.show})"
