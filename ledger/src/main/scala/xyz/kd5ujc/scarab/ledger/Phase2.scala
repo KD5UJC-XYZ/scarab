@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.Id
+import cats.{Id, Monad}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*
 
@@ -57,37 +57,43 @@ object Phase2:
     def info(language: PlutusLanguage) =
       infos.getOrElseUpdate(language, ScriptContexts.txInfo(language, tx, env))
 
-    def loop(
-        rest: List[Redeemer],
-        done: Int
-    ): Either[TranslationError, Outcome] = rest match
-      case Nil => Right(Outcome.Passed(done))
-      case r :: tail =>
-        for
-          purpose <- Purpose
-            .resolve(tx.body, spent, r.tag, r.index)
-            .toRight(TranslationError(s"redeemer (${r.tag}, ${r.index}) names no purpose"))
-          hash <- purpose.scriptHash.toRight(
-            TranslationError(s"redeemer (${r.tag}, ${r.index}) has no script")
-          )
-          script <- scripts.get(hash).toRight(TranslationError(s"script ${hash.hex} is missing"))
-          language <- languageOf(script)
-          code <- script.plutus
-            .orElse(referenceScripts.get(hash))
-            .toRight(TranslationError(s"script ${hash.hex} has no bytes"))
-          model <- costModel(pp, language)
-          txInfo <- info(language)
-          args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
-          result = evaluator.evaluate(
-            EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
-          )
-          outcome <- result match
-            case EvalResult.Success(_, _) => loop(tail, done + 1)
-            case EvalResult.Failure(reason, _, _) =>
-              Right(Outcome.Failed(done, r, reason))
-        yield outcome
+    /** One redeemer against its script: the evaluation result, or why it cannot be set up. */
+    def evaluateOne(r: Redeemer): Either[TranslationError, EvalResult] =
+      for
+        purpose <- Purpose
+          .resolve(tx.body, spent, r.tag, r.index)
+          .toRight(TranslationError(s"redeemer (${r.tag}, ${r.index}) names no purpose"))
+        hash <- purpose.scriptHash.toRight(
+          TranslationError(s"redeemer (${r.tag}, ${r.index}) has no script")
+        )
+        script <- scripts.get(hash).toRight(TranslationError(s"script ${hash.hex} is missing"))
+        language <- languageOf(script)
+        code <- script.plutus
+          .orElse(referenceScripts.get(hash))
+          .toRight(TranslationError(s"script ${hash.hex} has no bytes"))
+        model <- costModel(pp, language)
+        txInfo <- info(language)
+        args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
+      yield evaluator.evaluate(
+        EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
+      )
 
-    loop(redeemers.toList, 0)
+    // A transaction can carry well over a hundred redeemers. The loop is `tailRecM` over a typed
+    // state, so the stack does not grow with their number (and a failure to set one up ends it).
+    val start = Progress(redeemers.toList, 0)
+    Monad[Translated].tailRecM(start) {
+      case Progress(Nil, done) => Right(Right(Outcome.Passed(done)))
+      case Progress(r :: tail, done) =>
+        evaluateOne(r).map {
+          case EvalResult.Success(_, _)         => Left(Progress(tail, done + 1))
+          case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, r, reason))
+        }
+    }
+
+  private type Translated[A] = Either[TranslationError, A]
+
+  /** The loop state of [[evaluate]]: the redeemers still to run and how many have passed. */
+  private final case class Progress(rest: List[Redeemer], done: Int)
 
   private[ledger] def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =
     script.kind match
