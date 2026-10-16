@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+# The monitoring server: Prometheus (metrics, with the remote-write receiver the agents push to),
+# Loki (log streams) and Grafana. Ports are published on BIND_ADDR only (on monitor-host, its VPN
+# address), never on every interface. Settings come from .env next to this file (see .env.example).
+name: scarab-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-180d}
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${DATA_DIR:-./data}/prometheus:/prometheus
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:9090:9090
+
+  loki:
+    image: grafana/loki:3.5.3
+    restart: unless-stopped
+    user: "10001:10001"
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - ${DATA_DIR:-./data}/loki:/loki
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:3100:3100
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    restart: unless-stopped
+    user: "472:0"
+    environment:
+      GF_PATHS_DATA: /var/lib/grafana/data
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      # read-only viewing for anyone who can reach BIND_ADDR (the VPN on monitor-host)
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: system
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/scarab-runs.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ${DATA_DIR:-./data}/grafana:/var/lib/grafana/data
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:3000:3000
+    depends_on: [prometheus, loki]

@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# The agent on each worker (worker-a, worker-b): Grafana Alloy pushes outward to the monitoring
+# server, so no port is opened on the worker. It sends
+#   - the docker logs of every container named scarab-* to Loki,
+#   - the host's metrics (node exporter) and the containers' (cAdvisor) to Prometheus,
+#   - the /metrics of every scarab-* container that carries the label scarab.metrics.port.
+# Settings come from .env next to this file (see .env.example).
+name: scarab-agent
+
+services:
+  alloy:
+    image: grafana/alloy:v1.16.0
+    restart: unless-stopped
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=127.0.0.1:12345
+      - /etc/alloy/config.alloy
+    environment:
+      SCARAB_HOST: ${SCARAB_HOST:?set SCARAB_HOST in .env}
+      PROMETHEUS_PUSH_URL: ${PROMETHEUS_PUSH_URL:?set PROMETHEUS_PUSH_URL in .env}
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:?set LOKI_PUSH_URL in .env}
+      UNIX_DISABLED_COLLECTORS: ${UNIX_DISABLED_COLLECTORS:-}
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # node exporter and cAdvisor read the host through these
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /:/host/root:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      # cAdvisor resolves containers through containerd (Docker's containerd image store)
+      - /run/containerd:/run/containerd:ro
+    pid: host
+    # cAdvisor reads every container's cgroup, so the agent shares the host's cgroup namespace
+    cgroup: host
+
+volumes:
+  alloy-data:

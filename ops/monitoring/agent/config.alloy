@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: Apache-2.0
+// Grafana Alloy on a Scarab worker: logs and metrics pushed to the monitoring server.
+
+// ---- the containers of the runs ------------------------------------------------------------
+
+discovery.docker "scarab" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "30s"
+  filter {
+    name   = "name"
+    values = ["scarab-"]
+  }
+}
+
+discovery.relabel "scarab" {
+  targets = discovery.docker.scarab.targets
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    // the agent itself (scarab-agent-*) is not a run
+    source_labels = ["container"]
+    regex         = "scarab-agent-.*"
+    action        = "drop"
+  }
+  rule {
+    target_label = "host"
+    replacement  = sys.env("SCARAB_HOST")
+  }
+}
+
+// ---- logs: what each node writes to stdout (the readable rolling segment) -------------------
+
+loki.source.docker "scarab" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.scarab.output
+  labels        = { job = "scarab" }
+  forward_to    = [loki.process.scarab.receiver]
+  refresh_interval = "30s"
+}
+
+// The node logs one JSON object per line; its event name becomes a label (about 50 values), the
+// rest stays in the line for LogQL's json parser. Lines that are not JSON (a JVM stack trace,
+// SLF4J notices) pass through with event="text".
+loki.process "scarab" {
+  stage.json {
+    expressions = { event = "event" }
+  }
+  stage.template {
+    source   = "event"
+    template = "{{ if .Value }}{{ .Value }}{{ else }}text{{ end }}"
+  }
+  stage.labels {
+    values = { event = "" }
+  }
+  forward_to = [loki.write.server.receiver]
+}
+
+loki.write "server" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+  }
+}
+
+// ---- metrics: the node's /metrics, when the container carries scarab.metrics.port -----------
+
+discovery.relabel "scarab_metrics" {
+  targets = discovery.relabel.scarab.output
+  rule {
+    source_labels = ["__meta_docker_container_label_scarab_metrics_port"]
+    regex         = ".+"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_network_ip", "__meta_docker_container_label_scarab_metrics_port"]
+    separator     = ":"
+    target_label  = "__address__"
+  }
+}
+
+prometheus.scrape "scarab" {
+  targets         = discovery.relabel.scarab_metrics.output
+  job_name        = "scarab"
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.server.receiver]
+}
+
+// ---- metrics: the host and its containers ---------------------------------------------------
+
+prometheus.exporter.unix "host" {
+  // Docker Desktop's VM has no /proc/net for a container to read: there UNIX_DISABLED_COLLECTORS
+  // turns the network collectors off (arp,netdev,netstat,softnet).
+  disable_collectors = string.split(sys.env("UNIX_DISABLED_COLLECTORS"), ",")
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/host/root"
+  filesystem {
+    mount_points_exclude = "^/(dev|proc|run|sys|host|var/lib/docker/.+)($|/)"
+  }
+}
+
+prometheus.exporter.cadvisor "containers" {
+  docker_host      = "unix:///var/run/docker.sock"
+  storage_duration = "1m"
+  docker_only      = true
+}
+
+discovery.relabel "host" {
+  targets = array.concat(prometheus.exporter.unix.host.targets, prometheus.exporter.cadvisor.containers.targets)
+  rule {
+    target_label = "host"
+    replacement  = sys.env("SCARAB_HOST")
+  }
+  rule {
+    target_label = "instance"
+    replacement  = sys.env("SCARAB_HOST")
+  }
+}
+
+prometheus.scrape "host" {
+  targets         = discovery.relabel.host.output
+  job_name        = "host"
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.server.receiver]
+}
+
+prometheus.remote_write "server" {
+  endpoint {
+    url = sys.env("PROMETHEUS_PUSH_URL")
+  }
+  external_labels = { host = sys.env("SCARAB_HOST") }
+}

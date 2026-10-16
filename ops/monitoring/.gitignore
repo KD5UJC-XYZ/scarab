@@ -1,0 +1,5 @@
+# secrets and state stay on the host
+.env
+data/
+server/grafana/dashboards/imported/
+.docker/
