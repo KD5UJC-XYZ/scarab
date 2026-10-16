@@ -58,6 +58,17 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `SnapshotV4Suite` migrates real V3 files of every era written by the previous build
   (`fixtures/snapshot-v3/eras`, Byron to Conway) and checks the result is the state the rules give; the
   frozen goldens are asserted in `legacy` and `LegacyFormatsSuite`.
+- **Gates.** The 1,451 K1 Scala Preview snapshots (V1) migrate to V4 and read back equal in canonical form (0
+  differences; V4 file 17.5 MB on average and 52.8 MB at most, write 2.5 s on average, migrate and read back
+  4.4 s; the mirror's tampers refused as expected, 1,024 of 1,024). Devnet: `e2e`, `soak --mirror-check` (10/10
+  checks), `pool`, `ntc`, `restart` and `restart --migrate-from` (a V3 database written by 9dcbec07 migrates to
+  V4 and restores) pass. `e2e --oracle` (which compares the nonces and counters too) matched 29 of 32
+  epoch-boundary states in two runs with no difference; the three that did not are the cases where the block the
+  follower dumped at the boundary was rolled back a moment later (a one-block fork of the reference cluster: the
+  oracle then names another block; the follower rolled back 49 and 55 blocks in the two runs and 40 in a run of
+  the previous build, which passed: about 3% of the blocks, 16 boundaries per run, so the gate fails in about
+  four runs in ten whatever the build). `follow` takes
+  `--classes` (and the environment variable `SCARAB_FOLLOW_CLASSES`) to run the classes of another build.
 - `devnet.py restart` checks the snapshot files are V4, and `restart --migrate-from CLASSES` first runs an
   older build (the `classes` of an earlier run; `follow --classes`) and requires this build to migrate what it
   wrote (`formatMigrated` V3 to V4, `snapshotRestored`).

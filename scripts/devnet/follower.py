@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The Scala follower process: run it, watch it, detect validation problems."""
 import json
+import os
 import subprocess
 import sys
 from .cluster import freeze_classes, scala_container
@@ -10,7 +11,7 @@ from .util import ENTRY, QUERY_PORT, data_root, read_log
 def follow(args):
     root = data_root(args.name)
     ports = json.loads((root / "ports.json").read_text())
-    classpath = freeze_classes(root, getattr(args, "classes", None))
+    classpath = freeze_classes(root, getattr(args, "classes", None) or os.environ.get("SCARAB_FOLLOW_CLASSES"))
     log = root / "follower.jsonl"
     program = ["follow", "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
                "--query-port", str(QUERY_PORT)]

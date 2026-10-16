@@ -109,7 +109,9 @@ def main():
                         "epoch boundary, so that a second `follow --db` restarts from the snapshot")
     f.add_argument("--snapshot-every", help="with --db: the snapshot interval of the node (default 1epochs)")
     f.add_argument("--classes", help="run the classes of an earlier build (the `classes` directory of another run) "
-                                     "instead of the checkout's, to write a database in an older format")
+                                     "instead of the checkout's, to write a database in an older format "
+                                     "(the environment variable SCARAB_FOLLOW_CLASSES does the same for the followers "
+                                     "that other scenarios start, as `e2e --oracle`)")
     f.set_defaults(run=follow)
     ld = sub.add_parser("load", help="submit randomized ADA transfers, staking and certificates")
     ld.add_argument("--seconds", type=int, help="stop after this long (default: until killed)")
