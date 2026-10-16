@@ -53,10 +53,13 @@ import xyz.kd5ujc.scarab.node.differential.{
   Sampling,
   Shadowed
 }
-import xyz.kd5ujc.scarab.node.forge.{Forger, KeyFiles}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, Forger, KeyFiles}
+import xyz.kd5ujc.scarab.node.log.{Log, LogRouter, LogSettings, NodeEvent}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.metrics.{Catalogue, Collectors, EventMetrics, MeteredRules, Metrics}
 import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
+import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
+import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
@@ -154,7 +157,9 @@ object Main extends IOApp:
       /** `--repro-dir <dir>` (with `--rules differential`): where the repro bundle of a
         * disagreement is kept; by default `differential` in the database directory, else none.
         */
-      reproDir: Option[Path] = None
+      reproDir: Option[Path] = None,
+      /** `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]). */
+      log: LogSettings = LogSettings.default
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -196,13 +201,16 @@ object Main extends IOApp:
     parse(args) match
       case Left(error) => IO.println(error.message).as(ExitCode(2))
       case Right(options) =>
-        Handle
-          .allow[NodeError](
-            Handle
-              .allow[Divergence](follow(options).as(ExitCode.Success))
-              .rescue(d => JsonLog.rulesHalted(d).as(ExitCode(3)))
-          )
-          .rescue(error => JsonLog.error(error).as(ExitCode(1)))
+        LogRouter.resource[IO](options.log).use { case given Log[IO] =>
+          def logged(event: NodeEvent) = Log[IO].emit(event)
+          Handle
+            .allow[NodeError](
+              Handle
+                .allow[Divergence](follow(options).as(ExitCode.Success))
+                .rescue(d => logged(NodeEvent.RulesHalted(d)).as(ExitCode(3)))
+            )
+            .rescue(error => logged(NodeEvent.Failed(error)).as(ExitCode(1)))
+        }
 
   /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots.
     */
@@ -271,17 +279,18 @@ object Main extends IOApp:
     * library built for processor features this one lacks kills the JVM with SIGILL, with no event
     * (ADR 0012). The report is logged; a refusal is a [[NativeLibraryError]].
     */
-  private def nativeLibrary(using Handle[IO, NodeError]): IO[Unit] =
+  private def nativeLibrary(using Handle[IO, NodeError], Log[IO]): IO[Unit] =
     Handle
       .allow[BlstProblem](Blst.verify[IO])
       .rescue(problem =>
         Handle[IO, NodeError].raise[NodeError, BlstReport](NativeLibraryError(problem))
       )
-      .flatMap(JsonLog.blst)
+      .flatMap(report => Log[IO].emit[NodeEvent](NodeEvent.Blst(report)))
 
   private def follow(requested: Options)(using
       Handle[IO, NodeError],
-      Raise[IO, Divergence]
+      Raise[IO, Divergence],
+      Log[IO]
   ): IO[Unit] =
     nativeLibrary *> IO
       .blocking(configured(requested))
@@ -309,8 +318,9 @@ object Main extends IOApp:
       backing: StateBacking[IO, NodeState],
       cache: VerificationCache,
       scheduling: Scheduling[IO]
-  )(using Handle[IO, NodeError], Raise[IO, Divergence]): IO[Unit] =
+  )(using Handle[IO, NodeError], Raise[IO, Divergence], Log[IO]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
+    def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     for
       _ <- fail[Unit](
@@ -329,11 +339,11 @@ object Main extends IOApp:
         praosConfig.get.flatMap(cache.warm[IO](raw, _))
       connected <- Ref.of[IO, Boolean](false)
       eraStarts <- Ref.of[IO, Map[xyz.kd5ujc.scarab.protocol.Era, BigInt]](Map.empty)
-      // The measurements: every event goes to the JSON log and to the metrics ([[EventSink]]).
+      // The measurements: every event goes to the log and to the metrics ([[EventSink]]).
       metrics <- Metrics.create[IO](Catalogue.all)
       given Metrics[IO] = metrics
       measured <- EventMetrics.create[IO]
-      logged = JsonLog.events(Some(scheduling.stats))
+      followerLog = Log.follower[IO](Some(scheduling.stats))
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
           (event match
@@ -341,11 +351,11 @@ object Main extends IOApp:
             case FollowerEvent.EraEntered(_, to, _, epoch) =>
               eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
             case _ => IO.unit
-          ) *> logged.emit(event)
+          ) *> followerLog.emit(event)
       followerEvents = events.alongside(measured.follower)
-      storageEvents = JsonLog.storage.alongside(measured.storage)
-      loggedConnections: ConnectionEvents[IO] = JsonLog.connection(_)
-      loggedInbound: InboundEvents[IO] = JsonLog.inboundEvent(_, _)
+      storageEvents = Log.sink[StorageEvents, StorageEvent, IO].alongside(measured.storage)
+      loggedConnections = Log.sink[ConnectionEvents, ConnectionEvent, IO]
+      loggedInbound = Log.inbound[IO]
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
         tools.PlutusCases(dir, perKind = 2, max = 400)
@@ -355,14 +365,18 @@ object Main extends IOApp:
           dir,
           targets,
           Some(store),
-          json => IO.println(json.noSpaces),
+          logged,
           options.dumpStateFull
         )
       }
       mirrorChecker <- Option
         .when(options.mirrorCheck)(())
         .traverse(_ =>
-          MirrorCheck.Checker.create[IO](eraStarts.get.map(setup.mirrorEnv), JsonLog.mirrorChecked)
+          MirrorCheck.Checker.create[IO](
+            eraStarts.get.map(setup.mirrorEnv),
+            (header, epoch, outcome, millis) =>
+              logged(NodeEvent.MirrorChecked(header.slot, header.hash, epoch, outcome, millis))
+          )
         )
       oldRules = NodeRules[IO](
         setup.praos,
@@ -379,11 +393,7 @@ object Main extends IOApp:
               .update(c => c.copy(geometry = s.geometry(c.geometry)))
               .whenA(s.byron.firstShelleyEpoch.isDefined) *>
             blocks.updateAndGet(_ + 1).flatMap { n =>
-              IO.blocking(
-                System.err.println(
-                  s"verification verdicts found ahead (hits/lookups): ${cache.summary}"
-                )
-              ).whenA(n % 20000 == 0)
+              logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
             }
         }
       )
@@ -403,7 +413,7 @@ object Main extends IOApp:
               reproDir.fold(Repro.none[IO])(dir =>
                 Repro.files[IO](dir, eraStarts.get.map(setup.mirrorEnv), Some(store))
               ),
-              JsonLog.differential,
+              Log[IO].emit(_),
               Some((s, h) => NodeRules.tick(s, h, setup.praos, setup.globals, setup.byronRules))
             )
             .map(Some(_))
@@ -495,7 +505,7 @@ object Main extends IOApp:
             resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
             MempoolEnv(globals, geometry),
             options.mempoolBytes.getOrElse(DefaultMempoolBytes),
-            JsonLog.mempool.alongside(measured.mempool),
+            Log.mempool[IO].alongside(measured.mempool),
             utxoStore = Some(store)
           )
           served = server.persistence[NodeState]
@@ -552,9 +562,9 @@ object Main extends IOApp:
                     else (last, false)
                   )
                   .flatMap(
-                    JsonLog
-                      .headersChecked(counts.validated, counts.unchecked, counts.waited)
-                      .whenA(_)
+                    logged(
+                      NodeEvent.HeadersChecked(counts.validated, counts.unchecked, counts.waited)
+                    ).whenA(_)
                   )
               ),
               added = Some(measured.headers)
@@ -574,12 +584,12 @@ object Main extends IOApp:
                 if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
               }
               .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
-                JsonLog.chainSyncRounds(n, headers, total / n, max, depth)
+                logged(NodeEvent.ChainSyncRounds(n, headers, total / n, max, depth))
               })
           observePeer = (o: Peer.Observation) =>
             measured.peer(o) *> (o match
               case Peer.Observation.Fetched(millis) =>
-                JsonLog.slowFetch(millis).whenA(millis >= 250)
+                logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
               case Peer.Observation.Round(requested, received, millis) =>
                 observeRounds(requested, received, millis))
           // the connection manager (G2): one connection per peer address, limits, accounting
@@ -632,11 +642,7 @@ object Main extends IOApp:
                       Some(observePeer)
                     ),
                     Some { case Outbound.Event.Reused(remote) =>
-                      JsonLog.inbound(
-                        remote,
-                        "reused",
-                        Some(s"outbound $address served by the inbound duplex connection")
-                      )
+                      logged(NodeEvent.Reused(remote, address.toString))
                     },
                     reuseInbound = options.inboundSync
                   ),
@@ -656,7 +662,7 @@ object Main extends IOApp:
               ) { (bearer, remote) =>
                 governor.serve(bearer, remote).void
               }
-              .evalMap(bound => JsonLog.listening(bound.toString))
+              .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
           )
           byronGenesis = setup.byronParams
           queryEnv = eraStarts.get.map(observed =>
@@ -685,7 +691,7 @@ object Main extends IOApp:
           local = options.localSocket.fold(Resource.unit[IO])(path =>
             BearerServer
               .listenUnix[IO](path) { bearer =>
-                JsonLog.inbound(path.toString, "accepted") *>
+                logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
                   Handle
                     .allow[NetworkError](
                       NodeToClientServer.accept(
@@ -698,9 +704,11 @@ object Main extends IOApp:
                       )
                     )
                     .rescue(e => IO.pure(e.message))
-                    .flatMap(reason => JsonLog.inbound(path.toString, "closed", Some(reason)))
+                    .flatMap(reason =>
+                      logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
+                    )
               }
-              .evalMap(_ => JsonLog.listening(path.toString))
+              .evalMap(_ => logged(NodeEvent.Listening(path.toString)))
           )
           forging <- options.forge.traverse { files =>
             for
@@ -713,7 +721,7 @@ object Main extends IOApp:
                 credentials,
                 follower,
                 mempool,
-                JsonLog.forge.alongside(measured.forge),
+                Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
                 connected.get,
                 utxoStore = Some(store)
               )
@@ -727,7 +735,9 @@ object Main extends IOApp:
                 .allow[NodeError](store.memory)
                 .rescue(_ => IO.pure(Map.empty[String, Long]))
               (IO.sleep(options.memoryReportSeconds.seconds) *>
-                MemoryReport.sample(stores).flatMap(JsonLog.memory)).foreverM.background.void
+                MemoryReport
+                  .sample(stores)
+                  .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
           // What a scrape reads besides the counters the events keep: each source answers for
           // itself (a collector that fails leaves its gauges as they were).
           collectors = List(
@@ -746,11 +756,11 @@ object Main extends IOApp:
               ChainView.fromRef(ref),
               options.queryPort,
               Some(store),
-              Some(scheduling.stats.total.map(JsonLog.schedulingTotal)),
+              Some(scheduling.stats.total.map(Reports.schedulingTotal)),
               Some(
                 (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
               ),
-              forging.map(_.stats.byEpoch.map(JsonLog.forgeReport)),
+              forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
               Some(scrape)
             )
             .flatMap(_ => exposed)
@@ -764,20 +774,25 @@ object Main extends IOApp:
             (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
             1.0
           )
-          _ <- JsonLog.started(options.peers, genesis, setup.config, topology)
+          _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
           last <- ref.get
-          _ <- differential.traverse_(_.stats.flatMap(JsonLog.differentialSummary))
-          _ <- JsonLog.finished(last)
+          _ <- differential.traverse_(
+            _.stats.flatMap(stats => logged(NodeEvent.DifferentialSummary(stats)))
+          )
+          _ <- logged(NodeEvent.finished(last))
         yield ()
       }
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
-  /** Flags taking a value, other than `--peer`, which may repeat. */
-  private val ValueFlags = Set(
+  /** Flags that take a value and may repeat. */
+  private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
+
+  /** Flags taking a value, other than the repeated ones. */
+  private val ValueFlags = LogSettings.ValueFlags ++ Set(
     "genesis-dir",
     "config",
     "topology",
@@ -830,8 +845,9 @@ object Main extends IOApp:
         case "--dump-state-full" :: tail =>
           if acc.contains("dump-state-full") then bad("duplicate flag --dump-state-full")
           else go(tail, acc.updated("dump-state-full", List("true")))
-        case "--peer" :: value :: tail =>
-          go(tail, acc.updated("peer", acc.getOrElse("peer", Nil) :+ value))
+        case flag :: value :: tail if RepeatedFlags(flag.drop(2)) && flag.startsWith("--") =>
+          val name = flag.drop(2)
+          go(tail, acc.updated(name, acc.getOrElse(name, Nil) :+ value))
         case flag :: value :: tail if flag.startsWith("--") =>
           val name = flag.drop(2)
           if !ValueFlags.contains(name) then bad(s"unknown flag $flag")
@@ -925,6 +941,7 @@ object Main extends IOApp:
             (),
             ConfigError(s"--on-divergence and --repro-dir need --rules differential\n$Usage")
           )
+          log <- LogSettings.parse(flags, multi).leftMap(e => ConfigError(s"${e.message}\n$Usage"))
         yield Options(
           dir,
           peers,
@@ -955,6 +972,7 @@ object Main extends IOApp:
           inboundSync,
           rules,
           onDivergence,
-          flags.get("repro-dir").map(Path.of(_))
+          flags.get("repro-dir").map(Path.of(_)),
+          log
         )
       case _ => Left(usage)

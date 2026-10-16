@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import xyz.kd5ujc.scarab.node.log.NodeEvent
 import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.ledger.Header
 import cats.effect.{Ref, Sync}
@@ -151,7 +152,7 @@ object StateDump:
       store: Option[UtxoStore[F]],
       lastEpoch: Ref[F, Option[BigInt]],
       pending: Ref[F, List[BigInt]],
-      emit: Json => F[Unit],
+      emit: NodeEvent => F[Unit],
       full: Boolean
   ):
     def afterBlock(header: Header, s: NodeState): F[Unit] = header match
@@ -206,15 +207,7 @@ object StateDump:
                   }
                 yield ()
             took <- Sync[F].delay((System.nanoTime() - started) / 1000000)
-            _ <- emit(
-              Json.obj(
-                "event" -> "stateDump".asJson,
-                "slot" -> h.slot.asJson,
-                "hash" -> h.hash.hex.asJson,
-                "epoch" -> s.ledger.epoch.asJson,
-                "millis" -> took.asJson
-              )
-            )
+            _ <- emit(NodeEvent.StateDumped(h.slot, h.hash, s.ledger.epoch, took))
           yield ()
       }
 
@@ -223,7 +216,7 @@ object StateDump:
         dir: Path,
         targets: Targets,
         store: Option[UtxoStore[F]],
-        emit: Json => F[Unit],
+        emit: NodeEvent => F[Unit],
         full: Boolean = false
     ): F[Dumper[F]] =
       for

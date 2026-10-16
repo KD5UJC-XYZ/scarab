@@ -107,3 +107,37 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--metrics-listen", "12798")).isLeft)
     assert(Main.parse(base ++ List("--metrics-listen", "host:port")).isLeft)
   }
+
+  test("the log flags: sinks, repeated thresholds and samplings, refusals with the usage") {
+    import xyz.kd5ujc.scarab.node.log.*
+    assertEquals(Main.parse(base).toOption.get.log, LogSettings.default)
+    val log = Main
+      .parse(
+        base ++ List(
+          "--log-file",
+          "/data/sync.jsonl",
+          "--log-file-size",
+          "64M",
+          "--log-severity",
+          "stdout:Chain=Notice",
+          "--log-severity",
+          "stdout:Chain.Reconnecting=Warning",
+          "--log-every",
+          "stdout:Chain.Extended=1000"
+        )
+      )
+      .toOption
+      .get
+      .log
+    assertEquals(
+      log.file.map(f => (f.path.toString, f.maxBytes)),
+      Some("/data/sync.jsonl" -> 64L * 1024 * 1024)
+    )
+    assertEquals(log.threshold(Sink.Stdout, EventKind.Epoch), Threshold.AtLeast(Severity.Notice))
+    assertEquals(log.threshold(Sink.File, EventKind.Extended), Threshold.AtLeast(Severity.Debug))
+    assertEquals(log.sampling(Sink.Stdout, EventKind.Extended).map(_._2), Some(1000L))
+    val refused = Main.parse(base ++ List("--log-severity", "Chain.Nope=Info"))
+    assert(
+      refused.left.exists(e => e.message.contains("no namespace") && e.message.contains("usage:"))
+    )
+  }

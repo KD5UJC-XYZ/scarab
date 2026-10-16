@@ -6,7 +6,8 @@ import cats.mtl.Handle
 import cats.syntax.all.*
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.ledger.NodeError
-import xyz.kd5ujc.scarab.node.{JsonLog, NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.log.{LogRouter, LogSettings}
 
 /** Runs the repro bundle of a divergence ([[Repro]]) again, in seconds: the state before the block
   * and the block, through the old and the new rules, with the harness that found the divergence
@@ -87,9 +88,11 @@ object DifferentialReplayMain extends IOApp:
                   s"block ${header.blockNo} (slot ${header.slot}, ${header.era}): " +
                     s"${seen.collect { case Event.Diverged(d, _) => d }.map(d => cats.Show[Divergence].show(d)).mkString("; ")}"
                 )
-                _ <- seen
-                  .collect { case Event.Diverged(d, _) => d }
-                  .traverse_(d => JsonLog.rulesDiverged(d, None))
+                _ <- LogRouter.resource[IO](LogSettings.default).use { log =>
+                  seen
+                    .collect { case Event.Diverged(d, _) => d }
+                    .traverse_(d => log.emit[Event](Event.Diverged(d, None)))
+                }
               yield
                 if seen.exists { case Event.Diverged(d, _) => d.isFailure; case _ => false } then
                   ExitCode.Error
