@@ -22,11 +22,13 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * Modes: `cbor` (`Cbor.decode` of the Haskell section: since stage 1 of #94 the index of its
   * items, before it the object tree), `ledger` (`HaskellLedgerFile.decode`), `v4` (the whole
   * `SnapshotV4` read), `written` (the node's write of the decoded state, with its read-back),
-  * `votes` (the synthetic committee-votes map, `VOTES=<n>` entries), `tape` (the offsets-only index
-  * of the first spike, which `Cbor.decode` has replaced). Each prints the heap in use after a full
-  * GC while the result is still reachable (the retained size) and the wall time. An
-  * `OutOfMemoryError` ends the run with exit 3. The snapshot file is the content followed by its
-  * 32-byte checksum, which the mode drops without checking it.
+  * `votes` (the synthetic committee-votes map, `VOTES=<n>` entries),
+  * `spam <snapshot> <voters> <out>` (writes a snapshot with the vote spam of epochs 188 to 193 put
+  * into the Conway gov state of a current one, see [[spamMain]]), `tape` (the offsets-only index of
+  * the first spike, which `Cbor.decode` has replaced). Each prints the heap in use after a full GC
+  * while the result is still reachable (the retained size) and the wall time. An `OutOfMemoryError`
+  * ends the run with exit 3. The snapshot file is the content followed by its 32-byte checksum,
+  * which the mode drops without checking it.
   */
 object Memory94Main:
   private def usedMb(): Long =
@@ -212,6 +214,85 @@ object Memory94Main:
         println("OOM")
         sys.exit(3)
 
+  /** The vote spam of preprod epochs 188 to 193 put into a snapshot of today: `proposals` proposals
+    * (the Info action) each carrying the same `voters` committee votes, `[0, hash28] => 0..2`, and
+    * the DRep pulser's snapshot holding them again, which is the shape that ran the node out of
+    * memory (5 x 648,752 votes, the copy making ten). The original file of the issue is a
+    * `CSLSNAP1` snapshot of a schema the migration no longer reads, so the Haskell section is had
+    * from a current one and the spam added to its Conway gov state. `spam <snapshot> <voters>
+    * <out>` writes a V4 file (the sidecar of the input, the new Haskell section, a zero checksum).
+    */
+  private def spamMain(content: Array[Byte], voters: Int, out: Path): Unit =
+    import xyz.kd5ujc.scarab.consensus.state.EraLedgerState
+    import xyz.kd5ujc.scarab.ledger.{
+      GovAction,
+      GovActionId,
+      GovActionState,
+      Proposal,
+      RewardAccount,
+      Vote
+    }
+    import xyz.kd5ujc.scarab.ledger.{Credential => NodeCredential}
+    import xyz.kd5ujc.scarab.ledger.state.{ConwayNewEpochState, ShelleyBasedEra}
+    import xyz.kd5ujc.scarab.consensus.state.ShelleyLedgerState
+    import xyz.kd5ujc.scarab.storage.haskell.state.LedgerFileEra
+    val sidecarLength = ByteBuffer.wrap(content, 8, 4).getInt
+    val haskellFrom = 12 + sidecarLength
+    val file = HaskellLedgerFile
+      .decode(Bytes.wrap(content).drop(haskellFrom))
+      .fold(e => sys.error(e.render), identity)
+    val votes: Map[NodeCredential, Vote] = Iterator
+      .range(0, voters)
+      .map { i =>
+        val h = new Array[Byte](28)
+        // a voter is a hash, so as random as the real ones (a structured one skews a hash table)
+        new java.util.SplittableRandom(i.toLong).nextBytes(h)
+        (NodeCredential.Key(Bytes.wrap(h)): NodeCredential) -> Vote.fromOrdinal(i % 3)
+      }
+      .toMap
+    val pageProposals = 5
+    def action(i: Int, drops: GovActionState => GovActionState = identity): GovActionState =
+      val id = GovActionId(Bytes.wrap(Array.fill[Byte](32)(i.toByte)), BigInt(0))
+      val account = RewardAccount(0, NodeCredential.Key(Bytes.wrap(Array.fill[Byte](28)(i.toByte))))
+      drops(
+        GovActionState(
+          id,
+          votes,
+          Map.empty,
+          Map.empty,
+          Proposal(BigInt(100000000000L), account, GovAction.Info),
+          BigInt(188),
+          BigInt(194)
+        )
+      )
+    val actions = Vector.tabulate(pageProposals)(i => action(i))
+    val state = file.ledger.state match
+      case LedgerFileEra.Mirrored(i: EraLedgerState.InShelleyEra[e]) =>
+        i.era match
+          case ShelleyBasedEra.SConway =>
+            val gov = ShelleyLedgerState.nes[e].andThen(ConwayNewEpochState.gov)
+            val old = gov.get(i.state)
+            val spammed = old.copy(
+              proposals = old.proposals.copy(actions = actions),
+              drepPulsing =
+                old.drepPulsing.copy(snapshot = old.drepPulsing.snapshot.copy(proposals = actions))
+            )
+            LedgerFileEra.Mirrored(
+              EraLedgerState.InShelleyEra(i.era, gov.replace(spammed)(i.state))
+            )
+          case _ => sys.error("not a Conway state")
+      case _ => sys.error("not a Shelley-based state")
+    val telescope = xyz.kd5ujc.scarab.consensus.state.Telescope
+      .make(file.ledger.past, file.ledger.current.copy(state = state))
+      .fold(e => sys.error(e.toString), identity)
+    val spammedFile = file.copy(ledger = telescope)
+    val haskell = HaskellLedgerFile.encode(spammedFile).fold(e => sys.error(e.toString), identity)
+    val head = java.util.Arrays.copyOf(content, haskellFrom)
+    Files.write(out, head ++ haskell.toArray ++ new Array[Byte](32))
+    println(
+      s"wrote ${(haskellFrom + haskell.size) / (1024 * 1024)}MB, haskell ${haskell.size / (1024 * 1024)}MB"
+    )
+
   def main(args: Array[String]): Unit =
     if args(0) == "votes" then
       votesMain()
@@ -222,6 +303,9 @@ object Memory94Main:
     // the store's checksum (SHA-256) closes the file; the content is what a decoder is given
     val content = java.util.Arrays
       .copyOf(Files.readAllBytes(Path.of(args(1))), (Files.size(Path.of(args(1))) - 32).toInt)
+    if mode == "spam" then
+      spamMain(content, args(2).toInt, Path.of(args(3)))
+      return
     val sidecarLength = ByteBuffer.wrap(content, 8, 4).getInt
     val haskellFrom = 12 + sidecarLength
     val haskell = Bytes.wrap(content).drop(haskellFrom)
