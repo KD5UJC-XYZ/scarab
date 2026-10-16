@@ -1,0 +1,268 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.node.log
+
+import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters.*
+import io.circe.Json
+import io.circe.syntax.*
+import com.comcast.ip4s.{Host, Port, SocketAddress}
+import xyz.kd5ujc.scarab.blst.{BlstReport, CpuFeature, CpuSupport, LibraryBuild, Platform}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
+import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  BlockFailure,
+  ChainError,
+  FormatVersion,
+  FileKind,
+  ForgeError,
+  Header,
+  NetworkIdentity,
+  PeerError,
+  PlutusStats,
+  StorageError
+}
+import xyz.kd5ujc.scarab.ledger.state.{Difference, Gap, Path as DiffPath, Step}
+import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionEvent}
+import xyz.kd5ujc.scarab.node.{InboundEvent, MirrorCheck, NodeSetup, Topology}
+import xyz.kd5ujc.scarab.node.differential.{
+  Cost,
+  Divergence,
+  Event as DifferentialEvent,
+  Stage,
+  Stats,
+  TickCost
+}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent}
+import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
+import xyz.kd5ujc.scarab.storage.{
+  ImmutableStore,
+  Migrated,
+  SnapshotRefusal,
+  StorageEvent,
+  VolatileStore
+}
+
+/** One value of every event the node logs, and of every case of the event types it logs, for the
+  * rendering golden (`node/src/test/resources/log/golden.jsonl`).
+  */
+object LogSamples:
+  private def bytes(hex: String): Bytes =
+    Bytes.fromHex(hex).fold(e => sys.error(e.toString), identity)
+  val hash: Bytes = bytes("ab" * 32)
+  val other: Bytes = bytes("cd" * 28)
+  val block: BlockRef = BlockRef(BigInt(4200), hash, BigInt(17))
+  val point: ChainSync.Point = ChainSync.Point.Block(ChainSync.UInt64.saturating(4200), hash)
+  val tip: ChainSync.Tip = ChainSync.Tip(point, ChainSync.UInt64.saturating(17))
+
+  /** The eras capture: a real genesis and a real header. */
+  private val fixtures = Path.of("fixtures/eras")
+  val setup: NodeSetup =
+    NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => sys.error(e.message), identity)
+  val header: Header =
+    val raw = Files.readAllLines(fixtures.resolve("blocks.hex")).asScala.find(_.nonEmpty).get
+    Block
+      .decode(bytes(raw), setup.geometry.byron.epochSlots)
+      .fold(e => sys.error(e.message), _.header)
+
+  val peers: List[SocketAddress[Host]] =
+    List(SocketAddress(Host.fromString("127.0.0.1").get, Port.fromInt(3001).get))
+  val topology: Topology = Topology
+    .parse(
+      """{"localRoots":[{"accessPoints":[{"address":"127.0.0.1","port":3001}],"advertise":false,"valency":1}],"publicRoots":[{"accessPoints":[],"advertise":false}],"bootstrapPeers":null,"useLedgerAfterSlot":-1}"""
+    )
+    .fold(e => sys.error(e.message), identity)
+
+  val blstReports: List[BlstReport] = List(
+    BlstReport(
+      Platform.LinuxAmd64,
+      CpuSupport.Known(Set(CpuFeature.Adx, CpuFeature.Bmi2)),
+      LibraryBuild.Portable
+    ),
+    BlstReport(Platform.Other, CpuSupport.Unknown, LibraryBuild.Other("00ff")),
+    BlstReport(Platform.LinuxAmd64, CpuSupport.Known(Set.empty), LibraryBuild.OnLibraryPath)
+  )
+
+  val mirrorOutcomes: List[MirrorCheck.Outcome] = List(
+    MirrorCheck.Outcome.Checked(Era.Conway, Set(Gap.RewardAttribution, Gap.NonMyopic), true, true),
+    MirrorCheck.Outcome.Checked(Era.Babbage, Set.empty, false, true),
+    MirrorCheck.Outcome
+      .Refused(Era.Alonzo, MirrorCheck.Stage.FromMirror, StateMirrorError.MissingEra(Era.Conway)),
+    MirrorCheck.Outcome.Crashed(Era.Mary, "boom")
+  )
+
+  val difference: Difference =
+    Difference(DiffPath(Vector(Step.Field("nes"), Step.Key("k"), Step.Index(2))), "1", "2")
+  val divergences: List[Divergence] = List(
+    Divergence.StateDiffers(block, Era.Conway, Stage.Tick(1), difference),
+    Divergence.VerdictDiffers(block, Stage.Block, Right(()), Left(BlockFailure.HeaderDiffers)),
+    Divergence.Unconvertible(block, Stage.Block, StateMirrorError.MissingEra(Era.Conway)),
+    Divergence.NotPorted(Era.Shelley, Stage.Tick(0))
+  )
+  val differentialEvents: List[DifferentialEvent] = List(
+    DifferentialEvent.TickCompared(block, 1, TickCost(1500000L, 2000000L, 2500000L, 3000000L)),
+    DifferentialEvent.Sampled(block, BigInt(3), Era.Conway, Cost(1234567L, 7654321L), true),
+    DifferentialEvent.Diverged(divergences.head, Some(Path.of("/tmp/repro/4200-abab")))
+  )
+  val stats: Stats = Stats(
+    blocks = 10,
+    samples = Vector(Cost(1000000L, 2000000L), Cost(3000000L, 500000L)),
+    notPorted = Map((Era.Conway, Stage.Block) -> 4L, (Era.Shelley, Stage.Tick(1)) -> 2L),
+    failures = 1,
+    ticks = Vector(TickCost(1000000L, 0L, 2000000L, 3000000L))
+  )
+
+  val inbound: List[InboundEvent] = List(
+    InboundEvent.Accepted,
+    InboundEvent.Duplex,
+    InboundEvent.Unidirectional,
+    InboundEvent.Following(point),
+    InboundEvent.SessionEnded("done", dropped = false),
+    InboundEvent.SessionEnded("timeout", dropped = true),
+    InboundEvent.Closed("eof"),
+    InboundEvent.Refused("limit")
+  )
+
+  val connection: List[ConnectionEvent] = List(
+    ConnectionEvent.Opened("10.0.0.1:3001", ConnectionState.Provenance.Outbound),
+    ConnectionEvent.Changed(
+      "10.0.0.1:3001",
+      ConnectionState.Reserved,
+      ConnectionState.Unnegotiated(ConnectionState.Provenance.Outbound)
+    ),
+    ConnectionEvent.Refused(ConnectionError.InboundLimit("10.0.0.2:4000", 64)),
+    ConnectionEvent.Closed("10.0.0.1:3001", ConnectionState.Provenance.Inbound, "eof")
+  )
+
+  val mempool: List[MempoolEvent] = List(
+    MempoolEvent.Added(hash, 300, 2, 600L),
+    MempoolEvent.Rejected(None, Rejection.Malformed("not a transaction")),
+    MempoolEvent.Rejected(Some(hash), Rejection.Full(300, 100L)),
+    MempoolEvent.Dropped(hash, Rejection.AlreadyHeld(hash)),
+    MempoolEvent.Adopted(hash),
+    MempoolEvent.Synced(3, 900L, 1),
+    MempoolEvent.Synced(3, 900L, 0)
+  )
+
+  val forgeStats: ForgeEpochStats = ForgeEpochStats(
+    slotsChecked = 100,
+    leaderSlots = 5,
+    forged = 5,
+    adopted = 4,
+    lost = 1,
+    failed = 0,
+    skipped = Map("busy" -> 2L, "tipTooOld" -> 1L),
+    latencyCount = 4,
+    latencyTotalMs = 50,
+    latencyMaxMs = 20
+  )
+  val forge: List[ForgeEvent] = List(
+    ForgeEvent.Started(other, hash, BigInt(0), BigInt(62)),
+    ForgeEvent.Forged(
+      BigInt(4200),
+      BigInt(3),
+      BigInt(17),
+      hash,
+      Some(hash),
+      Vector(hash),
+      1024L,
+      BigInt(32),
+      1,
+      BigInt(500),
+      BigInt(1000)
+    ),
+    ForgeEvent.Forged(
+      BigInt(1),
+      BigInt(0),
+      BigInt(0),
+      hash,
+      None,
+      Vector.empty,
+      0L,
+      BigInt(0),
+      0,
+      BigInt(0),
+      BigInt(0)
+    ),
+    ForgeEvent.Adopted(block, Some(12L)),
+    ForgeEvent.Adopted(block, None),
+    ForgeEvent.Lost(BigInt(4200), hash, "slot battle"),
+    ForgeEvent.KesEvolved(BigInt(33), 2),
+    ForgeEvent.Skipped(BigInt(4201), "busy"),
+    ForgeEvent.Failed(BigInt(4202), ForgeError.KesFailure("bad period")),
+    ForgeEvent.EpochSummary(BigInt(3), forgeStats),
+    ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())
+  )
+
+  val scheduling: SchedulingReport = SchedulingReport(
+    120L,
+    35L,
+    2L,
+    1L,
+    Map(
+      "rules" -> SchedulingReport.Step(10L, 40L, 200L),
+      "select" -> SchedulingReport.Step(5L, 3L, 9L)
+    )
+  )
+
+  val follower: List[FollowerEvent] = List(
+    FollowerEvent.Connected(ChainSync.Point.Origin),
+    FollowerEvent.Connected(point),
+    FollowerEvent.Extended(block, BigInt(3), tip, Era.Conway),
+    FollowerEvent.RolledBack(point, ChainSync.Point.Origin, 2),
+    FollowerEvent.EpochEntered(BigInt(4), block),
+    FollowerEvent.Immutable(block),
+    FollowerEvent.Reconnecting(PeerError.Unavailable("connection refused"), 3),
+    FollowerEvent.EraEntered(None, Era.Byron, block, BigInt(0)),
+    FollowerEvent.EraEntered(Some(Era.Babbage), Era.Conway, block, BigInt(5)),
+    FollowerEvent.EpochValidated(BigInt(2), Era.Shelley, 10L, 20L, 3L),
+    FollowerEvent.ByronEpochValidated(BigInt(1), 1L, 40L, 2L, 7L),
+    FollowerEvent.LedgerEpoch(
+      BigInt(5),
+      1000,
+      20,
+      3,
+      BigInt("1000000000"),
+      BigInt("44000000000000000"),
+      (BigInt(10), BigInt(0)),
+      PlutusStats(4, 1, 7, 5)
+    )
+  )
+
+  val anchor: Option[BlockRef] = Some(block)
+  val network: NetworkIdentity = NetworkIdentity(42L, hash, Some(hash))
+  val storage: List[StorageEvent] = List(
+    StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(anchor, 100L, 2, 1, 64L)),
+    StorageEvent.ImmutableOpened(ImmutableStore.OpenReport(None, 0L, 0, 0, 0L)),
+    StorageEvent.FormatMigrated(
+      Migrated(FileKind.SnapshotFile, FormatVersion.V3, FormatVersion.V4, 3)
+    ),
+    StorageEvent.SnapshotSkipped("4200-abab", StorageError.Corrupt("snapshot", "short read")),
+    StorageEvent.SnapshotRestored("4200-abab", anchor),
+    StorageEvent.SnapshotRestored("genesis", None),
+    StorageEvent.SnapshotWritten("4200-abab", anchor, 2048L, 15L),
+    StorageEvent.SnapshotFailed("disk full"),
+    StorageEvent.SnapshotRefused(
+      "4200-abab",
+      anchor,
+      SnapshotRefusal.Mirror(StateMirrorError.MissingEra(Era.Conway))
+    ),
+    StorageEvent.ReplayStarted(None, anchor),
+    StorageEvent.ReplayProgress(block, 1000L, 2000L),
+    StorageEvent.ReplayFinished(anchor, 1000L, 2500L),
+    StorageEvent.NetworkRecorded(network, adopted = false),
+    StorageEvent.NetworkRecorded(NetworkIdentity(1L, hash, None), adopted = true),
+    StorageEvent.VolatileOpened(VolatileStore.OpenReport(10, 2, 0L, 0)),
+    StorageEvent.VolatileResumed(10, 1, 300L),
+    StorageEvent.ShutdownSnapshot(anchor, written = true)
+  )
+
+  val errors: List[xyz.kd5ujc.scarab.ledger.NodeError] = List(
+    PeerError.NoIntersection,
+    ChainError.Decode("block", "truncated"),
+    StorageError.Missing("immutable/format")
+  )
+
+  val memory: Json = Json.obj("heapUsed" -> 1024L.asJson, "rssAnon" -> Json.Null)

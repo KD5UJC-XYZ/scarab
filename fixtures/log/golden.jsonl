@@ -1,0 +1,100 @@
+{"event":"started","at":"2026-10-16T12:00:00Z","build":{"version":"0.1.0","scalaVersion":"3.3.8","sbtVersion":"1.10.7","gitCommit":"0123abcd"},"peer":"127.0.0.1:3001","peers":["127.0.0.1:3001"],"networkMagic":1082026,"systemStart":"2026-10-11T03:04:19Z","epochLength":500,"securityParam":5,"byronEpochs":1,"byronEpochSlots":50,"hardForkEpochs":{"Shelley":1,"Mary":3,"Alonzo":4,"Babbage":6,"Conway":8,"Allegra":2},"genesisHashes":{},"configUnsupported":[],"topology":{"localRoots":[["127.0.0.1:3001"]],"bootstrapPeers":null,"publicRoots":[[]],"useLedgerAfterSlot":"Disabled"}}
+{"event":"started","at":"2026-10-16T12:00:00Z","build":{"version":"0.1.0","scalaVersion":"3.3.8","sbtVersion":"1.10.7","gitCommit":"0123abcd"},"peer":"127.0.0.1:3001","peers":["127.0.0.1:3001"],"networkMagic":1082026,"systemStart":"2026-10-11T03:04:19Z","epochLength":500,"securityParam":5,"byronEpochs":1,"byronEpochSlots":50,"hardForkEpochs":{},"genesisHashes":{},"configUnsupported":[],"topology":null}
+{"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":["adx","bmi2"]},"library":{"build":"portable"}}
+{"event":"blst","at":"2026-10-16T12:00:00Z","platform":"Other","cpu":{"features":null},"library":{"build":"other","sha256":"00ff"}}
+{"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":[]},"library":{"build":"library-path"}}
+{"event":"error","at":"2026-10-16T12:00:00Z","kind":"","message":"the peer's chain shares no point with ours"}
+{"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: truncated"}
+{"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
+{"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
+{"event":"mirrorChecked","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Conway","millis":25,"gaps":["NonMyopic","RewardAttribution"],"residueEmpty":true,"retracts":true,"ok":true}
+{"event":"mirrorChecked","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Babbage","millis":25,"gaps":[],"residueEmpty":false,"retracts":true,"ok":false}
+{"event":"mirrorCheckFailed","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Alonzo","millis":25,"stage":"FromMirror","error":"MissingEra(era = Conway)"}
+{"event":"mirrorCheckFailed","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Mary","millis":25,"stage":"Crashed","error":"boom"}
+{"event":"rulesDiverged","at":"2026-10-16T12:00:00Z","kind":"StateDiffers","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"era":"Conway","stage":"Tick(1)","path":"nes[k][2]","old":"1","new":"2","bundle":null}
+{"event":"rulesDiverged","at":"2026-10-16T12:00:00Z","kind":"VerdictDiffers","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"stage":"Block","old":"accepted","new":"structure: block header differs from announced header","bundle":null}
+{"event":"rulesDiverged","at":"2026-10-16T12:00:00Z","kind":"Unconvertible","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"stage":"Block","error":"MissingEra(era = Conway)","bundle":null}
+{"event":"rulesDiverged","at":"2026-10-16T12:00:00Z","kind":"NotPorted","era":"Shelley","stage":"Tick(0)","bundle":null}
+{"event":"rulesHalted","at":"2026-10-16T12:00:00Z","kind":"StateDiffers","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"era":"Conway","stage":"Tick(1)","path":"nes[k][2]","old":"1","new":"2"}
+{"event":"rulesHalted","at":"2026-10-16T12:00:00Z","kind":"VerdictDiffers","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"stage":"Block","old":"accepted","new":"structure: block header differs from announced header"}
+{"event":"rulesHalted","at":"2026-10-16T12:00:00Z","kind":"Unconvertible","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"stage":"Block","error":"MissingEra(era = Conway)"}
+{"event":"rulesHalted","at":"2026-10-16T12:00:00Z","kind":"NotPorted","era":"Shelley","stage":"Tick(0)"}
+{"event":"differentialTicked","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","epochsCrossed":1,"oldMillis":1.5,"seedMillis":2.0,"newMillis":2.5,"diffMillis":3.0}
+{"event":"differentialSampled","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","epoch":3,"era":"Conway","toMirrorMillis":1.234567,"diffMillis":7.654321,"seeded":true}
+{"event":"rulesDiverged","at":"2026-10-16T12:00:00Z","kind":"StateDiffers","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"era":"Conway","stage":"Tick(1)","path":"nes[k][2]","old":"1","new":"2","bundle":"/tmp/repro/4200-abab"}
+{"event":"differentialSummary","at":"2026-10-16T12:00:00Z","blocks":10,"sampled":2,"failures":1,"toMirrorMillis":{"total":4.0,"median":3.0,"p99":3.0,"max":3.0},"diffMillis":{"total":2.5,"median":2.0,"p99":2.0,"max":2.0},"ticksCompared":1,"tickOldMillis":{"total":1.0,"median":1.0,"p99":1.0,"max":1.0},"tickNewMillis":{"total":2.0,"median":2.0,"p99":2.0,"max":2.0},"notPorted":{"Shelley/Tick(1)":2,"Conway/Block":4}}
+{"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
+{"event":"headersChecked","at":"2026-10-16T12:00:00Z","validated":50000,"unchecked":12,"waited":3}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"/tmp/node.socket","state":"accepted","reason":null}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"reused","reason":"outbound served by inbound"}
+{"event":"chainSyncRounds","at":"2026-10-16T12:00:00Z","rounds":200,"headers":25600,"avgMs":120,"maxMs":900,"maxDepth":128}
+{"event":"slowFetch","at":"2026-10-16T12:00:00Z","millis":300}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"accepted","reason":null}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"duplex","reason":null}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"unidirectional","reason":null}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"following","reason":"4200@abababababababab"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionEnded","reason":"done"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"sessionDropped","reason":"timeout"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"closed","reason":"eof"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"refused","reason":"limit"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"opened","provenance":"Outbound"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"changed","from":"Reserved","to":"Unnegotiated(Outbound)"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","what":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
+{"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"eof"}
+{"event":"mempoolAdded","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","size":300,"count":2,"bytes":600}
+{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: not a transaction"}
+{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
+{"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool"}
+{"event":"mempoolAdopted","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
+{"event":"mempoolSynced","at":"2026-10-16T12:00:00Z","count":3,"bytes":900,"dropped":1}
+{"event":"forgeStarted","at":"2026-10-16T12:00:00Z","pool":"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd","vrfKeyHash":"abababababababababababababababababababababababababababababababab","kesStart":0,"kesEvolutions":62}
+{"event":"forged","at":"2026-10-16T12:00:00Z","slot":4200,"epoch":3,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab","prev":"abababababababababababababababababababababababababababababababab","txs":["abababababababababababababababababababababababababababababababab"],"bodySize":1024,"kesPeriod":32,"relativeKesPeriod":1,"stake":500,"totalStake":1000}
+{"event":"forged","at":"2026-10-16T12:00:00Z","slot":1,"epoch":0,"blockNo":0,"hash":"abababababababababababababababababababababababababababababababab","prev":null,"txs":[],"bodySize":0,"kesPeriod":0,"relativeKesPeriod":0,"stake":0,"totalStake":0}
+{"event":"adopted","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"latencyMs":12}
+{"event":"adopted","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"latencyMs":null}
+{"event":"lost","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","reason":"slot battle"}
+{"event":"kesEvolved","at":"2026-10-16T12:00:00Z","kesPeriod":33,"relativeKesPeriod":2}
+{"event":"forgeSkipped","at":"2026-10-16T12:00:00Z","slot":4201,"reason":"busy"}
+{"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KesFailure","message":"KES: bad period"}
+{"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":3,"slotsChecked":100,"leaderSlots":5,"forged":5,"adopted":4,"lostSlotBattles":1,"failed":0,"skipped":3,"skippedByReason":{"busy":2,"tipTooOld":1},"forgeLatencyMs":{"count":4,"mean":12.5,"max":20}}
+{"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":4,"slotsChecked":0,"leaderSlots":0,"forged":0,"adopted":0,"lostSlotBattles":0,"failed":0,"skipped":0,"skippedByReason":{},"forgeLatencyMs":{"count":0,"mean":null,"max":null}}
+{"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"origin":true}}
+{"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
+{"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connection refused","attempt":3}
+{"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":"Babbage","to":"Conway","epoch":5,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Shelley","epoch":2,"headers":33,"thresholdChecked":10,"overlay":20,"leaderUnchecked":3,"scheduling":{"timerSamples":1,"maxTimerLatenessMs":70,"timersLateOver50Ms":1,"timersLateOver100Ms":0,"cpuSteps":1,"longestStepMs":40,"longestStep":"rules"}}
+{"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Byron","epoch":1,"headers":41,"boundary":1,"signatureVerified":40,"offSchedule":2,"transactions":7,"scheduling":{"timerSamples":0,"maxTimerLatenessMs":0,"timersLateOver50Ms":0,"timersLateOver100Ms":0,"cpuSteps":0,"longestStepMs":0,"longestStep":null}}
+{"event":"ledgerEpoch","at":"2026-10-16T12:00:00Z","epoch":5,"utxo":1000,"accounts":20,"pools":3,"treasury":1000000000,"reserves":44000000000000000,"protocolVersion":"10.0","phase2":{"evaluatedSuccess":4,"evaluatedFailure":1,"scripts":7},"scriptIntegrityHashChecked":5,"scheduling":{"timerSamples":0,"maxTimerLatenessMs":0,"timersLateOver50Ms":0,"timersLateOver100Ms":0,"cpuSteps":0,"longestStepMs":0,"longestStep":null}}
+{"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"origin":true}}
+{"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
+{"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connection refused","attempt":3}
+{"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":"Babbage","to":"Conway","epoch":5,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Shelley","epoch":2,"headers":33,"thresholdChecked":10,"overlay":20,"leaderUnchecked":3}
+{"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Byron","epoch":1,"headers":41,"boundary":1,"signatureVerified":40,"offSchedule":2,"transactions":7}
+{"event":"ledgerEpoch","at":"2026-10-16T12:00:00Z","epoch":5,"utxo":1000,"accounts":20,"pools":3,"treasury":1000000000,"reserves":44000000000000000,"protocolVersion":"10.0","phase2":{"evaluatedSuccess":4,"evaluatedFailure":1,"scripts":7},"scriptIntegrityHashChecked":5}
+{"event":"immutableOpened","at":"2026-10-16T12:00:00Z","tip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"blocks":100,"chunks":2,"truncatedEntries":1,"truncatedBytes":64}
+{"event":"immutableOpened","at":"2026-10-16T12:00:00Z","tip":null,"blocks":0,"chunks":0,"truncatedEntries":0,"truncatedBytes":0}
+{"event":"formatMigrated","at":"2026-10-16T12:00:00Z","kind":"SnapshotFile","from":"V3","to":"V4","count":3}
+{"event":"snapshotSkipped","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"corrupt snapshot: short read"}
+{"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"genesis","anchor":null}
+{"event":"snapshotWritten","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"bytes":2048,"millis":15}
+{"event":"snapshotFailed","at":"2026-10-16T12:00:00Z","reason":"disk full"}
+{"event":"snapshotRefused","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"reason":"the mirror refused the state: MissingEra(era = Conway)"}
+{"event":"replayStarted","at":"2026-10-16T12:00:00Z","from":null,"immutableTip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"replayProgress","at":"2026-10-16T12:00:00Z","tip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"replayed":1000,"millis":2000}
+{"event":"replayFinished","at":"2026-10-16T12:00:00Z","tip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"replayed":1000,"millis":2500}
+{"event":"networkRecorded","at":"2026-10-16T12:00:00Z","magic":42,"shelleyGenesis":"abababababababababababababababababababababababababababababababab","byronGenesis":"abababababababababababababababababababababababababababababababab","adoptedExisting":false}
+{"event":"networkRecorded","at":"2026-10-16T12:00:00Z","magic":1,"shelleyGenesis":"abababababababababababababababababababababababababababababababab","byronGenesis":null,"adoptedExisting":true}
+{"event":"volatileOpened","at":"2026-10-16T12:00:00Z","blocks":10,"files":2,"truncatedBytes":0,"removedFiles":0}
+{"event":"volatileResumed","at":"2026-10-16T12:00:00Z","resumed":10,"dropped":1,"millis":300}
+{"event":"shutdownSnapshot","at":"2026-10-16T12:00:00Z","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"written":true}
+{"event":"finished","at":"2026-10-16T12:00:00Z","tip":{"origin":true},"retained":0}
