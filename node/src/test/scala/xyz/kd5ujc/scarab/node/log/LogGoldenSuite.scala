@@ -1,78 +1,129 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
-import java.io.{ByteArrayOutputStream, PrintStream}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
-import cats.effect.IO
+import java.time.Instant
+import scala.compiletime.constValue
+import scala.deriving.Mirror
+import cats.Applicative
+import cats.effect.{IO, Ref}
+import cats.mtl.Tell
 import cats.syntax.all.*
 import munit.CatsEffectSuite
-import xyz.kd5ujc.scarab.consensus.SchedulingStats
-import xyz.kd5ujc.scarab.node.JsonLog
+import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChain}
+import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
+import xyz.kd5ujc.scarab.node.InboundEvent
+import xyz.kd5ujc.scarab.node.differential.{Divergence, Event as DifferentialEvent}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
+import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
+import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 
-/** The log lines of today's `JsonLog`, one per sample, with the time stamp fixed. */
+/** The JSON lines of the log, byte for byte: one line per sample (`LogSamples`), through the same
+  * adapters as in the node, against `fixtures/log/golden.jsonl`. The golden was first written by
+  * the `JsonLog` this log replaced; the scenarios and the run watchers parse these lines.
+  */
 class LogGoldenSuite extends CatsEffectSuite:
   import LogSamples.*
 
   private val golden = Path.of("fixtures/log/golden.jsonl")
+  private val at = Instant.parse("2026-10-16T12:00:00Z")
 
-  private def capture(run: IO[Unit]): IO[List[String]] =
-    IO.blocking {
-      val out = new ByteArrayOutputStream()
-      val saved = System.out
-      System.setOut(new PrintStream(out, true, UTF_8))
-      (out, saved)
-    }.flatMap { (out, saved) =>
-      run.guarantee(IO.blocking(System.setOut(saved))) *>
-        IO(new String(out.toByteArray, UTF_8).linesIterator.toList)
+  /** A `Log` that keeps every line. */
+  private def collecting(lines: Ref[IO, Vector[Line]]): Log[IO] = new Tell[IO, Line]:
+    def functor = Applicative[IO]
+    def tell(line: Line) = lines.update(_ :+ line)
+
+  private val build = NodeEvent.Build("0.1.0", "3.3.8", "1.10.7", "0123abcd")
+
+  private val logged: IO[Vector[Line]] =
+    Ref.of[IO, Vector[Line]](Vector.empty).flatMap { lines =>
+      given log: Log[IO] = collecting(lines)
+      def node(e: NodeEvent) = log.emit(e)
+      for
+        sched <- SchedulingStats.create[IO]
+        _ <- sched.timer(70L) *> sched.step("rules", 40000000L)
+        _ <- node(NodeEvent.Started(build, peers, setup.genesis, setup.config, Some(topology)))
+        _ <- node(
+          NodeEvent
+            .Started(build, peers, setup.genesis, xyz.kd5ujc.scarab.node.NodeConfig.empty, None)
+        )
+        _ <- blstReports.traverse_(r => node(NodeEvent.Blst(r)))
+        _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
+        _ <- node(NodeEvent.Memory(memory))
+        _ <- mirrorOutcomes.traverse_(o =>
+          node(NodeEvent.MirrorChecked(header.slot, header.hash, BigInt(3), o, 25L))
+        )
+        _ <- divergences
+          .traverse_(d => log.emit[DifferentialEvent](DifferentialEvent.Diverged(d, None)))
+        _ <- divergences.traverse_(d => node(NodeEvent.RulesHalted(d)))
+        _ <- differentialEvents.traverse_(log.emit(_))
+        _ <- node(NodeEvent.DifferentialSummary(stats))
+        _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
+        _ <- node(NodeEvent.HeadersChecked(50000L, 12L, 3L))
+        _ <- node(NodeEvent.Inbound("/tmp/node.socket", InboundEvent.Accepted))
+        _ <- node(NodeEvent.Reused("10.0.0.1:3001", "127.0.0.1:3001"))
+        _ <- node(NodeEvent.ChainSyncRounds(200L, 25600L, 120L, 900L, 128))
+        _ <- node(NodeEvent.SlowFetch(300L))
+        _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))
+        _ <- connection.traverse_(Log.sink[ConnectionEvents, ConnectionEvent, IO].emit)
+        _ <- mempool.traverse_(Log.mempool[IO].emit)
+        _ <- forge.traverse_(Log.sink[ForgeEvents, ForgeEvent, IO].emit)
+        _ <- follower.traverse_(Log.follower[IO](Some(sched)).emit)
+        _ <- follower.traverse_(Log.follower[IO](None).emit)
+        _ <- storage.traverse_(Log.sink[StorageEvents, StorageEvent, IO].emit)
+        _ <- node(NodeEvent.finished(VolatileChain.genesis(2160, setup.start, setup.origin)))
+        // the lines JsonLog did not write
+        _ <- node(NodeEvent.StateDumped(BigInt(4200), hash, BigInt(3), 120L))
+        _ <- node(NodeEvent.VerificationCache("witness=1/2 opCert=3/4 vrf=5/6"))
+        _ <- node(
+          NodeEvent.Library("org.http4s.ember", Severity.Warning, "connection reset", None)
+        )
+        _ <- node(
+          NodeEvent.Library("fs2.io", Severity.Error, "failed", Some("java.io.IOException: x"))
+        )
+        all <- lines.get
+      yield all
     }
-
-  private val stamp = "\"at\":\"[^\"]*\"".r
-  private val build = "\"build\":\\{[^}]*\\}".r
-  private def fixed(line: String) =
-    build.replaceFirstIn(
-      stamp.replaceFirstIn(line, "\"at\":\"2026-10-16T12:00:00Z\""),
-      "\"build\":{\"version\":\"0.1.0\",\"scalaVersion\":\"3.3.8\",\"sbtVersion\":\"1.10.7\",\"gitCommit\":\"0123abcd\"}"
-    )
-
-  private val old: IO[Unit] =
-    for
-      sched <- SchedulingStats.create[IO]
-      _ <- sched.timer(70L) *> sched.step("rules", 40000000L)
-      logged = JsonLog.events(Some(sched))
-      _ <- JsonLog.started(peers, setup.genesis, setup.config, Some(topology))
-      _ <- JsonLog.started(peers, setup.genesis)
-      _ <- blstReports.traverse_(JsonLog.blst)
-      _ <- errors.traverse_(JsonLog.error)
-      _ <- JsonLog.memory(memory)
-      _ <- mirrorOutcomes.traverse_(o => JsonLog.mirrorChecked(header, BigInt(3), o, 25L))
-      _ <- divergences.traverse_(d => JsonLog.rulesDiverged(d, None))
-      _ <- divergences.traverse_(JsonLog.rulesHalted)
-      _ <- differentialEvents.traverse_(JsonLog.differential)
-      _ <- JsonLog.differentialSummary(stats)
-      _ <- JsonLog.listening("0.0.0.0:3001")
-      _ <- JsonLog.headersChecked(50000L, 12L, 3L)
-      _ <- JsonLog.inbound("/tmp/node.socket", "accepted")
-      _ <- JsonLog.inbound("10.0.0.1:3001", "reused", Some("outbound served by inbound"))
-      _ <- JsonLog.chainSyncRounds(200L, 25600L, 120L, 900L, 128)
-      _ <- JsonLog.slowFetch(300L)
-      _ <- inbound.traverse_(JsonLog.inboundEvent("10.0.0.1:3001", _))
-      _ <- connection.traverse_(JsonLog.connection)
-      _ <- mempool.traverse_(JsonLog.mempool.emit)
-      _ <- forge.traverse_(JsonLog.forge.emit)
-      _ <- follower.traverse_(logged.emit)
-      _ <- follower.traverse_(JsonLog.events().emit)
-      _ <- storage.traverse_(JsonLog.storage.emit)
-      _ <- JsonLog.finished(
-        xyz.kd5ujc.scarab.consensus.VolatileChain.genesis(2160, setup.start, setup.origin)
-      )
-    yield ()
 
   test("every event renders as the golden says") {
-    capture(old).map(_.map(fixed)).map { lines =>
-      if !Files.exists(golden) then
-        Files.createDirectories(golden.getParent)
-        Files.writeString(golden, lines.mkString("", "\n", "\n"), UTF_8)
-      assertEquals(lines, Files.readString(golden, UTF_8).linesIterator.toList)
+    logged.map { lines =>
+      val rendered = lines.map(Render.json(_, at)).toList
+      val expected = Files.readString(golden, UTF_8).linesIterator.toList
+      if rendered != expected then
+        Files.writeString(
+          Path.of("target/log-golden.actual.jsonl"),
+          rendered.mkString("", "\n", "\n")
+        )
+      assertEquals(rendered, expected)
     }
+  }
+
+  test("the golden has a line of every kind of event") {
+    logged.map(lines => assertEquals(lines.map(_.kind).toSet, EventKind.values.toSet))
+  }
+
+  private inline def cases[T](using m: Mirror.SumOf[T]): Int =
+    constValue[Tuple.Size[m.MirroredElemLabels]]
+
+  test("the samples hold every case of every event type") {
+    def covered[T](samples: List[T], count: Int)(using m: Mirror.SumOf[T]) =
+      assertEquals(samples.map(m.ordinal).toSet, (0 until count).toSet, samples)
+    covered(follower, cases[FollowerEvent])
+    covered(storage, cases[StorageEvent])
+    covered(connection, cases[ConnectionEvent])
+    covered(mempool, cases[MempoolEvent])
+    covered(forge, cases[ForgeEvent])
+    covered(inbound, cases[InboundEvent])
+    covered(differentialEvents, cases[DifferentialEvent])
+    covered(divergences, cases[Divergence])
+  }
+
+  test("the JSON line is the event, the time and the fields, as JsonLog wrote it") {
+    val line = summon[Traced[NodeEvent]].line(NodeEvent.SlowFetch(300L))
+    assertEquals(
+      Render.json(line, at),
+      """{"event":"slowFetch","at":"2026-10-16T12:00:00Z","millis":300}"""
+    )
+    assertEquals(line.kind.namespace, "Chain.SlowFetch")
   }

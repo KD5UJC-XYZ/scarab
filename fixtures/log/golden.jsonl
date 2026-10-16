@@ -3,7 +3,7 @@
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":["adx","bmi2"]},"library":{"build":"portable"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"Other","cpu":{"features":null},"library":{"build":"other","sha256":"00ff"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":[]},"library":{"build":"library-path"}}
-{"event":"error","at":"2026-10-16T12:00:00Z","kind":"","message":"the peer's chain shares no point with ours"}
+{"event":"error","at":"2026-10-16T12:00:00Z","kind":"NoIntersection","message":"the peer's chain shares no point with ours"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: truncated"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
 {"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
@@ -26,7 +26,7 @@
 {"event":"listening","at":"2026-10-16T12:00:00Z","address":"0.0.0.0:3001"}
 {"event":"headersChecked","at":"2026-10-16T12:00:00Z","validated":50000,"unchecked":12,"waited":3}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"/tmp/node.socket","state":"accepted","reason":null}
-{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"reused","reason":"outbound served by inbound"}
+{"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"reused","reason":"outbound 127.0.0.1:3001 served by the inbound duplex connection"}
 {"event":"chainSyncRounds","at":"2026-10-16T12:00:00Z","rounds":200,"headers":25600,"avgMs":120,"maxMs":900,"maxDepth":128}
 {"event":"slowFetch","at":"2026-10-16T12:00:00Z","millis":300}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"accepted","reason":null}
@@ -98,3 +98,7 @@
 {"event":"volatileResumed","at":"2026-10-16T12:00:00Z","resumed":10,"dropped":1,"millis":300}
 {"event":"shutdownSnapshot","at":"2026-10-16T12:00:00Z","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"written":true}
 {"event":"finished","at":"2026-10-16T12:00:00Z","tip":{"origin":true},"retained":0}
+{"event":"stateDump","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","epoch":3,"millis":120}
+{"event":"verificationCache","at":"2026-10-16T12:00:00Z","summary":"witness=1/2 opCert=3/4 vrf=5/6"}
+{"event":"slf4j","at":"2026-10-16T12:00:00Z","logger":"org.http4s.ember","level":"Warning","message":"connection reset","thrown":null}
+{"event":"slf4j","at":"2026-10-16T12:00:00Z","logger":"fs2.io","level":"Error","message":"failed","thrown":"java.io.IOException: x"}
