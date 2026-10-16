@@ -22,7 +22,7 @@ enforced by sbt: a cycle does not load.
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `NodeState`, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
 | `legacy` | The frozen readers of the snapshot formats before the current one (V1 to V3, the node state of their time, the binary `Codec` they were written with) and the upgrade of that state to the live one; deleted at its sunset (ADR 0006) | Pure |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
-| `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main`, `JsonLog`, `tools.CaptureMain` |
+| `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
@@ -97,8 +97,9 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 | `Mempool[F]` | validated transaction pool, TxSubmission2 source and sink | `Mempool` over pure `MempoolState` |
 | `ChainView[F, S]` | read access for the query server | `ChainView.fromRef` |
 | `Bearer[F]`, `Mux[F]` | byte transport and multiplexer | TCP, in-memory (tests) |
-| `FollowerEvents[F]`, `ForgeEvents[F]`, `StorageEvents[F]`, `MempoolEvents[F]` | structured event sinks | `JsonLog` (JSON lines on stdout) |
-| `Metrics[F]` | typed measurements (`CounterDef`, `GaugeDef`, `HistogramDef` of the `Catalogue`) and a snapshot of them | `Metrics.create` (a `Ref`), rendered by `Exposition` in the Prometheus text format; fed by `EventMetrics` (the same event sinks as above, side by side with `JsonLog` through `EventSink.alongside`), `MeteredRules` and `Collectors` |
+| `FollowerEvents[F]`, `ForgeEvents[F]`, `StorageEvents[F]`, `MempoolEvents[F]` | structured event sinks | the log (`Log.follower`, `Log.sink`, ...) beside the metrics |
+| `Log[F]` (`Tell[F, Line]`) | the log: lines built from typed events (`Traced[E]`, a closed `EventKind` with namespace and severity; `NodeEvent`) | `LogRouter`: stdout, stderr and a size-rotated file, JSON or human, per-namespace severity and sampling; the libraries' SLF4J lines through `LibraryLogs` ([ADR 0014](adr/0014-typed-log.md)) |
+| `Metrics[F]` | typed measurements (`CounterDef`, `GaugeDef`, `HistogramDef` of the `Catalogue`) and a snapshot of them | `Metrics.create` (a `Ref`), rendered by `Exposition` in the Prometheus text format; fed by `EventMetrics` (the same event sinks as above, side by side with the log through `EventSink.alongside`), `MeteredRules` and `Collectors` |
 
 Purity discipline: rules (header checks, ledger, ratification, mempool state, chain selection,
 Plutus context construction) are pure functions or values; `F` appears only where the world is

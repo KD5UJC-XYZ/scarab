@@ -42,8 +42,8 @@ loki.source.docker "scarab" {
 }
 
 // The node logs one JSON object per line; its event name becomes a label (about 50 values), the
-// rest stays in the line for LogQL's json parser. Lines that are not JSON (a JVM stack trace,
-// SLF4J notices) pass through with event="text".
+// rest stays in the line for LogQL's json parser (the libraries' SLF4J lines are JSON too, event
+// "slf4j"). Lines that are not JSON (a JVM stack trace) pass through with event="text".
 loki.process "scarab" {
   stage.json {
     expressions = { event = "event" }

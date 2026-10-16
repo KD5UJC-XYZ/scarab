@@ -58,10 +58,12 @@ java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main 
 `sbt "node/runMain xyz.kd5ujc.scarab.node.Main follow ..."`. The node logs one JSON object per line on stdout
 (`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
 `volatileResumed`, `shutdownSnapshot`, `forged`, ...). The epoch lines carry a `scheduling` object
-(timer lateness and the longest CPU-bound step of that epoch, see "Scheduling" below).
+(timer lateness and the longest CPU-bound step of that epoch, see "Scheduling" below). Each line has a namespace and a
+severity, and the `--log-*` flags send them to stdout, stderr and a rotated file, filtered and sampled by namespace
+(see "Logging" below).
 
 Flags, as parsed by `Main.parse` (`node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala`). Every flag takes a
-value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown flag, a repeated flag (except `--peer`, which accumulates) and a flag without its value are refused with a typed `ConfigError` (M1).
+value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown flag, a repeated flag (except `--peer`, `--log-severity` and `--log-every`, which accumulate) and a flag without its value are refused with a typed `ConfigError` (M1).
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -95,6 +97,7 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown fla
 | `--dump-state-full` | off | with `--dump-state`: also write the whole projection, UTxO included, as `<slot>-<hash>.full` (drill-down on small states only) |
 | `--mempool-bytes N` | `1048576` (`MempoolCapacityBytesOverride` with `--config`) | mempool capacity in bytes; LocalTxMonitor reports it as the reference does, a whole number of block-sized units |
 | `--plutus-cases <dir>` | off | record self-contained JSON cases of Plutus transactions (used to build `fixtures/preview/plutus`) |
+| `--log-stdout`, `--log-stderr`, `--log-file`, `--log-file-format`, `--log-file-size`, `--log-file-keep`, `--log-severity`, `--log-every` | every line as JSON on stdout | the log's sinks, thresholds and sampling, see "Logging" below; `--log-severity` and `--log-every` repeat |
 | `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
 | `--vrf-skey <file>` | with `--forge` | `cardano-cli` text envelope `VrfSigningKey_PraosVRF` |
 | `--kes-skey <file>` | with `--forge` | `KesSigningKey_ed25519_kes_2^6` (the period-0 key) |
@@ -419,6 +422,137 @@ logged as a `forgeEpoch` line when the next epoch begins. `GET /metrics` serves 
 The slot clock starts at the Byron genesis' `startTime` when `byron-genesis.json` has one (as the
 reference's does), else at the Shelley `systemStart`; the `started` line logs it as `systemStart`.
 Write both identically in a network you make yourself.
+
+### Logging
+
+Every line the node writes is a typed event (roadmap J3a, [#92](https://github.com/KD5UJC-XYZ/scarab/issues/92);
+[ADR 0014](adr/0014-typed-log.md)): it has a kind, a **namespace** `Area.Kind` (`Chain.Extended`) and a
+**severity** (`Debug`, `Info`, `Notice`, `Warning`, `Error`, `Critical`, `Alert`, `Emergency`, the levels of the
+Haskell node's trace-dispatcher). The JSON line is `{"event": ..., "at": ..., <fields>}`, the `event` being the
+kind's name (`extended`); the catalogue below lists every kind. **Without a `--log-*` flag the log is what it always
+was**: every line, as JSON, on stdout, and nothing on stderr. The scenarios of `devnet.py` and the run watchers parse
+these lines; the field names and values are fixed by a golden (`fixtures/log/golden.jsonl`, `LogGoldenSuite`).
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--log-stdout json\|human\|off` | `json` | the stdout sink and its format |
+| `--log-stderr json\|human\|off` | `off` | an error stream on stderr; it lets through `Warning` and above unless a `--log-severity stderr:...` says otherwise |
+| `--log-file <path>` | off | a log file, appended to (a restart continues it) and rotated by size: at `--log-file-size` it becomes `<path>.1`, the older ones move up to `<path>.<keep>`, and a new `<path>` starts |
+| `--log-file-format json\|human` | `json` | with `--log-file` |
+| `--log-file-size N[K\|M\|G]` | `100M` | with `--log-file`: the size at which the file turns over (powers of 1024, at least `1K`); a line is never split |
+| `--log-file-keep N` | `10` | with `--log-file`: rotated files kept |
+| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
+| `--log-every [<sink>:]<namespace>=N` | `1` | repeatable: `<sink>` keeps the first line of every `N` of `<namespace>` (one count for the namespace named) |
+
+A namespace is `*` (everything), an area (`Node`, `Chain`, `Ledger`, `Rules`, `Net`, `Mempool`, `Forge`, `Storage`,
+`Library`) or `Area.Kind` as in the catalogue. A setting applies to a namespace and everything below it unless a
+longer one sets the same thing: `--log-severity Chain=Warning --log-severity Chain.EraTransition=Info` keeps the era
+transitions and the warnings of `Chain`. This is how trace-dispatcher looks its options up (the namespace, then each
+shorter prefix). A namespace that does not exist, a sink or severity that does not exist, or a file option without
+`--log-file` is refused at start with a `ConfigError`. A setting for a sink that is off does nothing.
+
+The human format is `[time][namespace](Severity) event key=value ...` (trace-dispatcher's without the host and the
+thread):
+
+```
+[2026-10-16T14:48:18.570284Z][Chain.Reconnecting](Warning) reconnecting reason=unavailable: connect 127.0.0.1:9: Connection refused attempt=2
+```
+
+The libraries' own logs (http4s, fs2) go through SLF4J to the node's SLF4J backend (`LibraryLogs`, slf4j-api 2.0)
+and from there to the same sinks as `slf4j` lines, namespace `Library.Slf4j`, with the library's level as the
+severity and the logger name in `logger`. There is no "no SLF4J providers" (formerly `StaticLoggerBinder`) warning.
+
+**A long run without a shell pipe.** The long runs used to pipe stdout through `tee` (everything to a file) and a
+filter (stdout without the per-block `extended` lines but one in 1000). The node does both itself now, so the run
+script can `exec` the JVM: it is then the container's process, `docker stop`'s SIGTERM reaches it, and the shutdown
+snapshot is written (with a pipe, the signal goes to the shell and the JVM may be killed before it).
+
+```sh
+#!/bin/sh
+# run.sh: the node is the container's process; no pipe
+exec java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 \
+  -cp "$(cat /work/node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+  --config /data/config/config.json --topology /data/config/topology.json --db /data/db \
+  --log-file /data/sync.jsonl --log-file-size 256M --log-file-keep 20 \
+  --log-every stdout:Chain.Extended=1000
+```
+
+`docker logs` (and the monitoring agent, [ops/monitoring](../ops/monitoring/README.md)) then sees every line but
+999 of each 1000 `extended`, and `/data/sync.jsonl` with its rotated files holds everything.
+
+**Differences from the Haskell node's tracing.** The namespaces have two levels (area and kind) where the Haskell
+node's are deeper (`ChainDB.AddBlockEvent.AddedToCurrentChain`), and both levels are closed types, so a configuration
+cannot name a namespace that does not exist. The frequency limit is a count (one line in `N`), not trace-dispatcher's
+rate limiter (messages per second, with a budget that starts and stops it and messages about the limiting): the lines
+kept do not depend on timing, so two runs of the same chain keep the same lines, and during a sync one `extended` in
+`N` is readable whatever the speed. The configuration is on the command line, not the `TraceOptions` of the
+configuration file (which is still ignored). There is no forwarder (`cardano-tracer`), no detail level and no EKG;
+the metrics are the Prometheus endpoint below. The JSON lines keep the node's own format, not the Haskell node's
+`{"at", "ns", "data", "sev", "thread", "host"}`.
+
+#### Log events
+
+The catalogue (`node/src/main/scala/xyz/kd5ujc/scarab/node/log/EventKind.scala`; `LogDocsSuite` fails when this
+table and the code differ). The severity is the kind's; the rows marked so are raised for some events.
+
+| Event | Namespace | Severity | Fields |
+|---|---|---|---|
+| `started` | `Node.Started` | Notice | `build`, `peer`, `peers`, `networkMagic`, `systemStart`, `epochLength`, `securityParam`, `byronEpochs`, `byronEpochSlots`, `hardForkEpochs`, `genesisHashes`, `configUnsupported`, `topology` |
+| `blst` | `Node.Blst` | Info | `platform`, `cpu`, `library` |
+| `listening` | `Node.Listening` | Notice | `address` |
+| `memory` | `Node.Memory` | Info | `sample` |
+| `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |
+| `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
+| `error` | `Node.Error` | Error | `kind`, `message` |
+| `finished` | `Node.Finished` | Notice | `tip`, `retained` |
+| `connected` | `Chain.Connected` | Info | `intersection` |
+| `extended` | `Chain.Extended` | Info | `block`, `epoch`, `era`, `peerTip` |
+| `rolledBack` | `Chain.RolledBack` | Notice | `from`, `to`, `depth` |
+| `epoch` | `Chain.Epoch` | Notice | `epoch`, `first` |
+| `eraTransition` | `Chain.EraTransition` | Notice | `from`, `to`, `epoch`, `slot`, `block` |
+| `epochValidated` | `Chain.EpochValidated` | Info | `era`, `epoch`, `headers`, `thresholdChecked`, `overlay`, `leaderUnchecked`, `scheduling`, `boundary`, `signatureVerified`, `offSchedule`, `transactions` |
+| `reconnecting` | `Chain.Reconnecting` | Warning | `reason`, `attempt` |
+| `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
+| `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth` |
+| `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
+| `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
+| `mirrorChecked` | `Ledger.MirrorChecked` | Info (Warning when not `ok`) | `slot`, `hash`, `epoch`, `era`, `millis`, `gaps`, `residueEmpty`, `retracts`, `ok` |
+| `mirrorCheckFailed` | `Ledger.MirrorCheckFailed` | Warning | `slot`, `hash`, `epoch`, `era`, `millis`, `stage`, `error` |
+| `differentialSampled` | `Rules.DifferentialSampled` | Debug | `slot`, `hash`, `epoch`, `era`, `toMirrorMillis`, `diffMillis`, `seeded` |
+| `differentialTicked` | `Rules.DifferentialTicked` | Debug | `slot`, `hash`, `epochsCrossed`, `oldMillis`, `seedMillis`, `newMillis`, `diffMillis` |
+| `differentialSummary` | `Rules.DifferentialSummary` | Notice | `blocks`, `sampled`, `failures`, `toMirrorMillis`, `diffMillis`, `ticksCompared`, `tickOldMillis`, `tickNewMillis`, `notPorted` |
+| `rulesDiverged` | `Rules.RulesDiverged` | Error | `kind`, `block`, `era`, `stage`, `path`, `old`, `new`, `bundle`, `error` |
+| `rulesHalted` | `Rules.RulesHalted` | Critical | `kind`, `block`, `era`, `stage`, `path`, `old`, `new`, `error` |
+| `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
+| `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused`) | `remote`, `state`, `reason` |
+| `mempoolAdded` | `Mempool.MempoolAdded` | Info | `tx`, `size`, `count`, `bytes` |
+| `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` |
+| `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason` |
+| `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |
+| `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
+| `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions` |
+| `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake` |
+| `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs` |
+| `lost` | `Forge.Lost` | Notice | `slot`, `hash`, `reason` |
+| `kesEvolved` | `Forge.KesEvolved` | Info | `kesPeriod`, `relativeKesPeriod` |
+| `forgeSkipped` | `Forge.ForgeSkipped` | Info | `slot`, `reason` |
+| `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message` |
+| `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
+| `formatMigrated` | `Storage.FormatMigrated` | Notice | `kind`, `from`, `to`, `count` |
+| `immutableOpened` | `Storage.ImmutableOpened` | Info | `tip`, `blocks`, `chunks`, `truncatedEntries`, `truncatedBytes` |
+| `volatileOpened` | `Storage.VolatileOpened` | Info | `blocks`, `files`, `truncatedBytes`, `removedFiles` |
+| `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
+| `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `adoptedExisting` |
+| `snapshotSkipped` | `Storage.SnapshotSkipped` | Warning | `file`, `reason` |
+| `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
+| `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
+| `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
+| `snapshotRefused` | `Storage.SnapshotRefused` | Warning | `file`, `anchor`, `reason` |
+| `replayStarted` | `Storage.ReplayStarted` | Info | `from`, `immutableTip` |
+| `replayProgress` | `Storage.ReplayProgress` | Info | `tip`, `replayed`, `millis` |
+| `replayFinished` | `Storage.ReplayFinished` | Info | `tip`, `replayed`, `millis` |
+| `shutdownSnapshot` | `Storage.ShutdownSnapshot` | Info | `anchor`, `written` |
+| `slf4j` | `Library.Slf4j` | Info (the library's level: TRACE and DEBUG are Debug, WARN is Warning) | `logger`, `level`, `message`, `thrown` |
 
 ### Metrics
 

@@ -83,7 +83,7 @@ caught):
 3. `Blst.admissible`: on Linux/amd64 a library that is not the portable one is refused unless the
    processor is shown to have both features (an unreadable `/proc/cpuinfo` is not a proof). The
    refusal is the typed `BlstProblem.LibraryNeedsMissingCpuFeatures`, carried in the
-   `NodeError` `NativeLibraryError`, and logged by `JsonLog.error` as an `error` event; exit code 1.
+   `NodeError` `NativeLibraryError`, and logged as an `error` event; exit code 1.
 4. Known answers (`G1Uncompress`, `G2Uncompress`, `Pairing`) are computed; a wrong answer or a
    `LinkageError` (a native method the library lacks) is `BlstProblem.Unusable`.
 5. The `blst` event reports platform, CPU features and library build.

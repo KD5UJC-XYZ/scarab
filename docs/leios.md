@@ -240,7 +240,7 @@ A proposal, mostly not built: of the rows below only the BLS keys (N2) and the p
 | EB store, transaction cache, closures | `storage/` | New `EbStore[F]` algebra: EBs and their transaction closures by hash for volatile forks, durable for certified EBs on the immutable chain (served to syncing peers, inlined for N2C). The prototype uses SQLite (`LeiosDB`); we would key it in RocksDB or files like `ImmutableStore`. Open question in the design: whether the committee is materialised in ledger state or recomputed |
 | Chain selection with missing closures | `consensus/ChainSelection.scala`, `Follower.scala` | Candidate chains with an unresolved certificate are filtered until the closure arrives |
 | N2C inlined blocks and new queries | `ntc/` (`NtcQuery`, `StateQuerySource`), `relay/ChainServer.scala` | Splice closure transactions into the segwit segments when serving; the Dijkstra era history entry |
-| Observability | `JsonLog`, `Query.scala` | New events: `LeiosBlockForged`, `LeiosBlockCertified`, EB acquired, vote accepted; the prototype logs similar kinds |
+| Observability | `log/NodeEvent.scala` (the log), `Query.scala` | New events: `LeiosBlockForged`, `LeiosBlockCertified`, EB acquired, vote accepted; the prototype logs similar kinds |
 
 Everything above stays inside the existing style: pure rules, `F` only at the edges, a closed
 error ADT (new `NodeError` cases for certificate and EB failures), and a recorded evidence row.

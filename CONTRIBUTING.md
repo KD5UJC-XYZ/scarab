@@ -87,7 +87,7 @@ with a pattern that matches your own shell command line.
 ## Style rules
 
 - **Tagless final at effect boundaries.** Capabilities are algebras over `F[_]`; interpreters are
-  chosen in `Main`. `IO` appears only in `Main`, `JsonLog` and tools. No hidden global state:
+  chosen in `Main`. `IO` appears only in `Main` and tools. No hidden global state:
   the memoising caches are instances created in a `Resource` (`VerificationCache`) and handed to
   the pure rules through a read interface (`Verdicts`); tools live under `xyz.kd5ujc.scarab.node.tools`.
 - **Closed error ADTs through cats-mtl.** Domain errors are values of a closed ADT (`PeerError`,

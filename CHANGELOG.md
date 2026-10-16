@@ -5,6 +5,27 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (observability, J3a: typed logging, #92)
+- **Every line is a typed event.** `Traced[E]` gives an event's `Line`: its `EventKind` (a closed enum of the 56
+  kinds; each names the namespace `Area.Kind` and the usual severity, the eight levels of trace-dispatcher), its
+  severity and its JSON fields. A `Line` is built only from an event, so nothing logs an untyped line; `NodeEvent` is
+  the closed type of the node's own lines. `Log[F]` is cats-mtl's `Tell[F, Line]`, given through `using`
+  ([ADR 0014](docs/adr/0014-typed-log.md)). `JsonLog` is gone.
+- **Sinks, thresholds and sampling on the command line.** `--log-stdout json|human|off`, `--log-stderr` (an error
+  stream, `Warning` and above by default), `--log-file <path>` rotated by size (`--log-file-size`, `--log-file-keep`;
+  a restart appends), and per sink and namespace `--log-severity [<sink>:]<ns>=<Severity|Silence>` and
+  `--log-every [<sink>:]<ns>=N` (one line in N), looked up from the longest namespace as trace-dispatcher does. A
+  long run no longer needs a shell pipe (`--log-file /data/sync.jsonl --log-every stdout:Chain.Extended=1000`), so
+  `exec` gives the JVM the stop signal (`docs/running.md`, "Logging").
+- **The libraries' logs.** The node's own SLF4J 2 provider (`LibraryLogs`; slf4j-api 2.0.17 replaces 1.7.36) sends
+  http4s's and fs2's lines to the same sinks as `slf4j` lines (`Library.Slf4j`); the `StaticLoggerBinder` warning is
+  gone.
+- **The same JSON.** Without a `--log-*` flag the log is what it was: every line, JSON, on stdout, byte for byte
+  (`LogGoldenSuite` over one line of every event and every case of the event types, golden first written by
+  `JsonLog`). On purpose: an `error` of an error case without fields has its name as `kind` (was `""`), `stateDump`
+  has an `at`, the verification-cache summary is a `verificationCache` line (was text on stderr), and the http4s
+  server's start is an `slf4j` line. `LogDocsSuite` keeps the catalogue in running.md equal to the code.
+
 ### Fixed (mainnet sync from genesis, stop 5: AVVM balances at the Allegra boundary, B26)
 - **The boundary that enters Allegra returns the redeem (AVVM) outputs to the reserves**, as the reference's
   Shelley to Allegra translation does (`returnRedeemAddrsToReserves`), before the reward update and MIR of that
