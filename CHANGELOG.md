@@ -74,6 +74,23 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   re-recorded with the reason, and the V3 snapshots of the previous build are compared without those fields.
 - **`expectedBlocks` of the reward calculation is floored** as in `PulsingReward.hs:127` (it was the exact product; equal for
   every real parameter set).
+### Changed (memory-lean decoding, #94 stages 0 and 1)
+- **`Node` is a view of an index over the input (ADR 0013).** `Cbor.decode` writes two ints an item (where the item
+  starts and ends) and builds no object; `Node.value` reads one level from the input at each call (a `def`, never cached)
+  and `Node.original` is a window of the input, so what is hashed or signed is still the bytes as received. The Haskell
+  section of a preprod epoch-188 snapshot (27.3 M items) is held in 209 MiB, was 2,849 MiB, and decodes in 0.24 s, was
+  1.7 s. The minimum heap to read the snapshot goes from 3.4 GiB to 1.3 GiB, and the node's write of it with its
+  read-back runs in `-Xmx3g` (sampled live peak 4.5 GiB to 2.4 GiB). Limits, checks and error messages are the old
+  builder's, which stays in the tests as `OracleCbor` with a differential suite (fixtures, mutations of them, random items
+  of every wire form, 90,000-level nesting). `DecodeBench` is unchanged within the noise. New: `Node.offset`, `Node.entries`
+  (the entries of a map one at a time, which `Wire.mapOf` uses); `Node` is a sealed class and `Node(value, original)` an
+  `apply`. No decoder or generated file changed.
+- **`MemoryBoundSuite`** decodes a map of a million committee votes in a forked JVM with `-Xmx256m` (`storage / Test /
+  testGrouping`); the tree needed 587 MiB.
+- **The snapshot is written without the extra copies of the Haskell section**: one array of the exact size (the framing
+  was `toArray`, an output stream and `toByteArray`), the checksum written after the content in place of `content ++
+  checksum`, and one copy fewer in `Writer.result`. The file is byte for byte the same (tested on every state of the eras
+  fixture). Measured in `docs/design/memory-lean-decoding.md`, section 8.
 
 ### Added (ledger-state mirror, step 2, jump 2: infrastructure and the differential harness, J2.1 and J2.2)
 - **`BlockFailure` (D6).** `NodeRules.applyBlock` returns `Either[BlockFailure, NodeState]`, a closed ADT in `ledger`

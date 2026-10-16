@@ -1,6 +1,6 @@
 # 0005. Our own byte-preserving CBOR codec; scodec only for read-once fixed layouts
 
-- **Status**: Accepted
+- **Status**: Accepted; the decode into "our own tree" is superseded by [0013](0013-cbor-documents-are-an-index-over-the-input.md)
 - **Date**: 2026-10-15
 
 ## Context

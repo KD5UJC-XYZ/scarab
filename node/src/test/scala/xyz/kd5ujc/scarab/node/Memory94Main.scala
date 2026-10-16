@@ -19,10 +19,14 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * java -Xmx3g -cp <test classpath> xyz.kd5ujc.scarab.node.Memory94Main <mode> <snapshot> [genesis-dir]
   * }}}
   *
-  * Modes: `cbor` (`Cbor.decode` of the Haskell section), `ledger` (`HaskellLedgerFile.decode`),
-  * `v4` (the whole `SnapshotV4` read), `tape` (the compact offsets-only index of option 1, built
-  * over the same bytes). Each prints the heap in use after a full GC while the result is still
-  * reachable (the retained size) and the wall time. An `OutOfMemoryError` ends the run with exit 3.
+  * Modes: `cbor` (`Cbor.decode` of the Haskell section: since stage 1 of #94 the index of its items,
+  * before it the object tree), `ledger` (`HaskellLedgerFile.decode`), `v4` (the whole `SnapshotV4`
+  * read), `written` (the node's write of the decoded state, with its read-back), `votes` (the
+  * synthetic committee-votes map, `VOTES=<n>` entries), `tape` (the offsets-only index of the first
+  * spike, which `Cbor.decode` has replaced). Each prints the heap in use after a full GC while the
+  * result is still reachable (the retained size) and the wall time. An `OutOfMemoryError` ends the
+  * run with exit 3. The snapshot file is the content followed by its 32-byte checksum, which the
+  * mode drops without checking it.
   */
 object Memory94Main:
   private def usedMb(): Long =

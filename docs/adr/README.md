@@ -18,3 +18,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Accepted | 2026-10-14 |
 | [0011](0011-stack-safety.md) | Recursion over data from outside is stack safe | Accepted | 2026-10-16 |
 | [0012](0012-portable-blst.md) | One portable libblst for every x86-64 CPU, shipped where blst-java loads it | Accepted | 2026-10-16 |
+| [0013](0013-cbor-documents-are-an-index-over-the-input.md) | CBOR documents are an index over the input | Accepted | 2026-10-16 |

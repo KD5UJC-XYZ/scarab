@@ -163,10 +163,10 @@ object Cbor:
     // The open containers, innermost last: the item, its major type, the children still to come
     // (-1 for an indefinite container, which ends at a break) and the children so far.
     private var depth = 0
-    private var openItem = new Array[Int](16)
-    private var openMajor = new Array[Int](16)
-    private var openLeft = new Array[Long](16)
-    private var openCount = new Array[Int](16)
+    private var openItem = new Array[Int](8)
+    private var openMajor = new Array[Int](8)
+    private var openLeft = new Array[Long](8)
+    private var openCount = new Array[Int](8)
     private def push(item: Int, major: Int, left: Long): Unit =
       if depth == openItem.length then
         openItem = java.util.Arrays.copyOf(openItem, depth * 2)

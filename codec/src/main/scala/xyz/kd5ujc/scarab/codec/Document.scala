@@ -15,13 +15,14 @@ import java.nio.charset.StandardCharsets
 private[codec] final class Index(sizeBound: Int):
   import Index.*
 
-  // Every item takes a byte, so an input of at most `BlockSize` bytes never needs a second block
-  // and the first block is not larger than the input.
-  private val first = math.max(1, math.min(sizeBound, BlockSize))
+  // The first block grows by doubling (a short input, a header or a message, needs a few dozen
+  // items and should not pay to clear thousands); it is at most `BlockSize` items, after which
+  // blocks of that size are added and nothing is copied. Every item takes a byte, so the first
+  // block is never larger than the input.
   private var starts = new Array[Array[Int]](1)
   private var ends = new Array[Array[Int]](1)
-  starts(0) = new Array[Int](first)
-  ends(0) = new Array[Int](first)
+  starts(0) = new Array[Int](math.max(1, math.min(sizeBound, FirstBlock)))
+  ends(0) = new Array[Int](starts(0).length)
   private var count = 0
 
   def size: Int = count
@@ -33,12 +34,17 @@ private[codec] final class Index(sizeBound: Int):
   def begin(at: Int): Int =
     val i = count
     val b = i >>> Shift
-    if b == starts.length then
-      starts = java.util.Arrays.copyOf(starts, b * 2)
-      ends = java.util.Arrays.copyOf(ends, b * 2)
-    if starts(b) == null then
-      starts(b) = new Array[Int](BlockSize)
-      ends(b) = new Array[Int](BlockSize)
+    if b == 0 then
+      if i == starts(0).length then
+        starts(0) = java.util.Arrays.copyOf(starts(0), i * 2)
+        ends(0) = java.util.Arrays.copyOf(ends(0), i * 2)
+    else
+      if b == starts.length then
+        starts = java.util.Arrays.copyOf(starts, b * 2)
+        ends = java.util.Arrays.copyOf(ends, b * 2)
+      if starts(b) == null then
+        starts(b) = new Array[Int](BlockSize)
+        ends(b) = new Array[Int](BlockSize)
     starts(b)(i & Mask) = at
     count = i + 1
     i
@@ -69,6 +75,7 @@ private[codec] final class Index(sizeBound: Int):
 private[codec] object Index:
   private val Shift = 12
   private val BlockSize = 1 << Shift
+  private val FirstBlock = 32
   private val Mask = BlockSize - 1
 
 /** The input of a decode and the [[Index]] of its items: what an indexed [[Node]] is a view of.

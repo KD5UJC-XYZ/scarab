@@ -244,7 +244,7 @@ Shelley to Conway, the Dijkstra header, Byron headers and the network protocols)
 
 | What | Why |
 |---|---|
-| `xyz.kd5ujc.scarab.codec` (the byte-preserving tree) and `Bytes` | the foundation; the generated code is a typed view over `Node` |
+| `xyz.kd5ujc.scarab.codec` (the byte-preserving index of items, [ADR 0013](adr/0013-cbor-documents-are-an-index-over-the-input.md)) and `Bytes` | the foundation; the generated code is a typed view over `Node` |
 | The runtime (`Codec`, `Writer`, `Alternatives`, …) | about 500 lines, written once, reviewed once |
 | Anything CDDL cannot say | the 64-byte chunk limit of plutus byte strings, "the lengths of `transaction_bodies` and `transaction_witness_sets` are equal", "every `transaction_index` is below the number of bodies", cross-field rules in the block comment of `conway.cddl` |
 | Semantic validation | hashing, signatures, VRF, KES, ledger rules, the body hash commitment |

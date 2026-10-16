@@ -1,10 +1,11 @@
 # Memory-lean decoding
 
-**Status**: Proposal, with spike measurements of 2026-10-16 (a spike in the sense of
-[docs/process.md](../process.md): nothing here is implemented, the outcome is for the owner to
-decide). Tracked in [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94). The decision it would
-change is [ADR 0005](../adr/0005-cbor-codec-and-scodec.md) (the byte-preserving tree); the reference
-is [ADR 0001](../adr/0001-haskell-node-as-reference.md).
+**Status**: Stages 0 and 1 are implemented and measured (section 8); stages 2 to 4 are proposals.
+The proposal was written from spike measurements of 2026-10-16 (a spike in the sense of
+[docs/process.md](../process.md)); the decision is [ADR 0013](../adr/0013-cbor-documents-are-an-index-over-the-input.md).
+Tracked in [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94). The decision it changes is
+[ADR 0005](../adr/0005-cbor-codec-and-scodec.md) (the byte-preserving tree); the reference is
+[ADR 0001](../adr/0001-haskell-node-as-reference.md).
 
 ## 1. Summary
 
@@ -356,3 +357,68 @@ Each stage is one session, with the gates of AGENTS.md (`check`, `scalafixAll --
 
 Open for the owner: whether the read-back of section 6 stays a full typed comparison; and
 whether `Node.value` caches leaves (it does not in this plan: a cache is retained heap).
+
+## 8. Results of stages 0 and 1 (2026-10-16)
+
+Measured as in section 2 (JDK 21, G1, Docker, `Memory94Main`), on a 233,415,408-byte snapshot of the
+issue's epoch-188 range (content 222 MiB, Haskell section 216 MiB, 27.3 M items). The file is a copy of
+the one in the heap dump taken for the issue: the `db/snapshots` of the live node no longer holds a
+file of that size (its snapshots are now 20 MB, the proposals having expired). "Before" is the commit
+that carries this document (`c0b9326d`), built and run the same way; the minimum heaps are bisections
+to 16 MiB.
+
+| | Before (the tree) | After stages 0 and 1 |
+|---|---|---|
+| `Cbor.decode` of the Haskell section, retained | 2,849 MiB, 1.7 s | **209 MiB** (7.7 B an item), 0.24 s |
+| `Cbor.decode`, minimum `-Xmx` | 3,093 MiB | 450 MiB |
+| `HaskellLedgerFile.decode`, retained (the typed state) | 842 MiB, 6.5 s | 842 MiB, 3.9 s |
+| `HaskellLedgerFile.decode`, minimum `-Xmx` | 3,406 MiB | **1,284 MiB** |
+| `SnapshotV4` read, minimum `-Xmx` | 3,449 MiB | **1,326 MiB** (6.9 s, was 9.6 s) |
+| `SnapshotV4` write with its read-back, `-Xmx3g` | out of memory | **passes** |
+| the same, live set at its largest (sampled) | 4,535 MiB | **2,395 MiB** |
+| the same, peak after any collection at `-Xmx24g` | 5,276 MiB | 2,470 MiB |
+| the same, minimum `-Xmx` | not run | 2,402 MiB |
+| committee votes, 1 M entries, 32 MB (`MemoryBoundSuite`) | `-Xmx256m`: out of memory (587 MiB needed) | **passes at 256 MiB** (between 192 and 224 MiB needed) |
+| `DecodeBench`, generated Conway header | 716 to 791 ns | 573 to 754 ns |
+| `DecodeBench`, hand-written `Header.fromRaw` | 1,810 to 2,033 ns | 1,756 to 1,948 ns |
+| `DecodeBench`, generated ChainSync `RollForward` | 1,254 to 1,523 ns | 1,233 to 1,486 ns |
+| `DecodeBench`, generated Handshake propose | 765 to 875 ns | 780 to 991 ns |
+| `DecodeBench`, `Cbor.decode` of a header | 686 to 1,159 ns | 155 to 173 ns |
+
+The typed state is unchanged (842 MiB), as expected; so is everything the read-back compares. The
+write at 3 GiB passes with about 0.6 GiB to spare, which is what section 6 estimated (2.3 GiB).
+
+What was found, against the plan:
+
+- **The index** is two ints an item, start and end of the item (not the start and the subtree's
+  count): the end gives `original` in O(1), and the next sibling of an item is found by a galloping
+  search of the sorted starts for the item that begins where it ends. It is kept in blocks of 4,096
+  ints (the first block grows from 32 by doubling), so it is never copied as it grows and a short input
+  does not clear kilobytes: the first version sized its arrays for the input and made a 857-byte
+  header 70% slower to decode; sizing them for the items brought the whole of `DecodeBench` to the
+  old figures, within the noise of the machine (the runs of one build differ by up to 20%).
+- **Stage 0 does not move the peak.** The copies it removes (`toArray`, the output stream, its
+  `toByteArray`, the checksum's `++`: four 222 MiB arrays, each a humongous allocation) are
+  garbage by the time the read-back runs, and the read-back is where the peak is: sampled live peak
+  4,535 MiB with and without it on the old tree, minimum heap of the write 2,402 MiB with and without it
+  on the new decoder. It lowers the allocation of a write by about 0.9 GB and the contiguous regions
+  it needs. It is kept because it is exact (the bytes are those of the old framing, tested on every state
+  of the eras fixture) and small. A second copy, in `Writer.result` (`copyOf` and then `fromArray`'s
+  clone), went with it.
+- **Stage 1 needed a slice of stage 2.** With the index alone the votes map did not fit in 256 MiB
+  (it needed between 256 and 320 MiB): `Value.Map` holds a vector of the 1 M pairs of views (about 76 MB) next to
+  the vector of decoded pairs. `Node.entries`, an iterator over the index, and `Wire.mapOf`, its one
+  reader, remove the first; no decoder reads it yet but that one. The other collection combinators
+  (`Maps.decodePairs`, `Wire.setOf`, `seqOf`, `Codec.vec`, `pairs`) are stage 2.
+- **`Node` is a sealed abstract class**, not a case class: a view of the index (`Indexed`) and a
+  node built by hand (`Node.apply`, used by the Leios and Handshake encoders and the tests). Nothing
+  matched on it or copied it.
+- No decoder, generated file or `Emitter` changed. `DecodeError.at` and two lines of
+  `models/runtime/Codec.scala` read `node.offset` instead of `node.original.unsafeOffset`, which
+  saves a window per error.
+
+For stage 2: fold the children of the large collections into their builders (`Node.entries` is
+the first of a `children` iterator for arrays and sets); then tighten the bound of `MemoryBoundSuite`
+(expected about 200 MiB); the write at epoch 188 is then dominated by the live state (1.1 GiB), the
+typed read-back (0.84 GiB) and the index (0.21 GiB), which stage 3 (interning) shrinks.
+
