@@ -129,14 +129,15 @@ object FileLedgerSnapshots:
             format.encode(snapshot).flatMap {
               case Left(refusal) => F.pure(Left(refusal))
               case Right(content) =>
-                val file = closed(content)
+                // the checksum is written after the content, not appended to a copy of it
+                val size = content.length.toLong + DigestSize
                 for
-                  _ <- AtomicFile.replace[F](dir / name, file)
+                  _ <- AtomicFile.replaceAll[F](dir / name, Seq(content, sha256(content)))
                   all <- names
                   _ <- guard(dir.toString)(
                     all.drop(keep).traverse_(n => files.deleteIfExists(dir / n))
                   )
-                yield Right(LedgerSnapshots.Written(name, file.length.toLong, snapshot.anchor))
+                yield Right(LedgerSnapshots.Written(name, size, snapshot.anchor))
             }
 
       def restore(usable: Option[BlockRef] => F[Boolean]): F[LedgerSnapshots.Restored[S]] =

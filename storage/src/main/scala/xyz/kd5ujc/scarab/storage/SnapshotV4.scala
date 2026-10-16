@@ -6,7 +6,6 @@ import cats.effect.Sync
 import cats.mtl.Ask
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
-import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras, NodeState}
@@ -203,7 +202,7 @@ object SnapshotV4:
             SnapshotSidecar.Chain.InByron(state.ledger, state.header.chainDep.state, state.extras),
             Set.empty
           ),
-          Array.emptyByteArray
+          Bytes.empty
         )
       )
     else
@@ -230,17 +229,21 @@ object SnapshotV4:
           ),
           mirrored.gaps
         ),
-        haskell.toArray
+        haskell
       )
 
-  private def framed(sidecar: SnapshotSidecar, haskell: Array[Byte]): Array[Byte] =
+  /** The file content, in one array of its exact size: the header, the sidecar and the Haskell bytes
+    * are copied to it once (the Haskell section is a couple of hundred megabytes, and a copy of it
+    * is one more humongous allocation for the collector).
+    */
+  private[storage] def framed(sidecar: SnapshotSidecar, haskell: Bytes): Array[Byte] =
     val body = SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)
-    val out = new ByteArrayOutputStream(HeaderSize + body.length + haskell.length)
-    out.write(Magic)
-    out.write(ByteBuffer.allocate(4).putInt(body.length).array())
-    out.write(body)
-    out.write(haskell)
-    out.toByteArray
+    val out = new Array[Byte](HeaderSize + body.length + haskell.size)
+    System.arraycopy(Magic, 0, out, 0, Magic.length)
+    ByteBuffer.wrap(out, Magic.length, 4).putInt(body.length)
+    System.arraycopy(body, 0, out, HeaderSize, body.length)
+    haskell.copyTo(out, HeaderSize + body.length)
+    out
 
   // ---- read
 

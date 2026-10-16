@@ -136,6 +136,46 @@ class SnapshotV4Suite extends CatsEffectSuite:
     }
   }
 
+  /** The framing as it was written before the copies were removed (#94, stage 0): the Haskell bytes
+    * copied to an array, the output stream and its `toByteArray`.
+    */
+  private def framedWithCopies(sidecar: SnapshotSidecar, haskell: Array[Byte]): Array[Byte] =
+    val body = SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)
+    val out = new java.io.ByteArrayOutputStream(12 + body.length + haskell.length)
+    out.write(SnapshotV4.Magic)
+    out.write(java.nio.ByteBuffer.allocate(4).putInt(body.length).array())
+    out.write(body)
+    out.write(haskell)
+    out.toByteArray
+
+  test("the framing without copies writes the bytes that the framing with copies wrote") {
+    accepted.foreach { (era, _, bytes) =>
+      val sidecar = SnapshotV4.sidecarOf(bytes).fold(e => fail(e.message), identity)
+      val length = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
+      val haskell = Bytes.wrap(bytes).drop(12 + length)
+      assert(java.util.Arrays.equals(framedWithCopies(sidecar, haskell.toArray), bytes), era.toString)
+      assert(java.util.Arrays.equals(SnapshotV4.framed(sidecar, haskell), bytes), era.toString)
+    }
+  }
+
+  test("the store writes the content and then its checksum: the file is the closed content") {
+    tempDir.use { dir =>
+      ok {
+        FileLedgerSnapshots.open[IO, NodeState](dir, keep = 100).flatMap { store =>
+          snapshots.takeRight(2).traverse { (_, s) =>
+            for
+              content <- v3.encode(s).map(_.fold(r => fail(r.toString), identity))
+              written <- store.write(s).map(_.fold(r => fail(r.toString), identity))
+              file = JFiles.readAllBytes((dir / written.name).toNioPath)
+            yield
+              assert(java.util.Arrays.equals(file, FileLedgerSnapshots.closed(content)))
+              assertEquals(written.bytes, file.length.toLong)
+          }
+        }
+      }.void
+    }
+  }
+
   test("a damaged V3 file is a typed error: magic, sidecar length, fingerprint, Haskell section") {
     val bytes = accepted.last._3
     val cases: List[(String, Array[Byte])] = List(

@@ -78,7 +78,7 @@ final class Writer(initial: Int = 256):
     b.copyTo(buf, len)
     len += b.size
 
-  def result: CborBytes = CborBytes.fromArray(java.util.Arrays.copyOf(buf, len))
+  def result: CborBytes = CborBytes.wrap(java.util.Arrays.copyOf(buf, len))
 
   // ---- not canonical: indefinite containers, floats, the ledger's length policy ----------------
 

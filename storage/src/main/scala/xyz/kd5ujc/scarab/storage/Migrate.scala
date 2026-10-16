@@ -76,6 +76,14 @@ object AtomicFile:
     * attempt and is not a file of any kind the store reads.
     */
   def replace[F[_]: Sync](file: Path, bytes: Array[Byte])(using Raise[F, StorageError]): F[Unit] =
+    replaceAll[F](file, Seq(bytes))
+
+  /** As [[replace]] for a file that is the concatenation of `parts`, written in turn: a file made
+    * of a large content and a small trailer needs no copy of the content to put them together.
+    */
+  def replaceAll[F[_]: Sync](file: Path, parts: Seq[Array[Byte]])(using
+      Raise[F, StorageError]
+  ): F[Unit] =
     val target = file.toNioPath
     val tmp = target.resolveSibling(target.getFileName.toString + ".tmp")
     guard[F, Unit](file.toString) {
@@ -86,8 +94,10 @@ object AtomicFile:
         StandardOpenOption.WRITE
       )
       try
-        val buffer = java.nio.ByteBuffer.wrap(bytes)
-        while buffer.hasRemaining do ch.write(buffer)
+        parts.foreach { bytes =>
+          val buffer = java.nio.ByteBuffer.wrap(bytes)
+          while buffer.hasRemaining do ch.write(buffer)
+        }
         ch.force(true)
       finally ch.close()
       Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
