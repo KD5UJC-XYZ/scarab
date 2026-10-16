@@ -58,7 +58,7 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown fla
 | `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
 | `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
-| `--utxo-cache-mb N` | `256` | native-memory budget of the RocksDB store (it holds the UTxO set and the ledger tables): one LRU block cache shared by all tables, holding data, index and filter blocks, to which the memtables are charged, so the store stays near this figure. A smaller cache costs throughput, see [performance.md](performance.md) section 7 |
+| `--utxo-cache-mb N` | `256` | native-memory budget of the RocksDB store (it holds the UTxO set and the ledger tables): one LRU block cache shared by all tables, holding data, index and filter blocks, to which the memtables are charged, so the store stays near this figure. A smaller cache costs throughput, see [performance.md](performance.md) section 8 |
 | `--memory-report-seconds N` | `0` (off) | log a `memory` event every N seconds: heap, non-heap, buffer pools, `/proc/self/status` (`RssAnon`, `RssFile`), the cgroup's `memory.current` and its `anon`/`file`, and the RocksDB properties (block cache usage, memtables). Use it with `-XX:NativeMemoryTracking=summary` and `jcmd <pid> VM.native_memory` to see where memory is |
 | `--read-ahead N` | `128` | ChainSync requests pipelined per round, and the blocks of a round fetched in ranges of at most 100, while far behind. 64, 128, 200 and 256 were each run for 15 minutes against the public Preview relay without a timeout (the relay answers a 256-header round in 0.26 s on average); 128 and above are about 6 to 10% faster than 64, see [performance.md](performance.md) section 7 (D3) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`scarab-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
@@ -173,7 +173,7 @@ for the immutable blocks, RocksDB and checkpoints.
 RocksDB 0.26, malloc 0.23), and the page cache of the files the node writes comes on top and is given
 back by the kernel under a limit. **Set `MALLOC_ARENA_MAX=2`** (the `scarab-jdk` image and the
 devnet do): with glibc's default of one arena per thread the same sync grew by 0.9 GB in 30 minutes and
-had reached 5.66 GB in the uninterrupted run (roadmap K6, [performance.md](performance.md) section 7).
+had reached 5.66 GB in the uninterrupted run (roadmap K6, [performance.md](performance.md) section 8).
 A container limit of `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`) is enough; `--utxo-cache-mb` is the other
 number that moves native memory. The page cache shows in `docker stats` only partly (as the cgroup's
 active file pages) and in `memory.current` fully: bound `RssAnon`, not `memory.current`.

@@ -127,7 +127,7 @@ Memory and disk, from the earlier segmented run (12 restarts; the uninterrupted 
 - UTxO: 3,195,803 entries; RocksDB 466 MB; checkpoints 454 MB for two snapshots (hard links share
   most); one ledger snapshot file 52 MB; immutable blocks 14 GB.
 - Heap after a full GC: 272 MB (class histogram top: `byte[]` 64 MB, `Bytes` 20 MB, `BigInt` 17 MB);
-  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; section 7 has the composition and the bound.
+  container RSS 2.2 GB at the tip of that multi-restart run with `-Xmx3g`. The uninterrupted run reached 5.66 GB RSS with the same heap limit, so 2.2 GB is not a bound; section 8 has the composition and the bound.
 - Verification verdicts found ahead (since the last restart, 300k blocks): witnesses 99.9997%,
   operational certificates 99.9997%, VRF 99.8%.
 - Counts: 112k accounts, 726 pools; 3.23M Plutus transactions evaluated, 11.2M scripts.
@@ -382,7 +382,7 @@ As in section 6, with `--read-ahead N` and `--header-first on|off`; the `chainSy
 log give the round times (every 200 rounds, cumulative) and the `headersChecked` lines the validated,
 unchecked and waited header counts (every 50,000).
 
-## 7. Memory (K6)
+## 8. Memory (K6)
 
 The uninterrupted run of section 3 grew from 1 GB to a container RSS of 5.66 GB with `-Xmx3g`. This
 section says where the memory is and what bounds it. Measurements are one developer's, on a host that
