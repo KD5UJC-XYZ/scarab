@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger
 import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.ledger.rules.TickFailure
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The rule family a block was refused by. The names are those the JSON log has always carried in
@@ -107,6 +108,11 @@ enum BlockFailure:
   /** The ledger refused a transaction. */
   case Tx(failure: LedgerFailure)
 
+  /** The era-indexed rules' tick of the ledger state to the block's slot refused (the state left
+    * the range of a vocabulary type, or holds what the node does not carry on).
+    */
+  case Tick(failure: TickFailure)
+
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
     case HeaderDiffers | BodyCommitment | EraAnnounced(_, _) | EpochPrecedesLedger(_) |
@@ -119,7 +125,7 @@ enum BlockFailure:
     case TPraos(_)   => BlockRule.TPraos
     case Praos(_)    => BlockRule.Praos
     case Lite(_) | Handover(_) | SupplyInvariant(_, _, _) | RefScriptsTooLarge(_) |
-        BlockExUnitsTooBig(_, _) | Tx(_) =>
+        BlockExUnitsTooBig(_, _) | Tx(_) | Tick(_) =>
       BlockRule.Ledger
 
   /** The reason, as the log renders it (the text of the old `(rule, reason)` pair, unchanged). */
@@ -149,7 +155,8 @@ enum BlockFailure:
     case RefScriptsTooLarge(limit) => s"reference scripts of the block exceed $limit bytes"
     case BlockExUnitsTooBig(used, maximum) =>
       s"block execution units ${used.mem} mem / ${used.steps} steps exceed the maximum ${maximum.mem} / ${maximum.steps}"
-    case Tx(failure) => failure.message
+    case Tx(failure)   => failure.message
+    case Tick(failure) => s"tick refused: ${Show[TickFailure].show(failure)}"
 
 object BlockFailure:
   // Plain data all through (Bytes and the ledger's failure records compare structurally).

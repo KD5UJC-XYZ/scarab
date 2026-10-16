@@ -144,16 +144,28 @@ object PreConwayRules:
       refOuts: Vector[TxOut],
       plutusPurposes: Set[Pointer]
   ): Result[PlutusStats] =
+    phase2(state.params, state.plutus, tx, env, scripts, spent, refOuts, plutusPurposes)
+
+  /** [[phase2]] over what it reads of the state: the parameters and the counters it adds to. */
+  private[ledger] def phase2(
+      pp: ProtocolParams,
+      plutus: PlutusStats,
+      tx: Tx,
+      env: Env,
+      scripts: Map[Bytes, Script],
+      spent: Vector[TxOut],
+      refOuts: Vector[TxOut],
+      plutusPurposes: Set[Pointer]
+  ): Result[PlutusStats] =
     val body = tx.body
     val id = body.id
-    val pp = state.params
     if pp.protocolMajor < 5 || (plutusPurposes.isEmpty && body.scriptDataHash.isEmpty) then
-      Right(state.plutus)
+      Right(plutus)
     else
       val needed = scriptsNeeded(body, spent)
       val languages = needed.keys.flatMap(scripts.get).map(_.kind).toSet
       val recomputed = ScriptIntegrity.hash(tx, pp, languages)
-      val stats = state.plutus.copy(integrityChecked = state.plutus.integrityChecked + 1)
+      val stats = plutus.copy(integrityChecked = plutus.integrityChecked + 1)
       if recomputed != body.scriptDataHash then
         Left(
           LedgerFailure.Rejected(
@@ -336,19 +348,25 @@ object PreConwayRules:
       state: LedgerState,
       tx: Tx,
       @unused env: Env
+  ): Result[Collateral] = collateralChecks(state.utxo, state.params, tx)
+
+  /** [[collateralChecks]] over what it reads of the state: the UTxO set and the parameters. */
+  private[ledger] def collateralChecks(
+      utxo: Utxo,
+      pp: ProtocolParams,
+      tx: Tx
   ): Result[Collateral] =
     val body = tx.body
-    val pp = state.params
     val id = body.id
     def check(ok: Boolean, failure: => UtxoFailure): Result[Unit] =
       if ok then Right(())
       else Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(failure)))
     if pp.protocolMajor < 5 || tx.witnesses.redeemers.isEmpty then Right(Collateral.none)
     else
-      val missing = body.collateral.filterNot(state.utxo.contains).toSet
+      val missing = body.collateral.filterNot(utxo.contains).toSet
       for
         _ <- check(missing.isEmpty, UtxoFailure.BadInputs(missing))
-        outs = body.collateral.flatMap(state.utxo.get)
+        outs = body.collateral.flatMap(utxo.get)
         required = tx.witnesses.redeemers.nonEmpty
         _ <-
           if !required then Right(())
@@ -421,8 +439,17 @@ object PreConwayRules:
       @unused refOuts: Vector[TxOut],
       scripts: Map[Bytes, Script],
       plutusPurposes: Set[Pointer]
+  ): Result[Unit] = alonzoChecks(state.params, tx, spent, scripts, plutusPurposes)
+
+  /** [[alonzoChecks]] over what it reads of the state: the parameters. */
+  private[ledger] def alonzoChecks(
+      pp: ProtocolParams,
+      tx: Tx,
+      spent: Vector[TxOut],
+      scripts: Map[Bytes, Script],
+      plutusPurposes: Set[Pointer]
   ): Result[Unit] =
-    val pv = state.params.protocolMajor
+    val pv = pp.protocolMajor
     val body = tx.body
     val id = body.id
     val wits = tx.witnesses
@@ -489,7 +516,7 @@ object PreConwayRules:
         _ <- checkWith(
           body.scriptDataHash.isDefined == needsHash,
           UtxowFailure.PPViewHashesDontMatch(
-            Mismatch(body.scriptDataHash, ScriptIntegrity.hash(tx, state.params, languages))
+            Mismatch(body.scriptDataHash, ScriptIntegrity.hash(tx, pp, languages))
           )
         )
       yield ()
@@ -501,7 +528,11 @@ object PreConwayRules:
     * undecodable script that a transaction needs fails phase 2.
     */
   private[ledger] def scriptsWellFormed(state: LedgerState, tx: Tx, env: Env): Result[Unit] =
-    val pv = state.params.protocolMajor.toInt
+    scriptsWellFormed(state.params, tx, env)
+
+  /** [[scriptsWellFormed]] over what it reads of the state: the parameters. */
+  private[ledger] def scriptsWellFormed(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
+    val pv = pp.protocolMajor.toInt
     def malformed(rule: String, scripts: Vector[Script]): Result[Unit] =
       val bad = scripts.filter(_.kind.isPlutus).flatMap { s =>
         for
@@ -574,6 +605,30 @@ object PreConwayRules:
       vkeyHashes: Vector[Bytes],
       verdicts: xyz.kd5ujc.scarab.ledger.Verdicts
   ): Result[Unit] =
+    witnessChecks(
+      state.genDelegs,
+      tx,
+      spent,
+      collateral,
+      scripts,
+      needed,
+      vkeyHashes,
+      verdicts
+    )
+
+  /** [[witnessChecks]] over what it reads of the state: the genesis delegations (empty from Conway,
+    * which has no update proposals).
+    */
+  private[ledger] def witnessChecks(
+      genDelegs: Map[Bytes, GenDelegPair],
+      tx: Tx,
+      spent: Vector[TxOut],
+      collateral: Collateral,
+      scripts: Map[Bytes, Script],
+      needed: Map[Bytes, Set[Pointer]],
+      vkeyHashes: Vector[Bytes],
+      verdicts: xyz.kd5ujc.scarab.ledger.Verdicts
+  ): Result[Unit] =
     val body = tx.body
     val id = body.id
     val wits = tx.witnesses
@@ -610,7 +665,7 @@ object PreConwayRules:
       case Voter.Pool(h)                         => h
     }
     val updateKeys = body.update.toVector.flatMap(
-      _.proposals.keys.toVector.flatMap(g => state.genDelegs.get(g).map(_.delegate))
+      _.proposals.keys.toVector.flatMap(g => genDelegs.get(g).map(_.delegate))
     )
     val required =
       (inputKeys ++ bootRoots ++ withdrawalKeys ++ certKeys ++ voterKeys ++ updateKeys ++ body.requiredSigners).toSet

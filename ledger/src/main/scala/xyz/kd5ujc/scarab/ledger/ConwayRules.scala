@@ -60,9 +60,12 @@ object ConwayRules:
       !s.futurePools.valuesIterator.exists(_.vrfKeyHash == vrf))
 
   /** Total size of the reference scripts of the distinct inputs and reference inputs. */
-  def refScriptsSize(state: LedgerState, body: TxBody): Int =
+  def refScriptsSize(state: LedgerState, body: TxBody): Int = refScriptsSize(state.utxo, body)
+
+  /** [[refScriptsSize]] over the UTxO set, the one thing it reads of the state. */
+  def refScriptsSize(utxo: Utxo, body: TxBody): Int =
     (body.inputs.toSet ++ body.referenceInputs.toSet).iterator
-      .flatMap(state.utxo.get)
+      .flatMap(utxo.get)
       .map(_.referenceScriptSize)
       .sum
 
@@ -595,12 +598,12 @@ private[ledger] object ConwayCerts:
 private[ledger] object ConwayGov:
   import TxRules.Result
 
-  private def isBootstrapAction(a: GovAction): Boolean = a match
+  private[ledger] def isBootstrapAction(a: GovAction): Boolean = a match
     case _: GovAction.ParameterChange | _: GovAction.HardFork | GovAction.Info => true
     case _                                                                     => false
 
   /** `ppuWellFormed`: no zero where zero is meaningless, and a non-empty update. */
-  private def wellFormed(pp: ProtocolParams, u: ParamUpdate): Boolean =
+  private[ledger] def wellFormed(pp: ProtocolParams, u: ParamUpdate): Boolean =
     def value(key: Int): Option[BigInt] =
       u.fields
         .get(key)
@@ -611,7 +614,7 @@ private[ledger] object ConwayGov:
       (if pp.protocolMajor >= 11 then Vector(8) else Vector.empty)
     u.fields.nonEmpty && nonZero.forall(k => value(k).forall(_ != 0))
 
-  private def canFollow(prev: (BigInt, BigInt), next: (BigInt, BigInt)): Boolean =
+  private[ledger] def canFollow(prev: (BigInt, BigInt), next: (BigInt, BigInt)): Boolean =
     next == (prev._1 + 1, BigInt(0)) || next == (prev._1, prev._2 + 1)
 
   def apply(s: LedgerState, tx: Tx, env: TxRules.Env): Result[LedgerState] =
@@ -771,7 +774,7 @@ private[ledger] object ConwayGov:
         yield ()
       }
     yield
-      val voted = votes.foldLeft(proposals) { case (ps, (voter, aid, v)) => ps.vote(voter, v, aid) }
+      val voted = proposals.withVotes(votes.map { case (voter, aid, v) => (voter, v, aid) })
       val unregistered = body.certificates.collect { case Certificate.UnregisterDRep(c, _) =>
         c
       }.toSet

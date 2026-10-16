@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.Id
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 
 /** Why the ledger refused a transaction. `Unsupported` marks a valid-chain feature this node does
@@ -15,11 +16,19 @@ enum LedgerFailure:
   case Rejected(txId: Bytes, failure: PredicateFailure)
   case Malformed(detail: String)
 
+  /** A value of the transaction is not a member of the vocabulary type that the era-indexed state
+    * holds it in (a credential of another length, a quantity outside its word). The decoder admits
+    * none, so a decoded transaction does not reach it; it is the total form of a conversion the
+    * rules of the era-indexed ledger need (design `ledger-mirror-step2.md` §4, J2.4).
+    */
+  case Vocab(error: VocabError)
+
   def message: String = this match
     case Unsupported(id, f) => s"tx ${id.hex.take(16)} uses unsupported $f"
     case Rejected(id, f) =>
       s"tx ${id.hex.take(16)} violates ${f.ruleName}: ${LedgerFailure.detail(f)}"
     case Malformed(d) => s"malformed transaction: $d"
+    case Vocab(e)     => s"transaction outside the state's vocabulary: $e"
 
 object LedgerFailure:
   /** A refusal named by its rule and a free-text detail, for the rules whose payload is not

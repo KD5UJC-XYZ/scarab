@@ -78,6 +78,12 @@ final case class GovActionState(
 ):
   def action: GovAction = proposal.action
 
+  /** The vote of `voter` on this action (`proposalsAddVote`). */
+  def cast(voter: Voter, vote: Vote): GovActionState = voter match
+    case Voter.DRepVoter(c)    => copy(drepVotes = drepVotes.updated(c, vote))
+    case Voter.Pool(h)         => copy(poolVotes = poolVotes.updated(h, vote))
+    case Voter.CommitteeHot(c) => copy(committeeVotes = committeeVotes.updated(c, vote))
+
 /** The proposal store: proposals in submission order and the roots of the four lineage trees. The
   * parent of a proposal is the action id it names; a proposal can be added when that is the root of
   * its lineage or another stored proposal of the same lineage.
@@ -97,14 +103,21 @@ final case class Proposals(actions: Vector[GovActionState], roots: PrevIds):
     Option.when(ok)(copy(actions = actions :+ gas))
 
   def vote(voter: Voter, vote: Vote, id: GovActionId): Proposals =
-    copy(actions = actions.map { g =>
-      if g.id != id then g
-      else
-        voter match
-          case Voter.DRepVoter(c)    => g.copy(drepVotes = g.drepVotes.updated(c, vote))
-          case Voter.Pool(h)         => g.copy(poolVotes = g.poolVotes.updated(h, vote))
-          case Voter.CommitteeHot(c) => g.copy(committeeVotes = g.committeeVotes.updated(c, vote))
-    })
+    withVotes(Vector((voter, vote, id)))
+
+  /** The votes of a transaction cast (`proposalsAddVote`), the actions walked once however many
+    * votes there are: the vote of a voter on an action replaces the one it had, and of two votes of
+    * a voter on one action the later counts. The store is rebuilt with one pass over its actions,
+    * where casting the votes one by one maps over every action for every vote (the preprod epochs
+    * 187 to 193 carry 648,752 committee votes on five proposals).
+    */
+  def withVotes(votes: Vector[(Voter, Vote, GovActionId)]): Proposals =
+    if votes.isEmpty then this
+    else
+      val byAction = votes.groupMap(_._3)(v => (v._1, v._2))
+      copy(actions = actions.map { g =>
+        byAction.get(g.id).fold(g)(_.foldLeft(g) { case (a, (voter, v)) => a.cast(voter, v) })
+      })
 
   private def children(id: GovActionId, purpose: Purposeful): Vector[GovActionId] =
     actions.collect {
