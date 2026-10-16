@@ -62,3 +62,48 @@ rationale) stands.
 - Revisit it if the index of a section no longer fits (a mainnet-scale state of several GiB), or if
   the parse in `value` shows in a profile of the per-block path: the next step is then a pull reader
   under `Codec` (option 3 of the design), for which the index is the cursor.
+
+## Addendum: collections fold into builders and equal values are shared (stages 2 and 3, 2026-10-16)
+
+With the index in place the typed state, 907 MiB on a snapshot of the epoch-188 shape, was the whole of
+what a read needed. Two changes, both in `codec` and the decoders of `storage`; no persisted format changed.
+
+- **`Node.items`** is to an array what `Node.entries` is to a map: its items one at a time, found in the index.
+  `Wire.setOf`, `mapOf` and `seqOf` decode them straight into a `SortedSet`, `SortedMap` or `Vector` builder (local to
+  the call, not escaping it) and count what they read, so that the error places (`[i]`, `key[i]`, `value[i]`) and the
+  number of repeated elements of version 9 are those of the code they replace. A set no longer reads `n.value` to
+  look for the tag 258 of an array of a million: it asks for the items first. `Elements.decodeAll` remains for the
+  telescope's few past states and the combinators of `models/runtime` remain for blocks, which are small.
+- **`Node.share(kind)(a)`** returns the first value equal to `a` that the decode of this node's document has produced
+  for that `kind`, or `a`. It is Haskell's `Interns` (`Cardano.Ledger.Binary.Decoding.Sharing`, `Sharing.hs:53-66,111-135`
+  of `cardano-ledger-binary` 1.9.1.0, as the design document cites it), which decodes a key against a table of those
+  already decoded. A kind (`Interned[A]`) is a value declared by the codec that uses it, and is the key of one table
+  in the document's `Interns`, so the type of what a table holds is the type of its kind. `Codec.interned(kind)` (an
+  extension in `Wire`) makes a codec share; `Wire.hash` does, for every hash of the state, and the node's
+  `Credential` does as a whole (not also its hash: a second lookup costs as much as the first and saves nothing).
+  A node built by hand shares nothing.
+
+**Deviation from the design document**, which passes an `Interner` to the codecs with `using`: the codecs are `given`s
+of one singleton, each built once and shared by every decode, so a table in them would be a global that grows for
+the life of the process, and a `using` parameter would reach every codec on the path from the file to a credential (a
+change of every signature on the way, with the interner threaded through each combinator). The node being decoded
+already is the environment of a decode (an `Ask`, if one likes), and the table belongs to its `Document`, so a
+decode shares and nothing else does. A decode that wants no sharing hands the decoder nodes it built by hand
+(`Node.apply`); `SharingSuite` decodes the same bytes both ways and finds the same state.
+
+The table is open-addressed (`Interns.Table`): the values are its slots, 6 to 12 bytes a value, and a lookup reads a
+slot and the value in it. A `java.util.HashMap` took 45 bytes a value and raised the heap that a million distinct
+voters need from 218 to 267 MiB; this one lowers it to 202 MiB.
+
+Consequences:
+
+- The typed state of the epoch-188 shape is 353 MiB, was 907 MiB (the 6.5 M `Credential.Key` are 650 k), and the
+  node runs on that in the epochs the votes stay in the proposals. Figures: `docs/performance.md`, section 12.
+- The decode takes about a third longer on that snapshot (a lookup, with its cache misses, for each of 6.5 M credentials)
+  and 15% on a normal one.
+- What is not shared: the vote maps themselves (the red-black node of an entry, 32 bytes, is 210 MiB of the 353) and
+  the `Vote` (a singleton). The pulser's copy of the proposals is equal to them at an epoch boundary; sharing a whole
+  map by equality would drop that copy and costs a hash of the map. Not done: it is only worth it if the real states show
+  the copies equal, which the file measured (equal by construction, section 12) does not tell.
+- `Credential`'s `Ordering` compares `(ordinal, hex)`, a string made per comparison: the sorted maps of credentials
+  pay for it at every insertion. Not changed here.

@@ -184,6 +184,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 - **`expectedBlocks` of the reward calculation is floored** as in `PulsingReward.hs:127` (it was the exact product; equal for
   every real parameter set).
 
+### Changed (memory-lean decoding, #94 stages 2 and 3)
+- **The collections of the Haskell state decode into builders, and equal credentials and hashes are one object.**
+  `Node.items` (the items of an array one at a time, as `Node.entries` does the pairs of a map) lets `Wire.setOf`,
+  `mapOf` and `seqOf` fold straight into a `SortedSet`, `SortedMap` or `Vector` builder; the error places (`[i]`,
+  `key[i]`, `value[i]`) and the repeat counts are as before. `Node.share` gives the first equal value that the decode of
+  the same document has produced (`Interns`, an open-addressed table that belongs to the `Document` and goes with it; no
+  global exists), which is Haskell's `Sharing.hs`: the node's credentials and every hash of the state are shared
+  (ADR 0013, addendum). On a preprod epoch-188 shaped snapshot (233 MiB of Haskell state, 6.5 M vote keys of 650 k
+  voters) the typed state is 353 MiB, was 907; the minimum heap to decode it 869 MiB, was 1,398; to read the snapshot
+  1,059 MiB, was 1,593; the decode takes about a third longer (a lookup per credential). A 51 MiB preprod tip snapshot:
+  97 MiB, was 116. No persisted format changed.
+
 ### Changed (memory-lean decoding, #94 stages 0 and 1)
 - **`Node` is a view of an index over the input (ADR 0013).** `Cbor.decode` writes two ints an item (where the item
   starts and ends) and builds no object; `Node.value` reads one level from the input at each call (a `def`, never cached)

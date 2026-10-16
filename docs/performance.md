@@ -548,3 +548,42 @@ votes cost 20 us with 5, 50 or 500 proposals in the store, against 21, 59 and 16
 The conversions of the harness are as in section 9 (median 0.44 s, p99 1.7 s and maximum 1.7 s over 183 conversions of the
 stride-72 run); the sampling interval of the stride-72 run (500 blocks) is denser than the default (2,160), so its
 replay is 2 times the baseline.
+
+## 12. Decoding a snapshot: the heap of the epoch-188 state (#94, stages 2 and 3)
+
+**The input.** The snapshot of the issue (233 MB, preprod blocks 3,033,001 to 3,114,547) is not on the machines that did
+this work: the one kept as an acceptance input is a `CSLSNAP1` file of a schema the migration no longer reads, and the
+live node's snapshots have lost the votes with the proposals. The measured file is made by `Memory94Main spam`: a V4
+snapshot of the preprod tip (block 5,297,790, 51.6 MB, 29 MB of Haskell state) in which the Conway gov state holds five
+proposals, each with the same 648,752 committee votes `[0, hash28] => 0..2` (random hashes), and the DRep pulser's
+snapshot holds the five again, which is the ten copies of the heap dump of the issue. It is 253 MiB, of which the
+Haskell state is 233 MiB (the issue's 227 MB), and 6.5 M `Credential.Key`. The copies are equal by construction, which
+would overstate the gain of sharing whole maps and not that of sharing credentials.
+
+**How.** Docker, JDK 21, G1, `Memory94Main` (`ledger`: `HaskellLedgerFile.decode` of the Haskell section; `v4`: the whole
+`SnapshotV4` read to the node state; `written`: the node's write with its read-back), `-Xmx6g` for the retained size
+(the heap in use after two full collections while the result is reachable, less the 262 MiB of the file), the minimum
+`-Xmx` by bisection to 32 MiB. "Before" is `83afd506` (stages 0 and 1), "after" the commits of this section, both run on
+the same file. The machine was shared and loaded (load average 30), so times are only good to about 30%.
+
+| | before | after |
+|---|---|---|
+| `ledger`: typed state retained | 907 MiB | **353 MiB** |
+| `ledger`: minimum `-Xmx` | 1,398 MiB | **869 MiB** |
+| `ledger`: time | 4.3 to 6.2 s | 6.8 to 7.6 s |
+| `v4`: retained | 959 MiB | **410 MiB** |
+| `v4`: minimum `-Xmx` | 1,593 MiB | **1,059 MiB** |
+| `v4`: time (-Xmx6g, quiet; at load 30, -Xmx3g) | 14.3 s (26.9 s) | 19.2 s (28.1 s) |
+| `written` (write with read-back) at `-Xmx3g`: post-GC peak | 3,119 MiB | 2,283 MiB |
+| 1 M committee votes (`MemoryBoundSuite`): minimum `-Xmx` | 218 MiB | 202 MiB |
+| the 51 MiB tip snapshot, `ledger`: retained, time | 116 MiB, 1.25 s | 97 MiB, 1.48 s |
+
+Stage 2 alone (builders, no sharing) left the first four rows where they were. The time is the lookup of 6.5 M
+credentials in a table of 650 k (a few cache misses each); a `java.util.HashMap` made it 13 to 15 s and used 45 bytes a
+value. The write at `-Xmx3g` passes before and after; its time under load varied from 49 to 100 s between runs of the same
+build and is not a measurement.
+
+**To repeat.** `export node/Test/fullClasspath`, then
+`java -Xmx6g -cp <classpath> xyz.kd5ujc.scarab.node.Memory94Main spam <V4 snapshot> 648752 <out>` and
+`... Memory94Main <ledger|v4|written> <out> [genesis-dir]` (the V4 snapshot of a preprod node, or any other: the spam is
+put into its Conway gov state).

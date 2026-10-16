@@ -1,6 +1,6 @@
 # Memory-lean decoding
 
-**Status**: Stages 0 and 1 are implemented and measured (section 8); stages 2 to 4 are proposals.
+**Status**: Stages 0 to 3 are implemented and measured (sections 8 and 9); stage 4 is a proposal.
 The proposal was written from spike measurements of 2026-10-16 (a spike in the sense of
 [docs/process.md](../process.md)); the decision is [ADR 0013](../adr/0013-cbor-documents-are-an-index-over-the-input.md).
 Tracked in [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94). The decision it changes is
@@ -430,3 +430,17 @@ the first of a `children` iterator for arrays and sets); then tighten the bound 
 (expected about 200 MiB); the write at epoch 188 is then dominated by the live state (1.1 GiB), the
 typed read-back (0.84 GiB) and the index (0.21 GiB), which stage 3 (interning) shrinks.
 
+## 9. Results of stages 2 and 3 (2026-10-16)
+
+The decision and its one deviation (the table belongs to the `Document`, it is not passed with `using`) are in the
+addendum of [ADR 0013](../adr/0013-cbor-documents-are-an-index-over-the-input.md); the measurements, the input
+and how to repeat them are in [performance.md](../performance.md), section 12.
+
+- **Stage 2** changed the heap of the epoch-188 read by nothing that shows (907 MiB retained, the minimum heap 1,398 MiB
+  before and after): stage 1 had already made `mapOf` read its entries one at a time, and the other collections of the
+  file are small. It removes the vectors of the items of every set and sequence, and the 76 MB of views that a set of a
+  million would have made. The votes test needs 202 MiB (was 218), so its 256 MiB bound stays as a margin.
+- **Stage 3** is where the heap went: 907 to 353 MiB retained, the minimum heap 1,398 to 869 MiB, against the estimate
+  of section 4 (0.84 to about 0.35 GB). The acceptance of section 7 (at most 0.4 GB retained by `Memory94Main ledger`)
+  is met.
+- **The red-black nodes remain** (6.5 M entries of 32 bytes, 210 MiB), as the estimate said.
