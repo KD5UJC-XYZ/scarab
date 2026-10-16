@@ -91,6 +91,9 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
 
   def node(i: Int): Node = new Node.Indexed(this, i)
 
+  /** What this decode shares; made when the first value is, as most documents share nothing. */
+  lazy val interns: Interns = new Interns
+
   /** The wire bytes of item `i`: a window of the input. */
   def originalAt(i: Int): Bytes =
     val s = index.start(i)
@@ -220,6 +223,27 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
           if left > 0 then left -= 1
           if hasNext then key = index.firstAt(value + 1, at)
           entry)
+
+  /** The items of item `i` if it is an array, found in the index as they are asked for. */
+  def itemsAt(i: Int): Option[Iterator[Node]] =
+    val s = index.start(i)
+    val h = data(s) & 0xff
+    if (h >>> 5) != 4 then None
+    else
+      val ai = h & 31
+      Some(new Iterator[Node]:
+        // the items to come (-1: until the break), where the next item ends in the input and its
+        // item number
+        private var left = if ai == 31 then -1 else childCount(s, 4, ai)
+        private var at = s + headSize(ai)
+        private var item = i + 1
+        def hasNext: Boolean = if left < 0 then (data(at) & 0xff) != 0xff else left > 0
+        def next(): Node =
+          val current = node(item)
+          at = index.end(item)
+          if left > 0 then left -= 1
+          if hasNext then item = index.firstAt(item + 1, at)
+          current)
 
   /** The value of item `i`, one level: its children are views, not values. */
   def valueAt(i: Int): Value =

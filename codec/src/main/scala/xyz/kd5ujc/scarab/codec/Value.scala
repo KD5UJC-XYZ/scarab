@@ -29,6 +29,17 @@ sealed abstract class Node:
     */
   def entries: Option[Iterator[(Node, Node)]]
 
+  /** The items of the item if it is an array, one at a time and in order, as the items of
+    * `Value.Arr`; none otherwise. As [[entries]], it does not make the vector of every item, so a
+    * decoder that folds the elements of a set of a million holds the one it is at.
+    */
+  def items: Option[Iterator[Node]]
+
+  /** `a`, or the value equal to it that this item's decode has shared already (see [[Interns]]). A
+    * node built by hand belongs to no decode and shares nothing.
+    */
+  def share[A](kind: Interned[A])(a: A): A
+
   // Structural, and walked on the heap: the generated ones recurse once per level of nesting. The
   // string is truncated on purpose (see `Tree.render`) and leaves the original bytes out.
   override def equals(that: Any): Boolean = that match
@@ -43,9 +54,13 @@ object Node:
 
   private final class Strict(val value: Value, val original: Bytes) extends Node:
     def offset: Int = original.unsafeOffset
+    def share[A](kind: Interned[A])(a: A): A = a
     def entries: Option[Iterator[(Node, Node)]] = value match
       case Value.Map(pairs) => Some(pairs.iterator)
       case _                => None
+    def items: Option[Iterator[Node]] = value match
+      case Value.Arr(xs) => Some(xs.iterator)
+      case _             => None
 
   /** Item `index` of `doc`. */
   private[codec] final class Indexed(doc: Document, index: Int) extends Node:
@@ -53,6 +68,8 @@ object Node:
     def original: Bytes = doc.originalAt(index)
     def offset: Int = doc.index.start(index)
     def entries: Option[Iterator[(Node, Node)]] = doc.entriesAt(index)
+    def items: Option[Iterator[Node]] = doc.itemsAt(index)
+    def share[A](kind: Interned[A])(a: A): A = doc.interns.share(kind)(a)
 
   /** A node's children are those of its value; its label adds the exact bytes it was read from. */
   given Tree[Node] with

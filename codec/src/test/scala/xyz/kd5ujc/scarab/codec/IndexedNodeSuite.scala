@@ -31,6 +31,16 @@ class IndexedNodeSuite extends munit.FunSuite:
       case (None, _)            => true
       case (Some(_), _)         => false
 
+  /** The items of an array node are those of its value, and of none other node. */
+  private def sameItems(x: Node, y: Node): Boolean =
+    (x.items, y.value) match
+      case (Some(is), Value.Arr(xs)) =>
+        val got = is.toVector
+        got.size == xs.size && got.zip(xs).forall((a, b) => a.original == b.original)
+      case (None, Value.Arr(_)) => false
+      case (None, _)            => true
+      case (Some(_), _)         => false
+
   /** The first difference between the tree of `fresh` and that of `oracle`, walking both on the
     * heap, or none. `input` is what both were decoded from.
     */
@@ -46,6 +56,7 @@ class IndexedNodeSuite extends munit.FunSuite:
         found = Some("a copy, not a window")
       else if !sameShallow(a, b) then found = Some(s"value ${a.value.name} / ${b.value.name}")
       else if !sameEntries(a, b) then found = Some(s"entries of ${a.original}")
+      else if !sameItems(a, b) then found = Some(s"items of ${a.original}")
       else
         val (as, bs) = (Value.nodes(a.value), Value.nodes(b.value))
         var i = as.size - 1
@@ -234,6 +245,29 @@ class IndexedNodeSuite extends munit.FunSuite:
     val text = levels.map(unit).mkString + "00" + levels.reverse.map(close).mkString
     onSmallStack(agree(bytes(text)))
     onSmallStack(agree(bytes("81" * 90000 + "00")))
+  }
+
+  test("the items of an array are found one at a time, definite or not, and of nothing else") {
+    def items(hex: String): Option[Vector[String]] =
+      Cbor.decode(bytes(hex)).fold(fail(_), _.items.map(_.map(_.original.hex).toVector))
+    assertEquals(items("80"), Some(Vector.empty))
+    assertEquals(items("83010203"), Some(Vector("01", "02", "03")))
+    assertEquals(items("9f0102ff"), Some(Vector("01", "02")))
+    assertEquals(items("9fff"), Some(Vector.empty))
+    // an item that is itself a container is one item, its descendants are not
+    assertEquals(items("828201029f0304ff"), Some(Vector("820102", "9f0304ff")))
+    assertEquals(items("a10102"), None)
+    assertEquals(items("01"), None)
+    assertEquals(items("c0820102"), None)
+  }
+
+  test("the items of a wide array are read in a small stack") {
+    val n = 100000
+    val text = "9a" + f"$n%08x" + "01" * n
+    val count = onSmallStack(
+      Cbor.decode(bytes(text), Wide).fold(fail(_), _.items.fold(0)(_.size))
+    )
+    assertEquals(count, n)
   }
 
   test("a node's value is read from the index at each call, never kept") {
