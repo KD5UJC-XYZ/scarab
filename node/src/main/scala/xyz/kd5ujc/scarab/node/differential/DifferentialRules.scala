@@ -128,7 +128,7 @@ final class DifferentialRules[F[_]] private (
           ConwayBlock.Context(Globals(tick.globals, tick.config.geometry), tick.config.forks.eraAt)
         )
         for
-          pre <- state.neu.fold(convert(state.old, state.at).flatMap {
+          pre <- state.neu.fold(convert(state.old, state.at, ot).flatMap {
             case (Right(seeded), _) => F.pure(Option(NewRules.carried(seeded)))
             case (Left(error), _) =>
               diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
@@ -188,7 +188,7 @@ final class DifferentialRules[F[_]] private (
     outcome match
       case Some(NewOutcome.Applied(theirs)) if !due => F.pure(paired(Some(theirs)))
       case Some(NewOutcome.Applied(theirs)) =>
-        convert(after, Some(block)).flatMap {
+        convert(after, Some(block), ot).flatMap {
           case (Left(error), _) =>
             diverge(Divergence.Unconvertible(block, Stage.Block, error), state, header, raw)
               .as(paired(Some(theirs)))
@@ -235,7 +235,7 @@ final class DifferentialRules[F[_]] private (
         counters.update(_.notPortedIn(header.era, Stage.Block)) *>
           (if !due then F.pure(paired(None))
            else
-             convert(after, Some(block)).flatMap {
+             convert(after, Some(block), ot).flatMap {
                // the conversion is the cost of the reseed; nothing reads the seeded state, and
                // keeping it would double the memory of the run, so it is not kept
                case (Right(_), toMirror) =>
@@ -324,12 +324,20 @@ final class DifferentialRules[F[_]] private (
       (result, System.nanoTime() - began)
     }
 
-  /** The old state in the mirror, with the nanoseconds the conversion took. */
+  /** The old state in the mirror, with the nanoseconds the conversion took. The geometry is the
+    * resolved one of the old side's tick where there is one (a chain that begins in Byron learns
+    * its first Shelley epoch from the state, and the prediction of the future parameters of the
+    * mirror is read off the geometry), as the tick stage's conversions have it.
+    */
   private def convert(
       state: NodeState,
-      at: Option[BlockRef]
+      at: Option[BlockRef],
+      ot: Option[NodeRules.OldTick]
   ): F[(Either[StateMirrorError, MirrorState], Long)] =
-    env.flatMap(e => timed(MirrorRun.run(e)(_.toMirror(at, state)).map(_.value)))
+    env.flatMap { e =>
+      val resolved = ot.fold(e)(t => e.copy(ledger = e.ledger.copy(geometry = t.config.geometry)))
+      timed(MirrorRun.run(resolved)(_.toMirror(at, state)).map(_.value))
+    }
 
 object DifferentialRules:
   /** The value of a pure computation, with the nanoseconds it took. */
