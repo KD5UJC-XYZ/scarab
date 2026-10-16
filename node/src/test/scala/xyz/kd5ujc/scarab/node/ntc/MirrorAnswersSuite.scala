@@ -191,6 +191,23 @@ class MirrorAnswersSuite extends FunSuite:
     )
   }
 
+  test(
+    "the chain-dependent state is answered in every Shelley-based era, in the protocol's shape"
+  ) {
+    // `[result]`, then the version and the state: TPraos's is `[1, [last slot, [..3..]]]`, Praos's
+    // `[0, [8 fields]]` (`TPraos.hs:263-296`, `Praos.hs:281-308`)
+    val shapes = states.collect {
+      case (block, state) if block.era != Era.Byron =>
+        val answer = ask(block.era, block, state, LedgerQuery.DebugChainDepState)
+          .getOrElse(fail(s"${block.era}: no answer"))
+        block.era -> answer.hex.take(8)
+    }.toMap
+    assertEquals(shapes(Era.Shelley), "81820182")
+    assertEquals(shapes(Era.Alonzo), "81820182")
+    assertEquals(shapes(Era.Babbage), "81820088")
+    assertEquals(shapes(Era.Conway), "81820088")
+  }
+
   test("a Byron state has no new-epoch state to answer") {
     val (block, state) = states.find(_._1.era == Era.Byron).getOrElse(fail("no Byron block"))
     assertEquals(

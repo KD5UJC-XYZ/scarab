@@ -157,6 +157,17 @@ class TPraosSuite extends FunSuite:
       assertEquals(Leader.check(v512, stake, f, Leader.Range512), Leader.check(v256, stake, f))
   }
 
+  test("the translation to Praos sets the previous epoch nonce to the epoch nonce (Praos.hs:763)") {
+    val tpraos = initial.copy(extras =
+      initial.extras.copy(previousEpochNonce = Nonce.Hash(Bytes(Vector.fill(32)(7.toByte))))
+    )
+    val translated = tpraos.in(Era.Babbage)
+    assertEquals(translated.view.previousEpochNonce, tpraos.view.epochNonce)
+    assertEquals(translated.view.epochNonce, tpraos.view.epochNonce)
+    // the state of a TPraos era stays TPraos's
+    assertEquals(tpraos.in(Era.Alonzo), tpraos)
+  }
+
   test("protocol parameter updates need a quorum of identical proposals") {
     val d = Bytes.fromHex("d81e820102").toOption.get // 1/2
     val e = Bytes.fromHex("d81e820103").toOption.get // 1/3

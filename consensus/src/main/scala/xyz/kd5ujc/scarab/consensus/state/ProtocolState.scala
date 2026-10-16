@@ -60,15 +60,15 @@ final case class ProtocolState(dep: ChainDepState, extras: ProtocolExtras):
   def counters: SortedMap[KeyHash[BlockIssuer], Word64] = view.ocertCounters
 
   /** The state in the protocol of `era`: TPraos's translated to Praos's when the era runs Praos
-    * (`translateChainDepState` of `TranslateProto (TPraos c) (Praos c)`, which carries every field
-    * over; the previous epoch nonce comes from the extras, where TPraos keeps it), the other
-    * protocols' as they are (a state of a Praos era is not taken back to TPraos, nor PBFT's
-    * translated: the header rules refuse the state of another protocol).
+    * (`translateChainDepState` of `TranslateProto (TPraos c) (Praos c)`, `Praos.hs:763-773`, which
+    * carries every field over and sets the previous epoch nonce to the epoch nonce: "same as
+    * current epoch nonce"), the other protocols' as they are (a state of a Praos era is not taken
+    * back to TPraos, nor PBFT's translated: the header rules refuse the state of another protocol).
     */
   def in(era: Era): ProtocolState = dep match
     case ChainDepState.TPraos(_) if !era.usesTPraos && era != Era.Byron =>
       ProtocolState(
-        ChainDepState.Praos(view),
+        ChainDepState.Praos(view.copy(previousEpochNonce = view.epochNonce)),
         extras.copy(previousEpochNonce = Nonce.Neutral)
       )
     case _ => this
