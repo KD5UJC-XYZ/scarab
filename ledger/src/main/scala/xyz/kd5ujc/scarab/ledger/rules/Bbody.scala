@@ -24,8 +24,8 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
   */
 final case class BbodyEnv(ctx: TxRules.Env, pp: ProtocolParams, treasury: Coin)
 
-/** `ShelleyBbodyState` (`Bbody.hs:101`): the ledger state, and the blocks the pools have made in
-  * the epoch (`nesBcur`).
+/** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs:82`): the ledger state, and the blocks the pools
+  * have made in the epoch (`nesBcur`).
   */
 final case class BbodyState(ledger: ConwayLedger, blocksMade: BlocksMade)
 
@@ -42,15 +42,15 @@ final case class BbodySignal(
     actual: BodyCommitment
 )
 
-/** BBODY (`Conway/Rules/Bbody.hs:226`, `conwayBbodyTransition`, and `Alonzo/Rules/Bbody.hs`): the
+/** BBODY (`Conway/Rules/Bbody.hs:270`, `conwayBbodyTransition`, and `Alonzo/Rules/Bbody.hs`): the
   * body of a block against what its header says, the reference scripts and execution units of the
   * transactions against the limits of the block, LEDGERS, and the block counted for its issuer.
   *
   *   - The reference scripts the transactions of a block use sum to at most one megabyte
-  *     (`validateBodyRefScriptsSizeTooBig`, `Bbody.hs:333`). Up to protocol version 10 each
+  *     (`validateBodyRefScriptsSizeTooBig`, `Bbody.hs:330`). Up to protocol version 10 each
   *     transaction is measured against the UTxO set as the block meets it; from 11 against that set
   *     with the outputs of the transactions before it (`totalRefScriptSizeInBlock`,
-  *     `Bbody.hs:347`).
+  *     `Bbody.hs:357`).
   *   - The redeemers of all the transactions of a block (valid or not) use at most
   *     `maxBlockExUnits` of the parameters in force when the block starts (`TooManyExUnits`); the
   *     failure names the units of the prefix of transactions that first exceeds it.

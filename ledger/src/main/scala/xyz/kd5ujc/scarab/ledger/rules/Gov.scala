@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** `GovEnv` (`Conway/Rules/Gov.hs:272`): the transaction, the current epoch, the parameters, the
+/** `GovEnv` (`Conway/Rules/Gov.hs:149`): the transaction, the current epoch, the parameters, the
   * script of the constitution's guardrails, the certificate state *after* the transaction's
   * certificates (a proposal's return account may be one it registers), and the committee.
   */
@@ -39,7 +39,7 @@ final case class GovEnv(
     committee: Option[Committee]
 )
 
-/** `GovSignal` (`Gov.hs:314`): the votes and the proposals of the transaction, and its certificates
+/** `GovSignal` (`Gov.hs:312`): the votes and the proposals of the transaction, and its certificates
   * (the DReps it unregisters lose their votes).
   */
 final case class GovSignal(
@@ -48,7 +48,7 @@ final case class GovSignal(
     certificates: Vector[Certificate]
 )
 
-/** GOV (`Conway/Rules/Gov.hs:432`, `conwayGovTransition`): the proposals and the votes of a
+/** GOV (`Conway/Rules/Gov.hs:445`, `conwayGovTransition`): the proposals and the votes of a
   * transaction, on the store of proposals. The state is the store of the governance state
   * (`Proposals`), as Haskell's.
   *
@@ -72,7 +72,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
       case CommitteeAuthorization.CommitteeHotCredential(h) => h
     }.toSet
 
-  /** `unelectedCommitteeVoters` (`Gov.hs:581`): the hot credentials among the voters that no member
+  /** `unelectedCommitteeVoters` (`Gov.hs:652`): the hot credentials among the voters that no member
     * of the current committee has authorised.
     */
   private def unelected(
@@ -200,7 +200,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     case Voter.DRepVoter(_)    => Ratify.isDRepVotingAllowed(action)
     case Voter.Pool(_)         => Ratify.isPoolVotingAllowed(action)
 
-  /** `processProposal` (`Gov.hs:455`): the proposal at index `idx` of the transaction is checked
+  /** `processProposal` (`Gov.hs:483`): the proposal at index `idx` of the transaction is checked
     * and added to the store.
     */
   private def addProposal[F[_]: Monad](

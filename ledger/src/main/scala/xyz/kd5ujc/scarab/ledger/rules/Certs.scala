@@ -45,7 +45,7 @@ final case class CertEnv(
     proposals: Proposals
 )
 
-/** `CertsEnv` (`Certs.hs:67`): the transaction too, for the withdrawals the rule drains. */
+/** `CertsEnv` (`Certs.hs:87`): the transaction too, for the withdrawals the rule drains. */
 final case class CertsEnv(tx: Tx, cert: CertEnv)
 
 /** `Delegatee` (`Conway/TxCert.hs`): what a delegation certificate delegates to. */
@@ -227,7 +227,7 @@ object CertOps:
         case None                  => addNew(dreps)
     }(s)
 
-  /** `processDelegationInternal` (`Deleg.hs:305`): `c` delegates to `delegatee`, the old
+  /** `processDelegationInternal` (`Deleg.hs:320`): `c` delegates to `delegatee`, the old
     * delegations cleaned up. `current` is the account as it was (none for a registration in the
     * same certificate); `preserveIncorrect` keeps the behaviour of the bootstrap phase, where a
     * DRep delegation did not remove the old DRep's reverse delegation (`#4772`).
@@ -268,7 +268,7 @@ object CertOps:
           )
     }
 
-  /** `unregisterConwayAccount` and the two un-delegations (`Deleg.hs:262-274`). */
+  /** `unregisterConwayAccount` and the two un-delegations (`Deleg.hs:240-272`). */
   def unregister(
       s: ConwayCertState,
       c: Credential[Staking],
@@ -278,7 +278,7 @@ object CertOps:
     val reDRep = ConwayCertState.vState.modify(reDelegateDRep(_, c, account, None))(removed)
     ConwayCertState.pState.modify(reDelegatePool(_, c, account, None))(reDRep)
 
-/** DELEG (`Conway/Rules/Deleg.hs:179`, `conwayDelegTransition`): registration, deregistration and
+/** DELEG (`Conway/Rules/Deleg.hs:177`, `conwayDelegTransition`): registration, deregistration and
   * delegation of stake credentials, and the maintenance of the pools' and DReps' delegators.
   */
 object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
@@ -291,7 +291,7 @@ object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
     val id = env.id
     val v10 = pp.protocolMajor > 10
     def credential(c: Credential[Staking]): node.Credential = Convert.back(c)
-    // `checkDepositAgainstPParams` (`Deleg.hs:196`)
+    // `checkDepositAgainstPParams` (`Deleg.hs:199`)
     def depositMatches(declared: BigInt): F[Unit] =
       Refuse.unless[F](
         declared == pp.keyDeposit,
@@ -307,7 +307,7 @@ object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
         id,
         PredicateFailure.deleg(DelegFailure.StakeKeyRegistered(credential(c)))
       )
-    // `checkStakeDelegateeRegistered` (`Deleg.hs:204`): the pool, then (but not in the bootstrap
+    // `checkStakeDelegateeRegistered` (`Deleg.hs:215`): the pool, then (but not in the bootstrap
     // phase) the DRep
     def delegateeRegistered(s: ConwayCertState, d: Delegatee): F[Unit] =
       def pool(p: KeyHash[StakePool]) =
@@ -391,7 +391,7 @@ object Deleg extends Sts[CertEnv, ConwayCertState, DelegCert, LedgerFailure]:
 
 /** POOL (`Shelley/Rules/Pool.hs:209`, `poolTransition`, the rule of every era): registration and
   * retirement of stake pools, with the VRF key hashes kept from protocol version 11
-  * (`hardforkConwayDisallowDuplicatedVRFKeys`, `Pool.hs:262-306`). The map of key hashes is
+  * (`hardforkConwayDisallowDuplicatedVRFKeys`, `Pool.hs:265-305`). The map of key hashes is
   * populated by the hard fork into 11 (`HardFork.hs:75-78`, J3.3): until then, before version 11,
   * it is not kept, as in the reference.
   */
@@ -504,7 +504,7 @@ object Pool extends Sts[CertEnv, PState, PoolCert, LedgerFailure]:
           _ <- st.set(s.copy(retiring = s.retiring.updated(pool, e)))
         yield ()
 
-/** GOVCERT (`Conway/Rules/GovCert.hs:177`, `conwayGovCertTransition`): the DRep and the committee
+/** GOVCERT (`Conway/Rules/GovCert.hs:170`, `conwayGovCertTransition`): the DRep and the committee
   * certificates.
   */
 object GovCert extends Sts[CertEnv, ConwayCertState, ConwayGovCert, LedgerFailure]:
@@ -525,7 +525,7 @@ object GovCert extends Sts[CertEnv, ConwayCertState, ConwayGovCert, LedgerFailur
     val pp = env.pp
     val id = env.id
     def govCert(f: GovCertFailure): PredicateFailure = PredicateFailure.govCert(f)
-    // `checkAndOverwriteCommitteeMemberState` (`GovCert.hs:196`)
+    // `checkAndOverwriteCommitteeMemberState` (`GovCert.hs:190`)
     def committeeMember(
         s: ConwayCertState,
         cold: Credential[ColdCommittee],
@@ -619,8 +619,8 @@ object GovCert extends Sts[CertEnv, ConwayCertState, ConwayGovCert, LedgerFailur
             .flatMap(st.set)
     }
 
-/** CERT (`Conway/Rules/Cert.hs:150`): one certificate goes to the rule of its family; POOL sees the
-  * pool state only (`Embed`'s lens).
+/** CERT (`Conway/Rules/Cert.hs:192`, `certTransition`): one certificate goes to the rule of its
+  * family; POOL sees the pool state only (`Embed`'s lens).
   */
 object Cert extends Sts[CertEnv, ConwayCertState, Certificate, LedgerFailure]:
   given poolEmbed: Embed[PState, ConwayCertState, LedgerFailure, LedgerFailure] =
@@ -642,7 +642,7 @@ object Cert extends Sts[CertEnv, ConwayCertState, Certificate, LedgerFailure]:
       case ConwayCert.OfGov(c) => GovCert.transition[F](env, c)
     }
 
-/** CERTS (`Conway/Rules/Certs.hs:210`, `conwayCertsTransition`): the certificates of a transaction
+/** CERTS (`Conway/Rules/Certs.hs:203`, `conwayCertsTransition`): the certificates of a transaction
   * in order. Its base case is where, before protocol version 11, the withdrawals are checked and
   * drained and the DReps' expiries updated; from 11 that is LEDGER's
   * (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`), and the base case does nothing.
@@ -739,7 +739,7 @@ object Withdrawals:
         )
     }
 
-/** `updateDormantDRepExpiries` and `updateVotingDRepExpiries` (`Certs.hs:262-316`), which the
+/** `updateDormantDRepExpiries` and `updateVotingDRepExpiries` (`Certs.hs:257-316`), which the
   * transaction makes of the DReps' expiries.
   */
 object Expiry:

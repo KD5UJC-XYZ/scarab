@@ -37,12 +37,12 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`): the block-level context (the slot), the parameters in
   * force, and the certificate state *before* the transaction's certificates (the refunds of
   * deregistrations are the deposits its accounts hold, which CERTS has already removed from the
-  * state that follows, `Ledger.hs:410-415`).
+  * state that follows, `Conway/Rules/Ledger.hs:410-415`).
   */
 final case class UtxoEnv(ctx: TxRules.Env, pp: ProtocolParams, cert: ConwayCertState)
 
 /** What the instant stake of the UTxO becomes as outputs are created and spent
-  * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:76-108`): the
+  * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-108`): the
   * lovelace of an output with a stake credential is added to (or taken from) the credential's
   * entry, and an entry that reaches zero is removed. An output of an address with no stake
   * credential (an enterprise address, a pointer address, a Byron address) is not in it.
@@ -121,7 +121,7 @@ object Deposits:
       }
     (deposits, refunds)
 
-/** UTXOS (`Conway/Rules/Utxos.hs:187`, `utxosTransition`): the evaluation of the Plutus scripts,
+/** UTXOS (`Conway/Rules/Utxos.hs:207`, `utxosTransition`): the evaluation of the Plutus scripts,
   * whose verdict must equal the block's `is_valid` flag (a transaction flagged invalid must have a
   * script that fails, one flagged valid none). The state is the node's counters of what was
   * evaluated.
@@ -150,10 +150,11 @@ object Utxos extends Sts[UtxoEnv, PlutusStats, StAnnTx, LedgerFailure]:
       _ <- st.set(next)
     yield ()
 
-/** UTXO (`Conway/Rules/Utxo.hs:239`, `conwayUtxoTransition`, with `babbageUtxoValidation`): the
-  * validity of the transaction against the parameters and the UTxO set, UTXOS, and then the change
-  * of the state (`updateUTxOState`): the set, the instant stake, the fees, the deposits and the
-  * donation of a valid transaction, the collateral of one that failed phase 2.
+/** UTXO (`Conway/Rules/Utxo.hs:211`, `conwayUtxoTransition`, with `babbageUtxoValidation`,
+  * `Babbage/Rules/Utxo.hs:325`): the validity of the transaction against the parameters and the
+  * UTxO set, UTXOS, and then the change of the state (`updateUTxOState`): the set, the instant
+  * stake, the fees, the deposits and the donation of a valid transaction, the collateral of one
+  * that failed phase 2.
   */
 object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
   given Embed[PlutusStats, Counted[UTxOState[Conway]], LedgerFailure, LedgerFailure] =
@@ -234,7 +235,7 @@ object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFail
     yield collateral
 
   /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449`,
-    * `Conway/Rules/Utxo.hs:200`).
+    * `Conway/Rules/Utxo.hs:201`).
     */
   def update(
       s: UTxOState[Conway],
@@ -300,10 +301,10 @@ object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFail
       _ <- st.set(s.copy(state = next))
     yield ()
 
-/** UTXOW (`Conway/Rules/Utxow.hs:222`, `conwayUtxowTransition`, with the Alonzo and Babbage rules
-  * it extends): the scripts the transaction provides are the ones it needs, its datums and
-  * redeemers match the Plutus scripts, the script integrity hash, the auxiliary data, and the
-  * signatures; then UTXO.
+/** UTXOW (`Babbage/Rules/Utxow.hs:308`, `babbageUtxowTransition`, as Conway's UTXOW runs it, with
+  * the Alonzo rule it extends): the scripts the transaction provides are the ones it needs, its
+  * datums and redeemers match the Plutus scripts, the script integrity hash, the auxiliary data,
+  * and the signatures; then UTXO.
   *
   * The two checks of UTXO that annotating the transaction depends on (inputs exist, `StAnnTx`) are
   * made first ([[Utxo.resolvable]]), as Haskell's ledger does before it hands the annotated

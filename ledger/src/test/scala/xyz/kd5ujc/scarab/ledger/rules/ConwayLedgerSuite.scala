@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
-import cats.data.Kleisli
+import cats.Monad
+import cats.data.{Kleisli, StateT}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
 import munit.FunSuite
@@ -703,4 +704,98 @@ class ConwayLedgerSuite extends FunSuite:
               ConwayLedgerState.pools.get(after.state).values.map(_.delegators.size).sum,
               1
             )
+  }
+
+  test("the rules are not tied to their interpreter: RuleT and the reference stack agree") {
+    // Haskell's `ReaderT Globals` over `StateT` over `Either` runs the same algebra (design 2.2)
+    type R[A] = Either[LedgerFailure, A]
+    type S[A] = StateT[R, ConwayLedger, A]
+    type K[A] = Kleisli[S, Globals, A]
+    given Monad[K] = Kleisli.catsDataMonadForKleisli[S, Globals]
+    val pool1 = key()
+    val s = base(fundedBy(alice), pools = Map(pool1.hash -> poolOf(pool1)))
+    val image = run(mirror.to[Conway](at, s)).fold(e => fail(e.show), identity).value
+    val start = Counted(image.nes.es.ls, s.plutus)
+    val ledgerEnv = LedgerEnv(TestLedger.env, image.nes.es.chainAccount.treasury)
+    val delegate = pay(
+      "delegate",
+      alice,
+      10000 * ada,
+      200,
+      certificates =
+        Vector(Certificate.Delegate(bob.credential, Some(pool1.hash), None, Some(2 * ada))),
+      extra = 2 * ada,
+      signers = Vector(bob)
+    )
+    val cheap = pay("cheap", alice, 10000 * ada, 1)
+    for t <- Vector(delegate, cheap) do
+      val onRuleT = Sts(Ledger)(globals, ledgerEnv, start, t)
+      val onStack = Ledger
+        .transition[K](ledgerEnv, t)(using summon, summon, summon, summon)
+        .run(globals)
+        .run(start)
+        .map(_._1)
+      assertEquals(onRuleT, onStack)
+  }
+
+  test(
+    "from protocol version 11 the VRF key hashes are unique, kept by registrations and re-registrations"
+  ) {
+    val one = key()
+    val two = key()
+    val pp11 = pparams.copy(protocolMajor = 11)
+    val s = base(
+      fundedBy(alice),
+      pools = Map(one.hash -> poolOf(one), two.hash -> poolOf(two)),
+      pp = pp11
+    )
+    def withVrf(op: Key, vrf: Bytes) = poolParams(op).copy(vrfKeyHash = vrf)
+    def reg(id: String, op: Key, vrf: Bytes) = pay(
+      id,
+      alice,
+      10000 * ada,
+      200,
+      certificates = Vector(Certificate.RegisterPool(withVrf(op, vrf))),
+      signers = Vector(op)
+    )
+    // a key that another pool holds is refused, the pool's own is not
+    assertEquals(
+      refusedWith(s, reg("dup", one, Blake2bHash(two.hash))),
+      "VRFKeyHashAlreadyRegistered"
+    )
+    val fresh = Blake2bHash(Bytes(Vector(1, 2, 3)))
+    val s1 = accepted(s, reg("fresh", one, fresh))
+    assertEquals(s1.futurePools(one.hash).vrfKeyHash, fresh)
+    // the scheduled key is held: another pool cannot take it
+    assertEquals(
+      refusedWith(s1.copy(utxo = s.utxo), reg("taken", two, fresh)),
+      "VRFKeyHashAlreadyRegistered"
+    )
+    // a second re-registration in the epoch frees the first key
+    val other = Blake2bHash(Bytes(Vector(4, 5, 6)))
+    val s2 = accepted(s1.copy(utxo = s.utxo), reg("again", one, other))
+    assertEquals(s2.futurePools(one.hash).vrfKeyHash, other)
+    accepted(s2.copy(utxo = s.utxo), reg("freed", two, fresh))
+  }
+
+  test(
+    "entering protocol version 11 populates the VRF key hashes, a key held twice counted twice"
+  ) {
+    val one = key()
+    val two = key()
+    val s = base(fundedBy(alice), pools = Map(one.hash -> poolOf(one), two.hash -> poolOf(two)))
+    val shared = poolParams(two).copy(vrfKeyHash = poolParams(one).vrfKeyHash)
+    val image = run(
+      mirror
+        .to[Conway](at, s.copy(pools = s.pools.updated(two.hash, NodePoolState(shared, 500 * ada))))
+    )
+      .fold(e => fail(e.show), identity)
+      .value
+    val before = ConwayLedgerState.pState.get(image.nes.es.ls)
+    val after = HardFork.populateVRFKeyHashes(before.copy(vrfKeyHashes = Sorted.empty))
+    val shared11 =
+      VRFVerKeyHash.fromBytes(poolParams(one).vrfKeyHash).fold(e => fail(e.toString), identity)
+    assertEquals(after.vrfKeyHashes.get(shared11).map(_.value.bits), Some(2L))
+    // the same where the map was already derived: it starts again
+    assertEquals(HardFork.populateVRFKeyHashes(before).vrfKeyHashes, after.vrfKeyHashes)
   }

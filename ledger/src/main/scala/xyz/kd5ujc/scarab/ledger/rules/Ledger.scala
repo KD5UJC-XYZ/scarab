@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   */
 type ConwayLedger = Counted[LedgerState[Conway]]
 
-/** LEDGER (`Conway/Rules/Ledger.hs:355`, `conwayLedgerTransitionTRC`): a transaction applied to the
+/** LEDGER (`Conway/Rules/Ledger.hs:350`, `conwayLedgerTransitionTRC`): a transaction applied to the
   * ledger state. For a transaction whose scripts pass (phase-2 valid): the treasury value and the
   * reference scripts it declares and uses, the withdrawals (from protocol version 10 only into
   * accounts that delegate to a DRep; from 11 checked and drained here, before that by CERTS), its

@@ -14,9 +14,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
   *   - Entering protocol version 10 (the end of the bootstrap phase) it rebuilds every DRep's index
   *     of delegators from the accounts and drops the delegations to DReps that are not registered
   *     (`updateDRepDelegations`).
-  *   - Entering 11 Haskell populates the VRF key hashes of the pools (`populateVRFKeyHashes`,
-  *     `HardFork.hs:107`); that is J3.3 (design D10) and is left: the node derives them
-  *     (`LedgerMirror`) and does not track them.
+  *   - Entering 11 it populates the VRF key hashes of the pools (`populateVRFKeyHashes`,
+  *     `HardFork.hs:107`), which POOL keeps from then on ([[Pool]]). The node derived them from
+  *     version 10 (`LedgerMirror`); a state the new rules carry across the fork needs them here
+  *     (J2.4; the rest of J3.3, the VRF key hashes in the node's own checks, stays).
   */
 object HardFork:
   /** `updateDRepDelegations` (`HardFork.hs:82`). */
@@ -56,10 +57,38 @@ object HardFork:
         (dreps.updated(drep, state.copy(delegators = state.delegators + credential)), accounts)
       case None => (dreps, accounts.updated(credential, account.copy(drep = None)))
 
+  /** `populateVRFKeyHashes` (`HardFork.hs:107`): the count of each VRF key hash is the number of
+    * pools that use it, registered ones and re-registrations that wait for the boundary, each
+    * counted. The map starts empty (the reference has none before version 11; a state converted
+    * from the node's, which derived it from 10, is taken to the same).
+    */
+  def populateVRFKeyHashes(pools: PState): PState =
+    def add(
+        counts: SortedMap[VRFVerKeyHash, NonZero[Word64]],
+        vrf: VRFVerKeyHash
+    ): SortedMap[VRFVerKeyHash, NonZero[Word64]] =
+      counts.get(vrf) match
+        case None => counts.updated(vrf, NonZero.oneWord)
+        // saturates at the largest word, where adding one would reach zero
+        case Some(n) =>
+          NonZero
+            .from(Word64.fromUnsigned(n.value.bits + 1))
+            .fold(_ => counts, counts.updated(vrf, _))
+    val registered = pools.stakePools.valuesIterator.map(_.vrf)
+    val pending =
+      pools.future.valuesIterator.flatMap(f => VRFVerKeyHash.fromBytes(f.vrfKeyHash).toOption)
+    pools.copy(vrfKeyHashes =
+      (registered ++ pending).foldLeft(Sorted.empty[VRFVerKeyHash, NonZero[Word64]])(add)
+    )
+
   /** `hardforkTransition` (`HardFork.hs:68`). */
   def apply(es: EpochState[Conway], newVersion: Int): EpochState[Conway] =
     if newVersion == 10 then
       es.copy(ls = es.ls.copy[Conway](cert = updateDRepDelegations(es.ls.cert)))
+    else if newVersion == 11 then
+      es.copy(ls =
+        es.ls.copy[Conway](cert = es.ls.cert.copy(pState = populateVRFKeyHashes(es.ls.cert.pState)))
+      )
     else es
 
 /** EPOCH of Conway (`Conway/Rules/Epoch.hs:244,269`): the boundary of an epoch, after the rewards
