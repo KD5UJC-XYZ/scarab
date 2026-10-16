@@ -154,7 +154,7 @@ object Repro:
         "blockNo" -> header.blockNo.asJson,
         "hash" -> header.hash.hex.asJson,
         "era" -> header.era.toString.asJson,
-        "stage" -> Stage.Block.toString.asJson,
+        "stage" -> divergence.stage.toString.asJson,
         "preAnchor" -> pre.at
           .map(a => Json.obj("slot" -> a.slot.asJson, "hash" -> a.hash.hex.asJson))
           .asJson,

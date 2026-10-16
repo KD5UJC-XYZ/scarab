@@ -78,7 +78,8 @@ class DifferentialErasSuite extends CatsEffectSuite:
       neu: NewRules[IO] = NewRules.notPorted[IO],
       policy: Policy = Policy.Halt,
       repro: Repro[IO] = Repro.none[IO],
-      from: Paired = Paired.of(setup.start)
+      from: Paired = Paired.of(setup.start),
+      ticking: Boolean = false
   ): IO[Run] =
     for
       events <- Ref.of[IO, Vector[Event]](Vector.empty)
@@ -95,7 +96,10 @@ class DifferentialErasSuite extends CatsEffectSuite:
                   Sampling.EveryBlock,
                   policy,
                   repro,
-                  e => events.update(_ :+ e)
+                  e => events.update(_ :+ e),
+                  Option.when(ticking)((s, h) =>
+                    NodeRules.tick(s, h, setup.praos, setup.globals, setup.byronRules)
+                  )
                 )
                 last <- range.toList.foldLeftM(from)((p, i) => harness(p, headers(i), raws(i)))
                 stats <- harness.stats
@@ -106,6 +110,23 @@ class DifferentialErasSuite extends CatsEffectSuite:
         .rescue(e => IO.raiseError(RuntimeException(e.message)))
       seen <- events.get
     yield Run(outcome._1, seen, outcome._2, outcome._3)
+
+  // ---- the tick stage (J2.3): the ticked ledger of the old rules and of the new, at every block
+
+  test("the tick of every block of the capture: the new rules reach the old rules' state") {
+    run(blocks.indices, NewRules.current[IO], Policy.Reseed, ticking = true).map { r =>
+      val diverged = r.events.collect { case Event.Diverged(d, _) => Show[Divergence].show(d) }
+      println(Show[Stats].show(r.stats))
+      diverged.take(20).foreach(println)
+      assertEquals(diverged, Vector.empty)
+      assertEquals(r.stats.failures, 0L)
+      // every block of Shelley to Conway is compared (EveryBlock); the 50 Byron blocks have no tick
+      assertEquals(r.stats.ticks.size, blocks.count(_.era != Era.Byron))
+      // and the epoch boundaries among them (the era changes are on boundaries)
+      val crossings = r.events.collect { case Event.TickCompared(b, n, _) if n > 0 => b }
+      assert(crossings.size >= 6, crossings.size.toString)
+    }
+  }
 
   // ---- reseed everything: zero divergences, and what the conversion costs
 

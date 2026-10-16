@@ -196,6 +196,17 @@ object JsonLog:
         "diffMillis" -> (cost.diffNanos / 1e6).asJson,
         "seeded" -> seeded.asJson
       )
+    case DifferentialEvent.TickCompared(b, crossed, cost) =>
+      line(
+        "differentialTicked",
+        "slot" -> b.slot.asJson,
+        "hash" -> b.hash.hex.asJson,
+        "epochsCrossed" -> crossed.asJson,
+        "oldMillis" -> (cost.oldNanos / 1e6).asJson,
+        "seedMillis" -> (cost.seedNanos / 1e6).asJson,
+        "newMillis" -> (cost.newNanos / 1e6).asJson,
+        "diffMillis" -> (cost.diffNanos / 1e6).asJson
+      )
     case DifferentialEvent.Diverged(d, bundle) => rulesDiverged(d, bundle)
 
   /** The harness' account of the run: blocks, samples, what the conversion cost, what is not
@@ -217,6 +228,9 @@ object JsonLog:
       "failures" -> stats.failures.asJson,
       "toMirrorMillis" -> millis(stats.samples.map(_.toMirrorNanos)),
       "diffMillis" -> millis(stats.samples.map(_.diffNanos)),
+      "ticksCompared" -> stats.ticks.size.asJson,
+      "tickOldMillis" -> millis(stats.ticks.map(_.oldNanos)),
+      "tickNewMillis" -> millis(stats.ticks.map(_.newNanos)),
       "notPorted" -> stats.notPorted.toList
         .sortBy((k, _) => (k._1.ordinal, k._2.toString))
         .map((k, n) => s"${k._1}/${k._2}" -> n.asJson)

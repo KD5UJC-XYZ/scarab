@@ -58,7 +58,16 @@ object DifferentialReplayMain extends IOApp:
                             Sampling.EveryBlock,
                             Policy.Reseed,
                             Repro.none[IO],
-                            e => events.update(_ :+ e)
+                            e => events.update(_ :+ e),
+                            Some((s, h) =>
+                              NodeRules.tick(
+                                s,
+                                h,
+                                configured.praos,
+                                configured.globals,
+                                configured.byronRules
+                              )
+                            )
                           )
                           _ <- harness(
                             Paired.of(bundle.state, bundle.pre.anchor),

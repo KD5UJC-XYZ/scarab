@@ -21,6 +21,13 @@ enum Sampling derives Eq:
     */
   case Boundaries(blocks: Long)
 
+  /** Whether the tick of the block `at` is to be compared at a sampling point (the tick stage also
+    * compares wherever the tick does something).
+    */
+  def dueTick(first: Boolean, at: BlockRef): Boolean = this match
+    case EveryBlock    => true
+    case Boundaries(n) => first || at.blockNo % n == 0
+
   /** Whether the state `after` the block `at`, which came from `before`, is to be compared. */
   def due(before: NodeState, after: NodeState, at: BlockRef, first: Boolean): Boolean = this match
     case EveryBlock => true
@@ -46,8 +53,18 @@ enum Policy derives Eq:
   */
 final case class Cost(toMirrorNanos: Long, diffNanos: Long)
 
+/** What a compared tick cost, in nanoseconds: the old side's tick, the seed of the new side's
+  * pre-state (the conversion of the old state), the new side's tick and the comparison with the old
+  * side's ticked state (its conversion included).
+  */
+final case class TickCost(oldNanos: Long, seedNanos: Long, newNanos: Long, diffNanos: Long)
+
 /** What the harness reports as it goes. */
 enum Event:
+  /** The tick of `block` was compared (`Stage.Tick`): it crossed `epochsCrossed` epoch boundaries.
+    */
+  case TickCompared(block: BlockRef, epochsCrossed: Int, cost: TickCost)
+
   /** A sample was taken after `block`: the conversion and comparison cost, and whether the new side
     * was seeded from the old one (its rules are not ported).
     */
@@ -63,9 +80,11 @@ final case class Stats(
     blocks: Long = 0,
     samples: Vector[Cost] = Vector.empty,
     notPorted: Map[(Era, Stage), Long] = Map.empty,
-    failures: Long = 0
+    failures: Long = 0,
+    ticks: Vector[TickCost] = Vector.empty
 ):
   def sampled: Long = samples.size.toLong
+  def ticked(c: TickCost): Stats = copy(ticks = ticks :+ c)
 
   def block: Stats = copy(blocks = blocks + 1)
   def sample(c: Cost): Stats = copy(samples = samples :+ c)
@@ -84,7 +103,9 @@ object Stats:
       val sorted = xs.sorted
       f"median ${quantile(sorted, 0.5) / 1e6}%.1f, p99 ${quantile(sorted, 0.99) / 1e6}%.1f, max ${sorted.lastOption
           .getOrElse(0L) / 1e6}%.1f"
-    s"differential: ${s.blocks} blocks, ${s.sampled} sampled, ${s.failures} failures; " +
+    s"differential: ${s.blocks} blocks, ${s.sampled} sampled, ${s.ticks.size} ticks compared " +
+      s"(old ms ${ms(s.ticks.map(_.oldNanos))}; new ms ${ms(s.ticks.map(_.newNanos))}), " +
+      s"${s.failures} failures; " +
       s"toMirror ms ${ms(s.samples.map(_.toMirrorNanos))}; diff ms ${ms(s.samples.map(_.diffNanos))}; " +
       s"not ported ${s.notPorted.toList.sortBy(_._1._1.ordinal).map { case ((e, st), n) => s"$e/$st=$n" }.mkString(", ")}"
   }

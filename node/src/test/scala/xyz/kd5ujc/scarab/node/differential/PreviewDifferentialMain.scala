@@ -29,13 +29,14 @@ import xyz.kd5ujc.scarab.ledger.NodeError
   * opening the database).
   *
   * {{{
-  * java -Xmx16g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.PreviewDifferentialMain <db> [stride] [genesis-dir] [offset] [scratch]
+  * java -Xmx16g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.PreviewDifferentialMain <db> [stride] [genesis-dir] [offset[,offset...]] [scratch]
   * }}}
   *
   * `<db>` is the `db` directory of the K1 Scala Preview run (`snapshots`, `immutable`,
-  * `utxo/checkpoints`). Every `stride` -th snapshot, from `offset`, is the start of a replay
-  * (stride 72 is about twenty epochs of the 1,451). Exits non-zero on any divergence or on a final
-  * state that is not the snapshot's.
+  * `utxo/checkpoints`). Every `stride` -th snapshot, from `offset` (several, comma separated: the
+  * starts of single epochs, with a stride larger than the corpus), is the start of a replay (stride
+  * 72 is about twenty epochs of the 1,451). Exits non-zero on any divergence or on a final state
+  * that is not the snapshot's.
   */
 object PreviewDifferentialMain:
   private final case class Epoch(
@@ -51,10 +52,6 @@ object PreviewDifferentialMain:
 
   private val SnapshotFile = """snapshot-(\d{20})-(\d+)\.bin""".r
 
-  /** The state as a comparison of two runs sees it: the UTxO is a handle over a RocksDB-backed set
-    * whose bookkeeping (what was flushed, the diff) depends on when snapshots were taken, so it is
-    * compared by what it holds (the counts and the stake maps).
-    */
   /** Loads the UTxO checkpoint of a snapshot into `store`. The checkpoints of the K1 run were
     * written before the key of the store became `txid ++ be16 ix` (K6, 2026-10-14): theirs is
     * `txid ++ be32 ix`, so the checkpoint is read as the files it is (RocksDB, read only) and its
@@ -94,10 +91,17 @@ object PreviewDifferentialMain:
         options.close()
     }.flatMap((batches, stamp) => batches.traverse_(store.write(_, stamp)))
 
+  /** The state as a comparison of two runs sees it: the UTxO is a handle over a RocksDB-backed set
+    * whose bookkeeping (what was flushed, the diff) depends on when snapshots were taken, so it is
+    * compared by what it holds (the counts and the stake maps); the snapshots of the K1 run are of
+    * an earlier build, whose previous parameters in the first epoch of Conway lacked the Conway
+    * fields ([[PreviousBuild]]).
+    */
   private def comparable(s: NodeState): NodeState =
-    val u = s.ledger.utxo
-    s.copy(ledger =
-      s.ledger.copy(utxo =
+    val earlier = PreviousBuild.withoutConwayFields(s)
+    val u = earlier.ledger.utxo
+    earlier.copy(ledger =
+      earlier.ledger.copy(utxo =
         Utxo.empty.copy(stake = u.stake, ptrStake = u.ptrStake, coin = u.coin, count = u.count)
       )
     )
@@ -108,7 +112,7 @@ object PreviewDifferentialMain:
     val setup = NodeSetup
       .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preview/genesis")))
       .fold(e => sys.error(e.message), identity)
-    val offset = args.lift(3).fold(0)(_.toInt)
+    val offsets = args.lift(3).fold(Set(0))(_.split(',').map(_.trim.toInt).toSet)
     val scratch =
       args.lift(4).map(Path.of(_)).getOrElse(Files.createTempDirectory("preview-differential"))
     val env = setup.mirrorEnv()
@@ -119,8 +123,11 @@ object PreviewDifferentialMain:
       .filter(f => SnapshotFile.matches(f.getFileName.toString))
       .toVector
       .sortBy(_.getFileName.toString)
-    val starts = snapshots.indices.filter(i => i % stride == offset && i + 1 < snapshots.size)
-    println(s"${snapshots.size} snapshots, ${starts.size} replays (stride $stride, offset $offset)")
+    val starts =
+      snapshots.indices.filter(i => offsets.contains(i % stride) && i + 1 < snapshots.size)
+    println(
+      s"${snapshots.size} snapshots, ${starts.size} replays (stride $stride, offsets ${offsets.toList.sorted.mkString(",")})"
+    )
 
     val cache = VerificationCache.unsafe()
     val praos = setup.praos.copy(verdicts = cache)
@@ -159,12 +166,17 @@ object PreviewDifferentialMain:
             )
             harness <- DifferentialRules.create[IO](
               old,
-              NewRules.notPorted[IO],
+              NewRules.current[IO],
               IO.pure(env),
               Sampling.Default,
               Policy.Reseed,
               Repro.none[IO],
-              e => events.update(_ :+ e)
+              e =>
+                events.update(_ :+ e) *> (e match
+                  case Event.Diverged(d, _) =>
+                    IO.println(s"  DIVERGED ${cats.Show[Divergence].show(d)}")
+                  case _ => IO.unit),
+              Some((s, h) => NodeRules.tick(s, h, praos, setup.globals, setup.byronRules))
             )
             step = (p: Paired, raw: xyz.kd5ujc.scarab.codec.Bytes) =>
               val header = Block
@@ -195,11 +207,14 @@ object PreviewDifferentialMain:
       .allow[NodeError] {
         Handle
           .allow[Divergence] {
+            // each epoch reads its two snapshots when it runs (not when the list of epochs is built:
+            // at stride 4 the snapshots of 363 epochs would be in memory at once)
             starts.toList.traverse { i =>
               val (from, to) = (snapshots(i), snapshots(i + 1))
-              val (start, target) = (read(from), read(to))
-              val end = target.anchor.getOrElse(sys.error(s"$to has no anchor"))
               for
+                snapshotsOfEpoch <- IO.blocking((read(from), read(to)))
+                (start, target) = snapshotsOfEpoch
+                end = target.anchor.getOrElse(sys.error(s"$to has no anchor"))
                 t0 <- IO.monotonic
                 baseline <- replay(from, start, end, differential = false)
                 t1 <- IO.monotonic
@@ -241,6 +256,8 @@ object PreviewDifferentialMain:
     val toMirror = r.stats.samples.map(_.toMirrorNanos).sum / 1000000
     s"epoch $epoch -> ${epoch + 1}: ${r.blocks} blocks; replay ${r.baselineMillis} ms alone, " +
       s"${r.differentialMillis} ms differential; ${r.stats.sampled} samples, toMirror $toMirror ms; " +
+      s"${r.stats.ticks.size} ticks compared (old ${r.stats.ticks.map(_.oldNanos).sum / 1000000} ms, " +
+      s"new ${r.stats.ticks.map(_.newNanos).sum / 1000000} ms, seed ${r.stats.ticks.map(_.seedNanos).sum / 1000000} ms); " +
       s"${r.stats.failures} divergences; end state ${
           if r.stateAgrees then "= the snapshot's"
           else s"DIFFERS ${r.agrees.fold("")(d => d.path.render)}"

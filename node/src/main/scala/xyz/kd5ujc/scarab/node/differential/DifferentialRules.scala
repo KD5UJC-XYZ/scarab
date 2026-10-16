@@ -34,7 +34,8 @@ final class DifferentialRules[F[_]] private (
     policy: Policy,
     repro: Repro[F],
     observe: Event => F[Unit],
-    counters: Ref[F, Stats]
+    counters: Ref[F, Stats],
+    tickStage: Option[TickStage[F]]
 )(using F: Sync[F], failures: Handle[F, NodeError], halt: Raise[F, Divergence])
     extends BlockRules[F, Paired]:
 
@@ -46,6 +47,7 @@ final class DifferentialRules[F[_]] private (
     for
       attempted <- failures.attempt(old(state.old, header, raw))
       first <- counters.modify(s => (s.block, s.blocks == 0))
+      _ <- ticked(state, header, raw, block, first)
       outcome <- newSide(state, header, raw, block)
       next <- attempted match
         case Left(refused: ValidationError) =>
@@ -56,6 +58,24 @@ final class DifferentialRules[F[_]] private (
           agree(Right(()), outcome, state, header, raw, block) *>
             following(state, after, header, raw, block, outcome, first)
     yield next
+
+  /** The `Tick` stage: the tick of the block on both sides, where the new side's is ported. */
+  private def ticked(
+      state: Paired,
+      header: Header,
+      raw: Bytes,
+      block: BlockRef,
+      first: Boolean
+  ): F[Unit] =
+    (tickStage, neu.tick(header.era)).tupled.traverse_ { (stage, port) =>
+      stage(port, state, header, block, first).flatMap(
+        _.traverse_ { compared =>
+          counters.update(_.ticked(compared.cost)) *>
+            observe(Event.TickCompared(block, compared.epochsCrossed, compared.cost)) *>
+            compared.divergence.traverse_(diverge(_, state, header, raw))
+        }
+      )
+    }
 
   /** What the new rules say of the block, when they are ported for its era. A pre-state the new
     * side does not hold is seeded from the old one first.
@@ -194,7 +214,8 @@ object DifferentialRules:
       sampling: Sampling = Sampling.Default,
       policy: Policy = Policy.Halt,
       repro: Repro[F],
-      observe: Event => F[Unit]
+      observe: Event => F[Unit],
+      oldTick: Option[TickStage.OldTicking] = None
   )(using
       F: Sync[F],
       failures: Handle[F, NodeError],
@@ -202,4 +223,16 @@ object DifferentialRules:
   ): F[DifferentialRules[F]] =
     Ref
       .of[F, Stats](Stats())
-      .map(new DifferentialRules[F](old, neu, env, sampling, policy, repro, observe, _))
+      .map(
+        new DifferentialRules[F](
+          old,
+          neu,
+          env,
+          sampling,
+          policy,
+          repro,
+          observe,
+          _,
+          oldTick.map(new TickStage[F](env, sampling, _))
+        )
+      )

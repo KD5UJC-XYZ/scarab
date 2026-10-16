@@ -374,7 +374,8 @@ object Main extends IOApp:
               reproDir.fold(Repro.none[IO])(dir =>
                 Repro.files[IO](dir, eraStarts.get.map(setup.mirrorEnv), Some(store))
               ),
-              JsonLog.differential
+              JsonLog.differential,
+              Some((s, h) => NodeRules.tick(s, h, setup.praos, setup.globals, setup.byronRules))
             )
             .map(Some(_))
       rules <- differential.fold[IO[BlockRules[IO, NodeState]]](IO.pure(oldRules))(

@@ -382,6 +382,82 @@ object NodeRules:
           )
         )
 
+  /** The ledger as a block meets it: the epoch boundaries between the ledger's epoch and the
+    * block's (each one `Epoch.boundary`), then the per-block effects of the tick (`Epoch.tick`:
+    * genesis delegations and the start of the reward update), with the block number stamped on the
+    * changes the block makes to the UTxO set.
+    */
+  private def tickLedger(
+      ledger: LedgerState,
+      announced: Header.Shelley,
+      geometry: EpochGeometry,
+      globals: LedgerGlobals
+  ): Either[BlockFailure, LedgerState] =
+    val epoch = geometry.epochOf(announced.slot)
+    for
+      _ <- Either.cond(
+        epoch >= ledger.epoch,
+        (),
+        BlockFailure.EpochPrecedesLedger(epoch)
+      )
+      crossed = (ledger.epoch + 1 to epoch).foldLeft(ledger)((s, e) =>
+        Epoch.boundary(s, e, globals)
+      )
+      _ <- Either.cond(
+        crossed.epoch == ledger.epoch || crossed.params.protocolMajor >= 9 ||
+          crossed.total == globals.maxSupply,
+        (),
+        BlockFailure.SupplyInvariant(epoch, crossed.total, globals.maxSupply)
+      )
+      ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
+    yield ticked0.copy(utxo = ticked0.utxo.at(announced.blockNo.toLong))
+
+  /** The old side's tick of a block, for the differential harness: the state the block's header and
+    * transactions are applied to, before them (design `ledger-mirror-step2.md` §2.5, stage `Tick`).
+    *
+    * @param entered
+    *   the node state once the chain has entered Shelley (the Byron hand-over, on the first
+    *   Shelley-based block), with the ledger as it was before the tick
+    * @param ticked
+    *   the ledger after the tick
+    * @param epochsCrossed
+    *   the epoch boundaries the tick ran
+    * @param config
+    *   the Praos configuration and the ledger constants once the first Shelley epoch is known
+    */
+  final case class OldTick(
+      entered: NodeState,
+      ticked: LedgerState,
+      epochsCrossed: Int,
+      config: PraosConfig,
+      globals: LedgerGlobals
+  )
+
+  /** The tick of a Shelley-based block on the old rules; none for a Byron block, which has none. */
+  def tick(
+      state: NodeState,
+      header: Header,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      byron: Option[ByronRules.Config]
+  ): Either[BlockFailure, Option[OldTick]] =
+    header match
+      case _: Header.Byron => Right(None)
+      case h: Header.Shelley =>
+        enterShelley(state, h, config, globals, byron).flatMap { (entered, cfg, glob) =>
+          tickLedger(entered.ledger, h, cfg.geometry, glob).map(ticked =>
+            Some(
+              OldTick(
+                entered,
+                ticked,
+                (cfg.geometry.epochOf(h.slot) - entered.ledger.epoch).toInt,
+                cfg,
+                glob
+              )
+            )
+          )
+        }
+
   /** Full validation for every Shelley-based era: tick the ledger to the block's slot, validate the
     * header against the ticked pool distribution (so the leader threshold is always checked outside
     * the overlay schedule), then apply every transaction.
@@ -418,23 +494,7 @@ object NodeRules:
         (),
         BlockFailure.BodyCommitment
       )
-      _ <- Either.cond(
-        epoch >= state.ledger.epoch,
-        (),
-        BlockFailure.EpochPrecedesLedger(epoch)
-      )
-      crossed = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
-        Epoch.boundary(s, e, globals)
-      )
-      _ <- Either.cond(
-        crossed.epoch == state.ledger.epoch || crossed.params.protocolMajor >= 9 ||
-          crossed.total == globals.maxSupply,
-        (),
-        BlockFailure.SupplyInvariant(epoch, crossed.total, globals.maxSupply)
-      )
-      ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
-      // Changes to the UTxO set made by this block are stamped with its number.
-      ticked = ticked0.copy(utxo = ticked0.utxo.at(announced.blockNo.toLong))
+      ticked <- tickLedger(state.ledger, announced, geometry, globals)
       _ <- config.forks
         .check(
           announced.era,

@@ -10,13 +10,19 @@ import xyz.kd5ujc.scarab.ledger.BlockFailure
 import xyz.kd5ujc.scarab.ledger.state.Difference
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Where in the application of a block two sides were compared. The harness compares after the
-  * whole block today (`Block`: header and body); the stages of design §2.5 (`Tick(epochsCrossed)`,
-  * `Header`, `Tx(index, txId)`, `Bbody`) arrive with the first rule that is ported, because only a
-  * ported rule has a state of its own to compare at them, and the old side exposes them then
-  * (J2.3).
+/** Where in the application of a block two sides were compared. The stages of design §2.5 arrive
+  * with the rules that are ported, because only a ported rule has a state of its own to compare at
+  * them, and the old side exposes them then:
+  *
+  *   - `Tick(epochsCrossed)`: the ledger once it is ticked to the block's slot, before the header
+  *     and the transactions (J2.3), `epochsCrossed` being the epoch boundaries the tick ran
+  *     (`NodeRules.tick`);
+  *   - `Block`: after the whole block (header and body).
+  *
+  * `Header`, `Tx(index, txId)` and `Bbody` come with the ports of J2.4 and J2.5.
   */
 enum Stage derives Eq:
+  case Tick(epochsCrossed: Int)
   case Block
 
 object Stage:
@@ -41,6 +47,9 @@ enum Divergence:
   case VerdictDiffers(block: BlockRef, stage: Stage, old: Verdict, neu: Verdict)
   case Unconvertible(block: BlockRef, stage: Stage, error: StateMirrorError)
   case NotPorted(era: Era, stage: Stage)
+
+  /** Where the sides were compared. */
+  def stage: Stage
 
   /** Whether the divergence is a disagreement (everything but a rule that is not ported yet). */
   def isFailure: Boolean = this match
