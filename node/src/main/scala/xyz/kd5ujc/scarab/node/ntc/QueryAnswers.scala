@@ -695,10 +695,10 @@ object QueryAnswers:
       ids: Option[Set[Bytes]]
   ): StakeSnapshotsAnswer =
     val snaps = Vector(snapshots.mark, snapshots.set, snapshots.go)
-    def stakeOf(snap: mirror.SnapShot, p: Bytes): BigInt =
-      snap.pools.iterator
-        .collectFirst { case (id, s) if id.bytes == p => s.stake.toBigInt }
-        .getOrElse(BigInt(0))
+    // each pool's stake in each snapshot, by pool id
+    val stakes: Vector[Map[Bytes, BigInt]] =
+      snaps.map(_.pools.iterator.map((id, s) => id.bytes -> s.stake.toBigInt).toMap)
+    def stakeOf(i: Int, p: Bytes): BigInt = stakes(i).getOrElse(p, BigInt(0))
     // Without a list of pools: before protocol version 11 the pools that have delegators in any
     // snapshot, from 11 those with stake.
     val chosen: Set[Bytes] = ids.getOrElse {
@@ -716,7 +716,7 @@ object QueryAnswers:
           .toSet
     }
     val rows = chosen.toVector
-      .map(p => p -> snaps.map(stakeOf(_, p)))
+      .map(p => p -> snaps.indices.map(stakeOf(_, p)))
       .filter { case (_, st) => params.protocolMajor < 11 || st.exists(_ > 0) }
       .map { case (p, st) => p -> (st(0), st(1), st(2)) }
     // the totals are `NonZero`: an empty snapshot counts as 1

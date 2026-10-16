@@ -8,6 +8,11 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** The parts of the certificate and governance state that every era has, whichever record it is in
   * (`EraCertState`, `EraAccounts`, `EraGov` of the reference): one match on the witness each, in
   * whose branches the match types reduce.
+  *
+  * These are `EraLedger` 's accessors (`ledger/rules/`) over the certificate state alone: a reader
+  * is given the parts of a ledger state one at a time ([[EraRead]]), and a flat state converts only
+  * the part asked for, so it has no whole `LedgerState[E]` to hand `EraLedger`. The functions are
+  * the same one match each; if `EraLedger` takes the parts, these go.
   */
 object EraViews:
   /** One stake account as every era's accounts see it. */

@@ -105,6 +105,13 @@ object ReadCorpusMain:
                 // one view of each reading per state, as the node holds one per acquired state
                 val flatView = QueryView(point, blockNo, state)(using flat)
                 val mirrorView = QueryView(point, blockNo, mirror)(using viaMirror)
+                // what the first account query on an acquired flat state pays
+                val began = System.nanoTime()
+                val accounts =
+                  flatView.conway.toOption.flatten.flatMap(_.accounts.toOption.map(_.size))
+                println(
+                  s"$label: ${accounts.getOrElse(0)} accounts read in ${(System.nanoTime() - began) / 1000000} ms"
+                )
                 NtcGolden.battery(state.ledger).foreach { (name, q) =>
                   val query = NtcQuery.IfCurrent(Era.Conway.index, q)
                   val a = QueryAnswers.answerOrWhy(queryEnv, flatView, Map.empty, query)
