@@ -358,6 +358,14 @@ Each stage is one session, with the gates of AGENTS.md (`check`, `scalafixAll --
 Open for the owner: whether the read-back of section 6 stays a full typed comparison; and
 whether `Node.value` caches leaves (it does not in this plan: a cache is retained heap).
 
+*Decided 2026-10-16:* the owner keeps only the latest robust path ("I didn't think we need to
+maintain two copies of ledger state if we have migrated. I am happy to keep only the most recent
+robust code"). The node writes with `SnapshotCheck.Structure` (the sidecar decodes and the Haskell
+section is one CBOR item, read as the index and dropped); `SnapshotCheck.Full`, the typed read-back
+and comparison, is what the tests, the migrations and `--snapshot-check full` use. The recovery
+already restores the newest snapshot that reads, so a file that parses and does not restore costs
+a slower restart, not a wrong state.
+
 ## 8. Results of stages 0 and 1 (2026-10-16)
 
 Measured as in section 2 (JDK 21, G1, Docker, `Memory94Main`), on a 233,415,408-byte snapshot of the

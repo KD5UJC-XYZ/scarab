@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.node.MirrorCorpus.Report
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 import xyz.kd5ujc.scarab.storage.{
   FileLedgerSnapshots,
+  SnapshotCheck,
   SnapshotFormat,
   SnapshotMigration,
   SnapshotV4,
@@ -74,7 +75,7 @@ object PreviewMirrorMain:
       direct: StateSnapshot[NodeState]
   ): Either[StorageError, Gate] =
     given Ask[F, ConsensusMirrorEnv] = Ask.const(env)
-    given SnapshotFormat[F, NodeState] = SnapshotV4.format[F]
+    given SnapshotFormat[F, NodeState] = SnapshotV4.format[F](SnapshotCheck.Full)
     val dir = Files.createTempDirectory("snapshot-gate")
     try
       Files.copy(file, dir.resolve(file.getFileName))
@@ -88,7 +89,7 @@ object PreviewMirrorMain:
       val expected = direct.copy(state = SnapshotV4.canonical(env, direct.state))
       // The cost of the V4 write of this state, on its own: the mirror, the Haskell encoding.
       val (encoded, writeMillis) =
-        millis(SnapshotV4.format[F].encode(direct).value.unsafeRunSync())
+        millis(SnapshotV4.format[F](SnapshotCheck.Full).encode(direct).value.unsafeRunSync())
       // ... and its parts: the mirror, and the Haskell encoding of the ledger state it gives
       val (mirrored, toMirrorMillis) =
         millis(MirrorRun.run(env)(_.toMirror(direct.anchor, direct.state)))

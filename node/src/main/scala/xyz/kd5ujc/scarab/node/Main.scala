@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.storage.{
   MemoryUtxoStore,
   RocksUtxoStore,
   SnapshotFormat,
+  SnapshotCheck,
   SnapshotMigration,
   SnapshotV4,
   StateBacking,
@@ -63,12 +64,13 @@ import scala.concurrent.duration.*
 /** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
   * [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
-  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
-  * [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off]
-  * [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check]
-  * [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket
-  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N]
+  * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N]
+  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
+  * [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>]
+  * [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence
+  * halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey
+  * <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -98,6 +100,8 @@ object Main extends IOApp:
       db: Option[Path] = None,
       snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
       keepSnapshots: Int = 3,
+      /** `--snapshot-check structure|full`: what a snapshot write proves before it is kept. */
+      snapshotCheck: SnapshotCheck = SnapshotCheck.Structure,
       listen: Option[SocketAddress[Host]] = None,
       /** `None`: the configuration's `MempoolCapacityBytesOverride`, else 1 MiB. */
       mempoolBytes: Option[Long] = None,
@@ -409,7 +413,7 @@ object Main extends IOApp:
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
-      given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO]
+      given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](options.snapshotCheck)
       storage = options.db.fold(
         Resource.pure[IO, Storage](
           Storage(
@@ -770,7 +774,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -784,6 +788,7 @@ object Main extends IOApp:
     "db",
     "snapshot-every",
     "keep-snapshots",
+    "snapshot-check",
     "listen",
     "mempool-bytes",
     "utxo-store",
@@ -857,6 +862,9 @@ object Main extends IOApp:
           keep <- flags
             .get("keep-snapshots")
             .fold(Right(3))(_.toIntOption.filter(_ > 0).toRight(usage))
+          check <- flags
+            .get("snapshot-check")
+            .fold(Right(SnapshotCheck.Structure))(t => SnapshotCheck.parse(t).toRight(usage))
           listen <- flags.get("listen").traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           localSocket = flags.get("local-socket").map(Path.of(_))
           mempool <- flags
@@ -927,6 +935,7 @@ object Main extends IOApp:
           flags.get("db").map(Path.of(_)),
           interval,
           keep,
+          check,
           listen,
           mempool,
           config,

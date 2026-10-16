@@ -47,7 +47,7 @@ class ChainStorageSuite extends CatsEffectSuite:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO]
+  private given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](SnapshotCheck.Full)
   private val k = geometry.securityParam
 
   private val raws: Vector[Bytes] =

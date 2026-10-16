@@ -14,7 +14,14 @@ import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{Block, Header, StorageError, TxIn, TxOut}
 import xyz.kd5ujc.scarab.node.NodeRules
-import xyz.kd5ujc.scarab.storage.{Codec, NodeCodecs, SnapshotV4, StateSnapshot, UtxoStore}
+import xyz.kd5ujc.scarab.storage.{
+  Codec,
+  NodeCodecs,
+  SnapshotCheck,
+  SnapshotV4,
+  StateSnapshot,
+  UtxoStore
+}
 
 /** The repro of a divergence (design §2.5): what it takes to run the block again on the state it
   * was applied to, in seconds, without the chain that led there. Kept by the harness when the two
@@ -90,7 +97,9 @@ object Repro:
             pre.old.ledger
               .copy(utxo = pre.old.ledger.utxo.copy(diff = Map.empty, resident = Map.empty))
           )
-          encoded <- SnapshotV4.format[F](using F, asking(env)).encode(StateSnapshot(pre.at, bare))
+          encoded <- SnapshotV4
+            .format[F](SnapshotCheck.Full)(using F, asking(env))
+            .encode(StateSnapshot(pre.at, bare))
           _ <- F.blocking {
             Files.createDirectories(target)
             encoded.foreach(Files.write(target.resolve(Repro.Names.Snapshot), _))
@@ -184,7 +193,7 @@ object Repro:
       )
     val program = for
       snapshot <- bytes(Names.Snapshot)
-      pre <- EitherT(SnapshotV4.format[F].decode(snapshot))
+      pre <- EitherT(SnapshotV4.format[F](SnapshotCheck.Full).decode(snapshot))
       raw <- bytes(Names.Block)
       block <- lift(
         Block

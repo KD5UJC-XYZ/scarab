@@ -32,7 +32,7 @@ class SnapshotV4Suite extends CatsEffectSuite:
   private val env = setup.mirrorEnv()
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private given v3: SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO]
+  private given v3: SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](SnapshotCheck.Full)
   private val v2: SnapshotFormat[IO, NodeState] = LegacyV2Format.format[IO](env.forks)
 
   private val raws: Vector[Bytes] =
@@ -159,6 +159,32 @@ class SnapshotV4Suite extends CatsEffectSuite:
       )
       assert(java.util.Arrays.equals(SnapshotV4.framed(sidecar, haskell), bytes), era.toString)
     }
+  }
+
+  test("the structure check writes the bytes the full check writes, and refuses the same states") {
+    val structure = SnapshotV4.format[IO](SnapshotCheck.Structure)
+    written.traverse_ { (era, snapshot, full) =>
+      structure.encode(snapshot).map { cheap =>
+        full match
+          case Right(bytes) =>
+            assert(cheap.exists(java.util.Arrays.equals(_, bytes)), s"$era ${snapshot.anchor}")
+          // a state the full check refuses only on reading it back may pass the structure check;
+          // what the encoder refuses, both refuse
+          case Left(SnapshotRefusal.WouldNotRead(_) | SnapshotRefusal.WouldDiffer(_)) => ()
+          case Left(refused) => assertEquals(cheap.left.toOption, Some(refused))
+      }
+    }
+  }
+
+  test("the structure check refuses content whose Haskell section is not one CBOR item") {
+    accepted.filter(_._1 != Era.Byron).foreach { (era, _, bytes) =>
+      assert(SnapshotV4.wellFormed(bytes).isRight, era.toString)
+      assert(SnapshotV4.wellFormed(bytes.dropRight(1)).isLeft, s"$era truncated")
+      assert(SnapshotV4.wellFormed(bytes :+ 0.toByte).isLeft, s"$era trailing byte")
+    }
+    assertEquals(SnapshotCheck.parse("structure"), Some(SnapshotCheck.Structure))
+    assertEquals(SnapshotCheck.parse("FULL"), Some(SnapshotCheck.Full))
+    assertEquals(SnapshotCheck.parse("none"), None)
   }
 
   test("the store writes the content and then its checksum: the file is the closed content") {

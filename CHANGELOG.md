@@ -92,6 +92,11 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   was `toArray`, an output stream and `toByteArray`), the checksum written after the content in place of `content ++
   checksum`, and one copy fewer in `Writer.result`. The file is byte for byte the same (tested on every state of the eras
   fixture). Measured in `docs/design/memory-lean-decoding.md`, section 8.
+- **A snapshot write checks that the file parses, not that it reads back to the state (`--snapshot-check`).** The
+  default `structure` decodes the sidecar and reads the Haskell section as the index of its items (ADR 0013), without
+  building a second ledger state; `full` (the tests, the format migrations) reads the file back to the node state and
+  compares it with the state written, as every write did before. The owner's call on #94: the full comparison checked the
+  Haskell-layout mirror while it was new and costs a second ledger state at every write (0.84 GB at preprod epoch 188).
 
 ### Added (ledger-state mirror, step 2, jump 2: infrastructure and the differential harness, J2.1 and J2.2)
 - **`BlockFailure` (D6).** `NodeRules.applyBlock` returns `Either[BlockFailure, NodeState]`, a closed ADT in `ledger`

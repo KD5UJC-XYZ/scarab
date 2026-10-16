@@ -6,6 +6,32 @@ import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.storage.haskell.state.StateNotWritable
 
+/** What a snapshot write proves about the file before the store keeps it.
+  *
+  * The owner's call (#94, 2026-10-16): the read back to a full node state and its comparison with
+  * the state written ([[Full]]) checked the Haskell-layout mirror while it was new; it costs a
+  * second typed state at every write (0.84 GB on a preprod epoch-188 state), so the node keeps the
+  * cheap check and the tests and the migrations keep the full one. A file that passes [[Structure]]
+  * and that a restart still cannot restore is skipped by the recovery, which restores the newest
+  * older snapshot that reads (or replays the immutable blocks): a slower restart, never another
+  * state.
+  */
+enum SnapshotCheck:
+  /** The sidecar decodes and the Haskell section is one well-formed CBOR item, read as the index of
+    * its items (ADR 0013, two ints an item) and nothing built from it.
+    */
+  case Structure
+
+  /** The file is read back to the node state and compared with the canonical form of the state
+    * written: [[SnapshotRefusal.WouldNotRead]] and [[SnapshotRefusal.WouldDiffer]].
+    */
+  case Full
+
+object SnapshotCheck:
+  /** `structure` or `full`, as `--snapshot-check` takes it. */
+  def parse(text: String): Option[SnapshotCheck] =
+    values.find(_.toString.equalsIgnoreCase(text))
+
 /** Why a state was not written as a snapshot, or a snapshot not brought to the current format. A
   * snapshot is an optimisation (a restart without one replays the immutable blocks), so a refusal
   * is a typed event and the snapshot is skipped, never an error of the node.

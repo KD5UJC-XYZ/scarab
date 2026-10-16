@@ -7,7 +7,7 @@ import cats.mtl.Ask
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
 import java.nio.ByteBuffer
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
@@ -42,7 +42,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
 /** The snapshot of format version 4, the Haskell ledger state with a sidecar:
   *
@@ -78,10 +78,14 @@ object SnapshotV4:
   private type M[A] = Kleisli[Pure, ConsensusMirrorEnv, A]
   private val mirror: StateMirror[M] = StateMirror[M]
 
-  def format[F[_]: Sync](using env: Ask[F, ConsensusMirrorEnv]): SnapshotFormat[F, NodeState] =
+  /** The format, writing with `check` (see [[SnapshotCheck]]); a migration always checks in full.
+    */
+  def format[F[_]: Sync](check: SnapshotCheck)(using
+      env: Ask[F, ConsensusMirrorEnv]
+  ): SnapshotFormat[F, NodeState] =
     new SnapshotFormat[F, NodeState]:
       def encode(snapshot: StateSnapshot[NodeState]): F[Either[SnapshotRefusal, Array[Byte]]] =
-        env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(written(e, snapshot)))
+        env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(written(e, snapshot, check)))
 
       def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[NodeState]]] =
         env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(read(e, content)))
@@ -136,25 +140,41 @@ object SnapshotV4:
     */
   private final case class Carried(observed: Map[Era, BigInt], gaps: Set[Gap])
 
-  /** The content of the snapshot, after reading it back: a snapshot that would not restore to the
-    * state it was taken of (its [[canonical]] form) is refused, so that a file is never written
-    * that a restart cannot use. The check costs about one read.
+  /** The content of the snapshot, after the `check`: with [[SnapshotCheck.Full]] a snapshot that
+    * would not restore to the state it was taken of (its [[canonical]] form) is refused, so that a
+    * file is never written that a restart cannot use (about one read); with
+    * [[SnapshotCheck.Structure]] one that does not parse is.
     */
   private def written(
       env: ConsensusMirrorEnv,
       snapshot: StateSnapshot[NodeState],
+      check: SnapshotCheck,
       carried: Option[Carried] = None
   ): Either[SnapshotRefusal, Array[Byte]] =
-    for
-      content <- encoded(env, snapshot, carried)
-      back <- read(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
-      want = canonical(env, snapshot.state)
-      _ <- Either.cond(
-        back.anchor == snapshot.anchor && back.state == want,
-        (),
-        SnapshotRefusal.WouldDiffer(differing(back.state, want))
-      )
-    yield content
+    encoded(env, snapshot, carried).flatTap { content =>
+      check match
+        case SnapshotCheck.Structure =>
+          wellFormed(content).leftMap(SnapshotRefusal.WouldNotRead(_))
+        case SnapshotCheck.Full =>
+          for
+            back <- read(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
+            want = canonical(env, snapshot.state)
+            _ <- Either.cond(
+              back.anchor == snapshot.anchor && back.state == want,
+              (),
+              SnapshotRefusal.WouldDiffer(differing(back.state, want))
+            )
+          yield ()
+    }
+
+  /** The sidecar decodes and the Haskell section (empty in Byron) is one CBOR item under the limits
+    * the state is read with: the index of its items is made and dropped.
+    */
+  private[storage] def wellFormed(content: Array[Byte]): Either[StorageError, Unit] =
+    sections(content).flatMap { (_, haskell) =>
+      if haskell.size == 0 then Right(())
+      else Cbor.decode(haskell, HaskellState.limits).bimap(corrupt, _ => ())
+    }
 
   /** The paths of the fields, down to the first collection or leaf, in which two values differ (at
     * most a few, for the log).
@@ -391,13 +411,13 @@ object SnapshotV4:
                 )
               )
             yield restored
-        out <- written(env, StateSnapshot(sidecar.anchor, state), Some(carried))
+        out <- written(env, StateSnapshot(sidecar.anchor, state), SnapshotCheck.Full, Some(carried))
       yield out
     else
       for
         old <- unreadable(legacy.SnapshotV2.decodeNode(content))
         state <- vocab(legacy.Upgrade.node(old.state, env.forks, old.anchor))
-        out <- written(env, StateSnapshot(old.anchor, state))
+        out <- written(env, StateSnapshot(old.anchor, state), SnapshotCheck.Full)
       yield out
 
   /** The ledger state with the node's UTxO set put back where the Haskell section has `map(0)`. */
