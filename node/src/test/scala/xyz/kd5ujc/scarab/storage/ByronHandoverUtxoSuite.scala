@@ -131,8 +131,8 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
               setup.globals,
               setup.byronRules
             ) match
-              case Right(next)          => next
-              case Left((rule, reason)) => fail(s"block $i rejected by $rule: $reason")
+              case Right(next) => next
+              case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
           }
           _ <- backing.advance(start)
           _ <- storeBeforeHandover(store)
