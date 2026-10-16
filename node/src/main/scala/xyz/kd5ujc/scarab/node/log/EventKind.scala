@@ -67,6 +67,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case Blst extends EventKind(Area.Node, Severity.Info)
   case Listening extends EventKind(Area.Node, Severity.Notice)
   case Memory extends EventKind(Area.Node, Severity.Info)
+  case CpuStarvation extends EventKind(Area.Node, Severity.Warning)
   case StateDump extends EventKind(Area.Node, Severity.Info)
   case VerificationCache extends EventKind(Area.Node, Severity.Debug)
   case Error extends EventKind(Area.Node, Severity.Error)

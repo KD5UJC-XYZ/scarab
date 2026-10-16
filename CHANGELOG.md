@@ -6,7 +6,7 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 ## [Unreleased]
 
 ### Added (observability, J3a: typed logging, #92)
-- **Every line is a typed event.** `Traced[E]` gives an event's `Line`: its `EventKind` (a closed enum of the 56
+- **Every line is a typed event.** `Traced[E]` gives an event's `Line`: its `EventKind` (a closed enum of the 57
   kinds; each names the namespace `Area.Kind` and the usual severity, the eight levels of trace-dispatcher), its
   severity and its JSON fields. A `Line` is built only from an event, so nothing logs an untyped line; `NodeEvent` is
   the closed type of the node's own lines. `Log[F]` is cats-mtl's `Tell[F, Line]`, given through `using`
@@ -20,6 +20,10 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 - **The libraries' logs.** The node's own SLF4J 2 provider (`LibraryLogs`; slf4j-api 2.0.17 replaces 1.7.36) sends
   http4s's and fs2's lines to the same sinks as `slf4j` lines (`Library.Slf4j`); the `StaticLoggerBinder` warning is
   gone.
+- **The runtime's starvation warning.** The cats-effect CPU starvation check (`IOApp.onCpuStarvationWarn`) is a
+  `cpuStarvation` line (`Node.CpuStarvation`, Warning: `clockDriftMs`, `threshold`, `intervalMs`) through the same
+  route, not plain text on stderr, which the devnet harness counted as an unexpected non-JSON line and failed the
+  e2e run on a 2-core CI runner.
 - **The same JSON.** Without a `--log-*` flag the log is what it was: every line, JSON, on stdout, byte for byte
   (`LogGoldenSuite` over one line of every event and every case of the event types, golden first written by
   `JsonLog`). On purpose: an `error` of an error case without fields has its name as `kind` (was `""`), `stateDump`

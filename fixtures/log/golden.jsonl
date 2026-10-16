@@ -7,6 +7,7 @@
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: truncated"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
 {"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
+{"event":"cpuStarvation","at":"2026-10-16T12:00:00Z","clockDriftMs":250,"threshold":0.1,"intervalMs":1000}
 {"event":"mirrorChecked","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Conway","millis":25,"gaps":["NonMyopic","RewardAttribution"],"residueEmpty":true,"retracts":true,"ok":true}
 {"event":"mirrorChecked","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Babbage","millis":25,"gaps":[],"residueEmpty":false,"retracts":true,"ok":false}
 {"event":"mirrorCheckFailed","at":"2026-10-16T12:00:00Z","slot":0,"hash":"e58d8216b9e04c46d716daad50e81a7c942eb5a1720c7ec65486a511b0f07c41","epoch":3,"era":"Alonzo","millis":25,"stage":"FromMirror","error":"MissingEra(era = Conway)"}

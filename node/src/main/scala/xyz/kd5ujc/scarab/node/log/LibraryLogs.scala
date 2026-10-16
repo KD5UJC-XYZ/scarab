@@ -15,9 +15,10 @@ import org.slf4j.spi.{MDCAdapter, SLF4JServiceProvider}
   * SLF4J finds its backend through a static `LoggerFactory`, so the route from the libraries to the
   * [[Log]] has to be reachable from static code: it is this one reference, which
   * [[LogRouter.resource]] sets while its log is open and clears after. It is the only global state
-  * of the log; the node itself is given its `Log` through `using`. Without a route (before the log
-  * is open, after it is closed, in a tool or a test that has none) a library's warnings and errors
-  * go to stderr as text and the rest is dropped.
+  * of the log, and the cats-effect runtime's starvation warning takes the same route ([[report]]);
+  * the node itself is given its `Log` through `using`. Without a route (before the log is open,
+  * after it is closed, in a tool or a test that has none) a library's warnings and errors go to
+  * stderr as text and the rest is dropped.
   */
 object LibraryLogs:
   private final case class Route(enabled: Severity => Boolean, emit: NodeEvent => Unit)
@@ -42,11 +43,16 @@ object LibraryLogs:
     route.get.fold(fallback(severity))(_.enabled(severity))
 
   private[log] def log(event: NodeEvent.Library): Unit =
+    report(event, event.severity, s"[${event.logger}](${event.severity}) ${event.message}")
+
+  /** An event from static code that has no `Log` of its own (the cats-effect runtime's starvation
+    * check, through `IOApp.onCpuStarvationWarn`): to the log while it is open, otherwise, at
+    * Warning and above, `text` to stderr.
+    */
+  def report(event: NodeEvent, severity: Severity, text: => String): Unit =
     route.get match
       case Some(r) => r.emit(event)
-      case None =>
-        if fallback(event.severity) then
-          System.err.println(s"[${event.logger}](${event.severity}) ${event.message}")
+      case None    => if fallback(severity) then System.err.println(text)
 
   def severity(level: Level): Severity = level match
     case Level.ERROR => Severity.Error

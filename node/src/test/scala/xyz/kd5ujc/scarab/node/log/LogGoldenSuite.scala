@@ -8,6 +8,7 @@ import scala.compiletime.constValue
 import scala.deriving.Mirror
 import cats.Applicative
 import cats.effect.{IO, Ref}
+import scala.concurrent.duration.*
 import cats.mtl.Tell
 import cats.syntax.all.*
 import munit.CatsEffectSuite
@@ -51,6 +52,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- blstReports.traverse_(r => node(NodeEvent.Blst(r)))
         _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
         _ <- node(NodeEvent.Memory(memory))
+        _ <- node(NodeEvent.CpuStarvation(250.millis, 0.1, 1.second))
         _ <- mirrorOutcomes.traverse_(o =>
           node(NodeEvent.MirrorChecked(header.slot, header.hash, BigInt(3), o, 25L))
         )

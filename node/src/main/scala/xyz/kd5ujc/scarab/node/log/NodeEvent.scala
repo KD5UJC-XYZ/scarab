@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.log
 import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
+import scala.concurrent.duration.FiniteDuration
 import scala.util.chaining.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
@@ -36,6 +37,13 @@ enum NodeEvent:
 
   /** A [[xyz.kd5ujc.scarab.node.MemoryReport]] sample (`--memory-report-seconds`). */
   case Memory(sample: Json)
+
+  /** The cats-effect runtime's starvation check fired: its timer ran `clockDrift` late, more than
+    * `threshold` of its `interval` (`IOApp.onCpuStarvationWarn`, which
+    * [[xyz.kd5ujc.scarab.node.Main]] turns into this line instead of the runtime's plain-text
+    * warning).
+    */
+  case CpuStarvation(clockDrift: FiniteDuration, threshold: Double, interval: FiniteDuration)
 
   /** A ledger-state digest was written (`--dump-state`). */
   case StateDumped(slot: BigInt, hash: Bytes, epoch: BigInt, millis: Long)
@@ -233,6 +241,12 @@ object NodeEvent:
       )
     case Listening(address) => EventKind.Listening.line("address" -> address.asJson)
     case Memory(sample)     => EventKind.Memory.line("sample" -> sample)
+    case CpuStarvation(drift, threshold, interval) =>
+      EventKind.CpuStarvation.line(
+        "clockDriftMs" -> drift.toMillis.asJson,
+        "threshold" -> threshold.asJson,
+        "intervalMs" -> interval.toMillis.asJson
+      )
     case StateDumped(slot, hash, epoch, millis) =>
       EventKind.StateDump.line(
         "slot" -> slot.asJson,

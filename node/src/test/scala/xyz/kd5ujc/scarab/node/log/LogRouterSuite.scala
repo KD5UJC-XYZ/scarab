@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import cats.effect.IO
+import scala.concurrent.duration.*
 import cats.syntax.all.*
 import io.circe.parser.parse
 import munit.CatsEffectSuite
@@ -206,6 +207,21 @@ class LogRouterSuite extends CatsEffectSuite:
           assertEquals(kept.flatMap(_.get[String]("message").toOption), List("hello world"))
           assertEquals(kept.flatMap(_.get[String]("level").toOption), List("Warning"))
           assertEquals(kept.flatMap(_.get[String]("logger").toOption), List("org.http4s.test"))
+        }
+    }
+  }
+
+  test("the runtime's starvation warning goes to the sinks as Node.CpuStarvation") {
+    tempDir.flatMap { dir =>
+      val file = dir.resolve("node.jsonl")
+      val event = NodeEvent.CpuStarvation(250.millis, 0.1, 1.second)
+      LogRouter
+        .resource[IO](settings("log-stdout" -> "off", "log-file" -> file.toString))
+        .use(_ => IO.blocking(LibraryLogs.report(event, Severity.Warning, "not text")))
+        .map { _ =>
+          val kept = lines(file).flatMap(parse(_).toOption).map(_.hcursor)
+          assertEquals(kept.flatMap(_.get[String]("event").toOption), List("cpuStarvation"))
+          assertEquals(kept.flatMap(_.get[Long]("clockDriftMs").toOption), List(250L))
         }
     }
   }

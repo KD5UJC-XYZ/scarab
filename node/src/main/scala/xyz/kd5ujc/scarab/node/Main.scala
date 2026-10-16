@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.consensus.{
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
 import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, NativeLibraryError, NodeError, PeerError}
 import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
+import cats.effect.metrics.CpuStarvationWarningMetrics
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
   ChainStorage,
@@ -54,7 +55,7 @@ import xyz.kd5ujc.scarab.node.differential.{
   Shadowed
 }
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, Forger, KeyFiles}
-import xyz.kd5ujc.scarab.node.log.{Log, LogRouter, LogSettings, NodeEvent}
+import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.metrics.{Catalogue, Collectors, EventMetrics, MeteredRules, Metrics}
 import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
@@ -191,6 +192,24 @@ object Main extends IOApp:
           case "epochs" | "epoch" => Some(Epochs(n))
           case _                  => None
       }
+
+  /** The runtime's CPU starvation warning as a `Node.CpuStarvation` line in the node's log, in
+    * place of the plain text cats-effect writes to stderr, which a reader of the JSON log (the
+    * devnet harness among them) cannot parse.
+    */
+  override protected def onCpuStarvationWarn(metrics: CpuStarvationWarningMetrics): IO[Unit] =
+    val event = NodeEvent.CpuStarvation(
+      metrics.clockDrift,
+      metrics.starvationThreshold,
+      metrics.starvationInterval
+    )
+    IO(
+      LibraryLogs.report(
+        event,
+        Severity.Warning,
+        s"cpu starvation: clock drift ${metrics.clockDrift}"
+      )
+    )
 
   def run(args: List[String]): IO[ExitCode] =
     if args.headOption.contains("import-haskell-db") then

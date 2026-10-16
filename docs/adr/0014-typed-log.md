@@ -48,7 +48,8 @@ per namespace a severity filter, backends and a frequency limit, looked up from 
   log4cats and log4s bring (their calls are kept by 2.0), because 1.7's binding is a class with static members,
   which Scala does not express directly. SLF4J's `LoggerFactory` is static, so the route from it to the log is one
   `AtomicReference` that `LogRouter.resource` sets and clears: the only global state of the log, and documented
-  there.
+  there. The cats-effect runtime's CPU starvation warning (`IOApp.onCpuStarvationWarn`, also called from static
+  code) takes the same route as a `Node.CpuStarvation` event.
 - **Writes are serialised.** One lock over all sinks, a line written before `tell` returns, as `println` was: lines
   are whole and in the same order everywhere, and the last lines of a run are out before the process exits.
 

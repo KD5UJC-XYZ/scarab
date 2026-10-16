@@ -501,6 +501,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `blst` | `Node.Blst` | Info | `platform`, `cpu`, `library` |
 | `listening` | `Node.Listening` | Notice | `address` |
 | `memory` | `Node.Memory` | Info | `sample` |
+| `cpuStarvation` | `Node.CpuStarvation` | Warning | `clockDriftMs`, `threshold`, `intervalMs` |
 | `stateDump` | `Node.StateDump` | Info | `slot`, `hash`, `epoch`, `millis` |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message` |
