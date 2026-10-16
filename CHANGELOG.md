@@ -74,6 +74,7 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   re-recorded with the reason, and the V3 snapshots of the previous build are compared without those fields.
 - **`expectedBlocks` of the reward calculation is floored** as in `PulsingReward.hs:127` (it was the exact product; equal for
   every real parameter set).
+
 ### Changed (memory-lean decoding, #94 stages 0 and 1)
 - **`Node` is a view of an index over the input (ADR 0013).** `Cbor.decode` writes two ints an item (where the item
   starts and ends) and builds no object; `Node.value` reads one level from the input at each call (a `def`, never cached)
