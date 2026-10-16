@@ -64,12 +64,26 @@ final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
       case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
     }
 
-  def advance(state: NodeState): F[Unit] = UtxoStore.advance(store, state.ledger.utxo)
+  /** While the Byron ledger is current (`byron.ledger` is set), `ledger.utxo` is only the genesis
+    * placeholder the Shelley state starts from: the real set is the Byron ledger's own, and the
+    * handover replaces the placeholder by it. The placeholder must not reach the store: it would
+    * make the store's stamp 0 and the handover's entries (stamp 0, built from scratch) would count
+    * as already stored, never be written and then be trimmed from the diff (mainnet stop 4). The
+    * reference emits the translated UTxO as table diffs
+    * (`translateLedgerStateByronToShelleyWrapper`, Ouroboros/Consensus/Cardano/CanHardFork.hs:
+    * 343-358, `valuesAsDiffs . unstowLedgerTables`), so every entry is written.
+    */
+  private def placeholder(state: NodeState): Boolean = state.byron.ledger.isDefined
+
+  def advance(state: NodeState): F[Unit] =
+    if placeholder(state) then F.unit else UtxoStore.advance(store, state.ledger.utxo)
 
   def settled(state: NodeState): F[NodeState] =
-    store.flushed.map { at =>
-      state.copy(ledger = state.ledger.copy(utxo = state.ledger.utxo.settled(at, force = true)))
-    }
+    if placeholder(state) then F.pure(state)
+    else
+      store.flushed.map { at =>
+        state.copy(ledger = state.ledger.copy(utxo = state.ledger.utxo.settled(at, force = true)))
+      }
 
   def checkpoint(anchor: BlockRef): F[Unit] =
     val dir = dirOf(anchor)

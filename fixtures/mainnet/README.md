@@ -12,6 +12,8 @@ Captured with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from `backbone.cardano.
 | `byron-genesis-trimmed.json` | The public mainnet `byron-genesis.json` (https://book.play.dev.cardano.org/environments/mainnet/) with `avvmDistr` cut to the one entry the slot 3313 block spends (the full file has 14,505 entries, 1 MB). Its canonical hash is therefore not the real genesis hash. |
 | `byron-large-address-block.hex` | The Byron main block at slot 1,769,882 (epoch 81, hash `f277604972be4b11...`, 8.6 KB), full `[1, block]` encoding: the block where the first mainnet sync from genesis stopped. Its one transaction (bc61865d) pays an address of 7,689 bytes. Captured with `--blocks 1 --from 1769881.7bc92640368f07ccbe62b615c2bd8ed59da10a0624248dca67b89d0442d38161 --byron-epoch-slots 21600` on 2026-10-16. |
 | `byron-large-address-inputs.json` | The output that transaction spends (3,000,000 lovelace), from the Koios API (`tx_utxos`), in the form of `byron-tx-inputs.json`. |
+| `byron-tx-c1092b9c-block.hex` | The Byron main block at slot 4,105,943 (epoch 190, hash `ff78a9ec7703935d...`, 1.5 KB), full `[1, block]` encoding: it holds transaction c1092b9c, whose output 0 (12,932,000,000 lovelace) mainnet stop 4 lost at the Byron to Shelley handover. Captured with `--blocks 1 --from 4105942.3015c21d6b5fd44465fa06ad3058e263d690aae397c6a95df5b2c72c8373f225 --byron-epoch-slots 21600` on 2026-10-16. |
+| `byron-tx-c1092b9c-inputs.json` | The output that c1092b9c spends (c6f9c891...#0, 7,785,462,486,762 lovelace), from the Koios API (`tx_info`), in the form of `byron-tx-inputs.json`; the address is the base58 address decoded. |
 | `shelley-pool-network-block.hex` | The Shelley block at slot 4,495,760 (epoch 208, protocol version 2, hash `fb4e87a00f0eea0d...`, 8 KB), full `[era, block]` encoding: the block where the second mainnet sync from genesis stopped. Transaction 49be5965 registers a pool whose reward account is on network 0. Captured with `--blocks 1 --from 4495740.c8a3bd53fc4c76491d911e1f2f4c8eb5baf7ef8848fbefda7820ab846854ec90 --byron-epoch-slots 21600` on 2026-10-16 (the previous block's point from the Koios API, `blocks`). |
 
 `ByronMainnetSuite` decodes the blocks, checks the body proofs against the headers, derives the AVVM
@@ -20,6 +22,8 @@ spent), and validates every transaction: witness signatures under the Byron sign
 protocol magic, address roots, value conservation and the minimum fee.
 
 `ByronLargeAddressSuite` decodes the block at slot 1,769,882, checks its proofs, decodes the 7,689-byte address and validates the transaction in full.
+
+`ByronHandoverUtxoSuite` (node tests) applies transaction c1092b9c of the block at slot 4,105,943 with the Byron ledger and carries its outputs through the handover to Shelley over a UTxO store.
 
 `MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8.
 

@@ -82,6 +82,11 @@ final class NodeRules[F[_]: Monad](
         val utxo = state.ledger.utxo
         val wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
         for
+          // The block that enters Shelley replaces the genesis placeholder by the Byron UTxO, built
+          // as a whole at stamp 0: a store that still holds the placeholder (written by a build
+          // before the backing skipped Byron states) would treat those entries as stored. Start
+          // it empty, so that every entry is written (see `UtxoBacking`).
+          _ <- if state.byron.ledger.isDefined then store.reset else ().pure[F]
           fetched <- if wanted.isEmpty then Map.empty[TxIn, TxOut].pure[F] else store.read(wanted)
           next <- run(
             state.copy(ledger = state.ledger.copy(utxo = utxo.withResident(fetched))),
