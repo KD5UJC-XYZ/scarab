@@ -54,8 +54,13 @@ class RelationsSuite extends FunSuite:
       old: NewEpochState[Conway],
       neu: NewEpochState[Conway],
       amounts: Map[node.Credential, BigInt] = Map.empty,
-      started: Boolean = true
-  ) = ok(Relations.compare(old, amounts, neu, started, handover = false))
+      started: Boolean = true,
+      carried: Boolean = false,
+      boundary: Boolean = true
+  ) = ok(Relations.compare(old, amounts, neu, started, handover = false, carried, boundary))
+
+  private def withMark(nes: NewEpochState[Conway], p: StakePoolSnapShot): NewEpochState[Conway] =
+    nes.copy(es = nes.es.copy(snapshots = nes.es.snapshots.copy(mark = snapshot(p))))
 
   test("equal states have no difference, and a difference is found with its path") {
     assertEquals(compare(empty, empty), None)
@@ -102,6 +107,25 @@ class RelationsSuite extends FunSuite:
       compare(old, lower).map(_.path.render),
       Some("es.snapshots.go.pools[" + Show[KeyHash[StakePool]].show(pool) + "].numDelegators")
     )
+  }
+
+  test(
+    "a carried state holds each snapshot as it was taken: the old mirror's delegators stand in"
+  ) {
+    val old = poolSnapshot(5, Set.empty)
+    val taken = poolSnapshot(3, Set(owner))
+    val moved = poolSnapshot(3, Set.empty).copy(stake = compact(999))
+    // `go` and, between boundaries, `mark`: where the pool's stake is the same, the old side's
+    assertEquals(compare(withGo(empty, old), withGo(empty, taken), carried = true), None)
+    assertEquals(
+      compare(withMark(empty, old), withMark(empty, taken), carried = true, boundary = false),
+      None
+    )
+    // not a state the new side did not carry, and not `mark` at the boundary that takes it
+    assert(compare(withGo(empty, old), withGo(empty, taken)).isDefined)
+    assert(compare(withMark(empty, old), withMark(empty, taken), carried = true).isDefined)
+    // a pool of another stake is a difference all the same
+    assert(compare(withGo(empty, old), withGo(empty, moved), carried = true).isDefined)
   }
 
   test("the set snapshot is the old side's where the pool's stake agrees") {

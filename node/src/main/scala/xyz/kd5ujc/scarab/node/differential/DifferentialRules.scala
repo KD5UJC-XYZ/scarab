@@ -195,14 +195,7 @@ final class DifferentialRules[F[_]] private (
           case (Right(ours), toMirror) =>
             F.delay(
               DifferentialRules.timed(
-                ledgerDifference(
-                  ours,
-                  theirs,
-                  header,
-                  state,
-                  ot,
-                  boundary = after.ledger.epoch != state.old.ledger.epoch
-                )
+                ledgerDifference(ours, theirs, header, state, ot)
               )
             ).flatMap { (compared, diffNanos) =>
               compared match
@@ -280,8 +273,7 @@ final class DifferentialRules[F[_]] private (
       theirs: MirrorState,
       header: Header,
       state: Paired,
-      ot: Option[NodeRules.OldTick],
-      boundary: Boolean
+      ot: Option[NodeRules.OldTick]
   ): Either[VocabError, Option[Difference]] =
     // the slot after which the reward update starts (`RewardsTooEarly` until then)
     val rewardsStarted = ot.forall { t =>
@@ -304,7 +296,9 @@ final class DifferentialRules[F[_]] private (
               rewardsStarted,
               handover = state.at.isEmpty,
               carried = true,
-              boundary = boundary
+              // the state after the whole block: what the old mirror derives from the accounts is
+              // theirs at the end of it, not at the tick that took `mark`, which `Stage.Tick` checks
+              boundary = false
             )
           case None =>
             Right(
