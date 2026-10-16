@@ -12,7 +12,8 @@ import xyz.kd5ujc.scarab.consensus.{
   Scheduling,
   VolatileChain
 }
-import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, NodeError, PeerError}
+import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
+import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, NativeLibraryError, NodeError, PeerError}
 import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
@@ -259,11 +260,24 @@ object Main extends IOApp:
       topology
     )
 
+  /** The BLS12-381 library the JVM is going to load, checked before anything evaluates a script: a
+    * library built for processor features this one lacks kills the JVM with SIGILL, with no event
+    * (ADR 0012). The report is logged; a refusal is a [[NativeLibraryError]].
+    */
+  private def nativeLibrary(using Handle[IO, NodeError]): IO[Unit] =
+    Handle
+      .allow[BlstProblem](Blst.verify[IO])
+      .rescue(problem =>
+        Handle[IO, NodeError].raise[NodeError, BlstReport](NativeLibraryError(problem))
+      )
+      .flatMap(JsonLog.blst)
+
   private def follow(requested: Options)(using
       Handle[IO, NodeError],
       Raise[IO, Divergence]
   ): IO[Unit] =
-    IO.blocking(configured(requested))
+    nativeLibrary *> IO
+      .blocking(configured(requested))
       .flatMap(
         _.fold(
           e => Handle[IO, NodeError].raise[NodeError, (Options, NodeSetup, Option[Topology])](e),

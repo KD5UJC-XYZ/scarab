@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.consensus.{
   SchedulingStats,
   VolatileChain
 }
+import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.ledger.{Header, NodeError, Points, ShelleyGenesis}
 import cats.effect.IO
 import cats.syntax.all.*
@@ -89,6 +90,22 @@ object JsonLog:
           )
         )
         .asJson
+    )
+
+  /** The BLS12-381 library in use and the processor it runs on (checked at start-up, ADR 0012). */
+  def blst(report: BlstReport): IO[Unit] =
+    line(
+      "blst",
+      "platform" -> report.platform.toString.asJson,
+      "cpu" -> (report.cpu match
+        case CpuSupport.Known(features) =>
+          Json.obj("features" -> features.toList.map(_.flag).sorted.asJson)
+        case CpuSupport.Unknown => Json.obj("features" -> Json.Null)),
+      "library" -> (report.build match
+        case LibraryBuild.Portable => Json.obj("build" -> "portable".asJson)
+        case LibraryBuild.Other(sha256) =>
+          Json.obj("build" -> "other".asJson, "sha256" -> sha256.asJson)
+        case LibraryBuild.OnLibraryPath => Json.obj("build" -> "library-path".asJson))
     )
 
   def finished[S](chain: VolatileChain[S]): IO[Unit] =

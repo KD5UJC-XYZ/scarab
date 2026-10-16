@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.blst.BlstProblem
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
@@ -142,6 +143,12 @@ enum ForgeError extends NodeError:
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
     case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
+
+/** The BLS12-381 library the JVM would load cannot run on this machine, or computes a wrong answer
+  * (checked at start-up; ADR 0012). Without the check the JVM dies with SIGILL, without an event.
+  */
+final case class NativeLibraryError(problem: BlstProblem) extends NodeError:
+  def message: String = s"native library: ${problem.message}"
 
 /** A configuration failure. `problem` says which one for the callers that act on it (a genesis file
   * whose hash differs from the configured one, a topology the node cannot follow); `reason` is the

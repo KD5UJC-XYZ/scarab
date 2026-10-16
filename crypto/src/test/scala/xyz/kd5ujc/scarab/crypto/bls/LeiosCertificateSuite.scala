@@ -44,6 +44,13 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     a(bit / 8) = (a(bit / 8) ^ (1 << (bit % 8))).toByte
     Bytes.wrap(a)
 
+  test("the BLS12-381 library is the portable build (ADR 0012)") {
+    import cats.effect.unsafe.implicits.global
+    val found = xyz.kd5ujc.scarab.blst.Blst.build[cats.effect.IO].unsafeRunSync()
+    if xyz.kd5ujc.scarab.blst.Platform.current == xyz.kd5ujc.scarab.blst.Platform.LinuxAmd64 then
+      assertEquals(found, xyz.kd5ujc.scarab.blst.LibraryBuild.Portable)
+  }
+
   property("any valid vote verifies and returns the voter's weight") {
     forAll(genSeat, genHash) { (i, h) =>
       val vote = right(Vote.sign(keys(i)._1, seatId(i), h))

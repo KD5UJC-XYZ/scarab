@@ -41,6 +41,7 @@ val testDependencies = Seq(
 // Every module is the sbt project `<id>`, the directory `<id>` and the artifact `scarab-<id>`. The
 // dependency direction below is enforced by sbt (a cycle does not load):
 //
+//   blstNative <- crypto, plutus
 //   codec <- crypto <- protocol <- network
 //   codec <- plutus
 //   protocol, plutus <- ledger <- consensus <- legacy <- storage
@@ -60,6 +61,20 @@ def scarab(id: String, dir: String = null): Project =
       libraryDependencies ++= testDependencies
     )
 
+// The portable libblst (ADR 0012) as the resource blst-java loads, and the start-up check that the JVM
+// is going to use it. Every module that reaches blst depends on it so that it comes before blst-java
+// on their class paths.
+lazy val blstNative = scarab("blstNative", "blst-native")
+  .settings(
+    name := "scarab-blst-native",
+    libraryDependencies ++= Seq(
+      Libraries.blstJava,
+      Libraries.cats,
+      Libraries.catsEffect,
+      Libraries.catsMtl
+    )
+  )
+
 // CBOR with original-bytes preservation, the byte-string type and exact rationals.
 lazy val codec = scarab("codec")
   .settings(
@@ -68,7 +83,7 @@ lazy val codec = scarab("codec")
 
 // Ed25519, VRF, KES, BLS12-381, Blake2b and the operational certificate.
 lazy val crypto = scarab("crypto")
-  .dependsOn(codec % "compile->compile;test->test")
+  .dependsOn(codec % "compile->compile;test->test", blstNative)
   .settings(
     libraryDependencies ++= Seq(
       Libraries.bouncyCastle,
@@ -96,7 +111,7 @@ lazy val network = scarab("network")
 
 // The Plutus (UPLC) machine and builtins through Scalus; the script context and the rules are ours.
 lazy val plutus = scarab("plutus")
-  .dependsOn(codec % "compile->compile;test->test")
+  .dependsOn(codec % "compile->compile;test->test", blstNative)
   .settings(
     libraryDependencies ++= Seq(
       Libraries.cats,
@@ -294,6 +309,7 @@ lazy val root = project
   .in(file("."))
   .disablePlugins(TpolecatPlugin)
   .aggregate(
+    blstNative,
     codec,
     crypto,
     protocol,
