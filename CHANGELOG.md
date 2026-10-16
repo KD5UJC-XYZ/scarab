@@ -5,6 +5,19 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Fixed (mainnet sync from genesis, stop 5: AVVM balances at the Allegra boundary, B26)
+- **The boundary that enters Allegra returns the redeem (AVVM) outputs to the reserves**, as the reference's
+  Shelley to Allegra translation does (`returnRedeemAddrsToReserves`), before the reward update and MIR of that
+  boundary. The node's reserves were 318,200,635 ada short from mainnet epoch 236, so the rewards calculated in
+  that epoch were short and the first withdrawal of one (slot 17,020,941, transaction 48f567e5) was refused.
+  `Epoch.entersAllegra` decides it from the voted protocol version; the node fetches the stored redeem outputs for
+  that block (`UtxoStore.select`, one pass over the store, once per chain) and the boundary's UTxO changes now carry
+  the block's stamp, so the deletions reach the store. `MainnetAllegraReservesSuite` reproduces the reference's
+  leader reward (351,635,274) and the node's (351,050,635) from the real inputs; `AllegraRedeemStoreSuite` runs
+  the era capture into Allegra over a store with a mainnet AVVM output. No persisted format changes: nothing new is
+  stored, and a snapshot of any epoch restores as before (a Shelley snapshot is replayed through the fixed
+  boundary).
+
 ### Added (observability, J3: Prometheus metrics)
 - **`Metrics[F]` and the Prometheus endpoint.** `GET /metrics` on the query server and, with
   `--metrics-listen <host>:<port>` (off by default; `0.0.0.0:12798` for a scraper in a sibling container), a listener

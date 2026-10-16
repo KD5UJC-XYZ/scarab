@@ -27,6 +27,8 @@ protocol magic, address roots, value conservation and the minimum fee.
 
 `MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8.
 
+`MainnetAllegraReservesSuite` (ledger tests) and `AllegraRedeemStoreSuite` (node tests) use the AVVM balance of `byron-genesis-trimmed.json` (and a verification-key output of `byron-tx-inputs.json`) as the redeem outputs that the boundary entering Allegra returns to the reserves (mainnet stop 5); the reward inputs of the first suite are public chain data from the Koios API, cited in the suite.
+
 `genesis/` holds the public mainnet node configuration from
 https://book.play.dev.cardano.org/environments/mainnet/ unchanged, downloaded 2026-10-14: `config.json`,
 `topology.json`, `shelley-genesis.json`, `alonzo-genesis.json` and `conway-genesis.json`. The Byron genesis file
