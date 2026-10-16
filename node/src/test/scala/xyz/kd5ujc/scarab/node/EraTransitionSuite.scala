@@ -13,6 +13,8 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  BlockFailure,
+  BlockRule,
   ByronGenesisFile,
   Header,
   HeaderVrf,
@@ -100,7 +102,7 @@ class EraTransitionSuite extends CatsEffectSuite:
   private def validate(
       state: NodeState,
       i: Int
-  ): Either[(String, String), NodeState] =
+  ): Either[BlockFailure, NodeState] =
     NodeRules.applyBlock(
       state,
       headers(i),
@@ -115,8 +117,10 @@ class EraTransitionSuite extends CatsEffectSuite:
     blocks.indices.foldLeft(Vector(setup.start)) { (acc, i) =>
       validate(acc.last, i) match
         case Right(next) => acc :+ next
-        case Left((rule, reason)) =>
-          fail(s"block $i (${eraAt(i)}, slot ${headers(i).slot}) rejected by $rule: $reason")
+        case Left(f) =>
+          fail(
+            s"block $i (${eraAt(i)}, slot ${headers(i).slot}) rejected by ${f.rule.name}: ${f.reason}"
+          )
     }
 
   private def ref(i: Int): BlockRef =
@@ -289,8 +293,8 @@ class EraTransitionSuite extends CatsEffectSuite:
       setup.globals,
       setup.byronRules
     )
-    assertEquals(result.left.map(_._1), Left("envelope"))
-    assert(result.left.exists(_._2.contains("the chain is in Shelley")))
+    assertEquals(result.left.map(_.rule), Left(BlockRule.Envelope))
+    assert(result.left.exists(_.reason.contains("the chain is in Shelley")))
     // and the configured history accepts it
     assert(validate(states(allegra), allegra).isRight)
   }
@@ -525,13 +529,13 @@ class EraTransitionSuite extends CatsEffectSuite:
         ProtocolState.initial(Era.Byron, Blake2b.hash256.hash(Bytes(Vector(1, 2, 3))))
       )
     val result = validate(wrong, first)
-    assert(result.left.exists(_._1 == "tpraos"), result.toString)
+    assert(result.left.exists(_.rule == BlockRule.TPraos), result.toString)
   }
 
   test("a Byron block cannot follow the first Shelley block") {
     val first = blocks.indexWhere(_.era == Era.Shelley)
     val result = validate(states(first + 1), 10)
-    assert(result.left.exists(_._1 == "structure"), result.toString)
+    assert(result.left.exists(_.rule == BlockRule.Structure), result.toString)
   }
 
   test("a Shelley block with a flipped body byte fails the body commitment") {

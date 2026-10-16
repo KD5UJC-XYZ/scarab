@@ -63,8 +63,8 @@ class MirrorAnswersSuite extends FunSuite:
         setup.globals,
         setup.byronRules
       ) match
-        case Right(next)          => acc :+ (blocks(i) -> next)
-        case Left((rule, reason)) => fail(s"block $i rejected by $rule: $reason")
+        case Right(next) => acc :+ (blocks(i) -> next)
+        case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
     }
 
   private def view(block: Block, state: NodeState): QueryView =

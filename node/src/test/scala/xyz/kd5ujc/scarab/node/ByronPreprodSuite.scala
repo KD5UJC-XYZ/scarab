@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, NodeState}
-import xyz.kd5ujc.scarab.ledger.{Block, Header}
+import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, BlockRule, Header}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
@@ -44,7 +44,7 @@ class ByronPreprodSuite extends FunSuite:
       blocks(i).header.isBoundary
     )
 
-  private def step(state: NodeState, i: Int): Either[(String, String), NodeState] =
+  private def step(state: NodeState, i: Int): Either[BlockFailure, NodeState] =
     NodeRules.applyBlock(
       state,
       blocks(i).header,
@@ -57,9 +57,9 @@ class ByronPreprodSuite extends FunSuite:
   private lazy val states: Vector[NodeState] =
     blocks.indices.foldLeft(Vector(setup.start)) { (acc, i) =>
       step(acc.last, i).fold(
-        (rule, reason) =>
+        f =>
           fail(
-            s"block $i (${blocks(i).era}, slot ${blocks(i).header.slot}) rejected by $rule: $reason"
+            s"block $i (${blocks(i).era}, slot ${blocks(i).header.slot}) rejected by ${f.rule.name}: ${f.reason}"
           ),
         acc :+ _
       )
@@ -155,7 +155,7 @@ class ByronPreprodSuite extends FunSuite:
   test("a Shelley block before the Byron ledger has decided on the transition is refused") {
     val early = states(30) // protocol 2.0.0 is proposed but not yet a stable candidate
     val result = step(early, byronCount)
-    assert(result.left.exists(_._1 == "byron"), result.toString)
+    assert(result.left.exists(_.rule == BlockRule.Byron), result.toString)
   }
 
   test("a configured Shelley epoch overrides the derivation, and Byron blocks end there") {
@@ -169,7 +169,7 @@ class ByronPreprodSuite extends FunSuite:
       later
     )
     // the block lies in epoch 4, before the configured epoch 5
-    assert(firstShelley.left.exists(_._1 == "byron"), firstShelley.toString)
+    assert(firstShelley.left.exists(_.rule == BlockRule.Byron), firstShelley.toString)
     val earlier = setup.byronRules.map(_.copy(configuredShelleyEpoch = Some(BigInt(2))))
     val lastByron = NodeRules.applyBlock(
       states(30),
@@ -179,7 +179,7 @@ class ByronPreprodSuite extends FunSuite:
       setup.globals,
       earlier
     )
-    assert(lastByron.left.exists(_._1 == "structure"), lastByron.toString)
+    assert(lastByron.left.exists(_.rule == BlockRule.Structure), lastByron.toString)
   }
 
   test("the header and body of a Byron block are bound: a changed update payload is refused") {

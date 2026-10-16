@@ -73,8 +73,8 @@ class ChainStorageSuite extends CatsEffectSuite:
         setup.globals,
         setup.byronRules
       ) match
-        case Right(next)          => acc :+ next
-        case Left((rule, reason)) => fail(s"block $i rejected by $rule: $reason")
+        case Right(next) => acc :+ next
+        case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
     }
 
   private val noEvents: FollowerEvents[IO] = _ => IO.unit

@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.consensus.{
   VolatileChain
 }
 import xyz.kd5ujc.scarab.ledger.{
+  BlockFailure,
   EpochGeometry,
   Fixtures,
   Header,
@@ -42,7 +43,8 @@ class FollowerSuite extends CatsEffectSuite:
       invalid: Set[Bytes] = Set.empty
   )(using h: Handle[IO, NodeError]): BlockRules[IO, BigInt] =
     (_, header, _) =>
-      if invalid(header.hash) then h.raise(ValidationError(header.point, "test", "rejected"))
+      if invalid(header.hash) then
+        h.raise(ValidationError(header.point, BlockFailure.HeaderDiffers))
       else IO.pure(header.blockNo)
 
   private val noEvents: FollowerEvents[IO] = _ => IO.unit
@@ -337,7 +339,7 @@ class FollowerSuite extends CatsEffectSuite:
     val main = Fixtures.chain(5)
     run(List(main.map(forward).toList), invalid = Set(main(3).hash)).map {
       case (outcome, chain, _) =>
-        assertEquals(outcome, Left(ValidationError(main(3).point, "test", "rejected")))
+        assertEquals(outcome, Left(ValidationError(main(3).point, BlockFailure.HeaderDiffers)))
         assertEquals(chain.tip, main(2).point)
     }
   }

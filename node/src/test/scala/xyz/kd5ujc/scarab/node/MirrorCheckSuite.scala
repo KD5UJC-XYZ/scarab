@@ -39,8 +39,8 @@ class MirrorCheckSuite extends FunSuite:
       val before = acc.lastOption.fold(setup.start)(_._2)
       val h = blocks(i).header
       NodeRules.applyBlock(before, h, raws(i), setup.praos, setup.globals, setup.byronRules) match
-        case Right(next)          => acc :+ (h -> next)
-        case Left((rule, reason)) => fail(s"block $i rejected by $rule: $reason")
+        case Right(next) => acc :+ (h -> next)
+        case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
     }
 
   private def anchor(h: Header) = Some(BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary))

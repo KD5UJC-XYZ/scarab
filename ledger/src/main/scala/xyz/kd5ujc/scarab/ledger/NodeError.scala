@@ -44,9 +44,11 @@ enum ChainError extends NodeError:
       s"rollback to ${Points.show(t)} beyond anchor ${Points.show(a)}"
     case NoIntersection => "peer shares no point with the local chain"
 
-/** A block or header the local rules reject. */
-final case class ValidationError(point: ChainSync.Point, rule: String, reason: String)
-    extends NodeError:
+/** A block or header the local rules reject, with the closed [[BlockFailure]] that says why. */
+final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) extends NodeError:
+  /** The rule family and the reason as the log renders them (the `rule` and `reason` fields). */
+  def rule: String = failure.rule.name
+  def reason: String = failure.reason
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
 
 /** Failures of the on-disk chain database. Raised by the storage algebras; IO exceptions are mapped

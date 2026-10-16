@@ -70,7 +70,7 @@ final class NodeRules[F[_]: Monad](
         )
         .flatMap(
           _.fold(
-            (rule, reason) => ValidationError(header.point, rule, reason).raise[F, NodeState],
+            failure => ValidationError(header.point, failure).raise[F, NodeState],
             next => afterBlock.fold(next.pure[F])(f => f(header, next).as(next))
           )
         )
@@ -97,7 +97,7 @@ object NodeRules:
     */
   private[node] def stepLabel(
       before: NodeState
-  )(result: Either[(String, String), NodeState]): String =
+  )(result: Either[BlockFailure, NodeState]): String =
     result match
       case Left(_) => "rejected"
       case Right(after) =>
@@ -162,14 +162,14 @@ object NodeRules:
   private[node] def blockExUnits(
       params: ProtocolParams,
       units: ExUnits
-  ): Either[(String, String), Unit] =
+  ): Either[BlockFailure, Unit] =
     Either.cond(
       params.protocolMajor < 5 || units.fits(params.maxBlockExUnits),
       (),
-      "ledger" -> s"block execution units ${units.mem} mem / ${units.steps} steps exceed the maximum ${params.maxBlockExUnits.mem} / ${params.maxBlockExUnits.steps}"
+      BlockFailure.BlockExUnitsTooBig(units, params.maxBlockExUnits)
     )
 
-  /** The failure side carries the rule family and the reason. */
+  /** The failure side is the closed [[BlockFailure]]: the rule family and the reason it renders. */
   def applyBlock(
       state: NodeState,
       header: Header,
@@ -180,7 +180,7 @@ object NodeRules:
       bootstrap: Boolean = false,
       phase2Observer: Option[Phase2.Observation => Unit] = None,
       prepared: Option[Prepared] = None
-  ): Either[(String, String), NodeState] =
+  ): Either[BlockFailure, NodeState] =
     header match
       case h: Header.Byron => applyByron(state, h, raw, byron)
       case h: Header.Shelley =>
@@ -201,7 +201,7 @@ object NodeRules:
       config: PraosConfig,
       globals: LedgerGlobals,
       byron: Option[ByronRules.Config]
-  ): Either[(String, String), (NodeState, PraosConfig, LedgerGlobals)] =
+  ): Either[BlockFailure, (NodeState, PraosConfig, LedgerGlobals)] =
     def resolve(first: BigInt) =
       (config.copy(geometry = config.geometry.resolved(first)), globals.copy(firstEpoch = first))
     state.byron.firstShelleyEpoch match
@@ -215,16 +215,16 @@ object NodeRules:
               first <- rules.configuredShelleyEpoch
                 .orElse(ByronLedger.transition(rules.ledger, ledger))
                 .toRight(
-                  "byron" -> s"${header.era} block, but the Byron ledger has not decided on the transition to Shelley"
+                  BlockFailure.TransitionUndecided(header.era)
                 )
               (cfg, glob) = resolve(first)
               epoch = cfg.geometry.epochOf(header.slot)
               _ <- Either.cond(
                 epoch >= first && ledger.lastSlot < cfg.geometry.firstSlot(first),
                 (),
-                "byron" -> s"Shelley block in epoch $epoch, the transition is to epoch $first after Byron slot ${ledger.lastSlot}"
+                BlockFailure.ShelleyBeforeTransition(epoch, first, ledger.lastSlot)
               )
-              shelley <- rules.handover(ledger, glob).leftMap("ledger" -> _)
+              shelley <- rules.handover(ledger, glob).leftMap(BlockFailure.Handover(_))
             yield (
               state
                 .withByron(state.byron.finish.copy(ledger = None, firstShelleyEpoch = Some(first)))
@@ -240,23 +240,23 @@ object NodeRules:
       header: Header.Byron,
       raw: Bytes,
       byron: Option[ByronRules.Config]
-  ): Either[(String, String), NodeState] =
+  ): Either[BlockFailure, NodeState] =
     for
-      cfg <- byron.toRight("byron" -> "no Byron genesis configured")
-      ledger <- state.byron.ledger.toRight("structure" -> "Byron block after the Shelley era began")
+      cfg <- byron.toRight(BlockFailure.NoByronGenesis)
+      ledger <- state.byron.ledger.toRight(BlockFailure.ByronAfterShelley)
       _ <- Either.cond(
         !state.boot.active && state.boot.era.forall(_ == Era.Byron),
         (),
-        "structure" -> "Byron block after the Shelley era began"
+        BlockFailure.ByronAfterShelley
       )
-      decoded <- Block.decode(raw, cfg.ledger.epochSlots).leftMap(e => "decode" -> e.message)
+      decoded <- Block.decode(raw, cfg.ledger.epochSlots).leftMap(BlockFailure.Decode(_))
       block <- decoded match
         case b: Block.Byron => Right(b)
-        case b              => Left("structure" -> s"${b.era} block announced as Byron")
+        case b              => Left(BlockFailure.EraAnnounced(b.era, Era.Byron))
       _ <- Either.cond(
         block.header.hash == header.hash,
         (),
-        "structure" -> "block header differs from announced header"
+        BlockFailure.HeaderDiffers
       )
       // once the transition is settled (known and stable) no Byron block may be in or after it
       _ <- cfg.configuredShelleyEpoch
@@ -264,11 +264,11 @@ object NodeRules:
         .filter(_ <= header.epoch)
         .toLeft(())
         .leftMap { first =>
-          "structure" -> s"Byron block in epoch ${header.epoch}, the chain enters Shelley in epoch $first"
+          BlockFailure.ByronAfterTransition(header.epoch, first)
         }
       validated <- ByronRules
         .update(ByronRules.State(state.byron.tip, ledger, state.byron.pbft), block, cfg)
-        .leftMap("byron" -> _)
+        .leftMap(BlockFailure.Byron(_))
       (next, check) = validated
     yield
       val sameEpoch = state.byron.stats.filter(_.epoch == header.epoch)
@@ -294,7 +294,7 @@ object NodeRules:
       header: Header.Shelley,
       raw: Bytes,
       config: PraosConfig
-  ): Either[(String, String), NodeState] =
+  ): Either[BlockFailure, NodeState] =
     val geometry = config.geometry
     val epoch = geometry.epochOf(header.slot)
     val boot = state.boot
@@ -303,26 +303,26 @@ object NodeRules:
       if header.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
       else geometry.stabilityWindow
     for
-      decoded <- Block.decodeShelley(raw).leftMap(e => "decode" -> e.message)
+      decoded <- Block.decodeShelley(raw).leftMap(BlockFailure.Decode(_))
       block <- decoded match
         case b: Block.Shelley if b.era == header.era => Right(b)
-        case b => Left("structure" -> s"${b.era} block announced as ${header.era}")
+        case b => Left(BlockFailure.EraAnnounced(b.era, header.era))
       _ <- Either.cond(
         block.header.hash == header.hash,
         (),
-        "structure" -> "block header differs from announced header"
+        BlockFailure.HeaderDiffers
       )
       _ <- Either.cond(
         block.bodySize == header.bodySize && block.bodyHash == header.bodyHash,
         (),
-        "structure" -> "body does not match the header commitment"
+        BlockFailure.BodyCommitment
       )
       _ <- Either.cond(
         epoch >= boot.lite.epoch,
         (),
-        "structure" -> s"block epoch $epoch precedes ledger epoch"
+        BlockFailure.EpochPrecedesLedger(epoch)
       )
-      lite <- LiteLedger.tick(boot.lite, header.slot, geometry).leftMap("ledger" -> _)
+      lite <- LiteLedger.tick(boot.lite, header.slot, geometry).leftMap(BlockFailure.Lite(_))
       _ <- config.forks
         .check(
           header.era,
@@ -337,7 +337,7 @@ object NodeRules:
           // the bootstrap ledger does not follow Conway governance, nor does it model the header rule
           ledgerTracksVersion = false
         )
-        .leftMap(e => "envelope" -> e.message)
+        .leftMap(BlockFailure.Envelope(_))
       validated <-
         if header.era.usesTPraos then
           TPraos
@@ -348,7 +348,7 @@ object NodeRules:
               config
             )
             .map(v => v.state -> v.leader)
-            .leftMap("tpraos" -> _.message)
+            .leftMap(BlockFailure.TPraos(_))
         else
           Praos
             .validate(
@@ -358,9 +358,9 @@ object NodeRules:
               config,
               nonceWindow
             )
-            .leftMap("praos" -> _)
+            .leftMap(BlockFailure.Praos(_))
       (praos, leader) = validated
-      applied <- LiteLedger.applyBlock(lite, block, geometry).leftMap("ledger" -> _)
+      applied <- LiteLedger.applyBlock(lite, block, geometry).leftMap(BlockFailure.Lite(_))
     yield
       val previous = boot.stats.filter(_.epoch == epoch)
       val finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
@@ -389,7 +389,7 @@ object NodeRules:
       globals: LedgerGlobals,
       phase2Observer: Option[Phase2.Observation => Unit],
       prepared: Option[Prepared]
-  ): Either[(String, String), NodeState] =
+  ): Either[BlockFailure, NodeState] =
     val geometry = config.geometry
     val epoch = geometry.epochOf(announced.slot)
     val boot = state.boot
@@ -397,26 +397,26 @@ object NodeRules:
       if announced.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
       else geometry.stabilityWindow
     for
-      decoded <- prepared.fold(Block.decodeShelley(raw).leftMap(e => "decode" -> e.message))(p =>
+      decoded <- prepared.fold(Block.decodeShelley(raw).leftMap(BlockFailure.Decode(_)))(p =>
         Right(p.block)
       )
       block <- decoded match
         case b: Block.Shelley if b.era == announced.era => Right(b)
-        case b => Left("structure" -> s"${b.era} block announced as ${announced.era}")
+        case b => Left(BlockFailure.EraAnnounced(b.era, announced.era))
       _ <- Either.cond(
         block.header.hash == announced.hash,
         (),
-        "structure" -> "block header differs from announced header"
+        BlockFailure.HeaderDiffers
       )
       _ <- Either.cond(
         block.bodySize == announced.bodySize && block.bodyHash == announced.bodyHash,
         (),
-        "structure" -> "body does not match the header commitment"
+        BlockFailure.BodyCommitment
       )
       _ <- Either.cond(
         epoch >= state.ledger.epoch,
         (),
-        "structure" -> s"block epoch $epoch precedes ledger epoch"
+        BlockFailure.EpochPrecedesLedger(epoch)
       )
       crossed = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
         Epoch.boundary(s, e, globals)
@@ -425,7 +425,7 @@ object NodeRules:
         crossed.epoch == state.ledger.epoch || crossed.params.protocolMajor >= 9 ||
           crossed.total == globals.maxSupply,
         (),
-        "ledger" -> s"supply invariant broken entering epoch $epoch: ${crossed.total} != ${globals.maxSupply}"
+        BlockFailure.SupplyInvariant(epoch, crossed.total, globals.maxSupply)
       )
       ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
       // Changes to the UTxO set made by this block are stamped with its number.
@@ -442,7 +442,7 @@ object NodeRules:
           ticked.params.maxBlockBodySize,
           mainnet = globals.network == 1
         )
-        .leftMap(e => "envelope" -> e.message)
+        .leftMap(BlockFailure.Envelope(_))
       pools = ticked.poolDistribution.distribution
       view = LedgerView(
         ticked.params.effectiveD,
@@ -460,7 +460,7 @@ object NodeRules:
               config
             )
             .map(v => v.state -> v.leader)
-            .leftMap("tpraos" -> _.message)
+            .leftMap(BlockFailure.TPraos(_))
         else
           Praos
             .validate(
@@ -470,7 +470,7 @@ object NodeRules:
               config,
               nonceWindow
             )
-            .leftMap("praos" -> _)
+            .leftMap(BlockFailure.Praos(_))
       (praos, leader) = validated
       applied0 <- block.transactions.zipWithIndex.foldLeftM((ticked, 0, ExUnits.zero)) {
         case ((s, refBytes, spent), (t, i)) =>
@@ -489,7 +489,7 @@ object NodeRules:
           prepared
             .flatMap(_.txs.lift(i))
             .getOrElse(Tx.fromBlock(t, block.era))
-            .leftMap(r => "decode" -> s"tx ${t.id.hex.take(16)}: $r")
+            .leftMap(BlockFailure.TxDecode(t.id, _))
             .flatMap { tx =>
               // Conway bounds the reference scripts of all transactions of a block.
               val used =
@@ -503,7 +503,7 @@ object NodeRules:
                 .cond(
                   used <= ConwayRules.MaxRefScriptSizePerBlock,
                   (),
-                  "ledger" -> s"reference scripts of the block exceed ${ConwayRules.MaxRefScriptSizePerBlock} bytes"
+                  BlockFailure.RefScriptsTooLarge(ConwayRules.MaxRefScriptSizePerBlock.toLong)
                 )
                 .flatMap { _ =>
                   // The block's execution units (every transaction's redeemers, valid or not) stay
@@ -513,7 +513,7 @@ object NodeRules:
                     .map(_ => ())
                     .flatMap(_ =>
                       TxRules(s, tx, env)
-                        .leftMap(f => "ledger" -> f.message)
+                        .leftMap(BlockFailure.Tx(_))
                         .map(next => (next, used.toInt, units))
                     )
                 }

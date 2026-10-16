@@ -81,8 +81,8 @@ object NtcGolden:
           setup.globals,
           setup.byronRules
         ) match
-          case Right(next)          => acc :+ (blocks(i) -> next)
-          case Left((rule, reason)) => sys.error(s"block $i rejected by $rule: $reason")
+          case Right(next) => acc :+ (blocks(i) -> next)
+          case Left(f)     => sys.error(s"block $i rejected by ${f.rule.name}: ${f.reason}")
       }
       .filter(_._1.era == Era.Conway)
 
