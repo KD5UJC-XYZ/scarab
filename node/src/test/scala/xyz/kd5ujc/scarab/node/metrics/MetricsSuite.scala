@@ -153,13 +153,29 @@ class MetricsSuite extends CatsEffectSuite with ScalaCheckSuite:
         1.0,
         -3.0,
         0.5,
+        0.0005,
+        1792127183.33,
+        2.5e-7,
         1e20,
         Double.NaN,
         Double.PositiveInfinity,
         Double.NegativeInfinity
       )
         .map(Exposition.number),
-      List("0", "0", "1", "-3", "0.5", "1.0E20", "NaN", "+Inf", "-Inf")
+      List(
+        "0",
+        "0",
+        "1",
+        "-3",
+        "0.5",
+        "0.0005",
+        "1792127183.33",
+        "2.5E-7",
+        "1.0E20",
+        "NaN",
+        "+Inf",
+        "-Inf"
+      )
     )
   }
 

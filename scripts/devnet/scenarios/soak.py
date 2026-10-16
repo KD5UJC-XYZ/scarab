@@ -5,9 +5,11 @@ import os
 import subprocess
 import sys
 import time
+from .. import metrics as node_metrics
 from ..cluster import up
 from ..compare import compare_once
-from ..util import ENTRY, data_root, docker
+from ..follower import own_build
+from ..util import ENTRY, QUERY_PORT, data_root, docker, read_log
 
 
 # stages of govextra.py that a `soak --governance-extended` of 900 s must complete
@@ -69,6 +71,21 @@ def differential_summary(log):
     }
 
 
+def scrape_metrics(name, root):
+    """The Prometheus endpoint, at the end of the run while the follower is still up: on the query server and on the
+    listener of its own (`--metrics-listen`), each checked against the follower log (series present, values
+    consistent with the log, no validation errors)."""
+    events = lambda: read_log(root / "follower.jsonl")[0]
+    out = {}
+    for label, port in (("queryServer", QUERY_PORT), ("listener", node_metrics.METRICS_PORT)):
+        failures, samples, _ = node_metrics.scrape_and_check(name, port, events)
+        out[label] = {"port": port, "series": len(samples), "failures": failures,
+                      "blockNum": node_metrics.value(samples, "cardano_node_metrics_blockNum_int"),
+                      "blocksApplied": node_metrics.total(samples, "scarab_blocks_applied_total"),
+                      "validationErrors": node_metrics.total(samples, "scarab_validation_errors_total")}
+    return out
+
+
 def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
@@ -83,6 +100,7 @@ def soak(args):
                                    *(["--extended"] if getattr(args, "governance_extended", False) else [])],
                                   stdout=(root / "govload.log").open("w"), stderr=subprocess.STDOUT)
     results = []
+    scraped = {}
     deadline = time.monotonic() + args.seconds
     try:
         while time.monotonic() < deadline:
@@ -102,6 +120,8 @@ def soak(args):
         governance.terminate()
         governance.wait()
         follower_alive = follower.poll() is None
+        if follower_alive and own_build(args):
+            scraped = scrape_metrics(args.name, root)
         docker("rm", "-f", f"{args.name}-scala", check=False)
         follower.wait()
     log = [json.loads(l) for l in (root / "follower.jsonl").read_text().splitlines() if l.startswith("{")]
@@ -117,6 +137,8 @@ def soak(args):
         "errors": [e for e in log if e.get("event") == "error"],
         "load": (root / "load.log").read_text().strip().splitlines()[-1:],
     }
+    if scraped:
+        summary["metrics"] = scraped
     mirror = mirror_summary(log) if getattr(args, "mirror_check", False) else None
     if mirror is not None:
         summary["mirrorCheck"] = mirror
@@ -142,6 +164,9 @@ def soak(args):
         failures.append("ledger mismatch or comparison error")
     if summary["errors"]:
         failures.append("follower logged errors")
+    if scraped:
+        for label in ("queryServer", "listener"):
+            failures += [f"metrics ({label}): {f}" for f in scraped.get(label, {}).get("failures", ["not scraped"])]
     if not follower_alive:
         failures.append("follower exited before the end")
     if mirror is not None and (not mirror["checked"] or mirror["failed"] or mirror["notOk"]):

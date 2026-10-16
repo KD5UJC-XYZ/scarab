@@ -72,7 +72,7 @@ several modules).
 | Scheduling | `Scheduling.scala` | `Compute[F]` (the CPU pool the follower runs on, a `Resource`), timer-lateness monitor, `SchedulingStats` |
 | Relay | `relay/`, `mempool/`, `network` servers | Serves the node's chain, collects and offers transactions, accepts local submissions |
 | Forging | `forge/`, `Follower.adoptForged`, `crypto/.../vrf/Draft03Prover`, `crypto/.../kes/Sum6KesSigning` | Praos block production |
-| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator), `GET /scheduling`, `GET /connections` (connection table and inbound sessions) |
+| Query | `Query.scala` | `ChainView[F, S]` plus a loopback http4s server: `GET /tip`, `GET /state?slot=&hash=` (used by the devnet comparator), `GET /scheduling`, `GET /connections` (connection table and inbound sessions), `GET /metrics` (Prometheus text format; `MetricsServer` serves it alone on `--metrics-listen`) |
 
 All configuration (epoch geometry, k, f, KES parameters, protocol parameters, initial UTxO and
 staking) is read from the genesis files; nothing assumes a particular network. Ledger arithmetic
@@ -98,6 +98,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 | `ChainView[F, S]` | read access for the query server | `ChainView.fromRef` |
 | `Bearer[F]`, `Mux[F]` | byte transport and multiplexer | TCP, in-memory (tests) |
 | `FollowerEvents[F]`, `ForgeEvents[F]`, `StorageEvents[F]`, `MempoolEvents[F]` | structured event sinks | `JsonLog` (JSON lines on stdout) |
+| `Metrics[F]` | typed measurements (`CounterDef`, `GaugeDef`, `HistogramDef` of the `Catalogue`) and a snapshot of them | `Metrics.create` (a `Ref`), rendered by `Exposition` in the Prometheus text format; fed by `EventMetrics` (the same event sinks as above, side by side with `JsonLog` through `EventSink.alongside`), `MeteredRules` and `Collectors` |
 
 Purity discipline: rules (header checks, ledger, ratification, mempool state, chain selection,
 Plutus context construction) are pure functions or values; `F` appears only where the world is

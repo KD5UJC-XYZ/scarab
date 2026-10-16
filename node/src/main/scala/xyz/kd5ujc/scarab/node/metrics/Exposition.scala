@@ -84,6 +84,9 @@ object Exposition:
     else if v.isPosInfinity then "+Inf"
     else if v.isNegInfinity then "-Inf"
     else if v == math.rint(v) && math.abs(v) < 1e15 then v.toLong.toString
+    else if math.abs(v) >= 1e-6 && math.abs(v) < 1e15 then
+      // the shortest decimal that reads back as the same double, without an exponent
+      new java.math.BigDecimal(v.toString).stripTrailingZeros.toPlainString
     else v.toString
 
   /** In a `# HELP` line a backslash and a line feed are escaped. */

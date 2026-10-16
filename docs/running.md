@@ -75,7 +75,8 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown fla
 | `--header-first on\|off` | `on` | validate the headers a peer announces (envelope, VRF, leader threshold, KES, opcert, nonces) before any of their blocks is fetched (G6); `off` leaves every check to the block, as before. Throughput comparison in [performance.md](performance.md) |
 | `--local-socket <path>` | off (`SocketPath` with `--config`) | Unix socket for the node-to-client protocols LocalStateQuery, LocalTxSubmission, LocalTxMonitor and ChainSync of whole blocks (versions 16 to 23); `cardano-cli conway query ...`, `transaction submit` and `query tx-mempool` work against it, see "Node-to-client" below |
 | `--seconds N` | run until stopped | stop after N seconds |
-| `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`, `GET /scheduling`, `GET /connections`: the connection table and the inbound sessions) |
+| `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`, `GET /scheduling`, `GET /connections`: the connection table and the inbound sessions, `GET /metrics`: the Prometheus text format, see "Metrics") |
+| `--metrics-listen <host>:<port>` | off | a listener that serves `GET /metrics` and nothing else, for a scraper that is not on loopback (`0.0.0.0:12798` in a container); see "Metrics" |
 | `--db <dir>` | off (in-memory; replay from genesis on every start; `DatabasePath` with `--config`) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `snapshots/`, `utxo/` |
 | `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
 | `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
@@ -411,11 +412,246 @@ loopback and is a development interface, not a stable API. `GET /scheduling` ser
 measurements and, on a node started with `--forge`, `GET /forging` the forger's counters per epoch and in
 total (`slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped` and
 `skippedByReason`, `forgeLatencyMs` from the slot's start to adoption); the same counters of an epoch are
-logged as a `forgeEpoch` line when the next epoch begins.
+logged as a `forgeEpoch` line when the next epoch begins. `GET /metrics` serves the Prometheus text format
+(next section).
 
 The slot clock starts at the Byron genesis' `startTime` when `byron-genesis.json` has one (as the
 reference's does), else at the Shelley `systemStart`; the `started` line logs it as `systemStart`.
 Write both identically in a network you make yourself.
+
+### Metrics
+
+The node exports its measurements in the Prometheus text format (version 0.0.4), for a Prometheus and Grafana stack
+to watch a long sync or a pool (roadmap J3, [#47](https://github.com/KD5UJC-XYZ/scarab/issues/47); the logging
+slice is J3a, #92).
+
+**Where.** `GET /metrics` on the query server (`--query-port`, loopback only, `127.0.0.1:7071` by default), and,
+with `--metrics-listen <host>:<port>`, on a listener of its own that serves `/metrics` and nothing else. The
+query server also serves the whole ledger state at `/state`, so do not bind it beyond loopback; bind the metrics
+listener instead. For a scraper in a sibling container (the monitoring stack) start the node with
+
+```sh
+follow ... --metrics-listen 0.0.0.0:12798
+```
+
+and scrape `http://<node container>:12798/metrics`. 12798 is the port the Haskell node's Prometheus
+backend conventionally uses (`PrometheusSimple ... 12798`); the listener is off unless the flag is given. A
+Prometheus job:
+
+```yaml
+scrape_configs:
+  - job_name: scarab
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['scarab-node:12798']
+```
+
+A scrape is cheap (it reads the chain tip, the mempool, the connection table and the JVM; about 150 series on a
+follower) and may be as frequent as once a second. The `devnet.py` scenarios start the follower with
+`--metrics-listen 127.0.0.1:12798` (inside the devnet's network namespace).
+
+**Names.** The measurements the Haskell node also makes carry its names, in the form its new tracing writes with
+`PrometheusSimple suffix`: `cardano_node_metrics_<name>_int` for an integer gauge, `_real` for a floating point
+one, `_counter` for a counter. They were taken from a running cardano-node 11.1.3 (the reference image): started
+as a relay and as a forging pool on the devnet with `"TraceOptions": {"": {"backends": ["Stdout MachineFormat",
+"PrometheusSimple suffix 127.0.0.1 12798"]}}`, scraped at `:12798/metrics`. The names the table marks "scraped
+from 11.1.3" were in that output; the ones marked "not scraped" are in the binary's metric table but the run had
+no mempool traffic or lost slot battle to make them appear. The rest is ours: `scarab_*` for what is specific
+to this node, `jvm_*` and `process_*` (the names of the Prometheus JVM client) in place of the Haskell node's
+`RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`, which describe the GHC runtime. Our counters end in `_total`, a
+duration is in seconds, a size in bytes. Every metric has `# HELP` and `# TYPE` (the Haskell node writes no
+`# HELP`); an info series is written as a gauge of value 1 (the 0.0.4 format has no `info` type).
+
+A counter that restarts from zero is a restart of the process: use `rate()` and `increase()`. Counters with
+labels appear on their first event (a label combination that never happened has no series); counters without
+labels and histograms exist from the start at zero.
+
+**How it is built** (`node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/`). `Metrics[F]` is an algebra with
+`inc`, `advance` (a counter whose total is known elsewhere; it only moves up), `set` and `observe`, given through
+`using`; the interpreter keeps the registry in a `Ref` and `Exposition.render` writes a snapshot. A metric is a
+`CounterDef[L]`, `GaugeDef[L]` or `HistogramDef[L]` with a label type `L` (`Unit`, an enum, a pair): the
+`Catalogue` is the closed list, a metric or label name that the format does not allow does not compile, and a
+label is a member of an enum (`Era`, `BlockRule`, ...), so the number of series is bounded by the type.
+Every part of the node reports what it does as a value of a closed event type; `EventMetrics` is the one place
+where those events become measurements, and `EventSink.alongside` runs it beside the JSON log (the log is
+unchanged). What is read when asked for, not when it happens (the chain tip, the mempool, the connection table,
+the forger's and scheduling statistics, the JVM), is read by `Collectors` at each scrape. `MeteredRules` wraps
+the block rules to time them and to count a refusal by rule family.
+
+Meanings and units worth knowing before building a dashboard:
+
+- `scarab_validation_errors_total{rule}`: `rule` is the family of the rule that refused a block (`byron`,
+  `structure`, `decode`, `envelope`, `ledger`, `tpraos`, `praos`: the `rule` field of the `error` event). A block
+  from a peer that the rules refuse stops the node (an `error` event, exit status 1), so on a follower the series
+  is non-zero only for the instant before it exits; it also counts a block this node forged and then refused
+  itself, which does not stop it.
+- `scarab_blocks_applied_total{era}` counts blocks applied to the chain since the start (the `extended` events,
+  replay of stored blocks excluded); `scarab_block_apply_seconds` is the time of the block rules for each of
+  them (buckets from 0.5 ms to 16.4 s, doubling), so the rate of applied blocks is
+  `rate(scarab_blocks_applied_total[1m])` and the mean time to apply is
+  `rate(scarab_block_apply_seconds_sum[5m]) / rate(scarab_block_apply_seconds_count[5m])`.
+- Sync progress: `cardano_node_metrics_slotNum_int / scarab_peer_tip_slot`, or in blocks
+  `cardano_node_metrics_blockNum_int / scarab_peer_tip_block` (the tip the peer last announced).
+- `scarab_era{era}` is 1 for the era of the tip and 0 for the other six.
+- `scarab_immutable_blocks` is what the immutable store held at the start plus the blocks that became
+  immutable since; `scarab_volatile_blocks` is at most `k`.
+- `scarab_ledger_utxo_entries`, `_accounts` and `_pools` are as of the start of the last epoch (they change once
+  per epoch, not per block) and are the `utxo`, `accounts` and `pools` of the `ledgerEpoch` log line.
+- `scarab_snapshots_migrated_total` counts files rewritten from an older storage format when the database was
+  opened; `scarab_snapshot_last_write_seconds` and `_bytes` describe the last snapshot written.
+- `scarab_scheduling_*` and `scarab_cpu_*` are the whole-run measurements of `GET /scheduling` (roadmap D8): a
+  timer that fires late means the node's threads were starved.
+- `jvm_gc_collection_seconds_total` is the time the JVM reports for each collector (a counter, in seconds, as
+  precise as the JVM's own millisecond count); `jvm_memory_bytes_max{area="nonheap"}` is -1 when the JVM sets no
+  limit.
+
+**Differences in meaning from the Haskell node's metrics of the same name.**
+
+- `cardano_node_metrics_density_real`: both are a number of blocks per slot over the volatile chain. Ours is
+  the blocks of the volatile chain over the slots from its anchor (the immutable tip) to the tip; the Haskell
+  node computes it over the fragment of its ChainDB (`fragmentChainDensity`, cardano-node
+  `Cardano/Node/Tracing/Tracers/ChainDB.hs`; the formula is from the source as remembered, not read line by
+  line in this work, and the two agree in magnitude on the devnet).
+- `cardano_node_metrics_slotsMissed_int` is ours for the slots the forger skipped because it was still busy
+  with an earlier one (the `busy` reason); the Haskell node counts the slots it failed to lead in time.
+- `cardano_node_metrics_connectionManager_{inbound,outbound,duplex}Conns_int` count the connections of our
+  connection manager (one per peer address, either direction); the Haskell manager has more states and counts
+  all of them.
+- `cardano_node_metrics_currentKESPeriod_int` and `remainingKESPeriods_int` appear with the first block forged or
+  the first key evolution, not at start; `operationalCertificate{Start,Expiry}KESPeriod_int` and
+  `forging_enabled_int` at start.
+- The Haskell gauges `blocksForged_int`, `nodeIsLeader_int` and the `Forge_*_counter` counters are two views
+  of the same counts; both are exported.
+
+**Not exported** (cardano-node 11.1.3 has them; tracked in roadmap J3): `cardano_node_metrics_served_block_counter`,
+`served_header_counter` and `served_block_latest_counter` (what the node served to peers; only the inbound
+sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
+`scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
+`GSM_state`, `tipBlock` and `basicInfo`, `peerSelection_*` and `inboundGovernor_*` (the node has no peer
+selection governor: it follows the peers it is given), the `blockfetchclient_*` series (see
+`scarab_blockfetch_seconds`), and the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`.
+
+The full list follows, in the order of the catalogue
+(`node/src/main/scala/xyz/kd5ujc/scarab/node/metrics/Catalogue.scala`); `DocsSuite` fails when this
+section and the catalogue differ.
+
+#### The chain
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `cardano_node_metrics_blockNum_int` | gauge |  | Block number of the tip of the chain. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_slotNum_int` | gauge |  | Slot number of the tip of the chain. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_epoch_int` | gauge |  | Epoch of the tip of the chain. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_slotInEpoch_int` | gauge |  | Slot of the tip of the chain within its epoch. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_density_real` | gauge |  | Chain density of the volatile chain: its blocks per slot, from its anchor (the immutable tip) to the tip. | same name; scraped from 11.1.3 (see "Differences in meaning") |
+| `cardano_node_metrics_forks_counter` | counter |  | Switches to another fork (a rollback of at least one block) since the start. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_node_start_time_int` | gauge |  | Start of the node, in seconds since the epoch of 1970. | same name; scraped from 11.1.3 |
+| `scarab_build_info` | gauge | `version`, `scala_version`, `git_commit` | The build that is running (always 1). | `cardano_node_metrics_cardano_build_info` (an info series there) |
+| `scarab_era` | gauge | `era` | 1 for the era of the tip of the chain, 0 for the others. | none |
+| `scarab_blocks_applied_total` | counter | `era` | Blocks applied to the chain since the start, by era (replay of the stored blocks excluded). | none |
+| `scarab_block_apply_seconds` | histogram |  | Time to validate a block and apply it to the ledger state. | none |
+| `scarab_validation_errors_total` | counter | `rule` | Blocks the rules refused, by rule family. | none |
+| `scarab_peer_tip_slot` | gauge |  | Slot of the tip of the peer's chain, as the peer last announced it. | none |
+| `scarab_peer_tip_block` | gauge |  | Block number of the tip of the peer's chain, as the peer last announced it. | none |
+| `scarab_peer_reconnects_total` | counter |  | Times the connection to the peer was lost and opened again. | none |
+| `scarab_rollbacks_total` | counter |  | Rollbacks of the chain. | none |
+| `scarab_rollback_depth_blocks` | histogram |  | Blocks rolled back at a time. | none |
+| `scarab_volatile_blocks` | gauge |  | Blocks in the volatile chain (at most k). | none |
+| `scarab_immutable_blocks` | gauge |  | Blocks in the immutable chain: those found at the start and those that became immutable since. | none |
+| `scarab_ledger_utxo_entries` | gauge |  | Entries of the UTxO set, as of the start of the last epoch (updated once per epoch). | none |
+| `scarab_ledger_accounts` | gauge |  | Registered stake credentials, as of the start of the last epoch. | none |
+| `scarab_ledger_pools` | gauge |  | Registered stake pools, as of the start of the last epoch. | none |
+
+#### The mempool
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `cardano_node_metrics_txsInMempool_int` | gauge |  | Transactions in the mempool. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
+| `cardano_node_metrics_mempoolBytes_int` | gauge |  | Size of the transactions in the mempool, in bytes. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
+| `cardano_node_metrics_txsProcessedNum_counter` | counter |  | Transactions added to the mempool since the start. | same name; in the 11.1.3 binary, not scraped (no traffic in the run) |
+| `scarab_mempool_rejected_total` | counter | `reason` | Transactions the mempool refused, by reason. | none (a trace message only) |
+| `scarab_mempool_dropped_total` | counter |  | Held transactions dropped because the new tip no longer admits them. | none (a trace message only) |
+| `scarab_mempool_adopted_total` | counter |  | Held transactions that appeared in a block of our chain. | none |
+
+#### Forging (only on a node started with `--forge`)
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `cardano_node_metrics_Forge_about_to_lead_counter` | counter |  | Slots checked for leadership. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_node_is_leader_counter` | counter |  | Slots the pool led. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_node_not_leader_counter` | counter |  | Slots checked that the pool did not lead. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_forged_counter` | counter |  | Blocks forged. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_adopted_counter` | counter |  | Forged blocks that became the tip of our chain. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_Forge_didnt_adopt_counter` | counter |  | Forged blocks that did not stay on our chain (lost slot battles, replaced later). | same name; from the binary's trace name `Forge.didnt-adopt`, not scraped (no such event in the run) |
+| `cardano_node_metrics_blocksForged_int` | gauge |  | Blocks forged since the start. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_nodeIsLeader_int` | gauge |  | Slots the pool led since the start. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_nodeCannotForge_int` | gauge |  | Slots the pool led but could not forge in, since the start. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_slotsMissed_int` | gauge |  | Slots the forger skipped because it was still busy with an earlier one, since the start. | same name; scraped from 11.1.3 (see "Differences in meaning") |
+| `cardano_node_metrics_forgedSlotLast_int` | gauge |  | Slot of the last block forged. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_forging_enabled_int` | gauge |  | 1 when the node has forging credentials. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_currentKESPeriod_int` | gauge |  | The KES period of the last block forged or of the last key evolution. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_operationalCertificateStartKESPeriod_int` | gauge |  | The first KES period of the operational certificate. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_operationalCertificateExpiryKESPeriod_int` | gauge |  | The KES period at which the operational certificate expires. | same name; scraped from 11.1.3 |
+| `scarab_forge_skipped_total` | counter | `reason` | Slots the forger did not check, by reason. | none |
+| `scarab_forge_adoption_seconds` | histogram |  | Time from the start of the slot to the adoption of the block forged in it. | none |
+
+#### Peers and connections
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `cardano_node_metrics_connectionManager_inboundConns_int` | gauge |  | Connections the peer opened to us. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_outboundConns_int` | gauge |  | Connections we opened to a peer. | same name; scraped from 11.1.3 |
+| `cardano_node_metrics_connectionManager_duplexConns_int` | gauge |  | Connections on which both sides run the protocols. | same name; scraped from 11.1.3 |
+| `scarab_connections` | gauge | `state` | Connections the connection manager knows, by state. | none |
+| `scarab_connection_events_total` | counter | `event` | What the connection manager did. | none |
+| `scarab_inbound_events_total` | counter | `event` | What the inbound governor did on accepted connections. | none |
+| `scarab_chainsync_rounds_total` | counter |  | Pipelined ChainSync rounds. | none |
+| `scarab_chainsync_headers_total` | counter |  | Headers (and rollbacks) received over ChainSync. | none |
+| `scarab_chainsync_round_seconds` | histogram |  | Time of a pipelined ChainSync round, from the first request to the last reply. | none |
+| `scarab_blockfetch_seconds` | histogram |  | Time to fetch a block on its own, from the request to the block. | none |
+| `scarab_headers_validated_total` | counter |  | Headers that passed every header rule before their block was fetched. | none |
+| `scarab_headers_unchecked_total` | counter |  | Headers left to the validation of their block. | none |
+| `scarab_headers_waited_total` | counter |  | Headers that waited for the chain to advance before they could be checked. | none |
+
+#### Storage
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `scarab_snapshots_written_total` | counter |  | Ledger snapshots written. | none |
+| `scarab_snapshots_restored_total` | counter |  | Ledger snapshots the node started from. | none |
+| `scarab_snapshots_migrated_total` | counter |  | Files rewritten from an older storage format when the database was opened. | none |
+| `scarab_snapshot_problems_total` | counter | `kind` | Snapshots skipped, not written or refused by the format, by kind. | none |
+| `scarab_snapshot_last_write_seconds` | gauge |  | Duration of the last snapshot written. | none |
+| `scarab_snapshot_last_bytes` | gauge |  | Size of the last snapshot written, in bytes. | none |
+| `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |
+| `scarab_replay_seconds` | gauge |  | Time spent applying the stored blocks again at the start. | none |
+
+#### Scheduling (D8)
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `scarab_scheduling_timer_samples_total` | counter |  | Timer samples taken by the scheduling monitor. | none |
+| `scarab_scheduling_timer_lateness_max_seconds` | gauge |  | The latest a timer fired beyond its due time, since the start. | none |
+| `scarab_scheduling_timers_late_total` | counter | `over_ms` | Timers that fired more than `over` milliseconds late. | none |
+| `scarab_cpu_steps_total` | counter |  | CPU-bound steps run on the follower's pool. | none |
+| `scarab_cpu_longest_step_seconds` | gauge |  | The longest CPU-bound step, since the start. | none |
+
+#### The JVM and the process
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `jvm_memory_bytes_used` | gauge | `area` | Memory in use, by area. | `cardano_node_metrics_RTS_gcLiveBytes_int` (GHC) |
+| `jvm_memory_bytes_committed` | gauge | `area` | Memory committed by the JVM, by area. | none |
+| `jvm_memory_bytes_max` | gauge | `area` | Most memory the JVM may use, by area (-1 when unlimited). | none |
+| `jvm_gc_collections_total` | counter | `gc` | Garbage collections, by collector. | `cardano_node_metrics_RTS_gcMajorNum_int` (GHC) |
+| `jvm_gc_collection_seconds_total` | counter | `gc` | Time spent in garbage collection (approximate, as the JVM reports it), by collector. | none |
+| `jvm_threads_current` | gauge |  | Live threads. | none |
+| `jvm_classes_loaded` | gauge |  | Classes currently loaded. | none |
+| `process_cpu_seconds_total` | counter |  | CPU time of the process (user and system), in seconds. | `cardano_node_metrics_Stat_cputicks_int` |
+| `process_resident_memory_bytes` | gauge |  | Resident memory of the process, in bytes. | `cardano_node_metrics_Mem_resident_int` |
+| `process_open_fds` | gauge |  | Open file descriptors. | none |
+| `process_start_time_seconds` | gauge |  | Start of the process, in seconds since the epoch of 1970. | `cardano_node_metrics_node_start_time_int`, and `basicInfo` |
 
 ## Monitoring long runs
 
@@ -505,11 +741,11 @@ python3 scripts/devnet.py down                       # remove containers and the
 
 | Subcommand | What it does | What it asserts |
 |---|---|---|
-| `soak [--seconds 600] [--every 20] [--seed 1] [--governance-extended] [--oracle] [--mirror-check] [--rules differential]` | `up` + Scala follower + ADA, staking and Conway governance/Plutus V3 load + periodic comparison; `--governance-extended` adds the scenarios of [`govextra.py`](../scripts/devnet/govextra.py) (below; needs `--seconds 900`) | exit status fails on any mismatched comparison or follower error; with `--governance-extended` also on a transaction the reference was expected to refuse but did not refuse for the named predicate failure, and on an extended stage that was not reached. Compares at matching tips: UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps, snapshots, reward update, Praos nonces, governance state |
+| `soak [--seconds 600] [--every 20] [--seed 1] [--governance-extended] [--oracle] [--mirror-check] [--rules differential]` | `up` + Scala follower + ADA, staking and Conway governance/Plutus V3 load + periodic comparison; `--governance-extended` adds the scenarios of [`govextra.py`](../scripts/devnet/govextra.py) (below; needs `--seconds 900`) | exit status fails on any mismatched comparison or follower error; with `--governance-extended` also on a transaction the reference was expected to refuse but did not refuse for the named predicate failure, and on an extended stage that was not reached. Compares at matching tips: UTxO, fees, deposits, treasury, reserves, accounts, pools, DReps, snapshots, reward update, Praos nonces, governance state. At the end, while the follower is up, scrapes `/metrics` on the query server and on the `--metrics-listen` listener (`127.0.0.1:12798` in the devnet) and fails unless every series of the documented list is there, the text is well formed, `cardano_node_metrics_blockNum_int` and `_epoch_int` lie between the last `extended` event of the log read before and after the scrape, `scarab_blocks_applied_total` equals the number of `extended` events within the same bracket, every applied block was timed, and `scarab_validation_errors_total` is 0 (`metrics` in the soak's `summary.json`) |
 | `e2e [--timeout 1500] [--until-epoch N] [--keep] [--no-load] [--no-compare] [--min-comparisons 3] [--oracle]` | `up-eras` (Byron, Shelley, Allegra, Mary, Alonzo, Babbage, Conway) + follower from Origin + era-specific load + per-era ledger comparison | the `eraTransition` lines are exactly the seven eras at the configured epochs; every era applied blocks; all Byron signatures verified; no validation or fatal errors; every comparison matched, at least `--min-comparisons` per Shelley-based era. Writes `e2e-summary.json` and `compare.jsonl` |
 | `relay [--seconds 300] [--peers 3] [--relay-mode ...] [--keep]` | the Scala node follows the pools and serves a non-producing Haskell relay (`--listen`, `--db`, `--local-socket`); load is submitted through the relay | the Haskell relay syncs the whole chain from the Scala node and stays at the tip (lag samples every `--every` seconds), transactions travel relay, Scala mempool, pools, block, and one is submitted with `cardano-cli` to the Scala socket. G2: the Haskell relay connects to the Scala node (it is in the relay's topology; the Scala node has no `--peer` for it) and, with the default `--relay-mode InitiatorAndResponder`, the Scala node's own ChainSync client follows the relay over that same inbound duplex connection: `GET /connections` shows an established inbound duplex connection and an inbound session with an intersection that keeps receiving headers and whose peer tip is within 3 blocks of the pools', and the log has the `inbound` events `duplex` and `following` |
 | `ntc [--seconds 240] [--warmup 60] [--every 10] [--chain-sync-blocks 60] [--monitor-burst 4]` | a fresh cluster, the Scala node following pool 1 with `--local-socket` and `--db` (and `--mempool-bytes` equal to the reference's default capacity), and the ordinary and governance load running. Rounds of LocalStateQuery: the Scala node's volatile tip is acquired on the reference node by point, and every query of the battery (`scripts/devnet/ntcqueries.py`, about 55 queries built from the live state) goes to both. Then `cardano-cli conway query ...` (24 commands) against both sockets, each pair accepted only when the tip read before and after is the same block on both nodes. Then 18 refused transactions (`scripts/devnet/ntccases.py`: fee too small, inputs spent, value not conserved, validity interval, missing witness, small and wrong-network outputs, treasury value, registration, delegation, DRep, pool retirement, proposal, vote, size) and one valid transaction through both sockets. In parallel with the query rounds, local ChainSync on both sockets (`scripts/devnet/ntclocal.py`): `--chain-sync-blocks` blocks from Origin (the Scala node reads its immutable store and then its volatile chain), 12 from the tip, 4 as a backlog from a recent block. Last, LocalTxMonitor: snapshots of both mempools walked step for step while bursts of `--monitor-burst` chained transactions go through the Scala socket (which forwards them to the reference node), `cardano-cli conway query tx-mempool info | next-tx | tx-exists` on both sockets at the same time, and `AwaitAcquire` on both | every query that is implemented gives equal bytes in every round (matched / total per query); every `cardano-cli` pair equal; every refusal equal as raw `ApplyTxErr` bytes and as the text `cardano-cli transaction submit` prints; the valid transaction is accepted by the Scala node and reaches a block; every block of local ChainSync equal as the raw item and the same first instruction (a roll-back to the point found); every pair of mempool snapshots with the same slot and transactions has equal raw answers (at least 3 rounds with transactions), the bracketed `tx-mempool` outputs are equal (one with transactions) and `AwaitAcquire` wakes on both. Queries not answered yet are listed with their counts and do not fail the run. Writes `ntc-summary.json` |
-| `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event; the forger's own counters (`GET /forging`, per epoch: slots checked, leader slots, forged, adopted, lost slot battles, skips by reason, forge latency) agree with the log and no block took more than five slots from its slot's start to adoption. `--byron-start-offset N` writes the Byron genesis' `startTime` N seconds off the Shelley `systemStart` (the reference's clock follows the Byron one; the check that the Scala node does too). Records the host load; a run whose only misses are busy slots on a host with load above its CPU count exits 2 (inconclusive). Writes `pool-summary.json` (`forgerStats`, `slotClock`, `oracle`, `host`) |
+| `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event; the forger's own counters (`GET /forging`, per epoch: slots checked, leader slots, forged, adopted, lost slot battles, skips by reason, forge latency) agree with the log and, scraped from `GET /metrics` between two readings of `/forging`, the Haskell-named series `Forge_about_to_lead_counter`, `node_is_leader_counter`, `forged_counter`, `adopted_counter` and `didnt_adopt_counter` lie between the two readings and the KES gauges exist and no block took more than five slots from its slot's start to adoption. `--byron-start-offset N` writes the Byron genesis' `startTime` N seconds off the Shelley `systemStart` (the reference's clock follows the Byron one; the check that the Scala node does too). Records the host load; a run whose only misses are busy slots on a host with load above its CPU count exits 2 (inconclusive). Writes `pool-summary.json` (`forgerStats`, `slotClock`, `oracle`, `host`) |
 
 `--scala-cpus N` (`follow`, `soak`, `relay`, `pool`, `e2e`; default 2) sets the CPUs of the Scala node's
 container, and `--max-starvation-warnings N` makes a scenario fail when the node logged more cats-effect

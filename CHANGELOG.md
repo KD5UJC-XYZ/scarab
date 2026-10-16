@@ -5,6 +5,30 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (observability, J3: Prometheus metrics)
+- **`Metrics[F]` and the Prometheus endpoint.** `GET /metrics` on the query server and, with
+  `--metrics-listen <host>:<port>` (off by default; `0.0.0.0:12798` for a scraper in a sibling container), a listener
+  that serves the metrics and nothing else (the query server also serves `/state` and stays on loopback). 83 metrics in
+  the text exposition format 0.0.4 with `# HELP` and `# TYPE`: the Haskell node's `cardano_node_metrics_*` names, in the
+  form of `PrometheusSimple suffix`, for what it also measures (block, slot, epoch, slot in epoch, density, forks,
+  mempool, the `Forge_*` counters, KES periods, connections; the names were scraped from cardano-node 11.1.3 run as a
+  relay and as a forging pool on the devnet), and `scarab_*` (blocks applied by era, block apply time, refusals by
+  rule family, the peer's tip, rollbacks, snapshots, header-first totals, ChainSync rounds, scheduling) and
+  `jvm_*`/`process_*` for the rest. Every metric is documented in `docs/running.md`, "Metrics" (`DocsSuite` keeps the
+  section and the catalogue equal).
+- **A typed registry.** `Metrics[F]` (`inc`, `advance`, `set`, `observe`; `using`, no global state) over a `Ref`;
+  `CounterDef[L]`, `GaugeDef[L]` and `HistogramDef[L]` carry the label type, a metric or label name the format does
+  not allow does not compile (`scala.compiletime.ops.string.Matches`), labels are members of enums (`Era`,
+  `BlockRule`, ...), and `Exposition.render` is pure. Tests: a golden text, an independent parser of the format,
+  a property over arbitrary operations and label values that need escaping, the catalogue's consistency.
+- **One place for the events.** `EventMetrics` turns the follower, forge, mempool, storage, connection and inbound
+  events into measurements; `EventSink.alongside` runs it beside `JsonLog`, so no call site changed and the JSON log is
+  byte for byte what it was. `MeteredRules` times the block rules and counts a refusal by rule family; `Collectors`
+  read the chain, mempool, connection table, scheduling and forger statistics and the JVM at each scrape.
+- **Devnet.** `soak` scrapes both endpoints at the end and checks them against the follower log (series present,
+  `blockNum` and epoch between the log's readings before and after, blocks applied equal to the `extended` events,
+  every block timed, no validation error); `pool` checks the `Forge_*` series against `GET /forging`.
+
 ### Added (ledger-state mirror, step 2, jump 2: the tick of every era, J2.3)
 - **The epoch and tick rules as `Sts` over `NewEpochState[E]`** (`ledger/rules/`, each citing its upstream file and line):
   `Tick` (`bheadTransition`: solidify the future parameters, NEWEPOCH, genesis delegations, RUPD), `NewEpoch` (with

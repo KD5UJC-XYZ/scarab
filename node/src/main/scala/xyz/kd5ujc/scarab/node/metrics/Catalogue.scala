@@ -116,7 +116,7 @@ object Catalogue:
   )
   val density = GaugeDef(
     MetricName("cardano_node_metrics_density_real"),
-    "Chain density over the volatile chain: its blocks per slot, from its first block to the tip."
+    "Chain density of the volatile chain: its blocks per slot, from its anchor (the immutable tip) to the tip."
   )
   val forks = CounterDef(
     MetricName("cardano_node_metrics_forks_counter"),

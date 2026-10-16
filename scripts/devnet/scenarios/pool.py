@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from .. import metrics as node_metrics
 from ..cluster import freeze_classes, scala_container, start_nodes, start_reference
 from ..compare import compare_once
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
@@ -18,6 +19,36 @@ from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, data_root, docker, in_ref
 # ---------------------------------------------------------------- the Scala node as a block producer
 
 POOL_KES_SLOTS = 250   # slotsPerKESPeriod of the pool scenario (the sandbox default, 129600, never changes period)
+
+
+def pool_metrics_failures(name, before, fetch):
+    """The forger's Prometheus series (the Haskell node's names) against its own `/forging` counters, read before
+    and after the scrape: a counter lies between the two readings."""
+    got = node_metrics.scrape(name, QUERY_PORT)
+    if got is None:
+        return ["GET /metrics gave no answer"]
+    try:
+        samples = node_metrics.parse(got[1])
+    except ValueError as e:
+        return [f"GET /metrics is not well formed: {e}"]
+    after = json.loads(docker("exec", f"{name}-scala", "python3", "-c", fetch, check=False, timeout=60).stdout)["total"]
+    failures = []
+    for metric, key in (("cardano_node_metrics_Forge_about_to_lead_counter", "slotsChecked"),
+                        ("cardano_node_metrics_Forge_node_is_leader_counter", "leaderSlots"),
+                        ("cardano_node_metrics_Forge_forged_counter", "forged"),
+                        ("cardano_node_metrics_Forge_adopted_counter", "adopted"),
+                        ("cardano_node_metrics_Forge_didnt_adopt_counter", "lostSlotBattles")):
+        v = node_metrics.value(samples, metric)
+        if v is None or not before[key] <= v <= after[key]:
+            failures.append(f"{metric} is {v}, /forging gave {before[key]} before and {after[key]} after")
+    for metric in ("cardano_node_metrics_forging_enabled_int", "cardano_node_metrics_currentKESPeriod_int",
+                   "cardano_node_metrics_remainingKESPeriods_int",
+                   "cardano_node_metrics_operationalCertificateStartKESPeriod_int",
+                   "cardano_node_metrics_operationalCertificateExpiryKESPeriod_int",
+                   "cardano_node_metrics_forgedSlotLast_int"):
+        if node_metrics.value(samples, metric) is None:
+            failures.append(f"missing series {metric}")
+    return failures
 
 
 def pool_topology(name, others, ports):
@@ -381,6 +412,7 @@ def pool(args):
             if slowest is not None and slowest > budget:
                 failures.append(f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)")
             print(json.dumps({"forgerStats": forging_stats}), flush=True)
+            failures += [f"metrics: {f}" for f in pool_metrics_failures(args.name, total, fetch)]
         if not forged:
             failures.append("the Scala node forged no block")
         if len(adopted) < len(forged) - len(lost):
