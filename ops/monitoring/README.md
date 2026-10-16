@@ -73,5 +73,5 @@ docker run --name scarab-<run> --label scarab.metrics.port=12798 ... \
   ... follow --metrics-listen 0.0.0.0:12798 ...
 ```
 
-The port is not published; the agent reaches it on the container's bridge address. The "Node
-metrics" row of the dashboard reads these series.
+The port is not published. The agent runs on Docker's default bridge, like the runs, and reaches the
+port on the container's bridge address. The "Node metrics" row of the dashboard reads these series.

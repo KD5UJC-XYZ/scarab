@@ -33,6 +33,9 @@ services:
       - /var/lib/docker:/var/lib/docker:ro
       # cAdvisor resolves containers through containerd (Docker's containerd image store)
       - /run/containerd:/run/containerd:ro
+    # the runs are started with plain `docker run`, on Docker's default bridge; an agent on its own
+    # compose network could not reach their /metrics (Docker isolates one bridge from another)
+    network_mode: bridge
     pid: host
     # cAdvisor reads every container's cgroup, so the agent shares the host's cgroup namespace
     cgroup: host
