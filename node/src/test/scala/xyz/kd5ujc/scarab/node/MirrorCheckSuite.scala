@@ -14,8 +14,8 @@ import xyz.kd5ujc.scarab.node.MirrorCheck.{Outcome, Stage}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** `--mirror-check` on the eras capture: every state checks out, the follower's hook reports at the
-  * first block and once per epoch, and a mirror that is wrong for the state is a reported refusal,
-  * not a failure of the follower.
+  * first block and once per epoch, and a state the mirror cannot hold is a reported refusal, not a
+  * failure of the follower.
   */
 class MirrorCheckSuite extends FunSuite:
   private val fixtures = Path.of("fixtures/eras")
@@ -69,16 +69,17 @@ class MirrorCheckSuite extends FunSuite:
     assert(reported.forall(_._2.ok), reported.filterNot(_._2.ok).toString)
   }
 
-  test("a mirror that is wrong for the state is a refusal, reported and not raised") {
-    val wrong = env.copy(ledger = env.ledger.copy(network = env.ledger.network + 1))
-    val (h, s) = states.find(_._1.era == Era.Conway).getOrElse(fail("no Conway block"))
-    MirrorCheck.check(wrong, anchor(h), s) match
+  test("a state the mirror cannot hold is a refusal, reported and not raised") {
+    val (h, good) = states.find(_._1.era == Era.Conway).getOrElse(fail("no Conway block"))
+    // a negative treasury has no `Coin`
+    val s = good.copy(ledger = good.ledger.copy(treasury = BigInt(-1)))
+    MirrorCheck.check(env, anchor(h), s) match
       case Outcome.Refused(Era.Conway, Stage.ToMirror, _) => ()
       case other => fail(s"expected a refusal of the conversion, got $other")
     val reported = (for
       seen <- Ref.of[IO, Vector[Outcome]](Vector.empty)
       checker <- MirrorCheck.Checker.create[IO](
-        IO.pure(wrong),
+        IO.pure(env),
         (_, _, outcome, _) => seen.update(_ :+ outcome)
       )
       _ <- checker.afterBlock(h, s)
