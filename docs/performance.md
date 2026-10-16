@@ -517,3 +517,34 @@ no comparisons, which is an easy saving for J2.8.
 at 112,000 accounts: the boundary 0.8 to 1.5 s with both, a tick that changes nothing 0.2 to 0.5 ms with `RuleT` against 0.5 to
 1.1 ms with the stack. No difference beyond noise where it matters, so the 10% gate holds; `TickRulesSuite` checks that both give
 the same state.
+
+## 11. The blocks of Conway: the new rules against the old (J2.4)
+
+`NewRules.forEra(Era.Conway)` applies each block of Conway (the tick and BBODY on a state of its own) beside the old rules
+under `--rules differential`; the harness times the blocks both sides applied (`Stats.oldBlocks`, `newBlocks`). Linux x86-64,
+JDK 21, `-Xmx16g`, a host shared with other runs (so absolute times are pessimistic). The two are not the same work: the old
+side's time is its whole block, the headers' checks included, but its signatures and the block's decoding come from the
+verification pipeline (`VerificationCache`, taken once), where the new side verifies the signatures and decodes the block
+itself.
+
+| run | the blocks | old, mean per block | new, mean per block |
+|---|---|---|---|
+| `PreviewDifferentialMain` epoch 701 (Conway, protocol 10), no sampling | all 3,068 are Conway | 2.14 ms | 2.75 ms |
+| the forks run (snapshot indices 1, 2, 20, 21, 644, 645, 741, 742, 1288 to 1291, sampling every 500 blocks) | the Conway blocks of 41,474 | 0.64 ms | 0.95 ms |
+| stride 72, 21 epochs, sampling every 500 blocks | the Conway blocks of 70,183 | 1.26 ms | 1.65 ms |
+
+The new side's block, epoch 701 (3,068 blocks, 2.75 ms): the tick 0.08 ms, the block's decoding 0.10 ms, the signatures 0.31 ms
+(`Verdicts.Direct`, 13% of BBODY), the rules with the phase-2 evaluation 2.0 ms. The phase-2 evaluation is what both sides spend
+their time on, so the rules themselves cost little beside it.
+
+**`RuleT` against the reference stack.** BBODY of the same 3,068 blocks run through `RuleT` and through `Kleisli` over
+`StateT` over `Either` (both results compared, equal in every block): 7,886 ms and 7,856 ms. The interpreter is below the
+noise of the work (phase 2 is most of it), `RuleT` stays and no fused form is needed; the perf gates of design 2.3 apply at J2.8.
+
+**Recording votes** (`Proposals.withVotes`, one pass over the proposals) against a map over every proposal per vote: 100
+votes cost 20 us with 5, 50 or 500 proposals in the store, against 21, 59 and 163 us. The preprod epochs 187 to 193 carry
+648,752 committee votes on five proposals (#94).
+
+The conversions of the harness are as in section 9 (median 0.44 s, p99 1.7 s and maximum 1.7 s over 183 conversions of the
+stride-72 run); the sampling interval of the stride-72 run (500 blocks) is denser than the default (2,160), so its
+replay is 2 times the baseline.

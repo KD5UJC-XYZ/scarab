@@ -90,6 +90,49 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `blockNum` and epoch between the log's readings before and after, blocks applied equal to the `extended` events,
   every block timed, no validation error); `pool` checks the `Forge_*` series against `GET /forging`.
 
+### Added (ledger-state mirror, step 2, jump 2: the Conway LEDGER rules, J2.4)
+- **The transaction rules of Conway as `Sts` over `LedgerState[Conway]`** (`ledger/rules/`, each citing its upstream file and
+  line): `Utxow`, `Utxo` and `Utxos` (the checks of the transaction, the evaluation of its scripts, the change of the UTxO
+  state: the set, the deposits, the fees, the donation and the **instant stake**, from the outputs a valid transaction
+  creates and spends and the collateral a failed one takes), `Certs`, `Cert`, `Deleg`, `Pool` and `GovCert` (which keep the
+  **delegators of each pool** (`spsDelegators`) and **of each DRep**, the DReps' expiry, the dormant epochs, the committee
+  state and, from protocol version 11, the pools' VRF key hashes), `Gov` (proposals and votes), `Ledger` and `Ledgers`, and
+  `Bbody` (the body's commitment, the reference scripts and the execution units of the block, the blocks made); `ConwayBlock`
+  is the combinator's tick and BBODY on the ticked state. `HardFork` now populates the VRF key hashes entering version 11
+  (`populateVRFKeyHashes`), which a state carried across the fork needs.
+- **The predicates are the old side's.** The helpers of UTXO and UTXOW in `PreConwayRules` take what they read (the
+  parameters, the UTxO set, the counters) instead of the flat state, and the new rules call them: a transaction is refused
+  with the same `LedgerFailure`. The rules of CERTS, GOV and the state are re-written from the reference and the old rules.
+- **Recording votes costs one pass over the proposals**, not one per vote (`Proposals.withVotes`, used by both rule sets):
+  20 us for 100 votes whatever the number of proposals (5, 50 or 500), against 21, 59 and 163 us for a map over every action
+  per vote. A hot committee key that is authorised but not elected votes before protocol version 11 and is refused from it
+  (`Gov.hs:478`), as the preprod epochs 187 to 193 (648,752 votes on five proposals, #94) need; the unit test builds that state.
+- **The harness applies the blocks of Conway on the new rules.** `NewRules.current` answers for them (the block decoded, its
+  read set fetched from the store and its changes settled as the old side's are), from a state of its own that the pair
+  carries from the first block of Conway; the tick stage starts from it. At the block stage the new-epoch state is compared
+  (`Relations`, with the delegator counts of a carried state), the verdicts for what the ledger refuses. The old side's tick is
+  made once per block and shared. `differentialSummary` gives the time of the blocks both sides applied (`blockOld`,
+  `blockNew`); `PreviewDifferentialMain` takes the sampling interval and `GenesisDifferentialMain` replays a recorded sync
+  from genesis through both sides.
+- **Deviations from the plan, for the record** (the design, §4 item 4, has them in full). (1) The rules of a transaction raise
+  the node's `LedgerFailure`, whose predicate failures already nest as Haskell's; `LedgerFailure.Vocab` and
+  `BlockFailure.Tick` are the total refusals of the conversions. (2) The phase-2 counters are in the state of the rules
+  (`Counted`). (3) UTXOW makes the checks that annotating the transaction needs first, and the validation-tag check where
+  the old rules make it. (4) The first failure of a transaction with two faults can differ from the old side's (the
+  reference's order in CERTS, DELEG and GOV). (5) The block stage compares the new-epoch state only. (6) A block of Conway
+  whose pre-state is of an earlier era is left to the old side, once. (7) The new side verifies signatures and decodes the
+  block itself. (8) BBODY's limits are checked before LEDGERS. (9) `RuleT` against the reference stack on the same BBODY
+  over a Preview epoch: 7,886 ms against 7,856 ms (Plutus evaluation dominates both); `RuleT` stays.
+- **Tests.** `ConwayLedgerSuite` (nineteen: both sides on the same transaction for a payment, a delegation with its
+  re-delegation and unregistration, a pool's registration, re-registration and retirement, DRep registration, delegation,
+  vote and unregistration, committee authorisation and resignation, votes of an elected and of an unelected hot key before
+  and from version 11, unknown voters and actions, a proposal, withdrawals, the failures; the uniqueness of VRF key hashes
+  from 11 and the fork's counts; a transaction of 1,500 certificates and votes on a 256 KiB stack; the same rule on `RuleT`
+  and on the reference stack), `DifferentialErasSuite` (the Conway blocks of the capture on the new rules, verdicts and states
+  agree).
+- **Evidence.** See [compatibility.md](docs/compatibility.md) and [performance.md](docs/performance.md) section 11. No
+  persisted format changes (the snapshot fingerprint golden is unchanged).
+
 ### Added (ledger-state mirror, step 2, jump 2: the tick of every era, J2.3)
 - **The epoch and tick rules as `Sts` over `NewEpochState[E]`** (`ledger/rules/`, each citing its upstream file and line):
   `Tick` (`bheadTransition`: solidify the future parameters, NEWEPOCH, genesis delegations, RUPD), `NewEpoch` (with
