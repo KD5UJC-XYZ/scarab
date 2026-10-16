@@ -618,7 +618,7 @@ The whole check takes about four minutes on one core (`LeiosCheckMain`: 255 s, 2
    five-part body, and Dijkstra blocks the same header with the new two-part block. A decoder
    written to `conway.cddl` (10 elements) cannot read this network's first block. In that release
    the element before the Leios fields is `hbProtVer`, a protocol version (`[12, 0]`; `[12, 67]` in
-   853 headers, a minor version of 67 nobody enacts); the pinned `dijkstra.cddl` and cardano-ledger
+   853 headers, a minor version of 67, issued by 10 of the 147 pools; the cause is not known); the pinned `dijkstra.cddl` and cardano-ledger
    name it `header_version_info = [highest_supported_major_version, self_reported_software_tag]`
    with the same wire format (cardano-ledger-core `Block.hs` 147 to 156, "neither field is
    validated"). The consensus main branch (`8f56bc89`, which this repository pins) instead has a
@@ -643,10 +643,12 @@ The whole check takes about four minutes on one core (`LeiosCheckMain`: 255 s, 2
    `announcement = header.header`: the announcement is the ChainSync header of the announcing block,
    whichever era index it has.
 6. **A compatibility hazard the node has, not a Leios finding.** `NodeToNode.over` and
-   `NodeToNodeServer.Protocol` give the multiplexer the protocols 0, 2, 3, 4 and 8. A Haskell Leios peer
-   that has this node on a duplex connection starts its LeiosNotify and LeiosFetch initiators on 18 and
-   19 (`initiatorAndResponder` of the release); a multiplexer without those protocols ends the
-   connection.
+   `NodeToNodeServer.Protocol` give the multiplexer the protocols 0, 2, 3, 4 and 8, and `Mux.scala`
+   (line 109) ends the connection at the first SDU on any other protocol number ("data on
+   unexpected mini-protocol"). A Haskell Leios peer that has this node on a duplex connection can
+   start its LeiosNotify and LeiosFetch initiators on 18 and 19 (`initiatorAndResponder` of the
+   release, `StartOnDemand`); that was not observed, because the relay never started them toward us
+   (11.7), so this is read from the two sources, not shown on the wire.
 
 ### 11.6 What is implemented and what is not: the gap table
 
@@ -667,7 +669,7 @@ these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and,
 | **X9** | Handshake: the node offers version 14 only; the relay accepts 14 to 16, 16 adding the Peras flag | handshake | section 8 |
 | **X10** | `TxSubmissionLogicVersion: TxSubmissionLogicV2` and the Leios mempool (an EB reservation; section 4.4) are not modelled | mempool, TxSubmission2 | `config.json` |
 | **X11** | `ConsensusMode: PraosMode` with ledger peers after slot 151,200 and a peer snapshot: no ledger peers, no peer snapshot, one bootstrap relay only | topology | `topology.json`, `peer-snapshot.json` |
-| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`) and consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included). Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8), and the Blueprint's `leios-fetch/messages.cddl`, which imports the Blueprint's own `base` (a name the consensus `base` module already has) and `tx.tx` (any ledger transaction). Codec 19 stays hand-written, tested against the prototype source and the Blueprint | `models` | `models/src/main/cddl/models.conf` |
+| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`) and consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included). Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8), and the Blueprint's `leios-fetch/messages.cddl`, which imports the Blueprint's own `base` (a name the consensus `base` module already has) and `tx.tx` (any ledger transaction). Codec 19 stays hand-written, tested against the prototype source and the Blueprint. The nightly cuddle cross-check (`scripts/cddl_crosscheck.py`, `models/cuddle-allowlist.tsv`) was **not run** for the two new modules; it may need allowlist entries | `models` | `models/src/main/cddl/models.conf` |
 | **X13** | `header_version_info` is not interpreted: nothing compares `highest_supported_major_version` with the chain's version or the node's maximum; the earlier eras' `protocol_version` is checked against the ledger's on mainnet | envelope checks | cardano-ledger-core `Block.hs` 147 to 156 |
 
 ### 11.7 The Leios mini-protocols against the relay

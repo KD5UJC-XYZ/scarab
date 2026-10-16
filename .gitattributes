@@ -53,3 +53,5 @@ fixtures/coverage/upstream/generator-UtxowSpec.hs -text
 
 # Preserve the original JVM thread dump, including its diagnostic whitespace.
 docs/restricted-replay-store-cli-diagnostic/duplicate.stdout -text -whitespace
+# The Leios testnet's published files and captures are hashed as published (config.json lists their hashes).
+fixtures/leios/testnet/** -text
