@@ -86,7 +86,7 @@ object DecodeError:
     case Kind.Unsupported(w)        => s"unsupported: $w"
     case Kind.Internal(e)           => s"internal error: $e"
 
-  def at(node: Node, kind: Kind): DecodeError = DecodeError(kind, Nil, node.original.unsafeOffset)
+  def at(node: Node, kind: Kind): DecodeError = DecodeError(kind, Nil, node.offset)
 
 /** A value rejected by a smart constructor (`Hash32.from`) or refused by a writer: the constraint
   * and what was offered, and where in the value it is (outermost member first; empty for the value

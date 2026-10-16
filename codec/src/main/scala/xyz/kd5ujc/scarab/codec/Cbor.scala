@@ -50,11 +50,16 @@ object Cbor:
         case Failure(message)      => Left(message)
         case _: StackOverflowError => Left(TooDeep)
 
+  /** Reads the input once, with the checks of a decoder, and writes the [[Index]] of its items;
+    * nothing is built per item. What it accepts and what it refuses (and says) is what the tree
+    * builder of the first version did, which the tests keep as the oracle.
+    */
   private final class Decoder(input: Bytes, limits: Limits):
-    // Read-only view of the input: nodes keep zero-copy windows onto it as their `original`.
+    // Read-only view of the input: the document shares it, its nodes are windows onto it.
     private val data = input.unsafeArray
     private val base = input.unsafeOffset
     private val end = base + input.size
+    private val index = new Index(input.size)
     private var pos = base
     private var items = 0
     private def read(): Int =
@@ -63,8 +68,12 @@ object Cbor:
       pos += 1
       result
     private def isBreak: Boolean = pos < end && (data(pos) & 0xff) == 255
-    private def argument(ai: Int): BigInt =
-      if ai < 24 then BigInt(ai)
+
+    /** The argument of a head with additional information `ai`, as an unsigned 64-bit number in a
+      * `Long` (negative above `2^63`). The reserved additional information are refused.
+      */
+    private def argument(ai: Int): Long =
+      if ai < 24 then ai.toLong
       else
         val count = ai match
           case 24 => 1
@@ -72,20 +81,12 @@ object Cbor:
           case 26 => 4
           case 27 => 8
           case _  => fail("reserved additional information or invalid indefinite item")
-        if count < 8 then
-          var n = 0L
-          var i = 0
-          while i < count do
-            n = (n << 8) | read().toLong
-            i += 1
-          BigInt(n)
-        else
-          var n = BigInt(0)
-          var i = 0
-          while i < count do
-            n = (n << 8) | BigInt(read())
-            i += 1
-          n
+        var n = 0L
+        var i = 0
+        while i < count do
+          n = (n << 8) | read().toLong
+          i += 1
+        n
 
     /** The next `count` bytes as a big-endian number (the bits of a float). */
     private def floatBits(count: Int): Long =
@@ -95,33 +96,58 @@ object Cbor:
         n = (n << 8) | read().toLong
         i += 1
       n
-    private def bounded(n: BigInt, bound: Int, what: String): Int =
-      if n > BigInt(bound) then fail(s"$what limit exceeded")
+
+    /** `n`, an argument, as a count or length of at most `bound`. */
+    private def bounded(n: Long, bound: Int, what: String): Int =
+      if n < 0 || n > bound.toLong then fail(s"$what limit exceeded")
       n.toInt
-    private def payload(size: Int): Array[Byte] =
+
+    /** Step over a string payload of `size` bytes and return where it starts. */
+    private def payload(size: Int): Int =
       if size > end - pos then fail("truncated string payload")
-      val result = java.util.Arrays.copyOfRange(data, pos, pos + size)
+      val from = pos
       pos += size
-      result
-    private def utf8(bytes: Array[Byte]): String =
-      try
-        StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPORT)
-          .onUnmappableCharacter(CodingErrorAction.REPORT)
-          .decode(ByteBuffer.wrap(bytes))
-          .toString
-      catch case NonFatal(_) => fail("invalid UTF-8 text")
+      from
+
+    private var decoder: java.nio.charset.CharsetDecoder = null
+    private var scratch: CharBuffer = null
+
+    /** Check that `[from, from + size)` is UTF-8, strictly. ASCII, the usual case, is checked
+      * without a decoder; the others are decoded into a scratch buffer and dropped.
+      */
+    private def utf8(from: Int, size: Int): Unit =
+      var i = from
+      val until = from + size
+      while i < until && data(i) >= 0 do i += 1
+      if i < until then
+        if decoder == null then
+          decoder = StandardCharsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+          scratch = CharBuffer.allocate(1024)
+        decoder.reset()
+        val in = ByteBuffer.wrap(data, from, size)
+        var open = true
+        while open do
+          scratch.clear()
+          val result = decoder.decode(in, scratch, true)
+          if result.isError then fail("invalid UTF-8 text")
+          else if result.isUnderflow then
+            scratch.clear()
+            if decoder.flush(scratch).isError then fail("invalid UTF-8 text")
+            open = false
     private def consumeItem(): Unit =
       if items >= limits.maxItems then fail("item limit exceeded")
       items += 1
-    private def string(major: Int, ai: Int): Value =
+
+    /** Check the string item whose head, with additional information `ai`, has been read. */
+    private def string(major: Int, ai: Int): Unit =
       if ai != 31 then
-        val raw = payload(bounded(argument(ai), limits.maxStringBytes, "string byte"))
-        if major == 2 then Value.ByteString(Bytes.wrap(raw)) else Value.Text(utf8(raw))
+        val from = payload(bounded(argument(ai), limits.maxStringBytes, "string byte"))
+        val size = pos - from
+        if major == 3 then utf8(from, size)
       else
-        val chunks = new java.io.ByteArrayOutputStream()
-        val text = new java.lang.StringBuilder
         var total = 0
         while !isBreak do
           consumeItem()
@@ -129,108 +155,93 @@ object Cbor:
           if h / 32 != major || (h & 31) == 31 then
             fail("indefinite strings require definite chunks of the same type")
           val length = bounded(argument(h & 31), limits.maxStringBytes - total, "string byte")
-          val raw = payload(length)
+          val from = payload(length)
           total += length
-          if major == 2 then chunks.write(raw, 0, raw.length) else text.append(utf8(raw))
+          if major == 3 then utf8(from, length)
         read()
-        if major == 2 then Value.ByteString(Bytes.wrap(chunks.toByteArray))
-        else Value.Text(text.toString)
 
-    /** An open container: its children so far, and how many are still to come (-1 for an indefinite
-      * container, which ends at a break).
-      */
-    private final class Frame(val major: Int, val start: Int, val tag: BigInt, var remaining: Long):
-      // Children are collected in a small array that doubles: a claimed length is a limit, not
-      // an allocation, and a one-element array (a level of deep nesting) stays small.
-      private var kids: Array[Node] = null
-      var count = 0
-      def add(n: Node): Unit =
-        if kids == null then kids = new Array[Node](2)
-        else if count == kids.length then kids = java.util.Arrays.copyOf(kids, count * 2)
-        kids(count) = n
-        count += 1
-      def items: Vector[Node] =
-        if count == 0 then Vector.empty
-        else Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(kids.take(count)))
-      def pairs: Vector[(Node, Node)] =
-        val out = new Array[(Node, Node)](count / 2)
-        var i = 0
-        while i < out.length do
-          out(i) = (kids(2 * i), kids(2 * i + 1))
-          i += 1
-        Vector.from(scala.collection.immutable.ArraySeq.unsafeWrapArray(out))
-      def only: Node = kids(0)
-
-    private def window(start: Int): Bytes = Bytes.wrap(data, start, pos - start)
-
-    private def finish(f: Frame): Node =
-      val value = f.major match
-        case 4 => Value.Arr(f.items)
-        case 5 => Value.Map(f.pairs)
-        case _ => Value.Tag(f.tag, f.only)
-      Node(value, window(f.start))
+    // The open containers, innermost last: the item, its major type, the children still to come
+    // (-1 for an indefinite container, which ends at a break) and the children so far.
+    private var depth = 0
+    private var openItem = new Array[Int](16)
+    private var openMajor = new Array[Int](16)
+    private var openLeft = new Array[Long](16)
+    private var openCount = new Array[Int](16)
+    private def push(item: Int, major: Int, left: Long): Unit =
+      if depth == openItem.length then
+        openItem = java.util.Arrays.copyOf(openItem, depth * 2)
+        openMajor = java.util.Arrays.copyOf(openMajor, depth * 2)
+        openLeft = java.util.Arrays.copyOf(openLeft, depth * 2)
+        openCount = java.util.Arrays.copyOf(openCount, depth * 2)
+      openItem(depth) = item
+      openMajor(depth) = major
+      openLeft(depth) = left
+      openCount(depth) = 0
+      depth += 1
 
     /** Decode the item at the cursor. Containers are frames on an explicit stack, not recursive
       * calls, so the nesting an input can have is bounded by `maxDepth`, `maxItems` and its size
       * (every level takes a byte), not by the thread's stack.
       */
     def run(): Node =
-      val stack = new java.util.ArrayDeque[Frame]
-      var result: Node = null
-      while result == null do
-        val top = stack.peek()
-        var produced: Node = null
-        if top != null && top.remaining == 0 then
-          stack.pop()
-          produced = finish(top)
-        else if top != null && top.remaining < 0 && isBreak then
-          if top.major == 5 && top.count % 2 == 1 then fail("map has an unmatched key")
+      var finished = false
+      while !finished do
+        val top = depth - 1
+        // an item that is complete, to be counted as a child of the one open
+        var produced = false
+        if top >= 0 && openLeft(top) == 0 then
+          depth -= 1
+          index.finish(openItem(top), pos)
+          produced = true
+        else if top >= 0 && openLeft(top) < 0 && isBreak then
+          if openMajor(top) == 5 && openCount(top) % 2 == 1 then fail("map has an unmatched key")
           read()
-          stack.pop()
-          produced = finish(top)
+          depth -= 1
+          index.finish(openItem(top), pos)
+          produced = true
         else
-          if top != null && top.remaining > 0 then top.remaining -= 1
-          if stack.size > limits.maxDepth then fail("depth limit exceeded")
+          if top >= 0 && openLeft(top) > 0 then openLeft(top) -= 1
+          if depth > limits.maxDepth then fail("depth limit exceeded")
           consumeItem()
           val start = pos
           val h = read()
           val major = h / 32
           val ai = h & 31
+          val item = index.begin(start)
           major match
-            case 0     => produced = Node(Value.UInt(argument(ai)), window(start))
-            case 1     => produced = Node(Value.NInt(-1 - argument(ai)), window(start))
-            case 2 | 3 => produced = Node(string(major, ai), window(start))
+            case 0 | 1 =>
+              argument(ai)
+              produced = true
+            case 2 | 3 =>
+              string(major, ai)
+              produced = true
             case 4 =>
               val remaining =
                 if ai == 31 then -1L
                 else bounded(argument(ai), limits.maxItems - items, "item").toLong
-              stack.push(new Frame(4, start, null, remaining))
+              push(item, 4, remaining)
             case 5 =>
               val remaining =
                 if ai == 31 then -1L
                 else 2L * bounded(argument(ai), (limits.maxItems - items) / 2, "map pair")
-              stack.push(new Frame(5, start, null, remaining))
-            case 6 => stack.push(new Frame(6, start, argument(ai), 1L))
+              push(item, 5, remaining)
+            case 6 =>
+              argument(ai)
+              push(item, 6, 1L)
             case _ =>
-              val value = ai match
-                case 20 => Value.Bool(false)
-                case 21 => Value.Bool(true)
-                case 22 => Value.Null
-                case 25 if limits.allowFloats =>
-                  Value.Float(Float16.toFloat(floatBits(2).toInt).toDouble, FloatWidth.Half)
-                case 26 if limits.allowFloats =>
-                  Value.Float(
-                    java.lang.Float.intBitsToFloat(floatBits(4).toInt).toDouble,
-                    FloatWidth.Single
-                  )
-                case 27 if limits.allowFloats =>
-                  Value.Float(java.lang.Double.longBitsToDouble(floatBits(8)), FloatWidth.Double)
+              ai match
+                case 20 | 21 | 22 => ()
+                case 25 if limits.allowFloats => floatBits(2)
+                case 26 if limits.allowFloats => floatBits(4)
+                case 27 if limits.allowFloats => floatBits(8)
                 case _ => fail("unsupported simple value, float, or unexpected break")
-              produced = Node(value, window(start))
-        if produced != null then
-          if stack.isEmpty then result = produced else stack.peek().add(produced)
+              produced = true
+          // a leaf is complete as soon as it is read; a container that was pushed is not
+          if produced && major != 4 && major != 5 && major != 6 then index.finish(item, pos)
+        if produced then
+          if depth == 0 then finished = true else openCount(depth - 1) += 1
       if pos != end then fail("trailing bytes after CBOR item")
-      result
+      new Document(data, index).node(0)
 
   /** Uses shortest integer/length widths and definite containers, recursively re-encoding values
     * (not their original bytes). Map order is retained, so this is NOT RFC 8949 deterministic map

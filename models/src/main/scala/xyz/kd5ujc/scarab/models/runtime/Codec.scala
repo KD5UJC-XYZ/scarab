@@ -26,7 +26,7 @@ trait Codec[A]:
     Cbor.decode(bytes, limits) match
       case Left(message) => Left(DecodeError(Kind.Syntax(message), Nil, 0, rooted = true))
       case Right(root) =>
-        try decode(root).left.map(_.rebased(root.original.unsafeOffset))
+        try decode(root).left.map(_.rebased(root.offset))
         catch
           case NonFatal(e) => Left(DecodeError(Kind.Internal(e.toString), Nil, 0, rooted = true))
 
@@ -275,7 +275,7 @@ object Codec:
           case Left(message) => Left(DecodeError.at(n, Kind.Syntax(message)).at("<cbor>"))
           case Right(root) =>
             c.decode(root) match
-              case Left(e)  => Left(e.rebased(root.original.unsafeOffset).at("<cbor>"))
+              case Left(e)  => Left(e.rebased(root.offset).at("<cbor>"))
               case Right(a) => Right(a)
       case _ => Left(mismatch("byte string (embedded CBOR)", n))
     def encode(a: A, out: Writer) =

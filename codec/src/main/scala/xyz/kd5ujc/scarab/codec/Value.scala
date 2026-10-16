@@ -3,8 +3,26 @@ package xyz.kd5ujc.scarab.codec
 
 import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
 
-/** A decoded value and its exact wire representation, including indefinite forms. */
-final case class Node(value: Value, original: Bytes):
+/** A decoded value and its exact wire representation, including indefinite forms.
+  *
+  * A node out of [[Cbor.decode]] is a view of an item of the input, 24 bytes onto the [[Index]] of
+  * its document: the value is read from the input each time `value` is called (one level, its
+  * children again views) and `original` is a window of the input, so a document costs two ints an
+  * item and not an object tree. `value` is therefore a `def` whose cost a caller pays at each call:
+  * read it once and keep the result for as long as it is needed. A node built by hand with
+  * [[Node.apply]] holds both.
+  */
+sealed abstract class Node:
+  def value: Value
+
+  /** The exact bytes of the item as read: what anything hashed or signed is hashed over. */
+  def original: Bytes
+
+  /** Where the item's head is in the array that `original` is a window of (the start of
+    * `original`, without making it), for locating an error.
+    */
+  def offset: Int
+
   // Structural, and walked on the heap: the generated ones recurse once per level of nesting. The
   // string is truncated on purpose (see `Tree.render`) and leaves the original bytes out.
   override def equals(that: Any): Boolean = that match
@@ -14,6 +32,18 @@ final case class Node(value: Value, original: Bytes):
   override def toString: String = this.treeString
 
 object Node:
+  /** A node built by hand, from a value and the bytes it is to stand for. */
+  def apply(value: Value, original: Bytes): Node = new Strict(value, original)
+
+  private final class Strict(val value: Value, val original: Bytes) extends Node:
+    def offset: Int = original.unsafeOffset
+
+  /** Item `index` of `doc`. */
+  private[codec] final class Indexed(doc: Document, index: Int) extends Node:
+    def value: Value = doc.valueAt(index)
+    def original: Bytes = doc.originalAt(index)
+    def offset: Int = doc.index.start(index)
+
   /** A node's children are those of its value; its label adds the exact bytes it was read from. */
   given Tree[Node] with
     def children(n: Node): IndexedSeq[Node] = Value.nodes(n.value)
