@@ -1,6 +1,6 @@
 # Ledger-state mirror, step 2
 
-**Status**: Accepted 2026-10-15 with the recommended decisions D1 to D10 ([ADR 0009](../adr/0009-ledger-mirror-step-2.md)); in progress (jump 1). Tracked in [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82); step 1 is [ledger-mirror.md](ledger-mirror.md).
+**Status**: Accepted 2026-10-15 with the recommended decisions D1 to D10 ([ADR 0009](../adr/0009-ledger-mirror-step-2.md)); in progress (jump 1; J1.5, the consensus half live, done). Tracked in [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82); step 1 is [ledger-mirror.md](ledger-mirror.md).
 
 This plan was written against `integrate/batch7` at 1f7ea8ef (worktree (local working data)). It draws on the step-1 plan, the inventory, the CHANGELOG sections S0–S9, `docs/findings.md`, the code, and the pinned upstream sources in (local working data).
 
@@ -111,9 +111,10 @@ final case class NodeState(ext: ExtLedgerState, extras: ConsensusExtras)
   - In Byron the Haskell section is absent; the sidecar holds `ByronState`, because our own Byron state has no original `ByronItem` bytes.
   - The UTxO is `map(0)` and stays in RocksDB under the existing `StateBacking` checkpoints.
 - **V2→V3 migration (J1.4):** a `SnapshotMigration[F]` in `storage` with `Ask[F, ConsensusMirrorEnv]`. It decodes V2 with `NodeCodecs`, runs `StateMirror.toMirror`, and writes V3 atomically through `AtomicFile`, logged as `formatMigrated`. It runs in `Main` after `NodeSetup` (the environment needs the geometry, forks and Byron parameters). An unknown version refuses the open. No replay.
-- **Jump 2:** no format change. At the flip the snapshot is read without conversion, and at J2.9 the V2 reader moves to `legacy` (D3).
+- **J1.5 (done): V4.** The sidecar embeds the node state and `ConsensusExtras`, so putting the chain-dependent state on the Haskell types changed its shape: `SCRBSNP4`, same layout, new sidecar under a new fingerprint. J1.5 therefore took the version number that the plan reserved for jump 3, which becomes V5. The V2 reader, the V3 sidecar and the node state of their time were frozen in the `legacy` module (D3) *before* the types changed, and `storage` migrates through it: V1 and V2 files (decoded and upgraded, then written as V4), V3 files (the Haskell section as it is, the sidecar converted, `gaps` and `observed` carried: nothing is invented). The live header state is held unplaced (origin tip, zero bounds): the mirror gives it the bounds of `EraHistory` and the anchor.
+- **Jump 2:** no format change. At the flip the snapshot is read without conversion, and at J2.9 the flat types and the `to` direction of the conversion move to `legacy` (D3).
 - **Jump 3:**
-  - V4 when the sidecar shape changes (`rewardDraft` → pulse counter). Migration V3→V4 maps the sidecar and carries `gaps`.
+  - V5 when the sidecar shape changes (`rewardDraft` → pulse counter; V4 is J1.5's). Migration V4→V5 maps the sidecar and carries `gaps`.
   - **Migrations never invent data.** A state carries the gaps under which it was written:
     - `NumDelegatorsLowerBound` heals itself after two rotations;
     - `PendingPulsingUpdate` heals at the next RUPD;

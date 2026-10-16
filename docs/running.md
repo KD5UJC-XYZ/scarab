@@ -89,16 +89,17 @@ Caveats:
   migration is one way and an older build cannot open the result: keep a copy (the chunk files are not
   touched, so copying `network-identity`, `immutable/format` and `immutable/*.index` is enough to go back).
   A database of a format newer than the build refuses to open (`UnknownVersion`) and nothing is rewritten.
-- The ledger snapshots are format 3 since the ledger-state mirror (step 2, jump 1): the Haskell ledger
-  state plus a sidecar (`docs/architecture.md`, "Snapshot format"). A database with snapshots of format
-  1 or 2 has them rewritten as format 3 the first time this build opens it, before any block is
+- The ledger snapshots are format 4 since the chain-dependent state moved onto the Haskell types (step
+  2, jump 1, J1.5; format 3 was the first with the Haskell ledger state plus a sidecar,
+  `docs/architecture.md`, "Snapshot format"). A database with snapshots of format
+  1, 2 or 3 has them rewritten as format 4 the first time this build opens it, before any block is
   replayed: one file at a time, atomically, under the same name, so a crash leaves each snapshot whole
   in either format and the next open finishes. It costs a few seconds per snapshot on a Preview-size
   state (a Preview database with the default 3 kept snapshots opens in well under a minute); the log says
   `formatMigrated` with `kind` `SnapshotFile` and, for a snapshot it could not convert (corrupt, another
   schema, a state the mirror refuses), `snapshotRefused`: that one is left as it was, skipped when the
   snapshots are opened, and the node falls back to an older snapshot or replays. Nothing is replayed
-  by the migration itself. It is one way and an older build cannot read format 3: to keep the option of
+  by the migration itself. It is one way and an older build cannot read format 4: to keep the option of
   an older build, copy `<db>/snapshots/` (and nothing else changes: the chunk files, the indexes and
   the UTxO checkpoints are not touched) before the first start with this build. A snapshot of a format
   newer than the build refuses the open (`UnknownVersion`) before anything is rewritten.

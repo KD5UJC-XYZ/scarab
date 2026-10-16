@@ -459,10 +459,10 @@ built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell datab
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 3, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
-decides what the content is. Format version 3 (`SnapshotV3`):
+decides what the content is. Format version 4 (`SnapshotV4`; version 3, `SCRBSNP3`, had the same layout and a sidecar that held the node's chain-dependent state in its former shape):
 
 ```
-"SCRBSNP3" | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+"SCRBSNP4" | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
 sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
 ```
 
@@ -474,16 +474,23 @@ stay in the RocksDB store under the checkpoint of the snapshot. The sidecar
 no place for: the anchor, the eras the node saw begin where the configuration does not say, the gaps
 of the mirror, the node's `Utxo` bookkeeping (stake by credential and pointer, count, total, stamps,
 diff), the node's full protocol parameters (they have every field in every era) and the
-extras of the mirror. A chain still in Byron has no Haskell section (the mirror does not model the
-Byron ledger state): the sidecar holds the node state whole. The read is `HaskellLedgerFile.decode`,
+extras of the mirror (the bootstrap and Byron chain-follow state, the epoch of the last tick and the
+TPraos previous epoch nonce). A chain still in Byron has no Haskell section (the mirror does not model
+the Byron ledger state): the sidecar holds the node state whole, less its header state, which is the
+chain-dependent state alone (`HeaderState.live`: while in Byron, the state Shelley starts from). The read is `HaskellLedgerFile.decode`,
 the UTxO put back, `StateMirror.fromMirror` (which re-derives and checks everything it derives) and
-the parameters put back; the result is the state in the form `SnapshotV3.canonical` names (the mirror
+the parameters put back; the result is the state in the form `SnapshotV4.canonical` names (the mirror
 is lossless up to `StateMirror.normalised`; an empty relay list of a pool is `Bytes.empty` and the
 parameters of the DRep pulser have no pre-Babbage fields). A write reads its own content back and
 refuses (`snapshotRefused`, the snapshot is skipped, nothing is pruned) what would not restore to
 that state: a snapshot is an optimisation, so a refusal costs a replay at worst.
 
-Format version 2 (`SnapshotV2`, magic `CSLSNAP1`, now only read, by the migration) was
+Versions 1 to 3 are read only by the migration, through the frozen readers of the `legacy` module
+(`legacy.SnapshotV2`, `legacy.SnapshotV3`, the node state of their time and the binary `Codec` they were
+written with): a V1 or V2 file is decoded and `legacy.Upgrade` brings the state to the live one, a V3
+file keeps its Haskell section and has its sidecar converted, its gaps and observed eras carried over.
+
+Format version 2 (`legacy.SnapshotV2`, magic `CSLSNAP1`) was
 `"CSLSNAP1" | format number u32 | schema fingerprint[8] | payload | SHA-256`, the payload the codec of
 `StateSnapshot(anchor, NodeState)`; integers are LEB128 varints, `BigInt` is length-prefixed two's
 complement, containers are a count then the elements, sums a variant index then the variant. The
@@ -543,12 +550,12 @@ identity, the immutable store's `format` file, every chunk `.index` and every le
 identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
 new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 | format 3 |
-|---|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) |
-| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` |
+| file | format 1 (until the rename) | format 2 | format 3 | format 4 |
+|---|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` |
 
 The layouts of the first three are the same in every version; the format version only says which
 build wrote the file. Format 3 is the snapshot as the Haskell ledger state plus a sidecar (see
@@ -773,7 +780,7 @@ the block): the envelope (era for the epoch, protocol version, header and body s
 parameters), then for Praos the VRF key and proof, the leader threshold, the operational
 certificate and KES signature and the certificate counter, and for TPraos the overlay schedule, both
 VRF proofs, the threshold, the certificate and counter; the nonces evolve along the header chain
-(`PraosState` is the header state). The result is compared with the state the block rules reach in
+(`ProtocolState` is the header state: the chain-dependent state of the protocol with the epoch of its last tick). The result is compared with the state the block rules reach in
 `HeaderRulesSuite`, for every header of a forged chain and from any anchor a few blocks behind.
 
 **The ledger view is forecast** from the newest ledger state of ours on the peer's chain (the

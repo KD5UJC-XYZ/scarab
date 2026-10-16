@@ -29,9 +29,35 @@ def restore_problem(events):
     return None
 
 
-def _start(name):
-    return subprocess.Popen([sys.executable, str(ENTRY), "--name", name, "follow", "--db"],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV4)
+SNAPSHOT_MAGIC = b"SCRBSNP4"
+
+
+def format_problem(magics):
+    """Why the snapshot files are not all of the current format, else None (`magics`: the first 8 bytes of each)."""
+    if not magics:
+        return "no snapshot file in the database"
+    stale = sorted({m.decode("latin-1") for m in magics if m != SNAPSHOT_MAGIC})
+    if stale:
+        return f"snapshot files not in the current format: {', '.join(stale)}"
+    return None
+
+
+def migration_problem(events, source="V3"):
+    """Why the start did not migrate the snapshots written by the older build (from `source` to V4), else None."""
+    migrated = [e for e in events if e["event"] == "formatMigrated" and e.get("kind") == "SnapshotFile"]
+    if not any(e.get("from") == source and e.get("to") == "V4" and e.get("count", 0) > 0 for e in migrated):
+        return f"the start did not migrate the {source} snapshots to V4 (formatMigrated: {migrated})"
+    if any(e["event"] == "snapshotRefused" for e in events):
+        return "a snapshot was refused"
+    return None
+
+
+def _start(name, classes=None):
+    command = [sys.executable, str(ENTRY), "--name", name, "follow", "--db"]
+    if classes:
+        command += ["--classes", classes]
+    return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
 def _wait_for(root, event, seconds, after=0):
@@ -53,13 +79,19 @@ def _stop(name, process):
 
 
 def restart(args):
-    """Fresh cluster; follow --db, SIGTERM, assert a prompt exit; follow --db again, assert the snapshot is restored."""
+    """Fresh cluster; follow --db, SIGTERM, assert a prompt exit; follow --db again, assert the snapshot is restored.
+
+    With --migrate-from, a run of the older build comes first, and the first run of this build must migrate what
+    it wrote. At the end every snapshot file is of the current format.
+    """
     root = data_root(args.name)
     up(args)
     failures, stops = [], []
-    for round_ in (1, 2):
+    rounds = [(0, args.migrate_from)] if args.migrate_from else []
+    rounds += [(1, None), (2, None)]
+    for round_, classes in rounds:
         before = len(read_log(root / "follower.jsonl")[0])
-        process = _start(args.name)
+        process = _start(args.name, classes)
         if not _wait_for(root, "extended", 120, before):
             failures.append(f"round {round_}: no block followed within 120 s")
             docker("rm", "-f", f"{args.name}-scala", check=False)
@@ -72,9 +104,16 @@ def restart(args):
         problem = stop_problem(elapsed, any(e["event"] == "shutdownSnapshot" for e in fresh))
         if problem:
             failures.append(f"round {round_}: {problem}")
+        if round_ == 1 and args.migrate_from:
+            problem = migration_problem(fresh) or restore_problem(fresh)
+            if problem:
+                failures.append(f"round {round_}: {problem}")
         if round_ == 2:
             problem = restore_problem(fresh)
             if problem:
                 failures.append(problem)
+    problem = format_problem([f.read_bytes()[:8] for f in sorted((root / "db" / "snapshots").glob("snapshot-*.bin"))])
+    if problem:
+        failures.append(problem)
     print(json.dumps({"stopSeconds": stops, "failed": failures}), flush=True)
     sys.exit(1 if failures else 0)

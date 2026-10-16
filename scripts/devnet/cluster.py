@@ -2,6 +2,7 @@
 """Starting, inspecting and removing the Haskell reference cluster (plain and era-walking)."""
 import json
 import os
+import pathlib
 import shutil
 import subprocess
 import time
@@ -348,10 +349,13 @@ def tip(args):
     print(json.dumps(query(args.name, "tip", args.node)))
 
 
-def freeze_classes(root):
+def freeze_classes(root, previous=None):
     """Copy the compiled classes so later builds cannot change code under a running node.
 
-    Returns the container classpath (the copy is mounted at /run/classes).
+    Returns the container classpath (the copy is mounted at /run/classes). With `previous`, the
+    directory of a copy made earlier (`<run dir>/classes` of a run of another build) is used instead of the
+    checkout's classes: the node of that build runs on the checkout's dependencies, so a database it
+    wrote can be opened by this build (the `restart --migrate-from` scenario).
     """
     frozen = root / "classes"
     shutil.rmtree(frozen, ignore_errors=True)
@@ -359,7 +363,9 @@ def freeze_classes(root):
     for entry in (REPO / "node/target/runtime-classpath.txt").read_text().strip().split(":"):
         if entry.endswith("/classes"):
             module = entry[len("/work/"):].split("/")[0]
-            shutil.copytree(REPO / entry[len("/work/"):], frozen / module)
+            source = pathlib.Path(previous) / module if previous else REPO / entry[len("/work/"):]
+            if source.is_dir():
+                shutil.copytree(source, frozen / module)
             entries.append(f"/run/classes/{module}")
         else:
             entries.append(entry)

@@ -13,6 +13,55 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   restart restores the snapshot) and a `SchedulingSuite` test. The `replayProgress` and `replayFinished` events name the block
   `tip` (the field `at` shadowed the event's timestamp).
 
+### Changed (ledger-state mirror, step 2, jump 1: the consensus half is live, J1.5)
+- **`NodeState(header: HeaderState, ledger, extras: ConsensusExtras)`.** The chain-dependent state is the
+  Haskell-shaped `state.ChainDepState` (`PraosState` with its eight fields, `TPraosState`, `PBftState`) held in
+  the `HeaderState` of the mirror, and the duplicate `PraosState` and `PBftState` of `consensus.*` are gone.
+  `Praos.tick/validate`, `TPraos.update` and the PBFT window of `ByronRules` run on them. The epoch of the
+  last tick and the TPraos previous epoch nonce (which only Praos has a field for) are in `ProtocolExtras`;
+  `ProtocolState(dep, extras)` pairs them and is what the header rules take and give, and the `H` of
+  `HeaderRules[S, H]` and `HeaderCheck.forChain` (the plan said `ChainDepState`; the tick guard needs the
+  epoch, and deriving it from the last slot would tick at epoch 0 where the node did not). `ConsensusExtras`
+  is now `(boot, byron, protocol)`; the enum of the same name in `consensus.state` is `MirrorExtras`.
+  `Praos.initial` is `ProtocolState.initial(era, hash)`. `OCertRules.checkCounter` takes the issuer's counter
+  instead of the map. The counters are `SortedMap[KeyHash[BlockIssuer], Word64]`: an operational certificate
+  number beyond 64 bits is a typed header error where the map took any `BigInt` (no header has one).
+- **Deviations from the plan, for the record.** (1) The header state is held *unplaced*: origin tip and zero
+  bounds in a telescope of the first era of its protocol (`HeaderState.live`, `Telescope.unplaced`); the node
+  knows the tip as the anchor of its chain and the bounds as a function of the configuration and of the eras
+  it has seen begin, so `StateMirror` gives both, and its consensus side is the identity plus those bounds.
+  (2) While the chain is in Byron the header state holds the state Shelley starts from, as `praos` did, and
+  the PBFT window stays in `ByronState.pbft` (now a `state.PBftState` with incrementally kept counts); the
+  mirror builds the Byron telescope from it. (3) The TPraos to Praos translation (`ProtocolState.in`) carries
+  every field over as before and keeps the previous epoch nonce the node always kept, where Haskell's
+  `translateChainDepState` sets it to the epoch nonce (`Praos.hs:763-773`): no behaviour changes, and the
+  difference is only in the first Babbage epoch of `GetChainDepState`. (4) `GetChainDepState` still answers in
+  the eight-field Praos shape in every era (`ProtocolState.view`); the golden suites pin the answers they cover.
+- **No behaviour change.** The eras fixture replay, `HeaderRulesSuite`, the Praos, TPraos and Byron suites,
+  `NtcGoldenSuite` and `QueryGoldenSuite` pass unchanged, and so does the K1 digest (`StateDump`).
+- **The `legacy` module (D3).** The V2 snapshot reader (`SnapshotV2`), the derived codecs (`NodeCodecs`,
+  golden `2293c5cf7bb77492`), the V3 sidecar (golden `65d0043c049b7b7a`), the node state of their time
+  (`NodeState`, `PraosState`, `PBftState`, `ByronState`, `ConsensusExtras`, `ProtocolExtras`) and a copy of the
+  binary `Codec` they were written with are frozen in a new module, `consensus <- legacy <- storage`;
+  `legacy.Upgrade` brings the old state to the live one. The `Codec` is copied rather than moved because the
+  bytes of an old file are defined by that algorithm and must not follow the live codec.
+- **Snapshot format 4** (`SnapshotV4`, `SCRBSNP4`): the layout of format 3 with the sidecar for the new state
+  (Byron: the flat ledger, the state Shelley starts from and `ConsensusExtras`; Shelley-based:
+  `MirrorExtras.InShelley`), under a new fingerprint (golden `467459aeddcceecd`). `FileKind.SnapshotFile` is
+  V4; the other kinds stay at V2. Explicit codecs for `Word64`, `SlotNo`, `KeyHash` and sorted maps carry the
+  Haskell-shaped values (`Codec.auto` derives the rest). The plan reserved V4 for jump 3's pulse counter; that
+  becomes V5.
+- **Migration to V4** (`SnapshotMigration.toCurrent`, run on open as before): a V1 or V2 file is decoded by the
+  frozen reader and upgraded, a V3 file keeps its Haskell section and has its sidecar converted, and its `gaps`
+  and the eras it saw begin are carried over (nothing is invented; the telescopes are rebuilt under the eras the
+  old file saw). A value the live types cannot hold is a refusal (`snapshotRefused`) and the file is left. Tests:
+  `SnapshotV4Suite` migrates real V3 files of every era written by the previous build
+  (`fixtures/snapshot-v3/eras`, Byron to Conway) and checks the result is the state the rules give; the
+  frozen goldens are asserted in `legacy` and `LegacyFormatsSuite`.
+- `devnet.py restart` checks the snapshot files are V4, and `restart --migrate-from CLASSES` first runs an
+  older build (the `classes` of an earlier run; `follow --classes`) and requires this build to migrate what it
+  wrote (`formatMigrated` V3 to V4, `snapshotRestored`).
+
 ### Changed (ledger-state mirror, step 2, jump 1: the node-to-client answers)
 - `LedgerEncoders` is gone. `QueryAnswers` writes every ledger answer through `storage/haskell/state`: the
   node-type codecs of the state file (`HaskellStateCodecs`: credentials, DReps, pool parameters, the

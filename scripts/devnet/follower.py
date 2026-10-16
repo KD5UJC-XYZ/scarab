@@ -10,7 +10,7 @@ from .util import ENTRY, QUERY_PORT, data_root, read_log
 def follow(args):
     root = data_root(args.name)
     ports = json.loads((root / "ports.json").read_text())
-    classpath = freeze_classes(root)
+    classpath = freeze_classes(root, getattr(args, "classes", None))
     log = root / "follower.jsonl"
     program = ["follow", "--genesis-dir", "/genesis", "--peer", f"127.0.0.1:{ports[str(args.node)]}",
                "--query-port", str(QUERY_PORT)]

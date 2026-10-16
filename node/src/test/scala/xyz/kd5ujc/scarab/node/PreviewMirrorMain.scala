@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.storage.{
   StateSnapshot
 }
 
-/** The corpus gate of the snapshot format V3 and of the mirror, over the real snapshots of a
+/** The corpus gate of the snapshot format V4 and of the mirror, over the real snapshots of a
   * Preview sync (one per epoch boundary), read one at a time so that a whole sync's 18 GB is never
   * held. Not a test: the input is data that is not in the repository, and it takes a large heap.
   *
@@ -29,11 +29,11 @@ import xyz.kd5ujc.scarab.storage.{
   * packages were renamed):
   *   - the V2 reader reads it directly ([[LegacySnapshots]]);
   *   - the whole mirror runs on that state ([[MirrorCorpus.check]]: retraction, and the tampers);
-  *   - a copy in a scratch directory is migrated by [[SnapshotMigration]] (version 1 to 2 to 3),
-  *     the V3 file is read back through the store, and the state is compared with the direct read
-  *     in its canonical form ([[SnapshotV4.canonical]]), both by the mirror's own view of a state
-  *     (which includes the UTxO bookkeeping) and by structural equality;
-  *   - the cost of writing the V3 snapshot (the mirror and the encoding) and of reading it.
+  *   - a copy in a scratch directory is migrated by [[SnapshotMigration]] (version 1 straight to
+  *     4), the V4 file is read back through the store, and the state is compared with the direct
+  *     read in its canonical form ([[SnapshotV4.canonical]]), both by the mirror's own view of a
+  *     state (which includes the UTxO bookkeeping) and by structural equality;
+  *   - the cost of writing the V4 snapshot (the mirror and the encoding) and of reading it.
   *
   * {{{
   * java -Xmx32g -cp <test classpath> xyz.kd5ujc.scarab.node.PreviewMirrorMain <snapshots> [stride] [tamper-stride] [genesis-dir] [offset]
@@ -86,7 +86,7 @@ object PreviewMirrorMain:
       yield (report, restored)
       val (outcome, readMillis) = millis(program.value.unsafeRunSync())
       val expected = direct.copy(state = SnapshotV4.canonical(env, direct.state))
-      // The cost of the V3 write of this state, on its own: the mirror, the Haskell encoding.
+      // The cost of the V4 write of this state, on its own: the mirror, the Haskell encoding.
       val (encoded, writeMillis) =
         millis(SnapshotV4.format[F].encode(direct).value.unsafeRunSync())
       // ... and its parts: the mirror, and the Haskell encoding of the ledger state it gives
@@ -159,7 +159,7 @@ object PreviewMirrorMain:
     def stats(xs: Seq[Long]): String =
       if xs.isEmpty then "-"
       else s"avg ${xs.sum / xs.size} max ${xs.max}"
-    println(s"""V3 migration gate: ${all.size} snapshots, ${bad.size} not equal after migration
+    println(s"""V4 migration gate: ${all.size} snapshots, ${bad.size} not equal after migration
                |  migrated: ${all.count(_._2.migrated)}; from version ${all
                 .flatMap(_._2.from)
                 .groupBy(identity)
@@ -172,7 +172,7 @@ object PreviewMirrorMain:
                 _._2.sameView
               )}, structural ${all
                 .count(_._2.equal)}
-               |  V3 size in bytes: ${stats(all.map(_._2.v3Bytes))}
+               |  V4 size in bytes: ${stats(all.map(_._2.v3Bytes))}
                |  write (toMirror + encode + the read back that verifies it) ms: ${stats(
                 all.map(_._2.writeMillis)
               )}
