@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.node.metrics
 
 import cats.effect.SyncIO
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.BlockRule
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** The catalogue is closed and consistent: every definition is registered, none repeats a name, and
   * the names follow the conventions the documentation promises.
@@ -52,6 +54,20 @@ class CatalogueSuite extends FunSuite:
           case _: GaugeDef[?]     => assert(name.endsWith("_int") || name.endsWith("_real"), name)
           case _: HistogramDef[?] => fail(s"$name: the Haskell node has no histograms")
     }
+  }
+
+  test("an enum label is written as the name of its case, a rule family as the log names it") {
+    assertEquals(
+      Catalogue.connectionsByState.labels.values(ConnectionStateLabel.Established),
+      List("Established")
+    )
+    assertEquals(Catalogue.currentEra.labels.values(Era.Conway), List("Conway"))
+    assertEquals(Catalogue.validationErrors.labels.values(BlockRule.TPraos), List("tpraos"))
+    assertEquals(Catalogue.jvmMemoryUsed.labels.values(AreaLabel.NonHeap), List("nonheap"))
+    assertEquals(
+      Catalogue.buildInfo.labels.values(("0.1.0", "3.3.8", "abc")),
+      List("0.1.0", "3.3.8", "abc")
+    )
   }
 
   test("a fresh registry renders every counter and histogram, and parses") {

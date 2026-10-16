@@ -49,7 +49,7 @@ object LabelValue:
 
   /** The name of the case, for an enum or a sealed family of objects: `derives LabelValue`. */
   inline def derived[A](using m: Mirror.SumOf[A]): LabelValue[A] =
-    val names = constValueTuple[m.MirroredElemLabels].toList.asInstanceOf[List[String]].toVector
+    val names = constValueTuple[m.MirroredElemLabels].productIterator.map(_.toString).toVector
     instance(a => names(m.ordinal(a)))
 
 /** The labels of a metric: their names, and how a value of the label type `L` becomes their values
