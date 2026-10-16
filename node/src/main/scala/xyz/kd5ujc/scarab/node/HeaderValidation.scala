@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.ledger.state.EraTag
+import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, InEra}
 import xyz.kd5ujc.scarab.ledger.Header
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.Era
@@ -39,13 +41,14 @@ import xyz.kd5ujc.scarab.ledger.*
   * keeps them for the block's own validation ([[VerificationCache.forHeaders]]), so nothing is
   * verified twice.
   */
-final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
-    extends HeaderRules[NodeState, ProtocolState]:
+final class NodeHeaderRules[S](config: PraosConfig, globals: LedgerGlobals)(using
+    read: ChainRead[S]
+) extends HeaderRules[S, ProtocolState]:
 
-  def at(state: NodeState): ProtocolState = state.protocol
+  def at(state: S): ProtocolState = state.protocol
 
   def validate(
-      anchor: NodeState,
+      anchor: S,
       tip: Option[BlockRef],
       prev: ProtocolState,
       header: Header
@@ -53,7 +56,8 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
     case _: Header.Byron =>
       Outcome.Unchecked("Byron header: validated with its block", Some(prev))
     case h: Header.Shelley =>
-      if anchor.byron.ledger.isDefined && anchor.byron.firstShelleyEpoch.isEmpty then
+      val byron = anchor.consensus.byron
+      if byron.ledger.isDefined && byron.firstShelleyEpoch.isEmpty then
         // the anchor is a Byron state: no Shelley ledger to forecast from
         if tip.exists(t => h.prevHash.contains(t.hash)) then
           Outcome.Unchecked(
@@ -61,41 +65,47 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
             None
           )
         else Outcome.Later("the Shelley ledger exists once the first Shelley block is applied")
-      else shelley(anchor, tip, prev, h)
+      else
+        anchor.ledger(tip) match
+          case Left(refused) =>
+            Outcome.Invalid(HeaderError.Structure(s"the ledger state cannot be read: $refused"))
+          case Right(None) =>
+            Outcome.Later("the Shelley ledger exists once the first Shelley block is applied")
+          case Right(Some(InEra.Of(_, ledger))) => shelley(anchor, ledger, tip, prev, h)
 
-  private def shelley(
-      anchor: NodeState,
+  private def shelley[E <: EraTag](
+      anchor: S,
+      ledger: EraRead[E],
       tip: Option[BlockRef],
       prev: ProtocolState,
       h: Header.Shelley
   ): Outcome[ProtocolState] =
-    val cfg = anchor.byron.firstShelleyEpoch.fold(config)(first =>
+    val firstShelley = anchor.consensus.byron.firstShelleyEpoch
+    val cfg = firstShelley.fold(config)(first =>
       config.copy(geometry = config.geometry.resolved(first))
     )
-    val glob =
-      anchor.byron.firstShelleyEpoch.fold(globals)(first => globals.copy(firstEpoch = first))
+    val glob = firstShelley.fold(globals)(first => globals.copy(firstEpoch = first))
     val geometry = cfg.geometry
-    val ledger = anchor.ledger
+    val ledgerEpoch = ledger.epoch.toBigInt
+    val ledgerParams = ledger.params
     val epoch = geometry.epochOf(h.slot)
     val tipSlot = tip.fold(BigInt(0))(_.slot)
-    if epoch < ledger.epoch then
+    if epoch < ledgerEpoch then
       Outcome.Invalid(
-        HeaderError.Structure(s"header epoch $epoch precedes the ledger epoch ${ledger.epoch}")
+        HeaderError.Structure(s"header epoch $epoch precedes the ledger epoch $ledgerEpoch")
       )
     else if (tip.isDefined && h.slot > tipSlot + geometry.stabilityWindow) ||
-      epoch > ledger.epoch + 1
+      epoch > ledgerEpoch + 1
     then
       Outcome.Later(
         s"slot ${h.slot} is beyond the forecast horizon of the ledger at slot $tipSlot"
       )
     else
-      val sameEpoch = epoch == ledger.epoch
+      val sameEpoch = epoch == ledgerEpoch
       val params =
-        if sameEpoch || ledger.params.protocolMajor >= 9 then ledger.params
-        else PpupRules.newEpoch(ledger, glob).params
-      val pools =
-        if sameEpoch then ledger.poolDistribution.distribution
-        else ledger.snapshots.mark.distribution
+        if sameEpoch || ledgerParams.protocolMajor >= 9 then ledgerParams
+        else ledger.paramsNextEpoch(glob)
+      val pools = ledger.leaderPools(nextEpoch = !sameEpoch)
       val envelope =
         if sameEpoch then
           cfg.forks
@@ -118,14 +128,10 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
       val checked: Either[HeaderError, ProtocolState] =
         envelope.flatMap { _ =>
           if h.era.usesTPraos then
-            val genDelegs = ledger.futureGenDelegs
-              .filter(_.slot <= h.slot)
-              .sortBy(f => (f.slot, f.genesisKey.hex))
-              .foldLeft(ledger.genDelegs)((m, f) => m.updated(f.genesisKey, f.pair))
             val view = LedgerView(
               params.effectiveD,
               params.extraEntropy,
-              genDelegs,
+              ledger.genDelegsAt(h.slot),
               StakeView.Known(pools)
             )
             TPraos
@@ -141,5 +147,5 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
       checked.fold(Outcome.Invalid(_), Outcome.Valid(_))
 
 object NodeHeaderRules:
-  def apply(config: PraosConfig, globals: LedgerGlobals): NodeHeaderRules =
-    new NodeHeaderRules(config, globals)
+  def apply[S: ChainRead](config: PraosConfig, globals: LedgerGlobals): NodeHeaderRules[S] =
+    new NodeHeaderRules[S](config, globals)

@@ -123,7 +123,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
       headerCheck = Option.when(headerFirst)(
         HeaderCheck.forChain[IO, NodeState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
-          NodeHeaderRules(ForgedChain.config, ForgedChain.globals),
+          NodeHeaderRules[NodeState](ForgedChain.config, ForgedChain.globals)(using HeaderRulesSuite.flat),
           Compute.inline[IO]
         )
       )

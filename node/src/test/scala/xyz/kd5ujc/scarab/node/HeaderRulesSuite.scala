@@ -6,7 +6,10 @@ import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.HeaderError
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ConsensusMirrorEnv, MirrorState, ProtocolState}
+import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
+import xyz.kd5ujc.scarab.node.ntc.EraHistory
+import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
@@ -18,8 +21,11 @@ import org.scalacheck.Prop.*
   * block rules accept, with the same resulting state, from any recent anchor; and a header changed
   * in any field it signs or proves is refused.
   */
-class HeaderRulesSuite extends ScalaCheckSuite:
-  private val rules = NodeHeaderRules(ForgedChain.config, ForgedChain.globals)
+abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
+  /** The anchor in the form of the state under test. */
+  protected def lift(state: NodeState, tip: Option[BlockRef]): S
+
+  private val rules = NodeHeaderRules[S](ForgedChain.config, ForgedChain.globals)
 
   private lazy val forged: ForgedChain = ForgedChain.forge(5000 until 5090).unsafeRunSync()
 
@@ -31,9 +37,11 @@ class HeaderRulesSuite extends ScalaCheckSuite:
 
   /** The state and tip of the chain after block `i - 1 - lag` (the genesis for a negative index).
     */
-  private def anchor(i: Int, lag: Int): (NodeState, Option[BlockRef]) =
+  private def anchor(i: Int, lag: Int): (S, Option[BlockRef]) =
     val j = i - 1 - lag
-    if j < 0 then (forged.genesis, None) else (forged.states(j), Some(ref(forged.headers(j))))
+    val (state, tip) =
+      if j < 0 then (forged.genesis, None) else (forged.states(j), Some(ref(forged.headers(j))))
+    (lift(state, tip), tip)
 
   test("the forged chain is long enough to be a test") {
     assert(forged.headers.size >= 30, forged.headers.size.toString)
@@ -129,7 +137,8 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   test("a header beyond the stability window of the anchor has to wait for the chain to advance") {
     val i = forged.headers.indexWhere(_.slot > 5000 + ForgedChain.geometry.stabilityWindow + 5)
     assert(i > 3)
-    val (later, laterTip) = (forged.states(0), Some(ref(forged.headers(0))))
+    val laterTip = Some(ref(forged.headers(0)))
+    val later = lift(forged.states(0), laterTip)
     assert(
       rules.validate(later, laterTip, before(i), forged.headers(i)).isInstanceOf[Outcome.Later[?]]
     )
@@ -142,8 +151,9 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   }
 
   test("a header whose epoch precedes the ledger's is a structure error") {
-    val (state, tip) = anchor(5, 0)
-    val ahead = state.copy(ledger = state.ledger.copy(epoch = state.ledger.epoch + 1))
+    val tip = Some(ref(forged.headers(4)))
+    val state = forged.states(4)
+    val ahead = lift(state.copy(ledger = state.ledger.copy(epoch = state.ledger.epoch + 1)), tip)
     assert(
       rules.validate(ahead, tip, before(5), forged.headers(5)) match
         case Outcome.Invalid(HeaderError.Structure(_)) => true
@@ -163,7 +173,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       prevHash = None
     )
     assertEquals(
-      rules.validate(forged.genesis, None, forged.genesis.protocol, h),
+      rules.validate(lift(forged.genesis, None), None, forged.genesis.protocol, h),
       Outcome.Unchecked("Byron header: validated with its block", Some(forged.genesis.protocol))
     )
   }
@@ -177,7 +187,6 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     assert(firstOfNext > 0, "the forged chain must cross the boundary")
     // every header of epoch 6 within the window of the last block of epoch 5
     val last = firstOfNext - 1
-    val anchorState = crossing.states(last)
     val anchorTip = Some(
       BlockRef(
         crossing.headers(last).slot,
@@ -185,7 +194,8 @@ class HeaderRulesSuite extends ScalaCheckSuite:
         crossing.headers(last).blockNo
       )
     )
-    var prev = anchorState.protocol
+    val anchorState = lift(crossing.states(last), anchorTip)
+    var prev = crossing.states(last).protocol
     val window = (firstOfNext until crossing.headers.size)
       .takeWhile(i =>
         crossing.headers(i).slot <= crossing.headers(last).slot + geometry.stabilityWindow
@@ -199,3 +209,30 @@ class HeaderRulesSuite extends ScalaCheckSuite:
         case other => fail(s"block $i: $other")
     }
   }
+
+/** The header rules on the node's flat state (`--rules old`). */
+class HeaderRulesSuite extends HeaderRulesBehaviour[NodeState]()(using HeaderRulesSuite.flat):
+  protected def lift(state: NodeState, tip: Option[BlockRef]): NodeState = state
+
+object HeaderRulesSuite:
+  /** The read environment of the forged chain's configuration. */
+  val env: ConsensusMirrorEnv = ConsensusMirrorEnv(
+    MirrorEnv(ForgedChain.globals.network, ForgedChain.geometry, ForgedChain.globals.updateQuorum),
+    ForgedChain.config.forks,
+    EraHistory.ByronParams(
+      BigInt(ForgedChain.geometry.securityParam) * 10,
+      BigInt(20000),
+      BigInt(ForgedChain.geometry.securityParam)
+    )
+  )
+
+  val flat: ChainRead[NodeState] = ChainRead.nodeState(env)
+
+/** The same rules and the same headers, from the mirror of each anchor: the answers are the ones
+  * the flat state gives.
+  */
+class HeaderRulesMirrorSuite extends HeaderRulesBehaviour[MirrorState]:
+  protected def lift(state: NodeState, tip: Option[BlockRef]): MirrorState =
+    MirrorRun
+      .run(HeaderRulesSuite.env)(_.toMirror(tip, state))
+      .fold(e => fail(e.toString), _.value)

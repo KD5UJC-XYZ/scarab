@@ -170,18 +170,19 @@ object NodeRules:
     val ledger =
       if after.ledgerEpoch == before.ledgerEpoch then None
       else
-        after.ledger(Some(at)).toOption.flatten.map { case InEra.Of(_, l) =>
-          val pots = l.scalars.chainAccount
-          FollowerEvent.LedgerEpoch(
-            l.scalars.epoch.toBigInt,
-            l.utxo.size,
-            l.accountCount,
-            l.poolCount,
-            pots.treasury.value,
-            pots.reserves.value,
-            l.params.version,
-            after.plutus
-          )
+        after.ledger(Some(at)).toOption.flatten.flatMap { case InEra.Of(_, l) =>
+          l.scalars.toOption.map { scalars =>
+            FollowerEvent.LedgerEpoch(
+              l.epoch.toBigInt,
+              l.utxo.size,
+              l.accountCount,
+              l.poolCount,
+              scalars.chainAccount.treasury.value,
+              scalars.chainAccount.reserves.value,
+              l.params.version,
+              after.plutus
+            )
+          }
         }
     era.toList ++ byron.toList ++ epoch.toList ++ ledger.toList
 

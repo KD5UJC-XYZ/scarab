@@ -21,6 +21,7 @@ import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Epoch, LedgerGlobals, LedgerState}
+import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
@@ -249,7 +250,7 @@ final class Forger[F[_]: Async](
     for
       crossed <- crossedTo(current, epoch, slot)
       _ <- stats.checked(epoch)
-      pools = PoolDistributionOf(crossed.ledger)
+      pools = crossed.ledger.leaderPools
       stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
       // a pool must be registered with this very VRF key to be elected
       _ <- lift(
@@ -544,11 +545,3 @@ object Forger:
         stats
       )
     }
-
-/** The leader schedule's view of a ledger: stake and VRF key hash per pool. */
-object PoolDistributionOf:
-  def apply(ledger: LedgerState): xyz.kd5ujc.scarab.ledger.PoolDistribution =
-    xyz.kd5ujc.scarab.ledger.PoolDistribution(
-      ledger.poolDistribution.poolStake,
-      ledger.poolDistribution.pools.map { case (id, p) => id -> p.vrfKeyHash }
-    )

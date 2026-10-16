@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.node.LedgerRun
+import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 
 /** The read of the node's flat ledger state `s` as the ledger state of era `E`, at the tip `at`.
   *
@@ -21,12 +22,14 @@ final class FlatEraRead[E <: EraTag] private (
     s: flat.LedgerState,
     at: WithOrigin[SlotNo],
     env: MirrorEnv,
-    val scalars: LedgerScalars
+    val epoch: EpochNo
 )(using val era: ShelleyBasedEra[E])
     extends EraRead[E]:
 
   private def run[A](program: LedgerMirror[LedgerRun.M] => LedgerRun.M[A]): Read[A] =
     LedgerRun.run(env)(program)
+
+  lazy val scalars: Read[LedgerScalars] = run(_.scalars(s))
 
   def params: flat.ProtocolParams = s.params
 
@@ -37,7 +40,7 @@ final class FlatEraRead[E <: EraTag] private (
   def poolCount: Int = s.pools.size
 
   def leaderPools(nextEpoch: Boolean): flat.PoolDistribution =
-    (if nextEpoch then s.snapshots.mark else s.poolDistribution).distribution
+    if nextEpoch then s.snapshots.mark.distribution else s.leaderPools
 
   def paramsNextEpoch(globals: flat.LedgerGlobals): flat.ProtocolParams =
     flat.PpupRules.newEpoch(s, globals).params
@@ -77,13 +80,13 @@ final class FlatEraRead[E <: EraTag] private (
   lazy val nes: Read[NewEpochState[E]] = run(_.to[E](at, s)).map(_.value.nes)
 
 object FlatEraRead:
-  /** The read of `s` in era `E`; refused when a scalar of the state is outside the range of its
-    * Haskell type.
+  /** The read of `s` in era `E`; refused when the epoch is outside the range of its Haskell
+    * type.
     */
   def of[E <: EraTag](s: flat.LedgerState, at: WithOrigin[SlotNo], env: MirrorEnv)(using
       ShelleyBasedEra[E]
   ): Read[FlatEraRead[E]] =
-    LedgerRun.run(env)(_.scalars(s)).map(new FlatEraRead[E](s, at, env, _))
+    EpochNo.fromBigInt(s.epoch).leftMap(MirrorError.Vocab(_)).map(new FlatEraRead[E](s, at, env, _))
 
   /** A flat credential as the mirror's staking credential. */
   private def stakeCredential(c: flat.Credential): Read[Credential[Staking]] = c match

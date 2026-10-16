@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 
 /** A read of the ledger state that can be refused: only a state the mirror cannot hold (a value
   * outside the range of a Haskell type) is, and only when the state is the node's flat one.
@@ -38,8 +39,11 @@ final case class RewardsDue(
 trait EraRead[E <: EraTag]:
   def era: ShelleyBasedEra[E]
 
+  /** The epoch the ledger state is in. */
+  def epoch: EpochNo
+
   /** The epoch, the blocks made, the pots and the amounts of the UTxO state. */
-  def scalars: LedgerScalars
+  def scalars: Read[LedgerScalars]
 
   /** The protocol parameters in force, with every field the node holds. The flat state keeps one
     * set of fields for all eras, the mirror's parameters have zero in the fields the era has no
@@ -129,14 +133,18 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
 ) extends EraRead[E]:
   private def ls: LedgerState[E] = state.es.ls
 
-  lazy val scalars: LedgerScalars = LedgerScalars(
-    state.epoch,
-    state.bprev,
-    state.bcur,
-    state.es.chainAccount,
-    ls.utxo.deposited,
-    ls.utxo.fees,
-    ls.utxo.donation
+  def epoch: EpochNo = state.epoch
+
+  lazy val scalars: Read[LedgerScalars] = Right(
+    LedgerScalars(
+      state.epoch,
+      state.bprev,
+      state.bcur,
+      state.es.chainAccount,
+      ls.utxo.deposited,
+      ls.utxo.fees,
+      ls.utxo.donation
+    )
   )
 
   def params: flat.ProtocolParams = EraLedger.curPParams(ls.utxo.gov)
@@ -148,7 +156,7 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
   lazy val poolCount: Int = EraLedger.pState(ls).stakePools.size
 
   def leaderPools(nextEpoch: Boolean): flat.PoolDistribution =
-    EraRead.leaderPools(if nextEpoch then PoolDistr.of(state.es.snapshots.mark) else state.pd)
+    (if nextEpoch then EraRead.leaderPools(PoolDistr.of(state.es.snapshots.mark)) else state.leaderPools)
 
   def paramsNextEpoch(globals: flat.LedgerGlobals): flat.ProtocolParams =
     val g = ls.utxo.gov
