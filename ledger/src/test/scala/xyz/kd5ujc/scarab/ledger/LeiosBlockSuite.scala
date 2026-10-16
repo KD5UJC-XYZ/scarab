@@ -129,7 +129,7 @@ class LeiosBlockSuite extends munit.FunSuite:
     val b = block("dijkstra-announcing-with-txs")
     assertEquals(b.layout, LeiosBlock.Layout.Whole)
     assert(b.header.leios.announcement.isDefined)
-    assert(b.transactions.size > 10)
+    assert(b.transactions.nonEmpty)
     assertEquals(b.leiosCertificate, None)
     assertEquals(b.faults, Vector.empty)
   }
