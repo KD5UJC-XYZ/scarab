@@ -488,3 +488,32 @@ limit is `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`): the 0.9 to 1.1 GB of native mem
 head room for the page cache the kernel can always give back. A long run to epoch 1303 and on (4.35M blocks) of the build with the ledger tables
 on disk (a separate branch, not this one) ran under that limit: `RssAnon` 3.61 GB at epochs 148, 161 and 358, 3.68 GB at epoch 902 with 3M UTxO entries, 0 errors, no out-of-memory kill; `docker stats` 3.61 GiB
 against the 5 GiB limit.
+
+## 10. The tick of every era: new rules against the old (J2.3)
+
+`NewRules.tick` (the era-indexed `Tick`) runs beside `NodeRules.tick` (the old `OldTick`) at the eventful ticks and at the
+sampling points of `--rules differential`. Linux x86-64, JDK 21, `-Xmx16g`, a host loaded to 25 on 24 cores (so absolute
+times are pessimistic), `PreviewDifferentialMain <K1 db> 72`, 21 epochs, 70,183 blocks, 0 divergences. "Ticks" are the
+compared ticks of the epoch (four or five), summed:
+
+| epoch | old ms | new ms | seed (conversion) ms |
+|---|---|---|---|
+| 73 | 9 | 50 | 1,089 |
+| 289 | 29 | 121 | 2,637 |
+| 649 | 79 | 185 | 4,874 |
+| 1009 | 198 | 311 | 8,947 |
+| 1297 | 191 | 358 | 9,189 |
+| 1369 | 1,010 | 2,492 | 22,977 |
+| 1441 | 997 | 2,540 | 28,528 |
+
+Replay with the harness 1,368 s against 896 s alone (the conversions, 73 of them, are most of the difference: median 1.3 s,
+maximum 5.5 s). The new boundary is 2 to 3 times the old one: at 112,000 accounts SNAP takes 0.4 to 0.55 s, EPOCH with the
+fresh DRep pulser 0.85 s, `applyRewardUpdate` 0.25 s, and the reward update (`Rewards.update`, at the first slot past 4k/f) 1.1 s,
+because the era-indexed state is a sorted map where the old mirror kept hash maps and the rewards are attributed per credential.
+Profiles: `SortedMap` builds and lookups (`Bytes.compareTo`, 19%) and rational arithmetic. `TreeMap.transform` and `filter` make
+no comparisons, which is an easy saving for J2.8.
+
+**`RuleT` against the reference stack.** The same `Tick` run through `RuleT` and through `Kleisli` over `StateT` over `Either`
+at 112,000 accounts: the boundary 0.8 to 1.5 s with both, a tick that changes nothing 0.2 to 0.5 ms with `RuleT` against 0.5 to
+1.1 ms with the stack. No difference beyond noise where it matters, so the 10% gate holds; `TickRulesSuite` checks that both give
+the same state.

@@ -5,6 +5,52 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (ledger-state mirror, step 2, jump 2: the tick of every era, J2.3)
+- **The epoch and tick rules as `Sts` over `NewEpochState[E]`** (`ledger/rules/`, each citing its upstream file and line):
+  `Tick` (`bheadTransition`: solidify the future parameters, NEWEPOCH, genesis delegations, RUPD), `NewEpoch` (with
+  `updateRewards`/`applyRUpdFiltered`), `Epoch` (the Shelley rule, and the dispatch on the era witness), `ConwayEpoch`
+  (EPOCH of Conway: enacted treasury withdrawals, `proposalsApplyEnactment`, returned proposal deposits, dormant epochs,
+  committee state, `HardFork` with `updateDRepDelegations` at protocol version 10, `predictFuturePParams`, the fresh DRep
+  pulser through the existing `Ratify`), `Snap` (`snapShotFromInstantStake`, `mkStakePoolSnapShot`), `PoolReap`, `Mir`,
+  `Upec` (with the NEWPP it embeds), `Rupd` (the Goldilocks timing), `Rewards` (`startStep`, `mkPoolRewardInfo`,
+  `rewardOnePoolMember`, `aggregateRewards`: the update is attributed, a `RewardSet` per credential naming the pool and
+  leader or member, in exact `Rational` arithmetic), `Translate` (Shelley to Allegra with the AVVM balances returned to
+  the reserves, Mary to Alonzo, Alonzo to Babbage, Babbage to Conway with the new governance state, the empty voting
+  state and the initial pulser), `Hfc` (the combinator's tick: `tailRecM` over the epochs crossed, translating into each
+  era the hard-fork configuration puts the epoch in, then the boundary in the new era) and `Handover` (Byron to
+  `NewEpochState[Shelley]`, `translateToShelleyLedgerStateFromUtxo`). `EraLedger` gives the rules the ledger state of
+  any era (one match on the witness per class method of Haskell's `EraAccounts`/`EraGov`/`EraStake`). Pot arithmetic is
+  checked (a `TickFailure.Vocab` refusal where Haskell would wrap). `Sts.modifyE` is the shape of a rule whose body is one
+  function of the state.
+- **`Stage.Tick(epochsCrossed)` of the harness.** `NodeRules.applyFull` is split: `NodeRules.tick` is the old side's hand-over
+  and tick (`OldTick`), shared with `applyFull`. `NewRules.tick(era)` is the new side's port (a stage-shaped answer), registered
+  in `NewRules.current`, and `TickStage` compares the ledger after both ticks at every epoch boundary, hand-over, start of
+  the reward update and adoption of genesis delegations, and at the sampling points (`differentialTicked` log events, the
+  tick costs in `differentialSummary`). `Relations` holds the places where the era-indexed state is more exact than the old
+  mirror can say (listed in the design, §2.5). `Globals.ledger.alonzoCoinsPerUTxOWord` is the Alonzo genesis value for the
+  Mary to Alonzo step. `PreviewDifferentialMain` takes several offsets (`2,21,645`) for single epochs, prints the
+  divergences and the tick costs, and reads its two snapshots when the epoch runs (at stride 4 it held all of them).
+- **Deviations from the plan, for the record** (the design, §4 item 3, has them in full). (1) The reward update is made at
+  `RUPD`, when the reference makes it, not at the boundary; `rewardDraft` and `rewardRegistered` are the old side's. (2)
+  Epochs with no block are crossed boundary by boundary, as the old rules did (Haskell's NEWEPOCH ignores them). (3) UPEC and
+  NEWPP are one rule; `Translate` is one function per pair, not a type class. (4) The node extras are not compared at
+  `Tick`. (5) `RuleT` was measured against the reference stack (`Kleisli` over `StateT` over `Either`) on the same `Tick`
+  rule: no difference beyond noise at an epoch boundary of 112,000 accounts, half the time for a tick that changes nothing;
+  the 10% gate is met and `TickRulesSuite` asserts that both give the same state.
+- **Tests.** `TickRulesSuite` (twelve: the tick inside an epoch, the boundary with the pots conserved, an epoch with no block,
+  a retiring pool refunded or its deposit to the treasury, a tick of 150,000 accounts and the translation of 150,000 accounts
+  into Conway on a 256 KiB stack, a tick over several eras, MIR, `RuleT` against the reference stack),
+  `RelationsSuite` (seven: each normalisation holds, a difference that is not one is found), `DifferentialErasSuite` (the tick of every block of the capture, Byron to Conway: 681 ticks compared, 0 divergences).
+- **Evidence.** Preview stride 72 (21 epochs, 70,183 blocks), a forks run (protocol versions 7 to 11) and a stride-24 sweep: 0 divergences; Preprod from genesis to epoch 39: 0; devnet `e2e` and `soak` with `--rules differential`: 0. The full 1,451-epoch corpus was not run. No persisted format changes. Timings in [performance.md](docs/performance.md) section 10.
+
+### Fixed (found by the era-indexed tick, J2.3; [findings.md](docs/findings.md))
+- **The previous parameters of the first Conway epoch** carry the Conway fields, as the reference translates them with the
+  current ones (`Conway/Translation.hs:165`). `DebugEpochState`, `DebugNewEpochState`, `GetGovState` and `GetRatifyState`
+  of a state right after the Babbage to Conway boundary change; the three Conway states of `fixtures/ntc-golden` are
+  re-recorded with the reason, and the V3 snapshots of the previous build are compared without those fields.
+- **`expectedBlocks` of the reward calculation is floored** as in `PulsingReward.hs:127` (it was the exact product; equal for
+  every real parameter set).
+
 ### Added (ledger-state mirror, step 2, jump 2: infrastructure and the differential harness, J2.1 and J2.2)
 - **`BlockFailure` (D6).** `NodeRules.applyBlock` returns `Either[BlockFailure, NodeState]`, a closed ADT in `ledger`
   (structure, decode, byron, envelope, tpraos, praos and ledger cases that carry what the rule found); `ValidationError`
