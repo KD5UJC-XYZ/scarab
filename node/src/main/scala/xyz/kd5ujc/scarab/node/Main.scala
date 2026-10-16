@@ -57,7 +57,14 @@ import xyz.kd5ujc.scarab.node.differential.{
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, Forger, KeyFiles}
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
-import xyz.kd5ujc.scarab.node.metrics.{Catalogue, Collectors, EventMetrics, MeteredRules, Metrics}
+import xyz.kd5ujc.scarab.node.metrics.{
+  Catalogue,
+  Collectors,
+  EventMetrics,
+  MeteredRules,
+  Metrics,
+  PhaseLabel
+}
 import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
@@ -362,6 +369,16 @@ object Main extends IOApp:
       metrics <- Metrics.create[IO](Catalogue.all)
       given Metrics[IO] = metrics
       measured <- EventMetrics.create[IO]
+      // What a scrape reads besides the counters the events keep: each source answers for itself
+      // and is added when it exists, so the endpoint can listen before the stores are opened (a
+      // collector that is not there yet leaves its gauges absent).
+      collectors <- Collectors.Registry.create[IO]
+      _ <- collectors.add(Collectors.jvm[IO])
+      _ <- collectors.add(Collectors.scheduling(scheduling.stats))
+      scrape = collectors.scrape
+      exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+        MetricsServer.resource[IO](address, scrape).void
+      )
       followerLog = Log.follower[IO](Some(scheduling.stats))
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
@@ -491,317 +508,316 @@ object Main extends IOApp:
               )
           }
       }
-      _ <- storage.use { case Storage(anchor, state, resumed, persistence, immutable) =>
-        // A chain whose Byron span is derived learns the first Shelley epoch when it enters
-        // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
-        // (the mempool and the forger need a restart after that, see docs/compatibility.md).
-        val geometry = state.geometry(genesis.geometry)
-        val globals =
-          state.byron.firstShelleyEpoch.fold(setup.globals)(e => setup.globals.copy(firstEpoch = e))
-        for
-          _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
-          ref <- Ref.of[IO, VolatileChain[NodeState]](
-            VolatileChain(
-              k,
-              Anchor(anchor, state),
-              resumed.map(r => r.ref -> r.state),
-              setup.origin
+      _ <- exposed.surround(storage.use {
+        case Storage(anchor, state, resumed, persistence, immutable) =>
+          // A chain whose Byron span is derived learns the first Shelley epoch when it enters
+          // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
+          // (the mempool and the forger need a restart after that, see docs/compatibility.md).
+          val geometry = state.geometry(genesis.geometry)
+          val globals =
+            state.byron.firstShelleyEpoch.fold(setup.globals)(e =>
+              setup.globals.copy(firstEpoch = e)
             )
-          )
-          given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
-          server <- ChainServer.open[IO](
-            immutable,
-            anchor,
-            ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
-          )
-          _ <- resumed.traverse_(r =>
-            server
-              .persistence[NodeState]
-              .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
-          )
-          mempool <- Mempool.create[IO](
-            resumed.lastOption.fold(state)(_.state).ledger,
-            resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
-            MempoolEnv(globals, geometry),
-            options.mempoolBytes.getOrElse(DefaultMempoolBytes),
-            Log.mempool[IO].alongside(measured.mempool),
-            utxoStore = Some(store)
-          )
-          served = server.persistence[NodeState]
-          follower <- Follower.create[IO, NodeState](
-            MeteredRules[IO, NodeState](rules),
-            followerEvents,
-            genesis.geometry,
-            NodeRules.observe(genesis.geometry),
-            Some(persistence.fold(served)(Persistence.both(_, served))),
-            Some((chain, added) =>
-              // decoding the added blocks is CPU-bound: off the compute pool like the rules
-              scheduling.compute
-                .within(IO.delay {
-                  added.flatMap { raw =>
-                    Block.decode(raw, genesis.geometry.byron.epochSlots).toOption.toVector.flatMap {
-                      case b: Block.Shelley => b.transactions.map(_.id)
-                      case _                => Vector.empty
-                    }
-                  }.toSet
+          for
+            // the stores are open and the stored blocks applied
+            _ <- measured.phase(PhaseLabel.Following)
+            _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
+            ref <- Ref.of[IO, VolatileChain[NodeState]](
+              VolatileChain(
+                k,
+                Anchor(anchor, state),
+                resumed.map(r => r.ref -> r.state),
+                setup.origin
+              )
+            )
+            given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
+            _ <- collectors.add(Collectors.chain[IO, NodeState](_.geometry(genesis.geometry)))
+            server <- ChainServer.open[IO](
+              immutable,
+              anchor,
+              ChainServer.headerOfBlock(genesis.geometry.byron.epochSlots)
+            )
+            _ <- resumed.traverse_(r =>
+              server
+                .persistence[NodeState]
+                .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
+            )
+            mempool <- Mempool.create[IO](
+              resumed.lastOption.fold(state)(_.state).ledger,
+              resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
+              MempoolEnv(globals, geometry),
+              options.mempoolBytes.getOrElse(DefaultMempoolBytes),
+              Log.mempool[IO].alongside(measured.mempool),
+              utxoStore = Some(store)
+            )
+            _ <- collectors.add(Collectors.mempool(mempool))
+            served = server.persistence[NodeState]
+            follower <- Follower.create[IO, NodeState](
+              MeteredRules[IO, NodeState](rules),
+              followerEvents,
+              genesis.geometry,
+              NodeRules.observe(genesis.geometry),
+              Some(persistence.fold(served)(Persistence.both(_, served))),
+              Some((chain, added) =>
+                // decoding the added blocks is CPU-bound: off the compute pool like the rules
+                scheduling.compute
+                  .within(IO.delay {
+                    added.flatMap { raw =>
+                      Block
+                        .decode(raw, genesis.geometry.byron.epochSlots)
+                        .toOption
+                        .toVector
+                        .flatMap {
+                          case b: Block.Shelley => b.transactions.map(_.id)
+                          case _                => Vector.empty
+                        }
+                    }.toSet
+                  })
+                  .flatMap(adopted =>
+                    chain.tipRef
+                      .traverse_(t => mempool.sync(chain.state.ledger, t.slot, adopted).void)
+                  )
+              ),
+              epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
+              initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
+              compute = Some(scheduling.compute)
+            )
+            handlers = ServerHandlers[IO, NtNHeader](
+              NtNHeader.codec,
+              server.source,
+              server.blocks,
+              mempool.sink
+            )
+            retry = Follower.Retry(
+              // one upstream peer is the whole node: give up when it is gone; with several, keep trying
+              maxAttempts = if options.peers.size > 1 then Int.MaxValue else 30,
+              delay = 2.seconds
+            )
+            // header-first validation (G6): signatures are verified through the cache's keeping
+            // view, so the block's own validation does not repeat them
+            headerCheck = Option.when(options.headerFirst)(
+              HeaderCheck.forChain[IO, NodeState, ProtocolState](
+                NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
+                scheduling.compute,
+                warm = Some((headers, state) =>
+                  praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
+                ),
+                observe = Some(counts =>
+                  headersLogged
+                    .modify(last =>
+                      if counts.validated - last >= 50000 then (counts.validated, true)
+                      else (last, false)
+                    )
+                    .flatMap(
+                      logged(
+                        NodeEvent.HeadersChecked(counts.validated, counts.unchecked, counts.waited)
+                      ).whenA(_)
+                    )
+                ),
+                added = Some(measured.headers)
+              )
+            )
+            // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
+            observeRounds = (requested: Int, received: Int, millis: Long) =>
+              rounds
+                .modify { case (n, headers, total, max, depth) =>
+                  val next = (
+                    n + 1,
+                    headers + received,
+                    total + millis,
+                    max.max(millis),
+                    depth.max(requested)
+                  )
+                  if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
+                }
+                .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
+                  logged(NodeEvent.ChainSyncRounds(n, headers, total / n, max, depth))
                 })
-                .flatMap(adopted =>
-                  chain.tipRef
-                    .traverse_(t => mempool.sync(chain.state.ledger, t.slot, adopted).void)
-                )
-            ),
-            epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
-            initialViews = resumed.map(r => r.ref.hash -> r.view).toMap,
-            compute = Some(scheduling.compute)
-          )
-          handlers = ServerHandlers[IO, NtNHeader](
-            NtNHeader.codec,
-            server.source,
-            server.blocks,
-            mempool.sink
-          )
-          retry = Follower.Retry(
-            // one upstream peer is the whole node: give up when it is gone; with several, keep trying
-            maxAttempts = if options.peers.size > 1 then Int.MaxValue else 30,
-            delay = 2.seconds
-          )
-          // header-first validation (G6): signatures are verified through the cache's keeping
-          // view, so the block's own validation does not repeat them
-          headerCheck = Option.when(options.headerFirst)(
-            HeaderCheck.forChain[IO, NodeState, ProtocolState](
-              NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
-              scheduling.compute,
-              warm = Some((headers, state) =>
-                praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
-              ),
-              observe = Some(counts =>
-                headersLogged
-                  .modify(last =>
-                    if counts.validated - last >= 50000 then (counts.validated, true)
-                    else (last, false)
-                  )
-                  .flatMap(
-                    logged(
-                      NodeEvent.HeadersChecked(counts.validated, counts.unchecked, counts.waited)
-                    ).whenA(_)
-                  )
-              ),
-              added = Some(measured.headers)
+            observePeer = (o: Peer.Observation) =>
+              measured.peer(o) *> (o match
+                case Peer.Observation.Fetched(millis) =>
+                  logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
+                case Peer.Observation.Round(requested, received, millis) =>
+                  observeRounds(requested, received, millis))
+            // the connection manager (G2): one connection per peer address, limits, accounting
+            manager <- ConnectionManager.create[IO](
+              ConnectionManager.Limits(maxInbound = options.maxInbound),
+              Some(loggedConnections.alongside(measured.connection))
             )
-          )
-          // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
-          observeRounds = (requested: Int, received: Int, millis: Long) =>
-            rounds
-              .modify { case (n, headers, total, max, depth) =>
-                val next = (
-                  n + 1,
-                  headers + received,
-                  total + millis,
-                  max.max(millis),
-                  depth.max(requested)
-                )
-                if next._1 % 200 == 0 then (next, Some(next)) else (next, None)
-              }
-              .flatMap(_.traverse_ { case (n, headers, total, max, depth) =>
-                logged(NodeEvent.ChainSyncRounds(n, headers, total / n, max, depth))
-              })
-          observePeer = (o: Peer.Observation) =>
-            measured.peer(o) *> (o match
-              case Peer.Observation.Fetched(millis) =>
-                logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
-              case Peer.Observation.Round(requested, received, millis) =>
-                observeRounds(requested, received, millis))
-          // the connection manager (G2): one connection per peer address, limits, accounting
-          manager <- ConnectionManager.create[IO](
-            ConnectionManager.Limits(maxInbound = options.maxInbound),
-            Some(loggedConnections.alongside(measured.connection))
-          )
-          governor <- InboundGovernor.create[IO](
-            manager,
-            InboundGovernor.Config(
-              genesis.networkMagic,
-              NodeToNodeServer.Settings(),
-              Peer.Settings(
-                SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+            _ <- collectors.add(Collectors.connections(manager))
+            governor <- InboundGovernor.create[IO](
+              manager,
+              InboundGovernor.Config(
                 genesis.networkMagic,
-                readAhead = options.readAhead,
-                byronEpochSlots = genesis.geometry.byron.epochSlots
-              ),
-              runClients = options.inboundSync
-            ),
-            handlers,
-            // the session of a peer that connected to us runs like one on a connection we opened
-            follow = peer => scheduling.compute.within(follower.session(peer)),
-            prepare = warm,
-            headers = headerCheck,
-            transactions = Some(mempool.source),
-            events = Some(loggedInbound.alongside(measured.inbound)),
-            observe = Some(observePeer)
-          )
-          // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
-          sync = Handle
-            .allow[PeerError](
-              options.peers.parTraverse_ { address =>
-                val settings = Peer.Settings(
-                  address,
+                NodeToNodeServer.Settings(),
+                Peer.Settings(
+                  SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
                   genesis.networkMagic,
                   readAhead = options.readAhead,
                   byronEpochSlots = genesis.geometry.byron.epochSlots
-                )
-                Follower.supervise(
-                  follower,
-                  Outbound.connect[IO](
-                    manager,
+                ),
+                runClients = options.inboundSync
+              ),
+              handlers,
+              // the session of a peer that connected to us runs like one on a connection we opened
+              follow = peer => scheduling.compute.within(follower.session(peer)),
+              prepare = warm,
+              headers = headerCheck,
+              transactions = Some(mempool.source),
+              events = Some(loggedInbound.alongside(measured.inbound)),
+              observe = Some(observePeer)
+            )
+            // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
+            sync = Handle
+              .allow[PeerError](
+                options.peers.parTraverse_ { address =>
+                  val settings = Peer.Settings(
                     address,
-                    Peer.nodeToNode[IO](
-                      settings,
-                      warm,
-                      Some(mempool.source),
-                      headerCheck,
-                      Some(observePeer)
+                    genesis.networkMagic,
+                    readAhead = options.readAhead,
+                    byronEpochSlots = genesis.geometry.byron.epochSlots
+                  )
+                  Follower.supervise(
+                    follower,
+                    Outbound.connect[IO](
+                      manager,
+                      address,
+                      Peer.nodeToNode[IO](
+                        settings,
+                        warm,
+                        Some(mempool.source),
+                        headerCheck,
+                        Some(observePeer)
+                      ),
+                      Some { case Outbound.Event.Reused(remote) =>
+                        logged(NodeEvent.Reused(remote, address.toString))
+                      },
+                      reuseInbound = options.inboundSync
                     ),
-                    Some { case Outbound.Event.Reused(remote) =>
-                      logged(NodeEvent.Reused(remote, address.toString))
-                    },
-                    reuseInbound = options.inboundSync
-                  ),
-                  events,
-                  retry,
-                  Some(scheduling.compute)
-                )
-              }
-            )
-            .rescue(error => fail[Unit](error))
-          relay = options.listen.fold(Resource.unit[IO])(address =>
-            BearerServer
-              .listen[IO](
-                Some(address.host),
-                Some(address.port),
-                maxConnections = options.maxInbound * 2
-              ) { (bearer, remote) =>
-                governor.serve(bearer, remote).void
-              }
-              .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
-          )
-          byronGenesis = setup.byronParams
-          queryEnv = eraStarts.get.map(observed =>
-            QueryEnv(
-              byronGenesis
-                .flatMap(_.startTime)
-                .fold(genesis.geometry.systemStart)(java.time.Instant.ofEpochSecond),
-              genesis.geometry,
-              setup.praos.forks,
-              byronGenesis.fold(
-                EraHistory.ByronParams(
-                  BigInt(genesis.geometry.securityParam) * 10,
-                  BigInt(20000),
-                  BigInt(genesis.geometry.securityParam)
-                )
-              )(b =>
-                EraHistory
-                  .ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
-              ),
-              setup.globals.maxSupply,
-              genesis.raw,
-              setup.mirrorEnv(observed).ledger,
-              observed
-            )
-          )
-          local = options.localSocket.fold(Resource.unit[IO])(path =>
-            BearerServer
-              .listenUnix[IO](path) { bearer =>
-                logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
-                  Handle
-                    .allow[NetworkError](
-                      NodeToClientServer.accept(
-                        bearer,
-                        genesis.networkMagic,
-                        LocalSubmission.handler(mempool),
-                        Some(StateQuerySource[IO](ref, queryEnv, store)),
-                        chainSync = Some(server.blockSource),
-                        txMonitor = Some(LocalMonitor.source(mempool))
-                      )
-                    )
-                    .rescue(e => IO.pure(e.message))
-                    .flatMap(reason =>
-                      logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
-                    )
-              }
-              .evalMap(_ => logged(NodeEvent.Listening(path.toString)))
-          )
-          forging <- options.forge.traverse { files =>
-            for
-              credentials <- IO
-                .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
-                .flatMap(_.fold(fail, IO.pure))
-              forger <- Forger.create[IO](
-                setup.praos.copy(geometry = geometry),
-                globals,
-                credentials,
-                follower,
-                mempool,
-                Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
-                connected.get,
-                utxoStore = Some(store)
+                    events,
+                    retry,
+                    Some(scheduling.compute)
+                  )
+                }
               )
-            yield forger
-          }
-          production = forging.fold(Resource.unit[IO])(_.run.background.void)
-          reporting =
-            if options.memoryReportSeconds <= 0 then Resource.unit[IO]
-            else
-              val stores = Handle
-                .allow[NodeError](store.memory)
-                .rescue(_ => IO.pure(Map.empty[String, Long]))
-              (IO.sleep(options.memoryReportSeconds.seconds) *>
-                MemoryReport
-                  .sample(stores)
-                  .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-          // What a scrape reads besides the counters the events keep: each source answers for
-          // itself (a collector that fails leaves its gauges as they were).
-          collectors = List(
-            Collectors.chain[IO, NodeState](_.geometry(genesis.geometry)),
-            Collectors.mempool(mempool),
-            Collectors.connections(manager),
-            Collectors.scheduling(scheduling.stats),
-            Collectors.jvm[IO]
-          ) ++ forging.map(f => Collectors.forging(f.stats))
-          scrape = metrics.scrape(collectors.map(_.handleError(_ => ())))
-          exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
-            MetricsServer.resource[IO](address, scrape).void
-          )
-          run = QueryServer
-            .resource[IO](
-              ChainView.fromRef(ref),
-              options.queryPort,
-              Some(store),
-              Some(scheduling.stats.total.map(Reports.schedulingTotal)),
-              Some(
-                (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
-              ),
-              forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
-              Some(scrape)
+              .rescue(error => fail[Unit](error))
+            relay = options.listen.fold(Resource.unit[IO])(address =>
+              BearerServer
+                .listen[IO](
+                  Some(address.host),
+                  Some(address.port),
+                  maxConnections = options.maxInbound * 2
+                ) { (bearer, remote) =>
+                  governor.serve(bearer, remote).void
+                }
+                .evalMap(bound => logged(NodeEvent.Listening(bound.toString)))
             )
-            .flatMap(_ => exposed)
-            .flatMap(_ => relay)
-            .flatMap(_ => local)
-            .flatMap(_ => production)
-            .flatMap(_ => reporting)
-            .surround(sync)
-          _ <- metrics.set(
-            Catalogue.buildInfo,
-            (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
-            1.0
-          )
-          _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
-          _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
-          last <- ref.get
-          _ <- differential.traverse_(
-            _.stats.flatMap(stats => logged(NodeEvent.DifferentialSummary(stats)))
-          )
-          _ <- logged(NodeEvent.finished(last))
-        yield ()
-      }
+            byronGenesis = setup.byronParams
+            queryEnv = eraStarts.get.map(observed =>
+              QueryEnv(
+                byronGenesis
+                  .flatMap(_.startTime)
+                  .fold(genesis.geometry.systemStart)(java.time.Instant.ofEpochSecond),
+                genesis.geometry,
+                setup.praos.forks,
+                byronGenesis.fold(
+                  EraHistory.ByronParams(
+                    BigInt(genesis.geometry.securityParam) * 10,
+                    BigInt(20000),
+                    BigInt(genesis.geometry.securityParam)
+                  )
+                )(b =>
+                  EraHistory
+                    .ByronParams(b.epochSlots, BigInt(b.slotLengthMillis), BigInt(b.securityParam))
+                ),
+                setup.globals.maxSupply,
+                genesis.raw,
+                setup.mirrorEnv(observed).ledger,
+                observed
+              )
+            )
+            local = options.localSocket.fold(Resource.unit[IO])(path =>
+              BearerServer
+                .listenUnix[IO](path) { bearer =>
+                  logged(NodeEvent.Inbound(path.toString, InboundEvent.Accepted)) *>
+                    Handle
+                      .allow[NetworkError](
+                        NodeToClientServer.accept(
+                          bearer,
+                          genesis.networkMagic,
+                          LocalSubmission.handler(mempool),
+                          Some(StateQuerySource[IO](ref, queryEnv, store)),
+                          chainSync = Some(server.blockSource),
+                          txMonitor = Some(LocalMonitor.source(mempool))
+                        )
+                      )
+                      .rescue(e => IO.pure(e.message))
+                      .flatMap(reason =>
+                        logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
+                      )
+                }
+                .evalMap(_ => logged(NodeEvent.Listening(path.toString)))
+            )
+            forging <- options.forge.traverse { files =>
+              for
+                credentials <- IO
+                  .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
+                  .flatMap(_.fold(fail, IO.pure))
+                forger <- Forger.create[IO](
+                  setup.praos.copy(geometry = geometry),
+                  globals,
+                  credentials,
+                  follower,
+                  mempool,
+                  Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
+                  connected.get,
+                  utxoStore = Some(store)
+                )
+              yield forger
+            }
+            _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
+            production = forging.fold(Resource.unit[IO])(_.run.background.void)
+            reporting =
+              if options.memoryReportSeconds <= 0 then Resource.unit[IO]
+              else
+                val stores = Handle
+                  .allow[NodeError](store.memory)
+                  .rescue(_ => IO.pure(Map.empty[String, Long]))
+                (IO.sleep(options.memoryReportSeconds.seconds) *>
+                  MemoryReport
+                    .sample(stores)
+                    .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
+            run = QueryServer
+              .resource[IO](
+                ChainView.fromRef(ref),
+                options.queryPort,
+                Some(store),
+                Some(scheduling.stats.total.map(Reports.schedulingTotal)),
+                Some(
+                  (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
+                ),
+                forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+                Some(scrape)
+              )
+              .flatMap(_ => relay)
+              .flatMap(_ => local)
+              .flatMap(_ => production)
+              .flatMap(_ => reporting)
+              .surround(sync)
+            _ <- metrics.set(
+              Catalogue.buildInfo,
+              (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
+              1.0
+            )
+            _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
+            _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
+            last <- ref.get
+            _ <- differential.traverse_(
+              _.stats.flatMap(stats => logged(NodeEvent.DifferentialSummary(stats)))
+            )
+            _ <- logged(NodeEvent.finished(last))
+          yield ()
+      })
     yield ()
 
   private val Usage =

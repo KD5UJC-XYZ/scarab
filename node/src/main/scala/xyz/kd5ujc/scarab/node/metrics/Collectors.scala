@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.metrics
 
 import cats.Monad
-import cats.effect.Sync
+import cats.effect.{Ref, Sync}
 import cats.mtl.Stateful
 import cats.syntax.all.*
 import java.lang.management.ManagementFactory
@@ -21,6 +21,22 @@ import xyz.kd5ujc.scarab.node.mempool.Mempool
   * `/scheduling` and `/forging`.
   */
 object Collectors:
+  /** The collectors a scrape runs. The endpoint is up before the sources exist (the stores are
+    * still being opened and replayed), so a collector is added when its source is: until then its
+    * gauges are absent, which is not the same as zero. A collector that fails leaves its gauges as
+    * they were and does not fail the scrape.
+    */
+  final class Registry[F[_]: Sync] private (ready: Ref[F, Vector[F[Unit]]]):
+    def add(collector: F[Unit]): F[Unit] = ready.update(_ :+ collector.handleError(_ => ()))
+
+    /** Run what is registered so far, then write the registry in the text format. */
+    def scrape(using metrics: Metrics[F]): F[String] =
+      ready.get.flatMap(collectors => metrics.scrape(collectors.toList))
+
+  object Registry:
+    def create[F[_]: Sync]: F[Registry[F]] =
+      Ref.of[F, Vector[F[Unit]]](Vector.empty).map(new Registry(_))
+
   /** The tip of the chain, as the node sees it now. `geometryOf` is the epoch geometry a state
     * knows (the one of the genesis files, refined once the chain has entered Shelley, which is what
     * `NodeState.geometry` gives).

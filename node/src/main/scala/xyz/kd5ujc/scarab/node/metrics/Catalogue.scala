@@ -32,6 +32,12 @@ object ConnectionStateLabel:
     case ConnectionState.Terminating       => Terminating
     case ConnectionState.Terminated        => Terminated
 
+/** Where the start has got to: reading the snapshot and opening the stores, applying the stored
+  * blocks again, or following the chain. Exactly one is current.
+  */
+enum PhaseLabel derives LabelValue:
+  case Restoring, Replaying, Following
+
 /** What the connection manager did ([[xyz.kd5ujc.scarab.network.ConnectionEvent]]). */
 enum ConnectionEventLabel derives LabelValue:
   case Opened, Changed, Refused, Closed
@@ -358,6 +364,27 @@ object Catalogue:
     MetricName("scarab_replay_seconds"),
     "Time spent applying the stored blocks again at the start."
   )
+  val nodePhase = GaugeDef(
+    MetricName("scarab_node_phase"),
+    "1 for the phase the start has reached (Restoring, Replaying, Following), 0 for the others.",
+    Labels.one[PhaseLabel](LabelName("phase"))
+  )
+  val replayTargetBlock = GaugeDef(
+    MetricName("scarab_replay_target_block"),
+    "Block number of the immutable tip, where the replay of the stored blocks ends."
+  )
+  val replayTargetSlot = GaugeDef(
+    MetricName("scarab_replay_target_slot"),
+    "Slot of the immutable tip, where the replay of the stored blocks ends."
+  )
+  val replayBlock = GaugeDef(
+    MetricName("scarab_replay_block"),
+    "Block number of the last stored block reported as applied again (every progress interval)."
+  )
+  val replaySlot = GaugeDef(
+    MetricName("scarab_replay_slot"),
+    "Slot of the last stored block reported as applied again (every progress interval)."
+  )
 
   // ---- scarab_*: network
 
@@ -546,6 +573,11 @@ object Catalogue:
     snapshotBytes,
     replayedBlocks,
     replaySeconds,
+    nodePhase,
+    replayTargetBlock,
+    replayTargetSlot,
+    replayBlock,
+    replaySlot,
     connectionsByState,
     connectionEvents,
     inboundEvents,

@@ -60,6 +60,40 @@ class EventMetricsSuite extends CatsEffectSuite:
     }
   }
 
+  test(
+    "the start moves restoring, replaying, following; the replay gauges follow the storage events"
+  ) {
+    fixture.flatMap { (metrics, em) =>
+      def phases(s: Snapshot) =
+        PhaseLabel.values.toList.map(p => p -> gauge(s, Catalogue.nodePhase, p)).toMap
+      for
+        s0 <- metrics.snapshot
+        _ <- em.storage.emit(StorageEvent.ReplayStarted(None, Some(block(900))))
+        s1 <- metrics.snapshot
+        _ <- em.storage.emit(StorageEvent.ReplayProgress(block(300), 300L, 4000L))
+        s2 <- metrics.snapshot
+        _ <- em.storage.emit(StorageEvent.ReplayFinished(Some(block(900)), 900L, 9000L))
+        _ <- em.phase(PhaseLabel.Following)
+        s3 <- metrics.snapshot
+      yield
+        // before the first event: restoring, and no replay gauge (absent, not zero)
+        assertEquals(phases(s0)(PhaseLabel.Restoring), Some(1.0))
+        assertEquals(gauge(s0, Catalogue.replayTargetBlock, ()), None)
+        assertEquals(gauge(s0, Catalogue.replayBlock, ()), None)
+        assertEquals(phases(s1)(PhaseLabel.Replaying), Some(1.0))
+        assertEquals(phases(s1)(PhaseLabel.Restoring), Some(0.0))
+        assertEquals(gauge(s1, Catalogue.replayTargetBlock, ()), Some(900.0))
+        assertEquals(gauge(s1, Catalogue.replayTargetSlot, ()), Some(9000.0))
+        assertEquals(gauge(s1, Catalogue.replayBlock, ()), None)
+        assertEquals(gauge(s2, Catalogue.replayBlock, ()), Some(300.0))
+        assertEquals(gauge(s2, Catalogue.replaySlot, ()), Some(3000.0))
+        assertEquals(gauge(s2, Catalogue.replayedBlocks, ()), Some(300.0))
+        assertEquals(gauge(s3, Catalogue.replayBlock, ()), Some(900.0))
+        assertEquals(phases(s3)(PhaseLabel.Following), Some(1.0))
+        assertEquals(phases(s3)(PhaseLabel.Replaying), Some(0.0))
+    }
+  }
+
   test("a rollback counts as a fork and its depth is observed") {
     fixture.flatMap { (metrics, em) =>
       for

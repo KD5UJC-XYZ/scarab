@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.metrics
 
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.consensus.{FollowerEvent, FollowerEvents}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
 import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundEvents, Peer}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
@@ -90,6 +90,21 @@ final class EventMetrics[F[_]: Sync] private (
       case MempoolEvent.Adopted(_)      => metrics.inc(mempoolAdopted)
       case MempoolEvent.Synced(_, _, _) => Sync[F].unit
 
+  /** The phase of the start, as the one-hot gauge [[nodePhase]]: the storage events move it from
+    * restoring to replaying, the node itself says when it is following.
+    */
+  def phase(current: PhaseLabel): F[Unit] =
+    PhaseLabel.values.toList.traverse_(p =>
+      metrics.set(nodePhase, p, if p == current then 1.0 else 0.0)
+    )
+
+  private def replayReached(at: Option[BlockRef], count: Long, millis: Long): F[Unit] =
+    metrics.set(replayedBlocks, count.toDouble) *>
+      metrics.set(replaySeconds, millis / 1000.0) *>
+      at.traverse_(b =>
+        metrics.set(replayBlock, number(b.blockNo)) *> metrics.set(replaySlot, number(b.slot))
+      )
+
   val storage: StorageEvents[F] = new StorageEvents[F]:
     def emit(event: StorageEvent): F[Unit] = event match
       case StorageEvent.FormatMigrated(m) => metrics.inc(snapshotsMigrated, (), m.count.toDouble)
@@ -106,19 +121,17 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.inc(snapshotProblems, SnapshotProblemLabel.Failed)
       case StorageEvent.SnapshotRefused(_, _, _) =>
         metrics.inc(snapshotProblems, SnapshotProblemLabel.Refused)
-      case StorageEvent.ReplayProgress(_, replayed, millis) =>
-        metrics.set(replayedBlocks, replayed.toDouble) *> metrics.set(
-          replaySeconds,
-          millis / 1000.0
+      case StorageEvent.ReplayStarted(_, target) =>
+        phase(PhaseLabel.Replaying) *> target.traverse_(t =>
+          metrics.set(replayTargetBlock, number(t.blockNo)) *>
+            metrics.set(replayTargetSlot, number(t.slot))
         )
-      case StorageEvent.ReplayFinished(_, replayed, millis) =>
-        metrics.set(replayedBlocks, replayed.toDouble) *> metrics.set(
-          replaySeconds,
-          millis / 1000.0
-        )
-      case StorageEvent.ReplayStarted(_, _) | StorageEvent.NetworkRecorded(_, _) |
-          StorageEvent.VolatileOpened(_) | StorageEvent.VolatileResumed(_, _, _) |
-          StorageEvent.ShutdownSnapshot(_, _) =>
+      case StorageEvent.ReplayProgress(at, replayed, millis) =>
+        replayReached(Some(at), replayed, millis)
+      case StorageEvent.ReplayFinished(at, replayed, millis) =>
+        replayReached(at, replayed, millis)
+      case StorageEvent.NetworkRecorded(_, _) | StorageEvent.VolatileOpened(_) |
+          StorageEvent.VolatileResumed(_, _, _) | StorageEvent.ShutdownSnapshot(_, _) =>
         Sync[F].unit
 
   val connection: ConnectionEvents[F] = new ConnectionEvents[F]:
@@ -164,4 +177,6 @@ final class EventMetrics[F[_]: Sync] private (
 
 object EventMetrics:
   def create[F[_]: Sync](using Metrics[F]): F[EventMetrics[F]] =
-    (Ref.of[F, Long](0L), Ref.of[F, Option[BigInt]](None)).mapN(new EventMetrics(_, _))
+    (Ref.of[F, Long](0L), Ref.of[F, Option[BigInt]](None))
+      .mapN(new EventMetrics(_, _))
+      .flatTap(_.phase(PhaseLabel.Restoring))
