@@ -860,7 +860,7 @@ volatile chain: the tip, the anchor, or a block among the last `k`; an older poi
 one not on the chain `PointNotOnChain`). `NtcQuery` decodes the envelope (`Query`: system start, chain
 block number, chain point; the hard-fork combinator's `QueryIfCurrent`, `QueryAnytime`,
 `QueryHardFork`; the Shelley block queries 0 to 39 with sets under tag 258), `QueryAnswers` computes the
-answer from the `NodeState` as a pure function and the Haskell state codecs (`storage/haskell/state`: `Wire`, the node-type codecs, `UtxoCodecs`) write the ledger's CBOR (the
+answer from the state of the chain as a pure function (the state is read through the `ChainRead` type class, in the vocabulary of the ledger-state mirror: `node/read/`, step 2 of the mirror, J2.7) and the Haskell state codecs (`storage/haskell/state`: `Wire`, the node-type codecs, `UtxoCodecs`) write the ledger's CBOR (the
 31-element Conway protocol parameters, outputs in the canonical array or keyed form, the governance
 state with its DRep pulser, stake and pool distributions, ...; containers of more than 23 elements are
 indefinite as in the ledger's `variableListLenEncoding`). The only effect is reading UTxO entries not

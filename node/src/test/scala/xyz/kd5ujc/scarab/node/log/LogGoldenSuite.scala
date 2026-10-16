@@ -77,6 +77,9 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.finished(VolatileChain.genesis(2160, setup.start, setup.origin)))
         // the lines JsonLog did not write
         _ <- node(NodeEvent.StateDumped(BigInt(4200), hash, BigInt(3), 120L))
+        _ <- node(
+          NodeEvent.StateDumpRefused(BigInt(4200), hash, BigInt(3), "Vocab(CoinOutOfRange)")
+        )
         _ <- node(NodeEvent.VerificationCache("witness=1/2 opCert=3/4 vrf=5/6"))
         _ <- node(
           NodeEvent.Library("org.http4s.ember", Severity.Warning, "connection reset", None)

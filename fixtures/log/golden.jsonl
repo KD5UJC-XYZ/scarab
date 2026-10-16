@@ -103,6 +103,7 @@
 {"event":"shutdownSnapshot","at":"2026-10-16T12:00:00Z","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"written":true}
 {"event":"finished","at":"2026-10-16T12:00:00Z","tip":{"origin":true},"retained":0}
 {"event":"stateDump","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","epoch":3,"millis":120}
+{"event":"stateDumpRefused","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","epoch":3,"error":"Vocab(CoinOutOfRange)"}
 {"event":"verificationCache","at":"2026-10-16T12:00:00Z","summary":"witness=1/2 opCert=3/4 vrf=5/6"}
 {"event":"slf4j","at":"2026-10-16T12:00:00Z","logger":"org.http4s.ember","level":"Warning","message":"connection reset","thrown":null}
 {"event":"slf4j","at":"2026-10-16T12:00:00Z","logger":"fs2.io","level":"Error","message":"failed","thrown":"java.io.IOException: x"}
