@@ -36,8 +36,23 @@ enum FuturePParams derives Eq, Show, Diff:
   case PotentialPParamsUpdate(params: Option[ProtocolParams])
 
 object FuturePParams:
+  /** The prediction with its parameters changed by `f` (Haskell's `translateEra` of a future
+    * `PParams`).
+    */
+  def map(f: FuturePParams)(g: ProtocolParams => ProtocolParams): FuturePParams = f match
+    case NoPParamsUpdate              => NoPParamsUpdate
+    case DefinitePParamsUpdate(p)     => DefinitePParamsUpdate(g(p))
+    case PotentialPParamsUpdate(next) => PotentialPParamsUpdate(next.map(g))
+
   /** The parameters the prediction holds, if any. */
   extension (f: FuturePParams)
+    /** `knownFuturePParams` (`State/Governance.hs:105-108`): the parameters, only if it is certain
+      * that they will be adopted.
+      */
+    def definite: Option[ProtocolParams] = f match
+      case DefinitePParamsUpdate(p) => Some(p)
+      case _                        => None
+
     def nextParams: Option[ProtocolParams] = f match
       case NoPParamsUpdate              => None
       case DefinitePParamsUpdate(p)     => Some(p)

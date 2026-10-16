@@ -57,6 +57,15 @@ object Sts:
   def lift[F[_]: Applicative, Fail, A](result: Either[Fail, A])(using Raise[F, Fail]): F[A] =
     result.fold(_.raise[F, A], Applicative[F].pure)
 
+  /** Replaces the state by what a pure step makes of it, or raises the step's failure: the shape of
+    * a rule whose body is one function of the state (`modify` that can refuse).
+    */
+  def modifyE[F[_]: Monad, S, Fail](f: S => Either[Fail, S])(using
+      state: Stateful[F, S],
+      raise: Raise[F, Fail]
+  ): F[Unit] =
+    Monad[F].flatMap(state.get)(s => Monad[F].flatMap(lift[F, Fail, S](f(s)))(state.set))
+
   /** `trans @sub` (`Extended.hs:475`): runs `sub` on the part of the state `S0` that [[Embed]]
     * names, with its failures wrapped into `Fail0` (`wrapFailed`).
     */

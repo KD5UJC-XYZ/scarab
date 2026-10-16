@@ -169,22 +169,24 @@ object LedgerMirror:
 
   // ---- the conversions of the leaf types that need no effect
 
-  private def credBack[R <: KeyRole](c: Credential[R]): node.Credential = c match
+  private[ledger] def credBack[R <: KeyRole](c: Credential[R]): node.Credential = c match
     case Credential.ScriptHashObj(h) => node.Credential.Script(h.bytes)
     case Credential.KeyHashObj(h)    => node.Credential.Key(h.bytes)
 
-  private def drepBack(d: DRep): node.DRep = d match
+  private[ledger] def drepBack(d: DRep): node.DRep = d match
     case DRep.DRepKeyHash(h)         => node.DRep.Registered(node.Credential.Key(h.bytes))
     case DRep.DRepScriptHash(h)      => node.DRep.Registered(node.Credential.Script(h.bytes))
     case DRep.DRepAlwaysAbstain      => node.DRep.AlwaysAbstain
     case DRep.DRepAlwaysNoConfidence => node.DRep.AlwaysNoConfidence
 
-  private def stakeMap[R <: KeyRole, A, B](m: SortedMap[Credential[R], A])(
+  private[ledger] def stakeMap[R <: KeyRole, A, B](m: SortedMap[Credential[R], A])(
       f: A => B
   ): Map[node.Credential, B] =
     m.iterator.map((c, a) => credBack(c) -> f(a)).toMap
 
-  private def coinMap(m: SortedMap[Credential[Staking], Coin]): Map[node.Credential, BigInt] =
+  private[ledger] def coinMap(
+      m: SortedMap[Credential[Staking], Coin]
+  ): Map[node.Credential, BigInt] =
     stakeMap(m)(_.value)
 
   private val genesisPointer: node.Ptr = node.Ptr(0, 0, 0)
@@ -200,7 +202,7 @@ object LedgerMirror:
       vState: Option[VState]
   )
 
-  private def conwayAccount(a: ConwayAccountState): node.Account =
+  private[ledger] def conwayAccount(a: ConwayAccountState): node.Account =
     node.Account(
       a.balance.toBigInt,
       a.deposit.toBigInt,
@@ -208,7 +210,7 @@ object LedgerMirror:
       a.drep.map(drepBack)
     )
 
-  private def shelleyAccount(a: ShelleyAccountState): node.Account =
+  private[ledger] def shelleyAccount(a: ShelleyAccountState): node.Account =
     node.Account(a.balance.toBigInt, a.deposit.toBigInt, a.pool.map(_.bytes), None)
 
   private def certParts[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): CertParts =
@@ -273,7 +275,7 @@ object LedgerMirror:
           ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
         g.futurePParams
 
-  private def pools(
+  private[ledger] def pools(
       network: Int,
       ps: SortedMap[KeyHash[StakePool], StakePoolState]
   ): Map[Bytes, node.PoolState] =

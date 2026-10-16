@@ -43,7 +43,7 @@ object PpupRules:
   /** A proposed protocol version must follow the current one: `(major + 1, 0)` or `(major, minor +
     * 1)`.
     */
-  private def canFollow(params: ProtocolParams, u: ParamUpdate): Either[String, Unit] =
+  private[ledger] def canFollow(params: ProtocolParams, u: ParamUpdate): Either[String, Unit] =
     u.fields.get(14) match
       case None => Right(())
       case Some(raw) =>

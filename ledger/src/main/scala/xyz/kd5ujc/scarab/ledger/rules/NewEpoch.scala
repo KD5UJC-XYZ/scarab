@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: Apache-2.0
+package xyz.kd5ujc.scarab.ledger.rules
+
+import cats.Monad
+import cats.mtl.{Ask, Raise, Stateful}
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.ledger.state.*
+
+/** NEWEPOCH (`Shelley/Rules/NewEpoch.hs:148`, `Conway/Rules/NewEpoch.hs:154`): the new-epoch state
+  * moves to epoch `e` when `e` is the epoch after the one it is in.
+  *
+  * At the boundary: the reward update is applied (`updateRewards`), MIR pays the instantaneous
+  * rewards (before Conway), EPOCH runs, and the epoch's blocks become the previous epoch's, the
+  * reward update is cleared and the pool distribution is the one of the `mark` snapshot the
+  * boundary has just made `set` (`ssStakeMarkPoolDistr` of the snapshots before EPOCH). Inside the
+  * epoch Conway predicts the future parameters again (`Conway/Rules/NewEpoch.hs:160-165`) and the
+  * earlier eras change nothing.
+  *
+  * Haskell does nothing for an epoch that is not the next one (`pure src`), and consensus never
+  * ticks across a whole epoch with no blocks; the node's chains can (a test cluster), so [[Hfc]]
+  * runs this rule once for each epoch crossed.
+  */
+object NewEpoch:
+  def sts[E <: EraTag](using
+      era: ShelleyBasedEra[E]
+  ): Sts[Unit, NewEpochState[E], EpochNo, TickFailure] =
+    new Sts[Unit, NewEpochState[E], EpochNo, TickFailure]:
+      def transition[F[_]: Monad](env: Unit, epoch: EpochNo)(using
+          ask: Ask[F, Globals],
+          nes: Stateful[F, NewEpochState[E]],
+          failures: Raise[F, TickFailure]
+      ): F[Unit] =
+        nes.get.flatMap { current =>
+          if !current.epoch.next.contains(epoch) then
+            nes.set(
+              current.copy(es =
+                current.es.copy(ls =
+                  current.es.ls.copy[E](utxo =
+                    current.es.ls.utxo.copy(gov = EraLedger.predictFuture(current.es.ls.utxo.gov))
+                  )
+                )
+              )
+            )
+          else boundary(current, epoch)
+        }
+
+      private def boundary[F[_]: Monad](before: NewEpochState[E], epoch: EpochNo)(using
+          ask: Ask[F, Globals],
+          nes: Stateful[F, NewEpochState[E]],
+          failures: Raise[F, TickFailure]
+      ): F[Unit] =
+        val es = nes.focus(NewEpochState.es[E])
+        for
+          _ <- before.ru match
+            case None => Monad[F].unit
+            case Some(PulsingRewUpdate.Complete(update)) =>
+              Sts.modifyE[F, EpochState[E], TickFailure](
+                applyRewardUpdate(_, update).leftMap(TickFailure.Vocab(_))
+              )(using Monad[F], es, failures)
+            case Some(PulsingRewUpdate.Pulsing(_, _)) =>
+              failures.raise[TickFailure, Unit](TickFailure.PulsingRewardUpdate)
+          _ <- era match
+            case ShelleyBasedEra.SConway => Monad[F].unit
+            case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+                ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+              Epoch.within(Mir.sts[E], (), (), NewEpochState.es[E])
+          _ <- Epoch.within(Epoch.sts[E], (), epoch, NewEpochState.es[E])
+          _ <- nes.modify(n =>
+            n.copy(
+              epoch = epoch,
+              bprev = before.bcur,
+              bcur = BlocksMade.empty,
+              ru = None,
+              pd = before.es.snapshots.markPoolDistr
+            )
+          )
+        yield ()
+
+  /** `updateRewards` with `applyRUpdFiltered` (`NewEpoch.hs:227`, `LedgerState/
+    * IncrementalStake.hs:95`): the rewards of the registered accounts are added to their balances
+    * and those of the accounts that are no longer registered go to the treasury; the treasury, the
+    * reserves and the fees change by the update's deltas.
+    */
+  def applyRewardUpdate[E <: EraTag](es: EpochState[E], update: RewardUpdate)(using
+      ShelleyBasedEra[E]
+  ): Either[VocabError, EpochState[E]] =
+    val major = EraLedger.prevPParams(es.ls.utxo.gov).protocolMajor
+    val (registered, unregistered) = update.rs.partition((c, _) => EraLedger.isRegistered(es.ls, c))
+    for
+      delivered <- Rewards.aggregate(major, registered)
+      treasury <- Coin.fromBigInt(
+        es.chainAccount.treasury.value + update.deltaT.value + Rewards.total(major, unregistered)
+      )
+      reserves <- Coin.fromBigInt(es.chainAccount.reserves.value + update.deltaR.value)
+      fees <- Coin.fromBigInt(es.ls.utxo.fees.value + update.deltaF.value)
+      credited <- EraLedger.credit(es.ls, delivered)
+    yield es.copy(
+      chainAccount = ChainAccountState(treasury, reserves),
+      ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),
+      nonMyopic = update.nonMyopic
+    )

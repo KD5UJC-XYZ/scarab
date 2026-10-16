@@ -59,7 +59,8 @@ object GenesisState:
       .downField("updateQuorum")
       .as[Option[Int]]
       .leftMap(e => ConfigError(s"updateQuorum: ${e.message}"))
-      .map { quorum =>
+      .product(get[BigInt](files.alonzo.hcursor, "lovelacePerUTxOWord"))
+      .map { (quorum, perWord) =>
         LedgerGlobals(
           genesis.maxLovelaceSupply,
           genesis.geometry.epochLength,
@@ -69,7 +70,8 @@ object GenesisState:
           stabilityWindow = genesis.geometry.stabilityWindow,
           startRewards = genesis.geometry.randomnessStabilisationWindow,
           firstEpoch = genesis.geometry.firstShelleyEpoch,
-          conway = conway
+          conway = conway,
+          alonzoCoinsPerUTxOWord = perWord
         )
       }
 

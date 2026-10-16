@@ -34,7 +34,12 @@ final case class LedgerGlobals(
     stabilityWindow: BigInt = 0,
     startRewards: BigInt = 0,
     firstEpoch: BigInt = 0,
-    conway: Option[ConwayParams] = None
+    conway: Option[ConwayParams] = None,
+    /** `lovelacePerUTxOWord` of the Alonzo genesis: the parameter the Mary to Alonzo translation
+      * introduces (`upgradePParams`, `Alonzo/PParams.hs`), which the era-indexed parameters of the
+      * eras before it do not carry.
+      */
+    alonzoCoinsPerUTxOWord: BigInt = 0
 )
 
 /** NEWEPOCH/EPOCH: reward application, MIR, SNAP, pool parameter adoption, POOLREAP, parameter
