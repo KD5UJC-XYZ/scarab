@@ -32,7 +32,7 @@ final case class ByronTxAux(
 )
 
 object ByronTx:
-  private val limits = Cbor.Limits(1 << 22, 64, 1 << 20, 1 << 22)
+  private val limits = ByronCbor.BodyLimits
 
   /** Two-element `[tag, tag24(bytes(cbor))]` wrappers ("known CBOR data item"). */
   private def knownItem(n: Node, what: String): Either[String, (Int, Node)] =

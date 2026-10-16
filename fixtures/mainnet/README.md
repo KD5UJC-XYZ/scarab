@@ -10,11 +10,15 @@ Captured with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from `backbone.cardano.
 | `byron-tx-blocks.hex` | Three Byron main blocks with transactions, full `[1, block]` encoding, not contiguous: slot 3313 (epoch 0, block 3314: the redemption of an AVVM balance, one redeem witness, no fee), slot 432001 (epoch 20, one transaction with a verification-key witness) and slot 432004 (epoch 20, two transactions, one with two inputs). Each was captured with `--blocks 1 --from <parent slot>.<parent hash> --byron-epoch-slots 21600`. |
 | `byron-tx-inputs.json` | The outputs those transactions spend (transaction id, index, address encoding, lovelace), as the Koios API reports them (`tx_info`; its `outputs` array is not in index order, the `tx_index` field is). The AVVM entry is the genesis balance of the redeem key. |
 | `byron-genesis-trimmed.json` | The public mainnet `byron-genesis.json` (https://book.play.dev.cardano.org/environments/mainnet/) with `avvmDistr` cut to the one entry the slot 3313 block spends (the full file has 14,505 entries, 1 MB). Its canonical hash is therefore not the real genesis hash. |
+| `byron-large-address-block.hex` | The Byron main block at slot 1,769,882 (epoch 81, hash `f277604972be4b11...`, 8.6 KB), full `[1, block]` encoding: the block where the first mainnet sync from genesis stopped. Its one transaction (bc61865d) pays an address of 7,689 bytes. Captured with `--blocks 1 --from 1769881.7bc92640368f07ccbe62b615c2bd8ed59da10a0624248dca67b89d0442d38161 --byron-epoch-slots 21600` on 2026-10-16. |
+| `byron-large-address-inputs.json` | The output that transaction spends (3,000,000 lovelace), from the Koios API (`tx_utxos`), in the form of `byron-tx-inputs.json`. |
 
 `ByronMainnetSuite` decodes the blocks, checks the body proofs against the headers, derives the AVVM
 redeem address and the genesis UTxO (the pseudo transaction id and address equal what the chain
 spent), and validates every transaction: witness signatures under the Byron signing tags and the
 protocol magic, address roots, value conservation and the minimum fee.
+
+`ByronLargeAddressSuite` decodes the block at slot 1,769,882, checks its proofs, decodes the 7,689-byte address and validates the transaction in full.
 
 `genesis/` holds the public mainnet node configuration from
 https://book.play.dev.cardano.org/environments/mainnet/ unchanged, downloaded 2026-10-14: `config.json`,

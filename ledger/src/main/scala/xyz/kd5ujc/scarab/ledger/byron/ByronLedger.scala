@@ -61,7 +61,7 @@ final case class ByronBody(
 object ByronBody:
   def decode(body: Bytes): Either[String, ByronBody] =
     for
-      root <- Cbor.decode(body, Cbor.Limits(1 << 23, 128, 1 << 21, 1 << 23))
+      root <- Cbor.decode(body, ByronCbor.BodyLimits)
       xs <- CborRead.arrayN(root, 4, "Byron body")
       txs <- CborRead.array(xs(0), "Byron tx payload").flatMap(_.traverse(ByronTx.decodeAux))
       certs <- CborRead
@@ -298,7 +298,7 @@ object ByronLedger:
 
   // ---------------------------------------------------------------- transactions
 
-  private def outputs(config: Config, tx: ByronTx): Either[ByronError, Unit] =
+  private[scarab] def outputs(config: Config, tx: ByronTx): Either[ByronError, Unit] =
     tx.outputs.traverse_ { out =>
       ByronAddress
         .decode(out.address)

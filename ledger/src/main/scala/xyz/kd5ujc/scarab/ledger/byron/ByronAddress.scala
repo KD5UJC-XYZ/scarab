@@ -9,6 +9,19 @@ import xyz.kd5ujc.scarab.ledger.CborRead
 
 /** Byte-level helpers for the Byron CBOR encodings that signatures and hashes cover. */
 object ByronCbor:
+  /** The limits for everything decoded from a Byron block body, and for the items nested in it (a
+    * transaction, an address, an output). The reference has no size limit on any of them: an
+    * address is decoded by `decodeCrcProtected` and its derivation path by `decodeBytesCanonical`
+    * (cardano-ledger `Cardano.Chain.Common.Address`, `instance DecCBOR Address`, and
+    * `Cardano.Chain.Common.AddrAttributes`, `instance DecCBOR HDAddressPayload`), and the ledger
+    * rule counts only the attributes it does not interpret (`Cardano.Chain.UTxO.Validation`,
+    * `validateTxOutNM`: `unknownAttributesLength < 128`). Only the block size and `maxTxSize`
+    * (protocol parameters, checked by the ledger rules) bound them. A nested item is part of the
+    * body, so the body's limits bound it and none is refused that the reference accepts. Mainnet
+    * has an address of 7,689 bytes (a derivation path of 7,641; slot 1,769,882).
+    */
+  val BodyLimits: Cbor.Limits = Cbor.Limits(1 << 23, 128, 1 << 21, 1 << 23)
+
   /** The minimal CBOR encoding of an unsigned integer (what `encCBOR` of a `Word` produces). */
   def uint(n: BigInt): Bytes =
     val v = n.toLong
@@ -76,7 +89,7 @@ object ByronAddress:
   val VerKey = 0
   val Redeem = 2
 
-  private val limits = Cbor.Limits(4096, 16, 256, 4096)
+  private val limits = ByronCbor.BodyLimits
 
   def rootOf(addrType: Int, key: Bytes, attributes: Bytes): Bytes =
     val spending = ByronCbor.concat(ByronCbor.of(0x82, addrType), ByronCbor.bytes(key))
