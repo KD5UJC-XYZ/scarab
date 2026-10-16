@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.consensus.{NodeState, VolatileChain}
 import cats.effect.{Async, Ref, Resource}
 import cats.syntax.all.*
-import com.comcast.ip4s.{Host, Port}
+import com.comcast.ip4s.{Host, Port, SocketAddress}
 import fs2.io.net.Network
 import io.circe.Json
 import io.circe.syntax.*
@@ -19,6 +19,8 @@ import org.http4s.circe.*
 import org.http4s.dsl.Http4sDsl
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.Server
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.node.metrics.Exposition
 
 /** Read access to the states the volatile chain retains. */
 trait ChainView[F[_], S]:
@@ -362,7 +364,9 @@ object Projection:
     )
   )
 
-/** Loopback HTTP query service: `GET /tip` and `GET /state?slot=S&hash=H`. */
+/** Loopback HTTP query service: `GET /tip`, `GET /state?slot=S&hash=H`, `GET /metrics` and the
+  * others below.
+  */
 object QueryServer:
   def resource[F[_]: Async: Network](
       view: ChainView[F, NodeState],
@@ -373,7 +377,10 @@ object QueryServer:
       /** The connection manager's table and the inbound sessions, served at `/connections`. */
       connections: Option[F[Json]] = None,
       /** The forger's counters per epoch, served at `/forging` (only on a node that forges). */
-      forging: Option[F[Json]] = None
+      forging: Option[F[Json]] = None,
+      /** The metrics in the Prometheus text format, served at `/metrics` (see [[MetricsServer]]).
+        */
+      metrics: Option[F[String]] = None
   ): Resource[F, Server] =
     val dsl = Http4sDsl[F]
     import dsl.*
@@ -395,6 +402,10 @@ object QueryServer:
         connections.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case GET -> Root / "forging" =>
         forging.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
+      case GET -> Root / "metrics" =>
+        metrics.fold(Async[F].pure(Response[F](Status.NotFound)))(
+          _.flatMap(MetricsServer.respond(dsl, _))
+        )
       case GET -> Root / "scheduling" =>
         scheduling.fold(Async[F].pure(Response[F](Status.NotFound)))(_.flatMap(j => Ok(j)))
       case GET -> Root / "state" :? SlotParam(slot) +& HashParam(hash) =>
@@ -416,4 +427,39 @@ object QueryServer:
       .withHost(Host.fromString("127.0.0.1").get)
       .withPort(Port.fromInt(port).get)
       .withHttpApp(routes.orNotFound)
+      .build
+
+/** The Prometheus endpoint on its own: `GET /metrics` and nothing else, on an address of its
+  * choice. The query server answers on loopback only and also serves the whole ledger state; this
+  * is the listener to bind beyond loopback (in a container, for the scraper of the monitoring
+  * stack).
+  */
+object MetricsServer:
+  /** The text of a scrape as the response of `GET /metrics`, with the content type the format names
+    * (written as the specification spells it, the version parameter unquoted).
+    */
+  def respond[F[_]: Async](dsl: Http4sDsl[F], text: String): F[Response[F]] =
+    import dsl.*
+    Ok(text).map(
+      _.putHeaders(
+        org.http4s.Header.Raw(org.typelevel.ci.CIString("Content-Type"), Exposition.ContentType)
+      )
+    )
+
+  def resource[F[_]: Async: Network](
+      address: SocketAddress[Host],
+      scrape: F[String]
+  ): Resource[F, Server] =
+    val dsl = Http4sDsl[F]
+    import dsl.*
+    val routes = HttpRoutes.of[F] { case GET -> Root / "metrics" =>
+      scrape.flatMap(respond(dsl, _))
+    }
+    EmberServerBuilder
+      .default[F]
+      .withHost(address.host)
+      .withPort(address.port)
+      .withHttpApp(routes.orNotFound)
+      // a scraper keeps no state: do not wait for its idle connection when the node stops
+      .withShutdownTimeout(1.second)
       .build

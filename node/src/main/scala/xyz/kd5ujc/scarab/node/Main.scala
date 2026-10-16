@@ -36,7 +36,6 @@ import com.comcast.ip4s.{Host, Port, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.network.{
   BearerServer,
-  ConnectionEvent,
   ConnectionEvents,
   ConnectionManager,
   NodeToClientServer,
@@ -54,6 +53,8 @@ import xyz.kd5ujc.scarab.node.differential.{
   Shadowed
 }
 import xyz.kd5ujc.scarab.node.forge.{Forger, KeyFiles}
+import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
+import xyz.kd5ujc.scarab.node.metrics.{Catalogue, Collectors, EventMetrics, MeteredRules, Metrics}
 import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
@@ -61,10 +62,10 @@ import scala.concurrent.duration.*
 
 /** `follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] |
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
-  * [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N]
-  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
-  * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
-  * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
+  * [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
+  * <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb]
+  * [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off]
+  * [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at
   * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check]
   * [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket
   * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
@@ -91,6 +92,8 @@ object Main extends IOApp:
       peers: List[SocketAddress[Host]],
       seconds: Option[Long],
       queryPort: Int,
+      /** `--metrics-listen host:port`: where the Prometheus endpoint (and nothing else) listens. */
+      metricsListen: Option[SocketAddress[Host]] = None,
       plutusCases: Option[Path] = None,
       db: Option[Path] = None,
       snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
@@ -322,6 +325,10 @@ object Main extends IOApp:
         praosConfig.get.flatMap(cache.warm[IO](raw, _))
       connected <- Ref.of[IO, Boolean](false)
       eraStarts <- Ref.of[IO, Map[xyz.kd5ujc.scarab.protocol.Era, BigInt]](Map.empty)
+      // The measurements: every event goes to the JSON log and to the metrics ([[EventSink]]).
+      metrics <- Metrics.create[IO](Catalogue.all)
+      given Metrics[IO] = metrics
+      measured <- EventMetrics.create[IO]
       logged = JsonLog.events(Some(scheduling.stats))
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent): IO[Unit] =
@@ -331,6 +338,10 @@ object Main extends IOApp:
               eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
             case _ => IO.unit
           ) *> logged.emit(event)
+      followerEvents = events.alongside(measured.follower)
+      storageEvents = JsonLog.storage.alongside(measured.storage)
+      loggedConnections: ConnectionEvents[IO] = JsonLog.connection(_)
+      loggedInbound: InboundEvents[IO] = JsonLog.inboundEvent(_, _)
       cases = options.plutusCases.map { dir =>
         java.nio.file.Files.createDirectories(dir)
         tools.PlutusCases(dir, perKind = 2, max = 400)
@@ -424,7 +435,7 @@ object Main extends IOApp:
             ),
             rules,
             setup.start,
-            JsonLog.storage,
+            storageEvents,
             backing,
             warm,
             Some(scheduling.compute),
@@ -438,7 +449,7 @@ object Main extends IOApp:
                 setup.origin,
                 rules,
                 genesis.geometry.byron.epochSlots,
-                JsonLog.storage,
+                storageEvents,
                 warm,
                 Some(scheduling.compute)
               )
@@ -480,13 +491,13 @@ object Main extends IOApp:
             resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
             MempoolEnv(globals, geometry),
             options.mempoolBytes.getOrElse(DefaultMempoolBytes),
-            JsonLog.mempool,
+            JsonLog.mempool.alongside(measured.mempool),
             utxoStore = Some(store)
           )
           served = server.persistence[NodeState]
           follower <- Follower.create[IO, NodeState](
-            rules,
-            events,
+            MeteredRules[IO, NodeState](rules),
+            followerEvents,
             genesis.geometry,
             NodeRules.observe(genesis.geometry),
             Some(persistence.fold(served)(Persistence.both(_, served))),
@@ -540,7 +551,7 @@ object Main extends IOApp:
                     JsonLog
                       .headersChecked(counts.validated, counts.unchecked, counts.waited)
                       .whenA(_)
-                  )
+                  ) *> measured.headers(counts.validated, counts.unchecked, counts.waited)
               )
             )
           )
@@ -561,18 +572,15 @@ object Main extends IOApp:
                 JsonLog.chainSyncRounds(n, headers, total / n, max, depth)
               })
           observePeer = (o: Peer.Observation) =>
-            o match
+            measured.peer(o) *> (o match
               case Peer.Observation.Fetched(millis) =>
                 JsonLog.slowFetch(millis).whenA(millis >= 250)
               case Peer.Observation.Round(requested, received, millis) =>
-                observeRounds(requested, received, millis)
+                observeRounds(requested, received, millis))
           // the connection manager (G2): one connection per peer address, limits, accounting
           manager <- ConnectionManager.create[IO](
             ConnectionManager.Limits(maxInbound = options.maxInbound),
-            Some(
-              new ConnectionEvents[IO]:
-                def emit(event: ConnectionEvent) = JsonLog.connection(event)
-            )
+            Some(loggedConnections.alongside(measured.connection))
           )
           governor <- InboundGovernor.create[IO](
             manager,
@@ -593,10 +601,7 @@ object Main extends IOApp:
             prepare = warm,
             headers = headerCheck,
             transactions = Some(mempool.source),
-            events = Some(
-              new InboundEvents[IO]:
-                def emit(remote: String, event: InboundEvent) = JsonLog.inboundEvent(remote, event)
-            ),
+            events = Some(loggedInbound.alongside(measured.inbound)),
             observe = Some(observePeer)
           )
           // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
@@ -703,7 +708,7 @@ object Main extends IOApp:
                 credentials,
                 follower,
                 mempool,
-                JsonLog.forge,
+                JsonLog.forge.alongside(measured.forge),
                 connected.get,
                 utxoStore = Some(store)
               )
@@ -718,6 +723,19 @@ object Main extends IOApp:
                 .rescue(_ => IO.pure(Map.empty[String, Long]))
               (IO.sleep(options.memoryReportSeconds.seconds) *>
                 MemoryReport.sample(stores).flatMap(JsonLog.memory)).foreverM.background.void
+          // What a scrape reads besides the counters the events keep: each source answers for
+          // itself (a collector that fails leaves its gauges as they were).
+          collectors = List(
+            Collectors.chain[IO, NodeState](_.geometry(genesis.geometry)),
+            Collectors.mempool(mempool),
+            Collectors.connections(manager),
+            Collectors.scheduling(scheduling.stats),
+            Collectors.jvm[IO]
+          ) ++ forging.map(f => Collectors.forging(f.stats))
+          scrape = metrics.scrape(collectors.map(_.handleError(_ => ())))
+          exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+            MetricsServer.resource[IO](address, scrape).void
+          )
           run = QueryServer
             .resource[IO](
               ChainView.fromRef(ref),
@@ -727,13 +745,20 @@ object Main extends IOApp:
               Some(
                 (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
               ),
-              forging.map(_.stats.byEpoch.map(JsonLog.forgeReport))
+              forging.map(_.stats.byEpoch.map(JsonLog.forgeReport)),
+              Some(scrape)
             )
+            .flatMap(_ => exposed)
             .flatMap(_ => relay)
             .flatMap(_ => local)
             .flatMap(_ => production)
             .flatMap(_ => reporting)
             .surround(sync)
+          _ <- metrics.set(
+            Catalogue.buildInfo,
+            (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),
+            1.0
+          )
           _ <- JsonLog.started(options.peers, genesis, setup.config, topology)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
           last <- ref.get
@@ -744,7 +769,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -753,6 +778,7 @@ object Main extends IOApp:
     "topology",
     "seconds",
     "query-port",
+    "metrics-listen",
     "plutus-cases",
     "db",
     "snapshot-every",
@@ -821,6 +847,9 @@ object Main extends IOApp:
           peers <- peerTexts.traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           seconds <- flags.get("seconds").traverse(_.toLongOption.toRight(usage))
           port <- flags.get("query-port").fold(Right(7071))(_.toIntOption.toRight(usage))
+          metricsListen <- flags
+            .get("metrics-listen")
+            .traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           interval <- flags
             .get("snapshot-every")
             .fold(Right(SnapshotInterval.Epochs(1)))(t => SnapshotInterval.parse(t).toRight(usage))
@@ -892,6 +921,7 @@ object Main extends IOApp:
           peers,
           seconds,
           port,
+          metricsListen,
           flags.get("plutus-cases").map(Path.of(_)),
           flags.get("db").map(Path.of(_)),
           interval,

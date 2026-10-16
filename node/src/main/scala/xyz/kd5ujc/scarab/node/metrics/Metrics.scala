@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.metrics
 
-import cats.Applicative
+import cats.{Applicative, Monad}
 import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
@@ -68,6 +68,11 @@ trait Metrics[F[_]]:
 
 object Metrics:
   def apply[F[_]](using metrics: Metrics[F]): Metrics[F] = metrics
+
+  /** A scrape: run the collectors that read the sources of the node, then render the registry. */
+  extension [F[_]](metrics: Metrics[F])
+    def scrape(collectors: List[F[Unit]])(using F: Monad[F]): F[String] =
+      collectors.sequence_ *> metrics.snapshot.map(Exposition.render)
 
   /** The definitions of a metric without labels, without writing the empty label value. */
   extension [F[_]](metrics: Metrics[F])

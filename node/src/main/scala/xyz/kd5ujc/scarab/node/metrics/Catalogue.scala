@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.node.metrics
 
 import xyz.kd5ujc.scarab.ledger.BlockRule
+import xyz.kd5ujc.scarab.node.forge.ForgeEpochStats
+import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, Era}
 
 /** The closed sets that label a series. Each is an enum, so a series is labelled by a member and
@@ -42,11 +44,27 @@ enum InboundEventLabel derives LabelValue:
 enum RejectionLabel derives LabelValue:
   case Malformed, AlreadyHeld, Ledger, Full, WrongEra
 
+object RejectionLabel:
+  def of(reason: Rejection): RejectionLabel = reason match
+    case Rejection.Malformed(_)   => Malformed
+    case Rejection.AlreadyHeld(_) => AlreadyHeld
+    case Rejection.Ledger(_)      => Ledger
+    case Rejection.Full(_, _)     => Full
+    case Rejection.WrongEra(_)    => WrongEra
+
 /** Why the forger did not check a slot. The forger counts the reasons as text; anything it does not
   * know is `Other`.
   */
 enum SkipLabel derives LabelValue:
   case Busy, TipTooOld, SlotOccupied, NotConnected, Other
+
+object SkipLabel:
+  def parse(reason: String): SkipLabel = reason match
+    case ForgeEpochStats.Busy         => Busy
+    case ForgeEpochStats.TipTooOld    => TipTooOld
+    case ForgeEpochStats.SlotOccupied => SlotOccupied
+    case ForgeEpochStats.NotConnected => NotConnected
+    case _                            => Other
 
 /** Which snapshot trouble: an unreadable file left alone, a write that failed, a state the format
   * refused.
@@ -270,6 +288,10 @@ object Catalogue:
     MetricName("scarab_peer_tip_block"),
     "Block number of the tip of the peer's chain, as the peer last announced it."
   )
+  val peerReconnects = CounterDef(
+    MetricName("scarab_peer_reconnects_total"),
+    "Times the connection to the peer was lost and opened again."
+  )
   val rollbacks = CounterDef(
     MetricName("scarab_rollbacks_total"),
     "Rollbacks of the chain."
@@ -339,7 +361,7 @@ object Catalogue:
 
   // ---- scarab_*: network
 
-  val connections = GaugeDef(
+  val connectionsByState = GaugeDef(
     MetricName("scarab_connections"),
     "Connections the connection manager knows, by state.",
     Labels.one[ConnectionStateLabel](LabelName("state"))
@@ -508,6 +530,7 @@ object Catalogue:
     validationErrors,
     peerTipSlot,
     peerTipBlock,
+    peerReconnects,
     rollbacks,
     rollbackDepth,
     volatileBlocks,
@@ -523,7 +546,7 @@ object Catalogue:
     snapshotBytes,
     replayedBlocks,
     replaySeconds,
-    connections,
+    connectionsByState,
     connectionEvents,
     inboundEvents,
     chainSyncRounds,

@@ -99,3 +99,11 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--dump-state-at", "100")).isLeft)
     assert(Main.parse(base ++ List("--dump-state", "/d", "--dump-state-at", "later")).isLeft)
   }
+
+  test("--metrics-listen is off by default and takes an address, a bad one is a ConfigError") {
+    assertEquals(Main.parse(base).toOption.get.metricsListen, None)
+    val listening = Main.parse(base ++ List("--metrics-listen", "0.0.0.0:12798")).toOption.get
+    assertEquals(listening.metricsListen.map(_.toString), Some("0.0.0.0:12798"))
+    assert(Main.parse(base ++ List("--metrics-listen", "12798")).isLeft)
+    assert(Main.parse(base ++ List("--metrics-listen", "host:port")).isLeft)
+  }
