@@ -37,15 +37,20 @@ class LedgerMirrorSuite extends DisciplineSuite:
 
   checkAll(
     "LedgerMirror[Conway]",
-    MirrorLaws[M, Conway](mirror, run, MirrorLaws.tampers[Conway]).laws(using conwayStates)
+    MirrorLaws[M, Conway](mirror, run, FlatStateGen.network, MirrorLaws.tampers[Conway]).laws(using
+      conwayStates
+    )
   )
   checkAll(
     "LedgerMirror[Alonzo]",
-    MirrorLaws[M, Alonzo](mirror, run, MirrorLaws.tampers[Alonzo]).laws(using alonzoStates)
+    MirrorLaws[M, Alonzo](mirror, run, FlatStateGen.network, MirrorLaws.tampers[Alonzo]).laws(using
+      alonzoStates
+    )
   )
   checkAll(
     "LedgerMirror[Shelley]",
-    MirrorLaws[M, Shelley](mirror, run, MirrorLaws.tampers[Shelley]).laws(using alonzoStates)
+    MirrorLaws[M, Shelley](mirror, run, FlatStateGen.network, MirrorLaws.tampers[Shelley])
+      .laws(using alonzoStates)
   )
 
   // `Mirrored` is a functor with an Eq
@@ -141,8 +146,8 @@ class LedgerMirrorSuite extends DisciplineSuite:
     val key = VRFVerKeyHash.fromBytes(shared).fold(e => fail(e.show), identity)
     assertEquals(counts(key).value.toBigInt, BigInt(2))
     assertEquals(
-      run(mirror.from[Conway](at, m.value)).map(LedgerMirror.normalised(_)),
-      Right(LedgerMirror.normalised(bad))
+      run(mirror.from[Conway](at, m.value)).map(LedgerMirror.normalised(FlatStateGen.network, _)),
+      Right(LedgerMirror.normalised(FlatStateGen.network, bad))
     )
   }
 
@@ -192,14 +197,23 @@ class LedgerMirrorSuite extends DisciplineSuite:
     )
   }
 
-  test("a pool whose reward account is on another network is refused") {
+  test("a pool whose reward account is on another network keeps the credential (B22)") {
+    // `StakePoolState` and `StakePoolSnapShot` hold the credential only (`mkStakePoolState`); the
+    // account comes back on the node's network, as `stakePoolStateToStakePoolParams` reads it.
+    // The future parameters of a re-registration keep the network they were registered with.
     val pooled = (1L to 200L).map(sampled(conway = true, _)).find(_.pools.nonEmpty).get
     val (id, pool) = pooled.pools.head
-    val moved = pool.params.copy(rewardAccount = pool.params.rewardAccount.copy(network = 1))
-    val bad = pooled.copy(pools = pooled.pools.updated(id, pool.copy(params = moved)))
+    val foreign = 1 - FlatStateGen.network
+    val moved = pool.params.copy(rewardAccount = pool.params.rewardAccount.copy(network = foreign))
+    val odd = pooled.copy(
+      pools = pooled.pools.updated(id, pool.copy(params = moved)),
+      futurePools = pooled.futurePools.updated(id, moved)
+    )
+    val back = toConway(odd).flatMap(m => run(mirror.from[Conway](at, m.value)))
+    assertEquals(back, Right(LedgerMirror.normalised(FlatStateGen.network, odd)))
     assertEquals(
-      toConway(bad).left.toOption.map(_.show),
-      shown(MirrorError.NetworkMismatch(0, 1)).some
+      back.map(s => (s.pools(id).params.rewardAccount.network, s.futurePools(id).rewardAccount)),
+      Right((FlatStateGen.network, moved.rewardAccount))
     )
   }
 
@@ -236,7 +250,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
     forAll(residual) { s =>
       val image = run(mirror.to[Babbage](at, s))
       val back = image.flatMap(m => run(mirror.from[Babbage](at, m.value)))
-      back == Right(LedgerMirror.normalised(s)) &&
+      back == Right(LedgerMirror.normalised(FlatStateGen.network, s)) &&
       image.map(_.value.extras.residue.isEmpty) == Right(false)
     }
   }
@@ -248,7 +262,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
       val odd = s.copy(ptrs = ptrs, ppup = ppup)
       val image = toConway(odd)
       val back = image.flatMap(m => run(mirror.from[Conway](at, m.value)))
-      back == Right(LedgerMirror.normalised(odd)) &&
+      back == Right(LedgerMirror.normalised(FlatStateGen.network, odd)) &&
       image.map(_.value.extras.residue.isEmpty) == Right(false)
     }
   }

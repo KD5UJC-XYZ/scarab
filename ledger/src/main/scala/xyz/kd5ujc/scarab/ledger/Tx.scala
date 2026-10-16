@@ -53,6 +53,19 @@ final case class PoolParams(
     metadata: Option[Bytes]
 )
 
+object PoolParams:
+  extension (p: PoolParams)
+    /** The parameters of a registered pool as the reference reads them back: `StakePoolState` and
+      * `StakePoolSnapShot` keep the reward account's credential only (`mkStakePoolState`,
+      * `State/StakePool.hs:256-269`), and `stakePoolStateToStakePoolParams`
+      * (`State/StakePool.hs:275-292`) puts the account on the node's `network`. A registration
+      * before protocol version 5 may name an account on another network (B22); the future
+      * parameters of a re-registration keep it (`StakePoolParams`).
+      */
+    def registeredOn(network: Int): PoolParams =
+      if p.rewardAccount.network == network then p
+      else p.copy(rewardAccount = p.rewardAccount.copy(network = network))
+
 enum Certificate:
   case Register(credential: Credential, deposit: Option[BigInt])
   case Unregister(credential: Credential, refund: Option[BigInt])

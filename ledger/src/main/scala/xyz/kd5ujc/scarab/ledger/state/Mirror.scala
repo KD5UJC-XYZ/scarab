@@ -119,9 +119,6 @@ enum MirrorError derives Show:
   /** A value outside a vocabulary type (a hash of the wrong length, a negative coin, ...). */
   case Vocab(error: VocabError)
 
-  /** A pool's reward account is on another network than the node's. */
-  case NetworkMismatch(expected: Int, actual: Int)
-
   /** The state is not one a mirror can hold. */
   case IllFormed(shape: Shape)
 
@@ -131,7 +128,8 @@ enum MirrorError derives Show:
 /** What the ledger side of the conversion reads from the node's configuration.
   *
   * @param network
-  *   the network id of reward accounts (the one `PoolParams.rewardAccount` carries)
+  *   the node's network id, the one the reward account of a registered pool is read back on
+  *   (Haskell keeps the account's credential only, `StakePoolState`)
   * @param geometry
   *   the era history, for the point of no return of the parameter update
   * @param quorum

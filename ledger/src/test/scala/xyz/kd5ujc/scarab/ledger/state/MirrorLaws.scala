@@ -22,7 +22,8 @@ final case class Tamper[E <: EraTag](
 /** The laws of [[LedgerMirror]] for the era `E`, over any effect `F` that has the capabilities
   * (`run` interprets it, with the environment given).
   *
-  *   - retraction: `from(to(s))` is `s`, up to [[LedgerMirror.normalised]];
+  *   - retraction: `from(to(s))` is `s`, up to [[LedgerMirror.normalised]] on `network` (the
+  *     node's, in the environment `run` gives);
   *   - the mirror is stable: `to(from(to(s)))` is `to(s)`;
   *   - the gaps are exactly the ones the mirror itself shows (and no other);
   *   - a mirror whose derived piece was tampered with is refused, naming the piece.
@@ -30,6 +31,7 @@ final case class Tamper[E <: EraTag](
 final class MirrorLaws[F[_], E <: EraTag](
     mirror: LedgerMirror[F],
     run: FunctionK[F, [A] =>> Either[MirrorError, A]],
+    network: Int,
     tampers: List[Tamper[E]]
 )(using ShelleyBasedEra[E])
     extends Laws:
@@ -60,7 +62,7 @@ final class MirrorLaws[F[_], E <: EraTag](
       "ledger mirror",
       "retraction" -> forAll { (at: WithOrigin[SlotNo], s: node.LedgerState) =>
         val back = to(at, s).flatMap(m => from(at, m.value))
-        (back == Right(LedgerMirror.normalised(s))) :| s"$back"
+        (back == Right(LedgerMirror.normalised(network, s))) :| s"$back"
       },
       "the mirror of the retraction is the mirror" -> forAll {
         (at: WithOrigin[SlotNo], s: node.LedgerState) =>

@@ -34,7 +34,7 @@ object LedgerImage:
   * parameters); `from` recomputes them from the rest of the mirror and refuses a mirror whose
   * stored values disagree ([[MirrorError.DerivedMismatch]]), which Haskell, trusting what it
   * decodes, does not. The state of the node is recovered whole: `from(to(s))` is
-  * [[LedgerMirror.normalised]]`(s)`.
+  * [[LedgerMirror.normalised]]`(network, s)`.
   *
   * The capabilities are the environment ([[MirrorEnv]]) and the error ([[MirrorError]]); the
   * position of the tip is an argument, because it is not a property of the configuration.
@@ -57,21 +57,35 @@ object LedgerMirror:
       errors: Raise[F, MirrorError]
   ): LedgerMirror[F] = Impl[F]
 
-  /** What a state becomes through the mirror: the future genesis delegations are a map in Haskell,
-    * ordered by slot and key and with one entry of each, and a vector with no order in the node.
-    * Nothing reads their order.
+  /** What a state becomes through the mirror, on the node's `network`: the future genesis
+    * delegations are a map in Haskell, ordered by slot and key and with one entry of each, and a
+    * vector with no order in the node; nothing reads their order. The reward account of a
+    * registered pool, and of a pool in a stake snapshot, is on the node's network
+    * ([[node.PoolParams.registeredOn]]): Haskell keeps its credential only, as the rules read it.
+    * The future parameters of a pool keep theirs.
     */
-  def normalised(s: node.LedgerState): node.LedgerState =
-    s.copy(futureGenDelegs =
-      s.futureGenDelegs
+  def normalised(network: Int, s: node.LedgerState): node.LedgerState =
+    s.copy(
+      futureGenDelegs = s.futureGenDelegs
         .groupBy(d => (d.slot, d.genesisKey))
         .values
         .map(_.last)
         .toVector
         .sortWith((a, b) =>
           a.slot < b.slot || (a.slot == b.slot && (a.genesisKey compareTo b.genesisKey) < 0)
-        )
+        ),
+      pools = s.pools.view.mapValues(p => p.copy(params = p.params.registeredOn(network))).toMap,
+      snapshots = s.snapshots.copy(
+        mark = poolsOn(network, s.snapshots.mark),
+        set = poolsOn(network, s.snapshots.set),
+        go = poolsOn(network, s.snapshots.go)
+      ),
+      poolDistribution = poolsOn(network, s.poolDistribution)
     )
+
+  /** The snapshot with its pools' reward accounts on `network`. */
+  private def poolsOn(network: Int, s: node.Snapshot): node.Snapshot =
+    s.copy(pools = s.pools.view.mapValues(_.registeredOn(network)).toMap)
 
   /** The gaps of the mirror of `s` (`Gap`), a function of the state alone. */
   def gaps(s: node.LedgerState): Set[Gap] =
@@ -370,12 +384,6 @@ object LedgerMirror:
     ): F[SortedMap[K2, V2]] =
       entries.toList.traverse((k, v) => f(k, v)).map(Sorted.map(_))
 
-    private def network(actual: Int): F[Unit] =
-      asks.ask.flatMap(env =>
-        if env.network == actual then monad.unit
-        else fail(MirrorError.NetworkMismatch(env.network, actual))
-      )
-
     private def stakeCredMap(
         m: Map[node.Credential, BigInt]
     ): F[SortedMap[Credential[Staking], Coin]] =
@@ -414,8 +422,9 @@ object LedgerMirror:
             vrf <- vrfHash(pp.vrfKeyHash)
             pledge <- coin(pp.pledge)
             cost <- coin(pp.cost)
+            // the account's credential only, whatever its network (`mkStakePoolState`,
+            // `State/StakePool.hs:256-269`); `from` puts it on the node's
             account <- cred[Staking](pp.rewardAccount.credential)
-            _ <- network(pp.rewardAccount.network)
             owners <- pp.owners.toList.traverse(hash[Staking](_)).map(Sorted.set(_))
             deposit <- compact(ps.deposit)
             dels <- delegators
@@ -670,7 +679,6 @@ object LedgerMirror:
             cost <- coin(pp.cost)
             numDelegators <- vocab(Word64.fromBigInt(VocabError.Kind.BlockCount, count))
             account <- cred[Staking](pp.rewardAccount.credential)
-            _ <- network(pp.rewardAccount.network)
           yield key -> StakePoolSnapShot(
             poolStake,
             Rational(stake, total),
@@ -731,7 +739,12 @@ object LedgerMirror:
         mark <- snapShot(s.snapshots.mark, Some(accountDelegators(s)))
         set <- snapShot(s.snapshots.set)
         go <- snapShot(s.snapshots.go)
-        carried = Option.unless(s.poolDistribution == s.snapshots.set)(s.poolDistribution)
+        env <- asks.ask
+        // the distribution as it comes back: its pools' accounts on the node's network
+        distribution = poolsOn(env.network, s.poolDistribution)
+        carried = Option.unless(distribution == poolsOn(env.network, s.snapshots.set))(
+          distribution
+        )
         distr <- carried.traverse(snapShot(_))
         ru <- rewardUpdate(s.rewardUpdate)
       yield

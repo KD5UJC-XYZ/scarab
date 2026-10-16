@@ -197,7 +197,7 @@ object StateMirror:
     */
   def normalised(env: ConsensusMirrorEnv, s: NodeState): NodeState =
     if eraOf(env, s) == Era.Byron then s
-    else s.copy(ledger = LedgerMirror.normalised(s.ledger))
+    else s.copy(ledger = LedgerMirror.normalised(env.ledger.network, s.ledger))
 
   /** The gaps of the mirror of `s`, a function of the state alone: the ledger side's, and the
     * Shelley transition that a Shelley-based era's state has and the node does not keep. Byron has

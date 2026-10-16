@@ -254,13 +254,17 @@ object QueryAnswers:
         )
       case GetStakePools =>
         Wire.definiteSetOf(poolId).answer(s.pools.keySet)
+      // a registered pool's reward account on the node's network, its future parameters' as they
+      // are (`queryPoolParameters`, `mkQueryPoolStateResult`, `Api/State/Query.hs:485-525`)
       case GetStakePoolParams(ids) =>
-        pools.answer(restrictAlways(s.pools, ids).map { case (id, p) => id -> p.params })
+        pools.answer(restrictAlways(s.pools, ids).map { case (id, p) =>
+          id -> p.params.registeredOn(env.mirror.network)
+        })
       case GetPoolState(ids) =>
         def pick[V](m: Map[Bytes, V]): Map[Bytes, V] = ids.fold(m)(restrictAlways(m, _))
         poolState.answer(
           (
-            pick(s.pools).map { case (id, p) => id -> p.params },
+            pick(s.pools).map { case (id, p) => id -> p.params.registeredOn(env.mirror.network) },
             pick(s.futurePools),
             pick(s.retiring),
             pick(s.pools).map { case (id, p) => id -> p.deposit }

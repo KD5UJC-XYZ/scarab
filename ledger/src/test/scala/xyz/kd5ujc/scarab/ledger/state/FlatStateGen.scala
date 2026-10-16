@@ -53,6 +53,8 @@ object FlatStateGen:
     for
       owners <- subset((0 until credentials).filter(_ % 2 == 0).map(j => bytes(28, 1, j)))
       reward <- Gen.choose(0, credentials - 1)
+      // now and then another network, as a registration before protocol version 5 may have (B22)
+      accountNetwork <- Gen.frequency(4 -> network, 1 -> (1 - network))
       metadata <- Gen.option(Gen.const(bytes(8, 6, i)))
       pledge <- amount
     yield node.PoolParams(
@@ -61,7 +63,7 @@ object FlatStateGen:
       pledge,
       BigInt(340),
       Rational(1, 10 + i),
-      node.RewardAccount(network, credential(reward)),
+      node.RewardAccount(accountNetwork, credential(reward)),
       owners.toSet,
       bytes(5, 7, i),
       metadata

@@ -58,6 +58,6 @@ class RulesMirrorSuite extends FunSuite:
           val (i, b) = roundTrip[Babbage](s)
           (i.map(_.value.extras.residue.isEmpty), b)
       assertEquals(image, Right(true), c.name)
-      assertEquals(back, Right(LedgerMirror.normalised(s)), c.name)
+      assertEquals(back, Right(LedgerMirror.normalised(FlatStateGen.network, s)), c.name)
     }
   }
