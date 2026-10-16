@@ -7,6 +7,8 @@ import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.crypto.Blake2b
+import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
   Account,
@@ -14,6 +16,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Committee,
   CommitteeAuth,
   Credential as NodeCredential,
+  Datum,
   DRep as NodeDRep,
   DRepState as NodeDRepState,
   GovAction,
@@ -25,12 +28,18 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolState as NodePoolState,
   Proposal,
   Proposals,
+  Redeemer,
   RewardAccount,
+  Script,
+  ScriptIntegrity,
+  ScriptKind,
   TestLedger,
   Tx,
   TxRules,
+  Value,
   Vote,
-  Voter
+  Voter,
+  Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
@@ -71,19 +80,19 @@ class ConwayLedgerSuite extends FunSuite:
     case Refused(failure: LedgerFailure)
     case Broken(why: String)
 
-  private def oldSide(s: node.LedgerState, t: Tx): Out =
-    TxRules(s, t, TestLedger.env) match
+  private def oldSide(s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out =
+    TxRules(s, t, ctx) match
       case Right(next) => Out.Accepted(next)
       case Left(f)     => Out.Refused(f)
 
-  private def newSide(s: node.LedgerState, t: Tx): Out =
+  private def newSide(s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out =
     run(mirror.to[Conway](at, s)) match
       case Left(e) => Out.Broken(s"to the mirror: ${e.show}")
       case Right(image) =>
         val nes = image.value.nes
         val result = Sts(Ledger)(
           globals,
-          LedgerEnv(TestLedger.env, nes.es.chainAccount.treasury),
+          LedgerEnv(ctx, nes.es.chainAccount.treasury),
           Counted(nes.es.ls, s.plutus),
           t
         )
@@ -119,10 +128,14 @@ class ConwayLedgerSuite extends FunSuite:
     }))
 
   /** Both sides on one transaction. */
-  private def both(s: node.LedgerState, t: Tx): (Out, Out) = (oldSide(s, t), newSide(s, t))
+  private def both(
+      s: node.LedgerState,
+      t: Tx,
+      ctx: TxRules.Env = TestLedger.env
+  ): (Out, Out) = (oldSide(s, t, ctx), newSide(s, t, ctx))
 
-  private def agree(s: node.LedgerState, t: Tx): Out =
-    val (o, n) = both(s, t)
+  private def agree(s: node.LedgerState, t: Tx, ctx: TxRules.Env = TestLedger.env): Out =
+    val (o, n) = both(s, t, ctx)
     (o, n) match
       case (Out.Accepted(a), Out.Accepted(b)) =>
         // what the node holds as the same, through the mirror's normal form
@@ -165,6 +178,7 @@ class ConwayLedgerSuite extends FunSuite:
       govActionDeposit = 1000 * ada,
       govActionLifetime = 6,
       minPoolCost = 0,
+      costModels = Map(0 -> Vector(1, 2, 3), 1 -> Vector(4, 5, 6, 7), 2 -> Vector(8, 9)),
       keyDeposit = 2 * ada,
       poolDeposit = 500 * ada,
       eMax = 18
@@ -541,7 +555,7 @@ class ConwayLedgerSuite extends FunSuite:
     assertEquals(refusedWith(s, partial), "WithdrawalsNotInRewardsCERTS")
   }
 
-  test("a transaction that fails phase 2 collects its collateral and nothing else") {
+  test("a transaction flagged invalid that has no script to fail is refused") {
     val s = base(fundedBy(alice))
     val b = body(
       "collateral",
@@ -798,4 +812,76 @@ class ConwayLedgerSuite extends FunSuite:
     assertEquals(after.vrfKeyHashes.get(shared11).map(_.value.bits), Some(2L))
     // the same where the map was already derived: it starts again
     assertEquals(HardFork.populateVRFKeyHashes(before).vrfKeyHashes, after.vrfKeyHashes)
+  }
+
+  test(
+    "Plutus V3: the verdict of the scripts must equal is_valid; a failed one pays its collateral"
+  ) {
+    val plutus = Script.plutus(ScriptKind.PlutusV3, Bytes(Vector.fill(10)(7)))
+    val scriptAddress =
+      node.Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+    val datum = Bytes(Vector(0x01))
+    val locked = node
+      .TxOut(scriptAddress, Value.coin(50 * ada))
+      .copy(datum = Datum.Hash(Blake2b.hash256.hash(datum)))
+    val collateralIn = txIn(2)
+    val lockedIn = txIn(3)
+    val s = base(
+      Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked)
+    )
+    val units = ExUnits(1000, 1000000)
+    val wits = Witnesses(
+      Vector.empty,
+      scripts = Vector(plutus),
+      datums = Vector(datum),
+      redeemers = Vector(Redeemer(0, 0, Bytes(Vector(0x01)), units)),
+      // `{ [0, 0] : [1, [1000, 1000000]] }` and `[ 1 ]`
+      redeemersRaw = Some(
+        Bytes(
+          Vector(0xa1, 0x82, 0x00, 0x00, 0x82, 0x01, 0x82, 0x19, 0x03, 0xe8, 0x1a, 0x00, 0x0f, 0x42,
+            0x40).map(_.toByte)
+        )
+      ),
+      datumsRaw = Some(Bytes(Vector(0x81, 0x01).map(_.toByte)))
+    )
+    val fee = BigInt(100 + 100) + (pparams.priceMem * Rational(1000) +
+      pparams.priceSteps * Rational(1000000)).ceil
+    def bodyWith(hash: Option[Bytes]) =
+      body(
+        "v3",
+        Vector(lockedIn),
+        Vector(out(bob.address(), 50 * ada - fee)),
+        fee,
+        collateral = Vector(collateralIn),
+        scriptDataHash = hash
+      )
+    val hash = ScriptIntegrity.hash(
+      tx(bodyWith(None), Vector(alice), wits),
+      pparams,
+      Set(ScriptKind.PlutusV3)
+    )
+    def ctx(succeeds: Boolean) =
+      TestLedger.env.copy(
+        evaluator = scripted(succeeds),
+        decoder = xyz.kd5ujc.scarab.plutus.ScriptDecoder.lenient
+      )
+    def attempt(succeeds: Boolean, isValid: Boolean) =
+      agree(s, tx(bodyWith(hash), Vector(alice), wits, isValid = isValid), ctx(succeeds))
+    attempt(succeeds = true, isValid = true) match
+      case Out.Accepted(next) =>
+        assertEquals((next.plutus.succeeded, next.plutus.failed), (1L, 0L))
+        assert(!next.utxo.contains(lockedIn))
+      case other => fail(s"expected the valid transaction to be accepted: $other")
+    attempt(succeeds = false, isValid = false) match
+      case Out.Accepted(next) =>
+        // the collateral is taken, what the script locks stays
+        assert(!next.utxo.contains(collateralIn) && next.utxo.contains(lockedIn))
+        assertEquals(next.plutus.failed, 1L)
+        assertEquals(next.fees, 100 * ada)
+      case other => fail(s"expected the invalid transaction to take its collateral: $other")
+    // a verdict that is not the tag's is refused, as the node refuses it
+    for (succeeds, isValid) <- Vector((false, true), (true, false)) do
+      attempt(succeeds, isValid) match
+        case Out.Refused(_) => ()
+        case other          => fail(s"expected a refusal for $succeeds / $isValid: $other")
   }
