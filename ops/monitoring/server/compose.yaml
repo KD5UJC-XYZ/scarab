@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # The monitoring server: Prometheus (metrics, with the remote-write receiver the agents push to),
-# Loki (log streams) and Grafana. Ports are published on BIND_ADDR only (on monitor-host, its VPN
-# address), never on every interface. Settings come from .env next to this file (see .env.example).
+# Loki (log streams) and Grafana. Prometheus and Loki are published on BIND_ADDR only (on monitor-host, its
+# VPN address); Grafana on GRAFANA_BIND_ADDR, which defaults to BIND_ADDR (on monitor-host, 0.0.0.0, so
+# the home network reaches it too). Settings come from .env next to this file (see .env.example).
 name: scarab-monitoring
 
 services:
@@ -39,7 +40,7 @@ services:
       GF_PATHS_DATA: /var/lib/grafana/data
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
-      # read-only viewing for anyone who can reach BIND_ADDR (the VPN on monitor-host)
+      # read-only viewing for anyone who can reach GRAFANA_BIND_ADDR (the VPN and the LAN on monitor-host)
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_USERS_DEFAULT_THEME: system
@@ -51,5 +52,5 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - ${DATA_DIR:-./data}/grafana:/var/lib/grafana/data
     ports:
-      - ${BIND_ADDR:-127.0.0.1}:3000:3000
+      - ${GRAFANA_BIND_ADDR:-${BIND_ADDR:-127.0.0.1}}:3000:3000
     depends_on: [prometheus, loki]
