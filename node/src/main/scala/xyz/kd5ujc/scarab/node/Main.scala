@@ -551,8 +551,9 @@ object Main extends IOApp:
                     JsonLog
                       .headersChecked(counts.validated, counts.unchecked, counts.waited)
                       .whenA(_)
-                  ) *> measured.headers(counts.validated, counts.unchecked, counts.waited)
-              )
+                  )
+              ),
+              added = Some(measured.headers)
             )
           )
           // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds

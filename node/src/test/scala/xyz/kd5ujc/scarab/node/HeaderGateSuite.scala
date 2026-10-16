@@ -92,6 +92,36 @@ class HeaderGateSuite extends CatsEffectSuite with ScalaCheckSuite:
     }.map(result => assertEquals(result, Right((HeaderGate.Counts(10, 0, 0), Vector(4L, 10L)))))
   }
 
+  test("each batch reports what it added, so sessions that each count from zero add up") {
+    val main = Fixtures.chain(10)
+    typed {
+      for
+        chain <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(50, BigInt(-1)))
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(chain)
+        added <- Ref.of[IO, Vector[HeaderGate.Counts]](Vector.empty)
+        check = HeaderCheck.forChain[IO, BigInt, Int](
+          new Model(Set.empty, 1000, Set.empty),
+          Compute.inline[IO],
+          added = Some(c => added.update(_ :+ c))
+        )
+        start <- chain.get.map(_.tip)
+        first <- check.start(start)
+        second <- check.start(start)
+        _ <- first.accept(main.take(4).map(forward))
+        _ <- second.accept(main.take(3).map(forward))
+        _ <- first.accept(main.slice(4, 10).map(forward))
+        seen <- added.get
+      yield seen
+    }.map(result =>
+      assertEquals(
+        result,
+        Right(
+          Vector(HeaderGate.Counts(4, 0, 0), HeaderGate.Counts(3, 0, 0), HeaderGate.Counts(6, 0, 0))
+        )
+      )
+    )
+  }
+
   test("an invalid header raises InvalidHeader naming it; the headers before it were accepted") {
     val main = Fixtures.chain(8)
     typed {

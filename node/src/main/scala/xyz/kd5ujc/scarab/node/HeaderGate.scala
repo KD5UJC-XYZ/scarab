@@ -49,7 +49,11 @@ object HeaderCheck:
     *   called with the headers of a batch and the header state before them, to verify their
     *   signatures in parallel ahead of the sequential rules (see [[VerificationCache.warmHeaders]])
     * @param observe
-    *   called with the running counts after every batch
+    *   called with the running counts of the session after every batch
+    * @param added
+    *   called after every batch with what that batch added to the counts: the sessions of several
+    *   peers (and a reconnection) each count from zero, so a total over the node is the sum of
+    *   these
     * @param stall
     *   how long the node's chain may stand still while a header waits for a ledger view
     */
@@ -60,7 +64,8 @@ object HeaderCheck:
       stall: FiniteDuration = 120.seconds,
       poll: FiniteDuration = 20.millis,
       retained: Int = 4096,
-      observe: Option[HeaderGate.Counts => F[Unit]] = None
+      observe: Option[HeaderGate.Counts => F[Unit]] = None,
+      added: Option[HeaderGate.Counts => F[Unit]] = None
   )(using
       chain: Stateful[F, VolatileChain[S]]
   ): HeaderCheck[F] = new HeaderCheck[F]:
@@ -103,16 +108,29 @@ object HeaderCheck:
           val leading = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
             case SyncEvent.RollForward(h, _) => h
           }
-          (compute.within(
-            state.get.flatMap(hc => released.set(hc.entries.size)) *>
-              state.get
-                .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
-                .whenA(leading.size > 1) *>
-              batch.traverse_ {
-                case SyncEvent.RollBackward(point, _) => rollback(point)
-                case SyncEvent.RollForward(header, _) => forward(header)
-              }
-          ) *> tally.get.flatMap(c => observe.traverse_(_(c))))
+          tally.get.flatMap(before =>
+            compute.within(
+              state.get.flatMap(hc => released.set(hc.entries.size)) *>
+                state.get
+                  .flatMap(hc => hc.tipState.traverse_(h => warm.traverse_(_(leading, h))))
+                  .whenA(leading.size > 1) *>
+                batch.traverse_ {
+                  case SyncEvent.RollBackward(point, _) => rollback(point)
+                  case SyncEvent.RollForward(header, _) => forward(header)
+                }
+            ) *> tally.get.flatMap(c =>
+              observe.traverse_(_(c)) *>
+                added.traverse_(
+                  _(
+                    HeaderGate.Counts(
+                      c.validated - before.validated,
+                      c.unchecked - before.unchecked,
+                      c.waited - before.waited
+                    )
+                  )
+                )
+            )
+          )
 
         /** The candidate chain returns to `point`: a header of ours or of the peer's. */
         private def rollback(point: ChainSync.Point)(using Raise[F, PeerError]): F[Unit] =

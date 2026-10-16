@@ -6,7 +6,7 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
-import xyz.kd5ujc.scarab.node.{InboundEvent, Peer}
+import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Peer}
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -152,20 +152,21 @@ class EventMetricsSuite extends CatsEffectSuite:
     }
   }
 
-  test("what a peer session measured, and the header totals, which only ever move up") {
+  test("what a peer session measured, and the header counts added by the batches of any session") {
     fixture.flatMap { (metrics, em) =>
       for
         _ <- em.peer(Peer.Observation.Round(128, 120, 250L))
         _ <- em.peer(Peer.Observation.Fetched(40L))
-        _ <- em.headers(100, 5, 1)
-        _ <- em.headers(100, 5, 1)
-        _ <- em.headers(90, 5, 1)
+        _ <- em.headers(HeaderGate.Counts(100, 5, 1))
+        _ <- em.headers(HeaderGate.Counts(20, 0, 0))
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.chainSyncRounds, ()), Some(1.0))
         assertEquals(counter(s, Catalogue.chainSyncHeaders, ()), Some(120.0))
         assertEquals(observations(s, Catalogue.blockFetchSeconds, ()), Some(1L))
-        assertEquals(counter(s, Catalogue.headersValidated, ()), Some(100.0))
+        assertEquals(counter(s, Catalogue.headersValidated, ()), Some(120.0))
+        assertEquals(counter(s, Catalogue.headersUnchecked, ()), Some(5.0))
+        assertEquals(counter(s, Catalogue.headersWaited, ()), Some(1.0))
     }
   }
 

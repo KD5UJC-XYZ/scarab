@@ -5,7 +5,7 @@ import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
-import xyz.kd5ujc.scarab.node.{InboundEvent, InboundEvents, Peer}
+import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundEvents, Peer}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
@@ -154,11 +154,13 @@ final class EventMetrics[F[_]: Sync] private (
     case Peer.Observation.Fetched(millis) =>
       metrics.observe(blockFetchSeconds, millis / 1000.0)
 
-  /** The totals of the header-first validation so far. */
-  def headers(validated: Long, unchecked: Long, waited: Long): F[Unit] =
-    metrics.advance(headersValidated, validated.toDouble) *>
-      metrics.advance(headersUnchecked, unchecked.toDouble) *>
-      metrics.advance(headersWaited, waited.toDouble)
+  /** What a batch of headers added to the header-first counts (the sessions count from zero each,
+    * so the totals are the sums of the additions).
+    */
+  def headers(added: HeaderGate.Counts): F[Unit] =
+    metrics.inc(headersValidated, (), added.validated.toDouble) *>
+      metrics.inc(headersUnchecked, (), added.unchecked.toDouble) *>
+      metrics.inc(headersWaited, (), added.waited.toDouble)
 
 object EventMetrics:
   def create[F[_]: Sync](using Metrics[F]): F[EventMetrics[F]] =
