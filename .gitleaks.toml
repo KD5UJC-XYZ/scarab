@@ -29,6 +29,8 @@ paths = [
   # where it was before the package rename (the scan covers the whole history, so both paths stay).
   '''^node/src/test/scala/xyz/kd5ujc/scarab/node/forge/KeyFilesSuite\.scala$''',
   '''^node/src/test/scala/lab/node/forge/KeyFilesSuite\.scala$''',
+  # A mainnet transaction id (public chain data) held in a constant named Key.
+  '''^node/src/test/scala/xyz/kd5ujc/scarab/storage/ByronHandoverUtxoSuite\.scala$''',
 ]
 commits = [
   # 87cf584: removed nonce-epoch tooling; the match is the string "pre-anchor-supplied-verification-keys-v1".
