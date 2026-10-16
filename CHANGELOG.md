@@ -123,13 +123,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   whose pre-state is of an earlier era is left to the old side, once. (7) The new side verifies signatures and decodes the
   block itself. (8) BBODY's limits are checked before LEDGERS. (9) `RuleT` against the reference stack on the same BBODY
   over a Preview epoch: 7,886 ms against 7,856 ms (Plutus evaluation dominates both); `RuleT` stays.
-- **Tests.** `ConwayLedgerSuite` (nineteen: both sides on the same transaction for a payment, a delegation with its
+- **Tests.** `ConwayLedgerSuite` (twenty: both sides on the same transaction for a payment, a delegation with its
   re-delegation and unregistration, a pool's registration, re-registration and retirement, DRep registration, delegation,
   vote and unregistration, committee authorisation and resignation, votes of an elected and of an unelected hot key before
   and from version 11, unknown voters and actions, a proposal, withdrawals, the failures; the uniqueness of VRF key hashes
-  from 11 and the fork's counts; a transaction of 1,500 certificates and votes on a 256 KiB stack; the same rule on `RuleT`
-  and on the reference stack), `DifferentialErasSuite` (the Conway blocks of the capture on the new rules, verdicts and states
+  from 11 and the fork's counts; a Plutus V3 transaction flagged valid and invalid; a transaction of 1,500 certificates and
+  votes on a 256 KiB stack; the same rule on `RuleT` and on the reference stack), `BbodySuite` (five: the commitment, the limits of
+  the block, the blocks made, the reference scripts, a block of 10,000 transactions on a 256 KiB stack), `RelationsSuite` (the
+  delegators of a carried state), `DifferentialErasSuite` (the Conway blocks of the capture on the new rules, verdicts and states
   agree).
+- **What the runs found, all in the harness' terms of comparison:** `mark` is exact at `Stage.Tick` only; the seed of the
+  new side needs its reward update attributed and its pulser without the fields Conway's parameters lack; the conversions of a
+  chain that begins in Byron need the resolved geometry (design §4 item 4).
 - **Evidence.** See [compatibility.md](docs/compatibility.md) and [performance.md](docs/performance.md) section 11. No
   persisted format changes (the snapshot fingerprint golden is unchanged).
 
