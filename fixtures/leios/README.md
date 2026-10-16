@@ -26,6 +26,17 @@ seed is `blst_keygen` (checked indirectly: the devnet keys come from the same li
 |---|---|---|
 | `testnet/handshake-replies.tsv` | Four handshake replies of the public Leios testnet relay `leios-node.play.dev.cardano.org:3001` (network magic 164, node version string `11.1.0.164-prototype-2026w38a` per its live config), read-only, 2026-10-14, owner-approved: a version query reply and the acceptance of versions 14, 15, 16 | `LeiosTestnetHandshakeSuite` |
 
-No LeiosNotify or LeiosFetch message was captured: the relay closed the connection on the first
-request on protocol 18 (docs/leios.md section 10), so there are no raw announcement, vote or
-certificate fixtures yet.
+| `testnet/config/*.json` | The eight files of `https://book.play.dev.cardano.org/environments-pre/leios/` (the deployment of `input-output-hk/cardano-playground` `docs/environments-pre/leios/`), downloaded 2026-10-16 unchanged. SHA-256 and Blake2b-256 of each are in `docs/leios.md` section 11.1; the Blake2b-256 hashes equal those `config.json` lists (Byron over the canonical JSON) | `LeiosTestnetConfigSuite`, `LeiosHeaderChainSuite`, `LeiosBlockSuite` |
+| `testnet/headers-from-origin.tsv` | The first 1,100 ChainSync headers of the public Leios testnet chain, from Origin (blocks 0 to 1,099, slots 12 to 22,402: epoch 0 and the start of epoch 1), as the relay `leios-node.play.dev.cardano.org:3001` sent them to an initiator-only client (version 14, magic 164, `MinNodeVersion` `11.1.0.164-prototype-2026w38a`), read-only, 2026-10-16, owner-approved. Columns: HFC era index, block number, slot, header hash (Blake2b-256 of the header), the envelope `[era, tag24(header)]` in hex. The capture is of the whole chain (154,698 headers to block 154,697, tip 154,701), kept outside the repository (84 MB) | `HfcHeaderSuite`, `LeiosBlockSuite`, `LeiosHeaderChainSuite`, `LeiosTestnetHeaderSuite` |
+| `testnet/headers-notable.tsv` | Six headers of the same capture: the last of era index 6 (block 4,254) and the first of index 7 (block 4,255, slot 86,463), the last before and the first announcing header (blocks 17,396 and 17,397), and the first two with `block_body_contains_leios_cert` (blocks 17,403 and 17,404). Columns: label, then as above | the same |
+| `testnet/blocks.tsv` | Six blocks fetched one at a time over BlockFetch from the same relay, 2026-10-16: block 0 (empty) and 28 (transactions) of block tag 7, and of tag 8: block 4,255 (empty), 17,403 (a Leios certificate, no transactions), 22,446 (transactions), 34,085 (announces an endorser block, 24 kB). Columns: label, block tag, block number, slot, header hash, the block `[tag, block]` in hex | `LeiosBlockSuite` |
+
+Not captured: any LeiosNotify or LeiosFetch message. On 2026-10-14 and again on 2026-10-16 (a
+LeiosNotify pull and a LeiosFetch request, after ChainSync from a known point to the tip, versions 14
+and 16) the relay closed the connection on the first message on protocol 18 or 19
+(docs/leios.md sections 10 and 11.7), so there are no raw announcement, offer, vote or endorser-block
+fixtures; the Leios certificate fixture is the one in block 17,403, and the vote fixture is the
+golden `LeiosVote` above.
+
+The test files are plain TSV so that a diff shows a changed byte. The headers and blocks are public
+chain data of a test network.
