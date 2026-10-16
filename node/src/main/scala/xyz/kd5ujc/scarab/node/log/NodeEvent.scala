@@ -303,7 +303,7 @@ object NodeEvent:
           EventKind.MirrorCheckFailed.line(
             where ++ List("stage" -> "Crashed".asJson, "error" -> message.asJson)*
           )
-    case RulesHalted(d) => diverged(EventKind.RulesHalted, d, None)
+    case RulesHalted(d)             => diverged(EventKind.RulesHalted, d, None)
     case DifferentialSummary(stats) =>
       // the blocks both sides applied (the old side's whole block; the new side's ledger part, with
       // the signatures and the block's decoding it does for itself), p50 and p99 to the power of two

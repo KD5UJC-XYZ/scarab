@@ -521,7 +521,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mirrorCheckFailed` | `Ledger.MirrorCheckFailed` | Warning | `slot`, `hash`, `epoch`, `era`, `millis`, `stage`, `error` |
 | `differentialSampled` | `Rules.DifferentialSampled` | Debug | `slot`, `hash`, `epoch`, `era`, `toMirrorMillis`, `diffMillis`, `seeded` |
 | `differentialTicked` | `Rules.DifferentialTicked` | Debug | `slot`, `hash`, `epochsCrossed`, `oldMillis`, `seedMillis`, `newMillis`, `diffMillis` |
-| `differentialSummary` | `Rules.DifferentialSummary` | Notice | `blocks`, `sampled`, `failures`, `toMirrorMillis`, `diffMillis`, `ticksCompared`, `tickOldMillis`, `tickNewMillis`, `notPorted` |
+| `differentialSummary` | `Rules.DifferentialSummary` | Notice | `blocks`, `blockOld`, `blockNew`, `sampled`, `failures`, `toMirrorMillis`, `diffMillis`, `ticksCompared`, `tickOldMillis`, `tickNewMillis`, `notPorted` |
 | `rulesDiverged` | `Rules.RulesDiverged` | Error | `kind`, `block`, `era`, `stage`, `path`, `old`, `new`, `bundle`, `error` |
 | `rulesHalted` | `Rules.RulesHalted` | Critical | `kind`, `block`, `era`, `stage`, `path`, `old`, `new`, `error` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |

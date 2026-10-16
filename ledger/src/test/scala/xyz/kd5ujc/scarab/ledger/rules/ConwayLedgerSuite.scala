@@ -139,7 +139,7 @@ class ConwayLedgerSuite extends FunSuite:
     (o, n) match
       case (Out.Accepted(a), Out.Accepted(b)) =>
         // what the node holds as the same, through the mirror's normal form
-        assertEquals(LedgerMirror.normalised(b), LedgerMirror.normalised(a))
+        assertEquals(LedgerMirror.normalised(0, b), LedgerMirror.normalised(0, a))
       case _ => assertEquals(n, o)
     n
 
