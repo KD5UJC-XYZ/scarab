@@ -36,6 +36,7 @@ object HaskellImportCommand:
 
   def parse(args: List[String]): Either[ConfigError, Options] =
     def bad[A](reason: String): Either[ConfigError, A] = Left(ConfigError(s"$reason\n$Usage"))
+    @annotation.tailrec
     def go(rest: List[String], acc: Map[String, String]): Either[ConfigError, Map[String, String]] =
       rest match
         case Nil => Right(acc)

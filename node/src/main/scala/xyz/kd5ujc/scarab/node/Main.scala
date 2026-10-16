@@ -706,6 +706,7 @@ object Main extends IOApp:
     def bad[A](reason: String): Either[ConfigError, A] =
       Left(ConfigError(s"$reason\n$Usage"))
     val usage = ConfigError(Usage)
+    @annotation.tailrec
     def go(
         rest: List[String],
         acc: Map[String, List[String]]
