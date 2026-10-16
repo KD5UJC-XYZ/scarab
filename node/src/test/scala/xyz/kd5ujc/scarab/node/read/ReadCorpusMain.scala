@@ -102,20 +102,13 @@ object ReadCorpusMain:
                 case other => println(s"$label: projection refused $other"); failures += 1
               // the answers, in the Conway era
               if flat.era(state) == Era.Conway then
+                // one view of each reading per state, as the node holds one per acquired state
+                val flatView = QueryView(point, blockNo, state)(using flat)
+                val mirrorView = QueryView(point, blockNo, mirror)(using viaMirror)
                 NtcGolden.battery(state.ledger).foreach { (name, q) =>
                   val query = NtcQuery.IfCurrent(Era.Conway.index, q)
-                  val a = QueryAnswers.answerOrWhy(
-                    queryEnv,
-                    QueryView(point, blockNo, state)(using flat),
-                    Map.empty,
-                    query
-                  )
-                  val b = QueryAnswers.answerOrWhy(
-                    queryEnv,
-                    QueryView(point, blockNo, mirror)(using viaMirror),
-                    Map.empty,
-                    query
-                  )
+                  val a = QueryAnswers.answerOrWhy(queryEnv, flatView, Map.empty, query)
+                  val b = QueryAnswers.answerOrWhy(queryEnv, mirrorView, Map.empty, query)
                   if a != b then
                     val shown = (x: Either[?, Bytes]) => x.fold(_.toString, bs => sha256(bs.hex))
                     println(s"$label: $name differs: ${shown(a)} / ${shown(b)}"); failures += 1

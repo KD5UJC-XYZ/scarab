@@ -241,6 +241,28 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   (2,646,309 blocks): 0 divergences; devnet `e2e` and `soak` with `SCARAB_RULES=differential` pass. `NewRules.carried` seeds the
   reward update of the state of any era (it did for Conway only).
 
+### Added (ledger-state mirror, step 2, jump 2: the read paths from the mirror, J2.7)
+- **The read paths take the ledger state through a type class**, `ChainRead[S]` (`node/read/`), whose ledger part is an
+  `EraRead[E]` in the vocabulary of the mirror (`NewEpochState[E]`): the instance for the era-indexed state (`MirrorState`)
+  reads its fields as they are; the instance for the node's flat state (`NodeState`, what `--rules old` runs) converts
+  the part asked for, when it is asked, through the per-part functions `LedgerMirror` now exposes (`certState`, `govState`,
+  `instantStake`, `snapshots`, `poolDistr`, `scalars`). The state decides which; nothing at run time does. At J2.9 the flat
+  instance goes with the flat state and the readers stay. Moved: the local state queries (`QueryAnswers`, `MirrorAnswers`,
+  `StateQuerySource`: every answer is written from the mirror's records), the header rules' ledger-view forecast
+  (`NodeHeaderRules[S]`), the K1 projection and digest (`Projection.node`, `StateDump`), the leader schedule's pool
+  distribution (`LeaderPools[L]`, read by the forger) and the follower's `LedgerEpoch` line (`NodeRules.observe`). Answers and
+  digests under `--rules old` are the bytes they were: the NtC goldens (`fixtures/ntc-golden`) hold on the flat state and on
+  its mirror, `fixtures/projection-golden` records the projection of the eras capture before the move.
+- **`GetChainDepState` answers the era's own state (#90).** TPraos's (`[1, [last slot, [counters, evolving, candidate],
+  [epoch nonce, last epoch block nonce], lab nonce]]`) from Shelley to Alonzo, Praos's from Babbage, in every Shelley-based
+  era (it was Conway's only, and always in the Praos shape), written by the Haskell codec of the state. The translation of the
+  TPraos state to Praos's sets the previous epoch nonce to the epoch nonce (`Praos.hs:763-773`; the node kept the nonce
+  before it, which the tick into the first Babbage epoch overwrote, so no answer changed). `fixtures/chain-dep` is a capture
+  of the reference node's answers at 43 points of an era-walking chain; `ChainDepGoldenSuite` replays the chain and compares.
+- `Projection.node` takes the UTxO set apart from the state, and a chain still in Byron projects its consensus part only (it
+  projected a placeholder ledger state). A state the mirror cannot hold is a typed `Unanswered.Refused` to a query and a
+  `stateDumpRefused` line to the digest, not a failure.
+
 ### Added (ledger-state mirror, step 2, jump 2: the Conway LEDGER rules, J2.4)
 - **The transaction rules of Conway as `Sts` over `LedgerState[Conway]`** (`ledger/rules/`, each citing its upstream file and
   line): `Utxow`, `Utxo` and `Utxos` (the checks of the transaction, the evaluation of its scripts, the change of the UTxO

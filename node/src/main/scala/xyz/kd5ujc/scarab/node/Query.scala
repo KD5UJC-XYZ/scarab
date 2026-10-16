@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.state.KeyHash.bytes
 import xyz.kd5ujc.scarab.ledger.state.Word64.toBigInt
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.{state => mirror}
+import xyz.kd5ujc.scarab.ledger.state as mirror
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, KeyRole, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.node.read.{ChainRead, EraRead, EraViews, InEra, Read}
