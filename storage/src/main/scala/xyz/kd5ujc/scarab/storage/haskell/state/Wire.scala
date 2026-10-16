@@ -253,9 +253,9 @@ object Wire:
   def mapOf[K, V](key: Codec[K], value: Codec[V])(using Order[K], ProtVer): Codec[SortedMap[K, V]] =
     val v = summon[ProtVer]
     new Codec[SortedMap[K, V]]:
-      def decode(n: Node): Decoded[SortedMap[K, V]] = n.value match
-        case Value.Map(pairs) =>
-          Elements.decodePairs(pairs, key, value).flatMap { decoded =>
+      def decode(n: Node): Decoded[SortedMap[K, V]] = n.entries match
+        case Some(entries) =>
+          Elements.decodePairs(entries, key, value).flatMap { decoded =>
             val map = Sorted.map(decoded)
             if v.atLeast(9) && map.size != decoded.size then
               Left(DecodeError.at(n, Kind.DuplicateKey(s"${decoded.size - map.size} repeated")))
@@ -364,17 +364,20 @@ object Wire:
             case Left(e) => Left(e.at(s"[$i]"))
       go(0)
 
+    /** The entries of a map decoded as they are read: a map of a million entries is never held as a
+      * vector of the pairs of its nodes.
+      */
     def decodePairs[K, V](
-        pairs: Vector[(Node, Node)],
+        pairs: Iterator[(Node, Node)],
         key: Codec[K],
         value: Codec[V]
     ): Decoded[Vector[(K, V)]] =
       val out = Vector.newBuilder[(K, V)]
       @scala.annotation.tailrec
       def go(i: Int): Decoded[Vector[(K, V)]] =
-        if i == pairs.size then Right(out.result())
+        if !pairs.hasNext then Right(out.result())
         else
-          val (k, x) = pairs(i)
+          val (k, x) = pairs.next()
           key.decode(k).left.map(_.at(s"key[$i]")) match
             case Left(e) => Left(e)
             case Right(kk) =>

@@ -188,7 +188,18 @@ lazy val storage = scarab("storage")
       Libraries.fs2Io,
       Libraries.scodecCore,
       Libraries.rocksdb
-    )
+    ),
+    // MemoryBoundSuite checks what a decode holds in the heap, so it runs alone in a JVM with a
+    // 256 MiB heap (issue #94); every other suite runs in the build's JVM as before.
+    Test / testGrouping := {
+      val (bounded, others) =
+        (Test / definedTests).value.partition(_.name.endsWith(".MemoryBoundSuite"))
+      val fork = (Test / forkOptions).value.withRunJVMOptions(Vector("-Xmx256m"))
+      Seq(
+        Tests.Group("storage", others, Tests.InProcess),
+        Tests.Group("heap-bound", bounded, Tests.SubProcess(fork))
+      )
+    }
   )
 
 // The short hash of HEAD, read from the repository's files (project/GitHead.scala) so that the build

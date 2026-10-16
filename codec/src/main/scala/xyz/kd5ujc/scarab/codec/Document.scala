@@ -191,6 +191,29 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
       payloads(s, ai)((from, length) => out.write(data, from, length))
       Bytes.wrap(out.toByteArray)
 
+  /** The entries of item `i` if it is a map, found in the index as they are asked for. */
+  def entriesAt(i: Int): Option[Iterator[(Node, Node)]] =
+    val s = index.start(i)
+    val h = data(s) & 0xff
+    if (h >>> 5) != 5 then None
+    else
+      val ai = h & 31
+      Some(new Iterator[(Node, Node)]:
+        // the entries to come (-1: until the break), where the next key begins in the input and
+        // its item number
+        private var left = if ai == 31 then -1 else childCount(s, 5, ai) / 2
+        private var at = s + headSize(ai)
+        private var key = i + 1
+        def hasNext: Boolean = if left < 0 then (data(at) & 0xff) != 0xff else left > 0
+        def next(): (Node, Node) =
+          val value = index.firstAt(key + 1, index.end(key))
+          val entry = (node(key), node(value))
+          at = index.end(value)
+          if left > 0 then left -= 1
+          if hasNext then key = index.firstAt(value + 1, at)
+          entry
+      )
+
   /** The value of item `i`, one level: its children are views, not values. */
   def valueAt(i: Int): Value =
     val s = index.start(i)

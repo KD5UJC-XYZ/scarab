@@ -23,6 +23,12 @@ sealed abstract class Node:
     */
   def offset: Int
 
+  /** The entries of the item if it is a map, one at a time and in order, as the pairs of
+    * `Value.Map`; none otherwise. Unlike `value` it does not make the vector of every pair, so a
+    * decoder that folds the entries of a map of a million holds the one it is at.
+    */
+  def entries: Option[Iterator[(Node, Node)]]
+
   // Structural, and walked on the heap: the generated ones recurse once per level of nesting. The
   // string is truncated on purpose (see `Tree.render`) and leaves the original bytes out.
   override def equals(that: Any): Boolean = that match
@@ -37,12 +43,16 @@ object Node:
 
   private final class Strict(val value: Value, val original: Bytes) extends Node:
     def offset: Int = original.unsafeOffset
+    def entries: Option[Iterator[(Node, Node)]] = value match
+      case Value.Map(pairs) => Some(pairs.iterator)
+      case _                => None
 
   /** Item `index` of `doc`. */
   private[codec] final class Indexed(doc: Document, index: Int) extends Node:
     def value: Value = doc.valueAt(index)
     def original: Bytes = doc.originalAt(index)
     def offset: Int = doc.index.start(index)
+    def entries: Option[Iterator[(Node, Node)]] = doc.entriesAt(index)
 
   /** A node's children are those of its value; its label adds the exact bytes it was read from. */
   given Tree[Node] with

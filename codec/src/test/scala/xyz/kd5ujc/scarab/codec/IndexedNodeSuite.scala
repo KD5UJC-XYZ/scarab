@@ -19,6 +19,18 @@ class IndexedNodeSuite extends munit.FunSuite:
     val (a, b) = (x.value, y.value)
     Value.sameLabel(a, b) && Value.nodes(a).size == Value.nodes(b).size
 
+  /** The entries of a map node are those of its value, and of none other node. */
+  private def sameEntries(x: Node, y: Node): Boolean =
+    (x.entries, y.value) match
+      case (Some(es), Value.Map(ps)) =>
+        val got = es.toVector
+        got.size == ps.size && got.zip(ps).forall { case ((k, v), (k2, v2)) =>
+          k.original == k2.original && v.original == v2.original
+        }
+      case (None, Value.Map(_)) => false
+      case (None, _)            => true
+      case (Some(_), _)         => false
+
   /** The first difference between the tree of `fresh` and that of `oracle`, walking both on the
     * heap, or none. `input` is what both were decoded from.
     */
@@ -32,6 +44,7 @@ class IndexedNodeSuite extends munit.FunSuite:
       else if a.offset != b.offset then found = Some(s"offset ${a.offset} / ${b.offset}")
       else if !(a.original.unsafeArray eq input.unsafeArray) then found = Some("a copy, not a window")
       else if !sameShallow(a, b) then found = Some(s"value ${a.value.name} / ${b.value.name}")
+      else if !sameEntries(a, b) then found = Some(s"entries of ${a.original}")
       else
         val (as, bs) = (Value.nodes(a.value), Value.nodes(b.value))
         var i = as.size - 1
