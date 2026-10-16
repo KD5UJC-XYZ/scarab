@@ -15,6 +15,12 @@ import LeiosWire.*
 object LeiosNotify:
   val MiniProtocolId: Int = 18
 
+  /** At most this many votes in one `MsgLeiosVotes`: `[1*16 vote]` in the consensus prototype's
+    * `ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl`, which says the
+    * Blueprint does not bound them ("TODO Bound the votes in the blueprint too").
+    */
+  val MaxVotes: Int = 16
+
   enum State:
     case Idle, Busy, Quit, Done
 
@@ -85,7 +91,7 @@ object LeiosNotify:
           for
             _ <- arity(tag, fields, 1)
             items <- fields(0).value match
-              case Value.Arr(xs) if xs.nonEmpty => Right(xs)
+              case Value.Arr(xs) if xs.nonEmpty && xs.size <= MaxVotes => Right(xs)
               case _ => Left(LeiosWireError.BadField(tag, LeiosField.Votes))
             decoded <- items.zipWithIndex.foldLeft[Either[LeiosWireError, Vector[Vote]]](
               Right(Vector.empty)

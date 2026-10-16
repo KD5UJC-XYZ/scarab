@@ -143,6 +143,17 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       case other                                        => fail(other.toString)
   }
 
+  test("LeiosNotify: at most sixteen votes in one message (the consensus prototype's bound)") {
+    import LeiosNotify.*
+    def votes(n: Int): Bytes =
+      bs(0x82, 0x07, 0x80 + n) ++ (1 to n).map(i => vote(i, i).encode).reduce(_ ++ _)
+    assert(decodePrefix(State.Busy, votes(MaxVotes)).isRight)
+    assertEquals(
+      decodePrefix(State.Busy, votes(MaxVotes + 1)),
+      Left(LeiosWireError.BadField(7, LeiosField.Votes))
+    )
+  }
+
   test("LeiosFetch: every message round-trips in the state that admits it") {
     import LeiosFetch.*
     def rt(state: State, m: Message): Unit =
