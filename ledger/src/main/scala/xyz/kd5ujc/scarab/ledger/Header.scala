@@ -100,7 +100,7 @@ object Header:
   final case class OpCert(hotVkey: Bytes, sequence: BigInt, kesPeriod: BigInt, sigma: Bytes)
 
   @unused private val envelopeLimits = Cbor.Limits(65535, 24, 8192, 65535)
-  private val headerLimits = Cbor.Limits(4096, 16, 256, 4096)
+  private[ledger] val headerLimits = Cbor.Limits(4096, 16, 256, 4096)
 
   extension (h: Shelley)
     /** The single VRF result for Praos headers; `None` for TPraos. */
@@ -197,7 +197,7 @@ object Header:
       minor <- uint(pv(1))
     yield (HeaderVrf.Praos(vrf), size, hash, OpCert(hot, seq, period, sigma), (major, minor))
 
-  private def vrfCert(n: Node): Either[ChainError, VrfCert] =
+  private[ledger] def vrfCert(n: Node): Either[ChainError, VrfCert] =
     for
       xs <- array(n, 2)
       out <- bytes(xs(0), 64)
@@ -277,17 +277,17 @@ object Header:
       sig <- bytes(proxy(1), 64)
     yield ByronSignature.Delegated(epoch, issuer, delegate, cert, sig)
 
-  private def optHash(n: Node): Either[ChainError, Option[Bytes]] = n.value match
+  private[ledger] def optHash(n: Node): Either[ChainError, Option[Bytes]] = n.value match
     case Value.Null => Right(None)
     case _          => bytes(n, 32).map(Some(_))
 
-  private def fail(reason: String): ChainError = ChainError.Decode("header", reason)
-  private def array(n: Node, size: Int): Either[ChainError, Vector[Node]] = n.value match
+  private[ledger] def fail(reason: String): ChainError = ChainError.Decode("header", reason)
+  private[ledger] def array(n: Node, size: Int): Either[ChainError, Vector[Node]] = n.value match
     case Value.Arr(xs) if xs.size == size => Right(xs)
     case _                                => Left(fail(s"expected $size-element array"))
-  private def uint(n: Node): Either[ChainError, BigInt] = n.value match
+  private[ledger] def uint(n: Node): Either[ChainError, BigInt] = n.value match
     case Value.UInt(v) => Right(v)
     case _             => Left(fail("expected unsigned integer"))
-  private def bytes(n: Node, size: Int): Either[ChainError, Bytes] = n.value match
+  private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] = n.value match
     case Value.ByteString(v) if v.size == size => Right(v)
     case _                                     => Left(fail(s"expected $size-byte string"))

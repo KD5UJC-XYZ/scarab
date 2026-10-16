@@ -85,6 +85,24 @@ object Block:
     for
       parts <- array(n, if era.hasInvalidTransactions then 5 else 4)
       header <- Header.fromRaw(era, parts(0).original)
+      body <- segregated(parts, era.hasInvalidTransactions)
+    yield Shelley(era, header, body.transactions, body.size, body.hash)
+
+  /** The transactions of a block body in the segregated layout of Shelley to Conway (`[header,
+    * bodies, witnesses, auxiliary data, invalid]`, the header first and so ignored here) with the
+    * size and the digest the header's `block_body_size` and `block_body_hash` commit to.
+    */
+  private[ledger] final case class SegregatedBody(
+      transactions: Vector[Transaction],
+      size: Long,
+      hash: Bytes
+  )
+
+  private[ledger] def segregated(
+      parts: Vector[Node],
+      hasInvalid: Boolean
+  ): Either[ChainError, SegregatedBody] =
+    for
       bodies <- list(parts(1))
       witnesses <- list(parts(2))
       _ <- Either.cond(
@@ -99,13 +117,10 @@ object Block:
             .map(_.toMap)
         case _ => Left(fail("auxiliary data must be a map"))
       invalid <-
-        if era.hasInvalidTransactions then
-          list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).map(_.toSet)
+        if hasInvalid then list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).map(_.toSet)
         else Right(Set.empty[Int])
       components = parts.drop(1).map(_.original)
-    yield Shelley(
-      era,
-      header,
+    yield SegregatedBody(
       bodies.indices.toVector.map(i =>
         Transaction(bodies(i).original, witnesses(i).original, aux.get(i), !invalid.contains(i))
       ),
