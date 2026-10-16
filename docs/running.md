@@ -582,6 +582,18 @@ scrape_configs:
       - targets: ['scarab-node:12798']
 ```
 
+The listener starts at the beginning of `follow`, before the database is opened, so a start that replays many
+stored blocks is on the dashboard while it replays (the Haskell node starts its metrics and tracing before it opens
+the ChainDB too). What a scrape reads from a part of the node that does not exist yet (the chain tip, the mempool,
+the connection table, the forger) is absent from the output, not zero: `cardano_node_metrics_blockNum_int` and the
+others appear when the replay is over. During the start read `scarab_node_phase{phase}` (one series is 1:
+`Restoring`, `Replaying`, `Following`), the target `scarab_replay_target_block` / `scarab_replay_target_slot` (the
+immutable tip, where the replay ends; absent when the store holds no block), the progress `scarab_replay_block` /
+`scarab_replay_slot` (the last block reported, every progress interval) and `scarab_replay_blocks` /
+`scarab_replay_seconds`. Progress is `scarab_replay_block / scarab_replay_target_block`. The Haskell node reports the
+replay as ChainDB traces (`ChainDB.ReplayBlock.LedgerReplay`, with the slot replayed and the target) and has no
+Prometheus metric for it, so these names are ours. `--query-port` still starts after the replay.
+
 A scrape is cheap (it reads the chain tip, the mempool, the connection table and the JVM; about 150 series on a
 follower) and may be as frequent as once a second. The `devnet.py` scenarios start the follower with
 `--metrics-listen 127.0.0.1:12798` (inside the devnet's network namespace).
@@ -776,6 +788,11 @@ section and the catalogue differ.
 | `scarab_snapshot_last_bytes` | gauge |  | Size of the last snapshot written, in bytes. | none |
 | `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |
 | `scarab_replay_seconds` | gauge |  | Time spent applying the stored blocks again at the start. | none |
+| `scarab_node_phase` | gauge | `phase` | 1 for the phase the start has reached (Restoring, Replaying, Following), 0 for the others. | none |
+| `scarab_replay_target_block` | gauge |  | Block number of the immutable tip, where the replay of the stored blocks ends. | none |
+| `scarab_replay_target_slot` | gauge |  | Slot of the immutable tip, where the replay of the stored blocks ends. | none |
+| `scarab_replay_block` | gauge |  | Block number of the last stored block reported as applied again (every progress interval). | none |
+| `scarab_replay_slot` | gauge |  | Slot of the last stored block reported as applied again (every progress interval). | none |
 
 #### Scheduling (D8)
 

@@ -5,6 +5,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (observability: metrics during the replay, #95)
+- **`--metrics-listen` listens from the start of `follow`**, before the database is opened, so a start that replays
+  many blocks is scrapeable while it replays (a mainnet replay was invisible for about 45 minutes). The collectors
+  of the parts that do not exist yet (chain tip, mempool, connections, forger) are added to a `Collectors.Registry`
+  when they do; until then their gauges are absent, not zero, and the scrape does not fail.
+- **Replay gauges from the storage events:** `scarab_node_phase{phase="Restoring|Replaying|Following"}` (a closed
+  `PhaseLabel`, one-hot), `scarab_replay_target_block` / `scarab_replay_target_slot` (the immutable tip) and
+  `scarab_replay_block` / `scarab_replay_slot` (the last block reported), beside the existing `scarab_replay_blocks`
+  and `scarab_replay_seconds`.
+
 ### Added (observability, J3a: typed logging, #92)
 - **Every line is a typed event.** `Traced[E]` gives an event's `Line`: its `EventKind` (a closed enum of the 57
   kinds; each names the namespace `Area.Kind` and the usual severity, the eight levels of trace-dispatcher), its
