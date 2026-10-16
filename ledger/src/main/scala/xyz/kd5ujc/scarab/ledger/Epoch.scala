@@ -224,8 +224,11 @@ object Mir:
   */
 object Translate:
   def toConway(state: LedgerState, globals: LedgerGlobals): LedgerState =
-    val params = globals.conway.fold(state.params)(c =>
-      state.params.copy(
+    // `upgradePParams` of the Conway genesis, on the parameters in force and on the previous ones
+    // (`translateEra'` of both, `Conway/Translation.hs:154-156`; found by the era-indexed tick,
+    // J2.3: the previous parameters of the first Conway epoch carry the Conway fields)
+    def upgrade(p: ProtocolParams): ProtocolParams = globals.conway.fold(p)(c =>
+      p.copy(
         drepDeposit = c.drepDeposit,
         drepActivity = c.drepActivity,
         govActionDeposit = c.govActionDeposit,
@@ -236,15 +239,17 @@ object Translate:
         committeeMinSize = c.committeeMinSize,
         committeeMaxTermLength = c.committeeMaxTermLength,
         costModels =
-          if c.plutusV3CostModel.isEmpty then state.params.costModels
-          else state.params.costModels.updated(2, c.plutusV3CostModel)
+          if c.plutusV3CostModel.isEmpty then p.costModels
+          else p.costModels.updated(2, c.plutusV3CostModel)
       )
     )
+    val params = upgrade(state.params)
     val gov = globals.conway.fold(GovState.empty)(c =>
       GovState.empty.copy(committee = c.committee, constitution = c.constitution)
     )
     val translated = state.copy(
       params = params,
+      prevParams = state.prevParams.map(upgrade),
       futureGenDelegs = Vector.empty,
       ppup = Ppup.empty,
       mir = InstantRewards.empty,
@@ -282,7 +287,12 @@ object Rewards:
     val go = state.snapshots.go
     val blocks = state.blocksPrevious
     val blocksTotal = blocks.values.sum
-    val expected = (Rational.one - d) * Rational(globals.epochLength) * globals.activeSlotsCoeff
+    // `expectedBlocks` is floored (`PulsingReward.hs:127-129`); it was not, which differs from the
+    // reference when (1 - d) * f * epochLength is not an integer (found reading the new rules'
+    // port, J2.3; no network has such parameters)
+    val expected = Rational(
+      ((Rational.one - d) * Rational(globals.epochLength) * globals.activeSlotsCoeff).floor
+    )
     val eta =
       if d >= Eighty then Rational.one
       else if expected.isZero then Rational.zero

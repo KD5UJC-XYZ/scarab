@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion, ParamUpdate, StorageError}
 import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.differential.PreviousBuild
 import xyz.kd5ujc.scarab.protocol.Era
 
 import StorageTestKit.*
@@ -61,6 +62,13 @@ class SnapshotV4Suite extends CatsEffectSuite:
 
   private def normalised(s: StateSnapshot[NodeState]): StateSnapshot[NodeState] =
     s.copy(state = SnapshotV4.canonical(env, s.state))
+
+  /** The files recorded by the previous build hold, in the first epoch of Conway, previous
+    * parameters without the Conway fields ([[PreviousBuild]]); a migration carries what the file
+    * holds, so the comparison with what the rules give leaves them out.
+    */
+  private def withoutConwayFields(s: StateSnapshot[NodeState]): StateSnapshot[NodeState] =
+    s.copy(state = PreviousBuild.withoutConwayFields(s.state))
 
   private def decoded(bytes: Array[Byte]): IO[StateSnapshot[NodeState]] =
     v3.decode(bytes).flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
@@ -261,7 +269,11 @@ class SnapshotV4Suite extends CatsEffectSuite:
             name
           )
           assertEquals(again, SnapshotMigration.Report.empty, name)
-          assertEquals(back, List(normalised(expected)), name)
+          assertEquals(
+            back.map(withoutConwayFields),
+            List(withoutConwayFields(normalised(expected))),
+            name
+          )
           // nothing is invented: the gaps and the eras seen are those of the file replaced
           assertEquals(v4.gaps, v3.gaps, name)
           assertEquals(v4.observed, v3.observed, name)
