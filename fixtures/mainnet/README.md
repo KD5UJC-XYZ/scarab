@@ -12,6 +12,7 @@ Captured with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from `backbone.cardano.
 | `byron-genesis-trimmed.json` | The public mainnet `byron-genesis.json` (https://book.play.dev.cardano.org/environments/mainnet/) with `avvmDistr` cut to the one entry the slot 3313 block spends (the full file has 14,505 entries, 1 MB). Its canonical hash is therefore not the real genesis hash. |
 | `byron-large-address-block.hex` | The Byron main block at slot 1,769,882 (epoch 81, hash `f277604972be4b11...`, 8.6 KB), full `[1, block]` encoding: the block where the first mainnet sync from genesis stopped. Its one transaction (bc61865d) pays an address of 7,689 bytes. Captured with `--blocks 1 --from 1769881.7bc92640368f07ccbe62b615c2bd8ed59da10a0624248dca67b89d0442d38161 --byron-epoch-slots 21600` on 2026-10-16. |
 | `byron-large-address-inputs.json` | The output that transaction spends (3,000,000 lovelace), from the Koios API (`tx_utxos`), in the form of `byron-tx-inputs.json`. |
+| `shelley-pool-network-block.hex` | The Shelley block at slot 4,495,760 (epoch 208, protocol version 2, hash `fb4e87a00f0eea0d...`, 8 KB), full `[era, block]` encoding: the block where the second mainnet sync from genesis stopped. Transaction 49be5965 registers a pool whose reward account is on network 0. Captured with `--blocks 1 --from 4495740.c8a3bd53fc4c76491d911e1f2f4c8eb5baf7ef8848fbefda7820ab846854ec90 --byron-epoch-slots 21600` on 2026-10-16 (the previous block's point from the Koios API, `blocks`). |
 
 `ByronMainnetSuite` decodes the blocks, checks the body proofs against the headers, derives the AVVM
 redeem address and the genesis UTxO (the pseudo transaction id and address equal what the chain
@@ -19,6 +20,8 @@ spent), and validates every transaction: witness signatures under the Byron sign
 protocol magic, address roots, value conservation and the minimum fee.
 
 `ByronLargeAddressSuite` decodes the block at slot 1,769,882, checks its proofs, decodes the 7,689-byte address and validates the transaction in full.
+
+`MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8.
 
 `genesis/` holds the public mainnet node configuration from
 https://book.play.dev.cardano.org/environments/mainnet/ unchanged, downloaded 2026-10-14: `config.json`,
