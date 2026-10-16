@@ -89,6 +89,15 @@ final case class Utxo(
     (resident ++ diff.collect { case (in, Change(Some(out), _)) => in -> out }) --
       diff.collect { case (in, Change(None, _)) => in }
 
+  /** The entries this value decides (the live changes of the diff and the read set) whose output
+    * satisfies `keep`. A value over a backing store sees only those: a rule that needs every such
+    * entry has the node fetch the stored ones into the read set first (as for a block's inputs).
+    */
+  def matching(keep: TxOut => Boolean): Map[TxIn, TxOut] =
+    val live = diff.iterator.collect { case (in, Change(Some(out), _)) if keep(out) => in -> out }
+    val read = resident.iterator.filter((in, out) => !diff.contains(in) && keep(out))
+    (live ++ read).toMap
+
   def keys: Iterable[TxIn] = toMap.keys
   def valuesIterator: Iterator[TxOut] = toMap.valuesIterator
   def iterator: Iterator[(TxIn, TxOut)] = toMap.iterator

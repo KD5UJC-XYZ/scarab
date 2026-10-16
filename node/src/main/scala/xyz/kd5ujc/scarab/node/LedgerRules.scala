@@ -81,6 +81,11 @@ final class NodeRules[F[_]: Monad](
         val prepared = NodeRules.prepare(h, raw, config.verdicts)
         val utxo = state.ledger.utxo
         val wanted = prepared.fold(Set.empty[TxIn])(p => utxo.missing(p.inputs))
+        // The block that enters Allegra returns the redeem outputs to the reserves: the boundary
+        // rule sees the whole set's, fetched here (one pass over the store, once per chain).
+        val geometry = state.byron.firstShelleyEpoch.fold(config.geometry)(config.geometry.resolved)
+        val entersAllegra = state.byron.ledger.isEmpty &&
+          Epoch.entersAllegra(state.ledger, geometry.epochOf(h.slot), globals)
         for
           // The block that enters Shelley replaces the genesis placeholder by the Byron UTxO, built
           // as a whole at stamp 0: a store that still holds the placeholder (written by a build
@@ -88,8 +93,11 @@ final class NodeRules[F[_]: Monad](
           // it empty, so that every entry is written (see `UtxoBacking`).
           _ <- if state.byron.ledger.isDefined then store.reset else ().pure[F]
           fetched <- if wanted.isEmpty then Map.empty[TxIn, TxOut].pure[F] else store.read(wanted)
+          redeemers <-
+            if entersAllegra then store.select(Epoch.isRedeemer)
+            else Map.empty[TxIn, TxOut].pure[F]
           next <- run(
-            state.copy(ledger = state.ledger.copy(utxo = utxo.withResident(fetched))),
+            state.copy(ledger = state.ledger.copy(utxo = utxo.withResident(fetched ++ redeemers))),
             prepared
           )
           flushed <- store.flushed
@@ -400,7 +408,10 @@ object NodeRules:
         (),
         BlockFailure.EpochPrecedesLedger(epoch)
       )
-      crossed = (ledger.epoch + 1 to epoch).foldLeft(ledger)((s, e) =>
+      // Stamped first: a boundary can change the set (the redeem outputs leave it on entering
+      // Allegra), and a change stamped with the previous block may count as already stored.
+      stamped = ledger.copy(utxo = ledger.utxo.at(announced.blockNo.toLong))
+      crossed = (ledger.epoch + 1 to epoch).foldLeft(stamped)((s, e) =>
         Epoch.boundary(s, e, globals)
       )
       _ <- Either.cond(
@@ -409,8 +420,7 @@ object NodeRules:
         (),
         BlockFailure.SupplyInvariant(epoch, crossed.total, globals.maxSupply)
       )
-      ticked0 = Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
-    yield ticked0.copy(utxo = ticked0.utxo.at(announced.blockNo.toLong))
+    yield Epoch.tick(crossed, announced.slot, geometry.firstSlot(epoch), globals)
 
   /** The old side's tick of a block, for the differential harness: the state the block's header and
     * transactions are applied to, before them (design `ledger-mirror-step2.md` §2.5, stage `Tick`).

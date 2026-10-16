@@ -32,6 +32,11 @@ trait UtxoStore[F[_]]:
   /** Every entry (tools and tests; a disk store streams it into memory, so only for small sets). */
   def all: F[Map[TxIn, TxOut]]
 
+  /** The entries whose output satisfies `keep`, in one pass over the set (the redeem outputs the
+    * block that enters Allegra returns to the reserves, `Epoch.entersAllegra`).
+    */
+  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]]
+
   /** Visit every entry without collecting them (the state digests of `--dump-state`). */
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit]
 
@@ -149,6 +154,8 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
 
   def flushed: F[Long] = state.get.map(_.stamp)
   def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
+  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] =
+    state.get.map(_.entries.filter((_, out) => keep(out)))
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit] =
     state.get.map(_.entries.foreach((k, v) => visit(k, v)))
   def size: F[Long] = state.get.map(_.entries.size.toLong)

@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.byron.ByronAddress
 
 /** Conway-only parameters taken from the Conway genesis when the chain crosses into Conway. */
 final case class ConwayParams(
@@ -50,6 +51,47 @@ object Epoch:
   def boundary(state: LedgerState, epoch: BigInt, globals: LedgerGlobals): LedgerState =
     if state.params.protocolMajor >= 9 then conwayBoundary(state, epoch, globals)
     else preConwayBoundary(state, epoch, globals)
+
+  /** Whether the boundary into `epoch` takes the chain from Shelley into Allegra: the ledger is at
+    * protocol version 2 or below and the proposals of its epoch vote for 3 or above (the hard fork
+    * combinator decides the era of the next epoch on the voted value, `votedFuturePParams`). The
+    * node fetches the redeem outputs of the stored UTxO set for the block that does it.
+    */
+  def entersAllegra(state: LedgerState, epoch: BigInt, globals: LedgerGlobals): Boolean =
+    state.params.protocolMajor < 3 && epoch > state.epoch &&
+      PpupRules
+        .voted(state.params, state.ppup.current, globals.updateQuorum)
+        .exists(_.protocolMajor >= 3)
+
+  /** `isBootstrapRedeemer` (`Cardano/Ledger/Address.hs:344`): an output to a Byron redeem (AVVM)
+    * address.
+    */
+  def isRedeemer(out: TxOut): Boolean = out.address.kind match
+    case Address.Kind.Byron(_)            => ByronAddress.decode(out.address.raw).exists(_.isRedeem)
+    case Address.Kind.Shelley(_, _, _, _) => false
+
+  /** `returnRedeemAddrsToReserves` (`Shelley/LedgerState/NewEpochState.hs:125-146`), run by the
+    * Shelley to Allegra translation (`TranslateEra AllegraEra NewEpochState`, `Allegra/
+    * Translation.hs:58-71`): the outputs to redeem addresses leave the UTxO set and their lovelace
+    * returns to the reserves. On mainnet that is 318,200,635 ada of unredeemed AVVM balances, which
+    * the reward calculation of the first Allegra epoch draws on (mainnet stop 5).
+    *
+    * The reference node keeps the redeem outputs of the Byron UTxO from the Byron to Shelley
+    * translation (`stashedAVVMAddresses`, `Shelley/API/ByronTranslation.hs:110-117`) and hands them
+    * to this function as the UTxO (`translateLedgerStateShelleyToAllegraWrapper`,
+    * `Ouroboros/Consensus/Cardano/CanHardFork.hs:484-543`), because its set is on disk. The node
+    * partitions its own set, as the function does: the backed set's redeem outputs are fetched into
+    * the read set before the block ([[entersAllegra]]), so no stash is persisted. The two differ
+    * only if a Shelley transaction paid a redeem address (findings.md).
+    */
+  private[ledger] def returnRedeemers(state: LedgerState): LedgerState =
+    val redeemers = state.utxo.matching(isRedeemer)
+    if redeemers.isEmpty then state
+    else
+      state.copy(
+        utxo = state.utxo -- redeemers.keys,
+        reserves = state.reserves + redeemers.valuesIterator.map(_.value.coin).sum
+      )
 
   /** Per-block TICK effects that depend on the slot: genesis delegation adoption, and the moment
     * the reward calculation starts (it freezes which accounts are registered).
@@ -120,7 +162,10 @@ object Epoch:
       epoch: BigInt,
       globals: LedgerGlobals
   ): LedgerState =
-    val rewarded = state.rewardUpdate.fold(state)(applyRewards(state, _))
+    // The era translation precedes the tick of the boundary, so the redeem balances are in the
+    // reserves before the reward update and MIR (which draws on them) are applied.
+    val translated = if entersAllegra(state, epoch, globals) then returnRedeemers(state) else state
+    val rewarded = translated.rewardUpdate.fold(translated)(applyRewards(translated, _))
     val paid = Mir.apply(rewarded)
     // The boundary that enters Conway runs under the Conway rules (the era translation precedes
     // it), and those ignore pointer addresses: the snapshot taken here does not count them

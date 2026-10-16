@@ -98,7 +98,9 @@ final class RocksUtxoStore[F[_]: Sync] private (
     if v == null then -1L else java.nio.ByteBuffer.wrap(v).getLong
   }
 
-  def all: F[Map[TxIn, TxOut]] = guard("utxo scan") {
+  def all: F[Map[TxIn, TxOut]] = select(_ => true)
+
+  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] = guard("utxo scan") {
     val it = db.get.newIterator()
     try
       it.seekToFirst()
@@ -106,7 +108,9 @@ final class RocksUtxoStore[F[_]: Sync] private (
       while it.isValid do
         val k = it.key()
         if k.length == 34 then
-          Coding.decodeValue(it.value()).foreach(out => b += Coding.decodeKey(k) -> out)
+          Coding
+            .decodeValue(it.value())
+            .foreach(out => if keep(out) then b += Coding.decodeKey(k) -> out)
         it.next()
       b.result()
     finally it.close()
