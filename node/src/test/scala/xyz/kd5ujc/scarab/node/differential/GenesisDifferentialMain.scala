@@ -24,8 +24,11 @@ import xyz.kd5ujc.scarab.storage.{ImmutableReader, RocksUtxoStore, UtxoStore}
   * (the corpus is only read: the blocks are read without opening the database).
   *
   * {{{
-  * java -Xmx16g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.GenesisDifferentialMain <db> <genesis-dir> <end slot> [sampling-blocks] [scratch]
+  * java -Xmx16g -cp <test classpath> xyz.kd5ujc.scarab.node.differential.GenesisDifferentialMain <db> <genesis-dir> <end slot> [sampling-blocks] [scratch] [harness-from-slot]
   * }}}
+  *
+  * With `harness-from-slot`, the blocks before it run on the old rules alone (a third of the time)
+  * and the harness takes over there, seeding the new side from the old state.
   *
   * Exits non-zero on a divergence.
   */
@@ -41,6 +44,7 @@ object GenesisDifferentialMain:
     val sampling = args.lift(3).fold(Sampling.Default)(n => Sampling.Boundaries(n.toLong))
     val scratch =
       args.lift(4).map(Path.of(_)).getOrElse(Files.createTempDirectory("genesis-differential"))
+    val from = args.lift(5).fold(BigInt(0))(BigInt(_))
     val cache = VerificationCache.unsafe()
     val praos = setup.praos.copy(verdicts = cache)
 
@@ -84,7 +88,22 @@ object GenesisDifferentialMain:
                       .decode(raw, setup.geometry.byron.epochSlots)
                       .fold(err => sys.error(err.message), _.header)
                     for
-                      next <- harness(progress.pair, header, raw)
+                      next <-
+                        if header.slot < from then
+                          old(progress.pair.old, header, raw).map(
+                            Paired.of(
+                              _,
+                              Some(
+                                BlockRef(
+                                  header.slot,
+                                  header.hash,
+                                  header.blockNo,
+                                  header.isBoundary
+                                )
+                              )
+                            )
+                          )
+                        else harness(progress.pair, header, raw)
                       _ <- UtxoStore.advance(store, next.old.ledger.utxo)
                       at = BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary)
                       entered = NodeRules

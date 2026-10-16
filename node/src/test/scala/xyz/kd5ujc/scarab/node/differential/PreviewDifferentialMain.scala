@@ -72,8 +72,11 @@ object PreviewDifferentialMain:
         while it.isValid do
           val key = it.key()
           if key.length == 1 then stamp = java.nio.ByteBuffer.wrap(it.value()).getLong
-          else if key.length == 36 then
-            val index = java.nio.ByteBuffer.wrap(key, 32, 4).getInt.toLong & 0xffffffffL
+          else if key.length == 36 || key.length == 34 then
+            val index =
+              if key.length == 36 then
+                java.nio.ByteBuffer.wrap(key, 32, 4).getInt.toLong & 0xffffffffL
+              else java.nio.ByteBuffer.wrap(key, 32, 2).getShort.toLong & 0xffffL
             val in = TxIn(Bytes.fromArray(java.util.Arrays.copyOfRange(key, 0, 32)), BigInt(index))
             UtxoStore.Coding
               .decodeValue(it.value())
