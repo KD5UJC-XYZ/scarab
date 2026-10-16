@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
-import xyz.kd5ujc.scarab.codec.{Bytes, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Anchor,
   Committee,
@@ -49,6 +49,12 @@ trait NodeTypeCodecs extends VocabularyCodecs:
   // ---- byte strings and numbers the node keeps as `Bytes` and `BigInt`
 
   private val hash28: Codec[Bytes] = Wire.hash(28)
+  private val credentials = new Interned[Credential]
+
+  /** The hash of a credential, not shared by itself: the credential is, whole, and a second table
+    * for its hash would double the lookups of the largest collections of the state.
+    */
+  private val credentialHash: Codec[Bytes] = Codec.bytesSized(28, 28)
   private val hash32Bytes: Codec[Bytes] = Wire.hash(32)
 
   /** `Coin`, `EpochNo`, `CompactForm Coin` held as a number: a `Word64`. */
@@ -71,12 +77,16 @@ trait NodeTypeCodecs extends VocabularyCodecs:
 
   // ---- credentials, keys and addresses
 
-  given nodeCredential: Codec[Credential] = new Codec[Credential]:
+  /** A credential is shared across a decode as a whole: the voters of a proposal are the voters of
+    * the others and of the DRep pulser's copy of them, a million objects each.
+    */
+  given nodeCredential: Codec[Credential] = (new Codec[Credential]:
     def decode(n: Node): Decoded[Credential] =
       variant(n).flatMap {
-        case (t, Vector(h)) if t == 0 => hash28.decode(h).map(Credential.Key(_)).at("hash")
-        case (t, Vector(h)) if t == 1 => hash28.decode(h).map(Credential.Script(_)).at("hash")
-        case (t, xs)                  => unknownVariant(n, "Credential", t, xs.size)
+        case (t, Vector(h)) if t == 0 => credentialHash.decode(h).map(Credential.Key(_)).at("hash")
+        case (t, Vector(h)) if t == 1 =>
+          credentialHash.decode(h).map(Credential.Script(_)).at("hash")
+        case (t, xs) => unknownVariant(n, "Credential", t, xs.size)
       }
     def encode(a: Credential, out: Writer): Unit =
       out.arrayHead(2)
@@ -87,7 +97,8 @@ trait NodeTypeCodecs extends VocabularyCodecs:
         case Credential.Script(h) =>
           out.uint(1L)
           out.bytes(h)
-    override def check(a: Credential): Option[ConstraintViolation] = hash28.check(a.hash)
+    override def check(a: Credential): Option[ConstraintViolation] = credentialHash.check(a.hash)
+  ).interned(credentials)
 
   given nodeDRep: Codec[DRep] = new Codec[DRep]:
     def decode(n: Node): Decoded[DRep] =

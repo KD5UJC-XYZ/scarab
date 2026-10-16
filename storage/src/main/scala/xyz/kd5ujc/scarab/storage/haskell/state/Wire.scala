@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
 import scala.collection.immutable.{SortedMap, SortedSet}
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Interned, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Sorted, VocabError, Word64}
 import xyz.kd5ujc.scarab.models.runtime.{
@@ -98,8 +98,22 @@ object Wire:
         def encode(a: A, out: Writer): Unit = c.encode(from(a), out)
         override def check(a: A): Option[ConstraintViolation] = c.check(from(a))
 
-  /** A byte string of exactly `size` bytes. */
-  def hash(size: Int): Codec[Bytes] = Codec.bytesSized(size, size)
+  extension [A](c: Codec[A])
+    /** The codec of `A` whose decoded values are shared across one decode: equal values come out as
+      * the one instance that was decoded first, of `kind` (see
+      * [[xyz.kd5ujc.scarab.codec.Interned]]).
+      */
+    def interned(kind: Interned[A]): Codec[A] =
+      new Codec[A]:
+        def decode(n: Node): Decoded[A] = c.decode(n).map(n.share(kind))
+        def encode(a: A, out: Writer): Unit = c.encode(a, out)
+        override def check(a: A): Option[ConstraintViolation] = c.check(a)
+
+  /** The hashes of a decode, of every size: the same key, script or pool hash is in many places. */
+  private val hashes = new Interned[Bytes]
+
+  /** A byte string of exactly `size` bytes, shared across a decode. */
+  def hash(size: Int): Codec[Bytes] = Codec.bytesSized(size, size).interned(hashes)
 
   // ---- rationals
 
@@ -223,22 +237,27 @@ object Wire:
     val v = summon[ProtVer]
     new Codec[SortedSet[A]]:
       def decode(n: Node): Decoded[SortedSet[A]] =
-        val body = n.value match
-          case Value.Tag(t, inner) if v.atLeast(9) && t == 258 => Right(inner)
-          case Value.Tag(t, _) => Left(DecodeError.at(n, Kind.BadTag(258, t)))
-          case _               => Right(n)
+        // an array is asked for first: reading the value of a set of a million elements would make
+        // the vector of its items, which is what this decoder is here to avoid
+        val body = n.items match
+          case Some(_) => Right(n)
+          case None =>
+            n.value match
+              case Value.Tag(t, inner) if v.atLeast(9) && t == 258 => Right(inner)
+              case Value.Tag(t, _) => Left(DecodeError.at(n, Kind.BadTag(258, t)))
+              case _               => Right(n)
         body.flatMap(b =>
-          b.value match
-            case Value.Arr(items) =>
-              Elements.decodeAll(items, elem).flatMap { decoded =>
-                val set = Sorted.set(decoded)
-                if v.atLeast(9) && set.size != decoded.size then
-                  Left(
-                    DecodeError.at(b, Kind.DuplicateElement(s"${decoded.size - set.size} repeated"))
-                  )
+          b.items match
+            case Some(items) =>
+              // the builder is local to this call and does not escape it
+              val builder = SortedSet.newBuilder[A](using Order[A].toOrdering)
+              Elements.decodeInto(items, elem)(builder += _).flatMap { seen =>
+                val set = builder.result()
+                if v.atLeast(9) && set.size != seen then
+                  Left(DecodeError.at(b, Kind.DuplicateElement(s"${seen - set.size} repeated")))
                 else Right(set)
               }
-            case _ => Left(Codec.mismatch("array", b))
+            case None => Left(Codec.mismatch("array", b))
         )
       def encode(a: SortedSet[A], out: Writer): Unit =
         if v.atLeast(9) then out.tag(258)
@@ -255,10 +274,12 @@ object Wire:
     new Codec[SortedMap[K, V]]:
       def decode(n: Node): Decoded[SortedMap[K, V]] = n.entries match
         case Some(entries) =>
-          Elements.decodePairs(entries, key, value).flatMap { decoded =>
-            val map = Sorted.map(decoded)
-            if v.atLeast(9) && map.size != decoded.size then
-              Left(DecodeError.at(n, Kind.DuplicateKey(s"${decoded.size - map.size} repeated")))
+          // the builder is local to this call and does not escape it
+          val builder = SortedMap.newBuilder[K, V](using Order[K].toOrdering)
+          Elements.decodePairsInto(entries, key, value)(builder += _ -> _).flatMap { seen =>
+            val map = builder.result()
+            if v.atLeast(9) && map.size != seen then
+              Left(DecodeError.at(n, Kind.DuplicateKey(s"${seen - map.size} repeated")))
             else Right(map)
           }
         case _ => Left(Codec.mismatch("map", n))
@@ -322,9 +343,12 @@ object Wire:
     * order; the decoder reads either length form.
     */
   def seqOf[A](elem: Codec[A]): Codec[Vector[A]] = new Codec[Vector[A]]:
-    def decode(n: Node): Decoded[Vector[A]] = n.value match
-      case Value.Arr(items) => Elements.decodeAll(items, elem)
-      case _                => Left(Codec.mismatch("array", n))
+    def decode(n: Node): Decoded[Vector[A]] = n.items match
+      case Some(items) =>
+        // the builder is local to this call and does not escape it
+        val builder = Vector.newBuilder[A]
+        Elements.decodeInto(items, elem)(builder += _).map(_ => builder.result())
+      case None => Left(Codec.mismatch("array", n))
     def encode(a: Vector[A], out: Writer): Unit =
       out.variableArray(a.size)(a.foreach(elem.encode(_, out)))
     override def check(a: Vector[A]): Option[ConstraintViolation] =
@@ -364,18 +388,34 @@ object Wire:
             case Left(e) => Left(e.at(s"[$i]"))
       go(0)
 
-    /** The entries of a map decoded as they are read: a map of a million entries is never held as a
-      * vector of the pairs of its nodes.
+    /** The elements of an array decoded as they are read, each handed to `out` and none kept here:
+      * a set of a million is never held as a vector of its nodes or of its decoded elements.
+      * Answers the number of elements, or the first failure and the index it is at.
       */
-    def decodePairs[K, V](
+    def decodeInto[A](items: Iterator[Node], elem: Codec[A])(out: A => Unit): Decoded[Int] =
+      @scala.annotation.tailrec
+      def go(i: Int): Decoded[Int] =
+        if !items.hasNext then Right(i)
+        else
+          elem.decode(items.next()) match
+            case Right(a) =>
+              out(a)
+              go(i + 1)
+            case Left(e) => Left(e.at(s"[$i]"))
+      go(0)
+
+    /** The entries of a map decoded as they are read, each pair handed to `out`: a map of a million
+      * entries is never held as a vector of the pairs of its nodes or of its decoded pairs. Answers
+      * the number of entries, or the first failure and the index it is at.
+      */
+    def decodePairsInto[K, V](
         pairs: Iterator[(Node, Node)],
         key: Codec[K],
         value: Codec[V]
-    ): Decoded[Vector[(K, V)]] =
-      val out = Vector.newBuilder[(K, V)]
+    )(out: (K, V) => Unit): Decoded[Int] =
       @scala.annotation.tailrec
-      def go(i: Int): Decoded[Vector[(K, V)]] =
-        if !pairs.hasNext then Right(out.result())
+      def go(i: Int): Decoded[Int] =
+        if !pairs.hasNext then Right(i)
         else
           val (k, x) = pairs.next()
           key.decode(k).left.map(_.at(s"key[$i]")) match
@@ -384,6 +424,6 @@ object Wire:
               value.decode(x).left.map(_.at(s"value[$i]")) match
                 case Left(e) => Left(e)
                 case Right(vv) =>
-                  out += ((kk, vv))
+                  out(kk, vv)
                   go(i + 1)
       go(0)
