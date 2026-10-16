@@ -191,6 +191,16 @@ object CertOps:
       c: Credential[Staking],
       account: ConwayAccountState,
       next: Option[KeyHash[StakePool]]
+  ): PState = reDelegatePool(s, c, account.pool, next)
+
+  /** [[reDelegatePool]] for the account of any era, which is the pool it delegates to that matters
+    * (Shelley's DELEG runs the same function, `Shelley/Rules/Deleg.hs`).
+    */
+  def reDelegatePool(
+      s: PState,
+      c: Credential[Staking],
+      current: Option[KeyHash[StakePool]],
+      next: Option[KeyHash[StakePool]]
   ): PState =
     def adjust(
         pools: SortedMap[KeyHash[StakePool], StakePoolState],
@@ -200,10 +210,10 @@ object CertOps:
     def addNew(pools: SortedMap[KeyHash[StakePool], StakePoolState]) =
       next.fold(pools)(adjust(pools, _, _ + c))
     PState.stakePools.modify { pools =>
-      account.pool match
-        case Some(current) if next.contains(current) => pools
-        case Some(current)                           => addNew(adjust(pools, current, _ - c))
-        case None                                    => addNew(pools)
+      current match
+        case Some(pool) if next.contains(pool) => pools
+        case Some(pool)                        => addNew(adjust(pools, pool, _ - c))
+        case None                              => addNew(pools)
     }(s)
 
   /** `unDelegReDelegDRep` (`Conway/State/VState.hs:120`): the same for the DRep. */
@@ -706,7 +716,14 @@ object Withdrawals:
       accounts: SortedMap[Credential[Staking], ConwayAccountState],
       withdrawals: Vector[(RewardAccount, BigInt)],
       network: Int
-  ): Either[VocabError, View] =
+  ): Either[VocabError, View] = viewOf(accounts, withdrawals, network)(_.balance.toBigInt)
+
+  /** [[view]] over the accounts of any era, whose balance is `balance`. */
+  def viewOf[A](
+      accounts: SortedMap[Credential[Staking], A],
+      withdrawals: Vector[(RewardAccount, BigInt)],
+      network: Int
+  )(balance: A => BigInt): Either[VocabError, View] =
     withdrawals
       .traverse { (account, amount) =>
         Convert.credential[Staking](account.credential).map(c => (account, amount, accounts.get(c)))
@@ -717,8 +734,8 @@ object Withdrawals:
             case (a, n, state) if a.network != network || state.isEmpty => a -> n
           },
           found.collect {
-            case (a, n, Some(state)) if a.network == network && state.balance.toBigInt != n =>
-              a -> Mismatch(n, state.balance.toBigInt)
+            case (a, n, Some(state)) if a.network == network && balance(state) != n =>
+              a -> Mismatch(n, balance(state))
           }
         )
       }

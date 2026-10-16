@@ -60,7 +60,7 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
       _ <-
         if !tx.isValid then Monad[F].unit
         else valid[F](env, tx, pp, gov, certBefore, utxo)
-      _ <- Sts.trans[F, UtxoEnv, Counted[
+      _ <- Sts.trans[F, UtxoEnv[ConwayCertState], Counted[
         UTxOState[Conway]
       ], ConwayLedger, StAnnTx, LedgerFailure, LedgerFailure](
         Utxow,

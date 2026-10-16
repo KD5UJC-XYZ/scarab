@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.{Eq, Show}
 import cats.derived.*
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** What the rules of the transaction maintain incrementally, and the definition it must agree with.
@@ -28,15 +29,30 @@ object Inconsistency:
 object Invariants:
   /** The pools' delegators against the accounts' delegations. */
   def poolDelegators(cert: ConwayCertState): Vector[Inconsistency] =
-    val pools = cert.pState.stakePools
-    val accounts = cert.dState.accounts.states
-    val missing = accounts.iterator.collect {
-      case (c, a) if a.pool.exists(p => pools.get(p).exists(!_.delegators.contains(c))) =>
-        a.pool.map(Inconsistency.DelegatorMissing(_, c))
-    }.flatten
+    poolDelegators(
+      cert.pState.stakePools,
+      cert.dState.accounts.states.iterator.map((c, a) => c -> a.pool)
+    )
+
+  /** The same for the certificate state of the eras before Conway, whose DELEG keeps them too. */
+  def poolDelegators(cert: ShelleyCertState): Vector[Inconsistency] =
+    poolDelegators(
+      cert.pState.stakePools,
+      cert.dState.accounts.states.iterator.map((c, a) => c -> a.pool)
+    )
+
+  private def poolDelegators(
+      pools: SortedMap[KeyHash[StakePool], StakePoolState],
+      accounts: Iterator[(Credential[Staking], Option[KeyHash[StakePool]])]
+  ): Vector[Inconsistency] =
+    val delegation = accounts.toMap
+    val missing = delegation.iterator.collect {
+      case (c, Some(p)) if pools.get(p).exists(!_.delegators.contains(c)) =>
+        Inconsistency.DelegatorMissing(p, c)
+    }
     val stale = pools.iterator.flatMap { (p, s) =>
       s.delegators.iterator.collect {
-        case c if !accounts.get(c).exists(_.pool.contains(p)) => Inconsistency.DelegatorStale(p, c)
+        case c if !delegation.get(c).exists(_.contains(p)) => Inconsistency.DelegatorStale(p, c)
       }
     }
     (missing ++ stale).toVector

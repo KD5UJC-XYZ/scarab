@@ -5,11 +5,12 @@ import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Certificate,
   ConwayRules,
+  GenDelegPair,
   LedgerFailure,
   Mismatch,
   PlutusStats,
@@ -37,9 +38,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
 /** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`): the block-level context (the slot), the parameters in
   * force, and the certificate state *before* the transaction's certificates (the refunds of
   * deregistrations are the deposits its accounts hold, which CERTS has already removed from the
-  * state that follows, `Conway/Rules/Ledger.hs:410-415`).
+  * state that follows, `Conway/Rules/Ledger.hs:410-415`). The certificate state is the era's
+  * (`UtxoEnv era` holds `CertState era`): Conway's here, [[ShelleyCertState]] for the eras before.
   */
-final case class UtxoEnv(ctx: TxRules.Env, pp: ProtocolParams, cert: ConwayCertState)
+final case class UtxoEnv[+C](ctx: TxRules.Env, pp: ProtocolParams, cert: C)
 
 /** What the instant stake of the UTxO becomes as outputs are created and spent
   * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-108`): the
@@ -126,8 +128,8 @@ object Deposits:
   * script that fails, one flagged valid none). The state is the node's counters of what was
   * evaluated.
   */
-object Utxos extends Sts[UtxoEnv, PlutusStats, StAnnTx, LedgerFailure]:
-  def transition[F[_]: Monad](env: UtxoEnv, ann: StAnnTx)(using
+object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
+  def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, PlutusStats],
       raise: Raise[F, LedgerFailure]
@@ -156,7 +158,8 @@ object Utxos extends Sts[UtxoEnv, PlutusStats, StAnnTx, LedgerFailure]:
   * stake, the fees, the deposits and the donation of a valid transaction, the collateral of one
   * that failed phase 2.
   */
-object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
+object Utxo
+    extends Sts[UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
   given Embed[PlutusStats, Counted[UTxOState[Conway]], LedgerFailure, LedgerFailure] =
     Embed(Counted.plutus[UTxOState[Conway]], identity)
 
@@ -175,7 +178,7 @@ object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFail
     * the transaction (`PreConwayRules.Collateral`).
     */
   def validate(
-      env: UtxoEnv,
+      env: UtxoEnv[ConwayCertState],
       ann: StAnnTx,
       deposits: BigInt,
       refunds: BigInt
@@ -277,7 +280,7 @@ object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFail
         instantStake = stake
       )
 
-  def transition[F[_]: Monad](env: UtxoEnv, ann: StAnnTx)(using
+  def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Counted[UTxOState[Conway]]],
       raise: Raise[F, LedgerFailure]
@@ -287,7 +290,7 @@ object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFail
       collateral <- Sts.lift[F, LedgerFailure, PreConwayRules.Collateral](
         validate(env, ann, deposits, refunds)
       )
-      _ <- Sts.trans[F, UtxoEnv, PlutusStats, Counted[
+      _ <- Sts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
         UTxOState[Conway]
       ], StAnnTx, LedgerFailure, LedgerFailure](
         Utxos,
@@ -310,9 +313,21 @@ object Utxo extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFail
   * made first ([[Utxo.resolvable]]), as Haskell's ledger does before it hands the annotated
   * transaction to the rule.
   */
-object Utxow extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
+object Utxow
+    extends Sts[UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], StAnnTx, LedgerFailure]:
   /** The checks of the witnesses and scripts, in the node's order. */
-  def witnesses(env: UtxoEnv, ann: StAnnTx): Either[LedgerFailure, Unit] =
+  def witnesses(env: UtxoEnv[ConwayCertState], ann: StAnnTx): Either[LedgerFailure, Unit] =
+    witnesses(env, Map.empty, ann)
+
+  /** The same for any era: `genDelegs` are the genesis delegations of the certificate state before
+    * the transaction (the key hashes of the genesis delegates the update proposals and genesis
+    * delegation certificates need witnesses of; none from Conway, which has no such proposal).
+    */
+  def witnesses(
+      env: UtxoEnv[Any],
+      genDelegs: Map[Bytes, GenDelegPair],
+      ann: StAnnTx
+  ): Either[LedgerFailure, Unit] =
     val tx = ann.tx
     val body = tx.body
     val id = ann.id
@@ -356,7 +371,7 @@ object Utxow extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFai
       )
       _ <- PreConwayRules.auxiliaryChecks(tx)
       _ <- PreConwayRules.witnessChecks(
-        Map.empty,
+        genDelegs,
         tx,
         ann.spent,
         collateral,
@@ -368,7 +383,7 @@ object Utxow extends Sts[UtxoEnv, Counted[UTxOState[Conway]], StAnnTx, LedgerFai
       _ <- PreConwayRules.scriptsWellFormed(pp, tx, env.ctx)
     yield ()
 
-  def transition[F[_]: Monad](env: UtxoEnv, ann: StAnnTx)(using
+  def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
       ask: Ask[F, Globals],
       st: Stateful[F, Counted[UTxOState[Conway]]],
       raise: Raise[F, LedgerFailure]

@@ -36,6 +36,12 @@ object Counted:
   def state[S]: Lens[Counted[S], S] = Focus[Counted[S]](_.state)
   def plutus[S]: Lens[Counted[S], PlutusStats] = Focus[Counted[S]](_.plutus)
 
+  /** The same for the ledger state of any era. */
+  def utxoOfEra[E <: EraTag]: Lens[Counted[LedgerState[E]], Counted[UTxOState[E]]] =
+    Lens[Counted[LedgerState[E]], Counted[UTxOState[E]]](c => Counted(c.state.utxo, c.plutus))(u =>
+      c => Counted(c.state.copy[E](utxo = u.state), u.plutus)
+    )
+
   /** The counters beside the UTxO state of a ledger state counted together: what UTXOW sees. */
   val utxoOf: Lens[Counted[LedgerState[Conway]], Counted[UTxOState[Conway]]] =
     Lens[Counted[LedgerState[Conway]], Counted[UTxOState[Conway]]](c =>
