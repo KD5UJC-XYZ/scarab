@@ -2,26 +2,14 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{LeaderCheck, Nonce, OCertRules, PoolDistribution, StakeView}
+import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, SlotNo, VocabError, Word64, WithOrigin}
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolState}
+import xyz.kd5ujc.scarab.protocol.Era
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, HeaderVrf}
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
-
-/** Praos chain-dependent state (ouroboros-consensus `PraosState`). */
-final case class PraosState(
-    epoch: BigInt,
-    evolving: Nonce,
-    candidate: Nonce,
-    epochNonce: Nonce,
-    lab: Nonce,
-    lastEpochBlock: Nonce,
-    counters: Map[Bytes, BigInt],
-    /** The epoch nonce of the epoch before (`praosStatePreviousEpochNonce`; it takes no part in
-      * validation, node-to-client clients read it with the chain-dependent state).
-      */
-    previousEpochNonce: Nonce = Nonce.Neutral
-)
 
 final case class PraosConfig(
     geometry: EpochGeometry,
@@ -35,51 +23,97 @@ final case class PraosConfig(
 
 /** Praos header validation and chain-dependent state evolution. */
 object Praos:
-  /** The chain starts with every nonce equal to the Shelley genesis hash. */
-  def initial(shelleyGenesisHash: Bytes): PraosState =
-    val n = Nonce.Hash(shelleyGenesisHash)
-    PraosState(0, n, n, n, Nonce.Neutral, Nonce.Neutral, Map.empty, previousEpochNonce = n)
-
   /** Epoch transition: the new epoch nonce mixes the frozen candidate with the last block's lab
-    * (and, for TPraos, the protocol parameters' extra entropy).
+    * (and, for TPraos, the protocol parameters' extra entropy). The state is first put in the
+    * protocol of `era` ([[ProtocolState.in]]).
     */
-  def tick(state: PraosState, epoch: BigInt, extraEntropy: Nonce = Nonce.Neutral): PraosState =
-    if epoch <= state.epoch then state
+  def tick(
+      state: ProtocolState,
+      era: Era,
+      epoch: BigInt,
+      extraEntropy: Nonce = Nonce.Neutral
+  ): ProtocolState =
+    val s = state.in(era)
+    if epoch <= s.epoch then s
     else
-      state.copy(
-        epoch = epoch,
-        epochNonce = state.candidate.combine(state.lastEpochBlock).combine(extraEntropy),
-        lastEpochBlock = state.lab,
-        previousEpochNonce = state.epochNonce
-      )
+      val extras = s.extras.copy(epoch = epoch)
+      s.dep match
+        case ChainDepState.Praos(p) =>
+          ProtocolState(
+            ChainDepState.Praos(
+              p.copy(
+                epochNonce = p.candidateNonce.combine(p.lastEpochBlockNonce).combine(extraEntropy),
+                lastEpochBlockNonce = p.labNonce,
+                previousEpochNonce = p.epochNonce
+              )
+            ),
+            extras
+          )
+        case ChainDepState.TPraos(t) =>
+          val dep = t.chainDep
+          ProtocolState(
+            ChainDepState.TPraos(
+              t.copy(chainDep =
+                dep.copy(tickn =
+                  dep.tickn.copy(
+                    epochNonce = dep.protocol.candidateNonce
+                      .combine(dep.tickn.prevHashNonce)
+                      .combine(extraEntropy),
+                    prevHashNonce = dep.labNonce
+                  )
+                )
+              )
+            ),
+            extras.copy(previousEpochNonce = dep.tickn.epochNonce)
+          )
+        case ChainDepState.PBft(_) => s
 
   /** Validate `header` (already ticked to its epoch) and return the updated state. */
   def update(
-      state: PraosState,
+      state: ProtocolState,
       header: Header,
       pools: PoolDistribution,
       config: PraosConfig
-  ): Either[String, PraosState] =
+  ): Either[String, ProtocolState] =
     validate(state, header, StakeView.Known(pools), config).map(_._1)
 
   /** As [[update]], also reporting how leadership was established. With an unknown stake view every
     * cryptographic check runs but the leader threshold is reported as unchecked.
     */
   def validate(
-      state: PraosState,
+      state: ProtocolState,
       header: Header,
       stake: StakeView,
       config: PraosConfig,
       nonceWindow: BigInt = BigInt(-1)
-  ): Either[String, (PraosState, LeaderCheck)] =
+  ): Either[String, (ProtocolState, LeaderCheck)] =
     val window =
       if nonceWindow >= 0 then nonceWindow else config.geometry.randomnessStabilisationWindow
     header match
       case h: Header.Shelley =>
         h.vrf match
-          case HeaderVrf.Praos(cert) => updatePraos(state, h, cert, stake, config, window)
-          case _: HeaderVrf.TPraos   => Left(s"${h.era} headers use TPraos, not Praos")
+          case HeaderVrf.Praos(cert) =>
+            state.dep match
+              case ChainDepState.Praos(p) =>
+                updatePraos(p, h, cert, stake, config, window).map { (next, leader) =>
+                  ProtocolState(ChainDepState.Praos(next), state.extras) -> leader
+                }
+              case _ =>
+                Left(s"${h.era} headers use Praos, but the chain-dependent state is not Praos's")
+          case _: HeaderVrf.TPraos => Left(s"${h.era} headers use TPraos, not Praos")
       case h => Left(s"${h.era} headers are not Praos headers")
+
+  /** The issuer of a header, as the key of the operational certificate counters. */
+  private[consensus] def issuerKey(vkey: Bytes): Either[String, KeyHash[BlockIssuer]] =
+    KeyHash.fromBytes[BlockIssuer](Blake2b.hash224.hash(vkey)).leftMap(_.toString)
+
+  /** The slot of a header, as the last slot of the chain-dependent state. */
+  private[consensus] def slotOf(slot: BigInt): Either[String, WithOrigin[SlotNo]] =
+    SlotNo.fromBigInt(slot).map(WithOrigin.At(_)).leftMap(_.toString)
+
+  /** The sequence number of an operational certificate, as a counter. */
+  private[consensus] def counterOf(sequence: BigInt): Either[String, Word64] =
+    Word64.fromBigInt(VocabError.Kind.OcertCounter, sequence).leftMap(_.toString)
 
   private def updatePraos(
       state: PraosState,
@@ -92,6 +126,9 @@ object Praos:
     val pool = Blake2b.hash224.hash(header.issuerVkey)
     val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
     for
+      issuer <- issuerKey(header.issuerVkey)
+      lastSlot <- slotOf(header.slot)
+      sequence <- counterOf(header.opCert.sequence)
       registered <- stakeView match
         case StakeView.Known(pools) =>
           for
@@ -138,7 +175,7 @@ object Praos:
         .leftMap(_.message)
       _ <- OCertRules
         .checkCounter(
-          state.counters,
+          state.ocertCounters.get(issuer).map(_.toBigInt),
           pool,
           header.opCert.sequence,
           known = true, // reaching here means the pool is in the stake view
@@ -146,15 +183,16 @@ object Praos:
         )
         .leftMap(_.message)
     yield
-      val evolving = state.evolving.combine(nonceValue(output))
+      val evolving = state.evolvingNonce.combine(nonceValue(output))
       val nextEpoch = config.geometry.firstSlot(config.geometry.epochOf(header.slot) + 1)
       state.copy(
-        evolving = evolving,
-        candidate =
+        lastSlot = lastSlot,
+        evolvingNonce = evolving,
+        candidateNonce =
           if header.slot + window < nextEpoch then evolving
-          else state.candidate,
-        lab = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
-        counters = state.counters.updated(pool, header.opCert.sequence)
+          else state.candidateNonce,
+        labNonce = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
+        ocertCounters = state.ocertCounters.updated(issuer, sequence)
       ) -> leader
 
   /** The VRF input of a slot under an epoch nonce. */

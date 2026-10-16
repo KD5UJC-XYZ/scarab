@@ -77,17 +77,18 @@ object OCertRules:
       )
     yield ()
 
-  /** The issue-number rule. `known`: the issuer may start a counter at 0 (a registered pool or a
-    * genesis delegate). `bounded`: Praos also rejects `n > m + 1`; TPraos only `n < m`.
+  /** The issue-number rule. `current` is the counter the issuer has, if any. `known`: the issuer
+    * may start a counter at 0 (a registered pool or a genesis delegate). `bounded`: Praos also
+    * rejects `n > m + 1`; TPraos only `n < m`.
     */
   def checkCounter(
-      counters: Map[Bytes, BigInt],
+      current: Option[BigInt],
       issuer: Bytes,
       sequence: BigInt,
       known: Boolean,
       bounded: Boolean
   ): Either[OCertError, Unit] =
-    counters.get(issuer).orElse(Option.when(known)(BigInt(0))) match
+    current.orElse(Option.when(known)(BigInt(0))) match
       case None => Left(OCertError.NoCounter(issuer))
       case Some(m) =>
         if bounded && (sequence < m || sequence > m + 1) then

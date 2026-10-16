@@ -28,7 +28,8 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
-import xyz.kd5ujc.scarab.consensus.{ByronCheck, ByronRules, PBftState, Praos}
+import xyz.kd5ujc.scarab.consensus.{ByronCheck, ByronRules}
+import xyz.kd5ujc.scarab.consensus.state.{PBftState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.Nonce
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
@@ -324,32 +325,36 @@ class EraTransitionSuite extends CatsEffectSuite:
         Bytes.fromArray(Files.readAllBytes(fixtures.resolve("genesis/shelley-genesis.json")))
       )
     )
-    assertEquals(states(0).praos.epochNonce, genesisHash)
+    assertEquals(states(0).protocol.epochNonce, genesisHash)
     val shelley = blocks.indices.filter(headers(_).isInstanceOf[Header.Shelley])
     var epochs = 0
     shelley.foreach { i =>
-      val before = states(i).praos
-      val after = states(i + 1).praos
+      val before = states(i).protocol
+      val after = states(i + 1).protocol
       val epoch = geometry.epochOf(headers(i).slot)
       assertEquals(after.epoch, epoch)
       if epoch > before.epoch then
         epochs += 1
         assertEquals(
           after.epochNonce,
-          before.candidate.combine(before.lastEpochBlock),
+          before.view.candidateNonce.combine(before.view.lastEpochBlockNonce),
           s"epoch nonce of $epoch"
         )
-        assertEquals(after.lastEpochBlock, before.lab, s"last-epoch-block nonce of $epoch")
+        assertEquals(
+          after.view.lastEpochBlockNonce,
+          before.view.labNonce,
+          s"last-epoch-block nonce of $epoch"
+        )
       else
         assertEquals(after.epochNonce, before.epochNonce)
-        assertEquals(after.lastEpochBlock, before.lastEpochBlock)
-      assertEquals(after.lab, Nonce.Hash(headers(i).prevHash.get))
+        assertEquals(after.view.lastEpochBlockNonce, before.view.lastEpochBlockNonce)
+      assertEquals(after.view.labNonce, Nonce.Hash(headers(i).prevHash.get))
     }
     assertEquals(epochs, 8) // epochs 1..8 are entered by a first block
     // the first Shelley epoch nonce is the genesis hash itself (nothing mixed in yet)
-    assertEquals(states(shelley.head + 1).praos.epochNonce, genesisHash)
+    assertEquals(states(shelley.head + 1).protocol.epochNonce, genesisHash)
     // the Byron prefix leaves the Praos state untouched
-    assert((0 until 50).forall(i => states(i + 1).praos == setup.start.praos))
+    assert((0 until 50).forall(i => states(i + 1).protocol == setup.start.protocol))
   }
 
   test(
@@ -365,12 +370,16 @@ class EraTransitionSuite extends CatsEffectSuite:
       val frozen = indices.filter(i => headers(i).slot + window < next)
       val last = indices.last
       val expected =
-        frozen.lastOption.fold(states(indices.head).praos.candidate)(j =>
-          states(j + 1).praos.evolving
+        frozen.lastOption.fold(states(indices.head).protocol.view.candidateNonce)(j =>
+          states(j + 1).protocol.view.evolvingNonce
         )
       // the final captured Conway epoch is incomplete: only compare the epochs that ended
       if next <= headers.last.slot then
-        assertEquals(states(last + 1).praos.candidate, expected, s"candidate of epoch $epoch")
+        assertEquals(
+          states(last + 1).protocol.view.candidateNonce,
+          expected,
+          s"candidate of epoch $epoch"
+        )
     }
   }
 
@@ -490,11 +499,11 @@ class EraTransitionSuite extends CatsEffectSuite:
 
   test("a Byron block signing more than the threshold of a window is rejected") {
     val b = byronBlock(5)
-    val key = byronUpdate(5, b).toOption.get._1.pbft.signers.last._2
-    val crowded = states(5).byron.pbft.signers.map((slot, _) => (slot, key))
+    val key = byronUpdate(5, b).toOption.get._1.pbft.inWindow.last.genesisKey
+    val crowded = PBftState.ofWindow(states(5).byron.pbft.inWindow.map(_.copy(genesisKey = key)))
     val before = states(5).byron
     val result = ByronRules.update(
-      ByronRules.State(before.tip, before.ledger.get, PBftState(crowded)),
+      ByronRules.State(before.tip, before.ledger.get, crowded),
       b,
       setup.byronRules.get
     )
@@ -504,7 +513,9 @@ class EraTransitionSuite extends CatsEffectSuite:
   test("the first Shelley block is rejected under a different initial nonce") {
     val first = blocks.indexWhere(_.era == Era.Shelley)
     val wrong =
-      states(first).copy(praos = Praos.initial(Blake2b.hash256.hash(Bytes(Vector(1, 2, 3)))))
+      states(first).withProtocol(
+        ProtocolState.initial(Era.Byron, Blake2b.hash256.hash(Bytes(Vector(1, 2, 3))))
+      )
     val result = validate(wrong, first)
     assert(result.left.exists(_._1 == "tpraos"), result.toString)
   }
@@ -661,8 +672,9 @@ class EraTransitionSuite extends CatsEffectSuite:
               setup.globals,
               setup.byronRules,
               utxoStore = Some(store),
-              afterBlock =
-                Some((_, s) => IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)))
+              afterBlock = Some((_, s) =>
+                IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.protocol.epochNonce))
+              )
             )
             last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.start) { (state, batch) =>
               cache.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
@@ -688,7 +700,7 @@ class EraTransitionSuite extends CatsEffectSuite:
           last.ledger.copy(utxo = ledger.Utxo.empty),
           expected.ledger.copy(utxo = ledger.Utxo.empty)
         )
-        assertEquals(last.praos, expected.praos)
+        assertEquals(last.protocol, expected.protocol)
         assertEquals(last.boot, expected.boot)
       }
   }

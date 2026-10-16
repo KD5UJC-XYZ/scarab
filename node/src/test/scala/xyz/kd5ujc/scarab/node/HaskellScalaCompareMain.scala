@@ -19,8 +19,11 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, LedgerFileEra
   * }}}
   */
 object HaskellScalaCompareMain:
-  private def readScala(file: Path): Option[(Option[Long], NodeState)] =
-    LegacySnapshots.read(file).toOption.map(s => (s.anchor.map(_.slot.toLong), s.state))
+  private def readScala(
+      file: Path,
+      forks: xyz.kd5ujc.scarab.consensus.HardForkConfig
+  ): Option[(Option[Long], NodeState)] =
+    LegacySnapshots.read(file, forks).toOption.map(s => (s.anchor.map(_.slot.toLong), s.state))
 
   /** The names of the fields in which two values of a case class differ. */
   private def fields(a: Product, b: Product): List[String] =
@@ -45,7 +48,8 @@ object HaskellScalaCompareMain:
     val hs = HaskellLedgerFile
       .decode(Bytes.fromArray(Files.readAllBytes(Path.of(args(0)))))
       .fold(e => sys.error(e.render), identity)
-    val (slot, state) = readScala(Path.of(args(1))).getOrElse(sys.error("no snapshot"))
+    val (slot, state) =
+      readScala(Path.of(args(1)), setup.praos.forks).getOrElse(sys.error("no snapshot"))
     given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
     val haskell = hs.ledger.state match
       case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, s)) => s.nes
@@ -134,10 +138,10 @@ object HaskellScalaCompareMain:
     line("dState accounts delegations", hDelegations(h) == sDelegations(s))
     hs.header.chainDep.state match
       case ChainDepState.Praos(hpraos) =>
-        val sp2 = state.praos
+        val sp2 = state.protocol.view
         line("praos epoch nonce", hpraos.epochNonce == sp2.epochNonce)
         line("praos previous epoch nonce", hpraos.previousEpochNonce == sp2.previousEpochNonce)
-        line("praos last epoch block nonce", hpraos.lastEpochBlockNonce == sp2.lastEpochBlock)
+        line("praos last epoch block nonce", hpraos.lastEpochBlockNonce == sp2.lastEpochBlockNonce)
       case other => println(s"  chain-dependent state is not Praos: $other")
 
   private def hDelegations(es: EpochState[Conway]) =

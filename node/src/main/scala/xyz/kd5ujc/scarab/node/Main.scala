@@ -21,13 +21,13 @@ import xyz.kd5ujc.scarab.storage.{
   RocksUtxoStore,
   SnapshotFormat,
   SnapshotMigration,
-  SnapshotV3,
+  SnapshotV4,
   StateBacking,
   UtxoBacking,
   UtxoStore
 }
 import cats.mtl.{Ask, Handle, Stateful}
-import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, ProtocolState}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
@@ -307,7 +307,7 @@ object Main extends IOApp:
         utxoStore = Some(store),
         compute = Some(scheduling.compute),
         afterBlock = Some { (header, s) =>
-          IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.praos.epochNonce)) *>
+          IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.protocol.epochNonce)) *>
             dumper.traverse_(_.afterBlock(header, s)) *>
             mirrorChecker.traverse_(_.afterBlock(header, s)) *>
             praosConfig
@@ -326,7 +326,7 @@ object Main extends IOApp:
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
-      given SnapshotFormat[IO, NodeState] = SnapshotV3.format[IO]
+      given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO]
       storage = options.db.fold(
         Resource.pure[IO, Storage](
           Storage(
@@ -356,7 +356,7 @@ object Main extends IOApp:
             backing,
             warm,
             Some(scheduling.compute),
-            Some(SnapshotMigration.toV3[IO])
+            Some(SnapshotMigration.toCurrent[IO])
           )
           .evalMap { r =>
             ChainStorage
@@ -452,7 +452,7 @@ object Main extends IOApp:
           // header-first validation (G6): signatures are verified through the cache's keeping
           // view, so the block's own validation does not repeat them
           headerCheck = Option.when(options.headerFirst)(
-            HeaderCheck.forChain[IO, NodeState, consensus.PraosState](
+            HeaderCheck.forChain[IO, NodeState, ProtocolState](
               NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
               scheduling.compute,
               warm = Some((headers, state) =>

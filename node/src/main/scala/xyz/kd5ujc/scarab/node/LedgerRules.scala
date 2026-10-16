@@ -226,10 +226,9 @@ object NodeRules:
               )
               shelley <- rules.handover(ledger, glob).leftMap("ledger" -> _)
             yield (
-              state.copy(
-                ledger = shelley,
-                byron = state.byron.finish.copy(ledger = None, firstShelleyEpoch = Some(first))
-              ),
+              state
+                .withByron(state.byron.finish.copy(ledger = None, firstShelleyEpoch = Some(first)))
+                .copy(ledger = shelley),
               cfg,
               glob
             )
@@ -274,17 +273,18 @@ object NodeRules:
     yield
       val sameEpoch = state.byron.stats.filter(_.epoch == header.epoch)
       val base = if sameEpoch.isEmpty then state.byron.finish else state.byron
-      state.copy(
-        boot = state.boot.copy(era = Some(Era.Byron)),
-        byron = base.copy(
-          tip = next.tip,
-          ledger = Some(next.ledger),
-          pbft = next.pbft,
-          stats = Some(
-            sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0, 0)).record(check)
+      state
+        .withBoot(state.boot.copy(era = Some(Era.Byron)))
+        .withByron(
+          base.copy(
+            tip = next.tip,
+            ledger = Some(next.ledger),
+            pbft = next.pbft,
+            stats = Some(
+              sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0, 0)).record(check)
+            )
           )
         )
-      )
 
   /** Pre-Conway eras: body commitment, TPraos or Praos header checks with the ledger-lite view,
     * then the lite effects of the transactions.
@@ -342,7 +342,7 @@ object NodeRules:
         if header.era.usesTPraos then
           TPraos
             .update(
-              Praos.tick(state.praos, epoch, lite.params.extraEntropy),
+              Praos.tick(state.protocol, header.era, epoch, lite.params.extraEntropy),
               header,
               lite.view,
               config
@@ -352,7 +352,7 @@ object NodeRules:
         else
           Praos
             .validate(
-              Praos.tick(state.praos, epoch),
+              Praos.tick(state.protocol, header.era, epoch),
               header,
               lite.view.stake,
               config,
@@ -364,17 +364,18 @@ object NodeRules:
     yield
       val previous = boot.stats.filter(_.epoch == epoch)
       val finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
-      state.copy(
-        praos = praos,
-        byron = state.byron.finish,
-        boot = BootstrapState(
-          active = true,
-          era = Some(header.era),
-          lite = applied,
-          stats = Some(previous.getOrElse(EpochStats(epoch, header.era, 0, 0, 0)).record(leader)),
-          completed = finished
+      state
+        .withProtocol(praos)
+        .withByron(state.byron.finish)
+        .withBoot(
+          BootstrapState(
+            active = true,
+            era = Some(header.era),
+            lite = applied,
+            stats = Some(previous.getOrElse(EpochStats(epoch, header.era, 0, 0, 0)).record(leader)),
+            completed = finished
+          )
         )
-      )
 
   /** Full validation for every Shelley-based era: tick the ledger to the block's slot, validate the
     * header against the ticked pool distribution (so the leader threshold is always checked outside
@@ -453,7 +454,7 @@ object NodeRules:
         if announced.era.usesTPraos then
           TPraos
             .update(
-              Praos.tick(state.praos, epoch, ticked.params.extraEntropy),
+              Praos.tick(state.protocol, announced.era, epoch, ticked.params.extraEntropy),
               announced,
               view,
               config
@@ -463,7 +464,7 @@ object NodeRules:
         else
           Praos
             .validate(
-              Praos.tick(state.praos, epoch),
+              Praos.tick(state.protocol, announced.era, epoch),
               announced,
               StakeView.Known(pools),
               config,
@@ -530,14 +531,15 @@ object NodeRules:
           )
       val previous = boot.stats.filter(_.epoch == epoch)
       val finished = boot.stats.filter(_.epoch != epoch).orElse(boot.completed)
-      state.copy(
-        praos = praos,
-        byron = state.byron.finish,
-        ledger = counted,
-        boot = boot.copy(
-          era = Some(announced.era),
-          stats =
-            Some(previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)),
-          completed = finished
+      state
+        .withProtocol(praos)
+        .withByron(state.byron.finish)
+        .withBoot(
+          boot.copy(
+            era = Some(announced.era),
+            stats =
+              Some(previous.getOrElse(EpochStats(epoch, announced.era, 0, 0, 0)).record(leader)),
+            completed = finished
+          )
         )
-      )
+        .copy(ledger = counted)

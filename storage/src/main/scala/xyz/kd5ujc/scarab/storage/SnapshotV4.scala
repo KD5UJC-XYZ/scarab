@@ -9,12 +9,13 @@ import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.{
-  ConsensusExtras,
   ConsensusMirrorEnv,
   EraLedgerState,
   ExtLedgerState,
+  HeaderState,
+  MirrorExtras,
   MirrorState,
   ShelleyLedgerState,
   StateMirror,
@@ -32,6 +33,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  VocabError,
   EpochState,
   Gap,
   LedgerState,
@@ -43,10 +45,10 @@ import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
-/** The snapshot of format version 3, the Haskell ledger state with a sidecar:
+/** The snapshot of format version 4, the Haskell ledger state with a sidecar:
   *
   * {{{
-  * "SCRBSNP3" | sidecar length u32 | sidecar | Haskell state bytes
+  * "SCRBSNP4" | sidecar length u32 | sidecar | Haskell state bytes
   * sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
   * }}}
   *
@@ -56,11 +58,15 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
   * The chain still in Byron has no Haskell section: the sidecar holds the node state whole. The
   * checksum that closes the file is the store's ([[FileLedgerSnapshots]]).
   *
+  * Version 3 differed in the sidecar only: it held the node state as it was before the
+  * chain-dependent state became the Haskell one (J1.5). Files of versions 1 to 3 are brought here
+  * by [[SnapshotMigration]] (see [[migrated]]).
+  *
   * The mirror's environment is asked for at each write and read, so the eras the node has seen
   * begin are those of that moment.
   */
-object SnapshotV3:
-  val Magic: Array[Byte] = "SCRBSNP3".getBytes("US-ASCII")
+object SnapshotV4:
+  val Magic: Array[Byte] = "SCRBSNP4".getBytes("US-ASCII")
 
   /** Magic and the length of the sidecar. */
   private val HeaderSize = Magic.length + 4
@@ -81,7 +87,7 @@ object SnapshotV3:
       def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[NodeState]]] =
         env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(read(e, content)))
 
-  /** The state as a V3 snapshot returns it: [[StateMirror.normalised]] (what the mirror is lossless
+  /** The state as a V4 snapshot returns it: [[StateMirror.normalised]] (what the mirror is lossless
     * up to) and two differences of representation that the Haskell encoding has no room for and
     * that no rule reads. A pool registered with the empty relay list (`80`, the item as the
     * certificate gave it) reads back with no relays (`Bytes.empty`: the Haskell codec writes both
@@ -126,16 +132,22 @@ object SnapshotV3:
 
   // ---- write
 
+  /** What a migration carries over from the file it replaces: the sidecar's `observed` and `gaps`
+    * stay as they were written (a migration never invents data).
+    */
+  private final case class Carried(observed: Map[Era, BigInt], gaps: Set[Gap])
+
   /** The content of the snapshot, after reading it back: a snapshot that would not restore to the
     * state it was taken of (its [[canonical]] form) is refused, so that a file is never written
     * that a restart cannot use. The check costs about one read.
     */
   private def written(
       env: ConsensusMirrorEnv,
-      snapshot: StateSnapshot[NodeState]
+      snapshot: StateSnapshot[NodeState],
+      carried: Option[Carried] = None
   ): Either[SnapshotRefusal, Array[Byte]] =
     for
-      content <- encoded(env, snapshot)
+      content <- encoded(env, snapshot, carried)
       back <- read(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
       want = canonical(env, snapshot.state)
       _ <- Either.cond(
@@ -170,23 +182,39 @@ object SnapshotV3:
 
   private def encoded(
       env: ConsensusMirrorEnv,
-      snapshot: StateSnapshot[NodeState]
+      snapshot: StateSnapshot[NodeState],
+      carried: Option[Carried]
   ): Either[SnapshotRefusal, Array[Byte]] =
     val state = snapshot.state
-    val era = StateMirror.eraOf(env, state)
+    // the telescopes of the Haskell section are built under the eras the file being replaced saw
+    val seen = carried.fold(env)(c => env.copy(observed = env.observed ++ c.observed))
+    val era = StateMirror.eraOf(seen, state)
     def sidecar(chain: SnapshotSidecar.Chain, gaps: Set[Gap]) =
-      SnapshotSidecar(snapshot.anchor, env.observed, gaps, chain)
+      SnapshotSidecar(
+        snapshot.anchor,
+        carried.fold(env.observed)(_.observed),
+        carried.fold(gaps)(_.gaps),
+        chain
+      )
     if era == Era.Byron then
-      Right(framed(sidecar(SnapshotSidecar.Chain.InByron(state), Set.empty), Array.emptyByteArray))
+      Right(
+        framed(
+          sidecar(
+            SnapshotSidecar.Chain.InByron(state.ledger, state.header.chainDep.state, state.extras),
+            Set.empty
+          ),
+          Array.emptyByteArray
+        )
+      )
     else
       for
         mirrored <- mirror
           .toMirror(snapshot.anchor, state)
-          .run(env)
+          .run(seen)
           .leftMap(SnapshotRefusal.Mirror(_))
         extras <- mirrored.value.extras match
-          case shelley: ConsensusExtras.InShelley => Right(shelley)
-          case _: ConsensusExtras.InByron =>
+          case shelley: MirrorExtras.InShelley => Right(shelley)
+          case _: MirrorExtras.InByron =>
             Left(SnapshotRefusal.Mirror(StateMirrorError.ExtrasMismatch(era)))
         file <- HaskellLedgerFile
           .of(mirrored.value.ext)
@@ -224,13 +252,21 @@ object SnapshotV3:
   ): Either[StorageError, StateSnapshot[NodeState]] =
     sections(content).flatMap { (sidecar, haskell) =>
       val state = sidecar.chain match
-        case SnapshotSidecar.Chain.InByron(state) =>
-          Either.cond(haskell.size == 0, state, corrupt("a Byron snapshot with a ledger state"))
+        case SnapshotSidecar.Chain.InByron(ledger, pending, extras) =>
+          Either.cond(
+            haskell.size == 0,
+            NodeState(HeaderState.live(pending), ledger, extras),
+            corrupt("a Byron snapshot with a ledger state")
+          )
         case shelley: SnapshotSidecar.Chain.InShelley =>
           val seen = env.copy(observed = env.observed ++ sidecar.observed)
-          restoredShelley(seen, sidecar, haskell, shelley)
+          restoredShelley(seen, sidecar.anchor, haskell, shelley)
       state.map(StateSnapshot(sidecar.anchor, _))
     }
+
+  /** The sidecar of the content of a V4 file. */
+  def sidecarOf(content: Array[Byte]): Either[StorageError, SnapshotSidecar] =
+    sections(content).map(_._1)
 
   /** The sidecar and the Haskell bytes of a file, after the magic, the length and the fingerprint
     * have been checked.
@@ -238,14 +274,19 @@ object SnapshotV3:
   private def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Bytes)] =
     val kind = FileKind.SnapshotFile
     if content.length < HeaderSize || !content.startsWith(Magic) then
-      legacy.SnapshotV2.numberOf(content) match
-        case Some(n) =>
-          Left(
-            StorageError.VersionMismatch(
-              "snapshot format",
-              s"${new String(legacy.SnapshotV2.Magic, "US-ASCII")} v$n",
-              kind.identifier(kind.current)
+      val older =
+        legacy.SnapshotV2
+          .numberOf(content)
+          .map(n => s"${new String(legacy.SnapshotV2.Magic, "US-ASCII")} v$n")
+          .orElse(
+            Option.when(content.startsWith(legacy.SnapshotV3.Magic))(
+              new String(legacy.SnapshotV3.Magic, "US-ASCII")
             )
+          )
+      older match
+        case Some(found) =>
+          Left(
+            StorageError.VersionMismatch("snapshot format", found, kind.identifier(kind.current))
           )
         case None => Left(corrupt("bad magic or too short"))
     else
@@ -274,7 +315,7 @@ object SnapshotV3:
 
   private def restoredShelley(
       env: ConsensusMirrorEnv,
-      sidecar: SnapshotSidecar,
+      anchor: Option[BlockRef],
       haskell: Bytes,
       shelley: SnapshotSidecar.Chain.InShelley
   ): Either[StorageError, NodeState] =
@@ -287,7 +328,7 @@ object SnapshotV3:
         .run(env)
         .leftMap(e => corrupt(s"the ledger state does not retract: ${e.show}"))
       _ <- Either.cond(
-        restored._1 == sidecar.anchor,
+        restored._1 == anchor,
         (),
         corrupt("the tip of the ledger state is not the anchor of the snapshot")
       )
@@ -297,6 +338,64 @@ object SnapshotV3:
         restored._2.ledger.copy(params = shelley.params, prevParams = shelley.prevParams)
       )
     )
+
+  // ---- the migration of the older formats
+
+  /** The content of the older snapshot `content` (version 1 or 2 of `CSLSNAP1`, or `SCRBSNP3`;
+    * without the checksum that closes the file), as a V4 snapshot.
+    *
+    * Versions 1 and 2 are decoded with the frozen reader and brought to the live state. Version 3
+    * is the Haskell section as it is and the old sidecar, whose extras are converted: nothing is
+    * recomputed that the file holds, and the gaps and the eras it saw begin are carried to the new
+    * sidecar. A state that the live types cannot hold is [[SnapshotRefusal.Unreadable]], and the
+    * file is left as it was.
+    */
+  def migrated(
+      env: ConsensusMirrorEnv,
+      content: Array[Byte]
+  ): Either[SnapshotRefusal, Array[Byte]] =
+    def unreadable[A](e: Either[StorageError, A]) = e.leftMap(SnapshotRefusal.Unreadable(_))
+    def vocab[A](e: Either[VocabError, A]) =
+      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v")))
+    if content.startsWith(legacy.SnapshotV3.Magic) then
+      for
+        parts <- unreadable(legacy.SnapshotV3.sections(content))
+        sidecar = parts._1
+        carried = Carried(sidecar.observed, sidecar.gaps)
+        seen = env.copy(observed = env.observed ++ sidecar.observed)
+        state <- sidecar.chain match
+          case legacy.SnapshotSidecar.Chain.InByron(old) =>
+            vocab(legacy.Upgrade.node(old, seen.forks, sidecar.anchor))
+          case legacy.SnapshotSidecar.Chain.InShelley(utxo, params, prevParams, extras) =>
+            for
+              byron <- vocab(legacy.Upgrade.byron(extras.byron))
+              consensus = ConsensusExtras(
+                extras.boot,
+                byron,
+                legacy.Upgrade.protocol(extras.protocol)
+              )
+              restored <- unreadable(
+                restoredShelley(
+                  seen,
+                  sidecar.anchor,
+                  Bytes.wrap(parts._2),
+                  SnapshotSidecar.Chain.InShelley(
+                    utxo,
+                    params,
+                    prevParams,
+                    MirrorExtras.InShelley(extras.ledger, consensus)
+                  )
+                )
+              )
+            yield restored
+        out <- written(env, StateSnapshot(sidecar.anchor, state), Some(carried))
+      yield out
+    else
+      for
+        old <- unreadable(legacy.SnapshotV2.decodeNode(content))
+        state <- vocab(legacy.Upgrade.node(old.state, env.forks, old.anchor))
+        out <- written(env, StateSnapshot(old.anchor, state))
+      yield out
 
   /** The ledger state with the node's UTxO set put back where the Haskell section has `map(0)`. */
   private def withUtxo(ext: ExtLedgerState, utxo: Utxo): Either[StorageError, ExtLedgerState] =

@@ -17,7 +17,7 @@ import xyz.kd5ujc.scarab.storage.{
   FileLedgerSnapshots,
   SnapshotFormat,
   SnapshotMigration,
-  SnapshotV3,
+  SnapshotV4,
   StateSnapshot
 }
 
@@ -31,7 +31,7 @@ import xyz.kd5ujc.scarab.storage.{
   *   - the whole mirror runs on that state ([[MirrorCorpus.check]]: retraction, and the tampers);
   *   - a copy in a scratch directory is migrated by [[SnapshotMigration]] (version 1 to 2 to 3),
   *     the V3 file is read back through the store, and the state is compared with the direct read
-  *     in its canonical form ([[SnapshotV3.canonical]]), both by the mirror's own view of a state
+  *     in its canonical form ([[SnapshotV4.canonical]]), both by the mirror's own view of a state
   *     (which includes the UTxO bookkeeping) and by structural equality;
   *   - the cost of writing the V3 snapshot (the mirror and the encoding) and of reading it.
   *
@@ -74,21 +74,21 @@ object PreviewMirrorMain:
       direct: StateSnapshot[NodeState]
   ): Either[StorageError, Gate] =
     given Ask[F, ConsensusMirrorEnv] = Ask.const(env)
-    given SnapshotFormat[F, NodeState] = SnapshotV3.format[F]
+    given SnapshotFormat[F, NodeState] = SnapshotV4.format[F]
     val dir = Files.createTempDirectory("snapshot-gate")
     try
       Files.copy(file, dir.resolve(file.getFileName))
       val store = fs2.io.file.Path.fromNioPath(dir)
       val program = for
-        report <- SnapshotMigration.toV3[F].run(store)
+        report <- SnapshotMigration.toCurrent[F].run(store)
         snapshots <- FileLedgerSnapshots.open[F, NodeState](store, keep = 1)
         restored <- snapshots.restore(_ => EitherT.pure[IO, StorageError](true))
       yield (report, restored)
       val (outcome, readMillis) = millis(program.value.unsafeRunSync())
-      val expected = direct.copy(state = SnapshotV3.canonical(env, direct.state))
+      val expected = direct.copy(state = SnapshotV4.canonical(env, direct.state))
       // The cost of the V3 write of this state, on its own: the mirror, the Haskell encoding.
       val (encoded, writeMillis) =
-        millis(SnapshotV3.format[F].encode(direct).value.unsafeRunSync())
+        millis(SnapshotV4.format[F].encode(direct).value.unsafeRunSync())
       // ... and its parts: the mirror, and the Haskell encoding of the ledger state it gives
       val (mirrored, toMirrorMillis) =
         millis(MirrorRun.run(env)(_.toMirror(direct.anchor, direct.state)))
@@ -139,7 +139,7 @@ object PreviewMirrorMain:
     val reports = Vector.newBuilder[(String, Report)]
     val gates = Vector.newBuilder[(String, Gate)]
     files.zipWithIndex.foreach { case (file, n) =>
-      LegacySnapshots.read(file) match
+      LegacySnapshots.read(file, env.forks) match
         case Left(e) => println(s"${file.getFileName}: unreadable, $e")
         case Right(direct) =>
           val state = direct.state
@@ -168,7 +168,7 @@ object PreviewMirrorMain:
                 .toList
                 .sortBy(_._1)
                 .mkString(", ")}
-               |  equal up to SnapshotV3.canonical: view ${all.count(
+               |  equal up to SnapshotV4.canonical: view ${all.count(
                 _._2.sameView
               )}, structural ${all
                 .count(_._2.equal)}

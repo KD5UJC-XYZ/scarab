@@ -171,14 +171,14 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
     */
   def warmHeaders[F[_]: Async](
       batch: Vector[Header],
-      state: xyz.kd5ujc.scarab.consensus.PraosState,
+      state: xyz.kd5ujc.scarab.consensus.state.ProtocolState,
       config: PraosConfig
   ): F[Unit] =
     val shelley = batch.collect { case h: Header.Shelley => h }
     if shelley.isEmpty then Async[F].unit
     else
       val epoch = config.geometry.epochOf(shelley.head.slot)
-      val nonce = xyz.kd5ujc.scarab.consensus.Praos.tick(state, epoch).epochNonce
+      val nonce = xyz.kd5ujc.scarab.consensus.Praos.tick(state, shelley.head.era, epoch).epochNonce
       shelley
         .parTraverseN(parallelism)(h =>
           Async[F].blocking(

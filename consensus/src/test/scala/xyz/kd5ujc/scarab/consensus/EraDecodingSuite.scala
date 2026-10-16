@@ -7,7 +7,8 @@ import java.time.Instant
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtNHeader}
 import xyz.kd5ujc.scarab.ledger.PoolDistribution
-import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig, PraosState}
+import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold.Fraction
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
@@ -106,7 +107,7 @@ class EraDecodingSuite extends FunSuite:
     val tpraos = blocks("fixtures/preview/alonzo-first-20.hex").head.header
     val geometry = EpochGeometry(Instant.EPOCH, 1000, 86400, 432, BigDecimal("0.05"))
     val config = PraosConfig(geometry, 129600, 62, Fraction.checked(1, 20).toOption.get)
-    val state = PraosState(0, null, null, null, null, null, Map.empty)
+    val state = ProtocolState.initial(Era.Conway, Bytes.empty)
     val result = Praos.update(state, tpraos, PoolDistribution(Map.empty, Map.empty), config)
     assert(result.left.exists(_.contains("TPraos")), result.toString)
   }

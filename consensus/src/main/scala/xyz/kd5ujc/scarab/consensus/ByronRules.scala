@@ -7,6 +7,8 @@ import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesis, Header}
 import xyz.kd5ujc.scarab.ledger.Header.ByronSignature
 import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, LedgerState}
 import xyz.kd5ujc.scarab.ledger.byron.*
+import xyz.kd5ujc.scarab.consensus.state.{PBftSigner, PBftState}
+import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, SlotNo}
 import xyz.kd5ujc.scarab.crypto.witness.{StrictEd25519, VerificationResult}
 
 /** How a Byron block was established. Every main block is fully checked (there is no "unchecked"
@@ -28,19 +30,6 @@ enum ByronCheck:
 
 /** Byron chain-follow state: the last accepted header. */
 final case class ByronTip(hash: Bytes, epoch: BigInt, slot: BigInt, boundary: Boolean)
-
-/** The PBFT signing window: the last `k` blocks' (slot, genesis key hash) pairs. */
-final case class PBftState(signers: Vector[(BigInt, Bytes)]):
-  def lastSignedSlot: Option[BigInt] = signers.lastOption.map(_._1)
-  def countSignedBy(genesisKey: Bytes): Int = signers.count(_._2 == genesisKey)
-
-  /** `PBftState.append`: the oldest signer leaves once the window is full. */
-  def append(slot: BigInt, genesisKey: Bytes, windowSize: Int): PBftState =
-    val grown = signers :+ ((slot, genesisKey))
-    PBftState(if signers.size == windowSize then grown.tail else grown)
-
-object PBftState:
-  val empty: PBftState = PBftState(Vector.empty)
 
 /** What the Byron era needs besides the genesis: the node configuration's network magic requirement
   * and PBFT signature threshold, the configured Shelley epoch (a `Test` override) and how the Byron
@@ -143,18 +132,22 @@ object ByronRules:
       genesisKey <- ticked.delegation
         .delegatorOf(delegate)
         .toRight(s"signer ${delegate.hex.take(16)} is not a delegate of any genesis key")
+      slot <- SlotNo.fromBigInt(header.slot).leftMap(_.toString)
+      signer <- KeyHash.fromBytes[Genesis](genesisKey).leftMap(_.toString)
+      lastSigned = state.pbft.lastSignedSlot.map(_.toBigInt)
       _ <- Either.cond(
-        state.pbft.lastSignedSlot.forall(_ <= header.slot),
+        lastSigned.forall(_ <= header.slot),
         (),
-        s"slot ${header.slot} is below the last signed slot ${state.pbft.lastSignedSlot.getOrElse(0)}"
+        s"slot ${header.slot} is below the last signed slot ${lastSigned.getOrElse(0)}"
       )
       k = config.ledger.genesis.securityParam
-      pbft = state.pbft.append(header.slot, genesisKey, k)
+      pbft = state.pbft.append(PBftSigner(slot, signer), k)
       threshold = math.floor(config.signatureThreshold * k.toDouble).toLong
+      signed = pbft.countSignedBy(signer).toBigInt
       _ <- Either.cond(
-        pbft.countSignedBy(genesisKey) <= threshold,
+        signed <= threshold,
         (),
-        s"genesis key ${genesisKey.hex.take(16)} signed ${pbft.countSignedBy(genesisKey)} of the last $k blocks, above the threshold $threshold"
+        s"genesis key ${genesisKey.hex.take(16)} signed $signed of the last $k blocks, above the threshold $threshold"
       )
       body <- ByronBody.decode(block.body)
       ledger <- ByronLedger

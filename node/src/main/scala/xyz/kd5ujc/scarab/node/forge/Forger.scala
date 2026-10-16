@@ -16,7 +16,9 @@ import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig, PraosState}
+import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Epoch, LedgerGlobals, LedgerState}
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.UtxoStore
@@ -197,7 +199,7 @@ final class Forger[F[_]: Async](
         .blocking(
           Leadership.check(
             slot,
-            crossed.praos.epochNonce,
+            crossed.protocol.epochNonce,
             credentials.vrf,
             stake,
             pools.total,
@@ -386,7 +388,7 @@ final class Forger[F[_]: Async](
             val ledger = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
               Epoch.boundary(s, e, globals)
             )
-            Forger.Crossed(key, ledger, Praos.tick(state.praos, epoch))
+            Forger.Crossed(key, ledger, Praos.tick(state.protocol, Era.Conway, epoch))
           }
           _ <- cache.set(Some(c))
         yield c
@@ -426,11 +428,11 @@ object Forger:
     */
   private val MaxReportedMissed = 1000
 
-  /** The tip's ledger and Praos state carried into an epoch. */
+  /** The tip's ledger and chain-dependent state carried into an epoch. */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
       ledger: LedgerState,
-      praos: PraosState
+      protocol: ProtocolState
   )
 
   /** A block we forged and adopted, kept to notice if it is replaced later. */

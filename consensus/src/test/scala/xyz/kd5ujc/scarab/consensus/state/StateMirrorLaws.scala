@@ -8,7 +8,6 @@ import org.scalacheck.Prop.{forAll, propBoolean}
 import org.typelevel.discipline.Laws
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
   Gap,
@@ -150,56 +149,38 @@ object StateTampers:
         withHeader(m, m.ext.headerState.copy(chainDep = d))
       )
     )
-    val extras: Option[ConsensusExtras] = m.extras match
-      case _: ConsensusExtras.InByron =>
-        Some(
-          ConsensusExtras.InShelley(
-            NodeExtras(
-              s.ledger.plutus,
-              None,
-              None,
-              Map.empty,
-              false,
-              false,
-              SnapshotsResidue.empty,
-              None,
-              DroppedParams(ParamFields.of(s.ledger.params), ParamFields.of(s.ledger.params)),
-              Residue.empty
-            ),
-            s.byron,
-            s.boot,
-            ProtocolExtras.OfPraos(0)
-          )
+    val extras: MirrorExtras = m.extras match
+      case _: MirrorExtras.InByron =>
+        MirrorExtras.InShelley(
+          NodeExtras(
+            s.ledger.plutus,
+            None,
+            None,
+            Map.empty,
+            false,
+            false,
+            SnapshotsResidue.empty,
+            None,
+            DroppedParams(ParamFields.of(s.ledger.params), ParamFields.of(s.ledger.params)),
+            Residue.empty
+          ),
+          s.extras
         )
-      case _: ConsensusExtras.InShelley => Some(ConsensusExtras.InByron(s.ledger, s.praos, s.boot))
-    val wrongKind = extras.map(e =>
-      Tampered(
-        "extras of the other kind of state",
-        StateMirrorError.ExtrasMismatch(era),
-        m.copy(extras = e)
-      )
+      case _: MirrorExtras.InShelley =>
+        MirrorExtras.InByron(s.ledger, s.header.chainDep.state, s.boot, s.extras.protocol)
+    val wrongKind = Tampered(
+      "extras of the other kind of state",
+      StateMirrorError.ExtrasMismatch(era),
+      m.copy(extras = extras)
     )
-    val protocol = m.extras match
-      case ConsensusExtras.InShelley(l, b, bo, ProtocolExtras.OfTPraos(e, _)) =>
-        Some(ConsensusExtras.InShelley(l, b, bo, ProtocolExtras.OfPraos(e)))
-      case ConsensusExtras.InShelley(l, b, bo, ProtocolExtras.OfPraos(e)) =>
-        Some(ConsensusExtras.InShelley(l, b, bo, ProtocolExtras.OfTPraos(e, Nonce.Neutral)))
-      case _: ConsensusExtras.InByron => None
-    val wrongProtocol = protocol.map(e =>
-      Tampered(
-        "protocol extras of the other protocol",
-        StateMirrorError.ChainDepFamily(era),
-        m.copy(extras = e)
-      )
-    )
-    List(eraMismatch, wrongKind, wrongProtocol).flatten
+    List(eraMismatch, Some(wrongKind)).flatten
 
   /** The derived-piece tampers of the ledger side (`MirrorLaws.tampers`), applied to the ledger
     * state inside the telescope: the consensus side must pass the ledger side's refusal on.
     */
   private def ledger(m: MirrorState): List[Tampered] =
     (m.ext.ledgerState.state, m.extras) match
-      case (i: EraLedgerState.InShelleyEra[e], ConsensusExtras.InShelley(lx, b, bo, p)) =>
+      case (i: EraLedgerState.InShelleyEra[e], MirrorExtras.InShelley(lx, consensus)) =>
         given ShelleyBasedEra[e] = i.era
         MirrorLaws.tampers[e].flatMap { t =>
           for
@@ -211,7 +192,7 @@ object StateTampers:
           yield Tampered(
             s"the ledger side: ${t.name}",
             StateMirrorError.Ledger(MirrorError.DerivedMismatch(t.field)),
-            withLedger(m, telescope).copy(extras = ConsensusExtras.InShelley(bad.extras, b, bo, p))
+            withLedger(m, telescope).copy(extras = MirrorExtras.InShelley(bad.extras, consensus))
           )
         }
       case _ => Nil
@@ -255,8 +236,8 @@ final class StateMirrorLaws[F[_]](
           val result = to(l)
           result.exists { m =>
             val shelley = m.value.extras match
-              case _: ConsensusExtras.InShelley => true
-              case _: ConsensusExtras.InByron   => false
+              case _: MirrorExtras.InShelley => true
+              case _: MirrorExtras.InByron   => false
             m.gaps == StateMirror.gaps(env, l.state) && m.gaps.contains(
               Gap.ShelleyTransition
             ) == shelley

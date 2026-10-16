@@ -146,7 +146,7 @@ object ChainStorage:
       /** The CPU pool the replay runs on (D8); without one, on the calling fiber's pool. */
       compute: Option[Compute[F]] = None,
       /** Brings the snapshot files of an older format to the current one, before they are opened
-        * (once the identity of the database is checked): [[SnapshotMigration.toV3]].
+        * (once the identity of the database is checked): [[SnapshotMigration.toCurrent]].
         */
       snapshotMigration: Option[SnapshotMigration[F]] = None
   )(using

@@ -43,7 +43,7 @@ object SnapshotRefusal:
 
 /** The content of a snapshot file, without its checksum: what [[FileLedgerSnapshots]] stores around
   * (the SHA-256 of the content closes the file, and the file is written atomically). The format
-  * decides everything inside: [[SnapshotV3]] is the Haskell ledger state with a sidecar, and
+  * decides everything inside: [[SnapshotV4]] is the Haskell ledger state with a sidecar, and
   * [[SnapshotV2]] the one-codec layout of the builds before it (kept to read, and for the stores'
   * own tests).
   *

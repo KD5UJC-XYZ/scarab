@@ -22,6 +22,11 @@ import xyz.kd5ujc.scarab.protocol.Era
 final case class Bound(timePs: BigInt, slot: BigInt, epoch: BigInt) derives Eq, Show
 
 object Bound:
+  /** The bound of a telescope the node holds before it is put on the era history: see
+    * [[Telescope.unplaced]].
+    */
+  val zero: Bound = Bound(0, 0, 0)
+
   val timePsLens: Lens[Bound, BigInt] = Focus[Bound](_.timePs)
   val slotLens: Lens[Bound, BigInt] = Focus[Bound](_.slot)
   val epochLens: Lens[Bound, BigInt] = Focus[Bound](_.epoch)
@@ -98,6 +103,19 @@ object Telescope:
       broken = past.map(_.end).zip(starts).indexWhere(_ =!= _)
       _ <- Either.cond(broken < 0, (), TelescopeError.Discontinuity(broken))
     yield new Telescope(era, past, current)
+
+  /** The telescope of `era` that has not been put on the era history: every bound at
+    * [[Bound.zero]]. This is how the node holds its chain-dependent state (it has no use for the
+    * bounds, which are a function of the configuration and of the eras it has seen begin,
+    * `EraHistory.summary`); [[StateMirror]] gives it the real ones. The caller chooses an `era`
+    * that the state can be in (see [[ChainDepState.firstEra]]); nothing here checks it.
+    */
+  def unplaced[A](era: Era, state: A): Telescope[A] =
+    new Telescope(
+      era,
+      Vector.fill(era.index)(Past(Bound.zero, Bound.zero)),
+      Current(Bound.zero, state)
+    )
 
   /** The telescope of the first era: no past. */
   def first[A: EraIndexed](start: Bound, state: A): Either[TelescopeError, Telescope[A]] =

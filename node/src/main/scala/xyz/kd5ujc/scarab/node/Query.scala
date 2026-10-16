@@ -9,6 +9,8 @@ import fs2.io.net.Network
 import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.state.KeyHash.bytes
+import xyz.kd5ujc.scarab.ledger.state.Word64.toBigInt
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
@@ -51,15 +53,19 @@ object Projection:
   )
 
   def node(p: ChainSync.Point, n: NodeState): Json =
+    val praos = n.protocol.view
     ledger(p, n.ledger).deepMerge(
       Json.obj(
         "protocolState" -> Json.obj(
-          "epochNonce" -> n.praos.epochNonce.render.asJson,
-          "evolvingNonce" -> n.praos.evolving.render.asJson,
-          "candidateNonce" -> n.praos.candidate.render.asJson,
-          "labNonce" -> n.praos.lab.render.asJson,
-          "lastEpochBlockNonce" -> n.praos.lastEpochBlock.render.asJson,
-          "oCertCounters" -> coinMap(n.praos.counters, (b: Bytes) => b.hex)
+          "epochNonce" -> praos.epochNonce.render.asJson,
+          "evolvingNonce" -> praos.evolvingNonce.render.asJson,
+          "candidateNonce" -> praos.candidateNonce.render.asJson,
+          "labNonce" -> praos.labNonce.render.asJson,
+          "lastEpochBlockNonce" -> praos.lastEpochBlockNonce.render.asJson,
+          "oCertCounters" -> coinMap(
+            praos.ocertCounters.iterator.map((k, c) => k.bytes -> c.toBigInt).toMap,
+            (b: Bytes) => b.hex
+          )
         ),
         "stakeDistrib" -> Json.obj(
           "total" -> n.ledger.poolDistribution.activeStake.max(BigInt(1)).asJson,

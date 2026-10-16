@@ -196,15 +196,20 @@ class ByronPreprodSuite extends FunSuite:
   test(
     "the Byron state, and the Shelley state after the hand-over, survive a snapshot round trip"
   ) {
-    import xyz.kd5ujc.scarab.storage.{LegacyV2Format, StateSnapshot}
-    val format = LegacyV2Format.format[cats.Id]
+    import xyz.kd5ujc.scarab.legacy
     Vector(1, 20, byronCount, byronCount + 5).foreach { i =>
-      val snapshot = StateSnapshot(Option(ref(i - 1)), states(i))
-      val back = format.encode(snapshot).toOption.toRight("refused").flatMap { bytes =>
-        format.decode(bytes).left.map(_.message)
-      }
-      assertEquals(back.map(_.state.byron), Right(snapshot.state.byron), s"state before block $i")
-      assertEquals(back.map(_.state.ledger.utxo.size), Right(snapshot.state.ledger.utxo.size))
+      val state = states(i)
+      val old = legacy.SnapshotV2.encode(
+        legacy.StateSnapshot(Option(ref(i - 1)), legacy.Downgrade.node(state))
+      )(using legacy.NodeCodecs.nodeSnapshot)
+      val back = legacy.SnapshotV2
+        .decodeNode(old)
+        .fold(e => fail(e.message), identity)
+      val upgraded = legacy.Upgrade
+        .node(back.state, setup.praos.forks, back.anchor)
+        .fold(e => fail(e.toString), identity)
+      assertEquals(upgraded.byron, state.byron, s"state before block $i")
+      assertEquals(upgraded.ledger.utxo.size, state.ledger.utxo.size)
     }
   }
 

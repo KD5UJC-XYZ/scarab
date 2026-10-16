@@ -8,6 +8,8 @@ import cats.syntax.all.*
 import munit.DisciplineSuite
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
+import xyz.kd5ujc.scarab.ledger.Nonce
+import xyz.kd5ujc.scarab.ledger.state.{Sorted, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The consensus side of the mirror: the laws of the whole conversion on generated states of the
@@ -69,14 +71,12 @@ class StateMirrorSuite extends DisciplineSuite:
       "the tip of the ledger state",
       "the PBFT count of a genesis key",
       "the header telescope in another era",
-      "extras of the other kind of state",
-      "protocol extras of the other protocol"
+      "extras of the other kind of state"
     )
     val seen = applied.reduce(_ ++ _)
     assertEquals(structural -- seen, Set.empty[String])
-    // the protocols each see their own: PBFT counts in Byron, last slots and extras after it
+    // the protocols each see their own: PBFT counts in Byron, last slots after it
     assert(applied.head.contains("the PBFT count of a genesis key"))
-    assert(applied(1).contains("protocol extras of the other protocol"))
     assert(applied(2).contains("the last slot of the chain-dependent state"))
     assert(seen.exists(_.startsWith("the ledger side:")))
   }
@@ -117,19 +117,22 @@ class StateMirrorSuite extends DisciplineSuite:
     assertEquals(back.map(_._1), Right(l.anchor))
   }
 
-  test("a state whose Praos counter is out of range is refused with the vocabulary") {
+  test("a state whose chain-dependent state is of another protocol than its era's is refused") {
     val l = sample(NodeStateGen.inPraosEras, 1).head
-    val bad = l.state.copy(praos =
-      l.state.praos.copy(counters =
-        Map(
-          l.state.praos.counters.headOption.fold(
-            xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill(28)(1.toByte))
-          )(_._1) -> BigInt(-1)
+    val era = StateMirror.eraOf(env, l.state)
+    val tpraos = ChainDepState.TPraos(
+      TPraosState(
+        WithOrigin.Origin,
+        TPraosLedgerState(
+          PrtclState(Sorted.empty, Nonce.Neutral, Nonce.Neutral),
+          TicknState(Nonce.Neutral, Nonce.Neutral),
+          Nonce.Neutral
         )
       )
     )
-    assert(run(mirror.toMirror(l.anchor, bad)).left.exists {
-      case StateMirrorError.Ledger(xyz.kd5ujc.scarab.ledger.state.MirrorError.Vocab(_)) => true
-      case _                                                                            => false
-    })
+    val bad = l.state.copy(header = HeaderState.live(tpraos))
+    assertEquals(
+      run(mirror.toMirror(l.anchor, bad)).left.toOption,
+      Some(StateMirrorError.ChainDepFamily(era))
+    )
   }

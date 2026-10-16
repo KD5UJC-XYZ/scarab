@@ -19,8 +19,9 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 // The chain-dependent state of the three protocols a Cardano chain has run: PBFT (Byron), TPraos
 // (Shelley to Alonzo) and Praos (Babbage, Conway), as the telescope of `HeaderState` holds it. Field
-// orders are the Haskell records'. The names are the Haskell names, and clash with the node's own
-// `consensus.PraosState` / `PBftState` (the mirror's stage S5 converts between them).
+// orders are the Haskell records'. The names are the Haskell names. Since step 2, jump 1 (J1.5) these
+// are the types the node itself runs on: `Praos`, `TPraos` and the PBFT window of `ByronRules` evolve
+// them, and `NodeState` holds them in its `HeaderState`.
 
 /** `PBftSigner` (`Protocol/PBFT/State.hs:146-149`): who signed the block of a slot. */
 final case class PBftSigner(slot: SlotNo, genesisKey: KeyHash[Genesis]) derives Eq, Show
@@ -40,6 +41,36 @@ final case class PBftState(
       Show
 
 object PBftState:
+  /** No block signed yet. */
+  val empty: PBftState = PBftState(Vector.empty, Sorted.empty[KeyHash[Genesis], Word64])
+
+  extension (p: PBftState)
+    /** The slot of the newest signer in the window. */
+    def lastSignedSlot: Option[SlotNo] = p.inWindow.lastOption.map(_.slot)
+
+    /** How many of the blocks in the window `genesisKey` signed. */
+    def countSignedBy(genesisKey: KeyHash[Genesis]): Word64 =
+      p.counts.getOrElse(genesisKey, Word64.zero)
+
+    /** `PBftState.append` (`State.hs:125-139`): the newest signer joins, and the oldest leaves once
+      * the window holds `windowSize`. The counts are kept up to date, not recomputed; they stay
+      * those of [[ofWindow]] (a key with no signer in the window has no entry).
+      */
+    def append(signer: PBftSigner, windowSize: Int): PBftState =
+      val joined = p.counts.updated(
+        signer.genesisKey,
+        Word64.fromUnsigned(p.countSignedBy(signer.genesisKey).bits + 1)
+      )
+      if p.inWindow.size == windowSize then
+        val oldest = p.inWindow.head
+        val left = Word64.fromUnsigned(joined.getOrElse(oldest.genesisKey, Word64.zero).bits - 1)
+        PBftState(
+          p.inWindow.tail :+ signer,
+          if left.isZero then joined.removed(oldest.genesisKey)
+          else joined.updated(oldest.genesisKey, left)
+        )
+      else PBftState(p.inWindow :+ signer, joined)
+
   /** The state of a window of signers, with the counts it implies. */
   def ofWindow(window: Vector[PBftSigner]): PBftState =
     PBftState(
@@ -135,6 +166,14 @@ enum ChainDepState derives Eq, Show:
   case Praos(state: PraosState)
 
 object ChainDepState:
+  /** The first era whose state this is: the era a telescope is placed in while its bounds are
+    * unknown ([[Telescope.unplaced]]).
+    */
+  def firstEra(state: ChainDepState): Era = state match
+    case PBft(_)   => Era.Byron
+    case TPraos(_) => Era.Shelley
+    case Praos(_)  => Era.Babbage
+
   /** The state of a protocol is in the eras that run it: PBFT in Byron, TPraos from Shelley to
     * Alonzo, Praos from Babbage on (`Era.usesTPraos`).
     */

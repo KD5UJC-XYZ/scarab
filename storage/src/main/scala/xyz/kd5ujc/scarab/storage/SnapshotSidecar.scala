@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import xyz.kd5ujc.scarab.consensus.state.ConsensusExtras
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.ledger.{ProtocolParams, Utxo}
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorExtras}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
+import xyz.kd5ujc.scarab.ledger.{LedgerState, ProtocolParams, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.Gap
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** What a V3 snapshot holds that the Haskell ledger state beside it has no place for.
+/** What a V4 snapshot holds that the Haskell ledger state beside it has no place for.
   *
   * @param anchor
   *   the last block applied (none: genesis). In a Shelley-based era the header state of the Haskell
@@ -34,10 +34,12 @@ final case class SnapshotSidecar(
 object SnapshotSidecar:
   /** The part by family of era. */
   enum Chain:
-    /** The chain is still in Byron, whose ledger state the mirror does not model: the node state
-      * whole, and no Haskell section.
+    /** The chain is still in Byron, whose ledger state the mirror does not model, so there is no
+      * Haskell section: the node state whole, less the header state, which is its chain-dependent
+      * state alone ([[xyz.kd5ujc.scarab.consensus.state.HeaderState.live]]; while the chain is in
+      * Byron it is the state Shelley will start from, the PBFT window being in the extras).
       */
-    case InByron(state: NodeState)
+    case InByron(ledger: LedgerState, pending: ChainDepState, extras: ConsensusExtras)
 
     /** A Shelley-based era.
       *
@@ -54,12 +56,15 @@ object SnapshotSidecar:
         utxo: Utxo,
         params: ProtocolParams,
         prevParams: Option[ProtocolParams],
-        extras: ConsensusExtras.InShelley
+        extras: MirrorExtras.InShelley
     )
 
   import NodeCodecs.given
 
   given codec: Codec[SnapshotSidecar] = Codec.auto
+
+  /** Bytes of the fingerprint. */
+  val FingerprintSize = 8
 
   /** The schema fingerprint stored in front of the sidecar. */
   def fingerprint: Array[Byte] =
@@ -67,6 +72,3 @@ object SnapshotSidecar:
       .getInstance("SHA-256")
       .digest(codec.shape.getBytes("UTF-8"))
       .take(FingerprintSize)
-
-  /** Bytes of the fingerprint. */
-  val FingerprintSize = 8

@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
@@ -22,13 +22,7 @@ import io.circe.{Json, parser}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{
-  ByronRules,
-  ByronRulesConfig,
-  HardForkConfig,
-  Praos,
-  PraosConfig
-}
+import xyz.kd5ujc.scarab.consensus.{ByronRules, ByronRulesConfig, HardForkConfig, PraosConfig}
 import xyz.kd5ujc.scarab.ledger.{GenesisState, LedgerGlobals, LiteLedger}
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
@@ -266,7 +260,12 @@ object NodeSetup:
       globals,
       praos,
       NodeState(
-        Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))),
+        // the protocol of the era the chain starts in (a Byron start holds the state Shelley starts from)
+        ProtocolState.initial(
+          if byronRules.isDefined then Era.Byron
+          else praos.forks.eraAt(initial.epoch, initial.params.protocolMajor),
+          Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes))
+        ),
         initial,
         BootstrapState.initial(lite),
         byronRules.fold(ByronState.initial)((ledger, _) => ByronState.starting(ledger))

@@ -33,17 +33,19 @@ object SnapshotMigration:
   object Report:
     val empty: Report = Report(Nil, Nil)
 
-  /** The migration of the snapshots of the node state to V3: version 1 (written before the packages
-    * were renamed) is first brought to version 2 in memory (its header, and the checksum), version
-    * 2 is decoded with [[legacy.SnapshotV2]] and written again as [[SnapshotV3]].
+  /** The migration of the snapshots of the node state to the current format (V4): a version 1 file
+    * (written before the packages were renamed) and a version 2 file are decoded with the frozen
+    * reader of the `legacy` module and brought to the live state, a version 3 file keeps its
+    * Haskell section and has its sidecar converted ([[SnapshotV4.migrated]]); each is written again
+    * as V4 under the same name.
     *
     * A version this build does not know, in a file that starts like a snapshot, refuses the whole
     * run before any file is rewritten (it was written by a newer build). A file of a known version
-    * that does not convert (corrupt, another schema, a state the mirror refuses) is left alone and
-    * reported: it is a snapshot that will be skipped, which costs a replay at worst. Nothing is
-    * ever replayed here.
+    * that does not convert (corrupt, another schema, a state the live types or the mirror refuse)
+    * is left alone and reported: it is a snapshot that will be skipped, which costs a replay at
+    * worst. Nothing is ever replayed here.
     */
-  def toV3[F[_]: Sync](using
+  def toCurrent[F[_]: Sync](using
       env: Ask[F, ConsensusMirrorEnv],
       raise: cats.mtl.Raise[F, StorageError]
   ): NodeSnapshotMigration[F] = new NodeSnapshotMigration[F]
@@ -56,8 +58,6 @@ object SnapshotMigration:
     private val F = Sync[F]
     val kind: FileKind = FileKind.SnapshotFile
     private val current = kind.current
-
-    private val v3 = SnapshotV3.format[F]
 
     /** The version of the file, or why it has none. */
     private def probe(file: Path): F[Either[StorageError, FormatVersion]] =
@@ -80,54 +80,35 @@ object SnapshotMigration:
     def detect(file: Path): F[FormatVersion] =
       probe(file).flatMap(_.fold(_.raise[F, FormatVersion], F.pure))
 
-    /** The file at `at` (version 1 or 2) rewritten as V3, or why it was not. */
-    private def convert(file: Path, at: FormatVersion): F[Either[SnapshotRefusal, Unit]] =
-      AtomicFile.guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath)).flatMap {
-        raw =>
-          FileLedgerSnapshots.verified(raw).leftMap(SnapshotRefusal.Unreadable(_)) match
-            case Left(refusal) => F.pure(Left(refusal))
-            case Right(content) =>
-              val atV2 =
-                if at == FormatVersion.V1 then legacy.SnapshotV2.upgraded(content) else content
-              (for
-                snapshot <- F
-                  .blocking(legacy.SnapshotV2.decodeNode(atV2))
-                  .map(_.map(s => StateSnapshot(s.anchor, legacy.Upgrade.node(s.state))))
-                  .map(_.leftMap(SnapshotRefusal.Unreadable(_)))
-                written <- snapshot.flatTraverse(v3.encode(_))
-                _ <- written
-                  .traverse_(c => AtomicFile.replace[F](file, FileLedgerSnapshots.closed(c)))
-              yield written.void)
-      }
+    /** The file rewritten as the current version, or why it was not. */
+    private def convert(file: Path): F[Either[SnapshotRefusal, Unit]] =
+      for
+        mirrorEnv <- env.ask[ConsensusMirrorEnv]
+        raw <- AtomicFile.guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
+        result <- FileLedgerSnapshots.verified(raw).leftMap(SnapshotRefusal.Unreadable(_)) match
+          case Left(refusal) => F.pure(Left(refusal))
+          case Right(content) =>
+            F.blocking(SnapshotV4.migrated(mirrorEnv, content)).flatMap {
+              case Left(refusal) => F.pure(Left(refusal))
+              case Right(migrated) =>
+                AtomicFile.replace[F](file, FileLedgerSnapshots.closed(migrated)).map(Right(_))
+            }
+      yield result
 
-    /** One step, as [[Migrate]] steps: V1 to V2 rewrites the header, V2 to V3 converts; a snapshot
-      * that does not convert raises here, where [[run]] reports it instead.
+    /** One step, as [[Migrate]] steps. Every older version goes straight to the current one (the
+      * intermediate versions are not written), so the steps after the first find the file current;
+      * a snapshot that does not convert raises here, where [[run]] reports it instead.
       */
-    def step(file: Path, from: FormatVersion): F[Unit] = from match
-      case FormatVersion.V1 =>
-        AtomicFile
-          .guard[F, Array[Byte]](file.toString)(JFiles.readAllBytes(file.toNioPath))
-          .flatMap { raw =>
-            FileLedgerSnapshots
-              .verified(raw)
-              .fold(
-                _.raise[F, Unit],
-                content =>
-                  AtomicFile.replace[F](
-                    file,
-                    FileLedgerSnapshots.closed(legacy.SnapshotV2.upgraded(content))
-                  )
-              )
-          }
-      case FormatVersion.V2 =>
-        convert(file, from).flatMap(
+    def step(file: Path, from: FormatVersion): F[Unit] =
+      if from == current then F.unit
+      else
+        convert(file).flatMap(
           _.fold(
             r =>
               StorageError.Corrupt(file.toString, s"cannot be migrated: ${r.show}").raise[F, Unit],
             F.pure
           )
         )
-      case FormatVersion.V3 => F.unit
 
     def run(dir: Path): F[Report] =
       for
@@ -156,7 +137,7 @@ object SnapshotMigration:
             F.pure(Left(Refused(name, SnapshotRefusal.Unreadable(error))))
           case (_, Right(version)) if version == current => F.pure(Right(None))
           case (name, Right(version)) =>
-            convert(dir / name, version).map {
+            convert(dir / name).map {
               case Left(refusal) => Left(Refused(name, refusal))
               case Right(())     => Right(Some(version))
             }

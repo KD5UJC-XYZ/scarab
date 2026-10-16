@@ -43,7 +43,7 @@ object LedgerSnapshots:
   * }}}
   *
   * The content is a [[SnapshotFormat]]'s and starts with the magic that names the format (see
-  * [[SnapshotV3]]); the store adds the checksum and does the rest: the atomic write, the pruning,
+  * [[SnapshotV4]]); the store adds the checksum and does the rest: the atomic write, the pruning,
   * and the restore of the newest snapshot that reads. A file of an older format or schema fails
   * with `VersionMismatch` instead of decoding garbage; recovery then falls back to an older
   * snapshot or, with none usable, to replaying the immutable blocks from genesis. Files of the

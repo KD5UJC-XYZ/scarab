@@ -51,5 +51,11 @@ object HeaderState:
   given Show[HeaderState] =
     Show.show(h => s"HeaderState(tip = ${h.tip.show}, chainDep = ${h.chainDep.show})")
 
+  /** The header state as the node holds it: the origin as tip and `chainDep` in a telescope of the
+    * first era of its protocol that is not placed on the era history ([[Telescope.unplaced]]).
+    */
+  def live(chainDep: ChainDepState): HeaderState =
+    HeaderState(WithOrigin.Origin, Telescope.unplaced(ChainDepState.firstEra(chainDep), chainDep))
+
   val tip: Lens[HeaderState, WithOrigin[AnnTip]] = Focus[HeaderState](_.tip)
   val chainDep: Lens[HeaderState, Telescope[ChainDepState]] = Focus[HeaderState](_.chainDep)

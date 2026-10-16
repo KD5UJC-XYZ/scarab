@@ -6,7 +6,8 @@ import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.HeaderError
-import xyz.kd5ujc.scarab.consensus.PraosState
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState}
+import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import munit.ScalaCheckSuite
@@ -25,8 +26,8 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   private def ref(h: Header.Shelley) = BlockRef(h.slot, h.hash, h.blockNo)
 
   /** The header state before block `i`. */
-  private def before(i: Int): PraosState =
-    if i == 0 then forged.genesis.praos else forged.states(i - 1).praos
+  private def before(i: Int): ProtocolState =
+    if i == 0 then forged.genesis.protocol else forged.states(i - 1).protocol
 
   /** The state and tip of the chain after block `i - 1 - lag` (the genesis for a negative index).
     */
@@ -42,7 +43,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     forged.headers.zipWithIndex.foreach { case (h, i) =>
       val (state, tip) = anchor(i, 0)
       rules.validate(state, tip, before(i), h) match
-        case Outcome.Valid(next) => assertEquals(next, forged.states(i).praos, s"block $i")
+        case Outcome.Valid(next) => assertEquals(next, forged.states(i).protocol, s"block $i")
         case other               => fail(s"block $i: $other")
     }
   }
@@ -51,7 +52,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     forAll(Gen.choose(0, forged.headers.size - 1), Gen.choose(0, 3)) { (i, lag) =>
       val (state, tip) = anchor(i, lag)
       rules.validate(state, tip, before(i), forged.headers(i)) ==
-        Outcome.Valid(forged.states(i).praos)
+        Outcome.Valid(forged.states(i).protocol)
     }
   }
 
@@ -109,7 +110,16 @@ class HeaderRulesSuite extends ScalaCheckSuite:
   test("an operational certificate counter that went backwards is refused") {
     val i = 12
     val (state, tip) = anchor(i, 0)
-    val ahead = before(i).copy(counters = before(i).counters.map { case (k, v) => k -> (v + 5) })
+    val ahead = before(i).dep match
+      case ChainDepState.Praos(p) =>
+        before(i).copy(dep =
+          ChainDepState.Praos(
+            p.copy(ocertCounters =
+              p.ocertCounters.transform((_, v) => Word64.fromUnsigned(v.bits + 5))
+            )
+          )
+        )
+      case other => fail(s"not a Praos state: $other")
     assert(before(i).counters.nonEmpty)
     rules.validate(state, tip, ahead, forged.headers(i)) match
       case Outcome.Invalid(HeaderError.Praos(r)) => assert(r.contains("counter"), r)
@@ -127,7 +137,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     val (near, nearTip) = anchor(i, 2)
     assertEquals(
       rules.validate(near, nearTip, before(i), forged.headers(i)),
-      Outcome.Valid(forged.states(i).praos)
+      Outcome.Valid(forged.states(i).protocol)
     )
   }
 
@@ -153,8 +163,8 @@ class HeaderRulesSuite extends ScalaCheckSuite:
       prevHash = None
     )
     assertEquals(
-      rules.validate(forged.genesis, None, forged.genesis.praos, h),
-      Outcome.Unchecked("Byron header: validated with its block", Some(forged.genesis.praos))
+      rules.validate(forged.genesis, None, forged.genesis.protocol, h),
+      Outcome.Unchecked("Byron header: validated with its block", Some(forged.genesis.protocol))
     )
   }
 
@@ -175,7 +185,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
         crossing.headers(last).blockNo
       )
     )
-    var prev = anchorState.praos
+    var prev = anchorState.protocol
     val window = (firstOfNext until crossing.headers.size)
       .takeWhile(i =>
         crossing.headers(i).slot <= crossing.headers(last).slot + geometry.stabilityWindow
@@ -184,7 +194,7 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     window.foreach { i =>
       rules.validate(anchorState, anchorTip, prev, crossing.headers(i)) match
         case Outcome.Valid(next) =>
-          assertEquals(next, crossing.states(i).praos, s"block $i")
+          assertEquals(next, crossing.states(i).protocol, s"block $i")
           prev = next
         case other => fail(s"block $i: $other")
     }

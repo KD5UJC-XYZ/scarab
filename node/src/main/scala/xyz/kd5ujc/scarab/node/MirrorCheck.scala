@@ -5,7 +5,7 @@ import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.{
-  ConsensusExtras,
+  MirrorExtras,
   ConsensusMirrorEnv,
   StateMirror,
   StateMirrorError
@@ -73,8 +73,8 @@ object MirrorCheck:
           case Left(e) => Outcome.Refused(era, Stage.FromMirror, e)
           case Right((back, restored)) =>
             val residueEmpty = mirrored.value.extras match
-              case ConsensusExtras.InShelley(ledger, _, _, _) => ledger.residue.isEmpty
-              case _: ConsensusExtras.InByron                 => true
+              case MirrorExtras.InShelley(ledger, _) => ledger.residue.isEmpty
+              case _: MirrorExtras.InByron           => true
             val retracts =
               back == anchor && sameState(restored, StateMirror.normalised(env, s))
             Outcome.Checked(era, mirrored.gaps, residueEmpty, retracts)

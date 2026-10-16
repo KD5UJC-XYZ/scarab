@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.ledger.Header
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.*
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.ledger.HeaderError
 import xyz.kd5ujc.scarab.ledger.LedgerView
 import xyz.kd5ujc.scarab.ledger.StakeView
@@ -39,16 +40,16 @@ import xyz.kd5ujc.scarab.ledger.*
   * verified twice.
   */
 final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
-    extends HeaderRules[NodeState, PraosState]:
+    extends HeaderRules[NodeState, ProtocolState]:
 
-  def at(state: NodeState): PraosState = state.praos
+  def at(state: NodeState): ProtocolState = state.protocol
 
   def validate(
       anchor: NodeState,
       tip: Option[BlockRef],
-      prev: PraosState,
+      prev: ProtocolState,
       header: Header
-  ): Outcome[PraosState] = header match
+  ): Outcome[ProtocolState] = header match
     case _: Header.Byron =>
       Outcome.Unchecked("Byron header: validated with its block", Some(prev))
     case h: Header.Shelley =>
@@ -65,9 +66,9 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
   private def shelley(
       anchor: NodeState,
       tip: Option[BlockRef],
-      prev: PraosState,
+      prev: ProtocolState,
       h: Header.Shelley
-  ): Outcome[PraosState] =
+  ): Outcome[ProtocolState] =
     val cfg = anchor.byron.firstShelleyEpoch.fold(config)(first =>
       config.copy(geometry = config.geometry.resolved(first))
     )
@@ -114,7 +115,7 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
       val nonceWindow =
         if h.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
         else geometry.stabilityWindow
-      val checked: Either[HeaderError, PraosState] =
+      val checked: Either[HeaderError, ProtocolState] =
         envelope.flatMap { _ =>
           if h.era.usesTPraos then
             val genDelegs = ledger.futureGenDelegs
@@ -128,12 +129,12 @@ final class NodeHeaderRules(config: PraosConfig, globals: LedgerGlobals)
               StakeView.Known(pools)
             )
             TPraos
-              .update(Praos.tick(prev, epoch, params.extraEntropy), h, view, cfg)
+              .update(Praos.tick(prev, h.era, epoch, params.extraEntropy), h, view, cfg)
               .map(_.state)
               .leftMap(HeaderError.TPraos(_))
           else
             Praos
-              .validate(Praos.tick(prev, epoch), h, StakeView.Known(pools), cfg, nonceWindow)
+              .validate(Praos.tick(prev, h.era, epoch), h, StakeView.Known(pools), cfg, nonceWindow)
               .map(_._1)
               .leftMap(HeaderError.Praos(_))
         }

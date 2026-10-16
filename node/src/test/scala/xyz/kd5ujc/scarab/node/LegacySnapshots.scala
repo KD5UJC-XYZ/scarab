@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.{HardForkConfig, NodeState}
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, StateSnapshot}
@@ -13,9 +13,15 @@ import xyz.kd5ujc.scarab.storage.{FileLedgerSnapshots, StateSnapshot}
   * Preview run is version 1, written before the packages were renamed) get at them.
   */
 object LegacySnapshots:
-  /** The snapshot in `file`, version 1 or 2. */
-  def read(file: Path): Either[StorageError, StateSnapshot[NodeState]] =
+  /** The snapshot in `file`, version 1 or 2; `forks` places its state in an era. */
+  def read(file: Path, forks: HardForkConfig): Either[StorageError, StateSnapshot[NodeState]] =
     FileLedgerSnapshots
       .verified(Files.readAllBytes(file))
       .flatMap(legacy.SnapshotV2.decodeNode)
-      .map(s => StateSnapshot(s.anchor, legacy.Upgrade.node(s.state)))
+      .flatMap(s =>
+        legacy.Upgrade
+          .node(s.state, forks, s.anchor)
+          .map(StateSnapshot(s.anchor, _))
+          .left
+          .map(e => StorageError.Corrupt(file.toString, e.toString))
+      )

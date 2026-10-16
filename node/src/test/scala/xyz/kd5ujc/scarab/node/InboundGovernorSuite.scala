@@ -122,7 +122,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
       headerCheck = Option.when(headerFirst)(
-        HeaderCheck.forChain[IO, NodeState, xyz.kd5ujc.scarab.consensus.PraosState](
+        HeaderCheck.forChain[IO, NodeState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
           NodeHeaderRules(ForgedChain.config, ForgedChain.globals),
           Compute.inline[IO]
         )

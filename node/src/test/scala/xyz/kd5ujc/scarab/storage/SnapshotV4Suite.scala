@@ -12,17 +12,18 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion, ParamUpdate, StorageError}
+import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
 import StorageTestKit.*
 
-/** The snapshot format V3 and the migration to it, on the era-walking capture (`fixtures/eras`):
-  * the state before the first block and after every block, from Byron to Conway, is written as a V3
+/** The snapshot format V4 and the migration to it, on the era-walking capture (`fixtures/eras`):
+  * the state before the first block and after every block, from Byron to Conway, is written as a V4
   * snapshot and read back (it must come back as the mirror normalises it), and V2 and V1 snapshot
   * files of those states are migrated.
   */
-class SnapshotV3Suite extends CatsEffectSuite:
+class SnapshotV4Suite extends CatsEffectSuite:
   private val fixtures = java.nio.file.Path.of("fixtures/eras")
 
   private val setup: NodeSetup =
@@ -30,8 +31,8 @@ class SnapshotV3Suite extends CatsEffectSuite:
   private val env = setup.mirrorEnv()
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private given v3: SnapshotFormat[IO, NodeState] = SnapshotV3.format[IO]
-  private val v2: SnapshotFormat[IO, NodeState] = LegacyV2Format.format[IO]
+  private given v3: SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO]
+  private val v2: SnapshotFormat[IO, NodeState] = LegacyV2Format.format[IO](env.forks)
 
   private val raws: Vector[Bytes] =
     JFiles
@@ -59,7 +60,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
       }
 
   private def normalised(s: StateSnapshot[NodeState]): StateSnapshot[NodeState] =
-    s.copy(state = SnapshotV3.canonical(env, s.state))
+    s.copy(state = SnapshotV4.canonical(env, s.state))
 
   private def decoded(bytes: Array[Byte]): IO[StateSnapshot[NodeState]] =
     v3.decode(bytes).flatMap(_.fold(e => IO.raiseError(new AssertionError(e.message)), IO.pure))
@@ -78,7 +79,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
     assertEquals(accepted.map(_._1).distinct.toSet, Era.values.toSet)
   }
 
-  test("every state of the eras fixture comes back from its V3 snapshot, as the mirror has it") {
+  test("every state of the eras fixture comes back from its V4 snapshot, as the mirror has it") {
     accepted.traverse_ { (era, snapshot, bytes) =>
       val label = s"$era block ${snapshot.anchor.map(_.blockNo)}"
       decoded(bytes).map(back => assertEquals(back, normalised(snapshot), label))
@@ -120,7 +121,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
     accepted.foreach { (era, _, bytes) =>
       val sidecar = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
       val haskell = bytes.length - 12 - sidecar
-      assertEquals(new String(bytes.take(8), "US-ASCII"), "SCRBSNP3")
+      assertEquals(new String(bytes.take(8), "US-ASCII"), "SCRBSNP4")
       if era == Era.Byron then assertEquals(haskell, 0, era.toString)
       // [1, [telescope, header state]]: the state file of the reference node
       else assert(haskell > 0 && (bytes(12 + sidecar) & 0xff) == 0x82, era.toString)
@@ -130,7 +131,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
   test("a damaged V3 file is a typed error: magic, sidecar length, fingerprint, Haskell section") {
     val bytes = accepted.last._3
     val cases: List[(String, Array[Byte])] = List(
-      "magic" -> bytes.updated(7, '4'.toByte),
+      "magic" -> bytes.updated(7, '5'.toByte),
       "sidecar length" -> bytes.updated(8, 0x7f.toByte),
       "fingerprint" -> bytes.updated(12, (bytes(12) ^ 1).toByte),
       "haskell section" -> bytes.take(bytes.length - 40),
@@ -164,9 +165,9 @@ class SnapshotV3Suite extends CatsEffectSuite:
 
   private val someSnapshots = Vector(snapshots.head, snapshots(snapshots.size / 2), snapshots.last)
 
-  private def migration(using Raise[IO, StorageError]) = SnapshotMigration.toV3[IO]
+  private def migration(using Raise[IO, StorageError]) = SnapshotMigration.toCurrent[IO]
 
-  test("version 2 snapshots of every family of era are migrated, once, and read back as V3") {
+  test("version 2 snapshots of every family of era are migrated, once, and read back as V4") {
     tempDir.use { dir =>
       for
         _ <- writeV2(dir, someSnapshots.map(_._2))
@@ -177,7 +178,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
         assertEquals(
           first,
           SnapshotMigration.Report(
-            List(Migrated(FileKind.SnapshotFile, FormatVersion.V2, FormatVersion.V3, 3)),
+            List(Migrated(FileKind.SnapshotFile, FormatVersion.V2, FormatVersion.V4, 3)),
             Nil
           )
         )
@@ -204,9 +205,68 @@ class SnapshotV3Suite extends CatsEffectSuite:
       yield
         assertEquals(
           report.migrated,
-          List(Migrated(FileKind.SnapshotFile, FormatVersion.V1, FormatVersion.V3, 1))
+          List(Migrated(FileKind.SnapshotFile, FormatVersion.V1, FormatVersion.V4, 1))
         )
         assertEquals(back, List(normalised(snapshots.last._2)))
+    }
+  }
+
+  /** The V3 files that the build before J1.5 wrote of states of the eras fixture, named
+    * `<era>-<block number>.bin` (fixtures/snapshot-v3/eras), each with the state the rules give
+    * after that block.
+    */
+  private lazy val v3Files: Vector[(String, Path, StateSnapshot[NodeState])] =
+    val dir = java.nio.file.Path.of("fixtures/snapshot-v3/eras")
+    JFiles
+      .list(dir)
+      .iterator
+      .asScala
+      .toVector
+      .sortBy(_.getFileName.toString)
+      .map { f =>
+        val name = f.getFileName.toString
+        val blockNo = BigInt(name.stripSuffix(".bin").split('-').last)
+        val expected = snapshots
+          .map(_._2)
+          .find(_.anchor.exists(_.blockNo == blockNo))
+          .getOrElse(fail(s"$name: no state after block $blockNo"))
+        (name, Path.fromNioPath(f), expected)
+      }
+
+  test("V3 snapshots written by the previous build are migrated to the states the rules give") {
+    assert(v3Files.map(_._1.takeWhile(_ != '-')).toSet.size >= 7, "every era must be covered")
+    v3Files.traverse_ { (name, file, expected) =>
+      tempDir.use { dir =>
+        val target = dir / FileLedgerSnapshots.nameOf(expected.anchor.get)
+        for
+          _ <- Files.forAsync[IO].copy(file, target)
+          v3 = FileLedgerSnapshots
+            .verified(JFiles.readAllBytes(target.toNioPath))
+            .flatMap(legacy.SnapshotV3.sections)
+            .fold(e => fail(e.message), _._1)
+          report <- ok(migration.run(dir))
+          again <- ok(migration.run(dir))
+          back <- restoreAll(dir)
+          bytes = FileLedgerSnapshots
+            .verified(JFiles.readAllBytes(target.toNioPath))
+            .fold(e => fail(e.message), identity)
+          v4 = SnapshotV4.sidecarOf(bytes).fold(e => fail(e.message), identity)
+        yield
+          assertEquals(
+            report,
+            SnapshotMigration.Report(
+              List(Migrated(FileKind.SnapshotFile, FormatVersion.V3, FormatVersion.V4, 1)),
+              Nil
+            ),
+            name
+          )
+          assertEquals(again, SnapshotMigration.Report.empty, name)
+          assertEquals(back, List(normalised(expected)), name)
+          // nothing is invented: the gaps and the eras seen are those of the file replaced
+          assertEquals(v4.gaps, v3.gaps, name)
+          assertEquals(v4.observed, v3.observed, name)
+          assertEquals(v4.anchor, v3.anchor, name)
+      }
     }
   }
 
@@ -232,7 +292,7 @@ class SnapshotV3Suite extends CatsEffectSuite:
       for
         names <- writeV2(dir, Vector(snapshots.last._2))
         future = dir / "snapshot-99999999999999999999-9.bin"
-        _ <- IO(JFiles.write(future.toNioPath, FileLedgerSnapshots.closed("SCRBSNP4....".getBytes)))
+        _ <- IO(JFiles.write(future.toNioPath, FileLedgerSnapshots.closed("SCRBSNP5....".getBytes)))
         before = JFiles.readAllBytes((dir / names.head).toNioPath).toList
         result <- attempt(migration.run(dir))
       yield

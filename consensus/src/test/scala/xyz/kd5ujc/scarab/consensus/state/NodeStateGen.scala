@@ -2,20 +2,18 @@
 package xyz.kd5ujc.scarab.consensus.state
 
 import org.scalacheck.{Arbitrary, Gen}
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   BootstrapState,
   ByronState,
   ByronTip,
   HardForkConfig,
-  NodeState,
-  PBftState,
-  PraosState
+  NodeState
 }
 import xyz.kd5ujc.scarab.ledger.{LiteLedger, LiteParams, Nonce}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState, ByronTestKit}
-import xyz.kd5ujc.scarab.ledger.state.{FlatStateGen, VocabularyGen}
+import xyz.kd5ujc.scarab.ledger.state.{FlatStateGen, SlotNo, VocabularyGen, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A state of the node and the block it is after (none: before the first). */
@@ -49,21 +47,25 @@ object NodeStateGen:
   private val nonce: Gen[Nonce] =
     Gen.oneOf(Gen.const(Nonce.Neutral), VocabularyGen.bytes(32).map(Nonce.Hash(_)))
 
-  private val counters: Gen[Map[Bytes, BigInt]] =
-    Gen
-      .listOfN(3, VocabularyGen.bytes(28).flatMap(k => Gen.choose(0L, 1000L).map(k -> BigInt(_))))
-      .map(_.toMap)
-
-  private def praosState(epoch: BigInt): Gen[PraosState] =
-    for
-      evolving <- nonce
-      candidate <- nonce
-      epochNonce <- nonce
-      lab <- nonce
-      lastEpochBlock <- nonce
-      previous <- nonce
-      cs <- counters
-    yield PraosState(epoch, evolving, candidate, epochNonce, lab, lastEpochBlock, cs, previous)
+  /** The chain-dependent state of the protocol of `era` (Byron holds the state Shelley starts
+    * from), as of the slot `at` of the last header.
+    */
+  private def protocolState(era: Era, epoch: BigInt, at: WithOrigin[SlotNo]): Gen[ProtocolState] =
+    if era == Era.Byron || era.usesTPraos then
+      for
+        t <- StateGen.tpraosState
+        previous <- nonce
+      yield ProtocolState(
+        ChainDepState.TPraos(t.copy(lastSlot = if era == Era.Byron then WithOrigin.Origin else at)),
+        ProtocolExtras(epoch, previous)
+      )
+    else
+      StateGen.praosState.map(p =>
+        ProtocolState(
+          ChainDepState.Praos(p.copy(lastSlot = at)),
+          ProtocolExtras(epoch, Nonce.Neutral)
+        )
+      )
 
   private val byronLedger: ByronLedgerState =
     val keys = Vector(ByronTestKit.key(), ByronTestKit.key())
@@ -82,14 +84,9 @@ object NodeStateGen:
     2
   )
 
-  private val window: Gen[Vector[(BigInt, Bytes)]] =
-    Gen
-      .listOf(Gen.choose(0L, 49L).flatMap(s => VocabularyGen.bytes(28).map(BigInt(s) -> _)))
-      .map(_.toVector)
-
   private def byronState(inByron: Boolean): Gen[ByronState] =
     for
-      pbft <- window
+      pbft <- StateGen.pbftState
       tipHash <- VocabularyGen.bytes(32)
       tip <- Gen.option(Gen.oneOf(true, false).map(ByronTip(tipHash, 0, 7, _)))
     yield ByronState(
@@ -97,7 +94,7 @@ object NodeStateGen:
       None,
       None,
       Option.when(inByron)(byronLedger),
-      PBftState(pbft),
+      pbft,
       Option.when(!inByron)(BigInt(0))
     )
 
@@ -117,7 +114,10 @@ object NodeStateGen:
       )
       ledger <- FlatStateGen.state(conway = era == Era.Conway)
       bootEra <- if inByron then Gen.const(None) else Gen.option(Gen.const(era))
-      p <- praosState(e)
+      at = anchor
+        .flatMap(a => SlotNo.fromBigInt(a.slot).toOption)
+        .fold[WithOrigin[SlotNo]](WithOrigin.Origin)(WithOrigin.At(_))
+      p <- protocolState(era, BigInt(e), at)
       byron <- byronState(inByron)
     yield Located(
       anchor,

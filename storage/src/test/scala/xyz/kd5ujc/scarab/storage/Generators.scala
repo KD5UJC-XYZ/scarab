@@ -6,8 +6,8 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.*
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PBftState, ProtocolExtras, StateGen}
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.*
@@ -124,13 +124,20 @@ object Gens extends LowPriorityGens:
   given stakeSnapshot: Gens[Snapshot] = auto
   given rewardUpdate: Gens[RewardUpdate] = auto
   given ledger: Gens[LedgerState] = auto
-  given praos: Gens[PraosState] = auto
   given lite: Gens[LiteLedger] = auto
   given bootstrap: Gens[BootstrapState] = auto
   given byron: Gens[ByronState] = auto
   given blockRef: Gens[BlockRef] = auto
-  given nodeState: Gens[NodeState] = auto
-  given nodeSnapshot: Gens[StateSnapshot[NodeState]] = auto
+  given pbftState: Gens[PBftState] = of(StateGen.pbftState)
+  given chainDepState: Gens[ChainDepState] = of(
+    Gen.oneOf(
+      StateGen.pbftState.map(ChainDepState.PBft(_)),
+      StateGen.tpraosState.map(ChainDepState.TPraos(_)),
+      StateGen.praosState.map(ChainDepState.Praos(_))
+    )
+  )
+  given protocolExtras: Gens[ProtocolExtras] = auto
+  given consensusExtras: Gens[ConsensusExtras] = auto
 
 trait LowPriorityGens:
   inline given auto[A](using m: Mirror.Of[A]): Gens[A] =

@@ -12,6 +12,8 @@ import xyz.kd5ujc.scarab.consensus.HardForkConfig
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.state.{FuturePParams, MirrorEnv, ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.KeyHash.bytes
+import xyz.kd5ujc.scarab.ledger.state.Word64.toBigInt
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Writer}
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellStateCodecs,
@@ -330,7 +332,7 @@ object QueryAnswers:
     * certificate counters and the six nonces.
     */
   private def chainDepState(view: QueryView): Option[Bytes] =
-    val p = view.state.praos
+    val p = view.state.protocol.view
     val counters = Wire.definiteMapOf(poolId, coin)
     Some(build { w =>
       w.arrayHead(2)
@@ -344,8 +346,15 @@ object QueryAnswers:
         case Point.Origin =>
           w.arrayHead(1)
           w.uint(0L)
-      counters.encode(p.counters, w)
-      List(p.evolving, p.candidate, p.epochNonce, p.previousEpochNonce, p.lab, p.lastEpochBlock)
+      counters.encode(p.ocertCounters.iterator.map((k, c) => k.bytes -> c.toBigInt).toMap, w)
+      List(
+        p.evolvingNonce,
+        p.candidateNonce,
+        p.epochNonce,
+        p.previousEpochNonce,
+        p.labNonce,
+        p.lastEpochBlockNonce
+      )
         .foreach(Wire.nonce.encode(_, w))
     })
 

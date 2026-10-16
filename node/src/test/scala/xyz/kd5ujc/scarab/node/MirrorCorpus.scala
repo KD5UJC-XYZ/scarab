@@ -5,7 +5,7 @@ import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.{
-  ConsensusExtras,
+  MirrorExtras,
   ConsensusMirrorEnv,
   EraLedgerState,
   MirrorState,
@@ -84,9 +84,9 @@ object MirrorCorpus:
               .toVector
           else Vector.empty
         val (residueEmpty, distributionIsSet) = m.value.extras match
-          case ConsensusExtras.InShelley(ledger, _, _, _) =>
+          case MirrorExtras.InShelley(ledger, _) =>
             (ledger.residue.isEmpty, ledger.poolDistribution.isEmpty)
-          case _: ConsensusExtras.InByron => (true, true)
+          case _: MirrorExtras.InByron => (true, true)
         val (pools, vrfs) = poolCounts(m.value)
         Report(
           back.left.toOption,

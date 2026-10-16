@@ -5,8 +5,23 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.*
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  MirrorExtras,
+  PBftSigner,
+  PBftState,
+  PraosState,
+  PrtclState,
+  ProtocolExtras,
+  TPraosLedgerState,
+  TPraosState,
+  TicknState
+}
+import xyz.kd5ujc.scarab.ledger.state.{KeyHash, KeyRole, SlotNo, Sorted, WithOrigin, Word64}
+import cats.Order
+import xyz.kd5ujc.scarab.codec.Bytes
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.*
@@ -63,12 +78,59 @@ object NodeCodecs:
   given rewardUpdate: Codec[RewardUpdate] = Codec.auto
   given ledger: Codec[LedgerState] = Codec.auto
 
+  // The chain-dependent state of the Haskell shape: unsigned words, key hashes, sorted maps.
+  given word64: Codec[Word64] =
+    Codec.make[Word64]("Word64")((o, w) => o.fixed64(w.bits))(i => Word64.fromUnsigned(i.fixed64()))
+
+  given slotNo: Codec[SlotNo] =
+    Codec.make[SlotNo]("SlotNo")((o, s) => o.fixed64(s.word.bits))(i =>
+      SlotNo.fromUnsigned(i.fixed64())
+    )
+
+  given keyHash[R <: KeyRole]: Codec[KeyHash[R]] =
+    Codec.make[KeyHash[R]]("KeyHash")((o, h) => summon[Codec[Bytes]].write(o, h.bytes))(i =>
+      KeyHash
+        .fromBytes[R](summon[Codec[Bytes]].read(i))
+        .fold(e => throw CodecException(e.toString), identity)
+    )
+
+  /** In ascending key order (that of `Order[K]`), as the map holds it. */
+  given sortedMap[K, V](using k: Codec[K], v: Codec[V], order: Order[K]): Codec[SortedMap[K, V]]
+  with
+    def write(out: Out, a: SortedMap[K, V]): Unit =
+      out.varint(a.size.toLong)
+      a.foreach { (key, value) =>
+        k.write(out, key)
+        v.write(out, value)
+      }
+    def read(in: In): SortedMap[K, V] =
+      val n = in.count()
+      val b = List.newBuilder[(K, V)]
+      var i = 0
+      while i < n do
+        val key = k.read(in)
+        b += key -> v.read(in)
+        i += 1
+      Sorted.map(b.result())
+    def shape: String = s"SortedMap[${k.shape},${v.shape}]"
+
+  given withOrigin[A](using Codec[A]): Codec[WithOrigin[A]] = Codec.auto
+  given pbftSigner: Codec[PBftSigner] = Codec.auto
+  given pbftState: Codec[PBftState] = Codec.auto
+  given prtclState: Codec[PrtclState] = Codec.auto
+  given ticknState: Codec[TicknState] = Codec.auto
+  given tpraosLedgerState: Codec[TPraosLedgerState] = Codec.auto
+  given tpraosState: Codec[TPraosState] = Codec.auto
+  given praosState: Codec[PraosState] = Codec.auto
+  given chainDepState: Codec[ChainDepState] = Codec.auto
+  given protocolExtras: Codec[ProtocolExtras] = Codec.auto
+
   // Consensus and bootstrap.
-  given praos: Codec[PraosState] = Codec.auto
   given lite: Codec[LiteLedger] = Codec.auto
   given bootstrap: Codec[BootstrapState] = Codec.auto
   given byron: Codec[ByronState] = Codec.auto
+  given consensusExtras: Codec[ConsensusExtras] = Codec.auto
+  given mirrorInShelley: Codec[MirrorExtras.InShelley] = Codec.auto
 
   // Roots.
   given blockRef: Codec[BlockRef] = Codec.auto
-  given nodeState: Codec[NodeState] = Codec.auto

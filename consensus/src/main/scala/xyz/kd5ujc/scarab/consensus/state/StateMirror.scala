@@ -5,27 +5,20 @@ import cats.{Eq, Monad, Show}
 import cats.derived.*
 import cats.mtl.{Ask, Raise}
 import cats.syntax.all.*
-import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{
   BlockRef,
   BootstrapState,
   ByronState,
+  ConsensusExtras,
   HardForkConfig,
-  NodeState,
-  PBftState as NodePBft,
-  PraosState as NodePraos
+  NodeState
 }
 import xyz.kd5ujc.scarab.ledger as node
-import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{
-  BlockIssuer,
   BlockNo,
   EraTag,
   Gap,
-  Genesis,
   Hash32,
-  KeyHash,
   LedgerImage,
   LedgerMirror,
   MirrorEnv,
@@ -34,16 +27,16 @@ import xyz.kd5ujc.scarab.ledger.state.{
   NodeExtras,
   ShelleyBasedEra,
   SlotNo,
-  Sorted,
   VocabError,
-  WithOrigin,
-  Word64
+  WithOrigin
 }
 import xyz.kd5ujc.scarab.protocol.Era
 
-// The consensus side of the mirror: the node's `NodeState` (the flat ledger state, the chain-
-// dependent state of Praos, the Byron and bootstrap state) to the Haskell `ExtLedgerState` of the
-// Cardano block (`Ledger/Extended.hs:70-73`) and back. Plan sections 2 and 3 of the ledger-state
+// The consensus side of the mirror: the node's `NodeState` (the flat ledger state, the header state
+// with the chain-dependent state of the protocol, the Byron and bootstrap state) to the Haskell
+// `ExtLedgerState` of the Cardano block (`Ledger/Extended.hs:70-73`) and back. Since J1.5 the
+// chain-dependent state is the Haskell one in the node too, so this side puts the telescopes on the
+// era history and the tip on the anchor, and takes them off again. Plan sections 2 and 3 of the ledger-state
 // mirror, stage S5. The ledger part is `LedgerMirror` (S4), reached through the environment and
 // the error of this side.
 
@@ -131,37 +124,30 @@ enum StateMirrorError derives Show:
 object StateMirrorError:
   private given Show[Era] = Show.fromToString
 
-/** The protocol-dependent part of what the node's chain state holds beside the Haskell
-  * chain-dependent state: both protocols forget the epoch of the last tick (`PraosState.epoch`),
-  * and TPraos has no previous epoch nonce (`praosStatePreviousEpochNonce`).
-  */
-enum ProtocolExtras:
-  case OfTPraos(epoch: BigInt, previousEpochNonce: Nonce)
-  case OfPraos(epoch: BigInt)
-
 /** What the node holds that the Haskell state has no place for, on the consensus side. The ledger
   * side's ([[NodeExtras]]) is inside the Shelley-based case.
   *
   * Haskell's `Past` eras keep bounds only, so the Byron ledger and its chain-follow state go here
-  * once the chain has left Byron; and a chain still in Byron has no `NewEpochState`, so the flat
-  * ledger state and the chain-dependent state of the node (initial, until Shelley) go here instead.
+  * once the chain has left Byron (in [[ConsensusExtras]]); and a chain still in Byron has no
+  * `NewEpochState`, so the flat ledger state and the state that Shelley will start from (initial,
+  * until Shelley) go here instead.
   */
-enum ConsensusExtras:
-  case InByron(ledger: node.LedgerState, praos: NodePraos, boot: BootstrapState)
-  case InShelley(
-      ledger: NodeExtras,
-      byron: ByronState,
+enum MirrorExtras:
+  case InByron(
+      ledger: node.LedgerState,
+      pending: ChainDepState,
       boot: BootstrapState,
       protocol: ProtocolExtras
   )
+  case InShelley(ledger: NodeExtras, consensus: ConsensusExtras)
 
-object ConsensusExtras:
+object MirrorExtras:
   // The node's own records, compared structurally and rendered by their `toString`.
-  given Eq[ConsensusExtras] = Eq.fromUniversalEquals
-  given Show[ConsensusExtras] = Show.fromToString
+  given Eq[MirrorExtras] = Eq.fromUniversalEquals
+  given Show[MirrorExtras] = Show.fromToString
 
 /** The mirror of the node's state: the Haskell `ExtLedgerState` and the node-only bookkeeping. */
-final case class MirrorState(ext: ExtLedgerState, extras: ConsensusExtras)
+final case class MirrorState(ext: ExtLedgerState, extras: MirrorExtras)
 
 object MirrorState:
   given Eq[MirrorState] = Eq.instance((a, b) => a.ext === b.ext && a.extras === b.extras)
@@ -229,9 +215,6 @@ object StateMirror:
 
   /** The bounds of the history up to an era. */
   private final case class Bounds(past: Vector[Past], start: Bound)
-
-  /** A chain-dependent state and what the node holds of it that the state has no place for. */
-  private final case class Protocol(state: ChainDepState, extras: ProtocolExtras)
 
   private final class Impl[F[_]](using
       monad: Monad[F],
@@ -316,64 +299,6 @@ object StateMirror:
           )
       yield Bounds(past.toVector, current.start)
 
-    private def counters(
-        m: Map[Bytes, BigInt]
-    ): F[SortedMap[KeyHash[BlockIssuer], Word64]] =
-      m.toList
-        .traverse((key, count) =>
-          (
-            vocab(KeyHash.fromBytes[BlockIssuer](key)),
-            vocab(Word64.fromBigInt(VocabError.Kind.OcertCounter, count))
-          ).tupled
-        )
-        .map(Sorted.map(_))
-
-    private def pbft(p: NodePBft): F[PBftState] =
-      p.signers.toList
-        .traverse((slot, key) =>
-          (slotNo(slot), vocab(KeyHash.fromBytes[Genesis](key))).mapN(PBftSigner(_, _))
-        )
-        .map(window => PBftState.ofWindow(window.toVector))
-
-    /** The chain-dependent state of the protocol the era runs, and what it leaves out. */
-    private def chainDep(
-        era: Era,
-        at: WithOrigin[SlotNo],
-        p: NodePraos
-    ): F[Protocol] =
-      counters(p.counters).map { cs =>
-        if era.usesTPraos then
-          Protocol(
-            ChainDepState.TPraos(
-              TPraosState(
-                at,
-                TPraosLedgerState(
-                  PrtclState(cs, p.evolving, p.candidate),
-                  TicknState(p.epochNonce, p.lastEpochBlock),
-                  p.lab
-                )
-              )
-            ),
-            ProtocolExtras.OfTPraos(p.epoch, p.previousEpochNonce)
-          )
-        else
-          Protocol(
-            ChainDepState.Praos(
-              PraosState(
-                at,
-                cs,
-                p.evolving,
-                p.candidate,
-                p.epochNonce,
-                p.previousEpochNonce,
-                p.lab,
-                p.lastEpochBlock
-              )
-            ),
-            ProtocolExtras.OfPraos(p.epoch)
-          )
-      }
-
     // ---- to the mirror
 
     def toMirror(anchor: Option[BlockRef], s: NodeState): F[Mirrored[MirrorState]] =
@@ -392,13 +317,12 @@ object StateMirror:
     ): F[Mirrored[MirrorState]] =
       for
         bounds <- history(env, s, Era.Byron, anchor)
-        window <- pbft(s.byron.pbft)
         block <- anchor.traverse(blockOf)
         ledger <- telescope(
           bounds.past,
           Current(bounds.start, EraLedgerState.ByronCurrent(s.byron))
         )
-        dep <- telescope(bounds.past, Current(bounds.start, ChainDepState.PBft(window)))
+        dep <- telescope(bounds.past, Current(bounds.start, ChainDepState.PBft(s.byron.pbft)))
       yield
         val tip = block.fold[WithOrigin[AnnTip]](WithOrigin.Origin) { (slot, blockNo, hash) =>
           val ebb = if anchor.exists(_.boundary) then IsEBB.EBB else IsEBB.NotEBB
@@ -407,7 +331,7 @@ object StateMirror:
         Mirrored(
           MirrorState(
             ExtLedgerState(ledger, HeaderState(tip, dep)),
-            ConsensusExtras.InByron(s.ledger, s.praos, s.boot)
+            MirrorExtras.InByron(s.ledger, s.header.chainDep.state, s.boot, s.extras.protocol)
           ),
           Set.empty
         )
@@ -424,7 +348,11 @@ object StateMirror:
         bounds <- history(env, s, era, anchor)
         block <- anchor.traverse(blockOf)
         image <- ledgerMirror.to[E](at, s.ledger)
-        protocol <- chainDep(era, at, s.praos)
+        dep = s.header.chainDep.state
+        _ <- check(
+          summon[EraIndexed[ChainDepState]].admits(era, dep),
+          StateMirrorError.ChainDepFamily(era)
+        )
         ledgerTelescope <- telescope(
           bounds.past,
           Current(
@@ -441,7 +369,7 @@ object StateMirror:
             )
           )
         )
-        depTelescope <- telescope(bounds.past, Current(bounds.start, protocol.state))
+        depTelescope <- telescope(bounds.past, Current(bounds.start, dep))
       yield
         val tip = block.fold[WithOrigin[AnnTip]](WithOrigin.Origin) { (slot, blockNo, hash) =>
           WithOrigin.At(AnnTip(slot, blockNo, TipInfo.ShelleyBasedTip(witness, hash)))
@@ -449,7 +377,7 @@ object StateMirror:
         Mirrored(
           MirrorState(
             ExtLedgerState(ledgerTelescope, HeaderState(tip, depTelescope)),
-            ConsensusExtras.InShelley(image.value.extras, s.byron, s.boot, protocol.extras)
+            MirrorExtras.InShelley(image.value.extras, s.extras)
           ),
           image.gaps + Gap.ShelleyTransition
         )
@@ -472,11 +400,13 @@ object StateMirror:
         _ <- verify(env, m, again.value, state)
       yield (anchor, state)
 
-    private def byronBack(era: Era, b: ByronState, extras: ConsensusExtras): F[NodeState] =
+    private def byronBack(era: Era, b: ByronState, extras: MirrorExtras): F[NodeState] =
       extras match
-        case ConsensusExtras.InByron(ledger, praos, boot) =>
-          monad.pure(NodeState(praos, ledger, boot, b))
-        case _: ConsensusExtras.InShelley => fail(StateMirrorError.ExtrasMismatch(era))
+        case MirrorExtras.InByron(ledger, pending, boot, protocol) =>
+          monad.pure(
+            NodeState(HeaderState.live(pending), ledger, ConsensusExtras(boot, b, protocol))
+          )
+        case _: MirrorExtras.InShelley => fail(StateMirrorError.ExtrasMismatch(era))
 
     private def shelleyBack[E <: EraTag](
         era: Era,
@@ -485,42 +415,13 @@ object StateMirror:
         m: MirrorState
     )(using ShelleyBasedEra[E]): F[NodeState] =
       m.extras match
-        case _: ConsensusExtras.InByron => fail(StateMirrorError.ExtrasMismatch(era))
-        case ConsensusExtras.InShelley(ledgerExtras, byron, boot, protocol) =>
-          for
-            ledger <- ledgerMirror.from[E](at, LedgerImage[E](s.nes, ledgerExtras))
-            praos <- (m.ext.headerState.chainDep.state, protocol) match
-              case (ChainDepState.TPraos(t), ProtocolExtras.OfTPraos(epoch, previous)) =>
-                monad.pure(
-                  NodePraos(
-                    epoch,
-                    t.chainDep.protocol.evolvingNonce,
-                    t.chainDep.protocol.candidateNonce,
-                    t.chainDep.tickn.epochNonce,
-                    t.chainDep.labNonce,
-                    t.chainDep.tickn.prevHashNonce,
-                    ocertCounters(t.chainDep.protocol.ocertCounters),
-                    previous
-                  )
-                )
-              case (ChainDepState.Praos(p), ProtocolExtras.OfPraos(epoch)) =>
-                monad.pure(
-                  NodePraos(
-                    epoch,
-                    p.evolvingNonce,
-                    p.candidateNonce,
-                    p.epochNonce,
-                    p.labNonce,
-                    p.lastEpochBlockNonce,
-                    ocertCounters(p.ocertCounters),
-                    p.previousEpochNonce
-                  )
-                )
-              case _ => fail[NodePraos](StateMirrorError.ChainDepFamily(era))
-          yield NodeState(praos, ledger, boot, byron)
-
-    private def ocertCounters(m: SortedMap[KeyHash[BlockIssuer], Word64]): Map[Bytes, BigInt] =
-      m.iterator.map((k, w) => k.bytes -> w.toBigInt).toMap
+        case _: MirrorExtras.InByron => fail(StateMirrorError.ExtrasMismatch(era))
+        case MirrorExtras.InShelley(ledgerExtras, consensus) =>
+          ledgerMirror
+            .from[E](at, LedgerImage[E](s.nes, ledgerExtras))
+            .map(ledger =>
+              NodeState(HeaderState.live(m.ext.headerState.chainDep.state), ledger, consensus)
+            )
 
     /** The mirror of the recovered state must be the mirror it was recovered from, in what is
       * derived: the first piece that is not, is named. The Shelley transition and the Peras round
@@ -544,12 +445,26 @@ object StateMirror:
           tipsAgree(ledgerTip(a.ledgerState.state), ledgerTip(b.ledgerState.state)),
         ConsensusDerived.HeaderTip -> StateEq.withOrigin(a.headerState.tip, b.headerState.tip),
         ConsensusDerived.ChainDep ->
-          (a.headerState.chainDep.state === b.headerState.chainDep.state),
+          (a.headerState.chainDep.state === b.headerState.chainDep.state &&
+            lastSlotAgrees(a.headerState.chainDep.state, a.headerState.tip)),
         ConsensusDerived.Extras -> (m.extras === again.extras)
       )
       checks.collectFirst { case (field, false) => field } match
         case Some(field) => fail(StateMirrorError.Derived(field))
         case None        => monad.unit
+
+    /** The last slot of a Praos or TPraos state is the slot of the tip (the last header applied is
+      * the last block applied).
+      */
+    private def lastSlotAgrees(dep: ChainDepState, tip: WithOrigin[AnnTip]): Boolean =
+      val last = dep match
+        case ChainDepState.PBft(_)   => None
+        case ChainDepState.TPraos(t) => Some(t.lastSlot)
+        case ChainDepState.Praos(p)  => Some(p.lastSlot)
+      val slot: WithOrigin[SlotNo] = tip match
+        case WithOrigin.Origin => WithOrigin.Origin
+        case WithOrigin.At(t)  => WithOrigin.At(t.slot)
+      last.forall(StateEq.withOrigin(_, slot))
 
     private def tipsAgree(x: Option[WithOrigin[ShelleyTip]], y: Option[WithOrigin[ShelleyTip]]) =
       (x, y) match

@@ -6,6 +6,8 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.*
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.LeaderCheck
 import xyz.kd5ujc.scarab.ledger.LedgerView
 import xyz.kd5ujc.scarab.ledger.Nonce
@@ -31,7 +33,8 @@ class TPraosSuite extends FunSuite:
     genesis.maxKesEvolutions,
     Leader.Fraction.checked(1, 20).toOption.get
   )
-  private val initial = Praos.initial(Blake2b.hash256.hash(Bytes.fromArray(genesisBytes)))
+  private val initial =
+    ProtocolState.initial(Era.Shelley, Blake2b.hash256.hash(Bytes.fromArray(genesisBytes)))
 
   private val headers: Vector[Header.Shelley] =
     Files
@@ -64,9 +67,9 @@ class TPraosSuite extends FunSuite:
     }
     assertEquals(leaders.size, 20)
     assert(leaders.forall(_.isInstanceOf[LeaderCheck.Overlay]), leaders.toString)
-    assertEquals(last.evolving == initial.evolving, false)
+    assertEquals(last.view.evolvingNonce == initial.view.evolvingNonce, false)
     assert(last.counters.nonEmpty)
-    assertEquals(last.lab, Nonce.Hash(headers.last.prevHash.get))
+    assertEquals(last.view.labNonce, Nonce.Hash(headers.last.prevHash.get))
   }
 
   private def firstError(h: Header.Shelley, view: LedgerView = lite.view) =

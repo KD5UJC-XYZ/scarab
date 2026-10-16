@@ -21,7 +21,9 @@ import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.node.NodeRules
 import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.ledger.Nonce
-import xyz.kd5ujc.scarab.consensus.{PraosConfig, PraosState}
+import xyz.kd5ujc.scarab.consensus.PraosConfig
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
+import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, Sorted, WithOrigin, Word64}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.TestLedger.Key
@@ -111,14 +113,20 @@ object ForgedChain:
       Map.empty,
       2
     )
-    val praos = PraosState(
-      epoch = ledger.epoch,
-      Nonce.Neutral,
-      Nonce.Neutral,
-      epochNonce,
-      Nonce.Neutral,
-      Nonce.Neutral,
-      Map.empty
+    val praos = ProtocolState(
+      ChainDepState.Praos(
+        PraosState(
+          WithOrigin.Origin,
+          Sorted.empty[KeyHash[BlockIssuer], Word64],
+          Nonce.Neutral,
+          Nonce.Neutral,
+          epochNonce,
+          Nonce.Neutral,
+          Nonce.Neutral,
+          Nonce.Neutral
+        )
+      ),
+      ProtocolExtras(ledger.epoch, Nonce.Neutral)
     )
     NodeState(praos, ledger, BootstrapState.initial(lite))
 

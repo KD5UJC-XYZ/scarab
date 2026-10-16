@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState
 import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolExtras}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.ledger.Nonce
@@ -24,9 +25,6 @@ import Gens.given
 class CodecSuite extends ScalaCheckSuite:
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(60)
-
-  // the snapshot payload of the V2 reader, derived again here for the properties of the codec itself
-  private given Codec[StateSnapshot[NodeState]] = Codec.auto
 
   private def roundTrip[A](name: String)(using c: Codec[A], g: Gens[A]): Unit =
     property(s"round trip: $name") {
@@ -58,19 +56,19 @@ class CodecSuite extends ScalaCheckSuite:
   roundTrip[Proposal]("Proposal")
   roundTrip[GovState]("GovState")
   roundTrip[LedgerState]("LedgerState")
-  roundTrip[PraosState]("PraosState")
+  roundTrip[ChainDepState]("ChainDepState")
+  roundTrip[ProtocolExtras]("ProtocolExtras")
   roundTrip[LiteLedger]("LiteLedger")
   roundTrip[BootstrapState]("BootstrapState")
   roundTrip[ByronState]("ByronState")
   roundTrip[BlockRef]("BlockRef")
-  roundTrip[NodeState]("NodeState")
-  roundTrip[StateSnapshot[NodeState]]("StateSnapshot[NodeState]")
+  roundTrip[ConsensusExtras]("ConsensusExtras")
 
   property("a strict prefix of an encoding never decodes") {
-    forAll(Gens[StateSnapshot[NodeState]], Gen.choose(0.0, 1.0)) { (s, fraction) =>
+    forAll(Gens[ConsensusExtras], Gen.choose(0.0, 1.0)) { (s, fraction) =>
       val bytes = Codec.encode(s)
       val cut = (bytes.length * fraction).toInt.min(bytes.length - 1)
-      Codec.decode[StateSnapshot[NodeState]](bytes.take(cut)).isLeft
+      Codec.decode[ConsensusExtras](bytes.take(cut)).isLeft
     }
   }
 
@@ -82,7 +80,7 @@ class CodecSuite extends ScalaCheckSuite:
 
   property("decoding arbitrary bytes never throws") {
     forAll(Gen.listOf(Gen.choose(-128, 127).map(_.toByte)).map(_.toArray)) { bytes =>
-      Codec.decode[StateSnapshot[NodeState]](bytes)
+      Codec.decode[ConsensusExtras](bytes)
       Codec.decode[LedgerState](bytes)
       true
     }
@@ -145,7 +143,7 @@ class CodecSuite extends ScalaCheckSuite:
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), _.start)
 
-  test("golden: the schema fingerprint of the V3 sidecar") {
+  test("golden: the schema fingerprint of the V4 sidecar") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
   }
 
@@ -154,7 +152,7 @@ class CodecSuite extends ScalaCheckSuite:
       None,
       Map.empty,
       Set.empty,
-      SnapshotSidecar.Chain.InByron(initial)
+      SnapshotSidecar.Chain.InByron(initial.ledger, initial.header.chainDep.state, initial.extras)
     )
     val encoded = Codec.encode(sidecar)(using SnapshotSidecar.codec)
     val digest = java.security.MessageDigest.getInstance("SHA-256").digest(encoded)
@@ -163,12 +161,14 @@ class CodecSuite extends ScalaCheckSuite:
 
   // Regenerate (and add a FormatVersion with its migration if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
+  // The sidecar goldens are the V4 writer's (J1.5); the V3 sidecar's (65d0043c049b7b7a) and the V2
+  // node snapshot's (2293c5cf7bb77492) are asserted by the `legacy` module.
   // The V2 reader's goldens (the fingerprint of the node snapshot and the digest of the initial state)
   // are in the `legacy` module's suites, frozen with the node state of their time.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
-  private val GoldenSidecarFingerprint = "65d0043c049b7b7a"
+  private val GoldenSidecarFingerprint = "467459aeddcceecd"
   private val GoldenSidecar =
-    ("7bc7dc357f2b64267b3bb7c8bb5b79e4275dca9bd84693d1db02a32d872242a4", 3161)
+    ("5113a158e6afa73265d6ed716ff0e56e0a33a8881c31f667f183e5cbe08058bb", 3164)

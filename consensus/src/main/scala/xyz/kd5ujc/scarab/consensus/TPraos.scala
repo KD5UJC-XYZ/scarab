@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.consensus
 
 import xyz.kd5ujc.scarab.ledger.{LeaderCheck, LedgerView, Nonce, OCertRules, StakeView, TPraosError}
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolState, TPraosState}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -10,11 +11,11 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.vrf.{PraosLeaderThreshold as Leader, PraosVrfCertificate as Vrf}
 
 /** TPraos header validation and chain-dependent state evolution: the Overlay, Prtcl, Updn, Tickn
-  * and OCert rules of cardano-ledger, over the same [[PraosState]] that Praos continues from.
+  * and OCert rules of cardano-ledger, over the [[TPraosState]] of the chain-dependent state.
   */
 object TPraos:
   /** The validated state and how leadership was established. */
-  final case class Validated(state: PraosState, leader: LeaderCheck)
+  final case class Validated(state: ProtocolState, leader: LeaderCheck)
 
   /** The slot is reserved for the overlay schedule (`isOverlaySlot`). */
   def isOverlaySlot(firstSlot: BigInt, d: Rational, slot: BigInt): Boolean =
@@ -73,7 +74,7 @@ object TPraos:
     * that epoch, see [[Praos.tick]]).
     */
   def update(
-      state: PraosState,
+      state: ProtocolState,
       header: Header,
       view: LedgerView,
       config: PraosConfig
@@ -82,25 +83,34 @@ object TPraos:
       case h: Header.Shelley =>
         h.vrf match
           case HeaderVrf.TPraos(nonceCert, leaderCert) =>
-            run(state, h, nonceCert, leaderCert, view, config)
+            state.dep match
+              case ChainDepState.TPraos(t) =>
+                run(t, h, nonceCert, leaderCert, view, config).map((next, leader) =>
+                  Validated(ProtocolState(ChainDepState.TPraos(next), state.extras), leader)
+                )
+              case _ =>
+                Left(
+                  TPraosError.NotTPraos(s"${h.era} (the chain-dependent state is not TPraos's)")
+                )
           case _: HeaderVrf.Praos => Left(TPraosError.NotTPraos(s"${h.era} (Praos)"))
       case h => Left(TPraosError.NotTPraos(h.era.toString))
 
   private def run(
-      state: PraosState,
+      state: TPraosState,
       header: Header.Shelley,
       nonceCert: VrfCert,
       leaderCert: VrfCert,
       view: LedgerView,
       config: PraosConfig
-  ): Either[TPraosError, Validated] =
+  ): Either[TPraosError, (TPraosState, LeaderCheck)] =
     val geometry = config.geometry
     val slot = header.slot
     val firstSlot = geometry.firstSlot(geometry.epochOf(slot))
     val issuer = Blake2b.hash224.hash(header.issuerVkey)
     val vrfHash = Blake2b.hash256.hash(header.vrfVkey)
-    val nonceSeed = seed(SeedEta, slot, state.epochNonce)
-    val leaderSeed = seed(SeedL, slot, state.epochNonce)
+    val epochNonce = state.chainDep.tickn.epochNonce
+    val nonceSeed = seed(SeedEta, slot, epochNonce)
+    val leaderSeed = seed(SeedL, slot, epochNonce)
     def vrfChecks: Either[TPraosError, Unit] =
       for
         _ <- verifyVrf(config.verdicts, nonceSeed, header.vrfVkey, nonceCert).leftMap(
@@ -116,6 +126,9 @@ object TPraos:
       case StakeView.Known(pools)      => pools.stake.contains(issuer)
       case StakeView.Unknown(registry) => registry.contains(issuer)
     for
+      issuerKey <- Praos.issuerKey(header.issuerVkey).leftMap(TPraosError.Malformed(_))
+      sequence <- Praos.counterOf(header.opCert.sequence).leftMap(TPraosError.Malformed(_))
+      lastSlot <- Praos.slotOf(slot).leftMap(TPraosError.Malformed(_))
       leader <-
         if !isOverlaySlot(firstSlot, view.d, slot) then
           for
@@ -177,7 +190,7 @@ object TPraos:
         .leftMap(TPraosError.OCert(_))
       _ <- OCertRules
         .checkCounter(
-          state.counters,
+          state.chainDep.protocol.ocertCounters.get(issuerKey).map(_.toBigInt),
           issuer,
           header.opCert.sequence,
           known = registered || delegateHashes.contains(issuer),
@@ -185,15 +198,19 @@ object TPraos:
         )
         .leftMap(TPraosError.OCert(_))
     yield
-      val evolving = state.evolving.combine(nonceValue(nonceCert.output))
+      val chain = state.chainDep
+      val evolving = chain.protocol.evolvingNonce.combine(nonceValue(nonceCert.output))
       val nextEpoch = geometry.firstSlot(geometry.epochOf(slot) + 1)
-      Validated(
-        state.copy(
-          evolving = evolving,
-          candidate =
-            if slot + geometry.stabilityWindow < nextEpoch then evolving else state.candidate,
-          lab = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_)),
-          counters = state.counters.updated(issuer, header.opCert.sequence)
-        ),
-        leader
-      )
+      TPraosState(
+        lastSlot,
+        chain.copy(
+          protocol = chain.protocol.copy(
+            ocertCounters = chain.protocol.ocertCounters.updated(issuerKey, sequence),
+            evolvingNonce = evolving,
+            candidateNonce =
+              if slot + geometry.stabilityWindow < nextEpoch then evolving
+              else chain.protocol.candidateNonce
+          ),
+          labNonce = header.prevHash.fold(Nonce.Neutral)(Nonce.Hash(_))
+        )
+      ) -> leader

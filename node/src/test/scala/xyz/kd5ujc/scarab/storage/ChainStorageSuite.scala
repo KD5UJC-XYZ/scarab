@@ -47,7 +47,7 @@ class ChainStorageSuite extends CatsEffectSuite:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, NodeState] = SnapshotV3.format[IO]
+  private given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO]
   private val k = geometry.securityParam
 
   private val raws: Vector[Bytes] =
@@ -312,17 +312,17 @@ class ChainStorageSuite extends CatsEffectSuite:
     }
   }
 
-  /** A snapshot returns the state in its canonical form (see [[SnapshotV3.canonical]]): the state
+  /** A snapshot returns the state in its canonical form (see [[SnapshotV4.canonical]]): the state
     * replayed from the blocks is compared in that form.
     */
-  private def canonical(s: NodeState): NodeState = SnapshotV3.canonical(setup.mirrorEnv(), s)
+  private def canonical(s: NodeState): NodeState = SnapshotV4.canonical(setup.mirrorEnv(), s)
 
   private def assertState(got: NodeState, want: NodeState, clue: => Any = "state"): Unit =
     assertEquals(canonical(got), canonical(want), clue)
 
   private def sameLedger(x: NodeState, y: NodeState): Unit =
     val (a, b) = (canonical(x), canonical(y))
-    assertEquals(a.praos, b.praos)
+    assertEquals(a.protocol, b.protocol)
     assertEquals(a.boot, b.boot)
     assertEquals(
       a.ledger.copy(utxo = xyz.kd5ujc.scarab.ledger.Utxo.empty),
