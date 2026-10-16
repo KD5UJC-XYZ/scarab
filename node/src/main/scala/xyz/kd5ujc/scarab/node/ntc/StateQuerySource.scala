@@ -8,7 +8,8 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Target}
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer.Refusal
-import xyz.kd5ujc.scarab.consensus.{NodeState, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.VolatileChain
+import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
@@ -22,15 +23,15 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   * duration instead; roadmap F1).
   */
 object StateQuerySource:
-  def apply[F[_]: Sync](
-      chain: Ref[F, VolatileChain[NodeState]],
+  def apply[F[_]: Sync, S: ChainRead](
+      chain: Ref[F, VolatileChain[S]],
       env: F[QueryEnv],
       store: UtxoStore[F]
   ): LocalStateQueryServer.Source[F] = new LocalStateQueryServer.Source[F]:
     def acquire(target: Target): F[Either[Failure, LocalStateQueryServer.Session[F]]] =
       chain.get.map(select(_, target)).map(_.map(session))
 
-    private def select(c: VolatileChain[NodeState], target: Target): Either[Failure, QueryView] =
+    private def select(c: VolatileChain[S], target: Target): Either[Failure, QueryView[S]] =
       def tipView = QueryView(c.tip, c.tipRef.map(_.blockNo), c.state)
       target match
         case Target.VolatileTip => Right(tipView)
@@ -53,7 +54,7 @@ object StateQuerySource:
                   case _                 => Failure.PointNotOnChain
               }
 
-    private def session(view: QueryView): LocalStateQueryServer.Session[F] =
+    private def session(view: QueryView[S]): LocalStateQueryServer.Session[F] =
       new LocalStateQueryServer.Session[F]:
         def answer(raw: Bytes): F[Either[Refusal, Bytes]] =
           NtcQuery.decode(raw) match
@@ -67,21 +68,25 @@ object StateQuerySource:
                 // A value outside its encoding makes the writer throw; the connection ends with the
                 // query named, never silently.
                 answered <- Sync[F]
-                  .delay(QueryAnswers.answer(e, view, entries, query))
+                  .delay(QueryAnswers.answerOrWhy(e, view, entries, query))
                   .attempt
               yield answered match
-                case Right(Some(result)) => Right(result)
-                case Right(None)         => Left(Refusal.Unsupported(shown))
-                case Left(cause)         => Left(Refusal.Unwritable(shown, cause.toString))
+                case Right(Right(result))                  => Right(result)
+                case Right(Left(Unanswered.Unsupported)) => Left(Refusal.Unsupported(shown))
+                case Right(Left(Unanswered.Refused(error))) =>
+                  Left(Refusal.Unwritable(shown, s"the state cannot be read: $error"))
+                case Right(Left(Unanswered.Unwritable)) =>
+                  Left(Refusal.Unwritable(shown, "the answer is out of range"))
+                case Left(cause) => Left(Refusal.Unwritable(shown, cause.toString))
 
-    private def fetch(view: QueryView, needs: QueryAnswers.UtxoNeeds): F[Map[TxIn, TxOut]] =
+    private def fetch(view: QueryView[S], needs: QueryAnswers.UtxoNeeds): F[Map[TxIn, TxOut]] =
       needs match
         case QueryAnswers.UtxoNeeds.Nothing => Sync[F].pure(Map.empty)
         case QueryAnswers.UtxoNeeds.Whole =>
-          UtxoStore.materialize(store, view.ledger.utxo)
+          UtxoStore.materialize(store, view.utxo)
         case QueryAnswers.UtxoNeeds.Addresses(addresses) =>
-          UtxoStore.materializeWhere(store, view.ledger.utxo, out => addresses(out.address.raw))
+          UtxoStore.materializeWhere(store, view.utxo, out => addresses(out.address.raw))
         case QueryAnswers.UtxoNeeds.Inputs(inputs) =>
-          UtxoStore.complete(Some(store), view.ledger.utxo, inputs).map { u =>
+          UtxoStore.complete(Some(store), view.utxo, inputs).map { u =>
             inputs.iterator.flatMap(i => u.get(i).map(i -> _)).toMap
           }

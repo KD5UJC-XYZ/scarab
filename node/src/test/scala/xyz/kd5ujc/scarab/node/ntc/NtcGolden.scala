@@ -5,10 +5,11 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
+import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -52,6 +53,9 @@ object NtcGolden:
     setup.genesis.raw,
     setup.mirrorEnv().ledger
   )
+
+  /** The state read as the node's flat state. */
+  given flatRead: ChainRead[NodeState] = ChainRead.nodeState(setup.mirrorEnv())
 
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e), identity)
 
@@ -297,7 +301,26 @@ object NtcGolden:
       subject: (String, NodeState, Point, Option[BigInt])
   ): Vector[(String, String, Option[Bytes])] =
     val (name, state, point, blockNo) = subject
-    val view = QueryView(point, blockNo, state)
+    answersOf(name, QueryView(point, blockNo, state), state)
+
+  /** The same answers, from the mirror of the state (the view reads it as it is). */
+  def mirrorAnswers(
+      subject: (String, NodeState, Point, Option[BigInt])
+  ): Vector[(String, String, Option[Bytes])] =
+    val (name, state, point, blockNo) = subject
+    val anchor = point match
+      case Point.Block(slot, hash) => Some(BlockRef(slot.value, hash, blockNo.getOrElse(BigInt(0))))
+      case Point.Origin            => None
+    val mirror = MirrorRun
+      .run(setup.mirrorEnv())(_.toMirror(anchor, state))
+      .fold(e => sys.error(s"$name: $e"), _.value)
+    answersOf(name, QueryView(point, blockNo, mirror), state)
+
+  private def answersOf[S](
+      name: String,
+      view: QueryView[S],
+      state: NodeState
+  ): Vector[(String, String, Option[Bytes])] =
     val utxo = state.ledger.utxo.toMap
     battery(state.ledger).map { (label, query) =>
       (
@@ -305,9 +328,7 @@ object NtcGolden:
         label,
         QueryAnswers
           .answer(queryEnv, view, utxo, NtcQuery.IfCurrent(Era.Conway.index, query))
-          .map(
-            unwrap
-          )
+          .map(unwrap)
       )
     }
 

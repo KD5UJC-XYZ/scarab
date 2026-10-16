@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
+import xyz.kd5ujc.scarab.node.ntc.NtcGolden.flatRead
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite

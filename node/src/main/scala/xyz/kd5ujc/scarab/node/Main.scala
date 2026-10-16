@@ -750,7 +750,7 @@ object Main extends IOApp:
                           bearer,
                           genesis.networkMagic,
                           LocalSubmission.handler(mempool),
-                          Some(StateQuerySource[IO](ref, queryEnv, store)),
+                          Some(StateQuerySource[IO, NodeState](ref, queryEnv, store)),
                           chainSync = Some(server.blockSource),
                           txMonitor = Some(LocalMonitor.source(mempool))
                         )

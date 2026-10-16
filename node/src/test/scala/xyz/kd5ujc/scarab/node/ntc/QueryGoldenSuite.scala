@@ -38,6 +38,9 @@ class QueryGoldenSuite extends FunSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger
   )
+  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
+    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
+
   private val view = QueryView(point, Some(1), setup.start)
 
   private val entries = golden.downField("queries").values.toVector.flatten.map(_.hcursor)

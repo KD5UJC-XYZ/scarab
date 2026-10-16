@@ -67,7 +67,10 @@ class MirrorAnswersSuite extends FunSuite:
         case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
     }
 
-  private def view(block: Block, state: NodeState): QueryView =
+  private given xyz.kd5ujc.scarab.node.read.ChainRead[NodeState] =
+    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
+
+  private def view(block: Block, state: NodeState): QueryView[NodeState] =
     QueryView(Point.Origin, Some(block.header.blockNo), state)
 
   private def ask(era: Era, block: Block, state: NodeState, query: LedgerQuery): Option[Bytes] =
@@ -190,13 +193,12 @@ class MirrorAnswersSuite extends FunSuite:
 
   test("a Byron state has no new-epoch state to answer") {
     val (block, state) = states.find(_._1.era == Era.Byron).getOrElse(fail("no Byron block"))
-    val env = setup.mirrorEnv()
     assertEquals(
-      MirrorAnswers.newEpochState(env, view(block, state)).left.toOption,
-      Some(MirrorRefusal.ByronLedger)
+      MirrorAnswers.newEpochState(view(block, state)).left.toOption,
+      Some(Unanswered.Unsupported)
     )
     assertEquals(
-      MirrorAnswers.epochState(env, view(block, state)).left.toOption,
-      Some(MirrorRefusal.ByronLedger)
+      MirrorAnswers.epochState(view(block, state)).left.toOption,
+      Some(Unanswered.Unsupported)
     )
   }
