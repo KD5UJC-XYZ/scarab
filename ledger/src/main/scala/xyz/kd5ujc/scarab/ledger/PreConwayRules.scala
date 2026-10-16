@@ -59,11 +59,22 @@ object PreConwayRules:
       _ <- check(body.inputs.nonEmpty, "InputSetEmptyUTxO", "no inputs")
       spent <- resolve(body.inputs.toVector, "BadInputsUTxO")
       refOuts <- resolve(body.referenceInputs, "BadInputsUTxO")
-      _ <- check(
-        body.ttl.forall(env.slot < _) && body.validityStart.forall(_ <= env.slot),
-        "OutsideValidityIntervalUTxO",
-        s"slot ${env.slot} not in [${body.validityStart}, ${body.ttl})"
-      )
+      // Shelley's time to live is the last slot the transaction is valid in (`validateTimeToLive`,
+      // cardano-ledger Shelley/Rules/Utxo.hs lines 414-423, Shelley era only); from Allegra the
+      // validity interval's upper bound is exclusive (`inInterval`).
+      _ <-
+        if pv <= 2 then
+          check(
+            body.ttl.forall(env.slot <= _),
+            "ExpiredUTxO",
+            s"ttl ${body.ttl} before slot ${env.slot}"
+          )
+        else
+          check(
+            body.ttl.forall(env.slot < _) && body.validityStart.forall(_ <= env.slot),
+            "OutsideValidityIntervalUTxO",
+            s"slot ${env.slot} not in [${body.validityStart}, ${body.ttl})"
+          )
       _ <- check(tx.size <= pp.maxTxSize, "MaxTxSizeUTxO", s"${tx.size} > ${pp.maxTxSize}")
       _ <- check(body.fee >= minFee, "FeeTooSmallUTxO", s"${body.fee} < $minFee")
       _ <- check(

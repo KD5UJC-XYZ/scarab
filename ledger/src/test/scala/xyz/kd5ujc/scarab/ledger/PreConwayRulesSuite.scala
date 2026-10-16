@@ -53,14 +53,22 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         run(transfer(in, 40 * ada, 60 * ada - 200), Vector(bob)),
         "MissingVKeyWitnessesUTXOW"
       )
-      assertEquals(
-        run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))),
-        "OutsideValidityIntervalUTxO"
-      )
-      assertEquals(
-        run(transfer(in, 40 * ada, 60 * ada - 200).copy(validityStart = Some(1001))),
-        "OutsideValidityIntervalUTxO"
-      )
+      // the slot is 1000: Shelley's time to live is inclusive, Allegra's upper bound exclusive
+      if pv == 2 then
+        assertEquals(run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))), "accepted")
+        assertEquals(
+          run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(999))),
+          "ExpiredUTxO"
+        )
+      else
+        assertEquals(
+          run(transfer(in, 40 * ada, 60 * ada - 200).copy(ttl = Some(1000))),
+          "OutsideValidityIntervalUTxO"
+        )
+        assertEquals(
+          run(transfer(in, 40 * ada, 60 * ada - 200).copy(validityStart = Some(1001))),
+          "OutsideValidityIntervalUTxO"
+        )
       assertEquals(run(transfer(txIn(9), 40 * ada, 60 * ada - 200)), "BadInputsUTxO")
       assertEquals(run(transfer(in, 100, 100 * ada - 300)), "OutputTooSmallUTxO")
     }
