@@ -50,6 +50,48 @@ trait LedgerMirror[F[_]]:
       ShelleyBasedEra[E]
   ): F[node.LedgerState]
 
+  // The parts of `to`, each on its own. A reader that needs the pool distribution does not pay for
+  // the accounts: `to` is the sum of these (and of what the node keeps beside the mirror), and the
+  // read paths of the node (`node.read`) take the ones they ask for, so that a flat state is read
+  // through the mirror's vocabulary without converting all of it.
+
+  /** The scalars of the new-epoch state: the epoch, the blocks made, the pots and the three amounts
+    * of the UTxO state.
+    */
+  def scalars(s: node.LedgerState): F[LedgerScalars]
+
+  /** The certificate state: pools (with the VRF key hashes and delegators the node derives),
+    * delegation and, in Conway, the voting state.
+    */
+  def certState[E <: EraTag](s: node.LedgerState)(using ShelleyBasedEra[E]): F[CertState[E]]
+
+  /** The governance state, as of the tip `at` (the future parameters depend on it). */
+  def govState[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
+      ShelleyBasedEra[E]
+  ): F[GovState[E]]
+
+  /** The instant stake of the UTxO (`utxosInstantStake`). */
+  def instantStake[E <: EraTag](u: node.Utxo)(using ShelleyBasedEra[E]): F[InstantStake[E]]
+
+  /** The three stake snapshots and the fee pot. */
+  def snapshots(s: node.LedgerState): F[SnapShots]
+
+  /** The pool distribution of the new-epoch state (`nesPd`). */
+  def poolDistr(s: node.LedgerState): F[PoolDistr]
+
+/** The scalar fields of a [[NewEpochState]] and of the UTxO state under it, taken off the node's
+  * state ([[LedgerMirror.scalars]]).
+  */
+final case class LedgerScalars(
+    epoch: EpochNo,
+    bprev: BlocksMade,
+    bcur: BlocksMade,
+    chainAccount: ChainAccountState,
+    deposited: Coin,
+    fees: Coin,
+    donation: Coin
+)
+
 object LedgerMirror:
   def apply[F[_]](using
       monad: Monad[F],
@@ -538,7 +580,7 @@ object LedgerMirror:
         dormant <- vocab(EpochNo.fromBigInt(s.dormantEpochs))
       yield VState(dreps, CommitteeState(committee), dormant)
 
-    private def certState[E <: EraTag](s: node.LedgerState, p: PState)(using
+    private def certWith[E <: EraTag](s: node.LedgerState, p: PState)(using
         era: ShelleyBasedEra[E]
     ): F[CertState[E]] = era match
       case ShelleyBasedEra.SConway =>
@@ -556,7 +598,7 @@ object LedgerMirror:
 
     // ---- the governance state and the instant stake
 
-    private def govState[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
+    def govState[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
         era: ShelleyBasedEra[E]
     ): F[GovState[E]] =
       asks.ask.flatMap { env =>
@@ -598,7 +640,7 @@ object LedgerMirror:
       DRComplete(snapshot, ratify)
 
     /** `utxosInstantStake`: the stake of the UTxO by credential (and by pointer before Conway). */
-    private def instantStake[E <: EraTag](u: node.Utxo)(using
+    def instantStake[E <: EraTag](u: node.Utxo)(using
         era: ShelleyBasedEra[E]
     ): F[InstantStake[E]] =
       def credentials: F[SortedMap[Credential[Staking], CompactCoin]] =
@@ -717,6 +759,52 @@ object LedgerMirror:
         )
       )
 
+    // ---- the parts of the mirror, each on its own
+
+    def certState[E <: EraTag](s: node.LedgerState)(using ShelleyBasedEra[E]): F[CertState[E]] =
+      pState(s).flatMap(certWith[E](s, _))
+
+    def scalars(s: node.LedgerState): F[LedgerScalars] =
+      for
+        epoch <- vocab(EpochNo.fromBigInt(s.epoch))
+        bprev <- blocks(s.blocksPrevious)
+        bcur <- blocks(s.blocksCurrent)
+        treasury <- coin(s.treasury)
+        reserves <- coin(s.reserves)
+        deposited <- coin(s.deposited)
+        fees <- coin(s.fees)
+        donation <- coin(s.donation)
+      yield LedgerScalars(
+        epoch,
+        bprev,
+        bcur,
+        ChainAccountState.pair.reverseGet((treasury, reserves)),
+        deposited,
+        fees,
+        donation
+      )
+
+    def snapshots(s: node.LedgerState): F[SnapShots] =
+      for
+        mark <- snapShot(s.snapshots.mark, Some(accountDelegators(s)))
+        set <- snapShot(s.snapshots.set)
+        go <- snapShot(s.snapshots.go)
+        fee <- coin(s.snapshots.fee)
+      yield SnapShots(mark.snapshot, set.snapshot, go.snapshot, fee)
+
+    def poolDistr(s: node.LedgerState): F[PoolDistr] =
+      for
+        set <- snapShot(s.snapshots.set)
+        env <- asks.ask
+        carried = carriedDistribution(env, s)
+        distr <- carried.traverse(snapShot(_))
+      yield PoolDistr.of(distr.fold(set.snapshot)(_.snapshot))
+
+    /** The pool distribution when it is not the set snapshot's, on the node's network. */
+    private def carriedDistribution(env: MirrorEnv, s: node.LedgerState): Option[node.Snapshot] =
+      val distribution = poolsOn(env.network, s.poolDistribution)
+      Option.unless(distribution == poolsOn(env.network, s.snapshots.set))(distribution)
+
     // ---- the whole state
 
     def to[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
@@ -734,7 +822,7 @@ object LedgerMirror:
         donation <- coin(s.donation)
         fee <- coin(s.snapshots.fee)
         p <- pState(s)
-        cert <- certState[E](s, p)
+        cert <- certWith[E](s, p)
         gov <- govState[E](at, s)
         instant <- instantStake[E](s.utxo)
         env <- asks.ask
@@ -747,10 +835,7 @@ object LedgerMirror:
         set <- snapShot(s.snapshots.set)
         go <- snapShot(s.snapshots.go)
         // the distribution as it comes back: its pools' accounts on the node's network
-        distribution = poolsOn(env.network, s.poolDistribution)
-        carried = Option.unless(distribution == poolsOn(env.network, s.snapshots.set))(
-          distribution
-        )
+        carried = carriedDistribution(env, s)
         distr <- carried.traverse(snapShot(_))
         ru <- rewardUpdate(s.rewardUpdate)
       yield
