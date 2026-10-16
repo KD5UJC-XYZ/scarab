@@ -477,7 +477,7 @@ private[ledger] object ConwayCerts:
             PredicateFailure.pool(PoolFailure.StakePoolCostTooLow(Mismatch(p.cost, pp.minPoolCost)))
           )
           _ <- check(
-            p.rewardAccount.network == network,
+            !pp.validatesPoolRewardAccountNetwork || p.rewardAccount.network == network,
             PredicateFailure.pool(
               PoolFailure.WrongNetworkPool(Mismatch(p.rewardAccount.network, network), p.operator)
             )

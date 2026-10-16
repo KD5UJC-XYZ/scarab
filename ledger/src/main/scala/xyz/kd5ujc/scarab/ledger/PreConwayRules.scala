@@ -741,7 +741,11 @@ private[ledger] object PreConwayCerts:
       case Certificate.RegisterPool(p) =>
         for
           _ <- check(p.cost >= pp.minPoolCost, "StakePoolCostTooLowPOOL", s"${p.cost}")
-          _ <- check(p.rewardAccount.network == env.network, "WrongNetworkPOOL", p.operator.hex)
+          _ <- check(
+            !pp.validatesPoolRewardAccountNetwork || p.rewardAccount.network == env.network,
+            "WrongNetworkPOOL",
+            p.operator.hex
+          )
         yield
           if s.pools.contains(p.operator) then
             s.copy(

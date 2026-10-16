@@ -120,6 +120,13 @@ final case class ProtocolParams(
 
   def version: (BigInt, BigInt) = (protocolMajor, protocolMinor)
 
+  /** `hardforkAlonzoValidatePoolAccountAddressNetID` (`pvMajor pv > 4`, so from Alonzo): only then
+    * does a pool registration need the network of its reward account to be the node's. Shelley,
+    * Allegra and Mary accept any network (`Cardano.Ledger.Shelley.Era`, `Shelley/Era.hs:246-251`;
+    * used in `Shelley/Rules/Pool.hs:231`). Mainnet carries such a registration at slot 4,495,760.
+    */
+  def validatesPoolRewardAccountNetwork: Boolean = protocolMajor > 4
+
 object ProtocolParams:
   /** Initial parameters from the Shelley, Alonzo and (when the chain starts in Conway) Conway
     * genesis files.
