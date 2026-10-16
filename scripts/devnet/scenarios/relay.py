@@ -272,7 +272,10 @@ def relay(args):
         }
         if not agree:
             failures.append(f"final tips differ: {final_hashes}")
-        if scala_tip and final.get("pool1") and scala_tip != final["pool1"]["hash"]:
+        # a block can be forged between the settle loop and the read of our log: then our tip is the
+        # reference's next tip, so take a second look before calling it a divergence
+        later = tip_at(args.name, reference) if scala_tip and final.get("pool1") else None
+        if scala_tip and final.get("pool1") and scala_tip not in (final["pool1"]["hash"], later and later["hash"]):
             failures.append(f"the Scala node's last block {scala_tip[:12]} is not the final tip")
         if lag and sum(1 for x in lag if x <= 1) < 0.9 * len(lag):
             failures.append("the Haskell relay was more than one block behind in over 10% of samples")
