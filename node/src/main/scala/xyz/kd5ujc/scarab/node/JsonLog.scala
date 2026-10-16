@@ -12,11 +12,13 @@ import xyz.kd5ujc.scarab.consensus.{
 import xyz.kd5ujc.scarab.ledger.{Header, NodeError, Points, ShelleyGenesis}
 import cats.effect.IO
 import cats.syntax.all.*
+import scala.util.chaining.*
 import io.circe.Json
 import io.circe.syntax.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.network.ConnectionEvent
+import xyz.kd5ujc.scarab.node.differential.{Divergence, Event as DifferentialEvent, Stats, Verdict}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -134,6 +136,92 @@ object JsonLog:
           "mirrorCheckFailed",
           where ++ List("stage" -> "Crashed".asJson, "error" -> message.asJson)*
         )
+
+  private def verdictJson(v: Verdict): Json =
+    v.fold(f => s"${f.rule.name}: ${f.reason}", _ => "accepted").asJson
+
+  private def divergenceFields(d: Divergence): List[(String, Json)] = d match
+    case Divergence.StateDiffers(b, era, stage, difference) =>
+      List(
+        "kind" -> "StateDiffers".asJson,
+        "block" -> block(b),
+        "era" -> era.toString.asJson,
+        "stage" -> stage.toString.asJson,
+        "path" -> difference.path.render.asJson,
+        "old" -> difference.left.asJson,
+        "new" -> difference.right.asJson
+      )
+    case Divergence.VerdictDiffers(b, stage, old, neu) =>
+      List(
+        "kind" -> "VerdictDiffers".asJson,
+        "block" -> block(b),
+        "stage" -> stage.toString.asJson,
+        "old" -> verdictJson(old),
+        "new" -> verdictJson(neu)
+      )
+    case Divergence.Unconvertible(b, stage, error) =>
+      List(
+        "kind" -> "Unconvertible".asJson,
+        "block" -> block(b),
+        "stage" -> stage.toString.asJson,
+        "error" -> error.show.asJson
+      )
+    case Divergence.NotPorted(era, stage) =>
+      List(
+        "kind" -> "NotPorted".asJson,
+        "era" -> era.toString.asJson,
+        "stage" -> stage.toString.asJson
+      )
+
+  /** The old and the new rules disagree (`--rules differential`); `bundle` is the repro kept. */
+  def rulesDiverged(d: Divergence, bundle: Option[java.nio.file.Path]): IO[Unit] =
+    line(
+      "rulesDiverged",
+      (divergenceFields(d) :+ ("bundle" -> bundle.map(_.toString).asJson))*
+    )
+
+  /** The run stops at a disagreement (`--on-divergence halt`). */
+  def rulesHalted(d: Divergence): IO[Unit] = line("rulesHalted", divergenceFields(d)*)
+
+  /** What the differential harness reports as it goes: a sample, or a disagreement. */
+  def differential(event: DifferentialEvent): IO[Unit] = event match
+    case DifferentialEvent.Sampled(b, epoch, era, cost, seeded) =>
+      line(
+        "differentialSampled",
+        "slot" -> b.slot.asJson,
+        "hash" -> b.hash.hex.asJson,
+        "epoch" -> epoch.asJson,
+        "era" -> era.toString.asJson,
+        "toMirrorMillis" -> (cost.toMirrorNanos / 1e6).asJson,
+        "diffMillis" -> (cost.diffNanos / 1e6).asJson,
+        "seeded" -> seeded.asJson
+      )
+    case DifferentialEvent.Diverged(d, bundle) => rulesDiverged(d, bundle)
+
+  /** The harness' account of the run: blocks, samples, what the conversion cost, what is not
+    * ported.
+    */
+  def differentialSummary(stats: Stats): IO[Unit] =
+    def millis(xs: Vector[Long]): Json =
+      val sorted = xs.sorted
+      Json.obj(
+        "total" -> (xs.sum / 1e6).asJson,
+        "median" -> (Stats.quantile(sorted, 0.5) / 1e6).asJson,
+        "p99" -> (Stats.quantile(sorted, 0.99) / 1e6).asJson,
+        "max" -> (sorted.lastOption.getOrElse(0L) / 1e6).asJson
+      )
+    line(
+      "differentialSummary",
+      "blocks" -> stats.blocks.asJson,
+      "sampled" -> stats.sampled.asJson,
+      "failures" -> stats.failures.asJson,
+      "toMirrorMillis" -> millis(stats.samples.map(_.toMirrorNanos)),
+      "diffMillis" -> millis(stats.samples.map(_.diffNanos)),
+      "notPorted" -> stats.notPorted.toList
+        .sortBy((k, _) => (k._1.ordinal, k._2.toString))
+        .map((k, n) => s"${k._1}/${k._2}" -> n.asJson)
+        .pipe(Json.obj(_*))
+    )
 
   def listening(address: String): IO[Unit] = line("listening", "address" -> address.asJson)
 

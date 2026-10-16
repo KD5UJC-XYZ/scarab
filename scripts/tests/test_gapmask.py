@@ -156,5 +156,18 @@ class MirrorSummaryTest(unittest.TestCase):
                          (["Conway"], [1, 2], ["NonMyopic"], 9))
 
 
+class DifferentialSummaryTest(unittest.TestCase):
+    def test_the_soak_counts_the_comparisons_and_reports_a_divergence(self):
+        from devnet.scenarios import soak
+        log = [{"event": "differentialSampled", "era": "Conway", "toMirrorMillis": 3.5, "diffMillis": 0.0, "seeded": True},
+               {"event": "differentialSampled", "era": "Babbage", "toMirrorMillis": 1.0, "diffMillis": 0.0, "seeded": True},
+               {"event": "extended"}]
+        summary = soak.differential_summary(log)
+        self.assertEqual((summary["sampled"], summary["eras"], summary["maxToMirrorMillis"], summary["diverged"]),
+                         (2, ["Babbage", "Conway"], 3.5, []))
+        diverged = soak.differential_summary(log + [{"event": "rulesDiverged", "kind": "StateDiffers", "path": "ext.headerState.tip"}])
+        self.assertEqual(len(diverged["diverged"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

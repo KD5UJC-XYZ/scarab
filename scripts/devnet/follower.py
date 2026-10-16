@@ -54,6 +54,9 @@ def follower_problem(root, follower):
     errors = [e for e in events if e["event"] == "error"]
     if errors:
         return f"follower error: {errors[0].get('message', errors[0])}"
+    diverged = [e for e in events if e["event"] in ("rulesDiverged", "rulesHalted")]
+    if diverged:
+        return f"the old and the new rules diverged: {diverged[0]}"
     if other:
         return f"unexpected follower output: {other[0][:200]}"
     if follower.poll() is not None:

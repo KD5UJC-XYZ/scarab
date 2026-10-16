@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The `soak` scenario: follow, load and periodically compare for a fixed time."""
 import json
+import os
 import subprocess
 import sys
 import time
@@ -55,6 +56,19 @@ def mirror_summary(log):
     }
 
 
+def differential_summary(log):
+    """What the follower's `--rules differential` found: the comparisons made, what the conversion cost,
+    and any divergence."""
+    sampled = [e for e in log if e.get("event") == "differentialSampled"]
+    diverged = [e for e in log if e.get("event") in ("rulesDiverged", "rulesHalted")]
+    return {
+        "sampled": len(sampled),
+        "diverged": diverged,
+        "eras": sorted({e["era"] for e in sampled}),
+        "maxToMirrorMillis": max((e["toMirrorMillis"] for e in sampled), default=0),
+    }
+
+
 def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
@@ -106,6 +120,10 @@ def soak(args):
     mirror = mirror_summary(log) if getattr(args, "mirror_check", False) else None
     if mirror is not None:
         summary["mirrorCheck"] = mirror
+    rules = getattr(args, "rules", None) or os.environ.get("SCARAB_RULES")
+    differential = differential_summary(log) if rules == "differential" else None
+    if differential is not None:
+        summary["differential"] = differential
     extended = extended_summary(root) if getattr(args, "governance_extended", False) else None
     if extended is not None:
         summary["governanceExtended"] = extended
@@ -129,6 +147,9 @@ def soak(args):
     if mirror is not None and (not mirror["checked"] or mirror["failed"] or mirror["notOk"]):
         failures.append(f"mirror check: {mirror['checked']} checked, {len(mirror['failed'])} refused, "
                         f"{len(mirror['notOk'])} not ok")
+    if differential is not None and (not differential["sampled"] or differential["diverged"]):
+        failures.append(f"differential rules: {differential['sampled']} compared, "
+                        f"{len(differential['diverged'])} diverged")
     if extended is not None:
         if extended["refusedUnexpectedly"]:
             failures.append("a transaction the reference was expected to refuse was not refused as expected")

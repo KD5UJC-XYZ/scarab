@@ -378,6 +378,10 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
     The container gets `cpus` CPUs, else `--scala-cpus` of the scenario, else 2.
     """
     cpus = cpus if cpus is not None else getattr(args, "scala_cpus", 2)
+    # --rules (or SCARAB_RULES) reaches every follower a scenario starts
+    rules = getattr(args, "rules", None) or os.environ.get("SCARAB_RULES")
+    if rules and program_args[:1] == ["follow"] and "--rules" not in program_args:
+        program_args = [*program_args, "--rules", rules]
     # MALLOC_ARENA_MAX=2: glibc's per-thread arenas fragment (roadmap K6); also set in the image
     command = ["run", "--rm", "--pull=never", "--network", f"container:{ref(args.name)}",
                f"--cpus={cpus}", "--memory=2g", "--user", USER, "-e", "MALLOC_ARENA_MAX=2",

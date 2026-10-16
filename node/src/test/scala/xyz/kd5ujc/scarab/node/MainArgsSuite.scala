@@ -47,6 +47,31 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
   }
 
+  test("--rules defaults to the old rules; differential takes its policy and repro directory") {
+    val defaults = Main.parse(base).toOption.get
+    assertEquals(defaults.rules, RulesMode.Old)
+    assertEquals(defaults.onDivergence, differential.Policy.Halt)
+    assertEquals(defaults.reproDir, None)
+    assertEquals(Main.parse(base ++ List("--rules", "new")).toOption.get.rules, RulesMode.New)
+    val d = Main
+      .parse(
+        base ++ List("--rules", "differential", "--on-divergence", "reseed", "--repro-dir", "/r")
+      )
+      .toOption
+      .get
+    assertEquals(d.rules, RulesMode.Differential)
+    assertEquals(d.onDivergence, differential.Policy.Reseed)
+    assertEquals(d.reproDir, Some(java.nio.file.Path.of("/r")))
+  }
+
+  test("--rules refuses an unknown mode, and the divergence flags need the differential mode") {
+    assert(Main.parse(base ++ List("--rules", "both")).isLeft)
+    assert(Main.parse(base ++ List("--rules", "differential", "--on-divergence", "stop")).isLeft)
+    assert(Main.parse(base ++ List("--on-divergence", "halt")).isLeft)
+    assert(Main.parse(base ++ List("--rules", "old", "--repro-dir", "/r")).isLeft)
+    assert(Main.parse(base ++ List("--rules", "old", "--rules", "new")).isLeft)
+  }
+
   test("--cpu-threads takes zero (no pool) or a positive number, nothing else") {
     assertEquals(Main.parse(base ++ List("--cpu-threads", "0")).toOption.get.cpuThreads, 0)
     assertEquals(Main.parse(base ++ List("--cpu-threads", "3")).toOption.get.cpuThreads, 3)

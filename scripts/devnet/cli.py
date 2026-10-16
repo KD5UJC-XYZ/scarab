@@ -7,7 +7,8 @@
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
-                                   (--mirror-check: also the mirror round trip at each epoch boundary)
+                                   (--mirror-check: also the mirror round trip at each epoch boundary;
+                                   --rules differential: the old and the new rules side by side)
     devnet.py relay [--seconds N]  up + the Scala node as a relay (follows the pools, serves a
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
@@ -33,6 +34,7 @@ Run data lives in ${SCARAB_DATA_DIR:-/tmp/scarab}/<name>. The Scala node shares 
 reference container's network namespace because the reference nodes bind to loopback.
 """
 import argparse
+import os
 from .cluster import down, tip, up, up_eras
 from .compare import compare
 from .follower import follow
@@ -57,6 +59,11 @@ def main():
     scala_options.add_argument("--max-starvation-warnings", type=int, default=None,
                                help="fail when the Scala node logged more cats-effect CPU-starvation warnings than this "
                                     "(default: only report them)")
+    scala_options.add_argument("--rules", choices=["old", "new", "differential"], default=None,
+                               help="the follower's ledger rules (its --rules): old (the node's default), or differential, "
+                                    "which runs the old and the new rules side by side on every block and fails the run on "
+                                    "a divergence (new is refused while nothing is ported). The environment variable "
+                                    "SCARAB_RULES does the same for the followers that scenarios start")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("up", help="create genesis and start the 3-pool reference cluster").set_defaults(run=up)
     eras_options = argparse.ArgumentParser(add_help=False)
@@ -197,5 +204,8 @@ def main():
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
     args = p.parse_args()
+    if getattr(args, "rules", None):
+        # the followers that a scenario starts as child processes take it from the environment
+        os.environ["SCARAB_RULES"] = args.rules
     args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "scarab-pool" if args.command == "pool" else "scarab-devnet")
     args.run(args)

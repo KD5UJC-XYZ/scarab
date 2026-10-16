@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus
 import xyz.kd5ujc.scarab.consensus.{
+  BlockRules,
   Anchor,
   BlockRef,
   FollowerEvent,
@@ -26,7 +27,7 @@ import xyz.kd5ujc.scarab.storage.{
   UtxoBacking,
   UtxoStore
 }
-import cats.mtl.{Ask, Handle, Stateful}
+import cats.mtl.{Ask, Handle, Raise, Stateful}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, ProtocolState}
 import cats.syntax.all.*
 import java.nio.file.Path
@@ -42,6 +43,15 @@ import xyz.kd5ujc.scarab.network.{
   NetworkError,
   ServerHandlers
 }
+import xyz.kd5ujc.scarab.node.differential.{
+  DifferentialRules,
+  Divergence,
+  NewRules,
+  Policy,
+  Repro,
+  Sampling,
+  Shadowed
+}
 import xyz.kd5ujc.scarab.node.forge.{Forger, KeyFiles}
 import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
@@ -55,7 +65,8 @@ import scala.concurrent.duration.*
   * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
   * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
   * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check]
-  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -122,7 +133,20 @@ object Main extends IOApp:
       /** Run our own clients on inbound duplex connections, so that the peer is a source of blocks
         * as well (G2).
         */
-      inboundSync: Boolean = true
+      inboundSync: Boolean = true,
+      /** `--rules old|new|differential`: the flat rules (the default), the era-indexed rules (not
+        * ported yet: refused), or both side by side on every block
+        * ([[differential.DifferentialRules]]).
+        */
+      rules: RulesMode = RulesMode.Old,
+      /** `--on-divergence halt|reseed` (with `--rules differential`): stop at the first
+        * disagreement, or adopt the old side and go on.
+        */
+      onDivergence: Policy = Policy.Halt,
+      /** `--repro-dir <dir>` (with `--rules differential`): where the repro bundle of a
+        * disagreement is kept; by default `differential` in the database directory, else none.
+        */
+      reproDir: Option[Path] = None
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -165,7 +189,11 @@ object Main extends IOApp:
       case Left(error) => IO.println(error.message).as(ExitCode(2))
       case Right(options) =>
         Handle
-          .allow[NodeError](follow(options).as(ExitCode.Success))
+          .allow[NodeError](
+            Handle
+              .allow[Divergence](follow(options).as(ExitCode.Success))
+              .rescue(d => JsonLog.rulesHalted(d).as(ExitCode(3)))
+          )
           .rescue(error => JsonLog.error(error).as(ExitCode(1)))
 
   /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots.
@@ -231,7 +259,10 @@ object Main extends IOApp:
       topology
     )
 
-  private def follow(requested: Options)(using Handle[IO, NodeError]): IO[Unit] =
+  private def follow(requested: Options)(using
+      Handle[IO, NodeError],
+      Raise[IO, Divergence]
+  ): IO[Unit] =
     IO.blocking(configured(requested))
       .flatMap(
         _.fold(
@@ -257,10 +288,15 @@ object Main extends IOApp:
       backing: StateBacking[IO, NodeState],
       cache: VerificationCache,
       scheduling: Scheduling[IO]
-  )(using Handle[IO, NodeError]): IO[Unit] =
+  )(using Handle[IO, NodeError], Raise[IO, Divergence]): IO[Unit] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     for
+      _ <- fail[Unit](
+        ConfigError(
+          "--rules new: the era-indexed rules are not ported yet (use --rules old or differential)"
+        )
+      ).whenA(options.rules == RulesMode.New)
       genesis <- IO.pure(setup.genesis)
       blocks <- Ref.of[IO, Long](0L)
       headersLogged <- Ref.of[IO, Long](0L)
@@ -299,7 +335,7 @@ object Main extends IOApp:
         .traverse(_ =>
           MirrorCheck.Checker.create[IO](eraStarts.get.map(setup.mirrorEnv), JsonLog.mirrorChecked)
         )
-      rules = NodeRules[IO](
+      oldRules = NodeRules[IO](
         setup.praos,
         setup.globals,
         setup.byronRules,
@@ -323,6 +359,27 @@ object Main extends IOApp:
         }
       )
       k = genesis.geometry.securityParam
+      // `--rules differential`: the same rules, with the era-indexed side beside them
+      reproDir = options.reproDir.orElse(options.db.map(_.resolve("differential")))
+      differential <-
+        if options.rules != RulesMode.Differential then IO.pure(None)
+        else
+          DifferentialRules
+            .create[IO](
+              oldRules,
+              NewRules.current[IO],
+              eraStarts.get.map(setup.mirrorEnv),
+              Sampling.Default,
+              options.onDivergence,
+              reproDir.fold(Repro.none[IO])(dir =>
+                Repro.files[IO](dir, eraStarts.get.map(setup.mirrorEnv), Some(store))
+              ),
+              JsonLog.differential
+            )
+            .map(Some(_))
+      rules <- differential.fold[IO[BlockRules[IO, NodeState]]](IO.pure(oldRules))(
+        Shadowed(_, 2L * k)
+      )
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
@@ -665,13 +722,14 @@ object Main extends IOApp:
           _ <- JsonLog.started(options.peers, genesis, setup.config, topology)
           _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
           last <- ref.get
+          _ <- differential.traverse_(_.stats.flatMap(JsonLog.differentialSummary))
           _ <- JsonLog.finished(last)
         yield ()
       }
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]"
 
   /** Flags taking a value, other than `--peer`, which may repeat. */
   private val ValueFlags = Set(
@@ -696,6 +754,9 @@ object Main extends IOApp:
     "cpu-threads",
     "dump-state",
     "dump-state-at",
+    "rules",
+    "on-divergence",
+    "repro-dir",
     "local-socket",
     "vrf-skey",
     "kes-skey",
@@ -799,6 +860,18 @@ object Main extends IOApp:
               .map(Path.of(d) -> _)
           }
           _ <- Either.cond(dump.isDefined || !flags.contains("dump-state-at"), (), usage)
+          rules <- flags.get("rules").fold(Right(RulesMode.Old))(RulesMode.parse(_).toRight(usage))
+          onDivergence <- flags
+            .get("on-divergence")
+            .fold(Right(Policy.Halt))(v =>
+              Map("halt" -> Policy.Halt, "reseed" -> Policy.Reseed).get(v).toRight(usage)
+            )
+          _ <- Either.cond(
+            rules == RulesMode.Differential ||
+              !(flags.contains("on-divergence") || flags.contains("repro-dir")),
+            (),
+            ConfigError(s"--on-divergence and --repro-dir need --rules differential\n$Usage")
+          )
         yield Options(
           dir,
           peers,
@@ -824,6 +897,9 @@ object Main extends IOApp:
           flags.contains("mirror-check"),
           headerFirst,
           maxInbound,
-          inboundSync
+          inboundSync,
+          rules,
+          onDivergence,
+          flags.get("repro-dir").map(Path.of(_))
         )
       case _ => Left(usage)
