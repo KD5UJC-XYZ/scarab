@@ -5,6 +5,32 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (Leios, N3: following the public testnet read-only, #72)
+- **The testnet's published configuration, pinned** (`fixtures/leios/testnet/config`, from
+  `book.play.dev.cardano.org/environments-pre/leios`, with SHA-256 and Blake2b-256 of every file in
+  `docs/leios.md` section 11.1): the node reads it, verifies every genesis hash and records
+  `ExperimentalHardForksEnabled` as unsupported (`LeiosTestnetConfigSuite`).
+- **Decoders for what the Leios testnet sends.** `HfcHeader` (`protocol`): the ChainSync envelope open to the eras
+  after Conway (Dijkstra, index 7, and any other index kept as a value) with a closed `HfcHeaderError`. `LeiosHeader`
+  and `LeiosBlock` (`ledger`): the 12-element header (the Praos body, `header_version_info`, the certificate flag and
+  the EB announcement) in blocks of tag 7 and tag 8, the whole-transaction block body, the strictly decoded Leios
+  certificate, and `LeiosBlock.faults` (body hash, body size, certificate flag, certificate with transactions) after
+  consensus' `blockMatchesHeader`. `LeiosHeaderChain` (`consensus`): the chain links and the Praos rules unchanged over
+  those headers. `LeiosNotify` refuses more than sixteen votes in one message (the prototype's `[1*16 vote]`).
+- **The CDDL pipeline reads the Leios messages it was given:** consensus' `leiosNotify.cddl` is a module (`leios-notify`,
+  with `header.cddl` a second time under the name its import wants), compared with the hand-written codec in
+  `LeiosNotifyCddlSuite`; the pinned `dijkstra:header` codec reads the testnet's headers (`LeiosTestnetHeaderSuite`).
+- **Read-only tools** `node/tools/LeiosCaptureMain` (headers over ChainSync, blocks over BlockFetch, one connection, a
+  pause between rounds) and `LeiosCheckMain` (the header rules over a capture, offline).
+- **Evidence.** All 154,698 headers of the testnet (blocks 0 to 154,697, 160 epochs) pass the chain, operational
+  certificate, KES and VRF checks from the genesis, and the leader threshold where the stake is the genesis'
+  (2,112 of them); six real blocks match their headers; the generated `dijkstra.Header` reads the headers byte for
+  byte (`LeiosHeaderChainSuite`, `LeiosBlockSuite`, `LeiosTestnetHeaderSuite`, `HfcHeaderSuite`).
+- **Findings** (`docs/leios.md` 11.5): a Dijkstra body hash is the digest of the whole body, not a merkle root; the
+  testnet's Conway-indexed blocks already carry the 12-element Leios header, so the node's own follower stops at block
+  0 (`decode header: expected 10-element array`); the handshake does not gate the Leios protocols; the relay closes the
+  connection on a first message on protocol 18 or 19, cause open. Gap table X1 to X13 in 11.6, plan for #73 in 11.8.
+
 ### Added (observability: metrics during the replay, #95)
 - **`--metrics-listen` listens from the start of `follow`**, before the database is opened, so a start that replays
   many blocks is scrapeable while it replays (a mainnet replay was invisible for about 45 minutes). The collectors

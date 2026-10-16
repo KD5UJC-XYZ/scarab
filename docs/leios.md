@@ -1,8 +1,11 @@
 # Ouroboros Leios: design note (roadmap N1)
 
-Status: design note plus the pure N2 crypto (section 9). **Leios is not implemented in this
-repository beyond BLS keys, votes, certificates and two wire codecs**, and nothing here has been
-checked against a Leios node beyond a handshake and one refused exchange (sections 8 and 10). The protocol is
+Status: design note, the pure N2 crypto (section 9) and the N3 follow of the public testnet
+(section 11). **Leios is not implemented in the node beyond BLS keys, votes, certificates, two wire
+codecs and read-only decoders and header rules for the testnet's chain** (section 11; the node itself
+cannot follow it, 11.4). Against a Leios node, headers and blocks were checked on the public chain
+(154,698 headers, every Praos check but the stake-dependent leader threshold); protocols 18 and 19
+were never answered (sections 8, 10 and 11.7). The protocol is
 still moving: every statement below carries the source and revision it was read from, and where
 the sources disagree the disagreement is recorded rather than resolved. Unofficial research
 software, not audited. Read together with [architecture.md](architecture.md),
@@ -130,8 +133,8 @@ differs in shape):
   instead has optional `announced_eb`, `announced_eb_size` and `certified_eb` fields. The header also
   carries `header_version_info = [highest_supported_major_version, self_reported_software_tag]`.
 - `block_body_hash` carries the comment "merkle triple root", unchanged from earlier eras'
-  CDDL; whether Dijkstra changes the computation (it adds a Leios certificate and a Peras
-  certificate to the body) is for L1 to confirm against the ledger source.
+  CDDL. **It is stale** (section 11.5): in Dijkstra the hash is the Blake2b-256 digest of the whole
+  encoded body, and `block_body_size` is that body's size; checked on real blocks.
 - `block_body = [transactions, leios_certificate / nil, peras_certificate / nil]`.
 - `pool_params` gains optional `bls_key`.
 - Dijkstra changelog 0.5.0.0: new `LeiosBbodySignal` for `BBODY`, `LeiosEraBlockHeader` class,
@@ -197,7 +200,8 @@ new handshake version number was observed for Leios. Whether the Leios mini-prot
 by a version, by the Dijkstra era, or by a node-side feature flag could not be established
 without opening them, and this note makes no claim. That is the first thing N3 must resolve.
 It also bears on G4 (our client offers only version 14 today; the pure `Handshake` already models
-14 to 16 including the Peras flag).
+14 to 16 including the Peras flag). Answered in section 11.5 item 3: the release the testnet runs does
+not gate the Leios protocols on the version at all; what the relay does with them is 11.7.
 
 ### 4.4 Other network-side changes
 
@@ -480,3 +484,240 @@ Leios team; this note makes no claim beyond the table. The recorded handshake re
 test (`fixtures/leios/testnet/handshake-replies.tsv`, `LeiosTestnetHandshakeSuite`). Even with real
 votes, verification needs the committee: the Shelley genesis of the testnet has one pool with
 `blsKey: null`, so the voting keys exist only in on-chain pool registrations (N3 with L1).
+
+Follow-up (section 11.7, 2026-10-16): driving ChainSync and BlockFetch first, on version 16, and a
+LeiosFetch request in place of the LeiosNotify one, end the same way, so the first possibility above
+(the Praos protocols not having been run) is ruled out; the cause is still open.
+
+## 11. N3: following the public testnet (2026-10-16, owner-approved, read-only)
+
+Status: current (what was run and what it showed). Dates are 2026-10-16. Everything below was read
+from the public relay `leios-node.play.dev.cardano.org:3001` (network magic 164) as a client that
+submits nothing: no transaction, no vote. In this work the relay saw ten connections, one at a time:
+a ChainSync and BlockFetch probe (version 14), two probes with one LeiosNotify pull (version 16), one
+with one LeiosFetch request (version 16), two short header captures (300 and 20 headers), the full
+header capture, two block captures (2 and 7 blocks) and one run of the node's own `CaptureMain`
+(the baseline of 11.4). The full header capture was 154,698 headers in 200 seconds at 64 headers
+per pipelined round with 25 ms between rounds (a syncing node's pace on one peer, about 84 MB);
+blocks were fetched one at a time, half a second apart. The captures are kept outside the
+repository; the fixtures take what the tests need.
+
+### 11.1 The published configuration
+
+The testnet's own name is `musashi` (the dojo network of the Leios team). Its configuration is
+published, with the other Cardano environments, at
+**`https://book.play.dev.cardano.org/environments-pre/leios/`** (`config.json`, `topology.json`,
+`peer-snapshot.json` and the byron, shelley, alonzo, conway and dijkstra genesis files), the
+deployment of `input-output-hk/cardano-playground` `docs/environments-pre/leios/`. The Leios team's
+relay recipe, `input-output-hk/ouroboros-leios` `testnet/` (`README.md`, `pin-config.sh`,
+`run-node.sh`; main `614b10d2`), pins an older snapshot of the same files and names the bootstrap
+relay `leios-node.play.dev.cardano.org:3001`. The files of 2026-10-16 are in
+`fixtures/leios/testnet/config/`, byte for byte as downloaded. Seven of the eight equal the pinned
+snapshot of the relay recipe; `config.json` differs (the recipe's is older: `MinNodeVersion`
+`11.1.0.164-prototype-2026w36`, `MempoolCapacityBytesOverride` 2,000,000 and a `Filepath` for the
+LeiosDb, none of which the live file has; the live one adds snapshot delays and different trace
+forwarder queues). The live `config.json` is the authority.
+
+| File | SHA-256 (of the file) | Blake2b-256 (the hash `config.json` lists) |
+|---|---|---|
+| `config.json` | `de4673d1e527baf0ddfc0a87be0a9ba906eafb78ae97d6f1a1eafdc2d5f0233c` | not listed |
+| `topology.json` | `d260ed809bed60384c8837443d8457062a58d7dca00a4e38d75fd65b486ff2cb` | not listed |
+| `peer-snapshot.json` | `8bb27980a308bf2e046021ff8d3763f4af4879c2145011a47d2cfcd280163085` | not listed |
+| `byron-genesis.json` | `4620a2a14b26731467c954263eb2af9b86e5f5248aae247f1c183ca0368dde65` | `5809f031d8dc8ae8091f66a80ebe8f7d173e475436110c462a0533ed65954639` (over the canonical JSON, as the node verifies it) |
+| `shelley-genesis.json` | `da8508afc546a0b1824d93629a7a5fc8c0898d85095c2cf1b25730eb99d5a151` | `1944510a4fd91415444285231058f6f6ff0f6f3ff3d0356c76c00c5a77f29567` |
+| `alonzo-genesis.json` | `23bf365cae730137ad6868787f20ef4f58e446d22617d7b824f1c75695c760b5` | `387a7c4880477ce7b128566fa7f9f9ed99ee04476084e9f6332b6d42d907faab` |
+| `conway-genesis.json` | `51e9d92f09ea79e61811983b4b1e299926a61b352c3313aaebc7c287169ae2f0` | `e2951aa7f08dcd89bb6ca7fcf9acae5c46bdefb5a9affbac769bbe1902e982eb` |
+| `dijkstra-genesis.json` | `e3a0f8edd086e0c1fccc9fa04b58fa76b8f735ce1214f854072078f7c823e8be` | `aa1238f505479a9b104d2cc001b4bf951062cd527200bea9a1857bdd0dc41085` |
+
+`LeiosTestnetConfigSuite` checks every listed hash with the node's own `NodeSetup.verifyHashes`.
+Not published: signing, KES, VRF or operational-certificate keys of the pools (none are needed for a
+read-only follower), a checkpoints file, and the committee: the testnet's BLS voting keys exist only
+in the pool registrations on the chain (the Shelley genesis pool has `blsKey: null`).
+
+### 11.2 The parameters
+
+| What | Value | From |
+|---|---|---|
+| Name, magic | `musashi`, 164 | `shelley-genesis.json` `networkMagic`; `ouroboros-leios` `testnet/README.md` |
+| Node build | `MinNodeVersion` `11.1.0.164-prototype-2026w38a`. The release of 2026-09-22 (`input-output-hk/ouroboros-leios` `f65db01c`; its CHANGELOG: "no state wipe and no respin: schema and wire formats are unchanged from w38") is `cardano-node` `8c44d145` on `leios-prototype`, which pins `ouroboros-consensus` `27fa649f`, `cardano-ledger` `d93c6546`, `ouroboros-network` `4b3ab766`, `cardano-base` `fbfb3f05` (`flake.lock` and `cabal.project` at those revisions). Whether the relay runs that exact build or a later one is not published | `config.json`; the above |
+| Consensus | `Protocol: Cardano`, `ConsensusMode: PraosMode`, `ExperimentalHardForksEnabled`, `ExperimentalProtocolsEnabled`, `TxSubmissionLogicVersion: TxSubmissionLogicV2`, `LeiosDbConfig.Backend: SQLite` | `config.json` |
+| Eras | `Test{Shelley,Allegra,Mary,Alonzo,Babbage,Conway}HardForkAtEpoch` all 0: no Byron block. There is no `TestDijkstraHardForkAtEpoch`: the chain enters Dijkstra by itself (11.3) | `config.json` |
+| Time | `systemStart` 2026-09-07T00:00:00Z, `slotLength` 1 s, `epochLength` 21,600, `securityParam` 108, `activeSlotsCoeff` 0.05, `slotsPerKESPeriod` 129,600, `maxKESEvolutions` 62 | `shelley-genesis.json` |
+| Protocol version | genesis 11.0 (Conway); every header reports `[12, 0]` or `[12, 67]` (11.3) | `shelley-genesis.json`; headers |
+| Genesis stake | none at the top level; `extraConfig` seats one pool (`fd32267b…ea88`, VRF key hash `f8eb3533…bdc5`, cost 0, margin 0, `blsKey: null`) with 900,000,000 lovelace delegated to it, and 30,000,000,000,000,000 lovelace in an enterprise address; maximum supply 45,000,000,000,000,000 | `shelley-genesis.json` |
+| Leios parameters | committee 900, quorum 0.75, announcement period 1,000, vote period 4,000, diffusion period 7,000 slots; EB transactions 1,000,000 bytes, EB references 100,000 bytes, EB execution units 310,000,000 memory and 100,000,000,000 steps; reference scripts 1,048,576 bytes per block, 4,000,000 per EB, 204,800 per transaction; minimum pool margin 0.015; reference script cost 1.2 per 25,600 bytes; a Plutus V4 cost model of 251 values | `dijkstra-genesis.json` |
+| Block limits | `maxBlockBodySize` 90,112, `maxBlockHeaderSize` 1,100, `maxTxSize` 16,384 | `shelley-genesis.json` |
+| Peers | one bootstrap relay; `useLedgerAfterSlot` 151,200; the peer snapshot lists the same host three times (the three big ledger pools at slot 280,825, hash `85f25eb3…1d69`) | `topology.json`, `peer-snapshot.json` |
+| Handshake | versions 14, 15, 16 accepted, magic 164, no Leios-specific version, Peras off (section 8) | the relay |
+
+### 11.3 What the chain looks like (blocks 0 to 154,697, captured 21:57 UTC)
+
+| Observation | Value |
+|---|---|
+| Headers | 154,698, from block 0 (slot 12) to block 154,697 (slot 3,448,307, epoch 159); the relay's tip was block 154,701 |
+| Era index of the envelope | 6 (Conway) for blocks 0 to 4,254 (epochs 0 to 3), **7 (Dijkstra) from block 4,255 (slot 86,463, the 64th slot of epoch 4)** to the tip: 4,255 and 150,443 headers |
+| Header shape | **12 elements in both**: the Praos header body with the protocol version replaced by `header_version_info` and the two Leios fields appended (`dijkstra.cddl` 56 to 71). The Conway-indexed blocks have it too (11.5) |
+| Header element 9 (`protocol_version` in the release, `header_version_info` in the pinned CDDL) | `[12, 0]` in 153,845 headers, `[12, 67]` in 853 (first at block 28,533, last at 154,222): major version 12, the first Dijkstra protocol version; the second number is a minor version in the release and a software tag in the CDDL (11.5 item 2) |
+| Block layout | index 6, block tag 7: `[header, bodies, witnesses, auxiliary data, invalid]` (the Conway layout); index 7, tag 8: `[header, [transactions, leios_certificate / nil, peras_certificate / nil]]` |
+| Block body hash | tag 7: the merkle digest of the component hashes; **tag 8: the Blake2b-256 digest of the whole encoded body**, and `block_body_size` is the body's encoded size (11.5) |
+| Producers | epochs 0 and 1: the genesis pool only (1,062 and 1,050 headers); epochs 2 on: three pools; from epoch 15 on: more, 147 distinct issuers in all (most first seen between epochs 15 and 24) |
+| Announcing headers | 65,469 (42%); first at block 17,397, slot 371,614 (epoch 17); `eb_size` 37 to 199,998 bytes (median 99,183) |
+| Headers with `block_body_contains_leios_cert` | 25,531 (16.5%); first at block 17,403, slot 371,723; 24,251 of them also announce, 1,280 do not |
+| Block bodies | largest 88,873 bytes, median 73 bytes: most blocks are empty or hold a certificate, full blocks come with the transaction generator |
+
+### 11.4 How far this node followed
+
+"Follow" has two meanings here, and the answers differ.
+
+**The node itself stops at the first header.** `follow --config config.json` reads the
+configuration (every hash verified; `ExperimentalHardForksEnabled` is recorded in `configUnsupported`
+as "the Dijkstra era is not implemented"), derives the genesis ledger from `extraConfig` (two outputs,
+one pool: `GenesisState` already reads that, 11.5 item 4), connects, agrees version 14, and
+intersects at Origin. The first header's envelope has index 6, `NtNHeader.codec` accepts it, and
+`Header.fromRaw(Conway)` refuses its 12 elements: the node's own capture path (`CaptureMain`, which
+uses `Peer.nodeToNode`) ends with `protocol: decode header: expected 10-element array`, a typed
+`PeerError.Protocol`, at block 0. Zero blocks, zero headers.
+
+**The new read-only tools followed the whole chain**, header by header, from Origin to block 154,697
+(`LeiosCaptureMain` captures, `LeiosCheckMain` checks; the rules are `LeiosHeaderChain` in
+`consensus`, the decoders `HfcHeader` in `protocol` and `LeiosHeader` and `LeiosBlock` in `ledger`):
+
+| Check, per header | Result over the 154,698 headers |
+|---|---|
+| Envelope `[era, tag24(header)]` decodes (`HfcHeader`: Conway-indexed, Dijkstra-indexed, any other index kept as a value) | 4,255 + 150,443, none unrecognised |
+| `LeiosHeader` decodes the 12-element body | all |
+| Chain: `prev_hash` is the previous header's hash (Blake2b-256 of the exact header bytes), block numbers rise by one, slots rise | all |
+| Operational certificate: the cold key's signature over hot key, sequence number and KES period; the KES period within `maxKESEvolutions` 62 of the certificate's | all |
+| KES signature (Sum6KES) over the exact header body bytes | all |
+| Operational certificate counters never decrease per issuer | all |
+| VRF proof under the epoch nonce (evolved from the hash of the Shelley genesis file through 160 epochs: evolving nonce per block, candidate nonce frozen 4k/f slots before the end of the epoch, last-block nonce of the previous epoch) | all. The VRF input contains the nonce, so one wrong nonce anywhere would fail every later header: the nonce rules of Praos hold unchanged for these headers over 160 epochs |
+| Leader threshold against the genesis stake | 2,112 headers (epochs 0 and 1, led by the one genesis pool, relative stake 1) |
+| Leader threshold, epochs 2 on | **152,586 headers `Unchecked`**: the stake comes from the chain's transactions (pool registrations, delegations), which this follower does not apply; an issuer's VRF key is taken on trust at first sight |
+| Block bodies | the six blocks kept as fixtures (two of tag 7, four of tag 8: empty, with transactions, announcing, certifying) decode, and in every one the body hash and the body size equal the header's, the certificate flag equals the presence of the certificate, and a certificate does not come with transactions (`LeiosBlock.faults`; consensus `Shelley/Ledger/Block.hs` 224 to 231); the body hash of two 88 kB tip blocks was checked by hand as well |
+| Leios certificate | decoded strictly (`Certificate.decode`: bitfield up to 8,192 bytes, a signature that is a valid G1 point); **not verified**: no committee |
+
+Nothing was applied to a ledger: 0 blocks are ledger-validated, because the Dijkstra era has no
+ledger rules in this node and the Conway-indexed blocks carry a header the Conway rules do not read.
+The whole check takes about four minutes on one core (`LeiosCheckMain`: 255 s, 2026-10-16).
+
+### 11.5 Findings that change what sections 3, 4 and 10 say
+
+1. **The hash of a Dijkstra body is not a merkle root.** Section 3 repeated the CDDL comment
+   "merkle triple root". The ledger computes `hashBlockBody (MkDijkstraBlockBody m) = extractHash $
+   getMemoBytesHash m` (cardano-ledger `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs`
+   line 120): the Blake2b-256 digest of the original encoding of the whole body
+   `[transactions, leios_certificate, peras_certificate]`. Checked on four real blocks.
+2. **The Leios header is in blocks tagged Conway.** In the release the testnet runs, the Praos header
+   body is the one type of Babbage, Conway and Dijkstra (`ouroboros-consensus` `27fa649f`:
+   `Cardano/CanHardFork.hs` line 130 and following has all three as `ShelleyBlock (Praos c)`), and it
+   carries an optional Leios extension: `ouroboros-consensus-protocol` `Protocol/Praos/Header.hs`
+   lines 118 to 121 (`hbProtVer`, `hbLeiosExt :: StrictMaybe HeaderLeiosExtension`), 141 to 150
+   (the certificate flag and the EB announcement), 228 to 243 (the encoder writes 10 or 12 elements
+   by whether the extension is there) and 262 to 265 (the decoder reads either). Every header of
+   this chain has it, so Conway blocks (blocks 0 to 4,254) have the 12-element header and the old
+   five-part body, and Dijkstra blocks the same header with the new two-part block. A decoder
+   written to `conway.cddl` (10 elements) cannot read this network's first block. In that release
+   the element before the Leios fields is `hbProtVer`, a protocol version (`[12, 0]`; `[12, 67]` in
+   853 headers, a minor version of 67 nobody enacts); the pinned `dijkstra.cddl` and cardano-ledger
+   name it `header_version_info = [highest_supported_major_version, self_reported_software_tag]`
+   with the same wire format (cardano-ledger-core `Block.hs` 147 to 156, "neither field is
+   validated"). The consensus main branch (`8f56bc89`, which this repository pins) instead has a
+   separate `Praos2` protocol for Dijkstra only (`Shelley/Protocol/Praos.hs` 228 to 326): the
+   testnet follows the prototype release, not main.
+3. **The N2N handshake does not gate Leios.** `Ouroboros.Consensus.Network.NodeToNode` of the release
+   (the comment before `initiator` and `initiatorAndResponder`: "network currently doesn't enable
+   protocols conditional on the protocol version"; `withHot` with `StartOnDemand` for mini-protocols 18
+   and 19) registers the Leios protocols as hot protocols of every version. Section 4.3's open
+   question "version, era or flag" is answered: not the version. What the relay does on 18 and 19 is
+   11.7.
+4. **The genesis `extraConfig` is read already.** `GenesisState.initial` reads `initialFunds`,
+   `stakePools` and `stakeCredentials` from `extraConfig` (cardano-ledger `Shelley/Genesis.hs` 213 to
+   260, the embedded `data` form); the node derives the two genesis outputs, the one pool and the
+   genesis stake of epochs 0 and 1 (`LeiosTestnetConfigSuite`). The file form of an injection
+   (`InjectionFromFile`, 796 to 846) is not read. `PoolParams` has no BLS key, so a registered
+   voting key would be dropped.
+5. **LeiosNotify carries at most sixteen votes in the prototype**: `MsgLeiosVotes = [7, [1*16 vote]]` in
+   `ouroboros-consensus-cardano/cddl/node-to-node/leiosnotify/leiosNotify.cddl` (consensus main
+   `144cb4f1`, 2026-10-14: "TODO Bound the votes in the blueprint too"); the Blueprint does not bound
+   them. The codec now refuses more (`LeiosNotify.MaxVotes`, `LeiosCodecSuite`). The same file shows
+   `announcement = header.header`: the announcement is the ChainSync header of the announcing block,
+   whichever era index it has.
+6. **A compatibility hazard the node has, not a Leios finding.** `NodeToNode.over` and
+   `NodeToNodeServer.Protocol` give the multiplexer the protocols 0, 2, 3, 4 and 8. A Haskell Leios peer
+   that has this node on a duplex connection starts its LeiosNotify and LeiosFetch initiators on 18 and
+   19 (`initiatorAndResponder` of the release); a multiplexer without those protocols ends the
+   connection.
+
+### 11.6 What is implemented and what is not: the gap table
+
+IDs are stable names for the integrator to turn into issues; none was filed ("Not yet" points at
+these). "Cited" is the source read, at the revisions of sections 1 and 11.2 and, where it says
+"pinned", at the revisions in `models/src/main/cddl/upstream/SOURCES`.
+
+| ID | What is missing | Where it matters | Cited |
+|---|---|---|---|
+| **X1** | The node cannot follow this chain: `NtNHeader` refuses era index 7 and `Header.fromRaw(Conway)` the 12-element Conway header. `HfcHeader`, `LeiosHeader` and `LeiosBlock` exist, but `Follower`, `Peer`, `HeaderGate` and `LedgerRules` do not use them | the follower | `dijkstra.cddl` 56 to 71, 105 to 114; 11.4 |
+| **X2** | `Era` has no `Dijkstra`: the era history, `HardForkConfig` (no trigger at protocol version 12, `eraProtVerLow` 12), `ShelleyBasedEra`, the state mirror and the Haskell state-file telescope know seven eras. The chain enters Dijkstra at epoch 4 with no `TestDijkstraHardForkAtEpoch`, so a governance hard fork to protocol version 12 the node would have to derive from its own ledger. Adding the case breaks exhaustive matches in `consensus` (`HardFork.scala`, `SomeEra.scala`), `storage` (`ConsensusCodecs.scala`, `LedgerFileCodecs.scala`) and the era generators of `consensus` tests; this stage did not touch them | consensus, storage | cardano-ledger-core `Internal/Definition/Era.hs` 140 (pinned) |
+| **X3** | No Dijkstra ledger: `LEDGER`, `BBODY` with the Leios signal (`LeiosBbodySignal`), the transaction body (key 14 `guards` in place of `required_signers`, sub-transactions, the inline `is_valid` flag, Plutus V4 as `language 3` with the cost model of `dijkstra-genesis.json`), certificates, `pool_params.bls_key`, protocol parameters 40 to 54, the translation from Conway | the rules | `dijkstra.cddl` 3 to 54, 116 and following, 719 to 733 (pinned); the Dijkstra changelog (section 3) |
+| **X4** | No stake distribution without a ledger: from epoch 2 the leader threshold of every header (152,586 of 154,698) is unchecked, and a pool's registered VRF key is not compared | header-first validation | 11.4 |
+| **X5** | The Leios certificate is decoded, not verified: no committee (the BLS keys are in pool registrations, `PoolParams` has no `bls_key`), no quorum from the stake, no lookup of the announcing ranking block | `LeiosBlock`, `Certificate.verify` | `dijkstra.cddl` 937 to 942; section 9 |
+| **X6** | `peras_certificate` is carried as bytes; the ledger's `validatePerasCert` is a placeholder that returns `False` | Peras | cardano-ledger `BlockBody/Internal.hs` 235 to 246 (pinned) |
+| **X7** | Endorser blocks: an announcement is recognised in a header (65,469 on this chain) but no EB is fetched, stored, hashed against the announced hash or applied; there is no EB store, no closure, no inlining for node-to-client, no chain selection with a missing closure | storage, consensus, `ntc` | sections 4.4 and 5; `dijkstra.cddl` 105 to 108 |
+| **X8** | Mini-protocols 18 and 19 were never answered by the relay (11.7), and the node's multiplexer and servers do not carry protocols 18 and 19 at all (11.5 item 6) | network | consensus `NodeToNode.hs` of the release |
+| **X9** | Handshake: the node offers version 14 only; the relay accepts 14 to 16, 16 adding the Peras flag | handshake | section 8 |
+| **X10** | `TxSubmissionLogicVersion: TxSubmissionLogicV2` and the Leios mempool (an EB reservation; section 4.4) are not modelled | mempool, TxSubmission2 | `config.json` |
+| **X11** | `ConsensusMode: PraosMode` with ledger peers after slot 151,200 and a peer snapshot: no ledger peers, no peer snapshot, one bootstrap relay only | topology | `topology.json`, `peer-snapshot.json` |
+| **X12** | The CDDL pipeline (`models-gen`) takes the Leios CDDL it was given: `dijkstra:header` (12-element body, round trip byte for byte, `LeiosTestnetHeaderSuite`) and consensus' `leiosNotify.cddl` (a module `leios-notify`; its `;# import header as header` needs `header.cddl` as a second module of that name; `LeiosNotifyCddlSuite` compares the generated reader with the hand-written codec, sixteen votes included). Not generated: `dijkstra:block` and `pool_params` (the 12 rules with a required member after an optional one, `docs/models.md` section 8), and the Blueprint's `leios-fetch/messages.cddl`, which imports the Blueprint's own `base` (a name the consensus `base` module already has) and `tx.tx` (any ledger transaction). Codec 19 stays hand-written, tested against the prototype source and the Blueprint | `models` | `models/src/main/cddl/models.conf` |
+| **X13** | `header_version_info` is not interpreted: nothing compares `highest_supported_major_version` with the chain's version or the node's maximum; the earlier eras' `protocol_version` is checked against the ledger's on mainnet | envelope checks | cardano-ledger-core `Block.hs` 147 to 156 |
+
+### 11.7 The Leios mini-protocols against the relay
+
+Three probes, each its own connection and each after ChainSync from a known point to the relay's tip:
+(a) one `MsgLeiosNotificationRequestNext` on protocol 18 (version 16, initiator only); (b) one
+`MsgLeiosBlockRequest` on protocol 19 for the endorser block the newest announcing header names (slot
+3,448,578, EB hash `5cac54a5…fcfb`; version 16); (c) section 10's probes of 2026-10-14: the request
+without the Praos protocols, and a duplex connection that only listens. The relay accepts the
+handshake, serves ChainSync and BlockFetch normally, and **ends the connection within a second of the
+first message on protocol 18 or 19** ("closed by peer"); a duplex connection that sends nothing gets
+nothing on 18 or 19 in 60 seconds. No raw LeiosNotify or LeiosFetch message was therefore captured,
+and no endorser block, vote or announcement message was seen. Hypotheses, none shown: (1) the
+relay's handling of an initiator-only inbound peer has no responder for 18 and 19 (in the release,
+`initiator` registers them as `InitiatorProtocolOnly` and only `initiatorAndResponder` as responders
+too); (2) the responder exists only for a peer the relay has made hot in its own peer governor, and
+our connection is inbound and unknown to it; (3) the sender-driven driver of LeiosNotify
+(`runLookaheadFixedSenderPeerWithLimits`, byte limit `smallByteLimit` in `LeiosDemoOnlyTestNotify.hs`)
+rejects a first request that is not part of a pipelined credit run (the usage the CIP describes:
+request 1,000, then 100 more per 100 received). Settling it needs the relay's trace (`Net.Mux.Remote`,
+`LeiosNotify.Remote` at Debug are in its own `config.json`, not ours to read) or a local Haskell node
+(11.8).
+
+### 11.8 Proposed plan for #73 (devnet prototype)
+
+1. **Get the reference node** in the reference-image mechanism ([reference-image.md](reference-image.md)): the
+   Leios team's relay image (`ghcr.io/input-output-hk/ouroboros-leios/cardano-node-testnet`) or a build of
+   `cardano-node` `8c44d145` (the w38a release) for the testnet's behaviour, and the proto-devnet of
+   `ouroboros-leios` `demo/proto-devnet` (three pools with BLS keys; section 9's vectors come from it) for a
+   private network. Record the revision of every dependency as 11.2 does.
+2. **Settle the gating on a loopback network, with the reference's own trace.** One Haskell Leios node (no
+   public host), the namespaces `Net.Mux.Remote`, `Net.InboundGovernor.Remote`, `LeiosNotify.Remote` and
+   `LeiosFetch.Remote` at Debug, and `LeiosChainProbe` as initiator-only, then as duplex with the Praos
+   protocols served. Outcome: which hypothesis of 11.7 holds and the first message the responder accepts.
+3. **Let the node follow the devnet's Dijkstra chain** (X1, X2): `HfcHeader` in `Peer`/`NodeToNode.connect`,
+   `LeiosHeader` and `LeiosBlock` in the header and block paths, `Era.Dijkstra` with its trigger, a
+   Dijkstra `EraLedgerState` starting from the Conway rules (the header and block layouts differ; the
+   transaction rules mostly do not on a devnet that submits Conway-shaped transactions), and a typed refusal
+   for what is not ported (X3), so a Dijkstra block is never applied as a Conway one.
+4. **Committee and certificates** (X5): read `bls_key` from the devnet's pool registrations into the ledger
+   state (a `PoolParams` field and its CDDL), seat the committee at the epoch boundary with
+   `Committee.select`, verify each certificate against its announcing ranking block with section 9's code, and
+   compare with the reference's committee query.
+5. **Mini-protocols** (X8): carry 18 and 19 in the multiplexer and the servers, serve and consume LeiosNotify
+   and LeiosFetch for the devnet, store EBs and closures (X7), hash-check an EB against its announcement.
+6. **The scenario** in `scripts/devnet.py`: Haskell Leios pools plus the Scala node as relay; compare
+   announcements, EBs, vote bundles, certificates and the committee with the reference's (hash and bytes), and
+   the ledger at epoch boundaries (the K1 comparator extended to Dijkstra). Throughput with the conventions of
+   [performance.md](performance.md). Stop at the defined scenario and the divergence list if the reference is
+   not stable enough.
+7. **Regression**: the header capture of this section stays a test (`LeiosHeaderChainSuite` runs the first
+   1,100 headers from the genesis; `LeiosCheckMain` runs all 154,698), and a new capture should be taken when
+   the testnet respins.
