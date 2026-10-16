@@ -104,7 +104,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 
 - **J1** [#45](https://github.com/KD5UJC-XYZ/scarab/issues/45) (done) Config and topology: `follow --config <config.json> --topology <topology.json>` read the Haskell node's `config.json` and P2P `topology.json`, and every genesis hash a configuration lists (Byron, Shelley, Alonzo, Conway, and Dijkstra and checkpoints when the file is there) is verified; a mismatch is a typed `ConfigError`. Tested with the public Preview, preprod and mainnet files. Remaining: the Alonzo and Conway hashes are not part of the database's network identity (D5), the settings the node reads and does not act on (`ConsensusMode`, peer sharing, `LastKnownBlockVersion-*`, ledger peers and the peer snapshot), YAML configuration files, DNS SRV access points, `hotValency`.
 - **J2** [#46](https://github.com/KD5UJC-XYZ/scarab/issues/46) CLI parity: flags compatible with `cardano-node run`.
-- **J3** [#47](https://github.com/KD5UJC-XYZ/scarab/issues/47) Observability: Prometheus metrics, structured tracing, and EKG-equivalent counters.
+- **J3** [#47](https://github.com/KD5UJC-XYZ/scarab/issues/47) Observability: Prometheus metrics, structured tracing, and EKG-equivalent counters. First slice **J3a** [#92](https://github.com/KD5UJC-XYZ/scarab/issues/92): logging as a typed `NodeEvent` with severity and namespace, routed and rotated sinks, an SLF4J backend (same JSON fields).
 
 ## K. Verification at scale (P1)
 
