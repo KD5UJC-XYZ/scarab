@@ -16,6 +16,8 @@ LOKI = {"type": "loki", "uid": "loki"}
 PROM = {"type": "prometheus", "uid": "prometheus"}
 SEL = 'host=~"$host", container=~"$container"'
 EXT = '{' + SEL + ', event="extended"}'
+# a start replays the volatile and immutable blocks above the restored snapshot before it follows
+REPLAY = '{' + SEL + ', event="replayProgress"}'
 
 
 def per_run(expr: str) -> str:
@@ -24,6 +26,11 @@ def per_run(expr: str) -> str:
 
 def unwrap(field: str, path: str, window: str = "$__auto") -> str:
     return f'max_over_time({EXT} | json {field}="{path}" | unwrap {field} [{window}])'
+
+
+def replayed(window: str = "$__auto") -> str:
+    """The tip block of the newest `replayProgress` line (one per 20,000 replayed blocks)."""
+    return f'max_over_time({REPLAY} | json b="tip.blockNo" | unwrap b [{window}])'
 
 
 class Layout:
@@ -100,8 +107,10 @@ def runs_dashboard():
     p = Layout()
     p.row("Sync")
     p.line(
-        (5, stat("Block", LOKI, per_run(unwrap("b", "block.blockNo")), decimals=0,
-                 desc="Block number of the newest sampled `extended` line (one per 1000 blocks).")),
+        (5, stat("Block", LOKI, f'{per_run(unwrap("b", "block.blockNo"))} or {per_run(replayed())}',
+                 decimals=0,
+                 desc="Block number of the newest sampled `extended` line (one per 1000 blocks); while a "
+                      "start replays its stored blocks, the newest replayed block.")),
         (5, stat("Synced", LOKI,
                  f'{per_run(unwrap("s", "block.slot"))} / {per_run(unwrap("p", "peerTip.slot"))} * 100',
                  unit="percent", decimals=2,
@@ -118,7 +127,10 @@ def runs_dashboard():
                  thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}])),
         h=5)
     p.line(
-        (12, series("Block number", LOKI, [(per_run(unwrap("b", "block.blockNo")), "{{host}} {{container}}")])),
+        (12, series("Block number", LOKI, [
+            (per_run(unwrap("b", "block.blockNo")), "{{host}} {{container}}"),
+            (per_run(replayed()), "replaying {{host}} {{container}}")],
+            desc="Followed blocks, and the blocks a start replays from its own store.")),
         (12, series("Blocks per second", LOKI, [(
             per_run(f'rate_counter({EXT} | json b="block.blockNo" | unwrap b [10m])'),
             "{{host}} {{container}}")], unit="none",

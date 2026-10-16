@@ -97,7 +97,7 @@
     {
       "type": "stat",
       "title": "Block",
-      "description": "Block number of the newest sampled `extended` line (one per 1000 blocks).",
+      "description": "Block number of the newest sampled `extended` line (one per 1000 blocks); while a start replays its stored blocks, the newest replayed block.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -108,7 +108,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json b=\"block.blockNo\" | unwrap b [$__auto]))",
+          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json b=\"block.blockNo\" | unwrap b [$__auto])) or max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"replayProgress\"} | json b=\"tip.blockNo\" | unwrap b [$__auto]))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A",
           "queryType": "instant"
@@ -414,7 +414,7 @@
     {
       "type": "timeseries",
       "title": "Block number",
-      "description": "",
+      "description": "Followed blocks, and the blocks a start replays from its own store.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -428,6 +428,15 @@
           "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"extended\"} | json b=\"block.blockNo\" | unwrap b [$__auto]))",
           "legendFormat": "{{host}} {{container}}",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "max by (host, container) (max_over_time({host=~\"$host\", container=~\"$container\", event=\"replayProgress\"} | json b=\"tip.blockNo\" | unwrap b [$__auto]))",
+          "legendFormat": "replaying {{host}} {{container}}",
+          "refId": "B"
         }
       ],
       "fieldConfig": {
