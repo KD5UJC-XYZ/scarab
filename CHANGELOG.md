@@ -26,6 +26,19 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   has an `at`, the verification-cache summary is a `verificationCache` line (was text on stderr), and the http4s
   server's start is an `slf4j` line. `LogDocsSuite` keeps the catalogue in running.md equal to the code.
 
+### Fixed (mainnet snapshots after the Byron to Shelley handover, B27)
+- **A pool whose reward account is on another network no longer stops the snapshots.** The ledger-state mirror
+  refused a registered pool whose reward account was not on the node's network (`MirrorError.NetworkMismatch`),
+  and mainnet has one from epoch 208 (pool ff5181ba, registered at protocol version 2 with a network-0 account,
+  B22), so no snapshot was written after the handover and every restart replayed from the last Byron snapshot. The
+  reference keeps a registered pool's account as its credential only (`StakePoolState`, `StakePoolSnapShot`) and
+  reads it back on the node's network (`stakePoolStateToStakePoolParams`); the mirror now does the same
+  (`LedgerMirror.normalised` takes the network, `PoolParams.registeredOn`), and `GetStakePoolParams` and
+  `GetPoolState` report a registered pool on the node's network whether or not the state was restored. The future
+  parameters of a re-registration keep their network byte, as in the reference. `NetworkMismatch` is removed from
+  `MirrorError`. No persisted format changes (the Haskell layout never had the byte).
+  `MainnetPoolNetworkSnapshotSuite`, `PoolNetworkQuerySuite`; the mirror laws now generate accounts on either network.
+
 ### Fixed (mainnet sync from genesis, stop 5: AVVM balances at the Allegra boundary, B26)
 - **The boundary that enters Allegra returns the redeem (AVVM) outputs to the reserves**, as the reference's
   Shelley to Allegra translation does (`returnRedeemAddrsToReserves`), before the reward update and MIR of that
