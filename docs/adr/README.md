@@ -16,3 +16,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0008](0008-networking-as-implemented.md) | Networking stays as implemented, not mirrored from Haskell | Accepted | 2026-10-15 |
 | [0009](0009-ledger-mirror-step-2.md) | Ledger mirror step 2: three jumps behind a differential harness | Accepted | 2026-10-15 |
 | [0010](0010-scala-3-3-lts.md) | Scala 3.3 LTS | Accepted | 2026-10-14 |
+| [0011](0011-stack-safety.md) | Recursion over data from outside is stack safe | Accepted | 2026-10-16 |
