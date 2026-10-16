@@ -18,8 +18,8 @@ sealed abstract class Node:
   /** The exact bytes of the item as read: what anything hashed or signed is hashed over. */
   def original: Bytes
 
-  /** Where the item's head is in the array that `original` is a window of (the start of
-    * `original`, without making it), for locating an error.
+  /** Where the item's head is in the array that `original` is a window of (the start of `original`,
+    * without making it), for locating an error.
     */
   def offset: Int
 

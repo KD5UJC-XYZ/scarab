@@ -230,7 +230,7 @@ object Cbor:
               push(item, 6, 1L)
             case _ =>
               ai match
-                case 20 | 21 | 22 => ()
+                case 20 | 21 | 22             => ()
                 case 25 if limits.allowFloats => floatBits(2)
                 case 26 if limits.allowFloats => floatBits(4)
                 case 27 if limits.allowFloats => floatBits(8)
@@ -238,8 +238,7 @@ object Cbor:
               produced = true
           // a leaf is complete as soon as it is read; a container that was pushed is not
           if produced && major != 4 && major != 5 && major != 6 then index.finish(item, pos)
-        if produced then
-          if depth == 0 then finished = true else openCount(depth - 1) += 1
+        if produced then if depth == 0 then finished = true else openCount(depth - 1) += 1
       if pos != end then fail("trailing bytes after CBOR item")
       new Document(data, index).node(0)
 

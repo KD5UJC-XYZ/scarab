@@ -153,7 +153,10 @@ class SnapshotV4Suite extends CatsEffectSuite:
       val sidecar = SnapshotV4.sidecarOf(bytes).fold(e => fail(e.message), identity)
       val length = java.nio.ByteBuffer.wrap(bytes, 8, 4).getInt
       val haskell = Bytes.wrap(bytes).drop(12 + length)
-      assert(java.util.Arrays.equals(framedWithCopies(sidecar, haskell.toArray), bytes), era.toString)
+      assert(
+        java.util.Arrays.equals(framedWithCopies(sidecar, haskell.toArray), bytes),
+        era.toString
+      )
       assert(java.util.Arrays.equals(SnapshotV4.framed(sidecar, haskell), bytes), era.toString)
     }
   }

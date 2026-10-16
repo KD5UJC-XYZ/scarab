@@ -232,9 +232,9 @@ object SnapshotV4:
         haskell
       )
 
-  /** The file content, in one array of its exact size: the header, the sidecar and the Haskell bytes
-    * are copied to it once (the Haskell section is a couple of hundred megabytes, and a copy of it
-    * is one more humongous allocation for the collector).
+  /** The file content, in one array of its exact size: the header, the sidecar and the Haskell
+    * bytes are copied to it once (the Haskell section is a couple of hundred megabytes, and a copy
+    * of it is one more humongous allocation for the collector).
     */
   private[storage] def framed(sidecar: SnapshotSidecar, haskell: Bytes): Array[Byte] =
     val body = SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)

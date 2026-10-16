@@ -127,7 +127,7 @@ object FileLedgerSnapshots:
           case Some(anchor) =>
             val name = nameOf(anchor)
             format.encode(snapshot).flatMap {
-              case Left(refusal) => F.pure(Left(refusal))
+              case Left(refusal)  => F.pure(Left(refusal))
               case Right(content) =>
                 // the checksum is written after the content, not appended to a copy of it
                 val size = content.length.toLong + DigestSize

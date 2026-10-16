@@ -42,7 +42,8 @@ class IndexedNodeSuite extends munit.FunSuite:
       val (a, b) = stack.pop()
       if a.original != b.original then found = Some(s"original ${a.original} / ${b.original}")
       else if a.offset != b.offset then found = Some(s"offset ${a.offset} / ${b.offset}")
-      else if !(a.original.unsafeArray eq input.unsafeArray) then found = Some("a copy, not a window")
+      else if !(a.original.unsafeArray eq input.unsafeArray) then
+        found = Some("a copy, not a window")
       else if !sameShallow(a, b) then found = Some(s"value ${a.value.name} / ${b.value.name}")
       else if !sameEntries(a, b) then found = Some(s"entries of ${a.original}")
       else
@@ -69,7 +70,8 @@ class IndexedNodeSuite extends munit.FunSuite:
 
   /** The items of every committed fixture that is hex (a line each) or CBOR (a file each). */
   private lazy val fixtures: Vector[Bytes] =
-    val files = Files.walk(Path.of("fixtures")).iterator.asScala.filter(Files.isRegularFile(_)).toVector
+    val files =
+      Files.walk(Path.of("fixtures")).iterator.asScala.filter(Files.isRegularFile(_)).toVector
     files.flatMap { f =>
       val name = f.toString
       if name.endsWith(".hex") then
@@ -90,7 +92,12 @@ class IndexedNodeSuite extends munit.FunSuite:
   private def item(random: Random, out: java.io.ByteArrayOutputStream, depth: Int): Unit =
     def head(major: Int, n: Long): Unit =
       // a random width at least as wide as the shortest
-      val shortest = if n < 24 then 0 else if n < 256 then 1 else if n < 65536 then 2 else if n < (1L << 32) then 3 else 4
+      val shortest =
+        if n < 24 then 0
+        else if n < 256 then 1
+        else if n < 65536 then 2
+        else if n < (1L << 32) then 3
+        else 4
       val width = if n < 0 then 4 else shortest + random.nextInt(5 - shortest)
       width match
         case 0 => out.write((major << 5) | n.toInt)
@@ -144,7 +151,9 @@ class IndexedNodeSuite extends munit.FunSuite:
         val n = random.nextInt(4)
         val indefinite = random.nextInt(3) == 0
         if indefinite then out.write(0xbf) else head(5, n.toLong)
-        (0 until n).foreach { _ => item(random, out, depth - 1); item(random, out, depth - 1) }
+        (0 until n).foreach { _ =>
+          item(random, out, depth - 1); item(random, out, depth - 1)
+        }
         if indefinite then out.write(0xff)
       case _ =>
         head(6, random.nextInt(300).toLong)
@@ -155,14 +164,17 @@ class IndexedNodeSuite extends munit.FunSuite:
     item(new Random(seed), out, depth)
     Bytes.wrap(out.toByteArray)
 
-  /** `input` with a few bytes changed, dropped or added: mostly an error, sometimes another item. */
+  /** `input` with a few bytes changed, dropped or added: mostly an error, sometimes another item.
+    */
   private def mutated(input: Bytes, random: Random): Bytes =
     val a = input.toArray
     if a.isEmpty then input
     else
       random.nextInt(4) match
         case 0 =>
-          (0 to random.nextInt(3)).foreach(_ => a(random.nextInt(a.length)) = random.nextInt(256).toByte)
+          (0 to random.nextInt(3)).foreach(_ =>
+            a(random.nextInt(a.length)) = random.nextInt(256).toByte
+          )
           Bytes.wrap(a)
         case 1 => Bytes.wrap(a.take(random.nextInt(a.length)))
         case 2 =>
@@ -202,7 +214,8 @@ class IndexedNodeSuite extends munit.FunSuite:
 
   test("items inside a larger input are windows of it, and offsets are those of the array") {
     val inner = random(7, 5)
-    val padded = Bytes.wrap(Array.fill[Byte](13)(0x55.toByte) ++ inner.toArray ++ Array.fill[Byte](9)(0))
+    val padded =
+      Bytes.wrap(Array.fill[Byte](13)(0x55.toByte) ++ inner.toArray ++ Array.fill[Byte](9)(0))
     val window = padded.slice(13, 13 + inner.size)
     val (fresh, oracle) = (Cbor.decode(window, Wide), OracleCbor.decode(window, Wide))
     (fresh, oracle) match

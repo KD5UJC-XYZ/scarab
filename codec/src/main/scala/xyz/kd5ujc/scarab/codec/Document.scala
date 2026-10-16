@@ -173,7 +173,8 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
         at += length
 
   private def text(s: Int, ai: Int): String =
-    if ai != 31 then new String(data, s + headSize(ai), argBits(s, ai).toInt, StandardCharsets.UTF_8)
+    if ai != 31 then
+      new String(data, s + headSize(ai), argBits(s, ai).toInt, StandardCharsets.UTF_8)
     else
       val out = new java.lang.StringBuilder
       payloads(s, ai)((from, length) =>
@@ -211,8 +212,7 @@ private[codec] final class Document(val data: Array[Byte], val index: Index):
           at = index.end(value)
           if left > 0 then left -= 1
           if hasNext then key = index.firstAt(value + 1, at)
-          entry
-      )
+          entry)
 
   /** The value of item `i`, one level: its children are views, not values. */
   def valueAt(i: Int): Value =

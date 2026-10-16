@@ -6,8 +6,8 @@ import java.nio.charset.{CodingErrorAction, StandardCharsets}
 import scala.util.control.NonFatal
 
 /** The tree builder of `Cbor.decode` as it was before the indexed `Node` (issue #94), kept as the
-  * oracle of the differential tests: one `Node`, `Bytes` window and `Value` per item, built eagerly.
-  * Copied verbatim except for its name and its entry point; do not "improve" it.
+  * oracle of the differential tests: one `Node`, `Bytes` window and `Value` per item, built
+  * eagerly. Copied verbatim except for its name and its entry point; do not "improve" it.
   */
 object OracleCbor:
   import Cbor.Limits
