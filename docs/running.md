@@ -505,6 +505,20 @@ Meanings and units worth knowing before building a dashboard:
   precise as the JVM's own millisecond count); `jvm_memory_bytes_max{area="nonheap"}` is -1 when the JVM sets no
   limit.
 
+**Label values.** Each label is a member of a closed set, so a dashboard can list them: `era` is `Byron`,
+`Shelley`, `Allegra`, `Mary`, `Alonzo`, `Babbage` or `Conway`; `rule` is `byron`, `structure`, `decode`, `envelope`,
+`ledger`, `tpraos` or `praos`; `state` (of a connection) is `Reserved`, `Unnegotiated`, `Established`, `Terminating`
+or `Terminated`; `event` is, for `scarab_connection_events_total`, `Opened`, `Changed`, `Refused` or `Closed`, and for
+`scarab_inbound_events_total`, `Accepted`, `Duplex`, `Unidirectional`, `Following`, `SessionEnded`,
+`SessionDropped`, `Closed` or `Refused`; `reason` is, for `scarab_mempool_rejected_total`, `Malformed`,
+`AlreadyHeld`, `Ledger`, `Full` or `WrongEra`, and for `scarab_forge_skipped_total`, `Busy`, `TipTooOld`,
+`SlotOccupied`, `NotConnected` or `Other`; `kind` (snapshots) is `Skipped`, `Failed` or `Refused`; `over_ms` is
+`50` or `100`; `area` is `heap` or `nonheap`; `gc` is the name the JVM gives the collector (`G1 Young
+Generation`, `G1 Old Generation`, `G1 Concurrent GC`); `version`, `scala_version` and `git_commit` of
+`scarab_build_info` are the build's (`git_commit` is `unknown` when the build could not read `.git`). The series
+of an enum label that never happened are absent, except `scarab_era` (written for every era after the first block),
+`scarab_connections` and, on a node that forges, `scarab_forge_skipped_total`, which are written for every member.
+
 **Differences in meaning from the Haskell node's metrics of the same name.**
 
 - `cardano_node_metrics_density_real`: both are a number of blocks per slot over the volatile chain. Ours is
