@@ -21,3 +21,4 @@ one says so. New records copy [the template](template.md) and take the next numb
 | [0013](0013-cbor-documents-are-an-index-over-the-input.md) | CBOR documents are an index over the input | Accepted | 2026-10-16 |
 | [0014](0014-typed-log.md) | A typed log: `Tell` of lines built from typed events, routed by namespace and severity | Accepted | 2026-10-16 |
 | [0015](0015-kes-key-written-back-and-checked-reload.md) | The evolved KES key is written back, and credentials are reloaded on SIGHUP only after a check | Accepted | 2026-10-17 |
+| [0016](0016-peer-states-and-the-governor.md) | Peer states carry the in-progress transitions, and the governor is a pure decision function under a thin loop | Accepted | 2026-10-17 |

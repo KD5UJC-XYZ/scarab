@@ -47,7 +47,7 @@ def peercut(args):
     """Fresh 3-pool cluster that is allowed to grow a backlog; the Scala node starts following pool 1
     through a slow proxy and pool 2 directly; once it has applied `--cut-after-blocks` blocks the
     proxy goes silent (connections stay open, nothing is forwarded). The node must reach the tip of
-    the reference through pool 2, log the lost peer as a typed reconnect, report no escaped
+    the reference through pool 2, log the lost peer as a typed reconnect, show the governor's promotions and the demotion, report no escaped
     cats-mtl Submarine and no stall."""
     root = data_root(args.name)
     up(args)
@@ -106,7 +106,8 @@ def peercut(args):
             "blockBeforeFollowing": before, "blockAtEnd": after,
             "referenceTip": (tip_at(args.name, f"{ENV}/socket/node2/sock") or {}).get("block"),
             "reconnectReasons": reasons[:10],
-            "scalaEvents": {k: counts.get(k, 0) for k in ("extended", "rolledBack", "reconnecting", "stalled", "error")},
+            "scalaEvents": {k: counts.get(k, 0) for k in ("extended", "rolledBack", "reconnecting", "stalled", "error",
+                                                         "peerSelectionPromote", "peerSelectionDemote")},
             "unparsedScalaOutput": other[:10],
         }
         if reached is None:
@@ -118,6 +119,13 @@ def peercut(args):
             failures.append("the lost peer was never logged as a reconnect")
         elif not any(r.startswith("unavailable") for r in reasons):
             failures.append(f"the reconnect reasons are not typed peer failures: {reasons}")
+        # the governor chose the peers: both were promoted to hot, and the silent one was demoted or lost
+        hot = {e["peer"] for e in events if e["event"] == "peerSelectionPromote"
+               and e.get("action") == "done" and e.get("to") == "hot"}
+        if len(hot) < 2:
+            failures.append(f"the governor made {len(hot)} peer(s) hot, not both: {sorted(hot)}")
+        if not counts.get("peerSelectionDemote"):
+            failures.append("the governor never demoted the silent peer")
         if "Submarine" in text:
             failures.append("a cats-mtl Submarine reached the runtime's failure reporter")
         if counts.get("stalled"):
