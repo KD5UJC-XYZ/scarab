@@ -109,3 +109,25 @@ class Sum6KesSigningSuite extends munit.FunSuite:
       assert(fromBytes(Bytes.fromArray(bad)).isLeft, s"byte $i")
     }
   }
+
+  test("an evolved key written out is read back at the same period, for every period") {
+    val k = fresh
+    val msg = hex("0badc0de")
+    (0 until Periods).foreach { p =>
+      k.evolveTo(p)
+      val back = fromEvolved(k.toBytes).fold(e => fail(s"period $p: $e"), identity)
+      assertEquals(back.period, p)
+      assertEquals(back.verificationKey, k.verificationKey)
+      assertEquals(back.sign(msg), k.sign(msg), s"period $p")
+    }
+  }
+
+  test("an erased or damaged evolved key is refused, never read as some period") {
+    assert(fromEvolved(Bytes.fromArray(new Array[Byte](KeyBytes))).isLeft)
+    val k = fresh
+    k.evolveTo(9)
+    val raw = k.toBytes.toArray
+    raw(3) = (raw(3) ^ 1).toByte
+    assert(fromEvolved(Bytes.fromArray(raw)).isLeft)
+    assert(fromEvolved(Bytes.fromArray(new Array[Byte](10))).isLeft)
+  }

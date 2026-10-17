@@ -107,6 +107,26 @@ object Sum6KesSigning:
         _ => Right(new SigningKey(material, period))
       )
 
+  /** Load a `kes.skey` payload of any period (a key this node has evolved and written back, see
+    * `KesStore`): the period is read off the key itself, because [[update]] erases the `r1` seed
+    * of a level exactly when the key moves into that level's right half, so the erased seeds, from
+    * the outermost level in, spell the period in binary. The result is checked as in [[fromBytes]],
+    * so a damaged key (or an all-zero, forgotten one) is refused. The cardano-cli file is the
+    * period-0 case.
+    */
+  def fromEvolved(bytes: Bytes): Either[Failure, SigningKey] =
+    if bytes == null || bytes.size != KeyBytes then
+      Left(Failure.Malformed(s"Sum6 KES signing key must be $KeyBytes bytes"))
+    else fromBytes(bytes, periodOf(bytes.toArray))
+
+  /** The period an evolved key stands at, read from which levels' right-half seeds are erased. */
+  private[kes] def periodOf(m: Array[Byte]): Int =
+    (Depth to 1 by -1).foldLeft(0) { (acc, depth) =>
+      val at = r1At(0, depth)
+      val erased = (0 until 32).forall(i => m(at + i) == 0)
+      if erased then acc + (1 << (depth - 1)) else acc
+    }
+
   // ---- tree operations over the flat layout
 
   private def hash(parts: Array[Byte]*): Array[Byte] =
