@@ -182,6 +182,8 @@ def main():
     rl.add_argument("--min-epochs", type=int, default=4, help="epochs the run must cover")
     rl.add_argument("--relay-mode", choices=["InitiatorAndResponder", "InitiatorOnly"], default="InitiatorAndResponder",
                     help="diffusion mode of the Haskell relay")
+    rl.add_argument("--no-peer-sharing", dest="peer_sharing", action="store_false",
+                    help="leave PeerSharing off for the Scala node (it is on, as it is for the Haskell relay)")
     rl.add_argument("--keep", action="store_true", help="leave the cluster running")
     rl.add_argument("--keep-data", action="store_true", help="keep the run directory")
     rl.set_defaults(run=relay)

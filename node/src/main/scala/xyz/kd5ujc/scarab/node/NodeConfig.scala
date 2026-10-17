@@ -114,7 +114,10 @@ final case class ConfigSettings(
       Option.when(hardForkVersions.nonEmpty)(
         "Test<Era>HardForkAtVersion: hard forks triggered by a version are not honoured"
       ),
-      Option.when(peerSharing.contains(true))("PeerSharing: peer sharing is not implemented")
+      Option.when(peerSharing.contains(true))(
+        "PeerSharing: the protocol is offered and answered (with no peers), but the governor " +
+          "does not ask for peers and shares none yet (G1.4b)"
+      )
     ).flatten
 
 /** The node configuration keys that shape the era history: the Byron genesis hash and the epochs at

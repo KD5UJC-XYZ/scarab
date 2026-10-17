@@ -7,7 +7,8 @@ import subprocess
 import sys
 import time
 from ..cluster import freeze_classes, scala_container, up
-from ..util import CLI, ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, put_file, read_log, ref
+from ..util import (CLI, ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, put_file,
+                    read_json, read_log, ref)
 
 
 # ---------------------------------------------------------------- the Scala node as a relay
@@ -32,6 +33,13 @@ def start_scala_relay(args, root, peers):
                "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
     for port in peers:
         program += ["--peer", f"127.0.0.1:{port}"]
+    if getattr(args, "peer_sharing", True):
+        # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node
+        # without producer credentials). The pools keep their own configuration.
+        config = json.loads((root / "genesis" / "configuration.yaml").read_text())
+        config["PeerSharing"] = True
+        (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
+        program += ["--config", "/genesis/scala-configuration.json"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
                               mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
                               name=f"{args.name}-scala")
@@ -44,12 +52,21 @@ def start_haskell_relay(args):
     in_ref(args.name, f"mkdir -p {RELAY_DIR}/db")
     topology = {"bootstrapPeers": None,
                 "localRoots": [{"accessPoints": [{"address": "127.0.0.1", "port": SCALA_PORT}],
-                                "advertise": False, "behindFirewall": False, "trustable": True,
+                                "advertise": bool(getattr(args, "peer_sharing", True)), "behindFirewall": False,
+                                "trustable": True,
                                 "diffusionMode": args.relay_mode, "hotValency": 1, "warmValency": 1}],
                 "publicRoots": [{"accessPoints": [], "advertise": False}], "useLedgerAfterSlot": -1}
     put_file(args.name, f"{RELAY_DIR}/topology.json", json.dumps(topology))
+    # cardano-testnet writes `"PeerSharing": false`; a relay has it on by default (the reference's default for a
+    # node without producer credentials), so the relay runs on a copy of the configuration (next to the original,
+    # whose genesis file names are relative to it) that turns it on. The pools keep theirs.
+    config = read_json(args.name, f"{ENV}/configuration.yaml")
+    config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
+    # the governor's peer-sharing traces, to see when the relay asks us (after `policyPeerShareActivationDelay`, 300 s)
+    config.setdefault("TraceOptions", {}).setdefault("Net.PeerSelection", {})["severity"] = "Debug"
+    put_file(args.name, f"{ENV}/relay-configuration.yaml", json.dumps(config, indent=2))
     docker("exec", "-d", ref(args.name), "/bin/sh", "-c",
-           f"cd {ENV} && cardano-node run --config {ENV}/configuration.yaml --topology {RELAY_DIR}/topology.json "
+           f"cd {ENV} && cardano-node run --config {ENV}/relay-configuration.yaml --topology {RELAY_DIR}/topology.json "
            f"--database-path {RELAY_DIR}/db --socket-path {RELAY_SOCKET} --port {RELAY_PORT} "
            f"--host-addr 127.0.0.1 > {RELAY_DIR}/node.log 2>&1")
 
