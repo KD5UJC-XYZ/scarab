@@ -31,6 +31,16 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   0 (`decode header: expected 10-element array`); the handshake does not gate the Leios protocols; the relay closes the
   connection on a first message on protocol 18 or 19, cause open. Gap table X1 to X13 in 11.6, plan for #73 in 11.8.
 
+### Fixed (node-to-client: `cardano-cli` against a node on preprod, mainnet-like ages)
+- **`cardano-cli query tip` no longer fails with `BearerClosed`.** The era-history answer threw on a chain older
+  than 213 days (times in picoseconds beyond 64 bits: now a tag-2 big number, as the reference's `Integer`) and, on
+  a chain that starts in Byron, used the configuration's open-ended Byron span instead of the one the acquired state
+  knows (`QueryAnswers.geometry`). `GetUTxOByAddress` reads only the outputs of the addresses from the store
+  (`UtxoStore.materializeWhere`) instead of the whole set. A query that cannot be answered is a typed
+  `LocalStateQueryServer.Refusal` in the log, and a failure that is not a network error is logged as the close reason.
+  The `ntc` scenario runs `cardano-cli latest` queries, `transaction build` (change address, body equal to the
+  reference's), sign and `submit` against the Scala socket (`ntccli`).
+
 ### Added (observability: metrics during the replay, #95)
 - **`--metrics-listen` listens from the start of `follow`**, before the database is opened, so a start that replays
   many blocks is scrapeable while it replays (a mainnet replay was invisible for about 45 minutes). The collectors
