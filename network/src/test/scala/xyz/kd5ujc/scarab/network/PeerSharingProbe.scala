@@ -10,8 +10,8 @@ import xyz.kd5ujc.scarab.protocol.{ChainSyncFixtures, PeerSharing}
 
 /** Asks a node for peers over PeerSharing, as a client. It connects (node-to-node, version 14),
   * offers peer sharing, and when the peer agrees asks `count` times in a row for `amount` peers and
-  * prints the answers. Its output is the live evidence that the Haskell node speaks the protocol
-  * to us.
+  * prints the answers. Its output is the live evidence that the Haskell node speaks the protocol to
+  * us.
   *
   * Run, inside the build container:
   * `network/Test/runMain xyz.kd5ujc.scarab.network.PeerSharingProbe <host> <port> <magic> <amount> <count>`.
@@ -23,7 +23,9 @@ object PeerSharingProbe extends IOApp:
       (for
         h <- IO.fromOption(Host.fromString(host))(new IllegalArgumentException("host"))
         p <- IO.fromOption(Port.fromInt(port.toInt))(new IllegalArgumentException("port"))
-        n <- IO.fromOption(PeerSharing.Amount.from(amount.toInt))(new IllegalArgumentException("amount"))
+        n <- IO.fromOption(PeerSharing.Amount.from(amount.toInt))(
+          new IllegalArgumentException("amount")
+        )
         outcome <- probe(SocketAddress(h, p), magic.toLong, n, count.toInt)
       yield outcome).as(ExitCode.Success)
     case _ =>
@@ -46,7 +48,9 @@ object PeerSharingProbe extends IOApp:
           )
           .use { warm =>
             for
-              _ <- IO.println(s"connected: version ${warm.version}, peer sharing ${warm.peerSharing.isDefined}")
+              _ <- IO.println(
+                s"connected: version ${warm.version}, peer sharing ${warm.peerSharing.isDefined}"
+              )
               _ <- warm.peerSharing match
                 case None => IO.println("peer sharing not agreed: the peer has it off")
                 case Some(client) =>
@@ -64,7 +68,8 @@ object PeerSharingProbe extends IOApp:
   private def show(address: PeerSharing.Address): String = address match
     case PeerSharing.Address.V4(a, p) =>
       val w = a.value
-      s"${(w >> 24) & 255}.${(w >> 16) & 255}.${(w >> 8) & 255}.${w & 255}:${p.value}"
+      // the reference's word holds the octets in memory order: the first octet is the low byte
+      s"${w & 255}.${(w >> 8) & 255}.${(w >> 16) & 255}.${(w >> 24) & 255}:${p.value}"
     case PeerSharing.Address.V6(a, b, c, d, p) =>
       s"[${List(a, b, c, d).map(w => f"${w.value}%08x").mkString(":")}]:${p.value}"
 end PeerSharingProbe

@@ -24,6 +24,7 @@ class SampledSuite extends munit.FunSuite:
   private val targets: Vector[(String, Codec[?])] = Vector(
     "handshake-node-to-node-v14:handshakeMessage" -> handshake.HandshakeMessage,
     "chain-sync:chainSyncMessage" -> chainsync.ChainSyncMessage,
+    "peer-sharing-v14:peerSharingMessage" -> peersharing.PeerSharingMessage,
     "conway:header" -> conway.Header,
     "babbage:header" -> babbage.Header,
     "alonzo:header" -> alonzo.Header,

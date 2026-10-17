@@ -39,6 +39,7 @@ object CuddleCrossCheck:
   val targets: Vector[(String, Codec[?])] = Vector(
     "handshake-node-to-node-v14:handshakeMessage" -> handshake.HandshakeMessage,
     "chain-sync:chainSyncMessage" -> chainsync.ChainSyncMessage,
+    "peer-sharing-v14:peerSharingMessage" -> peersharing.PeerSharingMessage,
     "leios-notify:leiosNotifyMessage" -> leios.notify.LeiosNotifyMessage,
     "conway:header" -> conway.Header,
     "conway:block" -> conway.Block,

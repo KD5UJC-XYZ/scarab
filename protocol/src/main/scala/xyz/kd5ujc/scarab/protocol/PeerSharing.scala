@@ -89,7 +89,14 @@ object PeerSharing:
 
   export Values.{Amount, Port, Word32}
 
-  /** A peer address as it travels: IPv4 or IPv6 and a port (`peerAddress` of the CDDL). */
+  /** A peer address as it travels: IPv4 or IPv6 and a port (`peerAddress` of the CDDL). The words
+    * are the wire's, not an interpretation of them: the reference writes an IPv4 `HostAddress` (a
+    * `Word32` that holds the four octets in memory order, so 127.0.0.1 is `0x0100007f` on a
+    * little-endian host) as it is, and an IPv6 address as four such words in their order (`::1` is
+    * `0, 0, 0, 1`). Observed against the reference node on the devnet: a peer at 127.0.0.1 arrives
+    * as the word `0x0100007f`. Converting to and from a socket address (and the byte swap of an
+    * IPv4 word) belongs to the code that has one, not to the codec.
+    */
   enum Address:
     case V4(address: Word32, port: Port)
     case V6(a: Word32, b: Word32, c: Word32, d: Word32, port: Port)
