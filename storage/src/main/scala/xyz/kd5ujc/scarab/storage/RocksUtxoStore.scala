@@ -19,6 +19,9 @@ import org.rocksdb.{
   Options,
   ReadOptions,
   RocksDB,
+  RocksDBException,
+  RocksIterator,
+  Status,
   WriteBatch,
   WriteBufferManager,
   WriteOptions
@@ -57,11 +60,56 @@ final class RocksUtxoStore[F[_]: Sync] private (
   private val StampKey = Array[Byte](0)
   private val writeOptions = new WriteOptions().setDisableWAL(true)
 
+  /** A failure of the database as a typed error: a checksum or format failure the library reports
+    * is damaged data ([[StorageError.Corrupt]]), anything else an I/O error ([[StorageError.Io]]).
+    */
+  private def failure(what: String, e: Throwable): StorageError = e match
+    case r: RocksDBException
+        if r.getStatus != null && r.getStatus.getCode == Status.Code.Corruption =>
+      StorageError.Corrupt(what, String.valueOf(e))
+    case _ => StorageError.Io(what, String.valueOf(e))
+
   private def guard[A](what: String)(body: => A): F[A] =
     F.blocking(body).attempt.flatMap {
       case Right(a) => F.pure(a)
-      case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
+      case Left(e)  => failure(what, e).raise[F, A]
     }
+
+  /** [[guard]] for a body that can also find damaged data itself. */
+  private def guardE[A](what: String)(body: => Either[StorageError, A]): F[A] =
+    guard(what)(body).flatMap {
+      case Right(a)  => F.pure(a)
+      case Left(err) => err.raise[F, A]
+    }
+
+  /** The error for the entry at `key` whose value does not decode, the same as a direct read's. */
+  private def corruptEntry(key: Array[Byte], reason: String): StorageError =
+    StorageError.Corrupt("utxo entry", s"${Coding.decodeKey(key).render}: $reason")
+
+  /** One pass over every entry of the store, which either visits all of them or fails.
+    *
+    * `entry` sees each data key (34 bytes) with the iterator positioned on it, and returns the
+    * error that stops the pass. The reserved stamp key is skipped; any other key length is refused
+    * as damage, like the checkpoint guard of [[RocksUtxoStore.rekeyInto]]. A pass that ended
+    * because the iterator hit an error, not the end of the data, throws from `status()` (mapped by
+    * [[guard]]) instead of returning the entries before it. It is `inline` so that each caller's
+    * per-entry code is compiled into its own loop (a shared loop calling a function made the 4.5
+    * million entry `select` about 5 percent slower).
+    */
+  private inline def walk(it: RocksIterator)(
+      inline
+      entry: (Array[Byte], RocksIterator) => Option[StorageError]
+  ): Either[StorageError, Unit] =
+    var stopped: Option[StorageError] = None
+    it.seekToFirst()
+    while stopped.isEmpty && it.isValid do
+      val k = it.key()
+      if k.length == RocksUtxoStore.KeyLength then stopped = entry(k, it)
+      else if !(k.length == RocksUtxoStore.StampKeyLength && k(0) == 0) then
+        stopped = Some(StorageError.Corrupt("utxo key", s"a key of ${k.length} bytes"))
+      it.next()
+    it.status()
+    stopped.toLeft(())
 
   def read(keys: Iterable[TxIn]): F[Map[TxIn, TxOut]] =
     val wanted = keys.iterator.flatMap(k => Coding.encodeKey(k).map(k -> _)).toVector
@@ -71,7 +119,11 @@ final class RocksUtxoStore[F[_]: Sync] private (
         val values = db.get.multiGetAsList(wanted.map(_._2).asJava).asScala
         wanted.iterator
           .zip(values.iterator)
-          .collect { case ((in, _), v) if v != null => in -> v }
+          // The batch read gives `null` for a key it could not read as well as for an absent one
+          // (a failed block checksum is not an exception there), so a miss is read again singly,
+          // which throws on an error and returns `null` only for an absent key.
+          .map { case ((in, key), v) => in -> (if v != null then v else db.get.get(key)) }
+          .collect { case (in, v) if v != null => in -> v }
           .map { case (in, bytes) =>
             Coding.decodeValue(bytes).bimap(e => s"${in.render}: $e", out => in -> out)
           }
@@ -99,76 +151,78 @@ final class RocksUtxoStore[F[_]: Sync] private (
       finally batch.close()
     }
 
-  def flushed: F[Long] = guard("utxo stamp") {
+  def flushed: F[Long] = guardE("utxo stamp") {
     val v = db.get.get(StampKey)
-    if v == null then -1L else java.nio.ByteBuffer.wrap(v).getLong
+    if v == null then Right(-1L)
+    else if v.length == 8 then Right(java.nio.ByteBuffer.wrap(v).getLong)
+    else Left(StorageError.Corrupt("utxo stamp", s"a value of ${v.length} bytes"))
   }
 
   def all: F[Map[TxIn, TxOut]] = select(_ => true)
 
-  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] = guard("utxo scan") {
+  def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] = guardE("utxo scan") {
     val it = db.get.newIterator()
     try
-      it.seekToFirst()
       val b = Map.newBuilder[TxIn, TxOut]
-      while it.isValid do
-        val k = it.key()
-        if k.length == 34 then
-          Coding
-            .decodeValue(it.value())
-            .foreach(out => if keep(out) then b += Coding.decodeKey(k) -> out)
-        it.next()
-      b.result()
+      walk(it) { (k, at) =>
+        Coding.decodeValue(at.value()) match
+          case Right(out) =>
+            if keep(out) then b += Coding.decodeKey(k) -> out
+            None
+          case Left(reason) => Some(corruptEntry(k, reason))
+      }.map(_ => b.result())
     finally it.close()
   }
 
   /** One streaming pass over the raw values: an output is decoded only when the head of its
     * encoding says it may pay to a wanted address ([[UtxoStore.Coding.mayPayTo]]). The scan does
-    * not fill the block cache, so a wallet query does not evict what the block path reads.
+    * not fill the block cache, so a wallet query does not evict what the block path reads. A value
+    * whose head is not of a known shape is always decoded, so a malformed one fails the pass; one
+    * with a well-formed head for another address is passed over undecoded, which is the point.
     */
-  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]] = guard("utxo scan") {
+  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]] = guardE("utxo scan") {
     val wanted = addresses.iterator.map(_.toArray).toArray
     val options = new ReadOptions().setFillCache(false).setReadaheadSize(2L * 1024 * 1024)
     val it = db.get.newIterator(options)
     try
-      it.seekToFirst()
       val b = Map.newBuilder[TxIn, TxOut]
-      while it.isValid do
-        val k = it.key()
-        if k.length == 34 then
-          val v = it.value()
-          if Coding.mayPayTo(v, wanted) then
-            Coding
-              .decodeValue(v)
-              .foreach(out => if addresses(out.address.raw) then b += Coding.decodeKey(k) -> out)
-        it.next()
-      b.result()
+      walk(it) { (k, at) =>
+        val v = at.value()
+        if !Coding.mayPayTo(v, wanted) then None
+        else
+          Coding.decodeValue(v) match
+            case Right(out) =>
+              if addresses(out.address.raw) then b += Coding.decodeKey(k) -> out
+              None
+            case Left(reason) => Some(corruptEntry(k, reason))
+      }.map(_ => b.result())
     finally
       it.close()
       options.close()
   }
 
-  def scan(visit: (TxIn, TxOut) => Unit): F[Unit] = guard("utxo scan") {
+  def scan(visit: (TxIn, TxOut) => Unit): F[Unit] = guardE("utxo scan") {
     val it = db.get.newIterator()
     try
-      it.seekToFirst()
-      while it.isValid do
-        val k = it.key()
-        if k.length == 34 then
-          Coding.decodeValue(it.value()).foreach(out => visit(Coding.decodeKey(k), out))
-        it.next()
+      walk(it) { (k, at) =>
+        Coding.decodeValue(at.value()) match
+          case Right(out)   => visit(Coding.decodeKey(k), out); None
+          case Left(reason) => Some(corruptEntry(k, reason))
+      }
     finally it.close()
   }
 
-  def size: F[Long] = guard("utxo count") {
+  /** The number of data entries. The values are not decoded (a count must stay cheap), so damage to
+    * a value shows only in the enumerations and reads; damage to a key or to the files is reported
+    * as for them.
+    */
+  def size: F[Long] = guardE("utxo count") {
     val it = db.get.newIterator()
     try
-      it.seekToFirst()
       var n = 0L
-      while it.isValid do
-        if it.key().length == 34 then n += 1
-        it.next()
-      n
+      walk(it) { (_, _) =>
+        n += 1; None
+      }.map(_ => n)
     finally it.close()
   }
 
@@ -294,8 +348,8 @@ object RocksUtxoStore:
     * (`txid[32] | index u16`), and of the reserved stamp key.
     */
   private val LegacyKeyLength = 36
-  private val KeyLength = 34
-  private val StampKeyLength = 1
+  private[storage] val KeyLength = 34
+  private[storage] val StampKeyLength = 1
 
   /** Whether the data keys of the checkpoint in `dir` are in the current layout, as far as its
     * first and its last data key say (a store with no data key is). A store of the layout before K6
@@ -314,6 +368,7 @@ object RocksUtxoStore:
         it.seekToLast()
         val last =
           if it.isValid && it.key().length != StampKeyLength then Some(it.key().length) else None
+        it.status()
         (first ++ last).forall(_ == KeyLength)
       finally it.close()
     finally
@@ -352,7 +407,7 @@ object RocksUtxoStore:
         while problem.isEmpty && it.isValid do
           val key = it.key()
           key.length match
-            case StampKeyLength => batch.put(key, it.value())
+            case StampKeyLength if key(0) == 0 => batch.put(key, it.value())
             case LegacyKeyLength =>
               val index = ((key(32) & 0xffL) << 24) | ((key(33) & 0xffL) << 16) |
                 ((key(34) & 0xffL) << 8) | (key(35) & 0xffL)
@@ -368,6 +423,8 @@ object RocksUtxoStore:
           inBatch += 1
           if inBatch >= BatchSize then flush()
           it.next()
+        // an iterator that stopped on an error must not pass for the end of the checkpoint
+        it.status()
         if problem.isEmpty then flush()
         problem.toLeft(())
       finally
