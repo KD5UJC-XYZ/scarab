@@ -48,12 +48,12 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
   }
 
-  test("--rules defaults to the old rules; differential takes its policy and repro directory") {
+  test("--rules defaults to the new rules; differential takes its policy and repro directory") {
     val defaults = Main.parse(base).toOption.get
-    assertEquals(defaults.rules, RulesMode.Old)
+    assertEquals(defaults.rules, RulesMode.New)
     assertEquals(defaults.onDivergence, differential.Policy.Halt)
     assertEquals(defaults.reproDir, None)
-    assertEquals(Main.parse(base ++ List("--rules", "new")).toOption.get.rules, RulesMode.New)
+    assertEquals(Main.parse(base ++ List("--rules", "old")).toOption.get.rules, RulesMode.Old)
     val d = Main
       .parse(
         base ++ List("--rules", "differential", "--on-divergence", "reseed", "--repro-dir", "/r")

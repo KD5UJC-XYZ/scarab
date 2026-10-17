@@ -48,7 +48,7 @@ enum InboundEventLabel derives LabelValue:
 
 /** Why the mempool refused a transaction ([[xyz.kd5ujc.scarab.node.mempool.Rejection]]). */
 enum RejectionLabel derives LabelValue:
-  case Malformed, AlreadyHeld, Ledger, Full, WrongEra
+  case Malformed, AlreadyHeld, Ledger, Full, WrongEra, NoLedger
 
 object RejectionLabel:
   def of(reason: Rejection): RejectionLabel = reason match
@@ -57,6 +57,7 @@ object RejectionLabel:
     case Rejection.Ledger(_)      => Ledger
     case Rejection.Full(_, _)     => Full
     case Rejection.WrongEra(_)    => WrongEra
+    case Rejection.NoLedger(_)    => NoLedger
 
 /** Why the forger did not check a slot. The forger counts the reasons as text; anything it does not
   * know is `Other`.

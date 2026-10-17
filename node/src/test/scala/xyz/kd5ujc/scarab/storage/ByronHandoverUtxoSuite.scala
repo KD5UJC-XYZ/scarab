@@ -9,6 +9,7 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, Header, NodeError, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronBody, ByronLedger, ByronOut}
+import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
 import scala.jdk.CollectionConverters.*
 
@@ -114,7 +115,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
       .allow[NodeError] {
         for
           store <- MemoryUtxoStore[IO]
-          backing = new UtxoBacking[IO](store, fs2.io.file.Path("unused"))
+          backing = new UtxoBacking[IO, NodeState](store, fs2.io.file.Path("unused"))
           rules = NodeRules[IO](
             setup.praos,
             setup.globals,

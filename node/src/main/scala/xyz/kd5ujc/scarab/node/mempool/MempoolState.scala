@@ -4,18 +4,22 @@ package xyz.kd5ujc.scarab.node.mempool
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry}
 import xyz.kd5ujc.scarab.ledger.{
-  ConwayRules,
   Credential,
   LedgerFailure,
   LedgerGlobals,
-  LedgerState,
+  PlutusStats,
   PredicateFailure,
   Tx,
-  TxRules
+  TxRules,
+  Utxo
 }
+import xyz.kd5ujc.scarab.ledger.rules.{Counted, Gov, Globals, Ledger, LedgerEnv, Sts}
+import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, LedgerState, NewEpochState, UtxoTables}
 
 /** Why a transaction is not (or no longer) in the mempool. */
 enum Rejection:
@@ -34,12 +38,18 @@ enum Rejection:
   /** The submission names an era other than the ledger's (Conway). */
   case WrongEra(era: Int)
 
+  /** The chain has no Conway ledger state to validate against (it is in Byron or an earlier era, or
+    * its state cannot be read): the pool takes nothing until it has.
+    */
+  case NoLedger(why: ConwayView.Unavailable)
+
   def message: String = this match
     case Malformed(d)    => s"malformed transaction: $d"
     case AlreadyHeld(id) => s"tx ${id.hex.take(16)} is already in the mempool"
     case Ledger(f)       => f.message
     case Full(s, free)   => s"mempool full: $s bytes needed, $free free"
     case WrongEra(e)     => s"era $e is not Conway"
+    case NoLedger(why) => s"no Conway ledger state: ${cats.Show[ConwayView.Unavailable].show(why)}"
 
 /** A held transaction. `ticket` grows with arrival order and is how peers are given each
   * transaction once. `refScriptBytes` is the size of the reference scripts the transaction names
@@ -54,7 +64,7 @@ final case class MempoolEnv(globals: LedgerGlobals, geometry: EpochGeometry):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
     * after the tip, in the ledger's current epoch.
     */
-  def txEnv(tipSlot: BigInt, ledger: LedgerState, index: Int): TxRules.Env =
+  def txEnv(tipSlot: BigInt, ledger: MempoolLedger, index: Int): TxRules.Env =
     val slot = tipSlot + 1
     TxRules.Env(
       slot = slot,
@@ -67,6 +77,39 @@ final case class MempoolEnv(globals: LedgerGlobals, geometry: EpochGeometry):
       clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli))
     )
 
+  /** The constants the rules of the era-indexed state read. */
+  def rules: Globals = Globals(globals, geometry)
+
+/** The ledger a transaction is validated against: the Conway ledger state at the chain tip, the
+  * treasury of the chain account (the transaction's `currentTreasuryValue` is checked against it)
+  * and the epoch. The mempool is Conway's: the transaction is `[body, witnesses, is_valid,
+  * auxiliary_data]`, and the rules are those of the era-indexed state ([[Ledger]]).
+  */
+final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt):
+  /** The protocol parameters in force. */
+  def params: xyz.kd5ujc.scarab.ledger.ProtocolParams = ls.utxo.gov.curPParams
+
+  /** The handle on the UTxO set. */
+  def utxo: Utxo = ls.utxo.utxo.utxo
+
+  def withUtxo(u: Utxo): MempoolLedger =
+    copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
+
+  /** The transaction applied (LEDGER of Conway), or the rule that refuses it. */
+  def apply(tx: Tx, env: TxRules.Env, rules: Globals): Either[LedgerFailure, MempoolLedger] =
+    Sts(Ledger)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
+      .map(after => copy(ls = after.state))
+
+object MempoolLedger:
+  /** The ledger of the new-epoch state at the tip. */
+  def of(nes: NewEpochState[Conway]): MempoolLedger =
+    MempoolLedger(nes.es.ls, nes.es.chainAccount.treasury, nes.epoch.toBigInt)
+
+  /** The ledger of the chain whose state is `s`, at its tip `at`, or why it has no Conway ledger.
+    */
+  def at[S: ChainRead](s: S, tip: Option[BlockRef]): Either[ConwayView.Unavailable, MempoolLedger] =
+    ConwayView(s, tip).map(of)
+
 /** The mempool as a value. The invariant, for every state reachable through this API:
   *
   * `entries` applied in order to `base` through the transaction rules succeed and give `current`.
@@ -75,9 +118,9 @@ final case class MempoolEnv(globals: LedgerGlobals, geometry: EpochGeometry):
   * is a pure function; [[Mempool]] serialises them.
   */
 final case class MempoolState(
-    base: LedgerState,
+    base: Option[MempoolLedger],
     tipSlot: BigInt,
-    current: LedgerState,
+    current: Option[MempoolLedger],
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
@@ -93,42 +136,43 @@ final case class MempoolState(
       (id, tx) = parsed
       _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
       _ <- Either.cond(raw.size <= free, (), Rejection.Full(raw.size, free))
+      ledger <- current.toRight(
+        Rejection.NoLedger(ConwayView.Unavailable.InByron)
+      )
+      baseLedger <- base.toRight(Rejection.NoLedger(ConwayView.Unavailable.InByron))
       // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`) runs before LEDGER: a transaction none
       // of whose inputs is unspent is "probably a duplicate" and is refused with that alone. Votes
       // of unelected committee members are refused here, and only here, before protocol version 11;
       // from 11 the GOV rule does.
-      conway = current.params.protocolMajor >= 9
+      pv = ledger.params.protocolMajor
       _ <- Either.cond(
-        !conway || tx.body.inputs.exists(current.utxo.contains),
+        pv < 9 || tx.body.inputs.exists(ledger.utxo.contains),
         (),
         Rejection.Ledger(
           LedgerFailure.Rejected(id, PredicateFailure.Mempool(MempoolState.AllInputsSpent))
         )
       )
+      unelected = MempoolState.unelectedCommitteeVoters(ledger, tx.body)
       _ <- Either.cond(
-        current.params.protocolMajor < 9 || current.params.protocolMajor > 10 ||
-          ConwayRules.unelectedCommitteeVoters(current, tx.body).isEmpty,
+        pv < 9 || pv > 10 || unelected.isEmpty,
         (),
         Rejection.Ledger(
           LedgerFailure.Rejected(
             id,
             PredicateFailure.Mempool(
               "Unelected committee members are not allowed to cast votes: " +
-                ConwayRules
-                  .unelectedCommitteeVoters(current, tx.body)
-                  .map(MempoolState.showCredential)
-                  .mkString("[", ",", "]")
+                unelected.map(MempoolState.showCredential).mkString("[", ",", "]")
             )
           )
         )
       )
-      next <- TxRules(current, tx, env.txEnv(tipSlot, base, entries.size))
+      next <- ledger(tx, env.txEnv(tipSlot, baseLedger, entries.size), env.rules)
         .leftMap(Rejection.Ledger(_))
     yield
-      val entry = Entry(id, raw, tx, nextTicket, MempoolState.refScriptBytes(current, tx))
+      val entry = Entry(id, raw, tx, nextTicket, MempoolState.refScriptBytes(ledger, tx))
       (
         copy(
-          current = next,
+          current = Some(next),
           entries = entries :+ entry,
           bytes = bytes + raw.size,
           nextTicket = nextTicket + 1
@@ -141,31 +185,46 @@ final case class MempoolState(
     * here because their inputs are spent.
     */
   def sync(
-      ledger: LedgerState,
+      ledger: Either[ConwayView.Unavailable, MempoolLedger],
       slot: BigInt,
       env: MempoolEnv
   ): (MempoolState, Vector[(Entry, Rejection)]) =
-    val start =
-      copy(base = ledger, tipSlot = slot, current = ledger, entries = Vector.empty, bytes = 0)
-    entries.foldLeft((start, Vector.empty[(Entry, Rejection)])) { case ((state, dropped), entry) =>
-      TxRules(state.current, entry.tx, env.txEnv(slot, ledger, state.entries.size)) match
-        case Right(next) =>
-          (
-            state.copy(
-              current = next,
-              entries = state.entries :+ entry,
-              bytes = state.bytes + entry.size
-            ),
-            dropped
-          )
-        case Left(failure) => (state, dropped :+ (entry -> Rejection.Ledger(failure)))
-    }
+    ledger match
+      case Left(why) =>
+        // no ledger to validate against: nothing is held, and everything held is dropped
+        (
+          copy(base = None, tipSlot = slot, current = None, entries = Vector.empty, bytes = 0),
+          entries.map(_ -> Rejection.NoLedger(why))
+        )
+      case Right(l) =>
+        val start =
+          copy(base = Some(l), tipSlot = slot, current = Some(l), entries = Vector.empty, bytes = 0)
+        entries.foldLeft((start, Vector.empty[(Entry, Rejection)])) {
+          case ((state, dropped), entry) =>
+            state.current
+              .toRight(Rejection.NoLedger(ConwayView.Unavailable.InByron))
+              .flatMap(
+                _(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
+                  .leftMap(Rejection.Ledger(_))
+              ) match
+              case Right(next) =>
+                (
+                  state.copy(
+                    current = Some(next),
+                    entries = state.entries :+ entry,
+                    bytes = state.bytes + entry.size
+                  ),
+                  dropped
+                )
+              case Left(rejection) => (state, dropped :+ (entry -> rejection))
+        }
 
   /** Remove transactions by id (and, because later ones may spend their outputs, revalidate the
     * rest).
     */
   def remove(ids: Set[Bytes], env: MempoolEnv): (MempoolState, Vector[(Entry, Rejection)]) =
-    copy(entries = entries.filterNot(e => ids(e.id))).sync(base, tipSlot, env)
+    copy(entries = entries.filterNot(e => ids(e.id)))
+      .sync(base.toRight(ConwayView.Unavailable.InByron), tipSlot, env)
 
   /** The longest prefix of the pool, in order, within `maxBytes`. */
   def forBlock(maxBytes: Long): Vector[Entry] =
@@ -183,6 +242,21 @@ object MempoolState:
   val AllInputsSpent: String =
     "All inputs are spent. Transaction has probably already been included"
 
+  /** `unelectedCommitteeVoters` (`Gov.hs:652`): the committee hot credentials among the voters of
+    * `body` that no member of the current committee has authorised. From protocol version 11 the
+    * GOV rule refuses such votes; before that the reference refuses them in its mempool only
+    * (`Rules/Mempool.hs`), so blocks may carry them.
+    */
+  def unelectedCommitteeVoters(
+      ledger: MempoolLedger,
+      body: xyz.kd5ujc.scarab.ledger.TxBody
+  ): Vector[Credential] =
+    Gov.unelected(
+      ledger.ls.utxo.gov.committee,
+      ledger.ls.cert,
+      body.votes.map(_._1)
+    )
+
   /** A credential as the ledger's `Show` instance prints it. */
   def showCredential(c: Credential): String = c match
     case Credential.Key(h)    => "KeyHashObj (KeyHash {unKeyHash = \"" + h.hex + "\"})"
@@ -191,13 +265,13 @@ object MempoolState:
   /** The reference-script bytes of the transaction's inputs and reference inputs in `ledger`, an
     * output counted once per set it appears in.
     */
-  def refScriptBytes(ledger: LedgerState, tx: Tx): Int =
+  def refScriptBytes(ledger: MempoolLedger, tx: Tx): Int =
     (tx.body.inputs.iterator ++ tx.body.referenceInputs.iterator)
       .flatMap(ledger.utxo.get)
       .map(_.referenceScriptSize)
       .sum
 
-  def empty(ledger: LedgerState, tipSlot: BigInt, capacityBytes: Long): MempoolState =
+  def empty(ledger: Option[MempoolLedger], tipSlot: BigInt, capacityBytes: Long): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityBytes)
 
   private val limits = Cbor.Limits(

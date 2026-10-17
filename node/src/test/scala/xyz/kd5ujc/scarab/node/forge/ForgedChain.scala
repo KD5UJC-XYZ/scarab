@@ -18,8 +18,14 @@ import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.node.Follower
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
+import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
+import xyz.kd5ujc.scarab.node.MirrorRules
+import xyz.kd5ujc.scarab.node.MirrorRun
 import xyz.kd5ujc.scarab.node.NodeRules
 import xyz.kd5ujc.scarab.node.RefStateful
+import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.consensus.PraosConfig
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
@@ -95,7 +101,7 @@ object ForgedChain:
       Map(p.creds.poolId -> params)
     )
     TxKit
-      .ledger(1)
+      .flat(1)
       .copy(
         epoch = epoch,
         poolDistribution = dist,
@@ -136,37 +142,55 @@ object ForgedChain:
   def forge(slots: Range, epoch: BigInt = 5, seed: Int = 1): IO[ForgedChain] =
     val p = pool(kesStart = (slots.head / 100).toInt - 1, seed)
     val genesis = nodeState(ledgerWith(p, epoch))
+    val env = ConsensusMirrorEnv(
+      MirrorEnv(globals.network, geometry, globals.updateQuorum),
+      config.forks,
+      EraHistory.ByronParams(
+        BigInt(geometry.securityParam) * 10,
+        BigInt(20000),
+        BigInt(geometry.securityParam)
+      )
+    )
+    // the chain the pool forges on is the mirror; the blocks are then applied by the old rules,
+    // from the flat state, to give the states the header-rule suites read
+    val start = MirrorRun
+      .run(env)(_.toMirror(None, genesis))
+      .fold(e => throw new AssertionError(e.toString), _.value)
     Handle
       .allow[NodeError] {
         for
-          ref <- Ref.of[IO, VolatileChain[NodeState]](
-            VolatileChain.genesis(geometry.securityParam, genesis)
+          ref <- Ref.of[IO, VolatileChain[MirrorState]](
+            VolatileChain.genesis(geometry.securityParam, start)
           )
-          given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
-          rules = NodeRules[IO](config, globals)
+          given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
+          rules = MirrorRules[IO](config, globals, None, None, env.byron)
           mempool <- Mempool.create[IO](
-            genesis.ledger,
+            MempoolLedger.at(start, None).toOption,
             slots.head.toLong - 1,
             MempoolEnv(globals, geometry),
             1000000,
             MempoolEvents.none[IO]
           )
           raws <- Ref.of[IO, Vector[Bytes]](Vector.empty)
-          follower <- Follower.create[IO, NodeState](
+          follower <- Follower.create[IO, MirrorState](
             rules,
             _ => IO.unit,
             geometry,
-            persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, NodeState]:
+            persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, MirrorState]:
               def extended(
                   ref: BlockRef,
                   raw: Bytes,
                   immutable: Vector[BlockRef],
-                  anchor: xyz.kd5ujc.scarab.consensus.Anchor[NodeState]
+                  anchor: xyz.kd5ujc.scarab.consensus.Anchor[MirrorState]
               ) = raws.update(_ :+ raw)
               def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point) = IO.unit),
-            onTip = Some((c, _) => mempool.sync(c.state.ledger, c.tipRef.get.slot, Set.empty).void)
+            onTip = Some((c, _) =>
+              mempool
+                .sync(MempoolLedger.at(c.state, c.tipRef), c.tipRef.get.slot, Set.empty)
+                .void
+            )
           )
-          forger <- Forger.create[IO](
+          forger <- Forger.create[IO, MirrorState](
             config,
             globals,
             p.creds,

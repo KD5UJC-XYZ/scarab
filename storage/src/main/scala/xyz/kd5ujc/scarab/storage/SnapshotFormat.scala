@@ -80,3 +80,16 @@ trait SnapshotFormat[F[_], S]:
   def encode(snapshot: StateSnapshot[S]): F[Either[SnapshotRefusal, Array[Byte]]]
 
   def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[S]]]
+
+object SnapshotFormat:
+  extension [F[_], S](format: SnapshotFormat[F, S])
+    /** The format that applies `restore` to the state it reads (not to the one it writes): what a
+      * node does to the state of a snapshot an older build wrote, once, as it comes in.
+      */
+    def restoring(restore: S => S)(using F: cats.Functor[F]): SnapshotFormat[F, S] =
+      new SnapshotFormat[F, S]:
+        def encode(snapshot: StateSnapshot[S]): F[Either[SnapshotRefusal, Array[Byte]]] =
+          format.encode(snapshot)
+
+        def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[S]]] =
+          F.map(format.decode(content))(_.map(s => s.copy(state = restore(s.state))))

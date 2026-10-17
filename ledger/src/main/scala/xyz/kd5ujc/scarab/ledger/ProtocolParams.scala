@@ -128,6 +128,24 @@ final case class ProtocolParams(
   def validatesPoolRewardAccountNetwork: Boolean = protocolMajor > 4
 
 object ProtocolParams:
+  /** The parameters `changed` has over `base`, laid over `full`: field by field, the value of
+    * `changed` where it differs from `base`, else the one of `full`. The Haskell `PParams` of an
+    * era has only the fields of that era, and the parameters read from a snapshot have the others
+    * at zero; `full` is the node's whole set (the later eras' fields come from their genesis
+    * files), `base` the same parameters as the snapshot has them, and `changed` an update of `base`
+    * (the future parameters), which is thereby an update of `full`.
+    */
+  def overlay(full: ProtocolParams, base: ProtocolParams, changed: ProtocolParams): ProtocolParams =
+    val m = summon[scala.deriving.Mirror.ProductOf[ProtocolParams]]
+    val (f, b, c) = (
+      Tuple.fromProduct(full).toArray,
+      Tuple.fromProduct(base).toArray,
+      Tuple.fromProduct(changed).toArray
+    )
+    m.fromProduct(
+      Tuple.fromArray(Array.tabulate[Object](f.length)(i => if c(i) != b(i) then c(i) else f(i)))
+    )
+
   /** Initial parameters from the Shelley, Alonzo and (when the chain starts in Conway) Conway
     * genesis files.
     */

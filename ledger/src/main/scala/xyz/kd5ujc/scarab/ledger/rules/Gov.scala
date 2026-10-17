@@ -75,7 +75,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
   /** `unelectedCommitteeVoters` (`Gov.hs:652`): the hot credentials among the voters that no member
     * of the current committee has authorised.
     */
-  private def unelected(
+  def unelected(
       committee: Option[Committee],
       cert: ConwayCertState,
       voters: Iterable[Voter]

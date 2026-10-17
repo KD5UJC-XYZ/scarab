@@ -7,7 +7,7 @@ import cats.syntax.all.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.network.{TxSubmissionClient, TxSubmissionServer}
-import xyz.kd5ujc.scarab.ledger.LedgerState
+import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 /** Observable mempool milestones, for the JSON log. */
@@ -60,7 +60,7 @@ trait Mempool[F[_]]:
     * the pool as adopted, the others that no longer apply are returned with the reason.
     */
   def sync(
-      ledger: LedgerState,
+      ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       adopted: Set[Bytes] = Set.empty
   ): F[Vector[(Entry, Rejection)]]
@@ -84,7 +84,7 @@ object Mempool:
         else Seen(ids + id, grown)
 
   def create[F[_]: Async](
-      ledger: LedgerState,
+      ledger: Option[MempoolLedger],
       tipSlot: BigInt,
       env: MempoolEnv,
       capacityBytes: Long,
@@ -108,9 +108,11 @@ object Mempool:
           held <- state.get
           current <- MempoolState.parse(raw) match
             case Right((_, tx)) =>
-              UtxoStore
-                .complete(utxoStore, held.current.utxo, UtxoStore.readSet(Some(tx)))
-                .map(u => held.copy(current = held.current.copy(utxo = u)))
+              held.current.fold(F.pure(held))(current =>
+                UtxoStore
+                  .complete(utxoStore, current.utxo, UtxoStore.readSet(Some(tx)))
+                  .map(u => held.copy(current = Some(current.withUtxo(u))))
+              )
             case Left(_) => F.pure(held)
           result <- F.blocking(current.add(raw, env))
           out <- result match
@@ -148,15 +150,19 @@ object Mempool:
 
       def forBlock(maxBytes: Long) = state.get.map(_.forBlock(maxBytes))
 
-      def sync(ledger: LedgerState, tipSlot: BigInt, adopted: Set[Bytes]) = lock.lock.surround {
+      def sync(
+          ledger: Either[ConwayView.Unavailable, MempoolLedger],
+          tipSlot: BigInt,
+          adopted: Set[Bytes]
+      ) = lock.lock.surround {
         for
           current <- state.get
-          completed <- UtxoStore.complete(
-            utxoStore,
-            ledger.utxo,
-            UtxoStore.readSet(current.entries.map(_.tx))
+          completed <- ledger.traverse(l =>
+            UtxoStore
+              .complete(utxoStore, l.utxo, UtxoStore.readSet(current.entries.map(_.tx)))
+              .map(l.withUtxo)
           )
-          result <- F.blocking(current.sync(ledger.copy(utxo = completed), tipSlot, env))
+          result <- F.blocking(current.sync(completed, tipSlot, env))
           (next, dropped) = result
           _ <- state.set(next)
           _ <- version.update(_ + 1)

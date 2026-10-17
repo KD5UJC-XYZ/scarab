@@ -10,6 +10,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
@@ -50,10 +51,10 @@ class ForgeSuite extends CatsEffectSuite with ForgeFixture:
           case _         => ()
         }
         // the ledger counted the blocks for the pool and applied the transactions
-        assertEquals(chain.state.ledger.blocksCurrent.get(p.id), Some(BigInt(forged.size)))
-        assert(!chain.state.ledger.utxo.contains(TestLedger.txIn(1)))
-        assert(!chain.state.ledger.utxo.contains(TestLedger.txIn(2)))
-        assert(chain.state.ledger.utxo.contains(TestLedger.txIn(3)))
+        assertEquals(blocksMade(chain, p.id), Some(BigInt(forged.size)))
+        assert(!chain.state.utxo.contains(TestLedger.txIn(1)))
+        assert(!chain.state.utxo.contains(TestLedger.txIn(2)))
+        assert(chain.state.utxo.contains(TestLedger.txIn(3)))
     }
   }
 
@@ -204,7 +205,7 @@ class ForgeSuite extends CatsEffectSuite with ForgeFixture:
         events <- h.seen
         chain <- h.chain
       yield
-        assertEquals(chain.state.ledger.blocksCurrent.get(p.id), Some(BigInt(forged.size)))
+        assertEquals(blocksMade(chain, p.id), Some(BigInt(forged.size)))
         // slots 5000..5399 are KES periods 50..53 (slotsPerKESPeriod = 100)
         assertEquals(forged.map(_.relativeKesPeriod).distinct.sorted, Vector(0, 1, 2, 3))
         assertEquals(

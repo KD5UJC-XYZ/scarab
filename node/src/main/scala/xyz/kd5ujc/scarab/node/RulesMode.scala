@@ -6,10 +6,12 @@ import cats.{Eq, Show}
 /** Which ledger rules the node runs (`--rules`, step 2 of the ledger-state mirror, design
   * `ledger-mirror-step2.md` §2.5):
   *
-  *   - `Old`: the flat rules, as before (the default);
-  *   - `New`: the era-indexed rules. Nothing is ported yet, so this is refused at start (J2.8 makes
-  *     it the default, J2.9 removes the choice);
-  *   - `Differential`: both, side by side on every block, compared as `DifferentialRules` says.
+  *   - `New`: the era-indexed rules on the mirror of the Haskell ledger state, which is the chain's
+  *     state (the default since J2.8);
+  *   - `Old`: the flat rules and the node's flat state, as before J2.8 (until J2.9 removes the
+  *     choice);
+  *   - `Differential`: the old rules and the new ones side by side on every block, compared as
+  *     `DifferentialRules` says (the chain's state is the flat one).
   */
 enum RulesMode(val flag: String):
   case Old extends RulesMode("old")

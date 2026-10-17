@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   HeaderState,
   MirrorExtras,
   MirrorState,
+  MirrorStep,
   ShelleyLedgerState,
   StateMirror,
   StateMirrorError,
@@ -31,6 +32,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Nonce,
   Utxo
 }
+import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.ledger.state.{
   VocabError,
   EpochState,
@@ -132,6 +134,148 @@ object SnapshotV4:
           })
         )
       )
+
+  // ---- the mirror as the node's state (J2.8)
+
+  /** The format for a chain whose state is the mirror ([[MirrorState]]), the file the same as
+    * [[format]] writes: the sidecar and the Haskell state bytes. The state is written as it is held
+    * and read back as it is, with no conversion to the node's flat state in either direction.
+    *
+    * What is written of the mirror that the Haskell section has no place for is the sidecar's: the
+    * UTxO set's handle and the node's bookkeeping (the extras), and the parameters in force and the
+    * previous ones, which the sidecar has always held as the node's full set (a Shelley-based era's
+    * `PParams` in the Haskell section has only its own fields). A file the flat form wrote reads as
+    * the mirror of the state it holds; the old rules' bookkeeping in it is the new rules'
+    * [[xyz.kd5ujc.scarab.node.LegacySeed]]'s to reset, which the node applies to the state it
+    * restores (this module does not know the rules).
+    *
+    * With [[SnapshotCheck.Full]] the file is read back and its Haskell section is written again:
+    * the bytes must be those written, and the sidecar's parts equal (a pool registered with the
+    * empty relay list reads back as one with none, which the state does not tell apart, so the
+    * bytes are what is compared, not the state).
+    */
+  def mirrorFormat[F[_]: Sync](check: SnapshotCheck)(using
+      env: Ask[F, ConsensusMirrorEnv]
+  ): SnapshotFormat[F, MirrorState] =
+    new SnapshotFormat[F, MirrorState]:
+      def encode(snapshot: StateSnapshot[MirrorState]): F[Either[SnapshotRefusal, Array[Byte]]] =
+        env
+          .ask[ConsensusMirrorEnv]
+          .flatMap(e => Sync[F].blocking(writtenMirror(e, snapshot, check)))
+
+      def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[MirrorState]]] =
+        env.ask[ConsensusMirrorEnv].flatMap(e => Sync[F].blocking(readMirror(e, content)))
+
+  /** The gaps of a state the era-indexed rules made: the pool ranking (`esNonMyopic`) is not
+    * computed, nor the transition count of the consensus state. The rewards are attributed, the
+    * delegators exact, the pulser the rules' own.
+    */
+  private val MirrorGaps: Set[Gap] = Set(Gap.NonMyopic, Gap.ShelleyTransition)
+
+  private def writtenMirror(
+      env: ConsensusMirrorEnv,
+      snapshot: StateSnapshot[MirrorState],
+      check: SnapshotCheck
+  ): Either[SnapshotRefusal, Array[Byte]] =
+    encodedMirror(env, snapshot).flatTap { content =>
+      check match
+        case SnapshotCheck.Structure =>
+          wellFormed(content).leftMap(SnapshotRefusal.WouldNotRead(_))
+        case SnapshotCheck.Full =>
+          for
+            back <- readMirror(env, content).leftMap(SnapshotRefusal.WouldNotRead(_))
+            again <- encodedMirror(env, back)
+            _ <- Either.cond(
+              java.util.Arrays.equals(again, content) && back.anchor == snapshot.anchor,
+              (),
+              SnapshotRefusal.WouldDiffer(
+                List("the snapshot written again is not the one written").filter(_ =>
+                  !java.util.Arrays.equals(again, content)
+                )
+              )
+            )
+          yield ()
+    }
+
+  private def encodedMirror(
+      env: ConsensusMirrorEnv,
+      snapshot: StateSnapshot[MirrorState]
+  ): Either[SnapshotRefusal, Array[Byte]] =
+    val m = snapshot.state
+    def sidecar(chain: SnapshotSidecar.Chain, gaps: Set[Gap]) =
+      SnapshotSidecar(snapshot.anchor, env.observed, gaps, chain)
+    (m.extras, m.ext.ledgerState.state) match
+      case (
+            MirrorExtras.InByron(ledger, pending, boot, protocol),
+            EraLedgerState.ByronCurrent(b)
+          ) =>
+        Right(
+          framed(
+            sidecar(
+              SnapshotSidecar.Chain.InByron(ledger, pending, ConsensusExtras(boot, b, protocol)),
+              Set.empty
+            ),
+            Bytes.empty
+          )
+        )
+      case (shelley: MirrorExtras.InShelley, i: EraLedgerState.InShelleyEra[e]) =>
+        given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[e] = i.era
+        val gov = i.state.nes.es.ls.utxo.gov
+        for
+          file <- HaskellLedgerFile
+            .of(m.ext)
+            .leftMap(e => SnapshotRefusal.Mirror(StateMirrorError.Telescope(e)))
+          haskell <- HaskellLedgerFile.encode(file).leftMap(SnapshotRefusal.NotWritable(_))
+        yield framed(
+          sidecar(
+            SnapshotSidecar.Chain.InShelley(
+              i.state.nes.es.ls.utxo.utxo.utxo,
+              EraLedger.curPParams(gov),
+              Some(EraLedger.prevPParams(gov)),
+              shelley
+            ),
+            MirrorGaps
+          ),
+          haskell
+        )
+      case (_, state) =>
+        Left(SnapshotRefusal.Mirror(StateMirrorError.ExtrasMismatch(state.era)))
+
+  private def readMirror(
+      env: ConsensusMirrorEnv,
+      content: Array[Byte]
+  ): Either[StorageError, StateSnapshot[MirrorState]] =
+    sections(content).flatMap { (sidecar, haskell) =>
+      val state: Either[StorageError, MirrorState] = sidecar.chain match
+        case SnapshotSidecar.Chain.InByron(ledger, pending, extras) =>
+          Either
+            .cond(haskell.size == 0, (), corrupt("a Byron snapshot with a ledger state"))
+            .flatMap { _ =>
+              // the Byron mirror is cheap to build (the Byron ledger is carried whole): from the
+              // node's Byron state, once, at the restore
+              val seen = env.copy(observed = env.observed ++ sidecar.observed)
+              mirror
+                .toMirror(sidecar.anchor, NodeState(HeaderState.live(pending), ledger, extras))
+                .run(seen)
+                .bimap(e => corrupt(s"the Byron state does not mirror: ${e.show}"), _.value)
+            }
+        case shelley: SnapshotSidecar.Chain.InShelley =>
+          for
+            file <- HaskellLedgerFile.decode(haskell).leftMap(e => corrupt(e.render))
+            decoded <- file.ext.toRight(corrupt("the ledger state is a Byron item"))
+            ext <- withUtxo(decoded, shelley.utxo)
+            _ <- Either.cond(
+              StateMirror.anchorOf(ext.headerState.tip) == sidecar.anchor,
+              (),
+              corrupt("the tip of the ledger state is not the anchor of the snapshot")
+            )
+          yield MirrorStep.withParams(
+            MirrorState(ext, shelley.extras),
+            shelley.params,
+            shelley.prevParams
+          )
+      state.map(StateSnapshot(sidecar.anchor, _))
+    }
 
   // ---- write
 

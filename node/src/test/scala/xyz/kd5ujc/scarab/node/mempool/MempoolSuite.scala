@@ -8,7 +8,18 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.codec.Rational
+import cats.data.Kleisli
+import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import munit.{CatsEffectSuite, ScalaCheckSuite}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  FlatStateGen,
+  LedgerMirror,
+  MirrorEnv,
+  MirrorError,
+  SlotNo,
+  WithOrigin
+}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 
@@ -76,9 +87,40 @@ object TxKit:
       id
     )
 
-  /** The ledger with `n` outputs of `value` for alice, at txIn(1..n). */
-  def ledger(n: Int, value: BigInt = 100 * ada): LedgerState =
+  private type Mirrored[A] = Kleisli[[X] =>> Either[MirrorError, X], MirrorEnv, A]
+  private val mirror: LedgerMirror[Mirrored] = LedgerMirror[Mirrored]
+  private val mirrorEnv: MirrorEnv = FlatStateGen.env.copy(network = 0, quorum = 2)
+
+  /** The Conway ledger of a flat test state: the flat state through the mirror, as the rule suites
+    * of the ledger module do it (`RuleSet`), once the test has built it with the flat builders.
+    */
+  def conway(flat: LedgerState): MempoolLedger =
+    val at = WithOrigin.At(SlotNo.fromUnsigned(50L))
+    mirror
+      .to[Conway](at, flat)
+      .run(mirrorEnv)
+      .fold(e => sys.error(s"to the mirror: $e"), image => MempoolLedger.of(image.value.nes))
+
+  /** The flat state with `n` outputs of `value` for alice, at txIn(1..n). */
+  def flat(n: Int, value: BigInt = 100 * ada): LedgerState =
     TestLedger.state(10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
+
+  /** The Conway ledger with `n` outputs of `value` for alice, at txIn(1..n). */
+  def ledger(n: Int, value: BigInt = 100 * ada): MempoolLedger = conway(flat(n, value))
+
+  extension (l: MempoolLedger)
+    /** The ledger with the protocol version changed (the rules read the version in force). */
+    def withProtocol(major: Int): MempoolLedger =
+      val gov = l.ls.utxo.gov
+      l.copy(ls =
+        l.ls.copy[Conway](utxo =
+          l.ls.utxo.copy(gov = gov.copy(curPParams = gov.curPParams.copy(protocolMajor = major)))
+        )
+      )
+
+    /** The ledger after the transaction, which the test knows to be valid. */
+    def applied(tx: Tx, slot: BigInt = 1000): MempoolLedger =
+      l(tx, env.txEnv(slot, l, 0), env.rules).fold(f => sys.error(f.message), identity)
 
   /** Alice pays `value - fee` to bob from `txIn(i)`. */
   def pay(i: Int, fee: BigInt = ada, value: BigInt = 100 * ada): (Bytes, Bytes) =
@@ -87,8 +129,8 @@ object TxKit:
 class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   import TxKit.*
 
-  private def pool(ledger: LedgerState, capacity: Long = 100000) =
-    MempoolState.empty(ledger, 1000, capacity)
+  private def pool(ledger: MempoolLedger, capacity: Long = 100000) =
+    MempoolState.empty(Some(ledger), 1000, capacity)
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env).map(_._1)
@@ -160,7 +202,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
     def attempt(protocol: Int) =
       val l = ledger(1)
-      add(pool(l.copy(params = l.params.copy(protocolMajor = protocol))), raw).left
+      add(pool(l.withProtocol(protocol)), raw).left
         .map {
           case Rejection.Ledger(LedgerFailure.Rejected(`id`, f)) => f.ruleName
           case other                                             => other.message
@@ -202,14 +244,14 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     // a block adopts t1 and t2
     val l1 = List(t1, t2).foldLeft(l0) { (l, raw) =>
       val (_, tx) = MempoolState.parse(raw).toOption.get
-      TxRules(l, tx, env.txEnv(1000, l, 0)).fold(f => fail(f.message), identity)
+      l.applied(tx)
     }
-    val (synced, dropped) = s.sync(l1, 1001, env)
+    val (synced, dropped) = s.sync(Right(l1), 1001, env)
     assertEquals(dropped.map(_._1.id).toSet, Set(id1, id2))
     assertEquals(synced.entries.map(_.id), Vector(idChild))
     assertEquals(synced.bytes, child.size.toLong)
     // a rollback of that block: the child no longer has its parent and is dropped, nothing is added back
-    val (back, droppedAgain) = synced.sync(l0, 1000, env)
+    val (back, droppedAgain) = synced.sync(Right(l0), 1000, env)
     assertEquals(back.entries, Vector.empty)
     assertEquals(droppedAgain.map(_._1.id), Vector(idChild))
   }
@@ -262,10 +304,11 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
   )
 
-  private def replay(s: MempoolState): Either[String, LedgerState] =
-    s.entries.zipWithIndex.foldLeft[Either[String, LedgerState]](Right(s.base)) {
+  private def replay(s: MempoolState): Either[String, MempoolLedger] =
+    val base = s.base.getOrElse(sys.error("no ledger"))
+    s.entries.zipWithIndex.foldLeft[Either[String, MempoolLedger]](Right(base)) {
       case (Right(l), (e, i)) =>
-        TxRules(l, e.tx, env.txEnv(s.tipSlot, s.base, i)).left.map(_.message)
+        l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules).left.map(_.message)
       case (left, _) => left
     }
 
@@ -273,7 +316,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     forAll(opGen) { script =>
       val l0 = ledger(6)
       var s = pool(l0, capacity = 3000)
-      var history = List.empty[LedgerState]
+      var history = List.empty[MempoolLedger]
       script.foreach {
         case Op.Add(i) =>
           s.add(candidates(i)._1, env).foreach { case (next, _) => s = next }
@@ -281,19 +324,18 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
           s = s.remove(Set(candidates(i)._2), env)._1
         case Op.Block(n) =>
           val adopted = s.entries.take(n)
-          val l1 = adopted.foldLeft(s.base)((l, e) =>
-            TxRules(l, e.tx, env.txEnv(s.tipSlot, s.base, 0)).toOption.get
-          )
-          history = s.base :: history
-          s = s.sync(l1, s.tipSlot + 1, env)._1
+          val base = s.base.getOrElse(sys.error("no ledger"))
+          val l1 = adopted.foldLeft(base)((l, e) => l.applied(e.tx, s.tipSlot))
+          history = base :: history
+          s = s.sync(Right(l1), s.tipSlot + 1, env)._1
         case Op.Rollback =>
           history match
             case previous :: rest =>
               history = rest
-              s = s.sync(previous, s.tipSlot - 1, env)._1
+              s = s.sync(Right(previous), s.tipSlot - 1, env)._1
             case Nil => ()
       }
-      assertEquals(replay(s).map(_.utxo), Right(s.current.utxo))
+      assertEquals(replay(s).map(_.utxo), Right(s.current.get.utxo))
       assertEquals(s.entries.map(_.id).distinct.size, s.entries.size)
       assertEquals(s.bytes, s.entries.map(_.size.toLong).sum)
       assert(s.bytes <= s.capacityBytes)
@@ -311,7 +353,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("Mempool[F]: add, offer to peers by ticket, collect from peers, sync") {
     for
       ev <- events
-      mempool <- Mempool.create[IO](ledger(4), 1000, env, 100000, ev._1)
+      mempool <- Mempool.create[IO](Some(ledger(4)), 1000, env, 100000, ev._1)
       (t1, id1) = pay(1)
       (t2, id2) = pay(2)
       first <- mempool.add(t1)
@@ -355,12 +397,12 @@ class MempoolStoreSuite extends CatsEffectSuite:
 
   test("add and sync fetch the inputs a ledger state does not hold from the store") {
     val full = ledger(3)
-    val bare = full.copy(utxo = Utxo.empty)
+    val bare = full.withUtxo(Utxo.empty)
     for
       store <- MemoryUtxoStore[IO]
       _ <- store.write(full.utxo.toVector.map((i, o) => i -> Some(o)), 0L)
       mempool <- Mempool.create[IO](
-        bare,
+        Some(bare),
         1000,
         env,
         100000,
@@ -370,7 +412,7 @@ class MempoolStoreSuite extends CatsEffectSuite:
       (t1, id1) = pay(1)
       added <- mempool.add(t1)
       _ <- IO(assertEquals(added, Right(id1)))
-      dropped <- mempool.sync(bare, 1001)
+      dropped <- mempool.sync(Right(bare), 1001)
       _ <- IO(assertEquals(dropped, Vector.empty))
       held <- mempool.contains(id1)
       _ <- IO(assert(held))

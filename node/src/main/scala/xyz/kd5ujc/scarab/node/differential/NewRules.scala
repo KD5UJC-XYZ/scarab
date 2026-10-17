@@ -5,15 +5,7 @@ import cats.Monad
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.{
-  EraLedgerState,
-  MirrorExtras,
-  MirrorState,
-  MirrorStep,
-  Placement,
-  ShelleyLedgerState,
-  Telescope
-}
+import xyz.kd5ujc.scarab.consensus.state.{MirrorExtras, MirrorState, MirrorStep, Placement}
 import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, Header, Prepared, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.ByronOut
@@ -32,10 +24,10 @@ import xyz.kd5ujc.scarab.ledger.state.{
   NewEpochState,
   ShelleyBasedEra,
   SlotNo,
-  UtxoTables,
-  WithOrigin
+  UtxoTables
 }
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.node.LegacySeed
 import xyz.kd5ujc.scarab.storage.UtxoStore
 
 /** The two sides of the harness' state: the old node state, and the new side's, which is the mirror
@@ -184,27 +176,7 @@ object NewRules:
     *     state the new rules carry would adopt them as the parameters of the next epoch (the
     *     pulsers the new rules make themselves have none).
     */
-  def carried(m: MirrorState): MirrorState =
-    val telescope = m.ext.ledgerState
-    val amounts = m.extras match
-      case MirrorExtras.InShelley(ledger, _) => ledger.rewardAmounts
-      case MirrorExtras.InByron(_, _, _, _)  => Map.empty
-    def carry[E <: EraTag](era: ShelleyBasedEra[E], state: ShelleyLedgerState[E]): EraLedgerState =
-      given ShelleyBasedEra[E] = era
-      Relations
-        .seed[E](state.nes, amounts)
-        .toOption
-        .fold(EraLedgerState.inEra[E](state))(nes =>
-          EraLedgerState.inEra[E](state.copy(nes = Relations.withoutDroppedFields[E](nes)))
-        )
-    val moved: Option[EraLedgerState] = telescope.state match
-      case i: EraLedgerState.InShelleyEra[e] => Some(carry[e](i.era, i.state))
-      case EraLedgerState.ByronCurrent(_)    => None
-    moved
-      .flatMap(state =>
-        Telescope.make(telescope.past, telescope.current.copy(state = state)).toOption
-      )
-      .fold(m)(next => m.copy(ext = m.ext.copy(ledgerState = next)))
+  def carried(m: MirrorState): MirrorState = LegacySeed.carried(m)
 
   /** The block of a Shelley-based era on the new rules ([[EraBlock]]): decoded, its read set
     * fetched from the store, applied to the new-epoch state of the mirror, the changes to the UTxO

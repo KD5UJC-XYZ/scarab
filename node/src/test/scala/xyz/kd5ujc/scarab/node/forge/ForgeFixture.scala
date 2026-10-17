@@ -15,9 +15,15 @@ import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
+import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, MirrorEnv, StakePool}
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.node.NodeRules
+import xyz.kd5ujc.scarab.node.MirrorRules
+import xyz.kd5ujc.scarab.node.MirrorRun
 import xyz.kd5ujc.scarab.node.RefStateful
+import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+import xyz.kd5ujc.scarab.node.read.ConwayView
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.consensus.PraosConfig
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
@@ -67,7 +73,7 @@ trait ForgeFixture:
     Pool(PoolCredentials(vrf, kes, oc, cold.vkey), cold, TestLedger.key())
 
   def ledgerWith(p: Pool, funds: Int): LedgerState =
-    val base = TxKit.ledger(funds)
+    val base = TxKit.flat(funds)
     val cred = p.stake.credential
     val params = PoolParams(
       p.id,
@@ -116,15 +122,42 @@ trait ForgeFixture:
     )
     NodeState(praos, ledger, BootstrapState.initial(lite))
 
+  /** What the mirror reads of this configuration. */
+  lazy val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
+    MirrorEnv(globals.network, geometry, globals.updateQuorum),
+    config.forks,
+    EraHistory.ByronParams(
+      BigInt(geometry.securityParam) * 10,
+      BigInt(20000),
+      BigInt(geometry.securityParam)
+    )
+  )
+
+  /** The chain's state at the origin: the node's state through the mirror, once, at the start. */
+  def mirrorState(ledger: LedgerState): MirrorState =
+    MirrorRun
+      .run(mirrorEnv)(_.toMirror(None, nodeState(ledger)))
+      .fold(e => throw new AssertionError(e.toString), _.value)
+
+  /** The blocks the pool made in the epoch of the tip, in the state's own count. */
+  def blocksMade(c: VolatileChain[MirrorState], id: Bytes): Option[BigInt] =
+    ConwayView(c.state, c.tipRef).toOption.flatMap { nes =>
+      xyz.kd5ujc.scarab.ledger.state.KeyHash
+        .fromBytes[StakePool](id)
+        .toOption
+        .flatMap(k => BlocksMade.iso.get(nes.bcur).get(k))
+        .map(_.toBigInt)
+    }
+
   final class Harness(
-      val follower: Follower[IO, NodeState],
-      val forger: Forger[IO],
-      val ref: Ref[IO, VolatileChain[NodeState]],
+      val follower: Follower[IO, MirrorState],
+      val forger: Forger[IO, MirrorState],
+      val ref: Ref[IO, VolatileChain[MirrorState]],
       val mempool: Mempool[IO],
       val events: Ref[IO, Vector[ForgeEvent]],
       val raws: Ref[IO, Map[Bytes, Bytes]]
   ):
-    def chain: IO[VolatileChain[NodeState]] = ref.get
+    def chain: IO[VolatileChain[MirrorState]] = ref.get
     def seen: IO[Vector[ForgeEvent]] = events.get
 
   def harness(
@@ -138,35 +171,38 @@ trait ForgeFixture:
       source: Option[HotKeySource[IO]] = None
   )(using Handle[IO, NodeError]): IO[Harness] =
     for
-      ref <- Ref.of[IO, VolatileChain[NodeState]](
-        VolatileChain.genesis(geometry.securityParam, nodeState(ledger))
+      start <- IO.pure(mirrorState(ledger))
+      ref <- Ref.of[IO, VolatileChain[MirrorState]](
+        VolatileChain.genesis(geometry.securityParam, start)
       )
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
-      rules = NodeRules[IO](config, globals)
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
+      rules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
       mempool <- Mempool.create[IO](
-        ledger,
+        MempoolLedger.at(start, None).toOption,
         4999,
         MempoolEnv(globals, geometry),
         1000000,
         MempoolEvents.none[IO]
       )
       raws <- Ref.of[IO, Map[Bytes, Bytes]](Map.empty)
-      follower <- Follower.create[IO, NodeState](
+      follower <- Follower.create[IO, MirrorState](
         rules,
         _ => IO.unit,
         geometry,
-        persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, NodeState]:
+        persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, MirrorState]:
           def extended(
               ref: BlockRef,
               raw: Bytes,
               immutable: Vector[BlockRef],
-              anchor: xyz.kd5ujc.scarab.consensus.Anchor[NodeState]
+              anchor: xyz.kd5ujc.scarab.consensus.Anchor[MirrorState]
           ) = raws.update(_.updated(ref.hash, raw))
           def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point) = IO.unit),
-        onTip = Some((c, _) => mempool.sync(c.state.ledger, c.tipRef.get.slot, Set.empty).void)
+        onTip = Some((c, _) =>
+          mempool.sync(MempoolLedger.at(c.state, c.tipRef), c.tipRef.get.slot, Set.empty).void
+        )
       )
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
-      forger <- Forger.create[IO](
+      forger <- Forger.create[IO, MirrorState](
         config,
         globals,
         p.creds,

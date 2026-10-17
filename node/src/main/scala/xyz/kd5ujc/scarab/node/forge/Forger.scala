@@ -9,7 +9,6 @@ import cats.syntax.all.*
 import java.time.{Duration, Instant}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.ForgeError
@@ -20,9 +19,12 @@ import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.{Epoch, LedgerGlobals, LedgerState}
+import xyz.kd5ujc.scarab.ledger.LedgerGlobals
+import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Globals, Hfc}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, NewEpochState, ShelleyBasedEra, SlotNo}
+import xyz.kd5ujc.scarab.node.read.{ChainRead, ConwayView}
 import xyz.kd5ujc.scarab.node.read.LeaderPools.given
-import xyz.kd5ujc.scarab.node.mempool.Mempool
+import xyz.kd5ujc.scarab.node.mempool.{Mempool, MempoolLedger}
 import xyz.kd5ujc.scarab.storage.UtxoStore
 import scala.concurrent.duration.*
 
@@ -95,7 +97,7 @@ trait ForgeEvents[F[_]]:
   * tests drive it with a test clock. At most one attempt is made per slot, and only the current
   * slot is attempted (a slot that has passed is not forged late).
   */
-final class Forger[F[_]: Async](
+final class Forger[F[_]: Async, S](
     config: PraosConfig,
     globals: LedgerGlobals,
     /** The pool's keys as they were at the start; the VRF key and the cold key never change, the
@@ -103,7 +105,7 @@ final class Forger[F[_]: Async](
       */
     credentials: PoolCredentials,
     val hot: HotKeys[F],
-    follower: Follower[F, NodeState],
+    follower: Follower[F, S],
     mempool: Mempool[F],
     events: ForgeEvents[F],
     /** The ledger view of a slot is only taken from a tip at most this many slots older. */
@@ -121,7 +123,11 @@ final class Forger[F[_]: Async](
     utxoStore: Option[UtxoStore[F]],
     /** Per-epoch counters (H5): checked and led slots, blocks, skips by reason, forge latency. */
     val stats: ForgeStats[F]
-)(using chain: Stateful[F, VolatileChain[NodeState]], handle: Handle[F, NodeError]):
+)(using
+    chain: Stateful[F, VolatileChain[S]],
+    handle: Handle[F, NodeError],
+    read: ChainRead[S]
+):
   private val F = Async[F]
   private val geometry = config.geometry
 
@@ -244,13 +250,13 @@ final class Forger[F[_]: Async](
 
   private def lift[A](e: Either[ForgeError, A]): F[A] = e.fold(_.raise[F, A], F.pure)
 
-  private def forge(current: VolatileChain[NodeState], slot: BigInt): F[Unit] =
+  private def forge(current: VolatileChain[S], slot: BigInt): F[Unit] =
     val epoch = geometry.epochOf(slot)
     val tip = current.tipRef
     for
       crossed <- crossedTo(current, epoch, slot)
       _ <- stats.checked(epoch)
-      pools = crossed.ledger.leaderPools
+      pools = crossed.nes.leaderPools
       stake = pools.stake.getOrElse(credentials.poolId, BigInt(0))
       // a pool must be registered with this very VRF key to be elected
       _ <- lift(
@@ -273,7 +279,7 @@ final class Forger[F[_]: Async](
         )
         .flatMap(lift)
       _ <- stats.leader(epoch)
-      ticked = Epoch.tick(crossed.ledger, slot, geometry.firstSlot(epoch), globals)
+      ticked <- lift(tick(crossed.nes, slot))
       _ <- lift(
         Either.cond(
           ticked.params.protocolMajor >= 9,
@@ -295,7 +301,7 @@ final class Forger[F[_]: Async](
       )
       chosen <- F.blocking(
         BlockBuilder.select(
-          ticked.copy(utxo = readable),
+          ticked.withUtxo(readable),
           slot,
           epoch,
           geometry,
@@ -326,11 +332,11 @@ final class Forger[F[_]: Async](
     yield ()
 
   private def build(
-      @unused current: VolatileChain[NodeState],
+      @unused current: VolatileChain[S],
       tip: Option[BlockRef],
       slot: BigInt,
       epoch: BigInt,
-      ticked: LedgerState,
+      ticked: MempoolLedger,
       cert: VrfCert,
       pieces: Vector[BlockBuilder.Piece],
       stake: BigInt,
@@ -419,11 +425,40 @@ final class Forger[F[_]: Async](
             }
     }
 
+  /** The Conway ledger state at `slot` from the state at the tip: the combinator's tick
+    * ([[Hfc.tick]]: the epoch boundaries on the way, then the slot's own work), as the block rules
+    * would make it for a block in that slot.
+    */
+  private def tick(
+      nes: NewEpochState[Conway],
+      slot: BigInt
+  ): Either[ForgeError, MempoolLedger] =
+    ticked(nes, slot).map(MempoolLedger.of)
+
+  private def ticked(
+      nes: NewEpochState[Conway],
+      slot: BigInt
+  ): Either[ForgeError, NewEpochState[Conway]] =
+    for
+      target <- SlotNo
+        .fromBigInt(slot)
+        .left
+        .map(e => ForgeError.LedgerViewUnavailable(slot, s"slot: $e"))
+      state <- Hfc
+        .tick(Globals(globals, geometry), config.forks.eraAt)(
+          EraNes.InEra(ShelleyBasedEra.SConway, nes),
+          target
+        )
+        .left
+        .map(f => ForgeError.LedgerViewUnavailable(slot, s"the tick refuses: $f"))
+      conway <- ConwayView.of(state).toRight(ForgeError.UnsupportedProtocol("the tick left Conway"))
+    yield conway
+
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
     * boundary is the expensive part and every slot of a new epoch needs it).
     */
   private def crossedTo(
-      current: VolatileChain[NodeState],
+      current: VolatileChain[S],
       epoch: BigInt,
       slot: BigInt
   ): F[Forger.Crossed] =
@@ -435,27 +470,36 @@ final class Forger[F[_]: Async](
         for
           _ <- lift(
             Either.cond(
-              !state.boot.active,
+              !state.consensus.boot.active,
               (),
               ForgeError.UnsupportedProtocol("the ledger is in bootstrap mode")
             )
           )
+          nes <- lift(
+            ConwayView(state, current.tipRef).left.map(why =>
+              ForgeError.UnsupportedProtocol(cats.Show[ConwayView.Unavailable].show(why))
+            )
+          )
           _ <- lift(
             Either.cond(
-              epoch >= state.ledger.epoch,
+              epoch >= nes.epoch.toBigInt,
               (),
               ForgeError.LedgerViewUnavailable(
                 slot,
-                s"epoch $epoch precedes the ledger's ${state.ledger.epoch}"
+                s"epoch $epoch precedes the ledger's ${nes.epoch.toBigInt}"
               )
             )
           )
-          c <- F.blocking {
-            val ledger = (state.ledger.epoch + 1 to epoch).foldLeft(state.ledger)((s, e) =>
-              Epoch.boundary(s, e, globals)
-            )
-            Forger.Crossed(key, ledger, Praos.tick(state.protocol, Era.Conway, epoch))
-          }
+          c <- F
+            .blocking {
+              // the boundaries between the tip's epoch and the slot's, so that the pool distribution
+              // is the one in force in the slot's epoch; the slot's own work is done per attempt
+              val start =
+                if epoch > nes.epoch.toBigInt then ticked(nes, geometry.firstSlot(epoch))
+                else Right(nes)
+              start.map(Forger.Crossed(key, _, Praos.tick(state.protocol, Era.Conway, epoch)))
+            }
+            .flatMap(lift)
           _ <- cache.set(Some(c))
         yield c
     }
@@ -497,18 +541,18 @@ object Forger:
   /** The tip's ledger and chain-dependent state carried into an epoch. */
   final case class Crossed(
       key: (Option[Bytes], BigInt),
-      ledger: LedgerState,
+      nes: NewEpochState[Conway],
       protocol: ProtocolState
   )
 
   /** A block we forged and adopted, kept to notice if it is replaced later. */
   final case class Forged(ref: BlockRef, slot: BigInt)
 
-  def create[F[_]: Async](
+  def create[F[_]: Async, S](
       config: PraosConfig,
       globals: LedgerGlobals,
       credentials: PoolCredentials,
-      follower: Follower[F, NodeState],
+      follower: Follower[F, S],
       mempool: Mempool[F],
       events: ForgeEvents[F],
       ready: F[Boolean],
@@ -520,14 +564,18 @@ object Forger:
         * the key is kept in memory only, as the Haskell node does.
         */
       source: Option[HotKeySource[F]] = None
-  )(using Stateful[F, VolatileChain[NodeState]], Handle[F, NodeError]): F[Forger[F]] =
+  )(using
+      Stateful[F, VolatileChain[S]],
+      Handle[F, NodeError],
+      ChainRead[S]
+  ): F[Forger[F, S]] =
     (
       Ref.of[F, Option[Crossed]](None),
       Ref.of[F, Vector[Forged]](Vector.empty),
       ForgeStats.create[F],
       HotKeys.create[F](credentials, source, config, events)
     ).mapN { (cache, pending, stats, hot) =>
-      new Forger[F](
+      new Forger[F, S](
         config,
         globals,
         credentials,

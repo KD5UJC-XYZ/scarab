@@ -53,7 +53,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
     val (clash, _) = pay(1, fee = 2 * ada)
     Resource
       .eval(
-        Mempool.create[IO](ledger(2), 1000, env, 100000, MempoolEvents.none[IO])
+        Mempool.create[IO](Some(ledger(2)), 1000, env, 100000, MempoolEvents.none[IO])
       )
       .flatMap { mempool =>
         Resource.eval(IO(java.nio.file.Files.createTempDirectory("csl-ntc"))).flatMap { dir =>
@@ -122,32 +122,33 @@ class LocalSubmissionSuite extends CatsEffectSuite:
     Resource
       .eval(Bearer.inMemory[IO]())
       .use { (clientEnd, serverEnd) =>
-        Mempool.create[IO](ledger(1), 1000, env, 1000, MempoolEvents.none[IO]).flatMap { mempool =>
-          Handle
-            .allow[NetworkError](
-              LocalTxSubmissionServer.accept(serverEnd, magic, LocalSubmission.handler(mempool))
-            )
-            .rescue(e => IO.pure(e.message))
-            .start
-            .flatMap { server =>
-              Handle
-                .allow[NetworkError] {
-                  Mux.resource(clientEnd, Set(0, 6), Mux.Config()).use { mux =>
-                    mux
-                      .channel(0)
-                      .flatMap(
-                        HandshakeClient.run(
-                          _,
-                          Vector(Handshake.Data(magic)).map(d => 16 -> d.copy(magic = magic + 1)),
-                          suite = Handshake.Suite.NodeToClient
+        Mempool.create[IO](Some(ledger(1)), 1000, env, 1000, MempoolEvents.none[IO]).flatMap {
+          mempool =>
+            Handle
+              .allow[NetworkError](
+                LocalTxSubmissionServer.accept(serverEnd, magic, LocalSubmission.handler(mempool))
+              )
+              .rescue(e => IO.pure(e.message))
+              .start
+              .flatMap { server =>
+                Handle
+                  .allow[NetworkError] {
+                    Mux.resource(clientEnd, Set(0, 6), Mux.Config()).use { mux =>
+                      mux
+                        .channel(0)
+                        .flatMap(
+                          HandshakeClient.run(
+                            _,
+                            Vector(Handshake.Data(magic)).map(d => 16 -> d.copy(magic = magic + 1)),
+                            suite = Handshake.Suite.NodeToClient
+                          )
                         )
-                      )
-                      .void
+                        .void
+                    }
                   }
-                }
-                .rescue(_ => IO.pure(()))
-                *> server.joinWithNever.map(r => assert(r.nonEmpty))
-            }
+                  .rescue(_ => IO.pure(()))
+                  *> server.joinWithNever.map(r => assert(r.nonEmpty))
+              }
         }
       }
   }

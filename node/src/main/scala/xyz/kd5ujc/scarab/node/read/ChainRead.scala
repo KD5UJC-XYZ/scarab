@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.read
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras, NodeState}
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.ledger as flat
+import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, MirrorError, ShelleyBasedEra, SlotNo, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -51,6 +52,12 @@ trait ChainRead[S]:
       * Byron, which has no new-epoch state.
       */
     def ledger(at: Option[BlockRef]): Read[Option[InEra]]
+
+    /** The era history as this state knows it: a chain whose Byron span is derived learns the first
+      * Shelley epoch when it enters Shelley.
+      */
+    def geometry(base: EpochGeometry): EpochGeometry =
+      consensus.byron.firstShelleyEpoch.fold(base)(base.resolved)
 
 object ChainRead:
   def apply[S](using read: ChainRead[S]): ChainRead[S] = read

@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{
   Scheduling,
   VolatileChain
 }
+import xyz.kd5ujc.scarab.ledger.{Header, Phase2}
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
 import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, NativeLibraryError, NodeError, PeerError}
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
@@ -29,10 +30,12 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotV4,
   StateBacking,
   UtxoBacking,
+  UtxoHandle,
   UtxoStore
 }
+import xyz.kd5ujc.scarab.storage.SnapshotFormat.restoring
 import cats.mtl.{Ask, Handle, Raise, Stateful}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, ProtocolState}
 import cats.syntax.all.*
 import java.nio.file.Path
 import com.comcast.ip4s.{Host, Port, SocketAddress}
@@ -66,11 +69,18 @@ import xyz.kd5ujc.scarab.node.metrics.{
   Metrics,
   PhaseLabel
 }
-import xyz.kd5ujc.scarab.node.mempool.{LocalMonitor, LocalSubmission, Mempool, MempoolEnv}
+import xyz.kd5ujc.scarab.node.mempool.{
+  LocalMonitor,
+  LocalSubmission,
+  Mempool,
+  MempoolEnv,
+  MempoolLedger
+}
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -164,11 +174,12 @@ object Main extends IOApp:
         * as well (G2).
         */
       inboundSync: Boolean = true,
-      /** `--rules old|new|differential`: the flat rules (the default), the era-indexed rules (not
-        * ported yet: refused), or both side by side on every block
+      /** `--rules new|old|differential`: the era-indexed rules (the default; the chain's state is
+        * the mirror of the Haskell ledger state), the flat rules (the node's state is the flat one,
+        * until J2.9), or the flat rules with the era-indexed side beside them on every block
         * ([[differential.DifferentialRules]]).
         */
-      rules: RulesMode = RulesMode.Old,
+      rules: RulesMode = RulesMode.New,
       /** `--on-divergence halt|reseed` (with `--rules differential`): stop at the first
         * disagreement, or adopt the old side and go on.
         */
@@ -184,11 +195,11 @@ object Main extends IOApp:
   val DefaultMempoolBytes: Long = 1048576L
 
   /** What the chain database (or its absence) hands the node at start. */
-  private final case class Storage(
+  private final case class Storage[S](
       anchor: Option[BlockRef],
-      state: NodeState,
-      resumed: Vector[ChainStorage.Resumed[NodeState]],
-      persistence: Option[ChainPersistence[IO, NodeState]],
+      state: S,
+      resumed: Vector[ChainStorage.Resumed[S]],
+      persistence: Option[ChainPersistence[IO, S]],
       immutable: Option[ImmutableStore[IO]]
   )
 
@@ -249,29 +260,33 @@ object Main extends IOApp:
             .rescue(error => logged(NodeEvent.Failed(error)).as(ExitCode(1)))
         }
 
-  /** The UTxO store and the backing that keeps it in step with the immutable tip and the snapshots.
+  /** The UTxO store, and where the checkpoints that keep it in step with the snapshots live (none:
+    * the store is in memory and nothing is kept). The backing itself ([[backing]]) is of the form
+    * of the chain's state.
     */
   private def utxoBacking(
       options: Options
-  )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], StateBacking[IO, NodeState])] =
+  )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], Option[fs2.io.file.Path])] =
     val kind = options.utxoStore.getOrElse(if options.db.isDefined then "rocksdb" else "memory")
     (kind, options.db) match
       case ("rocksdb", Some(dir)) =>
         val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
         RocksUtxoStore
           .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
-          .map(s => (s: UtxoStore[IO]) -> (new UtxoBacking[IO](s, root / "checkpoints")))
+          .map(s => (s: UtxoStore[IO]) -> Option(root / "checkpoints"))
       case (_, db) =>
         val root =
           db.fold(fs2.io.file.Path("utxo-memory"))(d => fs2.io.file.Path.fromNioPath(d) / "utxo")
         Resource
           .eval(MemoryUtxoStore[IO])
-          .map(s =>
-            (s: UtxoStore[IO]) -> (
-              if db.isDefined then new UtxoBacking[IO](s, root / "checkpoints")
-              else StateBacking.none[IO, NodeState]
-            )
-          )
+          .map(s => (s: UtxoStore[IO]) -> db.map(_ => root / "checkpoints"))
+
+  /** The backing of the UTxO set of a chain whose state is `S`. */
+  private def backing[S: UtxoHandle](
+      store: UtxoStore[IO],
+      checkpoints: Option[fs2.io.file.Path]
+  )(using Handle[IO, NodeError]): StateBacking[IO, S] =
+    checkpoints.fold(StateBacking.none[IO, S])(new UtxoBacking[IO, S](store, _))
 
   /** The node configuration and topology the options point to, and the options completed from them:
     * the peers of the topology follow the `--peer` ones, and, with `--config`, the socket, database
@@ -329,6 +344,7 @@ object Main extends IOApp:
       Raise[IO, Divergence],
       Log[IO]
   ): IO[ExitCode] =
+    def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     nativeLibrary *> IO
       .blocking(configured(requested))
       .flatMap(
@@ -342,32 +358,197 @@ object Main extends IOApp:
           utxoBacking(options),
           VerificationCache.resource[IO](),
           Scheduling.resource[IO](options.cpuThreads)
-        ).tupled.use { case ((store, backing), cache, scheduling) =>
-          followWith(options, setup, topology, store, backing, cache, scheduling)
+        ).tupled.use { case ((store, checkpoints), cache, scheduling) =>
+          options.rules match
+            // the chain's state is the mirror of the Haskell ledger state, and the rules are the
+            // era-indexed ones
+            case RulesMode.New if options.mirrorCheck =>
+              fail(
+                ConfigError(
+                  "--mirror-check checks the old rules' conversion to the mirror; the state of " +
+                    "--rules new is the mirror (use --snapshot-check full), or run --rules old"
+                )
+              )
+            case RulesMode.New =>
+              setup.mirrorStart.fold(
+                e => fail(ConfigError(s"the start state does not mirror: $e")),
+                start =>
+                  followWith[MirrorState](
+                    options,
+                    setup,
+                    topology,
+                    store,
+                    backing[MirrorState](store, checkpoints),
+                    cache,
+                    scheduling,
+                    mirrorMode(start)
+                  )
+              )
+            // the flat state and the old rules, with or without the era-indexed side beside them
+            case _ =>
+              given ChainRead[NodeState] = ChainRead.nodeState(setup.mirrorEnv())
+              followWith[NodeState](
+                options,
+                setup,
+                topology,
+                store,
+                backing[NodeState](store, checkpoints),
+                cache,
+                scheduling,
+                flatMode(options, setup)
+              )
         }
       }
 
-  private def followWith(
+  /** What the node's wiring offers the rules of a mode when they are built. */
+  private final case class Wiring[S](
+      setup: NodeSetup,
+      store: UtxoStore[IO],
+      scheduling: Scheduling[IO],
+      /** What follows each block the rules apply: the verification pipeline's epoch nonce, the
+        * state digest, the geometry of a chain that has learned its first Shelley epoch, the count.
+        */
+      afterBlock: (Header, S) => IO[Unit],
+      phase2: Option[Phase2.Observation => Unit],
+      eraStarts: IO[Map[Era, BigInt]],
+      logged: NodeEvent => IO[Unit]
+  )
+
+  /** The rules of a mode, and what it reports when the run ends. */
+  private final case class Built[S](rules: BlockRules[IO, S], finish: IO[Unit])
+
+  /** What differs between the two forms of the chain's state the node can run on (design
+    * `ledger-mirror-step2.md` §4, J2.8): the state the chain starts from, the format of its
+    * snapshots, and the block rules.
+    */
+  private final case class Mode[S](
+      start: S,
+      format: (Ask[IO, ConsensusMirrorEnv], SnapshotCheck) => SnapshotFormat[IO, S],
+      rules: Wiring[S] => IO[Built[S]]
+  )
+
+  /** The default: the chain's state is the mirror of the Haskell ledger state and the rules are the
+    * era-indexed ones ([[MirrorRules]]). Nothing is converted between the node's flat state and the
+    * mirror: the snapshots are read and written as they are, and the only state of the old rules
+    * that is ever read is one an older build wrote, once, as it is restored ([[LegacySeed]]).
+    */
+  private def mirrorMode(start: MirrorState)(using
+      Handle[IO, NodeError]
+  ): Mode[MirrorState] =
+    Mode(
+      start,
+      (env, check) =>
+        given Ask[IO, ConsensusMirrorEnv] = env
+        SnapshotV4.mirrorFormat[IO](check).restoring(LegacySeed.apply)
+      ,
+      w =>
+        IO.pure(
+          Built(
+            MirrorRules[IO](
+              w.setup.praos,
+              w.setup.globals,
+              w.setup.byronRules,
+              w.setup.handOver,
+              w.setup.byronHistory,
+              phase2Observer = w.phase2,
+              utxoStore = Some(w.store),
+              afterBlock = Some(w.afterBlock),
+              compute = Some(w.scheduling.compute)
+            ),
+            IO.unit
+          )
+        )
+    )
+
+  /** `--rules old` and `--rules differential`: the chain's state is the node's flat state and the
+    * rules the old ones, the era-indexed side beside them for `differential`. They go at J2.9.
+    */
+  private def flatMode(options: Options, loaded: NodeSetup)(using
+      Handle[IO, NodeError],
+      Raise[IO, Divergence],
+      Log[IO]
+  ): Mode[NodeState] =
+    Mode(
+      loaded.start,
+      (env, check) =>
+        given Ask[IO, ConsensusMirrorEnv] = env
+        SnapshotV4.format[IO](check)
+      ,
+      w =>
+        val setup = w.setup
+        for
+          mirrorChecker <- Option
+            .when(options.mirrorCheck)(())
+            .traverse(_ =>
+              MirrorCheck.Checker.create[IO](
+                w.eraStarts.map(setup.mirrorEnv),
+                (header, epoch, outcome, millis) =>
+                  w.logged(
+                    NodeEvent.MirrorChecked(header.slot, header.hash, epoch, outcome, millis)
+                  )
+              )
+            )
+          oldRules = NodeRules[IO](
+            setup.praos,
+            setup.globals,
+            setup.byronRules,
+            phase2Observer = w.phase2,
+            utxoStore = Some(w.store),
+            compute = Some(w.scheduling.compute),
+            afterBlock = Some((header, s) =>
+              w.afterBlock(header, s) *> mirrorChecker.traverse_(_.afterBlock(header, s))
+            )
+          )
+          k = setup.genesis.geometry.securityParam
+          // `--rules differential`: the same rules, with the era-indexed side beside them
+          reproDir = options.reproDir.orElse(options.db.map(_.resolve("differential")))
+          differential <-
+            if options.rules != RulesMode.Differential then IO.pure(None)
+            else
+              DifferentialRules
+                .create[IO](
+                  oldRules,
+                  NewRules.current[IO](Some(w.store)),
+                  w.eraStarts.map(setup.mirrorEnv),
+                  Sampling.Default,
+                  options.onDivergence,
+                  reproDir.fold(Repro.none[IO])(dir =>
+                    Repro.files[IO](dir, w.eraStarts.map(setup.mirrorEnv), Some(w.store))
+                  ),
+                  Log[IO].emit(_),
+                  Some((s, h) => NodeRules.tick(s, h, setup.praos, setup.globals, setup.byronRules))
+                )
+                .map(Some(_))
+          rules <- differential.fold[IO[BlockRules[IO, NodeState]]](IO.pure(oldRules))(
+            Shadowed(_, 2L * k)
+          )
+        yield Built(
+          rules,
+          differential.traverse_(
+            _.stats.flatMap(stats => w.logged(NodeEvent.DifferentialSummary(stats)))
+          )
+        )
+    )
+
+  private def followWith[S](
       options: Options,
       loaded: NodeSetup,
       topology: Option[Topology],
       store: UtxoStore[IO],
-      backing: StateBacking[IO, NodeState],
+      backing: StateBacking[IO, S],
       cache: VerificationCache,
-      scheduling: Scheduling[IO]
-  )(using Handle[IO, NodeError], Raise[IO, Divergence], Log[IO]): IO[ExitCode] =
+      scheduling: Scheduling[IO],
+      mode: Mode[S]
+  )(using
+      handle: Handle[IO, NodeError],
+      halt: Raise[IO, Divergence],
+      log: Log[IO],
+      read: ChainRead[S]
+  ): IO[ExitCode] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
-    // the read paths (queries, header-first checks, the K1 digest, the epoch line) read the state
-    // through this: the flat state of `--rules old`
-    given ChainRead[NodeState] = ChainRead.nodeState(setup.mirrorEnv())
     for
-      _ <- fail[Unit](
-        ConfigError(
-          "--rules new: the era-indexed rules are not ported yet (use --rules old or differential)"
-        )
-      ).whenA(options.rules == RulesMode.New)
       genesis <- IO.pure(setup.genesis)
       blocks <- Ref.of[IO, Long](0L)
       headersLogged <- Ref.of[IO, Long](0L)
@@ -427,7 +608,7 @@ object Main extends IOApp:
         tools.PlutusCases(dir, perKind = 2, max = 400)
       }
       dumper <- options.dumpState.traverse { (dir, targets) =>
-        StateDump.Dumper.create[IO, NodeState](
+        StateDump.Dumper.create[IO, S](
           dir,
           targets,
           Some(store),
@@ -435,68 +616,42 @@ object Main extends IOApp:
           options.dumpStateFull
         )
       }
-      mirrorChecker <- Option
-        .when(options.mirrorCheck)(())
-        .traverse(_ =>
-          MirrorCheck.Checker.create[IO](
-            eraStarts.get.map(setup.mirrorEnv),
-            (header, epoch, outcome, millis) =>
-              logged(NodeEvent.MirrorChecked(header.slot, header.hash, epoch, outcome, millis))
-          )
+      afterBlock = (header: Header, s: S) =>
+        IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)) *>
+          dumper.traverse_(_.afterBlock(header, s)) *>
+          praosConfig
+            .update(c => c.copy(geometry = s.geometry(c.geometry)))
+            .whenA(s.consensus.byron.firstShelleyEpoch.isDefined) *>
+          blocks.updateAndGet(_ + 1).flatMap { n =>
+            logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
+          }
+      built <- mode.rules(
+        Wiring(
+          setup,
+          store,
+          scheduling,
+          afterBlock,
+          cases.map(c => c.observe),
+          eraStarts.get,
+          logged
         )
-      oldRules = NodeRules[IO](
-        setup.praos,
-        setup.globals,
-        setup.byronRules,
-        phase2Observer = cases.map(c => c.observe),
-        utxoStore = Some(store),
-        compute = Some(scheduling.compute),
-        afterBlock = Some { (header, s) =>
-          IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.protocol.epochNonce)) *>
-            dumper.traverse_(_.afterBlock(header, s)) *>
-            mirrorChecker.traverse_(_.afterBlock(header, s)) *>
-            praosConfig
-              .update(c => c.copy(geometry = s.geometry(c.geometry)))
-              .whenA(s.byron.firstShelleyEpoch.isDefined) *>
-            blocks.updateAndGet(_ + 1).flatMap { n =>
-              logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
-            }
-        }
       )
+      rules = built.rules
       k = genesis.geometry.securityParam
-      // `--rules differential`: the same rules, with the era-indexed side beside them
-      reproDir = options.reproDir.orElse(options.db.map(_.resolve("differential")))
-      differential <-
-        if options.rules != RulesMode.Differential then IO.pure(None)
-        else
-          DifferentialRules
-            .create[IO](
-              oldRules,
-              NewRules.current[IO](Some(store)),
-              eraStarts.get.map(setup.mirrorEnv),
-              Sampling.Default,
-              options.onDivergence,
-              reproDir.fold(Repro.none[IO])(dir =>
-                Repro.files[IO](dir, eraStarts.get.map(setup.mirrorEnv), Some(store))
-              ),
-              Log[IO].emit(_),
-              Some((s, h) => NodeRules.tick(s, h, setup.praos, setup.globals, setup.byronRules))
-            )
-            .map(Some(_))
-      rules <- differential.fold[IO[BlockRules[IO, NodeState]]](IO.pure(oldRules))(
-        Shadowed(_, 2L * k)
-      )
       // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
       // node has seen begin so far.
       given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(eraStarts.get)
-      given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](options.snapshotCheck)
+      given SnapshotFormat[IO, S] = mode.format(
+        summon[Ask[IO, ConsensusMirrorEnv]],
+        options.snapshotCheck
+      )
       storage = options.db.fold(
-        Resource.pure[IO, Storage](
+        Resource.pure[IO, Storage[S]](
           Storage(
             None,
-            setup.start,
+            mode.start,
             Vector.empty,
-            Some(ChainPersistence.backingOnly[IO, NodeState](backing)),
+            Some(ChainPersistence.backingOnly[IO, S](backing)),
             None
           )
         )
@@ -507,7 +662,7 @@ object Main extends IOApp:
           case Some(SnapshotInterval.Epochs(n)) =>
             SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
         ChainStorage
-          .open[IO, NodeState](
+          .open[IO, S](
             fs2.io.file.Path.fromNioPath(dir),
             ChainStorage.Config(
               policy,
@@ -516,7 +671,7 @@ object Main extends IOApp:
               identity = Some(setup.identity)
             ),
             rules,
-            setup.start,
+            mode.start,
             storageEvents,
             backing,
             warm,
@@ -525,7 +680,7 @@ object Main extends IOApp:
           )
           .evalMap { r =>
             ChainStorage
-              .resume[IO, NodeState](
+              .resume[IO, S](
                 r,
                 k,
                 setup.origin,
@@ -547,14 +702,14 @@ object Main extends IOApp:
           // (the mempool and the forger need a restart after that, see docs/compatibility.md).
           val geometry = state.geometry(genesis.geometry)
           val globals =
-            state.byron.firstShelleyEpoch.fold(setup.globals)(e =>
+            state.consensus.byron.firstShelleyEpoch.fold(setup.globals)(e =>
               setup.globals.copy(firstEpoch = e)
             )
           for
             // the stores are open and the stored blocks applied
             _ <- measured.phase(PhaseLabel.Following)
             _ <- praosConfig.update(c => c.copy(geometry = state.geometry(c.geometry)))
-            ref <- Ref.of[IO, VolatileChain[NodeState]](
+            ref <- Ref.of[IO, VolatileChain[S]](
               VolatileChain(
                 k,
                 Anchor(anchor, state),
@@ -562,8 +717,8 @@ object Main extends IOApp:
                 setup.origin
               )
             )
-            given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
-            _ <- collectors.add(Collectors.chain[IO, NodeState](_.geometry(genesis.geometry)))
+            given Stateful[IO, VolatileChain[S]] = RefStateful(ref)
+            _ <- collectors.add(Collectors.chain[IO, S](_.geometry(genesis.geometry)))
             server <- ChainServer.open[IO](
               immutable,
               anchor,
@@ -571,11 +726,16 @@ object Main extends IOApp:
             )
             _ <- resumed.traverse_(r =>
               server
-                .persistence[NodeState]
+                .persistence[S]
                 .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
             )
             mempool <- Mempool.create[IO](
-              resumed.lastOption.fold(state)(_.state).ledger,
+              MempoolLedger
+                .at(
+                  resumed.lastOption.fold(state)(_.state),
+                  resumed.lastOption.map(_.ref).orElse(anchor)
+                )
+                .toOption,
               resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
               MempoolEnv(globals, geometry),
               options.mempoolBytes.getOrElse(DefaultMempoolBytes),
@@ -583,9 +743,9 @@ object Main extends IOApp:
               utxoStore = Some(store)
             )
             _ <- collectors.add(Collectors.mempool(mempool))
-            served = server.persistence[NodeState]
-            follower <- Follower.create[IO, NodeState](
-              MeteredRules[IO, NodeState](rules),
+            served = server.persistence[S]
+            follower <- Follower.create[IO, S](
+              MeteredRules[IO, S](rules),
               followerEvents,
               genesis.geometry,
               NodeRules.observe(genesis.geometry),
@@ -607,7 +767,11 @@ object Main extends IOApp:
                   })
                   .flatMap(adopted =>
                     chain.tipRef
-                      .traverse_(t => mempool.sync(chain.state.ledger, t.slot, adopted).void)
+                      .traverse_(t =>
+                        mempool
+                          .sync(MempoolLedger.at(chain.state, chain.tipRef), t.slot, adopted)
+                          .void
+                      )
                   )
               ),
               epochOf = Some((s, slot) => s.geometry(genesis.geometry).epochOf(slot)),
@@ -628,7 +792,7 @@ object Main extends IOApp:
             // header-first validation (G6): signatures are verified through the cache's keeping
             // view, so the block's own validation does not repeat them
             headerCheck = Option.when(options.headerFirst)(
-              HeaderCheck.forChain[IO, NodeState, ProtocolState](
+              HeaderCheck.forChain[IO, S, ProtocolState](
                 NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
                 scheduling.compute,
                 warm = Some((headers, state) =>
@@ -782,7 +946,7 @@ object Main extends IOApp:
                           bearer,
                           genesis.networkMagic,
                           LocalSubmission.handler(mempool),
-                          Some(StateQuerySource[IO, NodeState](ref, queryEnv, store)),
+                          Some(StateQuerySource[IO, S](ref, queryEnv, store)),
                           chainSync = Some(server.blockSource),
                           txMonitor = Some(LocalMonitor.source(mempool))
                         )
@@ -809,7 +973,7 @@ object Main extends IOApp:
                   .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
                   .flatMap(_.fold(fail, IO.pure))
                 source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
-                forger <- Forger.create[IO](
+                forger <- Forger.create[IO, S](
                   setup.praos.copy(geometry = geometry),
                   globals,
                   credentials,
@@ -845,7 +1009,7 @@ object Main extends IOApp:
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
             run = QueryServer
-              .resource[IO, NodeState](
+              .resource[IO, S](
                 ChainView.fromRef(ref),
                 options.queryPort,
                 Some(store),
@@ -877,9 +1041,7 @@ object Main extends IOApp:
               )
               .map(_.isRight)
             last <- ref.get
-            _ <- differential.traverse_(
-              _.stats.flatMap(stats => logged(NodeEvent.DifferentialSummary(stats)))
-            )
+            _ <- built.finish
             _ <- logged(NodeEvent.finished(last))
           yield stalledOut
       })
@@ -1057,7 +1219,7 @@ object Main extends IOApp:
               .map(Path.of(d) -> _)
           }
           _ <- Either.cond(dump.isDefined || !flags.contains("dump-state-at"), (), usage)
-          rules <- flags.get("rules").fold(Right(RulesMode.Old))(RulesMode.parse(_).toRight(usage))
+          rules <- flags.get("rules").fold(Right(RulesMode.New))(RulesMode.parse(_).toRight(usage))
           onDivergence <- flags
             .get("on-divergence")
             .fold(Right(Policy.Halt))(v =>

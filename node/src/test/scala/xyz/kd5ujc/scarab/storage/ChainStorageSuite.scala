@@ -126,11 +126,17 @@ class ChainStorageSuite extends CatsEffectSuite:
             case None => Resource.pure((None, StateBacking.none[IO, NodeState]))
             case Some("memory") =>
               Resource.eval(MemoryUtxoStore[IO]).map { s =>
-                (Some(s: UtxoStore[IO]), new UtxoBacking[IO](s, dir / "utxo" / "checkpoints"))
+                (
+                  Some(s: UtxoStore[IO]),
+                  new UtxoBacking[IO, NodeState](s, dir / "utxo" / "checkpoints")
+                )
               }
             case Some(_) =>
               RocksUtxoStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
-                (Some(s: UtxoStore[IO]), new UtxoBacking[IO](s, dir / "utxo" / "checkpoints"))
+                (
+                  Some(s: UtxoStore[IO]),
+                  new UtxoBacking[IO, NodeState](s, dir / "utxo" / "checkpoints")
+                )
               }
         backed
           .use { (utxoStore, backing) =>

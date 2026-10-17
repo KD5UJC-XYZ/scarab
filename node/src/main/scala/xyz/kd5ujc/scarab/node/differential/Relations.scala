@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.differential
 
-import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Rewards}
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.node.LegacySeed
 
 /** What the old side's mirror cannot say and the new side's state does (design §2.5, `Relation =
   * Exact | NewRefines | Ignored`): the places where the Haskell-shaped rules are *more exact* than
@@ -67,33 +66,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
   */
 object Relations:
 
-  private val placeholder: Either[VocabError, KeyHash[StakePool]] =
-    KeyHash.fromBytes[StakePool](Bytes.fromArray(new Array[Byte](28)))
-
-  /** The new side's pre-state from the old mirror's: its reward update attributed to a placeholder
-    * pool where the old one holds amounts only.
-    */
+  /** The new side's pre-state from the old mirror's (see [[LegacySeed.seed]]). */
   def seed[E <: EraTag](nes: NewEpochState[E], amounts: Map[node.Credential, BigInt])(using
       ShelleyBasedEra[E]
-  ): Either[VocabError, NewEpochState[E]] =
-    nes.ru match
-      case Some(PulsingRewUpdate.Complete(update)) if update.rs.isEmpty && amounts.nonEmpty =>
-        for
-          pool <- placeholder
-          rewards <- amounts.toList.traverse { (c, n) =>
-            (
-              xyz.kd5ujc.scarab.ledger.rules.Convert.credential[Staking](c),
-              Coin.fromBigInt(n).map(Reward(RewardType.MemberReward, pool, _))
-            ).tupled
-          }
-        yield nes.copy(ru =
-          Some(
-            PulsingRewUpdate.Complete(
-              update.copy(rs = Sorted.map(rewards.map((c, r) => c -> RewardSet(List(r)))))
-            )
-          )
-        )
-      case _ => Right(nes)
+  ): Either[VocabError, NewEpochState[E]] = LegacySeed.seed(nes, amounts)
 
   /** The sums per credential of a reward update, as the node holds them. */
   private def amounts[E <: EraTag](nes: NewEpochState[E])(using
@@ -264,35 +240,9 @@ object Relations:
     val (a, b) = if major == 10 then (withoutVrf(old), withoutVrf(settled)) else (old, settled)
     (withoutDroppedFields(withoutByteCost(a)), withoutDroppedFields(withoutByteCost(b)))
 
-  /** The parameters in the pulser of Conway, and the prediction made from them: the node holds
-    * there the flat parameters, with the fields Conway's parameters have no place for, which the
-    * mirror zeroes in the ones of the governance state but not in these.
-    */
   private[differential] def withoutDroppedFields[E <: EraTag](nes: NewEpochState[E])(using
-      era: ShelleyBasedEra[E]
-  ): NewEpochState[E] = era match
-    case ShelleyBasedEra.SConway =>
-      def clear(p: xyz.kd5ujc.scarab.ledger.ProtocolParams) =
-        p.copy(coinsPerUTxOWord = 0, minUTxOValue = 0)
-      ConwayNewEpochState.gov.modify(g =>
-        val ratify = g.drepPulsing.ratify
-        g.copy(
-          drepPulsing = g.drepPulsing.copy(ratify =
-            ratify.copy(enact =
-              ratify.enact
-                .copy(
-                  params = clear(ratify.enact.params),
-                  prevParams = clear(ratify.enact.prevParams)
-                )
-            )
-          ),
-          // the prediction takes its parameters from the pulser's
-          futurePParams = FuturePParams.map(g.futurePParams)(clear)
-        )
-      )(nes)
-    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-      nes
+      ShelleyBasedEra[E]
+  ): NewEpochState[E] = LegacySeed.withoutDroppedFields(nes)
 
   /** The cost per UTxO byte of the parameters, for the eras that have no such field. */
   private def withoutByteCost[E <: EraTag](nes: NewEpochState[E])(using

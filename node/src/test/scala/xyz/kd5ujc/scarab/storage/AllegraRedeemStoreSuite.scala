@@ -77,7 +77,7 @@ class AllegraRedeemStoreSuite extends CatsEffectSuite:
       .allow[NodeError] {
         for
           store <- MemoryUtxoStore[IO]
-          backing = new UtxoBacking[IO](store, fs2.io.file.Path("unused"))
+          backing = new UtxoBacking[IO, NodeState](store, fs2.io.file.Path("unused"))
           rules = NodeRules[IO](
             setup.praos,
             setup.globals,

@@ -8,7 +8,8 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
 import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
+import xyz.kd5ujc.scarab.ledger.{StorageError, Utxo}
 
 /** The part of the node state that lives outside the snapshot file: the UTxO set. It follows the
   * immutable tip, and each ledger snapshot has a checkpoint of it taken at the same block, so a
@@ -50,10 +51,36 @@ object StateBacking:
   /** The name shared by a snapshot file (`<stem>.bin`) and its checkpoint directory. */
   def stem(a: BlockRef): String = f"snapshot-${a.slot}%020d-${a.blockNo}"
 
-/** [[StateBacking]] for the node state over a [[UtxoStore]]; checkpoints live under `root`. */
-final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
-    Raise[F, StorageError]
-) extends StateBacking[F, NodeState]:
+/** How a chain state holds the handle on its UTxO set. */
+trait UtxoHandle[S]:
+  /** The handle, none while it is only a placeholder: while the Byron ledger is current, the real
+    * set is the Byron ledger's own, and the Shelley state the chain will start from holds the
+    * genesis placeholder (the hand-over replaces it).
+    */
+  def get(s: S): Option[Utxo]
+
+  /** The state with the handle changed by `f`. */
+  def modify(s: S)(f: Utxo => Utxo): S
+
+object UtxoHandle:
+  /** The node's flat state: the set is the ledger's, a placeholder while the Byron ledger is
+    * current (`byron.ledger` is set).
+    */
+  given UtxoHandle[NodeState] with
+    def get(s: NodeState): Option[Utxo] = Option.when(s.byron.ledger.isEmpty)(s.ledger.utxo)
+    def modify(s: NodeState)(f: Utxo => Utxo): NodeState =
+      s.copy(ledger = s.ledger.copy(utxo = f(s.ledger.utxo)))
+
+  /** The mirror: the set is that of the new-epoch state, none in Byron. */
+  given UtxoHandle[MirrorState] with
+    def get(s: MirrorState): Option[Utxo] = MirrorStep.utxoOf(s)
+    def modify(s: MirrorState)(f: Utxo => Utxo): MirrorState = MirrorStep.mapUtxo(s)(f)
+
+/** [[StateBacking]] for a chain state over a [[UtxoStore]]; checkpoints live under `root`. */
+final class UtxoBacking[F[_]: Sync, S](store: UtxoStore[F], root: Path)(using
+    raise: Raise[F, StorageError],
+    handle: UtxoHandle[S]
+) extends StateBacking[F, S]:
   private val F = Sync[F]
 
   private def dirOf(a: BlockRef): Path = root / StateBacking.stem(a)
@@ -64,26 +91,21 @@ final class UtxoBacking[F[_]: Sync](store: UtxoStore[F], root: Path)(using
       case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
     }
 
-  /** While the Byron ledger is current (`byron.ledger` is set), `ledger.utxo` is only the genesis
-    * placeholder the Shelley state starts from: the real set is the Byron ledger's own, and the
-    * handover replaces the placeholder by it. The placeholder must not reach the store: it would
-    * make the store's stamp 0 and the handover's entries (stamp 0, built from scratch) would count
-    * as already stored, never be written and then be trimmed from the diff (mainnet stop 4). The
-    * reference emits the translated UTxO as table diffs
+  /** While the Byron ledger is current the UTxO set of the state is only the genesis placeholder
+    * the Shelley state starts from ([[UtxoHandle]]): the real set is the Byron ledger's own, and
+    * the handover replaces the placeholder by it. The placeholder must not reach the store: it
+    * would make the store's stamp 0 and the handover's entries (stamp 0, built from scratch) would
+    * count as already stored, never be written and then be trimmed from the diff (mainnet stop 4).
+    * The reference emits the translated UTxO as table diffs
     * (`translateLedgerStateByronToShelleyWrapper`, Ouroboros/Consensus/Cardano/CanHardFork.hs:
     * 343-358, `valuesAsDiffs . unstowLedgerTables`), so every entry is written.
     */
-  private def placeholder(state: NodeState): Boolean = state.byron.ledger.isDefined
+  def advance(state: S): F[Unit] =
+    handle.get(state).fold(F.unit)(UtxoStore.advance(store, _))
 
-  def advance(state: NodeState): F[Unit] =
-    if placeholder(state) then F.unit else UtxoStore.advance(store, state.ledger.utxo)
-
-  def settled(state: NodeState): F[NodeState] =
-    if placeholder(state) then F.pure(state)
-    else
-      store.flushed.map { at =>
-        state.copy(ledger = state.ledger.copy(utxo = state.ledger.utxo.settled(at, force = true)))
-      }
+  def settled(state: S): F[S] =
+    if handle.get(state).isEmpty then F.pure(state)
+    else store.flushed.map(at => handle.modify(state)(_.settled(at, force = true)))
 
   def checkpoint(anchor: BlockRef): F[Unit] =
     val dir = dirOf(anchor)

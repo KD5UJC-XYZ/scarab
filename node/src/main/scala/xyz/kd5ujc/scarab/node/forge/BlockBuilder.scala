@@ -5,9 +5,10 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, VrfCert}
-import xyz.kd5ujc.scarab.ledger.{ConwayRules, LedgerGlobals, LedgerState, TxRules}
+import xyz.kd5ujc.scarab.ledger.{ConwayRules, LedgerGlobals, TxRules}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.node.mempool.Entry
+import xyz.kd5ujc.scarab.node.mempool.{Entry, MempoolLedger}
 
 /** Conway block assembly, pure: choose the transactions that fit the protocol limits, encode the
   * body, the header body and the block. Every function is deterministic in its arguments; the
@@ -112,10 +113,11 @@ object BlockBuilder:
   /** Choose, in order, the candidates that still apply one after another to the ticked ledger in
     * the block's own environment and fit the body size, execution unit and reference script limits.
     * A candidate that does not apply (its inputs were spent by the block, it expired, a script now
-    * fails) is skipped, not an error: the pool of a mempool is advisory.
+    * fails) is skipped, not an error: the pool of a mempool is advisory. The rules are LEDGER of
+    * Conway on the era-indexed state ([[MempoolLedger]], the same that validates the pool).
     */
   def select(
-      ticked: LedgerState,
+      ticked: MempoolLedger,
       slot: BigInt,
       epoch: BigInt,
       geometry: EpochGeometry,
@@ -124,11 +126,12 @@ object BlockBuilder:
       limit: Limits
   ): Vector[(Entry, Piece)] =
     final case class Acc(
-        state: LedgerState,
+        state: MempoolLedger,
         chosen: Vector[(Entry, Piece)],
         units: ExUnits,
         refBytes: Long
     )
+    val rules = Globals(globals, geometry)
     candidates
       .foldLeft(Acc(ticked, Vector.empty, ExUnits.zero, 0L)) { (acc, entry) =>
         piece(entry).toOption.fold(acc) { p =>
@@ -137,7 +140,7 @@ object BlockBuilder:
           val refUsed =
             if acc.state.params.protocolMajor >= 9 then
               acc.refBytes + ConwayRules.refScriptsSize(
-                if acc.state.params.protocolMajor <= 10 then ticked else acc.state,
+                if acc.state.params.protocolMajor <= 10 then ticked.utxo else acc.state.utxo,
                 entry.tx.body
               )
             else 0L
@@ -155,10 +158,12 @@ object BlockBuilder:
             refUsed > ConwayRules.MaxRefScriptSizePerBlock
           then acc
           else
-            TxRules(acc.state, entry.tx, env).fold(
-              _ => acc,
-              next => Acc(next, acc.chosen :+ (entry -> p), units, refUsed)
-            )
+            acc
+              .state(entry.tx, env, rules)
+              .fold(
+                _ => acc,
+                next => Acc(next, acc.chosen :+ (entry -> p), units, refUsed)
+              )
         }
       }
       .chosen

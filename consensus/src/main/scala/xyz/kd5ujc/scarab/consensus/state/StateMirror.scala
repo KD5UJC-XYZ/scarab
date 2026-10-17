@@ -208,7 +208,7 @@ object StateMirror:
     else LedgerMirror.gaps(s.ledger) + Gap.ShelleyTransition
 
   /** The block of an annotated tip, none at the origin. */
-  private def anchorOf(tip: WithOrigin[AnnTip]): Option[BlockRef] = tip match
+  def anchorOf(tip: WithOrigin[AnnTip]): Option[BlockRef] = tip match
     case WithOrigin.Origin => None
     case WithOrigin.At(t) =>
       val (hash, boundary) = t.info match
