@@ -171,6 +171,7 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 | [Running](docs/running.md) | Every `follow` flag, devnet scenarios, data directories, fuzzing |
 | [Compatibility](docs/compatibility.md) | The matrix: what is checked against what, and what is not |
 | [Findings](docs/findings.md) | What real chain data taught us, with the tests that pin it |
+| [Implementer notes](docs/implementer-notes.md) | Reference behaviours another node must replicate, and where the specification or CDDL differs from the reference |
 | [Performance](docs/performance.md) | Sync numbers, profiles, memory and disk |
 | [Roadmap](docs/roadmap.md) | Tracked work with stable IDs |
 | [Process](docs/process.md) | How work moves from idea to done; the definition of done |
