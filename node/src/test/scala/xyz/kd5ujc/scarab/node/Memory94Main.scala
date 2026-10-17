@@ -8,7 +8,7 @@ import java.nio.ByteBuffer
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV4}
+import xyz.kd5ujc.scarab.storage.{SnapshotCheck, SnapshotV5}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
 /** SPIKE for issue #94 (docs/design/memory-lean-decoding.md): what the snapshot read-back costs in
@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   *
   * Modes: `cbor` (`Cbor.decode` of the Haskell section: since stage 1 of #94 the index of its
   * items, before it the object tree), `ledger` (`HaskellLedgerFile.decode`), `v4` (the whole
-  * `SnapshotV4` read), `written` (the node's write of the decoded state, with its read-back),
+  * `SnapshotV5` read), `written` (the node's write of the decoded state, with its read-back),
   * `votes` (the synthetic committee-votes map, `VOTES=<n>` entries),
   * `spam <snapshot> <voters> <out>` (writes a snapshot with the vote spam of epochs 188 to 193 put
   * into the Conway gov state of a current one, see [[spamMain]]), `tape` (the offsets-only index of
@@ -323,12 +323,12 @@ object Memory94Main:
           HaskellLedgerFile.decode(haskell).fold(e => sys.error(e.render), identity)
         case "tape" =>
           tape(content, haskellFrom)
-        case "v4" =>
+        case "v5" =>
           val setup = NodeSetup
             .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis")))
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          SnapshotV4
+          SnapshotV5
             .format[IO](SnapshotCheck.Full)
             .decode(content)
             .unsafeRunSync()
@@ -339,7 +339,7 @@ object Memory94Main:
             .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preprod/genesis")))
             .fold(e => sys.error(e.message), identity)
           given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-          val format = SnapshotV4.format[IO](SnapshotCheck.Full)
+          val format = SnapshotV5.format[IO](SnapshotCheck.Full)
           val snapshot =
             format.decode(content).unsafeRunSync().fold(e => sys.error(e.toString), identity)
           System.gc()

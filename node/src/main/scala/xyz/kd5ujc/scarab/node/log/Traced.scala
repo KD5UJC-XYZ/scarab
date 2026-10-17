@@ -311,4 +311,3 @@ object Traced:
         "kind" -> error.productPrefix.asJson,
         "message" -> error.message.asJson
       )
-

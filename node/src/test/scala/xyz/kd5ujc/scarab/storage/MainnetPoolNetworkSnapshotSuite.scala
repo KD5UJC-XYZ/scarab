@@ -7,10 +7,14 @@ import java.nio.file.{Files as JFiles, Path}
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
+import xyz.kd5ujc.scarab.ledger.state.{SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.legacy
+import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.ledger.{Block, Certificate, Credential, PoolParams, PoolState, Tx}
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** B27: the mainnet pool `ff5181ba` registered in transaction 49be5965c31a60c3 (block at slot
@@ -23,7 +27,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   * of a re-registration are `StakePoolParams`, whose account keeps its network byte.
   *
   * The registration is put into a Shelley state of the eras capture, on mainnet: registered, in the
-  * `mark` snapshot and re-registered. The V4 snapshot of that state is written with the full
+  * `mark` snapshot and re-registered. The V5 snapshot of that state is written with the full
   * read-back check and comes back as the mirror normalises it.
   */
 class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
@@ -57,10 +61,10 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
     e.copy(ledger = e.ledger.copy(network = Mainnet))
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private val format: SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](SnapshotCheck.Full)
+  private val format: SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
 
   /** The state after the first Shelley block of the capture. */
-  private lazy val shelley: StateSnapshot[NodeState] =
+  private lazy val shelley: StateSnapshot[MirrorState] =
     val raws = JFiles
       .readAllLines(fixtures.resolve("blocks.hex"))
       .asScala
@@ -73,27 +77,53 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
       )
     val first = blocks.indexWhere(_.era == Era.Shelley)
     assert(first >= 0, "the capture has no Shelley block")
-    val state = (0 to first).foldLeft(setup.start) { (s, i) =>
-      NodeRules
-        .applyBlock(s, blocks(i).header, raws(i), setup.praos, setup.globals, setup.byronRules)
+    val state = (0 to first).foldLeft(setup.mirrorStart) { (s, i) =>
+      MirrorSteps
+        .block(setup, s, blocks(i).header, raws(i))
         .fold(f => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}"), identity)
     }
     val h = blocks(first).header
     StateSnapshot(Some(BlockRef(h.slot, h.hash, h.blockNo, h.isBoundary)), state)
 
-  private lazy val withPool: StateSnapshot[NodeState] =
+  private def at(anchor: Option[BlockRef]): WithOrigin[SlotNo] =
+    anchor.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(a =>
+      WithOrigin.At(SlotNo.fromUnsigned(a.slot.toLong))
+    )
+
+  /** The flat ledger state a mirror stands for, on the mainnet configuration. */
+  private def flatLedger(m: MirrorState, anchor: Option[BlockRef]): legacy.LedgerState =
+    m.ledger(anchor) match
+      case Right(Some(InEra.Of(era, read))) =>
+        read.nes
+          .flatMap(nes =>
+            legacy.LedgerMirrorBack.flatOf(env.ledger, at(anchor), nes, m.plutus)(using era)
+          )
+          .fold(e => fail(s"flat read-back: $e"), identity)
+      case other => fail(s"no Shelley-based ledger state: $other")
+
+  /** The state with the pool registered, in the `mark` snapshot and re-registered: edited as the
+    * flat ledger state, which the mirror turns back into the state the rules run on.
+    */
+  private lazy val withPool: StateSnapshot[MirrorState] =
     val id = registration.operator
-    val ledger = shelley.state.ledger
+    val ledger = flatLedger(shelley.state, shelley.anchor)
     val mark = ledger.snapshots.mark
+    val edited = ledger.copy(
+      pools = ledger.pools.updated(id, PoolState(registration, ledger.params.poolDeposit)),
+      futurePools = ledger.futurePools.updated(id, registration),
+      snapshots =
+        ledger.snapshots.copy(mark = mark.copy(pools = mark.pools.updated(id, registration)))
+    )
+    val flat = legacy.FlatNodeState(
+      shelley.state.protocol,
+      edited,
+      shelley.state.consensus.boot,
+      shelley.state.consensus.byron
+    )
     shelley.copy(state =
-      shelley.state.copy(ledger =
-        ledger.copy(
-          pools = ledger.pools.updated(id, PoolState(registration, ledger.params.poolDeposit)),
-          futurePools = ledger.futurePools.updated(id, registration),
-          snapshots =
-            ledger.snapshots.copy(mark = mark.copy(pools = mark.pools.updated(id, registration)))
-        )
-      )
+      legacy.Mirroring
+        .toMirror(env, shelley.anchor, flat)
+        .fold(e => fail(s"the state does not mirror: $e"), _.value)
     )
 
   private lazy val written: IO[Array[Byte]] =
@@ -119,9 +149,9 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
     written.flatMap(bytes =>
       format.decode(bytes).map { r =>
         val back = r.fold(e => fail(e.message), identity)
-        assertEquals(back, withPool.copy(state = SnapshotV4.canonical(env, withPool.state)))
+        assertEquals(back.anchor, withPool.anchor)
         val id = registration.operator
-        val ledger = back.state.ledger
+        val ledger = flatLedger(back.state, back.anchor)
         // registered and in the snapshot: the credential, on the node's network
         assertEquals(ledger.pools(id).params, registration.registeredOn(Mainnet))
         assertEquals(ledger.snapshots.mark.pools(id), registration.registeredOn(Mainnet))

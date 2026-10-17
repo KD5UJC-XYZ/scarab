@@ -31,14 +31,14 @@ class EraHistoryNetworksSuite extends FunSuite:
     setup.mirrorEnv().ledger
   )
 
-  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
-    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
-
   /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000. */
   private val view =
-    val state = setup.start
-      .withBoot(setup.start.boot.copy(era = Some(Era.Conway)))
-      .withByron(setup.start.byron.copy(firstShelleyEpoch = Some(BigInt(4))))
+    val state = xyz.kd5ujc.scarab.node.MirrorSteps.withConsensus(setup.mirrorStart)(c =>
+      c.copy(
+        boot = c.boot.copy(era = Some(Era.Conway)),
+        byron = c.byron.copy(firstShelleyEpoch = Some(BigInt(4)))
+      )
+    )
     val point = Point.Block(UInt64.saturating(BigInt(100000000)), Bytes(Vector.fill(32)(1.toByte)))
     QueryView(point, Some(1), state)
 

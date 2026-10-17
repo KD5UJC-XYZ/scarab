@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
 
-
 import cats.data.Kleisli
 import cats.syntax.all.*
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
@@ -46,13 +45,13 @@ import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The LEDGER rules of Shelley, Allegra, Mary, Alonzo and Babbage on the era-indexed state
   * ([[ShelleyLedger]], one instance over the witness), on one transaction at a time and in every
-  * era: the state is a flat fixture, which the mirror turns into the state the rules run on, and what
-  * the rules do with the transaction is checked: the rule that refuses it, if it does, as the typed
-  * predicate failure with its payload, and the state after it, if it does not (converted back, which
-  * checks what the rules maintain that the flat state derives: the accounts and their pointers, the
-  * pointer stake, the deposits, the instantaneous rewards, the proposed updates), and the pools'
-  * delegators against the accounts. (Until J2.9 the suite ran the old rules beside these and
-  * compared the two.)
+  * era: the state is a flat fixture, which the mirror turns into the state the rules run on, and
+  * what the rules do with the transaction is checked: the rule that refuses it, if it does, as the
+  * typed predicate failure with its payload, and the state after it, if it does not (converted
+  * back, which checks what the rules maintain that the flat state derives: the accounts and their
+  * pointers, the pointer stake, the deposits, the instantaneous rewards, the proposed updates), and
+  * the pools' delegators against the accounts. (Until J2.9 the suite ran the old rules beside these
+  * and compared the two.)
   */
 class ShelleyLedgerSuite extends FunSuite:
   type Result[A] = Either[MirrorError, A]
@@ -407,7 +406,12 @@ class ShelleyLedgerSuite extends FunSuite:
         ),
         "DelegateeNotRegisteredDELEG"
       )
-      val n = newSide(c, s, certify(Certificate.Unregister(carol.credential, None), carol), TestLedger.env)
+      val n = newSide(
+        c,
+        s,
+        certify(Certificate.Unregister(carol.credential, None), carol),
+        TestLedger.env
+      )
       assertEquals(refusal(n, c), "StakeKeyNotRegisteredDELEG", c.name)
     }
   }

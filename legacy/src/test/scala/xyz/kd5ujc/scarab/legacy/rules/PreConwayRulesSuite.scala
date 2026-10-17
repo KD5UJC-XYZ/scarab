@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -861,4 +860,3 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(paid.reserves, after.reserves)
     assertEquals(paid.mir, InstantRewards.empty)
   }
-

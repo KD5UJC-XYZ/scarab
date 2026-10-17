@@ -3,6 +3,8 @@ package xyz.kd5ujc.scarab.node
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
@@ -49,12 +51,17 @@ class LeiosTestnetConfigSuite extends FunSuite:
     assertEquals(setup.genesis.geometry.epochLength, 21600L)
     // `initialFunds` and `staking` are empty at the top level; the two funds and the one pool are
     // in `extraConfig`, which GenesisState reads (injection)
-    assertEquals(
-      (setup.start.ledger.utxo.size, setup.start.ledger.utxo.coin),
-      (2, BigInt("30000000900000000"))
-    )
-    assertEquals(setup.start.ledger.pools.size, 1)
+    val start = setup.mirrorStart
+    assertEquals((start.utxo.size, start.utxo.coin), (2, BigInt("30000000900000000")))
+    val (pools, distribution) = start
+      .ledger(None)
+      .toOption
+      .flatten
+      .fold(fail("the start state has no ledger state")) { case InEra.Of(_, l) =>
+        (l.poolCount, l.leaderPools(nextEpoch = false))
+      }
+    assertEquals(pools, 1)
     // the pool's `blsKey` is null in the genesis, and PoolParams has no field for one anyway
-    assertEquals(setup.start.ledger.poolDistribution.distribution.total, BigInt(900000000))
+    assertEquals(distribution.total, BigInt(900000000))
   }
 end LeiosTestnetConfigSuite

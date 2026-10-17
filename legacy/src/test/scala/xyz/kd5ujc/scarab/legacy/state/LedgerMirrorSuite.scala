@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
 
-
 import cats.arrow.FunctionK
 import cats.data.Kleisli
 import cats.kernel.laws.discipline.EqTests
@@ -151,7 +150,8 @@ class LedgerMirrorSuite extends DisciplineSuite:
     val key = VRFVerKeyHash.fromBytes(shared).fold(e => fail(e.show), identity)
     assertEquals(counts(key).value.toBigInt, BigInt(2))
     assertEquals(
-      run(mirror.from[Conway](at, m.value)).map(LedgerMirrorBack.normalised(FlatStateGen.network, _)),
+      run(mirror.from[Conway](at, m.value))
+        .map(LedgerMirrorBack.normalised(FlatStateGen.network, _)),
       Right(LedgerMirrorBack.normalised(FlatStateGen.network, bad))
     )
   }

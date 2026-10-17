@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
@@ -103,4 +102,3 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
     val t = tx.copy(witnesses = Witnesses(Vector(other.witness(tx.body.id))))
     assertEquals(rule(t), "MissingVKeyWitnessesUTXOW")
   }
-

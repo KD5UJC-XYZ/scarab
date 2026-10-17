@@ -16,8 +16,8 @@ class LegacyFormatsSuite extends FunSuite:
   private lazy val initial: legacy.NodeState =
     legacy.Downgrade.node(
       NodeSetup
-        .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
-        .fold(e => fail(e.message), _.start)
+        .fromDirectoryWithStart(java.nio.file.Path.of("fixtures/eras/genesis"))
+        .fold(e => fail(e.message), _._2)
     )
 
   private def digest(bytes: Array[Byte]): (String, Int) =

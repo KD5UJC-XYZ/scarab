@@ -14,7 +14,9 @@ import xyz.kd5ujc.scarab.legacy
 object LegacyV2Format:
   def format[F[_]: Applicative](forks: HardForkConfig): SnapshotFormat[F, legacy.FlatNodeState] =
     new SnapshotFormat[F, legacy.FlatNodeState]:
-      def encode(snapshot: StateSnapshot[legacy.FlatNodeState]): F[Either[SnapshotRefusal, Array[Byte]]] =
+      def encode(
+          snapshot: StateSnapshot[legacy.FlatNodeState]
+      ): F[Either[SnapshotRefusal, Array[Byte]]] =
         legacy.SnapshotV2
           .encode(legacy.StateSnapshot(snapshot.anchor, legacy.Downgrade.node(snapshot.state)))(
             using legacy.NodeCodecs.nodeSnapshot
@@ -22,7 +24,9 @@ object LegacyV2Format:
           .asRight[SnapshotRefusal]
           .pure[F]
 
-      def decode(content: Array[Byte]): F[Either[StorageError, StateSnapshot[legacy.FlatNodeState]]] =
+      def decode(
+          content: Array[Byte]
+      ): F[Either[StorageError, StateSnapshot[legacy.FlatNodeState]]] =
         legacy.SnapshotV2
           .decodeNode(content)
           .flatMap(s =>

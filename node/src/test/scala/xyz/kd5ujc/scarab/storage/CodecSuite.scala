@@ -7,8 +7,12 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
 import xyz.kd5ujc.scarab.consensus.ByronState
-import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, ProtocolExtras}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  EraLedgerState,
+  MirrorExtras,
+  ProtocolExtras
+}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.consensus.*
 import xyz.kd5ujc.scarab.ledger.Nonce
@@ -50,12 +54,8 @@ class CodecSuite extends ScalaCheckSuite:
   roundTrip[Nonce]("Nonce")
   roundTrip[Era]("Era")
   roundTrip[Account]("Account")
-  roundTrip[Snapshot]("stake Snapshot")
-  roundTrip[RewardUpdate]("RewardUpdate")
   roundTrip[GovAction]("GovAction")
   roundTrip[Proposal]("Proposal")
-  roundTrip[GovState]("GovState")
-  roundTrip[LedgerState]("LedgerState")
   roundTrip[ChainDepState]("ChainDepState")
   roundTrip[ProtocolExtras]("ProtocolExtras")
   roundTrip[LiteLedger]("LiteLedger")
@@ -81,7 +81,6 @@ class CodecSuite extends ScalaCheckSuite:
   property("decoding arbitrary bytes never throws") {
     forAll(Gen.listOf(Gen.choose(-128, 127).map(_.toByte)).map(_.toArray)) { bytes =>
       Codec.decode[ConsensusExtras](bytes)
-      Codec.decode[LedgerState](bytes)
       true
     }
   }
@@ -138,21 +137,25 @@ class CodecSuite extends ScalaCheckSuite:
     )
   }
 
-  private lazy val initial: NodeState =
+  private lazy val initial =
     NodeSetup
       .fromDirectory(java.nio.file.Path.of("fixtures/eras/genesis"))
-      .fold(e => fail(e.message), _.start)
+      .fold(e => fail(e.message), _.mirrorStart)
 
-  test("golden: the schema fingerprint of the V4 sidecar") {
+  test("golden: the schema fingerprint of the V5 sidecar") {
     assertEquals(hex(SnapshotSidecar.fingerprint), GoldenSidecarFingerprint)
   }
 
   test("golden: the sidecar of the initial state of the eras fixture encodes to a fixed digest") {
+    val (pending, extras) = (initial.extras, initial.ext.ledgerState.state) match
+      case (MirrorExtras.InByron(pending, boot, protocol), EraLedgerState.ByronCurrent(b)) =>
+        (pending, ConsensusExtras(boot, b, protocol))
+      case _ => fail("the initial state is not Byron")
     val sidecar = SnapshotSidecar(
       None,
       Map.empty,
       Set.empty,
-      SnapshotSidecar.Chain.InByron(initial.ledger, initial.header.chainDep.state, initial.extras)
+      SnapshotSidecar.Chain.InByron(pending, extras)
     )
     val encoded = Codec.encode(sidecar)(using SnapshotSidecar.codec)
     val digest = java.security.MessageDigest.getInstance("SHA-256").digest(encoded)
@@ -161,14 +164,15 @@ class CodecSuite extends ScalaCheckSuite:
 
   // Regenerate (and add a FormatVersion with its migration if the layout itself changed) only when
   // a persisted type changes on purpose: old snapshots are then rejected and recovery replays.
-  // The sidecar goldens are the V4 writer's (J1.5); the V3 sidecar's (65d0043c049b7b7a) and the V2
-  // node snapshot's (2293c5cf7bb77492) are asserted by the `legacy` module.
+  // The sidecar goldens are the V5 writer's (J2.9); the V4 sidecar's (467459aeddcceecd), the V3
+  // sidecar's (65d0043c049b7b7a) and the V2 node snapshot's (2293c5cf7bb77492) are asserted by the
+  // `legacy` module.
   // The V2 reader's goldens (the fingerprint of the node snapshot and the digest of the initial state)
   // are in the `legacy` module's suites, frozen with the node state of their time.
   // Last regenerated for the previous epoch nonce of PraosState, the PlutusV2 cost model that the
   // Alonzo genesis carries in `extraConfig` (part of the fixture's initial protocol parameters) and
   // the Byron ledger state (UTxO, delegation, update system) carried in NodeState, and the idle
   // pools of a stake snapshot (K1: the pool distribution lists a pool whose delegators have no stake).
-  private val GoldenSidecarFingerprint = "467459aeddcceecd"
+  private val GoldenSidecarFingerprint = "7c483457b06802d6"
   private val GoldenSidecar =
-    ("5113a158e6afa73265d6ed716ff0e56e0a33a8881c31f667f183e5cbe08058bb", 3164)
+    ("577b9a786e5562dd44cf11e09fe8255ac01dcc276042751cc9e8aef67690a9b2", 1214)

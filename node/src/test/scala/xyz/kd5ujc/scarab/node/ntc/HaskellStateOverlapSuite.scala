@@ -1,23 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.ntc
 
-import xyz.kd5ujc.scarab.node.ntc.NtcGolden.flatRead
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.ledger.state.{
-  Conway,
-  DRepRole,
-  MirrorEnv,
-  ProtVer,
-  ShelleyBasedEra,
-  SlotNo,
-  Word64,
-  WithOrigin
-}
-import xyz.kd5ujc.scarab.node.MirrorCorpus
+import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
+import xyz.kd5ujc.scarab.ledger.state.{DRepRole, NewEpochState, ProtVer, ShelleyBasedEra, Word64}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
 
@@ -77,9 +66,7 @@ class HaskellStateOverlapSuite extends FunSuite:
 
   // ---- the state of a Conway node, against the node's answers
 
-  private val mirrorEnv: MirrorEnv = NtcGolden.mirrorEnv
-
-  private type Subject = (String, NodeState, Point, Option[BigInt])
+  private type Subject = (String, MirrorState, Point, Option[BigInt])
 
   private def ask(subject: Subject, query: LedgerQuery): Bytes =
     val (_, state, point, blockNo) = subject
@@ -94,15 +81,12 @@ class HaskellStateOverlapSuite extends FunSuite:
       .getOrElse(fail(s"$query is not answered"))
 
   private def mirrored(subject: Subject) =
-    val (_, state, point, _) = subject
-    val slot = point match
-      case Point.Block(s, _) => s.value
-      case Point.Origin      => BigInt(0)
-    val at = WithOrigin.At(SlotNo.fromUnsigned(slot.toLong))
-    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
-    MirrorCorpus.ledgerMirror.to[Conway](at, state.ledger).run(mirrorEnv) match
-      case Right(m)    => m.value.nes
-      case Left(error) => fail(s"the mirror refuses the state: $error")
+    subject._2.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        NewEpochState
+          .retype(i.era, ShelleyBasedEra.SConway)(i.state.nes)
+          .getOrElse(fail("the state is not Conway's"))
+      case _ => fail("the state is in Byron")
 
   test("the capture has Conway states") {
     assert(NtcGolden.conwayStates.nonEmpty)
@@ -164,10 +148,10 @@ class HaskellStateOverlapSuite extends FunSuite:
   }
 
   overConway("GetDRepState is the map of the registered DReps") { subject =>
-    val state = subject._2.ledger
-    val dreps = mirrored(subject).es.ls.cert.vState.dreps
+    val vState = mirrored(subject).es.ls.cert.vState
+    val dreps = vState.dreps
     val codec = Wire.mapOf(credential[DRepRole], drepState)
     // the query reports the expiries brought forward by the dormant epochs
-    if state.dormantEpochs == 0 then
+    if vState.numDormantEpochs.toBigInt == 0 then
       assertEquals(codec.encodeUnchecked(dreps).hex, ask(subject, GetDRepState(Set.empty)).hex)
   }

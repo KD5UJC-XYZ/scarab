@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, NodeState, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, Compute, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, Header, NodeError, Points}
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Stateful}
@@ -58,7 +59,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
               val header =
                 Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
               server
-                .persistence[NodeState]
+                .persistence[MirrorState]
                 .extended(
                   BlockRef(header.slot, header.hash, header.blockNo),
                   raw,
@@ -84,7 +85,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
 
   /** Our node: follower, connection manager and governor. */
   private final class Local(
-      val chain: Ref[IO, VolatileChain[NodeState]],
+      val chain: Ref[IO, VolatileChain[MirrorState]],
       val manager: ConnectionManager[IO],
       val governor: InboundGovernor[IO],
       val applied: Ref[IO, Vector[Bytes]]
@@ -97,24 +98,24 @@ class InboundGovernorSuite extends CatsEffectSuite:
       transactions: Option[TxSubmissionClient.Source[IO]] = None
   ): IO[Local] =
     for
-      ref <- Ref.of[IO, VolatileChain[NodeState]](
+      ref <- Ref.of[IO, VolatileChain[MirrorState]](
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
       )
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       applied <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       follower <- Handle
         .allow[NodeError] {
-          val rules = NodeRules[IO](ForgedChain.config, ForgedChain.globals)
-          Follower.create[IO, NodeState](
+          val rules = ForgedChain.rules
+          Follower.create[IO, MirrorState](
             rules,
             _ => IO.unit,
             ForgedChain.geometry,
-            persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, NodeState]:
+            persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, MirrorState]:
               def extended(
                   ref: BlockRef,
                   raw: Bytes,
                   immutable: Vector[BlockRef],
-                  anchor: Anchor[NodeState]
+                  anchor: Anchor[MirrorState]
               ) = applied.update(_ :+ raw)
               def rolledBack(to: ChainSync.Point) = IO.unit)
           )
@@ -122,10 +123,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
       headerCheck = Option.when(headerFirst)(
-        HeaderCheck.forChain[IO, NodeState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
-          NodeHeaderRules[NodeState](ForgedChain.config, ForgedChain.globals)(using
-            HeaderRulesSuite.flat
-          ),
+        HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
+          NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
           Compute.inline[IO]
         )
       )

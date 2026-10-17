@@ -3,14 +3,15 @@ package xyz.kd5ujc.scarab.storage
 
 import cats.effect.IO
 import cats.mtl.Handle
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import io.circe.parser
 import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, Header, NodeError, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronBody, ByronLedger, ByronOut}
-import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
+import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps, NodeSetup}
 import scala.jdk.CollectionConverters.*
 
 /** Mainnet sync from genesis, stop 4: at slot 4,536,140 the node refused a transaction (ce1c09a1)
@@ -88,9 +89,9 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
 
   // ---- the handover over a store
 
-  private val setup: NodeSetup =
+  private val (setup, flatStart) =
     NodeSetup
-      .fromDirectory(JPath.of("fixtures/eras/genesis"))
+      .fromDirectoryWithStart(JPath.of("fixtures/eras/genesis"))
       .fold(e => fail(e.message), identity)
 
   private val raws: Vector[Bytes] =
@@ -104,9 +105,12 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), _.header))
   private val firstShelley = headers.indexWhere(_.isInstanceOf[Header.Shelley])
 
-  private val start =
-    val s = setup.start
-    s.withByron(s.byron.copy(ledger = s.byron.ledger.map(l => l.copy(utxo = l.utxo ++ created))))
+  private val start: MirrorState =
+    MirrorSteps.withConsensus(setup.mirrorStart)(c =>
+      c.copy(byron =
+        c.byron.copy(ledger = c.byron.ledger.map(l => l.copy(utxo = l.utxo ++ created)))
+      )
+    )
 
   private val wanted = created.keys.toVector
 
@@ -115,23 +119,18 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
       .allow[NodeError] {
         for
           store <- MemoryUtxoStore[IO]
-          backing = new UtxoBacking[IO, NodeState](store, fs2.io.file.Path("unused"))
-          rules = NodeRules[IO](
+          backing = new UtxoBacking[IO, MirrorState](store, fs2.io.file.Path("unused"))
+          rules = MirrorRules[IO](
             setup.praos,
             setup.globals,
             setup.byronRules,
+            setup.handOver,
+            setup.byronHistory,
             utxoStore = Some(store)
           )
           // the Byron blocks, then each one's state reaches the immutable tip in turn
           byronEnd = headers.indices.take(firstShelley).foldLeft(start) { (s, i) =>
-            NodeRules.applyBlock(
-              s,
-              headers(i),
-              raws(i),
-              setup.praos,
-              setup.globals,
-              setup.byronRules
-            ) match
+            MirrorSteps.block(setup, s, headers(i), raws(i)) match
               case Right(next) => next
               case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
           }
@@ -140,7 +139,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
           entered <- rules.apply(byronEnd, headers(firstShelley), raws(firstShelley))
           _ <- backing.advance(entered)
           settled <- backing.settled(entered)
-          found <- UtxoStore.complete(Some(store), settled.ledger.utxo, wanted)
+          found <- UtxoStore.complete(Some(store), settled.utxo, wanted)
         yield wanted.map(k => k -> found.get(k).map(_.value.coin))
       }
       .rescue(e => IO.raiseError(new AssertionError(e.message)))
@@ -152,7 +151,7 @@ class ByronHandoverUtxoSuite extends CatsEffectSuite:
   }
 
   test("a store that holds the genesis placeholder (a database of an earlier build) is emptied") {
-    surviving(store => store.write(setup.start.ledger.utxo.changesAfter(-1).toVector, 0)).map(r =>
+    surviving(store => store.write(flatStart.ledger.utxo.changesAfter(-1).toVector, 0)).map(r =>
       assertEquals(r.toMap, expected.toMap)
     )
   }

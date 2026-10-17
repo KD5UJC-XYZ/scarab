@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -862,4 +861,3 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     assertEquals(s.s.pools.size, 3)
   }
-

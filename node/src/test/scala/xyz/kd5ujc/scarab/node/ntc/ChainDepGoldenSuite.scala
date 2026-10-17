@@ -6,10 +6,11 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.node.read.ChainRead
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -31,8 +32,6 @@ class ChainDepGoldenSuite extends FunSuite:
         if captured then fixtures.resolve("genesis") else Path.of("fixtures/eras/genesis")
       )
       .fold(e => fail(e.message), identity)
-
-  private given ChainRead[NodeState] = ChainRead.nodeState(setup.mirrorEnv())
 
   private val queryEnv = QueryEnv(
     setup.byronParams
@@ -60,19 +59,13 @@ class ChainDepGoldenSuite extends FunSuite:
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity))
 
   /** The state after each block, by the hash of the block. */
-  private lazy val states: Map[String, (Block, NodeState)] =
+  private lazy val states: Map[String, (Block, MirrorState)] =
     blocks.indices
-      .foldLeft((setup.start, Map.empty[String, (Block, NodeState)])) { case ((before, acc), i) =>
-        NodeRules.applyBlock(
-          before,
-          blocks(i).header,
-          raws(i),
-          setup.praos,
-          setup.globals,
-          setup.byronRules
-        ) match
-          case Right(next) => (next, acc.updated(blocks(i).header.hash.hex, (blocks(i), next)))
-          case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
+      .foldLeft((setup.mirrorStart, Map.empty[String, (Block, MirrorState)])) {
+        case ((before, acc), i) =>
+          MirrorSteps.block(setup, before, blocks(i).header, raws(i)) match
+            case Right(next) => (next, acc.updated(blocks(i).header.hash.hex, (blocks(i), next)))
+            case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
       }
       ._2
 
@@ -124,7 +117,7 @@ class ChainDepGoldenSuite extends FunSuite:
     goldens.foreach { g =>
       val (block, state) = states.getOrElse(g.hash, fail(s"${label(g)}: no such block"))
       assertEquals(block.header.slot, g.slot, label(g))
-      assertEquals(summon[ChainRead[NodeState]].era(state), g.era, label(g))
+      assertEquals(state.era, g.era, label(g))
     }
   }
 

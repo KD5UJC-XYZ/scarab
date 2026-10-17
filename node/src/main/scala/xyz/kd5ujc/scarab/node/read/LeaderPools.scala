@@ -9,8 +9,8 @@ import xyz.kd5ujc.scarab.ledger.state.{EraTag, NewEpochState}
   * leader check of the epoch uses). What the forger reads when it asks whether the pool leads a
   * slot.
   *
-  * The ledger state is a type parameter: the forger crosses the epoch boundary on the `NewEpochState`
-  * of the era the chain is in.
+  * The ledger state is a type parameter: the forger crosses the epoch boundary on the
+  * `NewEpochState` of the era the chain is in.
   */
 trait LeaderPools[L]:
   extension (ledger: L) def leaderPools: flat.PoolDistribution

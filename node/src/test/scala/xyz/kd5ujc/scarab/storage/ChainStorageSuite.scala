@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.FollowerEvents
-import xyz.kd5ujc.scarab.consensus.NodeState
+import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
 import xyz.kd5ujc.scarab.ledger.Block
@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.node.NodeRules
+import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.Peer
 import xyz.kd5ujc.scarab.node.RefStateful
@@ -47,7 +48,7 @@ class ChainStorageSuite extends CatsEffectSuite:
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(setup.mirrorEnv())
-  private given SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](SnapshotCheck.Full)
+  private given SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
   private val k = geometry.securityParam
 
   private val raws: Vector[Bytes] =
@@ -63,16 +64,9 @@ class ChainStorageSuite extends CatsEffectSuite:
     BlockRef(headers(i).slot, headers(i).hash, headers(i).blockNo, headers(i).isBoundary)
 
   /** State after the first `n` blocks, computed without any storage. */
-  private lazy val states: Vector[NodeState] =
-    headers.indices.foldLeft(Vector(setup.start)) { (acc, i) =>
-      NodeRules.applyBlock(
-        acc.last,
-        headers(i),
-        raws(i),
-        setup.praos,
-        setup.globals,
-        setup.byronRules
-      ) match
+  private lazy val states: Vector[MirrorState] =
+    headers.indices.foldLeft(Vector(setup.mirrorStart)) { (acc, i) =>
+      MirrorSteps.block(setup, acc.last, headers(i), raws(i)) match
         case Right(next) => acc :+ next
         case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
     }
@@ -92,7 +86,13 @@ class ChainStorageSuite extends CatsEffectSuite:
     )
 
   @unused private def rules(using Handle[IO, NodeError]) =
-    NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+    MirrorRules[IO](
+      setup.praos,
+      setup.globals,
+      setup.byronRules,
+      setup.handOver,
+      setup.byronHistory
+    )
 
   /** Open the storage, follow blocks `[from, until)` with the real follower, wait for snapshots. */
   private def run(
@@ -100,7 +100,7 @@ class ChainStorageSuite extends CatsEffectSuite:
       until: Int,
       every: Int = 120,
       log: Ref[IO, Vector[StorageEvent]]
-  ): IO[(Option[BlockRef], VolatileChain[NodeState])] =
+  ): IO[(Option[BlockRef], VolatileChain[MirrorState])] =
     runWith(dir, until, every, log, None).map((anchor, chain, _) => (anchor, chain))
 
   /** As [[run]], with the UTxO set in a store (`memory` or `rocksdb`) under the database directory;
@@ -115,46 +115,53 @@ class ChainStorageSuite extends CatsEffectSuite:
   ): IO[
     (
         Option[BlockRef],
-        VolatileChain[NodeState],
+        VolatileChain[MirrorState],
         Map[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
     )
   ] =
     Handle
       .allow[NodeError] {
-        val backed: Resource[IO, (Option[UtxoStore[IO]], StateBacking[IO, NodeState])] =
+        val backed: Resource[IO, (Option[UtxoStore[IO]], StateBacking[IO, MirrorState])] =
           store match
-            case None => Resource.pure((None, StateBacking.none[IO, NodeState]))
+            case None => Resource.pure((None, StateBacking.none[IO, MirrorState]))
             case Some("memory") =>
               Resource.eval(MemoryUtxoStore[IO]).map { s =>
                 (
                   Some(s: UtxoStore[IO]),
-                  new UtxoBacking[IO, NodeState](s, dir / "utxo" / "checkpoints")
+                  new UtxoBacking[IO, MirrorState](s, dir / "utxo" / "checkpoints")
                 )
               }
             case Some(_) =>
               RocksUtxoStore.resource[IO](dir / "utxo" / "live", 8L * 1024 * 1024).map { s =>
                 (
                   Some(s: UtxoStore[IO]),
-                  new UtxoBacking[IO, NodeState](s, dir / "utxo" / "checkpoints")
+                  new UtxoBacking[IO, MirrorState](s, dir / "utxo" / "checkpoints")
                 )
               }
         backed
           .use { (utxoStore, backing) =>
             val rules =
-              NodeRules[IO](setup.praos, setup.globals, setup.byronRules, utxoStore = utxoStore)
+              MirrorRules[IO](
+                setup.praos,
+                setup.globals,
+                setup.byronRules,
+                setup.handOver,
+                setup.byronHistory,
+                utxoStore = utxoStore
+              )
             ChainStorage
-              .open[IO, NodeState](
+              .open[IO, MirrorState](
                 dir,
                 config(every),
                 rules,
-                setup.start,
+                setup.mirrorStart,
                 storageEvents(log),
                 backing,
                 _ => IO.unit
               )
               .use { recovered =>
                 for
-                  chainRef <- Ref.of[IO, VolatileChain[NodeState]](
+                  chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
                     VolatileChain(
                       k,
                       Anchor(recovered.anchor, recovered.state),
@@ -162,7 +169,7 @@ class ChainStorageSuite extends CatsEffectSuite:
                       setup.origin
                     )
                   )
-                  given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+                  given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
                   queue <- Queue.unbounded[IO, SyncEvent]
                   resumeFrom = recovered.anchor
                     .fold(0)(a => headers.indexWhere(_.hash == a.hash) + 1)
@@ -180,7 +187,7 @@ class ChainStorageSuite extends CatsEffectSuite:
                       case None        => done.complete(()) *> IO.never[SyncEvent]
                     }
                     def fetch(header: Header) = IO.pure(bodies(header.hash))
-                  follower <- Follower.create[IO, NodeState](
+                  follower <- Follower.create[IO, MirrorState](
                     rules,
                     noEvents,
                     geometry,
@@ -190,8 +197,8 @@ class ChainStorageSuite extends CatsEffectSuite:
                   // Snapshots are written in the background; let them land.
                   _ <- IO.sleep(500.millis)
                   chain <- chainRef.get
-                  all <- utxoStore.fold(IO.pure(chain.state.ledger.utxo.toMap))(s =>
-                    UtxoStore.materialize(s, chain.state.ledger.utxo)
+                  all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
+                    UtxoStore.materialize(s, chain.state.utxo)
                   )
                 yield (recovered.anchor, chain.copy(blocks = chain.blocks), all)
               }
@@ -318,25 +325,21 @@ class ChainStorageSuite extends CatsEffectSuite:
     }
   }
 
-  /** A snapshot returns the state in its canonical form (see [[SnapshotV4.canonical]]): the state
-    * replayed from the blocks is compared in that form.
+  /** The chain's state replayed from the blocks and the state a snapshot returns are the same
+    * state, up to the UTxO set's bookkeeping (what was flushed, the diff), which the checkpoint and
+    * the store keep apart (see [[sameLedger]]).
     */
-  private def canonical(s: NodeState): NodeState = SnapshotV4.canonical(setup.mirrorEnv(), s)
-
-  private def assertState(got: NodeState, want: NodeState, clue: => Any = "state"): Unit =
-    assertEquals(canonical(got), canonical(want), clue)
-
-  private def sameLedger(x: NodeState, y: NodeState): Unit =
-    val (a, b) = (canonical(x), canonical(y))
-    assertEquals(a.protocol, b.protocol)
-    assertEquals(a.boot, b.boot)
+  private def assertState(got: MirrorState, want: MirrorState, clue: => Any = "state"): Unit =
     assertEquals(
-      a.ledger.copy(utxo = xyz.kd5ujc.scarab.ledger.Utxo.empty),
-      b.ledger.copy(utxo = xyz.kd5ujc.scarab.ledger.Utxo.empty)
+      MirrorStep.mapUtxo(got)(_ => xyz.kd5ujc.scarab.ledger.Utxo.empty),
+      MirrorStep.mapUtxo(want)(_ => xyz.kd5ujc.scarab.ledger.Utxo.empty),
+      clue
     )
-    assertEquals(a.ledger.utxo.stake, b.ledger.utxo.stake)
-    assertEquals(a.ledger.utxo.coin, b.ledger.utxo.coin)
-    assertEquals(a.ledger.utxo.count, b.ledger.utxo.count)
+    assertEquals(got.utxo.stake, want.utxo.stake, clue)
+    assertEquals(got.utxo.coin, want.utxo.coin, clue)
+    assertEquals(got.utxo.count, want.utxo.count, clue)
+
+  private def sameLedger(x: MirrorState, y: MirrorState): Unit = assertState(x, y)
 
   for kind <- List("memory", "rocksdb") do
     test(s"restart with the UTxO set in a $kind store: snapshot, checkpoint and replay agree") {
@@ -345,7 +348,7 @@ class ChainStorageSuite extends CatsEffectSuite:
           log1 <- events(dir)
           first <- runWith(dir, 500, 120, log1, Some(kind))
           _ <- IO(sameLedger(first._2.state, states(500)))
-          _ <- IO(assertEquals(first._3, states(500).ledger.utxo.toMap))
+          _ <- IO(assertEquals(first._3, states(500).utxo.toMap))
           checkpoints <- files
             .list(dir / "utxo" / "checkpoints")
             .compile
@@ -356,7 +359,7 @@ class ChainStorageSuite extends CatsEffectSuite:
           e2 <- log2.get
           _ <- IO(assert(e2.exists(_.isInstanceOf[StorageEvent.SnapshotRestored]), e2.toString))
           _ <- IO(sameLedger(second._2.state, states(731)))
-          _ <- IO(assertEquals(second._3, states(731).ledger.utxo.toMap))
+          _ <- IO(assertEquals(second._3, states(731).utxo.toMap))
         yield ()
       }
     }
@@ -384,7 +387,7 @@ class ChainStorageSuite extends CatsEffectSuite:
           )
         )
         _ <- IO(sameLedger(again._2.state, states(650)))
-        _ <- IO(assertEquals(again._3, states(650).ledger.utxo.toMap))
+        _ <- IO(assertEquals(again._3, states(650).utxo.toMap))
       yield ()
     }
   }
@@ -401,7 +404,7 @@ class ChainStorageSuite extends CatsEffectSuite:
       replayed: Long,
       restoredAnchor: Option[BlockRef],
       anchor: Option[BlockRef],
-      chain: VolatileChain[NodeState],
+      chain: VolatileChain[MirrorState],
       offered: Vector[Vector[ChainSync.Point]],
       events: Vector[StorageEvent]
   )
@@ -421,21 +424,27 @@ class ChainStorageSuite extends CatsEffectSuite:
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
         .allow[NodeError] {
-          val backing = StateBacking.none[IO, NodeState]
-          val nodeRules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+          val backing = StateBacking.none[IO, MirrorState]
+          val nodeRules = MirrorRules[IO](
+            setup.praos,
+            setup.globals,
+            setup.byronRules,
+            setup.handOver,
+            setup.byronHistory
+          )
           ChainStorage
-            .open[IO, NodeState](
+            .open[IO, MirrorState](
               dir,
               volatileConfig(every, identity),
               nodeRules,
-              setup.start,
+              setup.mirrorStart,
               storageEvents(log),
               backing,
               _ => IO.unit
             )
             .use { recovered =>
               for
-                resumed <- ChainStorage.resume[IO, NodeState](
+                resumed <- ChainStorage.resume[IO, MirrorState](
                   recovered,
                   k,
                   setup.origin,
@@ -444,7 +453,7 @@ class ChainStorageSuite extends CatsEffectSuite:
                   storageEvents(log),
                   _ => IO.unit
                 )
-                chainRef <- Ref.of[IO, VolatileChain[NodeState]](
+                chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
                   VolatileChain(
                     k,
                     Anchor(recovered.anchor, recovered.state),
@@ -452,7 +461,7 @@ class ChainStorageSuite extends CatsEffectSuite:
                     setup.origin
                   )
                 )
-                given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+                given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
                 start <- chainRef.get.map(
                   _.tipRef.fold(0)(t => headers.indexWhere(_.hash == t.hash) + 1)
                 )
@@ -472,7 +481,7 @@ class ChainStorageSuite extends CatsEffectSuite:
                     case None        => done.complete(()) *> IO.never[SyncEvent]
                   }
                   def fetch(header: Header) = IO.pure(bodies(header.hash))
-                follower <- Follower.create[IO, NodeState](
+                follower <- Follower.create[IO, MirrorState](
                   nodeRules,
                   noEvents,
                   geometry,

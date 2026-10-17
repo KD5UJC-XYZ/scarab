@@ -22,14 +22,14 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** The conversion of the flat node state of the old rules ([[FlatFlatNodeState]]) to the [[MirrorState]]
-  * (FROZEN, J2.9; the other direction went with the old rules). The position of the
+/** The conversion of the flat node state of the old rules ([[FlatFlatNodeState]]) to the
+  * [[MirrorState]] (FROZEN, J2.9; the other direction went with the old rules). The position of the
   * node's tip is an argument (it is not a property of the configuration): the anchor, the last
   * block applied, or none before the first.
   *
   * `toMirror` derives what Haskell holds and the node does not (the telescope bounds from the era
-  * history, the tips, the PBFT counts, the Shelley transition), and puts the state in the terms of the
-  * era-indexed rules ([[LegacySeed]]).
+  * history, the tips, the PBFT counts, the Shelley transition), and puts the state in the terms of
+  * the era-indexed rules ([[LegacySeed]]).
   */
 trait StateMirror[F[_]]:
   def toMirror(anchor: Option[BlockRef], s: FlatNodeState): F[Mirrored[MirrorState]]

@@ -6,7 +6,6 @@ import xyz.kd5ujc.scarab.legacy.FlatTestLedger
 import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
 
-
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import java.nio.file.Path
@@ -39,7 +38,8 @@ class RulesMirrorSuite extends FunSuite:
         Option.when(conway)(node.DRep.AlwaysAbstain)
       )
     }
-    FlatTestLedger.state(c.protocolMajor, (c.spent ++ c.references ++ c.collateral).toVector)
+    FlatTestLedger
+      .state(c.protocolMajor, (c.spent ++ c.references ++ c.collateral).toVector)
       .copy(params = c.params, epoch = c.slot / 86400, accounts = withdrawing.toMap)
 
   private def roundTrip[E <: EraTag](s: flat.LedgerState)(using

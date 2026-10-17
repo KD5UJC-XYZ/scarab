@@ -27,11 +27,12 @@ import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.*
 
-/** FROZEN. The codec of everything a snapshot of format 4 holds, one codec per type, composed. Case classes and enums
-  * are derived from their `Mirror` ([[Codec.auto]]); the instances below exist so each shared type
-  * is derived once (it keeps compilation fast) and so the composition reads as the state's shape. A
-  * field added to any state type changes the schema fingerprint, so snapshots written before it are
-  * rejected (`VersionMismatch`) rather than misread. Instances are lazy, so order is free.
+/** FROZEN. The codec of everything a snapshot of format 4 holds, one codec per type, composed. Case
+  * classes and enums are derived from their `Mirror` ([[Codec.auto]]); the instances below exist so
+  * each shared type is derived once (it keeps compilation fast) and so the composition reads as the
+  * state's shape. A field added to any state type changes the schema fingerprint, so snapshots
+  * written before it are rejected (`VersionMismatch`) rather than misread. Instances are lazy, so
+  * order is free.
   */
 object NodeCodecs:
   // Leaf values shared by many types.

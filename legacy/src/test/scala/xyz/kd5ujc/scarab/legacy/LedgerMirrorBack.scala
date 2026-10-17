@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.legacy
 
 import cats.{Eq, Monad}
+import cats.data.Kleisli
+import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.mtl.{Ask, Raise}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
@@ -11,14 +13,33 @@ import xyz.kd5ujc.scarab.ledger.state.{GovState as _, LedgerState as _, *}
 import xyz.kd5ujc.scarab.ledger.state.{GovState, LedgerState}
 import xyz.kd5ujc.scarab.legacy as flat
 
-/** TEST SUPPORT of the frozen flat conversion: the node's flat ledger state of a [[LedgerImage]], the
-  * direction `LedgerMirror.from` had until J2.9. The production code has only `to` (the older
+/** TEST SUPPORT of the frozen flat conversion: the node's flat ledger state of a [[LedgerImage]],
+  * the direction `LedgerMirror.from` had until J2.9. The production code has only `to` (the older
   * snapshots are brought to the mirror and nothing goes back); the suites that run the era-indexed
   * rules on fixtures written in the flat state ([[RuleSet]]) read their results through this, so
   * that their assertions are written once over the flat state. It goes with the module (design
   * `ledger-mirror-step2.md` J2.9).
   */
 object LedgerMirrorBack:
+  private type Read[A] = Either[MirrorError, A]
+  private type Run[A] = Kleisli[Read, MirrorEnv, A]
+  private val runner: LedgerMirror[Run] = LedgerMirror[Run]
+
+  /** The flat ledger state a new-epoch state stands for, as the old rules would have held it: the
+    * state the rules made is read back whole, whatever the derived pieces the flat state cannot say
+    * (the pulser, the attributed rewards) differ in, with the phase-2 counters `plutus`.
+    */
+  def flatOf[E <: EraTag](
+      env: MirrorEnv,
+      at: WithOrigin[SlotNo],
+      nes: NewEpochState[E],
+      plutus: node.PlutusStats
+  )(using ShelleyBasedEra[E]): Either[MirrorError, flat.LedgerState] =
+    runner
+      .rebuilt[E](at, LedgerImage[E](nes, flat.NodeExtras.empty.copy(plutus = plutus)))
+      .run(env)
+      .map(_.state)
+
   private def isConway[E <: EraTag](using era: ShelleyBasedEra[E]): Boolean = era match
     case ShelleyBasedEra.SConway => true
     case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
@@ -214,7 +235,6 @@ object LedgerMirrorBack:
         case (id, p) if p.numDelegators.toBigInt > BigInt(counts.getOrElse(id, 0)) => id.bytes
       }.toSet
     )
-
 
   extension [F[_]](mirror: LedgerMirror[F])(using
       monad: Monad[F],

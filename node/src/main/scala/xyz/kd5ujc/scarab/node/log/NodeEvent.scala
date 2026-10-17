@@ -13,8 +13,8 @@ import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, NodeConfig, Topology}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** What the node itself reports, apart from the event types of its parts (the follower, the chain
-  * database, the mempool, the forger, the connections), which are logged as
-  * they are. Closed: every line the node writes is one of these or one of those.
+  * database, the mempool, the forger, the connections), which are logged as they are. Closed: every
+  * line the node writes is one of these or one of those.
   */
 enum NodeEvent:
   /** The node is running: what it is and what it was told. */

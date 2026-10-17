@@ -49,8 +49,8 @@ object Counted:
     )(u => c => Counted(c.state.copy[Conway](utxo = u.state), u.plutus))
 
 /** `LedgerEnv` (`Shelley/Rules/Ledger.hs`): the block-level context of a transaction (slot, epoch,
-  * the position in the block, the evaluator and the clock, `TxEnv`) and the treasury of the
-  * chain account (`esChainAccountState`), which `currentTreasuryValue` of a transaction is checked
+  * the position in the block, the evaluator and the clock, `TxEnv`) and the treasury of the chain
+  * account (`esChainAccountState`), which `currentTreasuryValue` of a transaction is checked
   * against. The parameters are the ones in force, read from the governance state.
   */
 final case class LedgerEnv(ctx: TxEnv, treasury: Coin)

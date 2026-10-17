@@ -31,12 +31,3 @@ class NtcGoldenSuite extends FunSuite:
       }
     }
   }
-
-  NtcGolden.subjects.foreach { subject =>
-    test(s"${subject._1}: the answers read from the mirror of the state are the recorded ones") {
-      NtcGolden.mirrorAnswers(subject).foreach { (state, label, answer) =>
-        val expected = recorded.getOrElse((state, label), fail(s"$state / $label is not recorded"))
-        assertEquals(NtcGolden.value(answer), expected, s"$state / $label")
-      }
-    }
-  }

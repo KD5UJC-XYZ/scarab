@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
@@ -227,4 +226,3 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
     assert(!holds(Int64Max, one, Set(k)))
     assert(!holds(1, Vector.empty, Set.empty))
   }
-

@@ -10,6 +10,8 @@ import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.protocol.HfcHeader
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.InEra
 
 /** The header rules over the first 1,100 headers of the public Leios testnet, from its genesis
   * (`fixtures/leios/testnet/headers-from-origin.tsv`; provenance in `fixtures/leios/README.md`):
@@ -28,10 +30,16 @@ class LeiosHeaderChainSuite extends munit.FunSuite:
   private val config = setup.praos
   private val stake =
     LeiosHeaderChain.StakePolicy(
-      setup.start.ledger.poolDistribution.distribution,
+      setup.mirrorStart
+        .ledger(None)
+        .toOption
+        .flatten
+        .fold(fail("the start state has no ledger state")) { case InEra.Of(_, l) =>
+          l.leaderPools(nextEpoch = false)
+        },
       LeiosHeaderChain.GenesisEpochs
     )
-  private val initial = LeiosHeaderChain.initial(setup.start.protocol)
+  private val initial = LeiosHeaderChain.initial(setup.mirrorStart.protocol)
 
   private val headers: Vector[LeiosHeader] =
     Files

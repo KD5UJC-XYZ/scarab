@@ -5,8 +5,9 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 
-/** The mirror's records in the node's plain form (credentials as `node.Credential`, accounts and pools as
-  * the ratification rules read them), for the pulser of Conway ([[xyz.kd5ujc.scarab.ledger.rules.ConwayPulser]]).
+/** The mirror's records in the node's plain form (credentials as `node.Credential`, accounts and
+  * pools as the ratification rules read them), for the pulser of Conway
+  * ([[xyz.kd5ujc.scarab.ledger.rules.ConwayPulser]]).
   */
 object FlatView:
   def credBack[R <: KeyRole](c: Credential[R]): node.Credential = c match

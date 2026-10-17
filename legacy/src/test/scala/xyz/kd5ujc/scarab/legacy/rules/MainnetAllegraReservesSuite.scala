@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 
@@ -97,7 +96,8 @@ class MainnetAllegraReservesSuite extends FunSuite:
     val epoch235 = TestLedger
       .params(2)
       .copy(nOpt = 500, d = Rational(32, 100), minPoolCost = BigInt(340000000))
-    val state = FlatTestLedger.state(3, Vector.empty)
+    val state = FlatTestLedger
+      .state(3, Vector.empty)
       .copy(
         snapshots = Snapshots(Snapshot.empty, Snapshot.empty, go, BigInt("8115520823")),
         blocksPrevious = Map(pool -> BigInt(1), others -> BigInt(14391)),

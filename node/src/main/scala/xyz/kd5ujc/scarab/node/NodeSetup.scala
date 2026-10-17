@@ -2,7 +2,12 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ConsensusMirrorEnv,
+  EraHistory,
+  MirrorState,
+  ProtocolState
+}
 import xyz.kd5ujc.scarab.ledger.rules.FromByron
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.protocol.Era
@@ -46,8 +51,8 @@ final case class NodeSetup(
     /** The state the chain starts from, as the mirror. */
     mirrorStart: MirrorState,
     /** What the Shelley genesis gives the ledger state a chain that begins in Byron enters Shelley
-      * with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations, the
-      * protocol parameters and the supply. None for a chain that starts in Shelley.
+      * with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations,
+      * the protocol parameters and the supply. None for a chain that starts in Shelley.
       */
     handOver: Option[FromByron],
     /** The Byron genesis parameters even when the chain has no Byron prefix (the era history of a
@@ -226,8 +231,8 @@ object NodeSetup:
       read: String => Option[Array[Byte]]
   ): Either[ConfigError, NodeSetup] = assembleWithStart(config, read).map(_._1)
 
-  /** The setup, and the flat state of the old rules at the origin that its start state and hand-over
-    * were made from: the fixtures of the frozen formats are written from it.
+  /** The setup, and the flat state of the old rules at the origin that its start state and
+    * hand-over were made from: the fixtures of the frozen formats are written from it.
     */
   private[scarab] def assembleWithStart(
       config: NodeConfig,
@@ -307,19 +312,22 @@ object NodeSetup:
       mirrored <- legacy.Mirroring
         .toMirror(mirrorEnvOf(genesis, globals, praos, byronParams), None, start)
         .leftMap(e => ConfigError(s"the start state does not mirror: ${e.show}"))
-    yield (NodeSetup(
-      genesis,
-      config,
-      byron,
-      globals,
-      praos,
-      mirrored.value,
-      byronRules.map(_ => FromByron(initial.genDelegs, initial.params, globals.maxSupply)),
-      identity = NetworkIdentity(
-        genesis.networkMagic,
-        Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
-        byron.map(_.hash)
+    yield (
+      NodeSetup(
+        genesis,
+        config,
+        byron,
+        globals,
+        praos,
+        mirrored.value,
+        byronRules.map(_ => FromByron(initial.genDelegs, initial.params, globals.maxSupply)),
+        identity = NetworkIdentity(
+          genesis.networkMagic,
+          Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),
+          byron.map(_.hash)
+        ),
+        byronParams = byronParams,
+        byronConfig = byronRules.map(_._2)
       ),
-      byronParams = byronParams,
-      byronConfig = byronRules.map(_._2)
-    ), start)
+      start
+    )

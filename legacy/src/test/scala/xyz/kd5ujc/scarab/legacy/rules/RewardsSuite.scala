@@ -4,15 +4,14 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
-/** The reward calculation of the era-indexed rules: the formulas (`maxPool`, the operator and member
-  * rewards) and the reward update of a state (RUPD).
+/** The reward calculation of the era-indexed rules: the formulas (`maxPool`, the operator and
+  * member rewards) and the reward update of a state (RUPD).
   */
 class RewardsSuite extends ScalaCheckSuite:
   private val rs = RuleSet
@@ -85,7 +84,8 @@ class RewardsSuite extends ScalaCheckSuite:
         delegations = Map(ownerCredential -> to, member -> poolId),
         pools = Map(poolId -> params, other -> otherParams)
       )
-      val state = FlatTestLedger.state(8, Vector.empty)
+      val state = FlatTestLedger
+        .state(8, Vector.empty)
         .copy(
           // the new rules pay only the credentials that are registered when the update is made
           accounts = Map(
@@ -142,7 +142,8 @@ class RewardsSuite extends ScalaCheckSuite:
       pools = Map(poolA -> paramsA, poolB -> paramsB)
     )
     def rewards(major: Int) =
-      val state = FlatTestLedger.state(major, Vector.empty)
+      val state = FlatTestLedger
+        .state(major, Vector.empty)
         .copy(
           // the new rules pay only the credentials that are registered when the update is made
           accounts = Seq(aMember, shared, both, twin).map(_ -> Account(0, 0, None, None)).toMap,
@@ -185,7 +186,8 @@ class RewardsSuite extends ScalaCheckSuite:
     // each holds a lovelace, so that the snapshot taken at the boundary has both as delegators
     val acc = Account(1, 2000000, Some(poolId), None)
     val g = globals.copy(epochLength = 1000, startRewards = 40)
-    val base = FlatTestLedger.state(5, Vector.empty)
+    val base = FlatTestLedger
+      .state(5, Vector.empty)
       .copy(
         snapshots = Snapshots(Snapshot.empty, go, Snapshot.empty, 0),
         blocksCurrent = Map(poolId -> BigInt(10)),
@@ -228,4 +230,3 @@ class RewardsSuite extends ScalaCheckSuite:
     assertEquals(late.treasury, paid.treasury)
     assertEquals(late.reserves, paid.reserves + amount)
   }
-

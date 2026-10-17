@@ -24,8 +24,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 
 /** What a state the old rules wrote needs to be the era-indexed rules' state (design
-  * `ledger-mirror-step2.md` §4, J2.8 and J2.9): the mirror of a flat state has two places the rules of
-  * the reference do not leave their state in.
+  * `ledger-mirror-step2.md` §4, J2.8 and J2.9): the mirror of a flat state has two places the rules
+  * of the reference do not leave their state in.
   *
   *   - The reward update is not attributed to pools: the mirror's `rs` is empty and what each
   *     credential is paid is in the old extras (`rewardAmounts`), so each credential is given its
@@ -35,13 +35,14 @@ import xyz.kd5ujc.scarab.ledger.state.{
   *     place for, which a state the new rules carry would adopt as the next epoch's parameters
   *     ([[withoutDroppedFields]]).
   *
-  * It runs where an old file is read: in the conversion of the flat state ([[StateMirror]]) and in the
-  * migration of a snapshot of format 4 to format 5 (`storage`), before the old bookkeeping, which the
-  * new format does not keep, is dropped. Applying it to a state the new rules made changes nothing.
+  * It runs where an old file is read: in the conversion of the flat state ([[StateMirror]]) and in
+  * the migration of a snapshot of format 4 to format 5 (`storage`), before the old bookkeeping,
+  * which the new format does not keep, is dropped. Applying it to a state the new rules made
+  * changes nothing.
   *
   * The delegator-derived fields of the snapshots of a state written by the old rules are the old
-  * mirror's (the delegators of `mark` from the accounts at the time of the write, the counts of `set`
-  * and `go` as lower bounds): a replay from the previous snapshot or from genesis gives the
+  * mirror's (the delegators of `mark` from the accounts at the time of the write, the counts of
+  * `set` and `go` as lower bounds): a replay from the previous snapshot or from genesis gives the
   * reference's (finding J2.8-1).
   */
 object LegacySeed:

@@ -6,6 +6,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import munit.FunSuite
 
 /** The answers of the reference node (`cardano-node` 11.1.3) to the queries that do not depend on
@@ -38,10 +39,8 @@ class QueryGoldenSuite extends FunSuite:
     setup.genesis.raw,
     setup.mirrorEnv().ledger
   )
-  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
-    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
 
-  private val view = QueryView(point, Some(1), setup.start)
+  private val view = QueryView(point, Some(1), setup.mirrorStart)
 
   private val entries = golden.downField("queries").values.toVector.flatten.map(_.hcursor)
 

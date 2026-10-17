@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -517,4 +516,3 @@ class ConwayRulesSuite extends FunSuite:
     assertEquals(skipped.fees, BigInt(1000))
     assertEquals(skipped.total, Supply)
   }
-

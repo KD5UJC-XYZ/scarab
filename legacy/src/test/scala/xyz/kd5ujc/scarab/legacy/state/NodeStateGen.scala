@@ -3,13 +3,7 @@ package xyz.kd5ujc.scarab.legacy
 
 import org.scalacheck.{Arbitrary, Gen}
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.consensus.{
-  BlockRef,
-  BootstrapState,
-  ByronState,
-  ByronTip,
-  HardForkConfig
-}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ByronState, ByronTip, HardForkConfig}
 import xyz.kd5ujc.scarab.consensus.state.{
   ChainDepState,
   ConsensusMirrorEnv,

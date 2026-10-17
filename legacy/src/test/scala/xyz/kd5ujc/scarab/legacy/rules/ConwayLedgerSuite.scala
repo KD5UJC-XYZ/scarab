@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.{LedgerMirror}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
 
-
 import cats.Monad
 import cats.data.{Kleisli, StateT}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}

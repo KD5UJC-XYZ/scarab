@@ -3,8 +3,8 @@ package xyz.kd5ujc.scarab.node
 
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, EraLedgerState}
+import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, LedgerFileEra}
 
@@ -22,7 +22,7 @@ object HaskellScalaCompareMain:
   private def readScala(
       file: Path,
       forks: xyz.kd5ujc.scarab.consensus.HardForkConfig
-  ): Option[(Option[Long], NodeState)] =
+  ): Option[(Option[Long], legacy.FlatNodeState)] =
     LegacySnapshots.read(file, forks).toOption.map(s => (s.anchor.map(_.slot.toLong), s.state))
 
   /** The names of the fields in which two values of a case class differ. */
@@ -44,7 +44,6 @@ object HaskellScalaCompareMain:
     val setup = NodeSetup
       .fromDirectory(Path.of(args.lift(2).getOrElse("fixtures/preview/genesis")))
       .fold(e => sys.error(e.message), identity)
-    val env = MirrorEnv(setup.globals.network, setup.geometry, setup.globals.updateQuorum)
     val hs = HaskellLedgerFile
       .decode(Bytes.fromArray(Files.readAllBytes(Path.of(args(0)))))
       .fold(e => sys.error(e.render), identity)
@@ -54,11 +53,24 @@ object HaskellScalaCompareMain:
     val haskell = hs.ledger.state match
       case LedgerFileEra.Mirrored(EraLedgerState.InShelleyEra(ShelleyBasedEra.SConway, s)) => s.nes
       case other => sys.error(s"not a Conway state: $other")
-    val at =
-      slot.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(s => WithOrigin.At(SlotNo.fromUnsigned(s)))
-    val scalaNes = MirrorCorpus.ledgerMirror.to[Conway](at, state.ledger).run(env) match
-      case Left(e)  => sys.error(s"mirror refused: $e")
-      case Right(m) => m.value.nes
+    val scalaNes = legacy.Mirroring
+      .toMirror(
+        setup.mirrorEnv(),
+        slot.map(s =>
+          xyz.kd5ujc.scarab.consensus.BlockRef(s, Bytes.fromArray(new Array[Byte](32)), 0)
+        ),
+        state
+      )
+      .fold(e => sys.error(s"mirror refused: $e"), identity)
+      .value
+      .ext
+      .ledgerState
+      .state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        NewEpochState
+          .retype(i.era, ShelleyBasedEra.SConway)(i.state.nes)
+          .getOrElse(sys.error("not a Conway state"))
+      case _ => sys.error("not a Shelley-based state")
     println(
       s"Haskell epoch ${haskell.epoch}, Scala epoch ${scalaNes.epoch} (slot ${slot.getOrElse(-1L)})"
     )

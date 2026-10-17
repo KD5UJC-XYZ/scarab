@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.effect.{IO, Ref}
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -11,20 +11,17 @@ import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
-import xyz.kd5ujc.scarab.ledger.NodeError
+import xyz.kd5ujc.scarab.ledger.{NodeError, ValidationError}
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.node.LegacySeed
 import xyz.kd5ujc.scarab.node.MirrorRules
-import xyz.kd5ujc.scarab.node.MirrorRun
-import xyz.kd5ujc.scarab.node.NodeRules
 import xyz.kd5ujc.scarab.node.RefStateful
+import xyz.kd5ujc.scarab.legacy.{FlatNodeState, LedgerState, Mirroring, Snapshot, Snapshots}
 import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
@@ -44,10 +41,10 @@ import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Lead
 final case class ForgedChain(
     config: PraosConfig,
     globals: LedgerGlobals,
-    genesis: NodeState,
+    genesis: MirrorState,
     headers: Vector[Header.Shelley],
     raws: Vector[Bytes],
-    states: Vector[NodeState]
+    states: Vector[MirrorState]
 )
 
 object ForgedChain:
@@ -68,6 +65,21 @@ object ForgedChain:
   val globals: LedgerGlobals =
     LedgerGlobals(TestLedger.Supply, 1000, Rational(1, 2), network = 0, updateQuorum = 2)
   val epochNonce: Nonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
+
+  /** What the mirror reads of this configuration. */
+  val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
+    MirrorEnv(globals.network, geometry, globals.updateQuorum),
+    config.forks,
+    EraHistory.ByronParams(
+      BigInt(geometry.securityParam) * 10,
+      BigInt(20000),
+      BigInt(geometry.securityParam)
+    )
+  )
+
+  /** The block rules of the forged chain's configuration: no Byron prefix. */
+  def rules(using Raise[IO, ValidationError]): MirrorRules[IO] =
+    MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
 
   private def hex(b: Array[Byte]) = Bytes.fromArray(b)
 
@@ -109,7 +121,7 @@ object ForgedChain:
         snapshots = Snapshots(dist, dist, dist, 0)
       )
 
-  private def nodeState(ledger: LedgerState): NodeState =
+  private def nodeState(ledger: LedgerState): FlatNodeState =
     val lite = LiteLedger(
       0,
       LiteParams((10, 0), Rational.zero, Nonce.Neutral, 65536, 16384, 1100),
@@ -135,28 +147,21 @@ object ForgedChain:
       ),
       ProtocolExtras(ledger.epoch, Nonce.Neutral)
     )
-    NodeState(praos, ledger, BootstrapState.initial(lite))
+    FlatNodeState(praos, ledger, BootstrapState.initial(lite))
 
   /** Forge in the given slots (the pool leads about half of them) starting from a ledger in
     * `epoch`, and return the blocks with the state after each.
     */
   def forge(slots: Range, epoch: BigInt = 5, seed: Int = 1): IO[ForgedChain] =
     val p = pool(kesStart = (slots.head / 100).toInt - 1, seed)
-    val genesis = nodeState(ledgerWith(p, epoch))
-    val env = ConsensusMirrorEnv(
-      MirrorEnv(globals.network, geometry, globals.updateQuorum),
-      config.forks,
-      EraHistory.ByronParams(
-        BigInt(geometry.securityParam) * 10,
-        BigInt(20000),
-        BigInt(geometry.securityParam)
-      )
-    )
-    // the chain the pool forges on is the mirror; the blocks are then applied by the old rules,
-    // from the flat state, to give the states the header-rule suites read
-    val start = MirrorRun
-      .run(env)(_.toMirror(None, genesis))
-      .fold(e => throw new AssertionError(e.toString), m => LegacySeed(m.value))
+    val flatGenesis = nodeState(ledgerWith(p, epoch))
+    val env = mirrorEnv
+    // the chain the pool forges on is the mirror of the fixture's flat state; the blocks are then
+    // applied again, one by one, to give the states the header-rule suites read
+    val start = Mirroring
+      .toMirror(env, None, flatGenesis)
+      .fold(e => throw new AssertionError(e.toString), _.value)
+    val genesis = start
     Handle
       .allow[NodeError] {
         for
@@ -210,8 +215,17 @@ object ForgedChain:
             all.map(r => Block.decodeShelley(r).toOption.get.asInstanceOf[Block.Shelley])
           val states = decoded
             .scanLeft(genesis)((s, b) =>
-              NodeRules
-                .applyBlock(s, b.header, all(decoded.indexOf(b)), config, globals)
+              MirrorRules
+                .applyBlock(
+                  s,
+                  b.header,
+                  all(decoded.indexOf(b)),
+                  config,
+                  globals,
+                  None,
+                  None,
+                  env.byron
+                )
                 .toOption
                 .get
             )

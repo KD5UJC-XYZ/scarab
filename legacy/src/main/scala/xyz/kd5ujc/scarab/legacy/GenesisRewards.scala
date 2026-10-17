@@ -5,8 +5,8 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.*
 
 /** FROZEN: the old rules' Shelley reward calculation (createRUpd), which the genesis state
-  * ([[GenesisState]]) puts its first reward update through. Parameters are those of the previous epoch
-  * (`esPrevPp`); from Babbage `d` is 0; before Allegra only one reward per account is kept.
+  * ([[GenesisState]]) puts its first reward update through. Parameters are those of the previous
+  * epoch (`esPrevPp`); from Babbage `d` is 0; before Allegra only one reward per account is kept.
   */
 object Rewards:
   private val Eighty = Rational(4, 5)

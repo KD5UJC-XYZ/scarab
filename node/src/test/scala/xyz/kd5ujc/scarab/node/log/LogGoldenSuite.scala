@@ -15,7 +15,6 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
 import xyz.kd5ujc.scarab.node.InboundEvent
-import xyz.kd5ujc.scarab.node.differential.{Divergence, Event as DifferentialEvent}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -53,14 +52,6 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- errors.traverse_(e => node(NodeEvent.Failed(e)))
         _ <- node(NodeEvent.Memory(memory))
         _ <- node(NodeEvent.CpuStarvation(250.millis, 0.1, 1.second))
-        _ <- mirrorOutcomes.traverse_(o =>
-          node(NodeEvent.MirrorChecked(header.slot, header.hash, BigInt(3), o, 25L))
-        )
-        _ <- divergences
-          .traverse_(d => log.emit[DifferentialEvent](DifferentialEvent.Diverged(d, None)))
-        _ <- divergences.traverse_(d => node(NodeEvent.RulesHalted(d)))
-        _ <- differentialEvents.traverse_(log.emit(_))
-        _ <- node(NodeEvent.DifferentialSummary(stats))
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
         _ <- node(NodeEvent.HeadersChecked(50000L, 12L, 3L))
         _ <- node(NodeEvent.Inbound("/tmp/node.socket", InboundEvent.Accepted))
@@ -76,7 +67,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- follower.traverse_(Log.follower[IO](Some(sched)).emit)
         _ <- follower.traverse_(Log.follower[IO](None).emit)
         _ <- storage.traverse_(Log.sink[StorageEvents, StorageEvent, IO].emit)
-        _ <- node(NodeEvent.finished(VolatileChain.genesis(2160, setup.start, setup.origin)))
+        _ <- node(NodeEvent.finished(VolatileChain.genesis(2160, setup.mirrorStart, setup.origin)))
         // the lines JsonLog did not write
         _ <- node(NodeEvent.StateDumped(BigInt(4200), hash, BigInt(3), 120L))
         _ <- node(
@@ -123,8 +114,6 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(mempool, cases[MempoolEvent])
     covered(forge, cases[ForgeEvent])
     covered(inbound, cases[InboundEvent])
-    covered(differentialEvents, cases[DifferentialEvent])
-    covered(divergences, cases[Divergence])
   }
 
   test("the JSON line is the event, the time and the fields, as JsonLog wrote it") {

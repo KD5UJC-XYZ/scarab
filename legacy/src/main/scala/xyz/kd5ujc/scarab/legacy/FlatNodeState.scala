@@ -5,8 +5,8 @@ import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.{HeaderState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 
-/** The node state of snapshot format 4 and of the old rules (FROZEN, J2.9): the Haskell header state,
-  * the flat ledger state and the extras. It is what the older snapshot files hold and what
+/** The node state of snapshot format 4 and of the old rules (FROZEN, J2.9): the Haskell header
+  * state, the flat ledger state and the extras. It is what the older snapshot files hold and what
   * [[StateMirror]] turns into the mirror.
   *
   * The header state holds the chain-dependent state of the protocol the chain runs and nothing else

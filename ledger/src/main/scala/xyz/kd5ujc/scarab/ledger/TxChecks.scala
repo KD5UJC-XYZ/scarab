@@ -7,11 +7,12 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 
-/** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO, UTXOW, UTXOS):
-  * the pure predicates over a transaction and what it reads of the state, which the era-indexed rules
-  * ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. Era behaviour is selected by the protocol major
-  * version of the parameters in force: Allegra 3, Mary 4, Alonzo 5, Babbage 7. (The flat state's rules that
-  * used to apply a transaction beside these were removed at J2.9.)
+/** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO,
+  * UTXOW, UTXOS): the pure predicates over a transaction and what it reads of the state, which the
+  * era-indexed rules ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]], `ShelleyUtxo`) call. Era behaviour
+  * is selected by the protocol major version of the parameters in force: Allegra 3, Mary 4, Alonzo
+  * 5, Babbage 7. (The flat state's rules that used to apply a transaction beside these were removed
+  * at J2.9.)
   */
 object TxChecks:
   import TxEnv.Result
@@ -21,8 +22,8 @@ object TxChecks:
   private[ledger] type Pointer = (Int, BigInt)
 
   /** The script data hash must equal the recomputed hash, and the block's `is_valid` flag must
-    * equal the outcome of evaluating every Plutus script. Reads of the state: the parameters and the
-    * counters it adds to.
+    * equal the outcome of evaluating every Plutus script. Reads of the state: the parameters and
+    * the counters it adds to.
     */
   private[ledger] def phase2(
       pp: ProtocolParams,
@@ -452,8 +453,8 @@ object TxChecks:
     * witness.
     */
   /** Key hashes that must sign (`witsVKeyNeeded`) and the address roots that need a bootstrap
-    * witness. Reads of the state: the genesis delegations (empty from Conway,
-    * which has no update proposals).
+    * witness. Reads of the state: the genesis delegations (empty from Conway, which has no update
+    * proposals).
     */
   private[ledger] def witnessChecks(
       genDelegs: Map[Bytes, GenDelegPair],
@@ -545,7 +546,6 @@ object TxChecks:
         )
       )
     yield ()
-
 
 /** Reference scripts: the limits and the fee of Conway's reference-script pricing. */
 object RefScripts:

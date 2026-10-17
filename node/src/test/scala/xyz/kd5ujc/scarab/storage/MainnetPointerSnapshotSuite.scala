@@ -7,10 +7,10 @@ import java.nio.file.{Files as JFiles, Path}
 import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{Address, Block, Ptr, TxBody, TxIn}
-import xyz.kd5ujc.scarab.node.{NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** B29: mainnet transaction 9a47e091709e4fe1 (block 5,567,164, slot 26,366,727, Mary) pays 50 ada
@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   * The reference normalises the pointer when it reads the address, so the instant stake holds
   * `Ptr 0 0 0` and the UTxO the address written again (`cAddrNormalized`).
   *
-  * The output is put into a Shelley state of the eras capture, on mainnet; the V4 snapshot of that
+  * The output is put into a Shelley state of the eras capture, on mainnet; the V5 snapshot of that
   * state is written with the full read-back check and comes back as the mirror normalises it.
   */
 class MainnetPointerSnapshotSuite extends CatsEffectSuite:
@@ -48,10 +48,10 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
     e.copy(ledger = e.ledger.copy(network = Mainnet))
 
   private given Ask[IO, ConsensusMirrorEnv] = Ask.const(env)
-  private val format: SnapshotFormat[IO, NodeState] = SnapshotV4.format[IO](SnapshotCheck.Full)
+  private val format: SnapshotFormat[IO, MirrorState] = SnapshotV5.format[IO](SnapshotCheck.Full)
 
   /** The state after the first Shelley block of the capture. */
-  private lazy val shelley: StateSnapshot[NodeState] =
+  private lazy val shelley: StateSnapshot[MirrorState] =
     val raws = JFiles
       .readAllLines(fixtures.resolve("blocks.hex"))
       .asScala
@@ -64,9 +64,9 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
       )
     val first = blocks.indexWhere(_.era == Era.Shelley)
     assert(first >= 0, "the capture has no Shelley block")
-    val state = (0 to first).foldLeft(setup.start) { (s, i) =>
-      NodeRules
-        .applyBlock(s, blocks(i).header, raws(i), setup.praos, setup.globals, setup.byronRules)
+    val state = (0 to first).foldLeft(setup.mirrorStart) { (s, i) =>
+      MirrorSteps
+        .block(setup, s, blocks(i).header, raws(i))
         .fold(f => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}"), identity)
     }
     val h = blocks(first).header
@@ -74,41 +74,36 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
 
   private val input = TxIn(body.id, 0)
 
+  private def utxoOf(m: MirrorState) =
+    MirrorStep.utxoOf(m).getOrElse(fail("a Byron state has no UTxO handle"))
+
   /** The state with the output in its UTxO, counted as the rules count it. */
-  private lazy val withOutput: StateSnapshot[NodeState] =
-    val ledger = shelley.state.ledger
-    shelley.copy(state =
-      shelley.state.copy(ledger =
-        ledger.copy(utxo = ledger.utxo ++ Map(input -> body.outputs.head))
-      )
-    )
+  private lazy val withOutput: StateSnapshot[MirrorState] =
+    shelley.copy(state = MirrorStep.mapUtxo(shelley.state)(_ ++ Map(input -> body.outputs.head)))
 
   private lazy val written: IO[Array[Byte]] =
     format.encode(withOutput).flatMap(r => IO(r.fold(e => fail(s"refused: $e"), identity)))
 
   test("the state holds the output's 50 ada under Ptr 0 0 0") {
-    assertEquals(withOutput.state.ledger.utxo.ptrStake.get(Ptr.zero), Some(BigInt(50000000)))
-    assertEquals(withOutput.state.ledger.utxo.ptrStake.keys.filter(!_.fits).toList, Nil)
+    assertEquals(utxoOf(withOutput.state).ptrStake.get(Ptr.zero), Some(BigInt(50000000)))
+    assertEquals(utxoOf(withOutput.state).ptrStake.keys.filter(!_.fits).toList, Nil)
   }
 
   test("the snapshot is written (it was refused before), read back in full, and comes back equal") {
     written.flatMap(bytes =>
       format.decode(bytes).map { r =>
         val back = r.fold(e => fail(e.message), identity)
-        assertEquals(back, withOutput.copy(state = SnapshotV4.canonical(env, withOutput.state)))
-        assertEquals(back.state.ledger.utxo.get(input), Some(body.outputs.head))
-        assertEquals(back.state.ledger.utxo.ptrStake.get(Ptr.zero), Some(BigInt(50000000)))
+        assertEquals(back.anchor, withOutput.anchor)
+        assertEquals(utxoOf(back.state).get(input), Some(body.outputs.head))
+        assertEquals(utxoOf(back.state).ptrStake.get(Ptr.zero), Some(BigInt(50000000)))
       }
     )
   }
 
   test("a state that held the pointer as it came is the one the writer refuses") {
-    val ledger = withOutput.state.ledger
     val exact = Ptr(BigInt("16292793057"), 1011302, 20)
     val before = withOutput.copy(state =
-      withOutput.state.copy(ledger =
-        ledger.copy(utxo = ledger.utxo.copy(ptrStake = Map(exact -> BigInt(50000000))))
-      )
+      MirrorStep.mapUtxo(withOutput.state)(_.copy(ptrStake = Map(exact -> BigInt(50000000))))
     )
     format.encode(before).map(r => assert(r.isLeft, "the pointer does not fit the Haskell state"))
   }

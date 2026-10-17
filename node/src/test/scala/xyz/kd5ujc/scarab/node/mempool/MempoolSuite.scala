@@ -14,12 +14,12 @@ import munit.{CatsEffectSuite, ScalaCheckSuite}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   FlatStateGen,
-  LedgerMirror,
   MirrorEnv,
   MirrorError,
   SlotNo,
   WithOrigin
 }
+import xyz.kd5ujc.scarab.legacy.{FlatTestLedger, LedgerMirror, LedgerState}
 import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 
@@ -101,9 +101,13 @@ object TxKit:
       .run(mirrorEnv)
       .fold(e => sys.error(s"to the mirror: $e"), image => MempoolLedger.of(image.value.nes))
 
+  /** The Conway ledger of a new-epoch state. */
+  def conway(nes: xyz.kd5ujc.scarab.ledger.state.NewEpochState[Conway]): MempoolLedger =
+    MempoolLedger.of(nes)
+
   /** The flat state with `n` outputs of `value` for alice, at txIn(1..n). */
   def flat(n: Int, value: BigInt = 100 * ada): LedgerState =
-    TestLedger.state(10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
+    FlatTestLedger.state(10, (1 to n).toVector.map(i => txIn(i) -> out(alice.address(), value)))
 
   /** The Conway ledger with `n` outputs of `value` for alice, at txIn(1..n). */
   def ledger(n: Int, value: BigInt = 100 * ada): MempoolLedger = conway(flat(n, value))

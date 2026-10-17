@@ -3,14 +3,7 @@ package xyz.kd5ujc.scarab.consensus.state
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras}
-import xyz.kd5ujc.scarab.ledger.state.{
-  BlockNo,
-  Hash32,
-  MirrorError,
-  SlotNo,
-  VocabError,
-  WithOrigin
-}
+import xyz.kd5ujc.scarab.ledger.state.{BlockNo, Hash32, MirrorError, SlotNo, VocabError, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The mirror of a chain that is in Byron: the Byron ledger and its chain-follow state are carried
@@ -26,8 +19,8 @@ object ByronMirror:
     e.leftMap(v => StateMirrorError.Ledger(MirrorError.Vocab(v)))
 
   /** The Byron mirror at the tip `anchor`: `pending` is the chain-dependent state Shelley starts
-    * from, `consensus` the node's bookkeeping with the Byron state (which holds the Byron ledger and
-    * the PBFT window).
+    * from, `consensus` the node's bookkeeping with the Byron state (which holds the Byron ledger
+    * and the PBFT window).
     */
   def of(
       env: ConsensusMirrorEnv,

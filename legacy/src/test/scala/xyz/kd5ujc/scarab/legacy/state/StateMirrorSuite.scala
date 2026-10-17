@@ -23,9 +23,9 @@ import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{Sorted, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** The conversion of the flat node state to the mirror: the laws of the whole conversion on generated states of the
-  * three protocols (PBFT in Byron, TPraos from Shelley to Alonzo, Praos from Babbage), and the
-  * cases the laws do not reach.
+/** The conversion of the flat node state to the mirror: the laws of the whole conversion on
+  * generated states of the three protocols (PBFT in Byron, TPraos from Shelley to Alonzo, Praos
+  * from Babbage), and the cases the laws do not reach.
   */
 class StateMirrorSuite extends DisciplineSuite:
   type Result[A] = Either[StateMirrorError, A]

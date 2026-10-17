@@ -10,7 +10,6 @@ import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.BootstrapState
-import xyz.kd5ujc.scarab.consensus.NodeState
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.Header
@@ -18,11 +17,10 @@ import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
 import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, MirrorEnv, StakePool}
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.node.LegacySeed
 import xyz.kd5ujc.scarab.node.MirrorRules
-import xyz.kd5ujc.scarab.node.MirrorRun
 import xyz.kd5ujc.scarab.node.RefStateful
 import xyz.kd5ujc.scarab.node.mempool.MempoolLedger
+import xyz.kd5ujc.scarab.legacy.{FlatNodeState, LedgerState, Mirroring, Snapshot}
 import xyz.kd5ujc.scarab.node.read.ConwayView
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
@@ -95,7 +93,7 @@ trait ForgeFixture:
       )
     )
 
-  def nodeState(ledger: LedgerState): NodeState =
+  def nodeState(ledger: LedgerState): FlatNodeState =
     val lite = LiteLedger(
       0,
       LiteParams((10, 0), Rational.zero, Nonce.Neutral, 65536, 16384, 1100),
@@ -121,7 +119,7 @@ trait ForgeFixture:
       ),
       ProtocolExtras(5, Nonce.Neutral)
     )
-    NodeState(praos, ledger, BootstrapState.initial(lite))
+    FlatNodeState(praos, ledger, BootstrapState.initial(lite))
 
   /** What the mirror reads of this configuration. */
   lazy val mirrorEnv: ConsensusMirrorEnv = ConsensusMirrorEnv(
@@ -136,9 +134,9 @@ trait ForgeFixture:
 
   /** The chain's state at the origin: the node's state through the mirror, once, at the start. */
   def mirrorState(ledger: LedgerState): MirrorState =
-    MirrorRun
-      .run(mirrorEnv)(_.toMirror(None, nodeState(ledger)))
-      .fold(e => throw new AssertionError(e.toString), m => LegacySeed(m.value))
+    Mirroring
+      .toMirror(mirrorEnv, None, nodeState(ledger))
+      .fold(e => throw new AssertionError(e.toString), _.value)
 
   /** The blocks the pool made in the epoch of the tip, in the state's own count. */
   def blocksMade(c: VolatileChain[MirrorState], id: Bytes): Option[BigInt] =

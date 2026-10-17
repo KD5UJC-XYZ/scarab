@@ -4,14 +4,14 @@ package xyz.kd5ujc.scarab.node.read
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
+import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, MirrorState}
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The states of the era-walking capture (`fixtures/eras`, Byron to Conway), each with the block
-  * that made it, its anchor and its mirror: the corpus the read paths are compared on.
+  * that made it and its anchor: the corpus the read paths are compared on.
   */
 object ErasStates:
   private val fixtures = Path.of("fixtures/eras")
@@ -38,19 +38,17 @@ object ErasStates:
   final case class Sample(
       era: Era,
       anchor: BlockRef,
-      state: NodeState,
+      mirror: MirrorState,
       block: Block
-  ):
-    lazy val mirror: MirrorState =
-      MirrorRun.run(env)(_.toMirror(Some(anchor), state)).fold(e => sys.error(e.toString), _.value)
+  )
 
   /** The state after every block. */
   lazy val samples: Vector[Sample] =
     blocks.indices
       .foldLeft(Vector.empty[Sample]) { (acc, i) =>
-        val before = acc.lastOption.fold(setup.start)(_.state)
+        val before = acc.lastOption.fold(setup.mirrorStart)(_.mirror)
         val h = blocks(i).header
-        NodeRules.applyBlock(before, h, raws(i), setup.praos, setup.globals, setup.byronRules) match
+        MirrorSteps.block(setup, before, h, raws(i)) match
           case Right(next) =>
             acc :+ Sample(
               blocks(i).era,

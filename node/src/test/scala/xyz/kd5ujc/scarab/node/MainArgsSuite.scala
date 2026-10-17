@@ -48,29 +48,23 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--max-inbound", "0")).isLeft)
   }
 
-  test("--rules defaults to the new rules; differential takes its policy and repro directory") {
-    val defaults = Main.parse(base).toOption.get
-    assertEquals(defaults.rules, RulesMode.New)
-    assertEquals(defaults.onDivergence, differential.Policy.Halt)
-    assertEquals(defaults.reproDir, None)
-    assertEquals(Main.parse(base ++ List("--rules", "old")).toOption.get.rules, RulesMode.Old)
-    val d = Main
-      .parse(
-        base ++ List("--rules", "differential", "--on-divergence", "reseed", "--repro-dir", "/r")
+  test("the flags of the removed rules modes are refused with a typed error that says what to do") {
+    List(
+      List("--rules", "new") -> "rules",
+      List("--rules", "differential", "--on-divergence", "reseed") -> "rules",
+      List("--mirror-check", "on") -> "mirror-check",
+      List("--on-divergence", "halt") -> "on-divergence",
+      List("--repro-dir", "/r") -> "repro-dir"
+    ).foreach { (flags, name) =>
+      val result = Main.parse(base ++ flags)
+      assert(
+        result.left.exists(e =>
+          e.problem == xyz.kd5ujc.scarab.ledger.ConfigProblem.RemovedFlag(name) &&
+            e.message.contains(s"--$name was removed")
+        ),
+        s"$flags: $result"
       )
-      .toOption
-      .get
-    assertEquals(d.rules, RulesMode.Differential)
-    assertEquals(d.onDivergence, differential.Policy.Reseed)
-    assertEquals(d.reproDir, Some(java.nio.file.Path.of("/r")))
-  }
-
-  test("--rules refuses an unknown mode, and the divergence flags need the differential mode") {
-    assert(Main.parse(base ++ List("--rules", "both")).isLeft)
-    assert(Main.parse(base ++ List("--rules", "differential", "--on-divergence", "stop")).isLeft)
-    assert(Main.parse(base ++ List("--on-divergence", "halt")).isLeft)
-    assert(Main.parse(base ++ List("--rules", "old", "--repro-dir", "/r")).isLeft)
-    assert(Main.parse(base ++ List("--rules", "old", "--rules", "new")).isLeft)
+    }
   }
 
   test("--cpu-threads takes zero (no pool) or a positive number, nothing else") {

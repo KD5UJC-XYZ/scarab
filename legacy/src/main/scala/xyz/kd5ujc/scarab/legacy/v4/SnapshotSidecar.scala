@@ -74,6 +74,8 @@ object SnapshotSidecar:
       .digest(codec.shape.getBytes("UTF-8"))
       .take(FingerprintSize)
 
-/** The extras of the Shelley-based sidecar of V4: the old rules' bookkeeping beside the consensus extras. */
+/** The extras of the Shelley-based sidecar of V4: the old rules' bookkeeping beside the consensus
+  * extras.
+  */
 object MirrorExtras:
   final case class InShelley(ledger: NodeExtras, consensus: ConsensusExtras)

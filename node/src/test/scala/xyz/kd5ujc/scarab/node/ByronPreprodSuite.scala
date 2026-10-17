@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, NodeState}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.InEra
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, BlockRule, Header}
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.consensus.ByronRules
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronVersion}
-import munit.FunSuite
+import cats.effect.IO
+import munit.CatsEffectSuite
 import scala.jdk.CollectionConverters.*
 
 /** The whole Byron era of the public preprod testnet (45 main blocks and the epoch 0 boundary
@@ -17,14 +22,11 @@ import scala.jdk.CollectionConverters.*
   * in which it enters Shelley is derived from the Byron update proposals, votes and endorsements
   * the blocks carry.
   */
-class ByronPreprodSuite extends FunSuite:
+class ByronPreprodSuite extends CatsEffectSuite:
   private val setup: NodeSetup =
     NodeSetup
       .fromDirectory(Path.of("fixtures/preprod/genesis"))
       .fold(e => fail(e.message), identity)
-
-  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
-    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
 
   private val raws: Vector[Bytes] =
     Files
@@ -47,18 +49,11 @@ class ByronPreprodSuite extends FunSuite:
       blocks(i).header.isBoundary
     )
 
-  private def step(state: NodeState, i: Int): Either[BlockFailure, NodeState] =
-    NodeRules.applyBlock(
-      state,
-      blocks(i).header,
-      raws(i),
-      setup.praos,
-      setup.globals,
-      setup.byronRules
-    )
+  private def step(state: MirrorState, i: Int): Either[BlockFailure, MirrorState] =
+    MirrorSteps.block(setup, state, blocks(i).header, raws(i))
 
-  private lazy val states: Vector[NodeState] =
-    blocks.indices.foldLeft(Vector(setup.start)) { (acc, i) =>
+  private lazy val states: Vector[MirrorState] =
+    blocks.indices.foldLeft(Vector(setup.mirrorStart)) { (acc, i) =>
       step(acc.last, i).fold(
         f =>
           fail(
@@ -112,19 +107,19 @@ class ByronPreprodSuite extends FunSuite:
 
   test("the update proposals of the chain make the protocol 1.0.0 and then 2.0.0, a candidate") {
     val versions =
-      (0 to byronCount).flatMap(i => states(i).byron.ledger.map(_.update.adoptedVersion))
+      (0 to byronCount).flatMap(i => states(i).consensus.byron.ledger.map(_.update.adoptedVersion))
     assertEquals(versions.head, ByronVersion.zero)
     assertEquals(versions.distinct, Vector(ByronVersion.zero, ByronVersion(1, 0, 0)))
-    val last = states(byronCount).byron.ledger.get
+    val last = states(byronCount).consensus.byron.ledger.get
     assertEquals(last.update.candidates.map(_.version), Vector(ByronVersion(2, 0, 0)))
   }
 
   test("the transition to Shelley is derived from the update state: epoch 4, as on the network") {
-    val last = states(byronCount).byron.ledger.get
+    val last = states(byronCount).consensus.byron.ledger.get
     assertEquals(ByronLedger.transition(setup.byronRules.get.ledger, last), Some(BigInt(4)))
-    assertEquals(states.last.byron.firstShelleyEpoch, Some(BigInt(4)))
-    assertEquals(states.last.byron.ledger, None)
-    assertEquals(states(byronCount + 1).ledger.epoch, BigInt(4))
+    assertEquals(states.last.consensus.byron.firstShelleyEpoch, Some(BigInt(4)))
+    assertEquals(states.last.consensus.byron.ledger, None)
+    assertEquals(states(byronCount + 1).ledgerEpoch, BigInt(4))
     assertEquals(
       states.last.geometry(setup.geometry).firstShelleySlot,
       BigInt(4) * setup.geometry.byron.epochSlots
@@ -134,13 +129,16 @@ class ByronPreprodSuite extends FunSuite:
   test(
     "the Shelley ledger starts from the Byron UTxO; the zero-lovelace genesis outputs are dropped"
   ) {
-    val ledger = states(byronCount + 1).ledger
+    val after = states(byronCount + 1)
     // Eight genesis balances, seven of them zero lovelace: the ledger's Byron to Shelley translation
     // (`translateUTxOByronToShelley`) drops those, as the Haskell node does on Preview.
-    assertEquals(ledger.utxo.size, 1)
-    val byronTotal = states(byronCount).byron.ledger.get.utxo.values.map(_.value).sum
-    assertEquals(ledger.utxo.coin, byronTotal)
-    assertEquals(ledger.reserves, setup.genesis.maxLovelaceSupply - byronTotal)
+    assertEquals(after.utxo.size, 1)
+    val byronTotal = states(byronCount).consensus.byron.ledger.get.utxo.values.map(_.value).sum
+    assertEquals(after.utxo.coin, byronTotal)
+    val reserves = MirrorSteps
+      .ledger(after)
+      .flatMap { case InEra.Of(_, l) => l.scalars.toOption.map(_.chainAccount.reserves.value) }
+    assertEquals(reserves, Some(setup.genesis.maxLovelaceSupply - byronTotal))
   }
 
   test("the era entered is Shelley at epoch 4, observed once") {
@@ -163,25 +161,18 @@ class ByronPreprodSuite extends FunSuite:
 
   test("a configured Shelley epoch overrides the derivation, and Byron blocks end there") {
     val later = setup.byronRules.map(_.copy(configuredShelleyEpoch = Some(BigInt(5))))
-    val firstShelley = NodeRules.applyBlock(
+    val firstShelley = MirrorSteps.block(
+      setup,
       states(byronCount),
       blocks(byronCount).header,
       raws(byronCount),
-      setup.praos,
-      setup.globals,
-      later
+      byron = later
     )
     // the block lies in epoch 4, before the configured epoch 5
     assert(firstShelley.left.exists(_.rule == BlockRule.Byron), firstShelley.toString)
     val earlier = setup.byronRules.map(_.copy(configuredShelleyEpoch = Some(BigInt(2))))
-    val lastByron = NodeRules.applyBlock(
-      states(30),
-      blocks(30).header,
-      raws(30),
-      setup.praos,
-      setup.globals,
-      earlier
-    )
+    val lastByron =
+      MirrorSteps.block(setup, states(30), blocks(30).header, raws(30), byron = earlier)
     assert(lastByron.left.exists(_.rule == BlockRule.Structure), lastByron.toString)
   }
 
@@ -191,28 +182,29 @@ class ByronPreprodSuite extends FunSuite:
     val raw = raws(i)
     val at = raw.size - 70 // inside the update payload's signatures
     val bad = Bytes(raw.value.updated(at, (raw.value(at) ^ 1).toByte))
-    val result =
-      NodeRules.applyBlock(states(i), b.header, bad, setup.praos, setup.globals, setup.byronRules)
+    val result = MirrorSteps.block(setup, states(i), b.header, bad)
     assert(result.isLeft, result.toString)
   }
 
   test(
     "the Byron state, and the Shelley state after the hand-over, survive a snapshot round trip"
   ) {
-    import xyz.kd5ujc.scarab.legacy
-    Vector(1, 20, byronCount, byronCount + 5).foreach { i =>
+    given cats.mtl.Ask[IO, xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv] =
+      setup.mirrorAsk(IO.pure(Map.empty))
+    val format = xyz.kd5ujc.scarab.storage.SnapshotV5.format[IO](
+      xyz.kd5ujc.scarab.storage.SnapshotCheck.Full
+    )
+    Vector(1, 20, byronCount, byronCount + 5).traverse_ { i =>
       val state = states(i)
-      val old = legacy.SnapshotV2.encode(
-        legacy.StateSnapshot(Option(ref(i - 1)), legacy.Downgrade.node(state))
-      )(using legacy.NodeCodecs.nodeSnapshot)
-      val back = legacy.SnapshotV2
-        .decodeNode(old)
-        .fold(e => fail(e.message), identity)
-      val upgraded = legacy.Upgrade
-        .node(back.state, setup.praos.forks, back.anchor)
-        .fold(e => fail(e.toString), identity)
-      assertEquals(upgraded.byron, state.byron, s"state before block $i")
-      assertEquals(upgraded.ledger.utxo.size, state.ledger.utxo.size)
+      for
+        written <- format.encode(xyz.kd5ujc.scarab.storage.StateSnapshot(Some(ref(i - 1)), state))
+        content = written.fold(r => fail(r.toString), identity)
+        read <- format.decode(content)
+        back = read.fold(e => fail(e.message), identity)
+      yield
+        assertEquals(back.anchor, Some(ref(i - 1)))
+        assertEquals(back.state.consensus.byron, state.consensus.byron, s"state before block $i")
+        assertEquals(back.state.utxo.size, state.utxo.size)
     }
   }
 

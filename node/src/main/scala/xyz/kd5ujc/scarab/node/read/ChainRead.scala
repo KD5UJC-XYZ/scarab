@@ -67,7 +67,7 @@ object ChainRead:
     extension (m: MirrorState)
       def era: Era = m.ext.ledgerState.era
       def ledgerEpoch: BigInt = m.ext.ledgerState.state match
-        case EraLedgerState.ByronCurrent(_) => BigInt(0)
+        case EraLedgerState.ByronCurrent(_)    => BigInt(0)
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.epoch.toBigInt
       def protocol: ProtocolState = ProtocolState(depState(m), consensus.protocol)
       def consensus: ConsensusExtras = m.extras match
@@ -82,10 +82,10 @@ object ChainRead:
             protocol
           )
       def plutus: flat.PlutusStats = m.extras match
-        case MirrorExtras.InShelley(x, _) => x.plutus
+        case MirrorExtras.InShelley(x, _)  => x.plutus
         case MirrorExtras.InByron(_, _, _) => flat.PlutusStats.zero
       def utxo: flat.Utxo = m.ext.ledgerState.state match
-        case EraLedgerState.ByronCurrent(_) => flat.Utxo.empty
+        case EraLedgerState.ByronCurrent(_)    => flat.Utxo.empty
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.es.ls.utxo.utxo.utxo
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(m.ext.ledgerState.state match
@@ -98,4 +98,4 @@ object ChainRead:
     */
   private def depState(m: MirrorState): ChainDepState = m.extras match
     case MirrorExtras.InByron(pending, _, _) => pending
-    case MirrorExtras.InShelley(_, _)           => m.ext.headerState.chainDep.state
+    case MirrorExtras.InShelley(_, _)        => m.ext.headerState.chainDep.state

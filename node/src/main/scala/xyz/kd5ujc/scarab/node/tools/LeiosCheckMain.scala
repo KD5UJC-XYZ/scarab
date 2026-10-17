@@ -52,8 +52,9 @@ object LeiosCheckMain extends IOApp:
           .ledger(None)
           .toOption
           .flatten
-          .fold(xyz.kd5ujc.scarab.ledger.PoolDistribution(Map.empty, Map.empty)) { case InEra.Of(_, l) =>
-            l.leaderPools(nextEpoch = false)
+          .fold(xyz.kd5ujc.scarab.ledger.PoolDistribution(Map.empty, Map.empty)) {
+            case InEra.Of(_, l) =>
+              l.leaderPools(nextEpoch = false)
           }
         try
           loop(

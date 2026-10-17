@@ -4,12 +4,21 @@ package xyz.kd5ujc.scarab.legacy
 import cats.syntax.all.*
 import io.circe.Json
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.GenesisState.{Files, credential, drep, get, hex28, injection, output, pool}
+import xyz.kd5ujc.scarab.ledger.GenesisState.{
+  Files,
+  credential,
+  drep,
+  get,
+  hex28,
+  injection,
+  output,
+  pool
+}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronOut}
 
-/** The flat ledger state at the first Shelley-based slot of a chain: from the Shelley `initialFunds`
-  * and staking injections, the Byron non-AVVM balances and the Conway genesis DReps and vote
-  * delegations. FROZEN with the flat state: the node's start state is this, put through
+/** The flat ledger state at the first Shelley-based slot of a chain: from the Shelley
+  * `initialFunds` and staking injections, the Byron non-AVVM balances and the Conway genesis DReps
+  * and vote delegations. FROZEN with the flat state: the node's start state is this, put through
   * [[LedgerMirror.to]] once, at the start (the genesis start is the one use of the flat state that
   * is not a reader of an old file; design `ledger-mirror-step2.md` J2.9, gaps).
   */
@@ -160,4 +169,3 @@ object GenesisState:
           )
       // Epoch 0 has a (necessarily empty) reward update, like every other epoch.
       seeded.copy(rewardUpdate = Some(Rewards.update(seeded, globals)))
-

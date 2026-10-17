@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import cats.Id
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Rational
@@ -69,4 +68,3 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     assertEquals(after.plutus.succeeded, 1L)
     assertEquals(after.fees, c.tx.body.fee)
   }
-

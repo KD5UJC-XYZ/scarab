@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.*
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
 
-
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
@@ -16,9 +15,9 @@ import xyz.kd5ujc.scarab.ledger.state.{LedgerState as _, *}
 
 /** The era-indexed rules as the ledger suites run them (J2.6 to J2.9): the LEDGER rules on a
   * transaction, the boundary and the tick, on a state written as the flat [[LedgerState]] the
-  * suites build, which the mirror turns into the state the rules run on and
-  * [[LedgerMirrorBack]] reads the result back from, so that the suites' assertions are written over
-  * the flat state. (Until J2.9 the suites ran against the old rules too, beside these.)
+  * suites build, which the mirror turns into the state the rules run on and [[LedgerMirrorBack]]
+  * reads the result back from, so that the suites' assertions are written over the flat state.
+  * (Until J2.9 the suites ran against the old rules too, beside these.)
   *
   * The rules run LEDGER of the era the state's protocol version names, with the checks and the
   * state the reference has (`ShelleyLedger` before Conway, `Ledger` from it). A refusal is the
@@ -59,7 +58,12 @@ object RuleSet:
       .fold(throw new AssertionError("the rules made no reward update"))(_.rewards)
 
   /** The state after the tick to `slot`, the first slot of whose epoch is `epochStart`. */
-  def tick(s: LedgerState, slot: BigInt, @annotation.unused epochStart: BigInt, g: LedgerGlobals): LedgerState =
+  def tick(
+      s: LedgerState,
+      slot: BigInt,
+      @annotation.unused epochStart: BigInt,
+      g: LedgerGlobals
+  ): LedgerState =
     newTick(s, slot, g)
 
   type Result[A] = Either[MirrorError, A]

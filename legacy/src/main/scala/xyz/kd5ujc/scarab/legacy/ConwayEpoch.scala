@@ -3,8 +3,9 @@ package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.ledger.*
 
-/** FROZEN. What the flat conversion ([[LedgerMirror]]) needs of the old Conway EPOCH rule: the enact
-  * state of a flat ledger state and the pulser as the governance state reports it. */
+/** FROZEN. What the flat conversion ([[LedgerMirror]]) needs of the old Conway EPOCH rule: the
+  * enact state of a flat ledger state and the pulser as the governance state reports it.
+  */
 object ConwayEpoch:
 
   /** Enact state of the ledger as it stands: the committee, constitution and parameters. */

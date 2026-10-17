@@ -16,13 +16,13 @@ import xyz.kd5ujc.scarab.ledger.state.Gap
 
 /** The laws of the frozen conversion [[StateMirror]] over any effect `F` that has the capabilities
   * (`run` interprets it). The flat state of the old rules is brought to the mirror and not back
-  * (the older snapshots are migrated, and nothing converts the other way), so the laws state what the
-  * mirror says of the state it was made of:
+  * (the older snapshots are migrated, and nothing converts the other way), so the laws state what
+  * the mirror says of the state it was made of:
   *
   *   - the anchor is the tip of the header state, and the era the state is in is the era of the
   *     telescopes;
-  *   - the kind of extras is the kind of the ledger state (Byron's, or a Shelley-based era's), and a
-  *     Shelley-based era's hold the phase-2 counters of the state;
+  *   - the kind of extras is the kind of the ledger state (Byron's, or a Shelley-based era's), and
+  *     a Shelley-based era's hold the phase-2 counters of the state;
   *   - the gaps are exactly the ones [[StateMirror.gaps]] says, and the Shelley transition is one
   *     exactly when the mirror has a Shelley-based state.
   *

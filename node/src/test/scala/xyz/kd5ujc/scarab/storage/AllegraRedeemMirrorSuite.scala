@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
-import cats.Show
 import cats.effect.IO
 import cats.mtl.Handle
 import cats.syntax.all.*
@@ -9,18 +8,18 @@ import io.circe.parser
 import java.nio.file.{Files as JFiles, Path as JPath}
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep, StateMirrorError}
+import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesisFile, Header, NodeError, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronOut}
-import xyz.kd5ujc.scarab.node.{LegacySeed, MirrorRules, MirrorRun, NodeSetup}
+import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.Era
 import scala.jdk.CollectionConverters.*
 
-/** The entry into Allegra on the era-indexed rules, over a store ([[AllegraRedeemStoreSuite]] is
-  * the old rules'): the outputs to Byron redeem (AVVM) addresses stashed by the hand-over are
-  * removed from the set and returned to the reserves by the translation, and the deletions, which
-  * the store holds the outputs of while the state's diff does not, reach the store.
+/** The entry into Allegra on the era-indexed rules, over a store: the outputs to Byron redeem
+  * (AVVM) addresses stashed by the hand-over are removed from the set and returned to the reserves
+  * by the translation, and the deletions, which the store holds the outputs of while the state's
+  * diff does not, reach the store.
   *
   * The chain is the era-walking capture of `fixtures/eras` (Allegra at epoch 2) with the mainnet
   * genesis AVVM balance in its Byron UTxO, run by [[MirrorRules]] with the store; each block's
@@ -61,12 +60,9 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
 
   /** The state the chain starts from, as the mirror, with the AVVM balance in the Byron UTxO. */
   private val start: MirrorState =
-    val s = setup.start
-    val node =
-      s.withByron(s.byron.copy(ledger = s.byron.ledger.map(l => l.copy(utxo = l.utxo + avvm))))
-    MirrorRun
-      .run(setup.mirrorEnv())(_.toMirror(None, node))
-      .fold(e => fail(Show[StateMirrorError].show(e)), m => LegacySeed(m.value))
+    MirrorSteps.withConsensus(setup.mirrorStart)(c =>
+      c.copy(byron = c.byron.copy(ledger = c.byron.ledger.map(l => l.copy(utxo = l.utxo + avvm))))
+    )
 
   private final case class Run(
       shelleyEnd: MirrorState,

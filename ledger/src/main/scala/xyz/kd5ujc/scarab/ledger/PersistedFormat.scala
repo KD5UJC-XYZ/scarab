@@ -75,8 +75,8 @@ enum FileKind(
 
   /** `<db>/snapshots/snapshot-<slot>-<blockNo>.bin`. The identifier is the 8-byte magic, and for
     * the two versions that share one (`CSLSNAP1`, which holds its format number as a 32-bit integer
-    * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger state with a
-    * sidecar.
+    * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger
+    * state with a sidecar.
     */
   case SnapshotFile
       extends FileKind(

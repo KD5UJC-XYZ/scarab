@@ -8,8 +8,8 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** The genesis files and the network constants read from them, and the readers of their injections
-  * (`initialFunds`, `stakePools`, `stakeCredentials`, Conway DReps and delegations). The ledger state
-  * at the start of a chain is built from them by `legacy.GenesisState`.
+  * (`initialFunds`, `stakePools`, `stakeCredentials`, Conway DReps and delegations). The ledger
+  * state at the start of a chain is built from them by `legacy.GenesisState`.
   */
 object GenesisState:
   /** The genesis files; `byronNetworkMagic` is the magic Byron addresses carry on a network that

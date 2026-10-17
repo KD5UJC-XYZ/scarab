@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-
-
 import java.nio.file.{Files, Path}
 import cats.syntax.all.*
 import munit.FunSuite
@@ -67,4 +65,3 @@ class MainnetPoolNetworkSuite extends FunSuite:
   test("protocol version 5 and later reject it with WrongNetworkPOOL") {
     List(5, 6, 7, 8).foreach(pv => assertEquals(rule(register(pv)), "WrongNetworkPOOL", s"pv $pv"))
   }
-

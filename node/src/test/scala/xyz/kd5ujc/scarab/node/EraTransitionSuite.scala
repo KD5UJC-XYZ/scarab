@@ -4,13 +4,7 @@ package xyz.kd5ujc.scarab.node
 import xyz.kd5ujc.scarab.consensus
 import xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.storage
-import xyz.kd5ujc.scarab.consensus.{
-  BlockRef,
-  FollowerEvent,
-  FollowerEvents,
-  NodeState,
-  VolatileChain
-}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, FollowerEvents, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   BlockFailure,
@@ -31,7 +25,15 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.consensus.{ByronCheck, ByronRules}
-import xyz.kd5ujc.scarab.consensus.state.{PBftState, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{
+  MirrorExtras,
+  MirrorState,
+  MirrorStep,
+  PBftState,
+  ProtocolState
+}
+import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.Nonce
 import munit.CatsEffectSuite
 import scala.concurrent.duration.*
@@ -52,9 +54,6 @@ class EraTransitionSuite extends CatsEffectSuite:
   private val setup: NodeSetup =
     NodeSetup.fromDirectory(fixtures.resolve("genesis")).fold(e => fail(e.message), identity)
   private val geometry = setup.geometry
-
-  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
-    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
 
   private val raws: Vector[Bytes] =
     Files
@@ -102,22 +101,32 @@ class EraTransitionSuite extends CatsEffectSuite:
 
   private def eraAt(i: Int): Era = blocks(i).era
 
-  private def validate(
-      state: NodeState,
-      i: Int
-  ): Either[BlockFailure, NodeState] =
-    NodeRules.applyBlock(
-      state,
-      headers(i),
-      raws(i),
-      setup.praos,
-      setup.globals,
-      setup.byronRules
-    )
+  private def applyBlock(
+      state: MirrorState,
+      header: Header,
+      raw: Bytes,
+      praos: consensus.PraosConfig = setup.praos
+  ): Either[BlockFailure, MirrorState] =
+    MirrorSteps.block(setup, state, header, raw, Some(praos))
+
+  private def validate(state: MirrorState, i: Int): Either[BlockFailure, MirrorState] =
+    applyBlock(state, headers(i), raws(i))
+
+  /** The protocol parameters in force in the ledger state of a Shelley-based mirror. */
+  private def params(s: MirrorState): ledger.ProtocolParams =
+    s.ledger(None).toOption.flatten.fold(fail("no Shelley-based ledger state")) {
+      case InEra.Of(_, l) => l.params
+    }
+
+  /** The genesis delegations of the ledger state of a Shelley-based mirror. */
+  private def genDelegs(s: MirrorState): Map[Bytes, ledger.GenDelegPair] =
+    s.ledger(None).toOption.flatten.fold(fail("no Shelley-based ledger state")) {
+      case InEra.Of(_, l) => l.genDelegsAt(0)
+    }
 
   /** State before block `i` is `states(i)`; `states(blocks.size)` is the final state. */
-  private lazy val states: Vector[NodeState] =
-    blocks.indices.foldLeft(Vector(setup.start)) { (acc, i) =>
+  private lazy val states: Vector[MirrorState] =
+    blocks.indices.foldLeft(Vector(setup.mirrorStart)) { (acc, i) =>
       validate(acc.last, i) match
         case Right(next) => acc :+ next
         case Left(f) =>
@@ -276,7 +285,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     val byEpoch = setup.praos.forks
     blocks.indices.filter(blocks(_).isInstanceOf[Block.Shelley]).foreach { i =>
       val epoch = geometry.epochOf(headers(i).slot)
-      val major = states(i + 1).ledger.params.protocolMajor
+      val major = params(states(i + 1)).protocolMajor
       assertEquals(byEpoch.eraAt(epoch, major), eraAt(i), s"block $i by epoch")
       assertEquals(byVersion.eraAt(epoch, major), eraAt(i), s"block $i by version (major $major)")
     }
@@ -288,14 +297,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     val late = setup.praos.copy(forks =
       consensus.HardForkConfig.fromEpochs(setup.config.hardForkEpochs.updated(Era.Allegra, 99))
     )
-    val result = NodeRules.applyBlock(
-      states(allegra),
-      headers(allegra),
-      raws(allegra),
-      late,
-      setup.globals,
-      setup.byronRules
-    )
+    val result = applyBlock(states(allegra), headers(allegra), raws(allegra), late)
     assertEquals(result.left.map(_.rule), Left(BlockRule.Envelope))
     assert(result.left.exists(_.reason.contains("the chain is in Shelley")))
     // and the configured history accepts it
@@ -304,17 +306,17 @@ class EraTransitionSuite extends CatsEffectSuite:
 
   test("the node's block rules accept the whole chain from the genesis state") {
     assertEquals(states.size, blocks.size + 1)
-    assertEquals(states.last.boot.era, Some(Era.Conway))
-    assertEquals(states.last.byron.tip.map(_.hash), Some(headers(49).hash))
+    assertEquals(states.last.consensus.boot.era, Some(Era.Conway))
+    assertEquals(states.last.consensus.byron.tip.map(_.hash), Some(headers(49).hash))
   }
 
   test("the genesis delegations survive the translation to Conway, unused, as in the reference") {
     // K1: db-analyser shows `dsGenDelegs` in every Conway state; clearing it differed at epoch 10.
-    val before = states(boundaries.last).ledger
-    val after = states(boundaries.last + 1).ledger
-    assert(before.params.protocolMajor < 9 && after.params.protocolMajor >= 9)
-    assert(before.genDelegs.nonEmpty)
-    assertEquals(after.genDelegs, before.genDelegs)
+    val before = states(boundaries.last)
+    val after = states(boundaries.last + 1)
+    assert(params(before).protocolMajor < 9 && params(after).protocolMajor >= 9)
+    assert(genDelegs(before).nonEmpty)
+    assertEquals(genDelegs(after), genDelegs(before))
   }
 
   test("Byron headers: boundary block structural, every main signature verified") {
@@ -361,7 +363,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     // the first Shelley epoch nonce is the genesis hash itself (nothing mixed in yet)
     assertEquals(states(shelley.head + 1).protocol.epochNonce, genesisHash)
     // the Byron prefix leaves the Praos state untouched
-    assert((0 until 50).forall(i => states(i + 1).protocol == setup.start.protocol))
+    assert((0 until 50).forall(i => states(i + 1).protocol == setup.mirrorStart.protocol))
   }
 
   test(
@@ -442,7 +444,7 @@ class EraTransitionSuite extends CatsEffectSuite:
       block: Block.Byron,
       from: Int = -1
   ): Either[String, (ByronRules.State, ByronCheck)] =
-    val before = states(if from >= 0 then from else i).byron
+    val before = states(if from >= 0 then from else i).consensus.byron
     ByronRules.update(
       ByronRules.State(before.tip, before.ledger.get, before.pbft),
       block,
@@ -496,7 +498,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     val b = byronBlock(5)
     assert(byronUpdate(5, b, from = 3).isLeft)
     assert(byronUpdate(5, withHeader(5)(_.copy(protocolMagic = 1))).isLeft)
-    val first = states(0).byron
+    val first = states(0).consensus.byron
     assert(
       ByronRules
         .update(ByronRules.State(None, first.ledger.get, first.pbft), b, setup.byronRules.get)
@@ -505,18 +507,22 @@ class EraTransitionSuite extends CatsEffectSuite:
   }
 
   test("the PBFT counts, kept up to date by every block, are those of the window") {
-    val byron = states.filter(_.byron.ledger.isDefined)
-    assert(byron.exists(_.byron.pbft.inWindow.nonEmpty))
+    val byron = states.filter(_.consensus.byron.ledger.isDefined)
+    assert(byron.exists(_.consensus.byron.pbft.inWindow.nonEmpty))
     byron.foreach { s =>
-      assertEquals(s.byron.pbft.counts, PBftState.ofWindow(s.byron.pbft.inWindow).counts)
+      assertEquals(
+        s.consensus.byron.pbft.counts,
+        PBftState.ofWindow(s.consensus.byron.pbft.inWindow).counts
+      )
     }
   }
 
   test("a Byron block signing more than the threshold of a window is rejected") {
     val b = byronBlock(5)
     val key = byronUpdate(5, b).toOption.get._1.pbft.inWindow.last.genesisKey
-    val crowded = PBftState.ofWindow(states(5).byron.pbft.inWindow.map(_.copy(genesisKey = key)))
-    val before = states(5).byron
+    val crowded =
+      PBftState.ofWindow(states(5).consensus.byron.pbft.inWindow.map(_.copy(genesisKey = key)))
+    val before = states(5).consensus.byron
     val result = ByronRules.update(
       ByronRules.State(before.tip, before.ledger.get, crowded),
       b,
@@ -527,10 +533,12 @@ class EraTransitionSuite extends CatsEffectSuite:
 
   test("the first Shelley block is rejected under a different initial nonce") {
     val first = blocks.indexWhere(_.era == Era.Shelley)
-    val wrong =
-      states(first).withProtocol(
-        ProtocolState.initial(Era.Byron, Blake2b.hash256.hash(Bytes(Vector(1, 2, 3))))
-      )
+    // the chain-dependent state Shelley starts from, held by the Byron mirror, with another nonce
+    val other = ProtocolState.initial(Era.Byron, Blake2b.hash256.hash(Bytes(Vector(1, 2, 3))))
+    val wrong = states(first).extras match
+      case MirrorExtras.InByron(_, boot, _) =>
+        states(first).copy(extras = MirrorExtras.InByron(other.dep, boot, other.extras))
+      case _ => fail("the state before the first Shelley block is not Byron's")
     val result = validate(wrong, first)
     assert(result.left.exists(_.rule == BlockRule.TPraos), result.toString)
   }
@@ -545,8 +553,7 @@ class EraTransitionSuite extends CatsEffectSuite:
     val i = blocks.indexWhere(b => b.era == Era.Mary)
     val raw = raws(i)
     val bad = Bytes(raw.value.updated(raw.size - 2, (raw.value(raw.size - 2) ^ 1).toByte))
-    val result =
-      NodeRules.applyBlock(states(i), headers(i), bad, setup.praos, setup.globals, setup.byronRules)
+    val result = applyBlock(states(i), headers(i), bad)
     assert(result.isLeft, result.toString)
   }
 
@@ -575,17 +582,17 @@ class EraTransitionSuite extends CatsEffectSuite:
     */
   private def replay(
       script: Vector[SyncEvent]
-  ): IO[(Vector[FollowerEvent], VolatileChain[NodeState])] =
+  ): IO[(Vector[FollowerEvent], VolatileChain[MirrorState])] =
     val bodies = headers.map(_.hash).zip(raws).toMap
     for
-      chainRef <- Ref.of[IO, VolatileChain[NodeState]](
-        VolatileChain.genesis(geometry.securityParam, setup.start, setup.origin)
+      chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+        VolatileChain.genesis(geometry.securityParam, setup.mirrorStart, setup.origin)
       )
       eventsRef <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
       queue <- Queue.unbounded[IO, SyncEvent]
       _ <- script.traverse_(queue.offer)
       done <- Deferred[IO, Unit]
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent) = eventsRef.update(_ :+ event)
       peer = new Peer[IO]:
@@ -597,9 +604,9 @@ class EraTransitionSuite extends CatsEffectSuite:
         def fetch(header: Header) = IO.pure(bodies(header.hash))
       outcome <- Handle
         .allow[NodeError] {
-          val rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
+          val rules = mirrorRules
           Follower
-            .create[IO, NodeState](rules, events, geometry, NodeRules.observe(geometry))
+            .create[IO, MirrorState](rules, events, geometry, NodeRules.observe(geometry))
             .flatMap(follower =>
               IO.race(follower.session(peer), done.get.timeout(60.seconds))
                 .as(().asRight[NodeError])
@@ -610,6 +617,15 @@ class EraTransitionSuite extends CatsEffectSuite:
       chain <- chainRef.get
       seen <- eventsRef.get
     yield (seen, chain)
+
+  private def mirrorRules(using cats.mtl.Raise[IO, ValidationError]): MirrorRules[IO] =
+    MirrorRules[IO](
+      setup.praos,
+      setup.globals,
+      setup.byronRules,
+      setup.handOver,
+      setup.byronHistory
+    )
 
   private def forward(i: Int): SyncEvent = SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin)
 
@@ -629,7 +645,7 @@ class EraTransitionSuite extends CatsEffectSuite:
       assertEquals(events.count(_.isInstanceOf[FollowerEvent.Extended]), blocks.size)
       assertEquals(chain.tip, headers.last.point)
       assertEquals(chain.length, geometry.securityParam)
-      assertEquals(chain.state.boot.era, Some(Era.Conway))
+      assertEquals(chain.state.consensus.boot.era, Some(Era.Conway))
       assert(!events.exists(_.isInstanceOf[FollowerEvent.RolledBack]))
     }
   }
@@ -643,20 +659,20 @@ class EraTransitionSuite extends CatsEffectSuite:
     given cats.mtl.Raise[IO, ValidationError] = new cats.mtl.Raise[IO, ValidationError]:
       def functor = cats.Functor[IO]
       def raise[E2 <: ValidationError, A](e: E2): IO[A] = IO.raiseError(RuntimeException(e.message))
-    val rules = NodeRules[IO](setup.praos, setup.globals, setup.byronRules)
-    def apply(chain: VolatileChain[NodeState], range: Range): IO[VolatileChain[NodeState]] =
+    val rules = mirrorRules
+    def apply(chain: VolatileChain[MirrorState], range: Range): IO[VolatileChain[MirrorState]] =
       range.toList.foldLeftM(chain) { (c, i) =>
         rules(c.state, headers(i), raws(i)).map(next =>
           c.extend(headers(i), next).fold(e => fail(e.message), _._1)
         )
       }
-    val genesis = VolatileChain.genesis(geometry.securityParam, setup.start, setup.origin)
+    val genesis = VolatileChain.genesis(geometry.securityParam, setup.mirrorStart, setup.origin)
     for
       first <- apply(genesis, 0 until b + 3)
       rolled = first.rollback(headers(b - 1).point).fold(e => fail(e.message), identity)
       replayed <- apply(rolled, b until b + 6)
     yield
-      assertEquals(rolled.state.boot.era, Some(Era.Byron))
+      assertEquals(rolled.state.consensus.boot.era, Some(Era.Byron))
       assertEquals(rolled.state, states(b))
       assertEquals(first.length - rolled.length, 3)
       assertEquals(
@@ -682,40 +698,42 @@ class EraTransitionSuite extends CatsEffectSuite:
           for
             store <- storage.MemoryUtxoStore[IO]
             cache = VerificationCache.unsafe(4)
-            rules = NodeRules[IO](
+            rules = MirrorRules[IO](
               setup.praos.copy(verdicts = cache),
               setup.globals,
               setup.byronRules,
+              setup.handOver,
+              setup.byronHistory,
               utxoStore = Some(store),
-              afterBlock = Some((_, s) =>
-                IO.delay(cache.noteEpochNonce(s.ledger.epoch, s.protocol.epochNonce))
-              )
+              afterBlock =
+                Some((_, s) => IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce)))
             )
-            last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.start) { (state, batch) =>
-              cache.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
-                batch.toVector.foldLeftM(state) { (s, i) =>
-                  rules(s, headers(i), raws(i))
-                    .flatTap(n => storage.UtxoStore.advance(store, n.ledger.utxo))
-                }
+            last <- blocks.indices.grouped(8).toVector.foldLeftM(setup.mirrorStart) {
+              (state, batch) =>
+                cache.warm[IO](batch.toVector.map(raws), setup.praos, 4) *>
+                  batch.toVector.foldLeftM(state) { (s, i) =>
+                    rules(s, headers(i), raws(i))
+                      .flatTap(n => storage.UtxoStore.advance(store, n.utxo))
+                  }
             }
-            all <- storage.UtxoStore.materialize(store, last.ledger.utxo)
+            all <- storage.UtxoStore.materialize(store, last.utxo)
           yield (last, all)
 
         program.map(_.asRight[NodeError])
       }
-      .rescue(e => IO.pure(e.asLeft[(NodeState, Map[ledger.TxIn, ledger.TxOut])]))
+      .rescue(e => IO.pure(e.asLeft[(MirrorState, Map[ledger.TxIn, ledger.TxOut])]))
       .map { outcome =>
         val (last, all) = outcome.fold(e => fail(e.message), identity)
         val expected = states.last
-        assertEquals(all, expected.ledger.utxo.toMap)
-        assertEquals(last.ledger.utxo.stake, expected.ledger.utxo.stake)
-        assertEquals(last.ledger.utxo.coin, expected.ledger.utxo.coin)
-        assertEquals(last.ledger.utxo.count, expected.ledger.utxo.count)
+        assertEquals(all, expected.utxo.toMap)
+        assertEquals(last.utxo.stake, expected.utxo.stake)
+        assertEquals(last.utxo.coin, expected.utxo.coin)
+        assertEquals(last.utxo.count, expected.utxo.count)
         assertEquals(
-          last.ledger.copy(utxo = ledger.Utxo.empty),
-          expected.ledger.copy(utxo = ledger.Utxo.empty)
+          MirrorStep.mapUtxo(last)(_ => ledger.Utxo.empty),
+          MirrorStep.mapUtxo(expected)(_ => ledger.Utxo.empty)
         )
         assertEquals(last.protocol, expected.protocol)
-        assertEquals(last.boot, expected.boot)
+        assertEquals(last.consensus.boot, expected.consensus.boot)
       }
   }

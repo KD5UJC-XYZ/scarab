@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents, NodeState}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError, PeerError}
 import cats.effect.{IO, Ref, Resource}
 import cats.mtl.{Handle, Raise, Stateful}
@@ -42,7 +43,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           raws.traverse_ { raw =>
             val header = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
             server
-              .persistence[NodeState]
+              .persistence[MirrorState]
               .extended(
                 BlockRef(header.slot, header.hash, header.blockNo),
                 raw,
@@ -135,17 +136,17 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("one of two peers stalls in NextCanAwait mid-fetch: the other keeps the follower going") {
     for
-      chainRef <- Ref.of[IO, VolatileChain[NodeState]](
+      chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
       )
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
       seen <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent) = seen.update(_ :+ event)
       follower <- Handle
         .allow[NodeError] {
-          Follower.create[IO, NodeState](
-            NodeRules[IO](ForgedChain.config, ForgedChain.globals),
+          Follower.create[IO, MirrorState](
+            ForgedChain.rules,
             events,
             ForgedChain.geometry
           )

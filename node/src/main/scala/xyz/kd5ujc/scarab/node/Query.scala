@@ -315,7 +315,9 @@ object Projection:
     Json.obj(
       "proposals" -> proposals.actions.map(proposal).asJson,
       "committee" -> committee(conway.flatMap(_.committee)),
-      "constitution" -> constitution(conway.fold(flat.ConwayGenesis.noConstitution)(_.constitution)),
+      "constitution" -> constitution(
+        conway.fold(flat.ConwayGenesis.noConstitution)(_.constitution)
+      ),
       "committeeState" -> Json.fromFields(
         voting.toVector.flatMap(_.committeeState.creds.toVector).sortBy(e => credName(e._1)).map {
           case (c, mirror.CommitteeAuthorization.CommitteeHotCredential(h)) =>

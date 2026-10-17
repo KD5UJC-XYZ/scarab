@@ -5,11 +5,14 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
-import xyz.kd5ujc.scarab.node.read.ChainRead
+import xyz.kd5ujc.scarab.consensus.BlockRef
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
+import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.ledger.state.{MirrorEnv, SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, UInt64}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -54,9 +57,6 @@ object NtcGolden:
     setup.mirrorEnv().ledger
   )
 
-  /** The state read as the node's flat state. */
-  given flatRead: ChainRead[NodeState] = ChainRead.nodeState(setup.mirrorEnv())
-
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => sys.error(e), identity)
 
   val raws: Vector[Bytes] =
@@ -73,22 +73,30 @@ object NtcGolden:
     )
 
   /** The Conway states of the capture, each with the block that made it. */
-  lazy val conwayStates: Vector[(Block, NodeState)] =
+  lazy val conwayStates: Vector[(Block, MirrorState)] =
     blocks.indices
-      .foldLeft(Vector.empty[(Block, NodeState)]) { (acc, i) =>
-        val before = acc.lastOption.fold(setup.start)(_._2)
-        NodeRules.applyBlock(
-          before,
-          blocks(i).header,
-          raws(i),
-          setup.praos,
-          setup.globals,
-          setup.byronRules
-        ) match
+      .foldLeft(Vector.empty[(Block, MirrorState)]) { (acc, i) =>
+        val before = acc.lastOption.fold(setup.mirrorStart)(_._2)
+        MirrorSteps.block(setup, before, blocks(i).header, raws(i)) match
           case Right(next) => acc :+ (blocks(i) -> next)
           case Left(f)     => sys.error(s"block $i rejected by ${f.rule.name}: ${f.reason}")
       }
       .filter(_._1.era == Era.Conway)
+
+  /** The flat ledger state a mirror stands for (the way the fixture was built: the states the query
+    * answers are recorded for are the flat state of the old rules put through the mirror, with
+    * governance added to it).
+    */
+  def flatLedger(m: MirrorState, anchor: Option[BlockRef]): legacy.LedgerState =
+    m.ledger(anchor) match
+      case Right(Some(InEra.Of(era, read))) =>
+        val at = anchor.fold[WithOrigin[SlotNo]](WithOrigin.Origin)(a =>
+          WithOrigin.At(SlotNo.fromUnsigned(a.slot.toLong))
+        )
+        read.nes
+          .flatMap(nes => legacy.LedgerMirrorBack.flatOf(mirrorEnv, at, nes, m.plutus)(using era))
+          .fold(e => sys.error(s"flat read-back: $e"), identity)
+      case other => sys.error(s"no Shelley-based ledger state: $other")
 
   // ---- the states
 
@@ -141,7 +149,7 @@ object NtcGolden:
     actions.zipWithIndex.map((a, i) => proposed(i, a))
 
   /** A state that holds governance, DReps and a committee on top of `s`. */
-  private def rich(s: LedgerState, completed: Boolean): LedgerState =
+  private def rich(s: legacy.LedgerState, completed: Boolean): legacy.LedgerState =
     val committee = Committee(Map(keyB -> (s.epoch + 3), scriptA -> (s.epoch - 1)), Rational(2, 3))
     val constitution = Constitution(anchorB, Some(bytes(0x31)))
     val roots = PrevIds(Some(actionId(20)), None, Some(actionId(21)), Some(actionId(22)))
@@ -193,7 +201,7 @@ object NtcGolden:
         keyA -> CommitteeAuth.Resigned(None)
       ),
       prevParams = Option.when(completed)(params.copy(minFeeB = params.minFeeB + 1)),
-      gov = GovState(
+      gov = legacy.GovState(
         Proposals(states, roots),
         Some(committee),
         constitution,
@@ -202,7 +210,7 @@ object NtcGolden:
     )
 
   /** The states, named, each with the block number and slot it is answered at. */
-  lazy val subjects: Vector[(String, NodeState, Point, Option[BigInt])] =
+  lazy val subjects: Vector[(String, MirrorState, Point, Option[BigInt])] =
     val point = (b: Block) =>
       Point.Block(
         UInt64.saturating(BigInt(b.header.slot.toLong)),
@@ -212,12 +220,24 @@ object NtcGolden:
       (s"conway-$i", s, point(b), Some(b.header.blockNo))
     }
     val (lastBlock, last) = conwayStates.last
-    Vector(
-      ("rich", last.copy(ledger = rich(last.ledger, completed = true))),
-      (
-        "rich-genesis",
-        last.copy(ledger = rich(last.ledger, completed = false).copy(prevParams = None))
+    val anchor = Some(
+      BlockRef(lastBlock.header.slot, lastBlock.header.hash, lastBlock.header.blockNo)
+    )
+    // the last state with a flat ledger state of governance, DReps and a committee in it
+    def enriched(ledger: legacy.LedgerState): MirrorState =
+      val flat = legacy.FlatNodeState(
+        last.protocol,
+        ledger,
+        last.consensus.boot,
+        last.consensus.byron
       )
+      legacy.Mirroring
+        .toMirror(setup.mirrorEnv(), anchor, flat)
+        .fold(e => sys.error(s"the rich state does not mirror: $e"), _.value)
+    val base = flatLedger(last, anchor)
+    Vector(
+      ("rich", enriched(rich(base, completed = true))),
+      ("rich-genesis", enriched(rich(base, completed = false).copy(prevParams = None)))
     ).foldLeft(real) { case (acc, (name, s)) =>
       acc :+ (name, s, point(lastBlock), Some(lastBlock.header.blockNo))
     }
@@ -225,7 +245,7 @@ object NtcGolden:
   // ---- the queries
 
   /** Every ledger query this node answers, with arguments drawn from the state. */
-  def battery(s: LedgerState): Vector[(String, LedgerQuery)] =
+  def battery(s: legacy.LedgerState): Vector[(String, LedgerQuery)] =
     import LedgerQuery.*
     val credentials = s.accounts.keySet
     val pools = s.pools.keySet
@@ -298,36 +318,24 @@ object NtcGolden:
 
   /** The answers to the battery on one state, `None` for one the node does not answer. */
   def answers(
-      subject: (String, NodeState, Point, Option[BigInt])
-  ): Vector[(String, String, Option[Bytes])] =
-    val (name, state, point, blockNo) = subject
-    answersOf(name, QueryView(point, blockNo, state), state)
-
-  /** The same answers, from the mirror of the state (the view reads it as it is). */
-  def mirrorAnswers(
-      subject: (String, NodeState, Point, Option[BigInt])
+      subject: (String, MirrorState, Point, Option[BigInt])
   ): Vector[(String, String, Option[Bytes])] =
     val (name, state, point, blockNo) = subject
     val anchor = point match
       case Point.Block(slot, hash) => Some(BlockRef(slot.value, hash, blockNo.getOrElse(BigInt(0))))
       case Point.Origin            => None
-    val mirror = MirrorRun
-      .run(setup.mirrorEnv())(_.toMirror(anchor, state))
-      .fold(e => sys.error(s"$name: $e"), _.value)
-    answersOf(name, QueryView(point, blockNo, mirror), state)
-
-  private def answersOf[S](
-      name: String,
-      view: QueryView[S],
-      state: NodeState
-  ): Vector[(String, String, Option[Bytes])] =
-    val utxo = state.ledger.utxo.toMap
-    battery(state.ledger).map { (label, query) =>
+    val utxo = state.utxo.toMap
+    battery(flatLedger(state, anchor)).map { (label, query) =>
       (
         name,
         label,
         QueryAnswers
-          .answer(queryEnv, view, utxo, NtcQuery.IfCurrent(Era.Conway.index, query))
+          .answer(
+            queryEnv,
+            QueryView(point, blockNo, state),
+            utxo,
+            NtcQuery.IfCurrent(Era.Conway.index, query)
+          )
           .map(unwrap)
       )
     }

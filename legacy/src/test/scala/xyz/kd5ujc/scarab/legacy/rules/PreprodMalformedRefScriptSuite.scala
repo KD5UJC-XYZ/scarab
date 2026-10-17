@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
@@ -109,4 +108,3 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val r = TxChecks.scriptsWellFormed(world.params, bad, env)
     assert(r.left.exists(_.message.contains("MalformedReferenceScripts")), r.toString)
   }
-

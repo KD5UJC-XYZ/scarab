@@ -544,7 +544,10 @@ object LedgerMirror:
             account
           )
         }
-      yield Snap(SnapShot(active, poolSnapshots), snap.pools.view.mapValues(flat.PoolResidue.of).toMap)
+      yield Snap(
+        SnapShot(active, poolSnapshots),
+        snap.pools.view.mapValues(flat.PoolResidue.of).toMap
+      )
 
     private def blocks(m: Map[Bytes, BigInt]): F[BlocksMade] =
       sorted(m)((k, n) =>

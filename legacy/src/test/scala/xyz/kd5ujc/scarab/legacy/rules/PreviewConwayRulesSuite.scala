@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
 
-
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -210,4 +209,3 @@ class PreviewConwayRulesSuite extends FunSuite:
       assertEquals(after.total, Supply)
     }
   }
-

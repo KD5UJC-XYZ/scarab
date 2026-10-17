@@ -7,7 +7,6 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.state.{Build, Conway, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
 
-
 /** Preprod transaction f90dce57 (block 5,183,974, slot 133,883,340, epoch 313): a native script
   * 5,383 levels deep, 16,383 bytes in all (the maximum is 16,384), and the one output it spends,
   * which is all the ledger it needs. See `fixtures/preprod/README.md`.

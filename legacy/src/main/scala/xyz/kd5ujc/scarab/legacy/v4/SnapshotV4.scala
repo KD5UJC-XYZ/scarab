@@ -25,8 +25,8 @@ object SnapshotV4:
   /** Magic and the length of the sidecar. */
   val HeaderSize: Int = Magic.length + 4
 
-  /** The content of a V4 file (without its checksum) from a sidecar and the Haskell state bytes: the
-    * writer, for the tests of the migration.
+  /** The content of a V4 file (without its checksum) from a sidecar and the Haskell state bytes:
+    * the writer, for the tests of the migration.
     */
   def framed(sidecar: SnapshotSidecar, haskell: Array[Byte]): Array[Byte] =
     val body = SnapshotSidecar.fingerprint ++ Codec.encode(sidecar)(using SnapshotSidecar.codec)
@@ -62,8 +62,8 @@ object SnapshotV4:
           )
         else
           Codec
-            .decode[SnapshotSidecar](content.slice(HeaderSize + fingerprint.length, end.toInt))(using
-              SnapshotSidecar.codec
+            .decode[SnapshotSidecar](content.slice(HeaderSize + fingerprint.length, end.toInt))(
+              using SnapshotSidecar.codec
             )
             .leftMap(corrupt)
             .map(_ -> Bytes.wrap(content).drop(end.toInt))

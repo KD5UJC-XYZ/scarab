@@ -1,20 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
+import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.{Header, HeaderVrf}
 import cats.effect.unsafe.implicits.global
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.HeaderError
-import xyz.kd5ujc.scarab.consensus.state.{
-  ChainDepState,
-  ConsensusMirrorEnv,
-  MirrorState,
-  ProtocolState
-}
-import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
-import xyz.kd5ujc.scarab.node.ntc.EraHistory
-import xyz.kd5ujc.scarab.node.read.ChainRead
+import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, EraLedgerState, MirrorState, ProtocolState}
+import xyz.kd5ujc.scarab.ledger.state.EpochNo
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.consensus.HeaderRules.Outcome
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
@@ -26,11 +20,8 @@ import org.scalacheck.Prop.*
   * block rules accept, with the same resulting state, from any recent anchor; and a header changed
   * in any field it signs or proves is refused.
   */
-abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
-  /** The anchor in the form of the state under test. */
-  protected def lift(state: NodeState, tip: Option[BlockRef]): S
-
-  private val rules = NodeHeaderRules[S](ForgedChain.config, ForgedChain.globals)
+class HeaderRulesSuite extends ScalaCheckSuite:
+  private val rules = NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals)
 
   private lazy val forged: ForgedChain = ForgedChain.forge(5000 until 5090).unsafeRunSync()
 
@@ -42,11 +33,11 @@ abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
 
   /** The state and tip of the chain after block `i - 1 - lag` (the genesis for a negative index).
     */
-  private def anchor(i: Int, lag: Int): (S, Option[BlockRef]) =
+  private def anchor(i: Int, lag: Int): (MirrorState, Option[BlockRef]) =
     val j = i - 1 - lag
     val (state, tip) =
       if j < 0 then (forged.genesis, None) else (forged.states(j), Some(ref(forged.headers(j))))
-    (lift(state, tip), tip)
+    (state, tip)
 
   test("the forged chain is long enough to be a test") {
     assert(forged.headers.size >= 30, forged.headers.size.toString)
@@ -143,7 +134,7 @@ abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
     val i = forged.headers.indexWhere(_.slot > 5000 + ForgedChain.geometry.stabilityWindow + 5)
     assert(i > 3)
     val laterTip = Some(ref(forged.headers(0)))
-    val later = lift(forged.states(0), laterTip)
+    val later = forged.states(0)
     assert(
       rules.validate(later, laterTip, before(i), forged.headers(i)).isInstanceOf[Outcome.Later[?]]
     )
@@ -155,10 +146,29 @@ abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
     )
   }
 
+  /** The state with its new-epoch state `by` epochs later. */
+  private def withEpoch(m: MirrorState, by: Long): MirrorState =
+    m.ext.ledgerState.state match
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val epoch = EpochNo
+          .fromBigInt(i.state.nes.epoch.toBigInt + by)
+          .fold(v => fail(v.toString), identity)
+        m.copy(ext =
+          m.ext.copy(ledgerState =
+            m.ext.ledgerState.withState(
+              EraLedgerState.InShelleyEra(
+                i.era,
+                i.state.copy(nes = i.state.nes.copy(epoch = epoch))
+              )
+            )
+          )
+        )
+      case _ => fail("the state is in Byron")
+
   test("a header whose epoch precedes the ledger's is a structure error") {
     val tip = Some(ref(forged.headers(4)))
     val state = forged.states(4)
-    val ahead = lift(state.copy(ledger = state.ledger.copy(epoch = state.ledger.epoch + 1)), tip)
+    val ahead = withEpoch(state, 1)
     assert(
       rules.validate(ahead, tip, before(5), forged.headers(5)) match
         case Outcome.Invalid(HeaderError.Structure(_)) => true
@@ -178,7 +188,7 @@ abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
       prevHash = None
     )
     assertEquals(
-      rules.validate(lift(forged.genesis, None), None, forged.genesis.protocol, h),
+      rules.validate(forged.genesis, None, forged.genesis.protocol, h),
       Outcome.Unchecked("Byron header: validated with its block", Some(forged.genesis.protocol))
     )
   }
@@ -199,7 +209,7 @@ abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
         crossing.headers(last).blockNo
       )
     )
-    val anchorState = lift(crossing.states(last), anchorTip)
+    val anchorState = crossing.states(last)
     var prev = crossing.states(last).protocol
     val window = (firstOfNext until crossing.headers.size)
       .takeWhile(i =>
@@ -214,30 +224,3 @@ abstract class HeaderRulesBehaviour[S: ChainRead] extends ScalaCheckSuite:
         case other => fail(s"block $i: $other")
     }
   }
-
-/** The header rules on the node's flat state (`--rules old`). */
-class HeaderRulesSuite extends HeaderRulesBehaviour[NodeState]()(using HeaderRulesSuite.flat):
-  protected def lift(state: NodeState, tip: Option[BlockRef]): NodeState = state
-
-object HeaderRulesSuite:
-  /** The read environment of the forged chain's configuration. */
-  val env: ConsensusMirrorEnv = ConsensusMirrorEnv(
-    MirrorEnv(ForgedChain.globals.network, ForgedChain.geometry, ForgedChain.globals.updateQuorum),
-    ForgedChain.config.forks,
-    EraHistory.ByronParams(
-      BigInt(ForgedChain.geometry.securityParam) * 10,
-      BigInt(20000),
-      BigInt(ForgedChain.geometry.securityParam)
-    )
-  )
-
-  val flat: ChainRead[NodeState] = ChainRead.nodeState(env)
-
-/** The same rules and the same headers, from the mirror of each anchor: the answers are the ones
-  * the flat state gives.
-  */
-class HeaderRulesMirrorSuite extends HeaderRulesBehaviour[MirrorState]:
-  protected def lift(state: NodeState, tip: Option[BlockRef]): MirrorState =
-    MirrorRun
-      .run(HeaderRulesSuite.env)(_.toMirror(tip, state))
-      .fold(e => fail(e.toString), _.value)

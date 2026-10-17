@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
 import xyz.kd5ujc.scarab.ledger.{
   Block,
-  BlockFailure,
   ChainError,
   FormatVersion,
   FileKind,
@@ -24,17 +23,8 @@ import xyz.kd5ujc.scarab.ledger.{
   PlutusStats,
   StorageError
 }
-import xyz.kd5ujc.scarab.ledger.state.{Difference, Gap, Path as DiffPath, Step}
 import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionEvent}
-import xyz.kd5ujc.scarab.node.{InboundEvent, MirrorCheck, NodeSetup, Topology}
-import xyz.kd5ujc.scarab.node.differential.{
-  Cost,
-  Divergence,
-  Event as DifferentialEvent,
-  Stage,
-  Stats,
-  TickCost
-}
+import xyz.kd5ujc.scarab.node.{InboundEvent, NodeSetup, Topology}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent, ReloadRefusal}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -84,35 +74,6 @@ object LogSamples:
     ),
     BlstReport(Platform.Other, CpuSupport.Unknown, LibraryBuild.Other("00ff")),
     BlstReport(Platform.LinuxAmd64, CpuSupport.Known(Set.empty), LibraryBuild.OnLibraryPath)
-  )
-
-  val mirrorOutcomes: List[MirrorCheck.Outcome] = List(
-    MirrorCheck.Outcome.Checked(Era.Conway, Set(Gap.RewardAttribution, Gap.NonMyopic), true, true),
-    MirrorCheck.Outcome.Checked(Era.Babbage, Set.empty, false, true),
-    MirrorCheck.Outcome
-      .Refused(Era.Alonzo, MirrorCheck.Stage.FromMirror, StateMirrorError.MissingEra(Era.Conway)),
-    MirrorCheck.Outcome.Crashed(Era.Mary, "boom")
-  )
-
-  val difference: Difference =
-    Difference(DiffPath(Vector(Step.Field("nes"), Step.Key("k"), Step.Index(2))), "1", "2")
-  val divergences: List[Divergence] = List(
-    Divergence.StateDiffers(block, Era.Conway, Stage.Tick(1), difference),
-    Divergence.VerdictDiffers(block, Stage.Block, Right(()), Left(BlockFailure.HeaderDiffers)),
-    Divergence.Unconvertible(block, Stage.Block, StateMirrorError.MissingEra(Era.Conway)),
-    Divergence.NotPorted(Era.Shelley, Stage.Tick(0))
-  )
-  val differentialEvents: List[DifferentialEvent] = List(
-    DifferentialEvent.TickCompared(block, 1, TickCost(1500000L, 2000000L, 2500000L, 3000000L)),
-    DifferentialEvent.Sampled(block, BigInt(3), Era.Conway, Cost(1234567L, 7654321L), true),
-    DifferentialEvent.Diverged(divergences.head, Some(Path.of("/tmp/repro/4200-abab")))
-  )
-  val stats: Stats = Stats(
-    blocks = 10,
-    samples = Vector(Cost(1000000L, 2000000L), Cost(3000000L, 500000L)),
-    notPorted = Map((Era.Conway, Stage.Block) -> 4L, (Era.Shelley, Stage.Tick(1)) -> 2L),
-    failures = 1,
-    ticks = Vector(TickCost(1000000L, 0L, 2000000L, 3000000L))
   )
 
   val inbound: List[InboundEvent] = List(

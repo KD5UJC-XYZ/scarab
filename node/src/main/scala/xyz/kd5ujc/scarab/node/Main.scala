@@ -86,8 +86,8 @@ import scala.concurrent.duration.*
   * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes
   * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
   * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
-  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]]
-  * [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -864,10 +864,11 @@ object Main extends IOApp:
         }
       case _ => None
 
-  /** The flags of the rule sets and the harness that J2.9 removed with them. A node started with one
-    * is refused, not run: `--rules old` would otherwise run the era-indexed rules while the operator
-    * believes it runs the old ones, and a flag that selected a rule set must never be ignored in a
-    * consensus node. The refusal is a typed [[ConfigProblem.RemovedFlag]] and says what to do.
+  /** The flags of the rule sets and the harness that J2.9 removed with them. A node started with
+    * one is refused, not run: `--rules old` would otherwise run the era-indexed rules while the
+    * operator believes it runs the old ones, and a flag that selected a rule set must never be
+    * ignored in a consensus node. The refusal is a typed [[ConfigProblem.RemovedFlag]] and says
+    * what to do.
     */
   private enum RemovedFlag(val flag: String, val instead: String):
     case Rules
@@ -882,8 +883,7 @@ object Main extends IOApp:
         )
     case OnDivergence
         extends RemovedFlag("on-divergence", "the differential rules are gone; drop the flag")
-    case ReproDir
-        extends RemovedFlag("repro-dir", "the differential rules are gone; drop the flag")
+    case ReproDir extends RemovedFlag("repro-dir", "the differential rules are gone; drop the flag")
 
     def refusal(usage: String): ConfigError =
       ConfigError(

@@ -51,10 +51,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
   * start from. The checksum that closes the file is the store's ([[FileLedgerSnapshots]]).
   *
   * The state is written as it is held and read back as it is: no conversion of any kind. What the
-  * Haskell section has no place for is the sidecar's: the UTxO set's handle, the node's
-  * bookkeeping (the extras), and the parameters in force and the previous ones, which the sidecar
-  * holds as the node's full set (a Shelley-based era's `PParams` in the Haskell section has only
-  * its own fields).
+  * Haskell section has no place for is the sidecar's: the UTxO set's handle, the node's bookkeeping
+  * (the extras), and the parameters in force and the previous ones, which the sidecar holds as the
+  * node's full set (a Shelley-based era's `PParams` in the Haskell section has only its own
+  * fields).
   *
   * Version 4 differed in the sidecar only: its extras held the old rules' bookkeeping (the reward
   * draft, the attributed amounts, the pool details of the snapshots, the parameter fields of other
@@ -329,9 +329,7 @@ object SnapshotV5:
   ): Either[SnapshotRefusal, Array[Byte]] =
     def unreadable[A](e: Either[StorageError, A]) = e.leftMap(SnapshotRefusal.Unreadable(_))
     def vocab[A](e: Either[xyz.kd5ujc.scarab.ledger.state.VocabError, A]) =
-      e.leftMap(v =>
-        SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v"))
-      )
+      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v")))
     val older: Either[SnapshotRefusal, (StateSnapshot[MirrorState], Carried)] =
       if content.startsWith(legacy.v4.SnapshotV4.Magic) then fromV4(env, content)
       else if content.startsWith(legacy.SnapshotV3.Magic) then fromV3(env, content)
@@ -385,9 +383,7 @@ object SnapshotV5:
   ): Either[SnapshotRefusal, (StateSnapshot[MirrorState], Carried)] =
     def unreadable[A](e: Either[StorageError, A]) = e.leftMap(SnapshotRefusal.Unreadable(_))
     def vocab[A](e: Either[xyz.kd5ujc.scarab.ledger.state.VocabError, A]) =
-      e.leftMap(v =>
-        SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v"))
-      )
+      e.leftMap(v => SnapshotRefusal.Unreadable(corrupt(s"a value the live types cannot hold: $v")))
     for
       parts <- unreadable(legacy.SnapshotV3.sections(content))
       sidecar = parts._1

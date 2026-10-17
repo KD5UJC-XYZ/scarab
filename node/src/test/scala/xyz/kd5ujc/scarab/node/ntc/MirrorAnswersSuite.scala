@@ -5,16 +5,16 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, StateMirror}
+import xyz.kd5ujc.scarab.consensus.state.{EraLedgerState, MirrorState}
 import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, LedgerState, NewEpochState, ShelleyBasedEra}
-import xyz.kd5ujc.scarab.node.{MirrorRun, NodeRules, NodeSetup}
+import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, HaskellStateCodecs, Versions}
 
-/** `DebugEpochState` and `DebugNewEpochState`, answered from the mirror, on the state of the node
+/** `DebugEpochState` and `DebugNewEpochState`, answered from the mirror, on the state of the chain
   * after every block of the eras capture (Byron to Conway):
   *
   *   - the answer is what the Haskell codec decodes, to a state that holds what the mirror holds
@@ -52,28 +52,18 @@ class MirrorAnswersSuite extends FunSuite:
     raws.map(Block.decode(_, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity))
 
   /** The state after each block, with the block. */
-  private lazy val states: Vector[(Block, NodeState)] =
-    blocks.indices.foldLeft(Vector.empty[(Block, NodeState)]) { (acc, i) =>
-      val before = acc.lastOption.fold(setup.start)(_._2)
-      NodeRules.applyBlock(
-        before,
-        blocks(i).header,
-        raws(i),
-        setup.praos,
-        setup.globals,
-        setup.byronRules
-      ) match
+  private lazy val states: Vector[(Block, MirrorState)] =
+    blocks.indices.foldLeft(Vector.empty[(Block, MirrorState)]) { (acc, i) =>
+      val before = acc.lastOption.fold(setup.mirrorStart)(_._2)
+      MirrorSteps.block(setup, before, blocks(i).header, raws(i)) match
         case Right(next) => acc :+ (blocks(i) -> next)
         case Left(f)     => fail(s"block $i rejected by ${f.rule.name}: ${f.reason}")
     }
 
-  private given xyz.kd5ujc.scarab.node.read.ChainRead[NodeState] =
-    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
-
-  private def view(block: Block, state: NodeState): QueryView[NodeState] =
+  private def view(block: Block, state: MirrorState): QueryView[MirrorState] =
     QueryView(Point.Origin, Some(block.header.blockNo), state)
 
-  private def ask(era: Era, block: Block, state: NodeState, query: LedgerQuery): Option[Bytes] =
+  private def ask(era: Era, block: Block, state: MirrorState, query: LedgerQuery): Option[Bytes] =
     QueryAnswers.answer(
       queryEnv,
       view(block, state),
@@ -87,11 +77,11 @@ class MirrorAnswersSuite extends FunSuite:
   /** What `GetCBOR` answers about a result: `#6.24(bytes)` around it. */
   private def wrapped(plain: Bytes): String = CborOut.build(_.tag(24).bytes(plain)).hex
 
-  /** The answers about `state`, whose mirror holds `nes` in the era `E`. */
+  /** The answers about `state`, which holds `nes` in the era `E`. */
   private def inEra[E <: EraTag](
       era: Era,
       block: Block,
-      state: NodeState,
+      state: MirrorState,
       nes: NewEpochState[E]
   )(using witness: ShelleyBasedEra[E]): Unit =
     val label = s"$era block ${block.header.blockNo}"
@@ -138,7 +128,7 @@ class MirrorAnswersSuite extends FunSuite:
       label
     )
 
-  private lazy val shelleyBased: Vector[(Block, NodeState)] =
+  private lazy val shelleyBased: Vector[(Block, MirrorState)] =
     states.filter(_._1.era != Era.Byron)
 
   test("the capture has a state in every Shelley-based era") {
@@ -152,13 +142,8 @@ class MirrorAnswersSuite extends FunSuite:
     "both queries answer every state of every Shelley-based era, as the Haskell codec reads it"
   ) {
     shelleyBased.foreach { (block, state) =>
-      val era = StateMirror.eraOf(setup.mirrorEnv(), state)
-      MirrorRun
-        .run(setup.mirrorEnv())(_.toMirror(None, state))
-        .fold(e => fail(s"$era block ${block.header.blockNo}: $e"), _.value)
-        .ext
-        .ledgerState
-        .state match
+      val era = state.era
+      state.ext.ledgerState.state match
         case i: EraLedgerState.InShelleyEra[e] =>
           inEra[e](era, block, state, i.state.nes)(using i.era)
         case _: EraLedgerState.ByronCurrent => fail(s"$era is Byron")
@@ -167,7 +152,7 @@ class MirrorAnswersSuite extends FunSuite:
 
   test("the other queries stay Conway's: a state of an earlier era answers neither") {
     shelleyBased.filter(_._1.era != Era.Conway).take(40).foreach { (block, state) =>
-      val era = StateMirror.eraOf(setup.mirrorEnv(), state)
+      val era = state.era
       assertEquals(ask(era, block, state, LedgerQuery.GetCurrentPParams), None)
       assertEquals(ask(era, block, state, LedgerQuery.GetEpochNo), None)
     }

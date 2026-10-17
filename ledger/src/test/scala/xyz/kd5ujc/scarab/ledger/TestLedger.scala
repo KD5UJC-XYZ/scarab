@@ -69,7 +69,8 @@ object TestLedger:
 
   val Supply: BigInt = 45000000000000000L
 
-  /** The era history the rule tests run in: epochs of 100 slots, one second each, k = 2, f = 1/2. */
+  /** The era history the rule tests run in: epochs of 100 slots, one second each, k = 2, f = 1/2.
+    */
   val geometry: EpochGeometry =
     EpochGeometry
       .checked(java.time.Instant.EPOCH, 1000L, 100L, 2, BigDecimal("0.5"))
