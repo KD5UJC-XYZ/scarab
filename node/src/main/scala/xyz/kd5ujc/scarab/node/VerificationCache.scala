@@ -42,6 +42,7 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
   )
 
   private val Limit = 100000
+  private def MinChunk = VerificationCache.MinChunk
   private val witnesses = new ConcurrentHashMap[WitnessKey, java.lang.Boolean]()
   private val headers = new ConcurrentHashMap[HeaderKey, Either[OCertError, Unit]]()
   private val prepared = new ConcurrentHashMap[Bytes, Prepared]()
@@ -242,59 +243,118 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
     if known != null then known
     else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
 
-  /** Verify everything a block's signatures need and remember the verdicts. Never fails: a block
-    * that does not decode or a check that errors is left for the rules to report.
+  /** One independent signature check whose verdict goes into a cache. */
+  private type Job = () => Unit
+
+  // Ranges are warmed concurrently (one `warm` per fetched range): all of them together run at most
+  // `parallelism` chunks at once, so that several single-block batches do not put several times
+  // as many runnable threads as CPUs on the machine.
+  private val running = new java.util.concurrent.Semaphore(parallelism)
+
+  /** A block whose checks are running: the decoded block is offered to the rules (`prepared`) when
+    * the last of its jobs is done, so that the rules find the verdicts together with the block.
     */
-  private def warmBlock(raw: Bytes, config: PraosConfig): Unit =
+  private final class Pending(val block: Prepared, jobs: Int):
+    private val remaining = new java.util.concurrent.atomic.AtomicInteger(jobs)
+    private val failed = new java.util.concurrent.atomic.AtomicBoolean(false)
+    def failure(): Unit = failed.set(true)
+    def finished(): Boolean = remaining.decrementAndGet() == 0 && !failed.get
+
+  /** Decode a block and split its signature checks into independent jobs: the operational
+    * certificate and KES signature of the header, the VRF proof(s), and one job per distinct vkey
+    * or bootstrap witness. Never fails: a block that does not decode has no jobs and is left for
+    * the rules to report.
+    */
+  private def jobsOf(raw: Bytes, config: PraosConfig): Vector[Job] =
     lastConfig.set(config)
     if witnesses.size > Limit then witnesses.clear()
     if headers.size > Limit then headers.clear()
     if prepared.size > 4096 then prepared.clear()
     if vrfs.size > 16384 then vrfs.clear()
-    NodeRules.decodeShelley(raw).foreach { p =>
+    NodeRules.decodeShelley(raw).fold(Vector.empty[Job]) { p =>
       val b = p.block
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
-      // header-first validation may have computed it already (see forHeaders)
-      headers.computeIfAbsent(
-        key,
-        _ =>
-          OCertRules.verifySignatures(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
-      )
-      p.txs.foreach(_.foreach { tx =>
-        val id = tx.body.id
-        (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).foreach {
-          case (vkey, signature) =>
-            val k = WitnessKey(vkey, signature, id)
-            keyHash(vkey)
-            witnesses.put(k, compute(k))
+      val triples = p.txs.toVector
+        .flatMap(_.toOption)
+        .flatMap { tx =>
+          val id = tx.body.id
+          (tx.witnesses.vkeys ++ tx.witnesses.bootstrap.map(w => w.vkey -> w.signature)).map {
+            (vkey, signature) => WitnessKey(vkey, signature, id)
+          }
         }
-      })
-      warmVrf(b.header, config)
-      prepared.put(b.header.hash, p)
+        .distinct
+      val checks: Vector[Job] =
+        // header-first validation may have computed it already (see forHeaders)
+        Vector[Job](
+          () =>
+            headers.computeIfAbsent(
+              key,
+              _ =>
+                OCertRules
+                  .verifySignatures(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
+            ): Unit,
+          () => warmVrf(b.header, config)
+        ) ++ triples.map { k =>
+          (() =>
+            keyHash(k.vkey)
+            witnesses.put(k, compute(k)): Unit
+          ): Job
+        }
+      val pending = new Pending(p, checks.size)
+      checks.map { job => () =>
+        try job()
+        catch case scala.util.control.NonFatal(_) => pending.failure()
+        finally if pending.finished() then prepared.put(b.header.hash, p): Unit
+      }
     }
+
+  /** The jobs of a batch in chunks of about `perChunk` jobs: a few chunks per thread so that a slow
+    * one does not leave the others idle, and never fewer than [[MinChunk]] jobs (about a
+    * millisecond of Ed25519), so a small block runs as one task and pays no scheduling.
+    */
+  private[node] def chunked[A](jobs: Vector[A], parallelism: Int): Vector[Vector[A]] =
+    val size = math.max(MinChunk, (jobs.size + parallelism * 4 - 1) / (parallelism * 4))
+    jobs.grouped(size).toVector
 
   /** Warm the verdicts of `blocks` using up to `parallelism` threads. The work runs on `blocking`
     * threads, beside the rules (which run on the CPU pool, see [[Compute]]): putting it on that
     * pool too serialised the two behind each other and cost a third of the throughput
     * (performance.md).
+    *
+    * Parallel over the signature checks of the whole batch, not over its blocks (#125): batches of
+    * late Alonzo and Babbage hold one or a few blocks of hundreds of witnesses, and a loop over
+    * blocks left every check of a block on one thread. This is pure signature verification filling
+    * a cache; the application of transactions stays sequential and is not touched (no parallel
+    * transaction application within a block).
     */
   def warm[F[_]: Async](blocks: Vector[Bytes], config: PraosConfig, parallelism: Int): F[Unit] =
     if blocks.isEmpty then Async[F].unit
     else
-      blocks
-        .parTraverseN(parallelism)(b =>
-          Async[F].blocking(
-            try warmBlock(b, config)
-            catch case scala.util.control.NonFatal(_) => ()
+      val guarded: (=> Vector[Job]) => Vector[Job] = body =>
+        try body
+        catch case scala.util.control.NonFatal(_) => Vector.empty
+      for
+        jobs <- blocks
+          .parTraverseN(parallelism)(b => Async[F].blocking(guarded(jobsOf(b, config))))
+          .map(_.flatten)
+        _ <- chunked(jobs, parallelism)
+          .parTraverseN(parallelism)(chunk =>
+            Async[F].blocking {
+              running.acquire()
+              try chunk.foreach(_())
+              finally running.release()
+            }
           )
-        )
-        .void
+      yield ()
 
   /** Warm with the cache's own default parallelism. */
   def warm[F[_]: Async](blocks: Vector[Bytes], config: PraosConfig): F[Unit] =
     warm[F](blocks, config, parallelism)
 
 object VerificationCache:
+  /** The fewest checks worth a task of their own. */
+  private val MinChunk = 8
+
   val defaultParallelism: Int = math.max(1, Runtime.getRuntime.availableProcessors())
 
   /** A fresh, empty cache whose background pool is shut down when the resource is released. */

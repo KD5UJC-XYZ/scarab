@@ -66,6 +66,34 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     }
   }
 
+  property(
+    "the jobs of a batch are split in order, none lost, none twice, into chunks of 8 or more"
+  ) {
+    forAll(Gen.choose(0, 20000), Gen.choose(1, 64)) { (n, parallelism) =>
+      val jobs = Vector.range(0, n)
+      val chunks = VerificationCache.unsafe(1).chunked(jobs, parallelism)
+      Prop(
+        chunks.flatten == jobs &&
+          chunks.dropRight(1).forall(_.size >= 8) &&
+          (n == 0 || chunks.size <= parallelism * 4 || chunks.head.size == 8)
+      )
+    }
+  }
+
+  test(
+    "a batch with many witnesses is verified across threads and every verdict is the serial one"
+  ) {
+    val cache = VerificationCache.unsafe(4)
+    // the same blocks several times over: more checks than one chunk, and repeated keys
+    val batch = Vector.fill(10)(raws).flatten
+    cache.warm[IO](batch, setup.praos, 4).unsafeRunSync()
+    assert(
+      witnesses.forall((k, s, m) => cache.witness(k, s, m) == Verdicts.Direct.witness(k, s, m))
+    )
+    assert(prepared.forall(p => cache.takePrepared(p.block.header.hash).isDefined))
+    cache.shutdown()
+  }
+
   test("a warmed verdict is consumed once and an independent cache never sees it") {
     val a = VerificationCache.unsafe(2)
     val b = VerificationCache.unsafe(2)

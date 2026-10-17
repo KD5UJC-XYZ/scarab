@@ -773,3 +773,56 @@ the first 12,000 blocks after `started` are the comparison. A bundle is the clas
 last one. JFR from inside the container: `jcmd 1 JFR.start settings=profile duration=5m filename=/data/p.jfr`, then
 `jfr print --stack-depth 64 --events jdk.ExecutionSample`; the JFR stack depth of 64 truncates the deep stacks of the rules, so
 the cause is the leaf frames and the thread dumps (`jcmd 1 Thread.print`), not the root.
+
+## 14. Parallel signature checks within a batch (#125)
+
+**The question.** In late Alonzo (epochs 319 to 323) the mainnet follower applied about 21 blocks/s using 2.2 of 12 cores.
+Thread dumps (39 samples): exactly one `scarab-cpu-*` thread busy, in `VerificationCache.warm` -> `warmBlock` ->
+`Verdicts.Direct.witness` -> `StrictEd25519.verify`.
+
+**Cause.** `warm` was `blocks.parTraverseN(parallelism)(warmBlock)`: parallel across the blocks of a batch only. The
+caller (`Peer.prefetchRange`) warms each fetched range as soon as it arrives and before the block is taken, which is as early
+as possible, but a range is the unit it has and since #124 the ranges are small (a block of this stretch is 60 to 80 KB with
+50 or more transactions; ranges are claimed per session from the shared `BlockPool`). With one block in a batch, all of its
+witnesses, its operational certificate and its VRF proof ran serially. Handing `warm` a larger batch was not an option
+(it would wait for the next fetch before verifying what it has); the work has to be split below the block.
+
+**Change.** `jobsOf` decodes a block and splits its checks into independent jobs: the header's operational certificate and
+KES signature, the VRF proof(s), and one job per distinct vkey/bootstrap witness. `warm` flattens the jobs of the whole
+batch and runs them on the blocking pool in chunks (`chunked`: at least 8 jobs, about 1 ms of Ed25519, and at most four
+chunks per thread, so a slow chunk does not idle the rest). A block with fewer than 8 checks is one task and pays no
+scheduling. The block is offered to the rules (`prepared`) by the last of its jobs, as before once its verdicts are in.
+The caches, their keys, their verdicts and limits are unchanged. This is signature verification filling a cache; the
+application of transactions within a block stays sequential and is not touched (owner rule). No recursion: the work is
+a fold over vectors, so there is no stack question (ADR 0011).
+
+**Measured** (`WarmBenchMain`, 400 consecutive mainnet blocks from slot 52,876,855, epoch 320, 67 KB each on average,
+captured with `CaptureMain` from a public relay; witnesses and operational certificates, not VRF; fresh cache, one warm-up
+pass; a 24-core desktop shared with other containers, so a figure is good to about 10 to 15%). Blocks per second, and cores
+used (process CPU / wall), `docker run --cpus N`:
+
+| CPUs | batch (blocks) x ranges in flight | before | after |
+|---|---|---|---|
+| 4 | 1 x 1 | 62 (1.2 cores) | 139 (3.4) |
+| 4 | 1 x 3 | 150 (3.4) | 156 (4.0) |
+| 4 | 4 x 1 | 132 (2.7) | 183 (4.0) |
+| 4 | 16 x 1 | 169 (3.8) | 177 (4.0) |
+| 4 | 100 x 1 | 170 (3.9) | 180 (4.0) |
+| 12 | 1 x 1 | 59 (1.3) | 182 (6.3) |
+| 12 | 1 x 3 | 143 (3.8) | 269 (11.0) |
+| 12 | 4 x 1 | 106 (2.8) | 266 (9.5) |
+| 12 | 16 x 1 | 254 (8.0) | 301 (11.4) |
+| 12 | 100 x 1 | 302 (11.0) | 311 (11.9) |
+
+A first version without the limit below was 20 to 25% slower than the old code at 4 CPUs with three ranges in flight (the
+follower warms every fetched range concurrently; each `warm` started its own four chunks, 12 runnable threads on a 4 CPU
+quota). All the `warm` calls of a cache now share one semaphore of `parallelism` permits taken per chunk, which removed that
+(150 -> 156). At 4 CPUs the verification is CPU-bound anyway (the apply thread competes with it), so the gain there is
+the one block per batch case (2.2x); on 12 CPUs it is 3.1x for one block per batch, with 6 to 11 cores in use instead of 1.3
+to 3.8, and equal when batches are already large (100 blocks), where the old code had enough blocks to fill the cores.
+Pinning the CPUs (`--cpuset-cpus`) instead of a quota gave the same picture. This tool measures `warm` alone; the end-to-end
+blocks/s of a late-Alonzo follower needs a mainnet follower at that stage and is the check to run when this lands.
+
+**Repeat.** `CaptureMain capture --peer backbone.cardano.iog.io:3001 --magic 764824073 --blocks 600 --byron-epoch-slots 21600
+--from <slot>.<hash> --out blocks.hex`, then run `xyz.kd5ujc.scarab.node.tools.WarmBenchMain blocks.hex <batch> <blocks>
+<in flight>` from the test classpath.
