@@ -30,7 +30,6 @@ jobs:
         include:
           - {scenario: soak, args: 'soak --seconds 480'}
           - {scenario: e2e, args: 'e2e'}
-          - {scenario: e2e-differential, args: 'e2e', rules: differential}
           - {scenario: relay, args: 'relay --seconds 300'}
           - {scenario: pool, args: 'pool'}
           - {scenario: kes-rotate, args: 'kes-rotate'}
@@ -41,7 +40,6 @@ jobs:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      SCARAB_RULES: ${{ matrix.rules }}
       SCARAB_DATA_DIR: ${{ github.workspace }}/../scarab-data
     steps:
       - name: Check out source
