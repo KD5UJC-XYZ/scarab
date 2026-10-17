@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.crypto.witness
 import xyz.kd5ujc.scarab.codec.Bytes
 import com.weavechain.curve25519.{
   CompressedEdwardsY,
-  Constants,
   EdwardsPoint,
   InvalidEncodingException,
   Scalar
@@ -129,6 +128,10 @@ object StrictEd25519:
       digest.update(keyBytes)
       digest.update(message.toArray)
       val h = Scalar.fromBytesModOrderWide(digest.digest())
-      val check = Constants.ED25519_BASEPOINT.multiply(s).subtract(a.multiply(h))
+      // [s]B + [h](-A) in one interleaved double-scalar multiplication (the inputs are public, so
+      // the variable-time form is fine): about half the work of two separate multiplications. The
+      // point is negated, not the scalar: -h mod L would change the result for a key with a
+      // torsion component, which this profile accepts (mixed-order speccheck case 3).
+      val check = EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(h, a.negate(), s)
       Arrays.equals(check.compress().toByteArray, rBytes)
     if valid.contains(true) then SignatureVerified else SignatureRejected

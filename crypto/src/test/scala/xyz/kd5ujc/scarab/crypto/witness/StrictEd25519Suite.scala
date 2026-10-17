@@ -174,3 +174,65 @@ class StrictEd25519Suite extends munit.FunSuite:
       Left(VerificationError.ImplementationFailure("java.lang.NullPointerException"))
     )
   }
+
+  /** The verification equation as two separate multiplications, as the verifier was written before
+    * the interleaved one (#124): the same strict decoding checks, then [s]B - [h]A.
+    */
+  private def separate(key: Array[Byte], signature: Array[Byte], message: Array[Byte]): Boolean =
+    import com.weavechain.curve25519.{CompressedEdwardsY, Constants, Scalar}
+    def point(bytes: Array[Byte]) =
+      try
+        val p = new CompressedEdwardsY(bytes.clone()).decompress()
+        Option(p).filter(q =>
+          java.util.Arrays.equals(q.compress().toByteArray, bytes) && !q.isSmallOrder
+        )
+      catch case _: com.weavechain.curve25519.InvalidEncodingException => None
+    val r = signature.take(32)
+    val sb = signature.drop(32)
+    val s =
+      try Some(Scalar.fromCanonicalBytes(sb))
+      catch case _: IllegalArgumentException => None
+    (for
+      a <- point(key)
+      _ <- point(r)
+      sc <- s
+    yield
+      val digest = java.security.MessageDigest.getInstance("SHA-512")
+      digest.update(r)
+      digest.update(key)
+      digest.update(message)
+      val h = Scalar.fromBytesModOrderWide(digest.digest())
+      val check = Constants.ED25519_BASEPOINT.multiply(sc).subtract(a.multiply(h))
+      java.util.Arrays.equals(check.compress().toByteArray, r)
+    ).contains(true)
+
+  test("the interleaved equation agrees with two separate multiplications, signed and mutated") {
+    val random = new java.security.SecureRandom()
+    (0 until 300).foreach { n =>
+      val sk = new Array[Byte](32)
+      random.nextBytes(sk)
+      val pk = new Array[Byte](32)
+      Ed25519.generatePublicKey(sk, 0, pk, 0)
+      val message = new Array[Byte](random.nextInt(200))
+      random.nextBytes(message)
+      val sig = new Array[Byte](64)
+      Ed25519.sign(sk, 0, pk, 0, message, 0, message.length, sig, 0)
+      val mutated = sig.clone()
+      // every third signature has one bit flipped, anywhere (R, S or both halves)
+      if n % 3 == 0 then
+        val at = random.nextInt(64)
+        mutated(at) = (mutated(at) ^ (1 << random.nextInt(8))).toByte
+      val expected = separate(pk, mutated, message)
+      val got = StrictEd25519.verify(
+        Bytes.fromArray(pk),
+        Bytes.fromArray(mutated),
+        Bytes.fromArray(message)
+      )
+      assertEquals(
+        got,
+        Right(if expected then SignatureVerified else SignatureRejected),
+        s"case $n"
+      )
+      if n % 3 != 0 then assert(expected, s"a good signature was refused, case $n")
+    }
+  }
