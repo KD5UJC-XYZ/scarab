@@ -11,3 +11,4 @@ decisions they rest on are [ADRs](../adr/README.md).
 | [Ouroboros Leios](../leios.md) | Proposal (research, not implemented) | [#70](https://github.com/KD5UJC-XYZ/scarab/issues/70) |
 | [Memory-lean decoding](memory-lean-decoding.md) | Proposal (spike measurements 2026-10-16; nothing implemented) | [#94](https://github.com/KD5UJC-XYZ/scarab/issues/94) |
 | [Schema-first models](../models.md) | Spike (generator done; node adoption not started) | [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82) |
+| [Peer selection: the P2P governor](peer-selection.md) | Proposal (reference read at ouroboros-network 1.2.0.0; nothing implemented) | [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) |
