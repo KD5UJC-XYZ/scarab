@@ -6,7 +6,7 @@ Measurements of syncing the public Preview testnet, what the profiles showed and
 These are one developer's measurements on one machine, not a benchmark suite; they are not
 reproducible bit for bit, but each section names its build and setup.
 
-Setup (all runs): 24-core host, Docker, JDK 21 Temurin, Preview via
+Setup (all runs): multi-core host, Docker, JDK 21 Temurin, Preview via
 `preview-node.play.dev.cardano.org:3001`. The node container had `--cpus 4` unless stated;
 `-Xmx6g` before and `-Xmx3g` after the changes below. Profiles are JFR (`settings=profile`) taken
 from the running node and aggregated over `jdk.ExecutionSample`; JFR samples a few threads per
@@ -173,7 +173,7 @@ database 18 GB. Tip block 5,295,552 (slot 136,392,901, epoch 319) equal to Koios
 Measured on this branch (the commit is in [compatibility.md](compatibility.md) with the other
 evidence) against `origin/main` at 7842866, "base", extracted and built separately. The sync runs:
 Preview from genesis, fresh `--db`, `follow --db`, 1860 s, `--seconds` ending the run (a graceful stop).
-**The host had a load average of 25 to 35 on 24 cores (other work, several syncs and clusters at the
+**The host had a load average of 25 to 35 (other work, several syncs and clusters at the
 same time), so the absolute rates are about half of section 3's and only runs that were started
 together are comparable.** The base and the final build of each pair were started at the same second.
 Reproduce with the commands under "How to repeat" below.
@@ -494,7 +494,7 @@ against the 5 GiB limit.
 ## 10. The tick of every era: new rules against the old (J2.3)
 
 `NewRules.tick` (the era-indexed `Tick`) runs beside `NodeRules.tick` (the old `OldTick`) at the eventful ticks and at the
-sampling points of `--rules differential`. Linux x86-64, JDK 21, `-Xmx16g`, a host loaded to 25 on 24 cores (so absolute
+sampling points of `--rules differential`. Linux x86-64, JDK 21, `-Xmx16g`, a host loaded to 25 (so absolute
 times are pessimistic), `PreviewDifferentialMain <K1 db> 72`, 21 epochs, 70,183 blocks, 0 divergences. "Ticks" are the
 compared ticks of the epoch (four or five), summed:
 
@@ -606,7 +606,7 @@ blocks 6.20 M to 6.28 M.
 
 ### What was measured, and how
 
-- **The running node (read only).** A 24-core host, a mainnet follower (`--rules old`, one peer, `-Xmx24g`, G1), blocks
+- **The running node (read only).** A multi-core host, a mainnet follower (`--rules old`, one peer, `-Xmx24g`, G1), blocks
   6,203,514 to 6,277,016 (Mary into Alonzo, epochs 289 to 291). From its log (73,503 `extended` events in 4,405 s):
   median 33 ms between blocks, 90th percentile 172 ms, 99th 372 ms; the 15% of the blocks that took more than 100 ms
   between them account for 55% of the time; 316 gaps over 0.5 s (6% of the time: epoch boundaries, snapshots).
@@ -653,7 +653,7 @@ median gap between two blocks went from 33 ms to 7 ms and the 90th percentile fr
 37,873 samples) after the three changes: 53% of the samples are signature verification on the parallel threads
 (the leaf frames are curve arithmetic: field multiplication and squaring, point-table lookups), 36% the apply thread, which now has no single
 hot spot above 4%. The bottleneck is CPU for signatures: with the 4 CPUs of the test the verification competes with the
-apply thread, and the 24 cores of the mainnet follower have room.
+apply thread, and the mainnet follower has cores to spare.
 
 ### Several peers, and the reference
 
@@ -763,7 +763,7 @@ follow --genesis-dir <mainnet> --db <dir> \
 difference in section 7 and none here (the producer is not waiting for headers); `--cpu-threads` sets the workers of the
 pool the single apply thread runs on, not the parallelism of the signature checks (that is the number of CPUs), so more of
 it does not help. A second relay did not change the rate at 4 CPUs (174,400 against 168,600 and 263,800 against 255,200 an
-hour): it is for resilience and for the follower with more cores than the one test; whether it helps on the 24-core
+hour): it is for resilience and for the follower with more cores than the one test; whether it helps on the multi-core
 mainnet follower is the A/B to run. The JVM flags of the running follower (`-Xms8g -Xmx24g`, G1, 50 ms) are not a limit
 (1.6% of the time in pauses).
 
@@ -778,7 +778,7 @@ the cause is the leaf frames and the thread dumps (`jcmd 1 Thread.print`), not t
 
 ## 14. Parallel signature checks within a batch (#125)
 
-**The question.** In late Alonzo (epochs 319 to 323) the mainnet follower applied about 21 blocks/s using 2.2 of 12 cores.
+**The question.** In late Alonzo (epochs 319 to 323) the mainnet follower applied about 21 blocks/s using only 2.2 cores.
 Thread dumps (39 samples): exactly one `scarab-cpu-*` thread busy, in `VerificationCache.warm` -> `warmBlock` ->
 `Verdicts.Direct.witness` -> `StrictEd25519.verify`.
 
@@ -800,7 +800,7 @@ a fold over vectors, so there is no stack question (ADR 0011).
 
 **Measured** (`WarmBenchMain`, 400 consecutive mainnet blocks from slot 52,876,855, epoch 320, 67 KB each on average,
 captured with `CaptureMain` from a public relay; witnesses and operational certificates, not VRF; fresh cache, one warm-up
-pass; a 24-core desktop shared with other containers, so a figure is good to about 10 to 15%). Blocks per second, and cores
+pass; a multi-core desktop shared with other containers, so a figure is good to about 10 to 15%). Blocks per second, and cores
 used (process CPU / wall), `docker run --cpus N`:
 
 | CPUs | batch (blocks) x ranges in flight | before | after |
@@ -835,7 +835,7 @@ The gate of design `ledger-mirror-step2.md` 2.3 is `epochBoundary` p99 within +2
 copy of the Preview harness (`PreviewDifferentialMain`, snapshots 1400 to 1449 of the K1 run: epochs 1401 on, protocol 11, about
 112,000 accounts, the largest real state held locally) times the tick of the first block of each epoch, which crosses the boundary,
 on the old rules (`NodeRules.tick`, the flat state) and on the new (`NewRules.tick`, the mirror), each from its own state, in one
-JVM (`-Xmx12g`, G1, a host at load 6 to 9 on 24 cores). The run was stopped after 23 of the 50 boundaries because the result was
+JVM (`-Xmx12g`, G1, a host at load 6 to 9). The run was stopped after 23 of the 50 boundaries because the result was
 decisive; the database was the K1 copy mounted read-only.
 
 | 23 boundaries | old ms | new ms | new / old |
