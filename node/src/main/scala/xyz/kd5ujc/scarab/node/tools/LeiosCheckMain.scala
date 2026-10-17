@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{LeiosHeaderChain, PraosConfig}
 import xyz.kd5ujc.scarab.ledger.LeiosHeader
 import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 
 /** Development tool, not part of the node: `xyz.kd5ujc.scarab.node.tools.LeiosCheckMain`.
@@ -45,15 +47,20 @@ object LeiosCheckMain extends IOApp:
             StandardCharsets.UTF_8
           )
         )
+        // the pool distribution of the state the chain starts from (`nesPd`)
+        val pools = setup.mirrorStart
+          .ledger(None)
+          .toOption
+          .flatten
+          .fold(xyz.kd5ujc.scarab.ledger.PoolDistribution(Map.empty, Map.empty)) { case InEra.Of(_, l) =>
+            l.leaderPools(nextEpoch = false)
+          }
         try
           loop(
             reader,
             setup.praos,
-            LeiosHeaderChain.StakePolicy(
-              setup.start.ledger.poolDistribution.distribution,
-              LeiosHeaderChain.GenesisEpochs
-            ),
-            LeiosHeaderChain.initial(setup.start.protocol),
+            LeiosHeaderChain.StakePolicy(pools, LeiosHeaderChain.GenesisEpochs),
+            LeiosHeaderChain.initial(setup.mirrorStart.protocol),
             Map.empty,
             stop
           )

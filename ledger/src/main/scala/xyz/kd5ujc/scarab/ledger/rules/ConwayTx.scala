@@ -11,12 +11,12 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   PlutusStats,
-  PreConwayRules,
+  TxChecks,
   PredicateFailure,
   Script,
   Tx,
   TxOut,
-  TxRules,
+  TxEnv,
   Utxo as NodeUtxo
 }
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -49,11 +49,11 @@ object Counted:
     )(u => c => Counted(c.state.copy[Conway](utxo = u.state), u.plutus))
 
 /** `LedgerEnv` (`Shelley/Rules/Ledger.hs`): the block-level context of a transaction (slot, epoch,
-  * the position in the block, the evaluator and the clock, `TxRules.Env`) and the treasury of the
+  * the position in the block, the evaluator and the clock, `TxEnv`) and the treasury of the
   * chain account (`esChainAccountState`), which `currentTreasuryValue` of a transaction is checked
   * against. The parameters are the ones in force, read from the governance state.
   */
-final case class LedgerEnv(ctx: TxRules.Env, treasury: Coin)
+final case class LedgerEnv(ctx: TxEnv, treasury: Coin)
 
 /** A transaction with what its rules resolve from the UTxO set before it (`StAnnTx`, the
   * transaction `AnnotatedTx` of `Alonzo/UTxO.hs`): the outputs of its inputs, reference inputs and
@@ -72,12 +72,12 @@ final case class StAnnTx(tx: Tx, utxo: NodeUtxo):
     * reference inputs (`scriptsProvided`).
     */
   lazy val scripts: Map[Bytes, Script] =
-    PreConwayRules.providedScripts(tx.witnesses, spent ++ referenced)
+    TxChecks.providedScripts(tx.witnesses, spent ++ referenced)
 
   /** The hashes of the scripts it needs, with the redeemer pointers that use each
     * (`scriptsNeeded`); defined for a transaction whose inputs the set holds.
     */
-  lazy val needed: Map[Bytes, Set[(Int, BigInt)]] = PreConwayRules.scriptsNeeded(tx.body, spent)
+  lazy val needed: Map[Bytes, Set[(Int, BigInt)]] = TxChecks.scriptsNeeded(tx.body, spent)
 
   /** The redeemer pointers of the needed scripts that are Plutus scripts. */
   lazy val plutusPurposes: Set[(Int, BigInt)] =

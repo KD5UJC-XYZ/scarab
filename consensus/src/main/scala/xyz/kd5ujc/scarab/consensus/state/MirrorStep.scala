@@ -191,7 +191,7 @@ object MirrorStep:
   ): Either[StateMirrorError, MirrorState] =
     m.extras match
       case _: MirrorExtras.InShelley => Left(StateMirrorError.ExtrasMismatch(m.ext.ledgerState.era))
-      case MirrorExtras.InByron(ledger, pending, _, protocol) =>
+      case MirrorExtras.InByron(pending, _, protocol) =>
         (
           vocab(SlotNo.fromBigInt(header.slot)),
           vocab(BlockNo.fromBigInt(header.blockNo)),
@@ -206,7 +206,7 @@ object MirrorStep:
                 m.ext.headerState.chainDep.withState(ChainDepState.PBft(byron.pbft))
               )
             ),
-            MirrorExtras.InByron(ledger, pending, boot, protocol)
+            MirrorExtras.InByron(pending, boot, protocol)
           )
         }
 

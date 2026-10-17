@@ -3,11 +3,11 @@ package xyz.kd5ujc.scarab.storage
 
 import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, MirrorExtras}
 import xyz.kd5ujc.scarab.consensus.{BlockRef, ConsensusExtras}
-import xyz.kd5ujc.scarab.ledger.{LedgerState, ProtocolParams, Utxo}
+import xyz.kd5ujc.scarab.ledger.{ProtocolParams, Utxo}
 import xyz.kd5ujc.scarab.ledger.state.Gap
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** What a V4 snapshot holds that the Haskell ledger state beside it has no place for.
+/** What a V5 snapshot holds that the Haskell ledger state beside it has no place for.
   *
   * @param anchor
   *   the last block applied (none: genesis). In a Shelley-based era the header state of the Haskell
@@ -35,11 +35,10 @@ object SnapshotSidecar:
   /** The part by family of era. */
   enum Chain:
     /** The chain is still in Byron, whose ledger state the mirror does not model, so there is no
-      * Haskell section: the node state whole, less the header state, which is its chain-dependent
-      * state alone ([[xyz.kd5ujc.scarab.consensus.state.HeaderState.live]]; while the chain is in
-      * Byron it is the state Shelley will start from, the PBFT window being in the extras).
+      * Haskell section: the chain-dependent state Shelley will start from (the PBFT window is in
+      * the extras) and the consensus bookkeeping, the Byron ledger among it.
       */
-    case InByron(ledger: LedgerState, pending: ChainDepState, extras: ConsensusExtras)
+    case InByron(pending: ChainDepState, extras: ConsensusExtras)
 
     /** A Shelley-based era.
       *

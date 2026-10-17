@@ -33,11 +33,11 @@ object SnapshotMigration:
   object Report:
     val empty: Report = Report(Nil, Nil)
 
-  /** The migration of the snapshots of the node state to the current format (V4): a version 1 file
+  /** The migration of the snapshots of the node state to the current format (V5): a version 1 file
     * (written before the packages were renamed) and a version 2 file are decoded with the frozen
-    * reader of the `legacy` module and brought to the live state, a version 3 file has its Haskell
-    * section decoded and its sidecar converted ([[SnapshotV4.migrated]]); each is written again as
-    * V4 under the same name.
+    * reader of the `legacy` module and brought to the mirror, a version 3 or 4 file has its Haskell
+    * section decoded and its sidecar converted ([[SnapshotV5.migrated]]); each is written again as
+    * V5 under the same name.
     *
     * A version this build does not know, in a file that starts like a snapshot, refuses the whole
     * run before any file is rewritten (it was written by a newer build). A file of a known version
@@ -88,7 +88,7 @@ object SnapshotMigration:
         result <- FileLedgerSnapshots.verified(raw).leftMap(SnapshotRefusal.Unreadable(_)) match
           case Left(refusal) => F.pure(Left(refusal))
           case Right(content) =>
-            F.blocking(SnapshotV4.migrated(mirrorEnv, content)).flatMap {
+            F.blocking(SnapshotV5.migrated(mirrorEnv, content)).flatMap {
               case Left(refusal) => F.pure(Left(refusal))
               case Right(migrated) =>
                 AtomicFile.replace[F](file, FileLedgerSnapshots.closed(migrated)).map(Right(_))

@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   Committee,
-  ConwayGov,
+  GovChecks,
   GovAction,
   GovActionId,
   GovActionState,
@@ -189,7 +189,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
     cast.collect {
       case (voter, aid, _, g) if !(voter match
             case Voter.DRepVoter(_) => g.action == GovAction.Info
-            case _                  => ConwayGov.isBootstrapAction(g.action)
+            case _                  => GovChecks.isBootstrapAction(g.action)
           ) =>
         voter -> aid
     }
@@ -219,7 +219,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
       Refuse.unless[F](ok, id, PredicateFailure.gov(f))
     for
       _ <- check(
-        !bootstrap || ConwayGov.isBootstrapAction(action),
+        !bootstrap || GovChecks.isBootstrapAction(action),
         GovFailure.DisallowedProposalDuringBootstrap(proposal)
       )
       // a hard fork must be able to follow the one before it
@@ -235,7 +235,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
                   case GovAction.HardFork(_, m, n) => Some(m -> n)
                   case _                           => None)
           check(
-            reference.forall(ConwayGov.canFollow(_, major -> minor)),
+            reference.forall(GovChecks.canFollow(_, major -> minor)),
             GovFailure.ProposalCantFollow(
               prev,
               Mismatch(major -> minor, reference.getOrElse(pp.protocolMajor -> pp.protocolMinor))
@@ -244,7 +244,7 @@ object Gov extends Sts[GovEnv, Proposals, GovSignal, LedgerFailure]:
         case _ => Monad[F].unit
       _ <- check(
         action match
-          case GovAction.ParameterChange(_, u, _) => ConwayGov.wellFormed(pp, u)
+          case GovAction.ParameterChange(_, u, _) => GovChecks.wellFormed(pp, u)
           case _                                  => true
         ,
         GovFailure.MalformedProposal(action)

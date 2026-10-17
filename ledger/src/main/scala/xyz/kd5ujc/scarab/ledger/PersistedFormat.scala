@@ -13,10 +13,12 @@ import cats.data.NonEmptyList
   * `CSLIDX01`); `V2` is the rename to Scarab and changes no layout of the index, format and
   * identity files; `V3` is the ledger snapshot as the Haskell ledger state plus a sidecar (the
   * chain index is unchanged by it); `V4` is the same layout with the chain-dependent state of the
-  * node in the Haskell shape (the sidecar changed, J1.5). New versions are appended.
+  * node in the Haskell shape (the sidecar changed, J1.5); `V5` is the same layout with the sidecar
+  * of the era-indexed rules, which keep none of the old rules' bookkeeping (J2.9). New versions are
+  * appended.
   */
 enum FormatVersion derives CanEqual:
-  case V1, V2, V3, V4
+  case V1, V2, V3, V4, V5
 
   /** The version a migration step from this one produces; none for the newest. */
   def next: Option[FormatVersion] = FormatVersion.values.drop(ordinal + 1).headOption
@@ -73,7 +75,7 @@ enum FileKind(
 
   /** `<db>/snapshots/snapshot-<slot>-<blockNo>.bin`. The identifier is the 8-byte magic, and for
     * the two versions that share one (`CSLSNAP1`, which holds its format number as a 32-bit integer
-    * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3` and `SCRBSNP4` are the Haskell ledger state with a
+    * next) the text `CSLSNAP1 v<n>`: `SCRBSNP3`, `SCRBSNP4` and `SCRBSNP5` are the Haskell ledger state with a
     * sidecar.
     */
   case SnapshotFile
@@ -84,7 +86,8 @@ enum FileKind(
           FormatVersion.V1 -> "CSLSNAP1 v1",
           FormatVersion.V2 -> "CSLSNAP1 v2",
           FormatVersion.V3 -> "SCRBSNP3",
-          FormatVersion.V4 -> "SCRBSNP4"
+          FormatVersion.V4 -> "SCRBSNP4",
+          FormatVersion.V5 -> "SCRBSNP5"
         )
       )
 

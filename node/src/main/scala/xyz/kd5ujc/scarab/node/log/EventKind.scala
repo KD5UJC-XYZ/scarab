@@ -28,11 +28,8 @@ enum Area:
   /** Following peers: the chain, its epochs and eras, and how the peers serve it. */
   case Chain
 
-  /** The ledger state: epoch accounts, the state mirror check. */
+  /** The ledger state: epoch accounts. */
   case Ledger
-
-  /** The old and the new ledger rules side by side (`--rules differential`). */
-  case Rules
 
   /** Connections, in either direction. */
   case Net
@@ -90,15 +87,6 @@ enum EventKind(val area: Area, val severity: Severity):
 
   // the ledger state
   case LedgerEpoch extends EventKind(Area.Ledger, Severity.Info)
-  case MirrorChecked extends EventKind(Area.Ledger, Severity.Info)
-  case MirrorCheckFailed extends EventKind(Area.Ledger, Severity.Warning)
-
-  // the differential rules
-  case DifferentialSampled extends EventKind(Area.Rules, Severity.Debug)
-  case DifferentialTicked extends EventKind(Area.Rules, Severity.Debug)
-  case DifferentialSummary extends EventKind(Area.Rules, Severity.Notice)
-  case RulesDiverged extends EventKind(Area.Rules, Severity.Error)
-  case RulesHalted extends EventKind(Area.Rules, Severity.Critical)
 
   // connections
   case Connection extends EventKind(Area.Net, Severity.Info)

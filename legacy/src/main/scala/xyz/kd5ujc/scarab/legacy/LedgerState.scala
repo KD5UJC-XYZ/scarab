@@ -1,23 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.ledger
+package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.GenDelegPair
-
-/** A registered stake credential. `balance` is its reward balance. */
-final case class Account(balance: BigInt, deposit: BigInt, pool: Option[Bytes], drep: Option[DRep])
-
-final case class PoolState(params: PoolParams, deposit: BigInt)
-
-/** A registered DRep. `delegs` is the reverse index of stake credentials delegating to it (kept as
-  * the ledger keeps it, including its bootstrap-phase inconsistencies).
-  */
-final case class DRepState(
-    deposit: BigInt,
-    expiry: BigInt,
-    anchor: Option[Anchor] = None,
-    delegs: Set[Credential] = Set.empty
-)
+import xyz.kd5ujc.scarab.ledger.*
 
 /** A stake distribution snapshot: delegated stake per credential and the pool parameters in force.
   */
@@ -78,21 +63,6 @@ final case class InstantRewards(
 
 object InstantRewards:
   val empty: InstantRewards = InstantRewards(Map.empty, Map.empty, 0, 0)
-
-/** Plutus phase-2 evaluation counters. `succeeded` and `failed` count transactions whose scripts
-  * were evaluated and whose verdict equalled the block's `is_valid` flag (a disagreement is a
-  * validation error, so it is never counted); `scripts` counts the redeemers evaluated and
-  * `integrityChecked` the script data hashes recomputed and found equal.
-  */
-final case class PlutusStats(
-    succeeded: Long,
-    failed: Long,
-    scripts: Long,
-    integrityChecked: Long
-)
-
-object PlutusStats:
-  val zero: PlutusStats = PlutusStats(0, 0, 0, 0)
 
 /** The ledger state the node maintains. Collections are persistent, so the per-block copies kept by
   * the volatile chain share structure.

@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.PpupRules
+import xyz.kd5ujc.scarab.ledger.UpdateChecks
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** UPEC with the NEWPP rule it embeds (`Shelley/Rules/Upec.hs:74`, `Newpp.hs:68,88`; Shelley to
@@ -39,7 +39,7 @@ object Upec:
   def step(quorum: Int, g: ShelleyGovState): ShelleyGovState =
     val adopted = g.futurePParams.definite.getOrElse(g.curPParams)
     val proposals =
-      if g.futureProposals.valuesIterator.forall(PpupRules.canFollow(adopted, _).isRight) then
+      if g.futureProposals.valuesIterator.forall(UpdateChecks.canFollow(adopted, _).isRight) then
         g.futureProposals
       else Sorted.empty[KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.ParamUpdate]
     g.copy(
@@ -48,6 +48,6 @@ object Upec:
       curPParams = adopted,
       prevPParams = g.curPParams,
       futurePParams = FuturePParams.PotentialPParamsUpdate(
-        PpupRules.voted(adopted, proposals.iterator.map((k, u) => k.bytes -> u).toMap, quorum)
+        UpdateChecks.voted(adopted, proposals.iterator.map((k, u) => k.bytes -> u).toMap, quorum)
       )
     )

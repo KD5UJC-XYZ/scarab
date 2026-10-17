@@ -9,18 +9,13 @@ import xyz.kd5ujc.scarab.ledger.state.{EraTag, NewEpochState}
   * leader check of the epoch uses). What the forger reads when it asks whether the pool leads a
   * slot.
   *
-  * The ledger state is a type parameter: the forger crosses the epoch boundary on the node's flat
-  * ledger state until the rules are the era-indexed ones (J2.8), and then on a `NewEpochState`.
+  * The ledger state is a type parameter: the forger crosses the epoch boundary on the `NewEpochState`
+  * of the era the chain is in.
   */
 trait LeaderPools[L]:
   extension (ledger: L) def leaderPools: flat.PoolDistribution
 
 object LeaderPools:
-  /** The flat state keeps `nesPd` as a snapshot, whose distribution is built once. */
-  given LeaderPools[flat.LedgerState] with
-    extension (ledger: flat.LedgerState)
-      def leaderPools: flat.PoolDistribution = ledger.poolDistribution.distribution
-
   /** The mirror's `nesPd` as it is. */
   given [E <: EraTag]: LeaderPools[NewEpochState[E]] with
     extension (nes: NewEpochState[E])

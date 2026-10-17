@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.read
 
-import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras, NodeState}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ByronState, ConsensusExtras}
 import xyz.kd5ujc.scarab.consensus.state.*
 import xyz.kd5ujc.scarab.ledger as flat
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
-import xyz.kd5ujc.scarab.ledger.state.{EraTag, MirrorError, ShelleyBasedEra, SlotNo, WithOrigin}
+import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The ledger state of a Shelley-based era, with the witness of which: the era parameter packed so
@@ -18,11 +18,9 @@ enum InEra:
   * consensus half (the chain-dependent state, the bootstrap and Byron state), the era the chain is
   * in and the ledger state of that era as an [[EraRead]].
   *
-  * Two forms are the node's. The flat one ([[NodeState]]) is what `--rules old` runs and
-  * [[ChainRead.nodeState]] reads it; the other is the mirror ([[MirrorState]]), the state of the
-  * era-indexed rules, read as it is by the given instance. A reader takes `[S: ChainRead]`, and the
-  * state decides how it is read; nothing at run time chooses. At J2.9 the flat form goes and with
-  * it the first instance (design `ledger-mirror-step2.md` §4, J2.7).
+  * The node's state is the mirror ([[MirrorState]]), the state of the era-indexed rules, read as it
+  * is by the given instance. A reader takes `[S: ChainRead]`, so that a test can read a state of
+  * its own; nothing at run time chooses (design `ledger-mirror-step2.md` §4, J2.7).
   */
 trait ChainRead[S]:
   extension (s: S)
@@ -62,33 +60,6 @@ trait ChainRead[S]:
 object ChainRead:
   def apply[S](using read: ChainRead[S]): ChainRead[S] = read
 
-  /** The node's flat state, read through the mirror's vocabulary (see [[FlatEraRead]]). `env`
-    * decides the era (the hard-fork configuration) and gives the conversions their network,
-    * geometry and quorum.
-    */
-  def nodeState(env: ConsensusMirrorEnv): ChainRead[NodeState] = new ChainRead[NodeState]:
-    extension (s: NodeState)
-      def era: Era = StateMirror.eraOf(env, s)
-      def ledgerEpoch: BigInt = s.ledger.epoch
-      def protocol: ProtocolState = s.protocol
-      def consensus: ConsensusExtras = s.extras
-      def plutus: flat.PlutusStats = s.ledger.plutus
-      def utxo: flat.Utxo = s.ledger.utxo
-      def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
-        SomeEra.of(StateMirror.eraOf(env, s)) match
-          case None => Right(None)
-          case Some(of: SomeEra.Of[e]) =>
-            given ShelleyBasedEra[e] = of.era
-            tip(at).flatMap(FlatEraRead.of[e](s.ledger, _, env.ledger)).map { read =>
-              Some(InEra.Of(of.era, read))
-            }
-
-  /** The slot of the tip, as the mirror's position. */
-  private def tip(at: Option[BlockRef]): Read[WithOrigin[SlotNo]] = at match
-    case None => Right(WithOrigin.Origin)
-    case Some(b) =>
-      SlotNo.fromBigInt(b.slot).map(WithOrigin.At(_)).left.map(MirrorError.Vocab(_))
-
   /** A mirror is read as it is: the header state's telescope and the ledger state's say the era,
     * the extras the rest.
     */
@@ -96,15 +67,12 @@ object ChainRead:
     extension (m: MirrorState)
       def era: Era = m.ext.ledgerState.era
       def ledgerEpoch: BigInt = m.ext.ledgerState.state match
-        case EraLedgerState.ByronCurrent(_) =>
-          m.extras match
-            case MirrorExtras.InByron(l, _, _, _) => l.epoch
-            case MirrorExtras.InShelley(_, _)     => BigInt(0)
+        case EraLedgerState.ByronCurrent(_) => BigInt(0)
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.epoch.toBigInt
       def protocol: ProtocolState = ProtocolState(depState(m), consensus.protocol)
       def consensus: ConsensusExtras = m.extras match
         case MirrorExtras.InShelley(_, c) => c
-        case MirrorExtras.InByron(_, _, boot, protocol) =>
+        case MirrorExtras.InByron(_, boot, protocol) =>
           ConsensusExtras(
             boot,
             m.ext.ledgerState.state match
@@ -114,13 +82,10 @@ object ChainRead:
             protocol
           )
       def plutus: flat.PlutusStats = m.extras match
-        case MirrorExtras.InShelley(x, _)     => x.plutus
-        case MirrorExtras.InByron(l, _, _, _) => l.plutus
+        case MirrorExtras.InShelley(x, _) => x.plutus
+        case MirrorExtras.InByron(_, _, _) => flat.PlutusStats.zero
       def utxo: flat.Utxo = m.ext.ledgerState.state match
-        case EraLedgerState.ByronCurrent(_) =>
-          m.extras match
-            case MirrorExtras.InByron(l, _, _, _) => l.utxo
-            case _                                => flat.Utxo.empty
+        case EraLedgerState.ByronCurrent(_) => flat.Utxo.empty
         case i: EraLedgerState.InShelleyEra[e] => i.state.nes.es.ls.utxo.utxo.utxo
       def ledger(at: Option[BlockRef]): Read[Option[InEra]] =
         Right(m.ext.ledgerState.state match
@@ -132,5 +97,5 @@ object ChainRead:
     * the one Shelley will start from while the chain is in Byron.
     */
   private def depState(m: MirrorState): ChainDepState = m.extras match
-    case MirrorExtras.InByron(_, pending, _, _) => pending
+    case MirrorExtras.InByron(pending, _, _) => pending
     case MirrorExtras.InShelley(_, _)           => m.ext.headerState.chainDep.state

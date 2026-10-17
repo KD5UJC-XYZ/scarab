@@ -5,7 +5,7 @@ import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
-  ConwayRules,
+  RefScripts,
   LedgerFailure,
   Mismatch,
   PredicateFailure,
@@ -87,7 +87,7 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
     val ctx = env.ctx
     val epoch = ctx.epoch
     val treasury = env.treasury.value
-    val refSize = ConwayRules.refScriptsSize(utxo, body)
+    val refSize = RefScripts.refScriptsSize(utxo, body)
     val certEnv = CertEnv(id, pp, epoch, gov.committee, gov.proposals)
     for
       globals <- Sts.globals[F]
@@ -100,10 +100,10 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
         )
       )
       _ <- Refuse.unless[F](
-        refSize <= ConwayRules.MaxRefScriptSizePerTx,
+        refSize <= RefScripts.MaxRefScriptSizePerTx,
         id,
         PredicateFailure.TxRefScriptsSizeTooBig(
-          Mismatch(refSize, ConwayRules.MaxRefScriptSizePerTx)
+          Mismatch(refSize, RefScripts.MaxRefScriptSizePerTx)
         )
       )
       accounts = CertLens.accounts.get(certBefore)
@@ -167,7 +167,7 @@ object Ledger extends Sts[LedgerEnv, ConwayLedger, Tx, LedgerFailure]:
     yield ()
 
 /** `LedgersEnv` (`Shelley/Rules/Ledgers.hs`): the block-level context and the treasury. */
-final case class LedgersEnv(ctx: xyz.kd5ujc.scarab.ledger.TxRules.Env, treasury: Coin)
+final case class LedgersEnv(ctx: xyz.kd5ujc.scarab.ledger.TxEnv, treasury: Coin)
 
 /** LEDGERS (`Conway/Rules/Ledgers.hs`, the Shelley rule): the transactions of a block, in order,
   * each by LEDGER with its position in the block.

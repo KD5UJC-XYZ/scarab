@@ -221,24 +221,11 @@ final case class PulsingSnapshot(
 object PulsingSnapshot:
   val empty: PulsingSnapshot = PulsingSnapshot(Vector.empty, Map.empty, Map.empty, Map.empty)
 
-/** The governance state of the ledger (`ConwayGovState`). The pulser is kept in its completed form:
-  * ratification is a deterministic function of the snapshot taken at the epoch boundary, so the
-  * snapshot and the ratify state are computed together when the boundary is crossed.
-  */
-final case class GovState(
-    proposals: Proposals,
-    committee: Option[Committee],
-    constitution: Constitution,
-    pulsed: Option[(PulsingSnapshot, RatifyState)]
-)
-
-object GovState:
-  val noAnchor: Anchor = Anchor("", Bytes(Vector.fill(32)(0.toByte)))
-  val empty: GovState =
-    GovState(Proposals.empty, None, Constitution(noAnchor, None), None)
-
 /** The Conway genesis: voting parameters, the initial committee and the constitution. */
 object ConwayGenesis:
+  val noAnchor: Anchor = Anchor("", Bytes(Vector.fill(32)(0.toByte)))
+  val noConstitution: Constitution = Constitution(noAnchor, None)
+
   private def decimalOrRatio(c: ACursor): Either[ConfigError, Rational] =
     c.as[BigDecimal]
       .map(Rational.fromDecimal)
@@ -341,7 +328,7 @@ object ConwayGenesis:
       // The ledger always has a committee after the Conway translation, possibly with no members.
       Some(Committee(parsed.toMap, threshold)),
       Constitution(
-        Anchor(url.getOrElse(""), hashBytes.getOrElse(GovState.noAnchor.hash)),
+        Anchor(url.getOrElse(""), hashBytes.getOrElse(noAnchor.hash)),
         scriptBytes
       )
     )

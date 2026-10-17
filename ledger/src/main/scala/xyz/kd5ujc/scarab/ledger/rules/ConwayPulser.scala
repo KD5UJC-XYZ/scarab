@@ -28,9 +28,9 @@ object ConwayPulser:
     val gov = ls.utxo.gov
     val accounts = ls.cert.dState.accounts.states
     val flatAccounts: Map[node.Credential, node.Account] =
-      LedgerMirror.stakeMap(accounts)(LedgerMirror.conwayAccount)
+      FlatView.stakeMap(accounts)(FlatView.conwayAccount)
     val flatDReps: Map[node.Credential, node.DRepState] =
-      LedgerMirror.stakeMap(ls.cert.vState.dreps)(d =>
+      FlatView.stakeMap(ls.cert.vState.dreps)(d =>
         node.DRepState(
           d.deposit.toBigInt,
           d.expiry.toBigInt,
@@ -74,7 +74,7 @@ object ConwayPulser:
     val snapshot =
       node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolDistr)
     val committeeState: Map[node.Credential, node.CommitteeAuth] =
-      LedgerMirror.stakeMap(ls.cert.vState.committeeState.creds) {
+      FlatView.stakeMap(ls.cert.vState.committeeState.creds) {
         case CommitteeAuthorization.CommitteeHotCredential(h) =>
           node.CommitteeAuth.Hot(Convert.back(h))
         case CommitteeAuthorization.CommitteeMemberResigned(a) => node.CommitteeAuth.Resigned(a)
@@ -87,7 +87,7 @@ object ConwayPulser:
       epoch = epoch.toBigInt,
       committeeState = committeeState,
       accounts = flatAccounts,
-      pools = LedgerMirror.pools(globals.networkId, ls.cert.pState.stakePools)
+      pools = FlatView.pools(globals.networkId, ls.cert.pState.stakePools)
     )
     val enact = node.EnactState(
       committee = gov.committee,

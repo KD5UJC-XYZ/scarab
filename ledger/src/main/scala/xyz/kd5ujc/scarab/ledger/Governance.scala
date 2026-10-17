@@ -75,7 +75,7 @@ enum GovAction:
   case NewConstitution(
       previous: Option[GovActionId],
       script: Option[Bytes],
-      anchor: Anchor = GovState.noAnchor
+      anchor: Anchor = ConwayGenesis.noAnchor
   )
   case Info
 
@@ -84,7 +84,7 @@ final case class Proposal(
     deposit: BigInt,
     returnAccount: RewardAccount,
     action: GovAction,
-    anchor: Anchor = GovState.noAnchor
+    anchor: Anchor = ConwayGenesis.noAnchor
 )
 
 object Proposal:

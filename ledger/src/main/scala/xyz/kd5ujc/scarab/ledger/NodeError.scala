@@ -174,6 +174,11 @@ enum ConfigProblem:
     */
   case UnsupportedTopology
 
+  /** A flag of an earlier build that this one no longer has (the rule sets and the differential
+    * harness, removed at J2.9): the node is not started.
+    */
+  case RemovedFlag(flag: String)
+
 object Points:
   def show(point: ChainSync.Point): String = point match
     case ChainSync.Point.Origin            => "origin"

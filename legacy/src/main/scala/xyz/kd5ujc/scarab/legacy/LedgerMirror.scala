@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.ledger.state
+package xyz.kd5ujc.scarab.legacy
 
 import cats.{Eq, Monad, Order, Show}
 import cats.mtl.{Ask, Raise}
@@ -7,14 +7,13 @@ import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger as node
+import xyz.kd5ujc.scarab.ledger.state.{GovState as _, LedgerState as _, NodeExtras as _, *}
+import xyz.kd5ujc.scarab.ledger.state.{GovState, LedgerState}
+import xyz.kd5ujc.scarab.ledger.state.given
+import xyz.kd5ujc.scarab.legacy as flat
 
 // The ledger side of the mirror: the node's flat ledger state to the Haskell-shaped
 // `NewEpochState` of an era and back. Plan sections 2 and 3 of the ledger-state mirror.
-
-/** The node's state of a mirror, with the derived pieces of the mirror that the state's own mirror
-  * does not have (`LedgerMirror.rebuilt`).
-  */
-final case class Rebuilt(state: node.LedgerState, differing: List[Derived])
 
 /** The mirror of the node's ledger state in era `E`: the Haskell-shaped state and the node-only
   * bookkeeping that has no place in it.
@@ -31,7 +30,7 @@ object LedgerImage:
   given [E <: EraTag](using ShelleyBasedEra[E]): Show[LedgerImage[E]] =
     Show.show(i => s"LedgerImage(nes = ${i.nes.show}, extras = ${i.extras.show})")
 
-/** The conversion between the node's [[node.LedgerState]] and the [[LedgerImage]] of any
+/** The conversion between the node's [[flat.LedgerState]] and the [[LedgerImage]] of any
   * Shelley-based era `E`, chosen by the witness.
   *
   * `to` derives what Haskell holds and the node does not (the VRF key hashes, the delegators of a
@@ -46,23 +45,9 @@ object LedgerImage:
   */
 trait LedgerMirror[F[_]]:
   /** The mirror of `s`, at the tip `at`, with the gaps it has. */
-  def to[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
+  def to[E <: EraTag](at: WithOrigin[SlotNo], s: flat.LedgerState)(using
       ShelleyBasedEra[E]
   ): F[Mirrored[LedgerImage[E]]]
-
-  /** The node's state of a mirror. */
-  def from[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
-      ShelleyBasedEra[E]
-  ): F[node.LedgerState]
-
-  /** The node's state of a mirror with every derived piece that differs from what `to` derives of
-    * it (`from` fails on the first). The rules produce states that are richer than what the node
-    * can derive from its own (the DRep pulser of the governance state): a test that reads a rule's
-    * result through the flat state names the pieces it accepts as different and asserts the rest.
-    */
-  def rebuilt[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
-      ShelleyBasedEra[E]
-  ): F[Rebuilt]
 
   // The parts of `to`, each on its own. A reader that needs the pool distribution does not pay for
   // the accounts: `to` is the sum of these (and of what the node keeps beside the mirror), and the
@@ -72,15 +57,15 @@ trait LedgerMirror[F[_]]:
   /** The scalars of the new-epoch state: the epoch, the blocks made, the pots and the three amounts
     * of the UTxO state.
     */
-  def scalars(s: node.LedgerState): F[LedgerScalars]
+  def scalars(s: flat.LedgerState): F[LedgerScalars]
 
   /** The certificate state: pools (with the VRF key hashes and delegators the node derives),
     * delegation and, in Conway, the voting state.
     */
-  def certState[E <: EraTag](s: node.LedgerState)(using ShelleyBasedEra[E]): F[CertState[E]]
+  def certState[E <: EraTag](s: flat.LedgerState)(using ShelleyBasedEra[E]): F[CertState[E]]
 
   /** The governance state, as of the tip `at` (the future parameters depend on it). */
-  def govState[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
+  def govState[E <: EraTag](at: WithOrigin[SlotNo], s: flat.LedgerState)(using
       ShelleyBasedEra[E]
   ): F[GovState[E]]
 
@@ -88,10 +73,10 @@ trait LedgerMirror[F[_]]:
   def instantStake[E <: EraTag](u: node.Utxo)(using ShelleyBasedEra[E]): F[InstantStake[E]]
 
   /** The three stake snapshots and the fee pot. */
-  def snapshots(s: node.LedgerState): F[SnapShots]
+  def snapshots(s: flat.LedgerState): F[SnapShots]
 
   /** The pool distribution of the new-epoch state (`nesPd`). */
-  def poolDistr(s: node.LedgerState): F[PoolDistr]
+  def poolDistr(s: flat.LedgerState): F[PoolDistr]
 
 /** The scalar fields of a [[NewEpochState]] and of the UTxO state under it, taken off the node's
   * state ([[LedgerMirror.scalars]]).
@@ -120,7 +105,7 @@ object LedgerMirror:
     * ([[node.PoolParams.registeredOn]]): Haskell keeps its credential only, as the rules read it.
     * The future parameters of a pool keep theirs.
     */
-  def normalised(network: Int, s: node.LedgerState): node.LedgerState =
+  def normalised(network: Int, s: flat.LedgerState): flat.LedgerState =
     s.copy(
       futureGenDelegs = s.futureGenDelegs
         .groupBy(d => (d.slot, d.genesisKey))
@@ -140,11 +125,11 @@ object LedgerMirror:
     )
 
   /** The snapshot with its pools' reward accounts on `network`. */
-  private def poolsOn(network: Int, s: node.Snapshot): node.Snapshot =
+  private def poolsOn(network: Int, s: flat.Snapshot): flat.Snapshot =
     s.copy(pools = s.pools.view.mapValues(_.registeredOn(network)).toMap)
 
   /** The gaps of the mirror of `s` (`Gap`), a function of the state alone. */
-  def gaps(s: node.LedgerState): Set[Gap] =
+  def gaps(s: flat.LedgerState): Set[Gap] =
     val snapshots = List(s.snapshots.set, s.snapshots.go, s.poolDistribution)
     Set(Gap.NonMyopic) ++
       Option.when(s.rewardUpdate.exists(_.rewards.nonEmpty))(Gap.RewardAttribution) ++
@@ -163,7 +148,7 @@ object LedgerMirror:
   def futurePParams(
       env: MirrorEnv,
       at: WithOrigin[SlotNo],
-      s: node.LedgerState,
+      s: flat.LedgerState,
       conway: Boolean
   ): FuturePParams =
     val slot = at match
@@ -186,11 +171,11 @@ object LedgerMirror:
           potential = s.blocksCurrent.valuesIterator.sum <= 1
         )
       }
-    else settle(node.PpupRules.voted(s.params, s.ppup.current, env.quorum), potential = false)
+    else settle(node.UpdateChecks.voted(s.params, s.ppup.current, env.quorum), potential = false)
 
   /** The parameters as the era's `PParams` has them: the fields it has no place for are zero (the
     * Haskell Alonzo parameters have no `minUTxOValue`, Babbage and Conway have neither it nor
-    * `coinsPerUTxOWord`); [[ParamFields]] keeps the originals.
+    * `coinsPerUTxOWord`); [[flat.ParamFields]] keeps the originals.
     */
   private def eraParams[E <: EraTag](p: node.ProtocolParams)(using
       era: ShelleyBasedEra[E]
@@ -225,7 +210,7 @@ object LedgerMirror:
         FuturePParams.PotentialPParamsUpdate(next.map(fields))
 
   /** The accounts that delegate to each pool, stake or no stake. */
-  private def accountDelegators(s: node.LedgerState): Map[Bytes, Vector[node.Credential]] =
+  private def accountDelegators(s: flat.LedgerState): Map[Bytes, Vector[node.Credential]] =
     s.accounts.iterator
       .collect { case (c, node.Account(_, _, Some(p), _)) => p -> c }
       .toVector
@@ -237,171 +222,7 @@ object LedgerMirror:
         ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
       false
 
-  // ---- the conversions of the leaf types that need no effect
-
-  private[ledger] def credBack[R <: KeyRole](c: Credential[R]): node.Credential = c match
-    case Credential.ScriptHashObj(h) => node.Credential.Script(h.bytes)
-    case Credential.KeyHashObj(h)    => node.Credential.Key(h.bytes)
-
-  private[ledger] def drepBack(d: DRep): node.DRep = d match
-    case DRep.DRepKeyHash(h)         => node.DRep.Registered(node.Credential.Key(h.bytes))
-    case DRep.DRepScriptHash(h)      => node.DRep.Registered(node.Credential.Script(h.bytes))
-    case DRep.DRepAlwaysAbstain      => node.DRep.AlwaysAbstain
-    case DRep.DRepAlwaysNoConfidence => node.DRep.AlwaysNoConfidence
-
-  private[ledger] def stakeMap[R <: KeyRole, A, B](m: SortedMap[Credential[R], A])(
-      f: A => B
-  ): Map[node.Credential, B] =
-    m.iterator.map((c, a) => credBack(c) -> f(a)).toMap
-
-  private[ledger] def coinMap(
-      m: SortedMap[Credential[Staking], Coin]
-  ): Map[node.Credential, BigInt] =
-    stakeMap(m)(_.value)
-
   private val genesisPointer: node.Ptr = node.Ptr(0, 0, 0)
-
-  /** The era-independent view of a certificate state, what `from` needs of it. */
-  private final case class CertParts(
-      pState: PState,
-      accounts: Map[node.Credential, node.Account],
-      ptrs: Map[node.Ptr, node.Credential],
-      futureGenDelegs: SortedMap[FutureGenDeleg, node.GenDelegPair],
-      genDelegs: SortedMap[KeyHash[Genesis], node.GenDelegPair],
-      iRewards: InstantaneousRewards,
-      vState: Option[VState]
-  )
-
-  private[ledger] def conwayAccount(a: ConwayAccountState): node.Account =
-    node.Account(
-      a.balance.toBigInt,
-      a.deposit.toBigInt,
-      a.pool.map(_.bytes),
-      a.drep.map(drepBack)
-    )
-
-  private[ledger] def shelleyAccount(a: ShelleyAccountState): node.Account =
-    node.Account(a.balance.toBigInt, a.deposit.toBigInt, a.pool.map(_.bytes), None)
-
-  private def certParts[E <: EraTag](c: CertState[E])(using era: ShelleyBasedEra[E]): CertParts =
-    era match
-      case ShelleyBasedEra.SConway =>
-        CertParts(
-          c.pState,
-          stakeMap(c.dState.accounts.states)(conwayAccount),
-          Map.empty,
-          c.dState.futureGenDelegs,
-          c.dState.genDelegs,
-          c.dState.iRewards,
-          Some(c.vState)
-        )
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        CertParts(
-          c.pState,
-          stakeMap(c.dState.accounts.states)(shelleyAccount),
-          c.dState.accounts.ptrs.iterator.map((p, cr) => p -> credBack(cr)).toMap,
-          c.dState.futureGenDelegs,
-          c.dState.genDelegs,
-          c.dState.iRewards,
-          None
-        )
-
-  /** The era-independent view of a governance state. */
-  private final case class GovParts(
-      params: node.ProtocolParams,
-      prev: node.ProtocolParams,
-      conway: Option[(node.GovState, DRComplete)],
-      ppup: Option[node.Ppup]
-  )
-
-  private def govParts[E <: EraTag](g: GovState[E])(using era: ShelleyBasedEra[E]): GovParts =
-    era match
-      case ShelleyBasedEra.SConway =>
-        GovParts(
-          g.curPParams,
-          g.prevPParams,
-          Some((node.GovState(g.proposals, g.committee, g.constitution, None), g.drepPulsing)),
-          None
-        )
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        GovParts(
-          g.curPParams,
-          g.prevPParams,
-          None,
-          Some(
-            node.Ppup(
-              g.curProposals.iterator.map((k, u) => k.bytes -> u).toMap,
-              g.futureProposals.iterator.map((k, u) => k.bytes -> u).toMap
-            )
-          )
-        )
-
-  private def futureOf[E <: EraTag](g: GovState[E])(using era: ShelleyBasedEra[E]): FuturePParams =
-    era match
-      case ShelleyBasedEra.SConway => g.futurePParams
-      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
-          ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
-        g.futurePParams
-
-  private[ledger] def pools(
-      network: Int,
-      ps: SortedMap[KeyHash[StakePool], StakePoolState]
-  ): Map[Bytes, node.PoolState] =
-    ps.iterator.map { (id, p) =>
-      id.bytes -> node.PoolState(
-        node.PoolParams(
-          id.bytes,
-          p.vrf.bytes,
-          p.pledge.value,
-          p.cost.value,
-          p.margin,
-          node.RewardAccount(network, credBack(p.accountId)),
-          p.owners.iterator.map(_.bytes).toSet,
-          p.relays,
-          p.metadata
-        ),
-        p.deposit.toBigInt
-      )
-    }.toMap
-
-  /** The node's snapshot of a mirror's, with the pool details from the residue (the owners that do
-    * not delegate to the pool are not in `StakePoolSnapShot`; without residue the snapshot's own
-    * are all there is, and the relays are empty). The pools with more delegators than the snapshot
-    * lists are the idle ones.
-    */
-  private def snapshotBack(
-      network: Int,
-      s: SnapShot,
-      residue: Map[Bytes, PoolResidue]
-  ): node.Snapshot =
-    val staked = s.activeStake.entries
-    val counts = staked.valuesIterator.toVector.groupMapReduce(_.delegation)(_ => 1)(_ + _)
-    node.Snapshot(
-      stakeMap(staked)(_.stake.value.toBigInt),
-      stakeMap(staked)(_.delegation.bytes),
-      s.pools.iterator.map { (id, p) =>
-        val extra = residue.getOrElse(
-          id.bytes,
-          PoolResidue(p.selfDelegatedOwners.iterator.map(_.bytes).toSet, Bytes.empty, None)
-        )
-        id.bytes -> node.PoolParams(
-          id.bytes,
-          p.vrf.bytes,
-          p.pledge.value,
-          p.cost.value,
-          p.margin,
-          node.RewardAccount(network, credBack(p.accountId)),
-          extra.owners,
-          extra.relays,
-          extra.metadata
-        )
-      }.toMap,
-      s.pools.iterator.collect {
-        case (id, p) if p.numDelegators.toBigInt > BigInt(counts.getOrElse(id, 0)) => id.bytes
-      }.toSet
-    )
 
   private final class Impl[F[_]](using
       monad: Monad[F],
@@ -447,7 +268,7 @@ object LedgerMirror:
 
     // ---- the certificate state
 
-    private def pState(s: node.LedgerState): F[PState] =
+    private def pState(s: flat.LedgerState): F[PState] =
       // `psVRFKeyHashes` is kept from protocol version 10 (the hard fork populates it,
       // `Conway/Rules/HardFork.hs:106-118`): the VRF key of every registered pool and of every
       // pending re-registration, once (`Shelley/Rules/Pool.hs:262-306`).
@@ -507,18 +328,18 @@ object LedgerMirror:
         )
       yield PState(vrfKeys, stakePools, future, retiring)
 
-    private def instantaneous(m: node.InstantRewards): F[InstantaneousRewards] =
+    private def instantaneous(m: flat.InstantRewards): F[InstantaneousRewards] =
       (stakeCredMap(m.reserves), stakeCredMap(m.treasury)).mapN(
         InstantaneousRewards(_, _, DeltaCoin(m.deltaReserves), DeltaCoin(m.deltaTreasury))
       )
 
     private def genDelegs(
-        s: node.LedgerState
+        s: flat.LedgerState
     ): F[SortedMap[KeyHash[Genesis], node.GenDelegPair]] =
       sorted(s.genDelegs)((k, p) => hash[Genesis](k).map(_ -> p))
 
     private def futureGenDelegs(
-        s: node.LedgerState
+        s: flat.LedgerState
     ): F[SortedMap[FutureGenDeleg, node.GenDelegPair]] =
       s.futureGenDelegs.toList
         .traverse(d =>
@@ -528,14 +349,14 @@ object LedgerMirror:
         .map(Sorted.map(_))
 
     private def dState[A <: AccountsRecord](
-        s: node.LedgerState,
+        s: flat.LedgerState,
         accounts: A
     ): F[DState[A]] =
       (futureGenDelegs(s), genDelegs(s), instantaneous(s.mir)).mapN(
         DState(accounts, _, _, _)
       )
 
-    private def conwayAccounts(s: node.LedgerState): F[ConwayAccounts] =
+    private def conwayAccounts(s: flat.LedgerState): F[ConwayAccounts] =
       sorted(s.accounts) { (c, a) =>
         (
           cred[Staking](c),
@@ -548,7 +369,7 @@ object LedgerMirror:
         ).tupled
       }.map(ConwayAccounts(_))
 
-    private def shelleyAccounts(s: node.LedgerState): F[ShelleyAccounts] =
+    private def shelleyAccounts(s: flat.LedgerState): F[ShelleyAccounts] =
       val ordering = summon[Ordering[node.Ptr]]
       // Each credential registered by one certificate, whose pointer it is; a credential
       // registered by none (genesis) has the zero pointer.
@@ -569,7 +390,7 @@ object LedgerMirror:
         ptrs <- sorted(s.ptrs.toMap)((p, c) => cred[Staking](c).map(p -> _))
       yield ShelleyAccounts(states, ptrs)
 
-    private def vState(s: node.LedgerState): F[VState] =
+    private def vState(s: flat.LedgerState): F[VState] =
       for
         dreps <- sorted(s.dreps) { (c, d) =>
           (
@@ -594,7 +415,7 @@ object LedgerMirror:
         dormant <- vocab(EpochNo.fromBigInt(s.dormantEpochs))
       yield VState(dreps, CommitteeState(committee), dormant)
 
-    private def certWith[E <: EraTag](s: node.LedgerState, p: PState)(using
+    private def certWith[E <: EraTag](s: flat.LedgerState, p: PState)(using
         era: ShelleyBasedEra[E]
     ): F[CertState[E]] = era match
       case ShelleyBasedEra.SConway =>
@@ -612,7 +433,7 @@ object LedgerMirror:
 
     // ---- the governance state and the instant stake
 
-    def govState[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
+    def govState[E <: EraTag](at: WithOrigin[SlotNo], s: flat.LedgerState)(using
         era: ShelleyBasedEra[E]
     ): F[GovState[E]] =
       asks.ask.flatMap { env =>
@@ -625,7 +446,7 @@ object LedgerMirror:
                 s.gov.committee,
                 s.gov.constitution,
                 eraParams[E](s.params),
-                eraParams[E](node.ConwayEpoch.reportedPrevious(s)),
+                eraParams[E](flat.ConwayEpoch.reportedPrevious(s)),
                 future,
                 pulser(s)
               )
@@ -649,8 +470,8 @@ object LedgerMirror:
       * the mirror holds the ratification of nothing over the state it is in
       * (`NodeExtras.pulserAbsent`).
       */
-    private def pulser(s: node.LedgerState): DRComplete =
-      val (snapshot, ratify) = node.ConwayEpoch.reportedPulser(s)
+    private def pulser(s: flat.LedgerState): DRComplete =
+      val (snapshot, ratify) = flat.ConwayEpoch.reportedPulser(s)
       DRComplete(snapshot, ratify)
 
     /** `utxosInstantStake`: the stake of the UTxO by credential (and by pointer before Conway). */
@@ -669,7 +490,7 @@ object LedgerMirror:
 
     // ---- the snapshots
 
-    private final case class Snap(snapshot: SnapShot, residue: Map[Bytes, PoolResidue])
+    private final case class Snap(snapshot: SnapShot, residue: Map[Bytes, flat.PoolResidue])
 
     /** `SnapShot` of the node's snapshot (`mkSnapShot`, `State/SnapShots.hs:397-403`, and
       * `StakePoolSnapShot`, `239-252`), whose delegators are the stake-bearing ones and whose idle
@@ -681,7 +502,7 @@ object LedgerMirror:
       * `go`, and `mark` on [[SnapshotBasis.AsTaken]]), the count is a lower bound.
       */
     private def snapShot(
-        snap: node.Snapshot,
+        snap: flat.Snapshot,
         exact: Option[Map[Bytes, Vector[node.Credential]]] = None
     ): F[Snap] =
       val delegators: Map[Bytes, Vector[node.Credential]] =
@@ -749,7 +570,7 @@ object LedgerMirror:
             account
           )
         }
-      yield Snap(SnapShot(active, poolSnapshots), snap.pools.view.mapValues(PoolResidue.of).toMap)
+      yield Snap(SnapShot(active, poolSnapshots), snap.pools.view.mapValues(flat.PoolResidue.of).toMap)
 
     private def blocks(m: Map[Bytes, BigInt]): F[BlocksMade] =
       sorted(m)((k, n) =>
@@ -757,7 +578,7 @@ object LedgerMirror:
       ).map(BlocksMade.iso.reverseGet)
 
     private def rewardUpdate(
-        ru: Option[node.RewardUpdate]
+        ru: Option[flat.RewardUpdate]
     ): F[Option[PulsingRewUpdate]] =
       monad.pure(
         ru.map(r =>
@@ -775,10 +596,10 @@ object LedgerMirror:
 
     // ---- the parts of the mirror, each on its own
 
-    def certState[E <: EraTag](s: node.LedgerState)(using ShelleyBasedEra[E]): F[CertState[E]] =
+    def certState[E <: EraTag](s: flat.LedgerState)(using ShelleyBasedEra[E]): F[CertState[E]] =
       pState(s).flatMap(certWith[E](s, _))
 
-    def scalars(s: node.LedgerState): F[LedgerScalars] =
+    def scalars(s: flat.LedgerState): F[LedgerScalars] =
       for
         epoch <- vocab(EpochNo.fromBigInt(s.epoch))
         bprev <- blocks(s.blocksPrevious)
@@ -798,7 +619,7 @@ object LedgerMirror:
         donation
       )
 
-    def snapshots(s: node.LedgerState): F[SnapShots] =
+    def snapshots(s: flat.LedgerState): F[SnapShots] =
       for
         mark <- snapShot(s.snapshots.mark, Some(accountDelegators(s)))
         set <- snapShot(s.snapshots.set)
@@ -806,7 +627,7 @@ object LedgerMirror:
         fee <- coin(s.snapshots.fee)
       yield SnapShots(mark.snapshot, set.snapshot, go.snapshot, fee)
 
-    def poolDistr(s: node.LedgerState): F[PoolDistr] =
+    def poolDistr(s: flat.LedgerState): F[PoolDistr] =
       for
         set <- snapShot(s.snapshots.set)
         env <- asks.ask
@@ -815,13 +636,13 @@ object LedgerMirror:
       yield PoolDistr.of(distr.fold(set.snapshot)(_.snapshot))
 
     /** The pool distribution when it is not the set snapshot's, on the node's network. */
-    private def carriedDistribution(env: MirrorEnv, s: node.LedgerState): Option[node.Snapshot] =
+    private def carriedDistribution(env: MirrorEnv, s: flat.LedgerState): Option[flat.Snapshot] =
       val distribution = poolsOn(env.network, s.poolDistribution)
       Option.unless(distribution == poolsOn(env.network, s.snapshots.set))(distribution)
 
     // ---- the whole state
 
-    def to[E <: EraTag](at: WithOrigin[SlotNo], s: node.LedgerState)(using
+    def to[E <: EraTag](at: WithOrigin[SlotNo], s: flat.LedgerState)(using
         era: ShelleyBasedEra[E]
     ): F[Mirrored[LedgerImage[E]]] =
       val conway = isConway[E]
@@ -865,200 +686,28 @@ object LedgerMirror:
           NonMyopic.empty
         )
         val nes = NewEpochState[E](epoch, bprev, bcur, es, ru, pd, Empty.stashedAvvm[E])
-        val extras = NodeExtras(
+        val extras = flat.NodeExtras(
           s.plutus,
           s.rewardDraft,
           s.rewardRegistered,
           s.rewardUpdate.fold(Map.empty[node.Credential, BigInt])(_.rewards),
           s.prevParams.isDefined,
           pulserAbsent = conway && s.gov.pulsed.isEmpty,
-          SnapshotsResidue(mark.residue, set.residue, go.residue, s.snapshots.mark.idlePools),
+          flat.SnapshotsResidue(mark.residue, set.residue, go.residue, s.snapshots.mark.idlePools),
           carried,
-          DroppedParams(ParamFields.of(s.params), ParamFields.of(s.previousParams)),
+          flat.DroppedParams(flat.ParamFields.of(s.params), flat.ParamFields.of(s.previousParams)),
           residue(s, conway)
         )
         Mirrored(LedgerImage(nes, extras), gaps(s))
 
     /** What the era has no place for. */
-    private def residue(s: node.LedgerState, conway: Boolean): Residue =
-      if conway then Residue.empty.copy(ppup = s.ppup, ptrs = s.ptrs.toMap)
+    private def residue(s: flat.LedgerState, conway: Boolean): flat.Residue =
+      if conway then flat.Residue.empty.copy(ppup = s.ppup, ptrs = s.ptrs.toMap)
       else
-        Residue.empty.copy(
+        flat.Residue.empty.copy(
           gov = s.gov,
           dreps = s.dreps,
           committeeState = s.committeeState,
           dormantEpochs = s.dormantEpochs,
           accountDreps = s.accounts.collect { case (c, node.Account(_, _, _, Some(d))) => c -> d }
         )
-
-    def from[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
-        era: ShelleyBasedEra[E]
-    ): F[node.LedgerState] =
-      rebuilt[E](at, image).flatMap(r =>
-        r.differing.headOption.fold(monad.pure(r.state))(field =>
-          fail[node.LedgerState](MirrorError.DerivedMismatch(field))
-        )
-      )
-
-    def rebuilt[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
-        era: ShelleyBasedEra[E]
-    ): F[Rebuilt] =
-      val nes = image.nes
-      val x = image.extras
-      val ls = nes.es.ls
-      val cert = certParts[E](ls.cert)
-      val gov = govParts[E](ls.utxo.gov)
-      val conway = isConway[E]
-      asks.ask.flatMap { env =>
-        val net = env.network
-        val set = nes.es.snapshots.set
-        val distribution = x.poolDistribution.getOrElse(
-          snapshotBack(net, set, x.snapshots.set)
-        )
-        val rewards: Option[node.RewardUpdate] = nes.ru match
-          case None => None
-          case Some(PulsingRewUpdate.Complete(u)) =>
-            Some(
-              node.RewardUpdate(
-                u.deltaT.value,
-                u.deltaR.value,
-                if u.rs.isEmpty then x.rewardAmounts
-                else
-                  // what each credential is paid (`aggregateRewards`, `Rewards.hs:170-186`): before
-                  // Allegra one that earns from several sources keeps the least of them, the leader
-                  // reward
-                  stakeMap(u.rs)(set =>
-                    (if gov.prev.protocolMajor >= 3 then set.rewards else set.rewards.take(1))
-                      .foldLeft(BigInt(0))(_ + _.rewardAmount.value)
-                  )
-                ,
-                u.deltaF.value
-              )
-            )
-          case Some(PulsingRewUpdate.Pulsing(_, _)) => None
-        val pulsing = nes.ru.exists {
-          case PulsingRewUpdate.Pulsing(_, _) => true
-          case _                              => false
-        }
-        val cur = x.params.cur.restore(gov.params)
-        // a Conway state with no previous parameters reports its pulser and previous parameters as of
-        // the era translation (`ConwayEpoch.reportedPulser`): put back what that took out
-        val beforeBoundary = conway && !x.prevParamsExplicit
-        val prev = node.ConwayEpoch.heldPrevious(
-          x.params.prev.restore(gov.prev),
-          cur,
-          beforeBoundary
-        )
-        val pulsed =
-          if x.pulserAbsent then None
-          else
-            gov.conway.map((_, d) =>
-              (d.snapshot, node.ConwayEpoch.heldRatify(d.ratify, cur, beforeBoundary))
-            )
-        val rebuilt = node.LedgerState(
-          epoch = nes.epoch.toBigInt,
-          params = cur,
-          utxo = ls.utxo.utxo.utxo,
-          fees = ls.utxo.fees.value,
-          deposited = ls.utxo.deposited.value,
-          accounts = cert.accounts ++ x.residue.accountDreps.flatMap((c, d) =>
-            cert.accounts.get(c).map(a => c -> a.copy(drep = Some(d)))
-          ),
-          pools = pools(net, cert.pState.stakePools),
-          futurePools = cert.pState.future.iterator.map((id, p) => id.bytes -> p).toMap,
-          retiring = cert.pState.retiring.iterator.map((id, e) => id.bytes -> e.toBigInt).toMap,
-          dreps =
-            if conway then
-              cert.vState.fold(Map.empty[node.Credential, node.DRepState])(v =>
-                stakeMap(v.dreps)(d =>
-                  node.DRepState(
-                    d.deposit.toBigInt,
-                    d.expiry.toBigInt,
-                    d.anchor,
-                    d.delegators.iterator.map(credBack).toSet
-                  )
-                )
-              )
-            else x.residue.dreps,
-          dormantEpochs =
-            if conway then cert.vState.fold(BigInt(0))(_.numDormantEpochs.toBigInt)
-            else x.residue.dormantEpochs,
-          treasury = nes.es.chainAccount.treasury.value,
-          reserves = nes.es.chainAccount.reserves.value,
-          snapshots = node.Snapshots(
-            snapshotBack(net, nes.es.snapshots.mark, x.snapshots.mark)
-              .copy(idlePools = x.snapshots.markIdle),
-            snapshotBack(net, set, x.snapshots.set),
-            snapshotBack(net, nes.es.snapshots.go, x.snapshots.go),
-            nes.es.snapshots.fee.value
-          ),
-          blocksCurrent = nes.bcur.blocks.iterator.map((k, n) => k.bytes -> n.toBigInt).toMap,
-          blocksPrevious = nes.bprev.blocks.iterator.map((k, n) => k.bytes -> n.toBigInt).toMap,
-          rewardUpdate = rewards,
-          poolDistribution = distribution,
-          genDelegs = cert.genDelegs.iterator.map((k, p) => k.bytes -> p).toMap,
-          futureGenDelegs = cert.futureGenDelegs.iterator
-            .map((d, p) => node.FutureGenDeleg(d.slot.toBigInt, d.genKeyHash.bytes, p))
-            .toVector,
-          ppup = gov.ppup.getOrElse(x.residue.ppup),
-          mir = node.InstantRewards(
-            coinMap(cert.iRewards.reserves),
-            coinMap(cert.iRewards.treasury),
-            cert.iRewards.deltaReserves.value,
-            cert.iRewards.deltaTreasury.value
-          ),
-          ptrs = node.PtrMap(if conway then x.residue.ptrs else cert.ptrs),
-          prevParams = Option.when(x.prevParamsExplicit || prev != cur)(prev),
-          rewardRegistered = x.rewardRegistered,
-          plutus = x.plutus,
-          gov = gov.conway.fold(x.residue.gov)((g, _) => g.copy(pulsed = pulsed)),
-          committeeState =
-            if conway then
-              cert.vState.fold(Map.empty[node.Credential, node.CommitteeAuth])(v =>
-                stakeMap(v.committeeState.creds) {
-                  case CommitteeAuthorization.CommitteeHotCredential(h) =>
-                    node.CommitteeAuth.Hot(credBack(h))
-                  case CommitteeAuthorization.CommitteeMemberResigned(a) =>
-                    node.CommitteeAuth.Resigned(a)
-                }
-              )
-            else x.residue.committeeState,
-          donation = ls.utxo.donation.value,
-          rewardDraft = x.rewardDraft
-        )
-        if pulsing then fail[Rebuilt](MirrorError.IllFormed(Shape.PulsingRewardUpdate))
-        else differing(at, image, rebuilt).map(Rebuilt(rebuilt, _))
-      }
-
-    /** The mirror of the rebuilt state should be the mirror it was rebuilt from, in what is
-      * derived: the pieces that are not, in the order of [[Derived]]'s checks.
-      */
-    private def differing[E <: EraTag](
-        at: WithOrigin[SlotNo],
-        image: LedgerImage[E],
-        rebuilt: node.LedgerState
-    )(using era: ShelleyBasedEra[E]): F[List[Derived]] =
-      to[E](at, rebuilt).flatMap { again =>
-        val a = image.nes
-        val b = again.value.nes
-        val pa = LedgerState.pState[E].get(a.es.ls)
-        val pb = LedgerState.pState[E].get(b.es.ls)
-        val ga = a.es.ls.utxo.gov
-        val gb = b.es.ls.utxo.gov
-        import EraInstances.given
-        val checks: List[(Derived, Boolean)] = List(
-          Derived.VrfKeyHashes -> (pa.vrfKeyHashes == pb.vrfKeyHashes),
-          Derived.PoolDelegators -> (pa.stakePools == pb.stakePools),
-          Derived.AccountPointer -> Eq[CertState[E]].eqv(a.es.ls.cert, b.es.ls.cert),
-          Derived.InstantStake ->
-            Eq[InstantStake[E]].eqv(a.es.ls.utxo.instantStake, b.es.ls.utxo.instantStake),
-          Derived.FuturePParams -> (futureOf[E](ga) == futureOf[E](gb)),
-          Derived.PulserPlaceholder -> Eq[GovState[E]].eqv(ga, gb),
-          Derived.PoolDistr -> (a.pd == b.pd),
-          Derived.Snapshot(Derived.Which.Mark) -> (a.es.snapshots.mark == b.es.snapshots.mark),
-          Derived.Snapshot(Derived.Which.Set) -> (a.es.snapshots.set == b.es.snapshots.set),
-          Derived.Snapshot(Derived.Which.Go) -> (a.es.snapshots.go == b.es.snapshots.go),
-          Derived.Extras -> (image.extras == again.value.extras)
-        )
-        monad.pure(checks.collect { case (field, false) => field })
-      }

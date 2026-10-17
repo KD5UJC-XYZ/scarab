@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.{
-  ConsensusMirrorEnv,
-  EraHistory,
-  MirrorState,
-  ProtocolState,
-  StateMirrorError
-}
+import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState}
+import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState, ProtocolState}
 import xyz.kd5ujc.scarab.ledger.rules.FromByron
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.protocol.Era
@@ -31,6 +25,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{ByronRules, ByronRulesConfig, HardForkConfig, PraosConfig}
 import xyz.kd5ujc.scarab.ledger.{GenesisState, LedgerGlobals, LiteLedger}
+import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 import xyz.kd5ujc.scarab.crypto.vrf.PraosLeaderThreshold
 
@@ -48,7 +43,13 @@ final case class NodeSetup(
     byron: Option[ByronGenesis],
     globals: LedgerGlobals,
     praos: PraosConfig,
-    start: NodeState,
+    /** The state the chain starts from, as the mirror. */
+    mirrorStart: MirrorState,
+    /** What the Shelley genesis gives the ledger state a chain that begins in Byron enters Shelley
+      * with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations, the
+      * protocol parameters and the supply. None for a chain that starts in Shelley.
+      */
+    handOver: Option[FromByron],
     /** The Byron genesis parameters even when the chain has no Byron prefix (the era history of a
       * node-to-client client still lists the empty Byron era).
       */
@@ -64,6 +65,34 @@ final case class NodeSetup(
     * epoch in which each era was seen to begin, where the configuration does not say.
     */
   def mirrorEnv(observed: Map[Era, BigInt] = Map.empty): ConsensusMirrorEnv =
+    NodeSetup.mirrorEnvOf(genesis, globals, praos, byronParams, observed)
+
+  /** The mirror's environment as a capability: the configuration, with the eras seen to begin so
+    * far read from `observed` at each use.
+    */
+  def mirrorAsk[F[_]](
+      observed: F[Map[Era, BigInt]]
+  )(using monad: Monad[F]): Ask[F, ConsensusMirrorEnv] =
+    new Ask[F, ConsensusMirrorEnv]:
+      val applicative: Applicative[F] = monad
+      def ask[E2 >: ConsensusMirrorEnv]: F[E2] = monad.map(observed)(mirrorEnv(_))
+
+  /** The Byron parameters of the era history, where the mirror's telescopes are placed. */
+  def byronHistory: EraHistory.ByronParams = mirrorEnv().byron
+
+  /** The hash the chain's first block must name as its predecessor. */
+  def origin: Option[Bytes] = byron.map(_.hash)
+
+object NodeSetup:
+  /** The environment of the mirror for a configuration. */
+  private def mirrorEnvOf(
+      genesis: ShelleyGenesis,
+      globals: LedgerGlobals,
+      praos: PraosConfig,
+      byronParams: Option[ByronGenesis],
+      observed: Map[Era, BigInt] = Map.empty
+  ): ConsensusMirrorEnv =
+    val geometry = genesis.geometry
     ConsensusMirrorEnv(
       MirrorEnv(globals.network, geometry, globals.updateQuorum),
       praos.forks,
@@ -79,38 +108,6 @@ final case class NodeSetup(
       observed
     )
 
-  /** The mirror's environment as a capability: the configuration, with the eras seen to begin so
-    * far read from `observed` at each use.
-    */
-  def mirrorAsk[F[_]](
-      observed: F[Map[Era, BigInt]]
-  )(using monad: Monad[F]): Ask[F, ConsensusMirrorEnv] =
-    new Ask[F, ConsensusMirrorEnv]:
-      val applicative: Applicative[F] = monad
-      def ask[E2 >: ConsensusMirrorEnv]: F[E2] = monad.map(observed)(mirrorEnv(_))
-
-  /** What the Shelley genesis gives the ledger state a chain that begins in Byron enters Shelley
-    * with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations,
-    * the protocol parameters and the supply. None for a chain that starts in Shelley.
-    */
-  def handOver: Option[FromByron] =
-    byronRules.map(_ => FromByron(start.ledger.genDelegs, start.ledger.params, globals.maxSupply))
-
-  /** The Byron parameters of the era history, where the mirror's telescopes are placed. */
-  def byronHistory: EraHistory.ByronParams = mirrorEnv().byron
-
-  /** The state the chain starts from, as the mirror: the node's state at the origin, converted
-    * once, at the start, and taken to the terms of the era-indexed rules ([[LegacySeed]]: the
-    * pulser's parameters without the fields Conway's have no place for, which a state carried over
-    * the hard fork into Conway would adopt).
-    */
-  def mirrorStart: Either[StateMirrorError, MirrorState] =
-    MirrorRun.run(mirrorEnv())(_.toMirror(None, start)).map(m => LegacySeed(m.value))
-
-  /** The hash the chain's first block must name as its predecessor. */
-  def origin: Option[Bytes] = byron.map(_.hash)
-
-object NodeSetup:
   private val MainnetMagic = 764824073L
 
   val ConfigNames: List[String] = List("configuration.yaml", "configuration.json", "config.json")
@@ -254,7 +251,7 @@ object NodeSetup:
         byronJson.asRight[ConfigError]
       ).mapN(GenesisState.Files(_, _, _, _, addressMagic))
       globals <- GenesisState.globals(files, genesis)
-      initial <- GenesisState.initial(files, globals)
+      initial <- legacy.GenesisState.initial(files, globals)
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction
         .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
@@ -273,18 +270,11 @@ object NodeSetup:
           ledger -> ByronRulesConfig(
             ledgerConfig,
             config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold),
-            firstShelley,
-            (state, g) => GenesisState.initial(files, g, Some(state.utxo)).leftMap(_.message)
+            firstShelley
           )
         }
       }
-    yield NodeSetup(
-      genesis,
-      config,
-      byron,
-      globals,
-      praos,
-      NodeState(
+      start = legacy.FlatNodeState(
         // the protocol of the era the chain starts in (a Byron start holds the state Shelley starts from)
         ProtocolState.initial(
           if byronRules.isDefined then Era.Byron
@@ -294,7 +284,18 @@ object NodeSetup:
         initial,
         BootstrapState.initial(lite),
         byronRules.fold(ByronState.initial)((ledger, _) => ByronState.starting(ledger))
-      ),
+      )
+      mirrored <- legacy.Mirroring
+        .toMirror(mirrorEnvOf(genesis, globals, praos, byronParams), None, start)
+        .leftMap(e => ConfigError(s"the start state does not mirror: ${e.show}"))
+    yield NodeSetup(
+      genesis,
+      config,
+      byron,
+      globals,
+      praos,
+      mirrored.value,
+      byronRules.map(_ => FromByron(initial.genDelegs, initial.params, globals.maxSupply)),
       identity = NetworkIdentity(
         genesis.networkMagic,
         Blake2b.hash256.hash(Bytes.fromArray(shelleyBytes)),

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.ledger
+package xyz.kd5ujc.scarab.legacy
+
+import xyz.kd5ujc.scarab.ledger.*
 
 object Stake:
   /** Stake controlled by each credential: lovelace in base addresses staking to it plus its reward

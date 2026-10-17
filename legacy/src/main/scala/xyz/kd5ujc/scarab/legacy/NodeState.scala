@@ -3,9 +3,8 @@ package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState, ByronEpochStats, ByronTip}
-import xyz.kd5ujc.scarab.ledger.{LedgerState, Nonce}
+import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.byron.ByronLedgerState
-import xyz.kd5ujc.scarab.ledger.state.NodeExtras
 
 // FROZEN. The node state as the snapshot formats V1 to V3 persisted it, before the chain-dependent
 // state moved onto the Haskell-shaped `consensus.state` types (step 2, jump 1, J1.5). The simple

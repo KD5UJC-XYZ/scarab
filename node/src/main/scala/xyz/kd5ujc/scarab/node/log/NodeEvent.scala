@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.log
 
-import cats.syntax.all.*
 import io.circe.Json
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
-import scala.util.chaining.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
-import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, MirrorCheck, NodeConfig, Topology}
-import xyz.kd5ujc.scarab.node.differential.{Divergence, Stats, Timing, Verdict}
+import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, NodeConfig, Topology}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** What the node itself reports, apart from the event types of its parts (the follower, the chain
-  * database, the mempool, the forger, the connections, the differential rules), which are logged as
+  * database, the mempool, the forger, the connections), which are logged as
   * they are. Closed: every line the node writes is one of these or one of those.
   */
 enum NodeEvent:
@@ -86,23 +83,6 @@ enum NodeEvent:
   /** A block fetched on its own took this long from the request to the block. */
   case SlowFetch(millis: Long)
 
-  /** One result of `--mirror-check`: the state turned into the Haskell state mirror and back. */
-  case MirrorChecked(
-      slot: BigInt,
-      hash: Bytes,
-      epoch: BigInt,
-      outcome: MirrorCheck.Outcome,
-      millis: Long
-  )
-
-  /** The run stops at a disagreement of the old and the new rules (`--on-divergence halt`). */
-  case RulesHalted(divergence: Divergence)
-
-  /** The harness' account of the run: blocks, samples, what the conversion cost, what is not
-    * ported.
-    */
-  case DifferentialSummary(stats: Stats)
-
   /** What the inbound governor (G2) or the node-to-client listener did on a connection. */
   case Inbound(remote: String, event: InboundEvent)
 
@@ -134,67 +114,11 @@ object NodeEvent:
 
   def finished[S](chain: VolatileChain[S]): NodeEvent = Finished(chain.tip, chain.length)
 
-  private def verdict(v: Verdict): Json =
-    v.fold(f => s"${f.rule.name}: ${f.reason}", _ => "accepted").asJson
-
-  /** The `rulesDiverged` and `rulesHalted` lines: what the disagreement was, and for the former
-    * where its repro was kept.
-    */
-  private[log] def diverged(
-      kind: EventKind,
-      d: Divergence,
-      bundle: Option[Option[java.nio.file.Path]]
-  ): Line =
-    val fields = d match
-      case Divergence.StateDiffers(b, era, stage, difference) =>
-        List(
-          "kind" -> "StateDiffers".asJson,
-          "block" -> Traced.block(b),
-          "era" -> era.toString.asJson,
-          "stage" -> stage.toString.asJson,
-          "path" -> difference.path.render.asJson,
-          "old" -> difference.left.asJson,
-          "new" -> difference.right.asJson
-        )
-      case Divergence.VerdictDiffers(b, stage, old, neu) =>
-        List(
-          "kind" -> "VerdictDiffers".asJson,
-          "block" -> Traced.block(b),
-          "stage" -> stage.toString.asJson,
-          "old" -> verdict(old),
-          "new" -> verdict(neu)
-        )
-      case Divergence.Unconvertible(b, stage, error) =>
-        List(
-          "kind" -> "Unconvertible".asJson,
-          "block" -> Traced.block(b),
-          "stage" -> stage.toString.asJson,
-          "error" -> error.show.asJson
-        )
-      case Divergence.NotPorted(era, stage) =>
-        List(
-          "kind" -> "NotPorted".asJson,
-          "era" -> era.toString.asJson,
-          "stage" -> stage.toString.asJson
-        )
-    kind.line(
-      (fields ++ bundle.map(b => "bundle" -> b.map(_.toString).asJson))*
-    )
-
   private def inbound(remote: String, state: String, reason: Option[String]): Line =
     EventKind.Inbound.line(
       "remote" -> remote.asJson,
       "state" -> state.asJson,
       "reason" -> reason.asJson
-    )
-
-  private def millis(xs: Vector[Long]): Json =
-    val sorted = xs.sorted
-    Json.obj(
-      "total" -> (xs.sum / 1e6).asJson,
-      "median" -> (Stats.quantile(sorted, 0.5) / 1e6).asJson,
-      "p99" -> (Stats.quantile(sorted, 0.99) / 1e6).asJson,
-      "max" -> (sorted.lastOption.getOrElse(0L) / 1e6).asJson
     )
 
   given Traced[NodeEvent] =
@@ -310,61 +234,6 @@ object NodeEvent:
         "maxDepth" -> maxDepth.asJson
       )
     case SlowFetch(millis) => EventKind.SlowFetch.line("millis" -> millis.asJson)
-    case MirrorChecked(slot, hash, epoch, outcome, millis) =>
-      val where = List(
-        "slot" -> slot.asJson,
-        "hash" -> hash.hex.asJson,
-        "epoch" -> epoch.asJson,
-        "era" -> outcome.era.toString.asJson,
-        "millis" -> millis.asJson
-      )
-      outcome match
-        case MirrorCheck.Outcome.Checked(_, gaps, residueEmpty, retracts) =>
-          EventKind.MirrorChecked
-            .line(
-              where ++ List(
-                "gaps" -> gaps.toList.map(_.toString).sorted.asJson,
-                "residueEmpty" -> residueEmpty.asJson,
-                "retracts" -> retracts.asJson,
-                "ok" -> outcome.ok.asJson
-              )*
-            )
-            .pipe(line => if outcome.ok then line else line.at(Severity.Warning))
-        case MirrorCheck.Outcome.Refused(_, stage, error) =>
-          EventKind.MirrorCheckFailed.line(
-            where ++ List("stage" -> stage.toString.asJson, "error" -> error.show.asJson)*
-          )
-        case MirrorCheck.Outcome.Crashed(_, message) =>
-          EventKind.MirrorCheckFailed.line(
-            where ++ List("stage" -> "Crashed".asJson, "error" -> message.asJson)*
-          )
-    case RulesHalted(d)             => diverged(EventKind.RulesHalted, d, None)
-    case DifferentialSummary(stats) =>
-      // the blocks both sides applied (the old side's whole block; the new side's ledger part, with
-      // the signatures and the block's decoding it does for itself), p50 and p99 to the power of two
-      def timing(t: Timing): Json = Json.obj(
-        "count" -> t.count.asJson,
-        "meanMillis" -> (t.meanNanos / 1e6).asJson,
-        "p50Millis" -> (t.quantileNanos(0.5) / 1e6).asJson,
-        "p99Millis" -> (t.quantileNanos(0.99) / 1e6).asJson,
-        "maxMillis" -> (t.maxNanos / 1e6).asJson
-      )
-      EventKind.DifferentialSummary.line(
-        "blocks" -> stats.blocks.asJson,
-        "blockOld" -> timing(stats.oldBlocks),
-        "blockNew" -> timing(stats.newBlocks),
-        "sampled" -> stats.sampled.asJson,
-        "failures" -> stats.failures.asJson,
-        "toMirrorMillis" -> millis(stats.samples.map(_.toMirrorNanos)),
-        "diffMillis" -> millis(stats.samples.map(_.diffNanos)),
-        "ticksCompared" -> stats.ticks.size.asJson,
-        "tickOldMillis" -> millis(stats.ticks.map(_.oldNanos)),
-        "tickNewMillis" -> millis(stats.ticks.map(_.newNanos)),
-        "notPorted" -> stats.notPorted.toList
-          .sortBy((k, _) => (k._1.ordinal, k._2.toString))
-          .map((k, n) => s"${k._1}/${k._2}" -> n.asJson)
-          .pipe(Json.obj(_*))
-      )
     case Inbound(remote, event) =>
       event match
         case InboundEvent.Accepted       => inbound(remote, "accepted", None)

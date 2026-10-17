@@ -37,10 +37,6 @@ object NodeCodecs:
   given credential: Codec[Credential] = Codec.auto
   given address: Codec[Address] = Codec.auto
   given ptr: Codec[Ptr] = Codec.auto
-  // The pointers keep their persisted form (a map); the reverse index is rebuilt on read.
-  given ptrMap: Codec[PtrMap] =
-    val map = summon[Codec[Map[Ptr, Credential]]]
-    Codec.make[PtrMap](map.shape)((o, p) => map.write(o, p.toMap))(i => PtrMap(map.read(i)))
   given rewardAccount: Codec[RewardAccount] = Codec.auto
   given value: Codec[Value] = Codec.auto
   given datum: Codec[Datum] = Codec.auto
@@ -49,38 +45,12 @@ object NodeCodecs:
   given txOut: Codec[TxOut] = Codec.auto
   given utxoChange: Codec[Utxo.Change] = Codec.auto
   given utxo: Codec[Utxo] = Codec.auto
-  given drep: Codec[DRep] = Codec.auto
   given paramUpdate: Codec[ParamUpdate] = Codec.auto
   given poolParams: Codec[PoolParams] = Codec.auto
   given protocolParams: Codec[ProtocolParams] = Codec.auto
   given nonce: Codec[Nonce] = Codec.auto
   given era: Codec[Era] = Codec.auto
   given genDelegPair: Codec[GenDelegPair] = Codec.auto
-
-  // Governance (Conway).
-  given govActionId: Codec[GovActionId] = Codec.auto
-  given voter: Codec[Voter] = Codec.auto
-  given vote: Codec[Vote] = Codec.auto
-  given govAction: Codec[GovAction] = Codec.auto
-  given proposal: Codec[Proposal] = Codec.auto
-  given govAnchor: Codec[xyz.kd5ujc.scarab.ledger.Anchor] = Codec.auto
-  given constitution: Codec[Constitution] = Codec.auto
-  given committee: Codec[Committee] = Codec.auto
-  given committeeAuth: Codec[CommitteeAuth] = Codec.auto
-  given prevIds: Codec[PrevIds] = Codec.auto
-  given govActionState: Codec[GovActionState] = Codec.auto
-  given proposals: Codec[Proposals] = Codec.auto
-  given enactState: Codec[EnactState] = Codec.auto
-  given ratifyState: Codec[RatifyState] = Codec.auto
-  given pulsingSnapshot: Codec[PulsingSnapshot] = Codec.auto
-  given govState: Codec[GovState] = Codec.auto
-  given drepState: Codec[DRepState] = Codec.auto
-
-  // Ledger.
-  given account: Codec[Account] = Codec.auto
-  given stakeSnapshot: Codec[Snapshot] = Codec.auto
-  given rewardUpdate: Codec[RewardUpdate] = Codec.auto
-  given ledger: Codec[LedgerState] = Codec.auto
 
   // The chain-dependent state of the Haskell shape: unsigned words, key hashes, sorted maps.
   given word64: Codec[Word64] =

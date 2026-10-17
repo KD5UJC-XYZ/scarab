@@ -7,13 +7,13 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
-  ConwayRules,
+  RefScripts,
   LedgerFailure,
   ProtocolParams,
   Tx,
   TxIn,
   TxOut,
-  TxRules,
+  TxEnv,
   Utxo as NodeUtxo
 }
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 /** `BbodyEnv` (`Shelley/Rules/Bbody.hs`): the parameters in force, the treasury, and the
   * block-level context of its transactions (the slot, the clock, the evaluator).
   */
-final case class BbodyEnv(ctx: TxRules.Env, pp: ProtocolParams, treasury: Coin)
+final case class BbodyEnv(ctx: TxEnv, pp: ProtocolParams, treasury: Coin)
 
 /** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs:82`): the ledger state, and the blocks the pools
   * have made in the epoch (`nesBcur`).
@@ -106,8 +106,8 @@ object Bbody extends Sts[BbodyEnv, BbodyState, BbodySignal, BlockFailure]:
       before <- st.get
       refBytes = refScriptsSize(pp, before.ledger.state.utxo.utxo.utxo, signal.txs)
       _ <- Sts.check[F, BlockFailure](
-        pp.protocolMajor < 9 || refBytes <= ConwayRules.MaxRefScriptSizePerBlock,
-        BlockFailure.RefScriptsTooLarge(ConwayRules.MaxRefScriptSizePerBlock.toLong)
+        pp.protocolMajor < 9 || refBytes <= RefScripts.MaxRefScriptSizePerBlock,
+        BlockFailure.RefScriptsTooLarge(RefScripts.MaxRefScriptSizePerBlock.toLong)
       )
       _ <- Sts.require[F, BlockFailure](
         exUnitsExceeded(pp, signal.txs).map(BlockFailure.BlockExUnitsTooBig(_, pp.maxBlockExUnits))

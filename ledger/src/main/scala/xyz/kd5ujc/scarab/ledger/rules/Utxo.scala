@@ -9,18 +9,18 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   Certificate,
-  ConwayRules,
+  RefScripts,
   GenDelegPair,
   LedgerFailure,
   Mismatch,
   PlutusStats,
-  PreConwayRules,
+  TxChecks,
   PredicateFailure,
   ProtocolParams,
   TxBody,
   TxIn,
   TxOut,
-  TxRules,
+  TxEnv,
   UtxoFailure,
   UtxosFailure,
   UtxowFailure,
@@ -32,7 +32,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // and Babbage rules they share). They run on the UTxO state (`UTxOState`): the UTxO set, the
 // deposits and fees and donations, and the instant stake the tick reads (SNAP and the DRep pulser
 // take it as the stake of the UTxO). The checks themselves are the node's pure predicates, the
-// ones the old rules use (`PreConwayRules`), so the two sides refuse a transaction with the same
+// ones the old rules use (`TxChecks`), so the two sides refuse a transaction with the same
 // failure; what this file adds is the state: the instant stake kept as the set changes.
 
 /** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`): the block-level context (the slot), the parameters in
@@ -41,7 +41,7 @@ import xyz.kd5ujc.scarab.ledger.state.*
   * state that follows, `Conway/Rules/Ledger.hs:410-415`). The certificate state is the era's
   * (`UtxoEnv era` holds `CertState era`): Conway's here, [[ShelleyCertState]] for the eras before.
   */
-final case class UtxoEnv[+C](ctx: TxRules.Env, pp: ProtocolParams, cert: C)
+final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)
 
 /** What the instant stake of the UTxO becomes as outputs are created and spent
   * (`addConwayInstantStake`, `deleteConwayInstantStake`, `Conway/State/Stake.hs:87-108`): the
@@ -138,7 +138,7 @@ object Utxos extends Sts[UtxoEnv[Any], PlutusStats, StAnnTx, LedgerFailure]:
     for
       counters <- st.get
       next <- Sts.lift[F, LedgerFailure, PlutusStats](
-        PreConwayRules.phase2(
+        TxChecks.phase2(
           env.pp,
           counters,
           tx,
@@ -175,14 +175,14 @@ object Utxo
     else Right(())
 
   /** The checks of UTXO the node makes of a transaction, in the node's order, and the collateral of
-    * the transaction (`PreConwayRules.Collateral`).
+    * the transaction (`TxChecks.Collateral`).
     */
   def validate(
       env: UtxoEnv[ConwayCertState],
       ann: StAnnTx,
       deposits: BigInt,
       refunds: BigInt
-  ): Either[LedgerFailure, PreConwayRules.Collateral] =
+  ): Either[LedgerFailure, TxChecks.Collateral] =
     val tx = ann.tx
     val body = tx.body
     val id = ann.id
@@ -198,9 +198,9 @@ object Utxo
       )).ceil
     val minFee =
       pp.minFeeA * tx.size + pp.minFeeB + scriptFee +
-        ConwayRules.tierRefScriptFee(
+        RefScripts.tierRefScriptFee(
           pp.minFeeRefScriptCostPerByte,
-          ConwayRules.refScriptsSize(ann.utxo, body)
+          RefScripts.refScriptsSize(ann.utxo, body)
         )
     val overlap = body.inputs.toSet.intersect(body.referenceInputs.toSet)
     for
@@ -221,14 +221,14 @@ object Utxo
         body.networkId.forall(_ == ctx.network),
         UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), ctx.network))
       )
-      _ <- PreConwayRules
+      _ <- TxChecks
         .outputsOk(pp, ctx, body.outputs ++ body.collateralReturn.toVector)
         .leftMap(LedgerFailure.Rejected(id, _))
       _ <- check(
         wits.totalExUnits.fits(pp.maxTxExUnits),
         UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
       )
-      collateral <- PreConwayRules.collateralChecks(ann.utxo, pp, tx)
+      collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
       withdrawn = body.withdrawals.map(_._2).sum
       consumed = ann.spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
         Value(0, body.mint)
@@ -243,7 +243,7 @@ object Utxo
   def update(
       s: UTxOState[Conway],
       ann: StAnnTx,
-      collateral: PreConwayRules.Collateral,
+      collateral: TxChecks.Collateral,
       deposits: BigInt,
       refunds: BigInt
   ): Either[VocabError, UTxOState[Conway]] =
@@ -287,7 +287,7 @@ object Utxo
   ): F[Unit] =
     val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
     for
-      collateral <- Sts.lift[F, LedgerFailure, PreConwayRules.Collateral](
+      collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
         validate(env, ann, deposits, refunds)
       )
       _ <- Sts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
@@ -344,7 +344,7 @@ object Utxow
     val neededNonRef = needed.keySet -- referenced
     val received = wits.scripts.map(_.hash).toSet
     // the outputs the collateral inputs hold, whose key witnesses the transaction needs
-    val collateral = PreConwayRules.Collateral(
+    val collateral = TxChecks.Collateral(
       if pp.protocolMajor < 5 || wits.redeemers.isEmpty then Vector.empty
       else body.collateral.flatMap(ann.utxo.get),
       BigInt(0)
@@ -362,15 +362,15 @@ object Utxow
         needed.keySet.subsetOf(scripts.keySet),
         UtxowFailure.MissingScriptWitnesses(needed.keySet -- scripts.keySet)
       )
-      _ <- PreConwayRules.alonzoChecks(pp, tx, ann.spent, scripts, ann.plutusPurposes)
+      _ <- TxChecks.alonzoChecks(pp, tx, ann.spent, scripts, ann.plutusPurposes)
       // a transaction flagged invalid has a Plutus script to fail (`validationTagMismatch`, which
       // Haskell's UTXOS makes; the node makes it here, where its own rules do)
       _ <- check0(
         tx.isValid || ann.plutusPurposes.nonEmpty,
         PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None)))
       )
-      _ <- PreConwayRules.auxiliaryChecks(tx)
-      _ <- PreConwayRules.witnessChecks(
+      _ <- TxChecks.auxiliaryChecks(tx)
+      _ <- TxChecks.witnessChecks(
         genDelegs,
         tx,
         ann.spent,
@@ -380,7 +380,7 @@ object Utxow
         wits.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)),
         env.ctx.verdicts
       )
-      _ <- PreConwayRules.scriptsWellFormed(pp, tx, env.ctx)
+      _ <- TxChecks.scriptsWellFormed(pp, tx, env.ctx)
     yield ()
 
   def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using

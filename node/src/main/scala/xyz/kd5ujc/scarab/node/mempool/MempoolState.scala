@@ -15,7 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PlutusStats,
   PredicateFailure,
   Tx,
-  TxRules,
+  TxEnv,
   Utxo
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Counted, Gov, Globals, Ledger, LedgerEnv, Sts}
@@ -64,9 +64,9 @@ final case class MempoolEnv(globals: LedgerGlobals, geometry: EpochGeometry):
   /** The environment in which a transaction is validated for inclusion in the next block: the slot
     * after the tip, in the ledger's current epoch.
     */
-  def txEnv(tipSlot: BigInt, ledger: MempoolLedger, index: Int): TxRules.Env =
+  def txEnv(tipSlot: BigInt, ledger: MempoolLedger, index: Int): TxEnv =
     val slot = tipSlot + 1
-    TxRules.Env(
+    TxEnv(
       slot = slot,
       epoch = ledger.epoch,
       network = globals.network,
@@ -96,7 +96,7 @@ final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: B
     copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
 
   /** The transaction applied (LEDGER of Conway), or the rule that refuses it. */
-  def apply(tx: Tx, env: TxRules.Env, rules: Globals): Either[LedgerFailure, MempoolLedger] =
+  def apply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
     Sts(Ledger)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
       .map(after => copy(ls = after.state))
 

@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PulsingSnapshot,
   RatifyState
 }
-import xyz.kd5ujc.scarab.ledger.GovState as NodeGovState
+import xyz.kd5ujc.scarab.ledger.ConwayGenesis
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -223,7 +223,7 @@ object Translate:
     val prev = conwayParams(globals)(gov.prevPParams)
     val future = FuturePParams.map(gov.futurePParams)(conwayParams(globals))
     val (committee, constitution) = globals.ledger.conway.fold(
-      (Option.empty[Committee], Constitution(NodeGovState.noAnchor, None))
+      (Option.empty[Committee], Constitution(ConwayGenesis.noAnchor, None))
     )(c => (c.committee, c.constitution))
     val enact = EnactState(
       committee,

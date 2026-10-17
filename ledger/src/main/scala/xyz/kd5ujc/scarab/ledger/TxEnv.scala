@@ -62,33 +62,26 @@ enum LedgerFailure:
     case Undecodable(id, d) => s"tx ${id.hex.take(16)} cannot be decoded: ${d.message}"
     case Vocab(e)           => s"transaction outside the state's vocabulary: $e"
 
-/** The transaction rules of the current era: Conway ([[ConwayRules]]) from protocol version 9, else
-  * [[PreConwayRules]].
-  */
-object TxRules:
+/** Block-level context of a transaction. */
+final case class TxEnv(
+    slot: BigInt,
+    epoch: BigInt,
+    network: Int,
+    firstSlotNextEpoch: BigInt = 0,
+    stabilityWindow: BigInt = 0,
+    txIndex: Int = 0,
+    updateQuorum: Int = 5,
+    /** Slot to POSIX milliseconds through the era history (needed for the script context). */
+    clock: Option[BigInt => BigInt] = None,
+    /** The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). */
+    evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
+    /** Decides whether a Plutus script deserialises (phase 1 from Babbage on). */
+    decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
+    /** Tooling hook called after each phase-2 evaluation; never affects the result. */
+    observer: Option[Phase2.Observation => Unit] = None,
+    /** Signature verdicts (memoised ahead of time in the node, computed in place otherwise). */
+    verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
+)
+
+object TxEnv:
   type Result[A] = Either[LedgerFailure, A]
-
-  /** Block-level context of a transaction. */
-  final case class Env(
-      slot: BigInt,
-      epoch: BigInt,
-      network: Int,
-      firstSlotNextEpoch: BigInt = 0,
-      stabilityWindow: BigInt = 0,
-      txIndex: Int = 0,
-      updateQuorum: Int = 5,
-      /** Slot to POSIX milliseconds through the era history (needed for the script context). */
-      clock: Option[BigInt => BigInt] = None,
-      /** The Plutus evaluator; a pure function of the request (see `ScriptEvaluator`). */
-      evaluator: ScriptEvaluator[Id] = ScalusEvaluator.default,
-      /** Decides whether a Plutus script deserialises (phase 1 from Babbage on). */
-      decoder: ScriptDecoder[Id] = ScalusEvaluator.defaultDecoder,
-      /** Tooling hook called after each phase-2 evaluation; never affects the result. */
-      observer: Option[Phase2.Observation => Unit] = None,
-      /** Signature verdicts (memoised ahead of time in the node, computed in place otherwise). */
-      verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct
-  )
-
-  def apply(state: LedgerState, tx: Tx, env: Env): Result[LedgerState] =
-    if state.params.protocolMajor >= 9 then ConwayRules(state, tx, env)
-    else PreConwayRules(state, tx, env)

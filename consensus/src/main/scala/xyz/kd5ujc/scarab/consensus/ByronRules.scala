@@ -5,7 +5,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, ByronGenesis, Header}
 import xyz.kd5ujc.scarab.ledger.Header.ByronSignature
-import xyz.kd5ujc.scarab.ledger.{LedgerGlobals, LedgerState}
 import xyz.kd5ujc.scarab.ledger.byron.*
 import xyz.kd5ujc.scarab.consensus.state.{PBftSigner, PBftState}
 import xyz.kd5ujc.scarab.ledger.state.{Genesis, KeyHash, SlotNo}
@@ -32,16 +31,13 @@ enum ByronCheck:
 final case class ByronTip(hash: Bytes, epoch: BigInt, slot: BigInt, boundary: Boolean)
 
 /** What the Byron era needs besides the genesis: the node configuration's network magic requirement
-  * and PBFT signature threshold, the configured Shelley epoch (a `Test` override) and how the Byron
-  * ledger becomes the Shelley one.
+  * and PBFT signature threshold and the configured Shelley epoch (a `Test` override).
   */
 final case class ByronRulesConfig(
     ledger: ByronLedger.Config,
     signatureThreshold: Double,
     /** `TestShelleyHardForkAtEpoch`: when set, the transition epoch is not derived. */
-    configuredShelleyEpoch: Option[BigInt],
-    /** The Shelley-era ledger state entered from the final Byron UTxO, for the given globals. */
-    handover: (ByronLedgerState, LedgerGlobals) => Either[String, LedgerState]
+    configuredShelleyEpoch: Option[BigInt]
 )
 
 /** Byron block validation: linkage to the previous block (or the genesis hash), slot and epoch

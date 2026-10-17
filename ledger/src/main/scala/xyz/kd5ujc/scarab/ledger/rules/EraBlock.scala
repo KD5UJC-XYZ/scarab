@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Phase2,
   PlutusStats,
   Tx,
-  TxRules,
+  TxEnv,
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -122,11 +122,11 @@ object EraBlock:
                     case None => Outcome.NotInEra(EraNes.eraOf(other))
 
   /** The environment of the transactions of a block (and of BBODY's). */
-  private def environment(ctx: Context, header: Header.Shelley): TxRules.Env =
+  private def environment(ctx: Context, header: Header.Shelley): TxEnv =
     val globals = ctx.globals
     val geometry = globals.geometry
     val epoch = globals.epochOf(header.slot)
-    TxRules.Env(
+    TxEnv(
       header.slot,
       epoch,
       globals.networkId,

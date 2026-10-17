@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, Header, VrfCert}
-import xyz.kd5ujc.scarab.ledger.{ConwayRules, LedgerGlobals, TxRules}
+import xyz.kd5ujc.scarab.ledger.{RefScripts, LedgerGlobals, TxEnv}
 import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.node.mempool.{Entry, MempoolLedger}
@@ -139,12 +139,12 @@ object BlockBuilder:
           val size = bodySize(acc.chosen.map(_._2) :+ p)
           val refUsed =
             if acc.state.params.protocolMajor >= 9 then
-              acc.refBytes + ConwayRules.refScriptsSize(
+              acc.refBytes + RefScripts.refScriptsSize(
                 if acc.state.params.protocolMajor <= 10 then ticked.utxo else acc.state.utxo,
                 entry.tx.body
               )
             else 0L
-          val env = TxRules.Env(
+          val env = TxEnv(
             slot,
             epoch,
             globals.network,
@@ -155,7 +155,7 @@ object BlockBuilder:
             clock = Some(s => BigInt(geometry.slotStart(s).toEpochMilli))
           )
           if size > limit.maxBodyBytes || !units.fits(limit.maxExUnits) ||
-            refUsed > ConwayRules.MaxRefScriptSizePerBlock
+            refUsed > RefScripts.MaxRefScriptSizePerBlock
           then acc
           else
             acc

@@ -124,7 +124,7 @@ object Upgrade:
       old: NodeState,
       forks: live.HardForkConfig,
       anchor: Option[live.BlockRef]
-  ): Either[VocabError, live.NodeState] =
+  ): Either[VocabError, FlatNodeState] =
     val era = eraOf(forks, old)
     for
       at <- anchor.traverse(a => SlotNo.fromBigInt(a.slot)).map {
@@ -133,4 +133,4 @@ object Upgrade:
       }
       p <- chainDep(era, at, old.praos)
       b <- byron(old.byron)
-    yield live.NodeState(p, old.ledger, old.boot, b)
+    yield FlatNodeState(p, old.ledger, old.boot, b)

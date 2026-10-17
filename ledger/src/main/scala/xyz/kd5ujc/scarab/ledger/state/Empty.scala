@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
   RatifyState,
   Utxo
 }
-import xyz.kd5ujc.scarab.ledger.GovState as NodeGovState
+import xyz.kd5ujc.scarab.ledger.ConwayGenesis
 
 /** The empty value of each era-dependent part of the state, chosen by the era witness: the type
   * families of `Eras.scala` reduce in each branch, so no cast is needed. The protocol parameters
@@ -55,7 +55,7 @@ object Empty:
   def govState[E <: EraTag](params: ProtocolParams)(using era: ShelleyBasedEra[E]): GovState[E] =
     era match
       case ShelleyBasedEra.SConway =>
-        val constitution = Constitution(NodeGovState.noAnchor, None)
+        val constitution = Constitution(ConwayGenesis.noAnchor, None)
         val enact = EnactState(
           Some(Committee(Map.empty, Rational.zero)),
           constitution,

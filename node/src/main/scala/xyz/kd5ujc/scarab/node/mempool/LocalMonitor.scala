@@ -6,7 +6,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.{Held, Snapshot, TxMeasure}
-import xyz.kd5ujc.scarab.ledger.{ConwayRules, ProtocolParams}
+import xyz.kd5ujc.scarab.ledger.{RefScripts, ProtocolParams}
 import xyz.kd5ujc.scarab.node.ntc.CborOut
 
 /** The mempool as the node-to-client LocalTxMonitor sees it (ouroboros-consensus
@@ -58,7 +58,7 @@ object LocalMonitor:
       (params.maxBlockBodySize - FixedBlockBodyOverhead).max(0).toLong,
       params.maxBlockExUnits.mem,
       params.maxBlockExUnits.steps,
-      ConwayRules.MaxRefScriptSizePerBlock.toLong
+      RefScripts.MaxRefScriptSizePerBlock.toLong
     )
 
   /** `computeMempoolCapacity` for a mempool of `capacityBytes`. */

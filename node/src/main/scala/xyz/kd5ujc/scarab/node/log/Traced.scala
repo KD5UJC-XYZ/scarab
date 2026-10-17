@@ -6,7 +6,6 @@ import io.circe.Json
 import io.circe.syntax.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
-import xyz.kd5ujc.scarab.node.differential.Event as DifferentialEvent
 import xyz.kd5ujc.scarab.node.Reports
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
@@ -313,28 +312,3 @@ object Traced:
         "message" -> error.message.asJson
       )
 
-  /** What the differential harness reports as it goes: a sample, a compared tick, a disagreement.
-    */
-  given Traced[DifferentialEvent] =
-    case DifferentialEvent.Sampled(b, epoch, era, cost, seeded) =>
-      EventKind.DifferentialSampled.line(
-        "slot" -> b.slot.asJson,
-        "hash" -> b.hash.hex.asJson,
-        "epoch" -> epoch.asJson,
-        "era" -> era.toString.asJson,
-        "toMirrorMillis" -> (cost.toMirrorNanos / 1e6).asJson,
-        "diffMillis" -> (cost.diffNanos / 1e6).asJson,
-        "seeded" -> seeded.asJson
-      )
-    case DifferentialEvent.TickCompared(b, crossed, cost) =>
-      EventKind.DifferentialTicked.line(
-        "slot" -> b.slot.asJson,
-        "hash" -> b.hash.hex.asJson,
-        "epochsCrossed" -> crossed.asJson,
-        "oldMillis" -> (cost.oldNanos / 1e6).asJson,
-        "seedMillis" -> (cost.seedNanos / 1e6).asJson,
-        "newMillis" -> (cost.newNanos / 1e6).asJson,
-        "diffMillis" -> (cost.diffNanos / 1e6).asJson
-      )
-    case DifferentialEvent.Diverged(d, bundle) =>
-      NodeEvent.diverged(EventKind.RulesDiverged, d, Some(bundle))

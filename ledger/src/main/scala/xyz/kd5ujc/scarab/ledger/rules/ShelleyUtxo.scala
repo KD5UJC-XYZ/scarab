@@ -13,15 +13,15 @@ import xyz.kd5ujc.scarab.ledger.{
   Mismatch,
   PlutusStats,
   PpupFailure,
-  PpupRules,
-  PreConwayRules,
+  UpdateChecks,
+  TxChecks,
   PredicateFailure,
   ProtocolParams,
   TxBody,
   TxDefect,
   TxIn,
   TxOut,
-  TxRules,
+  TxEnv,
   Update,
   UtxoFailure,
   UtxowFailure,
@@ -41,7 +41,7 @@ import xyz.kd5ujc.scarab.ledger.state.given
 // the pointer addresses.
 //
 // The checks themselves are the node's pure predicates, the ones the old rules use
-// (`PreConwayRules`), so the two sides refuse a transaction alike; what this file adds is the
+// (`TxChecks`), so the two sides refuse a transaction alike; what this file adds is the
 // state, and the order of the reference. The era of the rule is the evidence `PreConway[E]`:
 // where the checks branch on the protocol version of the parameters in force, that is the
 // reference's own (`hardfork*`).
@@ -51,7 +51,7 @@ import xyz.kd5ujc.scarab.ledger.state.given
   * against.
   */
 final case class PpupEnv(
-    ctx: TxRules.Env,
+    ctx: TxEnv,
     id: Bytes,
     pp: ProtocolParams,
     genDelegs: SortedMap[KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.GenDelegPair]
@@ -85,11 +85,11 @@ object ShelleyPpup extends Sts[PpupEnv, ShelleyGovState, Option[Update], LedgerF
         )
         _ <- u.proposals.values.toVector.traverse_ { p =>
           Sts.lift[F, LedgerFailure, Unit](
-            PpupRules
+            UpdateChecks
               .canFollow(env.pp, p)
               .leftMap {
-                case PpupRules.Refusal.Failed(f) => refuse(f)
-                case PpupRules.Refusal.Unreadable =>
+                case UpdateChecks.Refusal.Failed(f) => refuse(f)
+                case UpdateChecks.Refusal.Unreadable =>
                   LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion)
               }
           )
@@ -113,7 +113,7 @@ object ShelleyPpup extends Sts[PpupEnv, ShelleyGovState, Option[Update], LedgerF
             g.copy(
               curProposals = proposals,
               futurePParams = FuturePParams.PotentialPParamsUpdate(
-                xyz.kd5ujc.scarab.ledger.PpupRules.voted(
+                xyz.kd5ujc.scarab.ledger.UpdateChecks.voted(
                   env.pp,
                   proposals.iterator.map((k, p) => k.bytes -> p).toMap,
                   ctx.updateQuorum
@@ -229,7 +229,7 @@ object ShelleyUtxo:
       ): F[Unit] =
         val (deposits, refunds) = ShelleyDeposits.of(env.pp, env.cert, ann.tx.body)
         for
-          collateral <- Sts.lift[F, LedgerFailure, PreConwayRules.Collateral](
+          collateral <- Sts.lift[F, LedgerFailure, TxChecks.Collateral](
             validate[E](env, ann, deposits, refunds)
           )
           _ <- Sts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
@@ -260,7 +260,7 @@ object ShelleyUtxo:
       ann: StAnnTx,
       deposits: BigInt,
       refunds: BigInt
-  )(using pre: PreConway[E]): Either[LedgerFailure, PreConwayRules.Collateral] =
+  )(using pre: PreConway[E]): Either[LedgerFailure, TxChecks.Collateral] =
     val tx = ann.tx
     val body = tx.body
     val id = ann.id
@@ -315,7 +315,7 @@ object ShelleyUtxo:
       produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
         Value.coin(body.fee + deposits)
       _ <- check(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
-      _ <- PreConwayRules.outputChecks(pp, ctx, id, outputs)
+      _ <- TxChecks.outputChecks(pp, ctx, id, outputs)
       _ <- check(
         tx.size <= pp.maxTxSize,
         UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
@@ -324,7 +324,7 @@ object ShelleyUtxo:
         !alonzo || wits.totalExUnits.fits(pp.maxTxExUnits),
         UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
       )
-      collateral <- PreConwayRules.collateralChecks(ann.utxo, pp, tx)
+      collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
     yield collateral
 
   /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:584`, `Alonzo/Rules/Utxos.hs`): a valid transaction
@@ -335,7 +335,7 @@ object ShelleyUtxo:
   def update[E <: EraTag](
       s: UTxOState[E],
       ann: StAnnTx,
-      collateral: PreConwayRules.Collateral,
+      collateral: TxChecks.Collateral,
       deposits: BigInt,
       refunds: BigInt
   )(using pre: PreConway[E]): Either[VocabError, UTxOState[E]] =

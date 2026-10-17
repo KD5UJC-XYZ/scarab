@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.ledger.{
   PredicateFailure,
   ProtocolParams,
   Tx,
-  TxRules
+  TxEnv
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 
@@ -21,10 +21,10 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // node's phase-2 counters ([[Counted]]).
 
 /** `LedgerEnv` (`Shelley/Rules/Ledger.hs`): the block-level context of a transaction (slot, epoch,
-  * the position in the block, the evaluator and the clock, `TxRules.Env`) and the chain account
+  * the position in the block, the evaluator and the clock, `TxEnv`) and the chain account
   * (`esChainAccountState`), which the MIR certificates draw on.
   */
-final case class ShelleyLedgerEnv(ctx: TxRules.Env, account: ChainAccountState)
+final case class ShelleyLedgerEnv(ctx: TxEnv, account: ChainAccountState)
 
 /** LEDGER (`Shelley/Rules/Ledger.hs:300`, `ledgerTransition`, and `Alonzo/Rules/Ledger.hs:90`): for
   * a transaction whose scripts pass (phase-2 valid; every one before Alonzo) the withdrawals are
@@ -127,7 +127,7 @@ object ShelleyLedgers:
 /** `BbodyEnv` (`Shelley/Rules/Bbody.hs`): the parameters in force, the chain account, and the
   * block-level context of its transactions.
   */
-final case class ShelleyBbodyEnv(ctx: TxRules.Env, pp: ProtocolParams, account: ChainAccountState)
+final case class ShelleyBbodyEnv(ctx: TxEnv, pp: ProtocolParams, account: ChainAccountState)
 
 /** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs`): the ledger state, and the blocks the pools have
   * made in the epoch (`nesBcur`).

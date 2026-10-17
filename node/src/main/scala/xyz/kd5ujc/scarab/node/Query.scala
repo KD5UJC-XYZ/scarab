@@ -51,14 +51,6 @@ object Projection:
     case ChainSync.Point.Block(slot, hash) =>
       Json.obj("slot" -> slot.value.asJson, "hash" -> hash.hex.asJson)
 
-  def snapshot(s: Snapshot): Json = Json.obj(
-    "stake" -> coinMap(s.stake, _.render),
-    "delegations" -> Json.fromFields(s.delegations.toVector.sortBy(_._1.render).map { case (c, p) =>
-      c.render -> p.hex.asJson
-    }),
-    "pools" -> s.pools.keys.map(_.hex).toVector.sorted.asJson
-  )
-
   private def blockOf(p: ChainSync.Point): Option[BlockRef] = p match
     case ChainSync.Point.Origin            => None
     case ChainSync.Point.Block(slot, hash) => Some(BlockRef(slot.value, hash, BigInt(0)))
@@ -319,11 +311,11 @@ object Projection:
       donation: mirror.Coin
   )(using ShelleyBasedEra[E]): Json =
     val conway = EraViews.conwayGov(gov)
-    val proposals = conway.fold(flat.GovState.empty.proposals)(_.proposals)
+    val proposals = conway.fold(flat.Proposals.empty)(_.proposals)
     Json.obj(
       "proposals" -> proposals.actions.map(proposal).asJson,
       "committee" -> committee(conway.flatMap(_.committee)),
-      "constitution" -> constitution(conway.fold(flat.GovState.empty.constitution)(_.constitution)),
+      "constitution" -> constitution(conway.fold(flat.ConwayGenesis.noConstitution)(_.constitution)),
       "committeeState" -> Json.fromFields(
         voting.toVector.flatMap(_.committeeState.creds.toVector).sortBy(e => credName(e._1)).map {
           case (c, mirror.CommitteeAuthorization.CommitteeHotCredential(h)) =>

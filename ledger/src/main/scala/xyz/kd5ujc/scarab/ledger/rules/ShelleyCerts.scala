@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Ptr,
   TxDefect
 }
-import xyz.kd5ujc.scarab.ledger.TxRules
+import xyz.kd5ujc.scarab.ledger.TxEnv
 import xyz.kd5ujc.scarab.ledger.state.*
 
 // DELEGS and the rules under it for the eras before Conway: `Shelley/Rules/Delegs.hs`, `Delpl.hs`,
@@ -61,7 +61,7 @@ object ShelleyCertLens:
   * failures) and the chain account (the reserves and the treasury a MIR certificate draws on).
   */
 final case class DelegsEnv(
-    ctx: TxRules.Env,
+    ctx: TxEnv,
     pp: ProtocolParams,
     id: Bytes,
     account: ChainAccountState

@@ -7,7 +7,7 @@ import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import fs2.io.file.Path
-import xyz.kd5ujc.scarab.consensus.{BlockRef, NodeState}
+import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.ledger.{StorageError, Utxo}
 
@@ -63,14 +63,6 @@ trait UtxoHandle[S]:
   def modify(s: S)(f: Utxo => Utxo): S
 
 object UtxoHandle:
-  /** The node's flat state: the set is the ledger's, a placeholder while the Byron ledger is
-    * current (`byron.ledger` is set).
-    */
-  given UtxoHandle[NodeState] with
-    def get(s: NodeState): Option[Utxo] = Option.when(s.byron.ledger.isEmpty)(s.ledger.utxo)
-    def modify(s: NodeState)(f: Utxo => Utxo): NodeState =
-      s.copy(ledger = s.ledger.copy(utxo = f(s.ledger.utxo)))
-
   /** The mirror: the set is that of the new-epoch state, none in Byron. */
   given UtxoHandle[MirrorState] with
     def get(s: MirrorState): Option[Utxo] = MirrorStep.utxoOf(s)
