@@ -492,6 +492,17 @@ parameters of the DRep pulser have no pre-Babbage fields). A write reads its own
 refuses (`snapshotRefused`, the snapshot is skipped, nothing is pruned) what would not restore to
 that state: a snapshot is an optimisation, so a refusal costs a replay at worst.
 
+Since J2.8 the default rules' chain state is the mirror itself (`MirrorState`), and its snapshot is the
+same file (`SnapshotV4.mirrorFormat`): the Haskell section is `HaskellLedgerFile.of(state.ext)`, the
+sidecar the UTxO handle, the node's whole parameter sets (taken from the governance state) and the
+extras, and the read is the decode, the UTxO and the whole parameter sets put back (the future ones laid
+over with what the update changed, `ProtocolParams.overlay`) and nothing converted: the telescopes,
+the tip and the new-epoch state are those of the file. The write of the full check
+(`--snapshot-check full`) writes what it read again and compares the bytes. A file the flat form wrote
+is restored the same way and then put right once by `LegacySeed` (the reward update attributed to a
+placeholder pool, `mark` as the snapshot was taken, the pulser's parameters without the fields Conway
+lacks, the old bookkeeping of the extras reset).
+
 Versions 1 to 3 are read only by the migration, through the frozen readers of the `legacy` module
 (`legacy.SnapshotV2`, `legacy.SnapshotV3`, the node state of their time and the binary `Codec` they were
 written with): a V1 or V2 file is decoded and `legacy.Upgrade` brings the state to the live one, a V3
