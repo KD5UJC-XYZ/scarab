@@ -661,7 +661,10 @@ or not its candidate was preferred: with N peers N times the download and N time
 whose candidate is never preferred a map of fetched blocks that nothing takes (a leak). A `BlockPool` shared by the
 sessions now holds claims: a session claims the blocks of a range when its connection is free to send the request, so
 each block is fetched from one peer, the ranges of a batch go to whichever connection is idle, and the session that
-applies a block takes it from the pool whichever peer delivered it.
+applies a block takes it from the pool whichever peer delivered it. A claim lives only as long as the session that
+made it (a per-session resource, `BlockPool.session`): when the session ends, by a failure or a cancellation, what it
+still holds is released and a session waiting for it fetches the block itself (#130; the first version released a
+claim on an error but not on a cancellation, and a peer's timeout left the other peer waiting for ever).
 
 The reference (ouroboros-network, `Ouroboros.Network.BlockFetch.Decision`): `fetchDecisions` filters the candidates
 (`filterPlausibleCandidates`, `selectForkSuffixes`, `filterNotAlreadyFetched`, `filterNotAlreadyInFlightWithPeer`),
