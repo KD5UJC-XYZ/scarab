@@ -15,6 +15,7 @@ Captured with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from `backbone.cardano.
 | `byron-tx-c1092b9c-block.hex` | The Byron main block at slot 4,105,943 (epoch 190, hash `ff78a9ec7703935d...`, 1.5 KB), full `[1, block]` encoding: it holds transaction c1092b9c, whose output 0 (12,932,000,000 lovelace) mainnet stop 4 lost at the Byron to Shelley handover. Captured with `--blocks 1 --from 4105942.3015c21d6b5fd44465fa06ad3058e263d690aae397c6a95df5b2c72c8373f225 --byron-epoch-slots 21600` on 2026-10-16. |
 | `byron-tx-c1092b9c-inputs.json` | The output that c1092b9c spends (c6f9c891...#0, 7,785,462,486,762 lovelace), from the Koios API (`tx_info`), in the form of `byron-tx-inputs.json`; the address is the base58 address decoded. |
 | `shelley-pool-network-block.hex` | The Shelley block at slot 4,495,760 (epoch 208, protocol version 2, hash `fb4e87a00f0eea0d...`, 8 KB), full `[era, block]` encoding: the block where the second mainnet sync from genesis stopped. Transaction 49be5965 registers a pool whose reward account is on network 0. Captured with `--blocks 1 --from 4495740.c8a3bd53fc4c76491d911e1f2f4c8eb5baf7ef8848fbefda7820ab846854ec90 --byron-epoch-slots 21600` on 2026-10-16 (the previous block's point from the Koios API, `blocks`). |
+| `mary-garbage-address-block.hex` | The Mary block at slot 39,249,764 (epoch 288, block 6,203,514, hash `24dcc9a0ecbcbd9c...`, six transactions), full `[era, block]` encoding: the block where the sixth mainnet sync from genesis stopped. Output 0 of transaction 369826b2 is a base address of 57 bytes followed by 21 bytes. Captured with `--blocks 1 --from 39249748.3652c26eb2b4f9d6e0f3153e5d50bc2134d2d0479e3b327131c30eb5a9f0161b --byron-epoch-slots 21600` on 2026-10-16 (the previous block's point from the Koios API, `blocks`). |
 
 `ByronMainnetSuite` decodes the blocks, checks the body proofs against the headers, derives the AVVM
 redeem address and the genesis UTxO (the pseudo transaction id and address equal what the chain
@@ -26,6 +27,8 @@ protocol magic, address roots, value conservation and the minimum fee.
 `ByronHandoverUtxoSuite` (node tests) applies transaction c1092b9c of the block at slot 4,105,943 with the Byron ledger and carries its outputs through the handover to Shelley over a UTxO store.
 
 `MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8.
+
+`MainnetGarbageAddressSuite` (ledger tests) and `MainnetGarbageAddressStoreSuite` (storage tests) decode the block at slot 39,249,764 and read the address of transaction 369826b2 in each era, and put its output through the UTxO stores and the Haskell UTxO codec.
 
 `MainnetAllegraReservesSuite` (ledger tests) and `AllegraRedeemStoreSuite` (node tests) use the AVVM balance of `byron-genesis-trimmed.json` (and a verification-key output of `byron-tx-inputs.json`) as the redeem outputs that the boundary entering Allegra returns to the reserves (mainnet stop 5); the reward inputs of the first suite are public chain data from the Koios API, cited in the suite.
 

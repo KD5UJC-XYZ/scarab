@@ -66,6 +66,19 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   has an `at`, the verification-cache summary is a `verificationCache` line (was text on stderr), and the http4s
   server's start is an `slf4j` line. `LogDocsSuite` keeps the catalogue in running.md equal to the code.
 
+### Fixed (mainnet sync from genesis, stop 6: bytes after an address in a Mary output, B28)
+- **An address followed by bytes that belong to no address is read as the reference reads it before Babbage.** Block
+  6,203,514 (slot 39,249,764, epoch 288) holds transaction 369826b2, whose output 0 is a base address of 57 bytes
+  with 21 bytes after it, and the node refused it with `base address length`. The decoder of a Shelley to Alonzo
+  era does not check that an address used all its bytes and keeps the address without the rest
+  (`fromCborBackwardsBothAddr`, cardano-ledger-core 1.21.0.0); Babbage and Conway require every byte. `Address.Mode`
+  (`Backwards` below Babbage, `Rigorous` from it) follows the era of the block: `Tx.fromBlock` passes it to
+  `TxBody.decode` and `TxOut.decode`. `Address.raw` is the cropped address (what the UTxO, the queries and the Haskell
+  state codec hold); the output and the body keep their bytes, so the transaction id is unchanged. Base, pointer and
+  enterprise addresses alike; a short address is refused in every era. No persisted format changes and the database of
+  a stopped run stays valid. `MainnetGarbageAddressSuite`, `MainnetGarbageAddressStoreSuite`. Open: the pointer
+  normalisation of the same decoder (`mkPtrNormalized`) is not applied (K3).
+
 ### Fixed (mainnet snapshots after the Byron to Shelley handover, B27)
 - **A pool whose reward account is on another network no longer stops the snapshots.** The ledger-state mirror
   refused a registered pool whose reward account was not on the node's network (`MirrorError.NetworkMismatch`),
