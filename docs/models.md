@@ -433,6 +433,7 @@ in all.
 | `features` transaction, key_descriptor, prelude_use | 40/40 (40) each | 40/40 (40, 29, 37) | 40/40 each |
 | `features:person` | 40/40 (0, listed below) | 40/40 (40) | 40/40 |
 | hard-fork header (`chainsync-header`) | 37/40 (37, 3 hold floats, listed below) | 37/40 (32) | 40/40 |
+| `leios-notify` messages (the announcement holds that header) | 39/40 (39, 1 holds a float, listed below) | 39/40 (29) | 40/40 |
 | `network.base:tip`, `base:point` | 40/40 (40) each | 40/40 (29, 24) | 40/40 each |
 
 The rule sets agree on all 27 files (1,108 rule name and arity pairs); cuddle resolves all 16 modules completely.
@@ -444,6 +445,7 @@ as stale, a divergence that is not listed fails it as new):
 |---|---|
 | `override` alonzo, babbage, conway `bounded_bytes` | Upstream `bytes .size (0 .. 64)` is stricter than the chain (64-byte chunks of an indefinite string, finding 1). The driver sends a 65-byte string through cuddle with the upstream rule (must be rejected) and with the override (must be accepted) |
 | `decode-float` `chainsync-header:header` | cuddle fills `any` (Byron `attributes = {* any => any}`) with floats; `xyz.kd5ujc.scarab.codec` reads floats only when `Cbor.Limits.allowFloats` is set (off for every wire decoder; the ledger-state codec of `storage` sets it), so such a term is rejected here. Cardano data contains none |
+| `decode-float` `leios-notify:leiosNotifyMessage` | The same floats, reached through the header an announcement carries (`leios-notify` imports `header.cddl`) |
 | `not-byte-exact` `features:person` | cuddle writes map entries sorted by key, the generated writer in rule order (the canonical-order option of section 5 is a listed gap); the value is equal |
 | `unsupported` x25 | 12 Dijkstra rules with a required member after an optional one, 8 Byron `.gt` and 5 `.ne` bounds on a named `u8` (section 8) |
 
