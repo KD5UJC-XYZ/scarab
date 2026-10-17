@@ -97,9 +97,9 @@ object ChainStorage:
   private val AdvanceEvery = 128
 
   final case class Config(
-      /** A snapshot is taken once the immutable tip is this many slots past the previous one. */
-      snapshotEverySlots: BigInt,
-      keepSnapshots: Int = 3,
+      /** When a snapshot is taken (the immutable tip also gets one on a graceful stop). */
+      snapshotPolicy: SnapshotPolicy,
+      keepSnapshots: Int = SnapshotPolicy.ReferenceKeep,
       chunkSlots: Long = FileImmutableStore.DefaultChunkSlots,
       /** 10k of the Byron genesis, to place Byron blocks on the slot axis when blocks are decoded.
         */
@@ -225,6 +225,8 @@ object ChainStorage:
       )
       pending <- Resource.eval(Ref.of[F, Vector[(BlockRef, Bytes)]](Vector.empty))
       lastSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
+      previousSlot <- Resource.eval(Ref.of[F, BigInt](start._1.fold(BigInt(0))(_.slot)))
+      lastTaken <- Resource.eval(Ref.of[F, Option[FiniteDuration]](None))
       busy <- Resource.eval(Ref.of[F, Boolean](false))
       latest <- Resource.eval(Ref.of[F, Option[(BlockRef, S)]](None))
       written <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
@@ -240,6 +242,8 @@ object ChainStorage:
         config,
         pending,
         lastSlot,
+        previousSlot,
+        lastTaken,
         busy,
         latest,
         written,
@@ -403,6 +407,10 @@ object ChainStorage:
       config: Config,
       pending: Ref[F, Vector[(BlockRef, Bytes)]],
       lastSlot: Ref[F, BigInt],
+      /** The slot of the immutable tip before the block being advanced to. */
+      previousSlot: Ref[F, BigInt],
+      /** When (monotonic) the previous snapshot was requested; none yet since the start. */
+      lastTaken: Ref[F, Option[FiniteDuration]],
       busy: Ref[F, Boolean],
       /** The immutable tip and the state after it, as the backing store stands. */
       latest: Ref[F, Option[(BlockRef, S)]],
@@ -473,12 +481,15 @@ object ChainStorage:
       * is written in the background, because the store keeps moving with the chain.
       */
     def advanced(ref: BlockRef, state: S): F[Unit] =
-      lastSlot.get.flatMap { last =>
-        val snapshotDue = ref.slot - last >= config.snapshotEverySlots
-        F.uncancelable(_ =>
-          advanceBacking(ref, state, snapshotDue) *> latest.set(Some(ref -> state))
-        ) *>
-          afterAdvance(ref, state, snapshotDue)
+      (lastSlot.get, previousSlot.getAndSet(ref.slot), lastTaken.get, Clock[F].monotonic).flatMapN {
+        (last, previous, taken, now) =>
+          val snapshotDue = config.snapshotPolicy.due(
+            SnapshotPolicy.Facts(previous, ref.slot, last, taken.map(now - _))
+          )
+          F.uncancelable(_ =>
+            advanceBacking(ref, state, snapshotDue) *> latest.set(Some(ref -> state))
+          ) *>
+            afterAdvance(ref, state, snapshotDue)
       }
 
     /** Bring the backing store to the immutable tip, but not for every block: writing walks the
@@ -500,6 +511,7 @@ object ChainStorage:
           case false =>
             (for
               _ <- lastSlot.set(ref.slot)
+              _ <- Clock[F].monotonic.flatMap(now => lastTaken.set(Some(now)))
               settled <- backing.settled(state)
               _ <- backing.checkpoint(ref)
               _ <- supervisor.supervise(

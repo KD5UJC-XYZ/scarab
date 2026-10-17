@@ -139,7 +139,7 @@ def main():
     f.add_argument("--db", action="store_true",
                    help="keep the follower's chain database in the run directory (<run dir>/db), snapshots at each "
                         "epoch boundary, so that a second `follow --db` restarts from the snapshot")
-    f.add_argument("--snapshot-every", help="with --db: the snapshot interval of the node (default 1epochs)")
+    f.add_argument("--snapshot-every", help="with --db: the snapshot interval of the node (default 1epochs in the harness, to exercise snapshots and restarts; the node itself defaults to the reference policy)")
     f.add_argument("--classes", help="run the classes of an earlier build (the `classes` directory of another run) "
                                      "instead of the checkout's, to write a database in an older format "
                                      "(the environment variable SCARAB_FOLLOW_CLASSES does the same for the followers "

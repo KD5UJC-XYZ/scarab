@@ -25,6 +25,7 @@ import xyz.kd5ujc.scarab.storage.{
   SnapshotFormat,
   SnapshotCheck,
   SnapshotMigration,
+  SnapshotPolicy,
   SnapshotV4,
   StateBacking,
   UtxoBacking,
@@ -110,8 +111,9 @@ object Main extends IOApp:
       metricsListen: Option[SocketAddress[Host]] = None,
       plutusCases: Option[Path] = None,
       db: Option[Path] = None,
-      snapshotEvery: SnapshotInterval = SnapshotInterval.Epochs(1),
-      keepSnapshots: Int = 3,
+      /** `--snapshot-every`: none is the reference node's policy ([[SnapshotPolicy.reference]]). */
+      snapshotEvery: Option[SnapshotInterval] = None,
+      keepSnapshots: Int = SnapshotPolicy.ReferenceKeep,
       /** `--snapshot-check structure|full`: what a snapshot write proves before it is kept. */
       snapshotCheck: SnapshotCheck = SnapshotCheck.Structure,
       listen: Option[SocketAddress[Host]] = None,
@@ -475,14 +477,16 @@ object Main extends IOApp:
           )
         )
       ) { dir =>
-        val every = options.snapshotEvery match
-          case SnapshotInterval.Slots(n)  => BigInt(n)
-          case SnapshotInterval.Epochs(n) => BigInt(n) * genesis.geometry.epochLength
+        val policy = options.snapshotEvery match
+          case None => SnapshotPolicy.reference(BigInt(genesis.geometry.securityParam))
+          case Some(SnapshotInterval.Slots(n)) => SnapshotPolicy.EverySlots(BigInt(n))
+          case Some(SnapshotInterval.Epochs(n)) =>
+            SnapshotPolicy.EverySlots(BigInt(n) * genesis.geometry.epochLength)
         ChainStorage
           .open[IO, NodeState](
             fs2.io.file.Path.fromNioPath(dir),
             ChainStorage.Config(
-              every,
+              policy,
               options.keepSnapshots,
               byronEpochSlots = genesis.geometry.byron.epochSlots,
               identity = Some(setup.identity)
@@ -930,10 +934,10 @@ object Main extends IOApp:
             .traverse(t => Peer.parseAddress(t).leftMap(ConfigError(_)))
           interval <- flags
             .get("snapshot-every")
-            .fold(Right(SnapshotInterval.Epochs(1)))(t => SnapshotInterval.parse(t).toRight(usage))
+            .traverse(t => SnapshotInterval.parse(t).toRight(usage))
           keep <- flags
             .get("keep-snapshots")
-            .fold(Right(3))(_.toIntOption.filter(_ > 0).toRight(usage))
+            .fold(Right(SnapshotPolicy.ReferenceKeep))(_.toIntOption.filter(_ > 0).toRight(usage))
           check <- flags
             .get("snapshot-check")
             .fold(Right(SnapshotCheck.Structure))(t => SnapshotCheck.parse(t).toRight(usage))

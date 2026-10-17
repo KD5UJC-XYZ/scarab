@@ -84,7 +84,7 @@ class ChainStorageSuite extends CatsEffectSuite:
 
   private def config(every: Int) =
     ChainStorage.Config(
-      snapshotEverySlots = every,
+      snapshotPolicy = SnapshotPolicy.EverySlots(every),
       keepSnapshots = 4,
       chunkSlots = 100,
       byronEpochSlots = geometry.byron.epochSlots,

@@ -7,7 +7,8 @@ class MainArgsSuite extends munit.FunSuite:
   test("known flags parse with their defaults") {
     val options = Main.parse(base).toOption.get
     assertEquals(options.queryPort, 7071)
-    assertEquals(options.keepSnapshots, 3)
+    assertEquals(options.keepSnapshots, 2)
+    assertEquals(options.snapshotEvery, None)
     assertEquals(options.mempoolBytes, None)
     assertEquals(Main.DefaultMempoolBytes, 1048576L)
   }
