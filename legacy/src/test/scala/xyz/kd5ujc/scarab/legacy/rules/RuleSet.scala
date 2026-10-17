@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.ledger
 import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.*
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
-
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*

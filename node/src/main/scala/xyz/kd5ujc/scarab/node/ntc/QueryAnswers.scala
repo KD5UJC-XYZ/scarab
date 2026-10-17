@@ -68,7 +68,7 @@ enum Unanswered:
   case Unwritable
 
 /** The acquired state: the point it was taken at, the block number there and the state of the chain
-  * (the node's flat state or a mirror: [[ChainRead]] reads either).
+  * (the mirror: [[ChainRead]] reads it).
   *
   * What several queries on the acquired state share is taken once per view, and only if a query
   * asks for it.

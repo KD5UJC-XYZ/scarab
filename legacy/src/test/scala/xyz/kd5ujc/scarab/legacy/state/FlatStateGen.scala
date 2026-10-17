@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.state
 
 import xyz.kd5ujc.scarab.legacy as flat
-
 import java.time.Instant
 import org.scalacheck.Gen
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}

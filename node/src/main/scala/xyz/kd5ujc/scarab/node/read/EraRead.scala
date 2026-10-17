@@ -16,7 +16,7 @@ type Read[A] = Either[MirrorError, A]
 
 /** The reward update a state holds, by credential: what the node's projection and `GetRewardInfo`
   * style readers need. The mirror's attribution per pool ([[RewardUpdate.rs]]) is summed over the
-  * pools; the flat state keeps one amount per credential.
+  * pools.
   */
 final case class RewardsDue(
     deltaT: DeltaCoin,
@@ -27,11 +27,10 @@ final case class RewardsDue(
 
 /** What the read paths ask of the ledger state of one Shelley-based era `E`, in the vocabulary of
   * the mirror (`NewEpochState`): the local state queries, the header rules' ledger-view forecast,
-  * the leader schedule, the K1 projection and the follower's epoch line. Two things implement it:
-  * [[MirrorEraRead]], whose members are the fields of a `NewEpochState[E]` and which converts
-  * nothing, and the node's flat state ([[FlatEraRead]]), which converts the part asked for, when it
-  * is asked, and keeps the result. The flat implementation goes with the flat state (design
-  * `ledger-mirror-step2.md` §4, J2.9); the readers are written against this and stay.
+  * the leader schedule, the K1 projection and the follower's epoch line. [[MirrorEraRead]]
+  * implements it: its members are the fields of a `NewEpochState[E]` and it converts nothing.
+  * (Until J2.9 the node's flat state implemented it too, converting the part asked for; the flat
+  * state went with the old rules, and the readers stayed written against this.)
   *
   * The members that are cheap on both (the scalars, the parameters, what the forecast reads) do not
   * convert the accounts, the pools or the snapshots; a reader that does not ask for those does not
@@ -46,10 +45,8 @@ trait EraRead[E <: EraTag]:
   /** The epoch, the blocks made, the pots and the amounts of the UTxO state. */
   def scalars: Read[LedgerScalars]
 
-  /** The protocol parameters in force, with every field the node holds. The flat state keeps one
-    * set of fields for all eras, the mirror's parameters have zero in the fields the era has no
-    * place for (`GovState.curPParams`); this is the flat set when the state is the node's, and the
-    * mirror's when it is a mirror (they differ only in those fields).
+  /** The protocol parameters in force, with every field the node holds: the mirror's parameters
+    * have zero in the fields the era has no place for (`GovState.curPParams`).
     */
   def params: flat.ProtocolParams
 
@@ -90,14 +87,13 @@ trait EraRead[E <: EraTag]:
   def rewardsDue: Read[Option[RewardsDue]]
 
   /** The proposed protocol-parameter updates, current and future, by genesis key hash: the state's,
-    * in every era (the flat state keeps its Shelley proposals after Conway, where the mirror has no
-    * place for them).
+    * in every era (none after Conway, where the mirror has no place for them).
     */
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])]
 
   /** The completed DRep pulser the state has run: none before Conway and, on a chain that entered
     * Conway, before its first epoch boundary (the reference holds the pulser of the era translation
-    * then, which the mirror of a flat state shows as the pulser it reports).
+    * then).
     */
   def pulsed: Read[Option[DRComplete]]
 

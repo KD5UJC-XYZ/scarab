@@ -57,9 +57,8 @@ object Projection:
 
   /** The projection of the chain state `n` at `p`, the UTxO set being `utxo` (the entries, which
     * the state itself holds only as a diff over the backing store). Written over the read paths
-    * ([[ChainRead]], [[EraRead]]): the state is read in the vocabulary of the mirror, whether it is
-    * the node's flat state or a mirror. A chain still in Byron has no ledger state to project: the
-    * consensus part only.
+    * ([[ChainRead]], [[EraRead]]): the state is read in the vocabulary of the mirror. A chain still
+    * in Byron has no ledger state to project: the consensus part only.
     */
   def node[S](p: ChainSync.Point, n: S, utxo: Utxo)(using read: ChainRead[S]): Read[Json] =
     val praos = n.protocol.view

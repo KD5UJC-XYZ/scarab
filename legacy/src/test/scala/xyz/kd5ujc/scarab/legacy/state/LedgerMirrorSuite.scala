@@ -4,7 +4,6 @@ package xyz.kd5ujc.scarab.ledger.state
 import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
-
 import cats.arrow.FunctionK
 import cats.data.Kleisli
 import cats.kernel.laws.discipline.EqTests

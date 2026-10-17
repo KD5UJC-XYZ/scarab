@@ -2,15 +2,14 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
-
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
 import munit.FunSuite
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The Conway transaction rules on real Preview transactions: governance proposals that carry the
   * constitution's guardrails script (Plutus V3). The ledger state around each transaction is built

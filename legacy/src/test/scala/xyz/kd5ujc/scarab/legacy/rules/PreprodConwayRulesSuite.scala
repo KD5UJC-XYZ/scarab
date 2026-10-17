@@ -2,16 +2,15 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.Id
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 class PreprodConwayRulesSuite extends FunSuite:
   private val rs = RuleSet

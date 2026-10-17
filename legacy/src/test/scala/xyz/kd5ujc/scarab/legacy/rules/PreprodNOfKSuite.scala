@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
-
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
@@ -10,9 +9,9 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** Preprod tx b1db2a41 (block 5,184,855, slot 133,902,219, epoch 313, Conway) carries the native
   * script `[3, -1, [sig, sig]]`. The reference decodes `n` of `script_n_of_k` as an `Int` (the

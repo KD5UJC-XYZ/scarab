@@ -5,9 +5,9 @@ import java.nio.file.{Files, Path}
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The mainnet block at slot 4,495,760 (epoch 208, Shelley, protocol version 2, header hash
   * `fb4e87a00f0eea0d...`) holds transaction 49be5965c31a60c3, a pool registration whose reward

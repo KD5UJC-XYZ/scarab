@@ -5,7 +5,6 @@ import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.FlatTestLedger
 import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
 import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
-
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import java.nio.file.Path

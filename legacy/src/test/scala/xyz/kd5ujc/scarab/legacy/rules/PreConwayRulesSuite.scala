@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.legacy.*
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -12,9 +11,9 @@ import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 class PreConwayRulesSuite extends ScalaCheckSuite:
   private val rs = RuleSet

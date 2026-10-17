@@ -22,7 +22,7 @@ import xyz.kd5ujc.scarab.protocol.Era
 // (Shelley to Alonzo) and Praos (Babbage, Conway), as the telescope of `HeaderState` holds it. Field
 // orders are the Haskell records'. The names are the Haskell names. Since step 2, jump 1 (J1.5) these
 // are the types the node itself runs on: `Praos`, `TPraos` and the PBFT window of `ByronRules` evolve
-// them, and `NodeState` holds them in its `HeaderState`.
+// them, and `MirrorState` holds them in its `HeaderState`.
 
 /** `PBftSigner` (`Protocol/PBFT/State.hs:146-149`): who signed the block of a slot. */
 final case class PBftSigner(slot: SlotNo, genesisKey: KeyHash[Genesis]) derives Eq, Show, Diff

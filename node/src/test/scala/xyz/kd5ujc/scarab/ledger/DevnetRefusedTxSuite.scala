@@ -9,9 +9,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.mempool.MempoolState
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.legacy.{FlatTestLedger, LedgerState}
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.{FlatTestLedger, LedgerState}
 import FlatTestLedger.state
 
 /** Transactions that the Haskell reference node refused on the devnet

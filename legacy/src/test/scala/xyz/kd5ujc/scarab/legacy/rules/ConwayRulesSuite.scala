@@ -2,15 +2,14 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
-
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The Conway transaction rules that are not about governance: scripts, minting, reference-script
   * fees, collateral, treasury fields.

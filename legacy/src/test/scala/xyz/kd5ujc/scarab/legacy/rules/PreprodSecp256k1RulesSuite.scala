@@ -2,15 +2,14 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.legacy.*
-
 import cats.Id
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 import TestLedger.*
-import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** Preprod transaction 97b31e35 (block 3,498,869, epoch 217): a Plutus V2 spend whose script calls
   * `verifyEcdsaSecp256k1Signature` with an all-zero signature; the reference answers `False`,

@@ -36,10 +36,9 @@ object MirrorRefusal:
   * `cardano-cli query ledger-state`.
   *
   * The state is read through [[xyz.kd5ujc.scarab.node.read.ChainRead]] as the ledger state of its
-  * era (the mirror of the Haskell state: as it is when the state is a mirror, converted when it is
-  * the node's flat state) and written with the codec of the state file at the version of its era.
-  * The UTxO is not in the answer (the reference answers `map(0)` there, its entries live in the
-  * tables of the ledger), as it is not in the state file.
+  * era (the mirror of the Haskell state, as it is) and written with the codec of the state file at
+  * the version of its era. The UTxO is not in the answer (the reference answers `map(0)` there, its
+  * entries live in the tables of the ledger), as it is not in the state file.
   *
   * What the node cannot give is the [[xyz.kd5ujc.scarab.ledger.state.Gap]]s of the mirror: the
   * answer differs from the reference's only inside them, and the ones the devnet comparison masks

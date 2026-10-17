@@ -39,7 +39,7 @@ object Collectors:
 
   /** The tip of the chain, as the node sees it now. `geometryOf` is the epoch geometry a state
     * knows (the one of the genesis files, refined once the chain has entered Shelley, which is what
-    * `NodeState.geometry` gives).
+    * `EpochGeometry.resolved` gives).
     */
   def chain[F[_]: Monad, S](geometryOf: S => EpochGeometry)(using
       state: Stateful[F, VolatileChain[S]],
