@@ -171,11 +171,10 @@ final class InboundGovernor[F[_]: Async] private (
     for
       outcome <- Handle
         .allow[PeerError] {
-          // network failures of the clients become peer errors of this session
-          given Raise[F, NetworkError] = new Raise[F, NetworkError]:
-            def functor = F
-            def raise[E2 <: NetworkError, A](e: E2): F[A] =
-              summon[Raise[F, PeerError]].raise(Peer.peerError(e))
+          // network failures of the clients become peer errors of this session; the clients' own
+          // fibers (KeepAlive, TxSubmission2) raise them as values that cross fibers, and the
+          // session (Peer.over) raises them again in its fiber
+          given Raise[F, NetworkError] = Peer.carryingNetwork[F]
           NodeToNode
             .clients[F, NtNHeader](
               mux,
@@ -189,6 +188,7 @@ final class InboundGovernor[F[_]: Async] private (
             .as(Option.empty[PeerError])
         }
         .rescue(e => F.pure(Some(e)))
+        .recover { case failure: PeerFailure => Some(failure.error) }
         // anything else (an error the follower raises into the node's own scope, a defect) ends
         // this session visibly instead of killing its fiber silently
         .handleErrorWith(t =>
