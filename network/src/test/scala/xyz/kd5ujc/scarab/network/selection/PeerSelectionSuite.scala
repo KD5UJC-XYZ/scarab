@@ -254,6 +254,30 @@ class PeerSelectionSuite extends FunSuite:
   }
 
   test(
+    "above the active target the hot peers that were seldom first go first (hotDemotionPolicy)"
+  ) {
+    val targets = Targets.validated(0, 150, 10, 3, 0, 0, 0).toOption.get
+    val base = start(Nil, targets)
+    val peers = (1 to 5).foldLeft(base.peers)((m, p) =>
+      m.updated(p, PeerRecord.cold(Origin.Public).copy(status = Status.Hot))
+    )
+    // peers 1 and 2 presented most headers and blocks, 3 one header, 4 and 5 are not on the board:
+    // they rank as zero before every peer that is
+    val metrics = (10L to 19L)
+      .foldLeft(PeerMetrics.empty[Int]())((m, s) =>
+        m.reportHeader(if s % 2 == 0 then 1 else 2, s, s.seconds)
+          .reportFetch(if s % 2 == 0 then 2 else 1, s, 1000, s.seconds)
+      )
+      .reportHeader(3, 30, 30.seconds)
+    val withMetrics = base.copy(peers = peers, targets = targets)
+    PeerSelection.decide(withMetrics, t0, metrics) match
+      case Step.Act(d) =>
+        // two surplus hot peers: the two lowest scores
+        assertEquals(d.jobs.collect { case Job.Deactivate(p) => p }.toSet, Set(4, 5))
+      case other => fail(s"expected a demotion, got $other")
+  }
+
+  test(
     "above the known target cold peers that are not roots are forgotten, within the root target"
   ) {
     val targets = Targets.validated(2, 4, 2, 1, 0, 0, 0).toOption.get

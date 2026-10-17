@@ -39,8 +39,9 @@ final case class Policy(
 
 /** How the governor ranks hot peers for demotion: the lowest score goes first. The score is
   * `upstreamyness + fetchynessBlocks` (`hotDemotionPolicy`, `Policies.hs` 127-147), ties broken by
-  * the slot at which the peer joined the board, then by a random number. Before the peer metrics
-  * exist (G1.2) every peer scores the same and the random number decides.
+  * the slot at which the peer joined the board, then by a random number ([[PeerMetrics.hotScores]]
+  * gives the scores; a peer the metrics do not know scores [[HotScore.Unknown]], below all that are
+  * known; without metrics every peer scores alike and the random number decides).
   */
 final case class HotScore(value: Int, joinedAt: Option[Long])
 

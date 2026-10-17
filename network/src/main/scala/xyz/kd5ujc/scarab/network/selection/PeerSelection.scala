@@ -39,10 +39,18 @@ object PeerSelection:
         m.updated(p, m(p).copy(failCount = 0, clearFailAt = None))
       })
 
-  /** The first decision that applies in the reference's order, or when to look again. */
-  def decide[A](input: GovernorState[A], now: Time): Step[A] =
+  /** The first decision that applies in the reference's order, or when to look again. The peer
+    * metrics are the feedback of the chain: the hot peers that were seldom first with a header or a
+    * block are demoted first ([[HotScore]]); without them every peer scores alike and the generator
+    * decides.
+    */
+  def decide[A](
+      input: GovernorState[A],
+      now: Time,
+      metrics: PeerMetrics[A] = PeerMetrics.empty[A]()
+  ): Step[A] =
     given Ordering[A] = input.peers.ordering
-    val pass = Pass(tick(input, now), now)
+    val pass = Pass(tick(input, now), now, metrics)
     val families: List[() => Guard[A]] = List(
       () => pass.cleanState,
       () => pass.judgement,
@@ -83,11 +91,16 @@ object PeerSelection:
     case Skip(wakeAt: Option[Time])
 
   /** One pass of the decisions: the state, the sets derived from it, the time and the policy. */
-  private final class Pass[A](val st: GovernorState[A], now: Time)(using
+  private final class Pass[A](val st: GovernorState[A], now: Time, metrics: PeerMetrics[A])(using
       ord: Ordering[A]
   ):
     val view: GovernorState.View[A] = st.view(now)
     import Guard.*
+
+    /** The score of a hot peer for demotion, computed once and only if a demotion happens. */
+    private lazy val hotScore: A => HotScore =
+      val scores = metrics.hotScores
+      peer => scores.getOrElse(peer, HotScore.Unknown)
 
     def nextClearFail: Option[Time] = st.peers.values.flatMap(_.clearFailAt).minOption
 
@@ -498,7 +511,7 @@ object PeerSelection:
         val available = group.members.intersect(availableLocal)
         val n = group.members.intersect(view.active).size - group.hot.value - inProgress
         if n > 0 && available.nonEmpty then
-          val (chosen, g1) = Picks.hotDemotion(available, n, g0)
+          val (chosen, g1) = Picks.hotDemotion(available, n, g0, hotScore)
           (acc ++ chosen, g1)
         else (acc, g0)
       }
@@ -525,7 +538,7 @@ object PeerSelection:
       val excess = view.active.size - st.targets.active - view.deactivating.size
       val available = view.active -- view.deactivating -- view.localRoots -- view.cooling
       if excess > 0 && available.nonEmpty then
-        val (picked, next) = Picks.hotDemotion(available, excess, st.rng)
+        val (picked, next) = Picks.hotDemotion(available, excess, st.rng, hotScore)
         go(
           withStatus(picked, Status.Deactivating).copy(rng = next),
           picked.map(Job.Deactivate(_)),

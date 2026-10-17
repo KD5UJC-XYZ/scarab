@@ -192,7 +192,10 @@ object GovernorState:
       warmBootstrapDemotions: Int,
       warmBootstrapPromotions: Int,
       activeBootstrap: Int,
-      activeBootstrapDemotions: Int
+      activeBootstrapDemotions: Int,
+      knownBigLedger: Int,
+      establishedBigLedger: Int,
+      activeBigLedger: Int
   ):
     /** `PeerSelectionCountersHWC`: cold, warm and hot are the known beyond the established, the
       * established beyond the active, and the active.
@@ -240,7 +243,12 @@ object GovernorState:
         warmBootstrapDemotions = n(view.closing.intersect(boot)),
         warmBootstrapPromotions = n(view.activating.intersect(boot)),
         activeBootstrap = n(view.active.intersect(boot)),
-        activeBootstrapDemotions = n(view.deactivating.intersect(boot))
+        activeBootstrapDemotions = n(view.deactivating.intersect(boot)),
+        // big ledger peers are a stage of their own (G1.3): there are none, so the churn steps
+        // that wait for them (steps 1 to 6 of a round) are skipped until then
+        knownBigLedger = 0,
+        establishedBigLedger = 0,
+        activeBigLedger = 0
       )
 
 object Time:

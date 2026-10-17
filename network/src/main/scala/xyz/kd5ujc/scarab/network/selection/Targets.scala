@@ -31,6 +31,18 @@ final case class Targets private (
   def withActiveBig(value: Int): Either[Targets.Problem, Targets] =
     Targets.validated(root, known, established, active, knownBig, establishedBig, value)
 
+  /** The same targets with the named ones replaced, or the reason the result is not sane. */
+  def revised(
+      root: Int = root,
+      known: Int = known,
+      established: Int = established,
+      active: Int = active,
+      knownBig: Int = knownBig,
+      establishedBig: Int = establishedBig,
+      activeBig: Int = activeBig
+  ): Either[Targets.Problem, Targets] =
+    Targets.validated(root, known, established, active, knownBig, establishedBig, activeBig)
+
 object Targets:
   /** Which sets a [[Problem]] is about. */
   enum Kind:
