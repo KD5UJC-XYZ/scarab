@@ -120,6 +120,7 @@ with a pattern that matches your own shell command line.
 | Network (mini-protocols, mux, peer, chain selection) | `check`, plus `soak` and `relay` |
 | Storage (stores, snapshots, UTxO set) | `check` with the storage suites, plus a restart check (`follow --db`, stop, restart) and `soak` |
 | Forging or mempool | `check`, plus `pool` and `relay` |
+| KES key handling, certificates or SIGHUP reload (`forge/KesFiles`, `HotKeys`, `scripts/pool`) | `check`, plus `pool`, `kes-rotate` and `python3 -m unittest discover -s scripts/tests` |
 | Node-to-client (LocalStateQuery, LocalTxSubmission, the encoding of rejections) | `check`, plus `ntc` and `relay` |
 
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))

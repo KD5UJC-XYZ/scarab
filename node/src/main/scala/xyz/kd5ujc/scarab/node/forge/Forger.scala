@@ -203,7 +203,11 @@ final class Forger[F[_]: Async](
 
   /** Everything for one slot; nothing escapes (a failure is reported and the next slot goes on). */
   private[forge] def step(slot: BigInt): F[Unit] =
-    hot.advance(kesPeriodOf(slot)) *> handle
+    hot
+      .advance(kesPeriodOf(slot))
+      .handleErrorWith(t =>
+        failed(slot, ForgeError.KesFailure(s"${t.getClass.getName}: ${t.getMessage}"))
+      ) *> handle
       .attempt(attempt(slot))
       .flatMap {
         case Right(_)                      => F.unit

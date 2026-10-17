@@ -5,7 +5,7 @@ import scala.annotation.unused
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*
-import cats.mtl.{Handle}
+import cats.mtl.Handle
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.node.mempool.{TxKit}
+import xyz.kd5ujc.scarab.node.mempool.TxKit
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 import munit.CatsEffectSuite
 
