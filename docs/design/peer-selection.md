@@ -1074,6 +1074,29 @@ closing comment lists the commits and the evidence of each stage; the architectu
     a dual copy in the running node, which contradicts the rule that a migrated path replaces its predecessor.
     Confirm, or ask for the flag for exactly one release.
 
+## 8a. Owner decisions on the open questions (2026-10-17)
+
+Answers to section 8, taken before G1.1 started. They override the proposals above where they differ.
+
+1. `--peer` is one local-root group with `hotValency = warmValency = n` (today's behaviour). A topology's
+   `hotValency` and `warmValency` are honoured.
+2. The ledger-state judgement is the reference's Genesis State Machine, ported faithfully
+   (`Ouroboros.Consensus.Node.GSM`, ouroboros-consensus 4.2.1.0, the release cardano-node 11.1.3 pins), with
+   citations. No ad-hoc tip-age rule.
+3. The fetch mode (bulk sync or deadline) is derived from the GSM, as the reference does.
+4. The reference default targets are kept (relay 60/150/30/20/15/10/5); the cost per extra hot session is
+   measured in the G1.1 relay run and reported.
+5. and 7. SRV records and topology reload on SIGHUP are out of scope; follow-up issues.
+6. Outbound connections stay initiator-only for now (G2).
+8. **Decided by the owner (confirmed 2026-10-17, no longer pending):** a protocol violation, an invalid header or
+   an oversize message means the peer is forgotten; a network failure means backoff. The classification is one
+   typed function (`PeerFailureClass.of`), so a later change touches one place.
+9. One ADR covers D2 (in-progress states in the peer status) and the module placement.
+10. The G1.1 evidence run is on the development machine: a Preview follower from the official topology and
+    config with no `--peer`, 30 minutes, read-only towards the public network.
+11. `OutboundConnectionsState` is published only as a gauge and a log line.
+12. No `--governor off` flag.
+
 ## 9. Risks, in one place
 
 - The warm/hot split touches the `network` entry points that every connection uses (section 4.5): the existing
