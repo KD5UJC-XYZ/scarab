@@ -9,6 +9,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
+import xyz.kd5ujc.scarab.network.selection.{AfterSlot, UseLedgerPeers}
 import munit.FunSuite
 
 /** The Haskell node's `config.json` and `topology.json`, read as `cardano-node run` reads them,
@@ -303,7 +304,7 @@ class ConfigSuite extends FunSuite:
     val preview =
       Topology.parse(text("preview", "topology.json")).fold(e => fail(e.message), identity)
     assertEquals(preview.peers.map(_.toString), Vector("preview-node.play.dev.cardano.org:3001"))
-    assertEquals(preview.useLedgerAfterSlot, LedgerPeers.After(119231973))
+    assertEquals(preview.useLedgerAfterSlot, UseLedgerPeers.Use(AfterSlot.After(119231973)))
     assertEquals(preview.peerSnapshotFile, Some("peer-snapshot.json"))
     assertEquals(preview.localRoots.map(_.accessPoints), Vector(Vector.empty))
     assertEquals(preview.localRoots.map(_.hotValency), Vector(1))
@@ -313,7 +314,7 @@ class ConfigSuite extends FunSuite:
       mainnet.peers.map(_.toString),
       Vector("backbone.cardano.iog.io:3001", "backbone.mainnet.cardanofoundation.org:3001")
     )
-    assertEquals(mainnet.useLedgerAfterSlot, LedgerPeers.After(194140785))
+    assertEquals(mainnet.useLedgerAfterSlot, UseLedgerPeers.Use(AfterSlot.After(194140785)))
     val preprod =
       Topology.parse(text("preprod", "topology.json")).fold(e => fail(e.message), identity)
     assertEquals(preprod.peers.size, 1)
@@ -344,7 +345,7 @@ class ConfigSuite extends FunSuite:
       topology.localRoots.map(_.diffusionMode),
       Vector("InitiatorAndResponder", "InitiatorOnly")
     )
-    assertEquals(topology.useLedgerAfterSlot, LedgerPeers.Always)
+    assertEquals(topology.useLedgerAfterSlot, UseLedgerPeers.Use(AfterSlot.Always))
   }
 
   test("the public roots are the peers only when nothing else names one") {
@@ -355,13 +356,13 @@ class ConfigSuite extends FunSuite:
       .fold(e => fail(e.message), identity)
     assertEquals(topology.peers.map(_.toString), Vector("public.example:3004"))
     assertEquals(topology.bootstrapPeers, None)
-    assertEquals(topology.useLedgerAfterSlot, LedgerPeers.Disabled)
+    assertEquals(topology.useLedgerAfterSlot, UseLedgerPeers.Disabled)
   }
 
   test("a negative slot disables ledger peers; the legacy Producers format is unsupported") {
     val negative =
       Topology.parse("""{"localRoots": [], "publicRoots": [], "useLedgerAfterSlot": -1}""")
-    assertEquals(negative.map(_.useLedgerAfterSlot), Right(LedgerPeers.Disabled))
+    assertEquals(negative.map(_.useLedgerAfterSlot), Right(UseLedgerPeers.Disabled))
     val legacy =
       Topology.parse("""{"Producers": [{"addr": "127.0.0.1", "port": 3001, "valency": 1}]}""")
     assertEquals(legacy.left.map(_.problem), Left(ConfigProblem.UnsupportedTopology))

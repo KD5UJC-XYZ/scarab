@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import io.circe.{ACursor, Decoder, Json, parser}
 import java.nio.file.{Files, Path}
+import xyz.kd5ujc.scarab.network.selection.{AfterSlot, UseLedgerPeers}
 
 /** A relay as a topology file writes it: `{"address": "host-or-ip", "port": 3001}`. */
 final case class AccessPoint(host: Host, port: Port):
@@ -28,26 +29,21 @@ final case class LocalRoots(
 /** A group of `publicRoots`. */
 final case class PublicRoots(accessPoints: Vector[AccessPoint], advertise: Boolean)
 
-/** `useLedgerAfterSlot`: when the reference starts taking peers from the ledger's stake pool relays
-  * (a number above 0: after that slot; 0: always; below 0 or absent: never).
-  */
-enum LedgerPeers:
-  case Disabled
-  case Always
-  case After(slot: BigInt)
-
 /** A P2P topology (`topology.json`), as `cardano-node` reads it (`Cardano.Node.Configuration.
   * TopologyP2P`): `localRoots` and `publicRoots` are required, `bootstrapPeers` (a list, or null
   * for none), `useLedgerAfterSlot` and `peerSnapshotFile` are optional. The node follows the peers
   * of the local roots and the bootstrap peers (and the public roots when there are none of those);
-  * it has no ledger peers, peer snapshot or peer sharing, so those fields are read and recorded.
+  * with `useLedgerAfterSlot` (a number above 0: after that slot; 0: always; below 0 or absent:
+  * never) it also takes ledger peers and big ledger peers from the stake pool relays of its ledger
+  * state, or of the `peerSnapshotFile` ([[xyz.kd5ujc.scarab.network.selection.UseLedgerPeers]]). It
+  * has no peer sharing, so that field is read and recorded.
   */
 final case class Topology(
     localRoots: Vector[LocalRoots],
     publicRoots: Vector[PublicRoots],
     /** `None` when the file says `null` or leaves the key out (bootstrap peers off). */
     bootstrapPeers: Option[Vector[AccessPoint]],
-    useLedgerAfterSlot: LedgerPeers,
+    useLedgerAfterSlot: UseLedgerPeers,
     peerSnapshotFile: Option[String]
 ):
   /** The peers to follow, in order and without repeats: local roots, bootstrap peers, and, when
@@ -130,12 +126,12 @@ object Topology:
     (accessPoints(c), optional[Boolean](c, "advertise").map(_.getOrElse(false)))
       .mapN(PublicRoots(_, _))
 
-  private def ledgerPeers(c: ACursor): Either[ConfigError, LedgerPeers] =
+  private def ledgerPeers(c: ACursor): Either[ConfigError, UseLedgerPeers] =
     optional[BigDecimal](c, "useLedgerAfterSlot").map {
-      case None                     => LedgerPeers.Disabled
-      case Some(n) if n > 0         => LedgerPeers.After(n.toBigInt)
-      case Some(n) if n.signum == 0 => LedgerPeers.Always
-      case Some(_)                  => LedgerPeers.Disabled
+      case None                     => UseLedgerPeers.Disabled
+      case Some(n) if n > 0         => UseLedgerPeers.Use(AfterSlot.After(n.toBigInt))
+      case Some(n) if n.signum == 0 => UseLedgerPeers.Use(AfterSlot.Always)
+      case Some(_)                  => UseLedgerPeers.Disabled
     }
 
   /** Read a topology. The legacy format (a `Producers` list, for a node without P2P) is refused as

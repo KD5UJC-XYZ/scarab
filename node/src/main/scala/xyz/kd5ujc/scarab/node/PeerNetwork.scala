@@ -110,7 +110,7 @@ object PeerNetwork:
       public =
         topology.toList.flatMap(_.publicRoots).flatMap(_.accessPoints).map(_.socketAddress).toSet,
       bootstrap = topology.flatMap(_.bootstrapPeers).map(_.map(_.socketAddress)),
-      ledgerPeers = topology.exists(_.useLedgerAfterSlot != LedgerPeers.Disabled)
+      ledgerPeers = topology.exists(_.useLedgerAfterSlot.isEnabled)
     )
 
   /** Whether there is anything to start from: a local root, a public root or a bootstrap peer. */
