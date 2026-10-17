@@ -309,9 +309,10 @@ The Cardano churn governor (`CD/PeerSelection/Churn.hs`, run next to the governo
 mode bulk sync, no bootstrap peers) and `ChurnBootstrapPraosSync` (Praos, bulk sync, bootstrap peers in use).
 Targets come from the deadline set, or from the sync set when `(GenesisMode, TooOld)` (98-107).
 
-*Start* (`Churn.hs:167-214`): wait 3 s; initial targets: in Praos mode root target 0 (a head start for local
-roots and big ledger peers) and, in `ChurnBootstrapPraosSync`, active targets cut to `min(max(1, localHot) + 1,
-active)` and `min(1, activeBigLedger)`; then the first fuzzy delay.
+*Start* (`Churn.hs:167-214`): wait 3 s; initial targets, in Praos mode only (`Churn.hs:181-195`): in `ChurnDefault` and `ChurnPraosSync` the root target is
+set to 0 (a head start for local roots and big ledger peers); in `ChurnBootstrapPraosSync` the root target is left
+alone and the two active targets are cut to `min(max(1, localHot) + 1, active)` and `min(1, activeBigLedger)`;
+in Genesis mode the targets are the base ones; then the first fuzzy delay.
 
 *One round* (`churnLoop`, 561-654), twelve steps in this order, each setting the targets and blocking until the
 counters meet them or a timeout fires:
@@ -776,9 +777,9 @@ final case class GovernorConfig(
 built from the topology, `config.json` (`TargetNumberOf...`, `SyncTargetNumberOf...`, `PeerSharing`,
 `ConsensusMode`, `MinBigLedgerPeersForTrustedState`; `NodeConfig` already reads `ConsensusMode` and `PeerSharing`, not the rest) and
 flags, with the defaults of section 1.5 chosen by `--forge`. Errors are `ConfigError` with new
-`ConfigProblem` cases (`TargetsNotSane`, `OutboundLimitBelowTargets`). New flags are limited to what the
-operator needs and the reference has no flag for: `--governor on|off` during the transition (D3: `off` keeps
-the old fan-out for exactly one release, then the flag is removed, per "latest robust code only"). The
+`ConfigProblem` cases (`TargetsNotSane`, `OutboundLimitBelowTargets`). No new flag is proposed: the reference has none for
+this, and a switch that kept the old fan-out in the running node would be a second copy of the logic (the
+owner's rule: once migrated, drop the dual copy; see open question 12). The
 `ConfigSettings.unsupported` entries for GenesisMode and PeerSharing are removed by G1.5 and G1.4.
 
 ### 4.8 Peer metrics
@@ -903,7 +904,7 @@ backoff and the fail-count rules; the targets with the relay and producer defaul
 `PeerStateActions` interpreter and the `NodeToNode.warm`/`activate` split (section 4.5); local roots from
 `--peer` (one group, `hot = warm = n`) and from `topology.json` valencies; bootstrap peers and the sensitive
 state (the `LedgerStateJudgement` input from a tip-age rule, the 15-minute timeout); the loop in `Main` replacing
-the `parTraverse_` of `supervise` (a `--governor off` escape for one release); the counters and the
+the `parTraverse_` of `supervise` (no switch back, open question 12); the counters and the
 `Net.PeerSelection.*` events for these transitions; `GET /connections` shows temperature. No churn, no ledger
 peers, no peer sharing: targets are static.
 
@@ -1068,6 +1069,10 @@ closing comment lists the commits and the evidence of each stage; the architectu
     deciding it is caught up. Scarab has no GSM, so G1.1 only publishes it (gauge and log line). Confirm that the
     consumer (a faithful GSM, which also yields the ledger-state judgement of question 2) is a separate item to
     schedule with G3, not part of G1.
+12. **No escape hatch.** Replacing the fan-out in `Main` with the governor in G1.1 leaves no `--governor off`; the
+    safety net is the layer-2 simulation, `relay` and `peercut`. A flag that kept the old path for a release would be
+    a dual copy in the running node, which contradicts the rule that a migrated path replaces its predecessor.
+    Confirm, or ask for the flag for exactly one release.
 
 ## 9. Risks, in one place
 
