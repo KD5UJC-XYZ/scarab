@@ -1,5 +1,7 @@
 # Performance
 
+**Status**: Historical records of measurements, each with its build and setup; the newest sections are the current numbers. Classes and flags named in older sections (`--rules`, `--mirror-check`, the differential harness, `NodeRules.tick`, `PreConwayRules`, `ConwayRules`) were removed in J2.9 and are kept as they were measured.
+
 Measurements of syncing the public Preview testnet, what the profiles showed and what changed.
 These are one developer's measurements on one machine, not a benchmark suite; they are not
 reproducible bit for bit, but each section names its build and setup.
