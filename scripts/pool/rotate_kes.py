@@ -280,9 +280,16 @@ class Node:
         self.s = settings
         self.cli = cli
         self.runner = runner
+        self.last = ""
+
+    def last_error(self):
+        """The first words of the last query's stderr (a missing image or a refused connection is told there)."""
+        err = (self.last or "").strip()
+        return f": {err[:200]}" if err else ""
 
     def tip(self):
         done = self.cli.query(["tip"])
+        self.last = done.stderr
         return json_in(done.stdout) if done.returncode == 0 else None
 
     def on_chain_counter(self):
@@ -472,7 +479,7 @@ def rotate(s, cli, node):
     per_period, max_evolutions = genesis["slotsPerKESPeriod"], genesis["maxKESEvolutions"]
     tip = node.tip()
     if not tip or "slot" not in tip:
-        raise RotationError(EXIT_NODE_DOWN, "the node's socket does not answer `query tip`")
+        raise RotationError(EXIT_NODE_DOWN, "the node's socket does not answer `query tip`" + getattr(node, "last_error", str)())
     period = kes_period(tip["slot"], per_period)
     cert = parse_opcert((key_dir / current / "node.cert").read_text())
     left = periods_left(cert, period, max_evolutions)
