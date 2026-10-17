@@ -460,7 +460,7 @@ continues after the tip of a non-empty target. Epoch-boundary blocks (Byron) are
 built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell database was available.
 
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
-default 3, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
+default 2, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
 decides what the content is. Format version 5 (`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state):
 
