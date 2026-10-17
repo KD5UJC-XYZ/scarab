@@ -79,11 +79,13 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 - **D14** [#133](https://github.com/KD5UJC-XYZ/scarab/issues/133) (P2, in progress) Per-block ledger application in late Alonzo takes 38 ms a block against the reference's 13 ms; the time is in the pre-Conway block rules, one thread busy.
 - **D15** [#135](https://github.com/KD5UJC-XYZ/scarab/issues/135) (P2, idea) `Rewards.update` (the reward calculation at the 4k/f point) takes about 1.1 s on the largest Preview state; profile it and compare with the reference's pulsing `RewardUpdate`.
 - **D16** [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143) (P2, idea) The stored UTxO value as the reference's MemPack `TxOut`: smaller than the CBOR value and what Step D (E2) needs; measure on the mainnet UTxO set, adopt with a version bump and a migration.
+- **D17** [#146](https://github.com/KD5UJC-XYZ/scarab/issues/146) (P2, idea) What is left of the live-sync profile after D14: the Plutus machine (Scalus environment copies, see I2), header-only reads for the relay path, trimming a lagging peer's candidate, the snapshot writer's sorting, the commit step.
 
 ## E. Fast start (P1)
 
 - **E1** [#27](https://github.com/KD5UJC-XYZ/scarab/issues/27) Mithril snapshot import. Decode the Haskell ImmutableDB and the ledger snapshot format, which needs `snapshot-converter` / UTxO-HD formats.
 - **E2** [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (P1, idea) Step D of the [ledger-mirror step 2](design/ledger-mirror-step2.md): ledger snapshots in the Haskell node's directory layout (`ledger/<slot>/{state,tables,meta}`), import and export, so the two nodes' snapshots are interchangeable; needs the MemPack `TxOut` (D16) and serves E1 and M11.
+- **E3** [#145](https://github.com/KD5UJC-XYZ/scarab/issues/145) (P2, idea, bug) Replaying a Preview database with format-1 snapshots fails with `BadInputsUTxO` right after the restore.
 
 ## F. Node-to-client (P1)
 
@@ -103,6 +105,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
   - **G1.4** [#138](https://github.com/KD5UJC-XYZ/scarab/issues/138) (P2, idea) PeerSharing mini-protocol (10): codec, client, server and the governor's policy, checked two ways against the Haskell relay.
   - **G1.5** [#139](https://github.com/KD5UJC-XYZ/scarab/issues/139) (P2, idea) Genesis hooks for the governor: `ConsensusMode` as an input, sync targets while too old, the trusted-state output; hooks only, the rest is G3.
   - **G1.6** [#142](https://github.com/KD5UJC-XYZ/scarab/issues/142) (P2, idea) Governor follow-ups: topology reload on SIGHUP, SRV access points, duplex outbound connections.
+  - **G1.1-f** [#144](https://github.com/KD5UJC-XYZ/scarab/issues/144) (P2, idea) BlockFetch does not read the fetch mode the governor derives (bulk sync or deadline).
 - **G2** [#32](https://github.com/KD5UJC-XYZ/scarab/issues/32) (P1, done) Connection management: `ConnectionState` (pure life cycle), `ConnectionManager` (one connection per peer address, inbound and outbound limits, typed refusals, release on failure and cancellation) and `InboundGovernor`, which runs our ChainSync, BlockFetch and KeepAlive clients (the pipelined, header-validating peer, with the follower session) on every inbound duplex connection, so a peer that connected to us is a block source. Outbound connections go through the manager and wait for a peer's inbound duplex connection instead of dialling a second one. Evidence: `ConnectionManagerSuite`, `ConnectionStateSuite`, `InboundGovernorSuite` (in-memory), and the devnet `relay` scenario (the Haskell relay connects to the Scala node and the Scala node follows the relay over that connection; `GET /connections`). Remaining: connections we open offer initiator-only (a peer we dial is not served over that connection, so its own inbound connection is never refused because ours is up and the peer is then followed over both until one ends); no connection pruning or churn (G1); a peer that dials from an ephemeral port is not recognised as the peer we also dial; no per-peer resource limits (G5).
 - **G3** [#33](https://github.com/KD5UJC-XYZ/scarab/issues/33) Ouroboros Genesis (GDD, LoE/LoP).
 - **G4** [#34](https://github.com/KD5UJC-XYZ/scarab/issues/34) Protocol versions: handshake v15/v16 features; NtC versions.
