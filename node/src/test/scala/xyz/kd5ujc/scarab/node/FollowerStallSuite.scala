@@ -19,15 +19,16 @@ import scala.concurrent.duration.*
 /** Two upstream peers on in-memory connections with the production wiring (one `Handle` scope for
   * the peer failures of all sessions, one shared [[BlockPool]], `Follower.supervise` per peer): one
   * peer stalls (its ChainSync reply never comes, its BlockFetch hangs), the other keeps serving.
-  * The follower must reach the tip, and no fiber may end with an error nobody handles (issue 130:
-  * a `Handle$Submarine` that escaped, a claim that stayed open and blocked the other session).
+  * The follower must reach the tip, and no fiber may end with an error nobody handles (issue 130: a
+  * `Handle$Submarine` that escaped, a claim that stayed open and blocked the other session).
   */
 class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 90.seconds
 
   private val magic = 42L
 
-  private lazy val forged: ForgedChain = ForgedChain.forge(5000 until 5060).unsafeRunSync()(using munitIORuntime)
+  private lazy val forged: ForgedChain =
+    ForgedChain.forge(5000 until 5060).unsafeRunSync()(using munitIORuntime)
 
   private def serving(raws: Vector[Bytes]): IO[ServerHandlers[IO, NtNHeader]] =
     for
@@ -82,7 +83,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         def range(from: Point, to: Point, max: Int) =
           answered.getAndUpdate(_ + 1).flatMap { n =>
             if n == 0 then honest.blocks.range(from, to, max) else IO.never
-          },
+          }
+      ,
       honest.transactions
     )
     (handlers, answered)
@@ -159,7 +161,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         .allow[PeerError] {
           // as in Main: one scope for the failures of every peer's session
           val a = Follower.supervise(follower, dial(stalled, pool), events, retry)
-          val b = IO.sleep(300.millis) *> Follower.supervise(follower, dial(healthy, pool), events, retry)
+          val b =
+            IO.sleep(300.millis) *> Follower.supervise(follower, dial(healthy, pool), events, retry)
           (a, b).parTupled.void
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))

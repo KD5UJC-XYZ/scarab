@@ -21,13 +21,13 @@ import xyz.kd5ujc.scarab.network.{
   TxSubmissionClient
 }
 
-/** A [[PeerError]] on its way from the fiber that met it to the session that handles it. A
-  * cats-mtl `Raise` that comes from `Handle.allow` is valid only in the fibers of its scope: raised
-  * in any other fiber (a background fiber of the connection, a fiber started by the pipeline) it
-  * is a `cats.mtl.Handle$Submarine` that no scope catches, the fiber dies and whatever it held
-  * stays held (issue 130). The code below the session therefore raises through [[Peer.carrying]],
-  * which fails the fiber with this exception, an ordinary value that crosses fibers; the session's
-  * own fiber raises it again through its `Raise` ([[Peer.landed]]).
+/** A [[PeerError]] on its way from the fiber that met it to the session that handles it. A cats-mtl
+  * `Raise` that comes from `Handle.allow` is valid only in the fibers of its scope: raised in any
+  * other fiber (a background fiber of the connection, a fiber started by the pipeline) it is a
+  * `cats.mtl.Handle$Submarine` that no scope catches, the fiber dies and whatever it held stays
+  * held (issue 130). The code below the session therefore raises through [[Peer.carrying]], which
+  * fails the fiber with this exception, an ordinary value that crosses fibers; the session's own
+  * fiber raises it again through its `Raise` ([[Peer.landed]]).
   */
 final class PeerFailure(val error: PeerError)
     extends RuntimeException(error.message)
@@ -63,7 +63,7 @@ object Peer:
       def raise[E2 <: NetworkError, A](e: E2): F[A] = F.raiseError(new PeerFailure(peerError(e)))
 
   /** `fa`, with a [[PeerFailure]] that it fails with raised through `into`: call it in the fiber
-    * that owns `into`'s scope.
+    * that owns `into` 's scope.
     */
   def landed[F[_], A](fa: F[A])(using F: ApplicativeThrow[F], into: Raise[F, PeerError]): F[A] =
     F.handleErrorWith(fa) {
@@ -81,6 +81,9 @@ object Peer:
 
     /** One block fetched on its own (at the tip), from the request to the block. */
     case Fetched(millis: Long)
+
+    /** The tip the peer announced with the last instruction of a batch of ChainSync replies. */
+    case Announced(tip: ChainSync.Tip)
 
   final case class Settings(
       address: SocketAddress[Host],
@@ -199,8 +202,9 @@ object Peer:
       )
       .flatMap(over(_, settings, prepare, headers, observe, pool))
       .handleErrorWith {
-        case failure: PeerFailure => Resource.eval(peerRaise.raise[PeerError, Peer[F]](failure.error))
-        case other                => Resource.raiseError[F, Peer[F], Throwable](other)
+        case failure: PeerFailure =>
+          Resource.eval(peerRaise.raise[PeerError, Peer[F]](failure.error))
+        case other => Resource.raiseError[F, Peer[F], Throwable](other)
       }
 
   /** The peer interface over a connection that is already negotiated: one we opened
@@ -325,6 +329,12 @@ object Peer:
             took <- F.monotonic.map(_ - began)
             _ <- observe.traverse_(_(Peer.Observation.Round(n, updates.size, took.toMillis)))
             batch <- updates.traverse(decode)
+            _ <- batch.lastOption.traverse_ {
+              case SyncEvent.RollForward(_, tip) =>
+                observe.traverse_(_(Peer.Observation.Announced(tip)))
+              case SyncEvent.RollBackward(_, tip) =>
+                observe.traverse_(_(Peer.Observation.Announced(tip)))
+            }
             // header-first: nothing of this batch is fetched before its headers are valid
             _ <- gate.get.flatMap(_.accept(batch)(using carried))
             _ <- batch.lastOption.traverse_ {

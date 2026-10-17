@@ -67,6 +67,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.Reused("10.0.0.1:3001", "127.0.0.1:3001"))
         _ <- node(NodeEvent.ChainSyncRounds(200L, 25600L, 120L, 900L, 128))
         _ <- node(NodeEvent.SlowFetch(300L))
+        _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))
         _ <- connection.traverse_(Log.sink[ConnectionEvents, ConnectionEvent, IO].emit)
         _ <- mempool.traverse_(Log.mempool[IO].emit)

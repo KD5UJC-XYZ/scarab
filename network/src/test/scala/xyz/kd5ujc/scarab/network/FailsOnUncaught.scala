@@ -38,5 +38,7 @@ trait FailsOnUncaught extends CatsEffectSuite:
     if uncaught.nonEmpty then
       fail(
         s"the runtime reported ${uncaught.size} uncaught fiber failure(s): " +
-          uncaught.map(t => t.getClass.getName + Option(t.getMessage).fold("")(": " + _)).mkString("; ")
+          uncaught
+            .map(t => t.getClass.getName + Option(t.getMessage).fold("")(": " + _))
+            .mkString("; ")
       )

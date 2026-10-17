@@ -5,7 +5,7 @@ import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
-import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundEvents, Peer}
+import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundEvents, Peer, StallWatchdog}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
@@ -185,6 +185,13 @@ final class EventMetrics[F[_]: Sync] private (
         metrics.observe(chainSyncRoundSeconds, millis / 1000.0)
     case Peer.Observation.Fetched(millis) =>
       metrics.observe(blockFetchSeconds, millis / 1000.0)
+    case Peer.Observation.Announced(_) => Sync[F].unit
+
+  /** The stall watchdog's report ([[xyz.kd5ujc.scarab.node.StallWatchdog]]). */
+  def stall(change: StallWatchdog.Change): F[Unit] = change match
+    case StallWatchdog.Change.Began(_, _, _) =>
+      metrics.inc(followerStalls) *> metrics.set(followerStalled, 1.0)
+    case StallWatchdog.Change.Ended => metrics.set(followerStalled, 0.0)
 
   /** What a batch of headers added to the header-first counts (the sessions count from zero each,
     * so the totals are the sums of the additions).

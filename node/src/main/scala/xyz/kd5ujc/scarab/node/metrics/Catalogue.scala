@@ -317,6 +317,14 @@ object Catalogue:
     MetricName("scarab_peer_reconnects_total"),
     "Times the connection to the peer was lost and opened again."
   )
+  val followerStalls = CounterDef(
+    MetricName("scarab_follower_stalls_total"),
+    "Times the follower went the stall-minutes without extending its chain while a peer announced a longer one."
+  )
+  val followerStalled = GaugeDef(
+    MetricName("scarab_follower_stalled"),
+    "1 while the follower is stalled (see scarab_follower_stalls_total), else 0."
+  )
   val rollbacks = CounterDef(
     MetricName("scarab_rollbacks_total"),
     "Rollbacks of the chain."
@@ -580,6 +588,8 @@ object Catalogue:
     peerTipSlot,
     peerTipBlock,
     peerReconnects,
+    followerStalls,
+    followerStalled,
     rollbacks,
     rollbackDepth,
     volatileBlocks,

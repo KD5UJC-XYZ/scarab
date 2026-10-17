@@ -78,12 +78,12 @@ import scala.concurrent.duration.*
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P]
   * [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every
   * <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N]
-  * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N]
-  * [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N]
-  * [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>]
-  * [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence
-  * halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey
-  * <file> --opcert <file>]`
+  * [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes
+  * N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off]
+  * [--cpu-threads N] [--dump-state <dir> [--dump-state-at
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check]
+  * [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -131,6 +131,10 @@ object Main extends IOApp:
       /** Log a `memory` event (heap, buffers, process, container, RocksDB) every N seconds; 0: off.
         */
       memoryReportSeconds: Int = 0,
+      /** Log a `stalled` event (and count it) when no block was extended for N minutes while a peer
+        * announced a longer chain ([[StallWatchdog]]); 0: off.
+        */
+      stallMinutes: Int = 10,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
       readAhead: Int = 128,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
@@ -375,6 +379,16 @@ object Main extends IOApp:
       metrics <- Metrics.create[IO](Catalogue.all)
       given Metrics[IO] = metrics
       measured <- EventMetrics.create[IO]
+      // a follower that stops extending its chain while a peer has more says so (issue 130)
+      watchdog <- StallWatchdog.create[IO](
+        BigInt(0),
+        options.stallMinutes.minutes,
+        change =>
+          measured.stall(change) *> (change match
+            case StallWatchdog.Change.Began(idle, ours, peers) =>
+              logged(NodeEvent.Stalled(idle, ours, peers))
+            case StallWatchdog.Change.Ended => IO.unit)
+      )
       // What a scrape reads besides the counters the events keep: each source answers for itself
       // and is added when it exists, so the endpoint can listen before the stores are opened (a
       // collector that is not there yet leaves its gauges absent).
@@ -392,6 +406,8 @@ object Main extends IOApp:
             case FollowerEvent.Connected(_) => connected.set(true)
             case FollowerEvent.EraEntered(_, to, _, epoch) =>
               eraStarts.update(_.updatedWith(to)(_.orElse(Some(epoch))))
+            case FollowerEvent.Extended(block, _, peerTip, _) =>
+              watchdog.announced(peerTip.blockNo.value) *> watchdog.extended(block.blockNo)
             case _ => IO.unit
           ) *> followerLog.emit(event)
       followerEvents = events.alongside(measured.follower)
@@ -646,7 +662,8 @@ object Main extends IOApp:
                 case Peer.Observation.Fetched(millis) =>
                   logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
                 case Peer.Observation.Round(requested, received, millis) =>
-                  observeRounds(requested, received, millis))
+                  observeRounds(requested, received, millis)
+                case Peer.Observation.Announced(tip) => watchdog.announced(tip.blockNo.value))
             // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
             blockPool <- BlockPool.create[IO]
             // the connection manager (G2): one connection per peer address, limits, accounting
@@ -802,6 +819,13 @@ object Main extends IOApp:
             production = forging.fold(Resource.unit[IO])(f =>
               Signals.hangup[IO](f.reload).flatMap(_ => f.run.background.void)
             )
+            // the chain we start from is progress made: the watchdog counts from here
+            _ <- ref.get.flatMap(c => c.tipRef.traverse_(t => watchdog.extended(t.blockNo)))
+            watching =
+              if options.stallMinutes <= 0 then Resource.unit[IO]
+              else
+                val period = (options.stallMinutes.minutes / 10).max(1.second).min(30.seconds)
+                watchdog.run(period).background.void
             reporting =
               if options.memoryReportSeconds <= 0 then Resource.unit[IO]
               else
@@ -828,6 +852,7 @@ object Main extends IOApp:
               .flatMap(_ => local)
               .flatMap(_ => production)
               .flatMap(_ => reporting)
+              .flatMap(_ => watching)
               .surround(sync)
             _ <- metrics.set(
               Catalogue.buildInfo,
@@ -846,7 +871,7 @@ object Main extends IOApp:
     yield ()
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -869,6 +894,7 @@ object Main extends IOApp:
     "utxo-store",
     "utxo-cache-mb",
     "memory-report-seconds",
+    "stall-minutes",
     "read-ahead",
     "header-first",
     "max-inbound",
@@ -963,6 +989,9 @@ object Main extends IOApp:
           memoryReport <- flags
             .get("memory-report-seconds")
             .fold(Right(0))(_.toIntOption.filter(_ >= 0).toRight(usage))
+          stallMinutes <- flags
+            .get("stall-minutes")
+            .fold(Right(10))(_.toIntOption.filter(_ >= 0).toRight(usage))
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
@@ -1022,6 +1051,7 @@ object Main extends IOApp:
           utxoKind,
           cacheMb,
           memoryReport,
+          stallMinutes,
           readAhead,
           cpuThreads,
           dump,

@@ -15,8 +15,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * session waiting for it fetches the block itself. Blocks that nobody takes (a candidate that was
   * not preferred) are dropped, oldest first, past [[BlockPool.Retained]] entries.
   *
-  * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is a
-  * resource: when the session ends, however it ends (a failure, a cancellation), every claim it
+  * Claims are made through a [[BlockPool.Claims]] that belongs to one session ([[session]]). It is
+  * a resource: when the session ends, however it ends (a failure, a cancellation), every claim it
   * still holds is released, so a claim cannot outlive the connection that was to fill it. Without
   * that a session waiting for such a claim waits for ever (issue 130).
   */
@@ -41,7 +41,10 @@ final class BlockPool[F[_]: Async] private (slots: Ref[F, BlockPool.Slots[F]]):
             if acc.entries.contains(hash) then (acc, flags :+ false)
             else
               (
-                acc.copy(entries = acc.entries.updated(hash, Slot.Pending(done, acc.next, owner)), next = acc.next + 1),
+                acc.copy(
+                  entries = acc.entries.updated(hash, Slot.Pending(done, acc.next, owner)),
+                  next = acc.next + 1
+                ),
                 flags :+ true
               )
         }

@@ -81,6 +81,14 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base).toOption.get.cpuThreads >= 1)
   }
 
+  test("--stall-minutes defaults to ten, takes zero (off) or more, nothing else") {
+    assertEquals(Main.parse(base).toOption.get.stallMinutes, 10)
+    assertEquals(Main.parse(base ++ List("--stall-minutes", "0")).toOption.get.stallMinutes, 0)
+    assertEquals(Main.parse(base ++ List("--stall-minutes", "3")).toOption.get.stallMinutes, 3)
+    assert(Main.parse(base ++ List("--stall-minutes", "-1")).isLeft)
+    assert(Main.parse(base ++ List("--stall-minutes", "soon")).isLeft)
+  }
+
   test("--dump-state takes a directory and optional points; the points alone are refused") {
     val on = Main.parse(base ++ List("--dump-state", "/d")).toOption.get
     assertEquals(

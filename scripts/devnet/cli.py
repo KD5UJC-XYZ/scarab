@@ -9,6 +9,7 @@
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
                                    (--mirror-check: also the mirror round trip at each epoch boundary;
                                    --rules differential: the old and the new rules side by side)
+    devnet.py peercut              up + the Scala node with two peers, one slow then silent mid-sync (issue 130)
     devnet.py relay [--seconds N]  up + the Scala node as a relay (follows the pools, serves a
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
@@ -50,6 +51,7 @@ from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.ntc import ntc
+from .scenarios.peercut import peercut
 from .scenarios.pool import kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.restart import restart
@@ -191,6 +193,18 @@ def main():
     rl.add_argument("--keep", action="store_true", help="leave the cluster running")
     rl.add_argument("--keep-data", action="store_true", help="keep the run directory")
     rl.set_defaults(run=relay)
+    pc = sub.add_parser("peercut", parents=[scala_options],
+                        help="Scala node with two upstream peers, one slow and then silent mid-sync; it must reach the tip (issue 130)")
+    pc.add_argument("--backlog-blocks", type=int, default=150,
+                    help="let the pools grow to this block before the Scala node starts, so it has a backlog to sync")
+    pc.add_argument("--backlog-timeout", type=int, default=900, help="seconds the cluster may take to grow the backlog")
+    pc.add_argument("--cut-after-blocks", type=int, default=30, help="silence the slow peer once the node has applied this many blocks")
+    pc.add_argument("--delay", type=float, default=0.1, help="seconds the slow peer's proxy holds every chunk")
+    pc.add_argument("--sync-timeout", type=int, default=240, help="seconds the node may take to reach the tip after the cut")
+    pc.add_argument("--follow-seconds", type=int, default=30, help="seconds the node must keep extending at the tip")
+    pc.add_argument("--stall-minutes", type=int, default=1, help="the node's --stall-minutes")
+    pc.add_argument("--keep", action="store_true", help="leave the cluster running")
+    pc.set_defaults(run=peercut)
     nt = sub.add_parser("ntc", help="node-to-client: LocalStateQuery, local ChainSync, LocalTxMonitor and transaction rejections against the reference")
     nt.add_argument("--seconds", type=int, default=240, help="length of the LocalStateQuery comparison phase (with load)")
     nt.add_argument("--warmup", type=int, default=60, help="seconds of load before the first comparison round")

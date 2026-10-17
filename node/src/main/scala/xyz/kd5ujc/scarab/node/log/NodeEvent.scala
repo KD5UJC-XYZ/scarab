@@ -45,6 +45,12 @@ enum NodeEvent:
     */
   case CpuStarvation(clockDrift: FiniteDuration, threshold: Double, interval: FiniteDuration)
 
+  /** No block was extended for `idle` while a peer announced a longer chain: the follower is at
+    * block `ours`, a peer's tip is block `peers` (issue 130,
+    * [[xyz.kd5ujc.scarab.node.StallWatchdog]]).
+    */
+  case Stalled(idle: FiniteDuration, ours: BigInt, peers: BigInt)
+
   /** A ledger-state digest was written (`--dump-state`). */
   case StateDumped(slot: BigInt, hash: Bytes, epoch: BigInt, millis: Long)
 
@@ -251,6 +257,12 @@ object NodeEvent:
         "clockDriftMs" -> drift.toMillis.asJson,
         "threshold" -> threshold.asJson,
         "intervalMs" -> interval.toMillis.asJson
+      )
+    case Stalled(idle, ours, peers) =>
+      EventKind.Stalled.line(
+        "idleSeconds" -> idle.toSeconds.asJson,
+        "ourBlock" -> ours.asJson,
+        "peerBlock" -> peers.asJson
       )
     case StateDumped(slot, hash, epoch, millis) =>
       EventKind.StateDump.line(

@@ -67,8 +67,8 @@ object KeepAliveClient:
 
   /** The pinger fiber. Whatever ends it ends the connection, and nothing escapes it: the channel
     * raises through the `Raise` of the scope that opened the connection, which is not this fiber's
-    * scope, so a connection lost under a waiting ping raises there as a failure of the fiber
-    * (a `Handle$Submarine` when the scope's `Raise` comes from `Handle.allow`) that this scope's
+    * scope, so a connection lost under a waiting ping raises there as a failure of the fiber (a
+    * `Handle$Submarine` when the scope's `Raise` comes from `Handle.allow`) that this scope's
     * `rescue` does not catch (issue 130).
     */
   private[network] def pinger[F[_]: Temporal](

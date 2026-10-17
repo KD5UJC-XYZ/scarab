@@ -30,6 +30,7 @@
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"reused","reason":"outbound 127.0.0.1:3001 served by the inbound duplex connection"}
 {"event":"chainSyncRounds","at":"2026-10-16T12:00:00Z","rounds":200,"headers":25600,"avgMs":120,"maxMs":900,"maxDepth":128}
 {"event":"slowFetch","at":"2026-10-16T12:00:00Z","millis":300}
+{"event":"stalled","at":"2026-10-16T12:00:00Z","idleSeconds":600,"ourBlock":6809207,"peerBlock":10200000}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"accepted","reason":null}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"duplex","reason":null}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"unidirectional","reason":null}

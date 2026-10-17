@@ -82,6 +82,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case EraTransition extends EventKind(Area.Chain, Severity.Notice)
   case EpochValidated extends EventKind(Area.Chain, Severity.Info)
   case Reconnecting extends EventKind(Area.Chain, Severity.Warning)
+  case Stalled extends EventKind(Area.Chain, Severity.Warning)
   case HeadersChecked extends EventKind(Area.Chain, Severity.Info)
   case ChainSyncRounds extends EventKind(Area.Chain, Severity.Info)
   case SlowFetch extends EventKind(Area.Chain, Severity.Info)
