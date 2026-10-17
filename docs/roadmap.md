@@ -251,10 +251,15 @@ persistence and key handling. Until then development keeps the rapid direct-push
    this.
 2. *Protocol:* G4 (#34, handshake v15/v16 and NtC versions; Leios needs it) and Ouroboros Genesis G3
    (#33, on the G1.5 hooks).
-3. *Leios:* the Dijkstra era L1 (#54: era history, state mirror, ledger rules), then the devnet
-   prototype N4 (#73; its sub-items are the checklist in that issue) and the Leios mempool N5 (#79).
-   Their prerequisites are G4, the mux limits of G7 and a reference Leios build to compare with; the pure
-   parts (headers, blocks, certificates: N1 to N3) are already done.
+3. *Leios, tracked and parked:* the public Leios testnet is the only reference and the design is still being
+   decided (owner, 2026-10-18), so there is no stable Haskell node to build the devnet prototype N4
+   ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)) against. Until a design freeze or a node release,
+   Leios work is read-only: follow the testnet, keep the decoders, the CDDL cross-check and the fuzz targets
+   current, and record changes in [leios.md](leios.md). The pure parts (headers, blocks, certificates: N1 to N3) are
+   done. When a reference appears, shape N4 (its sub-items are the checklist in #73), after the Dijkstra era L1
+   ([#54](https://github.com/KD5UJC-XYZ/scarab/issues/54)) and the Leios mempool N5
+   ([#79](https://github.com/KD5UJC-XYZ/scarab/issues/79)). Prerequisites that are useful anyway (G4, the mux limits of G7,
+   Dijkstra) go ahead on their own.
 
 **Later (no milestone yet):** deterministic simulation K9 (#78); mainnet-pool readiness (#120, the
 offline cold key and a KES agent) and an external audit, both after the v0.3 audit candidate.
