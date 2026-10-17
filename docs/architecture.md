@@ -794,7 +794,7 @@ returns `Step.Act(decision)` (jobs and the state with them in progress) or `Step
 order; `Events.apply` applies what happened (a job completed, a connection observed, new targets, roots, a judgement, a
 wake-up) and is the only place that does failure accounting. `Rng` is a splittable SplitMix64, so a run is a function of its
 seed. `Targets`, `LocalRoots` (`HotValency`, `WarmValency` opaque), `Sensitivity` (the bootstrap regime and
-`OutboundConnectionsState`), `Regime` and `Gsm` (the Genesis State Machine and `FetchMode`) are pure too.
+`OutboundConnectionsState`), `Regime`, `Churn` (the twelve steps, their targets, timeouts and the sleep), `PeerMetrics` (the two boards of the first arrival per slot, the hot-demotion scores) and `Gsm` (the Genesis State Machine and `FetchMode`) are pure too.
 
 **Effects** (`node`). `PeerGovernor.run[F]` is the loop on `Stateful[F, GovernorState]`, `Ask` (clock, configuration), `Raise`
 (`GovernorError`) and `Tell` (`Trace`); it waits on its event queue only, timers are fibers that offer `Event.Wake`.
@@ -802,7 +802,7 @@ seed. `Targets`, `LocalRoots` (`HotValency`, `WarmValency` opaque), `Sensitivity
 connection and one per hot session, whose `Resource` owns the claims on blocks in the `BlockPool`, so a hot session that ends
 releases them. `NodeToNode.warm` opens the connection with KeepAlive and `activate` starts ChainSync, BlockFetch and
 TxSubmission2 on it; `finish` ends them with `MsgDone` where the protocol allows it. `PeerNetwork.resource` wires the roots, the
-governor, the GSM runner (`GsmRunner`, the marker file) and the fetch mode; `Main` runs it beside the node, and the governor
+governor, the churn loop (`ChurnLoop`, the one writer of the targets), the GSM runner (`GsmRunner`, the marker file) and the fetch mode, which `BlockPool` reads to decide whether a claimed block may be requested again; hot sessions report headers and blocks to the shared `PeerMetrics` (one update per batch), which the governor reads through `Ask` once per pass; `Main` runs it beside the node, and the governor
 ends the node only by a fault.
 
 **Tests.** `PeerSelectionSuite` (the decision by example), `PrimitivesSuite`, `GsmSuite`, `WarmHotSuite` (activate, finish and

@@ -203,3 +203,37 @@ class PeerMetricsSuite extends ScalaCheckSuite:
       }
     }
   }
+
+  test(
+    "the board, the scores and the pick need no deep stack for a long run of reports (ADR 0011)"
+  ) {
+    val result = new java.util.concurrent.atomic.AtomicReference[Either[Throwable, (Int, Int)]]
+    val worker = new Thread(
+      null,
+      () =>
+        result.set(
+          scala.util.Try {
+            // 200,000 headers and blocks of 1,000 peers in one batch each
+            val slots = (1L to 200000L)
+            val m = PeerMetrics
+              .empty[Int]()
+              .reportHeaders(1, slots, 1.second)
+              .reportFetches(2, slots.map(_ -> 1000L), 1.second)
+            val scores = m.hotScores
+            val peers = scala.collection.immutable.SortedSet.from(1 to 1000)
+            val (picked, _) =
+              Picks.hotDemotion(peers, 500, Rng(3L), p => scores.getOrElse(p, HotScore.Unknown))
+            (m.sizes._1 + m.sizes._2, picked.size)
+          }.toEither
+        ),
+      "small-stack",
+      256L * 1024
+    )
+    worker.start()
+    worker.join()
+    result.get match
+      case Right((size, picked)) =>
+        assertEquals(size, 360)
+        assertEquals(picked, 500)
+      case Left(e) => fail(s"the metrics need a deep stack: $e")
+  }

@@ -287,3 +287,24 @@ class ChurnSuite extends ScalaCheckSuite:
         next != Rng(seed)
     }
   }
+
+  test("a round of targets needs no deep stack, whatever the targets (ADR 0011)") {
+    val result = new java.util.concurrent.atomic.AtomicReference[Either[Throwable, Int]]
+    val worker = new Thread(
+      null,
+      () =>
+        result.set(
+          scala.util.Try {
+            val big = Targets.validated(10000, 10000, 1000, 100, 10000, 1000, 100).toOption.get
+            Regime.Kind.values.toList.map { kind =>
+              walk(Churn.Context(kind, 100, big), achieved = 50).size
+            }.sum
+          }.toEither
+        ),
+      "small-stack",
+      256L * 1024
+    )
+    worker.start()
+    worker.join()
+    assertEquals(result.get.fold(e => fail(s"$e"), identity), 36)
+  }

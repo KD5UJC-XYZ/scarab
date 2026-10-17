@@ -18,9 +18,10 @@ import scala.concurrent.duration.*
   * Differences from the reference, both small and both written in the design document (7b):
   *   - a target that would be insane (the reference's Monitor silently ignores an insane update,
   *     `Monitor.hs` 68-69) is clamped instead, so the round is not wasted: the root target is kept
-  *     within the known target, a negative active target is 0; the property test shows the clamps
-  *     are never needed for sane base targets with the defaults, and that no step yields an insane
-  *     set;
+  *     within the known target, a negative active target is 0, the established target never below
+  *     the active one (the reference's update is ignored when the base established target equals
+  *     the active one in the bootstrap regime); with the clamps no step yields an insane set for
+  *     any sane base (a property test), and at the defaults none is needed;
   *   - the six big-ledger steps are left out of a round while the node has no big ledger peers
   *     ([[round]] with `bigLedger = false`, until G1.3): their counters are zero, so each increase
   *     would only wait out its timeout (200 s) with nothing to wait for.
@@ -110,14 +111,15 @@ object Churn:
       short: FiniteDuration = 60.seconds,
       peerRequest: FiniteDuration = 10.seconds
   ):
-    /** Every wait at most `limit` (for tests that cannot wait minutes). */
+    /** The waits for connecting and for the known set at most `limit` (for tests that cannot wait
+      * minutes). The waits for a hot peer to be deactivated and a connection to be closed stay as
+      * they are: at the tip a hot session ends only when the peer's next block comes.
+      */
     def within(limit: FiniteDuration): Timeouts =
-      Timeouts(
-        deactivate.min(limit),
-        closeConnection.min(limit),
-        establishConnection.min(limit),
-        short.min(limit),
-        peerRequest.min(limit)
+      copy(
+        establishConnection = establishConnection.min(limit),
+        short = short.min(limit),
+        peerRequest = peerRequest.min(limit)
       )
 
   /** What a step reads besides the targets in force: the regime, the hot valency of the local roots
@@ -172,7 +174,7 @@ object Churn:
       case DecreaseEstablished =>
         current.revised(established =
           if ctx.kind == Regime.Kind.BootstrapPraosSync then
-            current.active.min(base.established - 1).max(0)
+            current.active.min(base.established - 1).max(current.active)
           else decreaseWithMin(least)(base.established - base.active) + base.active
         )
       // 396-428: the sync regimes ask for at most one active big ledger peer

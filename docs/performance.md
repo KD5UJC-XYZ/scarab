@@ -1199,3 +1199,41 @@ of a quarter, taken) and none of it was on the critical path. The waste the buil
 <slot>.<hash> --out b.hex`; `WarmBenchMain b.hex 8 400 1`; `jcmd 1 JFR.start name=p settings=profile duration=4m filename=/data/p.jfr`,
 then `jfr print --events jdk.ExecutionSample --stack-depth 64` and `jdk.ObjectAllocationSample`; `scarab_block_apply_seconds` sum and
 count twice a minute apart.
+
+## 20. The cost of the peer metrics callbacks (G1.2)
+
+The hot sessions report to `PeerMetrics` on the per-header and per-block path: one `Peer.Observation.HeadersArrived` per ChainSync
+batch (the slots of its roll-forwards, one arrival time) and one `BlocksArrived` per BlockFetch request, each a single
+`Ref.update` of an immutable value (two 180-slot sorted maps and two small registries). Mainnet applies about 25 blocks a second.
+
+**Micro-benchmark** (`node/Test/runMain xyz.kd5ujc.scarab.node.PeerMetricsBench`, one JVM, three interleaved rounds, steady
+state: full boards, 20 peers; median ns after warm-up; the machine was loaded by a devnet and two followers). The first round
+is cold JIT, the last two are the figures:
+
+| what | per header or block |
+|---|---|
+| a header, a batch of 128 (a pipelined round far behind), pure | 320 to 396 ns |
+| a header, a batch of 16 | 330 to 416 ns |
+| a header on its own (at the tip) | 478 to 556 ns |
+| the same through `Ref.update` in IO, batch of 128 / of 1 | 333 to 343 ns / 508 to 542 ns |
+| a block, a range of 100 / on its own | 307 to 393 ns / 781 to 866 ns |
+| `hotScores` for 20 peers, once per governor pass that demotes | 21 to 26 us |
+
+At the tip a block and its header cost under 2 microseconds in all, against the 40 ms between mainnet blocks (0.005%); in a
+catch-up at 300 blocks a second under 1 microsecond a block, against 3.3 ms (0.03%).
+
+**Preview from genesis, base against final** (the method of section 6, D8): the build before the stage (`5f3b6174`) and this
+one, started together, each `follow --genesis-dir fixtures/preview/genesis --peer preview-node.play.dev.cardano.org:3001`
+in a container of 2 CPUs and 6 GB, `-Xms2g -Xmx3g`, G1 with a 20 ms pause goal, 660 s, a fresh database each, on a host
+that also ran a devnet and `check`:
+
+| | base | final |
+|---|---|---|
+| blocks applied after 120 s / 300 s / 600 s | 47,182 / 107,450 / 181,216 | 48,916 / 109,217 / 182,692 |
+| blocks applied in 660 s | 188,373 | 188,979 (+0.3%) |
+| reconnects, errors, stalls | 0 | 0 |
+
+The final build is not slower (the difference, +0.8% to +3.7%, is within the noise of two runs on a shared host); the callbacks
+do not add a cost that can be measured on the apply path. One hot peer is all the public Preview topology offers, so the
+update contends with no other session; the contention of 20 sessions on the one `Ref` was not measured (a compare-and-set that
+retries on a 20-peer value of this size costs microseconds, once per batch).

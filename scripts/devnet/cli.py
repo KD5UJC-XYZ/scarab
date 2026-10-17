@@ -8,6 +8,9 @@
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
     devnet.py peercut              up + the Scala node with two peers, one slow then silent mid-sync (issue 130)
+    devnet.py governor             up + the Scala node with the three pools as public roots (one through a slow proxy),
+                                   targets of 3/3/2 and churn every few seconds: the targets, the churn rounds, the
+                                   demotion by the peer metrics, a silent peer lost and coming back (G1.2)
     devnet.py relay [--seconds N]  up + the Scala node as a relay (follows the pools, serves a
                                    Haskell relay) + load through that relay; tips and propagation
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
@@ -48,6 +51,7 @@ from .load import govload, load
 from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
+from .scenarios.governor import governor
 from .scenarios.ntc import ntc
 from .scenarios.peercut import peercut
 from .scenarios.pool import kes_rotate_scenario, pool
@@ -193,6 +197,19 @@ def main():
     pc.add_argument("--stall-minutes", type=int, default=1, help="the node's --stall-minutes")
     pc.add_argument("--keep", action="store_true", help="leave the cluster running")
     pc.set_defaults(run=peercut)
+    gv = sub.add_parser("governor", parents=[scala_options],
+                        help="the peer governor with churn and the peer metrics against the three pools (G1.2)")
+    gv.add_argument("--backlog-blocks", type=int, default=60, help="let the pools grow to this block before the Scala node starts")
+    gv.add_argument("--backlog-timeout", type=int, default=900, help="seconds the cluster may take to grow the backlog")
+    gv.add_argument("--delay", type=float, default=0.4, help="seconds the slow peer's proxy holds every chunk")
+    gv.add_argument("--churn-interval", type=int, default=12, help="the node's --churn-interval in seconds")
+    gv.add_argument("--rounds", type=int, default=5, help="churn rounds the run must show")
+    gv.add_argument("--silent-timeout", type=int, default=420, help="seconds the node may take to lose the silent peer")
+    gv.add_argument("--follow-seconds", type=int, default=20, help="seconds the node must keep extending after losing it")
+    gv.add_argument("--backoff-timeout", type=int, default=300, help="seconds the lost peer may take to come back once released")
+    gv.add_argument("--stall-minutes", type=int, default=10, help="the node's --stall-minutes")
+    gv.add_argument("--keep", action="store_true", help="leave the cluster running")
+    gv.set_defaults(run=governor)
     nt = sub.add_parser("ntc", help="node-to-client: LocalStateQuery, local ChainSync, LocalTxMonitor and transaction rejections against the reference")
     nt.add_argument("--seconds", type=int, default=240, help="length of the LocalStateQuery comparison phase (with load)")
     nt.add_argument("--warmup", type=int, default=60, help="seconds of load before the first comparison round")
