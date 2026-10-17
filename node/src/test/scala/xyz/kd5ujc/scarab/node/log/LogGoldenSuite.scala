@@ -14,6 +14,8 @@ import cats.syntax.all.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
+import com.comcast.ip4s.{Host, SocketAddress}
+import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
 import xyz.kd5ujc.scarab.node.InboundEvent
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
@@ -60,6 +62,11 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- node(NodeEvent.StallExit(30.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))
+        _ <- peerSelection.traverse_(t => node(NodeEvent.PeerSelection(t)))
+        _ <- peerCounters.traverse_(c => node(NodeEvent.PeerCounters(c)))
+        _ <- outboundStates.traverse_(c => node(NodeEvent.OutboundConnections(c)))
+        _ <- gsmEvents.traverse_((phase, e) => node(NodeEvent.GsmTransition(phase, e)))
+        _ <- FetchMode.values.toList.traverse_(m => node(NodeEvent.FetchModeChanged(m)))
         _ <- connection.traverse_(Log.sink[ConnectionEvents, ConnectionEvent, IO].emit)
         _ <- mempool.traverse_(Log.mempool[IO].emit)
         _ <- forge.traverse_(Log.sink[ForgeEvents, ForgeEvent, IO].emit)
@@ -113,6 +120,8 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(mempool, cases[MempoolEvent])
     covered(forge, cases[ForgeEvent])
     covered(inbound, cases[InboundEvent])
+    covered(peerSelection, cases[Trace[SocketAddress[Host]]])
+    covered(gsmEvents.map(_._2), cases[Gsm.Event])
   }
 
   test("the JSON line is the event, the time and the fields, as JsonLog wrote it") {

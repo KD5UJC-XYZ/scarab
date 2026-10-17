@@ -185,7 +185,7 @@ private[log] object PeerSelectionLines:
       case Gsm.Event.PreSyncingToSyncing => "preSyncingToSyncing" -> Nil
       case Gsm.Event.SyncingToPreSyncing => "syncingToPreSyncing" -> Nil
     EventKind.GsmTransition.line(
-      (("event" -> what.asJson) :: ("state" -> phase.toString.asJson) :: fields)*
+      (("transition" -> what.asJson) :: ("state" -> phase.toString.asJson) :: fields)*
     )
 
   def fetchMode(mode: FetchMode): Line =

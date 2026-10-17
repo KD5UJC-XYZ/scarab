@@ -5,7 +5,9 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import io.circe.Json
 import io.circe.syntax.*
-import com.comcast.ip4s.{Host, Port, SocketAddress}
+import com.comcast.ip4s.{Host, Port, SocketAddress, host, port}
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.blst.{BlstReport, CpuFeature, CpuSupport, LibraryBuild, Platform}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, SchedulingReport}
@@ -74,6 +76,78 @@ object LogSamples:
     ),
     BlstReport(Platform.Other, CpuSupport.Unknown, LibraryBuild.Other("00ff")),
     BlstReport(Platform.LinuxAmd64, CpuSupport.Known(Set.empty), LibraryBuild.OnLibraryPath)
+  )
+
+  private val peerA: SocketAddress[Host] = SocketAddress(host"10.0.0.1", port"3001")
+  private val peerB: SocketAddress[Host] = SocketAddress(host"relay.example.org", port"3001")
+
+  /** Every case of the governor's trace. */
+  val peerSelection: List[Trace[SocketAddress[Host]]] = List(
+    Trace.TargetsChanged(Targets.relay),
+    Trace.LocalRootsChanged(3, 2),
+    Trace.JudgementChanged(LedgerStateJudgement.TooOld),
+    Trace.OnlyBootstrapPeers(),
+    Trace.RootsRequest(60, 2),
+    Trace.RootsResults(Set(peerB, peerA), 0, 3600.seconds),
+    Trace.RootsFailure(-2, 4.seconds),
+    Trace.Promote(Temperature.Cold, List(peerA, peerB), local = true, 30, 1),
+    Trace.PromoteDone(Temperature.Warm, peerA, 30, 2),
+    Trace.PromoteFailed(Temperature.Cold, peerB, FailureClass.Transient, Some(5.seconds), false),
+    Trace.PromoteFailed(Temperature.Warm, peerB, FailureClass.Misbehaved, None, true),
+    Trace.PromoteAborted(Temperature.Warm, peerA),
+    Trace.Demote(Temperature.Hot, List(peerA), local = false, 20, 21),
+    Trace.DemoteDone(Temperature.Warm, peerA, 29),
+    Trace.DemoteFailed(Temperature.Hot, peerB, timedOut = true),
+    Trace.DemoteAsynchronous(peerA, Temperature.Warm, None, None),
+    Trace.DemoteAsynchronous(
+      peerB,
+      Temperature.Cold,
+      Some(FailureClass.Transient),
+      Some("unavailable: connection closed")
+    ),
+    Trace.ForgetCold(150, 160, List(peerB)),
+    Trace.Forgotten(List(peerA))
+  )
+
+  private val counters: GovernorState.Counters =
+    given Ordering[SocketAddress[Host]] = Ordering.by(_.toString)
+    val roots = LocalRoots.fromGroups(
+      List(
+        RootGroupSpec(
+          1,
+          2,
+          List(
+            peerA -> RootConfig(
+              false,
+              DiffusionMode.InitiatorOnly,
+              ConnectionState.Provenance.Outbound,
+              true
+            )
+          )
+        )
+      )
+    )
+    val state = GovernorState
+      .initial[SocketAddress[Host]](1L, roots, Targets.relay, Sensitivity.initial(true))
+      .copy(
+        peers = scala.collection.immutable.SortedMap(
+          peerA -> PeerRecord.cold(Origin.Local).copy(status = Status.Hot),
+          peerB -> PeerRecord.cold(Origin.Bootstrap).copy(status = Status.Warm(Duration.Zero))
+        ),
+        localRoots = roots
+      )
+    state.view(1.second).counters
+
+  val peerCounters: List[GovernorState.Counters] = List(counters)
+
+  val outboundStates: List[OutboundConnectionsState] = OutboundConnectionsState.values.toList
+
+  val gsmEvents: List[(Gsm.Phase, Gsm.Event)] = List(
+    (Gsm.Phase.Syncing, Gsm.Event.PreSyncingToSyncing),
+    (Gsm.Phase.PreSyncing, Gsm.Event.SyncingToPreSyncing),
+    (Gsm.Phase.CaughtUp, Gsm.Event.EnterCaughtUp(2)),
+    (Gsm.Phase.PreSyncing, Gsm.Event.LeaveCaughtUp(Gsm.DurationFromNow.Already)),
+    (Gsm.Phase.PreSyncing, Gsm.Event.LeaveCaughtUp(Gsm.DurationFromNow.After(90.seconds)))
   )
 
   val inbound: List[InboundEvent] = List(

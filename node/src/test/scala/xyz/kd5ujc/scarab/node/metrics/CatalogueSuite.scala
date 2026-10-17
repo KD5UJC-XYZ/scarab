@@ -16,7 +16,9 @@ class CatalogueSuite extends FunSuite:
   private val declared: List[MetricDef] =
     Catalogue.getClass.getDeclaredMethods.toList
       .filter(m => m.getParameterCount == 0 && classOf[MetricDef].isAssignableFrom(m.getReturnType))
-      .map(_.invoke(Catalogue).asInstanceOf[MetricDef])
+      .map(_.invoke(Catalogue).asInstanceOf[MetricDef]) ++
+      // the governor's counters are one list of (gauge, counter), so they are not declared one by one
+      Catalogue.peerSelectionGauges.map(_._1)
 
   test("all lists every definition of the catalogue, once") {
     assert(declared.size > 50, declared.size)

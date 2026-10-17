@@ -689,6 +689,16 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
 | `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused`) | `remote`, `state`, `reason` |
+| `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
+| `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds` |
+| `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten` |
+| `peerSelectionDemote` | `Net.PeerSelectionDemote` | Info (Warning when `action` is `failed`, or `asynchronous` with a `failure`) | `action`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `timedOut`, `failure`, `reason` |
+| `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `target`, `known`, `peers` |
+| `peerSelectionSensitive` | `Net.PeerSelectionSensitive` | Notice | `action`, `judgement` |
+| `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap` |
+| `outboundConnections` | `Net.OutboundConnections` | Info | `state`, `trusted` |
+| `gsmTransition` | `Net.GsmTransition` | Notice | `transition`, `state`, `peers`, `tipTooOld` |
+| `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |
 | `mempoolAdded` | `Mempool.MempoolAdded` | Info | `tx`, `size`, `count`, `bytes` |
 | `mempoolRejected` | `Mempool.MempoolRejected` | Info | `tx`, `reason` |
 | `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason` |
@@ -855,8 +865,7 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
 `served_header_counter` and `served_block_latest_counter` (what the node served to peers; only the inbound
 sessions of `GET /connections` count headers), `utxoSize_int` and `delegMapSize_int` (see
 `scarab_ledger_utxo_entries` for the UTxO set, once per epoch), `blockReplayProgress_real`, `txsSyncDuration*`,
-`GSM_state`, `tipBlock` and `basicInfo`, `peerSelection_*` and `inboundGovernor_*` (the node has no peer
-selection governor: it follows the peers it is given), the `blockfetchclient_*` series (see
+`tipBlock` and `basicInfo`, `inboundGovernor_*`, the `blockfetchclient_*` series (see
 `scarab_blockfetch_seconds`), and the GHC runtime's `RTS_*`, `rts_gc_*`, `Mem_*` and `Stat_*`.
 
 The full list follows, in the order of the catalogue
@@ -946,6 +955,59 @@ section and the catalogue differ.
 | `scarab_headers_validated_total` | counter |  | Headers that passed every header rule before their block was fetched. | none |
 | `scarab_headers_unchecked_total` | counter |  | Headers left to the validation of their block. | none |
 | `scarab_headers_waited_total` | counter |  | Headers that waited for the chain to advance before they could be checked. | none |
+
+#### Peer selection (G1)
+
+| Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
+|---|---|---|---|---|
+| `scarab_peer_selection_transitions_total` | counter | `transition` | What the peer governor did to peers, and what became of it. | none |
+| `scarab_peer_selection_targets` | gauge | `target` | The targets the peer governor works towards (big ledger peers are not exported yet). | none |
+| `scarab_peer_selection_sensitive` | gauge |  | 1 while the node uses only trusted peers because its ledger is too old and bootstrap peers are configured, else 0. | none |
+| `scarab_outbound_connections_trusted` | gauge |  | 1 while the node is connected only to peers it trusts (the Honest Availability Assumption of the Genesis State Machine), else 0. | none |
+| `scarab_gsm_state` | gauge | `state` | 1 for the state of the Genesis State Machine, 0 for the others. | none |
+| `scarab_fetch_mode` | gauge | `mode` | 1 for the fetch mode the node is in, 0 for the other. | none |
+| `cardano_node_metrics_peerSelection_Cold_int` | gauge |  | Number of cold peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_Warm_int` | gauge |  | Number of warm peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_Hot_int` | gauge |  | Number of hot peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int` | gauge |  | Number of cold big ledger peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int` | gauge |  | Number of warm big ledger peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_HotBigLedgerPeers_int` | gauge |  | Number of hot big ledger peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmLocalRoots_int` | gauge |  | Deprecated; as the reference computes it: the active local roots. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_HotLocalRoots_int` | gauge |  | Deprecated; as the reference computes it: the local roots established beyond the active. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_RootPeers_int` | gauge |  | Number of root peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_KnownPeers_int` | gauge |  | Number of known peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ColdPeersPromotions_int` | gauge |  | Number of cold peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_EstablishedPeers_int` | gauge |  | Number of established peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmPeersDemotions_int` | gauge |  | Number of warm peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmPeersPromotions_int` | gauge |  | Number of warm peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActivePeers_int` | gauge |  | Number of active peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActivePeersDemotions_int` | gauge |  | Number of active peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_KnownBigLedgerPeers_int` | gauge |  | Number of known big ledger peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ColdBigLedgerPeersPromotions_int` | gauge |  | Number of cold big ledger peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers_int` | gauge |  | Number of established big ledger peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmBigLedgerPeersDemotions_int` | gauge |  | Number of warm big ledger peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmBigLedgerPeersPromotions_int` | gauge |  | Number of warm big ledger peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveBigLedgerPeers_int` | gauge |  | Number of active big ledger peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveBigLedgerPeersDemotions_int` | gauge |  | Number of active big ledger peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_KnownLocalRootPeers_int` | gauge |  | Number of known local root peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_EstablishedLocalRootPeers_int` | gauge |  | Number of established local root peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmLocalRootPeersPromotions_int` | gauge |  | Number of warm local root peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveLocalRootPeers_int` | gauge |  | Number of active local root peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveLocalRootPeersDemotions_int` | gauge |  | Number of active local root peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_KnownNonRootPeers_int` | gauge |  | Number of known peers that are not roots. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ColdNonRootPeersPromotions_int` | gauge |  | Number of cold non-root peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_EstablishedNonRootPeers_int` | gauge |  | Number of established non-root peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmNonRootPeersDemotions_int` | gauge |  | Number of warm non-root peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmNonRootPeersPromotions_int` | gauge |  | Number of warm non-root peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveNonRootPeers_int` | gauge |  | Number of active non-root peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveNonRootPeersDemotions_int` | gauge |  | Number of active non-root peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_KnownBootstrapPeers_int` | gauge |  | Number of known bootstrap peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ColdBootstrapPeersPromotions_int` | gauge |  | Number of cold bootstrap peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_EstablishedBootstrapPeers_int` | gauge |  | Number of established bootstrap peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmBootstrapPeersDemotions_int` | gauge |  | Number of warm bootstrap peers being demoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_WarmBootstrapPeersPromotions_int` | gauge |  | Number of warm bootstrap peers being promoted. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveBootstrapPeers_int` | gauge |  | Number of active bootstrap peers. | same name; in the source of 11.1.3, not scraped |
+| `cardano_node_metrics_peerSelection_ActiveBootstrapPeersDemotions_int` | gauge |  | Number of active bootstrap peers being demoted. | same name; in the source of 11.1.3, not scraped |
 
 #### Storage
 
