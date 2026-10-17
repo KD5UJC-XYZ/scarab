@@ -180,6 +180,11 @@ def missed_leader_slots(events, schedules, shelley):
         return {"window": None, "scheduled": 0, "missed": [], "missedReasons": {}, "occupied": [], "absentEpochs": []}
     window = (first + 1, slot_at(shelley, events[-1]["at"]) - 2)
     length = shelley["epochLength"]
+    # The run ends at a time, not at an epoch boundary, so its last epoch may be only a few seconds long: the
+    # reference node's schedule for it may not have been read yet (the query is retried at every sample). That
+    # tail is left out of the window rather than failing the run; every earlier epoch of the window needs one.
+    if window[1] // length not in schedules and window[1] // length > window[0] // length:
+        window = (window[0], (window[1] // length) * length - 1)
     scheduled = sorted(s for slots in schedules.values() for s in slots if window[0] <= s <= window[1])
     mine = set(forged.values())
     skipped = {e["slot"]: e["reason"] for e in events if e["event"] == "forgeSkipped"}

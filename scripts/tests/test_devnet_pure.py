@@ -295,8 +295,14 @@ class PoolOracleTest(unittest.TestCase):
         self.assertEqual(r["missedReasons"], {30: "busy", 50: "not reported"})
 
     def test_epoch_without_schedule(self):
-        r = pool.missed_leader_slots(self.events([10], [], end=150), {0: [10]}, self.SHELLEY)
+        r = pool.missed_leader_slots(self.events([10], [], end=250), {0: [10], 2: [210]}, self.SHELLEY)
         self.assertEqual(r["absentEpochs"], [1])
+
+    def test_last_epoch_without_schedule_is_left_out_of_the_window(self):
+        # the run ended a few seconds into epoch 1, before its schedule was read: the tail does not count
+        r = pool.missed_leader_slots(self.events([10], [], end=150), {0: [10]}, self.SHELLEY)
+        self.assertEqual(r["absentEpochs"], [])
+        self.assertEqual(r["window"][1], 99)
 
 
 class BoundaryHelperTests(unittest.TestCase):
