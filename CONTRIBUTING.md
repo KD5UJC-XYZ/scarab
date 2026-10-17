@@ -19,8 +19,8 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
   scarab-jdk:local bash scripts/sbtw check
 ```
 
-`check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources, runs the
-tests of all modules, the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+`check` (an alias in `build.sbt`, built from its `modules` list; CI runs the same alias) runs `scalafmtCheckAll`, compiles all test sources, runs the
+tests of all modules (`blstNative` and its `BlstSuite` among them: library selection, start-up checks, the export list of the JNI glue), the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 

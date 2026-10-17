@@ -363,6 +363,7 @@ lazy val root = project
   )
 
 val modules = Seq(
+  "blstNative",
   "codec",
   "crypto",
   "protocol",
