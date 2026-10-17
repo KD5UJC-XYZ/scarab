@@ -100,8 +100,8 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown fla
 | `--log-stdout`, `--log-stderr`, `--log-file`, `--log-file-format`, `--log-file-size`, `--log-file-keep`, `--log-severity`, `--log-every` | every line as JSON on stdout | the log's sinks, thresholds and sampling, see "Logging" below; `--log-severity` and `--log-every` repeat |
 | `--forge` | off | produce blocks; requires `--vrf-skey`, `--kes-skey`, `--opcert` |
 | `--vrf-skey <file>` | with `--forge` | `cardano-cli` text envelope `VrfSigningKey_PraosVRF` |
-| `--kes-skey <file>` | with `--forge` | `KesSigningKey_ed25519_kes_2^6` (the period-0 key) |
-| `--opcert <file>` | with `--forge` | `NodeOperationalCertificate` (it also carries the cold verification key; the cold signing key is never needed) |
+| `--kes-skey <file>` | with `--forge` | `KesSigningKey_ed25519_kes_2^6`: the period-0 key as `cardano-cli` writes it, or the key as the node last wrote it back; the node rewrites this file when the key moves to a new period, so it must be writable (see "Rotating the KES key") |
+| `--opcert <file>` | with `--forge` | `NodeOperationalCertificate` (it also carries the cold verification key; the cold signing key is never needed). SIGHUP reads this file and `--kes-skey` again |
 
 Caveats:
 
@@ -363,10 +363,100 @@ follow ... --listen 127.0.0.1:3001 --forge --vrf-skey vrf.skey --kes-skey kes.sk
 ```
 
 The pool must already be registered with stake in the ledger the node follows. Only Praos (Conway)
-blocks are forged. Keep key files outside the repository and readable only by the node's user (the
-scenarios mount them read-only with mode 0400). See [architecture.md](architecture.md) for the
-forging design and [compatibility.md](compatibility.md) for what is not covered (no KES agent, no
-opcert issuing, never run on a public network).
+blocks are forged. Keep key files outside the repository and readable only by the node's user. The KES
+key file must be writable by the node (mode 0600, in a directory it can write): the node writes the evolved
+key back (see below); the VRF key and the certificate can stay read-only. See
+[architecture.md](architecture.md) for the forging design and [compatibility.md](compatibility.md) for what
+is not covered (no KES agent, never run on a public network).
+
+#### Rotating the KES key (H2a, [#116](https://github.com/KD5UJC-XYZ/scarab/issues/116))
+
+A KES key signs for at most `maxKESEvolutions` periods (62 on mainnet, one period is `slotsPerKESPeriod` slots,
+36 hours on mainnet), and so does the operational certificate that names it. A pool that is to run unattended
+has to change both before they run out. The node does four things for that; a driver script does the rest.
+
+- **Forward security.** The Haskell node never writes its KES key: it reads the period-0 file at every start
+  and evolves it in memory (`Ouroboros.Consensus.Protocol.Ledger.HotKey.evolveKey` and `forgetSignKeyKES`,
+  ouroboros-consensus-protocol `HotKey.hs` lines 385 to 399 at `main`, 2026-10-17), so the period-0 key stays on
+  disk for ever. Scarab takes the improvement ([ADR 0001](adr/0001-haskell-node-as-reference.md): the format is
+  unchanged, the behaviour is better): when the key moves to a new period, at the first slot of the period
+  whether or not the pool leads in it, the new key is written back to the `--kes-skey` file and the earlier key
+  is overwritten, before the key signs in the new period. The file stays a `cardano-cli` envelope: the period
+  is read off the key itself (the erased seeds of the tree spell it), so there is no new format and no
+  migration. A restart needs no earlier key than the one on disk, and a copy of the disk gets no earlier
+  period's key. The write is crash-safe: the new key goes to `<file>.next` and is forced to disk, the old key
+  is overwritten with zeros, `<file>.next` is renamed over the file (atomic) and the directory is forced; at
+  the next start a leftover `.next` is finished or destroyed (a torn one), so at every point one complete key is
+  on disk. If the write fails the node reports `kesPersistFailed` (once per period), counts
+  `scarab_kes_persist_failures_total`, keeps forging with the key in memory and writes again at each slot. A
+  file system that keeps old blocks (copy-on-write, journalling) may keep the overwritten key: put the key
+  directory on an encrypted volume where that matters. The key signs only after the lock that also guards a
+  reload is held, so a block is never signed with a key and certificate of two different reloads, and the key
+  only moves forward, so it never signs one period with two states.
+- **Reload on SIGHUP.** `kill -HUP` (or `docker kill -s HUP`) makes the node read the KES key and the
+  certificate again, as the Haskell node does: `Cardano.Node.Run.installSigHUPHandler` (cardano-node 11.1.3,
+  `cardano-node/src/Cardano/Node/Run.hs` line 596) runs `updateBlockForging` (line 626), which reads the
+  credentials with `mkConsensusProtocol` (line 627) and hands them to `setBlockForging` (line 648; the
+  consensus side is `NodeKernel.setBlockForging` and `blockForgingController`, ouroboros-consensus-diffusion
+  `NodeKernel.hs` lines 183, 416 and 429 at `main`). The Haskell node switches without looking at the
+  new certificate; a bad one shows up as rejected blocks. Scarab, by a documented improvement, checks first
+  and switches only when all of these hold, and otherwise keeps the old credentials and logs a typed
+  `kesReloadRefused` (`kind` is the case of `ReloadRefusal`) and counts `scarab_kes_reloads_total{outcome="refused"}`:
+  the cold verification key hashes to the pool this node forges for (`WrongPool`); the certificate names the
+  KES key in the file (`KeyNotCertified`) and carries the cold key's signature (`BadCertificateSignature`); the
+  current KES period is inside `[start, start + maxKESEvolutions)` (`NotYetValid`, `Expired`); the key has not
+  been evolved past the period it must sign in (`KeyPastPeriod`); and the certificate counter is the pool's
+  counter on the chain or one above it (`Counter`, the rule of `doValidateKESSignature'` in ouroboros-consensus-protocol
+  `PolyPraos.hs` lines 1017 to 1037 at `main`, which the node's header validation shares), so the chain will
+  take the blocks. A good reload logs `kesReloaded` (`opCertCounter`, `kesStart`, `remainingKesPeriods`),
+  erases the old key from memory and brings a period-0 key to the present period at once. Putting the same key
+  back (a spurious HUP, or someone restoring the period-0 file) keeps the key in memory, which is further on.
+  No reload can leave the node without credentials or with a mixture; a reload while a block is being signed
+  waits for it.
+- **Alerts.** `cardano_node_metrics_remainingKESPeriods_int`, `currentKESPeriod_int`,
+  `operationalCertificate{Start,Expiry}KESPeriod_int` and `scarab_opcert_counter` are set at start-up and after
+  every reload (the first two also after every evolution); `forgeStarted` and `kesReloaded` carry the same
+  numbers. Alert on `remainingKESPeriods_int` falling below the driver's threshold while the driver's service is
+  failing: the driver's exit status is the signal (below).
+- **Nothing in the node needs the cold key.** It is never read by the node and need not be mounted into its
+  container.
+
+**The rotation driver** `scripts/pool/rotate_kes.py` (Python 3 standard library, `cardano-cli` from the
+`ghcr.io/intersectmbo/cardano-node:11.1.3` image through `docker run`) does the cold-key work. Run it from
+a timer: `scripts/pool/rotate-kes.service`, `rotate-kes.timer` and `rotate-kes.env.example` are generic
+systemd examples. The node's key directory has the shape
+
+```
+keys/current -> gen-000003-00000120      a relative link
+keys/gen-000003-00000120/kes.skey, node.cert
+keys/vrf.skey
+```
+
+and the node runs with `--kes-skey keys/current/kes.skey --opcert keys/current/node.cert --local-socket <socket>`
+(the driver needs the socket). Each run reads the tip through the socket, computes the KES period from the
+genesis' `slotsPerKESPeriod`, reads the certificate in use, and when it has `--threshold` periods or fewer left:
+generates a KES pair and a certificate with the next counter (the pool's counter on the chain plus one, from
+`query kes-period-info`) and the current period as its start, checks the certificate, switches `current` to
+the new generation with one atomic rename, sends SIGHUP, waits up to `--confirm-timeout` seconds for the
+`kesReloaded` line (counter and start period equal to the new certificate's) and then overwrites and removes
+the old generation. It is idempotent and crash-safe: the rotation is recorded in `rotation.json` before the link
+moves, the previous generation stays until the node confirmed, and the next run finishes what was left (the
+signal is sent again, which is harmless); a `kesReloadRefused` puts the link back. Exit status: 0 done or
+nothing to do, 1 the node refused (link restored), 2 not confirmed in time (run again), 3 the socket does not
+answer, 4 configuration or tools wrong. When the node's `query kes-period-info` is not answered, the driver
+says so and counts from the last counter it issued (`last-counter`); that fallback can issue a counter the
+chain refuses if a rotation was not yet followed by a block, and the node then refuses the reload (typed, the old
+pair stays).
+
+**Cold key.** The driver signs with the pool's cold key, so on a *test network* the cold key is online, on the
+machine of the driver, mounted into the `cardano-cli` container only (never into the node's); the owner accepts
+that for a pool whose stake is test stake. A *mainnet* pool keeps the cold key offline: do the same steps by hand
+on the offline machine (`cardano-cli node key-gen-KES`, `node new-counter --counter-value <on-chain + 1>`,
+`node issue-op-cert --kes-period <current period>`), carry only the new `kes.skey` and `node.cert` to the producer
+as a new `gen-...` directory, switch `current`, and send SIGHUP; the node performs the same checks.
+
+The devnet scenario `kes-rotate` (below) runs all of this unattended: a short KES period, a small
+`maxKESEvolutions`, the driver on a loop, several rotations while the node forges beside two Haskell pools.
 
 ### Node-to-client
 
@@ -919,6 +1009,7 @@ python3 scripts/devnet.py down                       # remove containers and the
 | `relay [--seconds 300] [--peers 3] [--relay-mode ...] [--keep]` | the Scala node follows the pools and serves a non-producing Haskell relay (`--listen`, `--db`, `--local-socket`); load is submitted through the relay | the Haskell relay syncs the whole chain from the Scala node and stays at the tip (lag samples every `--every` seconds), transactions travel relay, Scala mempool, pools, block, and one is submitted with `cardano-cli` to the Scala socket. G2: the Haskell relay connects to the Scala node (it is in the relay's topology; the Scala node has no `--peer` for it) and, with the default `--relay-mode InitiatorAndResponder`, the Scala node's own ChainSync client follows the relay over that same inbound duplex connection: `GET /connections` shows an established inbound duplex connection and an inbound session with an intersection that keeps receiving headers and whose peer tip is within 3 blocks of the pools', and the log has the `inbound` events `duplex` and `following` |
 | `ntc [--seconds 240] [--warmup 60] [--every 10] [--chain-sync-blocks 60] [--monitor-burst 4]` | a fresh cluster, the Scala node following pool 1 with `--local-socket` and `--db` (and `--mempool-bytes` equal to the reference's default capacity), and the ordinary and governance load running. Rounds of LocalStateQuery: the Scala node's volatile tip is acquired on the reference node by point, and every query of the battery (`scripts/devnet/ntcqueries.py`, about 55 queries built from the live state) goes to both. Then `cardano-cli conway query ...` (24 commands) against both sockets, each pair accepted only when the tip read before and after is the same block on both nodes. Then 18 refused transactions (`scripts/devnet/ntccases.py`: fee too small, inputs spent, value not conserved, validity interval, missing witness, small and wrong-network outputs, treasury value, registration, delegation, DRep, pool retirement, proposal, vote, size) and one valid transaction through both sockets. In parallel with the query rounds, local ChainSync on both sockets (`scripts/devnet/ntclocal.py`): `--chain-sync-blocks` blocks from Origin (the Scala node reads its immutable store and then its volatile chain), 12 from the tip, 4 as a backlog from a recent block. Last, LocalTxMonitor: snapshots of both mempools walked step for step while bursts of `--monitor-burst` chained transactions go through the Scala socket (which forwards them to the reference node), `cardano-cli conway query tx-mempool info | next-tx | tx-exists` on both sockets at the same time, and `AwaitAcquire` on both | every query that is implemented gives equal bytes in every round (matched / total per query); every `cardano-cli` pair equal; every refusal equal as raw `ApplyTxErr` bytes and as the text `cardano-cli transaction submit` prints; the valid transaction is accepted by the Scala node and reaches a block; every block of local ChainSync equal as the raw item and the same first instruction (a roll-back to the point found); every pair of mempool snapshots with the same slot and transactions has equal raw answers (at least 3 rounds with transactions), the bracketed `tx-mempool` outputs are equal (one with transactions) and `AwaitAcquire` wakes on both. Queries not answered yet are listed with their counts and do not fail the run. Writes `ntc-summary.json` |
 | `pool [--seconds 480] [--pool 1\|2\|3] [--keep]` | the Scala node is one of three pools: pool 1's Haskell node is never started and the Scala node forges with its keys; `slotsPerKESPeriod = 250` | blocks forged, adopted and on the final chain; the Haskell ledger's blocks-made count for the pool equals the Scala-forged blocks on the chain; every slot the reference node's `query leadership-schedule --current` gives the pool (asked once per epoch) is either forged or taken by another pool's block, and a missed one is reported with the `forgeSkipped` reason; load transactions in Scala blocks; at least one KES period crossed; no rollback deeper than `k`; Haskell pools agree on the tip; comparisons match; no error event; the forger's own counters (`GET /forging`, per epoch: slots checked, leader slots, forged, adopted, lost slot battles, skips by reason, forge latency) agree with the log and, scraped from `GET /metrics` between two readings of `/forging`, the Haskell-named series `Forge_about_to_lead_counter`, `node_is_leader_counter`, `forged_counter`, `adopted_counter` and `didnt_adopt_counter` lie between the two readings and the KES gauges exist and no block took more than five slots from its slot's start to adoption. `--byron-start-offset N` writes the Byron genesis' `startTime` N seconds off the Shelley `systemStart` (the reference's clock follows the Byron one; the check that the Scala node does too). Records the host load; a run whose only misses are busy slots on a host with load above its CPU count exits 2 (inconclusive). Writes `pool-summary.json` (`forgerStats`, `slotClock`, `oracle`, `host`) |
+| `kes-rotate [--seconds 300] [--max-kes-evolutions 24] [--rotate-threshold 21] [--rotate-every 10] [--min-rotations 2]` | `pool` with unattended KES rotation (H2a): `slotsPerKESPeriod = 250`, `maxKESEvolutions` 24, the Scala node reads its key and certificate through a `current` link and serves a local socket; `scripts/pool/rotate_kes.py` runs on a loop with the pool's cold key (never mounted into the node) and rotates every three periods | everything `pool` asserts, and: at least `--min-rotations` `kesReloaded` events with strictly increasing counters; one `forgeStarted` (no restart) and no `kesReloadRefused` or `kesPersistFailed`; every driver run exits 0; blocks forged with every certificate counter but perhaps the last, none with an older counter after a newer one and none before its certificate was reloaded; the pool's counter as a Haskell node reports it (`query kes-period-info`) equals the last counter on the final chain, so the Haskell pools took the blocks of every certificate; only the newest generation directory remains and no temporary key file; the key file was rewritten by the node after the last certificate was installed. Writes `pool-summary.json` with a `kesRotation` block |
 
 `--scala-cpus N` (`follow`, `soak`, `relay`, `pool`, `e2e`; default 2) sets the CPUs of the Scala node's
 container, and `--max-starvation-warnings N` makes a scenario fail when the node logged more cats-effect

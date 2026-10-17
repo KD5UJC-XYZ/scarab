@@ -119,6 +119,14 @@ class ParseTest(unittest.TestCase):
         self.assertEqual((cert.counter, cert.start_period, cert.cold_vkey), (7, 12, COLD))
         self.assertEqual(cert.hot_vkey.hex(), "36ccb33224f2dc240c8c55dcc4d6163afcd6cd82dd20893495ba5d8b5ec190d8")
 
+    def test_json_after_the_check_marks_cardano_cli_prints_first(self):
+        out = ("\u2713 Operational certificate's KES period is within the correct KES period interval\n"
+               "\u2713 The operational certificate counter agrees with the node protocol state counter\n"
+               '{\n    "qKesNodeStateOperationalCertificateNumber": 1,\n    "qKesStartKesInterval": 3\n}\n')
+        self.assertEqual(rk.json_in(out)["qKesNodeStateOperationalCertificateNumber"], 1)
+        self.assertIsNone(rk.json_in("no object here"))
+        self.assertIsNone(rk.json_in("{ not json"))
+
     def test_periods_counters_and_names(self):
         cert = rk.OpCert(bytes(32), 3, 10, COLD)
         self.assertEqual(rk.periods_left(cert, 10, 62), 62)

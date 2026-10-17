@@ -121,6 +121,17 @@ def parse_vkey(text):
     return _bytes_item(envelope_bytes(text), 0)[0]
 
 
+def json_in(text):
+    """The JSON object in a command's output, which may start with check marks or other lines; None if there is none."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        return json.JSONDecoder().raw_decode(text[start:])[0]
+    except ValueError:
+        return None
+
+
 # ---------------------------------------------------------------- the decisions
 
 def kes_period(slot, slots_per_kes_period):
@@ -257,10 +268,9 @@ class Cli:
         return ["--mainnet"] if self.s.testnet_magic is None else ["--testnet-magic", str(self.s.testnet_magic)]
 
     def query(self, args):
-        """A `query` command against the node's socket; None if the node does not answer it."""
-        done = self.run(["query", *args, *self.network(), "--socket-path", "/ipc/" + self.s.socket.name],
+        """A `query` command against the node's socket; the finished process, whatever its status."""
+        return self.run(["query", *args, *self.network(), "--socket-path", "/ipc/" + self.s.socket.name],
                         mounts=[(self.s.socket.parent, "/ipc", "ro"), (self.s.key_dir, "/keys", "ro")], check=False)
-        return done if done.returncode == 0 else None
 
 
 class Node:
@@ -273,18 +283,14 @@ class Node:
 
     def tip(self):
         done = self.cli.query(["tip"])
-        return json.loads(done.stdout) if done else None
+        return json_in(done.stdout) if done.returncode == 0 else None
 
     def on_chain_counter(self):
         """The issue counter of the certificate in use on the chain, as the node reports it; None if the node
         cannot say (the query is not served, or the pool has not made a block yet)."""
         done = self.cli.query(["kes-period-info", "--op-cert-file", "/keys/current/node.cert", "--output-json"])
-        if not done:
-            return None
-        try:
-            return json.loads(done.stdout).get("qKesNodeStateOperationalCertificateNumber")
-        except ValueError:
-            return None
+        info = json_in(done.stdout)
+        return info.get("qKesNodeStateOperationalCertificateNumber") if isinstance(info, dict) else None
 
     def hangup(self):
         if self.s.signal_command:

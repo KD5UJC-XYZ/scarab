@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from .. import metrics as node_metrics
+from . import kes_rotate
 from ..cluster import freeze_classes, scala_container, start_nodes, start_reference
 from ..compare import compare_once
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
@@ -74,6 +75,8 @@ def pool_environment(args):
     shelley = read_json(args.name, f"{ENV}/shelley-genesis.json")
     shelley["systemStart"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
     shelley["slotsPerKESPeriod"] = POOL_KES_SLOTS
+    if getattr(args, "rotate", False):
+        shelley["maxKESEvolutions"] = args.max_kes_evolutions  # a small window: the rotation is what keeps the pool forging
     # The reference nodes start their clock at the Byron genesis' startTime, not at the Shelley systemStart
     # (create-env writes the Byron one a moment before this function writes the Shelley one: they used to
     # differ by whole seconds, which is the slot-clock offset of roadmap H6). Both are written here;
@@ -199,6 +202,12 @@ def overloaded(*loads):
     return any(l["load1"] > l["cpus"] for l in loads)
 
 
+def kes_rotate_scenario(args):
+    """`pool` with unattended KES rotation (`scripts/pool/rotate_kes.py`, see `scenarios/kes_rotate.py`)."""
+    args.rotate = True
+    pool(args)
+
+
 def pool(args):
     """Fresh 3-pool cluster in which pool `--pool` is the Scala node. Its Haskell node is never started
     (so no two producers ever hold the keys), the other two pools get the Scala node in their topology, and
@@ -214,6 +223,8 @@ def pool(args):
     observer = others[0]
     util.SOCKET = f"--testnet-magic {MAGIC} --socket-path {ENV}/socket/node{observer}/sock"
     failures, summary, scala, loader = [], {}, None, None
+    rotate = getattr(args, "rotate", False)  # the kes-rotate scenario: this run with the rotation driver
+    driver = kes_rotate.Driver(args, root) if rotate else None
     load_at_start = host_load()
     comparisons, samples = [], []
     schedules = {}  # epoch -> the slots the oracle says the Scala pool leads
@@ -226,12 +237,15 @@ def pool(args):
             raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/{f}"],
                                  capture_output=True, check=True).stdout
             (root / "genesis" / f).write_bytes(raw)
-        for key in ("vrf.skey", "kes.skey", "opcert.cert"):
-            raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/pools-keys/pool{ours}/{key}"],
-                                 capture_output=True, check=True).stdout
-            path = root / "keys" / key
-            path.write_bytes(raw)
-            path.chmod(0o400)
+        if rotate:
+            kes_rotate.install_keys(args, root, ours)
+        else:
+            for key in ("vrf.skey", "kes.skey", "opcert.cert"):
+                raw = subprocess.run(["docker", "exec", ref(args.name), "cat", f"{ENV}/pools-keys/pool{ours}/{key}"],
+                                     capture_output=True, check=True).stdout
+                path = root / "keys" / key
+                path.write_bytes(raw)
+                path.chmod(0o600 if key == "kes.skey" else 0o400)  # the node writes the evolved KES key back
         start_nodes(args.name, tuple(others))
         classpath = freeze_classes(root)
         db = root / "scala-db"
@@ -239,14 +253,17 @@ def pool(args):
         db.chmod(0o777)
         program = ["follow", "--genesis-dir", "/genesis", "--query-port", str(QUERY_PORT),
                    "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db",
-                   "--forge", "--vrf-skey", "/keys/vrf.skey", "--kes-skey", "/keys/kes.skey",
-                   "--opcert", "/keys/opcert.cert"]
+                   "--forge", "--vrf-skey", "/keys/vrf.skey",
+                   "--kes-skey", "/keys/current/kes.skey" if rotate else "/keys/kes.skey",
+                   "--opcert", "/keys/current/node.cert" if rotate else "/keys/opcert.cert"]
+        if rotate:
+            program += ["--local-socket", "/ipc/node.socket"]
         for n in others:
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
-                                  mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db",
-                                          f"{root / 'keys'}:/keys:ro"], name=f"{args.name}-scala")
+                                  mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{root / 'keys'}:/keys",
+                                          *([f"{root / 'ipc'}:/ipc"] if rotate else [])], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + 180
@@ -261,6 +278,8 @@ def pool(args):
         else:
             raise SystemExit("the cluster or the Scala node did not come up within 180 s")
         print(json.dumps({"up": True, "ports": ports, "pool": ours, "observer": observer}), flush=True)
+        if driver:
+            driver.start()
         loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed),
                                    "--socket", f"{ENV}/socket/node{observer}/sock", "--interval", str(args.interval),
                                    "--stats-every", "5"],
@@ -296,6 +315,8 @@ def pool(args):
         loader.terminate()
         loader.wait()
         loader = None
+        if driver:
+            driver.stop()
         # let the chain settle; every node must agree on the tip
         def settled_tips():
             deadline_ = time.monotonic() + 90
@@ -445,6 +466,10 @@ def pool(args):
         if len(matched) < args.min_comparisons or any(c.get("matched") is False or "error" in c for c in comparisons):
             failures.append(f"ledger comparisons: {len(matched)} matched of {len(comparisons)} "
                             f"(need {args.min_comparisons}, none may differ)")
+        if rotate:
+            rotation_failures, summary["kesRotation"] = kes_rotate.check(args, root, events, forged, on_chain, counts,
+                                                                       driver, observer)
+            failures += [f"rotation: {f}" for f in rotation_failures]
         if counts.get("error"):
             failures.append(f"{counts['error']} error events in the Scala log")
         if counts.get("forgeFailed"):
@@ -466,6 +491,8 @@ def pool(args):
     finally:
         if loader is not None:
             loader.terminate()
+        if driver:
+            driver.stop()
         docker("rm", "-f", f"{args.name}-scala", check=False)
         if scala is not None:
             scala.wait()
@@ -488,4 +515,5 @@ def pool(args):
             docker("rm", "-f", ref(args.name), check=False)
             shutil.rmtree(root / "classes", ignore_errors=True)
             shutil.rmtree(root / "keys", ignore_errors=True)
+            shutil.rmtree(root / "cold", ignore_errors=True)
     sys.exit(0 if not failures else 2 if inconclusive else 1)

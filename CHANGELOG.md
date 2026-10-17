@@ -5,6 +5,31 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Added (H2a: unattended KES rotation, #116)
+- **The evolved KES key is written back** (`KesFiles`): when the key moves to a new period, at the first slot of
+  the period whether or not the pool leads, it replaces the key in the `--kes-skey` file (stage, overwrite the old
+  key, atomic rename; a crash at any step leaves a usable key, recovered at the next start), so a restart needs, and
+  a stolen disk yields, no earlier period's key. The file stays the `cardano-cli` envelope: the period is read off
+  the key (`Sum6KesSigning.fromEvolved`). The Haskell node never writes the file; this is a documented improvement
+  (ADR 0001).
+- **Reload on SIGHUP** (`HotKeys`, `Signals`): the KES key and operational certificate are read again, as the Haskell
+  node's `installSigHUPHandler` does, and replaced only when the cold key is the pool's, the certificate names the key
+  and carries the cold signature, the period is inside the window, the key has not been evolved past it and the
+  counter is the chain's or one above (the header rules' `OCertRules.checkCounter`); otherwise the old credentials
+  stay and a typed `kesReloadRefused` says why. Signing and reloading share a lock.
+- **Events and metrics:** `kesReloaded`, `kesReloadRefused`, `kesPersistFailed`; `forgeStarted` and `forged` carry
+  the certificate counter; `remainingKESPeriods_int` and `currentKESPeriod_int` exist at start-up and after every
+  reload; `scarab_opcert_counter`, `scarab_kes_reloads_total{outcome}`, `scarab_kes_persist_failures_total`.
+- **Rotation driver** `scripts/pool/rotate_kes.py` with systemd timer and service examples: generates a KES key and a
+  certificate with the next counter in a `cardano-cli` container, switches an atomic `current` link, signals the node
+  and waits for its `kesReloaded`; idempotent, crash-safe, the previous pair kept until confirmed. The cold key is
+  used by the driver only (online for a test network, by hand and offline for mainnet).
+- **Devnet scenario `kes-rotate`:** `pool` with a short KES period, 24 evolutions and the driver on a loop.
+- **Tests:** `KesRotationSuite` (restart across a KES boundary, crash between writing the new key and erasing the
+  old one, expired and not yet valid certificates, counter too low and too high, key and certificate that do not
+  match, bad signature, foreign cold key, write failure), `Sum6KesSigningSuite` (the period of every evolved key
+  read back), `scripts/tests/test_rotate_kes.py`.
+
 ### Added (Leios, N3: following the public testnet read-only, #72)
 - **The testnet's published configuration, pinned** (`fixtures/leios/testnet/config`, from
   `book.play.dev.cardano.org/environments-pre/leios`, with SHA-256 and Blake2b-256 of every file in

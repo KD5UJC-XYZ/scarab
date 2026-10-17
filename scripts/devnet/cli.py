@@ -14,6 +14,10 @@
     devnet.py pool [--seconds N]   the Scala node as one of the three block-producing pools: it takes
                                    pool 1's keys (pool 1's Haskell node is never started), forges in
                                    its leader slots, and the Haskell pools adopt its blocks
+    devnet.py kes-rotate [--seconds N]
+                                   pool, with the KES key and operational certificate rotated unattended by
+                                   scripts/pool/rotate_kes.py (SIGHUP reload): no restart, forging continues, the
+                                   certificate counter goes up, the Haskell pools adopt every block
     devnet.py ntc [--seconds N]    the Scala node's node-to-client interface against the reference node's:
                                    LocalStateQuery, local ChainSync and LocalTxMonitor byte for byte, `cardano-cli query`, refused transactions
     devnet.py up-eras              reference cluster that walks Byron, Shelley ... Conway
@@ -43,7 +47,7 @@ from .oracle_cmd import oracle
 from .refused_fixture import DEFAULT_OUT, refused_fixture
 from .scenarios.e2e import CONWAY_EPOCHS, capture_eras, e2e
 from .scenarios.ntc import ntc
-from .scenarios.pool import pool
+from .scenarios.pool import kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.restart import restart
 from .scenarios.soak import soak
@@ -174,21 +178,34 @@ def main():
     nt.add_argument("--chain-sync-blocks", type=int, default=60, help="blocks followed from Origin on both sockets")
     nt.add_argument("--monitor-burst", type=int, default=4, help="chained transactions per LocalTxMonitor burst")
     nt.set_defaults(run=ntc)
+    def pool_flags(pl):
+        pl.add_argument("--seconds", type=int, default=480, help="load phase length")
+        pl.add_argument("--pool", type=int, choices=[1, 2, 3], default=1, help="the pool whose keys the Scala node takes")
+        pl.add_argument("--every", type=int, default=5, help="seconds between tip samples")
+        pl.add_argument("--compare-every", type=int, default=30, help="seconds between ledger comparisons")
+        pl.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
+        pl.add_argument("--start-delay", type=int, default=15, help="seconds from now to the system start")
+        pl.add_argument("--byron-start-offset", type=int, default=0,
+                        help="seconds the Byron genesis' startTime (the reference's clock) is set off the Shelley systemStart")
+        pl.add_argument("--seed", type=int, default=1, help="random seed of the load")
+        pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
+        pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
+        pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--inbound-sync off' (to compare builds or settings)")
+        pl.add_argument("--keep", action="store_true", help="leave the cluster running")
+
     pl = sub.add_parser("pool", parents=[scala_options], help="the Scala node as a block-producing pool among two Haskell pools")
-    pl.add_argument("--seconds", type=int, default=480, help="load phase length")
-    pl.add_argument("--pool", type=int, choices=[1, 2, 3], default=1, help="the pool whose keys the Scala node takes")
-    pl.add_argument("--every", type=int, default=5, help="seconds between tip samples")
-    pl.add_argument("--compare-every", type=int, default=30, help="seconds between ledger comparisons")
-    pl.add_argument("--epoch-length", type=int, default=500, help="slots per epoch")
-    pl.add_argument("--start-delay", type=int, default=15, help="seconds from now to the system start")
-    pl.add_argument("--byron-start-offset", type=int, default=0,
-                    help="seconds the Byron genesis' startTime (the reference's clock) is set off the Shelley systemStart")
-    pl.add_argument("--seed", type=int, default=1, help="random seed of the load")
-    pl.add_argument("--interval", type=float, default=0.5, help="load generator pause between transactions")
-    pl.add_argument("--min-comparisons", type=int, default=5, help="matched ledger comparisons required")
-    pl.add_argument("--scala-flags", default="", help="extra flags for the Scala node, e.g. '--inbound-sync off' (to compare builds or settings)")
-    pl.add_argument("--keep", action="store_true", help="leave the cluster running")
+    pool_flags(pl)
     pl.set_defaults(run=pool)
+    kr = sub.add_parser("kes-rotate", parents=[scala_options],
+                        help="pool, with the KES key rotated unattended (scripts/pool/rotate_kes.py) while the node forges")
+    pool_flags(kr)
+    kr.add_argument("--max-kes-evolutions", type=int, default=24,
+                    help="maxKESEvolutions of the genesis (the Haskell pools' certificates, which are not rotated, must outlast the run)")
+    kr.add_argument("--rotate-threshold", type=int, default=21,
+                    help="the driver rotates when this many KES periods or fewer are left (24 - 21: every 3 periods)")
+    kr.add_argument("--rotate-every", type=float, default=10, help="seconds between runs of the driver")
+    kr.add_argument("--min-rotations", type=int, default=2, help="reloads the run must show")
+    kr.set_defaults(run=kes_rotate_scenario, seconds=300)
     rf = sub.add_parser("refused-fixture", help="write fixtures/devnet/refused-txs.jsonl from the run directory of a "
                                                 "`soak --governance-extended`")
     rf.add_argument("--out", default=str(DEFAULT_OUT), help="fixture file")
@@ -207,5 +224,5 @@ def main():
     if getattr(args, "rules", None):
         # the followers that a scenario starts as child processes take it from the environment
         os.environ["SCARAB_RULES"] = args.rules
-    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "scarab-pool" if args.command == "pool" else "scarab-devnet")
+    args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
     args.run(args)
