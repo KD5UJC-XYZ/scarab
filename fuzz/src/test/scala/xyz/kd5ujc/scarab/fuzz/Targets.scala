@@ -492,10 +492,11 @@ object Targets:
         () => Corpus.addresses ++ Corpus.sampled("conway:transaction_output", 60) ++ Corpus.tricky,
         probe("address-and-output") { b =>
           seen("address-and-output", Address.decode(b).isRight)
-          Address.decode(b, Address.Mode.Backwards)
           RewardAccount.decode(b)
-          TxOut.fromBytes(b)
-          TxOut.fromBytes(b, Address.Mode.Backwards)
+          Address.Mode.values.foreach { mode =>
+            Address.decode(b, mode)
+            TxOut.fromBytes(b, mode)
+          }
         }
       ),
       Target(

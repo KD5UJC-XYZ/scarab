@@ -40,24 +40,26 @@ class DecoderRobustnessSuite extends FunSuite:
     val started = System.nanoTime()
     val result = Address.decode(pointer(filled(100000, 0x81) ++ bytes(0x01)))
     val millis = (System.nanoTime() - started) / 1000000
-    val slot = result.toOption.flatMap(_.kind match
-      case Address.Kind.Shelley(_, _, _, Some(ptr)) => Some(ptr.slot)
-      case _                                        => None)
-    // 100001 groups of 1: the top group sits at bit 7 * 100000
-    assertEquals(slot.map(_.bitLength), Some(7 * 100000 + 1))
+    // 100001 groups of 1 wrap at 64 bits to a value of the form 0x...0101...: the top bits are
+    // lost, what is left does not fit a Word32, so the pointer is Ptr 0 0 0 (B29)
+    assertEquals(result.map(_.kind), Right(shelleyPointer(Ptr.zero)))
     assert(millis < 1000, s"took $millis ms")
   }
 
-  test("pointer naturals equal the shift-and-add of their 7-bit groups, at every length") {
+  private def shelleyPointer(ptr: Ptr): Address.Kind =
+    Address.Kind.Shelley(0, Credential.Key(hash), None, Some(ptr))
+
+  test("pointer naturals equal the shift-and-add of their 7-bit groups wrapped at 64 bits") {
     val random = new scala.util.Random(42)
+    val modulus = BigInt(1) << 64
     (1 to 70).foreach { n =>
       val groups = Vector.fill(n)(random.nextInt(128))
       val encoded = groups.zipWithIndex.map((g, i) => if i < n - 1 then g | 0x80 else g)
-      val expected = groups.foldLeft(BigInt(0))((acc, g) => (acc << 7) + g)
+      val expected = groups.foldLeft(BigInt(0))((acc, g) => (acc << 7) + g).mod(modulus)
       val decoded = Address.decode(pointer(bytes(encoded*))).map(_.kind)
       assertEquals(
         decoded,
-        Right(Address.Kind.Shelley(0, Credential.Key(hash), None, Some(Ptr(expected, 1, 2)))),
+        Right(shelleyPointer(Ptr(expected, 1, 2).normalised)),
         s"$n groups"
       )
     }

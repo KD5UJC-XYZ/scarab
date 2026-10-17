@@ -3,8 +3,10 @@ package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import scala.util.chaining.*
+import cats.syntax.order.*
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A 28-byte key or script hash identifying who may spend or who owns stake. */
@@ -34,57 +36,99 @@ object Credential:
       }
     }
 
-/** Certificate pointer of a pointer address: slot, transaction index, certificate index. */
-final case class Ptr(slot: BigInt, txIx: BigInt, certIx: BigInt)
+/** Certificate pointer of a pointer address: slot, transaction index, certificate index. The
+  * reference holds them as a `Word32` and two `Word16` s (`Ptr`, `Credential.hs` 258); the fields
+  * are wider here so the persisted codec stays as it was, and every pointer read from an address is
+  * made to fit by [[Ptr.read]].
+  */
+final case class Ptr(slot: BigInt, txIx: BigInt, certIx: BigInt):
+  /** Whether the fields fit a `Word32` and two `Word16`s. */
+  def fits: Boolean =
+    slot.signum >= 0 && txIx.signum >= 0 && certIx.signum >= 0 &&
+      slot.bitLength <= 32 && txIx.bitLength <= 16 && certIx.bitLength <= 16
+
+  /** `mkPtrNormalized` (`Credential.hs` 279-285): this pointer, or [[Ptr.zero]] if a field does not
+    * fit.
+    */
+  def normalised: Ptr = if fits then this else Ptr.zero
 
 object Ptr:
   given Ordering[Ptr] = Ordering.by(p => (p.slot, p.txIx, p.certIx))
 
-  /** The natural written as 7-bit groups, most significant first, in time linear in their number
-    * (the shift-and-add of a `BigInt` is quadratic: a pointer address as long as a transaction took
-    * gigabytes of allocation).
-    */
-  private def natural(groups: Vector[Byte]): BigInt =
-    val n = groups.size
-    if n <= 8 then groups.foldLeft(0L)((acc, g) => (acc << 7) | (g & 0x7f)).pipe(BigInt(_))
-    else
-      val little = new Array[Byte]((7 * n + 7) / 8)
-      var i = 0
-      while i < n do
-        val group = groups(n - 1 - i) & 0x7f
-        val at = 7 * i
-        val byte = at >> 3
-        val shift = at & 7
-        little(byte) = (little(byte) | (group << shift)).toByte
-        if shift > 1 then little(byte + 1) = (little(byte + 1) | (group >> (8 - shift))).toByte
-        i += 1
-      BigInt(1, little.reverse)
+  /** The pointer to no certificate (`Ptr 0 0 0`): what a pointer that does not fit is made into. */
+  val zero: Ptr = Ptr(0, 0, 0)
 
-  /** Three variable-length naturals (7 bits per byte, high bit set on all but the last), kept exact
-    * however long. The ledger differs for a value beyond its Word32 slot and Word16 index fields:
-    * it normalises the pointer to (0, 0, 0) before Conway and refuses the address from Conway on
-    * (`Cardano.Ledger.Address.decodePtr`); we keep the value, a pointer to no certificate either
-    * way (docs/findings.md, K3).
+  /** What a decoder does with a pointer whose natural does not fit its field. The decoder of a
+    * protocol version below 9 normalises it (`mkPtrNormalized`, `Credential.hs` 270-285, chosen by
+    * `decodePtrLenient`, `Address.hs` 780-788); from 9 (Conway) it refuses the address
+    * (`decodePtr`, `Address.hs` 769-777, whose naturals are read by `decodeVariableLengthWord32`
+    * and `decodeVariableLengthWord16`, 832-870: at most 5 and 3 groups of 7 bits, and no more bits
+    * than the field has).
     */
-  def decode(bytes: Vector[Byte]): Either[String, Ptr] =
-    prefix(bytes).flatMap { (ptr, consumed) =>
-      Either.cond(consumed == bytes.size, ptr, "pointer address: trailing bytes")
-    }
+  enum Policy:
+    case Normalise, Refuse
+
+  /** Why a pointer could not be read. */
+  enum Failure(val message: String):
+    case Truncated extends Failure("pointer address: truncated natural")
+    case OutOfRange extends Failure("pointer address: pointer out of range")
+
+  /** A natural of a pointer, as the reference reads one it does not bound
+    * (`decodeVariableLengthWord64`, `Address.hs` 872-882): the 7-bit groups shifted into a
+    * `Word64`, so the bits beyond the 64th are lost, and how many groups there were.
+    */
+  private final case class Natural(word: Word64, groups: Int)
+
+  /** A field of the pointer: the widest value it holds and the most groups its strict decoder
+    * reads.
+    */
+  private final case class Field(max: Word64, groups: Int):
+    def holds(n: Natural, policy: Policy): Boolean =
+      n.word <= max && (policy == Policy.Normalise || n.groups <= groups)
+
+  private val slotField = Field(Word64.fromUnsigned(0xffffffffL), 5)
+  private val indexField = Field(Word64.fromUnsigned(0xffffL), 3)
+
+  /** The natural that starts at `from`, in time linear in its groups, and where it ends. */
+  private def natural(bytes: Vector[Byte], from: Int): Either[Failure, (Natural, Int)] =
+    @tailrec def go(at: Int, acc: Long): Either[Failure, (Natural, Int)] =
+      if at >= bytes.size then Left(Failure.Truncated)
+      else
+        val b = bytes(at)
+        val shifted = (acc << 7) | (b & 0x7f)
+        if (b & 0x80) != 0 then go(at + 1, shifted)
+        else Right((Natural(Word64.fromUnsigned(shifted), at + 1 - from), at + 1))
+    go(from, 0L)
 
   /** The pointer at the start of `bytes` and the number of bytes it took; what follows is the
-    * caller's (the reference reads the three naturals and stops, `decodePtrLenient`).
+    * caller's (the reference reads the three naturals and stops). A pointer whose fields do not fit
+    * is the [[zero]] pointer or a [[Failure.OutOfRange]], as the `policy` says.
     */
-  def prefix(bytes: Vector[Byte]): Either[String, (Ptr, Int)] =
-    def nat(rest: Vector[Byte]): Either[String, (BigInt, Vector[Byte])] =
-      val (continued, tail) = rest.span(b => (b & 0x80) != 0)
-      tail.headOption.toRight("pointer address: truncated natural").map { last =>
-        natural(continued :+ last) -> tail.tail
-      }
+  def read(bytes: Vector[Byte], policy: Policy): Either[Failure, (Ptr, Int)] =
     for
-      a <- nat(bytes)
-      b <- nat(a._2)
-      c <- nat(b._2)
-    yield (Ptr(a._1, b._1, c._1), bytes.size - c._2.size)
+      slot <- natural(bytes, 0)
+      txIx <- natural(bytes, slot._2)
+      certIx <- natural(bytes, txIx._2)
+      end = certIx._2
+      ptr <-
+        if slotField.holds(slot._1, policy) && indexField.holds(txIx._1, policy) &&
+          indexField.holds(certIx._1, policy)
+        then Right(Ptr(slot._1.word.toBigInt, txIx._1.word.toBigInt, certIx._1.word.toBigInt))
+        else if policy == Policy.Normalise then Right(zero)
+        else Left(Failure.OutOfRange)
+    yield (ptr, end)
+
+  /** The pointer as the reference writes it (`putPtr`, `Address.hs` 347-351): each field as the
+    * shortest run of 7-bit groups, high bit set on all but the last. Only for a pointer that fits.
+    */
+  def encode(ptr: Ptr): Bytes =
+    def field(n: BigInt): Array[Byte] =
+      val groups = math.max(1, (n.bitLength + 6) / 7)
+      Array.tabulate(groups) { i =>
+        val group = (n >> (7 * (groups - 1 - i))).toInt & 0x7f
+        (if i < groups - 1 then group | 0x80 else group).toByte
+      }
+    Bytes.fromArray(field(ptr.slot) ++ field(ptr.txIx) ++ field(ptr.certIx))
 
 /** A ledger address with its original bytes. Only the parts the ledger acts on are decoded. */
 final case class Address(raw: Bytes, kind: Address.Kind)
@@ -100,28 +144,40 @@ object Address:
     case Byron(root: Bytes)
 
   /** How an era's decoder reads the address of a transaction output. The reference picks it by the
-    * decoder version, which is the lowest protocol version of the era: below 7 (Shelley to Alonzo)
-    * "we did not check if a binary blob representing an address was fully consumed, so
-    * unfortunately we must preserve this behavior", and the bytes after the address are dropped
-    * (`fromCborBackwardsBothAddr`); from 7 (Babbage) the address must take every byte
-    * (`fromCborRigorousBothAddr`, `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs` of
-    * cardano-ledger-core 1.21.0.0, lines 459-503). The pointer rules (version 9) are not modelled
-    * here (docs/findings.md, K3).
+    * decoder version, which is the lowest protocol version of the era (`fromCborBothAddr`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs` of cardano-ledger-core 1.21.0.0,
+    * lines 459-477): below 7 (Shelley to Alonzo) "we did not check if a binary blob representing an
+    * address was fully consumed, so unfortunately we must preserve this behavior", and the bytes
+    * after the address are dropped (`fromCborBackwardsBothAddr`, 489-503); from 7 (Babbage) the
+    * address must take every byte (`fromCborRigorousBothAddr`, 479-487). A pointer that does not
+    * fit its fields is normalised to `Ptr 0 0 0` before version 9 and refused from it
+    * (`Ptr.Policy`). In every version a pointer address is kept as the pointer is written again
+    * (`cAddrNormalized`, 470-476, `putPtr`): the bytes that were read are not kept.
     */
-  enum Mode:
+  enum Mode(val pointers: Ptr.Policy):
     /** Shelley to Alonzo: bytes after a Shelley address are ignored and not kept. */
-    case Backwards
+    case Backwards extends Mode(Ptr.Policy.Normalise)
 
-    /** Babbage and Conway: the address is the whole byte string. */
-    case Rigorous
+    /** Babbage: the address is the whole byte string; a pointer that does not fit is normalised. It
+      * is also the mode for what the node itself wrote (the stores, the state codecs, the genesis):
+      * those addresses are already normalised, and an output an earlier build stored with the
+      * pointer as it came is read as the reference reads it.
+      */
+    case Rigorous extends Mode(Ptr.Policy.Normalise)
+
+    /** Conway: the address is the whole byte string and a pointer that does not fit is refused. */
+    case Strict extends Mode(Ptr.Policy.Refuse)
 
   object Mode:
-    def of(era: Era): Mode = if era.ordinal < Era.Babbage.ordinal then Backwards else Rigorous
+    def of(era: Era): Mode =
+      if era.ordinal < Era.Babbage.ordinal then Backwards
+      else if era.ordinal < Era.Conway.ordinal then Rigorous
+      else Strict
 
   /** The address in `raw`. A Shelley address of an era that reads [[Mode.Backwards]] is cut where
     * the reference cuts it: [[Address.raw]] is the address without the bytes after it, as the
     * reference keeps it in the UTxO (`UnsafeCompactAddr sbsCropped`); the output that carried it
-    * keeps its own bytes.
+    * keeps its own bytes. A pointer address is kept as the normalised pointer, written again.
     */
   def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[String, Address] =
     if raw.size == 0 then Left("empty address")
@@ -160,9 +216,15 @@ object Address:
         case 4 | 5 =>
           for
             p <- payment
-            read <- Ptr.prefix(raw.value.drop(29))
-            kept <- own(29 + read._2, "pointer address: trailing bytes")
-          yield Address(kept, Kind.Shelley(network, p, None, Some(read._1)))
+            read <- Ptr.read(raw.value.drop(29), mode.pointers).left.map(_.message)
+            _ <- own(29 + read._2, "pointer address: trailing bytes")
+          yield
+            // `putAddr`: the header from its fields, the payment credential, the pointer written again
+            val head = Bytes.fromArray(Array((header & 0xf1).toByte))
+            Address(
+              head ++ raw.slice(1, 29) ++ Ptr.encode(read._1),
+              Kind.Shelley(network, p, None, Some(read._1))
+            )
         case 6 | 7 =>
           for
             kept <- own(29, "enterprise address length")
@@ -230,7 +292,7 @@ final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
 
 object Value:
   /** Size of a CBOR head carrying `n` (a length or an unsigned integer up to 2^32). */
-  private def headSize(n: BigInt): Int =
+  private[ledger] def headSize(n: BigInt): Int =
     if n < 24 then 1
     else if n < 256 then 2
     else if n < 65536 then 3
@@ -353,14 +415,35 @@ final case class TxOut(
       size.getOrElse(0)
 
   /** Size of the output as the ledger serialises it: outputs with neither inline datum nor
-    * reference script use the legacy array form, shorter by two bytes than the equivalent map.
+    * reference script use the legacy array form, shorter by two bytes than the equivalent map, and
+    * the address is the one the ledger holds ([[addressExcess]]).
     */
   def ledgerSize: Int =
     val head = if raw.size == 0 then 0 else raw.value.head & 0xff
-    datum match
+    val size = datum match
       case Datum.NoDatum if scriptRef.isEmpty && head == 0xa2 => raw.size - 2
       case Datum.Hash(_) if scriptRef.isEmpty && head == 0xa3 => raw.size - 2
       case _                                                  => raw.size
+    size - addressExcess
+
+  /** The bytes the output as it came spends on its address beyond the address the ledger holds: a
+    * pointer address is written again with its pointer normalised, which can be shorter (a pointer
+    * of many groups that does not fit becomes `Ptr 0 0 0`). Every other address is kept as it is
+    * read, except after garbage, which only the eras that do not use the size have.
+    */
+  private def addressExcess: Int =
+    address.kind match
+      case Address.Kind.Shelley(_, _, None, Some(_)) =>
+        def encoded(n: Int): Int = Value.headSize(n) + n
+        val came = for
+          node <- Cbor.decode(raw).toOption
+          field <- node.value match
+            case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs.headOption
+            case _ => CborRead.fields(node, "output").toOption.flatMap(_.get(0))
+          bytes <- CborRead.bytes(field, "output address").toOption
+        yield encoded(bytes.size) - encoded(address.raw.size)
+        came.getOrElse(0)
+      case _ => 0
 
 object TxOut:
   def apply(address: Address, value: Value): TxOut =

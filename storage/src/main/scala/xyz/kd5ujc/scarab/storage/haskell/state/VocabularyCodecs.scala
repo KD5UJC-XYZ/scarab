@@ -124,9 +124,7 @@ trait VocabularyCodecs:
             s <- loose.decode(xs(0)).at("slot")
             t <- loose.decode(xs(1)).at("txIx")
             c <- loose.decode(xs(2)).at("certIx")
-          yield
-            if s.bitLength <= 32 && t.bitLength <= 16 && c.bitLength <= 16 then Ptr(s, t, c)
-            else Ptr(0, 0, 0)
+          yield Ptr(s, t, c).normalised
       }
     def encode(a: Ptr, out: Writer): Unit =
       out.arrayHead(3)
@@ -135,8 +133,7 @@ trait VocabularyCodecs:
       out.uint(a.certIx)
     override def check(a: Ptr): Option[ConstraintViolation] =
       Codec.refuse(
-        !(a.slot.bitLength <= 32 && a.txIx.bitLength <= 16 && a.certIx.bitLength <= 16 &&
-          a.slot.signum >= 0 && a.txIx.signum >= 0 && a.certIx.signum >= 0),
+        !a.fits,
         "Ptr",
         "a pointer of a Word32 and two Word16s",
         s"(${a.slot}, ${a.txIx}, ${a.certIx})"

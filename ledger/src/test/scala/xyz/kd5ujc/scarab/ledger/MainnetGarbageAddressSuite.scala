@@ -145,7 +145,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
     assert(utxo.contains(TxIn(mary.body.id, 0)))
   }
 
-  test("the mode follows the era: below Babbage lenient, from Babbage rigorous") {
+  test("the mode follows the era: below Babbage lenient, Babbage rigorous, Conway strict") {
     assertEquals(
       Era.values.toList.filter(_ != Era.Byron).map(e => e -> Address.Mode.of(e)),
       List(
@@ -154,7 +154,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
         Era.Mary -> Address.Mode.Backwards,
         Era.Alonzo -> Address.Mode.Backwards,
         Era.Babbage -> Address.Mode.Rigorous,
-        Era.Conway -> Address.Mode.Rigorous
+        Era.Conway -> Address.Mode.Strict
       )
     )
   }
