@@ -601,4 +601,53 @@ object Targets:
       )
     }
 
-  val all: Vector[Target] = network ++ node
+  /** The relays of a pool registration and the big ledger peer snapshot file (G1.3): both are read
+    * from data the node does not write. The seeds are real: the relays of the mainnet registration
+    * in `fixtures/mainnet/shelley-pool-network-block.hex` and the other shapes of `StakePoolRelay`,
+    * and the snapshot file of the Leios testnet.
+    */
+  private val ledgerPeers: Vector[Target] =
+    import xyz.kd5ujc.scarab.ledger.{Ipv4, Ipv6, PoolRelay, PoolRelays, RelayPort}
+    def relayBytes(rs: PoolRelay*): Array[Byte] = PoolRelays.encode(rs.toVector).toArray
+    val port = RelayPort.fromInt(3001)
+    Vector(
+      Target(
+        "pool-relays",
+        () =>
+          Vector(
+            relayBytes(PoolRelay.SingleHostAddr(port, Some(Ipv4(0x03652f85)), None)),
+            relayBytes(PoolRelay.SingleHostAddr(port, None, Some(Ipv6(0x20010db800000000L, 1L)))),
+            relayBytes(
+              PoolRelay.SingleHostName(port, "relay.example"),
+              PoolRelay.SingleHostName(None, "srv.example")
+            ),
+            relayBytes(PoolRelay.MultiHostName("srv.example")),
+            relayBytes()
+          ) ++ Corpus.tricky,
+        probe("pool-relays") { b =>
+          PoolRelays.decode(b).foreach { rs =>
+            hit("pool-relays")
+            req(
+              PoolRelays.decode(PoolRelays.encode(rs)) == Right(rs),
+              "relays do not decode as themselves after encoding"
+            )
+            PoolRelays.ledgerRelays(rs)
+          }
+        }
+      ),
+      Target(
+        "peer-snapshot",
+        () =>
+          Vector(
+            java.nio.file.Files.readAllBytes(
+              java.nio.file.Path.of("fixtures/leios/testnet/config/peer-snapshot.json")
+            )
+          ) ++ Corpus.tricky,
+        probe("peer-snapshot") { b =>
+          val text = new String(b.toArray, java.nio.charset.StandardCharsets.UTF_8)
+          seen("peer-snapshot", xyz.kd5ujc.scarab.node.PeerSnapshot.decode(text).isRight)
+        }
+      )
+    )
+
+  val all: Vector[Target] = network ++ node ++ ledgerPeers
