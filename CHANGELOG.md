@@ -66,6 +66,22 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   has an `at`, the verification-cache summary is a `verificationCache` line (was text on stderr), and the http4s
   server's start is an `slf4j` line. `LogDocsSuite` keeps the catalogue in running.md equal to the code.
 
+### Fixed (mainnet follower: every snapshot refused from block 5,581,257, pointer addresses, B29)
+- **A pointer address is read as the reference reads it, and the snapshots are written again.** Transaction 9a47e091
+  (block 5,567,164, slot 26,366,727, epoch 258, Mary) pays 50 ada to a pointer address of slot 16,292,793,057,
+  transaction index 1,011,302 and certificate index 20; the node kept the pointer, the Haskell state cannot hold a
+  pointer beyond a Word32 and two Word16s, and every snapshot from block 5,581,257 was refused (`snapshotRefused`).
+  Before Conway the reference normalises such a pointer to `Ptr 0 0 0` (a natural wraps at 64 bits, `mkPtrNormalized`)
+  and keeps the address written again (`cAddrNormalized`); from Conway it refuses the address (cardano-ledger-core
+  1.21.0.0). `Address.Mode` has a third case, `Strict`, for Conway (`Backwards` below Babbage, `Rigorous` for
+  Babbage); `Ptr.read` and `Ptr.encode` do the folding, the policy and the writing again with exact `Word64` arithmetic;
+  the instant stake of the output is under `Ptr 0 0 0`; `TxOut.raw` and the body keep their bytes. The mainnet
+  database is kept: restart on this build and replay from the snapshot at block 5,560,095 (nothing persisted changes
+  format). `MainnetPointerSuite`, `MainnetPointerStoreSuite`, `MainnetPointerSnapshotSuite`.
+- **A refused snapshot is an Error.** `snapshotRefused` was a Warning, and the refusals above went unseen for days; it is
+  an Error now (stderr by default), and the Grafana dashboard has a `Snapshots refused or failed` panel
+  (`scarab_snapshot_problems_total`) and lists `snapshotRefused` and `snapshotFailed` in its error log.
+
 ### Fixed (mainnet sync from genesis, stop 6: bytes after an address in a Mary output, B28)
 - **An address followed by bytes that belong to no address is read as the reference reads it before Babbage.** Block
   6,203,514 (slot 39,249,764, epoch 288) holds transaction 369826b2, whose output 0 is a base address of 57 bytes
@@ -76,8 +92,8 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `TxBody.decode` and `TxOut.decode`. `Address.raw` is the cropped address (what the UTxO, the queries and the Haskell
   state codec hold); the output and the body keep their bytes, so the transaction id is unchanged. Base, pointer and
   enterprise addresses alike; a short address is refused in every era. No persisted format changes and the database of
-  a stopped run stays valid. `MainnetGarbageAddressSuite`, `MainnetGarbageAddressStoreSuite`. Open: the pointer
-  normalisation of the same decoder (`mkPtrNormalized`) is not applied (K3).
+  a stopped run stays valid. `MainnetGarbageAddressSuite`, `MainnetGarbageAddressStoreSuite`. The pointer
+  normalisation of the same decoder (`mkPtrNormalized`) is B29.
 
 ### Fixed (mainnet snapshots after the Byron to Shelley handover, B27)
 - **A pool whose reward account is on another network no longer stops the snapshots.** The ledger-state mirror
