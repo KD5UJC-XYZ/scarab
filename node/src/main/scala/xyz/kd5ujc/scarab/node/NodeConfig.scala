@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.ledger.ConfigError
 import cats.syntax.all.*
 import io.circe.{Decoder, HCursor, Json, parser}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 
 /** The genesis files a configuration names (`ByronGenesisFile` or the older `GenesisFile`,
   * `ShelleyGenesisFile`, `AlonzoGenesisFile`, `ConwayGenesisFile`, and, with experimental hard
@@ -101,6 +101,12 @@ final case class ConfigSettings(
       */
     maxConcurrencyDeadline: Option[Int] = None
 ):
+  /** The highest node-to-node version the node offers and accepts: 15 unless
+    * `ExperimentalProtocolsEnabled` is set, as the reference's `limitToLatestReleasedVersion`.
+    */
+  def maxNtnVersion: NtnVersion =
+    NtnVersion.maximum(experimentalProtocols = experimentalProtocolsEnabled)
+
   /** Settings that ask for something the node does not implement. */
   def unsupported: List[String] =
     List(

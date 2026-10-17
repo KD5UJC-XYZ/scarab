@@ -32,7 +32,7 @@ class NodeToNodeSuite extends CatsEffectSuite:
 
   private val expected = Right(
     (
-      14,
+      15,
       Some(point(0) -> tip(2)),
       ChainSyncClient.Update.RollForward(header(1), tip(2)),
       Some(Vector(block(1))),

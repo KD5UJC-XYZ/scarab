@@ -21,8 +21,13 @@ class HandshakeSuite extends CatsEffectSuite:
       }
     }
 
-  test("version 14 is negotiated with the shared magic"):
+  test("version 15, the highest of the latest release, is negotiated with the shared magic"):
     negotiate(Handshake.defaultNodeToNode(42L)).map(r =>
+      assertEquals(r, Right(HandshakeClient.Agreed(15, Handshake.Data(42L))))
+    )
+
+  test("a peer that offers 14 only is met on 14"):
+    negotiate(Vector(14 -> Handshake.Data(42L))).map(r =>
       assertEquals(r, Right(HandshakeClient.Agreed(14, Handshake.Data(42L))))
     )
 
@@ -33,8 +38,8 @@ class HandshakeSuite extends CatsEffectSuite:
     }
 
   test("disjoint versions are a typed version mismatch"):
-    negotiate(Vector(15 -> Handshake.Data(42L))).map(r =>
-      assertEquals(r, Left(NetworkError.VersionMismatch(Vector(14), Vector(15))))
+    negotiate(Vector(16 -> Handshake.Data(42L))).map(r =>
+      assertEquals(r, Left(NetworkError.VersionMismatch(Vector(14, 15), Vector(16))))
     )
 
   test("a malformed reply is a decode error"):

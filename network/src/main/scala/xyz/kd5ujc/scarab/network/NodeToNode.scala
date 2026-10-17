@@ -6,7 +6,7 @@ import cats.effect.{Async, Resource}
 import cats.mtl.Raise
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress}
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake, NtnVersion}
 import scala.concurrent.duration.*
 
 /** The hot part of a node-to-node connection: ChainSync, BlockFetch and (with a source of
@@ -78,6 +78,10 @@ object NodeToNode:
         * too.
         */
       offerPeerSharing: Boolean = false,
+      /** The highest version offered: the latest release (15, as cardano-node 11.1.3) unless the
+        * configuration enables experimental protocols (then 16, which adds the Peras flag).
+        */
+      maxVersion: NtnVersion = NtnVersion.LatestReleased,
       peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings()
   )
 
@@ -133,8 +137,9 @@ object NodeToNode:
       settings: Settings = Settings(),
       serve: Option[ServerHandlers[F, P]] = None
   )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
-    val offers = Vector(
-      14 -> Handshake.Data(
+    val offers = Handshake.nodeToNodeOffers(
+      settings.maxVersion,
+      Handshake.Data(
         magic,
         initiatorOnly = serve.isEmpty,
         peerSharing = settings.offerPeerSharing

@@ -8,7 +8,7 @@ import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 import munit.FunSuite
 
 /** The Haskell node's `config.json` and `topology.json`, read as `cardano-node run` reads them,
@@ -29,6 +29,14 @@ class ConfigSuite extends FunSuite:
     NodeConfig
       .parse(text(network, "config.json"), strict = true)
       .fold(e => fail(e.message), identity)
+
+  test("the public configurations offer the latest release, 15; experimental protocols add 16") {
+    Vector("preview", "preprod", "mainnet").foreach { network =>
+      assertEquals(parsed(network).settings.maxNtnVersion, NtnVersion.V15, network)
+    }
+    assertEquals(ConfigSettings().maxNtnVersion, NtnVersion.V15)
+    assertEquals(ConfigSettings(experimentalProtocolsEnabled = true).maxNtnVersion, NtnVersion.V16)
+  }
 
   test("the public configurations parse as the reference parses them") {
     val preview = parsed("preview")

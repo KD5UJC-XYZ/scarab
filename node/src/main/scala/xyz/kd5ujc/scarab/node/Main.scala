@@ -663,7 +663,8 @@ object Main extends IOApp:
               InboundGovernor.Config(
                 genesis.networkMagic,
                 NodeToNodeServer.Settings(
-                  offerPeerSharing = setup.config.settings.peerSharing.contains(true)
+                  offerPeerSharing = setup.config.settings.peerSharing.contains(true),
+                  maxVersion = setup.config.settings.maxNtnVersion
                 ),
                 Peer.Settings(
                   SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
@@ -701,7 +702,8 @@ object Main extends IOApp:
             hot = OutboundPeers.Hot[IO](
               magic = genesis.networkMagic,
               network = NodeToNode.Settings(
-                offerPeerSharing = setup.config.settings.peerSharing.contains(true)
+                offerPeerSharing = setup.config.settings.peerSharing.contains(true),
+                maxVersion = setup.config.settings.maxNtnVersion
               ),
               peer = Peer.Settings(
                 SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),

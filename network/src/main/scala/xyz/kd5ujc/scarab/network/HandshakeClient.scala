@@ -7,12 +7,14 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
-import xyz.kd5ujc.scarab.protocol.Handshake
+import xyz.kd5ujc.scarab.protocol.{Handshake, NtnVersion}
 import scala.concurrent.duration.*
 
 /** Node-to-node handshake over mini-protocol 0, driven by the pure [[Handshake]] client. */
 object HandshakeClient:
-  final case class Agreed(version: Int, data: Handshake.Data)
+  final case class Agreed(version: Int, data: Handshake.Data):
+    /** The agreed node-to-node version as the typed value (`None` for a node-to-client one). */
+    def ntnVersion: Option[NtnVersion] = NtnVersion.fromNumber(version)
 
   private def decodeReply(suite: Handshake.Suite)(bytes: Bytes): DecodeResult[Handshake.Message] =
     Handshake.decodePrefix(suite, Handshake.State.Confirm, bytes) match

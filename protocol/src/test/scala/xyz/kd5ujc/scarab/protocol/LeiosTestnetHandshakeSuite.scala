@@ -51,4 +51,55 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
         case other => fail(other.toString)
     }
   }
+
+  private def hexOf(m: Message): String =
+    encode(Suite.NodeToNode, m).fold(e => fail(e), identity).hex
+
+  private val relayOffers: Vector[(Int, Data)] =
+    Vector(14, 15, 16).map(_ -> Data(164, initiatorOnly = false, peerSharing = true))
+
+  private val ours: Vector[(Int, Data)] =
+    nodeToNodeOffers(NtnVersion.V16, Data(164, initiatorOnly = true))
+
+  test(
+    "our proposal of 14 to 16 for the testnet is the bytes below (the relay's data per version)"
+  ) {
+    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e), identity)._2
+    assertEquals(
+      hexOf(proposal),
+      "8200a3" + "0e8418a4f500f4" + "0f8418a4f500f4" + "108518a4f500f4f4"
+    )
+  }
+
+  test(
+    "the relay's query reply carries the data the relay offers: duplex, peer sharing, no Peras"
+  ) {
+    val (_, hex, _) = rows.find(_._1 == "query").get
+    read(hex) match
+      case Message.QueryReply(versions) =>
+        versions.foreach { (v, term) =>
+          assertEquals(
+            decodeData(Suite.NodeToNode, v, term),
+            Right(Data(164, initiatorOnly = false, peerSharing = true))
+          )
+        }
+      case other => fail(other.toString)
+  }
+
+  test("a relay offering 14 to 16 answers our proposal with version 16, as the recorded bytes") {
+    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e), identity)._2
+    val (answer, result) =
+      responder(Suite.NodeToNode, relayOffers, proposal).fold(e => fail(e), identity)
+    // the agreed data: initiator only (the smaller diffusion mode), no peer sharing (we do not
+    // offer it), no Peras; byte for byte what the relay sent for version 16
+    assertEquals(hexOf(answer), rows.find(_._1 == "accept-16").get._2)
+    assertEquals(result, Result.Negotiated(16, Data(164, initiatorOnly = true)))
+  }
+
+  test("a relay that accepts only 14 and 15 (the released maximum) answers with 15") {
+    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e), identity)._2
+    val released = relayOffers.filter(_._1 <= NtnVersion.LatestReleased.number)
+    val (answer, _) = responder(Suite.NodeToNode, released, proposal).fold(e => fail(e), identity)
+    assertEquals(hexOf(answer), rows.find(_._1 == "accept-15").get._2)
+  }
 end LeiosTestnetHandshakeSuite

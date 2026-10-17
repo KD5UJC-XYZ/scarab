@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
-import xyz.kd5ujc.scarab.protocol.{Handshake, NtcVersion}
+import xyz.kd5ujc.scarab.protocol.{Handshake, NtnVersion}
 import scala.concurrent.duration.*
 
 /** Node-to-node handshake, responder side: reads the client's proposal, answers through the pure
@@ -15,21 +15,24 @@ import scala.concurrent.duration.*
   * exactly when both sides allow a duplex connection (we then also run our clients on it).
   */
 object HandshakeServer:
-  /** The versions this node accepts, all with the same magic and no query; `peerSharing` says
-    * whether we take part in peer sharing (the connection does if the peer does too).
+  /** The versions this node accepts, up to `maxVersion`, all with the same magic and no query;
+    * `peerSharing` says whether we take part in peer sharing (the connection does if the peer does
+    * too). The Peras flag is never set: the node has no Peras mini-protocols.
     */
   def offers(
       magic: Long,
       duplex: Boolean,
-      peerSharing: Boolean = false
+      peerSharing: Boolean = false,
+      maxVersion: NtnVersion = NtnVersion.LatestReleased
   ): Vector[(Int, Handshake.Data)] =
-    Vector(14, 15).map(v =>
-      v -> Handshake.Data(magic, initiatorOnly = !duplex, peerSharing = peerSharing)
+    Handshake.nodeToNodeOffers(
+      maxVersion,
+      Handshake.Data(magic, initiatorOnly = !duplex, peerSharing = peerSharing)
     )
 
   /** The node-to-client versions this node accepts (no query). */
   def localOffers(magic: Long): Vector[(Int, Handshake.Data)] =
-    NtcVersion.All.toVector.map(v => v.number -> Handshake.Data(magic))
+    Handshake.nodeToClientOffers(Handshake.Data(magic))
 
   private def decodeProposal(suite: Handshake.Suite)(
       bytes: Bytes

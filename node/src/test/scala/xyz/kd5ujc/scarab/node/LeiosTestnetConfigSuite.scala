@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.node.read.InEra
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.protocol.{Era, NtnVersion}
 
 /** The published configuration of the public Leios testnet (`fixtures/leios/testnet/config`: the
   * files of `book.play.dev.cardano.org/environments-pre/leios`, unchanged; hashes in
@@ -42,6 +42,11 @@ class LeiosTestnetConfigSuite extends FunSuite:
       config.settings.unsupported.toString
     )
     assertEquals(config.requiresNetworkMagic, Some(true))
+  }
+
+  test("the testnet enables experimental protocols, so the node offers version 16 to its relay") {
+    assertEquals(config.settings.experimentalProtocolsEnabled, true)
+    assertEquals(config.settings.maxNtnVersion, NtnVersion.V16)
   }
 
   test("the node setup reads the genesis, funds and pool from `extraConfig` included") {

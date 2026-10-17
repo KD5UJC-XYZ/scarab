@@ -63,8 +63,8 @@ object Handshake:
     catch case Failure(e) => Left(e.message)
 
   def recognized(suite: Suite, version: Int): Boolean = suite match
-    case Suite.NodeToNode   => version >= 14 && version <= 16
-    case Suite.NodeToClient => version >= 16 && version <= 23
+    case Suite.NodeToNode   => NtnVersion.fromNumber(version).isDefined
+    case Suite.NodeToClient => NtcVersion.fromNumber(version).isDefined
   def wireVersion(suite: Suite, version: Int): Either[String, Int] =
     if !recognized(suite, version) then Left("unsupported logical version")
     else Right(if suite == Suite.NodeToClient then version | 0x8000 else version)
@@ -88,6 +88,10 @@ object Handshake:
     case Term.Integer(n) if n >= 0 && n <= BigInt("ffffffff", 16) => n.toLong
     case _ => bad("network magic outside uint32")
 
+  /** Whether node-to-node version data of this version has the Peras flag. */
+  private def carriesPeras(version: Int): Boolean =
+    NtnVersion.fromNumber(version).exists(_.carriesPeras)
+
   def dataTerm(suite: Suite, version: Int, data: Data): Either[String, Term] = attempt {
     if !recognized(suite, version) then bad("unsupported logical version")
     if data.magic < 0 || data.magic > 0xffffffffL then bad("network magic outside uint32")
@@ -95,7 +99,7 @@ object Handshake:
       if !data.initiatorOnly || data.peerSharing || data.peras then bad("NtC has no NtN features")
       Term.Arr(Vector(Term.Integer(data.magic), Term.Bool(data.query)))
     else
-      if version < 16 && data.peras then bad("Peras requires version 16")
+      if data.peras && !carriesPeras(version) then bad("Peras requires version 16")
       Term.Arr(
         Vector(
           Term.Integer(data.magic),
@@ -103,7 +107,7 @@ object Handshake:
           Term.Integer(if data.peerSharing then 1 else 0),
           Term.Bool(data.query)
         ) ++
-          (if version == 16 then Vector(Term.Bool(data.peras)) else Vector.empty)
+          (if carriesPeras(version) then Vector(Term.Bool(data.peras)) else Vector.empty)
       )
   }
   def decodeData(suite: Suite, version: Int, term: Term): Either[String, Data] = attempt {
@@ -113,7 +117,7 @@ object Handshake:
       if fields.size != 2 then bad("NtC data arity")
       Data(magic(fields(0)), query = bool(fields(1)))
     else
-      if fields.size != (if version == 16 then 5 else 4) then bad("NtN data arity")
+      if fields.size != (if carriesPeras(version) then 5 else 4) then bad("NtN data arity")
       val peers = fields(2) match
         case Term.Integer(n) if n == 0 || n == 1 => n == 1
         case _                                   => bad("peer sharing must be 0 or 1")
@@ -122,7 +126,7 @@ object Handshake:
         bool(fields(1)),
         peers,
         bool(fields(3)),
-        if version == 16 then bool(fields(4)) else false
+        if carriesPeras(version) then bool(fields(4)) else false
       )
   }
   private def agree(local: Data, remote: Data): Either[String, Data] =
@@ -217,7 +221,20 @@ object Handshake:
         if vs.map(_._1).distinct.size != vs.size then Left("duplicate version")
         else Right(Message.Propose(vs.sortBy(_._1)))
       )
-  def defaultNodeToNode(magic: Long): Vector[(Int, Data)] = Vector(14 -> Data(magic))
+
+  /** The node-to-node offers of a node: every version up to `max`, each with the same version data
+    * (the Peras flag is only written for the versions that have it, and we do not set it).
+    */
+  def nodeToNodeOffers(max: NtnVersion, data: Data): Vector[(Int, Data)] =
+    NtnVersion.upTo(max).map(v => v.number -> data)
+
+  /** What a node offers by default: the versions of the latest release, as the reference does. */
+  def defaultNodeToNode(magic: Long): Vector[(Int, Data)] =
+    nodeToNodeOffers(NtnVersion.LatestReleased, Data(magic))
+
+  /** The node-to-client offers: every version the reference supports, all with the same data. */
+  def nodeToClientOffers(data: Data): Vector[(Int, Data)] =
+    NtcVersion.All.map(v => v.number -> data)
   private def queryResult(suite: Suite, vs: Vector[(Int, Term)]): Result =
     Result.QueryResult(vs.map { case (v, d) => v -> decodeData(suite, v, d) })
   private def negotiate(

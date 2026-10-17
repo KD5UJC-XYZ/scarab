@@ -389,7 +389,7 @@ class ServerSuite extends CatsEffectSuite:
         r,
         Right(
           (
-            14,
+            15,
             Some(Point.Origin -> Peers.tip(3)),
             ChainSyncClient.Update.RollForward(header(1), Peers.tip(3)),
             Some(Vector(1, 2, 3).map(Peers.block))

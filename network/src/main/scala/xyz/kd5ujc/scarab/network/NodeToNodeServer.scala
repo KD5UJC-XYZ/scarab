@@ -5,7 +5,7 @@ import cats.effect.{Async, Resource}
 import cats.effect.syntax.all.*
 import cats.mtl.{Handle, Raise}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake, NtnVersion}
 import scala.concurrent.duration.*
 
 /** What a node serves to its peers: its chain (ChainSync headers and BlockFetch blocks) and an
@@ -40,6 +40,10 @@ object NodeToNodeServer:
         * too.
         */
       offerPeerSharing: Boolean = false,
+      /** The highest node-to-node version accepted: the latest release unless the configuration
+        * enables experimental protocols.
+        */
+      maxVersion: NtnVersion = NtnVersion.LatestReleased,
       peerSharing: PeerSharingServer.Settings = PeerSharingServer.Settings()
   )
 
@@ -121,7 +125,12 @@ object NodeToNodeServer:
           .flatMap(
             HandshakeServer.run(
               _,
-              HandshakeServer.offers(magic, settings.duplex, settings.offerPeerSharing),
+              HandshakeServer.offers(
+                magic,
+                settings.duplex,
+                settings.offerPeerSharing,
+                settings.maxVersion
+              ),
               settings.handshakeTimeout
             )
           )
