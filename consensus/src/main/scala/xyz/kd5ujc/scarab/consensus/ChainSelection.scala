@@ -183,14 +183,20 @@ object ChainSelection:
     case Detached
 
   def decide(tiebreaker: Tiebreaker, local: Local, candidate: Candidate): Decision =
-    val points = candidate.base +: candidate.headers.map(_.point)
-    points.lastIndexWhere(local.contains) match
-      case -1                                  => Decision.Detached
-      case common if common == points.size - 1 => Decision.Keep
-      case common =>
-        val take = candidate.headers.drop(common)
+    val headers = candidate.headers
+    // The points of the candidate are its base, then its headers: point `i` is the base for 0 and
+    // the header `i - 1` after it. The last one on our chain is searched from the tip, because the
+    // candidate of a peer that is behind us is entirely ours and the first probe says so; building
+    // the point of every header, and probing each against our window, made the follower's time per
+    // block grow with the length of such a candidate (issue 133).
+    def pointAt(i: Int): Point = if i == 0 then candidate.base else headers(i - 1).point
+    Iterator.range(headers.size, -1, -1).find(i => local.contains(pointAt(i))) match
+      case None                                   => Decision.Detached
+      case Some(common) if common == headers.size => Decision.Keep
+      case Some(common) =>
+        val take = headers.drop(common)
         val view = SelectView.of(take.last)
         if prefers(tiebreaker, local.tipView, view) then
-          val at = points(common)
+          val at = pointAt(common)
           Decision.Switch(at, local.depthTo(at), take)
         else Decision.Keep

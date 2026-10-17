@@ -24,7 +24,10 @@ enum Credential:
     case Script(h) => s"scriptHash-${h.hex}"
 
 object Credential:
-  given Ordering[Credential] = Ordering.by(c => (c.ordinal, c.hash.hex))
+  /** The kind first (key before script), then the hash: the order of the ledger's `Credential`. */
+  given Ordering[Credential] = (a, b) =>
+    val kinds = Integer.compare(a.ordinal, b.ordinal)
+    if kinds != 0 then kinds else a.hash.compareTo(b.hash)
 
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
   def decode(n: Node, what: String): Either[String, Credential] =
@@ -267,8 +270,8 @@ object RewardAccount:
 
 /** Lovelace plus native assets. Mint values may be negative; UTxO values never are. */
 final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
-  def +(o: Value): Value = Value(coin + o.coin, Value.mergeAssets(assets, o.assets, _ + _))
-  def -(o: Value): Value = Value(coin - o.coin, Value.mergeAssets(assets, o.assets, _ - _))
+  def +(o: Value): Value = Value(coin + o.coin, Value.merge(assets, o.assets, 1))
+  def -(o: Value): Value = Value(coin - o.coin, Value.merge(assets, o.assets, -1))
   def isZero: Boolean = coin == 0 && assets.isEmpty
 
   /** Bytes of the value as the ledger serialises it (`serialize v` in `validateOutputTooBigUTxO`):
@@ -296,8 +299,10 @@ object Value:
     if n < 24 then 1
     else if n < 256 then 2
     else if n < 65536 then 3
-    else if n < (BigInt(1) << 32) then 5
+    else if n < TwoToThe32 then 5
     else 9
+
+  private val TwoToThe32 = BigInt(1) << 32
 
   private def uintSize(n: BigInt): Int = headSize(n)
 
@@ -308,22 +313,38 @@ object Value:
   val zero: Value = Value(0, Map.empty)
   def coin(c: BigInt): Value = Value(c, Map.empty)
 
-  private def mergeAssets(
+  /** `a + sign * b` per (policy, name), with the zero quantities and the policies left empty
+    * dropped (so a map with zero quantities in it comes out without them, as it always did).
+    *
+    * Sums are taken over a transaction's inputs one after the other, so the left side is the one
+    * that grows. The entries of `b` are folded into `a`: a persistent map shares what they do not
+    * touch, and an ada-only value costs nothing (issue 133: this was a third of the time the rules
+    * spent on mainnet, where the inputs carry many tokens).
+    */
+  private def merge(
       a: Map[Bytes, Map[Bytes, BigInt]],
       b: Map[Bytes, Map[Bytes, BigInt]],
-      f: (BigInt, BigInt) => BigInt
+      sign: Int
   ): Map[Bytes, Map[Bytes, BigInt]] =
-    (a.keySet ++ b.keySet).iterator
-      .map { policy =>
-        val x = a.getOrElse(policy, Map.empty)
-        val y = b.getOrElse(policy, Map.empty)
-        policy -> (x.keySet ++ y.keySet).iterator
-          .map(n => n -> f(x.getOrElse(n, 0), y.getOrElse(n, 0)))
-          .filter(_._2 != 0)
-          .toMap
+    if b.isEmpty then normal(a)
+    else
+      b.foldLeft(normal(a)) { case (acc, (policy, names)) =>
+        val merged = names.foldLeft(acc.getOrElse(policy, Map.empty[Bytes, BigInt])) {
+          case (held, (name, quantity)) =>
+            val sum = held.getOrElse(name, BigInt(0)) + (if sign > 0 then quantity else -quantity)
+            if sum.signum == 0 then held - name else held.updated(name, sum)
+        }
+        if merged.isEmpty then acc - policy else acc.updated(policy, merged)
       }
-      .filter(_._2.nonEmpty)
-      .toMap
+
+  /** `assets` without zero quantities and empty policies: itself, when it has none. */
+  private def normal(assets: Map[Bytes, Map[Bytes, BigInt]]): Map[Bytes, Map[Bytes, BigInt]] =
+    if assets.forall((_, names) => names.nonEmpty && names.forall(_._2.signum != 0)) then assets
+    else
+      assets.iterator
+        .map((policy, names) => policy -> names.filter(_._2.signum != 0))
+        .filter(_._2.nonEmpty)
+        .toMap
 
   /** `coin / [coin, multiasset<uint>]`; zero quantities are rejected as in Conway. */
   def decode(n: Node, what: String): Either[String, Value] = n.value match
@@ -497,7 +518,13 @@ final case class TxIn(id: Bytes, index: BigInt):
   def render: String = s"${id.hex}#$index"
 
 object TxIn:
-  given Ordering[TxIn] = Ordering.by(i => (i.id.hex, i.index))
+  /** The transaction id (as bytes, as its hex sorts), then the index: the ledger's `TxIn` order.
+    * Sorting a transaction's inputs is on the path of every script purpose (issue 133), so no
+    * string is built per comparison.
+    */
+  given Ordering[TxIn] = (a, b) =>
+    val ids = a.id.compareTo(b.id)
+    if ids != 0 then ids else a.index.compare(b.index)
   def decode(n: Node): Either[String, TxIn] =
     CborRead
       .arrayN(n, 2, "input")

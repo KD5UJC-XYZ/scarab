@@ -30,15 +30,36 @@ import xyz.kd5ujc.scarab.codec.Bytes
 object ScriptIntegrity:
   def hash(tx: Tx, pp: ProtocolParams, languages: Set[ScriptKind]): Option[Bytes] =
     val wits = tx.witnesses
-    val views = languageViews(pp, languages)
     if wits.redeemers.isEmpty && wits.datums.isEmpty && languages.forall(!_.isPlutus) then None
     else
-      val emptyRedeemers = Vector((if pp.protocolMajor >= 9 then 0xa0 else 0x80).toByte)
-      val redeemers = wits.redeemersRaw.fold(emptyRedeemers)(_.value)
+      val emptyRedeemers = Bytes.wrap(Array((if pp.protocolMajor >= 9 then 0xa0 else 0x80).toByte))
+      val redeemers = wits.redeemersRaw.getOrElse(emptyRedeemers)
       val datums =
-        if wits.datums.isEmpty then Vector.empty[Byte]
-        else wits.datumsRaw.fold(Vector.empty[Byte])(_.value)
-      Some(Blake2b.hash256.hash(Bytes(redeemers ++ datums ++ views)))
+        if wits.datums.isEmpty then Bytes.empty else wits.datumsRaw.getOrElse(Bytes.empty)
+      Some(Blake2b.hash256.hash(redeemers ++ datums ++ viewsOf(pp, languages)))
+
+  /** The cost models in force and the encoded views computed for them, by language set. The
+    * parameters change once an epoch at most and a block has dozens of transactions that need the
+    * same views (about 300 integers to encode each time: a tenth of the rules' time on mainnet,
+    * issue 133), so the last encodings are kept for the parameters they were made for.
+    */
+  private final case class Views(
+      models: Map[Int, Vector[BigInt]],
+      encoded: Map[Set[ScriptKind], Bytes]
+  )
+  private val views = new java.util.concurrent.atomic.AtomicReference(Views(Map.empty, Map.empty))
+
+  private def viewsOf(pp: ProtocolParams, languages: Set[ScriptKind]): Bytes =
+    val known = views.get
+    val current = known.models.eq(pp.costModels) || known.models == pp.costModels
+    known.encoded.get(languages).filter(_ => current).getOrElse {
+      val encoded = Bytes(languageViews(pp, languages))
+      views.set(
+        if current then known.copy(encoded = known.encoded.updated(languages, encoded))
+        else Views(pp.costModels, Map(languages -> encoded))
+      )
+      encoded
+    }
 
   /** The encoded language views for `languages`. */
   def languageViews(pp: ProtocolParams, languages: Set[ScriptKind]): Vector[Byte] =

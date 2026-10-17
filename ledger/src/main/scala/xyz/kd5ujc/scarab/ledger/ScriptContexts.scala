@@ -33,17 +33,6 @@ object ScriptContexts:
 
   private def fail[A](error: TranslationError): Result[A] = Left(error)
 
-  private def bytesOrder(a: Bytes, b: Bytes): Int =
-    val n = a.value.length.min(b.value.length)
-    var i = 0
-    while i < n do
-      val c = (a.value(i) & 0xff) - (b.value(i) & 0xff)
-      if c != 0 then return c
-      i += 1
-    a.value.length - b.value.length
-
-  private given Ordering[Bytes] = (a, b) => bytesOrder(a, b)
-
   // -------------------------------------------------------------------------------------------
   // Shared encodings
 

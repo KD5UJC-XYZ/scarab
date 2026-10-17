@@ -3,7 +3,14 @@ package xyz.kd5ujc.scarab.plutus
 
 import cats.Id
 import cats.effect.kernel.Sync
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{
+  ConcurrentHashMap,
+  ExecutionException,
+  SynchronousQueue,
+  ThreadFactory,
+  ThreadPoolExecutor,
+  TimeUnit
+}
 import xyz.kd5ujc.scarab.codec.{Bytes, TreeFold}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import scala.util.control.NonFatal
@@ -45,6 +52,21 @@ import scalus.uplc.{
 object ScalusEvaluator:
   /** Large enough for the recursive flat decoder on deeply nested scripts. */
   private val StackSize = 256L * 1024 * 1024
+
+  /** The threads that evaluate, each with a stack of [[StackSize]]. Starting one costs a mapping of
+    * that size and its release, and the mainnet follower in late Alonzo started one per script, 220
+    * a second (issue 133). An idle thread now waits for the next script for [[KeepAlive]] seconds,
+    * which is what a block of scripts after another needs; the pool grows to the number of
+    * evaluations in flight at once, as one thread each did before. Daemon threads, so that an idle
+    * one never holds the process open.
+    */
+  private val KeepAlive = 30L
+  private lazy val bigStacks: ThreadPoolExecutor =
+    val factory: ThreadFactory = task =>
+      val thread = Thread(null, task, "plutus-evaluator", StackSize)
+      thread.setDaemon(true)
+      thread
+    ThreadPoolExecutor(0, Int.MaxValue, KeepAlive, TimeUnit.SECONDS, SynchronousQueue(), factory)
 
   /** A fresh interpreter with its own caches. */
   def pure: ScriptEvaluator[Id] = Interpreter()
@@ -105,11 +127,8 @@ object ScalusEvaluator:
 
     /** The machine and the decoder recurse on the term; run on a thread with a large stack. */
     private def onBigStack[A](initial: A)(body: => A): A =
-      var result: A = initial
-      val worker = Thread(null, () => result = body, "plutus-evaluator", StackSize)
-      worker.start()
-      worker.join()
-      result
+      try bigStacks.submit(() => body).get()
+      catch case _: ExecutionException => initial
 
     /** The checks of the ledger's deserialisation and of `mkTermToEvaluate`, in that order. */
     private def admitted(decoded: Decoded, request: EvalRequest): Either[String, Decoded] =

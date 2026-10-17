@@ -144,6 +144,11 @@ final class Bytes private (
 object Bytes:
   val empty: Bytes = new Bytes(new Array[Byte](0), 0, 0)
 
+  /** Lexicographic by unsigned byte, a shorter prefix first: the order of the ledger's `ByteString`
+    * keys, and the order of the lower-case hex of equal-length strings, without building the hex.
+    */
+  given Ordering[Bytes] = (a, b) => a.compareTo(b)
+
   /** Compatibility constructor from a vector. */
   def apply(bytes: Vector[Byte]): Bytes =
     if bytes eq null then new Bytes(null, 0, 0)

@@ -58,9 +58,19 @@ object Purpose:
 
   /** Withdrawals in the ledger's order: by reward account, script credentials first. */
   def sortedWithdrawals(body: TxBody): Vector[(RewardAccount, BigInt)] =
-    body.withdrawals.sortBy(w =>
-      (w._1.network, w._1.credential.isInstanceOf[Credential.Key], w._1.credential.hash.hex)
-    )
+    body.withdrawals.sorted(using withdrawalOrder)
+
+  /** By network, script credentials before key credentials, then the hash. */
+  private val withdrawalOrder: Ordering[(RewardAccount, BigInt)] = (a, b) =>
+    val (x, y) = (a._1, b._1)
+    val networks = Integer.compare(x.network, y.network)
+    if networks != 0 then networks
+    else
+      val kinds = java.lang.Boolean.compare(
+        x.credential.isInstanceOf[Credential.Key],
+        y.credential.isInstanceOf[Credential.Key]
+      )
+      if kinds != 0 then kinds else x.credential.hash.compareTo(y.credential.hash)
 
   def sortedVoters(body: TxBody): Vector[Voter] = body.votes.map(_._1).sorted(using Voter.ordering)
 
@@ -72,7 +82,7 @@ object Purpose:
     val spending = body.inputs.sorted.zipWithIndex.flatMap { case (in, ix) =>
       spent.get(in).map(Spending(ix, in, _))
     }
-    val minting = body.mint.keys.toVector.sortBy(_.hex).zipWithIndex.map { case (p, ix) =>
+    val minting = body.mint.keys.toVector.sorted.zipWithIndex.map { case (p, ix) =>
       Minting(ix, p)
     }
     val certifying = body.certificates.zipWithIndex.map { case (c, ix) => Certifying(ix, c) }

@@ -215,6 +215,49 @@ class ChainSelectionSuite extends ScalaCheckSuite:
     )
   }
 
+  /** `decide` as it was before issue 133: the point of every header built, then the last one on our
+    * chain searched over all of them.
+    */
+  private def referenceDecide(tiebreaker: Tiebreaker, local: Local, candidate: Candidate) =
+    val points = candidate.base +: candidate.headers.map(_.point)
+    points.lastIndexWhere(local.contains) match
+      case -1                                  => Decision.Detached
+      case common if common == points.size - 1 => Decision.Keep
+      case common =>
+        val take = candidate.headers.drop(common)
+        val view = SelectView.of(take.last)
+        if prefers(tiebreaker, local.tipView, view) then
+          val at = points(common)
+          Decision.Switch(at, local.depthTo(at), take)
+        else Decision.Keep
+
+  property("decide agrees with searching every point of the candidate, whatever the candidate is") {
+    forAll(
+      Gen.choose(1, 8),
+      Gen.choose(0, 8),
+      Gen.choose(0, 8),
+      Gen.choose(0, 6),
+      Gen.choose(0, 255),
+      Gen.oneOf(true, false)
+    ) { (volatile, from, shared, extra, theirVrf, known) =>
+      val anchor = branch(1, None, 0).head
+      val ours = branch(volatile, Some(anchor), 1, issuer = 1, vrf = 9)
+      val l = local(Some(anchor), ours)
+      // the candidate starts at one of our blocks (or the anchor) or, if not `known`, somewhere
+      // else, follows our chain for `shared` blocks and then leaves it for `extra` of its own
+      val start = from.min(volatile)
+      val base =
+        if !known then branch(1, None, 7).head else if start == 0 then anchor else ours(start - 1)
+      val along = if known then ours.slice(start, start + shared) else Vector.empty
+      val last = along.lastOption.orElse(Some(base))
+      val theirs = branch(extra, last, 2, issuer = 2, vrf = theirVrf)
+      val candidate = Candidate(base.point, along ++ theirs)
+      List(Tiebreaker.Unrestricted, Tiebreaker.Restricted(5)).foreach { f =>
+        assertEquals(decide(f, l, candidate), referenceDecide(f, l, candidate))
+      }
+    }
+  }
+
   test("a candidate that joins before the anchor, or anywhere unknown, is detached") {
     val old = branch(3, None, 0)
     val anchor = old.last
