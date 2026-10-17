@@ -94,6 +94,25 @@ class VerificationCacheSuite extends ScalaCheckSuite:
     cache.shutdown()
   }
 
+  test("warming a block again verifies none of its witnesses again") {
+    val cache = VerificationCache.unsafe(2)
+    cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
+    val computed = cache.warmedStats.misses.sum
+    assert(computed >= witnesses.distinct.size.toLong)
+    assertEquals(cache.warmedStats.hits.sum, 0L)
+    // the same blocks again, as a second peer's batch or a range fetched again would be: every
+    // verdict is found, none is computed
+    cache.warm[IO](raws, setup.praos, 2).unsafeRunSync()
+    assertEquals(cache.warmedStats.misses.sum, computed)
+    assertEquals(cache.warmedStats.hits.sum, computed)
+    assertEquals(cache.warmedStats.toString, s"$computed/${2 * computed}")
+    // and what was kept is still the serial verdict
+    assert(
+      witnesses.forall((k, s, m) => cache.witness(k, s, m) == Verdicts.Direct.witness(k, s, m))
+    )
+    cache.shutdown()
+  }
+
   test("a warmed verdict is consumed once and an independent cache never sees it") {
     val a = VerificationCache.unsafe(2)
     val b = VerificationCache.unsafe(2)

@@ -98,11 +98,35 @@ object StrictEd25519:
     try Right(evaluate(publicKey, signature, message))
     catch case NonFatal(e) => Left(VerificationError.ImplementationFailure(e.getClass.getName))
 
-  private def point(bytes: Array[Byte]): Option[EdwardsPoint] =
-    val decoded =
-      try Some(new CompressedEdwardsY(bytes.clone()).decompress())
-      catch case _: InvalidEncodingException => None
-    decoded.filter(p => Arrays.equals(p.compress().toByteArray, bytes) && !p.isSmallOrder)
+  /** Whether the 255-bit little-endian `y` of a point encoding is below p = 2^255 - 19, the
+    * encoding being canonical (bit 255, the sign of x, is ignored).
+    */
+  private[witness] def canonicalY(bytes: Array[Byte]): Boolean =
+    // y >= p only for the 19 values 2^255 - 19 .. 2^255 - 1: byte 31 is 0x7f (bit 255 aside),
+    // bytes 1 to 30 are 0xff and byte 0 is at least 0xed
+    !((bytes(31) & 0x7f) == 0x7f && (bytes(0) & 0xff) >= 0xed && {
+      var i = 1
+      while i < 31 && bytes(i) == -1.toByte do i += 1
+      i == 31
+    })
+
+  /** The point of a canonical encoding that is on the curve and not of small order.
+    *
+    * The encoding must be the one `compress` gives back. That used to be tested by compressing the
+    * decompressed point (a field inversion, 5% of a verification). It is the same test as "y < p"
+    * on the bytes: `decompress` reads y modulo p, so the two differ only for the 19 non-canonical
+    * y; and it takes the x whose sign is the encoded bit, so they differ in the sign only when x =
+    * 0, that is y = 1 or y = -1, which are the points of order 1 and 2, refused by the small-order
+    * test in any case. `StrictEd25519DifferentialSuite` compares the two over the blacklist
+    * encodings, their neighbours and random encodings, on and off the curve.
+    */
+  private[witness] def point(bytes: Array[Byte]): Option[EdwardsPoint] =
+    if !canonicalY(bytes) then None
+    else
+      val decoded =
+        try Some(new CompressedEdwardsY(bytes.clone()).decompress())
+        catch case _: InvalidEncodingException => None
+      decoded.filter(p => !p.isSmallOrder)
 
   private def scalar(bytes: Array[Byte]): Option[Scalar] =
     // The caller always supplies exactly 32 bytes. This constructor rejects S >= L.
@@ -133,5 +157,6 @@ object StrictEd25519:
       // point is negated, not the scalar: -h mod L would change the result for a key with a
       // torsion component, which this profile accepts (mixed-order speccheck case 3).
       val check = EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(h, a.negate(), s)
+      // (`EdwardsPoint.ctEquals` compresses both points, so it would cost a second inversion)
       Arrays.equals(check.compress().toByteArray, rBytes)
     if valid.contains(true) then SignatureVerified else SignatureRejected

@@ -96,8 +96,12 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
     vrfStats.record(known != null)
     if known != null then known else Verdicts.Direct.tpraosVrf(alpha, vkey, proof, output)
 
-  /** `witnesses hits/lookups, opcerts hits/lookups, vrf hits/lookups` for the log. */
-  def summary: String = s"witness=$witnessStats opCert=$opCertStats vrf=$vrfStats"
+  /** `witnesses hits/lookups, opcerts hits/lookups, vrf hits/lookups, warmed skipped/checked` for
+    * the log. The last is the signature work of [[warm]] that found its verdict already there: with
+    * the hits it tells whether the checks run ahead are the checks the rules ask for.
+    */
+  def summary: String =
+    s"witness=$witnessStats opCert=$opCertStats vrf=$vrfStats warmed=$warmedStats"
 
   private def warmVrf(header: Header.Shelley, config: PraosConfig): Unit =
     warmVrf(header, config, epochNonce.get)
@@ -222,6 +226,11 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
     override def toString: String = s"${hits.sum}/${hits.sum + misses.sum}"
 
   val witnessStats = new Counters
+
+  /** The witness verifications [[warm]] was asked for: `hits` found the verdict already there and
+    * skipped the work, `misses` computed it. Printed as `skipped/asked`.
+    */
+  val warmedStats = new Counters
   val opCertStats = new Counters
   val vrfStats = new Counters
 
@@ -296,8 +305,14 @@ final class VerificationCache private (val parallelism: Int) extends Verdicts:
           () => warmVrf(b.header, config)
         ) ++ triples.map { k =>
           (() =>
-            keyHash(k.vkey)
-            witnesses.put(k, compute(k)): Unit
+            // a verdict that is still there (the same block warmed again: a second peer's batch, a
+            // range fetched again after a rollback) is a function of its key, so it is not computed
+            // again
+            val present = witnesses.containsKey(k)
+            warmedStats.record(present)
+            if !present then
+              keyHash(k.vkey)
+              witnesses.put(k, compute(k)): Unit
           ): Job
         }
       val pending = new Pending(p, checks.size)
