@@ -855,9 +855,10 @@ credentials, 75,972 rewards at the largest) the new rules took 1.4 to 1.7 times 
 
 **Method.** `BoundaryTickMain <db> <genesis> 1400 1449 4` (a test-side tool): each snapshot of the K1 run is taken in the middle
 of an epoch (about 43% in, past the start of the reward update); the tool reads it, finds the first block of the next epoch in
-the ImmutableDB (read only), converts the state to the mirror as the differential harness did and times `Hfc.tick` to that
-block, four times, and the old rules' `NodeRules.tick` of the same block four times, in the same JVM (JDK 21, G1,
-`-Xms4g -Xmx12g`, Linux x86-64 on WSL2). It prints the SHA-256 of the ticked `NewEpochState` written in the Haskell format
+the ImmutableDB (read only), converts the state to the mirror and times `Hfc.tick` to that block, four times (JDK 21, G1,
+`-Xms4g -Xmx12g`, Linux x86-64 on WSL2). The tables of the next paragraphs were taken on the J2.8 base, before J2.9 removed the
+old rules, with the old rules' `NodeRules.tick` of the same block timed four times in the same JVM; the final before / after
+at the end of this paragraph is on `main` after J2.9, the new rules alone. It prints the SHA-256 of the ticked `NewEpochState` written in the Haskell format
 (`HaskellState.encode`). The host was shared and loaded (load 6 to 11 on 24 cores) and the same tick of the same state varies
 between 200 and 900 ms from run to run, so the numbers are paired: the build before and the build after ran at the same time in
 two JVMs, 50 snapshots by 4 ticks, 200 ticks each; the first tick of a snapshot is the one a state just converted meets (cold
@@ -880,9 +881,19 @@ only in the tool). The gate (p99 within +25% of the old rules) holds in all four
 tick of a snapshot is slower than the later ones in both builds (556 against 422 ms best of four after); the best of four is
 0.7 to 0.9 times the old rules.
 
-**Equal results.** The digest of the ticked state is the same before and after for all 50 snapshots (the SHA-256 of the 50 lines
-`<snapshot> <digest>` is `362a1e6d3a26485a0f6d4f40ecf946a694133b3e15b80097bcf53c48f497986b` in the base build and in the
-final one; the intermediate builds agreed too, at every step of the change). `BoundaryDigestSuite` keeps six of them as goldens
+**After the rebase onto J2.9** (the old rules, the flat state and `Relations.seed` gone; the tool reads the K1 snapshots with the
+frozen reader of the `legacy` module and its conversion, which seeds the state as the migration does): `main` against `main` plus
+this change, concurrent, 50 snapshots by 4 ticks: pooled over the 200 ticks the mean is 699 ms before and 381 after, the median 631
+and 352, the p99 1,326 and 773; the first tick of each snapshot 828 and 478 (mean), the best of four 576 and 297. The gate against
+the old rules cannot be measured on `main` any more; the ratio to
+them was 1.03 (mean) and 1.12 (p99) on the J2.8 base above. The two measurements differ in the tool (this one has no old ticks
+in the JVM, and seeds the state through the migration's conversion), so their milliseconds are not to be read against each other.
+
+**Equal results.** The digest of the ticked state is the same before and after for all 50 snapshots, in both measurements. On the
+J2.8 base the SHA-256 of the 50 lines `<snapshot> <digest>` is `362a1e6d3a26485a0f6d4f40ecf946a694133b3e15b80097bcf53c48f497986b`
+before and after (the intermediate builds agreed too, at every step of the change); on `main` after J2.9, where the tool's seed
+differs and so do the digests, it is `7d4770b48afc2cfb65fecccff3aac06c4078fc63cbb6b2733e6f07e57cbd9818` before and after.
+`BoundaryDigestSuite` keeps six of the latter as goldens
 (snapshots 1400, 1410, 1420, 1430, 1440, 1449; it runs when `SCARAB_K1_DB` names the K1 `db` directory, with `-J-Xmx12g`), and
 `EpochBoundarySuite` checks each rewritten step against the straightforward version it replaced on generated data (the order of
 byte strings, a map built from sorted input, the merge of accounts with the instant stake, the crediting of rewards, the cursor),
@@ -932,5 +943,5 @@ words, with the integers only on a wrap or with pointer stake) was 15 to 20% slo
 faster, and was not kept.
 
 **To repeat.** The `BoundaryTickMain` command above, from a test classpath
-(`export node/Test/fullClasspath` in sbt), with `-Xmx12g`. The tool names `NodeRules.tick`, which the removal of the old rules
-(J2.9) takes away: from then on only the new side is timed and the ratio to the old rules is this section's record.
+(`export node/Test/fullClasspath` in sbt), with `-Xmx12g`. The tool times the new rules alone (J2.9 removed the old); the ratio
+to the old rules is this section's record.
