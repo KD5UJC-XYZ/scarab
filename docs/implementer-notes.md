@@ -82,23 +82,23 @@ are the ones most in need of a second reading.
 - **Pinned by:** [`PreConwayRulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreConwayRulesSuite.scala), `scripts/tests/test_devnet_pure.py`, e2e `min-*`
 - **Status:** confirmed in source
 
-#### IN-4 Pre-Babbage: bytes after a valid address in an output are dropped (B28) - being landed
+#### IN-4 Before Babbage, bytes after a valid address in an output are dropped (B28)
 
-- **Behaviour:** Before Babbage, an output whose address field decodes as a valid address followed by extra bytes is accepted, and the extra bytes are dropped. The address is read from the front of the byte string and the remainder is ignored.
-- **Era or protocol-version gate:** Before Babbage. The exact protocol-version gate is to be completed by the integrator.
-- **Upstream reference:** cardano-ledger-core 1.21.0.0, `Address.hs`, `fromCborBackwardsBothAddr`, lines 495-503.
-- **Chain evidence:** Mainnet slot 39,249,764, tx 369826b2f60b443d27966d222fa5bedc6b900326b77a09f15473d77f5ef2871c.
-- **Pinned by:** being landed (fixture and suite names to be added by the integrator)
-- **Status:** confirmed in source (being landed)
+- **Behaviour:** Before Babbage, an output whose address field is a valid address followed by extra bytes is accepted. The ledger reads the address from the front of the byte string, keeps only the bytes it read as the address, and ignores the rest. The transaction id is still the hash of the body as received. From Babbage every byte must belong to the address. A short address is refused in every era.
+- **Era or protocol-version gate:** By decoder version, the lowest protocol version of the era. Below 7 (Shelley, Allegra, Mary, Alonzo) the decoder is lenient. From 7 (Babbage) it is rigorous.
+- **Upstream reference:** cardano-ledger-core 1.21.0.0, `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs`: `fromCborBothAddr` 459-477, `fromCborBackwardsBothAddr` 495-503 (`decodeAddrStateLenientT True True`, which skips `ensureBufIsConsumed`, 643-675), `fromCborRigorousBothAddr` 479-487.
+- **Chain evidence:** Mainnet block 6,203,514 (slot 39,249,764, Mary). Output 0 of tx 369826b2f60b443d27966d222fa5bedc6b900326b77a09f15473d77f5ef2871c has a 78-byte address field: a 57-byte base address followed by 21 bytes (`cb57afb0…518c7516`). db-sync and Koios show the 57-byte address.
+- **Pinned by:** [`fixtures/mainnet/mary-garbage-address-block.hex`](../fixtures/mainnet/), `MainnetGarbageAddressSuite` (ledger), `MainnetGarbageAddressStoreSuite` (storage).
+- **Status:** confirmed in source
 
-#### IN-5 Pre-Babbage: pointer addresses are normalised (B29) - being landed
+#### IN-5 Before Conway, an out-of-range pointer address is normalised, and its address is written again (B29)
 
-- **Behaviour:** Before Babbage the ledger normalises a pointer address with `mkPtrNormalized`. Details are pending. See also IN-66 in Part B for the decoder ranges.
-- **Era or protocol-version gate:** Before Babbage; details pending.
-- **Upstream reference:** cardano-ledger-core `Cardano.Ledger.Address`, `mkPtrNormalized`; line numbers pending.
-- **Chain evidence:** Mainnet pointer (slot 16292793057, transaction index 1011302, certificate index 20). Details pending.
-- **Pinned by:** being landed
-- **Status:** observed (being landed)
+- **Behaviour:** Before Conway, each natural of a pointer (slot, transaction index, certificate index) is read as an unbounded variable-length number folded into a Word64, so bits beyond the 64th are lost. The pointer is then normalised: it becomes `Ptr 0 0 0` unless the slot fits a Word32 and both indexes fit a Word16. The address the ledger keeps is the pointer address written again by `putPtr`: the shortest encoding of each field, with any trailing bytes dropped before Babbage, as in IN-4. The stake of such an output is held under `Ptr 0 0 0`. From Conway, an out-of-range pointer, or a field encoded wider than its type, refuses the address. In every version the stored address is the canonical re-serialisation, so an in-range pointer written with padding is canonicalised.
+- **Era or protocol-version gate:** By decoder version. Below 9 (Shelley to Babbage): lenient and normalised. From 9 (Conway): strict.
+- **Upstream reference:** cardano-ledger-core 1.21.0.0. In `Address.hs`: `decodePtrLenient` 780-788, `decodeVariableLengthWord64` 876-882, `decodePtr` 769-777, `decodeVariableLengthWord32` 852-870, `decodeVariableLengthWord16` 832-850, `cAddrNormalized` 470-476, `putPtr` 347-351. In `Credential.hs`: `mkPtrNormalized` 270-285.
+- **Chain evidence:** Mainnet block 5,567,164 (slot 26,366,727, Mary). Output 0 of tx 9a47e091709e4fe1a8ba1291bc8cfd0c0ed0bb9220688b3ccfad5f2d961e8d8e pays 50 ada to a pointer address whose pointer decodes as (16,292,793,057, 1,011,302, 20). An implementation that keeps the exact pointer holds a state the reference's ledger-state encoding cannot represent: a Word32 slot and two Word16 indexes.
+- **Pinned by:** [`fixtures/mainnet/mary-pointer-tx-9a47e091.hex`](../fixtures/mainnet/), `MainnetPointerSuite` (ledger), `MainnetPointerStoreSuite` (storage), `MainnetPointerSnapshotSuite` (node).
+- **Status:** confirmed in source for the decoding and the stored address. The stake key and the Plutus script context (staking pointer `0 0 0`) are derived from the decoding and observed, not read from the upstream stake and Plutus translation code.
 
 #### IN-6 A Byron input can be witnessed by a plain vkey whose hash is the address root
 
@@ -807,8 +807,8 @@ are the ones most in need of a second reading.
 | [IN-1](#in-1-a-byron-address-has-no-size-limit-of-its-own) | A Byron address has no size limit of its own | Byron | confirmed in source | mainnet slot 1,769,882 |
 | [IN-2](#in-2-output-value-size-is-measured-on-the-ledgers-own-re-serialisation) | Output value size is measured on the ledger's own re-serialisation | Allegra, Mary (4000 bytes); Alonzo onwards (`maxValueSize`); none in Shelley | confirmed in source | preprod block 1,558,703 |
 | [IN-3](#in-3-mary-minimum-output-uses-scaledmindeposit-with-divisor-27-and-distinct-asset-names) | Mary minimum output uses `scaledMinDeposit` with divisor 27 and distinct asset names | Mary (Shelley and Allegra use flat `minUTxOValue`) | confirmed in source | devnet |
-| [IN-4](#in-4-pre-babbage-bytes-after-a-valid-address-in-an-output-are-dropped-b28---being-landed) | Pre-Babbage: bytes after a valid address in an output are dropped (B28) - being landed | before Babbage | confirmed in source (being landed) | mainnet slot 39,249,764 |
-| [IN-5](#in-5-pre-babbage-pointer-addresses-are-normalised-b29---being-landed) | Pre-Babbage: pointer addresses are normalised (B29) - being landed | before Babbage | observed (being landed) | mainnet pointer (16292793057, 1011302, 20) |
+| [IN-4](#in-4-before-babbage-bytes-after-a-valid-address-in-an-output-are-dropped-b28) | Before Babbage, bytes after a valid address in an output are dropped (B28) | Shelley to Alonzo | confirmed in source | mainnet slot 39,249,764, tx 369826b2 |
+| [IN-5](#in-5-before-conway-an-out-of-range-pointer-address-is-normalised-and-its-address-is-written-again-b29) | Before Conway, an out-of-range pointer address is normalised, and its address is written again (B29) | Shelley to Babbage | confirmed in source | mainnet slot 26,366,727, tx 9a47e091 |
 | [IN-6](#in-6-a-byron-input-can-be-witnessed-by-a-plain-vkey-whose-hash-is-the-address-root) | A Byron input can be witnessed by a plain vkey whose hash is the address root | Shelley onwards (seen in Conway) | confirmed in source | preprod block 3,158,876 |
 | [IN-7](#in-7-shelleys-time-to-live-is-the-last-valid-slot) | Shelley's time to live is the last valid slot | Shelley (protocol version 2); Allegra onwards use the exclusive bound | confirmed in source | mainnet slot 4,498,780 |
 | [IN-8](#in-8-the-fee-size-counts-array-header-body-witnesses-and-auxiliary-data-not-the-is_valid-byte) | The fee size counts array header, body, witnesses and auxiliary data, not the `is_valid` byte | Alonzo onwards | observed | Preview Babbage |
