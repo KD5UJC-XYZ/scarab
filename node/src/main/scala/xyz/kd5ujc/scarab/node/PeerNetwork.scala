@@ -149,11 +149,19 @@ object PeerNetwork:
         "known" -> c.known.asJson,
         "root" -> c.root.asJson
       ),
+      "bigLedger" -> Json.obj(
+        "known" -> c.knownBigLedger.asJson,
+        "established" -> c.establishedBigLedger.asJson,
+        "active" -> c.activeBigLedger.asJson
+      ),
       "targets" -> Json.obj(
         "root" -> state.targets.root.asJson,
         "known" -> state.targets.known.asJson,
         "established" -> state.targets.established.asJson,
-        "active" -> state.targets.active.asJson
+        "active" -> state.targets.active.asJson,
+        "knownBigLedger" -> state.targets.knownBig.asJson,
+        "establishedBigLedger" -> state.targets.establishedBig.asJson,
+        "activeBigLedger" -> state.targets.activeBig.asJson
       ),
       "judgement" -> state.sensitivity.judgement.toString.asJson,
       "sensitive" -> state.sensitivity.sensitive.asJson,

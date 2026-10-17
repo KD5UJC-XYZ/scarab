@@ -237,9 +237,18 @@ The topology needs `localRoots` and `publicRoots`; `bootstrapPeers` (a list or `
 (above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point is
 `{"address": <name or IP>, "port": <number>}`; an access point without a port (a DNS SRV name), the
 unspecified address, a port that is not a number, the legacy `Producers` format, and an empty
-`bootstrapPeers` with no trustable local root are `ConfigError`s. `useLedgerAfterSlot`, `peerSnapshotFile`,
-`advertise` and `behindFirewall` are read and logged (`started.topology`), not acted on: there are no ledger
-peers or peer sharing yet (G1.3, G1.4). `trustable` and the valencies are acted on, as the next section says.
+`bootstrapPeers` with no trustable local root are `ConfigError`s. `useLedgerAfterSlot` and `peerSnapshotFile` are acted on
+(ledger peers and big ledger peers, below); `advertise` and `behindFirewall` are read and logged (`started.topology`), not
+acted on: there is no peer sharing yet (G1.4). `trustable` and the valencies are acted on, as the next section says.
+
+- **`useLedgerAfterSlot`.** A number above 0: take peers from the ledger once the ledger's tip is at or past that slot;
+  `0`: always; below 0 or absent: never (`UseLedgerPeers`). The official Preview file has 119231973.
+- **`peerSnapshotFile`.** The big ledger peer snapshot, relative to the topology file's directory, read once at start when
+  ledger peers are on (`updateLedgerPeerSnapshot`, `cardano-node` `Run.hs`): a file that cannot be read is ignored with a
+  `ledgerPeers` event `snapshotIgnored`; a legacy (version 1, 2) file, a snapshot at the origin, of another network
+  (`NetworkMagic`) or older than `useLedgerAfterSlot` stops the node with a `ConfigError`. The snapshot is used for the
+  stake maps only while it is not older than the ledger's tip: the official Preview file is at slot 123.6 M, so a node whose
+  ledger is further ahead takes its peers from the ledger (event `ledgerPeers`, `source`).
 
 ### Peer selection
 
@@ -260,7 +269,21 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   `ActivePeers` 20, and for big ledger peers 15, 10, 5), read from the configuration file by these keys
   (`TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`,
   `TargetNumberOfKnownBigLedgerPeers`, `TargetNumberOfEstablishedBigLedgerPeers`, `TargetNumberOfActiveBigLedgerPeers`); a set
-  that breaks the reference's sanity rule (active <= established <= known, root <= known, and at most 100 active, 1000 established, 10000 known) is a `ConfigError`. Big ledger peers need ledger peers (G1.3) and are not used yet.
+  that breaks the reference's sanity rule (active <= established <= known, root <= known, and at most 100 active, 1000 established, 10000 known) is a `ConfigError`. The big ledger targets apply when `useLedgerAfterSlot` enables ledger peers; without them they are zero (there is nothing to draw from).
+- **Ledger peers and big ledger peers** (roadmap G1.3). A *ledger peer* is a relay registered by a stake pool; the node reads
+  them from the pool distribution of its ledger state (`nesPd`, with each pool's registered relays followed by the relays of
+  its pending re-registration), once the ledger is at the `useLedgerAfterSlot` slot, and draws them in proportion to the
+  square root of the pool's stake. The *big ledger peers* are the relays of the pools that hold the first 90% of the stake,
+  drawn in proportion to the stake itself, and are a population of their own in every set: their targets (15 known, 10
+  established, 5 active) and counters are separate, the ordinary counters leave them out, and the ordinary decisions do not
+  touch them. The stake maps are rebuilt every 1847 s (30 s while empty). A relay that is a name is resolved when the
+  connection is made, one that is an SRV name is not used (design D9), a pool whose relays do not decode is skipped with a
+  `ledgerPeers` event `poolSkipped`. Requests for big ledger peers and the promotions of big ledger peers to warm and hot are
+  off in the sensitive state; when the ledger turns `YoungEnough` the bootstrap peers that are not connected are forgotten
+  and the ordinary and big ledger peers are asked for at once. The gauges `cardano_node_metrics_peerSelection_*BigLedger*`,
+  `scarab_peer_selection_peers{origin}` (where the known peers came from), `scarab_peer_selection_targets{target}` (also the
+  three big ledger ones) and `scarab_ledger_peers_pools{map}` tell what the governor holds; `GET /connections` gives each
+  peer's `origin` (`Local`, `Public`, `Bootstrap`, `Ledger`, `BigLedger`, `Other`).
 - **Peer metrics and churn.** The feedback from the chain (roadmap G1.2). Each hot session reports the headers and blocks
   it delivers; two boards of 180 slots keep, per slot, the peer that was *first* (`PeerMetrics`, the reference's
   `PeerMetric`: the earliest arrival wins, the join-time correction `adjustAvg` is zero in the pinned release and is not
@@ -270,8 +293,9 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   local roots), then it sleeps 3300 s plus up to 600 s (fetch mode deadline) or 900 s plus up to 60 s (bulk sync) and runs a
   round. A round changes one target at a time, in the reference's order, and waits for the counters or a timeout: it lowers
   the active target by 20% (at least one), so that the governor demotes the least useful hot peers, restores it so that
-  others are promoted, then does the same for the established and the known sets (steps 7 to 12; the six steps for big ledger
-  peers are left out until there are any, G1.3). While the node is behind with bootstrap peers or in the other sync regime
+  others are promoted, then does the same for the established and the known sets (steps 7 to 12; steps 1 to 6 do the same for
+  the big ledger peers, and are part of a round only when ledger peers are on: otherwise their counters are zero and each
+  increase would wait out its timeout). While the node is behind with bootstrap peers or in the other sync regime
   the active targets follow the local roots' valency (`Regime`, design section 1.10). A change of regime during the sleep
   asks for the new regime's targets at once. The log events `peerSelectionChurn` and the `scarab_peer_selection_churn_*`
   metrics tell the rounds.
@@ -295,11 +319,11 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   connected) within 15 minutes or the node stops (`BootstrapPeersCriticalTimeout`). It also sets the fetch mode
   (`BulkSync` while behind, `Deadline` when caught up; logged as `fetchModeChanged`, gauge `scarab_fetch_mode`).
 - **Where to look.** The log events `peerSelectionTargets`, `peerSelectionRoots`, `peerSelectionPromote`,
-  `peerSelectionDemote`, `peerSelectionForget`, `peerSelectionSensitive`, `peerSelectionCounters`, `peerSelectionChurn`, `outboundConnections`,
+  `peerSelectionDemote`, `peerSelectionForget`, `peerSelectionSensitive`, `peerSelectionCounters`, `peerSelectionChurn`, `ledgerPeers`, `outboundConnections`,
   `gsmTransition` and `fetchModeChanged` (table in "Logging"); the gauges of "Peer selection (G1)" in "Metrics";
   `GET /connections` has a `peerSelection` object next to the connection table: `counters` (cold, warm, hot, known, root),
   `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin` and `failCount`.
-- **Not yet.** Ledger peers and big ledger peers (G1.3), peer sharing (G1.4), the Genesis hooks (G1.5), a
+- **Not yet.** Peer sharing (G1.4), the Genesis hooks (G1.5), a
   re-read of the topology on SIGHUP, SRV access points and duplex outbound connections ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
 
 ### Preview

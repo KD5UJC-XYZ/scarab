@@ -158,15 +158,18 @@ object GovernorState:
   ): OutboundConnectionsState =
     given Ordering[A] = view.state.peers.ordering
     val trustableRoots = view.state.localRoots.trustable
-    val establishedBootstrap = view.established.intersect(view.bootstrap)
+    // every established peer, the big ledger peers too (`EstablishedPeers.toSet`)
+    val established = view.established ++ view.big.established
+    val active = view.active ++ view.big.active
+    val establishedBootstrap = established.intersect(view.bootstrap)
     import OutboundConnectionsState.*
     mode match
       case AssociationMode.LocalRootsOnly =>
-        if view.established.subsetOf(trustableRoots) then TrustedStateWithExternalPeers
+        if established.subsetOf(trustableRoots) then TrustedStateWithExternalPeers
         else UntrustedState
       case AssociationMode.Unrestricted if view.state.sensitivity.useBootstrapPeers =>
-        if view.established.subsetOf(establishedBootstrap ++ trustableRoots) &&
-          view.active.exists(view.bootstrap)
+        if established.subsetOf(establishedBootstrap ++ trustableRoots) &&
+          active.exists(view.bootstrap)
         then TrustedStateWithExternalPeers
         else UntrustedState
       case AssociationMode.Unrestricted => UntrustedState
