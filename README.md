@@ -64,10 +64,14 @@ governor, Mithril import, a security review), is [docs/compatibility.md](docs/co
 
 ## In progress
 
-- **Haskell-shaped ledger state.** The node's state is being mirrored into the Haskell node's own types
-  (`NewEpochState`, `ExtLedgerState`, the hard-fork telescope), indexed by era so that a rule cannot
-  touch another era's data, and converted both ways losslessly on every real state we have. Next, the
-  rules move onto these types and our snapshots adopt the Haskell layout ([#82](https://github.com/KD5UJC-XYZ/scarab/issues/82)).
+- **Haskell-shaped ledger state.** The node's state is the Haskell node's own types (`NewEpochState`,
+  `ExtLedgerState`, the hard-fork telescope), indexed by era so that a rule cannot touch another era's
+  data. The era-indexed rules are the only rules and the ledger snapshot is the Haskell ledger-state
+  file plus a Scarab sidecar (step 2 of the mirror, done). Still open: the gaps that keep some
+  debug-query answers from being byte-equal to the reference, and the cost of the epoch boundary
+  ([#82](https://github.com/KD5UJC-XYZ/scarab/issues/82), [#131](https://github.com/KD5UJC-XYZ/scarab/issues/131)).
+- **P2P governor**: hot, warm and cold peers managed by targets, as `cardano-node` does; the design
+  is [docs/design/peer-selection.md](docs/design/peer-selection.md) ([#31](https://github.com/KD5UJC-XYZ/scarab/issues/31)).
 - **Mainnet**: a full validation of every mainnet block from genesis ([D6, #25](https://github.com/KD5UJC-XYZ/scarab/issues/25)).
 - **Ouroboros Leios** (CIP-164): design note and BLS12-381 voting primitives ([docs/leios.md](docs/leios.md)).
 

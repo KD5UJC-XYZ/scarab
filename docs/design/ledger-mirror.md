@@ -1,6 +1,6 @@
 # Ledger-state mirror, step 1
 
-**Status**: Historical. Done 2026-10-15 (stages S0 to S9; S6 folded into S4 and S5). This is the plan as approved; what was built, and every deviation, is in the CHANGELOG sections "ledger-state mirror, stage S0" to "S9". Decision: [ADR 0007](../adr/0007-era-indexed-state.md).
+**Status**: Historical. Done 2026-10-15 (stages S0 to S9; S6 folded into S4 and S5). The flat state, the `--mirror-check` flag and the conversion back (`fromMirror`) this plan describes were removed in step 2 (J2.9, [ledger-mirror-step2.md](ledger-mirror-step2.md)); read the type names below as those of the time. This is the plan as approved; what was built, and every deviation, is in the CHANGELOG sections "ledger-state mirror, stage S0" to "S9". Decision: [ADR 0007](../adr/0007-era-indexed-state.md).
 
 Produced by a Plan agent from (local working data) and the code on refactor/cleanup (fe66c6e0).
 Correction to the inventory: Haskell Preview snapshots on disk are `ledger/123932130` and `ledger/125366331` (not 120614390).

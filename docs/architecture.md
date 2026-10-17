@@ -22,7 +22,7 @@ enforced by sbt: a cycle does not load.
 | `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
 | `legacy` | The frozen readers of the snapshot formats before the current one (V1 to V4, the flat node state and ledger state of their time, the binary `Codec` they were written with), the upgrade of that state to the live one, and the one-way conversion of the flat state to the mirror with the seeding of the old rules' bookkeeping (`Mirroring`, `LegacySeed`); the migration is its only caller, and it is deleted at its sunset (ADR 0006) | Pure |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
-| `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
+| `node` | Peer, follower, header gate, block rules (`MirrorRules`, with what they share in `NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
 | `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
 
@@ -45,7 +45,7 @@ Cycles that the old layout hid, and how they were cut (types moved down, nothing
 the header error enums (`HeaderError`, `EnvelopeError`, `TPraosError`, `OCertError`) and `Nonce`,
 `PoolDistribution`, `LedgerView` live in `ledger` because `NodeError` (also in `ledger`) and the
 rules use them; `ExUnits` lives in `plutus`; `Rational` in `codec`; `Prepared` (a decoded block)
-in `ledger`; `MirrorState` and the `BlockRules` interface in `consensus`, while `NodeRules`, which
+in `ledger`; `MirrorState` and the `BlockRules` interface in `consensus`, while `MirrorRules`, which
 needs the `UtxoStore`, stays in `node`.
 
 ## Layers
@@ -65,7 +65,7 @@ several modules).
 | Consensus | `consensus/Praos.scala`, `TPraos.scala`, `OCertRules.scala`, `ByronRules.scala` | VRF leader check, KES, opcert counters, nonce evolution; TPraos adds the overlay schedule, two VRF certificates and the 512-bit leader value |
 | Byron ledger | `ledger/byron/` | Pure: addresses and roots, transactions and witnesses, the UTxO rules and fee policy, delegation certificates, the update system, the body proofs and the Byron to Shelley transition epoch |
 | Ledger | `ledger/` | Pure functions: transaction decoding, UTXOW/UTXO/CERTS rules, deposits, withdrawals, EPOCH (rewards, SNAP, POOLREAP, dormant epochs), and from Conway GOV, RATIFY, ENACT and the DRep pulser |
-| Block rule | `LedgerRules.scala` (`NodeRules`) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
+| Block rule | `MirrorRules.scala` (the rules), `LedgerRules.scala` (`NodeRules`: block decoding, the Byron step, the events between two states) | Tick ledger and Praos to the block's epoch, validate the header, apply the body |
 | Plutus | `plutus/`, `ledger/Phase2.scala`, `ScriptContexts.scala`, `ScriptIntegrity.scala` | `ScriptEvaluator[F]` algebra; Scalus interpreter; our own script contexts and cost-model selection |
 | UTxO set | `ledger/Utxo.scala`, `storage/UtxoStore.scala`, `RocksUtxoStore.scala` | The UTxO set behind `UtxoStore[F]` (memory or RocksDB); the ledger state holds a pure view |
 | Storage | `storage/` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `NetworkIdentityFile`, derived `Codec`s |
@@ -87,7 +87,7 @@ Capabilities are traits over `F[_]`; interpreters are chosen in `Main`:
 | `Peer[F]` | intersect, next header, fetch blocks | node-to-node over TCP or over any negotiated connection (pipelined), scripted peers in tests |
 | `HeaderRules[S, H]`, `HeaderCheck[F]` | forecast the ledger view and validate a header against it; per session, validate each batch before it is fetched | `NodeHeaderRules` (pure), `HeaderCheck.forChain` (the gate over the node's chain), `HeaderCheck.none` |
 | `ConnectionManager[F]` | one connection per peer address, limits, accounting | `ConnectionManager.create` (a `Ref` table over the pure `ConnectionState`) |
-| `BlockRules[F, S]` | validate and apply one block to a state | `NodeRules` (full ledger), bootstrap mode (headers only) |
+| `BlockRules[F, S]` | validate and apply one block to a state | `MirrorRules` (the era-indexed rules on the mirror state) |
 | `UtxoStore[F]` | read, write, checkpoint, restore the UTxO set | `MemoryUtxoStore`, `RocksUtxoStore` |
 | `ImmutableStore[F]` | append-only raw blocks older than k | `FileImmutableStore` |
 | `VolatileStore[F]` | crash-safe log of the volatile chain's updates | `VolatileStore.open` (file log) |
@@ -105,7 +105,7 @@ Purity discipline: rules (header checks, ledger, ratification, mempool state, ch
 Plutus context construction) are pure functions or values; `F` appears only where the world is
 touched (network, disk, clock, concurrency). The deliberate performance caches are instances, not
 globals (roadmap M3): `VerificationCache` (created in a `Resource` in `Main`, read by the rules through
-the pure `Verdicts` interface in `PraosConfig.verdicts` and `TxRules.Env.verdicts`), the `PlutusCases`
+the pure `Verdicts` interface in `PraosConfig.verdicts` and `TxEnv.verdicts`), the `PlutusCases`
 recorder (tooling, passed as the phase-2 observer) and the RocksDB handle reference (private to its
 store). Rules run without a cache use `Verdicts.Direct`.
 
@@ -135,7 +135,7 @@ peer(s) --ChainSync headers--> candidate chain (per session)
         --BlockFetch ranges--> Verification.warm (parallel Ed25519 / opcert / KES / VRF verdicts)
                                       |
                                       v
-                    NodeRules: tick ledger and Praos to the block's epoch
+                    MirrorRules: tick ledger and Praos to the block's epoch
                       -> header checks (VRF, KES, opcert, nonces, leader threshold)
                       -> body: decode once, fetch missing UTxO from the store,
                          UTXOW / UTXO / DELEGS / PPUP or Conway LEDGER, phase 2 (Plutus)
@@ -256,25 +256,24 @@ follower (no Docker); `EpochGeometrySuite` has the era-history properties.
 
 ## Ledger: Shelley to Babbage
 
-`NodeRules` applies the full ledger to every Shelley-based block; era behaviour follows the protocol
+`MirrorRules` applies the full ledger to every Shelley-based block, on the Haskell-shaped, era-indexed state (`ledger/rules/`; the flat rules and state of the first versions were removed in J2.9); era behaviour follows the protocol
 major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7, Conway 9).
 
 - **Decoding** (`ledger/Tx.scala`, `Scripts.scala`): transaction bodies of every era (keys 0-18),
   witness sets (vkey, bootstrap, native and Plutus scripts, datums, redeemers), outputs in legacy and
   map form (inline datums, reference scripts), certificates 0-6 (genesis delegation, MIR).
-- **Rules** (`ledger/PreConwayRules.scala`): UTXO (fee including the Alonzo execution-unit price,
+- **Rules** (`ledger/rules/ShelleyUtxo.scala`, `ShelleyLedger.scala`, `ShelleyCerts.scala`, `PreConway.scala`, with the checks shared with Conway in `ledger/TxChecks.scala`): UTXO (fee including the Alonzo execution-unit price,
   min-UTxO per era, validity interval, sizes, network ids, collateral), UTXOW (vkey and Byron
   bootstrap witnesses, native scripts, required signers, redeemers and datums, auxiliary data hash),
-  DELEGS (registration, delegation, pools, genesis delegation, MIR), PPUP (`PpupRules`). The fee size
+  DELEGS (registration, delegation, pools, genesis delegation, MIR), PPUP (`ledger/UpdateChecks.scala`). The fee size
   counts the array header, body, witnesses and auxiliary data, not the `is_valid` byte.
-- **Epoch boundary** (`ledger/rules/Epoch.scala`, `Snap.scala`, `Rewards.scala`, `Rupd.scala`; the flat `ledger/Epoch.scala` went with the old rules in J2.9): reward application (pre-Babbage prefilter against the
+- **Epoch boundary** (`ledger/rules/Epoch.scala`, `Snap.scala`, `Rewards.scala`, `Rupd.scala`): reward application (pre-Babbage prefilter against the
   accounts registered when the calculation started, so unclaimed rewards return to the reserves),
   MIR, SNAP with pointer-address stake, pool re-registration and retirement, parameter update
   adoption, and the reward update with `d`-dependent performance and the previous epoch's
   parameters. The ledger creates the reward update with the first block that arrives after
   `4k/f` slots into the epoch (the reward update is made by `Rupd` at the first such block and applied at the boundary): an epoch with no such block pays no rewards and keeps its fee snapshot. The `set` snapshot is the pool distribution for the leader checks, so
-  `LeaderCheck.Threshold` replaces `Unchecked`; the node stops if the total supply ever differs
-  from the maximum supply at an epoch boundary.
+  `LeaderCheck.Threshold` replaces `Unchecked`. (The check that the supply is the maximum supply at every boundary went with the old rules; `BlockFailure.SupplyInvariant` is no longer raised.)
 - **Plutus (phase 2)**: every redeemer is evaluated (`ledger/Phase2.scala`) and the block's
   `is_valid` flag must equal the verdict, in both directions (`ValidationTagMismatch`); a valid
   transaction is applied and an invalid one consumes its collateral. See "Plutus evaluation" below.
@@ -283,8 +282,6 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
 - **Conway** continues from the Babbage state through `Translate.toConway` (Conway parameters,
   committee and constitution from the Conway genesis, empty DRep state, pre-Conway update/MIR/pointer
   state dropped). The Conway rules are described in "Conway" below.
-- **Bootstrap mode** remains available (`NodeRules(..., bootstrap = true)`): headers only, with the
-  leader threshold reported as unchecked.
 - **Nonce windows** (verified on Preview): candidate nonce freezes `3k/f` before the epoch end
   through Babbage; Conway and the devnet use `4k/f`. TPraos overlay formulas follow cardano-ledger
   `classifyOverlaySlot` (`position = ceiling(s * d)`, active when `position mod floor(1/f) = 0`).
@@ -294,7 +291,7 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
 
 ## Conway
 
-`ledger/ConwayRules.scala` is the LEDGER rule for protocol versions 9 and later (Preview runs 11).
+`ledger/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala` and `ConwayTx.scala`) is the LEDGER rule for protocol versions 9 and later (Preview runs 11).
 For a phase-2 valid transaction it follows the ledger's order: treasury value and reference-script
 size checks, the withdrawals (key accounts must be delegated to a DRep from version 10; a withdrawal
 takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
@@ -366,7 +363,7 @@ forger.
   libraries that the JVM extracts to its temporary directory, and `ScalusEvaluatorSuite` evaluates a
   BLS pairing and an ECDSA verification (also run inside the Temurin 21 Docker image).
 - **Pure or effectful**: evaluation is a deterministic function of the request, so the ledger rules,
-  which are pure functions, take a `ScriptEvaluator[Id]` (`TxRules.Env.evaluator`, default
+  which are pure functions, take a `ScriptEvaluator[Id]` (`TxEnv.evaluator`, default
   `ScalusEvaluator.default`). The interpreter only memoises decoded scripts and machines per cost
   model. `ScalusEvaluator.suspended[F]` is the same interpreter in `F` (`Sync.interruptible`) for a
   node that wants evaluation off the main thread. The machine runs on a thread with a large stack.
@@ -383,7 +380,7 @@ forger.
   may use in each (language, protocol major), transcribed from plutus-ledger-api
   (`Common/Versions.hs`). `ScalusEvaluator` rejects a script that uses another builtin as a decode
   failure; `ScriptDecoder[F]` (same interpreter, shared cache) is the pure check the phase-1 rule
-  `PreConwayRules.scriptsWellFormed` uses from Babbage on for witness-set and output scripts.
+  `TxChecks.scriptsWellFormed` uses from Babbage on for witness-set and output scripts.
 - **Cost models**: per language from the protocol parameters in force. The genesis cost model is a
   map of named integers whose canonical order is the sorted name order, not the file order; the Conway
   genesis adds PlutusV3. A redeemer's declared units are its budget, the transaction total is bounded by
@@ -518,7 +515,7 @@ from the immutable (structurally shared) anchor state, so following does not pau
 **Recovery.** Snapshots are tried newest first. One that fails its checksum, decodes badly, has
 another schema or names an anchor missing from the immutable store is reported (`snapshotSkipped`)
 and the next older one is tried; with none usable the stored blocks are replayed from genesis. The
-stored blocks after the chosen snapshot are re-applied through the same `NodeRules` with no
+stored blocks after the chosen snapshot are re-applied through the same `MirrorRules` with no
 network, then ChainSync resumes with the replayed anchor as the intersection candidate.
 
 **Volatile blocks** (`<db>/volatile/<seq>.log`). The last `k` blocks are kept in memory with their
@@ -572,8 +569,8 @@ new identifier only at a version at which its layout changed, and `FileKind.curr
 | `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` |
 
 The layouts of the first three are the same in every version; the format version only says which
-build wrote the file. Format 3 is the snapshot as the Haskell ledger state plus a sidecar (see
-"Snapshot format"). The versions are a closed `enum FormatVersion` (a version this build does not
+build wrote the file. Formats 3 to 5 are the snapshot as the Haskell ledger state plus a sidecar (see
+"Snapshot format"; 4 and 5 changed the sidecar). The versions are a closed `enum FormatVersion` (a version this build does not
 know cannot be represented) and each kind of file is a `FileKind` with its history of identifiers.
 On open, `Migrate` (storage) runs a `Migration[F]` over the files of a kind: it reads the version of
 every file first (so an unknown version raises `StorageError.UnknownVersion` and nothing has been
@@ -594,7 +591,7 @@ geometry, the hard-fork configuration, the Byron parameters). Per file, atomical
 gets its header and checksum rewritten in memory (the payload is the same bytes), a version 2 file is
 decoded with the frozen V2 reader (`legacy.SnapshotV2`, the derived codecs of `legacy.NodeCodecs`, in
 the `legacy` module), brought to the live state (`legacy.Upgrade`), turned into
-the mirror and written as V3 under the same name. No block is replayed. A file of a version of the
+the mirror and written in the current format (5) under the same name. No block is replayed. A file of a version of the
 family that this build does not know refuses the whole run before any file is rewritten
 (`UnknownVersion`); a file that is corrupt, of another schema or that the mirror refuses is left as it
 is and reported (`snapshotRefused`), and `restore` skips it as it always skipped a snapshot it could
@@ -680,7 +677,7 @@ volatile chain. Without `--db` only the volatile chain can be served.
 
 **Mempool** (`mempool/`). `MempoolState` is pure: the transactions are kept in arrival order, and
 the invariant is that they apply in order to the ledger state at the tip through the real
-`TxRules` (phase 1, phase 2 and the Conway rules). `add` validates against the state after all held
+the ledger's `Ledger` rule (`ledger/rules/Ledger.scala`: phase 1, phase 2 and the Conway rules). `add` validates against the state after all held
 transactions, so a transaction may spend the output of one before it. Rejections are typed
 (`Malformed`, `AlreadyHeld`, `Ledger(failure)`, `Full`) and returned as values. `sync(ledger, slot)`
 runs on every new tip, rollback or fork switch, keeps what still applies and reports the rest;
@@ -795,7 +792,7 @@ block of that batch is fetched. The candidate chain of a session is thereby a ch
 headers (`HeaderChain`: the join point, the header state there and the header state after every
 header announced since, with rollbacks and pruning).
 
-**What is checked** (`NodeHeaderRules`, pure; the same functions `NodeRules` uses when it applies
+**What is checked** (`NodeHeaderRules`, pure; the same functions `MirrorRules` uses when it applies
 the block): the envelope (era for the epoch, protocol version, header and body size against the
 parameters), then for Praos the VRF key and proof, the leader threshold, the operational
 certificate and KES signature and the certificate counter, and for TPraos the overlay schedule, both
@@ -961,7 +958,7 @@ the Praos threshold (`Leadership`, the same check as for received headers). When
    number, slot, previous hash, cold key, VRF key, VRF result, body size and hash, operational certificate,
    the ledger's protocol version);
 3. evolves the KES key to the slot's period and signs the exact header body bytes;
-4. offers the block to `Follower.adoptForged`, which runs it through the node's own `NodeRules`, then commits it
+4. offers the block to `Follower.adoptForged`, which runs it through the node's own `MirrorRules`, then commits it
    through the same path as any block (persistence, the chain server, mempool synchronisation). A block built on
    a tip that has moved is `Lost`; one our rules refuse is `Invalid`, and the forger then retries without
    transactions.
@@ -992,7 +989,7 @@ the next epoch begins, an `adopted` line carries its `latencyMs`, and `GET /forg
 serves the counters per epoch and in total (the `pool` scenario reads it and asserts it against the log:
 forged and adopted counts equal, no block took more than five slots from its slot's start to adoption).
 
-Tests: `ForgeSuite` forges with real keys against the real `NodeRules` over a synthetic Conway ledger (blocks are
+Tests: `ForgeSuite` forges with real keys against the real `MirrorRules` over a synthetic Conway ledger (blocks are
 accepted, consecutive, counted for the pool, transactions leave the mempool, the KES key crosses period
 boundaries, an unregistered VRF key or a certificate outside its window never forges, lost and invalid
 adoption, body size accounting and a decode round trip), `KeyFilesSuite` loads a real `cardano-cli`
@@ -1018,7 +1015,7 @@ native library bundled for linux x86_64) are the interpreters. The ledger state 
   block number. The states of the last `k` blocks each hold one (persistent maps, shared structure),
   which is the DbChangelog: a rollback is dropping states, the store is never touched, and it only ever
   holds immutable state.
-- `resident`: the read set. `NodeRules` decodes the block once, collects the inputs, reference inputs
+- `resident`: the read set. `NodeRules.prepare` decodes the block once, collects the inputs, reference inputs
   and collateral of its transactions that neither the diff nor the block itself decides, and fetches
   them from the store before the pure rules run (`Utxo.missing`, `withResident`); afterwards the read
   set is dropped. The rules keep their shape: `state.utxo.get(in)`, `utxo -- inputs ++ created`.
@@ -1082,7 +1079,7 @@ selection, the pure rules, persisting.
   (multiplexer, KeepAlive, the pipelined ChainSync and BlockFetch producer) is opened outside and stays
   on the compute pool, as do the relay servers, the forger loop and the timer monitor. The replay of
   stored blocks and the resume of the volatile chain run within the pool too, and so does the
-  application of a block this node forged. `NodeRules` times `applyBlock` through `timed`.
+  application of a block this node forged. `MirrorRules` times `applyBlock` through `timed`.
 - Where the boundary is drawn matters. A first version moved each block's rules to a plain fixed
   thread pool and cost a third of the throughput; the second moved each block to a work-stealing pool
   and cost a fifth: every hand-off is a thread wake-up, and on a busy host each wake-up is a
