@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.consensus.FollowerEvents
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.Block
+import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
@@ -76,10 +76,10 @@ class ChainStorageSuite extends CatsEffectSuite:
   private def storageEvents(log: Ref[IO, Vector[StorageEvent]]): StorageEvents[IO] =
     e => log.update(_ :+ e)
 
-  private def config(every: Int) =
+  private def config(every: Int, keep: Int = 4) =
     ChainStorage.Config(
       snapshotPolicy = SnapshotPolicy.EverySlots(every),
-      keepSnapshots = 4,
+      keepSnapshots = keep,
       chunkSlots = 100,
       byronEpochSlots = geometry.byron.epochSlots,
       progressEvery = 100
@@ -103,6 +103,11 @@ class ChainStorageSuite extends CatsEffectSuite:
   ): IO[(Option[BlockRef], VolatileChain[MirrorState])] =
     runWith(dir, until, every, log, None).map((anchor, chain, _) => (anchor, chain))
 
+  /** A peer that announces the blocks up to `at` (exclusive), takes the last `back` of them back
+    * and announces them again.
+    */
+  private final case class Rollback(at: Int, back: Int)
+
   /** As [[run]], with the UTxO set in a store (`memory` or `rocksdb`) under the database directory;
     * the last component is the complete UTxO set at the end.
     */
@@ -111,7 +116,10 @@ class ChainStorageSuite extends CatsEffectSuite:
       until: Int,
       every: Int,
       log: Ref[IO, Vector[StorageEvent]],
-      store: Option[String]
+      store: Option[String],
+      keep: Int = 4,
+      migrate: Boolean = false,
+      rollback: Option[Rollback] = None
   ): IO[
     (
         Option[BlockRef],
@@ -152,12 +160,13 @@ class ChainStorageSuite extends CatsEffectSuite:
             ChainStorage
               .open[IO, MirrorState](
                 dir,
-                config(every),
+                config(every, keep),
                 rules,
                 setup.mirrorStart,
                 storageEvents(log),
                 backing,
-                _ => IO.unit
+                _ => IO.unit,
+                snapshotMigration = Option.when(migrate)(SnapshotMigration.toCurrent[IO])
               )
               .use { recovered =>
                 for
@@ -173,9 +182,19 @@ class ChainStorageSuite extends CatsEffectSuite:
                   queue <- Queue.unbounded[IO, SyncEvent]
                   resumeFrom = recovered.anchor
                     .fold(0)(a => headers.indexWhere(_.hash == a.hash) + 1)
-                  _ <- (resumeFrom until until).toList.traverse_(i =>
-                    queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
-                  )
+                  forward = (from: Int, to: Int) =>
+                    (from until to).toList.traverse_(i =>
+                      queue.offer(SyncEvent.RollForward(headers(i), ChainSync.Tip.Origin))
+                    )
+                  _ <- rollback match
+                    case None                     => forward(resumeFrom, until)
+                    case Some(Rollback(at, back)) =>
+                      // the peer announces blocks up to `at`, takes the last `back` of them
+                      // back, and announces them again
+                      forward(resumeFrom, at) *>
+                        queue.offer(
+                          SyncEvent.RollBackward(headers(at - back - 1).point, ChainSync.Tip.Origin)
+                        ) *> forward(at - back, until)
                   done <- Deferred[IO, Unit]
                   offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
                   bodies = headers.map(_.hash).zip(raws).toMap
@@ -778,4 +797,165 @@ class ChainStorageSuite extends CatsEffectSuite:
     assert(NetworkIdentity.parse("f", "garbage").isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("magic", "magick")).isLeft)
     assert(NetworkIdentity.parse("f", id.render.replace("v2", "v3")).isLeft)
+  }
+
+  // ---- databases the builds of the older snapshot formats wrote (#145) ----
+
+  /** A format the snapshot files were written in, with the writer of its time (the frozen ones of
+    * `legacy`, see [[OldSnapshotFiles]]) and the layout of the UTxO checkpoints beside it: the
+    * format-1 builds are the ones before K6 (2026-10-14), whose store keyed an output
+    * `txid ++ u32`.
+    */
+  private final case class OldFormat(
+      version: FormatVersion,
+      write: (ConsensusMirrorEnv, StateSnapshot[MirrorState]) => Array[Byte],
+      keysBeforeK6: Boolean
+  )
+
+  private val oldFormats: List[OldFormat] = List(
+    OldFormat(FormatVersion.V1, OldSnapshotFiles.v1, keysBeforeK6 = true),
+    OldFormat(FormatVersion.V2, OldSnapshotFiles.v2, keysBeforeK6 = false),
+    OldFormat(FormatVersion.V3, OldSnapshotFiles.v3, keysBeforeK6 = false),
+    OldFormat(FormatVersion.V4, OldSnapshotFiles.v4, keysBeforeK6 = false)
+  )
+
+  private val mirrorEnv = setup.mirrorEnv()
+
+  private def checkpointOf(dir: Path, snapshotFile: String): Path =
+    dir / "utxo" / "checkpoints" / snapshotFile.stripSuffix(".bin")
+
+  /** What the old builds left behind: the database `dir`, written to block `until` by this build
+    * with the UTxO set in RocksDB, its snapshot files then rewritten in `format` (and, for the
+    * builds before K6, its checkpoints keyed as they were). The `drop` newest snapshots (with their
+    * checkpoints) are deleted, so that the live store, which stays as it was at the end of the run,
+    * is ahead of the newest snapshot, as after a crash. Returns the anchors of the snapshots that
+    * are left, newest first.
+    */
+  private def oldDatabase(
+      dir: Path,
+      format: OldFormat,
+      until: Int,
+      every: Int,
+      keep: Int,
+      drop: Int
+  ): IO[List[BlockRef]] =
+    for
+      log <- events(dir)
+      _ <- runWith(dir, until, every, log, Some("rocksdb"), keep)
+      names <- snapshotsIn(dir).map(_.map(_.fileName.toString).sorted.reverse)
+      _ <- names.take(drop).traverse_ { n =>
+        files.delete(dir / "snapshots" / n) *>
+          IO(RocksUtxoStore.deleteTree(checkpointOf(dir, n).toNioPath))
+      }
+      kept = names.drop(drop)
+      anchors <- kept.traverse { n =>
+        val file = dir / "snapshots" / n
+        for
+          raw <- IO(JFiles.readAllBytes(file.toNioPath))
+          content = FileLedgerSnapshots.verified(raw).fold(e => fail(e.message), identity)
+          snapshot <- summon[SnapshotFormat[IO, MirrorState]]
+            .decode(content)
+            .map(_.fold(e => fail(e.message), identity))
+          _ <- IO(
+            JFiles.write(
+              file.toNioPath,
+              FileLedgerSnapshots.closed(format.write(mirrorEnv, snapshot))
+            )
+          )
+          _ <- IO.whenA(format.keysBeforeK6)(
+            IO(LegacyUtxoCheckpoint.rewrite(checkpointOf(dir, n).toNioPath))
+          )
+        yield snapshot.anchor.getOrElse(fail(s"$n is a snapshot of the origin"))
+      }
+    yield anchors
+
+  /** The database of [[oldDatabase]] opened by this build with the snapshot migration, and the
+    * chain continued to block `until`. The snapshots are migrated, the newest left is restored (at
+    * the immutable tip it had), the blocks between it and the end of the immutable store are
+    * replayed, each with the inputs it spends read from the restored store, and the state at the
+    * end is the one a replay without storage gives.
+    */
+  private def reopened(
+      dir: Path,
+      format: OldFormat,
+      left: List[BlockRef],
+      until: Int,
+      every: Int,
+      keep: Int,
+      rollback: Option[Rollback] = None
+  ): IO[Unit] =
+    val label = format.version.toString
+    for
+      log <- events(dir)
+      again <- runWith(
+        dir,
+        until,
+        every,
+        log,
+        Some("rocksdb"),
+        keep,
+        migrate = true,
+        rollback = rollback
+      )
+      seen <- log.get
+    yield
+      assertEquals(
+        seen.collect {
+          case StorageEvent.FormatMigrated(m) if m.kind == FileKind.SnapshotFile => m
+        }.toList,
+        List(Migrated(FileKind.SnapshotFile, format.version, FormatVersion.V5, left.size)),
+        s"$label: the snapshot files are migrated"
+      )
+      assertEquals(
+        seen.collect { case e: StorageEvent.SnapshotSkipped => e.name }.toList,
+        List.empty[String],
+        s"$label: no snapshot is skipped"
+      )
+      assertEquals(
+        seen.collect { case StorageEvent.SnapshotRestored(_, a) => a }.toList,
+        List(left.headOption),
+        s"$label: the newest snapshot left is restored"
+      )
+      val replayed =
+        seen.collectFirst { case StorageEvent.ReplayFinished(_, n, _) => n }.getOrElse(-1L)
+      assert(replayed > 0, s"$label: replayed $replayed blocks after the restore")
+      assertEquals(again._2.tip, headers(until - 1).point)
+      assertState(again._2.state, states(until), s"$label: the state")
+      assertEquals(again._3, states(until).utxo.toMap, s"$label: the UTxO set")
+
+  for format <- oldFormats do
+    test(
+      s"a database of snapshot format ${format.version} with UTxO checkpoints, its live store ahead of the snapshot, restores and replays"
+    ) {
+      tempDir.use { dir =>
+        for
+          left <- oldDatabase(dir, format, until = 600, every = 60, keep = 4, drop = 1)
+          _ <- IO(assert(left.size >= 2, s"snapshots left: ${left.size}"))
+          _ <- reopened(dir, format, left, until = 731, every = 120, keep = 4)
+        yield ()
+      }
+    }
+
+  test(
+    "a database of snapshot format V4 with many blocks, many checkpoints and a rollback restores and replays"
+  ) {
+    val format = oldFormats.last
+    tempDir.use { dir =>
+      for
+        left <- oldDatabase(dir, format, until = 700, every = 25, keep = 100, drop = 2)
+        _ <- IO(assert(left.size >= 15, s"checkpoints left: ${left.size}"))
+        checkpoints <- files.list(dir / "utxo" / "checkpoints").compile.count
+        _ <- IO(assertEquals(checkpoints, left.size.toLong))
+        // the peer takes three blocks back after the first 725 and announces them again
+        _ <- reopened(
+          dir,
+          format,
+          left,
+          until = 731,
+          every = 120,
+          keep = 100,
+          Some(Rollback(725, 3))
+        )
+      yield ()
+    }
   }

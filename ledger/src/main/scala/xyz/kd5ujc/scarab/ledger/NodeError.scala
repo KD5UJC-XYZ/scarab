@@ -52,6 +52,27 @@ final case class ValidationError(point: ChainSync.Point, failure: BlockFailure) 
   def reason: String = failure.reason
   def message: String = s"${Points.show(point)} rejected by $rule: $reason"
 
+/** Why a UTxO checkpoint of the RocksDB store cannot be restored by this build. */
+enum CheckpointProblem:
+  /** The keys are in two layouts (an older build, then this one, wrote to the same store): the
+    * entries of the old layout may have been spent since, so none can be trusted.
+    */
+  case MixedKeyLayouts
+
+  /** A key of the layout before the 34-byte key whose index does not fit the 16 bits of the current
+    * one.
+    */
+  case IndexTooLarge(index: Long)
+
+  /** A key of a length no layout of the store has. */
+  case UnknownKeyLength(length: Int)
+
+  def render: String = this match
+    case MixedKeyLayouts =>
+      "it holds keys of the 36-byte layout and of the 34-byte one together"
+    case IndexTooLarge(i)    => s"it holds an output index of $i, which the 34-byte key cannot hold"
+    case UnknownKeyLength(n) => s"it holds a key of $n bytes"
+
 /** Failures of the on-disk chain database. Raised by the storage algebras; IO exceptions are mapped
   * to [[Io]] at the file boundary only.
   */
@@ -84,6 +105,11 @@ enum StorageError extends NodeError:
     */
   case ForeignChain(firstBlockPredecessor: String, expectedPredecessor: String)
 
+  /** The UTxO checkpoint `dir` cannot be used. The snapshot it belongs to restores nothing safely:
+    * the state has to be replayed from the immutable chunks.
+    */
+  case UtxoCheckpoint(dir: String, problem: CheckpointProblem)
+
   def message: String = this match
     case Corrupt(w, r)            => s"corrupt $w: $r"
     case Io(w, r)                 => s"io $w: $r"
@@ -96,6 +122,8 @@ enum StorageError extends NodeError:
       s"the database belongs to another network: it was created for ${f.describe}, this node is configured for ${e.describe}; use the matching --genesis-dir or another --db"
     case ForeignChain(f, e) =>
       s"the database holds a chain whose first block names $f as its predecessor, the configured genesis requires $e; use the matching --genesis-dir or another --db"
+    case UtxoCheckpoint(d, p) =>
+      s"the UTxO checkpoint $d cannot be restored: ${p.render}; replay from the immutable chunks (stop the node, remove <db>/snapshots and <db>/utxo, start it again)"
 
 /** Why this node cannot (or did not) forge a block. [[NotLeader]] is the ordinary answer of most
   * slots; the others are real problems with the keys, the ledger view or the assembled block.

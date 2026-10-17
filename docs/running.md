@@ -140,6 +140,20 @@ Caveats:
   taken in the Shelley era of a chain that began in Byron, before Allegra, has no stash of the redeem
   outputs (a replay from the previous snapshot gives the reference's; the mainnet is the only network
   affected). Keep a copy of `<db>/snapshots/` to go back to an older build.
+- **The UTxO checkpoints beside the snapshots** (`<db>/utxo/checkpoints/<snapshot stem>`) are RocksDB
+  directories whose key is `txid ++ index` as a big-endian u16 (34 bytes, the Haskell node's) since K6
+  (2026-10-14). The snapshots of format 1 were written before it, with the key `txid ++ u32` (36 bytes):
+  the restore of such a checkpoint reads it and writes the live store (`<db>/utxo/live`) under the current
+  keys, a few seconds on a Preview-size set (the checkpoint is not changed, and each later checkpoint has the
+  current keys). Formats 2 to 4 need nothing. A checkpoint that holds both layouts, an output index above
+  65,535 or a key of another length is refused with `StorageError.UtxoCheckpoint` ("the UTxO checkpoint ...
+  cannot be restored ... replay from the immutable chunks"): stop the node, remove `<db>/snapshots` and
+  `<db>/utxo`, and start it again; it replays the immutable chunks from genesis. (Before this fix a format-1
+  database was restored over a store in which no output could be found, and the first block that spent a
+  stored output failed with `BadInputsUTxO`, #145. That build also wrote a shutdown snapshot and checkpoint
+  after the blocks it had applied, and that checkpoint holds both layouts: this build refuses it with the
+  error above. Removing that one snapshot file and its checkpoint directory, which are the newest, lets the
+  node restore the older ones; the snapshots before it are intact.)
 - The volatile blocks (the last `k`) are kept in `<db>/volatile/` and applied again on start
   (`volatileResumed`), and a graceful stop (SIGTERM, SIGINT, `--seconds`) writes a snapshot at the
   immutable tip (`shutdownSnapshot`): the next start replays no stored block and continues at the
@@ -155,6 +169,45 @@ Caveats:
   policy by "once the tip is this far past the previous snapshot" with no time limit (`--snapshot-every 1epochs` is
   the earlier default), and `--keep-snapshots` the number kept. The snapshot at a graceful stop is independent of
   both. Details and numbers: [performance.md](performance.md) section 13.
+
+**Checking an older database before a node is moved to this build.** Work on a copy; the original is
+never opened by the new build. With the node stopped (a running node's last chunk and volatile files are
+moving), `D` the database and `C` the copy, on the same file system as `D`:
+
+```sh
+mkdir -p "$C/volatile"
+cp -a "$D/network-identity" "$D/snapshots" "$D/utxo" "$C/"     # snapshots and every checkpoint
+cp -al "$D/immutable" "$C/immutable"                           # hard links: the chunks cost no space
+# the build rewrites the index files and may extend the newest chunk: those must be real copies
+newest=$(ls "$D/immutable" | grep chunk | sort | tail -n 2 | sed 's/\.chunk//')
+for c in $newest; do rm "$C/immutable/$c".{chunk,index}; cp "$D/immutable/$c".{chunk,index} "$C/immutable/"; done
+rm "$C/immutable/format"; cp "$D/immutable/format" "$C/immutable/format"
+```
+
+The space needed is that of `du -sh "$D/snapshots" "$D/utxo"` (`cp -a` keeps the hard links between the
+checkpoints' files, so it is what `du` counts once) plus, during the run, a snapshot and a checkpoint's new
+files (the live store is linked from the checkpoint, and the first snapshot written adds a file the size of
+one snapshot). Then run the build to be checked on the copy with the flags of the node, in a container the
+way the node runs (the replay takes place before any peer is contacted, so a peer that is never reached
+does not matter), and stop it when enough blocks have gone through:
+
+```sh
+docker run -d --name check-old-db ... follow --genesis-dir /config --peer <relay> --db /db --keep-snapshots 2000 > node.log
+until [ "$(grep -c '"event":"replayProgress"' node.log)" -ge 5 ] || grep -q '"event":"error"' node.log; do sleep 10; done
+docker stop -t 120 check-old-db                                 # a graceful stop writes a snapshot
+grep -E '"event":"(formatMigrated|snapshotRestored|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|shutdownSnapshot)"' node.log | cut -c1-300
+```
+
+What shows the database opens: `formatMigrated` with `"kind":"SnapshotFile"` and `"from"` the format of
+the snapshots (`"V4"` for a mainnet database written before J2.9) `"to":"V5"` and a `count` equal to the
+snapshot files; `snapshotRestored` with the `anchor` of the newest snapshot; `replayStarted` from that
+anchor; `replayProgress` lines whose `tip` moves past it, with `replayed` growing by the progress interval
+each time and no `"event":"error"` (a `ValidationError ... BadInputsUTxO` right after the restore is this
+bug); no `snapshotRefused`, no `snapshotSkipped`, no `UtxoCheckpoint` error; and, after the stop, a
+`snapshotWritten`/`shutdownSnapshot` at a block past the restored anchor. A replay from the newest
+snapshot of a mainnet follower that is a day behind covers some thousands of blocks, so
+`replayFinished` appears; for a database whose newest snapshot is older, five progress lines (the
+`replayed` counts) are enough. Remove the copy afterwards.
 
 ### Configuration and topology files
 

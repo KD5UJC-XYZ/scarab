@@ -9,8 +9,7 @@ import fs2.io.file.Path
 import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.atomic.AtomicReference
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.StorageError
-import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.{CheckpointProblem, StorageError, TxIn, TxOut}
 import org.rocksdb.{
   BlockBasedTableConfig,
   BloomFilter,
@@ -35,9 +34,14 @@ import scala.jdk.CollectionConverters.*
   * live database from the checkpoint of the snapshot it restored (or empties it), so a crash can
   * never leave the store ahead of the snapshot it is paired with.
   *
-  * Keys are `txid[32] | index u32 big-endian`; values are the output's CBOR (see
-  * [[UtxoStore.Coding]]). One reserved single-byte key holds the stamp, written in the same batch
-  * as the changes.
+  * Keys are `txid[32] | index u16 big-endian` (34 bytes, the Haskell node's UTxO-HD key); values
+  * are the output's CBOR (see [[UtxoStore.Coding]]). One reserved single-byte key holds the stamp,
+  * written in the same batch as the changes.
+  *
+  * Builds before K6 (2026-10-14, e7300826) wrote the index as a u32 (36-byte keys), and the
+  * snapshots of format 1 go with checkpoints of that layout. [[restore]] reads such a checkpoint
+  * and writes the live store in the current layout ([[RocksUtxoStore.rekeyInto]]); the checkpoint
+  * itself is not touched.
   */
 final class RocksUtxoStore[F[_]: Sync] private (
     dir: java.nio.file.Path,
@@ -191,17 +195,30 @@ final class RocksUtxoStore[F[_]: Sync] private (
     finally cp.close()
   }
 
-  def restore(source: Path): F[Boolean] = guard(source.toString) {
-    val from = source.toNioPath
-    if !Files.isDirectory(from) then false
-    else
-      db.getAndSet(null).close()
-      RocksUtxoStore.deleteTree(dir)
-      Files.createDirectories(dir)
-      RocksUtxoStore.cloneInto(from, dir)
-      db.set(RocksUtxoStore.open(dir, shared))
-      true
-  }
+  def restore(source: Path): F[Boolean] =
+    guard(source.toString) {
+      val from = source.toNioPath
+      if !Files.isDirectory(from) then Right(false)
+      else
+        db.getAndSet(null).close()
+        RocksUtxoStore.deleteTree(dir)
+        Files.createDirectories(dir)
+        val rebuilt: Either[CheckpointProblem, Boolean] =
+          if RocksUtxoStore.hasCurrentKeys(from) then
+            RocksUtxoStore.cloneInto(from, dir)
+            Right(true)
+          else RocksUtxoStore.rekeyInto(from, dir, shared).map(_ => true)
+        // A refused checkpoint leaves the store empty, not half written.
+        if rebuilt.isLeft then
+          RocksUtxoStore.deleteTree(dir)
+          Files.createDirectories(dir)
+        db.set(RocksUtxoStore.open(dir, shared))
+        rebuilt
+    }.flatMap {
+      case Right(found) => F.pure(found)
+      case Left(problem) =>
+        StorageError.UtxoCheckpoint(source.toString, problem).raise[F, Boolean]
+    }
 
   def reset: F[Unit] = guard(dir.toString) {
     db.getAndSet(null).close()
@@ -272,6 +289,95 @@ object RocksUtxoStore:
         else Files.copy(f, target, StandardCopyOption.REPLACE_EXISTING)
       }
     finally entries.close()
+
+  /** The length of a key of the layout before K6 (`txid[32] | index u32`), of the current one
+    * (`txid[32] | index u16`), and of the reserved stamp key.
+    */
+  private val LegacyKeyLength = 36
+  private val KeyLength = 34
+  private val StampKeyLength = 1
+
+  /** Whether the data keys of the checkpoint in `dir` are in the current layout, as far as its
+    * first and its last data key say (a store with no data key is). A store of the layout before K6
+    * has no key of 34 bytes, so either end tells it from the current one; [[rekeyInto]] looks at
+    * all of them before it trusts that.
+    */
+  private[storage] def hasCurrentKeys(dir: java.nio.file.Path): Boolean =
+    val options = new Options().setMaxOpenFiles(64)
+    val db = RocksDB.openReadOnly(options, dir.toString)
+    try
+      val it = db.newIterator()
+      try
+        it.seekToFirst()
+        while it.isValid && it.key().length == StampKeyLength do it.next()
+        val first = if it.isValid then Some(it.key().length) else None
+        it.seekToLast()
+        val last =
+          if it.isValid && it.key().length != StampKeyLength then Some(it.key().length) else None
+        (first ++ last).forall(_ == KeyLength)
+      finally it.close()
+    finally
+      db.close()
+      options.close()
+
+  /** The live database `dir` (empty) filled from the checkpoint `from`, whose keys are of the
+    * layout before K6 (`txid[32] | index u32`), in the current layout. The reserved stamp key is
+    * copied as it is. The checkpoint is read and not changed.
+    *
+    * Every key is looked at: one of 34 bytes means two builds have written to the checkpoint's
+    * store, and an entry of the old layout may have been spent by the later one (the delete went to
+    * the other key), so nothing is restored ([[CheckpointProblem.MixedKeyLayouts]]).
+    */
+  private[storage] def rekeyInto(
+      from: java.nio.file.Path,
+      dir: java.nio.file.Path,
+      shared: Shared
+  ): Either[CheckpointProblem, Unit] =
+    val BatchSize = 50000
+    val readOptions = new Options().setMaxOpenFiles(64)
+    val source = RocksDB.openReadOnly(readOptions, from.toString)
+    val target = open(dir, shared)
+    val writeOptions = new WriteOptions().setDisableWAL(true)
+    try
+      val it = source.newIterator()
+      val batch = new WriteBatch()
+      try
+        var inBatch = 0
+        var problem: Option[CheckpointProblem] = None
+        def flush(): Unit =
+          target.write(writeOptions, batch)
+          batch.clear()
+          inBatch = 0
+        it.seekToFirst()
+        while problem.isEmpty && it.isValid do
+          val key = it.key()
+          key.length match
+            case StampKeyLength => batch.put(key, it.value())
+            case LegacyKeyLength =>
+              val index = ((key(32) & 0xffL) << 24) | ((key(33) & 0xffL) << 16) |
+                ((key(34) & 0xffL) << 8) | (key(35) & 0xffL)
+              if index > 0xffffL then problem = Some(CheckpointProblem.IndexTooLarge(index))
+              else
+                val current = new Array[Byte](KeyLength)
+                System.arraycopy(key, 0, current, 0, 32)
+                current(32) = key(34)
+                current(33) = key(35)
+                batch.put(current, it.value())
+            case KeyLength => problem = Some(CheckpointProblem.MixedKeyLayouts)
+            case other     => problem = Some(CheckpointProblem.UnknownKeyLength(other))
+          inBatch += 1
+          if inBatch >= BatchSize then flush()
+          it.next()
+        if problem.isEmpty then flush()
+        problem.toLeft(())
+      finally
+        batch.close()
+        it.close()
+    finally
+      writeOptions.close()
+      target.close()
+      source.close()
+      readOptions.close()
 
   /** Open (or create) the store in `dir`. The caller decides what it contains by calling `restore`
     * or `reset` straight after; a database found in `dir` is otherwise used as it is.
