@@ -36,6 +36,7 @@ object Protocols:
   val BlockFetch = 3
   val TxSubmission2 = 4
   val KeepAlive = 8
+  val PeerSharing = 10
   val LocalChainSync = 5
   val LocalTxSubmission = 6
   val LocalStateQuery = 7
@@ -49,6 +50,7 @@ object Protocols:
     case BlockFetch        => "block-fetch"
     case TxSubmission2     => "tx-submission-2"
     case KeepAlive         => "keep-alive"
+    case PeerSharing       => "peer-sharing"
     case LocalChainSync    => "local-chain-sync"
     case LocalTxSubmission => "local-tx-submission"
     case LocalStateQuery   => "local-state-query"

@@ -43,7 +43,11 @@ final class WarmConnection[F[_], P] private[network] (
     val mux: Mux[F],
     role: Mux.Role,
     codec: ChainSync.PayloadCodec[P],
-    settings: NodeToNode.Settings
+    settings: NodeToNode.Settings,
+    /** The PeerSharing client, when both sides agreed to peer sharing (the established temperature,
+      * like KeepAlive); the governor asks through it.
+      */
+    val peerSharing: Option[PeerSharingClient[F]] = None
 ):
   /** Start the hot protocols as the initiator side of each. With `transactions` the node offers
     * those transactions over TxSubmission2 for the life of the resource.
@@ -69,7 +73,12 @@ object NodeToNode:
       mux: Mux.Config = Mux.Config(),
       chainSync: ChainSyncClient.Settings = ChainSyncClient.Settings(),
       blockFetch: BlockFetchClient.Settings = BlockFetchClient.Settings(),
-      keepAlive: KeepAliveClient.Settings = KeepAliveClient.Settings()
+      keepAlive: KeepAliveClient.Settings = KeepAliveClient.Settings(),
+      /** Take part in peer sharing: offered in the handshake; the connection does if the peer does
+        * too.
+        */
+      offerPeerSharing: Boolean = false,
+      peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings()
   )
 
   /** Connect over TCP, run the handshake and start the mini-protocols. `P` is the ChainSync header
@@ -124,7 +133,13 @@ object NodeToNode:
       settings: Settings = Settings(),
       serve: Option[ServerHandlers[F, P]] = None
   )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
-    val offers = Vector(14 -> Handshake.Data(magic, initiatorOnly = serve.isEmpty))
+    val offers = Vector(
+      14 -> Handshake.Data(
+        magic,
+        initiatorOnly = serve.isEmpty,
+        peerSharing = settings.offerPeerSharing
+      )
+    )
     for
       mux <- Mux.resource(
         bearer,
@@ -137,25 +152,43 @@ object NodeToNode:
           .flatMap(HandshakeClient.run(_, offers, settings.handshakeTimeout))
       )
       _ <- serve.filter(_ => !agreed.data.initiatorOnly).traverse_ { handlers =>
-        NodeToNodeServer.start(mux, handlers)
+        NodeToNodeServer.start(mux, handlers, peerSharing = agreed.data.peerSharing)
       }
-      warm <- warm(mux, settings.mux.role, agreed.version, codec, settings)
+      warm <- warm(
+        mux,
+        settings.mux.role,
+        agreed.version,
+        codec,
+        settings,
+        peerSharing = agreed.data.peerSharing
+      )
     yield warm
 
-  /** KeepAlive on an established multiplexer, as the initiator side: the warm temperature. It lives
-    * as long as the resource; closing it does not close the multiplexer.
+  /** KeepAlive on an established multiplexer, as the initiator side: the warm temperature. With
+    * `peerSharing` (both sides agreed to it) the PeerSharing client is there too, idle until asked.
+    * It lives as long as the resource; closing it does not close the multiplexer.
     */
   def warm[F[_]: Async, P](
       mux: Mux[F],
       role: Mux.Role,
       version: Int,
       codec: ChainSync.PayloadCodec[P],
-      settings: Settings = Settings()
+      settings: Settings = Settings(),
+      peerSharing: Boolean = false
   )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
     for
       keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
       _ <- KeepAliveClient.background(keepAliveChannel, mux, settings.keepAlive)
-    yield WarmConnection(version, mux, role, codec, settings)
+      sharing <- Resource.eval(
+        Option
+          .when(peerSharing)(())
+          .traverse(_ =>
+            mux
+              .channel(Protocols.PeerSharing, role)
+              .flatMap(PeerSharingClient(_, settings.peerSharing))
+          )
+      )
+    yield WarmConnection(version, mux, role, codec, settings, sharing)
 
   /** Our own clients (ChainSync, BlockFetch, KeepAlive and, with `transactions`, TxSubmission2) on
     * an established multiplexer, as the initiator side of each mini-protocol. A connection we
@@ -170,6 +203,7 @@ object NodeToNode:
       version: Int,
       codec: ChainSync.PayloadCodec[P],
       settings: Settings = Settings(),
-      transactions: Option[TxSubmissionClient.Source[F]] = None
+      transactions: Option[TxSubmissionClient.Source[F]] = None,
+      peerSharing: Boolean = false
   )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
-    warm(mux, role, version, codec, settings).flatMap(_.activate(transactions))
+    warm(mux, role, version, codec, settings, peerSharing).flatMap(_.activate(transactions))

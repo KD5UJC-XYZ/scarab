@@ -15,9 +15,17 @@ import scala.concurrent.duration.*
   * exactly when both sides allow a duplex connection (we then also run our clients on it).
   */
 object HandshakeServer:
-  /** The versions this node accepts, all with the same magic and no peer sharing, no query. */
-  def offers(magic: Long, duplex: Boolean): Vector[(Int, Handshake.Data)] =
-    Vector(14, 15).map(v => v -> Handshake.Data(magic, initiatorOnly = !duplex))
+  /** The versions this node accepts, all with the same magic and no query; `peerSharing` says
+    * whether we take part in peer sharing (the connection does if the peer does too).
+    */
+  def offers(
+      magic: Long,
+      duplex: Boolean,
+      peerSharing: Boolean = false
+  ): Vector[(Int, Handshake.Data)] =
+    Vector(14, 15).map(v =>
+      v -> Handshake.Data(magic, initiatorOnly = !duplex, peerSharing = peerSharing)
+    )
 
   /** The node-to-client versions this node accepts (no query). */
   def localOffers(magic: Long): Vector[(Int, Handshake.Data)] =
