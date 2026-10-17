@@ -145,22 +145,27 @@ def runs_dashboard():
     p.row("Logs")
     p.line((24, logs("Node log (without the sampled block lines)", '{' + SEL + ', event!="extended"}')), h=14)
     p.line(
-        (12, logs("Errors, exits and stack traces", '{' + SEL + ', event=~"error|exited|text"}')),
+        (12, logs("Errors, exits and stack traces", '{' + SEL + ', event=~"error|exited|text|snapshotRefused|snapshotFailed"}')),
         (12, logs("Epochs", '{' + SEL + ', event=~"epoch|epochValidated|eraTransition"}')), h=10)
     p.row("Node metrics (/metrics; runs started with --metrics-listen)")
     M = 'host=~"$host", container=~"$container"'
     p.line(
-        (6, stat("Synced (metrics)", PROM,
+        (5, stat("Synced (metrics)", PROM,
                  f'100 * max by (host, container) (cardano_node_metrics_slotNum_int{{{M}}}) '
                  f'/ max by (host, container) (scarab_peer_tip_slot{{{M}}})',
                  unit="percent", decimals=2,
                  thresholds=[{"color": "orange", "value": None}, {"color": "green", "value": 99.99}])),
-        (6, stat("Block (metrics)", PROM, f'max by (host, container) (cardano_node_metrics_blockNum_int{{{M}}})',
+        (5, stat("Block (metrics)", PROM, f'max by (host, container) (cardano_node_metrics_blockNum_int{{{M}}})',
                  decimals=0)),
-        (6, stat("Validation errors", PROM,
+        (5, stat("Validation errors", PROM,
                  f'sum by (host, container) (increase(scarab_validation_errors_total{{{M}}}[$__range]))',
                  decimals=0, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
-        (6, stat("Connections established", PROM,
+        # a snapshot the node could not write or refused (B29): the node keeps running and replays more at the
+        # next start, so nothing else shows it
+        (4, stat("Snapshots refused or failed", PROM,
+                 f'sum by (host, container) (increase(scarab_snapshot_problems_total{{{M}, kind=~"Refused|Failed"}}[$__range]))',
+                 decimals=0, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])),
+        (5, stat("Connections established", PROM,
                  f'sum by (host, container) (scarab_connections{{{M}, state="Established"}})', decimals=0)),
         h=5)
     p.line(

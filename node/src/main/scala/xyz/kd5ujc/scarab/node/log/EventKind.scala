@@ -128,7 +128,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case SnapshotRestored extends EventKind(Area.Storage, Severity.Info)
   case SnapshotWritten extends EventKind(Area.Storage, Severity.Info)
   case SnapshotFailed extends EventKind(Area.Storage, Severity.Error)
-  case SnapshotRefused extends EventKind(Area.Storage, Severity.Warning)
+  case SnapshotRefused extends EventKind(Area.Storage, Severity.Error)
   case ReplayStarted extends EventKind(Area.Storage, Severity.Info)
   case ReplayProgress extends EventKind(Area.Storage, Severity.Info)
   case ReplayFinished extends EventKind(Area.Storage, Severity.Info)

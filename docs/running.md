@@ -548,7 +548,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `snapshotRestored` | `Storage.SnapshotRestored` | Info | `file`, `anchor` |
 | `snapshotWritten` | `Storage.SnapshotWritten` | Info | `file`, `anchor`, `bytes`, `millis` |
 | `snapshotFailed` | `Storage.SnapshotFailed` | Error | `reason` |
-| `snapshotRefused` | `Storage.SnapshotRefused` | Warning | `file`, `anchor`, `reason` |
+| `snapshotRefused` | `Storage.SnapshotRefused` | Error | `file`, `anchor`, `reason` |
 | `replayStarted` | `Storage.ReplayStarted` | Info | `from`, `immutableTip` |
 | `replayProgress` | `Storage.ReplayProgress` | Info | `tip`, `replayed`, `millis` |
 | `replayFinished` | `Storage.ReplayFinished` | Info | `tip`, `replayed`, `millis` |

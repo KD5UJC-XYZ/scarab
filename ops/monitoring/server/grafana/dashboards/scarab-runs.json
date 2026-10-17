@@ -697,7 +697,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{host=~\"$host\", container=~\"$container\", event=~\"error|exited|text\"}",
+          "expr": "{host=~\"$host\", container=~\"$container\", event=~\"error|exited|text|snapshotRefused|snapshotFailed\"}",
           "refId": "A"
         }
       ],
@@ -823,7 +823,7 @@
       "id": 16,
       "gridPos": {
         "h": 5,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 48
       }
@@ -884,8 +884,8 @@
       "id": 17,
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 5,
         "y": 48
       }
     },
@@ -949,8 +949,73 @@
       "id": 18,
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 10,
+        "y": 48
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Snapshots refused or failed",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (host, container) (increase(scarab_snapshot_problems_total{host=~\"$host\", container=~\"$container\", kind=~\"Refused|Failed\"}[$__range]))",
+          "legendFormat": "{{host}} {{container}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "id": 19,
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 15,
         "y": 48
       }
     },
@@ -1007,11 +1072,11 @@
         "justifyMode": "auto",
         "orientation": "horizontal"
       },
-      "id": 19,
+      "id": 20,
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 18,
+        "w": 5,
+        "x": 19,
         "y": 48
       }
     },
@@ -1059,7 +1124,7 @@
           "sort": "desc"
         }
       },
-      "id": 20,
+      "id": 21,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1120,7 +1185,7 @@
           "sort": "desc"
         }
       },
-      "id": 21,
+      "id": 22,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1181,7 +1246,7 @@
           "sort": "desc"
         }
       },
-      "id": 22,
+      "id": 23,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1233,7 +1298,7 @@
           "sort": "desc"
         }
       },
-      "id": 23,
+      "id": 24,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1285,7 +1350,7 @@
           "sort": "desc"
         }
       },
-      "id": 24,
+      "id": 25,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1346,7 +1411,7 @@
           "sort": "desc"
         }
       },
-      "id": 25,
+      "id": 26,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1357,7 +1422,7 @@
     {
       "type": "row",
       "title": "Hosts and containers",
-      "id": 26,
+      "id": 27,
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1410,7 +1475,7 @@
           "sort": "desc"
         }
       },
-      "id": 27,
+      "id": 28,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1462,7 +1527,7 @@
           "sort": "desc"
         }
       },
-      "id": 28,
+      "id": 29,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1514,7 +1579,7 @@
           "sort": "desc"
         }
       },
-      "id": 29,
+      "id": 30,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1566,7 +1631,7 @@
           "sort": "desc"
         }
       },
-      "id": 30,
+      "id": 31,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1618,7 +1683,7 @@
           "sort": "desc"
         }
       },
-      "id": 31,
+      "id": 32,
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -1670,7 +1735,7 @@
           "sort": "desc"
         }
       },
-      "id": 32,
+      "id": 33,
       "gridPos": {
         "h": 8,
         "w": 8,
