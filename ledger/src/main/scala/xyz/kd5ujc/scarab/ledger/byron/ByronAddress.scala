@@ -71,9 +71,20 @@ final case class ByronAddress(
     attributes: Bytes,
     addrType: Int,
     networkMagic: Option[Long],
-    unknownAttributesLength: Int
+    unknownAttributesLength: Int,
+    derivationPathLength: Int
 ):
   def isRedeem: Boolean = addrType == ByronAddress.Redeem
+
+  /** `bootstrapAddressAttrsSize` (`Cardano/Ledger/Address.hs:334`): the derivation path and the
+    * attributes the ledger does not interpret, of which an output may carry 64 bytes.
+    */
+  def attributesSize: Int = derivationPathLength + unknownAttributesLength
+
+  /** `getNetwork` of a bootstrap address (`Cardano/Ledger/Address.hs:175`): the main network (1) if
+    * the address carries no network magic, the test network (0) if it does.
+    */
+  def network: Int = if networkMagic.isEmpty then 1 else 0
 
   /** The root `blake2b-224(sha3-256([type, [type, key], attributes]))` of an address that is spent
     * by `key` (64 bytes for a verification key, 32 for a redeem key).
@@ -132,13 +143,18 @@ object ByronAddress:
           .filterOrElse(_ < (BigInt(1) << 32), "network magic out of range")
           .map(_.toLong)
       }
+      // the derivation path is a byte string, itself the content of the attribute's byte string
+      derivationPath <- fields.find(_._1 == 1).traverse { (_, v) =>
+        Cbor.decode(v, limits).flatMap(CborRead.bytes(_, "derivation path")).map(_.size)
+      }
     yield ByronAddress(
       raw,
       addrRoot,
       parts(1).original,
       ty,
       magic,
-      unknownLength(fields, Set(1, 2))
+      unknownLength(fields, Set(1, 2)),
+      derivationPath.getOrElse(0)
     )
 
   /** The address that `key` spends (a 64-byte extended key for `VerKey`, 32 bytes for `Redeem`) on

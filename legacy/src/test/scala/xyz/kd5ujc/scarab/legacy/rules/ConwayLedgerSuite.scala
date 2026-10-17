@@ -79,17 +79,17 @@ class ConwayLedgerSuite extends FunSuite:
     case Refused(failure: LedgerFailure)
     case Broken(why: String)
 
-  private def newSide(s: flat.LedgerState, t: Tx, ctx: TxEnv): Out =
+  /** The rules on one transaction: LEDGER, or, with `block`, LEDGERS on a block of that one. */
+  private def newSide(s: flat.LedgerState, t: Tx, ctx: TxEnv, block: Boolean): Out =
     run(mirror.to[Conway](at, s)) match
       case Left(e) => Out.Broken(s"to the mirror: ${e.show}")
       case Right(image) =>
         val nes = image.value.nes
-        val result = Sts(Ledger)(
-          globals,
-          LedgerEnv(ctx, nes.es.chainAccount.treasury),
-          Counted(nes.es.ls, s.plutus),
-          t
-        )
+        val start = Counted(nes.es.ls, s.plutus)
+        val treasury = nes.es.chainAccount.treasury
+        val result =
+          if block then Sts(Ledgers)(globals, LedgersEnv(ctx, treasury), start, Vector(t))
+          else Sts(Ledger)(globals, LedgerEnv(ctx, treasury), start, t)
         result match
           case Left(f)      => Out.Refused(f)
           case Right(after) =>
@@ -122,8 +122,13 @@ class ConwayLedgerSuite extends FunSuite:
     }))
 
   /** The rules on one transaction. */
-  private def agree(s: flat.LedgerState, t: Tx, ctx: TxEnv = TestLedger.env): Out =
-    newSide(s, t, ctx)
+  private def agree(
+      s: flat.LedgerState,
+      t: Tx,
+      ctx: TxEnv = TestLedger.env,
+      block: Boolean = false
+  ): Out =
+    newSide(s, t, ctx, block)
 
   private def accepted(s: flat.LedgerState, t: Tx): flat.LedgerState = agree(s, t) match
     case Out.Accepted(next) => next
@@ -839,9 +844,15 @@ class ConwayLedgerSuite extends FunSuite:
     assertEquals(HardFork.populateVRFKeyHashes(before).vrfKeyHashes, after.vrfKeyHashes)
   }
 
-  test(
-    "Plutus V3: the verdict of the scripts must equal is_valid; a failed one pays its collateral"
-  ) {
+  /** A Plutus V3 transaction that spends an output its script locks, with one collateral input and,
+    * if given, a withdrawal of nothing from `withdrawal`. The verdict of the evaluator is the
+    * test's; the state holds the account of `alice` (a key credential delegated to a DRep, as the
+    * withdrawal of a key credential needs from protocol version 10) with an empty balance.
+    */
+  private final class ScriptCase(
+      pp: node.ProtocolParams,
+      withdrawal: Option[RewardAccount]
+  ):
     val plutus = Script.plutus(ScriptKind.PlutusV3, Bytes(Vector.fill(10)(7)))
     val scriptAddress =
       node.Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
@@ -851,8 +862,12 @@ class ConwayLedgerSuite extends FunSuite:
       .copy(datum = Datum.Hash(Blake2b.hash256.hash(datum)))
     val collateralIn = txIn(2)
     val lockedIn = txIn(3)
-    val s = base(
-      Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked)
+    val state: flat.LedgerState = base(
+      Vector(collateralIn -> out(alice.address(), 100 * ada), lockedIn -> locked) ++
+        // more outputs of alice, for a transaction with several collateral inputs
+        (41 to 43).map(i => txIn(i) -> out(alice.address(), 10 * ada)),
+      accounts = Map(alice.credential -> Account(0, 2 * ada, None, Some(NodeDRep.AlwaysAbstain))),
+      pp = pp
     )
     val units = ExUnits(1000, 1000000)
     val wits = Witnesses(
@@ -869,44 +884,238 @@ class ConwayLedgerSuite extends FunSuite:
       ),
       datumsRaw = Some(Bytes(Vector(0x81, 0x01).map(_.toByte)))
     )
-    val fee = BigInt(100 + 100) + (pparams.priceMem * Rational(1000) +
-      pparams.priceSteps * Rational(1000000)).ceil
-    def bodyWith(hash: Option[Bytes]) =
+    val fee = BigInt(100 + 100) + (pp.priceMem * Rational(1000) +
+      pp.priceSteps * Rational(1000000)).ceil
+
+    def bodyWith(
+        hash: Option[Bytes],
+        collateral: Vector[node.TxIn] = Vector(collateralIn),
+        collateralReturn: Option[node.TxOut] = None,
+        outputs: Option[Vector[node.TxOut]] = None
+    ): node.TxBody =
       body(
         "v3",
         Vector(lockedIn),
-        Vector(out(bob.address(), 50 * ada - fee)),
+        outputs.getOrElse(Vector(out(bob.address(), 50 * ada - fee))),
         fee,
-        collateral = Vector(collateralIn),
+        withdrawals = withdrawal.map(_ -> BigInt(0)).toVector,
+        collateral = collateral,
+        collateralReturn = collateralReturn,
         scriptDataHash = hash
       )
+
     val hash = ScriptIntegrity.hash(
       tx(bodyWith(None), Vector(alice), wits),
-      pparams,
+      pp,
       Set(ScriptKind.PlutusV3)
     )
+
     def ctx(succeeds: Boolean) =
       TestLedger.env.copy(
         evaluator = scripted(succeeds),
         decoder = xyz.kd5ujc.scarab.plutus.ScriptDecoder.lenient
       )
-    def attempt(succeeds: Boolean, isValid: Boolean) =
-      agree(s, tx(bodyWith(hash), Vector(alice), wits, isValid = isValid), ctx(succeeds))
-    attempt(succeeds = true, isValid = true) match
+
+    def attempt(succeeds: Boolean, isValid: Boolean, block: Boolean = false): Out =
+      attemptWith(succeeds, isValid, bodyWith(hash), block)
+
+    def attemptWith(
+        succeeds: Boolean,
+        isValid: Boolean,
+        b: node.TxBody,
+        block: Boolean = false
+    ): Out =
+      // the integrity hash covers the witnesses, not the body: the same one serves any body
+      agree(state, tx(b, Vector(alice), wits, isValid = isValid), ctx(succeeds), block)
+
+  test(
+    "Plutus V3: the verdict of the scripts must equal is_valid; a failed one pays its collateral"
+  ) {
+    val c = ScriptCase(pparams, withdrawal = None)
+    c.attempt(succeeds = true, isValid = true) match
       case Out.Accepted(next) =>
         assertEquals((next.plutus.succeeded, next.plutus.failed), (1L, 0L))
-        assert(!next.utxo.contains(lockedIn))
+        assert(!next.utxo.contains(c.lockedIn))
       case other => fail(s"expected the valid transaction to be accepted: $other")
-    attempt(succeeds = false, isValid = false) match
+    c.attempt(succeeds = false, isValid = false) match
       case Out.Accepted(next) =>
         // the collateral is taken, what the script locks stays
-        assert(!next.utxo.contains(collateralIn) && next.utxo.contains(lockedIn))
+        assert(!next.utxo.contains(c.collateralIn) && next.utxo.contains(c.lockedIn))
         assertEquals(next.plutus.failed, 1L)
         assertEquals(next.fees, 100 * ada)
       case other => fail(s"expected the invalid transaction to take its collateral: $other")
     // a verdict that is not the tag's is refused, as the node refuses it
     for (succeeds, isValid) <- Vector((false, true), (true, false)) do
-      attempt(succeeds, isValid) match
+      c.attempt(succeeds, isValid) match
         case Out.Refused(_) => ()
         case other          => fail(s"expected a refusal for $succeeds / $isValid: $other")
+  }
+
+  // The withdrawal accounts of a transaction are of the network of the ledger, whichever validity
+  // tag the transaction has (`validateWrongNetworkWithdrawal`, `Babbage/Rules/Utxo.hs:400`, in the
+  // rule UTXO that every transaction passes). The expected verdicts are those of that rule in the
+  // pinned reference; the refusals of the two tags are also taken from the reference node on the
+  // devnet (`ntccases.py`, `DevnetRefusedTxSuite`). Each case is run as a transaction (LEDGER) and
+  // as a block of it (LEDGERS).
+  for
+    protocol <- Vector(10, 11)
+    block <- Vector(false, true)
+  do
+    test(
+      s"the network of a withdrawal is checked for both validity tags (protocol $protocol, ${
+          if block then "a block" else "a transaction"
+        })"
+    ) {
+      val pp = pparams.copy(protocolMajor = protocol)
+      val here = Some(RewardAccount(0, alice.credential))
+      val there = Some(RewardAccount(1, alice.credential))
+      // a failed script, a transaction flagged invalid: with an account of the network the
+      // collateral is taken, with one of another it is refused
+      val invalidHere = ScriptCase(pp, here)
+      invalidHere.attempt(succeeds = false, isValid = false, block) match
+        case Out.Accepted(next) =>
+          assert(
+            !next.utxo.contains(invalidHere.collateralIn) &&
+              next.utxo.contains(invalidHere.lockedIn)
+          )
+          assertEquals((next.plutus.failed, next.fees), (1L, 100 * ada))
+        case other => fail(s"expected the collateral to be taken: $other")
+      ScriptCase(pp, there).attempt(succeeds = false, isValid = false, block) match
+        case Out.Refused(LedgerFailure.Rejected(_, f)) =>
+          assertEquals(f.ruleName, "WrongNetworkWithdrawal")
+        case other => fail(s"expected the withdrawal of another network to be refused: $other")
+      // the same for a transaction whose scripts succeed: here LEDGER's own check of the
+      // withdrawals refuses it first (CERTS before protocol version 11, LEDGER from it)
+      val validHere = ScriptCase(pp, here)
+      validHere.attempt(succeeds = true, isValid = true, block) match
+        case Out.Accepted(next) => assert(!next.utxo.contains(validHere.lockedIn))
+        case other              => fail(s"expected the transaction to be accepted: $other")
+      ScriptCase(pp, there).attempt(succeeds = true, isValid = true, block) match
+        case Out.Refused(LedgerFailure.Rejected(_, f)) =>
+          assertEquals(
+            f.ruleName,
+            if protocol < 11 then "WithdrawalsNotInRewardsCERTS"
+            else "ConwayWithdrawalsMissingAccounts"
+          )
+        case other => fail(s"expected the withdrawal of another network to be refused: $other")
+    }
+
+  test("a transaction flagged invalid collects its collateral only if the rules of UTXO hold") {
+    val pp = pparams
+    val c = ScriptCase(pp, Some(RewardAccount(0, alice.credential)))
+    val ok = c.bodyWith(c.hash)
+    // the baseline: the collateral is taken
+    c.attemptWith(succeeds = false, isValid = false, ok) match
+      case Out.Accepted(next) => assert(!next.utxo.contains(c.collateralIn))
+      case other              => fail(s"expected the collateral to be taken: $other")
+    def refused(what: String, b: node.TxBody): String =
+      c.attemptWith(succeeds = false, isValid = false, b) match
+        case Out.Refused(LedgerFailure.Rejected(_, f)) => f.ruleName
+        case other                                     => fail(s"$what: expected a refusal: $other")
+    val otherNetwork = node.Address
+      .decode(Bytes(0x61.toByte +: alice.hash.value))
+      .fold(e => fail(e), identity)
+    // a returned collateral output on another network, a collateral input that does not exist,
+    // more collateral inputs than allowed (three), outputs that do not balance
+    assertEquals(
+      refused(
+        "collateral return",
+        c.bodyWith(c.hash, collateralReturn = Some(out(otherNetwork, 90 * ada)))
+      ),
+      "WrongNetwork"
+    )
+    assertEquals(
+      refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))),
+      "BadInputsUTxO"
+    )
+    assertEquals(
+      refused(
+        "many collateral",
+        c.bodyWith(c.hash, collateral = Vector(c.collateralIn, txIn(41), txIn(42), txIn(43)))
+      ),
+      "TooManyCollateralInputs"
+    )
+    assertEquals(
+      refused("balance", c.bodyWith(c.hash, outputs = Some(Vector(out(bob.address(), 49 * ada))))),
+      "ValueNotConservedUTxO"
+    )
+  }
+
+  test("collateral inputs exist and are not too many, whether or not there are redeemers") {
+    val s = base(fundedBy(alice))
+    def withCollateral(collateral: Vector[node.TxIn]) =
+      tx(
+        body(
+          "coll",
+          Vector(coinIn),
+          Vector(out(alice.baseAddress(alice), 10000 * ada - 200)),
+          200,
+          collateral = collateral
+        ),
+        Vector(alice)
+      )
+    // no redeemers: the collateral is not looked at by the fee rule, but `allInputs` holds it
+    assertEquals(refusedWith(s, withCollateral(Vector(txIn(40)))), "BadInputsUTxO")
+    assertEquals(
+      refusedWith(s, withCollateral(Vector(coinIn, txIn(40), txIn(41), txIn(42)))),
+      "BadInputsUTxO"
+    )
+    assertEquals(
+      refusedWith(
+        base(
+          Vector(coinIn, txIn(2), txIn(3), txIn(4))
+            .map(_ -> out(alice.baseAddress(alice), 10000 * ada))
+        ),
+        withCollateral(Vector(coinIn, txIn(2), txIn(3), txIn(4)))
+      ),
+      "TooManyCollateralInputs"
+    )
+    accepted(s, withCollateral(Vector(coinIn)))
+  }
+
+  test("an output with a bootstrap address: its attributes and its network") {
+    val s = base(fundedBy(alice))
+    val key64 = Bytes(Vector.fill(64)(1.toByte))
+    // an address with the attribute 5 (not interpreted) of `size` bytes, `magic` as attribute 2
+    def byron(size: Int, magic: Option[Long]) =
+      import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronCbor}
+      if size == 0 then ByronAddress.make(ByronAddress.VerKey, key64, magic)
+      else
+        val attributes = ByronCbor.concat(
+          ByronCbor.of(0xa2, 0x02),
+          ByronCbor.bytes(ByronCbor.uint(magic.getOrElse(0L))),
+          ByronCbor.of(0x05),
+          ByronCbor.bytes(Bytes(Vector.fill(size)(2.toByte)))
+        )
+        val body = ByronCbor.concat(
+          ByronCbor.of(0x83),
+          ByronCbor.bytes(ByronAddress.rootOf(ByronAddress.VerKey, key64, attributes)),
+          attributes,
+          ByronCbor.uint(ByronAddress.VerKey)
+        )
+        ByronCbor.concat(
+          ByronCbor.of(0x82, 0xd8, 0x18),
+          ByronCbor.bytes(body),
+          ByronCbor.uint(ByronCbor.crc32(body))
+        )
+    def paying(raw: Bytes) =
+      val to = node.Address.decode(raw).fold(e => fail(e), identity)
+      tx(
+        body(
+          "byron",
+          Vector(coinIn),
+          Vector(out(to, 5 * ada), out(alice.baseAddress(alice), 10000 * ada - 5 * ada - 200)),
+          200
+        ),
+        Vector(alice)
+      )
+    // the ledger is on the test network (0): an address with a magic is of it, one without is not
+    accepted(s, paying(byron(0, Some(42))))
+    assertEquals(refusedWith(s, paying(byron(0, None))), "WrongNetwork")
+    // 64 bytes of attributes are allowed, 65 are not
+    accepted(s, paying(byron(64, Some(42))))
+    assertEquals(
+      refusedWith(s, paying(byron(65, Some(42)))),
+      "OutputBootAddrAttrsTooBig"
+    )
   }

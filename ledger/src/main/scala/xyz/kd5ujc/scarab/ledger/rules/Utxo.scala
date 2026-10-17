@@ -26,6 +26,7 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure,
   Value
 }
+import xyz.kd5ujc.scarab.ledger.byron.ByronAddress
 import xyz.kd5ujc.scarab.ledger.state.*
 
 // UTXOW, UTXO and UTXOS for Conway (`Conway/Rules/Utxow.hs`, `Utxo.hs`, `Utxos.hs`, with the Alonzo
@@ -164,15 +165,48 @@ object Utxo
     Embed(Counted.plutus[UTxOState[Conway]], identity)
 
   /** The inputs of the transaction exist (`InputSetEmptyUTxO`, `BadInputsUTxO`): what annotating
-    * the transaction with its outputs needs, so UTXOW makes the same check first.
+    * the transaction with its outputs needs, so UTXOW makes the same check first. The inputs are
+    * the spent, the collateral and the reference inputs (`babbageAllInputsTxBodyF`,
+    * `Babbage/TxBody.hs:228`), whether or not the transaction has redeemers.
     */
   def resolvable(ann: StAnnTx): Either[LedgerFailure, Unit] =
     val body = ann.tx.body
     def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(ann.id, PredicateFailure.utxo(f)))
-    val missing = (body.inputs ++ body.referenceInputs).filterNot(ann.utxo.contains).toSet
+    val missing =
+      (body.inputs ++ body.collateral ++ body.referenceInputs).filterNot(ann.utxo.contains).toSet
     if body.inputs.isEmpty then refuse(UtxoFailure.InputSetEmpty)
     else if missing.nonEmpty then refuse(UtxoFailure.BadInputs(missing))
     else Right(())
+
+  /** The checks of the outputs that hold a bootstrap (Byron) address: its attributes are at most 64
+    * bytes (`validateOutputBootAddrAttrsTooBig`, `Babbage/Rules/Utxo.hs:392`) and its network is
+    * the one of the ledger (`validateWrongNetwork`, `Babbage/Rules/Utxo.hs:397`, which takes the
+    * network of a bootstrap address from its attributes, `getNetwork`). The Shelley addresses are
+    * checked by [[TxChecks.outputsOk]]; an address that does not parse is not checked here.
+    */
+  private[ledger] def bootstrapOutputs(
+      network: Int,
+      outs: Vector[TxOut]
+  ): Either[PredicateFailure, Unit] =
+    val bootstrap = outs.flatMap(out =>
+      out.address.kind match
+        case Address.Kind.Byron(_) => ByronAddress.decode(out.address.raw).toOption.map(out -> _)
+        case _                     => None
+    )
+    val big = bootstrap.collect { case (out, a) if a.attributesSize > 64 => out }
+    val wrong = bootstrap.collect { case (out, a) if a.network != network => out.address.raw }
+    for
+      _ <- Either.cond(
+        big.isEmpty,
+        (),
+        PredicateFailure.utxo(UtxoFailure.OutputBootAddrAttrsTooBig(big))
+      )
+      _ <- Either.cond(
+        wrong.isEmpty,
+        (),
+        PredicateFailure.utxo(UtxoFailure.WrongNetwork(network, wrong.toSet))
+      )
+    yield ()
 
   /** The checks of UTXO the node makes of a transaction, in the node's order, and the collateral of
     * the transaction (`TxChecks.Collateral`).
@@ -203,6 +237,7 @@ object Utxo
           RefScripts.refScriptsSize(ann.utxo, body)
         )
     val overlap = body.inputs.toSet.intersect(body.referenceInputs.toSet)
+    val wrongWithdrawals = body.withdrawals.map(_._1).filter(_.network != ctx.network).toSet
     for
       _ <- check(
         pp.protocolMajor >= 11 || overlap.isEmpty,
@@ -224,9 +259,24 @@ object Utxo
       _ <- TxChecks
         .outputsOk(pp, ctx, body.outputs ++ body.collateralReturn.toVector)
         .leftMap(LedgerFailure.Rejected(id, _))
+      _ <- bootstrapOutputs(ctx.network, body.outputs ++ body.collateralReturn.toVector)
+        .leftMap(LedgerFailure.Rejected(id, _))
+      // `validateWrongNetworkWithdrawal` (`Babbage/Rules/Utxo.hs:400`), regardless of the validity tag
+      _ <- check(
+        wrongWithdrawals.isEmpty,
+        UtxoFailure.WrongNetworkWithdrawal(ctx.network, wrongWithdrawals)
+      )
       _ <- check(
         wits.totalExUnits.fits(pp.maxTxExUnits),
         UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
+      )
+      // `validateTooManyCollateralInputs` (`Babbage/Rules/Utxo.hs:412`): whether or not there are
+      // redeemers, which is all `collateralChecks` looks at
+      _ <- check(
+        body.collateral.size <= pp.maxCollateralInputs,
+        UtxoFailure.TooManyCollateralInputs(
+          Mismatch(body.collateral.size, pp.maxCollateralInputs.toInt)
+        )
       )
       collateral <- TxChecks.collateralChecks(ann.utxo, pp, tx)
       withdrawn = body.withdrawals.map(_._2).sum
