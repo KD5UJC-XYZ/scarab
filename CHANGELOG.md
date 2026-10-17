@@ -41,6 +41,13 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   The `ntc` scenario runs `cardano-cli latest` queries, `transaction build` (change address, body equal to the
   reference's), sign and `submit` against the Scala socket (`ntccli`).
 
+### Fixed (differential harness, J2.4: the seed of the new side)
+- **A state the new side is seeded with holds the `mark` snapshot as it was taken, not as the accounts are.** The seed read
+  `selfDelegatedOwners`, their stake and `numDelegators` of `mark` off the accounts at the time of the seed; Haskell fixes them when the
+  snapshot is taken (`mkStakePoolSnapShot`, `State/SnapShots.hs:187-217`), and a pool retiring at the boundary had lost its owner by then,
+  so the first reward update after the seed (preprod epoch 165) paid nothing to two credentials. `MirrorEnv.snapshots: SnapshotBasis`
+  (`Accounts` for the comparisons, `AsTaken` for the seeds and the reseed after a divergence). Preprod from genesis, the fix: the old rules alone from genesis to the last Babbage block (slot 68,774,000), then the harness (sampling every 36th boundary, the tick stage at every block) over epochs 163 to 170 of the recording: 0 divergences, where the J2.4 run had 3 at epoch 165; the open item of design section 4 item 4 is closed.
+
 ### Added (observability: metrics during the replay, #95)
 - **`--metrics-listen` listens from the start of `follow`**, before the database is opened, so a start that replays
   many blocks is scrapeable while it replays (a mainnet replay was invisible for about 45 minutes). The collectors
