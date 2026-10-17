@@ -63,12 +63,10 @@ object UtxoStore:
     store.flushed.flatMap { at =>
       if utxo.stamp <= at && !utxo.diff.exists(_._2.stamp > at) then Sync[F].unit
       else
-        val changes = utxo.changesAfter(at).toVector
-        // The store is now at the state's newest change (stamps only grow along a chain).
-        store.write(
-          changes,
-          math.max(at, utxo.diff.valuesIterator.map(_.stamp).maxOption.getOrElse(at))
-        )
+        // One walk of the diff for both: the changes to write and the stamp the store is then at
+        // (the state's newest change; stamps only grow along a chain).
+        val (changes, newest) = utxo.changesSince(at)
+        store.write(changes, newest)
     }
 
   /** What a transaction can read from the UTxO set: inputs, reference inputs and collateral. */

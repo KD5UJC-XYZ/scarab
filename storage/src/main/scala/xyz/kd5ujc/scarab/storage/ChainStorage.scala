@@ -91,6 +91,11 @@ object ChainStorage:
   /** Stored blocks are prepared this many at a time during replay. */
   private val ReplayBatch = 64
 
+  /** Blocks that become immutable between two writes of the backing store (see
+    * `Persistence.advanceBacking`), except at a snapshot, which always brings it to its anchor.
+    */
+  private val AdvanceEvery = 128
+
   final case class Config(
       /** A snapshot is taken once the immutable tip is this many slots past the previous one. */
       snapshotEverySlots: BigInt,
@@ -225,6 +230,7 @@ object ChainStorage:
       written <- Resource.eval(Ref.of[F, Option[BlockRef]](start._1))
       sinceCollect <- Resource.eval(Ref.of[F, Int](0))
       snapshotLock <- Resource.eval(Mutex[F])
+      advancedAt <- Resource.eval(Ref.of[F, BigInt](BigInt(-1)))
       persistence = new Persistence[F, S](
         store,
         snapshots,
@@ -239,7 +245,8 @@ object ChainStorage:
         written,
         sinceCollect,
         snapshotLock,
-        backing
+        backing,
+        advancedAt
       )
       // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
@@ -404,7 +411,9 @@ object ChainStorage:
       /** Blocks that became immutable since the volatile log was last collected. */
       sinceCollect: Ref[F, Int],
       snapshotLock: Mutex[F],
-      backing: StateBacking[F, S]
+      backing: StateBacking[F, S],
+      /** Block number of the immutable tip the backing store was last brought to. */
+      advancedAt: Ref[F, BigInt]
   )(using Raise[F, StorageError])
       extends ChainPersistence[F, S]:
     private val F = Async[F]
@@ -464,26 +473,44 @@ object ChainStorage:
       * is written in the background, because the store keeps moving with the chain.
       */
     def advanced(ref: BlockRef, state: S): F[Unit] =
-      F.uncancelable(_ => backing.advance(state) *> latest.set(Some(ref -> state))) *>
-        lastSlot.get.flatMap { last =>
-          F.whenA(ref.slot - last >= config.snapshotEverySlots) {
-            busy.getAndSet(true).flatMap {
-              case true => F.unit
-              case false =>
-                (for
-                  _ <- lastSlot.set(ref.slot)
-                  settled <- backing.settled(state)
-                  _ <- backing.checkpoint(ref)
-                  _ <- supervisor.supervise(
-                    snapshotLock.lock
-                      .surround(snapshot(ref, settled))
-                      .void
-                      .guarantee(busy.set(false))
-                  )
-                yield ()).onError(_ => busy.set(false))
-            }
-          }
+      lastSlot.get.flatMap { last =>
+        val snapshotDue = ref.slot - last >= config.snapshotEverySlots
+        F.uncancelable(_ =>
+          advanceBacking(ref, state, snapshotDue) *> latest.set(Some(ref -> state))
+        ) *>
+          afterAdvance(ref, state, snapshotDue)
+      }
+
+    /** Bring the backing store to the immutable tip, but not for every block: writing walks the
+      * diff of the state, which holds the changes of the last `k` blocks, so the store follows in
+      * steps of [[ChainStorage.AdvanceEvery]] blocks (and at every snapshot, whose checkpoint must
+      * be at its anchor). The diff keeps what the store lacks, so the states stay complete.
+      */
+    private def advanceBacking(ref: BlockRef, state: S, force: Boolean): F[Unit] =
+      advancedAt.get.flatMap { at =>
+        F.whenA(force || at.signum < 0 || ref.blockNo - at >= ChainStorage.AdvanceEvery)(
+          backing.advance(state) *> advancedAt.set(ref.blockNo)
+        )
+      }
+
+    private def afterAdvance(ref: BlockRef, state: S, snapshotDue: Boolean): F[Unit] =
+      F.whenA(snapshotDue) {
+        busy.getAndSet(true).flatMap {
+          case true => F.unit
+          case false =>
+            (for
+              _ <- lastSlot.set(ref.slot)
+              settled <- backing.settled(state)
+              _ <- backing.checkpoint(ref)
+              _ <- supervisor.supervise(
+                snapshotLock.lock
+                  .surround(snapshot(ref, settled))
+                  .void
+                  .guarantee(busy.set(false))
+              )
+            yield ()).onError(_ => busy.set(false))
         }
+      }
 
     /** Write a snapshot of `state` at `ref`; true if it was written (a failure is reported, not
       * raised). Run under `snapshotLock`.
@@ -532,6 +559,7 @@ object ChainStorage:
         (latest.get, written.get).flatMapN {
           case (Some((ref, state)), done) if !done.contains(ref) =>
             (for
+              _ <- backing.advance(state)
               settled <- backing.settled(state)
               _ <- backing.checkpoint(ref)
               ok <- snapshot(ref, settled)

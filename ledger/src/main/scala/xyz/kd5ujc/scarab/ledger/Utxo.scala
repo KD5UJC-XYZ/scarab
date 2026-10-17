@@ -124,6 +124,21 @@ final case class Utxo(
   def changesAfter(after: Long): Iterator[(TxIn, Option[TxOut])] =
     diff.iterator.collect { case (in, c) if c.stamp > after => in -> c.out }
 
+  /** The changes newer than `after` and the newest stamp among them (`after` when there is none),
+    * in one walk of the diff. The diff of a state in the volatile window holds the changes of up to
+    * `k` blocks, so each walk of it is a cost per block that becomes immutable.
+    */
+  def changesSince(after: Long): (Vector[(TxIn, Option[TxOut])], Long) =
+    val out = Vector.newBuilder[(TxIn, Option[TxOut])]
+    var newest = after
+    val it = diff.iterator
+    while it.hasNext do
+      val (in, c) = it.next()
+      if c.stamp > after then
+        out += (in -> c.out)
+        if c.stamp > newest then newest = c.stamp
+    (out.result(), newest)
+
 object Utxo:
   /** Blocks of flushed changes allowed to stay in the diff before it is trimmed. */
   val TrimEvery = 128L
