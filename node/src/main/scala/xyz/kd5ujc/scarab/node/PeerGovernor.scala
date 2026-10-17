@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.Monad
-import cats.effect.{Clock, Temporal}
+import cats.effect.{Clock, Ref, Temporal}
 import cats.effect.std.{Queue, Supervisor}
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
@@ -83,8 +83,10 @@ final case class GovernorConfig(
   */
 object PeerGovernor:
 
-  /** What was last published, so that only changes are told. */
-  private final case class Published(
+  /** What the loop remembers between two passes: what was last published, so that only changes are
+    * told.
+    */
+  private final case class Loop(
       counters: Option[GovernorState.Counters],
       connections: Option[OutboundConnectionsState]
   )
@@ -94,6 +96,23 @@ object PeerGovernor:
       roots: RootProvider[F, A],
       events: Queue[F, Event[A]],
       supervisor: Supervisor[F]
+  )(using
+      state: Stateful[F, GovernorState[A]],
+      config: Ask[F, GovernorConfig],
+      raise: Raise[F, GovernorError],
+      out: Tell[F, Output[A]]
+  ): F[Nothing] =
+    Ref
+      .of[F, Set[Time]](Set.empty)
+      .flatMap(scheduled => loop(actions, roots, events, supervisor, scheduled))
+
+  private def loop[F[_]: Temporal, A](
+      actions: PeerStateActions[F, A],
+      roots: RootProvider[F, A],
+      events: Queue[F, Event[A]],
+      supervisor: Supervisor[F],
+      /** The times a wake-up is already asked for. */
+      scheduled: Ref[F, Set[Time]]
   )(using
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
@@ -172,44 +191,56 @@ object PeerGovernor:
         }
       }
 
-    def publish(published: Published, at: Time): F[Published] =
+    def publish(loop: Loop, at: Time): F[Loop] =
       for
         st <- state.get
         association <- config.reader(_.association)
         view = st.view(at)
         counters = view.counters
         connections = GovernorState.outboundConnectionsState(association, view)
-        _ <- out.tell(Output.Counted(counters)).whenA(!published.counters.contains(counters))
+        _ <- out.tell(Output.Counted(counters)).whenA(!loop.counters.contains(counters))
         _ <- out
           .tell(Output.Connections(connections))
-          .whenA(!published.connections.contains(connections))
-      yield Published(Some(counters), Some(connections))
+          .whenA(!loop.connections.contains(connections))
+      yield loop.copy(counters = Some(counters), connections = Some(connections))
 
-    /** Wait for an event or until `wakeAt`, then apply the event if it came first. */
-    def await(wakeAt: Option[Time]): F[Unit] =
-      now.flatMap { at =>
-        wakeAt match
-          case None => events.take.flatMap(apply)
-          case Some(t) =>
-            F.race(F.sleep((t - at).max(Duration.Zero)), events.take).flatMap {
-              case Left(_)      => F.unit
-              case Right(event) => apply(event)
-            }
+    /** Ask to be woken at `at`: a fiber that offers the wake-up to the queue, so that the loop has
+      * one place to wait (the queue) and no race between a timer and a take. A time that is already
+      * asked for is not asked for again.
+      */
+    def wake(at: Time): F[Unit] =
+      scheduled.modify(times => if times(at) then (times, false) else (times + at, true)).flatMap {
+        case false => F.unit
+        case true =>
+          now.flatMap { current =>
+            supervisor
+              .supervise(
+                F.sleep((at - current).max(Duration.Zero)) *>
+                  scheduled.update(_ - at) *> events.offer(Event.Wake(at))
+              )
+              .void
+          }
       }
 
-    /** One pass: the events, then the decision; true when it acted and the pass should be repeated
-      * at once.
+    /** One pass: the events, then the decision; the next pass follows at once after a decision, and
+      * after the next event (or the wake-up) when there is nothing to do.
       */
-    def pass(published: Published): F[Published] =
+    def pass(before: Loop): F[Loop] =
       for
         _ <- drain
         at <- now
         st <- state.get
         _ <- PeerSelection.abort(st, at).traverse_(raise.raise[GovernorError, Unit](_))
-        next <- PeerSelection.decide(st, at) match
-          case Step.Act(decision) => commit(decision) *> publish(published, at)
+        loop <- PeerSelection.decide(st, at) match
+          case Step.Act(decision) => commit(decision) *> publish(before, at)
           case Step.Idle(settled, wakeAt) =>
-            state.set(settled) *> publish(published, at).flatMap(p => await(wakeAt).as(p))
-      yield next
+            for
+              _ <- state.set(settled)
+              published <- publish(before, at)
+              _ <- wakeAt.traverse_(wake)
+              event <- events.take
+              _ <- apply(event)
+            yield published
+      yield loop
 
-    F.tailRecM(Published(None, None))(p => pass(p).map(Left(_)))
+    F.tailRecM(Loop(None, None))(p => pass(p).map(Left(_)))

@@ -60,7 +60,9 @@ object PeerSelection:
     )
     @scala.annotation.tailrec
     def first(rest: List[() => Guard[A]], wake: Option[Time]): Step[A] = rest match
-      case Nil => Step.Idle(pass.st, earliest(wake, pass.nextClearFail))
+      // a time that has passed is not a reason to look again: the decision that depends on it has
+      // had its chance (the reference drops the times that are due when it sets the current time)
+      case Nil => Step.Idle(pass.st, earliest(wake, pass.nextClearFail).filter(_ > now))
       case family :: more =>
         family() match
           case Guard.Go(decision) => Step.Act(decision)
@@ -310,7 +312,7 @@ object PeerSelection:
 
     private def retryTimes(exclude: A => Boolean): Option[Time] =
       st.peers.collect {
-        case (p, PeerRecord(Status.Cold(Some(at)), _, _, _, _, _)) if !exclude(p) => at
+        case (p, PeerRecord(Status.Cold(Some(at)), _, _, _, _, _)) if !exclude(p) && at > now => at
       }.minOption
 
     /** `EstablishedPeers.belowTargetLocal` (`Governor/EstablishedPeers.hs` 106-239): every local
@@ -414,7 +416,9 @@ object PeerSelection:
     // ---------------------------------------------------------------- warm to hot
 
     private def readyTimes: Option[Time] =
-      st.peers.values.collect { case PeerRecord(Status.Warm(at), _, _, _, _, _) => at }.minOption
+      st.peers.values.collect {
+        case PeerRecord(Status.Warm(at), _, _, _, _, _) if at > now => at
+      }.minOption
 
     /** `ActivePeers.belowTargetLocal` (201-324): every local root group with fewer active members
       * than its hot valency activates the shortfall from its ready warm members.
@@ -555,5 +559,6 @@ object PeerSelection:
       case Event.TargetsRequested(t)         => Decision(st.copy(requested = t), Nil, Nil)
       case Event.JudgementReported(j)        => Decision(st.copy(reported = j), Nil, Nil)
       case Event.RootsConfigured(roots)      => Decision(st.copy(configuredRoots = roots), Nil, Nil)
+      case Event.Wake(_)                     => Decision(st, Nil, Nil)
       case Event.Observed(peer, observation) => Events.observed(st, peer, observation, now, policy)
       case Event.Completed(outcome)          => Events.completed(st, outcome, now, policy)

@@ -146,6 +146,9 @@ enum Event[A]:
   /** The configured local roots changed (a reload). */
   case RootsConfigured(roots: LocalRoots[A])
 
+  /** The time the governor asked to be woken at has come (it changes nothing by itself). */
+  case Wake(at: Time)
+
 /** What ends the governor (the reference's `abortGovernor`, `Governor.hs` 596, and the invariant
   * check): closed, raised through `Raise` by the effect loop.
   */

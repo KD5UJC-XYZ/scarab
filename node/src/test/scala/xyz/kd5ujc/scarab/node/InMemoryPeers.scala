@@ -16,7 +16,8 @@ import xyz.kd5ujc.scarab.protocol.NtNHeader
 final class InMemoryPeers private (
     magic: Long,
     servers: Ref[IO, Map[PeerNetwork.Addr, ServerHandlers[IO, NtNHeader]]],
-    opened: Ref[IO, Map[PeerNetwork.Addr, Int]]
+    opened: Ref[IO, Map[PeerNetwork.Addr, Int]],
+    ends: Ref[IO, Map[PeerNetwork.Addr, List[Bearer[IO]]]]
 ) extends Transport[IO, PeerNetwork.Addr]:
 
   def resolve(peer: PeerNetwork.Addr) = IO.pure(
@@ -36,12 +37,13 @@ final class InMemoryPeers private (
       case Some(handlers) =>
         for
           _ <- Resource.eval(opened.update(m => m.updated(peer, m.getOrElse(peer, 0) + 1)))
-          ends <- Resource.eval(Bearer.inMemory[IO](256))
+          pair <- Resource.eval(Bearer.inMemory[IO](256))
+          _ <- Resource.eval(ends.update(m => m.updated(peer, pair._1 :: m.getOrElse(peer, Nil))))
           _ <- Handle
-            .allow[NetworkError](NodeToNodeServer.accept(ends._1, magic, handlers).void)
+            .allow[NetworkError](NodeToNodeServer.accept(pair._1, magic, handlers).void)
             .rescue(_ => IO.unit)
             .background
-        yield ends._2
+        yield pair._2
     }
 
   /** Start serving `peer` with `handlers`. */
@@ -51,6 +53,10 @@ final class InMemoryPeers private (
   /** Stop serving `peer`: later connections are refused. */
   def stop(peer: PeerNetwork.Addr): IO[Unit] = servers.update(_ - peer)
 
+  /** The peer dies: its connections are closed on its side and later ones are refused. */
+  def kill(peer: PeerNetwork.Addr): IO[Unit] =
+    stop(peer) *> ends.modify(m => (m - peer, m.getOrElse(peer, Nil))).flatMap(_.traverse_(_.close))
+
   /** How many bearers were opened to each peer. */
   def connections: IO[Map[PeerNetwork.Addr, Int]] = opened.get
 
@@ -58,8 +64,9 @@ object InMemoryPeers:
   def create(magic: Long): IO[InMemoryPeers] =
     (
       Ref.of[IO, Map[PeerNetwork.Addr, ServerHandlers[IO, NtNHeader]]](Map.empty),
-      Ref.of[IO, Map[PeerNetwork.Addr, Int]](Map.empty)
-    ).mapN(new InMemoryPeers(magic, _, _))
+      Ref.of[IO, Map[PeerNetwork.Addr, Int]](Map.empty),
+      Ref.of[IO, Map[PeerNetwork.Addr, List[Bearer[IO]]]](Map.empty)
+    ).mapN(new InMemoryPeers(magic, _, _, _))
 
   /** The address of the n-th test peer. */
   def address(n: Int): PeerNetwork.Addr =
