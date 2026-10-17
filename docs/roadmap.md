@@ -255,7 +255,9 @@ persistence and key handling. Until then development keeps the rapid direct-push
    2026-10-18): the plan is [leios.md](leios.md) 11.8 for N4 ([#73](https://github.com/KD5UJC-XYZ/scarab/issues/73)):
    get the Leios team's reference node (pinned), settle the mini-protocol gating on a loopback network with its
    trace, follow the Dijkstra chain (X1, X2), the committee and certificates (X5), mini-protocols 18 and 19
-   (X8, X7), then the devnet scenario against the reference. The rules for a moving target: every revision
+   (X8, X7), then the devnet scenario against the reference. The rules for a moving target: Leios lands on `main`, not on a long-lived branch, behind the era selector and
+   the configuration (`ExperimentalHardForksEnabled` is the switch; a short-lived branch is for one disruptive
+   change at a time, such as the eighth era in the telescope); every revision
    (testnet, CDDL, reference build) is pinned and recorded in leios.md; Leios code sits behind its own era and
    protocol-version gates so Conway and mainnet paths are untouched; codecs and Dijkstra types are versioned so a
    design change is a new version; the testnet chain from genesis is the regression. Handshake v15/v16 (G4) and
