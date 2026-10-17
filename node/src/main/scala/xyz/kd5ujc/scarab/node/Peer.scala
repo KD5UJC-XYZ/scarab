@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError}
 import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.syntax.all.*
 import cats.effect.std.{Mutex, Queue, Semaphore, Supervisor}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -99,6 +100,21 @@ object Peer:
     if run.nonEmpty then out += run
     out.result()
 
+  /** The maximal runs of consecutive headers the caller owns (the others were claimed by another
+    * session, which fetches them).
+    */
+  private[node] def ownedRuns(flagged: Vector[(Header, Boolean)]): Vector[Vector[Header]] =
+    val out = Vector.newBuilder[Vector[Header]]
+    var run = Vector.empty[Header]
+    flagged.foreach { (h, owned) =>
+      if owned then run :+= h
+      else if run.nonEmpty then
+        out += run
+        run = Vector.empty
+    }
+    if run.nonEmpty then out += run
+    out.result()
+
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
   private val Depth = 3
 
@@ -128,7 +144,8 @@ object Peer:
       prepare: Prepare[F],
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       headers: Option[HeaderCheck[F]] = None,
-      observe: Option[Peer.Observation => F[Unit]] = None
+      observe: Option[Peer.Observation => F[Unit]] = None,
+      pool: Option[BlockPool[F]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -145,7 +162,7 @@ object Peer:
         settings.network,
         transactions
       )
-      .flatMap(over(_, settings, prepare, headers, observe))
+      .flatMap(over(_, settings, prepare, headers, observe, pool))
 
   /** The peer interface over a connection that is already negotiated: one we opened
     * ([[nodeToNode]]) or an inbound duplex connection on which we run our own clients (G2). The
@@ -160,7 +177,12 @@ object Peer:
       settings: Settings,
       prepare: Prepare[F],
       headers: Option[HeaderCheck[F]] = None,
-      observe: Option[Peer.Observation => F[Unit]] = None
+      observe: Option[Peer.Observation => F[Unit]] = None,
+      /** Where fetched blocks wait for the session that applies them; share one between the
+        * sessions of several peers so that each block is fetched from one of them only. Without
+        * one, the session has a pool of its own.
+        */
+      pool: Option[BlockPool[F]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -178,7 +200,7 @@ object Peer:
       (
         Queue.unbounded[F, Either[Throwable, Vector[SyncEvent]]],
         Ref.of[F, Vector[SyncEvent]](Vector.empty),
-        Ref.of[F, Map[Bytes, Bytes]](Map.empty),
+        pool.fold(BlockPool.create[F])(F.pure),
         Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None),
         Ref.of[F, Boolean](false),
         Semaphore[F](Depth.toLong),
@@ -202,29 +224,39 @@ object Peer:
           }
           ranges(headers).traverse_(prefetchRange)
 
+        /** Fetch the blocks of one range that no other session has claimed. The claim is made when
+          * this connection is free to send the request, so with several peers the ranges of a batch
+          * go to whichever connection is idle (the reference's bulk-sync decision keeps a block in
+          * flight with one peer only).
+          */
         def prefetchRange(headers: Vector[Header]): F[Unit] =
-          if headers.size < 2 then F.unit
-          else
-            fetchLock.lock
-              .surround(
-                connection.blockFetch.requestRange(headers.head.point, headers.last.point)
-              )
-              .flatMap {
-                case Some(raw) =>
-                  // A range answers in chain order, one block per announced header; the rules
-                  // check each block against the header they were handed.
-                  val byHash =
-                    if raw.size == headers.size then headers.map(_.hash).zip(raw)
-                    else
-                      raw.flatMap(b =>
-                        Block
-                          .decode(b, settings.byronEpochSlots)
-                          .toOption
-                          .map(_.header.hash -> b)
-                      )
-                  prepare(raw) *> blocks.update(_ ++ byHash)
-                case None => F.unit
+          fetchLock.lock
+            .surround(
+              blocks.claim(headers.map(_.hash)).flatMap { owned =>
+                ownedRuns(headers.zip(owned)).traverse(run =>
+                  requestRun(run).onError(_ => blocks.release(run.map(_.hash))).map(run -> _)
+                )
               }
+            )
+            .flatMap(_.traverse_ { case (run, fetched) =>
+              fetched.fold(blocks.release(run.map(_.hash))) { raw =>
+                // A range answers in chain order, one block per announced header; the rules
+                // check each block against the header they were handed.
+                val byHash =
+                  if raw.size == run.size then run.map(_.hash).zip(raw)
+                  else
+                    raw.flatMap(b =>
+                      Block
+                        .decode(b, settings.byronEpochSlots)
+                        .toOption
+                        .map(_.header.hash -> b)
+                    )
+                (prepare(raw) *> blocks.fill(byHash)).guarantee(blocks.release(run.map(_.hash)))
+              }
+            })
+
+        def requestRun(run: Vector[Header]): F[Option[Vector[Bytes]]] =
+          connection.blockFetch.requestRange(run.head.point, run.last.point)
 
         /** The next batch of ChainSync instructions. */
         val requestHeaders: F[Vector[SyncEvent]] =
@@ -281,7 +313,7 @@ object Peer:
 
         new Peer[F]:
           def intersect(candidates: Vector[ChainSync.Point]) =
-            current.set(Vector.empty) *> blocks.set(Map.empty) *> progress.set(None) *>
+            current.set(Vector.empty) *> progress.set(None) *>
               connection.chainSync.findIntersect(thin(candidates)).flatMap { found =>
                 found.traverse_ { case (point, _) =>
                   headers.traverse_(_.start(point).flatMap(gate.set))
@@ -302,7 +334,7 @@ object Peer:
             }
 
           def fetch(header: Header): F[Bytes] =
-            blocks.modify(m => (m - header.hash, m.get(header.hash))).flatMap {
+            blocks.take(header.hash).flatMap {
               case Some(block) => F.pure(block)
               case None =>
                 CardanoBlockFetch.SpecificPoint.from(header.point) match

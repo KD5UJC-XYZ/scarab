@@ -643,6 +643,8 @@ object Main extends IOApp:
                   logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
                 case Peer.Observation.Round(requested, received, millis) =>
                   observeRounds(requested, received, millis))
+            // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
+            blockPool <- BlockPool.create[IO]
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
               ConnectionManager.Limits(maxInbound = options.maxInbound),
@@ -691,7 +693,8 @@ object Main extends IOApp:
                         warm,
                         Some(mempool.source),
                         headerCheck,
-                        Some(observePeer)
+                        Some(observePeer),
+                        Some(blockPool)
                       ),
                       Some { case Outbound.Event.Reused(remote) =>
                         logged(NodeEvent.Reused(remote, address.toString))
