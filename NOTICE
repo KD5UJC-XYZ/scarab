@@ -70,8 +70,8 @@ cardano-ledger-conformance-tests, distributed through cardano-blueprint and
 Amaru; their verbatim licenses are fixtures/licenses/cardano-ledger-conformance-LICENSE,
 cardano-ledger-conformance-NOTICE, blueprint-conformance-LICENSE and amaru-LICENSE.
 
-Captured chain data (fixtures/mainnet, fixtures/preview): public blockchain data fetched from the
-public Cardano relays; fixtures/preview also holds records derived from the Koios public API
+Captured chain data (fixtures/mainnet, fixtures/preview, fixtures/mempack): public blockchain data fetched from the
+public Cardano relays (fixtures/mempack: 95 ledger outputs of the Mithril preprod snapshot); fixtures/preview also holds records derived from the Koios public API
 (https://koios.rest). fixtures/eras, fixtures/haskell-state (ledger snapshots written by the reference
 node 11.1.3 tooling) and fixtures/kes-gen are produced from a throwaway local cluster
 and carry no third-party data. The files in fixtures/licenses and the licence files of the
