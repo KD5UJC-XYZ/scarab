@@ -13,7 +13,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
-import xyz.kd5ujc.scarab.network.selection.{DiffusionMode, RootConfig, RootGroupSpec, Targets}
+import xyz.kd5ujc.scarab.network.selection.{
+  DiffusionMode,
+  FetchMode,
+  RootConfig,
+  RootGroupSpec,
+  Targets
+}
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer
@@ -180,6 +186,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         None,
         false
       )
+      modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
       network = PeerNetwork.resource[IO](
         PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
         peers,
@@ -187,6 +194,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         OutboundPeers.Config(),
         hot,
         view,
+        modeRef,
         _ => IO.unit,
         (_, _) => IO.unit,
         _ => IO.unit,

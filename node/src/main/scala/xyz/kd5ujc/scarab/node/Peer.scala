@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.network.{
   NodeToNodeConnection,
   TxSubmissionClient
 }
+import xyz.kd5ujc.scarab.network.selection.{FetchMode, Time}
 
 /** A [[PeerError]] on its way from the fiber that met it to the session that handles it. A cats-mtl
   * `Raise` that comes from `Handle.allow` is valid only in the fibers of its scope: raised in any
@@ -94,6 +95,19 @@ object Peer:
 
     /** The tip the peer announced with the last instruction of a batch of ChainSync replies. */
     case Announced(tip: ChainSync.Tip)
+
+    /** The headers of one batch of ChainSync replies reached us together, at `at` on the monotonic
+      * clock; `slots` are those of the roll-forwards, in order. The peer metrics
+      * (`PeerMetrics.reportHeader`, the reference's `reportHeader` per header) count the peer that
+      * is first with a slot. One observation per batch, not per header: the headers of a pipelined
+      * batch share their arrival time, and the callback stays off the per-header path.
+      */
+    case HeadersArrived(slots: Vector[Long], at: Time)
+
+    /** The blocks of one BlockFetch request reached us, each as `(slot, size in bytes)`, at `at`
+      * (`reportFetch` per block in the reference).
+      */
+    case BlocksArrived(blocks: Vector[(Long, Long)], at: Time)
 
   final case class Settings(
       address: SocketAddress[Host],
@@ -194,7 +208,8 @@ object Peer:
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       headers: Option[HeaderCheck[F]] = None,
       observe: Option[Peer.Observation => F[Unit]] = None,
-      pool: Option[BlockPool[F]] = None
+      pool: Option[BlockPool[F]] = None,
+      fetchMode: Option[F[FetchMode]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
@@ -210,7 +225,7 @@ object Peer:
         settings.network,
         transactions
       )
-      .flatMap(over(_, settings, prepare, headers, observe, pool))
+      .flatMap(over(_, settings, prepare, headers, observe, pool, fetchMode))
       .handleErrorWith {
         case failure: PeerFailure =>
           Resource.eval(peerRaise.raise[PeerError, Peer[F]](failure.error))
@@ -235,11 +250,16 @@ object Peer:
         * sessions of several peers so that each block is fetched from one of them only. Without
         * one, the session has a pool of its own.
         */
-      pool: Option[BlockPool[F]] = None
+      pool: Option[BlockPool[F]] = None,
+      /** The fetch mode the node is in now (bulk sync or deadline): it decides whether a block
+        * another session has claimed may be requested too ([[BlockPool]]). Bulk sync without it.
+        */
+      fetchMode: Option[F[FetchMode]] = None
   )(using
       peerRaise: Raise[F, PeerError]
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
+    val currentMode: F[FetchMode] = fetchMode.getOrElse(F.pure(FetchMode.BulkSync))
     // Fibers of the pipeline raise through `carried`; the methods of the session's own fiber
     // (intersect, next, fetch) raise again through `peerRaise`.
     val carried = carrying[F]
@@ -298,7 +318,7 @@ object Peer:
           def prefetchRange(headers: Vector[Header]): F[Unit] =
             fetchLock.lock
               .surround(
-                claims.claim(headers.map(_.hash)).flatMap { owned =>
+                currentMode.flatMap(claims.claim(headers.map(_.hash), _)).flatMap { owned =>
                   val runs = ownedRuns(headers.zip(owned))
                   val mine = runs.flatMap(_.map(_.hash))
                   // a failure or a cancellation anywhere in the range gives up every claim of it, not
@@ -309,25 +329,36 @@ object Peer:
                     .onCancel(claims.release(mine))
                 }
               )
-              .flatMap(_.traverse_ { case (run, fetched) =>
+              .flatMap(_.traverse_ { case (run, (fetched, arrivedAt)) =>
                 fetched.fold(claims.release(run.map(_.hash))) { raw =>
                   // A range answers in chain order, one block per announced header; the rules
                   // check each block against the header they were handed.
-                  val byHash =
-                    if raw.size == run.size then run.map(_.hash).zip(raw)
+                  val paired: Vector[(Bytes, Long, Bytes)] =
+                    if raw.size == run.size then
+                      run.zip(raw).map((h, b) => (h.hash, h.slot.toLong, b))
                     else
                       raw.flatMap(b =>
                         Block
                           .decode(b, settings.byronEpochSlots)
                           .toOption
-                          .map(_.header.hash -> b)
+                          .map(block => (block.header.hash, block.header.slot.toLong, b))
                       )
-                  (prepare(raw) *> claims.fill(byHash)).guarantee(claims.release(run.map(_.hash)))
+                  val byHash = paired.map((hash, _, b) => hash -> b)
+                  observe.traverse_(
+                    _(
+                      Peer.Observation
+                        .BlocksArrived(paired.map((_, slot, b) => slot -> b.size.toLong), arrivedAt)
+                    )
+                  ) *>
+                    (prepare(raw) *> claims.fill(byHash)).guarantee(claims.release(run.map(_.hash)))
                 }
               })
 
-          def requestRun(run: Vector[Header]): F[Option[Vector[Bytes]]] =
-            connection.blockFetch.requestRange(run.head.point, run.last.point)
+          /** One BlockFetch request for a run, with the time its blocks arrived. */
+          def requestRun(run: Vector[Header]): F[(Option[Vector[Bytes]], Time)] =
+            connection.blockFetch.requestRange(run.head.point, run.last.point).flatMap { fetched =>
+              F.monotonic.map(fetched -> _)
+            }
 
           /** The next batch of ChainSync instructions. */
           val requestHeaders: F[Vector[SyncEvent]] =
@@ -339,9 +370,14 @@ object Peer:
               n = (ahead - 1).min(settings.readAhead).max(1).toInt
               began <- F.monotonic
               updates <- connection.chainSync.requestNextBatch(n)
-              took <- F.monotonic.map(_ - began)
+              arrived <- F.monotonic
+              took = arrived - began
               _ <- observe.traverse_(_(Peer.Observation.Round(n, updates.size, took.toMillis)))
               batch <- updates.traverse(decode)
+              _ <- observe.traverse_ { report =>
+                val slots = batch.collect { case SyncEvent.RollForward(h, _) => h.slot.toLong }
+                report(Peer.Observation.HeadersArrived(slots, arrived)).whenA(slots.nonEmpty)
+              }
               _ <- batch.lastOption.traverse_ {
                 case SyncEvent.RollForward(_, tip) =>
                   observe.traverse_(_(Peer.Observation.Announced(tip)))
@@ -447,8 +483,21 @@ object Peer:
                             began <- F.monotonic
                             fetched <- connection.blockFetch
                               .requestRange(specific.point, specific.point)
-                            took <- F.monotonic.map(_ - began)
+                            arrived <- F.monotonic
+                            took = arrived - began
                             _ <- observe.traverse_(_(Peer.Observation.Fetched(took.toMillis)))
+                            _ <- observe.traverse_(report =>
+                              fetched.traverse_(
+                                _.traverse_(b =>
+                                  report(
+                                    Peer.Observation.BlocksArrived(
+                                      Vector(header.slot.toLong -> b.size.toLong),
+                                      arrived
+                                    )
+                                  )
+                                )
+                              )
+                            )
                           yield fetched
                         )
                         .flatMap {

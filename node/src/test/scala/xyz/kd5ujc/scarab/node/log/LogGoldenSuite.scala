@@ -64,6 +64,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))
         _ <- peerSelection.traverse_(t => node(NodeEvent.PeerSelection(t)))
         _ <- peerCounters.traverse_(c => node(NodeEvent.PeerCounters(c)))
+        _ <- churnTraces.traverse_(t => node(NodeEvent.PeerChurn(t)))
         _ <- outboundStates.traverse_(c => node(NodeEvent.OutboundConnections(c)))
         _ <- gsmEvents.traverse_((phase, e) => node(NodeEvent.GsmTransition(phase, e)))
         _ <- FetchMode.values.toList.traverse_(m => node(NodeEvent.FetchModeChanged(m)))

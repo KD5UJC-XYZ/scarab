@@ -321,6 +321,8 @@ object MockEnvironment:
             play(env.targets, t => Event.TargetsRequested(t), t => EnvEvent.SetTargets(t)) &>
             play(env.judgement, j => Event.JudgementReported(j), j => EnvEvent.SetJudgement(j))
 
+        given Ask[IO, PeerMetrics[Peer]] =
+          Ask.const[IO, PeerMetrics[Peer]](PeerMetrics.empty[Peer]())
         val governor: IO[Nothing] =
           PeerGovernor.run[IO, Peer](actions, provider, events, supervisor)
         val running = IO.race(governor, environment *> IO.never[Unit])

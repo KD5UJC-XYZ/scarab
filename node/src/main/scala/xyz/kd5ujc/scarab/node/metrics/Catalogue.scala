@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.metrics
 
 import xyz.kd5ujc.scarab.ledger.BlockRule
 import xyz.kd5ujc.scarab.node.forge.ForgeEpochStats
-import xyz.kd5ujc.scarab.network.selection.GovernorState
+import xyz.kd5ujc.scarab.network.selection.{Churn, GovernorState}
 import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, Era}
 
@@ -57,6 +57,17 @@ enum PeerTransitionLabel derives LabelValue:
 /** The targets of the governor that are exported. */
 enum TargetLabel derives LabelValue:
   case Root, Known, Established, Active
+
+/** A step of the churn governor's round ([[Churn.Step]]), by its name. */
+given LabelValue[Churn.Step] = LabelValue.derived
+
+/** How a churn step ended: its counters met the targets, or its timeout passed first. */
+enum ChurnResultLabel derives LabelValue:
+  case Reached, TimedOut
+
+/** The two boards of the peer metrics. */
+enum MetricsBoardLabel derives LabelValue:
+  case Headers, Blocks
 
 /** The state of the Genesis State Machine. */
 enum GsmStateLabel derives LabelValue:
@@ -754,6 +765,30 @@ object Catalogue:
     "The targets the peer governor works towards (big ledger peers are not exported yet).",
     Labels.one[TargetLabel](LabelName("target"))
   )
+  val peerBackoffSeconds = HistogramDef(
+    MetricName("scarab_peer_selection_backoff_seconds"),
+    "The wait before a peer whose promotion failed is tried again.",
+    noLabels,
+    Buckets.of(2.5, 5, 10, 20, 40, 80, 160, 320)
+  )
+  val churnRounds = CounterDef(
+    MetricName("scarab_peer_selection_churn_rounds_total"),
+    "Rounds of the churn governor begun (`TraceChurnMode`)."
+  )
+  val churnSteps = CounterDef(
+    MetricName("scarab_peer_selection_churn_steps_total"),
+    "Steps of the churn governor's rounds, by step and by whether the node met the targets or the step timed out.",
+    Labels.two[Churn.Step, ChurnResultLabel](LabelName("step"), LabelName("result"))
+  )
+  val churnWaitSeconds = GaugeDef(
+    MetricName("scarab_peer_selection_churn_wait_seconds"),
+    "How long the churn governor sleeps before its next round, as last decided."
+  )
+  val peerMetricsBoard = GaugeDef(
+    MetricName("scarab_peer_selection_peer_metrics_board_size"),
+    "Slots held by the peer metrics boards (at most 180 each): the headers and the blocks whose first arrival is recorded.",
+    Labels.one[MetricsBoardLabel](LabelName("board"))
+  )
   val peerSensitive = GaugeDef(
     MetricName("scarab_peer_selection_sensitive"),
     "1 while the node uses only trusted peers because its ledger is too old and bootstrap peers are configured, else 0."
@@ -957,6 +992,11 @@ object Catalogue:
     inboundEvents,
     peerTransitions,
     peerTargets,
+    peerBackoffSeconds,
+    churnRounds,
+    churnSteps,
+    churnWaitSeconds,
+    peerMetricsBoard,
     peerSensitive,
     outboundTrusted,
     gsmState,

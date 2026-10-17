@@ -6,7 +6,9 @@ import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
-import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Peer}
+import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode}
+import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, Output, Peer}
 import xyz.kd5ujc.scarab.node.forge.ForgeEvent
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -201,6 +203,36 @@ class EventMetricsSuite extends CatsEffectSuite:
         assertEquals(counter(s, Catalogue.headersValidated, ()), Some(120.0))
         assertEquals(counter(s, Catalogue.headersUnchecked, ()), Some(5.0))
         assertEquals(counter(s, Catalogue.headersWaited, ()), Some(1.0))
+    }
+  }
+
+  test(
+    "the churn governor's rounds and steps are counted, the sleep is a gauge, observations are free"
+  ) {
+    fixture.flatMap { (metrics, em) =>
+      for
+        _ <- em.peerSelection(Output.Churned(Churn.Trace.Mode(FetchMode.Deadline)))
+        _ <- em.peerSelection(
+          Output.Churned(Churn.Trace.Action(Churn.Step.DecreaseActive, 2.seconds, -4))
+        )
+        _ <- em.peerSelection(
+          Output.Churned(Churn.Trace.Timeout(Churn.Step.IncreaseKnown, 80.seconds, 0))
+        )
+        _ <- em.peerSelection(Output.Churned(Churn.Trace.Wait(3400.seconds)))
+        _ <- em.peer(Peer.Observation.HeadersArrived(Vector(1L, 2L), 1.second))
+        _ <- em.peer(Peer.Observation.BlocksArrived(Vector(1L -> 100L), 1.second))
+        s <- metrics.snapshot
+      yield
+        assertEquals(counter(s, Catalogue.churnRounds, ()), Some(1.0))
+        assertEquals(
+          counter(s, Catalogue.churnSteps, (Churn.Step.DecreaseActive, ChurnResultLabel.Reached)),
+          Some(1.0)
+        )
+        assertEquals(
+          counter(s, Catalogue.churnSteps, (Churn.Step.IncreaseKnown, ChurnResultLabel.TimedOut)),
+          Some(1.0)
+        )
+        assertEquals(gauge(s, Catalogue.churnWaitSeconds, ()), Some(3400.0))
     }
   }
 

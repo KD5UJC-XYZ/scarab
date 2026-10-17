@@ -109,6 +109,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
         def geometry = IO.pure(ForgedChain.geometry)
       roots = PeerNetwork.Roots(Nil, all.toSet, None, false)
+      modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
       network = PeerNetwork.resource[IO](
         PeerNetwork.Settings(roots, Targets.relay, seed = 11L),
         peers,
@@ -116,6 +117,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         OutboundPeers.Config(),
         hot,
         view,
+        modeRef,
         _ => IO.unit,
         (_, _) => IO.unit,
         _ => IO.unit,
@@ -155,4 +157,111 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
       assertEquals((converged.known, converged.established, converged.hot), (40, 30, 20))
       assertEquals((repaired.established, repaired.hot), (30, 20))
       assertEquals(fatal, None)
+  }
+
+  /** Six peers that serve the same chain, a node that follows all of them, and the fetch mode
+    * forced by where the wall clock is: in `Deadline` the chain's tip is 40 slots behind the clock,
+    * in `BulkSync` it is far behind. The node must reach the tip, with the chain of the peers, and
+    * the peers must have reported what they were first with.
+    */
+  private def reachesTip(deadline: Boolean, concurrency: Int): IO[FetchMode] =
+    val clock =
+      if deadline then
+        ForgedChain.geometry.copy(systemStart =
+          java.time.Instant.now.minusMillis(5100L * ForgedChain.geometry.slotLengthMillis)
+        )
+      else ForgedChain.geometry
+    for
+      chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
+        VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
+      )
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+      follower <- Handle
+        .allow[NodeError] {
+          Follower.create[IO, MirrorState](
+            ForgedChain.rules,
+            (_: FollowerEvent) => IO.unit,
+            ForgedChain.geometry
+          )
+        }
+        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
+      pool <- BlockPool.create[IO](BlockPool.FetchPolicy(concurrency))
+      modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
+      handlers <- serving(forged.raws)
+      peers <- InMemoryPeers.create(magic)
+      all = (1 to 6).map(InMemoryPeers.address).toList
+      _ <- all.traverse_(peers.serve(_, handlers))
+      manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxOutbound = 64))
+      hot = OutboundPeers.Hot[IO](
+        magic = magic,
+        network = NodeToNode.Settings(),
+        peer = Peer.Settings(
+          SocketAddress(host"127.0.0.1", port"3001"),
+          magic,
+          readAhead = 8,
+          byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+        ),
+        follow = (peer, track) => follower.session(peer, track),
+        prepare = _ => IO.unit,
+        headers = None,
+        transactions = None,
+        observe = None,
+        pool = pool,
+        versus = follower.versus,
+        lost = _ => IO.unit,
+        fetchMode = Some(modeRef.get)
+      )
+      view = new PeerNetwork.ChainView[IO]:
+        def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+        def geometry = IO.pure(clock)
+      network = PeerNetwork.resource[IO](
+        PeerNetwork.Settings(
+          PeerNetwork.Roots(Nil, all.toSet, None, false),
+          Targets.relay,
+          seed = 3L
+        ),
+        peers,
+        manager,
+        OutboundPeers.Config(),
+        hot,
+        view,
+        modeRef,
+        _ => IO.unit,
+        (_, _) => IO.unit,
+        _ => IO.unit,
+        _ => IO.unit,
+        GsmRunner.Marker.none[IO]
+      )
+      result <- network.use { net =>
+        net.run.background.use { _ =>
+          for
+            _ <- eventually("the chain reaches the tip")(chainRef.get.map(_.tip))(
+              _ == forged.headers.last.point
+            )
+            // the mode is published once a second
+            mode <- eventually("the mode is published")(modeRef.get)(m =>
+              (m == FetchMode.Deadline) == deadline
+            )
+            boards <- net.metrics.get.map(_.sizes)
+            scores <- net.metrics.get.map(_.hotScores)
+          yield (mode, boards, scores)
+        }
+      }
+    yield
+      val (mode, boards, scores) = result
+      // both boards hold slots, and some peer was first with something
+      assert(boards._1 > 0 && boards._2 > 0, s"boards $boards")
+      assert(scores.values.exists(_.value > 0), scores.toString)
+      mode
+
+  test("six peers: the node reaches the tip in bulk sync") {
+    reachesTip(deadline = false, concurrency = 1).map(assertEquals(_, FetchMode.BulkSync))
+  }
+
+  test("six peers: the node reaches the same tip in deadline mode, one peer per block") {
+    reachesTip(deadline = true, concurrency = 1).map(assertEquals(_, FetchMode.Deadline))
+  }
+
+  test("six peers: the node reaches the same tip in deadline mode with two peers per block") {
+    reachesTip(deadline = true, concurrency = 2).map(assertEquals(_, FetchMode.Deadline))
   }

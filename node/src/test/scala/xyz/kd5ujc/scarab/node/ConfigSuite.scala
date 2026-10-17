@@ -276,6 +276,15 @@ class ConfigSuite extends FunSuite:
       Right(None)
     )
     assert(NodeConfig.parse(with_("MempoolCapacityBytesOverride", Json.fromString("lots"))).isLeft)
+    // MaxConcurrencyDeadline: how many peers may be asked for one block in deadline mode
+    assertEquals(
+      NodeConfig
+        .parse(with_("MaxConcurrencyDeadline", Json.fromInt(2)))
+        .map(_.settings.maxConcurrencyDeadline),
+      Right(Some(2))
+    )
+    assertEquals(parsed("preview").settings.maxConcurrencyDeadline, None)
+    assert(NodeConfig.parse(with_("MaxConcurrencyDeadline", Json.fromInt(0))).isLeft)
     assert(NodeConfig.parse("[]").isLeft)
     assert(NodeConfig.parse("{").isLeft)
   }

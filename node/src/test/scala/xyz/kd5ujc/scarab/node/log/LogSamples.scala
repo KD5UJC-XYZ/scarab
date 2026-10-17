@@ -140,6 +140,14 @@ object LogSamples:
 
   val peerCounters: List[GovernorState.Counters] = List(counters)
 
+  /** One of each trace of the churn governor. */
+  val churnTraces: List[Churn.Trace] = List(
+    Churn.Trace.Mode(FetchMode.Deadline),
+    Churn.Trace.Action(Churn.Step.DecreaseActive, 1500.millis, -4),
+    Churn.Trace.Timeout(Churn.Step.IncreaseKnown, 80.seconds, 0),
+    Churn.Trace.Wait(3412.seconds)
+  )
+
   val outboundStates: List[OutboundConnectionsState] = OutboundConnectionsState.values.toList
 
   val gsmEvents: List[(Gsm.Phase, Gsm.Event)] = List(

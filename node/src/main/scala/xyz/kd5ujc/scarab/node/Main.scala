@@ -70,7 +70,7 @@ import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.network.NodeToNode
-import xyz.kd5ujc.scarab.network.selection.Targets
+import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, Targets}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -164,7 +164,12 @@ object Main extends IOApp:
       /** The roots of the peer governor: `--peer` as one local root group and the topology's
         * groups, public roots and bootstrap peers; filled in by [[configured]].
         */
-      roots: Option[PeerNetwork.Roots] = None
+      roots: Option[PeerNetwork.Roots] = None,
+      /** `--churn-interval <Ns|Nm>`, for tests: the churn governor's rounds follow each other this
+        * often and no step waits longer than it (the reference's are 3300 s and 900 s with fuzz and
+        * waits of up to 300 s). Off by default.
+        */
+      churnInterval: Option[FiniteDuration] = None
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -633,9 +638,13 @@ object Main extends IOApp:
                   logged(NodeEvent.SlowFetch(millis)).whenA(millis >= 250)
                 case Peer.Observation.Round(requested, received, millis) =>
                   observeRounds(requested, received, millis)
-                case Peer.Observation.Announced(tip) => watchdog.announced(tip.blockNo.value))
+                case Peer.Observation.Announced(tip) => watchdog.announced(tip.blockNo.value)
+                case Peer.Observation.HeadersArrived(_, _) | Peer.Observation.BlocksArrived(_, _) =>
+                  IO.unit)
             // blocks fetched ahead, shared by the sessions of all peers: one peer fetches each block
-            blockPool <- BlockPool.create[IO]
+            blockPool <- BlockPool.create[IO](
+              BlockPool.FetchPolicy(setup.config.settings.maxConcurrencyDeadline.getOrElse(1))
+            )
             // the connection manager (G2): one connection per peer address, limits, accounting
             manager <- ConnectionManager.create[IO](
               ConnectionManager.Limits(maxInbound = options.maxInbound),
@@ -673,6 +682,7 @@ object Main extends IOApp:
               .peerTargets(defaults)
               .fold(e => fail[Targets](e), IO.pure)
             losses <- Ref.of[IO, Int](0)
+            fetchModeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
             chainView = new PeerNetwork.ChainView[IO]:
               def tip = ref.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
               def geometry = ref.get.map(_.state.geometry(genesis.geometry))
@@ -698,17 +708,21 @@ object Main extends IOApp:
               lost = error =>
                 losses
                   .updateAndGet(_ + 1)
-                  .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n)))
+                  .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n))),
+              fetchMode = Some(fetchModeRef.get)
             )
             emitOutput = (out: Output[PeerNetwork.Addr]) =>
               measured.peerSelection(out) *> (out match
                 case Output.Traced(trace)  => logged(NodeEvent.PeerSelection(trace))
+                case Output.Churned(trace) => logged(NodeEvent.PeerChurn(trace))
                 case Output.Counted(c)     => logged(NodeEvent.PeerCounters(c))
                 case Output.Connections(c) => logged(NodeEvent.OutboundConnections(c)))
             network = PeerNetwork.resource[IO](
               PeerNetwork.Settings(
                 options.roots.getOrElse(PeerNetwork.Roots(Nil, Set.empty, None, false)),
                 targets,
+                intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
+                timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
                 seed = seed
               ),
               PeerNetwork.tcp[IO](10.seconds),
@@ -716,6 +730,7 @@ object Main extends IOApp:
               OutboundPeers.Config(),
               hot,
               chainView,
+              fetchModeRef,
               emitOutput,
               (phase, event) =>
                 measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
@@ -833,7 +848,8 @@ object Main extends IOApp:
             run = network.use { net =>
               // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
               val sync: IO[Unit] =
-                IO.race(net.run, net.fatal.get).flatMap(_.fold(identity, fail[Unit]))
+                collectors.add(Collectors.peerMetrics(net.metrics)) *>
+                  IO.race(net.run, net.fatal.get).flatMap(_.fold(identity, fail[Unit]))
               QueryServer
                 .resource[IO, MirrorState](
                   ChainView.fromRef(ref),
@@ -928,7 +944,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -953,6 +969,7 @@ object Main extends IOApp:
     "memory-report-seconds",
     "stall-minutes",
     "stall-exit-after",
+    "churn-interval",
     "read-ahead",
     "header-first",
     "max-inbound",
@@ -1053,6 +1070,9 @@ object Main extends IOApp:
                 .filter(d => stallMinutes > 0 && d > stallMinutes.minutes)
                 .toRight(usage)
             )
+          churnInterval <- flags
+            .get("churn-interval")
+            .traverse(v => parseDuration(v).filter(_ > Duration.Zero).toRight(usage))
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
@@ -1110,5 +1130,5 @@ object Main extends IOApp:
           maxInbound,
           inboundSync,
           log
-        )
+        ).copy(churnInterval = churnInterval)
       case _ => Left(usage)

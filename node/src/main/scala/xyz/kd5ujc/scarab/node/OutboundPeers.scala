@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.node
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Supervisor
 import cats.effect.syntax.all.*
-import cats.mtl.{Handle, Raise}
+import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import scala.concurrent.duration.*
@@ -54,6 +54,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     hot: OutboundPeers.Hot[F],
     supervisor: Supervisor[F],
     report: Event[A] => F[Unit],
+    metrics: Stateful[F, PeerMetrics[A]],
     table: Ref[F, Map[A, OutboundPeers.Link[F]]]
 ) extends PeerStateActions[F, A]:
   import OutboundPeers.*
@@ -174,6 +175,18 @@ final class OutboundPeers[F[_]: Async, A] private (
         }
     }
 
+  /** What the session of `peer` observes: the node's own observer, and the peer metrics (who is
+    * first with a header and a block), one update of the shared board per batch of headers and per
+    * range of blocks.
+    */
+  private def metered(peer: A): Peer.Observation => F[Unit] = {
+    case o @ Peer.Observation.HeadersArrived(slots, at) =>
+      hot.observe.traverse_(_(o)) *> metrics.modify(_.reportHeaders(peer, slots, at))
+    case o @ Peer.Observation.BlocksArrived(blocks, at) =>
+      hot.observe.traverse_(_(o)) *> metrics.modify(_.reportFetches(peer, blocks, at))
+    case other => hot.observe.traverse_(_(other))
+  }
+
   /** The hot protocols and the session over them, for as long as the session lasts. */
   private def hotSession(
       peer: A,
@@ -214,7 +227,15 @@ final class OutboundPeers[F[_]: Async, A] private (
         .allow[PeerError] {
           link.warm.activate(hot.transactions).use { connection =>
             Peer
-              .over(connection, hot.peer, hot.prepare, hot.headers, hot.observe, Some(hot.pool))
+              .over(
+                connection,
+                hot.peer,
+                hot.prepare,
+                hot.headers,
+                Some(metered(peer)),
+                Some(hot.pool),
+                hot.fetchMode
+              )
               .use { peer =>
                 session.connection.complete(connection) *> started.complete(None) *>
                   follow(peer).flatTap { end =>
@@ -347,7 +368,11 @@ object OutboundPeers:
       pool: BlockPool[F],
       versus: ChainSelection.Candidate => F[Gsm.Candidate],
       /** A connection was lost (once per loss): the log's `reconnecting`. */
-      lost: PeerError => F[Unit]
+      lost: PeerError => F[Unit],
+      /** The fetch mode, which BlockFetch reads to decide whether a block another session has
+        * claimed may be requested too.
+        */
+      fetchMode: Option[F[FetchMode]] = None
   )
 
   /** A connection of ours, and what its owner can do to it. */
@@ -406,8 +431,9 @@ object OutboundPeers:
       config: Config,
       hot: Hot[F],
       supervisor: Supervisor[F],
-      report: Event[A] => F[Unit]
+      report: Event[A] => F[Unit],
+      metrics: Stateful[F, PeerMetrics[A]]
   ): F[OutboundPeers[F, A]] =
     Ref
       .of[F, Map[A, Link[F]]](Map.empty)
-      .map(new OutboundPeers[F, A](transport, manager, config, hot, supervisor, report, _))
+      .map(new OutboundPeers[F, A](transport, manager, config, hot, supervisor, report, metrics, _))

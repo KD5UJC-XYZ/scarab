@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
 import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, NodeConfig, Topology}
 import xyz.kd5ujc.scarab.network.selection.{
+  Churn,
   FetchMode,
   Gsm,
   GovernorState,
@@ -95,6 +96,7 @@ enum NodeEvent:
 
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
+  case PeerChurn(trace: Churn.Trace)
 
   /** The counters of the peer governor changed. */
   case PeerCounters(counters: GovernorState.Counters)
@@ -265,6 +267,7 @@ object NodeEvent:
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason)).at(Severity.Warning)
     case PeerSelection(trace)        => PeerSelectionLines.trace(trace)
+    case PeerChurn(trace)            => PeerSelectionLines.churn(trace)
     case PeerCounters(counters)      => PeerSelectionLines.counters(counters)
     case OutboundConnections(state)  => PeerSelectionLines.outbound(state)
     case GsmTransition(phase, event) => PeerSelectionLines.gsm(phase, event)

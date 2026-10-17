@@ -100,6 +100,17 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--stall-minutes", "0", "--stall-exit-after", "30m")).isLeft)
   }
 
+  test("--churn-interval is a test-only duration, off by default") {
+    import scala.concurrent.duration.*
+    assertEquals(Main.parse(base).toOption.get.churnInterval, None)
+    assertEquals(
+      Main.parse(base ++ List("--churn-interval", "20s")).toOption.get.churnInterval,
+      Some(20.seconds)
+    )
+    assert(Main.parse(base ++ List("--churn-interval", "0s")).isLeft)
+    assert(Main.parse(base ++ List("--churn-interval", "soon")).isLeft)
+  }
+
   test("--dump-state takes a directory and optional points; the points alone are refused") {
     val on = Main.parse(base ++ List("--dump-state", "/d")).toOption.get
     assertEquals(

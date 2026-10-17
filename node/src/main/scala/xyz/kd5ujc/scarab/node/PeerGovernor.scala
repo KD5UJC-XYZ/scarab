@@ -60,6 +60,9 @@ enum Output[A]:
   /** The outbound connections state changed ([[OutboundConnectionsState]]). */
   case Connections(state: OutboundConnectionsState)
 
+  /** The churn governor did something: a round began, a step ended or timed out, it sleeps. */
+  case Churned(trace: Churn.Trace)
+
 /** The settings of the effect loop. */
 final case class GovernorConfig(
     policy: Policy = Policy(),
@@ -77,9 +80,11 @@ final case class GovernorConfig(
   * arrive on the same queue from the connections, the Genesis State Machine and the regime of
   * targets.
   *
-  * Each pass applies the events that are waiting, then asks the decision function; a decision is
-  * committed (state, traces, jobs) and the pass starts again; when nothing applies the loop waits
-  * for an event or for the time the decision function named, whichever comes first.
+  * The peer metrics (`Ask`) are read once per pass and given to the decision function, which ranks
+  * the hot peers for demotion by them. Each pass applies the events that are waiting, then asks the
+  * decision function; a decision is committed (state, traces, jobs) and the pass starts again; when
+  * nothing applies the loop waits for an event or for the time the decision function named,
+  * whichever comes first.
   */
 object PeerGovernor:
 
@@ -100,7 +105,8 @@ object PeerGovernor:
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
       raise: Raise[F, GovernorError],
-      out: Tell[F, Output[A]]
+      out: Tell[F, Output[A]],
+      metrics: Ask[F, PeerMetrics[A]]
   ): F[Nothing] =
     Ref
       .of[F, Set[Time]](Set.empty)
@@ -117,7 +123,8 @@ object PeerGovernor:
       state: Stateful[F, GovernorState[A]],
       config: Ask[F, GovernorConfig],
       raise: Raise[F, GovernorError],
-      out: Tell[F, Output[A]]
+      out: Tell[F, Output[A]],
+      metrics: Ask[F, PeerMetrics[A]]
   ): F[Nothing] =
     val F = Temporal[F]
     given Monad[F] = F
@@ -231,7 +238,8 @@ object PeerGovernor:
         at <- now
         st <- state.get
         _ <- PeerSelection.abort(st, at).traverse_(raise.raise[GovernorError, Unit](_))
-        loop <- PeerSelection.decide(st, at) match
+        scores <- metrics.ask[PeerMetrics[A]]
+        loop <- PeerSelection.decide(st, at, scores) match
           case Step.Act(decision) => commit(decision) *> publish(before, at)
           case Step.Idle(settled, wakeAt) =>
             for

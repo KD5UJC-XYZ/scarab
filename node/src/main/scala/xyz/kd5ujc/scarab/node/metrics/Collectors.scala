@@ -11,6 +11,7 @@ import scala.util.Try
 import xyz.kd5ujc.scarab.consensus.{SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.network.ConnectionManager
+import xyz.kd5ujc.scarab.network.selection.PeerMetrics
 import xyz.kd5ujc.scarab.node.forge.ForgeStats
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 
@@ -72,6 +73,16 @@ object Collectors:
       metrics.set(txsInMempool, s.entries.size.toDouble) *>
         metrics.set(mempoolBytes, s.bytes.toDouble)
     )
+
+  /** The peer metrics boards: how many slots each holds. */
+  def peerMetrics[F[_]: Monad, A](board: Ref[F, PeerMetrics[A]])(using
+      metrics: Metrics[F]
+  ): F[Unit] =
+    import Catalogue.*
+    board.get.map(_.sizes).flatMap { (headers, blocks) =>
+      metrics.set(peerMetricsBoard, MetricsBoardLabel.Headers, headers.toDouble) *>
+        metrics.set(peerMetricsBoard, MetricsBoardLabel.Blocks, blocks.toDouble)
+    }
 
   /** The connection table: the three counts the Haskell node's connection manager reports, and the
     * connections by state.

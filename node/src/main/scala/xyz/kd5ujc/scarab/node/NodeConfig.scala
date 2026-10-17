@@ -95,7 +95,11 @@ final case class ConfigSettings(
     /** `Test<Era>HardForkAtVersion`: hard forks triggered by a protocol version. */
     hardForkVersions: Map[Era, BigInt] = Map.empty,
     /** `TargetNumberOf...Peers`: the governor's targets, when the file sets any. */
-    peerTargets: PeerTargetOverrides = PeerTargetOverrides()
+    peerTargets: PeerTargetOverrides = PeerTargetOverrides(),
+    /** `MaxConcurrencyDeadline` (`POM.hs` 345): how many peers may be asked for the same block in
+      * the fetch mode deadline; absent is the library's default, 1.
+      */
+    maxConcurrencyDeadline: Option[Int] = None
 ):
   /** Settings that ask for something the node does not implement. */
   def unsupported: List[String] =
@@ -289,6 +293,13 @@ object NodeConfig:
         k.opt[Int]("TargetNumberOfEstablishedBigLedgerPeers"),
         k.opt[Int]("TargetNumberOfActiveBigLedgerPeers")
       ).mapN(PeerTargetOverrides.apply)
+      deadlineConcurrency <- k
+        .opt[Int]("MaxConcurrencyDeadline")
+        .flatMap(n =>
+          n.traverse(c =>
+            Either.cond(c >= 1, c, ConfigError(s"MaxConcurrencyDeadline: $c is not positive"))
+          )
+        )
       required = (name: String, present: Boolean) =>
         Either.cond(present || !strict, (), ConfigError(s"missing required field $name"))
       _ <- required("ByronGenesisFile (or GenesisFile)", byronFile.isDefined)
@@ -335,6 +346,7 @@ object NodeConfig:
           database,
           mempool,
           versions.flatten.toMap,
-          targets
+          targets,
+          deadlineConcurrency
         )
       )

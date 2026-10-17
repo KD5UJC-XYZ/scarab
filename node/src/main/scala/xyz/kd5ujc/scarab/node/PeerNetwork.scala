@@ -45,6 +45,12 @@ object PeerNetwork:
       targets: Targets,
       policy: Policy = Policy(),
       peerSharing: Boolean = false,
+      /** The sleep between churn rounds and the waits of their steps (3300 s with fuzz 600 s in the
+        * fetch mode deadline, 900 s with 60 s in bulk sync, the reference's; shortened by the
+        * test-only flag of the `governor` scenario).
+        */
+      intervals: Churn.Intervals = Churn.Intervals(),
+      timeouts: Churn.Timeouts = Churn.Timeouts(),
       seed: Long
   )
 
@@ -64,6 +70,8 @@ object PeerNetwork:
       val connections: Ref[F, OutboundConnectionsState],
       val fetchMode: Ref[F, FetchMode],
       val judgement: Ref[F, LedgerStateJudgement],
+      /** The peer metrics the hot sessions report to and the governor ranks demotions by. */
+      val metrics: Ref[F, PeerMetrics[A]],
       /** Never returns normally; raises through `fatal` when the governor stops the node. */
       val run: F[Nothing],
       val fatal: Deferred[F, GovernorFault]
@@ -160,6 +168,11 @@ object PeerNetwork:
       config: OutboundPeers.Config,
       hot: OutboundPeers.Hot[F],
       chain: ChainView[F],
+      /** The fetch mode, written here every second and read by BlockFetch ([[BlockPool]]) and by
+        * the churn governor; the caller owns the cell so that it can hand it to both before the
+        * network starts.
+        */
+      fetchMode: Ref[F, FetchMode],
       emit: Output[Addr] => F[Unit],
       gsm: (Gsm.Phase, Gsm.Event) => F[Unit],
       gsmInitial: Gsm.Phase => F[Unit],
@@ -194,16 +207,25 @@ object PeerNetwork:
       connections <- Resource.eval(
         Ref.of[F, OutboundConnectionsState](OutboundConnectionsState.UntrustedState)
       )
-      fetchMode <- Resource.eval(Ref.of[F, FetchMode](FetchMode.BulkSync))
+      metrics <- Resource.eval(Ref.of[F, PeerMetrics[Addr]](PeerMetrics.empty[Addr]()))
       judgement <- Resource.eval(Ref.of[F, LedgerStateJudgement](LedgerStateJudgement.TooOld))
       outbound <- Resource.eval(
-        OutboundPeers.create[F, Addr](transport, manager, config, hot, supervisor, events.offer)
+        OutboundPeers.create[F, Addr](
+          transport,
+          manager,
+          config,
+          hot,
+          supervisor,
+          events.offer,
+          RefStateful(metrics)
+        )
       )
     yield
       given Stateful[F, GovernorState[Addr]] = RefStateful(state)
       given Ask[F, GovernorConfig] = Ask.const[F, GovernorConfig](
         GovernorConfig(settings.policy, association)
       )
+      given Ask[F, PeerMetrics[Addr]] = RefStateful.reader(metrics)
       given Raise[F, GovernorError] = new Raise[F, GovernorError]:
         def functor = F
         def raise[E2 <: GovernorError, B](e: E2): F[B] =
@@ -234,28 +256,41 @@ object PeerNetwork:
             )
           )
 
-      // the targets of the regime: the head start, then the steady ones, then whenever the fetch mode
-      // changes the regime (the churn governor's variable in the reference)
-      val regime: F[Nothing] =
-        def request(targets: Targets): F[Unit] =
-          events.offer(Event.TargetsRequested(targets))
-        for
-          _ <- events.offer(
-            Event.TargetsRequested(Regime.initial(initialKind, settings.targets, localHot))
+      val modeCell: Ref[F, FetchMode] = fetchMode
+      // the fetch mode of the node, once a second (the reference reads it from consensus when it needs
+      // it); published for BlockFetch and the churn governor, told when it changes
+      val modes: F[Nothing] =
+        F.tailRecM[FetchMode, Nothing](FetchMode.BulkSync) { previous =>
+          F.sleep(1.second) *> (for
+            mode <- currentFetchMode(state, chain)
+            _ <- fetchMode.set(mode)
+            _ <- fetchModeChanged(mode).whenA(mode != previous)
+          yield Left(mode))
+        }
+
+      // the targets: the head start, then the churn rounds; the one writer of the governor's targets
+      val churn: F[Nothing] =
+        given Ask[F, ChurnLoop.Config] = Ask.const[F, ChurnLoop.Config](
+          ChurnLoop.Config(
+            base = settings.targets,
+            regime = Regime.kind(_, bootstrapOn),
+            intervals = settings.intervals,
+            timeouts = settings.timeouts,
+            seed = settings.seed
           )
-          _ <- F.sleep(Regime.HeadStart)
-          _ <- request(Regime.steady(initialKind, settings.targets, localHot))
-          done <- F.tailRecM[(Regime.Kind, FetchMode), Nothing]((initialKind, FetchMode.BulkSync)) {
-            (kind, previous) =>
-              F.sleep(1.second) *> (for
-                mode <- currentFetchMode(state, chain)
-                _ <- fetchMode.set(mode)
-                _ <- fetchModeChanged(mode).whenA(mode != previous)
-                next = Regime.kind(mode, bootstrapOn)
-                _ <- request(Regime.steady(next, settings.targets, localHot)).whenA(next != kind)
-              yield Left((next, mode)))
+        )
+        given Tell[F, Churn.Trace] = new Tell[F, Churn.Trace]:
+          def functor = F
+          def tell(l: Churn.Trace): F[Unit] = emit(Output.Churned(l))
+        ChurnLoop.run[F](new ChurnWorld[F]:
+          def counters = (state.get, Clock[F].monotonic).mapN((st, now) => st.view(now).counters)
+          def localHot = state.get.map { st =>
+            val effective = st.localRoots.groups.map(_.hot.value).sum
+            if effective > 0 then effective else st.configuredRoots.groups.map(_.hot.value).sum
           }
-        yield done
+          def fetchMode = modeCell.get
+          def requested = state.get.map(_.requested)
+          def request(targets: Targets) = events.offer(Event.TargetsRequested(targets)))
 
       val gsmLoop: F[Nothing] =
         GsmRunner.run[F](
@@ -273,9 +308,9 @@ object PeerNetwork:
         PeerGovernor.run[F, Addr](outbound, rootProvider, events, supervisor)
 
       val loops: F[Nothing] =
-        F.race(governor, F.race(regime, gsmLoop))
-          .flatMap(_.fold(identity, _.fold(identity, identity)))
-      Running(state, outbound, connections, fetchMode, judgement, loops, fatal)
+        F.race(governor, F.race(modes, F.race(churn, gsmLoop)))
+          .flatMap(_.fold(identity, _.fold(identity, _.fold(identity, identity))))
+      Running(state, outbound, connections, fetchMode, judgement, metrics, loops, fatal)
 
   /** `readFetchModeDefault` (Praos): bulk sync in the sensitive state, else by the distance of the
     * chain from the wall clock.

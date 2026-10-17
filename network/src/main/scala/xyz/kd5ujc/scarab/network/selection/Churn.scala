@@ -109,7 +109,16 @@ object Churn:
       establishConnection: FiniteDuration = 60.seconds,
       short: FiniteDuration = 60.seconds,
       peerRequest: FiniteDuration = 10.seconds
-  )
+  ):
+    /** Every wait at most `limit` (for tests that cannot wait minutes). */
+    def within(limit: FiniteDuration): Timeouts =
+      Timeouts(
+        deactivate.min(limit),
+        closeConnection.min(limit),
+        establishConnection.min(limit),
+        short.min(limit),
+        peerRequest.min(limit)
+      )
 
   /** What a step reads besides the targets in force: the regime, the hot valency of the local roots
     * (`getLocalRootHotTarget`) and the targets of the regime (the reference's `base`).
@@ -210,6 +219,11 @@ object Churn:
     def of(mode: FetchMode): (FiniteDuration, FiniteDuration) = mode match
       case FetchMode.Deadline => (deadline, deadlineFuzz)
       case FetchMode.BulkSync => (bulkSync, bulkSyncFuzz)
+
+  object Intervals:
+    /** The same interval in both modes with a tenth of it as fuzz (for tests). */
+    def every(interval: FiniteDuration): Intervals =
+      Intervals(interval, interval / 10, interval, interval / 10)
 
   /** The wait before the next round, from the generator. The fuzz has a resolution of a
     * millisecond; a round that took longer than its interval waits not at all.

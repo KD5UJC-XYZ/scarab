@@ -88,6 +88,7 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 | `--memory-report-seconds N` | `0` (off) | log a `memory` event every N seconds: heap, non-heap, buffer pools, `/proc/self/status` (`RssAnon`, `RssFile`), the cgroup's `memory.current` and its `anon`/`file`, and the RocksDB properties (block cache usage, memtables). Use it with `-XX:NativeMemoryTracking=summary` and `jcmd <pid> VM.native_memory` to see where memory is |
 | `--stall-minutes N` | `10` (`0`: off) | log a `stalled` event, once, when no block has been extended for N minutes while a peer announced a longer chain than ours; `scarab_follower_stalled` is 1 for as long as it lasts and `scarab_follower_stalls_total` counts them, so Grafana can alert on a node that is up but not following. See "Stall watchdog" |
 | `--stall-exit-after <Ns\|Nm\|Nh>` | off | end the node when a stall (see `--stall-minutes`) has lasted this long: it logs `stallExit`, closes down like on a signal (the shutdown snapshot is taken) and exits with code 4, so a supervisor that restarts it (Docker `unless-stopped`) brings it back from the newest snapshot. Needs `--stall-minutes` and a longer time than it. See "Stall watchdog" |
+| `--churn-interval <Ns\|Nm>` | off (test only) | the churn governor's rounds follow each other this often (with a tenth of it as fuzz) and no step of a round waits longer than it, instead of 3300 s plus up to 600 s in the fetch mode deadline and 900 s plus up to 60 s in bulk sync, with waits of up to 300 s. The `governor` devnet scenario uses it; a real node does not |
 | `--read-ahead N` | `128` | ChainSync requests pipelined per round, and the blocks of a round fetched in ranges of at most 100, while far behind. 64, 128, 200 and 256 were each run for 15 minutes against the public Preview relay without a timeout (the relay answers a 256-header round in 0.26 s on average); 128 and above are about 6 to 10% faster than 64, see [performance.md](performance.md) section 7 (D3) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`scarab-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
@@ -227,6 +228,7 @@ What the configuration does:
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
 | `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ExperimentalProtocolsEnabled`, `ConsensusMode`, `PeerSharing`, `DiffusionMode` | read, validated and logged (`started`); the node does not act on them. `configUnsupported` in the `started` line lists the ones that ask for something not implemented: experimental hard forks (the Dijkstra era), `GenesisMode` (no Genesis syncing: the configured peers are followed as in Praos mode), `Test<Era>HardForkAtVersion`, peer sharing |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
+| `MaxConcurrencyDeadline` | how many peers may be asked for the same block in the fetch mode deadline (default 1, the reference's: one peer per block); see "Peer selection" |
 | `TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`, and the three `...BigLedgerPeers` | the targets of the peer governor (see "Peer selection"); absent keys leave the reference defaults |
 | everything else (`TraceOptions`, `LedgerDB`, ...) | ignored |
 
@@ -258,6 +260,25 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   (`TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`,
   `TargetNumberOfKnownBigLedgerPeers`, `TargetNumberOfEstablishedBigLedgerPeers`, `TargetNumberOfActiveBigLedgerPeers`); a set
   that breaks the reference's sanity rule (active <= established <= known, root <= known, and at most 100 active, 1000 established, 10000 known) is a `ConfigError`. Big ledger peers need ledger peers (G1.3) and are not used yet.
+- **Peer metrics and churn.** The feedback from the chain (roadmap G1.2). Each hot session reports the headers and blocks
+  it delivers; two boards of 180 slots keep, per slot, the peer that was *first* (`PeerMetrics`, the reference's
+  `PeerMetric`: the earliest arrival wins, the join-time correction `adjustAvg` is zero in the pinned release and is not
+  implemented). When the governor must demote hot peers it drops those with the lowest `upstreamness + fetchynessBlocks`,
+  ties by the slot at which the peer joined, then at random. The churn governor (`ChurnLoop`, the reference's
+  `peerChurnGovernor`) is the one writer of the targets: 3 s after start the root target is released (a head start for the
+  local roots), then it sleeps 3300 s plus up to 600 s (fetch mode deadline) or 900 s plus up to 60 s (bulk sync) and runs a
+  round. A round changes one target at a time, in the reference's order, and waits for the counters or a timeout: it lowers
+  the active target by 20% (at least one), so that the governor demotes the least useful hot peers, restores it so that
+  others are promoted, then does the same for the established and the known sets (steps 7 to 12; the six steps for big ledger
+  peers are left out until there are any, G1.3). While the node is behind with bootstrap peers or in the other sync regime
+  the active targets follow the local roots' valency (`Regime`, design section 1.10). A change of regime during the sleep
+  asks for the new regime's targets at once. The log events `peerSelectionChurn` and the `scarab_peer_selection_churn_*`
+  metrics tell the rounds.
+- **Fetch mode and BlockFetch.** The node reads the fetch mode every second (`BulkSync` while behind or in the sensitive
+  state, `Deadline` when less than 1000 slots behind the wall clock) and BlockFetch follows it as the reference's decision
+  policy does (`Decision.hs`, `filterNotAlreadyInFlightWithOtherPeers`): in bulk sync a block another session has claimed is
+  not requested, in deadline mode it may be, by up to `MaxConcurrencyDeadline` sessions at once (default 1, the reference's,
+  so the two modes fetch alike unless the key is set), and the first delivery wins.
 - **Failures.** A protocol violation, an invalid header or an oversize message makes the peer forgotten (unless it is a local
   root or a bootstrap peer); a network failure, a timeout or a refused connection is backed off: 5 s doubling to 160 s
   (plus or minus 2 s) for connecting, 10 s (plus or minus 2 s) before a peer whose activation failed is activated again. One function decides, `FailurePolicy.classify`
@@ -270,11 +291,11 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   connected) within 15 minutes or the node stops (`BootstrapPeersCriticalTimeout`). It also sets the fetch mode
   (`BulkSync` while behind, `Deadline` when caught up; logged as `fetchModeChanged`, gauge `scarab_fetch_mode`).
 - **Where to look.** The log events `peerSelectionTargets`, `peerSelectionRoots`, `peerSelectionPromote`,
-  `peerSelectionDemote`, `peerSelectionForget`, `peerSelectionSensitive`, `peerSelectionCounters`, `outboundConnections`,
+  `peerSelectionDemote`, `peerSelectionForget`, `peerSelectionSensitive`, `peerSelectionCounters`, `peerSelectionChurn`, `outboundConnections`,
   `gsmTransition` and `fetchModeChanged` (table in "Logging"); the gauges of "Peer selection (G1)" in "Metrics";
   `GET /connections` has a `peerSelection` object next to the connection table: `counters` (cold, warm, hot, known, root),
   `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin` and `failCount`.
-- **Not yet.** Ledger peers and big ledger peers (G1.3), churn (G1.2), peer sharing (G1.4), the Genesis hooks (G1.5), a
+- **Not yet.** Ledger peers and big ledger peers (G1.3), peer sharing (G1.4), the Genesis hooks (G1.5), a
   re-read of the topology on SIGHUP, SRV access points and duplex outbound connections ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
 
 ### Preview
@@ -733,6 +754,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `target`, `known`, `peers` |
 | `peerSelectionSensitive` | `Net.PeerSelectionSensitive` | Notice | `action`, `judgement` |
 | `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap` |
+| `peerSelectionChurn` | `Net.PeerSelectionChurn` | Info | `action` (`round`, `step`, `timeout`, `wait`), `mode`, `step`, `number`, `tookSeconds`, `change`, `delaySeconds` |
 | `outboundConnections` | `Net.OutboundConnections` | Info | `state`, `trusted` |
 | `gsmTransition` | `Net.GsmTransition` | Notice | `transition`, `state`, `peers`, `tipTooOld` |
 | `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |
@@ -999,6 +1021,11 @@ section and the catalogue differ.
 |---|---|---|---|---|
 | `scarab_peer_selection_transitions_total` | counter | `transition` | What the peer governor did to peers, and what became of it. | none |
 | `scarab_peer_selection_targets` | gauge | `target` | The targets the peer governor works towards (big ledger peers are not exported yet). | none |
+| `scarab_peer_selection_backoff_seconds` | histogram |  | The wait before a peer whose promotion failed is tried again. | none |
+| `scarab_peer_selection_churn_rounds_total` | counter |  | Rounds of the churn governor begun (`TraceChurnMode`). | none |
+| `scarab_peer_selection_churn_steps_total` | counter | `step`, `result` | Steps of the churn governor's rounds, by step and by whether the node met the targets or the step timed out. | none |
+| `scarab_peer_selection_churn_wait_seconds` | gauge |  | How long the churn governor sleeps before its next round, as last decided. | none |
+| `scarab_peer_selection_peer_metrics_board_size` | gauge | `board` | Slots held by the peer metrics boards (at most 180 each): the headers and the blocks whose first arrival is recorded. | none |
 | `scarab_peer_selection_sensitive` | gauge |  | 1 while the node uses only trusted peers because its ledger is too old and bootstrap peers are configured, else 0. | none |
 | `scarab_outbound_connections_trusted` | gauge |  | 1 while the node is connected only to peers it trusts (the Honest Availability Assumption of the Genesis State Machine), else 0. | none |
 | `scarab_gsm_state` | gauge | `state` | 1 for the state of the Genesis State Machine, 0 for the others. | none |

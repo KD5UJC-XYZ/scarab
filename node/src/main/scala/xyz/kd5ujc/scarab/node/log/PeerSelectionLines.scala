@@ -143,6 +143,28 @@ private[log] object PeerSelectionLines:
     case Trace.OnlyBootstrapPeers() =>
       EventKind.PeerSelectionSensitive.line("action" -> "clean".asJson)
 
+  def churn(t: Churn.Trace): Line = t match
+    case Churn.Trace.Mode(mode) =>
+      EventKind.PeerSelectionChurn.line("action" -> "round".asJson, "mode" -> mode.toString.asJson)
+    case Churn.Trace.Action(step, took, change) =>
+      EventKind.PeerSelectionChurn.line(
+        "action" -> "step".asJson,
+        "step" -> step.toString.asJson,
+        "number" -> step.number.asJson,
+        "tookSeconds" -> seconds(took),
+        "change" -> change.asJson
+      )
+    case Churn.Trace.Timeout(step, took, change) =>
+      EventKind.PeerSelectionChurn.line(
+        "action" -> "timeout".asJson,
+        "step" -> step.toString.asJson,
+        "number" -> step.number.asJson,
+        "tookSeconds" -> seconds(took),
+        "change" -> change.asJson
+      )
+    case Churn.Trace.Wait(delay) =>
+      EventKind.PeerSelectionChurn.line("action" -> "wait".asJson, "delaySeconds" -> seconds(delay))
+
   def counters(c: GovernorState.Counters): Line =
     EventKind.PeerSelectionCounters.line(
       "root" -> c.root.asJson,

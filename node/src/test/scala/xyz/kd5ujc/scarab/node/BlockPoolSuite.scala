@@ -5,6 +5,7 @@ import cats.effect.IO
 import cats.syntax.all.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.network.selection.FetchMode
 import scala.concurrent.duration.*
 
 /** A block is claimed by one session, fetched by it, and taken by whichever session applies it. */
@@ -149,4 +150,75 @@ class BlockPoolSuite extends CatsEffectSuite:
     yield
       assertEquals(stillOurs, Vector(false))
       assertEquals(got, Some(block(1)))
+  }
+
+  // ------------------------------------------------------------------ the fetch mode
+
+  test("bulk sync: a block another session holds is not claimed, whatever the policy allows") {
+    for
+      pool <- BlockPool.create[IO](BlockPool.FetchPolicy(deadlineConcurrency = 3))
+      first <- pool.session.allocated.map(_._1)
+      second <- pool.session.allocated.map(_._1)
+      a <- first.claim(Vector(hash(1)), FetchMode.BulkSync)
+      b <- second.claim(Vector(hash(1)), FetchMode.BulkSync)
+    yield assertEquals((a, b), (Vector(true), Vector(false)))
+  }
+
+  test("deadline mode, one peer per block (the reference's default): the claim stays exclusive") {
+    for
+      pool <- BlockPool.create[IO]
+      first <- pool.session.allocated.map(_._1)
+      second <- pool.session.allocated.map(_._1)
+      a <- first.claim(Vector(hash(1)), FetchMode.Deadline)
+      b <- second.claim(Vector(hash(1)), FetchMode.Deadline)
+    yield assertEquals((a, b), (Vector(true), Vector(false)))
+  }
+
+  test(
+    "deadline mode, two peers per block: both claim, the first delivery wins, a third is refused"
+  ) {
+    for
+      pool <- BlockPool.create[IO](BlockPool.FetchPolicy(deadlineConcurrency = 2))
+      first <- pool.session.allocated.map(_._1)
+      second <- pool.session.allocated.map(_._1)
+      third <- pool.session.allocated.map(_._1)
+      a <- first.claim(Vector(hash(1)), FetchMode.Deadline)
+      again <- first.claim(Vector(hash(1)), FetchMode.Deadline)
+      b <- second.claim(Vector(hash(1)), FetchMode.Deadline)
+      c <- third.claim(Vector(hash(1)), FetchMode.Deadline)
+      waiting <- pool.take(hash(1)).start
+      _ <- IO.sleep(20.millis)
+      _ <- second.fill(Vector(hash(1) -> block(2)))
+      got <- waiting.joinWithNever
+      // the slower delivery finds the block taken and changes nothing
+      _ <- first.fill(Vector(hash(1) -> block(1)))
+      held <- pool.size
+    yield
+      assertEquals((a, again, b, c), (Vector(true), Vector(false), Vector(true), Vector(false)))
+      assertEquals(got, Some(block(2)))
+      assertEquals(held, 0)
+  }
+
+  test(
+    "a duplicate claim released by one session leaves the block to the other; both released frees it"
+  ) {
+    for
+      pool <- BlockPool.create[IO](BlockPool.FetchPolicy(deadlineConcurrency = 2))
+      first <- pool.session.allocated.map(_._1)
+      second <- pool.session.allocated.map(_._1)
+      _ <- first.claim(Vector(hash(1)), FetchMode.Deadline)
+      _ <- second.claim(Vector(hash(1)), FetchMode.Deadline)
+      waiting <- pool.take(hash(1)).start
+      _ <- IO.sleep(20.millis)
+      _ <- first.release(Vector(hash(1)))
+      stillWaiting <- IO.race(waiting.join, IO.sleep(50.millis)).map(_.isRight)
+      _ <- second.fill(Vector(hash(1) -> block(1)))
+      got <- waiting.joinWithNever
+      _ <- first.claim(Vector(hash(2)), FetchMode.Deadline)
+      _ <- first.release(Vector(hash(2)))
+      freed <- second.claim(Vector(hash(2)), FetchMode.Deadline)
+    yield
+      assert(stillWaiting, "the waiter is released only when nobody holds the claim")
+      assertEquals(got, Some(block(1)))
+      assertEquals(freed, Vector(true))
   }

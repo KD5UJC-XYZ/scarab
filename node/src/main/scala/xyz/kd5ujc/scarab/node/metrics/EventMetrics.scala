@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
 import xyz.kd5ujc.scarab.network.selection.{
+  Churn,
   FetchMode,
   Gsm,
   LedgerStateJudgement,
@@ -204,6 +205,14 @@ final class EventMetrics[F[_]: Sync] private (
     case Output.Connections(state) =>
       val trusted = state == OutboundConnectionsState.TrustedStateWithExternalPeers
       metrics.set(outboundTrusted, flag(trusted))
+    case Output.Churned(trace) =>
+      trace match
+        case Churn.Trace.Mode(_) => metrics.inc(churnRounds)
+        case Churn.Trace.Action(step, _, _) =>
+          metrics.inc(churnSteps, (step, ChurnResultLabel.Reached))
+        case Churn.Trace.Timeout(step, _, _) =>
+          metrics.inc(churnSteps, (step, ChurnResultLabel.TimedOut))
+        case Churn.Trace.Wait(delay) => metrics.set(churnWaitSeconds, delay.toMillis / 1000.0)
     case Output.Traced(trace) =>
       def count(label: PeerTransitionLabel, by: Int = 1): F[Unit] =
         metrics.inc(peerTransitions, label, by.toDouble).whenA(by > 0)
@@ -217,8 +226,10 @@ final class EventMetrics[F[_]: Sync] private (
         case Trace.PromoteDone(_, _, _, _)                => count(PeerTransitionLabel.PromotedHot)
         case Trace.DemoteDone(Temperature.Hot, _, _)      => count(PeerTransitionLabel.DemotedHot)
         case Trace.DemoteDone(_, _, _)                    => count(PeerTransitionLabel.DemotedCold)
-        case Trace.PromoteFailed(_, _, _, _, _) => count(PeerTransitionLabel.PromoteFailed)
-        case Trace.DemoteFailed(_, _, _)        => count(PeerTransitionLabel.DemoteFailed)
+        case Trace.PromoteFailed(_, _, _, retryIn, _) =>
+          count(PeerTransitionLabel.PromoteFailed) *>
+            retryIn.traverse_(d => metrics.observe(peerBackoffSeconds, d.toMillis / 1000.0))
+        case Trace.DemoteFailed(_, _, _) => count(PeerTransitionLabel.DemoteFailed)
         case Trace.DemoteAsynchronous(_, _, failure, _) =>
           count(
             if failure.isDefined then PeerTransitionLabel.Lost else PeerTransitionLabel.DemotedHot
@@ -249,6 +260,8 @@ final class EventMetrics[F[_]: Sync] private (
     case Peer.Observation.Fetched(millis) =>
       metrics.observe(blockFetchSeconds, millis / 1000.0)
     case Peer.Observation.Announced(_) => Sync[F].unit
+    case Peer.Observation.HeadersArrived(_, _) | Peer.Observation.BlocksArrived(_, _) =>
+      Sync[F].unit
 
   /** The stall watchdog's report ([[xyz.kd5ujc.scarab.node.StallWatchdog]]). */
   def stall(change: StallWatchdog.Change): F[Unit] = change match
