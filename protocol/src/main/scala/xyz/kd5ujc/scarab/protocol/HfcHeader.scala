@@ -59,8 +59,9 @@ object HfcHeader:
     for
       root <- Cbor.decode(bytes, limits).leftMap(_ => HfcHeaderError.Syntax)
       parts <- root.value match
-        case Value.Arr(Vector(index, payload)) => Right((index, payload))
-        case _                                 => Left(HfcHeaderError.NotAnEnvelope)
+        // `decodeListLen` of the reference reads a definite length only (see `definite`)
+        case Value.Arr(Vector(index, payload)) if definite(root) => Right((index, payload))
+        case _ => Left(HfcHeaderError.NotAnEnvelope)
       (index, payload) = parts
       era <- index.value match
         case Value.UInt(i) => Right(i)
@@ -74,16 +75,29 @@ object HfcHeader:
         case None                         => Right(Unrecognised(era, payload.original))
     yield header
 
+  /** Whether the item was written with a definite length. The decoder of the reference reads the
+    * envelope with `decodeListLen` and the embedded header with `decodeBytes`, which take the
+    * definite forms only (cborg `Codec.CBOR.Read.tryConsumeListLen` accepts 0x80 to 0x9b and
+    * `tryConsumeBytes` 0x40 to 0x5b; the indefinite forms are `decodeListLenIndef` and
+    * `decodeBytesIndef`), so `9f 07 .. ff` is no envelope there. Shortest-form integer heads are
+    * not demanded (`[7, ..]` as `98 02 18 07 ..` reads), and are not here: the era and the header
+    * bytes are what an envelope means, the encoder writes the canonical form as `encodeNS` does.
+    */
+  private def definite(item: Node): Boolean =
+    val head = item.original(0) & 0xff
+    head != 0x9f && head != 0x5f
+
   /** The bytes of `tag24(bytes)`. */
   private def embedded(payload: Node): Either[HfcHeaderError, Bytes] = payload.value match
     case Value.Tag(t, inner) if t == 24 =>
       inner.value match
-        case Value.ByteString(b) if b.size <= MaxHeader => Right(b)
-        case _                                          => Left(HfcHeaderError.NotEmbeddedCbor)
+        case Value.ByteString(b) if b.size <= MaxHeader && definite(inner) => Right(b)
+        case _ => Left(HfcHeaderError.NotEmbeddedCbor)
     case _ => Left(HfcHeaderError.NotEmbeddedCbor)
 
-  /** The envelope of a header, for tests and servers; an unrecognised era is written back as
-    * received.
+  /** The canonical envelope of a header, for tests and servers; an unrecognised era is written back
+    * with its payload as received. A decoded envelope that used longer-than-shortest heads (which
+    * the reference reads) is written in the shortest form: `decode(encode(h)) == h`.
     */
   def encode(header: HfcHeader): Either[String, Bytes] = header match
     case Supported(h) => NtNHeader.codec.encode(h)

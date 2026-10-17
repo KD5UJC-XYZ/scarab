@@ -414,8 +414,20 @@ object Targets:
         () => Corpus.leiosEnvelopes ++ Corpus.headerEnvelopes.take(10) ++ Corpus.tricky,
         probe("leios-header-envelope") { b =>
           seen("leios-header-envelope", HfcHeader.decode(b).isRight)
+          // The reference reads longer-than-shortest heads, so an input need not be its own
+          // encoding; what decodes writes a canonical envelope that reads as the same header and
+          // is its own encoding (HfcHeader.definite).
           HfcHeader.decode(b).foreach { h =>
-            req(HfcHeader.encode(h) == Right(b), "an envelope does not re-encode to itself")
+            HfcHeader.encode(h) match
+              case Right(e) =>
+                val again = HfcHeader.decode(e)
+                req(again == Right(h), "the canonical envelope does not decode to its header")
+                req(
+                  again.toOption.map(HfcHeader.encode) == Some(Right(e)),
+                  "the canonical envelope is not stable"
+                )
+                if b.size == e.size then req(e == b, "a same-size envelope differs from its input")
+              case Left(_) => req(false, "a decoded envelope does not encode")
           }
         }
       ),
