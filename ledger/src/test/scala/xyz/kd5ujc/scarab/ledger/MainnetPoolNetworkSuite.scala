@@ -42,9 +42,9 @@ class MainnetPoolNetworkSuite extends FunSuite:
     }
 
   private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Invalid(_, rule, _)) => rule
-    case Left(other)                             => other.message
-    case Right(_)                                => "accepted"
+    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+    case Left(other)                        => other.message
+    case Right(_)                           => "accepted"
 
   test(
     "the fixture is the block at slot 4,495,760 with a pool whose reward account is not mainnet"

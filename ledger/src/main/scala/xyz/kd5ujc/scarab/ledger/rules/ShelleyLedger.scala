@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   Certificate,
   LedgerFailure,
+  PredicateFailure,
   ProtocolParams,
   Tx,
   TxRules
@@ -73,23 +74,15 @@ object ShelleyLedger:
                   )(_.balance.toBigInt)
                 )
                 // `testIncompleteAndMissingWithdrawals` (`Ledger.hs:341`)
-                _ <- Sts.check[F, LedgerFailure](
+                _ <- Refuse.unless[F](
                   view.missing.isEmpty,
-                  LedgerFailure.Invalid(
-                    id,
-                    "ShelleyWithdrawalsMissingAccounts",
-                    view.missing.map((a, n) => s"${a.credential.render}: $n").mkString(",")
-                  )
+                  id,
+                  PredicateFailure.WithdrawalsMissingAccounts(view.missing.toMap)
                 )
-                _ <- Sts.check[F, LedgerFailure](
+                _ <- Refuse.unless[F](
                   view.incomplete.isEmpty,
-                  LedgerFailure.Invalid(
-                    id,
-                    "ShelleyIncompleteWithdrawals",
-                    view.incomplete
-                      .map((a, m) => s"${a.credential.render}: ${m.supplied} != ${m.expected}")
-                      .mkString(",")
-                  )
+                  id,
+                  PredicateFailure.IncompleteWithdrawals(view.incomplete.toMap)
                 )
                 drained <- Refuse.vocab[F, ShelleyCertState](
                   tx.body.withdrawals

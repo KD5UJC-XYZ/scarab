@@ -23,9 +23,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     state(pv, Vector(in -> out(alice.address(), coin))) -> in
 
   private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
-    case Left(LedgerFailure.Invalid(_, rule, _)) => rule
-    case Left(other)                             => other.message
-    case Right(_)                                => "accepted"
+    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+    case Left(other)                        => other.message
+    case Right(_)                           => "accepted"
 
   private def transfer(in: TxIn, pay: BigInt, change: BigInt, fee: BigInt = 200, id: String = "t") =
     body(id, Vector(in), Vector(out(bob.address(), pay), out(alice.address(), change)), fee)
@@ -470,7 +470,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     assertEquals(
       rule(TxRules(registered, tx(b, Vector(alice, g1)), env)),
-      "MIRInsufficientGenesisSigsDELEG"
+      "MIRInsufficientGenesisSigsUTXOW"
     )
     val s1 =
       TxRules(registered, tx(b, Vector(alice, g1, g2)), env).fold(f => fail(f.message), identity)
@@ -599,10 +599,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     out(bob.address(), 0).copy(value = v)
 
   private def outputRule(pp: ProtocolParams, o: TxOut): String =
-    PreConwayRules.outputChecks(pp, env, Bytes.empty, o) match
-      case Left(LedgerFailure.Invalid(_, r, _)) => r
-      case Left(other)                          => other.message
-      case Right(_)                             => "accepted"
+    PreConwayRules.outputChecks(pp, env, Bytes.empty, Vector(o)) match
+      case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+      case Left(other)                        => other.message
+      case Right(_)                           => "accepted"
 
   test("Shelley and Allegra require exactly minUTxOValue, Mary scales it for native assets") {
     // ada-only outputs: the flat parameter in every Shelley-based era up to Mary

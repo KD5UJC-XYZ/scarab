@@ -120,8 +120,14 @@ class PreviewConwayRulesSuite extends FunSuite:
       val other =
         s.copy(gov = s.gov.copy(constitution = s.gov.constitution.copy(script = Some(body.id))))
       TxRules(other, c.tx, envOf(c, other)) match
-        case Left(LedgerFailure.Invalid(_, "InvalidGuardrailsScriptHash", _)) => ()
-        case other                                                            => fail(s"$other")
+        case Left(
+              LedgerFailure.Rejected(
+                _,
+                PredicateFailure.Gov(GovFailure.InvalidGuardrailsScriptHash(_, _))
+              )
+            ) =>
+          ()
+        case other => fail(s"$other")
     }
   }
 

@@ -47,10 +47,12 @@ import xyz.kd5ujc.scarab.ledger.TestLedger.*
   * their pointers, the pointer stake, the deposits, the instantaneous rewards, the proposed
   * updates), and the pools' delegators against the accounts.
   *
-  * Where the reference differs from the old rules the test says so and checks both sides: the names
-  * of the refusals that moved (`WithdrawalsNotInRewardsDELEGS` is `ShelleyIncompleteWithdrawals` in
-  * LEDGER, the genesis signatures of a MIR certificate are UTXOW's), the refund of the deposit the
-  * account holds, and the two checks of a genesis delegation the old rules lack.
+  * Where the reference differs from the old rules the test says so and checks both sides: the
+  * refund of the deposit the account holds, and the two checks of a genesis delegation the old
+  * rules lack. The refusals are compared as values (the typed predicate failure, with its payload),
+  * so the two sides agree on what they found as well as on the rule; the withdrawals that do not
+  * drain their accounts (LEDGER's `ShelleyIncompleteWithdrawals`) and the genesis signatures of a
+  * MIR certificate (UTXOW's) are the reference's on both sides now.
   */
 class ShelleyLedgerSuite extends FunSuite:
   type Result[A] = Either[MirrorError, A]
@@ -155,7 +157,7 @@ class ShelleyLedgerSuite extends FunSuite:
     (o, n) match
       case (Out.Accepted(a), Out.Accepted(b)) =>
         assertEquals(LedgerMirror.normalised(0, b), LedgerMirror.normalised(0, a), c.name)
-      case (Out.Refused(a), Out.Refused(b)) => assertEquals(name(b), name(a), c.name)
+      case (Out.Refused(a), Out.Refused(b)) => assertEquals(b, a, c.name)
       case _                                => assertEquals(n, o, c.name)
     n
 
@@ -482,8 +484,8 @@ class ShelleyLedgerSuite extends FunSuite:
       val partial =
         pay("partial", alice, withdrawals = Vector(account -> 3 * ada), signers = Vector(bob))
       val (o, n) = both(c, s, partial, TestLedger.env)
-      assertEquals(refusal(n, c), "ShelleyIncompleteWithdrawals", c.name)
-      assertEquals(refusal(o, c), "WithdrawalsNotInRewardsDELEGS", c.name)
+      assertEquals(refusal(n, c), "ConwayIncompleteWithdrawals", c.name)
+      assertEquals(refusal(o, c), "ConwayIncompleteWithdrawals", c.name)
       val unknown = pay(
         "unknown",
         alice,
@@ -491,7 +493,7 @@ class ShelleyLedgerSuite extends FunSuite:
         signers = Vector(carol)
       )
       val (_, missing) = both(c, s, unknown, TestLedger.env)
-      assertEquals(refusal(missing, c), "ShelleyWithdrawalsMissingAccounts", c.name)
+      assertEquals(refusal(missing, c), "ConwayWithdrawalsMissingAccounts", c.name)
     }
   }
 
@@ -594,11 +596,11 @@ class ShelleyLedgerSuite extends FunSuite:
       val signed = pay("mir", alice, certificates = Vector(cert), signers = delegates)
       val next = accepted(c, s, signed)
       assertEquals(next.mir.reserves(bob.credential), 7 * ada, c.name)
-      // one signature of two: the reference refuses it in UTXOW, the old rules in DELEG
+      // one signature of two: UTXOW refuses it, on both sides
       val partial = pay("mir", alice, certificates = Vector(cert), signers = delegates.take(1))
       val (o, n) = both(c, s, partial, TestLedger.env)
       assertEquals(refusal(n, c), "MIRInsufficientGenesisSigsUTXOW", c.name)
-      assertEquals(refusal(o, c), "MIRInsufficientGenesisSigsDELEG", c.name)
+      assertEquals(refusal(o, c), "MIRInsufficientGenesisSigsUTXOW", c.name)
       // too late in the epoch: the slot is within 3k/f (100) of the end of the epoch (5000)
       assertEquals(
         refusedWith(c, s, signed, TestLedger.env.copy(slot = 4950)),

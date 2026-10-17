@@ -62,15 +62,13 @@ object Phase2:
       for
         purpose <- Purpose
           .resolve(tx.body, spent, r.tag, r.index)
-          .toRight(TranslationError(s"redeemer (${r.tag}, ${r.index}) names no purpose"))
-        hash <- purpose.scriptHash.toRight(
-          TranslationError(s"redeemer (${r.tag}, ${r.index}) has no script")
-        )
-        script <- scripts.get(hash).toRight(TranslationError(s"script ${hash.hex} is missing"))
+          .toRight(TranslationError.NoRedeemer(r.tag, r.index))
+        hash <- purpose.scriptHash.toRight(TranslationError.NoRedeemer(r.tag, r.index))
+        script <- scripts.get(hash).toRight(TranslationError.NoWitness(hash))
         language <- languageOf(script)
         code <- script.plutus
           .orElse(referenceScripts.get(hash))
-          .toRight(TranslationError(s"script ${hash.hex} has no bytes"))
+          .toRight(TranslationError.NoScriptBytes(hash))
         model <- costModel(pp, language)
         txInfo <- info(language)
         args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
@@ -100,7 +98,7 @@ object Phase2:
       case ScriptKind.PlutusV1 => Right(PlutusLanguage.V1)
       case ScriptKind.PlutusV2 => Right(PlutusLanguage.V2)
       case ScriptKind.PlutusV3 => Right(PlutusLanguage.V3)
-      case ScriptKind.Native   => Left(TranslationError("a redeemer names a native script"))
+      case ScriptKind.Native   => Left(TranslationError.NativeScriptRedeemer)
 
   private def costModel(
       pp: ProtocolParams,
@@ -108,11 +106,11 @@ object Phase2:
   ): Either[TranslationError, Vector[Long]] =
     pp.costModels
       .get(language.id)
-      .toRight(TranslationError(s"no cost model for $language"))
+      .toRight(TranslationError.NoCostModel(language))
       .flatMap(m =>
         Either.cond(
           m.forall(_.isValidLong),
           m.map(_.toLong),
-          TranslationError("cost model parameter exceeds 64 bits")
+          TranslationError.CostModelParameterTooLarge
         )
       )

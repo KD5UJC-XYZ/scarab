@@ -38,7 +38,7 @@ final class PlutusCases(dir: Path, perKind: Int, max: Int):
     val outcome = o.outcome match
       case Right(Phase2.Outcome.Passed(_))         => "passed"
       case Right(Phase2.Outcome.Failed(_, r, why)) => s"failed ${r.tag}.${r.index} ${why.message}"
-      case Left(e)                                 => s"translation ${e.reason}"
+      case Left(e)                                 => s"translation ${e.message}"
     val kind =
       s"v${languages.mkString("")}-${if o.tx.isValid then "valid" else "invalid"}-${features.mkString(",")}-${outcome.take(40)}"
     val count = seen.getOrElse(kind, 0)

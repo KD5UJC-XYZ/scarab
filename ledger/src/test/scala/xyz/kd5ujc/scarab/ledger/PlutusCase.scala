@@ -30,7 +30,7 @@ final case class PlutusCase(
     TestLedger.params(protocolMajor).copy(costModels = costModels)
 
   def posix(slot: BigInt): Either[TranslationError, BigInt] =
-    clock.get(slot).toRight(TranslationError(s"no clock sample for slot $slot"))
+    clock.get(slot).toRight(TranslationError.NoClockSample(slot))
 
 object PlutusCase:
   val directory: Path = Path.of("fixtures/preview/plutus")

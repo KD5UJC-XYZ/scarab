@@ -61,9 +61,9 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
   private val conwayEnv = env.copy(slot = 83038792, epoch = 196)
 
   private def rule(t: Tx): String = TxRules(world, t, conwayEnv) match
-    case Left(LedgerFailure.Invalid(_, r, _)) => r
-    case Left(other)                          => other.message
-    case Right(_)                             => "accepted"
+    case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
+    case Left(other)                        => other.message
+    case Right(_)                           => "accepted"
 
   test("the fixture is the recorded transaction: two Byron inputs, one vkey witness") {
     assertEquals(

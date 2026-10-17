@@ -10,12 +10,16 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Certificate,
+  DelegFailure,
   GenDelegPair,
   LedgerFailure,
+  Mismatch,
   Pot,
+  PredicateFailure,
   ProtocolParams,
   Proposals,
-  Ptr
+  Ptr,
+  TxDefect
 }
 import xyz.kd5ujc.scarab.ledger.TxRules
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -25,10 +29,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // (`Alonzo/Rules/Delegs.hs`, `Babbage/Rules/Delegs.hs` only name the failure types). They run on
 // the Shelley certificate state (`ShelleyCertState`): the accounts with the pointer of the
 // certificate that registered each, the pointer map, the pools with their delegators, the genesis
-// delegations and the instantaneous rewards. A rule that fails raises the failure the node has
-// always reported for it (`LedgerFailure.Invalid` of the constructor's name), so the two sides
-// refuse a transaction alike; the closed failure types the Conway rules use have no case for
-// these (their node-to-client encoding is Conway's).
+// delegations and the instantaneous rewards. A rule that fails raises the predicate failure the
+// reference has for it (`ShelleyDelegPredFailure`, `Deleg.hs:89-120`; the cases of the eras
+// before Conway are in the closed failure types the Conway rules use as well).
 
 /** The lenses into the Shelley certificate state that its rules use. */
 object ShelleyCertLens:
@@ -143,10 +146,10 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
     val id = env.delegs.id
     val pp = env.delegs.pp
     val ctx = env.delegs.ctx
-    def refused[A](rule: String, detail: String): F[A] =
-      (LedgerFailure.Invalid(id, rule, detail): LedgerFailure).raise[F, A]
-    def ensure(cond: Boolean, rule: String, detail: => String): F[Unit] =
-      Sts.check[F, LedgerFailure](cond, LedgerFailure.Invalid(id, rule, detail))
+    def refused[A](f: DelegFailure): F[A] =
+      (LedgerFailure.Rejected(id, PredicateFailure.deleg(f)): LedgerFailure).raise[F, A]
+    def ensure(cond: Boolean, f: => DelegFailure): F[Unit] =
+      Sts.check[F, LedgerFailure](cond, LedgerFailure.Rejected(id, PredicateFailure.deleg(f)))
     cert match
       case Certificate.Register(c, _) =>
         for
@@ -154,8 +157,7 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
           s <- st.get
           _ <- ensure(
             !ShelleyCertLens.states.get(s).contains(cred),
-            "StakeKeyAlreadyRegisteredDELEG",
-            c.render
+            DelegFailure.StakeKeyAlreadyRegistered(c)
           )
           deposit <- Refuse.vocab[F, CompactCoin](CompactCoin.fromBigInt(pp.keyDeposit))
           _ <- st.set(ShelleyCertOps.register(s, cred, env.ptr, deposit))
@@ -166,11 +168,10 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
           s <- st.get
           account <- ShelleyCertLens.states.get(s).get(cred) match
             case Some(a) => a.pure[F]
-            case None    => refused[ShelleyAccountState]("StakeKeyNotRegisteredDELEG", c.render)
+            case None    => refused[ShelleyAccountState](DelegFailure.StakeKeyNotRegistered(c))
           _ <- ensure(
             account.balance.word.isZero,
-            "StakeKeyNonZeroAccountBalanceDELEG",
-            account.balance.toBigInt.toString
+            DelegFailure.StakeKeyHasNonZeroAccountBalance(account.balance.toBigInt)
           )
           _ <- st.set(ShelleyCertOps.unregister(s, cred, account))
         yield ()
@@ -181,12 +182,11 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
           s <- st.get
           _ <- ensure(
             ShelleyCertLens.pools.get(s).contains(target),
-            "DelegateeNotRegisteredDELEG",
-            pool.hex
+            DelegFailure.DelegateeNotRegistered(pool)
           )
           account <- ShelleyCertLens.states.get(s).get(cred) match
             case Some(a) => a.pure[F]
-            case None    => refused[ShelleyAccountState]("StakeDelegationImpossibleDELEG", c.render)
+            case None    => refused[ShelleyAccountState](DelegFailure.StakeDelegationImpossible(c))
           _ <- st.set(ShelleyCertOps.delegate(s, cred, account, target))
         yield ()
       case Certificate.GenesisDelegate(g, delegate, vrf) =>
@@ -195,15 +195,14 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
           s <- st.get
           current = ShelleyCertLens.genDelegs.get(s)
           future = ShelleyCertLens.futureGenDelegs.get(s)
-          _ <- ensure(current.contains(genesis), "GenesisKeyNotInMappingDELEG", g.hex)
+          _ <- ensure(current.contains(genesis), DelegFailure.GenesisKeyNotInMapping(g))
           others = current.removed(genesis).values ++
             future.collect { case (k, p) if k.genKeyHash != genesis => p }
           _ <- ensure(
             !others.exists(_.delegate == delegate),
-            "DuplicateGenesisDelegateDELEG",
-            delegate.hex
+            DelegFailure.DuplicateGenesisDelegate(delegate)
           )
-          _ <- ensure(!others.exists(_.vrf == vrf), "DuplicateGenesisVRFDELEG", vrf.hex)
+          _ <- ensure(!others.exists(_.vrf == vrf), DelegFailure.DuplicateGenesisVRF(vrf))
           due <- Refuse.vocab[F, SlotNo](SlotNo.fromBigInt(ctx.slot + ctx.stabilityWindow))
           _ <- st.set(
             ShelleyCertLens.futureGenDelegs.modify(
@@ -213,7 +212,7 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
         yield ()
       case Certificate.MoveRewards(pot, transfer) => moveRewards(env, pot, transfer)
       case other =>
-        (LedgerFailure.Unsupported(id, s"certificate $other before Conway"): LedgerFailure)
+        (LedgerFailure.Undecodable(id, TxDefect.ConwayCertificate(other)): LedgerFailure)
           .raise[F, Unit]
 
   /** The `MIRCert` of a transaction (`Deleg.hs:252-420`): to the reserves' or the treasury's
@@ -230,10 +229,10 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
   ): F[Unit] =
     val id = env.delegs.id
     val ctx = env.delegs.ctx
-    def refused[A](rule: String, detail: String): F[A] =
-      (LedgerFailure.Invalid(id, rule, detail): LedgerFailure).raise[F, A]
-    def ensure(cond: Boolean, rule: String, detail: => String): F[Unit] =
-      Sts.check[F, LedgerFailure](cond, LedgerFailure.Invalid(id, rule, detail))
+    def refused[A](f: DelegFailure): F[A] =
+      (LedgerFailure.Rejected(id, PredicateFailure.deleg(f)): LedgerFailure).raise[F, A]
+    def ensure(cond: Boolean, f: => DelegFailure): F[Unit] =
+      Sts.check[F, LedgerFailure](cond, LedgerFailure.Rejected(id, PredicateFailure.deleg(f)))
     // `hardforkAlonzoAllowMIRTransfer`: transfers between pots and negative entries from Alonzo
     val transfersAllowed = env.delegs.pp.protocolMajor > 4
     def total(m: SortedMap[Credential[Staking], Coin]): BigInt = m.valuesIterator.map(_.value).sum
@@ -251,23 +250,23 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
       availableR = account.reserves.value + ir.deltaReserves.value
       availableT = account.treasury.value + ir.deltaTreasury.value
       // `checkSlotNotTooLate`
+      tooLate = ctx.firstSlotNextEpoch - ctx.stabilityWindow
       _ <- ensure(
-        ctx.slot < ctx.firstSlotNextEpoch - ctx.stabilityWindow,
-        "MIRCertificateTooLateinEpochDELEG",
-        s"slot ${ctx.slot}"
+        ctx.slot < tooLate,
+        DelegFailure.MIRCertificateTooLateinEpoch(Mismatch(ctx.slot, tooLate))
       )
       next <- transfer match
         case Left(_) if !transfersAllowed =>
-          refused[InstantaneousRewards]("MIRTransferNotCurrentlyAllowed", "")
+          refused[InstantaneousRewards](DelegFailure.MIRTransferNotCurrentlyAllowed)
         case Left(coin) =>
           for
-            _ <- ensure(coin >= 0, "MIRNegativeTransfer", s"$coin")
+            _ <- ensure(coin >= 0, DelegFailure.MIRNegativeTransfer(pot, coin))
             result <- pot match
               case Pot.Reserves =>
+                val available = availableR - total(ir.reserves)
                 ensure(
-                  coin <= availableR - total(ir.reserves),
-                  "InsufficientForTransferDELEG",
-                  s"$coin"
+                  coin <= available,
+                  DelegFailure.InsufficientForTransfer(pot, Mismatch(coin, available))
                 ).as(
                   ir.copy(
                     deltaReserves = delta(ir.deltaReserves, -coin),
@@ -275,10 +274,10 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
                   )
                 )
               case Pot.Treasury =>
+                val available = availableT - total(ir.treasury)
                 ensure(
-                  coin <= availableT - total(ir.treasury),
-                  "InsufficientForTransferDELEG",
-                  s"$coin"
+                  coin <= available,
+                  DelegFailure.InsufficientForTransfer(pot, Mismatch(coin, available))
                 ).as(
                   ir.copy(
                     deltaReserves = delta(ir.deltaReserves, coin),
@@ -303,13 +302,15 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
               else current.view.mapValues(_.value).toMap ++ credited
             _ <-
               if transfersAllowed then
-                ensure(combined.values.forall(_ >= 0), "MIRProducesNegativeUpdate", "")
-              else ensure(credited.forall(_._2 >= 0), "MIRNegativesNotCurrentlyAllowed", "")
+                ensure(combined.values.forall(_ >= 0), DelegFailure.MIRProducesNegativeUpdate)
+              else ensure(credited.forall(_._2 >= 0), DelegFailure.MIRNegativesNotCurrentlyAllowed)
             available = if pot == Pot.Reserves then availableR else availableT
             _ <- ensure(
               combined.values.sum <= available,
-              "InsufficientForInstantaneousRewardsDELEG",
-              s"${combined.values.sum} > $available"
+              DelegFailure.InsufficientForInstantaneousRewards(
+                pot,
+                Mismatch(combined.values.sum, available)
+              )
             )
             entries <- coins(combined)
           yield

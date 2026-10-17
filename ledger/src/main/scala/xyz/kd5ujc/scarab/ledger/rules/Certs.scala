@@ -22,7 +22,8 @@ import xyz.kd5ujc.scarab.ledger.{
   ProtocolParams,
   Proposals,
   RewardAccount,
-  Tx
+  Tx,
+  TxDefect
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 
@@ -114,7 +115,7 @@ object ConwayCert:
           case (Some(p), None)    => Right(Delegatee.Stake(p))
           case (None, Some(d))    => Right(Delegatee.Vote(d))
           case (None, None) =>
-            Left(LedgerFailure.Invalid(id, "DecoderError", "a delegation to nothing"))
+            Left(LedgerFailure.Undecodable(id, TxDefect.DelegationWithoutDelegatee))
         }
     cert match
       case Certificate.Register(c, d)   => staking(c).map(c => OfDeleg(DelegCert.Reg(c, d)))
@@ -143,7 +144,7 @@ object ConwayCert:
         v(Convert.credential[ColdCommittee](cold))
           .map(cold => OfGov(ConwayGovCert.ResignCommitteeColdKey(cold, anchor)))
       case Certificate.GenesisDelegate(_, _, _) | Certificate.MoveRewards(_, _) =>
-        Left(LedgerFailure.Invalid(id, "DecoderError", "a pre-Conway certificate in Conway"))
+        Left(LedgerFailure.Undecodable(id, TxDefect.PreConwayCertificate(cert)))
 
 /** The pure changes the certificates make to the Conway certificate state, each the Haskell
   * function of the same name (cited), so that the rules read as the reference does and the changes

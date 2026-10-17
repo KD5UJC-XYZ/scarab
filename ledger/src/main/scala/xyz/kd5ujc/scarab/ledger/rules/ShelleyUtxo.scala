@@ -12,16 +12,21 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerFailure,
   Mismatch,
   PlutusStats,
+  PpupFailure,
+  PpupRules,
   PreConwayRules,
   PredicateFailure,
   ProtocolParams,
   TxBody,
+  TxDefect,
   TxIn,
   TxOut,
   TxRules,
   Update,
   UtxoFailure,
-  Value
+  UtxowFailure,
+  Value,
+  VotingPeriod
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.state.given
@@ -68,28 +73,36 @@ object ShelleyPpup extends Sts[PpupEnv, ShelleyGovState, Option[Update], LedgerF
     update.traverse_ { u =>
       val id = env.id
       val ctx = env.ctx
-      def ensure(cond: Boolean, rule: String, detail: => String): F[Unit] =
-        Sts.check[F, LedgerFailure](cond, LedgerFailure.Invalid(id, rule, detail))
+      def refuse(f: PpupFailure): LedgerFailure =
+        LedgerFailure.Rejected(id, PredicateFailure.utxo(UtxoFailure.Update(f)))
       val known = env.genDelegs.keysIterator.map(_.bytes).toSet
       val tooLate = ctx.firstSlotNextEpoch - 2 * ctx.stabilityWindow
       val current = ctx.slot < tooLate
       for
-        _ <- ensure(
+        _ <- Sts.check[F, LedgerFailure](
           u.proposals.keys.forall(known.contains),
-          "NonGenesisUpdatePPUP",
-          u.proposals.keys.map(_.hex).mkString(",")
+          refuse(PpupFailure.NonGenesisUpdate(Mismatch(u.proposals.keySet, known)))
         )
         _ <- u.proposals.values.toVector.traverse_ { p =>
           Sts.lift[F, LedgerFailure, Unit](
-            xyz.kd5ujc.scarab.ledger.PpupRules
+            PpupRules
               .canFollow(env.pp, p)
-              .leftMap(LedgerFailure.Invalid(id, "PVCannotFollowPPUP", _))
+              .leftMap {
+                case PpupRules.Refusal.Failed(f) => refuse(f)
+                case PpupRules.Refusal.Unreadable =>
+                  LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion)
+              }
           )
         }
-        _ <- ensure(
+        _ <- Sts.check[F, LedgerFailure](
           u.epoch == (if current then ctx.epoch else ctx.epoch + 1),
-          "PPUpdateWrongEpoch",
-          s"update for epoch ${u.epoch} in epoch ${ctx.epoch} (slot ${ctx.slot})"
+          refuse(
+            PpupFailure.PPUpdateWrongEpoch(
+              ctx.epoch,
+              u.epoch,
+              if current then VotingPeriod.VoteForThisEpoch else VotingPeriod.VoteForNextEpoch
+            )
+          )
         )
         proposed <- Refuse.vocab[F, List[(KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.ParamUpdate)]](
           u.proposals.toList.traverse((k, p) => Convert.keyHash[Genesis](k).map(_ -> p))
@@ -270,17 +283,16 @@ object ShelleyUtxo:
       _ <- Either.cond(
         !body.hasGovernance && body.donation == 0,
         (),
-        LedgerFailure.Invalid(id, "UnsupportedField", "governance field")
+        LedgerFailure.Undecodable(id, TxDefect.GovernanceFieldsBeforeConway)
       )
       // Shelley's time to live is the last slot the transaction is valid in (`validateTimeToLive`,
       // `Shelley/Rules/Utxo.hs:414-423`); from Allegra the validity interval's upper bound is
       // exclusive (`inInterval`)
       _ <-
         if !pre.atLeast(ShelleyBasedEra.SAllegra) then
-          Either.cond(
+          check(
             body.ttl.forall(ctx.slot <= _),
-            (),
-            LedgerFailure.Invalid(id, "ExpiredUTxO", s"ttl ${body.ttl} before slot ${ctx.slot}")
+            UtxoFailure.ExpiredUTxO(Mismatch(body.ttl.getOrElse(ctx.slot), ctx.slot))
           )
         else
           check(
@@ -303,10 +315,7 @@ object ShelleyUtxo:
       produced = body.outputs.foldLeft(Value.zero)(_ + _.value) +
         Value.coin(body.fee + deposits)
       _ <- check(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
-      _ <-
-        if pre.atLeast(ShelleyBasedEra.SBabbage) then
-          PreConwayRules.outputsOk(pp, ctx, outputs).leftMap(LedgerFailure.Rejected(id, _))
-        else outputs.traverse_(PreConwayRules.outputChecks(pp, ctx, id, _))
+      _ <- PreConwayRules.outputChecks(pp, ctx, id, outputs)
       _ <- check(
         tx.size <= pp.maxTxSize,
         UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
@@ -386,26 +395,27 @@ object ShelleyUtxow:
           _ <- Sts.lift[F, LedgerFailure, Unit](
             Utxow.witnesses(env, PreConway.genDelegs(genDelegs), ann)
           )
-          _ <- Sts.check[F, LedgerFailure](
-            mirSigned(env, ann, genDelegs),
-            LedgerFailure.Invalid(ann.id, "MIRInsufficientGenesisSigsUTXOW", "")
-          )
+          _ <- Sts.require[F, LedgerFailure](mirSigned(env, ann, genDelegs))
           _ <- ShelleyUtxo.sts[E].transition[F](env, ann)
         yield ()
 
   /** `validateMIRInsufficientGenesisSigs`: a transaction with a MIR certificate is signed by at
-    * least the quorum of the genesis delegates.
+    * least the quorum of the genesis delegates; the refusal names the delegates that did sign.
     */
   private def mirSigned(
       env: UtxoEnv[ShelleyCertState],
       ann: StAnnTx,
       genDelegs: SortedMap[KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.GenDelegPair]
-  ): Boolean =
+  ): Option[LedgerFailure] =
     val hasMir = ann.tx.body.certificates.exists {
       case Certificate.MoveRewards(_, _) => true
       case _                             => false
     }
-    !hasMir || {
-      val signers = ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)).toSet
-      genDelegs.values.map(_.delegate).toSet.intersect(signers).size >= env.ctx.updateQuorum
-    }
+    val signers = ann.tx.witnesses.vkeys.map(w => env.ctx.verdicts.keyHash(w._1)).toSet
+    val genesisSigners = genDelegs.values.map(_.delegate).toSet.intersect(signers)
+    Option.when(hasMir && genesisSigners.size < env.ctx.updateQuorum)(
+      LedgerFailure.Rejected(
+        ann.id,
+        PredicateFailure.utxow(UtxowFailure.MIRInsufficientGenesisSigs(genesisSigners))
+      )
+    )

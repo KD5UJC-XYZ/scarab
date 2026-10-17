@@ -162,8 +162,8 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
       val l = ledger(1)
       add(pool(l.copy(params = l.params.copy(protocolMajor = protocol))), raw).left
         .map {
-          case Rejection.Ledger(LedgerFailure.Invalid(`id`, rule, _)) => rule
-          case other                                                  => other.message
+          case Rejection.Ledger(LedgerFailure.Rejected(`id`, f)) => f.ruleName
+          case other                                             => other.message
         }
         .map(_ => "accepted")
     assertEquals(attempt(10), Left("ConwayMempoolFailure"))

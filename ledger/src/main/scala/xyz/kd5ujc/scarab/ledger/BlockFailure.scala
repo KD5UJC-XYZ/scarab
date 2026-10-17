@@ -32,7 +32,7 @@ object BlockRule:
   * (the two fields of the `rejected` log event, and of [[ValidationError]]); nothing branches on
   * the text. The three cases that still carry the text of a rule not yet closed (`Byron`, `Praos`,
   * `Lite` /`Handover`, `TxDecode`) say so: their upstream returns `String`, and they go when that
-  * does (the transitional constructors, as `PredicateFailure.Unmapped`).
+  * does (the transitional constructors).
   */
 enum BlockFailure:
   // ---- structure: the block against the chain and its own header

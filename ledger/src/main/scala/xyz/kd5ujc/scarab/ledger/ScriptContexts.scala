@@ -8,9 +8,6 @@ import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage}
 
 import PlutusData.{B, I}
 
-/** The ledger refused to build a script context (a phase-1 failure in the reference ledger). */
-final case class TranslationError(reason: String)
-
 /** Translation of a transaction to the Plutus script context of each language (`TxInfo`,
   * `ScriptContext`), against the ledger's own `Plutus/TxInfo.hs` modules for Alonzo, Babbage and
   * Conway. Everything here is a pure function of the transaction, the resolved inputs and the
@@ -34,7 +31,7 @@ object ScriptContexts:
 
   private type Result[A] = Either[TranslationError, A]
 
-  private def fail[A](reason: String): Result[A] = Left(TranslationError(reason))
+  private def fail[A](error: TranslationError): Result[A] = Left(error)
 
   private def bytesOrder(a: Bytes, b: Bytes): Int =
     val n = a.value.length.min(b.value.length)
@@ -96,7 +93,7 @@ object ScriptContexts:
       .traverse(d =>
         PlutusData
           .decode(d)
-          .leftMap(e => TranslationError(s"datum: $e"))
+          .leftMap(_ => TranslationError.Undecodable(DataSite.Datum))
           .map(Blake2b32.hash(d) -> _)
       )
       .map { pairs =>
@@ -136,13 +133,12 @@ object ScriptContexts:
     case _             => None
 
   private def outputV1(out: TxOut, env: Environment): Result[Option[PlutusData]] =
-    if out.datum.isInstanceOf[Datum.Inline] then
-      fail("inline datums are not supported in Plutus V1")
-    else if out.scriptRef.isDefined then fail("reference scripts are not supported in Plutus V1")
+    if out.datum.isInstanceOf[Datum.Inline] then fail(TranslationError.InlineDatumsNotSupported)
+    else if out.scriptRef.isDefined then fail(TranslationError.ReferenceScriptsNotSupported)
     else
       address(out.address) match
         case None =>
-          if env.protocolMajor >= 7 then fail("Byron address in a Plutus V1 script context")
+          if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext)
           else Right(None)
         case Some(a) =>
           Right(
@@ -159,7 +155,7 @@ object ScriptContexts:
   private def outputV2(out: TxOut, env: Environment): Result[Option[PlutusData]] =
     address(out.address) match
       case None =>
-        if env.protocolMajor >= 7 then fail("Byron address in a Plutus script context")
+        if env.protocolMajor >= 7 then fail(TranslationError.ByronTxOutInContext)
         else Right(None)
       case Some(a) =>
         val datum = out.datum match
@@ -168,7 +164,7 @@ object ScriptContexts:
           case Datum.Inline(d) =>
             PlutusData
               .decode(d)
-              .leftMap(e => TranslationError(s"inline datum: $e"))
+              .leftMap(_ => TranslationError.Undecodable(DataSite.InlineDatum))
               .map(constr(2, _))
         datum.map { d =>
           Some(
@@ -191,7 +187,7 @@ object ScriptContexts:
     val v3 = language == PlutusLanguage.V3
     ins.sorted
       .traverse { in =>
-        known.get(in).toRight(TranslationError(s"unresolved input ${in.render}")).flatMap { out =>
+        known.get(in).toRight(TranslationError.UnresolvedInput(in)).flatMap { out =>
           (if language == PlutusLanguage.V1 then outputV1(out, env) else outputV2(out, env))
             .map(_.map(o => constr(0, outRef(in, v3), o)))
         }
@@ -219,7 +215,7 @@ object ScriptContexts:
     case Certificate.RetirePool(p, e)         => Right(constr(4, B(p), I(e)))
     case Certificate.GenesisDelegate(_, _, _) => Right(constr(5))
     case Certificate.MoveRewards(_, _)        => Right(constr(6))
-    case other => fail(s"certificate $other in a Plutus V1 or V2 script context")
+    case other => fail(TranslationError.CertificateNotSupported(other))
 
   private def drep(d: DRep): PlutusData = d match
     case DRep.Registered(c)      => constr(0, credential(c))
@@ -231,7 +227,7 @@ object ScriptContexts:
       case (Some(p), None)    => Right(constr(0, B(p)))
       case (None, Some(v))    => Right(constr(1, drep(v)))
       case (Some(p), Some(v)) => Right(constr(2, B(p), drep(v)))
-      case _                  => fail("delegation without a delegatee")
+      case _                  => fail(TranslationError.DelegationWithoutDelegatee)
     c match
       // In protocol version 9 the deposit and the refund were omitted from the context.
       case Certificate.Register(cred, dep) =>
@@ -252,7 +248,7 @@ object ScriptContexts:
       case Certificate.CommitteeAuthorize(cold, hot) =>
         Right(constr(9, credential(cold), credential(hot)))
       case Certificate.CommitteeResign(cold, _) => Right(constr(10, credential(cold)))
-      case other => fail(s"certificate $other in a Plutus V3 script context")
+      case other => fail(TranslationError.CertificateNotSupported(other))
 
   // -------------------------------------------------------------------------------------------
   // Purposes
@@ -262,7 +258,7 @@ object ScriptContexts:
     case Purpose.Spending(_, in, _)    => Right(constr(1, outRef(in, v3 = false)))
     case Purpose.Rewarding(_, account) => Right(constr(2, stakingHash(account.credential)))
     case Purpose.Certifying(_, cert)   => dcert(cert).map(constr(3, _))
-    case other => fail(s"purpose $other in a Plutus V1 or V2 script context")
+    case other                         => fail(TranslationError.PlutusPurposeNotSupported(other))
 
   private def purposeV3(p: Purpose, bootstrap: Boolean): Result[PlutusData] = p match
     case Purpose.Minting(_, policy)      => Right(constr(0, B(policy)))
@@ -307,15 +303,20 @@ object ScriptContexts:
     def rational(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
         .rational(n, "rational")
-        .bimap(TranslationError(_), r => PlutusData.List(Vector(I(r.numerator), I(r.denominator))))
+        .bimap(
+          _ => TranslationError.Undecodable(DataSite.ParameterUpdate),
+          r => PlutusData.List(Vector(I(r.numerator), I(r.denominator)))
+        )
     def uint(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
-      CborRead.int(n, "integer").bimap(TranslationError(_), I(_))
+      CborRead
+        .int(n, "integer")
+        .bimap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate), I(_))
     def list(
         f: xyz.kd5ujc.scarab.codec.Node => Result[PlutusData]
     )(n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] =
       CborRead
         .array(n, "list")
-        .leftMap(TranslationError(_))
+        .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
         .flatMap(_.traverse(f))
         .map(PlutusData.List(_))
     def value(key: Int, n: xyz.kd5ujc.scarab.codec.Node): Result[PlutusData] = key match
@@ -326,7 +327,7 @@ object ScriptContexts:
       case 18 =>
         CborRead
           .map(n, "cost models")
-          .leftMap(TranslationError(_))
+          .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
           .flatMap(_.traverse { case (k, v) =>
             (uint(k), list(uint)(v)).tupled
           })
@@ -340,7 +341,9 @@ object ScriptContexts:
       .sortBy(_._1)
       .traverse { case (key, raw) =>
         for
-          node <- xyz.kd5ujc.scarab.codec.Cbor.decode(raw).leftMap(TranslationError(_))
+          node <- xyz.kd5ujc.scarab.codec.Cbor
+            .decode(raw)
+            .leftMap(_ => TranslationError.Undecodable(DataSite.ParameterUpdate))
           v <- value(key, node)
         yield (I(key): PlutusData) -> v
       }
@@ -398,7 +401,7 @@ object ScriptContexts:
   // Transaction info
 
   private def decodeRedeemer(r: Redeemer): Result[PlutusData] =
-    PlutusData.decode(r.data).leftMap(e => TranslationError(s"redeemer: $e"))
+    PlutusData.decode(r.data).leftMap(_ => TranslationError.Undecodable(DataSite.Redeemer))
 
   private def purposes(tx: Tx, env: Environment): Vector[(Redeemer, Purpose)] =
     tx.witnesses.redeemers.sortBy(r => (r.tag, r.index)).flatMap { r =>
@@ -428,7 +431,7 @@ object ScriptContexts:
           _ <- Either.cond(
             body.referenceInputs.isEmpty || env.protocolMajor >= 9,
             (),
-            TranslationError("reference inputs are not supported in Plutus V1")
+            TranslationError.ReferenceInputsNotSupported
           )
           _ <- guardNoConway(body)
           ins <- inputs(body.inputs, env.spent, language, env)
@@ -484,7 +487,7 @@ object ScriptContexts:
               .intersect(body.referenceInputs.toSet)
               .isEmpty,
             (),
-            TranslationError("a reference input is also an input")
+            TranslationError.ReferenceInputsNotDisjointFromInputs
           )
           certs <- body.certificates.traverse(txCert(_, env.protocolMajor == 9))
           range <- interval(body, env)
@@ -515,7 +518,7 @@ object ScriptContexts:
 
   private def guardNoConway(body: TxBody): Result[Unit] =
     if body.votes.nonEmpty || body.proposals.nonEmpty || body.donation != 0 || body.currentTreasury.isDefined
-    then fail("governance fields in a Plutus V1 or V2 script context")
+    then fail(TranslationError.GovernanceFieldsNotSupported)
     else Right(())
 
   /** V1/V2 withdrawals: a list of pairs (V1) or a map (V2) keyed by staking credential in the order
@@ -554,7 +557,7 @@ object ScriptContexts:
             needsDatum = purpose.isInstanceOf[Purpose.Spending]
             ds <-
               if needsDatum then
-                datum.toRight(TranslationError("spent output has no datum")).map(Vector(_))
+                datum.toRight(TranslationError.SpentOutputHasNoDatum).map(Vector(_))
               else Right(Vector.empty)
           yield ds ++ Vector(rdmr, context)
     }
@@ -565,12 +568,18 @@ object ScriptContexts:
       out.datum match
         case Datum.NoDatum => Right(None)
         case Datum.Inline(d) =>
-          PlutusData.decode(d).leftMap(e => TranslationError(s"inline datum: $e")).map(Some(_))
+          PlutusData
+            .decode(d)
+            .leftMap(_ => TranslationError.Undecodable(DataSite.InlineDatum))
+            .map(Some(_))
         case Datum.Hash(h) =>
           tx.witnesses.datums.find(d => Blake2b32.hash(d) == h) match
-            case None => fail(s"datum ${h.hex} is not in the witnesses")
+            case None => fail(TranslationError.DatumNotInWitnesses(h))
             case Some(d) =>
-              PlutusData.decode(d).leftMap(e => TranslationError(s"datum: $e")).map(Some(_))
+              PlutusData
+                .decode(d)
+                .leftMap(_ => TranslationError.Undecodable(DataSite.Datum))
+                .map(Some(_))
     case _ => Right(None)
 
   private[ledger] object Blake2b32:

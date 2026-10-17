@@ -8,6 +8,18 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
   * at the epoch boundary when a quorum proposed the identical update (NEWPP/UPEC).
   */
 object PpupRules:
+  /** Why an update proposal is refused: by PPUP, or because its protocol version is not a pair of
+    * numbers (which the reference's decoder would not admit).
+    */
+  enum Refusal:
+    case Failed(failure: PpupFailure)
+    case Unreadable
+
+    /** The refusal of transaction `id` as the ledger's failure for it. */
+    def inTx(id: Bytes): LedgerFailure = this match
+      case Failed(f)  => LedgerFailure.Rejected(id, PredicateFailure.utxo(UtxoFailure.Update(f)))
+      case Unreadable => LedgerFailure.Undecodable(id, TxDefect.UnreadableProtocolVersion)
+
   /** PPUP: record `update` 's proposals for the current or the next epoch. Proposals made before
     * the point of no return (`firstSlotNextEpoch - 2 * stabilityWindow`) target the current epoch.
     */
@@ -17,23 +29,31 @@ object PpupRules:
       slot: BigInt,
       firstSlotNextEpoch: BigInt,
       stabilityWindow: BigInt
-  ): Either[(String, String), LedgerState] =
+  ): Either[Refusal, LedgerState] =
     val epoch = state.epoch
     val tooLate = firstSlotNextEpoch - 2 * stabilityWindow
+    val current = slot < tooLate
     for
       _ <- Either.cond(
         update.proposals.keys.forall(state.genDelegs.contains),
         (),
-        "NonGenesisUpdatePPUP" -> update.proposals.keys.map(_.hex).mkString(",")
+        Refusal.Failed(
+          PpupFailure.NonGenesisUpdate(
+            Mismatch(update.proposals.keySet, state.genDelegs.keySet)
+          )
+        )
       )
-      _ <- update.proposals.values.toVector.traverse_(u =>
-        canFollow(state.params, u).leftMap("PVCannotFollowPPUP" -> _)
-      )
-      current = slot < tooLate
+      _ <- update.proposals.values.toVector.traverse_(canFollow(state.params, _))
       _ <- Either.cond(
         update.epoch == (if current then epoch else epoch + 1),
         (),
-        "PPUpdateWrongEpoch" -> s"update for epoch ${update.epoch} in epoch $epoch (slot $slot)"
+        Refusal.Failed(
+          PpupFailure.PPUpdateWrongEpoch(
+            epoch,
+            update.epoch,
+            if current then VotingPeriod.VoteForThisEpoch else VotingPeriod.VoteForNextEpoch
+          )
+        )
       )
     yield
       if current then
@@ -43,20 +63,20 @@ object PpupRules:
   /** A proposed protocol version must follow the current one: `(major + 1, 0)` or `(major, minor +
     * 1)`.
     */
-  private[ledger] def canFollow(params: ProtocolParams, u: ParamUpdate): Either[String, Unit] =
+  private[ledger] def canFollow(params: ProtocolParams, u: ParamUpdate): Either[Refusal, Unit] =
     u.fields.get(14) match
       case None => Right(())
       case Some(raw) =>
         for
-          n <- Cbor.decode(raw)
-          xs <- CborRead.arrayN(n, 2, "protocol version")
-          major <- CborRead.uint(xs(0), "major")
-          minor <- CborRead.uint(xs(1), "minor")
+          n <- Cbor.decode(raw).leftMap(_ => Refusal.Unreadable)
+          xs <- CborRead.arrayN(n, 2, "protocol version").leftMap(_ => Refusal.Unreadable)
+          major <- CborRead.uint(xs(0), "major").leftMap(_ => Refusal.Unreadable)
+          minor <- CborRead.uint(xs(1), "minor").leftMap(_ => Refusal.Unreadable)
           _ <- Either.cond(
             (major == params.protocolMajor + 1 && minor == 0) ||
               (major == params.protocolMajor && minor == params.protocolMinor + 1),
             (),
-            s"($major, $minor) cannot follow ${params.version}"
+            Refusal.Failed(PpupFailure.PVCannotFollow(major, minor))
           )
         yield ()
 

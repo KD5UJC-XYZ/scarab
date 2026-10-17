@@ -26,11 +26,10 @@ object PreConwayRules:
     val pp = state.params
     val pv = pp.protocolMajor
     val alonzo = pv >= 5
-    def invalid(rule: String, detail: String) = Left(LedgerFailure.Invalid(id, rule, detail))
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else invalid(rule, detail)
-    def resolve(ins: Vector[TxIn], rule: String): Result[Vector[TxOut]] =
-      ins.traverse(i => state.utxo.get(i).toRight(LedgerFailure.Invalid(id, rule, i.render)))
+    def check(ok: Boolean, failure: => UtxoFailure): Result[Unit] =
+      if ok then Right(()) else Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(failure)))
+    def checkW(ok: Boolean, failure: => UtxowFailure): Result[Unit] =
+      if ok then Right(()) else Left(LedgerFailure.Rejected(id, PredicateFailure.utxow(failure)))
 
     val wits = tx.witnesses
     val vkeyHashes: Vector[Bytes] = wits.vkeys.map(w => env.verdicts.keyHash(w._1))
@@ -54,11 +53,18 @@ object PreConwayRules:
       case _                            => false
     }
 
+    // `BadInputsUTxO` names every input, and reference input, that is not in the UTxO set
+    val missing = (body.inputs ++ body.referenceInputs).filterNot(state.utxo.contains).toSet
     for
-      _ <- check(!body.hasGovernance && body.donation == 0, "UnsupportedField", "governance field")
-      _ <- check(body.inputs.nonEmpty, "InputSetEmptyUTxO", "no inputs")
-      spent <- resolve(body.inputs.toVector, "BadInputsUTxO")
-      refOuts <- resolve(body.referenceInputs, "BadInputsUTxO")
+      _ <- Either.cond(
+        !body.hasGovernance && body.donation == 0,
+        (),
+        LedgerFailure.Undecodable(id, TxDefect.GovernanceFieldsBeforeConway)
+      )
+      _ <- check(body.inputs.nonEmpty, UtxoFailure.InputSetEmpty)
+      _ <- check(missing.isEmpty, UtxoFailure.BadInputs(missing))
+      spent = body.inputs.toVector.flatMap(state.utxo.get)
+      refOuts = body.referenceInputs.flatMap(state.utxo.get)
       // Shelley's time to live is the last slot the transaction is valid in (`validateTimeToLive`,
       // cardano-ledger Shelley/Rules/Utxo.hs lines 414-423, Shelley era only); from Allegra the
       // validity interval's upper bound is exclusive (`inInterval`).
@@ -66,42 +72,36 @@ object PreConwayRules:
         if pv <= 2 then
           check(
             body.ttl.forall(env.slot <= _),
-            "ExpiredUTxO",
-            s"ttl ${body.ttl} before slot ${env.slot}"
+            UtxoFailure.ExpiredUTxO(Mismatch(body.ttl.getOrElse(env.slot), env.slot))
           )
         else
           check(
             body.ttl.forall(env.slot < _) && body.validityStart.forall(_ <= env.slot),
-            "OutsideValidityIntervalUTxO",
-            s"slot ${env.slot} not in [${body.validityStart}, ${body.ttl})"
+            UtxoFailure.OutsideValidityInterval(body.validityStart, body.ttl, env.slot)
           )
-      _ <- check(tx.size <= pp.maxTxSize, "MaxTxSizeUTxO", s"${tx.size} > ${pp.maxTxSize}")
-      _ <- check(body.fee >= minFee, "FeeTooSmallUTxO", s"${body.fee} < $minFee")
+      _ <- check(
+        tx.size <= pp.maxTxSize,
+        UtxoFailure.MaxTxSize(Mismatch(BigInt(tx.size), pp.maxTxSize))
+      )
+      _ <- check(body.fee >= minFee, UtxoFailure.FeeTooSmall(Mismatch(body.fee, minFee)))
       _ <- check(
         body.networkId.forall(_ == env.network),
-        "WrongNetworkInTxBody",
-        s"${body.networkId}"
+        UtxoFailure.WrongNetworkInTxBody(Mismatch(body.networkId.fold(0)(_.toInt), env.network))
       )
-      _ <- (body.outputs ++ body.collateralReturn.toVector).traverse_(outputChecks(pp, env, id, _))
+      _ <- outputChecks(pp, env, id, body.outputs ++ body.collateralReturn.toVector)
       _ <- check(
         !alonzo || wits.totalExUnits.fits(pp.maxTxExUnits),
-        "ExUnitsTooBigUTxO",
-        s"${wits.totalExUnits}"
+        UtxoFailure.ExUnitsTooBig(Mismatch(wits.totalExUnits, pp.maxTxExUnits))
       )
       collateral <- collateralChecks(state, tx, env)
       scripts = providedScripts(wits, spent ++ refOuts)
       needed = scriptsNeeded(body, spent)
-      _ <- check(
+      _ <- checkW(
         needed.keySet.subsetOf(scripts.keySet),
-        "MissingScriptWitnessesUTXOW",
-        (needed.keySet -- scripts.keySet).map(_.hex).mkString(",")
+        UtxowFailure.MissingScriptWitnesses(needed.keySet -- scripts.keySet)
       )
       extraneous = wits.scripts.map(_.hash).toSet -- needed.keySet
-      _ <- check(
-        extraneous.isEmpty,
-        "ExtraneousScriptWitnessesUTXOW",
-        extraneous.map(_.hex).mkString(",")
-      )
+      _ <- checkW(extraneous.isEmpty, UtxowFailure.ExtraneousScriptWitnesses(extraneous))
       plutusPurposes = needed
         .collect { case (h, ps) if scripts(h).kind.isPlutus => ps }
         .flatten
@@ -109,22 +109,27 @@ object PreConwayRules:
       _ <- alonzoChecks(state, tx, spent, refOuts, scripts, plutusPurposes)
       _ <- check(
         tx.isValid || plutusPurposes.nonEmpty,
-        "ValidationTagMismatch",
-        "is_valid = false without a Plutus script"
+        UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, None))
       )
       _ <- auxiliaryChecks(tx)
       _ <- witnessChecks(state, tx, spent, collateral, scripts, needed, vkeyHashes, env.verdicts)
+      // `validateMIRInsufficientGenesisSigs` (`Shelley/Rules/Utxow.hs:449`): a MIR certificate needs
+      // the quorum of the genesis delegates' signatures
+      genesisSigners = state.genDelegs.values.map(_.delegate).toSet.intersect(vkeyHashes.toSet)
+      _ <- checkW(
+        !body.certificates.exists {
+          case Certificate.MoveRewards(_, _) => true
+          case _                             => false
+        } || genesisSigners.size >= env.updateQuorum,
+        UtxowFailure.MIRInsufficientGenesisSigs(genesisSigners)
+      )
       _ <- scriptsWellFormed(state, tx, env)
       // Value conservation holds for valid and invalid transactions alike.
       withdrawn = body.withdrawals.map(_._2).sum
       consumed = spent.foldLeft(Value.zero)(_ + _.value) + Value.coin(withdrawn + refunds) +
         Value(0, body.mint)
       produced = body.outputs.foldLeft(Value.zero)(_ + _.value) + Value.coin(body.fee + deposits)
-      _ <- check(
-        consumed == produced,
-        "ValueNotConservedUTxO",
-        s"consumed ${consumed.coin} produced ${produced.coin} assets ${consumed.assets == produced.assets}"
-      )
+      _ <- check(consumed == produced, UtxoFailure.ValueNotConserved(Mismatch(consumed, produced)))
       plutusStats <- phase2(state, tx, env, scripts, spent, refOuts, plutusPurposes)
       result <-
         if tx.isValid then
@@ -179,7 +184,7 @@ object PreConwayRules:
       else
         val inputs = body.inputs.zip(spent).toMap
         val references = body.referenceInputs.zip(refOuts).toMap
-        val posix = env.clock.toRight(TranslationError("no era history for slot times"))
+        val posix = env.clock.toRight(TranslationError.NoEraHistory)
         val outcome = Phase2.evaluate(
           tx,
           pp,
@@ -193,7 +198,12 @@ object PreConwayRules:
           _(Phase2.Observation(tx, pp, env.slot, inputs, references, env.clock, outcome))
         )
         outcome.left
-          .map(e => LedgerFailure.Invalid(id, "CollectErrors", e.reason))
+          .map(e =>
+            LedgerFailure.Rejected(
+              id,
+              PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(Vector(e))))
+            )
+          )
           .flatMap {
             case Phase2.Outcome.Passed(n) =>
               if tx.isValid then
@@ -277,38 +287,40 @@ object PreConwayRules:
     else if pp.protocolMajor >= 3 then Some(BigInt(4000))
     else None
 
+  /** The output checks of UTXO before Conway, each reporting every offending output: on the wrong
+    * network (`WrongNetwork`), too small (`OutputTooSmallUTxO`, with the outputs) and too big
+    * (`OutputTooBigUTxO`, with the size and the limit). From Babbage the checks are
+    * [[outputsOk]]'s.
+    */
   private[ledger] def outputChecks(
       pp: ProtocolParams,
       env: Env,
       id: Bytes,
-      out: TxOut
+      outs: Vector[TxOut]
   ): Result[Unit] =
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
-    val min = minUTxO(pp, out)
-    // Allegra and Mary test `pointwise (<) v (inject min)`: every component must be below, so a value
-    // that carries assets is never too small (Shelley compares the coin, Alonzo negates `pointwise (>=)`).
-    val minimumApplies = pp.protocolMajor <= 2 || pp.protocolMajor >= 5 || out.value.assets.isEmpty
-    for
-      _ <- check(
-        !minimumApplies || out.value.coin >= min,
-        "OutputTooSmallUTxO",
-        s"${out.value.coin} < $min"
-      )
-      _ <- check(
-        out.address.kind match
-          case Address.Kind.Shelley(n, _, _, _) => n == env.network
-          case Address.Kind.Byron(_)            => true
-        ,
-        "WrongNetwork",
-        out.address.raw.hex
-      )
-      _ <- check(
-        maxOutputValueSize(pp).forall(BigInt(out.value.serializedSize) <= _),
-        "OutputTooBigUTxO",
-        s"${out.value.serializedSize}"
-      )
-    yield ()
+    if pp.protocolMajor >= 7 then outputsOk(pp, env, outs).leftMap(LedgerFailure.Rejected(id, _))
+    else
+      // Allegra and Mary test `pointwise (<) v (inject min)`: every component must be below, so a value
+      // that carries assets is never too small (Shelley compares the coin, Alonzo negates `pointwise (>=)`).
+      def minimumApplies(out: TxOut) =
+        pp.protocolMajor <= 2 || pp.protocolMajor >= 5 || out.value.assets.isEmpty
+      val wrong = outs.filter(_.address.kind match
+        case Address.Kind.Shelley(n, _, _, _) => n != env.network
+        case Address.Kind.Byron(_)            => false)
+      val small = outs.filter(o => minimumApplies(o) && o.value.coin < minUTxO(pp, o))
+      val big = outs.flatMap { o =>
+        maxOutputValueSize(pp).filter(max => BigInt(o.value.serializedSize) > max).map { max =>
+          (o.value.serializedSize, max.toInt, o)
+        }
+      }
+      def refuse(f: UtxoFailure) = Left(LedgerFailure.Rejected(id, PredicateFailure.utxo(f)))
+      for
+        _ <-
+          if wrong.isEmpty then Right(())
+          else refuse(UtxoFailure.WrongNetwork(env.network, wrong.map(_.address.raw).toSet))
+        _ <- if small.isEmpty then Right(()) else refuse(UtxoFailure.OutputTooSmall(small))
+        _ <- if big.isEmpty then Right(()) else refuse(UtxoFailure.OutputTooBig(big))
+      yield ()
 
   /** The output checks of Babbage and Conway UTXO, each reporting every offending output: too small
     * (with the minimum), too big (with the size and the limit) and on the wrong network.
@@ -453,16 +465,14 @@ object PreConwayRules:
     val body = tx.body
     val id = body.id
     val wits = tx.witnesses
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(LedgerFailure.Invalid(id, rule, detail))
     def checkWith(ok: Boolean, failure: => UtxowFailure): Result[Unit] =
       if ok then Right(())
       else Left(LedgerFailure.Rejected(id, PredicateFailure.utxow(failure)))
     if pv < 5 then
-      check(
+      Either.cond(
         wits.redeemers.isEmpty && wits.datums.isEmpty && body.scriptDataHash.isEmpty,
-        "UnsupportedField",
-        "Plutus fields before Alonzo"
+        (),
+        LedgerFailure.Undecodable(id, TxDefect.PlutusFieldsBeforeAlonzo)
       )
     else
       val provided = wits.redeemers.map(r => (r.tag, r.index)).toSet
@@ -533,33 +543,22 @@ object PreConwayRules:
   /** [[scriptsWellFormed]] over what it reads of the state: the parameters. */
   private[ledger] def scriptsWellFormed(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
     val pv = pp.protocolMajor.toInt
-    def malformed(rule: String, scripts: Vector[Script]): Result[Unit] =
+    def malformed(failure: Set[Bytes] => UtxowFailure, scripts: Vector[Script]): Result[Unit] =
       val bad = scripts.filter(_.kind.isPlutus).flatMap { s =>
         for
           language <- Phase2.languageOf(s).toOption.toVector
           code <- s.plutus.toVector
-          reason <- env.decoder.validate(language, pv, code).left.toOption
-        yield s.hash.hex -> reason
+          _ <- env.decoder.validate(language, pv, code).left.toOption.toVector
+        yield s.hash
       }
       if bad.isEmpty then Right(())
-      else
-        val hashes = bad.flatMap(b => Bytes.fromHex(b._1).toOption).toSet
-        Left(
-          LedgerFailure.Rejected(
-            tx.body.id,
-            PredicateFailure.utxow(
-              if rule == "MalformedScriptWitnesses" then
-                UtxowFailure.MalformedScriptWitnesses(hashes)
-              else UtxowFailure.MalformedReferenceScripts(hashes)
-            )
-          )
-        )
+      else Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxow(failure(bad.toSet))))
     if pv < 7 then Right(())
     else
       for
-        _ <- malformed("MalformedScriptWitnesses", tx.witnesses.scripts)
+        _ <- malformed(UtxowFailure.MalformedScriptWitnesses(_), tx.witnesses.scripts)
         _ <- malformed(
-          "MalformedReferenceScripts",
+          UtxowFailure.MalformedReferenceScripts(_),
           (tx.body.outputs ++ tx.body.collateralReturn.toVector).flatMap(_.referenceScript)
         )
       yield ()
@@ -734,32 +733,42 @@ object PreConwayRules:
   ): Result[LedgerState] =
     val body = tx.body
     val id = body.id
-    def fail(rule: String, detail: String) = LedgerFailure.Invalid(id, rule, detail)
+    def refuse(f: PredicateFailure) = LedgerFailure.Rejected(id, f)
+    // LEDGER's checks of the withdrawals, each over all of them as the reference has them: the
+    // accounts on another network (UTXO), the accounts that are not registered and the amounts that
+    // are not the balance (`testIncompleteAndMissingWithdrawals`, `Shelley/Rules/Ledger.hs:341`)
+    val wrongNetwork = body.withdrawals.map(_._1).filter(_.network != env.network).toSet
+    val missing = body.withdrawals.filterNot(w => state.accounts.contains(w._1.credential)).toMap
+    val incomplete = body.withdrawals.flatMap { case (account, amount) =>
+      state.accounts.get(account.credential).filter(_.balance != amount).map { a =>
+        account -> Mismatch(amount, a.balance)
+      }
+    }.toMap
     for
-      afterWithdrawals <- body.withdrawals.foldLeftM(state) { case (s, (account, amount)) =>
-        for
-          _ <- Either.cond(
-            account.network == env.network,
-            (),
-            fail("WrongNetworkWithdrawal", account.credential.render)
-          )
-          a <- s.accounts
-            .get(account.credential)
-            .toRight(fail("WithdrawalsNotInRewardsDELEGS", account.credential.render))
-          _ <- Either.cond(
-            a.balance == amount,
-            (),
-            fail(
-              "WithdrawalsNotInRewardsDELEGS",
-              s"${account.credential.render}: $amount != ${a.balance}"
-            )
-          )
-        yield s.copy(accounts = s.accounts.updated(account.credential, a.copy(balance = 0)))
+      _ <- Either.cond(
+        wrongNetwork.isEmpty,
+        (),
+        refuse(
+          PredicateFailure.utxo(UtxoFailure.WrongNetworkWithdrawal(env.network, wrongNetwork))
+        )
+      )
+      _ <- Either.cond(
+        missing.isEmpty,
+        (),
+        refuse(PredicateFailure.WithdrawalsMissingAccounts(missing))
+      )
+      _ <- Either.cond(
+        incomplete.isEmpty,
+        (),
+        refuse(PredicateFailure.IncompleteWithdrawals(incomplete))
+      )
+      afterWithdrawals = body.withdrawals.foldLeft(state) { case (s, (account, _)) =>
+        s.copy(accounts = s.accounts.updatedWith(account.credential)(_.map(_.copy(balance = 0))))
       }
       afterUpdate <- body.update.fold(Right(afterWithdrawals): Result[LedgerState]) { u =>
         PpupRules
           .propose(afterWithdrawals, u, env.slot, env.firstSlotNextEpoch, env.stabilityWindow)
-          .leftMap { case (rule, detail) => fail(rule, detail) }
+          .leftMap(_.inTx(id))
       }
       afterCerts <- body.certificates.zipWithIndex.foldLeftM(afterUpdate) { case (s, (cert, ix)) =>
         PreConwayCerts(s, cert, ix, env, tx)
@@ -781,36 +790,56 @@ private[ledger] object PreConwayCerts:
   def apply(s: LedgerState, cert: Certificate, ix: Int, env: Env, tx: Tx): Result[LedgerState] =
     val id = tx.body.id
     val pp = s.params
-    def fail(rule: String, detail: String) = LedgerFailure.Invalid(id, rule, detail)
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(fail(rule, detail))
+    def refuse(f: PredicateFailure) = LedgerFailure.Rejected(id, f)
+    def check(ok: Boolean, failure: => PredicateFailure): Result[Unit] =
+      Either.cond(ok, (), refuse(failure))
     cert match
       case Certificate.Register(c, _) =>
-        for _ <- check(!s.accounts.contains(c), "StakeKeyAlreadyRegisteredDELEG", c.render)
+        for _ <- check(
+            !s.accounts.contains(c),
+            PredicateFailure.deleg(DelegFailure.StakeKeyAlreadyRegistered(c))
+          )
         yield s.copy(
           accounts = s.accounts.updated(c, Account(0, pp.keyDeposit, None, None)),
           ptrs = s.ptrs.updated(Ptr(env.slot, env.txIndex, ix), c)
         )
       case Certificate.Unregister(c, _) =>
         for
-          a <- s.accounts.get(c).toRight(fail("StakeKeyNotRegisteredDELEG", c.render))
-          _ <- check(a.balance == 0, "StakeKeyNonZeroAccountBalanceDELEG", s"${a.balance}")
+          a <- s.accounts
+            .get(c)
+            .toRight(refuse(PredicateFailure.deleg(DelegFailure.StakeKeyNotRegistered(c))))
+          _ <- check(
+            a.balance == 0,
+            PredicateFailure.deleg(DelegFailure.StakeKeyHasNonZeroAccountBalance(a.balance))
+          )
         yield s.copy(
           accounts = s.accounts - c,
           ptrs = s.ptrs.filterNot(_._2 == c)
         )
       case Certificate.Delegate(c, Some(pool), _, _) =>
         for
-          a <- s.accounts.get(c).toRight(fail("StakeDelegationImpossibleDELEG", c.render))
-          _ <- check(s.pools.contains(pool), "DelegateeNotRegisteredDELEG", pool.hex)
+          a <- s.accounts
+            .get(c)
+            .toRight(refuse(PredicateFailure.deleg(DelegFailure.StakeDelegationImpossible(c))))
+          _ <- check(
+            s.pools.contains(pool),
+            PredicateFailure.deleg(DelegFailure.DelegateeNotRegistered(pool))
+          )
         yield s.copy(accounts = s.accounts.updated(c, a.copy(pool = Some(pool))))
       case Certificate.RegisterPool(p) =>
         for
-          _ <- check(p.cost >= pp.minPoolCost, "StakePoolCostTooLowPOOL", s"${p.cost}")
           _ <- check(
             !pp.validatesPoolRewardAccountNetwork || p.rewardAccount.network == env.network,
-            "WrongNetworkPOOL",
-            p.operator.hex
+            PredicateFailure.pool(
+              PoolFailure.WrongNetworkPool(
+                Mismatch(p.rewardAccount.network, env.network),
+                p.operator
+              )
+            )
+          )
+          _ <- check(
+            p.cost >= pp.minPoolCost,
+            PredicateFailure.pool(PoolFailure.StakePoolCostTooLow(Mismatch(p.cost, pp.minPoolCost)))
           )
         yield
           if s.pools.contains(p.operator) then
@@ -822,23 +851,34 @@ private[ledger] object PreConwayCerts:
             // The deposit is accounted once per transaction.
             s.copy(pools = s.pools.updated(p.operator, PoolState(p, pp.poolDeposit)))
       case Certificate.RetirePool(pool, e) =>
+        val limit = s.epoch + pp.eMax
         for
-          _ <- check(s.pools.contains(pool), "StakePoolNotRegisteredOnKeyPOOL", pool.hex)
           _ <- check(
-            s.epoch < e && e <= s.epoch + pp.eMax,
-            "StakePoolRetirementWrongEpochPOOL",
-            s"$e at ${s.epoch}"
+            s.pools.contains(pool),
+            PredicateFailure.pool(PoolFailure.StakePoolNotRegisteredOnKey(pool))
+          )
+          _ <- check(
+            s.epoch < e && e <= limit,
+            PredicateFailure.pool(
+              PoolFailure.StakePoolRetirementWrongEpoch(Mismatch(e, s.epoch), Mismatch(e, limit))
+            )
           )
         yield s.copy(retiring = s.retiring.updated(pool, e))
       case Certificate.GenesisDelegate(g, d, v) =>
-        for _ <- check(s.genDelegs.contains(g), "GenesisKeyNotInMappingDELEG", g.hex)
+        for _ <- check(
+            s.genDelegs.contains(g),
+            PredicateFailure.deleg(DelegFailure.GenesisKeyNotInMapping(g))
+          )
         yield s.copy(futureGenDelegs =
           s.futureGenDelegs :+ FutureGenDeleg(env.slot + env.stabilityWindow, g, GenDelegPair(d, v))
         )
       case Certificate.MoveRewards(pot, transfer) => moveRewards(s, pot, transfer, env, tx)
       case other =>
-        Left(LedgerFailure.Unsupported(id, s"certificate $other before Conway"))
+        Left(LedgerFailure.Undecodable(id, TxDefect.ConwayCertificate(other)))
 
+  /** `MIRCert` (`Shelley/Rules/Deleg.hs:339-385`). The signatures of the genesis delegates are
+    * UTXOW's check (`validateMIRInsufficientGenesisSigs`), made before.
+    */
   private def moveRewards(
       s: LedgerState,
       pot: Pot,
@@ -847,37 +887,30 @@ private[ledger] object PreConwayCerts:
       tx: Tx
   ): Result[LedgerState] =
     val id = tx.body.id
-    def fail(rule: String, detail: String) = LedgerFailure.Invalid(id, rule, detail)
-    def check(ok: Boolean, rule: String, detail: => String): Result[Unit] =
-      if ok then Right(()) else Left(fail(rule, detail))
-    val signers = tx.witnesses.vkeys.map(w => env.verdicts.keyHash(w._1)).toSet
-    val genesisSigners = s.genDelegs.values.map(_.delegate).toSet.intersect(signers)
+    def refuse(f: DelegFailure) = LedgerFailure.Rejected(id, PredicateFailure.deleg(f))
+    def check(ok: Boolean, failure: => DelegFailure): Result[Unit] =
+      Either.cond(ok, (), refuse(failure))
     val ir = s.mir
     val availableR = s.reserves + ir.deltaReserves
     val availableT = s.treasury + ir.deltaTreasury
     // hardforkAlonzoAllowMIRTransfer: transfers between pots and negative entries from protocol 5.
     val transfersAllowed = s.params.protocolMajor > 4
+    val tooLate = env.firstSlotNextEpoch - env.stabilityWindow
     for
       _ <- check(
-        env.slot < env.firstSlotNextEpoch - env.stabilityWindow,
-        "MIRCertificateTooLateinEpochDELEG",
-        s"slot ${env.slot}"
-      )
-      _ <- check(
-        genesisSigners.size >= env.updateQuorum,
-        "MIRInsufficientGenesisSigsDELEG",
-        s"${genesisSigners.size}"
+        env.slot < tooLate,
+        DelegFailure.MIRCertificateTooLateinEpoch(Mismatch(env.slot, tooLate))
       )
       result <- transfer match
         case Left(_) if !transfersAllowed =>
-          Left(fail("MIRTransferNotCurrentlyAllowed", ""))
+          Left(refuse(DelegFailure.MIRTransferNotCurrentlyAllowed))
         case Left(coin) =>
-          check(coin >= 0, "MIRNegativeTransfer", s"$coin") *> (pot match
+          check(coin >= 0, DelegFailure.MIRNegativeTransfer(pot, coin)) *> (pot match
             case Pot.Reserves =>
+              val available = availableR - ir.reserves.values.sum
               check(
-                coin <= availableR - ir.reserves.values.sum,
-                "InsufficientForTransferDELEG",
-                s"$coin"
+                coin <= available,
+                DelegFailure.InsufficientForTransfer(pot, Mismatch(coin, available))
               ).as(
                 s.copy(mir =
                   ir.copy(
@@ -887,10 +920,10 @@ private[ledger] object PreConwayCerts:
                 )
               )
             case Pot.Treasury =>
+              val available = availableT - ir.treasury.values.sum
               check(
-                coin <= availableT - ir.treasury.values.sum,
-                "InsufficientForTransferDELEG",
-                s"$coin"
+                coin <= available,
+                DelegFailure.InsufficientForTransfer(pot, Mismatch(coin, available))
               ).as(
                 s.copy(mir =
                   ir.copy(
@@ -913,12 +946,15 @@ private[ledger] object PreConwayCerts:
           for
             _ <-
               if transfersAllowed then
-                check(combined.values.forall(_ >= 0), "MIRProducesNegativeUpdate", "")
-              else check(amounts.values.forall(_ >= 0), "MIRNegativesNotCurrentlyAllowed", "")
+                check(combined.values.forall(_ >= 0), DelegFailure.MIRProducesNegativeUpdate)
+              else
+                check(amounts.values.forall(_ >= 0), DelegFailure.MIRNegativesNotCurrentlyAllowed)
             _ <- check(
               combined.values.sum <= available,
-              "InsufficientForInstantaneousRewardsDELEG",
-              s"${combined.values.sum} > $available"
+              DelegFailure.InsufficientForInstantaneousRewards(
+                pot,
+                Mismatch(combined.values.sum, available)
+              )
             )
           yield s.copy(mir =
             if pot == Pot.Reserves then ir.copy(reserves = combined)

@@ -6,15 +6,48 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
 import xyz.kd5ujc.scarab.plutus.{ScalusEvaluator, ScriptDecoder, ScriptEvaluator}
 
-/** Why the ledger refused a transaction. `Unsupported` marks a valid-chain feature this node does
-  * not implement yet; `Invalid` is a rule violation.
+/** What a decoded transaction holds that its era cannot have. The reference ledger refuses all of
+  * these in its transaction decoder (a `DecoderError`), before any rule runs, so none is a
+  * predicate failure there; the node decodes one transaction type for every era and meets them in
+  * the rules.
   */
-enum LedgerFailure:
-  case Unsupported(txId: Bytes, feature: String)
+enum TxDefect:
+  /** A delegation certificate of Conway that names neither a pool nor a DRep. */
+  case DelegationWithoutDelegatee
 
+  /** A certificate of the eras before Conway (a genesis delegation, a MIR certificate) in a Conway
+    * transaction.
+    */
+  case PreConwayCertificate(certificate: Certificate)
+
+  /** A certificate of Conway (a DRep or committee certificate) in a transaction of an earlier era.
+    */
+  case ConwayCertificate(certificate: Certificate)
+
+  /** Votes, proposals or a donation in a transaction before Conway. */
+  case GovernanceFieldsBeforeConway
+
+  /** Redeemers, datums or a script data hash in a transaction before Alonzo. */
+  case PlutusFieldsBeforeAlonzo
+
+  /** The protocol version of an update proposal is not a pair of numbers. */
+  case UnreadableProtocolVersion
+
+  def message: String = this match
+    case DelegationWithoutDelegatee   => "a delegation to nothing"
+    case PreConwayCertificate(c)      => s"a pre-Conway certificate in Conway: $c"
+    case ConwayCertificate(c)         => s"certificate $c before Conway"
+    case GovernanceFieldsBeforeConway => "governance fields before Conway"
+    case PlutusFieldsBeforeAlonzo     => "Plutus fields before Alonzo"
+    case UnreadableProtocolVersion    => "an update with an unreadable protocol version"
+
+/** Why the ledger refused a transaction. */
+enum LedgerFailure:
   /** A rule refused the transaction; `failure` is the ledger's predicate failure for it. */
   case Rejected(txId: Bytes, failure: PredicateFailure)
-  case Malformed(detail: String)
+
+  /** The transaction holds what its era's decoder would not have admitted (see [[TxDefect]]). */
+  case Undecodable(txId: Bytes, defect: TxDefect)
 
   /** A value of the transaction is not a member of the vocabulary type that the era-indexed state
     * holds it in (a credential of another length, a quantity outside its word). The decoder admits
@@ -24,28 +57,10 @@ enum LedgerFailure:
   case Vocab(error: VocabError)
 
   def message: String = this match
-    case Unsupported(id, f) => s"tx ${id.hex.take(16)} uses unsupported $f"
     case Rejected(id, f) =>
-      s"tx ${id.hex.take(16)} violates ${f.ruleName}: ${LedgerFailure.detail(f)}"
-    case Malformed(d) => s"malformed transaction: $d"
-    case Vocab(e)     => s"transaction outside the state's vocabulary: $e"
-
-object LedgerFailure:
-  /** A refusal named by its rule and a free-text detail, for the rules whose payload is not
-    * modelled (see [[PredicateFailure.Unmapped]]); pattern-matches any refusal as rule and detail.
-    */
-  object Invalid:
-    def apply(txId: Bytes, rule: String, detail: String): LedgerFailure =
-      Rejected(txId, PredicateFailure.Unmapped(rule, detail))
-    def unapply(failure: LedgerFailure): Option[(Bytes, String, String)] = failure match
-      case Rejected(id, f) => Some((id, f.ruleName, detail(f)))
-      case _               => None
-
-  /** The payload of a failure as text. */
-  def detail(f: PredicateFailure): String = f match
-    case PredicateFailure.Unmapped(_, d) => d
-    case PredicateFailure.Mempool(t)     => t
-    case other                           => other.toString.take(400)
+      s"tx ${id.hex.take(16)} violates ${f.detail}"
+    case Undecodable(id, d) => s"tx ${id.hex.take(16)} cannot be decoded: ${d.message}"
+    case Vocab(e)           => s"transaction outside the state's vocabulary: $e"
 
 /** The transaction rules of the current era: Conway ([[ConwayRules]]) from protocol version 9, else
   * [[PreConwayRules]].

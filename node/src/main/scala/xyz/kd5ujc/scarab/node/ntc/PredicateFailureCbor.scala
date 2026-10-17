@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.ExUnits
+import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{
   HaskellStateCodecs,
   NodeOrders,
@@ -29,16 +30,67 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * one-element list holding the era index (Conway, 6) and the non-empty list of failures.
   */
 object PredicateFailureCbor:
-  private type W = CborOut
+  private[ntc] type W = CborOut
 
   val ConwayIndex = 6
 
-  /** The reason item sent with `MsgRejectTx` for a refused Conway transaction. */
+  /** The reason item sent with `MsgRejectTx` for a refused Conway transaction. A failure of a rule
+    * the Conway ledger does not have (the update proposals, the MIR certificates, the time to live)
+    * or whose payload this encoding does not write ([[inConway]]) is sent as the ledger's own
+    * free-text failure, so that the client still shows the reason.
+    */
   def applyTxError(failures: Vector[PredicateFailure]): Bytes =
     CborOut.build { w =>
       w.array(1).array(2).uint(ConwayIndex)
-      list(w, failures)(ledger)
+      list(w, failures.map(conwayForm))(ledger)
     }
+
+  /** The reason item for a refused transaction of `era`, when the era's ledger has a constructor
+    * for every failure: Conway's [[applyTxError]], or the earlier eras' ([[PreConwayFailureCbor]]).
+    */
+  def applyTxError(era: Era, failures: Vector[PredicateFailure]): Option[Bytes] = era match
+    case Era.Conway => Some(applyTxError(failures))
+    case other      => PreConwayFailureCbor.applyTxError(other, failures)
+
+  /** The failure as Conway's ledger reports it: itself, or its text (`ConwayMempoolFailure`). */
+  private def conwayForm(f: PredicateFailure): PredicateFailure =
+    if inConway(f) then f else PredicateFailure.Mempool(f.detail)
+
+  /** Whether Conway's ledger has a constructor for the failure that this encoding writes. The
+    * failures of the rules of the earlier eras (`ExpiredUTxO`, PPUP, `MIRInsufficientGenesisSigs`,
+    * the Shelley DELEG failures) are not; `CollectErrors` is, but its payload (`ContextError`) is
+    * not written.
+    */
+  def inConway(f: PredicateFailure): Boolean = f match
+    case PredicateFailure.Utxow(u)                                       => utxowInConway(u)
+    case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Deleg(d))) => delegInConway(d)
+    case _                                                               => true
+
+  private def utxowInConway(u: UtxowFailure): Boolean = u match
+    case UtxowFailure.MIRInsufficientGenesisSigs(_) => false
+    case UtxowFailure.Utxo(
+          UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_) |
+          UtxoFailure.Utxos(UtxosFailure.CollectErrors(_))
+        ) =>
+      false
+    case _ => true
+
+  private def delegInConway(d: DelegFailure): Boolean = d match
+    case DelegFailure.StakeKeyAlreadyRegistered(_) | DelegFailure.StakeDelegationImpossible(_) |
+        DelegFailure.WrongCertificateType | DelegFailure.GenesisKeyNotInMapping(_) |
+        DelegFailure.DuplicateGenesisDelegate(_) | DelegFailure.DuplicateGenesisVRF(_) |
+        DelegFailure.InsufficientForInstantaneousRewards(_, _) |
+        DelegFailure.MIRCertificateTooLateinEpoch(_) | DelegFailure.MIRTransferNotCurrentlyAllowed |
+        DelegFailure.MIRNegativesNotCurrentlyAllowed | DelegFailure.InsufficientForTransfer(_, _) |
+        DelegFailure.MIRProducesNegativeUpdate | DelegFailure.MIRNegativeTransfer(_, _) |
+        DelegFailure.DelegateeNotRegistered(_) =>
+      false
+    case _ => true
+
+  /** The place of a failure Conway's ledger has no constructor for: [[applyTxError]] sends those as
+    * text ([[inConway]]), so no encoding reaches it.
+    */
+  private def notInConway(w: W): Unit = { w.nul; () }
 
   /** The hard-fork-combinator era mismatch: the era of the transaction, then the ledger's. */
   def eraMismatch(transactionEra: Int, transactionEraName: String): Bytes =
@@ -56,57 +108,57 @@ object PredicateFailureCbor:
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
   import NodeOrders.given
 
-  private def put[A](w: W, a: A)(using codec: Codec[A]): W = w.raw(codec.encodeUnchecked(a))
+  private[ntc] def put[A](w: W, a: A)(using codec: Codec[A]): W = w.raw(codec.encodeUnchecked(a))
 
   /** The codec of an item written by a function of the failure's writer. */
-  private def element[A](each: (W, A) => Unit): Codec[A] =
+  private[ntc] def element[A](each: (W, A) => Unit): Codec[A] =
     Wire.writeOnly("a failure item")((a, out) => out.raw(CborOut.build(each(_, a))))
 
-  private def list[A](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
+  private[ntc] def list[A](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
     put(w, xs.toVector)(using Wire.seqOf(element(each)))
 
-  private def set[A: Order](w: W, xs: Iterable[A])(each: (W, A) => Unit): W =
+  private[ntc] def set[A: Order](w: W, xs: Iterable[A])(each: (W, A) => Unit)(using ProtVer): W =
     put(w, xs.toSet)(using Wire.sortedSetOf(element(each)))
 
-  private def map[K: Order, V](w: W, entries: Map[K, V])(
+  private[ntc] def map[K: Order, V](w: W, entries: Map[K, V])(
       key: (W, K) => Unit,
       value: (W, V) => Unit
-  ): W = put(w, entries)(using Wire.sortedMapOf(element(key), element(value)))
+  )(using ProtVer): W = put(w, entries)(using Wire.sortedMapOf(element(key), element(value)))
 
-  private def maybe[A](w: W, a: Option[A])(each: (W, A) => Unit): W =
+  private[ntc] def maybe[A](w: W, a: Option[A])(each: (W, A) => Unit): W =
     put(w, a)(using Wire.strictMaybe(element(each)))
 
-  private def credential(w: W, c: Credential): W =
+  private[ntc] def credential(w: W, c: Credential): W =
     put(w, c)(using HaskellStateCodecs.nodeCredential)
-  private def txIn(w: W, i: TxIn): W = put(w, i)(using UtxoCodecs.txIn)
-  private def txOut(w: W, o: TxOut): W = put(w, o)(using UtxoCodecs.txOut)
-  private def rewardAccount(w: W, a: RewardAccount): W =
+  private[ntc] def txIn(w: W, i: TxIn): W = put(w, i)(using UtxoCodecs.txIn)
+  private[ntc] def txOut(w: W, o: TxOut): W = put(w, o)(using UtxoCodecs.txOut)
+  private[ntc] def rewardAccount(w: W, a: RewardAccount): W =
     put(w, a)(using HaskellStateCodecs.rewardAccount)
-  private def govActionId(w: W, i: GovActionId): W =
+  private[ntc] def govActionId(w: W, i: GovActionId): W =
     put(w, i)(using HaskellStateCodecs.govActionId)
   private def govAction(w: W, a: GovAction): W = put(w, a)(using HaskellStateCodecs.govAction)
   private def proposalProcedure(w: W, p: Proposal): W =
     put(w, p)(using HaskellStateCodecs.proposal)
-  private def exUnits(w: W, e: ExUnits): W = put(w, e)(using Params.exUnits)
+  private[ntc] def exUnits(w: W, e: ExUnits): W = put(w, e)(using Params.exUnits)
 
-  private def hash(w: W, h: Bytes): Unit = { w.bytes(h); () }
+  private[ntc] def hash(w: W, h: Bytes): Unit = { w.bytes(h); () }
 
-  private def hashSet(w: W, hs: Set[Bytes]): W = set(w, hs)(hash)
+  private[ntc] def hashSet(w: W, hs: Set[Bytes])(using ProtVer): W = set(w, hs)(hash)
 
-  private def maybeHash(w: W, h: Option[Bytes]): W = maybe(w, h)((k, x) => k.bytes(x))
+  private[ntc] def maybeHash(w: W, h: Option[Bytes]): W = maybe(w, h)((k, x) => k.bytes(x))
 
   /** A mismatch as a group: supplied, then expected. */
-  private def group[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
+  private[ntc] def group[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
     each(w, m.supplied); each(w, m.expected)
 
   /** A mismatch the ledger writes in the reverse order. */
-  private def swapped[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
+  private[ntc] def swapped[A](w: W, m: Mismatch[A])(each: (W, A) => Unit): Unit =
     each(w, m.expected); each(w, m.supplied)
 
-  private def coin(w: W, c: BigInt): Unit = { w.uint(c); () }
-  private def small(w: W, n: Int): Unit = { w.uint(n); () }
+  private[ntc] def coin(w: W, c: BigInt): Unit = { w.uint(c); () }
+  private[ntc] def small(w: W, n: Int): Unit = { w.uint(n); () }
 
-  private def voter(w: W, v: Voter): W = v match
+  private[ntc] def voter(w: W, v: Voter): W = v match
     case Voter.CommitteeHot(Credential.Key(h))    => w.array(2).uint(0).bytes(h)
     case Voter.CommitteeHot(Credential.Script(h)) => w.array(2).uint(1).bytes(h)
     case Voter.DRepVoter(Credential.Key(h))       => w.array(2).uint(2).bytes(h)
@@ -120,7 +172,9 @@ object PredicateFailureCbor:
       govActionId(k, id)
     }
 
-  private def protVer(w: W, v: (BigInt, BigInt)): Unit = { w.array(2).uint(v._1).uint(v._2); () }
+  private[ntc] def protVer(w: W, v: (BigInt, BigInt)): Unit = {
+    w.array(2).uint(v._1).uint(v._2); ()
+  }
 
   // ---- LEDGER
 
@@ -144,7 +198,6 @@ object PredicateFailureCbor:
         rewardAccount,
         (k, m) => { k.array(2); group(k, m)(coin) }
       )
-    case PredicateFailure.Unmapped(rule, detail) => w.array(2).uint(7).text(s"$rule: $detail")
 
   // ---- UTXOW
 
@@ -178,11 +231,12 @@ object PredicateFailureCbor:
       list(w, ps) { case (k, (tag, ix)) => k.array(2).uint(tag).uint(ix) }
     case UtxowFailure.MalformedScriptWitnesses(hs)  => w.array(2).uint(16); hashSet(w, hs)
     case UtxowFailure.MalformedReferenceScripts(hs) => w.array(2).uint(17); hashSet(w, hs)
+    case UtxowFailure.MIRInsufficientGenesisSigs(_) => notInConway(w)
 
   /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
     * `[tag, item]`. A certifying purpose carries the certificate, which is not re-encoded here.
     */
-  private def item(w: W, p: Purpose): Unit = p match
+  private[ntc] def item(w: W, p: Purpose): Unit = p match
     case Purpose.Spending(_, input, _)  => w.array(2).uint(0); txIn(w, input)
     case Purpose.Minting(_, policy)     => w.array(2).uint(1).bytes(policy)
     case Purpose.Certifying(_, _)       => w.array(2).uint(2); w.nul
@@ -192,7 +246,7 @@ object PredicateFailureCbor:
 
   // ---- UTXO
 
-  private def value(w: W, v: Value): Unit = { put(w, v)(using UtxoCodecs.value); () }
+  private[ntc] def value(w: W, v: Value): Unit = { put(w, v)(using UtxoCodecs.value); () }
 
   private def utxo(w: W, f: UtxoFailure): Unit = f match
     case UtxoFailure.Utxos(u)       => w.array(2).uint(0); utxos(w, u)
@@ -239,8 +293,9 @@ object PredicateFailureCbor:
       list(w, outs) { case (k, (out, min)) => k.array(2); txOut(k, out); k.uint(min) }
     case UtxoFailure.BabbageNonDisjointRefInputs(ins) =>
       w.array(2).uint(22); list(w, ins)(txIn)
+    case UtxoFailure.ExpiredUTxO(_) | UtxoFailure.Update(_) => notInConway(w)
 
-  private def utxos(w: W, f: UtxosFailure): Unit = f match
+  private[ntc] def utxos(w: W, f: UtxosFailure)(using ProtVer): Unit = f match
     case UtxosFailure.ValidationTagMismatch(isValid, failures) =>
       w.array(3).uint(0).bool(isValid)
       failures match
@@ -248,6 +303,7 @@ object PredicateFailureCbor:
         case Some(fs) =>
           w.array(2).uint(1)
           list(w, fs) { case (k, (text, detail)) => k.array(3).uint(1).text(text).bytes(detail) }
+    case UtxosFailure.CollectErrors(_) => notInConway(w)
 
   // ---- CERTS, CERT, DELEG, POOL, GOVCERT
 
@@ -271,8 +327,17 @@ object PredicateFailureCbor:
     case DelegFailure.DelegateeStakePoolNotRegistered(p)  => w.array(2).uint(6).bytes(p)
     case DelegFailure.DepositIncorrect(m) => w.array(2).uint(7).array(2); group(w, m)(coin)
     case DelegFailure.RefundIncorrect(m)  => w.array(2).uint(8).array(2); group(w, m)(coin)
+    case DelegFailure.StakeKeyAlreadyRegistered(_) | DelegFailure.StakeDelegationImpossible(_) |
+        DelegFailure.WrongCertificateType | DelegFailure.GenesisKeyNotInMapping(_) |
+        DelegFailure.DuplicateGenesisDelegate(_) | DelegFailure.DuplicateGenesisVRF(_) |
+        DelegFailure.InsufficientForInstantaneousRewards(_, _) |
+        DelegFailure.MIRCertificateTooLateinEpoch(_) | DelegFailure.MIRTransferNotCurrentlyAllowed |
+        DelegFailure.MIRNegativesNotCurrentlyAllowed | DelegFailure.InsufficientForTransfer(_, _) |
+        DelegFailure.MIRProducesNegativeUpdate | DelegFailure.MIRNegativeTransfer(_, _) |
+        DelegFailure.DelegateeNotRegistered(_) =>
+      notInConway(w)
 
-  private def pool(w: W, f: PoolFailure): Unit = f match
+  private[ntc] def pool(w: W, f: PoolFailure)(using ProtVer): Unit = f match
     case PoolFailure.StakePoolNotRegisteredOnKey(p) => w.array(2).uint(0).bytes(p)
     case PoolFailure.StakePoolRetirementWrongEpoch(current, latest) =>
       w.array(4).uint(1).uint(current.expected).uint(latest.supplied).uint(latest.expected)

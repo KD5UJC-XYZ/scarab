@@ -26,7 +26,7 @@ class WideTxStackSuite extends FunSuite:
       val (tx, spent) = wide(5000)
       val env = ScriptContexts.Environment(c.protocolMajor, spent, Map.empty, c.posix)
       val info = PreprodDeepTx.onSmallStack(ScriptContexts.txInfo(language, tx, env))
-      assert(info.isRight, info.left.toOption.map(_.reason))
+      assert(info.isRight, info.left.toOption.map(_.message))
     }
   }
 

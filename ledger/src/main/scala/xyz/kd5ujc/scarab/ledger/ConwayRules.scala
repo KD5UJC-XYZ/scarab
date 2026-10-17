@@ -569,7 +569,7 @@ private[ledger] object ConwayCerts:
       case Certificate.CommitteeResign(cold, anchor) =>
         committee(s, cold, CommitteeAuth.Resigned(anchor), id)
       case Certificate.GenesisDelegate(_, _, _) | Certificate.MoveRewards(_, _) =>
-        Left(LedgerFailure.Invalid(id, "DecoderError", "a pre-Conway certificate in Conway"))
+        Left(LedgerFailure.Undecodable(id, TxDefect.PreConwayCertificate(cert)))
 
   private def committee(
       s: LedgerState,

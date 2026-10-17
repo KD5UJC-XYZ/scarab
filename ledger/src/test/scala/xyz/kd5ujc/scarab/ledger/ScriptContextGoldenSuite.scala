@@ -337,14 +337,16 @@ class ScriptContextGoldenSuite extends FunSuite:
     val env = environment(language, protocol, tx)
     val (stx, utxos) = scalusSide(language, protocol)
     val pv = sl.MajorProtocolVersion(protocol)
-    val info = ScriptContexts.txInfo(language, tx, env).fold(e => fail(e.reason), identity)
+    val info = ScriptContexts.txInfo(language, tx, env).fold(e => fail(e.message), identity)
     assert(tx.witnesses.redeemers.nonEmpty)
     tx.witnesses.redeemers.foreach { r =>
       val purpose = Purpose
         .resolve(tx.body, env.spent, r.tag, r.index)
         .getOrElse(fail(s"purpose ${r.tag}.${r.index}"))
       val args =
-        ScriptContexts.arguments(language, info, tx, r, purpose).fold(e => fail(e.reason), identity)
+        ScriptContexts
+          .arguments(language, info, tx, r, purpose)
+          .fold(e => fail(e.message), identity)
       val sr = sl.Redeemer(
         sl.RedeemerTag.fromOrdinal(r.tag),
         r.index.toInt,
