@@ -274,6 +274,9 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](desig
   the active targets follow the local roots' valency (`Regime`, design section 1.10). A change of regime during the sleep
   asks for the new regime's targets at once. The log events `peerSelectionChurn` and the `scarab_peer_selection_churn_*`
   metrics tell the rounds.
+- **How long a demotion takes.** A hot peer is deactivated by ending its protocols cleanly, which waits for the peer's next
+  blocking TxSubmission2 request and for the ChainSync reply in flight: on the devnet about a minute, at most the 300 s of
+  `deactivateTimeout`; then the connection is closed. A churn round's active decrease therefore takes that long.
 - **Fetch mode and BlockFetch.** The node reads the fetch mode every second (`BulkSync` while behind or in the sensitive
   state, `Deadline` when less than 1000 slots behind the wall clock) and BlockFetch follows it as the reference's decision
   policy does (`Decision.hs`, `filterNotAlreadyInFlightWithOtherPeers`): in bulk sync a block another session has claimed is
