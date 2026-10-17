@@ -95,7 +95,8 @@ class InboundGovernorSuite extends CatsEffectSuite:
       headerFirst: Boolean = true,
       runClients: Boolean = true,
       retryDelay: FiniteDuration = 10.seconds,
-      transactions: Option[TxSubmissionClient.Source[IO]] = None
+      transactions: Option[TxSubmissionClient.Source[IO]] = None,
+      clock: Option[SlotClock[IO]] = None
   ): IO[Local] =
     for
       ref <- Ref.of[IO, VolatileChain[MirrorState]](
@@ -122,11 +123,15 @@ class InboundGovernorSuite extends CatsEffectSuite:
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       manager <- ConnectionManager.create[IO](ConnectionManager.Limits(maxInbound = 4))
-      headerCheck = Option.when(headerFirst)(
+      validating = Option.when(headerFirst)(
         HeaderCheck.forChain[IO, MirrorState, xyz.kd5ujc.scarab.consensus.state.ProtocolState](
           NodeHeaderRules[MirrorState](ForgedChain.config, ForgedChain.globals),
           Compute.inline[IO]
         )
+      )
+      // with a clock, the headers are also held to it (AUD-01), whether or not they are validated
+      headerCheck = clock.fold(validating)(c =>
+        Some(HeaderClock.clocked[IO](c, validating.getOrElse(HeaderCheck.none[IO])))
       )
       settings = Peer.Settings(
         remote,
@@ -256,6 +261,46 @@ class InboundGovernorSuite extends CatsEffectSuite:
       assertEquals(ranges, Vector.empty[(Point, Point)])
       assertEquals(chain.tip, ChainSync.Point.Origin)
       assert(sessions.head.ended.exists(_.contains("invalid header")), sessions.toString)
+      assertEquals(table.counters, ConnectionState.Counters.zero)
+  }
+
+  /** A clock that reads `from` now and then runs at the speed of the test's own time. */
+  private def ticking(from: java.time.Instant): IO[SlotClock[IO]] =
+    IO.monotonic.map(began =>
+      new SlotClock[IO]:
+        def now = IO.monotonic.map(t => from.plusNanos((t - began).toNanos))
+        def geometry = IO.pure(ForgedChain.geometry)
+    )
+
+  test("a peer whose headers are in the future is dropped, a healthy peer is followed") {
+    // the node's clock stands at the onset of the tenth block's slot
+    val reference = forged.headers(9)
+    val healthy = forged.raws.take(10)
+    for
+      now <- IO.pure(ForgedChain.geometry.slotStart(reference.slot))
+      clock <- ticking(now)
+      us <- local(clock = Some(clock))
+      good <- serving(healthy)
+      _ <- connect(Some(good), us) { _ =>
+        eventually("our chain reaches the healthy peer's tip")(us.chain.get.map(_.tip))(
+          _ == reference.point
+        )
+      }
+      early <- serving(forged.raws)
+      outcome <- connect(Some(early), us)(ended => ended)
+      ranges <- early.ranges.get
+      chain <- us.chain.get
+      sessions <- us.governor.sessions
+      table <- us.manager.snapshot
+    yield
+      // the typed error ended the session, naming the clock skew
+      assert(outcome._2.contains("invalid header"), outcome._2)
+      assert(outcome._2.contains("clock skew"), outcome._2)
+      assert(sessions.exists(_.ended.exists(_.contains("clock skew"))), sessions.toString)
+      // no block of the batch with a future header was requested, and nothing in the future applied
+      assert(chain.tip != forged.headers.last.point)
+      assert(chain.tipRef.forall(t => t.slot <= reference.slot + 20), chain.tipRef.toString)
+      assert(ranges.size < forged.headers.size, ranges.toString)
       assertEquals(table.counters, ConnectionState.Counters.zero)
   }
 

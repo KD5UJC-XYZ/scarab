@@ -62,11 +62,16 @@ final case class EpochGeometry(
   def epochSlots(epoch: BigInt): BigInt =
     if epoch < byron.epochs then byron.epochSlots else BigInt(epochLength)
 
+  /** Milliseconds from the system start to the onset of `slot`. Exact for any slot number, so a
+    * slot taken from a peer's header cannot overflow it (unlike [[slotStart]], which is for slots
+    * of the node's own chain and clock).
+    */
+  def slotOffsetMillis(slot: BigInt): BigInt =
+    if slot < byron.slots then slot * byron.slotLengthMillis
+    else byron.slots * byron.slotLengthMillis + (slot - byron.slots) * slotLengthMillis
+
   def slotStart(slot: BigInt): Instant =
-    val millis =
-      if slot < byron.slots then slot * byron.slotLengthMillis
-      else byron.slots * byron.slotLengthMillis + (slot - byron.slots) * slotLengthMillis
-    systemStart.plusMillis(millis.toLong)
+    systemStart.plusMillis(slotOffsetMillis(slot).toLong)
 
   def slotAt(instant: Instant): BigInt =
     val elapsed = instant.toEpochMilli - systemStart.toEpochMilli

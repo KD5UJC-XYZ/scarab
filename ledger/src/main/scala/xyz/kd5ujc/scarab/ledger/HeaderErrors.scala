@@ -20,7 +20,22 @@ enum HeaderError:
   /** The header cannot belong to the chain it claims to extend. */
   case Structure(reason: String)
 
+  /** The header's slot begins further ahead of our clock, at the moment it arrived, than the
+    * tolerable clock skew (`FarFutureHeaderException`). Its issuer minted it before its slot, or
+    * its clock differs from ours by more than we accept.
+    *
+    * @param slot
+    *   the header's slot
+    * @param aheadMillis
+    *   how long after its arrival the slot begins
+    * @param skewMillis
+    *   the tolerable clock skew
+    */
+  case FarFuture(slot: BigInt, aheadMillis: BigInt, skewMillis: Long)
+
   def message: String = this match
+    case FarFuture(s, ahead, skew) =>
+      s"slot $s begins $ahead ms after the header arrived, beyond the tolerable clock skew of $skew ms"
     case Envelope(e)  => s"envelope: ${e.message}"
     case Praos(r)     => s"praos: $r"
     case TPraos(e)    => s"tpraos: ${e.message}"

@@ -593,27 +593,34 @@ object Main extends IOApp:
               mempool.sink
             )
             // header-first validation (G6): signatures are verified through the cache's keeping
-            // view, so the block's own validation does not repeat them
-            headerCheck = Option.when(options.headerFirst)(
-              HeaderCheck.forChain[IO, MirrorState, ProtocolState](
-                NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
-                scheduling.compute,
-                warm = Some((headers, state) =>
-                  praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
-                ),
-                observe = Some(counts =>
-                  headersLogged
-                    .modify(last =>
-                      if counts.validated - last >= 50000 then (counts.validated, true)
-                      else (last, false)
-                    )
-                    .flatMap(
-                      logged(
-                        NodeEvent.HeadersChecked(counts.validated, counts.unchecked, counts.waited)
-                      ).whenA(_)
-                    )
-                ),
-                added = Some(measured.headers)
+            // view, so the block's own validation does not repeat them. Every live session also
+            // holds its headers to the node's clock (AUD-01, #153), with or without header-first.
+            headerCheck = Some(
+              HeaderClock.clocked[IO](
+                SlotClock.system[IO](ref.get.map(_.state.geometry(genesis.geometry))),
+                if options.headerFirst then
+                  HeaderCheck.forChain[IO, MirrorState, ProtocolState](
+                    NodeHeaderRules(setup.praos.copy(verdicts = cache.forHeaders), setup.globals),
+                    scheduling.compute,
+                    warm = Some((headers, state) =>
+                      praosConfig.get.flatMap(cache.warmHeaders[IO](headers, state, _))
+                    ),
+                    observe = Some(counts =>
+                      headersLogged
+                        .modify(last =>
+                          if counts.validated - last >= 50000 then (counts.validated, true)
+                          else (last, false)
+                        )
+                        .flatMap(
+                          logged(
+                            NodeEvent
+                              .HeadersChecked(counts.validated, counts.unchecked, counts.waited)
+                          ).whenA(_)
+                        )
+                    ),
+                    added = Some(measured.headers)
+                  )
+                else HeaderCheck.none[IO]
               )
             )
             // how long the ChainSync pipeline's rounds take (D3), summarised every 200 rounds
