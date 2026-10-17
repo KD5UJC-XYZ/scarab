@@ -229,10 +229,12 @@ object Relations:
     // A state the new side carried on from block to block holds each snapshot as it was when it was
     // taken, with the delegators the pool had then (`spsDelegators`); the old mirror derives them
     // from the accounts as they are. They agree at the boundary that takes `mark`, and the
-    // delegators themselves are checked against the accounts at every block (`Invariants`).
+    // delegators themselves are checked against the accounts at every block (`Invariants`). A
+    // state the new side is seeded with holds `mark` as it was taken (`SnapshotBasis.AsTaken`),
+    // which is the same between the boundaries.
     val snapshots = noRewards.es.snapshots.copy(
       mark =
-        if carried && !boundary then seeded(old.es.snapshots.mark, noRewards.es.snapshots.mark)
+        if !boundary then seeded(old.es.snapshots.mark, noRewards.es.snapshots.mark)
         else lower(old.es.snapshots.mark, noRewards.es.snapshots.mark, !registered.contains(_)),
       set = seeded(old.es.snapshots.set, noRewards.es.snapshots.set),
       go =
