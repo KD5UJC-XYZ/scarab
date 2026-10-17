@@ -337,9 +337,9 @@ lazy val root = project
     fuzz
   )
   .settings(
-    // fuzz [cases] [first-seed] [seeds] [target-glob]: the fuzz suite with more cases or other seeds than
+    // fuzz [cases] [first-seed] [seeds] [target-text]: the fuzz suite with more cases or other seeds than
     // `check` uses; the settings change for this run only.
-    commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-glob]") {
+    commands += Command.args("fuzz", "[cases] [first-seed] [seeds] [target-text]") {
       (state, args) =>
         def number[A](i: Int, default: A)(parse: String => A): A = args.lift(i).fold(default)(parse)
         val extracted = Project.extract(state)
@@ -351,7 +351,7 @@ lazy val root = project
           ),
           state
         )
-        val glob = args.lift(3).fold("")(g => s" --tests=*$g*")
+        val glob = args.lift(3).fold("")(g => s" --tests=.*$g.*")
         val run = s" xyz.kd5ujc.scarab.fuzz.FuzzSuite --$glob"
         try {
           Project.extract(tuned).runInputTask(fuzz / Test / testOnly, run, tuned)
