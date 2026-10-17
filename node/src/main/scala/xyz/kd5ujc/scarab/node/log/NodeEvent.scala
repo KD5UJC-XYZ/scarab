@@ -11,12 +11,14 @@ import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
 import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, LedgerPeersTrace, NodeConfig, Topology}
 import xyz.kd5ujc.scarab.network.selection.{
+  AfterSlot,
   Churn,
   FetchMode,
   Gsm,
   GovernorState,
   OutboundConnectionsState,
-  Trace
+  Trace,
+  UseLedgerPeers
 }
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
@@ -186,7 +188,11 @@ object NodeEvent:
               "localRoots" -> t.localRoots.map(_.accessPoints.map(_.toString)).asJson,
               "bootstrapPeers" -> t.bootstrapPeers.map(_.map(_.toString)).asJson,
               "publicRoots" -> t.publicRoots.map(_.accessPoints.map(_.toString)).asJson,
-              "useLedgerAfterSlot" -> t.useLedgerAfterSlot.toString.asJson
+              "useLedgerAfterSlot" -> (t.useLedgerAfterSlot match
+                case UseLedgerPeers.Disabled                   => "Disabled"
+                case UseLedgerPeers.Use(AfterSlot.Always)      => "Always"
+                case UseLedgerPeers.Use(AfterSlot.After(slot)) => s"After($slot)"
+              ).asJson
             )
           )
           .asJson

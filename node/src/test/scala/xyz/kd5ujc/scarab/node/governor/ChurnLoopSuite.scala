@@ -34,12 +34,21 @@ class ChurnLoopSuite extends CatsEffectSuite:
       mode: Ref[IO, FetchMode],
       stuck: Boolean = false,
       regime: FetchMode => Regime.Kind = Regime.kind(_, false),
-      intervals: Churn.Intervals = Churn.Intervals()
+      intervals: Churn.Intervals = Churn.Intervals(),
+      bigLedger: Boolean = false
   ): IO[Log] =
     for
       requestedCell <- Ref.of[IO, Targets](Targets.zero)
       counterCell <- Ref.of[IO, GovernorState.Counters](
-        empty.copy(root = 60, known = 150, established = 30, active = 20)
+        empty.copy(
+          root = 60,
+          known = 150,
+          established = 30,
+          active = 20,
+          knownBigLedger = 15,
+          establishedBigLedger = 10,
+          activeBigLedger = 5
+        )
       )
       requests <- Ref.of[IO, Vector[(FiniteDuration, Targets)]](Vector.empty)
       traces <- Ref.of[IO, Vector[(FiniteDuration, Churn.Trace)]](Vector.empty)
@@ -61,12 +70,15 @@ class ChurnLoopSuite extends CatsEffectSuite:
                 root = follow(c.root, t.root),
                 known = follow(c.known, t.known),
                 established = follow(c.established, t.established),
-                active = follow(c.active, t.active)
+                active = follow(c.active, t.active),
+                knownBigLedger = follow(c.knownBigLedger, t.knownBig),
+                establishedBigLedger = follow(c.establishedBigLedger, t.establishedBig),
+                activeBigLedger = follow(c.activeBigLedger, t.activeBig)
               )
             }
           yield ()
       given Ask[IO, ChurnLoop.Config] = Ask.const[IO, ChurnLoop.Config](
-        ChurnLoop.Config(base, regime, intervals = intervals, seed = 5L)
+        ChurnLoop.Config(base, regime, intervals = intervals, bigLedger = bigLedger, seed = 5L)
       )
       given Tell[IO, Churn.Trace] = new Tell[IO, Churn.Trace]:
         def functor = cats.Functor[IO]
@@ -112,6 +124,23 @@ class ChurnLoopSuite extends CatsEffectSuite:
       assert(waited >= 3297.seconds && waited <= 3897.seconds, waited.toString)
       val began = log.traces.collectFirst { case (at, Churn.Trace.Mode(_)) => at }.get
       assertEquals(began, 3.seconds + waited))
+  }
+
+  test(
+    "with big ledger peers a round has the twelve steps in the reference's order, each reached"
+  ) {
+    embed(for
+      mode <- Ref.of[IO, FetchMode](FetchMode.Deadline)
+      log <- run(5000.seconds, mode = mode, bigLedger = true)
+    yield
+      val steps = log.traces.map(_._2).collect { case Churn.Trace.Action(step, _, _) => step }
+      assertEquals(steps.take(12).toList, Churn.round(bigLedger = true))
+      assertEquals(steps.take(12).map(_.number).toList, (1 to 12).toList)
+      assert(!log.traces.exists { case (_, Churn.Trace.Timeout(_, _, _)) => true; case _ => false })
+      // the big ledger targets move: down by a fifth and back to the base
+      val big = log.requests.map(_._2).drop(2).take(12)
+      assertEquals(big.map(_.activeBig).take(2), Vector(4, 5))
+      assertEquals(big.last.knownBig, 15))
   }
 
   test("the targets of each step are the ones of the arithmetic, one set at a time") {
