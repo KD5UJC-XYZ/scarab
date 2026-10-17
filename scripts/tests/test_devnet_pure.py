@@ -254,13 +254,13 @@ class RestartScenarioTest(unittest.TestCase):
 
     def test_the_snapshots_must_be_of_the_current_format(self):
         from devnet.scenarios.restart import format_problem
-        self.assertIsNone(format_problem([b"SCRBSNP4", b"SCRBSNP4"]))
-        self.assertIn("SCRBSNP3", format_problem([b"SCRBSNP4", b"SCRBSNP3"]))
+        self.assertIsNone(format_problem([b"SCRBSNP5", b"SCRBSNP5"]))
+        self.assertIn("SCRBSNP4", format_problem([b"SCRBSNP5", b"SCRBSNP4"]))
         self.assertIn("no snapshot", format_problem([]))
 
     def test_the_older_snapshots_must_be_migrated(self):
         from devnet.scenarios.restart import migration_problem
-        migrated = {"event": "formatMigrated", "kind": "SnapshotFile", "from": "V3", "to": "V4", "count": 3}
+        migrated = {"event": "formatMigrated", "kind": "SnapshotFile", "from": "V4", "to": "V5", "count": 3}
         self.assertIsNone(migration_problem([migrated]))
         self.assertIn("did not migrate", migration_problem([{"event": "extended"}]))
         self.assertIn("refused", migration_problem([migrated, {"event": "snapshotRefused"}]))

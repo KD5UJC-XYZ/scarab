@@ -31,7 +31,7 @@
                                    `e2e --oracle`, `soak --oracle` or `follow --dump-state`) with the
                                    Haskell ledger state db-analyser stores in the reference container
     devnet.py restart              up + follow --db, stop it with SIGTERM (the JVM must exit within 30 s, issue 89),
-                                   start it again (it must restore the snapshot, and the files are V4);
+                                   start it again (it must restore the snapshot, and the files are V5);
                                    --migrate-from CLASSES: first a run of an older build, whose snapshots must migrate
     devnet.py down                 remove containers and the run directory
 
@@ -238,7 +238,7 @@ def main():
     rs.add_argument("--seconds", type=int, default=20, help="seconds the follower runs after its first block, before each stop")
     rs.add_argument("--migrate-from", metavar="CLASSES",
                     help="first run the build whose classes are in this directory (the `classes` of an earlier run) and "
-                         "stop it; this build must then migrate the snapshots that build wrote (V3 to V4 for 9dcbec07)")
+                         "stop it; this build must then migrate the snapshots that build wrote (V4 to V5 for 6ce5bb77, the last build with V4 files)")
     rs.set_defaults(run=restart)
     sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
                    ).set_defaults(run=oracle)

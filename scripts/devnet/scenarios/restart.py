@@ -29,8 +29,8 @@ def restore_problem(events):
     return None
 
 
-# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV4)
-SNAPSHOT_MAGIC = b"SCRBSNP4"
+# the magic of the snapshot files this build writes (FileKind.SnapshotFile current, SnapshotV5)
+SNAPSHOT_MAGIC = b"SCRBSNP5"
 
 
 def format_problem(magics):
@@ -43,11 +43,11 @@ def format_problem(magics):
     return None
 
 
-def migration_problem(events, source="V3"):
-    """Why the start did not migrate the snapshots written by the older build (from `source` to V4), else None."""
+def migration_problem(events, source="V4"):
+    """Why the start did not migrate the snapshots written by the older build (from `source` to V5), else None."""
     migrated = [e for e in events if e["event"] == "formatMigrated" and e.get("kind") == "SnapshotFile"]
-    if not any(e.get("from") == source and e.get("to") == "V4" and e.get("count", 0) > 0 for e in migrated):
-        return f"the start did not migrate the {source} snapshots to V4 (formatMigrated: {migrated})"
+    if not any(e.get("from") == source and e.get("to") == "V5" and e.get("count", 0) > 0 for e in migrated):
+        return f"the start did not migrate the {source} snapshots to V5 (formatMigrated: {migrated})"
     if any(e["event"] == "snapshotRefused" for e in events):
         return "a snapshot was refused"
     return None
