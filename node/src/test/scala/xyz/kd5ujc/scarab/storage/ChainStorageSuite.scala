@@ -331,8 +331,11 @@ class ChainStorageSuite extends CatsEffectSuite:
     */
   private def assertState(got: MirrorState, want: MirrorState, clue: => Any = "state"): Unit =
     assertEquals(
-      MirrorStep.mapUtxo(got)(_ => xyz.kd5ujc.scarab.ledger.Utxo.empty),
-      MirrorStep.mapUtxo(want)(_ => xyz.kd5ujc.scarab.ledger.Utxo.empty),
+      MirrorSteps.firstDifference(
+        MirrorStep.mapUtxo(got)(_ => xyz.kd5ujc.scarab.ledger.Utxo.empty),
+        MirrorStep.mapUtxo(want)(_ => xyz.kd5ujc.scarab.ledger.Utxo.empty)
+      ),
+      None,
       clue
     )
     assertEquals(got.utxo.stake, want.utxo.stake, clue)

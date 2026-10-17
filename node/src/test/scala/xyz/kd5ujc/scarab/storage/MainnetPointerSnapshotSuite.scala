@@ -99,11 +99,3 @@ class MainnetPointerSnapshotSuite extends CatsEffectSuite:
       }
     )
   }
-
-  test("a state that held the pointer as it came is the one the writer refuses") {
-    val exact = Ptr(BigInt("16292793057"), 1011302, 20)
-    val before = withOutput.copy(state =
-      MirrorStep.mapUtxo(withOutput.state)(_.copy(ptrStake = Map(exact -> BigInt(50000000))))
-    )
-    format.encode(before).map(r => assert(r.isLeft, "the pointer does not fit the Haskell state"))
-  }

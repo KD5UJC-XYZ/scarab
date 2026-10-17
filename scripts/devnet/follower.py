@@ -27,9 +27,6 @@ def follow(args):
         program += ["--metrics-listen", f"127.0.0.1:{METRICS_PORT}"]
     if args.seconds:
         program += ["--seconds", str(args.seconds)]
-    if getattr(args, "mirror_check", False):
-        # the round trip through the mirror of the Haskell state on the live state at each epoch boundary
-        program += ["--mirror-check"]
     mounts = [f"{root / 'genesis'}:/genesis:ro"]
     if getattr(args, "db", False):
         # the chain database lives in the run directory, so a later `follow --db` restarts from its snapshot
@@ -64,9 +61,6 @@ def follower_problem(root, follower):
     errors = [e for e in events if e["event"] == "error"]
     if errors:
         return f"follower error: {errors[0].get('message', errors[0])}"
-    diverged = [e for e in events if e["event"] in ("rulesDiverged", "rulesHalted")]
-    if diverged:
-        return f"the old and the new rules diverged: {diverged[0]}"
     if other:
         return f"unexpected follower output: {other[0][:200]}"
     if follower.poll() is not None:

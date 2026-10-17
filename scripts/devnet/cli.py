@@ -7,8 +7,6 @@
     devnet.py load [--seconds N]   submit randomized ADA transfers between wallets
     devnet.py compare              compare the Scala ledger with the reference at one block
     devnet.py soak [--seconds N]   up + follow + load + periodic compare, then a summary
-                                   (--mirror-check: also the mirror round trip at each epoch boundary;
-                                   --rules differential: the old and the new rules side by side)
     devnet.py peercut              up + the Scala node with two peers, one slow then silent mid-sync (issue 130)
     devnet.py relay [--seconds N]  up + the Scala node as a relay (follows the pools, serves a
                                    Haskell relay) + load through that relay; tips and propagation
@@ -68,12 +66,6 @@ def main():
     scala_options.add_argument("--max-starvation-warnings", type=int, default=None,
                                help="fail when the Scala node logged more cats-effect CPU-starvation warnings than this "
                                     "(default: only report them)")
-    scala_options.add_argument("--rules", choices=["old", "new", "differential"], default=None,
-                               help="the follower's ledger rules (its --rules): new (the node's default: the era-indexed rules on "
-                                    "the mirror of the Haskell ledger state), old (the flat rules, until they are removed), "
-                                    "or differential, which runs the old and the new rules side by side on every block and "
-                                    "fails the run on a divergence. The environment variable "
-                                    "SCARAB_RULES does the same for the followers that scenarios start")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("up", help="create genesis and start the 3-pool reference cluster").set_defaults(run=up)
     def eras_options():
@@ -136,10 +128,6 @@ def main():
     f.add_argument("--node", type=int, default=1, help="reference node the follower connects to")
     f.add_argument("--dump-state", action="store_true",
                    help="write a ledger-state digest at every epoch boundary to <run dir>/dump (for `oracle`)")
-    f.add_argument("--mirror-check", action="store_true",
-                   help="the follower turns its ledger state into the mirror of the Haskell state and back at the "
-                        "first block and at each epoch boundary, and logs mirrorChecked (never affects the node); it checks the flat "
-                        "state, so it needs --rules old or differential and is ignored under the default")
     f.add_argument("--db", action="store_true",
                    help="keep the follower's chain database in the run directory (<run dir>/db), snapshots at each "
                         "epoch boundary, so that a second `follow --db` restarts from the snapshot")
@@ -177,9 +165,6 @@ def main():
                     help="the governance load also runs the extended scenarios (about 16 epochs of 500 slots; use --seconds 900)")
     sk.add_argument("--oracle", action="store_true",
                     help="follower writes epoch-boundary state digests; compared with db-analyser at the end")
-    sk.add_argument("--mirror-check", action="store_true",
-                    help="the follower runs with --mirror-check (with --rules old or differential: under the default rules "
-                         "the state is the mirror and there is nothing to check); the soak fails unless every check held")
     sk.set_defaults(run=soak)
     rl = sub.add_parser("relay", parents=[scala_options], help="Scala node as a relay serving a Haskell relay; load through the relay")
     rl.add_argument("--seconds", type=int, default=300, help="load phase length")
@@ -259,8 +244,5 @@ def main():
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)
     args = p.parse_args()
-    if getattr(args, "rules", None):
-        # the followers that a scenario starts as child processes take it from the environment
-        os.environ["SCARAB_RULES"] = args.rules
     args.name = args.name or ("scarab-eras" if args.command in ("up-eras", "capture-eras", "e2e", "sample-chain-dep", "assemble-chain-dep") else "scarab-pool" if args.command == "pool" else "scarab-kes-rotate" if args.command == "kes-rotate" else "scarab-devnet")
     args.run(args)

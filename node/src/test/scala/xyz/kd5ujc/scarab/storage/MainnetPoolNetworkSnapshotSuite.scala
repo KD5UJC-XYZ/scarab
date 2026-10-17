@@ -152,9 +152,15 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
         assertEquals(back.anchor, withPool.anchor)
         val id = registration.operator
         val ledger = flatLedger(back.state, back.anchor)
-        // registered and in the snapshot: the credential, on the node's network
+        // registered and in the snapshot: the credential, on the node's network (a snapshot holds
+        // the pool's parameters without its owners, relays and metadata, as the reference's does)
         assertEquals(ledger.pools(id).params, registration.registeredOn(Mainnet))
-        assertEquals(ledger.snapshots.mark.pools(id), registration.registeredOn(Mainnet))
+        assertEquals(
+          ledger.snapshots.mark.pools(id),
+          registration
+            .registeredOn(Mainnet)
+            .copy(owners = Set.empty, relays = Bytes.empty, metadata = None)
+        )
         // the future parameters: as registered, network 0
         assertEquals(ledger.futurePools(id), registration)
       }

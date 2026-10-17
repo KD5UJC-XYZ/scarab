@@ -41,36 +41,6 @@ def extended_summary(root):
     }
 
 
-def mirror_summary(log):
-    """What the follower's `--mirror-check` found: the checks that held, the eras and gaps they saw, and the
-    ones that did not hold or were refused."""
-    checked = [e for e in log if e.get("event") == "mirrorChecked"]
-    failed = [e for e in log if e.get("event") == "mirrorCheckFailed"]
-    return {
-        "checked": len(checked),
-        "ok": sum(1 for e in checked if e["ok"]),
-        "failed": failed,
-        "notOk": [e for e in checked if not e["ok"]],
-        "eras": sorted({e["era"] for e in checked}),
-        "epochs": sorted({e["epoch"] for e in checked}),
-        "gaps": sorted({g for e in checked for g in e["gaps"]}),
-        "maxMillis": max((e["millis"] for e in checked), default=0),
-    }
-
-
-def differential_summary(log):
-    """What the follower's `--rules differential` found: the comparisons made, what the conversion cost,
-    and any divergence."""
-    sampled = [e for e in log if e.get("event") == "differentialSampled"]
-    diverged = [e for e in log if e.get("event") in ("rulesDiverged", "rulesHalted")]
-    return {
-        "sampled": len(sampled),
-        "diverged": diverged,
-        "eras": sorted({e["era"] for e in sampled}),
-        "maxToMirrorMillis": max((e["toMirrorMillis"] for e in sampled), default=0),
-    }
-
-
 def scrape_metrics(name, root):
     """The Prometheus endpoint, at the end of the run while the follower is still up: on the query server and on the
     listener of its own (`--metrics-listen`), each checked against the follower log (series present, values
@@ -86,21 +56,12 @@ def scrape_metrics(name, root):
     return out
 
 
-def mirror_checked(args):
-    """`--mirror-check` checks the conversion of the flat state to the mirror, which only the old rules
-    (and the differential run, whose state is the old one) have: under the default rules the state is the
-    mirror, there is nothing to convert, and the flag is not passed."""
-    rules = getattr(args, "rules", None) or os.environ.get("SCARAB_RULES") or "new"
-    return getattr(args, "mirror_check", False) and rules != "new"
-
-
 def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
     up(args)
     follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
-                                 *(["--dump-state"] if getattr(args, "oracle", False) else []),
-                                 *(["--mirror-check"] if mirror_checked(args) else [])],
+                                 *(["--dump-state"] if getattr(args, "oracle", False) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
                               stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
@@ -147,13 +108,6 @@ def soak(args):
     }
     if scraped:
         summary["metrics"] = scraped
-    mirror = mirror_summary(log) if mirror_checked(args) else None
-    if mirror is not None:
-        summary["mirrorCheck"] = mirror
-    rules = getattr(args, "rules", None) or os.environ.get("SCARAB_RULES")
-    differential = differential_summary(log) if rules == "differential" else None
-    if differential is not None:
-        summary["differential"] = differential
     extended = extended_summary(root) if getattr(args, "governance_extended", False) else None
     if extended is not None:
         summary["governanceExtended"] = extended
@@ -177,12 +131,6 @@ def soak(args):
             failures += [f"metrics ({label}): {f}" for f in scraped.get(label, {}).get("failures", ["not scraped"])]
     if not follower_alive:
         failures.append("follower exited before the end")
-    if mirror is not None and (not mirror["checked"] or mirror["failed"] or mirror["notOk"]):
-        failures.append(f"mirror check: {mirror['checked']} checked, {len(mirror['failed'])} refused, "
-                        f"{len(mirror['notOk'])} not ok")
-    if differential is not None and (not differential["sampled"] or differential["diverged"]):
-        failures.append(f"differential rules: {differential['sampled']} compared, "
-                        f"{len(differential['diverged'])} diverged")
     if extended is not None:
         if extended["refusedUnexpectedly"]:
             failures.append("a transaction the reference was expected to refuse was not refused as expected")

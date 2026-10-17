@@ -19,8 +19,8 @@ enforced by sbt: a cycle does not load.
 | `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
-| `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `NodeState`, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
-| `legacy` | The frozen readers of the snapshot formats before the current one (V1 to V3, the node state of their time, the binary `Codec` they were written with) and the upgrade of that state to the live one; deleted at its sunset (ADR 0006) | Pure |
+| `consensus` | Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, `VolatileChain`, `MirrorState` and the mirror's types, `BlockRules`, `Scheduling` | Pure, `Compute[F]` in `Scheduling` |
+| `legacy` | The frozen readers of the snapshot formats before the current one (V1 to V4, the flat node state and ledger state of their time, the binary `Codec` they were written with), the upgrade of that state to the live one, and the one-way conversion of the flat state to the mirror with the seeding of the old rules' bookkeeping (`Mirroring`, `LegacySeed`); the migration is its only caller, and it is deleted at its sunset (ADR 0006) | Pure |
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
 | `node` | Peer, follower, header gate, rule wiring (`NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
@@ -45,7 +45,7 @@ Cycles that the old layout hid, and how they were cut (types moved down, nothing
 the header error enums (`HeaderError`, `EnvelopeError`, `TPraosError`, `OCertError`) and `Nonce`,
 `PoolDistribution`, `LedgerView` live in `ledger` because `NodeError` (also in `ledger`) and the
 rules use them; `ExUnits` lives in `plutus`; `Rational` in `codec`; `Prepared` (a decoded block)
-in `ledger`; `NodeState` and the `BlockRules` interface in `consensus`, while `NodeRules`, which
+in `ledger`; `MirrorState` and the `BlockRules` interface in `consensus`, while `NodeRules`, which
 needs the `UtxoStore`, stays in `node`.
 
 ## Layers
@@ -201,7 +201,7 @@ Shelley epoch has three sources:
 - `TestShelleyHardForkAtEpoch: n`: a fixed Byron prefix of `n` epochs (the `up-eras` devnet);
 - the key absent (preprod, mainnet): the Byron ledger decides. The span is then `derived`
   (open-ended) until the chain enters Shelley; the epoch is stored in `ByronState.firstShelleyEpoch`
-  and every consumer resolves the geometry from the state (`NodeState.geometry`).
+  and every consumer resolves the geometry from the state (`EpochGeometry.resolved`).
 
 The era of each Shelley-based block is checked against `consensus/HardFork.scala`
 (`HardForkConfig`): an era with a `Test<Era>HardForkAtEpoch` key is entered at that epoch, any
@@ -267,13 +267,12 @@ major version of the parameters in force (Allegra 3, Mary 4, Alonzo 5, Babbage 7
   bootstrap witnesses, native scripts, required signers, redeemers and datums, auxiliary data hash),
   DELEGS (registration, delegation, pools, genesis delegation, MIR), PPUP (`PpupRules`). The fee size
   counts the array header, body, witnesses and auxiliary data, not the `is_valid` byte.
-- **Epoch boundary** (`ledger/Epoch.scala`): reward application (pre-Babbage prefilter against the
+- **Epoch boundary** (`ledger/rules/Epoch.scala`, `Snap.scala`, `Rewards.scala`, `Rupd.scala`; the flat `ledger/Epoch.scala` went with the old rules in J2.9): reward application (pre-Babbage prefilter against the
   accounts registered when the calculation started, so unclaimed rewards return to the reserves),
   MIR, SNAP with pointer-address stake, pool re-registration and retirement, parameter update
   adoption, and the reward update with `d`-dependent performance and the previous epoch's
   parameters. The ledger creates the reward update with the first block that arrives after
-  `4k/f` slots into the epoch (`LedgerState.rewardDraft` is computed at the boundary and activated by
-  `Epoch.tick`): an epoch with no such block pays no rewards and keeps its fee snapshot. The `set` snapshot is the pool distribution for the leader checks, so
+  `4k/f` slots into the epoch (the reward update is made by `Rupd` at the first such block and applied at the boundary): an epoch with no such block pays no rewards and keeps its fee snapshot. The `set` snapshot is the pool distribution for the leader checks, so
   `LeaderCheck.Threshold` replaces `Unchecked`; the node stops if the total supply ever differs
   from the maximum supply at an epoch boundary.
 - **Plutus (phase 2)**: every redeemer is evaluated (`ledger/Phase2.scala`) and the block's
@@ -408,13 +407,13 @@ composition and `Follower` the consumer, both in `node`):
 | Part | Where | Role |
 |---|---|---|
 | `ImmutableStore[F]` | `ImmutableStore.scala` (`FileImmutableStore`) | Append-only raw blocks older than `k`: `append`, `sync`, `tip`, `get(point)`, `byBlockNo`, `stream(after)` |
-| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `NodeState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV3`: the Haskell ledger state and a `SnapshotSidecar`; `SnapshotV2`: the frozen reader), a refusal of the format is a value (`SnapshotRefusal`) |
-| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Brings V1 and V2 snapshot files to V3 before they are opened |
+| `LedgerSnapshots[F, S]` | `LedgerSnapshots.scala` (`FileLedgerSnapshots`) | Atomic, checksummed snapshots of the full `MirrorState` at an immutable point; newest valid wins. The file's content is a `SnapshotFormat[F, S]` (`SnapshotV3`: the Haskell ledger state and a `SnapshotSidecar`; `SnapshotV2`: the frozen reader), a refusal of the format is a value (`SnapshotRefusal`) |
+| `SnapshotMigration[F]` | `SnapshotMigration.scala` | Brings V1 to V4 snapshot files to V5 before they are opened |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
 | `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
 | `ChainStorage` | `ChainStorage.scala` | Checks the identity, opens the stores, restores the newest usable snapshot, replays the stored blocks after it, rebuilds the volatile chain (`resume`), hands the follower a `ChainPersistence` hook, and snapshots the immutable tip when it is released |
-| `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to `LedgerState` is persisted with no codec change |
+| `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to a persisted type is persisted with no codec change |
 | `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`, `NetworkMismatch`, `ForeignChain`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |
 | `HaskellImmutableReader[F]` | `storage/haskell/` | Read-only view of a Haskell node's ImmutableDB (see below); `HaskellImport` appends its blocks to our `ImmutableStore` |
 
@@ -466,46 +465,42 @@ built from the upstream encoding rules (`fixtures/eras`); no Byron Haskell datab
 **Snapshot format** (`<db>/snapshots/snapshot-<slot>-<blockNo>.bin`, the newest `--keep-snapshots`,
 default 3, are kept). A file is the content of a `SnapshotFormat` and the SHA-256 of that content;
 the store (`FileLedgerSnapshots`) does the framing, the atomic write and the pruning, and the format
-decides what the content is. Format version 4 (`SnapshotV4`; version 3, `SCRBSNP3`, had the same layout and a sidecar that held the node's chain-dependent state in its former shape):
+decides what the content is. Format version 5 (`SnapshotV5`, J2.9; versions 3 and 4, `SCRBSNP3` and `SCRBSNP4`, had the same layout and sidecars that held the node's chain-dependent state in its former shape and, in version 4, the old rules' flat state):
 
 ```
-"SCRBSNP4" | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
+"SCRBSNP5" | sidecar length u32 | sidecar | Haskell state bytes | SHA-256 of all before
 sidecar = schema fingerprint[8] | Codec of SnapshotSidecar
 ```
 
 The Haskell state bytes are a `state` file of a Haskell node (`[1, [ledger state telescope, header
-state]]`, `HaskellLedgerFile`) of the node's state as `StateMirror.toMirror` gives it, byte-proven
-against real files; the UTxO in it is `map(0)`, as in the reference's `state` file, and its entries
-stay in the RocksDB store under the checkpoint of the snapshot. The sidecar
-(`SnapshotSidecar`, derived `Codec`s, a fingerprint of its own) holds what the Haskell encoding has
-no place for: the anchor, the eras the node saw begin where the configuration does not say, the gaps
-of the mirror, the node's `Utxo` bookkeeping (stake by credential and pointer, count, total, stamps,
-diff), the node's full protocol parameters (they have every field in every era) and the
-extras of the mirror (the bootstrap and Byron chain-follow state, the epoch of the last tick and the
-TPraos previous epoch nonce). A chain still in Byron has no Haskell section (the mirror does not model
-the Byron ledger state): the sidecar holds the node state whole, less its header state, which is the
-chain-dependent state alone (`HeaderState.live`: while in Byron, the state Shelley starts from). The read is `HaskellLedgerFile.decode`,
-the UTxO put back, `StateMirror.fromMirror` (which re-derives and checks everything it derives) and
-the parameters put back; the result is the state in the form `SnapshotV4.canonical` names (the mirror
-is lossless up to `StateMirror.normalised`; an empty relay list of a pool is `Bytes.empty` and the
-parameters of the DRep pulser have no pre-Babbage fields). A write reads its own content back and
-refuses (`snapshotRefused`, the snapshot is skipped, nothing is pruned) what would not restore to
-that state: a snapshot is an optimisation, so a refusal costs a replay at worst.
+state]]`, `HaskellLedgerFile`) of the chain's state `MirrorState.ext`, byte-proven against real files;
+the UTxO in it is `map(0)`, as in the reference's `state` file, and its entries stay in the RocksDB
+store under the checkpoint of the snapshot. The sidecar (`SnapshotSidecar`, derived `Codec`s, a
+fingerprint of its own) holds what the Haskell encoding has no place for: the anchor, the eras the node
+saw begin where the configuration does not say, the gaps of the mirror, the node's `Utxo` bookkeeping
+(stake by credential and pointer, count, total, stamps, diff), the node's full protocol parameters (they
+have every field in every era) and the extras of the mirror (the bootstrap and Byron chain-follow state,
+the epoch of the last tick, the TPraos previous epoch nonce, the Plutus statistics). A chain still in
+Byron has no Haskell section (the mirror does not model the Byron ledger state): the sidecar holds the
+chain-dependent state Shelley starts from and the consensus bookkeeping, the Byron ledger among it. The
+chain's state is the mirror itself (`MirrorState`), so the read is `HaskellLedgerFile.decode`, the UTxO
+put back and the whole parameter sets put back (the future ones laid over with what the update changed,
+`ProtocolParams.overlay`) and nothing converted: the telescopes, the tip and the new-epoch state are
+those of the file. A write reads its own content back and refuses (`snapshotRefused`, the snapshot is
+skipped, nothing is pruned) what would not restore to that state, and the full check
+(`--snapshot-check full`) writes what it read again and compares the bytes: a snapshot is an
+optimisation, so a refusal costs a replay at worst. An empty relay list of a pool is `Bytes.empty` after
+a read (the Haskell encoding writes both the item as given and none as the empty array).
 
-Since J2.8 the default rules' chain state is the mirror itself (`MirrorState`), and its snapshot is the
-same file (`SnapshotV4.mirrorFormat`): the Haskell section is `HaskellLedgerFile.of(state.ext)`, the
-sidecar the UTxO handle, the node's whole parameter sets (taken from the governance state) and the
-extras, and the read is the decode, the UTxO and the whole parameter sets put back (the future ones laid
-over with what the update changed, `ProtocolParams.overlay`) and nothing converted: the telescopes,
-the tip and the new-epoch state are those of the file. The write of the full check
-(`--snapshot-check full`) writes what it read again and compares the bytes. A file the flat form wrote
-is restored the same way and then put right once by `LegacySeed` (the reward update attributed to a
-placeholder pool, `mark` as the snapshot was taken, the pulser's parameters without the fields Conway
-lacks, the old bookkeeping of the extras reset).
+A file of version 4 or earlier is brought to this one by the migration, once, when the database opens
+(`SnapshotV5.migrated`): a version 4 file's sidecar is read by the frozen reader (`legacy.v4`), its
+Haskell section decoded, and the old rules' bookkeeping put right by `LegacySeed` (the reward update
+attributed to a placeholder pool, `mark` as the snapshot was taken, the pulser's parameters without the
+fields Conway lacks) before it is dropped; the version 5 file is written without it.
 
-Versions 1 to 3 are read only by the migration, through the frozen readers of the `legacy` module
-(`legacy.SnapshotV2`, `legacy.SnapshotV3`, the node state of their time and the binary `Codec` they were
-written with): a V1 or V2 file is decoded and `legacy.Upgrade` brings the state to the live one, a V3
+Versions 1 to 4 are read only by the migration, through the frozen readers of the `legacy` module
+(`legacy.SnapshotV2`, `legacy.SnapshotV3`, `legacy.v4.SnapshotV4`, the node state of their time and the binary `Codec` they were
+written with): a V1 or V2 file is decoded and `legacy.Upgrade` brings the state to the live one, a V3 or V4
 file's Haskell section is decoded and its sidecar converted, the state is written again (and read back to check
 it is equal), and its gaps and observed eras are carried over verbatim.
 
@@ -569,12 +564,12 @@ identity, the immutable store's `format` file, every chunk `.index` and every le
 identifiers, per version (`FileKind.identifier`, `ledger/.../PersistedFormat.scala`); a kind has a
 new identifier only at a version at which its layout changed, and `FileKind.current` is the newest:
 
-| file | format 1 (until the rename) | format 2 | format 3 | format 4 |
-|---|---|---|---|---|
-| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) |
-| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) |
-| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) |
-| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` |
+| file | format 1 (until the rename) | format 2 | format 3 | format 4 | format 5 |
+|---|---|---|---|---|---|
+| `network-identity`, first line | `cardano-scala-lab network identity v1` | `scarab network identity v2` | (as 2) | (as 2) | (as 2) |
+| `immutable/format`, before ` chunkSlots=<n>` | `cardano-scala-lab immutable store v1` | `scarab immutable store v2` | (as 2) | (as 2) | (as 2) |
+| `immutable/<c>.index`, 8-byte magic | `CSLIDX01` | `SCRBIDX2` | (as 2) | (as 2) | (as 2) |
+| `snapshots/snapshot-*.bin`, 8-byte magic | `CSLSNAP1`, number 1 | `CSLSNAP1`, number 2 | `SCRBSNP3` | `SCRBSNP4` | `SCRBSNP5` |
 
 The layouts of the first three are the same in every version; the format version only says which
 build wrote the file. Format 3 is the snapshot as the Haskell ledger state plus a sidecar (see

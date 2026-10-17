@@ -181,7 +181,7 @@ object NtcGolden:
       Map(keyA -> DRepState(500, s.epoch + 4, Some(anchorA), Set(keyA, scriptA))),
       s.pools.keysIterator.map(_ -> BigInt(123456)).toMap
     )
-    val pool = s.pools.keysIterator.nextOption()
+    val pool = s.pools.keysIterator.toVector.sortBy(_.hex).headOption
     s.copy(
       accounts = s.accounts ++ Map(
         keyA -> Account(10, 2000000, pool, Some(DRep.Registered(keyA))),
@@ -249,10 +249,12 @@ object NtcGolden:
     import LedgerQuery.*
     val credentials = s.accounts.keySet
     val pools = s.pools.keySet
+    val firstPool = pools.toVector.sortBy(_.hex).take(1).toSet
     val dreps = s.dreps.keySet
     val registered: Set[DRep] = dreps.map(DRep.Registered(_))
     val entries = s.utxo.toMap.toVector.sortBy(_._1.id.hex)
-    val some = credentials.take(2)
+    // by hash, not by the order of the map, which is the order the state was built in
+    val some = credentials.toVector.sortBy(_.hash.hex).take(2).toSet
     Vector(
       "GetLedgerTip" -> GetLedgerTip,
       "GetEpochNo" -> GetEpochNo,
@@ -284,9 +286,11 @@ object NtcGolden:
       "GetConstitution" -> GetConstitution,
       "GetGovState" -> GetGovState,
       "GetDRepState all" -> GetDRepState(Set.empty),
-      "GetDRepState some" -> GetDRepState(dreps.take(2)),
+      "GetDRepState some" -> GetDRepState(dreps.toVector.sortBy(_.hash.hex).take(2).toSet),
       "GetDRepStakeDistr all" -> GetDRepStakeDistr(Set.empty),
-      "GetDRepStakeDistr some" -> GetDRepStakeDistr(registered.take(2)),
+      "GetDRepStakeDistr some" -> GetDRepStakeDistr(
+        registered.toVector.sortBy(_.toString).take(2).toSet
+      ),
       "GetCommitteeMembersState all" ->
         GetCommitteeMembersState(Set.empty, Set.empty, Set.empty),
       "GetCommitteeMembersState normal" ->
@@ -299,13 +303,13 @@ object NtcGolden:
       "GetFilteredVoteDelegatees some" -> GetFilteredVoteDelegatees(some),
       "GetAccountState" -> GetAccountState,
       "GetSPOStakeDistr all" -> GetSPOStakeDistr(Set.empty),
-      "GetSPOStakeDistr some" -> GetSPOStakeDistr(pools.take(1)),
+      "GetSPOStakeDistr some" -> GetSPOStakeDistr(firstPool),
       "GetProposals all" -> GetProposals(Set.empty),
       "GetProposals some" -> GetProposals(Set(actionId(1), actionId(3))),
       "GetRatifyState" -> GetRatifyState,
       "GetFuturePParams" -> GetFuturePParams,
       "GetPoolDistr2 all" -> GetPoolDistr2(None),
-      "GetPoolDistr2 some" -> GetPoolDistr2(Some(pools.take(1))),
+      "GetPoolDistr2 some" -> GetPoolDistr2(Some(firstPool)),
       "GetStakeDistribution2" -> GetStakeDistribution2,
       "GetMaxMajorProtocolVersion" -> GetMaxMajorProtocolVersion,
       "GetDRepDelegations all" -> GetDRepDelegations(Set.empty),

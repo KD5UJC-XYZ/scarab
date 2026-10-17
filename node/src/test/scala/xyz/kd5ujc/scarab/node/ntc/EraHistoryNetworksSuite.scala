@@ -17,8 +17,8 @@ import munit.FunSuite
   * connection died without an answer.
   */
 class EraHistoryNetworksSuite extends FunSuite:
-  private val setup = NodeSetup
-    .fromConfigFile(Path.of("fixtures", "preprod", "genesis", "config.json"))
+  private val (setup, start) = NodeSetup
+    .fromDirectoryWithStart(Path.of("fixtures", "preprod", "genesis"))
     .fold(e => fail(e.message), identity)
 
   private val env = QueryEnv(
@@ -33,12 +33,26 @@ class EraHistoryNetworksSuite extends FunSuite:
 
   /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000. */
   private val view =
-    val state = xyz.kd5ujc.scarab.node.MirrorSteps.withConsensus(setup.mirrorStart)(c =>
-      c.copy(
-        boot = c.boot.copy(era = Some(Era.Conway)),
-        byron = c.byron.copy(firstShelleyEpoch = Some(BigInt(4)))
-      )
+    val neutral = xyz.kd5ujc.scarab.ledger.Nonce.Neutral
+    val praos = xyz.kd5ujc.scarab.consensus.state.PraosState(
+      xyz.kd5ujc.scarab.ledger.state.WithOrigin.Origin,
+      xyz.kd5ujc.scarab.ledger.state.Sorted.map(List.empty),
+      neutral,
+      neutral,
+      neutral,
+      neutral,
+      neutral,
+      neutral
     )
+    val flat = start
+      .withProtocol(
+        start.protocol.copy(dep = xyz.kd5ujc.scarab.consensus.state.ChainDepState.Praos(praos))
+      )
+      .withBoot(start.boot.copy(era = Some(Era.Conway)))
+      .withByron(start.byron.copy(firstShelleyEpoch = Some(BigInt(4))))
+    val state = xyz.kd5ujc.scarab.legacy.Mirroring
+      .toMirror(setup.mirrorEnv(), None, flat)
+      .fold(e => fail(s"the state does not mirror: $e"), _.value)
     val point = Point.Block(UInt64.saturating(BigInt(100000000)), Bytes(Vector.fill(32)(1.toByte)))
     QueryView(point, Some(1), state)
 

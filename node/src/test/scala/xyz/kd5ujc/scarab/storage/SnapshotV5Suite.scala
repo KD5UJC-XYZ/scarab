@@ -20,14 +20,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
 }
 import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion, ParamUpdate, StorageError, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
-import xyz.kd5ujc.scarab.ledger.state.{
-  Diff,
-  ShelleyBasedEra,
-  ShelleyGovState,
-  SlotNo,
-  Sorted,
-  WithOrigin
-}
+import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, ShelleyGovState, SlotNo, Sorted, WithOrigin}
 import xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.legacy.Located
 import xyz.kd5ujc.scarab.node.{MirrorSteps, NodeSetup}
@@ -96,36 +89,8 @@ class SnapshotV5Suite extends CatsEffectSuite:
     assertEquals(accepted.map(_._1).distinct.toSet, Era.values.toSet)
   }
 
-  /** A pool registered with the empty relay list holds the item as the certificate gave it (`80`)
-    * and reads back as one with none (`Bytes.empty`): the Haskell encoding writes both as the empty
-    * array. The state does not tell them apart, and nothing reads the relays.
-    */
-  private def bare(m: MirrorState): MirrorState =
-    val empty = Bytes.fromArray(Array(0x80.toByte))
-    def plain(r: Bytes) = if r == empty then Bytes.empty else r
-    m.ext.ledgerState.state match
-      case i: EraLedgerState.InShelleyEra[e] =>
-        given ShelleyBasedEra[e] = i.era
-        val nes = i.state.nes
-        val ps = EraLedger.pState(nes.es.ls)
-        val bared = ps.copy(
-          stakePools =
-            Sorted.map(ps.stakePools.toList.map((k, v) => k -> v.copy(relays = plain(v.relays)))),
-          future = Sorted.map(ps.future.toList.map((k, v) => k -> v.copy(relays = plain(v.relays))))
-        )
-        val state = EraLedgerState.InShelleyEra(
-          i.era,
-          i.state.copy(nes =
-            nes.copy(es = nes.es.copy(ls = EraLedger.withPState(nes.es.ls, bared)))
-          )
-        )
-        m.copy(ext = m.ext.copy(ledgerState = m.ext.ledgerState.withState(state)))
-      case _ => m
-
-  /** The state written, whole (the empty relay list apart): the first difference, if any. */
   private def sameState(back: MirrorState, written: MirrorState, clue: String): Unit =
-    val difference = Diff[MirrorState].diff(bare(back), bare(written))
-    assertEquals(difference.map(d => s"${d.path.render}: ${d.left} /= ${d.right}"), None, clue)
+    assertEquals(MirrorSteps.firstDifference(back, written), None, clue)
 
   test("every state of the eras fixture comes back from its V5 snapshot, as it was") {
     accepted.traverse_ { (era, snapshot, bytes) =>

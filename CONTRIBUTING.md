@@ -131,7 +131,7 @@ reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-o
 
 | Area touched | Scenario (`python3 scripts/devnet.py --name <yours> ...`) |
 |---|---|
-| Ledger rules, rewards, governance, Plutus, nonces, headers | `e2e` (add `SCARAB_RULES=differential` while both rule sets exist) |
+| Ledger rules, rewards, governance, Plutus, nonces, headers | `e2e` |
 | Network: mini-protocols, mux, peers, chain selection, fetch | `relay --seconds 300` |
 | Storage: stores, snapshots, the UTxO set | `restart` |
 | Forging, mempool | `pool` |
@@ -146,8 +146,7 @@ belong to nightly CI, not to a change.
 
 ### Nightly CI is the safety net
 
-`.github/workflows/e2e.yml` runs soak, e2e, e2e with the differential rules, relay, pool,
-kes-rotate, ntc and restart every night, each scenario in its own job, and on demand and on
+`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job, and on demand and on
 version tags. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
 scan of the whole history (`.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
