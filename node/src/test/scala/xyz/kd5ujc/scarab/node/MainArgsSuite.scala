@@ -89,6 +89,23 @@ class MainArgsSuite extends munit.FunSuite:
     assert(Main.parse(base ++ List("--stall-minutes", "soon")).isLeft)
   }
 
+  test("--stall-exit-after is a typed duration, longer than --stall-minutes, off by default") {
+    import scala.concurrent.duration.*
+    assertEquals(Main.parse(base).toOption.get.stallExitAfter, None)
+    assertEquals(
+      Main.parse(base ++ List("--stall-exit-after", "30m")).toOption.get.stallExitAfter,
+      Some(30.minutes)
+    )
+    assertEquals(
+      Main.parse(base ++ List("--stall-exit-after", "2h")).toOption.get.stallExitAfter,
+      Some(2.hours)
+    )
+    assert(Main.parse(base ++ List("--stall-exit-after", "5m")).isLeft) // not after the warning
+    assert(Main.parse(base ++ List("--stall-exit-after", "30")).isLeft)
+    assert(Main.parse(base ++ List("--stall-exit-after", "0m")).isLeft)
+    assert(Main.parse(base ++ List("--stall-minutes", "0", "--stall-exit-after", "30m")).isLeft)
+  }
+
   test("--dump-state takes a directory and optional points; the points alone are refused") {
     val on = Main.parse(base ++ List("--dump-state", "/d")).toOption.get
     assertEquals(

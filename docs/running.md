@@ -87,6 +87,7 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown fla
 | `--utxo-cache-mb N` | `256` | native-memory budget of the RocksDB store (it holds the UTxO set and the ledger tables): one LRU block cache shared by all tables, holding data, index and filter blocks, to which the memtables are charged, so the store stays near this figure. A smaller cache costs throughput, see [performance.md](performance.md) section 8 |
 | `--memory-report-seconds N` | `0` (off) | log a `memory` event every N seconds: heap, non-heap, buffer pools, `/proc/self/status` (`RssAnon`, `RssFile`), the cgroup's `memory.current` and its `anon`/`file`, and the RocksDB properties (block cache usage, memtables). Use it with `-XX:NativeMemoryTracking=summary` and `jcmd <pid> VM.native_memory` to see where memory is |
 | `--stall-minutes N` | `10` (`0`: off) | log a `stalled` event, once, when no block has been extended for N minutes while a peer announced a longer chain than ours; `scarab_follower_stalled` is 1 for as long as it lasts and `scarab_follower_stalls_total` counts them, so Grafana can alert on a node that is up but not following. See "Stall watchdog" |
+| `--stall-exit-after <Ns\|Nm\|Nh>` | off | end the node when a stall (see `--stall-minutes`) has lasted this long: it logs `stallExit`, closes down like on a signal (the shutdown snapshot is taken) and exits with code 4, so a supervisor that restarts it (Docker `unless-stopped`) brings it back from the newest snapshot. Needs `--stall-minutes` and a longer time than it. See "Stall watchdog" |
 | `--read-ahead N` | `128` | ChainSync requests pipelined per round, and the blocks of a round fetched in ranges of at most 100, while far behind. 64, 128, 200 and 256 were each run for 15 minutes against the public Preview relay without a timeout (the relay answers a 256-header round in 0.26 s on average); 128 and above are about 6 to 10% faster than 64, see [performance.md](performance.md) section 7 (D3) |
 | `--cpu-threads N` | one per available CPU | workers of the pool the follower runs on (`scarab-cpu-N`: header handling, chain selection, the rules, persisting), apart from the pool that serves the network, timers and the forger; `0` runs everything on the cats-effect compute pool, as before D8 (still measured) |
 | `--dump-state <dir>` | off | write a ledger-state digest (`<slot>-<hash>.json`) at the points of `--dump-state-at`, for the db-analyser comparison below |
@@ -623,6 +624,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `epochValidated` | `Chain.EpochValidated` | Info | `era`, `epoch`, `headers`, `thresholdChecked`, `overlay`, `leaderUnchecked`, `scheduling`, `boundary`, `signatureVerified`, `offSchedule`, `transactions` |
 | `reconnecting` | `Chain.Reconnecting` | Warning | `reason`, `attempt` |
 | `stalled` | `Chain.Stalled` | Warning | `idleSeconds`, `ourBlock`, `peerBlock` |
+| `stallExit` | `Chain.StallExit` | Error | `idleSeconds`, `ourBlock`, `peerBlock` |
 | `headersChecked` | `Chain.HeadersChecked` | Info | `validated`, `unchecked`, `waited` |
 | `chainSyncRounds` | `Chain.ChainSyncRounds` | Info | `rounds`, `headers`, `avgMs`, `maxMs`, `maxDepth` |
 | `slowFetch` | `Chain.SlowFetch` | Info | `millis` |
@@ -949,6 +951,14 @@ and inbound session reports its peer's tip). When no block has been extended for
 `scarab_follower_stalled` to 1 until the next block is extended. A node at the tip of every peer never
 stalls however long the network takes to produce a block. Alert on
 `scarab_follower_stalled == 1`, or on `increase(scarab_follower_stalls_total[1h]) > 0`.
+
+A stalled process is alive, so a supervisor never restarts it. `--stall-exit-after 30m` (a number and `s`,
+`m` or `h`; off by default) ends the node when the stall has lasted that long: one `stallExit` event, then the
+same close-down as a signal (the stores close and the shutdown snapshot is taken), then exit code 4 (1 is an
+error, 2 a bad command line, 3 a halt on a rules divergence). With Docker's `unless-stopped` that is a clean
+restart from the newest snapshot. It cannot loop on a healthy start: the watchdog starts counting only when the
+node is following (not while it restores or replays), only a peer's announced tip ahead of ours counts, and
+every block extended starts the count again. The time must be longer than `--stall-minutes`.
 
 ## Monitoring long runs
 

@@ -12,9 +12,14 @@ class StallWatchdogSuite extends CatsEffectSuite:
   private val threshold = 10.minutes
 
   /** A watchdog whose reports are collected. */
-  private def watching(ours: Int = 100): IO[(StallWatchdog[IO], IO[Vector[Change]])] =
+  private def watching(
+      ours: Int = 100,
+      exitAfter: Option[FiniteDuration] = None
+  ): IO[(StallWatchdog[IO], IO[Vector[Change]])] =
     Ref.of[IO, Vector[Change]](Vector.empty).flatMap { seen =>
-      StallWatchdog.create[IO](BigInt(ours), threshold, c => seen.update(_ :+ c)).map(_ -> seen.get)
+      StallWatchdog
+        .create[IO](BigInt(ours), threshold, exitAfter, c => seen.update(_ :+ c))
+        .map(_ -> seen.get)
     }
 
   test(
@@ -95,5 +100,54 @@ class StallWatchdogSuite extends CatsEffectSuite:
         _ <- fiber.cancel
         reports <- seen
       yield assertEquals(reports.size, 1)
+    )
+  }
+
+  test("the exit is due once, after exitAfter, only while a peer is ahead") {
+    TestControl.executeEmbed(
+      for
+        pair <- watching(exitAfter = Some(30.minutes))
+        (dog, seen) = pair
+        _ <- dog.announced(BigInt(5000))
+        _ <- IO.sleep(29.minutes) *> dog.check
+        before <- seen
+        _ <- IO.sleep(2.minutes) *> dog.check
+        _ <- IO.sleep(5.minutes) *> dog.check
+        after <- seen
+      yield
+        assertEquals(before.size, 1) // the warning only
+        assertEquals(after.size, 2)
+        assert(after.last.isInstanceOf[Change.ExitDue], after.toString)
+    )
+  }
+
+  test("no exit while no peer is ahead, and none without exitAfter") {
+    TestControl.executeEmbed(
+      for
+        level <- watching(exitAfter = Some(30.minutes))
+        _ <- level._1.announced(BigInt(100))
+        _ <- IO.sleep(5.hours) *> level._1.check
+        quiet <- level._2
+        off <- watching()
+        _ <- off._1.announced(BigInt(5000))
+        _ <- IO.sleep(5.hours) *> off._1.check
+        warned <- off._2
+      yield
+        assertEquals(quiet, Vector.empty)
+        assertEquals(warned.size, 1)
+        assert(warned.head.isInstanceOf[Change.Began])
+    )
+  }
+
+  test("a block before the exit starts the count again") {
+    TestControl.executeEmbed(
+      for
+        pair <- watching(exitAfter = Some(30.minutes))
+        (dog, seen) = pair
+        _ <- dog.announced(BigInt(5000))
+        _ <- IO.sleep(25.minutes) *> dog.check *> dog.extended(BigInt(101))
+        _ <- IO.sleep(25.minutes) *> dog.check
+        reports <- seen
+      yield assert(!reports.exists(_.isInstanceOf[Change.ExitDue]), reports.toString)
     )
   }

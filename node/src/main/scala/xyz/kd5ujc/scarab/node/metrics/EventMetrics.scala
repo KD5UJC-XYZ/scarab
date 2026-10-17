@@ -191,7 +191,8 @@ final class EventMetrics[F[_]: Sync] private (
   def stall(change: StallWatchdog.Change): F[Unit] = change match
     case StallWatchdog.Change.Began(_, _, _) =>
       metrics.inc(followerStalls) *> metrics.set(followerStalled, 1.0)
-    case StallWatchdog.Change.Ended => metrics.set(followerStalled, 0.0)
+    case StallWatchdog.Change.Ended            => metrics.set(followerStalled, 0.0)
+    case StallWatchdog.Change.ExitDue(_, _, _) => Sync[F].unit
 
   /** What a batch of headers added to the header-first counts (the sessions count from zero each,
     * so the totals are the sums of the additions).

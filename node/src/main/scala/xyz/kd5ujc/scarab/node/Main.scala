@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
 import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, NativeLibraryError, NodeError, PeerError}
-import cats.effect.{ExitCode, IO, IOApp, Ref, Resource}
+import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
 import cats.effect.metrics.CpuStarvationWarningMetrics
 import xyz.kd5ujc.scarab.storage.{
   ChainPersistence,
@@ -135,6 +135,10 @@ object Main extends IOApp:
         * announced a longer chain ([[StallWatchdog]]); 0: off.
         */
       stallMinutes: Int = 10,
+      /** End the node (exit code [[StallExitCode]], after the shutdown snapshot) when a stall has
+        * lasted this long; needs `--stall-minutes` and is longer than it. Off by default.
+        */
+      stallExitAfter: Option[FiniteDuration] = None,
       /** Most ChainSync requests pipelined (and blocks fetched in one range) while far behind. */
       readAhead: Int = 128,
       /** Threads of the pool the CPU-bound rules run on (default: one per available CPU; 0: none).
@@ -239,7 +243,7 @@ object Main extends IOApp:
           Handle
             .allow[NodeError](
               Handle
-                .allow[Divergence](follow(options).as(ExitCode.Success))
+                .allow[Divergence](follow(options))
                 .rescue(d => logged(NodeEvent.RulesHalted(d)).as(ExitCode(3)))
             )
             .rescue(error => logged(NodeEvent.Failed(error)).as(ExitCode(1)))
@@ -324,7 +328,7 @@ object Main extends IOApp:
       Handle[IO, NodeError],
       Raise[IO, Divergence],
       Log[IO]
-  ): IO[Unit] =
+  ): IO[ExitCode] =
     nativeLibrary *> IO
       .blocking(configured(requested))
       .flatMap(
@@ -351,7 +355,7 @@ object Main extends IOApp:
       backing: StateBacking[IO, NodeState],
       cache: VerificationCache,
       scheduling: Scheduling[IO]
-  )(using Handle[IO, NodeError], Raise[IO, Divergence], Log[IO]): IO[Unit] =
+  )(using Handle[IO, NodeError], Raise[IO, Divergence], Log[IO]): IO[ExitCode] =
     def fail[A](e: NodeError): IO[A] = Handle[IO, NodeError].raise(e)
     def logged(event: NodeEvent): IO[Unit] = Log[IO].emit(event)
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
@@ -380,14 +384,18 @@ object Main extends IOApp:
       given Metrics[IO] = metrics
       measured <- EventMetrics.create[IO]
       // a follower that stops extending its chain while a peer has more says so (issue 130)
+      stallExit <- Deferred[IO, Unit]
       watchdog <- StallWatchdog.create[IO](
         BigInt(0),
         options.stallMinutes.minutes,
+        options.stallExitAfter,
         change =>
           measured.stall(change) *> (change match
             case StallWatchdog.Change.Began(idle, ours, peers) =>
               logged(NodeEvent.Stalled(idle, ours, peers))
-            case StallWatchdog.Change.Ended => IO.unit)
+            case StallWatchdog.Change.Ended => IO.unit
+            case StallWatchdog.Change.ExitDue(idle, ours, peers) =>
+              logged(NodeEvent.StallExit(idle, ours, peers)) *> stallExit.complete(()).void)
       )
       // What a scrape reads besides the counters the events keep: each source answers for itself
       // and is added when it exists, so the endpoint can listen before the stores are opened (a
@@ -532,7 +540,7 @@ object Main extends IOApp:
               )
           }
       }
-      _ <- exposed.surround(storage.use {
+      stalled <- exposed.surround(storage.use {
         case Storage(anchor, state, resumed, persistence, immutable) =>
           // A chain whose Byron span is derived learns the first Shelley epoch when it enters
           // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
@@ -860,18 +868,41 @@ object Main extends IOApp:
               1.0
             )
             _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
-            _ <- options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit))
+            // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
+            // close and the shutdown snapshot is taken, then the process exits with its own code
+            stalledOut <- IO
+              .race(
+                options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit)),
+                stallExit.get
+              )
+              .map(_.isRight)
             last <- ref.get
             _ <- differential.traverse_(
               _.stats.flatMap(stats => logged(NodeEvent.DifferentialSummary(stats)))
             )
             _ <- logged(NodeEvent.finished(last))
-          yield ()
+          yield stalledOut
       })
-    yield ()
+    yield if stalled then StallExitCode else ExitCode.Success
+
+  /** The exit code of a run that ended because a stall lasted `--stall-exit-after`. */
+  val StallExitCode: ExitCode = ExitCode(4)
+
+  /** `30s`, `10m`, `2h`: a positive whole number of seconds, minutes or hours. */
+  private[node] def parseDuration(text: String): Option[FiniteDuration] =
+    val Pattern = raw"(\d+)([smh])".r
+    text match
+      case Pattern(n, unit) =>
+        n.toLongOption.filter(_ > 0).map { count =>
+          unit match
+            case "s" => count.seconds
+            case "m" => count.minutes
+            case _   => count.hours
+        }
+      case _ => None
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--read-ahead N] [--header-first on|off] [--max-inbound N] [--inbound-sync on|off] [--cpu-threads N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--mirror-check] [--rules old|new|differential [--on-divergence halt|reseed] [--repro-dir <dir>]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>] " + LogSettings.Usage
 
   /** Flags that take a value and may repeat. */
   private val RepeatedFlags = Set("peer") ++ LogSettings.RepeatedFlags
@@ -895,6 +926,7 @@ object Main extends IOApp:
     "utxo-cache-mb",
     "memory-report-seconds",
     "stall-minutes",
+    "stall-exit-after",
     "read-ahead",
     "header-first",
     "max-inbound",
@@ -992,6 +1024,13 @@ object Main extends IOApp:
           stallMinutes <- flags
             .get("stall-minutes")
             .fold(Right(10))(_.toIntOption.filter(_ >= 0).toRight(usage))
+          stallExit <- flags
+            .get("stall-exit-after")
+            .traverse(v =>
+              parseDuration(v)
+                .filter(d => stallMinutes > 0 && d > stallMinutes.minutes)
+                .toRight(usage)
+            )
           readAhead <- flags
             .get("read-ahead")
             .fold(Right(128))(_.toIntOption.filter(_ > 0).toRight(usage))
@@ -1052,6 +1091,7 @@ object Main extends IOApp:
           cacheMb,
           memoryReport,
           stallMinutes,
+          stallExit,
           readAhead,
           cpuThreads,
           dump,

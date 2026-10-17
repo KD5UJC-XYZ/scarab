@@ -51,6 +51,11 @@ enum NodeEvent:
     */
   case Stalled(idle: FiniteDuration, ours: BigInt, peers: BigInt)
 
+  /** The stall went on for `--stall-exit-after`: the node ends (after its shutdown snapshot, exit
+    * code 4) so that its supervisor restarts it from the newest snapshot.
+    */
+  case StallExit(idle: FiniteDuration, ours: BigInt, peers: BigInt)
+
   /** A ledger-state digest was written (`--dump-state`). */
   case StateDumped(slot: BigInt, hash: Bytes, epoch: BigInt, millis: Long)
 
@@ -260,6 +265,12 @@ object NodeEvent:
       )
     case Stalled(idle, ours, peers) =>
       EventKind.Stalled.line(
+        "idleSeconds" -> idle.toSeconds.asJson,
+        "ourBlock" -> ours.asJson,
+        "peerBlock" -> peers.asJson
+      )
+    case StallExit(idle, ours, peers) =>
+      EventKind.StallExit.line(
         "idleSeconds" -> idle.toSeconds.asJson,
         "ourBlock" -> ours.asJson,
         "peerBlock" -> peers.asJson

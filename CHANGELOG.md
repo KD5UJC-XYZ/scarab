@@ -44,6 +44,10 @@ entries below were written before that.
   a peer announced a longer chain logs one `stalled` event (`Chain.Stalled`, Warning: `idleSeconds`, `ourBlock`,
   `peerBlock`), counts `scarab_follower_stalls_total` and holds `scarab_follower_stalled` at 1 until the next block.
   The sessions report the tips their peers announce (`Peer.Observation.Announced`).
+- **`--stall-exit-after <Ns|Nm|Nh>`** (off by default): a stall that lasts this long (longer than `--stall-minutes`,
+  a peer's tip ahead, counted only while following) logs `stallExit`, closes down like a signal (shutdown snapshot)
+  and exits with code 4, so a restarting supervisor resumes from the newest snapshot. The decision is the pure
+  `StallWatchdog.State.checked` (`StallWatchdogSuite`).
 - **Devnet `peercut`**: two upstream peers, one slow (`scripts/devnet/lagproxy.py`) and then silent mid-sync; the node
   must reach the reference tip, log the lost peer as a typed reconnect, and report no `Submarine`, no stall and no error.
 

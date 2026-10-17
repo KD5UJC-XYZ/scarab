@@ -19,6 +19,7 @@ import scala.concurrent.duration.*
 final class StallWatchdog[F[_]: Temporal] private (
     state: Ref[F, StallWatchdog.State],
     threshold: FiniteDuration,
+    exitAfter: Option[FiniteDuration],
     report: StallWatchdog.Change => F[Unit]
 ):
   /** A block was extended. */
@@ -33,10 +34,11 @@ final class StallWatchdog[F[_]: Temporal] private (
   def announced(block: BigInt): F[Unit] =
     state.update(s => s.copy(peer = s.peer.max(block)))
 
-  /** One look at the state: reports the beginning of a stall. */
+  /** One look at the state: reports the beginning of a stall, and that it has lasted `exitAfter`.
+    */
   def check: F[Unit] =
     Temporal[F].monotonic
-      .flatMap(now => state.modify(_.checked(now, threshold)))
+      .flatMap(now => state.modify(_.checked(now, threshold, exitAfter)))
       .flatMap(_.traverse_(report))
 
   /** [[check]] every `period`, for ever. */
@@ -50,6 +52,11 @@ object StallWatchdog:
     case Began(idle: FiniteDuration, ours: BigInt, peers: BigInt)
     case Ended
 
+    /** The stall has lasted `exitAfter`: the node should end so that it restarts from its newest
+      * snapshot. Reported once.
+      */
+    case ExitDue(idle: FiniteDuration, ours: BigInt, peers: BigInt)
+
   /** Our tip (`ours`), the highest announced tip (`peer`), when a block was last extended (or the
     * watchdog started) and whether a stall is being reported.
     */
@@ -57,34 +64,48 @@ object StallWatchdog:
       ours: BigInt,
       peer: BigInt,
       progressAt: FiniteDuration,
-      stalled: Boolean
+      stalled: Boolean,
+      exiting: Boolean = false
   ):
     private[StallWatchdog] def progressed(
         block: BigInt,
         now: FiniteDuration
     ): (State, Option[Change]) =
       (
-        State(block, peer.max(block), now, stalled = false),
+        State(block, peer.max(block), now, stalled = false, exiting = false),
         Option.when(stalled)(Change.Ended)
       )
 
-    private[StallWatchdog] def checked(
+    /** The decision: a stall begins when a peer is ahead and no block was extended for `threshold`;
+      * it ends the node when it has gone on for `exitAfter` (when given), whatever the warning did.
+      * Nothing is decided while no peer is ahead of us, so a node that is at the tip of every peer,
+      * or has no peer, is never stopped.
+      */
+    def checked(
         now: FiniteDuration,
-        threshold: FiniteDuration
-    ): (State, Option[Change]) =
+        threshold: FiniteDuration,
+        exitAfter: Option[FiniteDuration]
+    ): (State, List[Change]) =
       val idle = now - progressAt
-      if !stalled && peer > ours && idle >= threshold then
-        (copy(stalled = true), Some(Change.Began(idle, ours, peer)))
-      else (this, None)
+      if peer <= ours then (this, Nil)
+      else
+        val began = Option.when(!stalled && idle >= threshold)(Change.Began(idle, ours, peer))
+        val due =
+          Option.when(!exiting && exitAfter.exists(idle >= _))(Change.ExitDue(idle, ours, peer))
+        (
+          copy(stalled = stalled || began.isDefined, exiting = exiting || due.isDefined),
+          began.toList ++ due.toList
+        )
 
   /** Watching from now, with the chain at block `ours`. */
   def create[F[_]: Temporal](
       ours: BigInt,
       threshold: FiniteDuration,
+      exitAfter: Option[FiniteDuration],
       report: Change => F[Unit]
   ): F[StallWatchdog[F]] =
     Temporal[F].monotonic.flatMap(now =>
       Ref
         .of[F, State](State(ours, ours, now, stalled = false))
-        .map(new StallWatchdog(_, threshold, report))
+        .map(new StallWatchdog(_, threshold, exitAfter, report))
     )
