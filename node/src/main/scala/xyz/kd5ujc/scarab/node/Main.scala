@@ -13,14 +13,7 @@ import xyz.kd5ujc.scarab.consensus.{
 }
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.blst.{Blst, BlstProblem, BlstReport}
-import xyz.kd5ujc.scarab.ledger.{
-  Block,
-  ConfigError,
-  ConfigProblem,
-  NativeLibraryError,
-  NodeError,
-  PeerError
-}
+import xyz.kd5ujc.scarab.ledger.{Block, ConfigError, ConfigProblem, NativeLibraryError, NodeError}
 import cats.effect.{Deferred, ExitCode, IO, IOApp, Ref, Resource}
 import cats.effect.metrics.CpuStarvationWarningMetrics
 import xyz.kd5ujc.scarab.storage.{

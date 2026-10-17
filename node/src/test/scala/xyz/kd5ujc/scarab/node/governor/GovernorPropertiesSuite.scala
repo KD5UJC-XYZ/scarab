@@ -459,7 +459,8 @@ class GovernorPropertiesSuite extends ScalaCheckSuite:
 
   // ---------------------------------------------------------------- regressions of the reference
 
-  private val outbound = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
+  private val outbound =
+    RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
 
   private def single(peer: Peer): RootGroupSpec[Peer] = RootGroupSpec(1, 1, List(peer -> outbound))
 
@@ -510,11 +511,14 @@ class GovernorPropertiesSuite extends ScalaCheckSuite:
       seed = 42L
     )
     val rec = run(env)
-    assert(nolivelock(rec).apply(org.scalacheck.Gen.Parameters.default).success, rec.traces.take(20).toString)
+    assert(
+      nolivelock(rec).apply(org.scalacheck.Gen.Parameters.default).success,
+      rec.traces.take(20).toString
+    )
   }
 
-  /** `prop_issue_3494`: no assertion fails (here: no invariant breaks) when a local root that
-    * drops at once is asked for while the known target moves (4462-4500).
+  /** `prop_issue_3494`: no assertion fails (here: no invariant breaks) when a local root that drops
+    * at once is asked for while the known target moves (4462-4500).
     */
   test("prop_issue_3494") {
     val env = Env(

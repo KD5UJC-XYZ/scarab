@@ -135,7 +135,10 @@ object MockEnvironment:
   /** Run the governor in the environment for `horizon` of virtual time. */
   def run(env: Env, horizon: FiniteDuration = 10.hours): Recording =
     TestControl
-      .executeEmbed(program(env, horizon), seed = Some(java.util.Base64.getEncoder.encodeToString(env.seed.toString.getBytes("UTF-8"))))
+      .executeEmbed(
+        program(env, horizon),
+        seed = Some(java.util.Base64.getEncoder.encodeToString(env.seed.toString.getBytes("UTF-8")))
+      )
       .unsafeRunSync()
 
   private def program(env: Env, horizon: FiniteDuration): IO[Recording] =

@@ -7,14 +7,8 @@ import cats.syntax.all.*
 import com.comcast.ip4s.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{
-  Anchor,
-  BlockRef,
-  FollowerEvent,
-  FollowerEvents,
-  NodeState,
-  VolatileChain
-}
+import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEvents, VolatileChain}
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
@@ -48,7 +42,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
           raws.traverse_ { raw =>
             val header = Block.decodeShelley(raw).toOption.get.asInstanceOf[Block.Shelley].header
             server
-              .persistence[NodeState]
+              .persistence[MirrorState]
               .extended(
                 BlockRef(header.slot, header.hash, header.blockNo),
                 raw,
@@ -74,14 +68,14 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
 
   test("forty peers: the node converges to the targets, reaches the tip and repairs the hot set") {
     for
-      chainRef <- Ref.of[IO, VolatileChain[NodeState]](
+      chainRef <- Ref.of[IO, VolatileChain[MirrorState]](
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
       )
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(chainRef)
+      given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
       follower <- Handle
         .allow[NodeError] {
-          Follower.create[IO, NodeState](
-            NodeRules[IO](ForgedChain.config, ForgedChain.globals),
+          Follower.create[IO, MirrorState](
+            ForgedChain.rules,
             (_: FollowerEvent) => IO.unit,
             ForgedChain.geometry
           )
