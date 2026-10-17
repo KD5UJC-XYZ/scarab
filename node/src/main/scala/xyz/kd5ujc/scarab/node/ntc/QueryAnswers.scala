@@ -203,7 +203,11 @@ object QueryAnswers:
     * span in the configuration until it has entered Shelley, and the state knows where it did.
     */
   def geometry[S](env: QueryEnv, view: QueryView[S]): EpochGeometry =
-    view.read.consensus(view.state).byron.firstShelleyEpoch.fold(env.geometry)(env.geometry.resolved)
+    view.read
+      .consensus(view.state)
+      .byron
+      .firstShelleyEpoch
+      .fold(env.geometry)(env.geometry.resolved)
 
   def currentEra[S](view: QueryView[S]): Era = view.era
 

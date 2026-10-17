@@ -71,7 +71,7 @@ object StateQuerySource:
                   .delay(QueryAnswers.answerOrWhy(e, view, entries, query))
                   .attempt
               yield answered match
-                case Right(Right(result))                  => Right(result)
+                case Right(Right(result))                => Right(result)
                 case Right(Left(Unanswered.Unsupported)) => Left(Refusal.Unsupported(shown))
                 case Right(Left(Unanswered.Refused(error))) =>
                   Left(Refusal.Unwritable(shown, s"the state cannot be read: $error"))

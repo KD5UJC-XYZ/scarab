@@ -31,6 +31,9 @@ class EraHistoryNetworksSuite extends FunSuite:
     setup.mirrorEnv().ledger
   )
 
+  private given xyz.kd5ujc.scarab.node.read.ChainRead[xyz.kd5ujc.scarab.consensus.NodeState] =
+    xyz.kd5ujc.scarab.node.read.ChainRead.nodeState(setup.mirrorEnv())
+
   /** The state of a chain in Conway whose Byron era ended at epoch 4, at slot 100,000,000. */
   private val view =
     val state = setup.start
