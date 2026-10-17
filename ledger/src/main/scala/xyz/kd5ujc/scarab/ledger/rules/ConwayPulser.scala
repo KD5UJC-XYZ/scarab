@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import scala.collection.mutable
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -27,8 +28,13 @@ object ConwayPulser:
     val ls = es.ls
     val gov = ls.utxo.gov
     val accounts = ls.cert.dState.accounts.states
+    // Ratification reads an account for one thing, the DRep that a pool's reward account
+    // delegates to, so only those accounts are put in the node's form, not every account
     val flatAccounts: Map[node.Credential, node.Account] =
-      FlatView.stakeMap(accounts)(FlatView.conwayAccount)
+      (for
+        pool <- ls.cert.pState.stakePools.valuesIterator
+        account <- accounts.get(pool.accountId)
+      yield FlatView.credBack(pool.accountId) -> FlatView.conwayAccount(account)).toMap
     val flatDReps: Map[node.Credential, node.DRepState] =
       FlatView.stakeMap(ls.cert.vState.dreps)(d =>
         node.DRepState(
@@ -40,23 +46,24 @@ object ConwayPulser:
       )
     val deposits = gov.proposals.depositsByCredential
     val instant = ls.utxo.instantStake.credentialStake
-    val drepDistr: Map[node.DRep, BigInt] =
-      accounts.iterator
-        .flatMap { (c, a) =>
-          val credential = Convert.back(c)
-          a.drep
-            .map(Convert.drepBack)
-            .filter {
-              case node.DRep.Registered(d) => flatDReps.contains(d)
-              case _                       => true
-            }
-            .map(d =>
-              d -> (instant.get(c).fold(BigInt(0))(_.toBigInt) + a.balance.toBigInt +
-                deposits.getOrElse(credential, BigInt(0)))
-            )
-        }
-        .toVector
-        .groupMapReduce(_._1)(_._2)(_ + _)
+    // the accounts in the order of the credential, and the instant stake walked beside them; the
+    // sum for each DRep is built as `groupMapReduce` builds it
+    val stakes = Sorted.Cursor(instant)
+    val sums = mutable.Map.empty[node.DRep, BigInt]
+    accounts.iterator.foreach { (c, a) =>
+      a.drep.foreach { drep =>
+        val d = Convert.drepBack(drep)
+        val known = d match
+          case node.DRep.Registered(r) => flatDReps.contains(r)
+          case _                       => true
+        if known then
+          val proposals =
+            if deposits.isEmpty then BigInt(0) else deposits.getOrElse(Convert.back(c), BigInt(0))
+          val stake = stakes.at(c).fold(BigInt(0))(_.toBigInt) + a.balance.toBigInt + proposals
+          sums.put(d, sums.get(d).fold(stake)(_ + stake))
+      }
+    }
+    val drepDistr: Map[node.DRep, BigInt] = sums.to(Map)
     val mark = es.snapshots.mark
     val base: Map[Bytes, BigInt] =
       mark.pools.iterator.collect {
@@ -64,13 +71,16 @@ object ConwayPulser:
       }.toMap
     val baseTotal =
       mark.activeStake.entries.valuesIterator.foldLeft(BigInt(0))(_ + _.stake.value.toBigInt)
-    val (poolDistr, totalPoolStake) = accounts.iterator.foldLeft((base, baseTotal)) {
-      case (acc @ (dist, total), (c, a)) =>
-        (a.pool.map(_.bytes), deposits.get(Convert.back(c))) match
-          case (Some(pool), Some(d)) if dist.contains(pool) =>
-            (dist.updated(pool, dist(pool) + d), total + d)
-          case _ => acc
-    }
+    // proposals hold no deposits most of the time, and then no account adds to a pool
+    val (poolDistr, totalPoolStake) =
+      if deposits.isEmpty then (base, baseTotal)
+      else
+        accounts.iterator.foldLeft((base, baseTotal)) { case (acc @ (dist, total), (c, a)) =>
+          (a.pool.map(_.bytes), deposits.get(Convert.back(c))) match
+            case (Some(pool), Some(d)) if dist.contains(pool) =>
+              (dist.updated(pool, dist(pool) + d), total + d)
+            case _ => acc
+        }
     val snapshot =
       node.PulsingSnapshot(gov.proposals.actions, drepDistr, flatDReps, poolDistr)
     val committeeState: Map[node.Credential, node.CommitteeAuth] =

@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -50,17 +51,24 @@ object Rewards:
     */
   def aggregate(
       major: BigInt,
-      rs: SortedMap[Credential[Staking], RewardSet]
+      rs: Iterable[(Credential[Staking], RewardSet)]
   ): Either[VocabError, Vector[(Credential[Staking], Coin)]] =
-    rs.iterator
-      .map((c, set) => c -> delivered(major, set).foldLeft(BigInt(0))(_ + _.rewardAmount.value))
-      .toVector
-      .traverse((c, n) => Coin.fromBigInt(n).map(c -> _))
+    @tailrec def go(
+        it: Iterator[(Credential[Staking], RewardSet)],
+        out: Vector[(Credential[Staking], Coin)]
+    ): Either[VocabError, Vector[(Credential[Staking], Coin)]] =
+      if !it.hasNext then Right(out)
+      else
+        val (c, set) = it.next()
+        Coin.fromBigInt(delivered(major, set).foldLeft(BigInt(0))(_ + _.rewardAmount.value)) match
+          case Left(error) => Left(error)
+          case Right(n)    => go(it, out :+ (c -> n))
+    go(rs.iterator, Vector.empty)
 
   /** `sumRewards` (`Rewards.hs:159`). */
-  def total(major: BigInt, rs: SortedMap[Credential[Staking], RewardSet]): BigInt =
-    rs.valuesIterator.foldLeft(BigInt(0))((sum, set) =>
-      sum + delivered(major, set).foldLeft(BigInt(0))(_ + _.rewardAmount.value)
+  def total(major: BigInt, rs: Iterable[(Credential[Staking], RewardSet)]): BigInt =
+    rs.iterator.foldLeft(BigInt(0))((sum, entry) =>
+      sum + delivered(major, entry._2).foldLeft(BigInt(0))(_ + _.rewardAmount.value)
     )
 
   /** The pool-specific values of the calculation (`PoolRewardInfo`, `Rewards.hs:242`). */

@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
+import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.state.*
 
 /** NEWEPOCH (`Shelley/Rules/NewEpoch.hs:148`, `Conway/Rules/NewEpoch.hs:154`): the new-epoch state
@@ -76,6 +77,17 @@ object NewEpoch:
           )
         yield ()
 
+  /** The rewards of the accounts that are registered, and of those that are not, each in the order
+    * of the credential. The rewards and the accounts are both in that order, so they are walked
+    * together once, where a lookup of each reward in the accounts, or a `partition` of the map (two
+    * trees built by inserting each entry), compares about seventeen keys for each.
+    */
+  private def partitionRegistered(
+      rewards: SortedMap[Credential[Staking], RewardSet],
+      registered: Credential[Staking] => Boolean
+  ): (Vector[(Credential[Staking], RewardSet)], Vector[(Credential[Staking], RewardSet)]) =
+    rewards.iterator.toVector.partition(entry => registered(entry._1))
+
   /** `updateRewards` with `applyRUpdFiltered` (`NewEpoch.hs:227`, `LedgerState/
     * IncrementalStake.hs:95`): the rewards of the registered accounts are added to their balances
     * and those of the accounts that are no longer registered go to the treasury; the treasury, the
@@ -85,7 +97,8 @@ object NewEpoch:
       ShelleyBasedEra[E]
   ): Either[VocabError, EpochState[E]] =
     val major = EraLedger.prevPParams(es.ls.utxo.gov).protocolMajor
-    val (registered, unregistered) = update.rs.partition((c, _) => EraLedger.isRegistered(es.ls, c))
+    val (registered, unregistered) =
+      partitionRegistered(update.rs, EraLedger.registeredAscending(es.ls))
     for
       delivered <- Rewards.aggregate(major, registered)
       treasury <- Coin.fromBigInt(
@@ -93,7 +106,7 @@ object NewEpoch:
       )
       reserves <- Coin.fromBigInt(es.chainAccount.reserves.value + update.deltaR.value)
       fees <- Coin.fromBigInt(es.ls.utxo.fees.value + update.deltaF.value)
-      credited <- EraLedger.credit(es.ls, delivered)
+      credited <- EraLedger.creditAscending(es.ls, delivered)
     yield es.copy(
       chainAccount = ChainAccountState(treasury, reserves),
       ls = credited.copy[E](utxo = credited.utxo.copy(fees = fees)),

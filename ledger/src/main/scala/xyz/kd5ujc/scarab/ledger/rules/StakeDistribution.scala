@@ -2,7 +2,9 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.syntax.all.*
+import scala.annotation.tailrec
 import scala.collection.immutable.SortedMap
+import scala.collection.mutable
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.Ptr
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -31,22 +33,28 @@ object StakeDistribution:
         .flatMap((p, stake) => ptrs.get(p).map(_ -> stake.toBigInt))
         .toVector
         .groupMapReduce(_._1)(_._2)(_ + _)
+    val stakes = Sorted.Cursor(instant)
     val entries = accounts.flatMap { (credential, account) =>
       account.pool.flatMap { pool =>
-        val total = account.balance.toBigInt +
-          instant.get(credential).fold(BigInt(0))(_.toBigInt) +
+        val total = account.balance.toBigInt + stakes.at(credential).fold(BigInt(0))(_.toBigInt) +
           byPointer.getOrElse(credential, BigInt(0))
         Option.when(total.signum > 0)((credential, total, pool))
       }
     }
-    entries.toList
-      .traverse { (credential, total, pool) =>
-        for
+    // in the order of the credential, which the map is built in
+    @tailrec def collect(
+        acc: mutable.ArrayBuffer[(Credential[Staking], StakeWithDelegation)]
+    ): Either[VocabError, ActiveStake] =
+      if !entries.hasNext then Right(ActiveStake(Sorted.fromAscending(acc)))
+      else
+        val (credential, total, pool) = entries.next()
+        (for
           stake <- CompactCoin.fromBigInt(total)
           nonZero <- NonZero.from(stake)
-        yield credential -> StakeWithDelegation(nonZero, pool)
-      }
-      .map(es => ActiveStake(Sorted.map(es)))
+        yield credential -> StakeWithDelegation(nonZero, pool)) match
+          case Left(error)  => Left(error)
+          case Right(entry) => collect(acc += entry)
+    collect(mutable.ArrayBuffer.empty)
 
   /** `mkStakePoolSnapShot` (`State/SnapShots.hs:187`): what the reward calculation needs of one
     * pool, resolved when the snapshot is taken from the delegators the pool state holds.
