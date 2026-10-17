@@ -37,7 +37,10 @@ import PredicateFailureCbor.*
   * write, has no encoding ([[applyTxError]] is `None`): the reference answers a refusal of the eras
   * before Conway with these types alone (they have no free-text failure like Conway's). The node's
   * submission is Conway's alone, so no client reads these today; they are the encodings of the
-  * failures the rules raise, tested against the reference's instances.
+  * failures the rules raise. Against the reference's own answers (`PreConwayFailureReferenceSuite`,
+  * recorded from the `e2e` scenario) those of Shelley, Allegra, Mary and Alonzo for a small output,
+  * a large value and the MIR checks are byte-equal; the other tags and all of Babbage's are read
+  * from the instances (`PreConwayFailureCborSuite`).
   */
 object PreConwayFailureCbor:
   import NodeOrders.given

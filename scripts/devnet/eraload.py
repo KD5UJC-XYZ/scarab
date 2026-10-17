@@ -150,6 +150,8 @@ class EraLoad:
             verdict = "accepted" if ok else "expected" if expect in text and not stale else "other reason"
             self.evidence.append({"era": era, "label": label, "mustReject": expect, "verdict": verdict,
                                   "error": "" if ok else text[:400]})
+            if not ok:
+                self.keep_raw_reason(era, tx, label, expect)
             key = "expectedRejected" if verdict == "expected" else "unexpected"
             self.stats[key] = self.stats.get(key, 0) + 1
             self.log({key: label, "mustReject": expect, "verdict": verdict, "error": text[:400]})
@@ -159,6 +161,22 @@ class EraLoad:
             self.stats["rejected"] = self.stats.get("rejected", 0) + 1
             self.log({"rejected": label, "error": text[:900]})
         return ok
+
+    ERA_INDEX = {"shelley": 1, "allegra": 2, "mary": 3, "alonzo": 4, "babbage": 5, "conway": 6}
+
+    def keep_raw_reason(self, era, tx, label, expect):
+        """The reference's raw `ApplyTxErr` for a refused transaction of an earlier era, over
+        LocalTxSubmission, kept with the transaction in `refused-raw.jsonl` of the run directory:
+        the bytes the Scala encodings of those eras (`PreConwayFailureCbor`) are checked against."""
+        try:
+            with self.lsq_factory() as s:
+                reason = s.submit(tx, self.ERA_INDEX[era])
+        except Exception as e:  # evidence only: a failed capture must not stop the cluster walk
+            self.log({"rawReasonFailed": label, "error": repr(e)})
+            return
+        if reason is not None:
+            self.keep_tx("refused-raw.jsonl", {"label": label, "era": era, "mustReject": expect,
+                                               "tx": tx.hex(), "reason": reason.hex()})
 
     def confirm(self, txid, timeout=25):
         """Wait until an output of `txid` shows up in the UTxO."""

@@ -10,10 +10,11 @@ import munit.FunSuite
 /** The predicate-failure CBOR of the eras before Conway (`PreConwayFailureCbor`).
   *
   * These goldens are written out from the `EncCBOR` instances of the pinned cardano-ledger (the
-  * tags and the nesting, cited on [[PreConwayFailureCbor]]), not recorded from a node: a
-  * LocalTxSubmission client of the reference can only submit a transaction of the current era
-  * (Conway), so no refusal of an earlier era is observable on a devnet. Each expected value is
-  * derived by hand from the instance, field by field, in the comment above it.
+  * tags and the nesting, cited on [[PreConwayFailureCbor]]); each expected value is derived by hand
+  * from the instance, field by field, in the comment above it. The ones that the reference node
+  * itself answered (Shelley to Alonzo, eight refusals of the `e2e` load) are in
+  * [[PreConwayFailureReferenceSuite]], byte for byte; the rest, Babbage among them, are the
+  * instances' reading only.
   */
 class PreConwayFailureCborSuite extends FunSuite:
   private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e), identity)

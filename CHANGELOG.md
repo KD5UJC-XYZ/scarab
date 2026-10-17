@@ -54,8 +54,11 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   Alonzo and Babbage do (their tags and nesting differ from Conway's; a `Mismatch` is one record field, sets are plain
   arrays below protocol version 9); `PredicateFailureCbor.applyTxError(era, failures)` answers `None` for a failure the
   era's ledger has no constructor for. Conway sends the failures of the earlier rules, and `CollectErrors`, as its
-  free-text `ConwayMempoolFailure` (text derived from the case). The goldens (`PreConwayFailureCborSuite`) are derived
-  by hand from the pinned instances: no reference node answers a submission of an earlier era. What is not written
+  free-text `ConwayMempoolFailure` (text derived from the case). Eight refusals of the `e2e` load, which
+  the reference answered over LocalTxSubmission while the chain was in Shelley, Allegra, Mary and Alonzo (an output below
+  the minimum, a value over the size limit, the MIR checks), are recorded in `fixtures/devnet/refused-raw-eras.jsonl` and
+  written byte for byte by the new encoders (`PreConwayFailureReferenceSuite`); the other goldens
+  (`PreConwayFailureCborSuite`, Babbage among them) are derived by hand from the pinned instances. What is not written
   (`CollectErrors` and its `ContextError`, certifying purposes in `MissingRedeemers`) is [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123).
 
 ### Added (Leios, N3: following the public testnet read-only, #72)
