@@ -8,7 +8,7 @@ UTxO-HD in-memory snapshot (`backend: utxohd-mem`, tables codec version 1):
 | File | Contents |
 |---|---|
 | `state` | the `ExtLedgerState` CBOR: `[1, [summary, telescope]]` (version 1, hard-fork summary of every era so far, then the telescope whose current-era index is the era) |
-| `meta` | the snapshot metadata JSON (`backend`, `checksum` of `tables`, `tablesCodecVersion`) |
+| `meta` | the snapshot metadata JSON (`backend`, `checksum`, `tablesCodecVersion`); the checksum is the CRC32 of the decimal text of the CRC32 of `state` followed by that of `tables` (`OC/Util/CRC.hs`, [haskell-snapshots.md](../../docs/design/haskell-snapshots.md)) |
 | `tables` | the UTxO table (a few hundred bytes: the devnet holds three funded addresses) |
 
 ## Fixtures
