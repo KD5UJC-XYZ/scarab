@@ -169,6 +169,12 @@ name and sbt server socket, and lands on its own: when its gates pass, rebase on
 side changed in code, rerun `check` only and push; otherwise rerun the level's gates. Nobody waits
 for another branch's gates, and there is no shared integration branch that serialises landings.
 
+This direct-push flow is for the research phase. When the v0.2 milestone closes (functional equivalence
+with cardano-node, see the exit condition under "Order of work" in [docs/roadmap.md](docs/roadmap.md)),
+branch protection, required CI checks, pull requests and independent review for consensus, cryptography,
+persistence and key handling are turned on ([#161](https://github.com/KD5UJC-XYZ/scarab/issues/161)),
+and this section is rewritten for pull requests.
+
 ### Changelog fragments
 
 Each change that needs a changelog entry adds a file `changes/<issue-or-branch>.md` with its entry

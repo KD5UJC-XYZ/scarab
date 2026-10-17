@@ -235,6 +235,15 @@ state. This section is rewritten when the order changes.
    an upstream fix is small, our own evaluator is large), then the reward-update pulse (D15, #135), D2
    (#21) and D8 (#65). Parallel transaction application within a block is excluded.
 
+*Exit of v0.2 = functional equivalence with cardano-node.* When items 1 to 4 hold (the ledger equal to the
+Haskell node's at every epoch, full preprod and mainnet syncs including a Mithril start, the upstream
+conformance suites, fuzzing, block production on a public test network, bounded memory, and the v0.2 audit
+tickets closed or accepted as stated limitations), the project stops pushing straight to `main`: the
+gates and branch protection of AUD-09 ([#161](https://github.com/KD5UJC-XYZ/scarab/issues/161)) are
+turned on, with required CI checks, pull requests and independent review for consensus, cryptography,
+persistence and key handling. Until then development keeps the rapid direct-push flow (owner decision,
+2026-10-18).
+
 **v0.3, Leios and audit readiness**
 
 1. *Review readiness first:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),
