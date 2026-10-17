@@ -9,6 +9,7 @@ genesis parameters, the era history and the system start over two connections), 
 input (the body must be byte-equal) and the submit through the Scala socket only. A connection the
 node ends for a reason other than the client finishing is a failure too (`unexpected_closes`).
 """
+import datetime
 import json
 import subprocess
 import time
@@ -54,13 +55,15 @@ def queries(args, addr, txin):
     """The `latest` queries of a user against the Scala socket, with `CARDANO_NODE_SOCKET_PATH` for the first
     two. Each must exit 0; `query tip` must be a Conway tip at 100 percent."""
     results = {}
+    # a time after the devnet's system start, which is the time the scenario runs at
+    now = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
     cases = [("tip (socket from the environment)", "query tip", True),
              ("tip", "query tip", False),
              ("protocol-parameters", "query protocol-parameters", False),
              ("utxo --address", f"query utxo --address {addr} --output-text", False),
              ("utxo --tx-in", f"query utxo --tx-in {txin} --output-json", False),
              ("era-history", "query era-history", False),
-             ("slot-number", "query slot-number 2026-01-01T00:00:00Z", False)]
+             ("slot-number", f"query slot-number {now}", False)]
     for label, text, env_socket in cases:
         code, out, err = on_scala(args, text, env_socket)
         results[label] = {"exit": code, "output": (out or err)[:300]}
