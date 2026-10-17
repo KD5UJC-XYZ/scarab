@@ -7,6 +7,7 @@ import org.scalacheck.Prop.*
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.node.Output
+import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import MockEnvironment.*
 import Signals.*
 
@@ -112,20 +113,19 @@ class GovernorPropertiesSuite extends ScalaCheckSuite:
     }
   }
 
-  property("prop_governor_nofail") {
-    over(Generators.environment) { rec =>
-      val broken = rec.states.flatMap((t, st) => GovernorState.invariant(st).map(t -> _))
-      ok(s"the governor stopped: ${rec.fatal}")(rec.fatal.isEmpty) &&
-      ok(s"an invariant broke: ${broken.take(3)}")(broken.isEmpty)
-    }
-  }
+  private def nofail(rec: Recording): Prop =
+    val broken = rec.states.flatMap((t, st) => GovernorState.invariant(st).map(t -> _))
+    ok(s"the governor stopped: ${rec.fatal}")(rec.fatal.isEmpty) &&
+    ok(s"an invariant broke: ${broken.take(3)}")(broken.isEmpty)
 
-  property("prop_governor_nolivelock") {
-    over(Generators.environment) { rec =>
-      val crowded = rec.traces.groupBy(_._1).find(_._2.size > 1000)
-      noneOr(crowded)((t, es) => s"${es.size} events at $t")
-    }
-  }
+  property("prop_governor_nofail")(over(Generators.environment)(nofail))
+
+  private def nolivelock(rec: Recording): Prop =
+    val crowded = rec.traces.groupBy(_._1).find(_._2.size > 1000)
+    ok("the run recorded more than 200000 things")(!rec.overflowed) &&
+    noneOr(crowded)((t, es) => s"${es.size} events at $t")
+
+  property("prop_governor_nolivelock")(over(Generators.environment)(nolivelock))
 
   private enum Ev:
     case Gov
@@ -248,16 +248,15 @@ class GovernorPropertiesSuite extends ScalaCheckSuite:
 
   private val coldRetry = 162.seconds // 5 * 2^5 s, plus the fuzz
 
-  property("prop_governor_target_established_below") {
-    over(Generators.environment) { rec =>
-      val failed = failures(rec)
-      overdue(rec)(ignored(rec, coldRetry, failed, 1.second) { (st, t, recentFailures) =>
-        val v = st.view(t)
-        if v.established.size + v.connecting.size >= st.targets.established then Set.empty
-        else v.known -- v.established -- st.localRoots.keys -- recentFailures -- v.connecting
-      })
-    }
-  }
+  private def establishedBelow(rec: Recording): Prop =
+    val failed = failures(rec)
+    overdue(rec)(ignored(rec, coldRetry, failed, 1.second) { (st, t, recentFailures) =>
+      val v = st.view(t)
+      if v.established.size + v.connecting.size >= st.targets.established then Set.empty
+      else v.known -- v.established -- st.localRoots.keys -- recentFailures -- v.connecting
+    })
+
+  property("prop_governor_target_established_below")(over(Generators.environment)(establishedBelow))
 
   property("prop_governor_target_established_above") {
     over(Generators.environment) { rec =>
@@ -456,4 +455,145 @@ class GovernorPropertiesSuite extends ScalaCheckSuite:
         }
       )
     }
+  }
+
+  // ---------------------------------------------------------------- regressions of the reference
+
+  private val outbound = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
+
+  private def single(peer: Peer): RootGroupSpec[Peer] = RootGroupSpec(1, 1, List(peer -> outbound))
+
+  private def script(steps: (Demotion, Delay)*): PeerScript =
+    PeerScript(Vector(false), steps.map((d, w) => ScriptStep(d, w)).toVector)
+
+  private def targetsAt(changes: (Targets, FiniteDuration)*): Timed[Targets] =
+    // the reference's script: a value, the delay after it, the next value
+    val times = changes.scanLeft(Duration.Zero)((at, change) => at + change._2)
+    Timed(
+      changes.head._1,
+      changes.zip(times).drop(1).map { case ((t, _), at) => at -> t }.toVector
+    )
+
+  private val noJudgement = Timed(LedgerStateJudgement.YoungEnough, Vector.empty)
+
+  private def target(root: Int, known: Int, established: Int, active: Int): Targets =
+    Targets.validated(root, known, established, active, 0, 0, 0).getOrElse(Targets.zero)
+
+  /** `prop_issue_3233`: the governor does not livelock when a peer that is both a public root and
+    * flaky is asked for while the targets move (`PeerSelection.hs` 4501-4560).
+    */
+  test("prop_issue_3233") {
+    val env = Env(
+      peers = 16,
+      scripts = Map(
+        4 -> script(
+          (Demotion.ToCold, Delay.NoDelay),
+          (Demotion.ToCold, Delay.NoDelay),
+          (Demotion.Noop, Delay.NoDelay),
+          (Demotion.ToWarm, Delay.NoDelay),
+          (Demotion.ToCold, Delay.NoDelay),
+          (Demotion.Noop, Delay.NoDelay)
+        )
+      ),
+      localRoots = List(single(15), single(13)),
+      publicRoots = Set(4),
+      bootstrapPeers = Set.empty,
+      useBootstrap = false,
+      targets = targetsAt(
+        Targets.zero -> 1.second,
+        target(1, 3, 3, 0) -> 600.seconds,
+        Targets.zero -> 1.second,
+        Targets.zero -> 1.second,
+        target(1, 3, 3, 2) -> 1.second
+      ),
+      judgement = noJudgement,
+      seed = 42L
+    )
+    val rec = run(env)
+    assert(nolivelock(rec).apply(org.scalacheck.Gen.Parameters.default).success, rec.traces.take(20).toString)
+  }
+
+  /** `prop_issue_3494`: no assertion fails (here: no invariant breaks) when a local root that
+    * drops at once is asked for while the known target moves (4462-4500).
+    */
+  test("prop_issue_3494") {
+    val env = Env(
+      peers = 65,
+      scripts = Map(64 -> script((Demotion.ToCold, Delay.NoDelay), (Demotion.Noop, Delay.NoDelay))),
+      localRoots = List(single(64)),
+      publicRoots = Set.empty,
+      bootstrapPeers = Set.empty,
+      useBootstrap = false,
+      targets = targetsAt(
+        Targets.zero -> 1.second,
+        target(0, 1, 0, 0) -> 60.seconds,
+        target(0, 1, 0, 0) -> 60.seconds,
+        Targets.zero -> 1.second,
+        Targets.zero -> 1.second,
+        target(0, 1, 0, 0) -> 1.second
+      ),
+      judgement = noJudgement,
+      seed = 42L
+    )
+    val rec = run(env)
+    assert(nofail(rec).apply(org.scalacheck.Gen.Parameters.default).success)
+  }
+
+  /** `prop_issue_3515`: no livelock when the only local root drops at once while the known target
+    * goes up and down (4419-4461).
+    */
+  test("prop_issue_3515") {
+    val env = Env(
+      peers = 11,
+      scripts = Map(10 -> script((Demotion.ToCold, Delay.NoDelay), (Demotion.Noop, Delay.NoDelay))),
+      localRoots = List(single(10)),
+      publicRoots = Set.empty,
+      bootstrapPeers = Set.empty,
+      useBootstrap = false,
+      targets = targetsAt(
+        target(0, 1, 0, 0) -> 60.seconds,
+        target(0, 1, 0, 0) -> 60.seconds,
+        Targets.zero -> 1.second,
+        target(0, 1, 0, 0) -> 1.second
+      ),
+      judgement = noJudgement,
+      seed = 42L
+    )
+    val rec = run(env)
+    assert(nolivelock(rec).apply(org.scalacheck.Gen.Parameters.default).success)
+  }
+
+  /** `prop_issue_3550`: established peers reach the target although a public root drops to warm and
+    * then cold while two local roots are being connected (4370-4418).
+    */
+  test("prop_issue_3550") {
+    val env = Env(
+      peers = 30,
+      scripts = Map(
+        29 -> script(
+          (Demotion.ToWarm, Delay.NoDelay),
+          (Demotion.ToCold, Delay.NoDelay),
+          (Demotion.Noop, Delay.NoDelay)
+        )
+      ),
+      localRoots = List(single(16), single(4)),
+      publicRoots = Set(14, 29),
+      bootstrapPeers = Set.empty,
+      useBootstrap = false,
+      targets = targetsAt(target(1, 4, 4, 3) -> 1.second),
+      judgement = noJudgement,
+      seed = 42L
+    )
+    val rec = run(env)
+    assert(establishedBelow(rec).apply(org.scalacheck.Gen.Parameters.default).success)
+  }
+
+  // ---------------------------------------------------------------- determinism
+
+  test("the same environment and seed give the same trace, and another seed another one") {
+    val env = Generators.environment.sample.get
+    val a = run(env)
+    val b = run(env)
+    assertEquals(a.traces.map(_._2), b.traces.map(_._2))
+    assertEquals(a.states.map(_._2), b.states.map(_._2))
   }
