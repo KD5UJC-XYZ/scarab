@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import scala.util.chaining.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.protocol.Era
 
 /** A 28-byte key or script hash identifying who may spend or who owns stake. */
 enum Credential:
@@ -66,6 +67,14 @@ object Ptr:
     * way (docs/findings.md, K3).
     */
   def decode(bytes: Vector[Byte]): Either[String, Ptr] =
+    prefix(bytes).flatMap { (ptr, consumed) =>
+      Either.cond(consumed == bytes.size, ptr, "pointer address: trailing bytes")
+    }
+
+  /** The pointer at the start of `bytes` and the number of bytes it took; what follows is the
+    * caller's (the reference reads the three naturals and stops, `decodePtrLenient`).
+    */
+  def prefix(bytes: Vector[Byte]): Either[String, (Ptr, Int)] =
     def nat(rest: Vector[Byte]): Either[String, (BigInt, Vector[Byte])] =
       val (continued, tail) = rest.span(b => (b & 0x80) != 0)
       tail.headOption.toRight("pointer address: truncated natural").map { last =>
@@ -75,8 +84,7 @@ object Ptr:
       a <- nat(bytes)
       b <- nat(a._2)
       c <- nat(b._2)
-      _ <- Either.cond(c._2.isEmpty, (), "pointer address: trailing bytes")
-    yield Ptr(a._1, b._1, c._1)
+    yield (Ptr(a._1, b._1, c._1), bytes.size - c._2.size)
 
 /** A ledger address with its original bytes. Only the parts the ledger acts on are decoded. */
 final case class Address(raw: Bytes, kind: Address.Kind)
@@ -91,7 +99,31 @@ object Address:
     /** Byron bootstrap address; `root` is the 28-byte address root (empty if it did not parse). */
     case Byron(root: Bytes)
 
-  def decode(raw: Bytes): Either[String, Address] =
+  /** How an era's decoder reads the address of a transaction output. The reference picks it by the
+    * decoder version, which is the lowest protocol version of the era: below 7 (Shelley to Alonzo)
+    * "we did not check if a binary blob representing an address was fully consumed, so
+    * unfortunately we must preserve this behavior", and the bytes after the address are dropped
+    * (`fromCborBackwardsBothAddr`); from 7 (Babbage) the address must take every byte
+    * (`fromCborRigorousBothAddr`, `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs` of
+    * cardano-ledger-core 1.21.0.0, lines 459-503). The pointer rules (version 9) are not modelled
+    * here (docs/findings.md, K3).
+    */
+  enum Mode:
+    /** Shelley to Alonzo: bytes after a Shelley address are ignored and not kept. */
+    case Backwards
+
+    /** Babbage and Conway: the address is the whole byte string. */
+    case Rigorous
+
+  object Mode:
+    def of(era: Era): Mode = if era.ordinal < Era.Babbage.ordinal then Backwards else Rigorous
+
+  /** The address in `raw`. A Shelley address of an era that reads [[Mode.Backwards]] is cut where
+    * the reference cuts it: [[Address.raw]] is the address without the bytes after it, as the
+    * reference keeps it in the UTxO (`UnsafeCompactAddr sbsCropped`); the output that carried it
+    * keeps its own bytes.
+    */
+  def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[String, Address] =
     if raw.size == 0 then Left("empty address")
     else
       val header = raw.value(0) & 0xff
@@ -105,14 +137,19 @@ object Address:
         )
       def payment =
         hash(1).map(h => if (kind & 1) == 0 then Credential.Key(h) else Credential.Script(h))
+      // The address of `length` bytes; the bytes after it are dropped if the era allows them.
+      def own(length: Int, otherwise: String): Either[String, Bytes] =
+        if raw.size == length then Right(raw)
+        else if raw.size > length && mode == Mode.Backwards then Right(raw.take(length))
+        else Left(otherwise)
       kind match
         case 0 | 1 | 2 | 3 =>
           for
             p <- payment
             s <- hash(29)
-            _ <- Either.cond(raw.size == 57, (), "base address length")
+            kept <- own(57, "base address length")
           yield Address(
-            raw,
+            kept,
             Kind.Shelley(
               network,
               p,
@@ -123,11 +160,14 @@ object Address:
         case 4 | 5 =>
           for
             p <- payment
-            ptr <- Ptr.decode(raw.value.drop(29))
-          yield Address(raw, Kind.Shelley(network, p, None, Some(ptr)))
+            read <- Ptr.prefix(raw.value.drop(29))
+            kept <- own(29 + read._2, "pointer address: trailing bytes")
+          yield Address(kept, Kind.Shelley(network, p, None, Some(read._1)))
         case 6 | 7 =>
-          Either.cond(raw.size == 29, (), "enterprise address length") *>
-            payment.map(p => Address(raw, Kind.Shelley(network, p, None, None)))
+          for
+            kept <- own(29, "enterprise address length")
+            p <- payment
+          yield Address(kept, Kind.Shelley(network, p, None, None))
         case 8 => Right(Address(raw, Kind.Byron(byronRoot(raw))))
         case _ => Left(s"address header $header is not a payment address")
 
@@ -326,30 +366,31 @@ object TxOut:
   def apply(address: Address, value: Value): TxOut =
     TxOut(Bytes.empty, address, value, Datum.NoDatum, None, 0)
 
-  def decode(n: Node): Either[String, TxOut] = n.value match
-    case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
-      for
-        a <- CborRead.bytes(xs(0), "output address").flatMap(Address.decode)
-        v <- Value.decode(xs(1), "output value")
-        d <-
-          if xs.size == 3 then CborRead.bytesN(xs(2), 32, "datum hash").map(Datum.Hash(_))
-          else Right(Datum.NoDatum)
-      yield TxOut(n.original, a, v, d, None, xs(1).original.size)
-    case xyz.kd5ujc.scarab.codec.Value.Map(_) =>
-      for
-        f <- CborRead.fields(n, "output")
-        a <- f
-          .get(0)
-          .toRight("output: missing address")
-          .flatMap(CborRead.bytes(_, "output address"))
-          .flatMap(Address.decode)
-        vn <- f.get(1).toRight("output: missing value")
-        v <- Value.decode(vn, "output value")
-        _ <- Either.cond(f.keySet.subsetOf(Set(0, 1, 2, 3)), (), "output: unknown field")
-        d <- f.get(2).traverse(datumOption)
-        s <- f.get(3).traverse(Script.decodeWrapped)
-      yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
-    case _ => Left("output: expected legacy array or map")
+  def decode(n: Node, mode: Address.Mode = Address.Mode.Rigorous): Either[String, TxOut] =
+    n.value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
+        for
+          a <- CborRead.bytes(xs(0), "output address").flatMap(Address.decode(_, mode))
+          v <- Value.decode(xs(1), "output value")
+          d <-
+            if xs.size == 3 then CborRead.bytesN(xs(2), 32, "datum hash").map(Datum.Hash(_))
+            else Right(Datum.NoDatum)
+        yield TxOut(n.original, a, v, d, None, xs(1).original.size)
+      case xyz.kd5ujc.scarab.codec.Value.Map(_) =>
+        for
+          f <- CborRead.fields(n, "output")
+          a <- f
+            .get(0)
+            .toRight("output: missing address")
+            .flatMap(CborRead.bytes(_, "output address"))
+            .flatMap(Address.decode(_, mode))
+          vn <- f.get(1).toRight("output: missing value")
+          v <- Value.decode(vn, "output value")
+          _ <- Either.cond(f.keySet.subsetOf(Set(0, 1, 2, 3)), (), "output: unknown field")
+          d <- f.get(2).traverse(datumOption)
+          s <- f.get(3).traverse(Script.decodeWrapped)
+        yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
+      case _ => Left("output: expected legacy array or map")
 
   /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
   private def datumOption(n: Node): Either[String, Datum] =
@@ -365,7 +406,8 @@ object TxOut:
       }
     }
 
-  def fromBytes(raw: Bytes): Either[String, TxOut] = Cbor.decode(raw).flatMap(decode)
+  def fromBytes(raw: Bytes, mode: Address.Mode = Address.Mode.Rigorous): Either[String, TxOut] =
+    Cbor.decode(raw).flatMap(decode(_, mode))
 
 /** `[transaction_id, index]` */
 final case class TxIn(id: Bytes, index: BigInt):

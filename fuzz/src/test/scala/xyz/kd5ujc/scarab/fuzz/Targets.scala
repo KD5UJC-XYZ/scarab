@@ -492,8 +492,10 @@ object Targets:
         () => Corpus.addresses ++ Corpus.sampled("conway:transaction_output", 60) ++ Corpus.tricky,
         probe("address-and-output") { b =>
           seen("address-and-output", Address.decode(b).isRight)
+          Address.decode(b, Address.Mode.Backwards)
           RewardAccount.decode(b)
           TxOut.fromBytes(b)
+          TxOut.fromBytes(b, Address.Mode.Backwards)
         }
       ),
       Target(
@@ -556,7 +558,9 @@ object Targets:
         Target(
           s"tx-body-$tag",
           eraSeeds(Corpus.txBodies, "transaction_body")(era),
-          probe(s"tx-body-$tag") { b => seen(s"tx-body-$tag", TxBody.decode(b).isRight) }
+          probe(s"tx-body-$tag") { b =>
+            seen(s"tx-body-$tag", TxBody.decode(b, Address.Mode.of(era)).isRight)
+          }
         ),
         Target(
           s"tx-witnesses-$tag",

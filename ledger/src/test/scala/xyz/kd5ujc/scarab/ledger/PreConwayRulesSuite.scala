@@ -710,8 +710,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       java.nio.file.Files.readString(java.nio.file.Path.of("fixtures/preprod/tx-06869a76.hex")).trim
     val tx = Cbor.decode(Bytes.fromHex(hex).toOption.get).toOption.get
     val body = tx.value match
-      case C.Arr(items) => TxBody.decode(items.head.original).fold(e => fail(e), identity)
-      case other        => fail(s"not a transaction: $other")
+      case C.Arr(items) =>
+        TxBody.decode(items.head.original, Address.Mode.Rigorous).fold(e => fail(e), identity)
+      case other => fail(s"not a transaction: $other")
     assertEquals(
       Blake2b.hash256.hash(body.raw).hex,
       "06869a76132665a0667fd26edbc7adc6cd241a794416777e752829653f4a9c3c"

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
@@ -269,7 +268,7 @@ object TxBody:
       epoch <- CborRead.uint(xs(1), "update epoch")
     yield Update(proposals.toMap, epoch)
 
-  def decode(raw: Bytes): Either[String, TxBody] =
+  def decode(raw: Bytes, mode: Address.Mode): Either[String, TxBody] =
     for
       root <- Cbor.decode(raw)
       f <- CborRead.fields(root, "transaction body")
@@ -287,7 +286,7 @@ object TxBody:
         .get(1)
         .toRight("missing outputs")
         .flatMap(CborRead.array(_, "outputs"))
-        .flatMap(_.traverse(TxOut.decode))
+        .flatMap(_.traverse(TxOut.decode(_, mode)))
       fee <- f.get(2).toRight("missing fee").flatMap(CborRead.uint(_, "fee"))
       ttl <- f.get(3).traverse(CborRead.uint(_, "ttl"))
       start <- f.get(8).traverse(CborRead.uint(_, "validity start"))
@@ -319,7 +318,7 @@ object TxBody:
           CborRead.set(_, "required signers").flatMap(_.traverse(CborRead.bytesN(_, 28, "signer")))
         )
       network <- f.get(15).traverse(CborRead.uint(_, "network id"))
-      collateralReturn <- f.get(16).traverse(TxOut.decode)
+      collateralReturn <- f.get(16).traverse(TxOut.decode(_, mode))
       totalCollateral <- f.get(17).traverse(CborRead.uint(_, "total collateral"))
       refs <- f
         .get(18)
@@ -515,9 +514,9 @@ object Tx:
   /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
     * Alonzo, `[body, witnesses, aux]` before.
     */
-  def fromBlock(t: Block.Transaction, @unused era: Era): Either[String, Tx] =
+  def fromBlock(t: Block.Transaction, era: Era): Either[String, Tx] =
     for
-      body <- TxBody.decode(t.body)
+      body <- TxBody.decode(t.body, Address.Mode.of(era))
       witnesses <- Witnesses.decode(t.witnesses)
     yield
       // The fee size is the array header, body, witnesses and auxiliary data (`null` is one byte);
