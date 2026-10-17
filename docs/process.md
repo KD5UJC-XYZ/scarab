@@ -40,14 +40,20 @@ flowchart LR
 | State | How it shows | Meaning |
 |---|---|---|
 | idea | open issue, `status:idea` | captured, not yet shaped; anyone may add one at any time |
-| backlog | open issue, no `status:` label | shaped: has scope and acceptance criteria, a priority (`priority:P0..P2`) and an area |
+| backlog | open issue, `status:backlog` | shaped: has scope and acceptance criteria, a priority (`priority:P0..P2`) and an area; not started |
 | in progress | `status:in-progress` | someone (a person or an agent session) is on it now |
 | blocked | `status:blocked` | waits on another issue or a decision, named in a comment |
 | needs owner | `status:needs-owner` | waits on a decision or an action only the owner can take |
-| parked | `status:parked` | started and paused on purpose; the latest comment says what is done, where the branch is and how to resume |
+| parked | `status:parked` | paused on purpose: started and set aside (the latest comment says what is done, where the branch is and how to resume), or shaped but held back behind other work (for example the Leios items) |
 | owner review | label `owner-review` | the owner's review feedback; triaged into a fix, a rule with a sweep, a design issue or an answer, each replied to with its commit ([CONTRIBUTING.md](../CONTRIBUTING.md#owner-review-feedback)) |
 | done | closed as completed | the definition of done below holds; the closing comment carries the evidence |
 | not planned | closed as not planned | decided against, with the reason in a comment (and an ADR if it was a design choice) |
+
+**Keeping the open list short.** Open an issue for work that will start within about two weeks, or that
+needs a decision or a tracked gap. Work further out is a roadmap line, not an issue. Sub-items of one
+epic are a checklist in the epic's issue (the Leios items in #73, the performance work in #124), not
+an issue each. Fold or close a shaped issue that has not moved for a quarter, with a pointer to where
+the item now lives.
 
 **Spikes** (`kind:spike`) are time-boxed explorations. A spike ends in one of three outcomes, recorded
 in its closing comment and, when it shapes the design, in an ADR: *adopt* (follow-up issues opened),
