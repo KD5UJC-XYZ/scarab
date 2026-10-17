@@ -459,6 +459,10 @@ on the offline machine (`cardano-cli node key-gen-KES`, `node new-counter --coun
 `node issue-op-cert --kes-period <current period>`), carry only the new `kes.skey` and `node.cert` to the producer
 as a new `gen-...` directory, switch `current`, and send SIGHUP; the node performs the same checks.
 
+Not covered yet: a node that is killed in the middle of a rotation, and a rotation the node refuses, are tested
+in units only, not in a scenario ([#122](https://github.com/KD5UJC-XYZ/scarab/issues/122)); a KES agent that
+holds the key instead of a file is H2 ([#38](https://github.com/KD5UJC-XYZ/scarab/issues/38)).
+
 The devnet scenario `kes-rotate` (below) runs all of this unattended: a short KES period, a small
 `maxKESEvolutions`, the driver on a loop, several rotations while the node forges beside two Haskell pools.
 
