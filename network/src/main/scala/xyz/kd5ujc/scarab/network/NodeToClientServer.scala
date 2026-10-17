@@ -2,9 +2,8 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.Async
-import cats.mtl.Raise
+import cats.mtl.{Handle, Raise}
 import cats.mtl.syntax.all.*
-import cats.effect.implicits.*
 import cats.syntax.all.*
 import cats.effect.Resource
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -33,8 +32,18 @@ object NodeToClientServer:
         stateQuery.map(_ => Protocols.LocalStateQuery) ++
         chainSync.map(_ => Protocols.LocalChainSync) ++
         txMonitor.map(_ => Protocols.LocalTxMonitor)
+    // the connection's protocols run in fibers of their own; each in an error scope of its own, and
+    // the first to fail ends the others (`Fibers.failFast`)
+    def child(program: Handle[F, NetworkError] ?=> F[Unit]): F[Either[NetworkError, Unit]] =
+      Fibers.scoped[F, NetworkError, Unit](t =>
+        NetworkError.BearerClosed(s"node-to-client: ${Option(t.getMessage).getOrElse(t.toString)}")
+      )(program)
     Mux
-      .resource(bearer, protocols, Mux.Config(role = Mux.Role.Responder))
+      .resource(
+        bearer,
+        protocols,
+        Mux.Config(role = Mux.Role.Responder, ingressLimit = IngressLimits.nodeToClient)
+      )
       .use { mux =>
         for
           agreed <- mux
@@ -54,22 +63,20 @@ object NodeToClientServer:
                 .raise[F, NtcVersion]
             )(Async[F].pure)
           submission <- mux.channel(Protocols.LocalTxSubmission)
-          querying <- stateQuery.traverse(source =>
-            mux
-              .channel(Protocols.LocalStateQuery)
-              .map(c =>
+          querying <- stateQuery
+            .traverse(source => mux.channel(Protocols.LocalStateQuery).map(_ -> source))
+          following <- chainSync
+            .traverse(source => mux.channel(Protocols.LocalChainSync).map(_ -> source))
+          monitoring <- txMonitor
+            .traverse(source => mux.channel(Protocols.LocalTxMonitor).map(_ -> source))
+          served = Fibers.failFast[F, NetworkError](
+            List(
+              child(LocalTxSubmissionServer.run(submission, submit, settings)),
+              child(querying.fold(Async[F].unit) { (c, source) =>
                 LocalStateQueryServer
-                  .run(
-                    c,
-                    source.forVersion(version),
-                    LocalStateQueryServer.Settings(settings.idleTimeout)
-                  )
-              )
-          )
-          following <- chainSync.traverse(source =>
-            mux
-              .channel(Protocols.LocalChainSync)
-              .map(c =>
+                  .run(c, source.forVersion(version), LocalStateQueryServer.Settings(settings.idleTimeout))
+              }),
+              child(following.fold(Async[F].unit) { (c, source) =>
                 source.use(
                   ChainSyncServer.run(
                     c,
@@ -78,22 +85,17 @@ object NodeToClientServer:
                     ChainSyncServer.NodeToClient.copy(idleTimeout = settings.idleTimeout)
                   )
                 )
-              )
-          )
-          monitoring <- txMonitor.traverse(source =>
-            mux
-              .channel(Protocols.LocalTxMonitor)
-              .map(c =>
+              }),
+              child(monitoring.fold(Async[F].unit) { (c, source) =>
                 LocalTxMonitorServer
                   .run(c, source, LocalTxMonitorServer.Settings(settings.idleTimeout))
-              )
+              })
+            )
           )
-          served = List(
-            LocalTxSubmissionServer.run(submission, submit, settings),
-            querying.getOrElse(Async[F].unit),
-            following.getOrElse(Async[F].unit),
-            monitoring.getOrElse(Async[F].unit)
-          ).parSequence_
           ended <- Async[F].race(served, mux.closed)
-        yield ended.fold(_ => "client finished", identity)
+          reason <- ended.fold(
+            result => Fibers.land[F, NetworkError, Unit](result).as("client finished"),
+            closed => Async[F].pure(closed.message)
+          )
+        yield reason
       }

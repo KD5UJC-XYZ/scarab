@@ -13,11 +13,12 @@ import xyz.kd5ujc.scarab.ledger.{
   Header,
   HeaderVrf,
   NodeError,
+  PeerError,
   ValidationError
 }
 import cats.effect.{Deferred, IO, Ref}
 import cats.effect.std.Queue
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import io.circe.parser
 import java.nio.file.{Files, Path}
@@ -596,12 +597,13 @@ class EraTransitionSuite extends CatsEffectSuite:
       events = new FollowerEvents[IO]:
         def emit(event: FollowerEvent) = eventsRef.update(_ :+ event)
       peer = new Peer[IO]:
-        def intersect(candidates: Vector[ChainSync.Point]) = IO.pure(candidates.lastOption)
-        def next = queue.tryTake.flatMap {
+        def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
+          IO.pure(candidates.lastOption)
+        def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
           case Some(event) => IO.pure(event)
           case None        => done.complete(()) *> IO.never[SyncEvent]
         }
-        def fetch(header: Header) = IO.pure(bodies(header.hash))
+        def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(bodies(header.hash))
       outcome <- Handle
         .allow[NodeError] {
           val rules = mirrorRules

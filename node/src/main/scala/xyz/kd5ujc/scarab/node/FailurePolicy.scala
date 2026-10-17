@@ -16,9 +16,24 @@ object FailurePolicy:
   def classify(error: PeerError): FailureClass = error match
     // the peer did something it must not: a malformed or oversize message, a message the protocol
     // does not allow in the state, a header that breaks a rule
-    case _: PeerError.Protocol | _: PeerError.InvalidHeader => FailureClass.Misbehaved
+    case _: PeerError.Protocol | _: PeerError.InvalidHeader | _: PeerError.InvalidBlock =>
+      FailureClass.Misbehaved
     // the network failed, the peer is on another network or version, behind us, or has parted
     // from our chain through nobody's fault
     case _: PeerError.Unavailable | _: PeerError.Handshake | PeerError.NoIntersection |
         _: PeerError.Diverged =>
       FailureClass.Transient
+
+  /** What the node does about the end of a hot session. Every outcome has an answer here; a failure
+    * that is not the peer's is never a reason to try the peer again (issue 154).
+    */
+  def disposition(end: SessionEnd): Disposition = end match
+    case SessionEnd.Failed(error) =>
+      classify(error) match
+        case FailureClass.Misbehaved => Disposition.Forget
+        case FailureClass.Transient  => Disposition.Backoff
+    case _: SessionEnd.Rejected => Disposition.Forget
+    case SessionEnd.Storage(e)  => Disposition.StopNode(Fatal.Storage(e))
+    case SessionEnd.Internal(e) => Disposition.StopNode(Fatal.Internal(e))
+    case SessionEnd.Defect(t)   => Disposition.StopNode(Fatal.Defect(t))
+    case SessionEnd.Returned | SessionEnd.Cancelled | _: SessionEnd.Stopped => Disposition.Settled

@@ -155,19 +155,19 @@ object TxSubmissionClient:
     val F = cats.effect.Async[F]
     cats.effect.Resource.eval((F.deferred[Unit], F.deferred[Boolean]).tupled).flatMap {
       case (asked, ended) =>
-        val program = cats.mtl.Handle
-          .allow[NetworkError](
+        // the fiber's own error scope: the reason it ends the connection with is a value
+        val program = Fibers
+          .scoped[F, NetworkError, Boolean](t =>
+            NetworkError.BearerClosed(
+              s"tx-submission: ${Option(t.getMessage).getOrElse(t.toString)}"
+            )
+          )(
             role
               .fold(mux.channel(Protocols.TxSubmission2))(mux.channel(Protocols.TxSubmission2, _))
               .flatMap(run(_, source, settings, Some(asked.get)))
               .as(true)
           )
-          .rescue(error => mux.abort(error.message).as(false))
-          .handleErrorWith(t =>
-            mux
-              .abort(s"tx-submission: ${Option(t.getMessage).getOrElse(t.getClass.getSimpleName)}")
-              .as(false)
-          )
+          .flatMap(_.fold(error => mux.abort(error).as(false), F.pure))
           .flatMap(ended.complete)
           .void
         program.background.as(

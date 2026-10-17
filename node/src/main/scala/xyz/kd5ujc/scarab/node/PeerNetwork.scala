@@ -3,14 +3,14 @@ package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Clock, Deferred, Ref, Resource}
 import cats.effect.std.{Queue, Supervisor}
-import cats.mtl.{Ask, Raise, Stateful, Tell}
+import cats.mtl.{Ask, Handle, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import com.comcast.ip4s.{Host, IpAddress, SocketAddress}
 import java.time.Instant
 import scala.concurrent.duration.*
 import io.circe.Json
 import io.circe.syntax.*
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, PeerError}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, GovernorFault, NodeError, PeerError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 
@@ -197,7 +197,7 @@ object PeerNetwork:
       marker: GsmRunner.Marker[F],
       /** The ledger the ledger peers are taken from. */
       ledgerSource: LedgerPeersSource[F]
-  ): Resource[F, Running[F, Addr]] =
+  )(using Handle[F, NodeError]): Resource[F, Running[F, Addr]] =
     val F = Async[F]
     val roots = configuredRoots(settings.roots)
     // Without ledger peers there are no big ledger peers to want: the targets for them are zero,

@@ -14,10 +14,10 @@ import scala.concurrent.duration.*
 /** Non-pipelined BlockFetch client: one range request at a time. */
 trait BlockFetchClient[F[_]]:
   /** Raw block bytes for the inclusive range, or `None` when the peer does not have them. */
-  def requestRange(from: Point, to: Point): F[Option[Vector[Bytes]]]
+  def requestRange(from: Point, to: Point)(using Raise[F, NetworkError]): F[Option[Vector[Bytes]]]
 
   /** Tell the peer we are finished; valid only when no request is outstanding. */
-  def done: F[Unit]
+  def done(using Raise[F, NetworkError]): F[Unit]
 
   /** Whether no request is outstanding, so `done` is valid. */
   def idle: F[Boolean]
@@ -29,29 +29,31 @@ object BlockFetchClient:
       request: BlockFetch.RequestLimits = BlockFetch.RequestLimits(maxBlocks = 128)
   )
 
-  def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
-      Raise[F, NetworkError]
+  def apply[F[_]: Temporal](
+      channel: MuxChannel[F],
+      settings: Settings = Settings()
   ): F[BlockFetchClient[F]] =
     val F = Temporal[F]
     val id = Protocols.BlockFetch
     val codec = CardanoBlockFetch.payloadCodec()
     type Msg = BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     (Ref.of[F, BlockFetch.State](BlockFetch.State.Idle), Mutex[F]).mapN { (state, lock) =>
-      def send(message: BlockFetch.Message[Nothing]): F[Unit] =
+      def send(message: BlockFetch.Message[Nothing])(using Raise[F, NetworkError]): F[Unit] =
         state.get.flatMap { current =>
           BlockFetch
             .encode(current, BlockFetch.Role.Client, message, codec, settings.limits)
-            .fold(illegal, bytes => channel.send(bytes))
+            .fold(illegal(_), bytes => channel.send(bytes))
             .productR(
               BlockFetch
                 .transition(current, BlockFetch.Role.Client, message)
-                .fold(illegal, state.set)
+                .fold(illegal(_), state.set)
             )
         }
 
-      def receive: F[Msg] =
+      def receive(using Raise[F, NetworkError]): F[Msg] =
         state.get.flatMap { current =>
           val wait = current match
             case BlockFetch.State.Busy      => F.pure(settings.timeLimits.busy)
@@ -68,13 +70,15 @@ object BlockFetchClient:
               .flatMap(message =>
                 BlockFetch
                   .transition(current, BlockFetch.Role.Server, message)
-                  .fold(illegal, state.set)
+                  .fold(illegal(_), state.set)
                   .as(message)
               )
           }
         }
 
-      def stream(received: BlockFetch.Received, blocks: Vector[Bytes]): F[Vector[Bytes]] =
+      def stream(received: BlockFetch.Received, blocks: Vector[Bytes])(using
+          Raise[F, NetworkError]
+      ): F[Vector[Bytes]] =
         receive.flatMap {
           case BlockFetch.Message.Block(block) =>
             BlockFetch.Received.add(received, block.bytes.size, settings.request) match
@@ -86,13 +90,16 @@ object BlockFetchClient:
         }
 
       new BlockFetchClient[F]:
-        def done: F[Unit] = lock.lock.surround(send(BlockFetch.Message.ClientDone))
+        def done(using Raise[F, NetworkError]): F[Unit] =
+          lock.lock.surround(send(BlockFetch.Message.ClientDone))
 
         def idle: F[Boolean] = state.get.map(_ == BlockFetch.State.Idle)
 
-        def requestRange(from: Point, to: Point): F[Option[Vector[Bytes]]] =
+        def requestRange(from: Point, to: Point)(using
+            Raise[F, NetworkError]
+        ): F[Option[Vector[Bytes]]] =
           lock.lock.surround {
-            CardanoBlockFetch.InclusiveRange.fromPoints(from, to).fold(illegal, F.pure).flatMap {
+            CardanoBlockFetch.InclusiveRange.fromPoints(from, to).fold(illegal(_), F.pure).flatMap {
               range =>
                 Timed.within(settings.timeLimits.wholeRequest, id, "request")(
                   send(range.request) *> receive.flatMap {

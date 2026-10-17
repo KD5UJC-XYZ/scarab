@@ -222,3 +222,33 @@ class BlockPoolSuite extends CatsEffectSuite:
       assertEquals(got, Some(block(1)))
       assertEquals(freed, Vector(true))
   }
+
+  test(
+    "a block says which session delivered it; a refusal drops that session's other blocks and tells it"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.{BlockFailure, ValidationError}
+    import xyz.kd5ujc.scarab.protocol.ChainSync
+    val refusal = ValidationError(
+      ChainSync.Point.Block(ChainSync.UInt64.from(1).toOption.get, hash(1)),
+      BlockFailure.HeaderDiffers
+    )
+    for
+      pool <- BlockPool.create[IO]
+      deliverer <- pool.session.allocated.map(_._1)
+      taker <- pool.session.allocated.map(_._1)
+      _ <- deliverer.claim(Vector(hash(1), hash(2), hash(4)))
+      _ <- deliverer.fill(Vector(hash(1) -> block(1), hash(2) -> block(2), hash(4) -> block(4)))
+      own <- deliverer.take(hash(2))
+      first <- taker.take(hash(1))
+      // the rules refused the block the taker took: it is not the taker's peer that sent it
+      _ <- taker.distrust(first.get.origin, refusal)
+      blamed <- deliverer.blamed.timeout(1.second)
+      dropped <- taker.take(hash(4))
+      held <- pool.size
+    yield
+      assertEquals(own.map(t => (t.block, t.own)), Some((block(2), true)))
+      assertEquals(first.map(t => (t.block, t.own)), Some((block(1), false)))
+      assertEquals(blamed, refusal)
+      assertEquals(dropped, None)
+      assertEquals(held, 0)
+  }

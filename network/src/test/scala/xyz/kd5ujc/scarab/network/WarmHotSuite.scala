@@ -15,7 +15,7 @@ import Peers.*
 /** The warm and the hot temperature of a connection: KeepAlive alone, then ChainSync, BlockFetch
   * and TxSubmission2 started, ended on the wire and started again on the same bearer.
   */
-class WarmHotSuite extends CatsEffectSuite:
+class WarmHotSuite extends FailsOnUncaught:
   private val magic = 42L
 
   /** A chain of blocks 1..3 that a client reads from the start, then waits at the tip. */

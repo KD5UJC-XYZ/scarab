@@ -14,7 +14,7 @@ import scala.concurrent.duration.*
 
 import Peers.*
 
-class MuxSuite extends CatsEffectSuite with ScalaCheckSuite:
+class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(40)
 
@@ -113,34 +113,100 @@ class MuxSuite extends CatsEffectSuite with ScalaCheckSuite:
       Prop(result == Right(message))
     }
 
-  test("a full protocol queue back-pressures the bearer"):
+  test("a peer with more unread bytes queued than the limit ends the connection, typed"):
     typed {
-      val cfg = Mux.Config(ingressQueueSdus = 2)
+      val limit = 100L
       linked(
         client = Mux.Config(maxSduPayload = 10),
-        server = cfg.copy(role = Mux.Role.Responder),
-        capacity = 1
+        server = Mux.Config(
+          role = Mux.Role.Responder,
+          maxSduPayload = 10,
+          ingressLimit = _ => limit
+        )
       ).use { (client, server) =>
         for
           c <- client.channel(2)
           s <- server.channel(2)
-          written <- cats.effect.Ref.of[IO, Int](0)
-          sender <- (1 to 200).toList
-            .traverse_(_ => c.send(payload(10)) *> written.update(_ + 1))
-            .start
-          _ <- IO.sleep(200.millis)
-          stalled <- written.get
-          // Draining the consumer lets the rest through.
-          _ <- (1 to 200).toList.traverse_(_ => s.recv(100)(exactly(10)))
-          _ <- sender.joinWithNever
-          finished <- written.get
-        yield (stalled, finished)
+          // 40 messages of 10 bytes and nobody reads: the queue fills to the limit and no further
+          _ <- (1 to 40).toList.traverse_(_ => c.send(payload(10)).attempt)
+          reason <- server.closed.timeout(5.seconds)
+          // what is queued is what the limit allowed, not what was sent
+          readable <- (1 to 40).toList
+            .traverse(_ => s.recv(100)(exactly(10)).attempt)
+            .map(_.count(_.isRight))
+          afterwards <- s.recv(100)(exactly(10)).attempt
+        yield (reason, readable, afterwards.isLeft)
       }
     }.map {
-      case Right((stalled, finished)) =>
-        assert(stalled < 200, s"all $stalled sends completed without a consumer")
-        assertEquals(finished, 200)
+      case Right((NetworkError.IngressLimit(protocol, bytes), readable, ended)) =>
+        assertEquals(protocol, 2)
+        assert(bytes > 100L && bytes <= 110L, s"overrun at $bytes bytes")
+        assertEquals(readable, 10)
+        assert(ended)
+      case other => fail(s"unexpected $other")
+    }
+
+  test("a slow consumer slows a producer that keeps to the protocol's window"):
+    // The protocol, not the queue, holds a peer back: it may have 5 messages (50 bytes, half the
+    // limit) unread at a time, a credit the consumer returns as it reads. The consumer takes 2 ms
+    // per message, so the whole flow takes what the consumer takes, and the queue never overruns.
+    val messages = 200
+    val perMessage = 2.millis
+    typed {
+      linked(
+        client = Mux.Config(maxSduPayload = 10),
+        server = Mux.Config(
+          role = Mux.Role.Responder,
+          maxSduPayload = 10,
+          ingressLimit = _ => 100L
+        )
+      ).use { (client, server) =>
+        for
+          c <- client.channel(2)
+          s <- server.channel(2)
+          credit <- cats.effect.std.Semaphore[IO](5)
+          began <- IO.monotonic
+          producer <- (1 to messages).toList
+            .traverse_(_ => credit.acquire *> c.send(payload(10)))
+            .start
+          got <- (1 to messages).toList.traverse { _ =>
+            s.recv(100)(exactly(10)) <* IO.sleep(perMessage) <* credit.release
+          }
+          _ <- producer.joinWithNever
+          took <- IO.monotonic.map(_ - began)
+        yield (got.size, took)
+      }
+    }.map {
+      case Right((n, took)) =>
+        assertEquals(n, messages)
+        assert(
+          took >= perMessage * (messages - 5).toLong,
+          s"$messages messages passed in $took, faster than the consumer reads"
+        )
       case Left(e) => fail(e.message)
+    }
+
+  test("a sender waits for room in the egress queue while the bearer is not read"):
+    typed {
+      Bearer.inMemory[IO](1).flatMap { (ours, _) =>
+        Mux
+          .resource(ours, Set(2), Mux.Config(maxSduPayload = 10, egressQueueMessages = 2))
+          .use { mux =>
+            for
+              c <- mux.channel(2)
+              written <- cats.effect.Ref.of[IO, Int](0)
+              sender <- (1 to 200).toList
+                .traverse_(_ => c.send(payload(10)) *> written.update(_ + 1))
+                .start
+              _ <- IO.sleep(300.millis)
+              sent <- written.get
+              _ <- sender.cancel
+            yield sent
+          }
+      }
+    }.map {
+      case Right(sent) => assert(sent < 200, s"all $sent sends completed with nobody reading")
+      case Left(e)     => fail(e.message)
     }
 
   test("messages already delivered are read before a closed bearer is reported"):
@@ -151,7 +217,7 @@ class MuxSuite extends CatsEffectSuite with ScalaCheckSuite:
           s <- server.channel(2)
           _ <- c.send(payload(5))
           _ <- IO.sleep(50.millis)
-          _ <- server.abort("test")
+          _ <- server.abort(NetworkError.BearerClosed("test"))
           first <- s.recv(100)(exactly(5)).attempt
         yield first.isRight
       }
@@ -198,7 +264,7 @@ class MuxSuite extends CatsEffectSuite with ScalaCheckSuite:
           ) *> raw.close *> mux.closed
         }
       }
-    }.map(r => assertEquals(r, Right("EOF in mux payload")))
+    }.map(r => assertEquals(r, Right(NetworkError.Framing("EOF in mux payload"))))
 
   test("data on an unregistered mini-protocol or with the wrong mode bit closes the bearer"):
     def sduBytes(protocol: Int, direction: WireMux.Direction) =
@@ -222,8 +288,11 @@ class MuxSuite extends CatsEffectSuite with ScalaCheckSuite:
       yield (unknown, wrongMode)
     }.map {
       case Right((unknown, wrongMode)) =>
-        assert(unknown.contains("unexpected mini-protocol 9"), unknown)
-        assert(wrongMode.contains("mode bit"), wrongMode)
+        assertEquals(
+          unknown,
+          NetworkError.IllegalTransition(9, "data on unexpected mini-protocol 9")
+        )
+        assertEquals(wrongMode, NetworkError.IllegalTransition(2, "SDU with the wrong mode bit"))
       case Left(e) => fail(e.message)
     }
 

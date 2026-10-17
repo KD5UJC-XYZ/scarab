@@ -21,7 +21,7 @@ import scala.concurrent.duration.*
 /** The node-to-client LocalTxMonitor and local ChainSync servers against clients over an in-memory
   * bearer, with a toy mempool (a list of one-byte "transactions") and a toy chain.
   */
-class LocalTxMonitorServerSuite extends CatsEffectSuite:
+class LocalTxMonitorServerSuite extends FailsOnUncaught:
   private val magic = 42L
   private val capacity = TxMeasure(1000, 5000, 7000, 2048)
 
@@ -79,9 +79,12 @@ class LocalTxMonitorServerSuite extends CatsEffectSuite:
   private def sendTo[A](
       ch: MuxChannel[IO],
       encoded: Either[String, Bytes]
-  ): IO[Unit] = IO.fromEither(encoded.left.map(RuntimeException(_))).flatMap(ch.send)
+  )(using Handle[IO, NetworkError]): IO[Unit] =
+    IO.fromEither(encoded.left.map(RuntimeException(_))).flatMap(ch.send)
 
-  private def monitorSend(ch: MuxChannel[IO], state: State, m: Message): IO[Unit] =
+  private def monitorSend(ch: MuxChannel[IO], state: State, m: Message)(using
+      Handle[IO, NetworkError]
+  ): IO[Unit] =
     sendTo(ch, LocalTxMonitor.encode(state, Role.Client, m))
 
   private def monitorReceive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =

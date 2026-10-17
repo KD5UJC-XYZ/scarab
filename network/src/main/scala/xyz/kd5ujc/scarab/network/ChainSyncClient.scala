@@ -14,19 +14,19 @@ import scala.concurrent.duration.*
   */
 trait ChainSyncClient[F[_], P]:
   /** The newest of `points` the peer also has, with the peer's tip; `None` if there is none. */
-  def findIntersect(points: Vector[Point]): F[Option[(Point, Tip)]]
+  def findIntersect(points: Vector[Point])(using Raise[F, NetworkError]): F[Option[(Point, Tip)]]
 
   /** The next instruction. An `AwaitReply` is waited out rather than reported. */
-  def requestNext: F[ChainSyncClient.Update[P]]
+  def requestNext(using Raise[F, NetworkError]): F[ChainSyncClient.Update[P]]
 
   /** `n` instructions with all requests sent before any reply is read (pipelined). Only valid while
     * the peer is known to be at least `n` blocks ahead; at its tip the later replies wait for new
     * blocks. Replies are checked against the protocol state machine in order.
     */
-  def requestNextBatch(n: Int): F[Vector[ChainSyncClient.Update[P]]]
+  def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[ChainSyncClient.Update[P]]]
 
   /** Tell the peer we are finished; the protocol ends. */
-  def done: F[Unit]
+  def done(using Raise[F, NetworkError]): F[Unit]
 
   /** Whether the protocol is idle (no request outstanding): the only state in which `done` is
     * valid, and the state a conversation must be in before the connection can be handed to a new
@@ -58,24 +58,25 @@ object ChainSyncClient:
       channel: MuxChannel[F],
       codec: ChainSync.PayloadCodec[P],
       settings: Settings = Settings()
-  )(using Raise[F, NetworkError]): F[ChainSyncClient[F, P]] =
+  ): F[ChainSyncClient[F, P]] =
     val F = Temporal[F]
     val id = Protocols.ChainSync
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     (Ref.of[F, State](State.Idle), Ref.of[F, Boolean](false), Ref.of[F, Boolean](false)).mapN {
       (state, awaiting, busy) =>
-        def send(message: Message[P]): F[Unit] =
+        def send(message: Message[P])(using Raise[F, NetworkError]): F[Unit] =
           state.get.flatMap { current =>
             val next = ChainSync.transition(current, ChainSync.Role.Client, message)
             ChainSync
               .encode(current, ChainSync.Role.Client, message, codec, settings.limits)
-              .fold(illegal, bytes => channel.send(bytes))
-              .productR(next.fold(illegal, state.set))
+              .fold(illegal(_), bytes => channel.send(bytes))
+              .productR(next.fold(illegal(_), state.set))
           }
 
         /** The next server message in protocol state `current`; the state is not advanced. */
-        def receiveAt(current: State): F[Message[P]] = {
+        def receiveAt(current: State)(using Raise[F, NetworkError]): F[Message[P]] = {
           val limit = current match
             case State.Intersect     => F.pure(settings.intersectTimeout)
             case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
@@ -91,15 +92,15 @@ object ChainSyncClient:
           }
         }
 
-        def advance(current: State, message: Message[P]): F[State] =
-          ChainSync.transition(current, ChainSync.Role.Server, message).fold(illegal, F.pure)
+        def advance(current: State, message: Message[P])(using Raise[F, NetworkError]): F[State] =
+          ChainSync.transition(current, ChainSync.Role.Server, message).fold(illegal(_), F.pure)
 
         /** Note what the peer last said: `AwaitReply` makes it idling, anything else does not. */
         def noted(message: Message[P]): F[Unit] = message match
           case Message.AwaitReply => awaiting.set(true)
           case _                  => awaiting.set(false)
 
-        def receive: F[Message[P]] =
+        def receive(using Raise[F, NetworkError]): F[Message[P]] =
           state.get.flatMap(current =>
             receiveAt(current).flatMap(m =>
               advance(current, m).flatMap(state.set) *> noted(m).as(m)
@@ -113,9 +114,12 @@ object ChainSyncClient:
         def flight[A](operation: F[A]): F[A] = busy.set(true) *> operation <* busy.set(false)
 
         new ChainSyncClient[F, P]:
-          def findIntersect(points: Vector[Point]) = flight(findIntersect_(points))
+          def findIntersect(points: Vector[Point])(using Raise[F, NetworkError]) =
+            flight(findIntersect_(points))
 
-          private def findIntersect_(points: Vector[Point]): F[Option[(Point, Tip)]] =
+          private def findIntersect_(points: Vector[Point])(using
+              Raise[F, NetworkError]
+          ): F[Option[(Point, Tip)]] =
             send(Message.FindIntersect(points)) *> receive.flatMap {
               case Message.IntersectFound(point, tip) if points.contains(point) =>
                 F.pure(Some(point -> tip))
@@ -124,14 +128,17 @@ object ChainSyncClient:
               case other                        => illegal(s"unexpected intersect reply $other")
             }
 
-          def requestNext: F[Update[P]] = flight(requestNext_)
+          def requestNext(using Raise[F, NetworkError]): F[Update[P]] = flight(requestNext_)
 
-          private def requestNext_ : F[Update[P]] =
+          private def requestNext_(using Raise[F, NetworkError]): F[Update[P]] =
             send(Message.RequestNext) *> collect
 
-          def requestNextBatch(n: Int): F[Vector[Update[P]]] = flight(requestNextBatch_(n))
+          def requestNextBatch(n: Int)(using Raise[F, NetworkError]): F[Vector[Update[P]]] =
+            flight(requestNextBatch_(n))
 
-          private def requestNextBatch_(n: Int): F[Vector[Update[P]]] =
+          private def requestNextBatch_(n: Int)(using
+              Raise[F, NetworkError]
+          ): F[Vector[Update[P]]] =
             if n <= 1 then requestNext_.map(Vector(_))
             else
               state.get.flatMap {
@@ -144,15 +151,15 @@ object ChainSyncClient:
                       codec,
                       settings.limits
                     )
-                    .fold(illegal, bytes => List.fill(n)(bytes).traverse_(channel.send))
+                    .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.send))
                     .productR(List.fill(n)(()).traverse(_ => collectOne))
                     .map(_.toVector)
                 case other => illegal(s"pipelined request in $other")
               }
 
           // One reply to an outstanding request: waits out AwaitReply; the state returns to Idle.
-          private def collectOne: F[Update[P]] =
-            def go(current: State): F[Update[P]] =
+          private def collectOne(using Raise[F, NetworkError]): F[Update[P]] =
+            def go(current: State)(using Raise[F, NetworkError]): F[Update[P]] =
               receiveAt(current).flatMap { message =>
                 noted(message) *> advance(current, message).flatMap { next =>
                   message match
@@ -165,7 +172,7 @@ object ChainSyncClient:
               }
             go(State.NextCanAwait)
 
-          private def collect: F[Update[P]] =
+          private def collect(using Raise[F, NetworkError]): F[Update[P]] =
             receive.flatMap {
               case Message.AwaitReply                => collect
               case Message.RollForward(payload, tip) => F.pure(Update.RollForward(payload, tip))
@@ -173,7 +180,7 @@ object ChainSyncClient:
               case other                             => illegal(s"unexpected reply $other")
             }
 
-          def done = send(Message.Done)
+          def done(using Raise[F, NetworkError]) = send(Message.Done)
 
           def idle = (state.get, busy.get).mapN((s, b) => s == State.Idle && !b)
 

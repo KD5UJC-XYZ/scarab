@@ -68,14 +68,14 @@ object NodeToNodeServer:
       handlers: ServerHandlers[F, P],
       settings: Settings = Settings(),
       peerSharing: Boolean = false
-  ): Resource[F, Unit] =
+  )(using Raise[F, NetworkError]): Resource[F, Unit] =
+    // each server fiber runs in an error scope of its own and ends the connection with the reason
     def guarded(name: String)(program: Handle[F, NetworkError] ?=> F[Unit]): F[Unit] =
-      Handle
-        .allow[NetworkError](program)
-        .rescue(error => mux.abort(error.message))
-        .handleErrorWith(t =>
-          mux.abort(s"$name: ${Option(t.getMessage).getOrElse(t.getClass.getSimpleName)}")
-        )
+      Fibers
+        .scoped[F, NetworkError, Unit](t =>
+          NetworkError.BearerClosed(s"$name: ${Option(t.getMessage).getOrElse(t.toString)}")
+        )(program)
+        .flatMap(_.fold(mux.abort, _ => Async[F].unit))
     def channel(protocol: Int) = Resource.eval(mux.channel(protocol, Mux.Role.Responder))
     for
       chainSync <- channel(Protocols.ChainSync)
@@ -137,5 +137,5 @@ object NodeToNodeServer:
         reason <- (
           start(mux, handlers, settings, agreed.data.peerSharing) *> negotiated(agreed, mux)
         ).surround(mux.closed)
-      yield reason
+      yield reason.message
     }

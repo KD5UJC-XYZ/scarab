@@ -72,6 +72,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+      given Handle[IO, NodeError] <- NodeScope.forTest
       follower <- Handle
         .allow[NodeError] {
           Follower.create[IO, MirrorState](
@@ -103,7 +104,8 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         observe = None,
         pool = pool,
         versus = follower.versus,
-        lost = _ => IO.unit
+        lost = _ => IO.unit,
+        fatal = _ => IO.unit
       )
       view = new PeerNetwork.ChainView[IO]:
         def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
@@ -177,6 +179,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(chainRef)
+      given Handle[IO, NodeError] <- NodeScope.forTest
       follower <- Handle
         .allow[NodeError] {
           Follower.create[IO, MirrorState](
@@ -210,6 +213,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         pool = pool,
         versus = follower.versus,
         lost = _ => IO.unit,
+        fatal = _ => IO.unit,
         fetchMode = Some(modeRef.get)
       )
       view = new PeerNetwork.ChainView[IO]:

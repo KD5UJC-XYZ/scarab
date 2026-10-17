@@ -50,6 +50,8 @@ trait InboundEvents[F[_]]:
   * side running.
   */
 final class InboundGovernor[F[_]: Async] private (
+    node: Handle[F, NodeError],
+    fatal: Fatal => F[Unit],
     manager: ConnectionManager[F],
     config: InboundGovernor.Config,
     handlers: ServerHandlers[F, NtNHeader],
@@ -62,6 +64,7 @@ final class InboundGovernor[F[_]: Async] private (
     sessionTable: Ref[F, Map[String, InboundGovernor.Session]]
 ):
   private val F = Async[F]
+  import Peer.networkAsPeer
   private def emit(remote: SocketAddress[IpAddress], event: InboundEvent): F[Unit] =
     events.traverse_(_.emit(remote.toString, event))
 
@@ -116,7 +119,7 @@ final class InboundGovernor[F[_]: Async] private (
       remote: SocketAddress[IpAddress],
       agreed: HandshakeClient.Agreed,
       mux: Mux[F]
-  )(using Raise[F, NetworkError]): Resource[F, Unit] =
+  ): Resource[F, Unit] =
     val duplex = !agreed.data.initiatorOnly
     Resource
       .eval(
@@ -129,7 +132,7 @@ final class InboundGovernor[F[_]: Async] private (
               )
               .as(true)
           }
-          .rescue(error => mux.abort(error.message).as(false))
+          .rescue(error => mux.abort(NetworkError.BearerClosed(error.message)).as(false))
       )
       .flatMap { admitted =>
         if !admitted then Resource.unit[F]
@@ -162,6 +165,9 @@ final class InboundGovernor[F[_]: Async] private (
     * retry after [[PeerError.NoIntersection]] follows again over the same clients, since starting
     * them again would begin each mini-protocol a second time on the same channels (a second
     * TxSubmission2 `MsgInit` mid-protocol makes the peer drop the connection).
+    *
+    * The session is a fiber of its own and ends with a [[SessionEnd]], a value
+    * ([[SessionEnd.scoped]]); what the node does about it is [[FailurePolicy.disposition]].
     */
   private def attempt(
       remote: SocketAddress[IpAddress],
@@ -169,39 +175,33 @@ final class InboundGovernor[F[_]: Async] private (
       mux: Mux[F]
   ): F[Unit] =
     for
-      outcome <- Handle
-        .allow[PeerError] {
-          // network failures of the clients become peer errors of this session; the clients' own
-          // fibers (KeepAlive, TxSubmission2) raise them as values that cross fibers, and the
-          // session (Peer.over) raises them again in its fiber
-          given Raise[F, NetworkError] = Peer.carryingNetwork[F]
-          NodeToNode
-            .clients[F, NtNHeader](
-              mux,
-              Mux.Role.Initiator,
-              version,
-              NtNHeader.codec,
-              config.peer.network,
-              transactions
-            )
-            .use(connection => following(remote, connection))
-            .as(Option.empty[PeerError])
-        }
-        .rescue(e => F.pure(Some(e)))
-        .recover { case failure: PeerFailure => Some(failure.error) }
-        // anything else (an error the follower raises into the node's own scope, a defect) ends
-        // this session visibly instead of killing its fiber silently
-        .handleErrorWith(t =>
-          F.pure(Some(PeerError.Unavailable(s"session failed: ${InboundGovernor.describe(t)}")))
-        )
-      _ <- outcome.traverse_ { error =>
-        val drop = error match
-          case _: PeerError.InvalidHeader | _: PeerError.Protocol => true
-          case _                                                  => false
-        update(remote)(_.copy(ended = Some(error.message))) *>
-          emit(remote, InboundEvent.SessionEnded(error.message, drop)) *>
-          mux.abort(error.message).whenA(drop)
+      end <- SessionEnd.scoped(node) { (_, _) ?=>
+        NodeToNode
+          .clients[F, NtNHeader](
+            mux,
+            Mux.Role.Initiator,
+            version,
+            NtNHeader.codec,
+            config.peer.network,
+            transactions
+          )
+          .use(connection => following(remote, connection))
+          .as(SessionEnd.Returned)
       }
+      disposition = FailurePolicy.disposition(end)
+      reason = disposition match
+        case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end).map(_.message)
+        case Disposition.StopNode(f)                  => Some(f.message)
+        case Disposition.Settled                      => None
+      drop = disposition == Disposition.Forget
+      _ <- reason.traverse_ { why =>
+        update(remote)(_.copy(ended = Some(why))) *>
+          emit(remote, InboundEvent.SessionEnded(why, drop)) *>
+          mux.abort(NetworkError.BearerClosed(s"dropped: $why")).whenA(drop)
+      }
+      _ <- disposition match
+        case Disposition.StopNode(f) => fatal(f) *> mux.abort(NetworkError.BearerClosed(f.message))
+        case _                       => F.unit
     yield ()
 
   /** Follow the peer over `connection`; while it shares no point with our chain, try again after
@@ -230,37 +230,24 @@ final class InboundGovernor[F[_]: Async] private (
 
   /** The peer, with what the session sees of it counted. */
   private def counted(remote: SocketAddress[IpAddress], peer: Peer[F]): Peer[F] = new Peer[F]:
-    def intersect(candidates: Vector[ChainSync.Point]) =
+    def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
       peer.intersect(candidates).flatTap { found =>
         found.traverse_ { point =>
           update(remote)(_.copy(intersection = Some(Points.show(point)))) *>
             emit(remote, InboundEvent.Following(point))
         }
       }
-    def next = peer.next.flatTap {
+    def next(using Raise[F, PeerError]) = peer.next.flatTap {
       case SyncEvent.RollForward(_, tip) =>
         update(remote)(s => s.copy(headers = s.headers + 1, peerTip = tipBlock(tip)))
       case SyncEvent.RollBackward(_, tip) =>
         update(remote)(s => s.copy(rollbacks = s.rollbacks + 1, peerTip = tipBlock(tip)))
     }
-    def fetch(header: Header) = peer.fetch(header)
+    def fetch(header: Header)(using Raise[F, PeerError]) = peer.fetch(header)
 
   private def tipBlock(tip: ChainSync.Tip): Option[BigInt] = Some(tip.blockNo.value)
 
 object InboundGovernor:
-  /** A readable reason for a failure that escaped: a domain error raised outside its scope is a
-    * cats-mtl `Submarine` whose payload is the error.
-    */
-  private[node] def describe(t: Throwable): String =
-    val payload =
-      if t.getClass.getName.endsWith("Submarine") then
-        scala.util.Try(t.getClass.getMethod("e").invoke(t)).toOption.map {
-          case e: NodeError => e.message
-          case other        => String.valueOf(other)
-        }
-      else None
-    payload.getOrElse(Option(t.getMessage).getOrElse(t.toString))
-
   /** The connection table and the inbound sessions as JSON (`GET /connections`). */
   def json(
       snapshot: ConnectionManager.Snapshot,
@@ -326,15 +313,18 @@ object InboundGovernor:
       handlers: ServerHandlers[F, NtNHeader],
       follow: Follow[F],
       prepare: Peer.Prepare[F],
+      fatal: Fatal => F[Unit],
       headers: Option[HeaderCheck[F]] = None,
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       events: Option[InboundEvents[F]] = None,
       observe: Option[Peer.Observation => F[Unit]] = None
-  ): F[InboundGovernor[F]] =
+  )(using node: Handle[F, NodeError]): F[InboundGovernor[F]] =
     Ref
       .of[F, Map[String, Session]](Map.empty)
       .map(
         new InboundGovernor[F](
+          node,
+          fatal,
           manager,
           config,
           handlers,

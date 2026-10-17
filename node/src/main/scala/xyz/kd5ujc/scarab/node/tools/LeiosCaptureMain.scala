@@ -137,7 +137,7 @@ object LeiosCaptureMain extends IOApp:
       limit: Option[Int],
       batch: Int,
       pause: FiniteDuration
-  ): IO[Unit] =
+  )(using Handle[IO, NetworkError]): IO[Unit] =
     val ahead = (tipBlock - last).max(0)
     val n = (ahead - Margin).min(batch).toInt
     val room = limit.fold(n)(l => n.min(l - count))

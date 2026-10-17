@@ -16,7 +16,8 @@ import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChai
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
-import xyz.kd5ujc.scarab.node.{InboundEvent, LedgerPeersTrace}
+import xyz.kd5ujc.scarab.ledger.{ChainError, StorageError}
+import xyz.kd5ujc.scarab.node.{Fatal, InboundEvent, LedgerPeersTrace}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -61,6 +62,9 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.SlowFetch(300L))
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))
         _ <- node(NodeEvent.StallExit(30.minutes, BigInt(6809207), BigInt(10200000)))
+        _ <- node(NodeEvent.Faulted(Fatal.Storage(StorageError.Io("volatile", "disk full"))))
+        _ <- node(NodeEvent.Faulted(Fatal.Internal(ChainError.NoIntersection)))
+        _ <- node(NodeEvent.Faulted(Fatal.Defect(new IllegalStateException("a bug in the rules"))))
         _ <- inbound.traverse_(Log.inbound[IO].emit("10.0.0.1:3001", _))
         _ <- peerSelection.traverse_(t => node(NodeEvent.PeerSelection(t)))
         _ <- peerCounters.traverse_(c => node(NodeEvent.PeerCounters(c)))

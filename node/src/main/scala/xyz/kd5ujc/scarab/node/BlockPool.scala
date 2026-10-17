@@ -2,8 +2,10 @@
 package xyz.kd5ujc.scarab.node
 
 import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.Functor
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.ValidationError
 import xyz.kd5ujc.scarab.network.selection.FetchMode
 
 /** The blocks that peer sessions fetched ahead of the rules, by header hash, shared by the sessions
@@ -38,15 +40,25 @@ final class BlockPool[F[_]: Async] private (
   /** The claims of one session, released when the resource is. */
   def session: Resource[F, Claims[F]] =
     Resource
-      .make(slots.modify(s => (s.copy(owners = s.owners + 1), s.owners)))(releaseAll)
-      .map(new Claims(this, _))
+      .make(
+        Deferred[F, ValidationError].flatMap(blame =>
+          slots
+            .modify(s =>
+              (s.copy(owners = s.owners + 1, blame = s.blame.updated(s.owners, blame)), s.owners)
+            )
+            .map(_ -> blame)
+        )
+      ) { (owner, _) =>
+        releaseAll(owner) *> slots.update(s => s.copy(blame = s.blame - owner))
+      }
+      .map((owner, blame) => new Claims(this, owner, blame))
 
   /** Claim the hashes no session holds (in deadline mode also those held by fewer sessions than the
     * policy allows); the result says, per hash and in order, whether `owner` now holds it (and must
     * [[fill]] or [[release]] it).
     */
   private def claim(owner: Long, hashes: Vector[Bytes], mode: FetchMode): F[Vector[Boolean]] =
-    hashes.traverse(_ => Deferred[F, Option[Bytes]]).flatMap { fresh =>
+    hashes.traverse(_ => Deferred[F, Option[Filled]]).flatMap { fresh =>
       slots.modify { s =>
         val (grown, owned) = hashes.zip(fresh).foldLeft((s, Vector.empty[Boolean])) {
           case ((acc, flags), (hash, done)) =>
@@ -78,18 +90,18 @@ final class BlockPool[F[_]: Async] private (
   private def fill(owner: Long, blocks: Vector[(Bytes, Bytes)]): F[Unit] =
     slots
       .modify { s =>
-        blocks.foldLeft((s, Vector.empty[(Deferred[F, Option[Bytes]], Bytes)])) {
+        blocks.foldLeft((s, Vector.empty[(Deferred[F, Option[Filled]], Filled)])) {
           case ((acc, waiting), (hash, block)) =>
             acc.entries.get(hash) match
               case Some(Slot.Pending(done, seq, owners)) if owners(owner) =>
                 (
-                  acc.copy(entries = acc.entries.updated(hash, Slot.Done(block, seq))),
-                  waiting :+ (done -> block)
+                  acc.copy(entries = acc.entries.updated(hash, Slot.Done(block, seq, owner))),
+                  waiting :+ (done -> Filled(block, owner))
                 )
               case _ => (acc, waiting)
         }
       }
-      .flatMap(_.traverse_((done, block) => done.complete(Some(block))))
+      .flatMap(_.traverse_((done, filled) => done.complete(Some(filled))))
 
   /** Give up the claims of `owner` that are still open (those already filled stay). A block that
     * another session also claimed stays pending for it; one nobody holds any more is released to
@@ -114,8 +126,8 @@ final class BlockPool[F[_]: Async] private (
       s: Slots[F],
       owner: Long,
       hashes: Vector[Bytes]
-  ): (Slots[F], Vector[Deferred[F, Option[Bytes]]]) =
-    hashes.foldLeft((s, Vector.empty[Deferred[F, Option[Bytes]]])) { case ((acc, open), hash) =>
+  ): (Slots[F], Vector[Deferred[F, Option[Filled]]]) =
+    hashes.foldLeft((s, Vector.empty[Deferred[F, Option[Filled]]])) { case ((acc, open), hash) =>
       acc.entries.get(hash) match
         case Some(Slot.Pending(done, seq, owners)) if owners(owner) =>
           if owners.size > 1 then
@@ -132,15 +144,35 @@ final class BlockPool[F[_]: Async] private (
   /** The block, once some session has fetched it; none when no session holds a claim on it (or the
     * claim was released), and the caller fetches it itself.
     */
-  def take(hash: Bytes): F[Option[Bytes]] =
+  def take(hash: Bytes): F[Option[Bytes]] = takeFilled(hash).map(_.map(_.block))
+
+  /** As [[take]], with the session that delivered the block. */
+  def takeFilled(hash: Bytes): F[Option[Filled]] =
     slots.modify { s =>
       s.entries.get(hash) match
-        case Some(Slot.Done(block, _)) =>
-          (s.copy(entries = s.entries - hash), F.pure(Option(block)))
+        case Some(Slot.Done(block, _, origin)) =>
+          (s.copy(entries = s.entries - hash), F.pure(Option(Filled(block, origin))))
         case Some(Slot.Pending(done, _, _)) =>
           (s, done.get.flatTap(_ => slots.update(a => a.copy(entries = a.entries - hash))))
-        case None => (s, F.pure(Option.empty[Bytes]))
+        case None => (s, F.pure(Option.empty[Filled]))
     }.flatten
+
+  /** Drop the blocks that session `origin` delivered and nobody has taken, and tell it why: its
+    * blocks are not trusted, since one of them was refused (`error`). A session that waits for one
+    * of them fetches it itself.
+    */
+  private def distrust(origin: Long, error: ValidationError): F[Unit] =
+    slots
+      .modify(s =>
+        (
+          s.copy(entries = s.entries.filter {
+            case (_, Slot.Done(_, _, from)) => from != origin
+            case _                          => true
+          }),
+          s.blame.get(origin)
+        )
+      )
+      .flatMap(_.traverse_(_.complete(error).void))
 
   /** Entries held (tests). */
   def size: F[Int] = slots.get.map(_.entries.size)
@@ -160,7 +192,11 @@ object BlockPool:
   /** What one session may do with the pool: claim blocks to fetch, fill what it fetched, release
     * what it could not. Obtained from [[BlockPool.session]].
     */
-  final class Claims[F[_]] private[BlockPool] (pool: BlockPool[F], owner: Long):
+  final class Claims[F[_]] private[BlockPool] (
+      pool: BlockPool[F],
+      owner: Long,
+      blame: Deferred[F, ValidationError]
+  ):
     /** Claim `hashes` for this session under the fetch `mode` (bulk sync, the exclusive claim,
       * unless a caller says otherwise).
       */
@@ -169,19 +205,49 @@ object BlockPool:
     def fill(blocks: Vector[(Bytes, Bytes)]): F[Unit] = pool.fill(owner, blocks)
     def release(hashes: Vector[Bytes]): F[Unit] = pool.release(owner, hashes)
 
+    /** The block, once some session has fetched it (see [[BlockPool.take]]), and whether this
+      * session fetched it.
+      */
+    def take(hash: Bytes)(using Functor[F]): F[Option[Taken]] =
+      pool.takeFilled(hash).map(_.map(f => Taken(f.block, f.origin == owner, f.origin)))
+
+    /** The rules refused a block that session `origin` delivered: drop the others it delivered and
+      * tell it ([[blamed]]).
+      */
+    def distrust(origin: Long, error: ValidationError): F[Unit] = pool.distrust(origin, error)
+
+    /** Completes when the rules have refused a block that this session delivered, with their
+      * reason: the session's peer sent an invalid block.
+      */
+    def blamed: F[ValidationError] = blame.get
+
+  /** A block and the session that delivered it. */
+  final case class Filled(block: Bytes, origin: Long)
+
+  /** A block taken from the pool: `own` when the session that takes it fetched it, else `origin`
+    * delivered it.
+    */
+  final case class Taken(block: Bytes, own: Boolean, origin: Long)
+
   /** Entries kept before the oldest finished ones are dropped. */
   val Retained = 8192
 
   def create[F[_]: Async]: F[BlockPool[F]] = create(FetchPolicy())
 
   def create[F[_]: Async](policy: FetchPolicy): F[BlockPool[F]] =
-    Ref.of[F, Slots[F]](Slots(Map.empty, 0L, 0L)).map(new BlockPool(_, policy))
+    Ref.of[F, Slots[F]](Slots(Map.empty, 0L, 0L, Map.empty)).map(new BlockPool(_, policy))
 
   private enum Slot[F[_]]:
-    case Pending(done: Deferred[F, Option[Bytes]], seq: Long, owners: Set[Long])
-    case Done(block: Bytes, seq: Long)
+    case Pending(done: Deferred[F, Option[Filled]], seq: Long, owners: Set[Long])
+    case Done(block: Bytes, seq: Long, origin: Long)
 
-  private final case class Slots[F[_]](entries: Map[Bytes, Slot[F]], next: Long, owners: Long):
+  private final case class Slots[F[_]](
+      entries: Map[Bytes, Slot[F]],
+      next: Long,
+      owners: Long,
+      /** Where a session is told that a block it delivered was refused. */
+      blame: Map[Long, Deferred[F, ValidationError]]
+  ):
     /** Without the finished entries older than the newest `Retained` claims, once the pool holds
       * twice as many (a walk of the map, so not on every claim).
       */
@@ -190,6 +256,6 @@ object BlockPool:
       else
         val floor = next - Retained
         copy(entries = entries.filter {
-          case (_, Slot.Done(_, seq)) => seq >= floor
-          case _                      => true
+          case (_, Slot.Done(_, seq, _)) => seq >= floor
+          case _                         => true
         })

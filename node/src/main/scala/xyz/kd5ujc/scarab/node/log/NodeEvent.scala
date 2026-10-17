@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
-import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, LedgerPeersTrace, NodeConfig, Topology}
+import xyz.kd5ujc.scarab.node.{BuildInfo, Fatal, InboundEvent, LedgerPeersTrace, Main, NodeConfig, Topology}
 import xyz.kd5ujc.scarab.network.selection.{
   AfterSlot,
   Churn,
@@ -76,6 +76,11 @@ enum NodeEvent:
 
   /** The run stops on an error. */
   case Failed(error: NodeError)
+
+  /** A session ended in a way no peer policy handles, and the node stops with its own exit code
+    * ([[xyz.kd5ujc.scarab.node.FailurePolicy.disposition]], issue 154).
+    */
+  case Faulted(fault: Fatal)
 
   /** The run is over: the tip, and how many blocks the volatile chain held. */
   case Finished(tip: ChainSync.Point, retained: Int)
@@ -248,6 +253,16 @@ object NodeEvent:
       EventKind.VerificationCache.line("summary" -> summary.asJson)
     case Failed(e) =>
       EventKind.Error.line("kind" -> e.productPrefix.asJson, "message" -> e.message.asJson)
+    case Faulted(fault) =>
+      EventKind.Fatal.line(
+        "kind" -> (fault match
+          case _: Fatal.Storage  => "storage"
+          case _: Fatal.Internal => "internal"
+          case _: Fatal.Defect   => "defect"
+        ).asJson,
+        "message" -> fault.message.asJson,
+        "exitCode" -> Main.FaultExitCode(fault).code.asJson
+      )
     case Finished(tip, retained) =>
       EventKind.Finished.line("tip" -> Traced.point(tip), "retained" -> retained.asJson)
     case HeadersChecked(validated, unchecked, waited) =>

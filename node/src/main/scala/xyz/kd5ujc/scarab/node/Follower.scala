@@ -213,7 +213,7 @@ final class Follower[F[_]: Async, S] private (
       depth: Int,
       take: Vector[Header],
       peerTip: ChainSync.Tip
-  ): F[Unit] =
+  )(using Raise[F, PeerError]): F[Unit] =
     for
       original <- chain.get
       rolled <- original.rollback(to).fold(_.raise[F, VolatileChain[S]], _.pure[F])
@@ -244,7 +244,18 @@ final class Follower[F[_]: Async, S] private (
       _ <- commit(original, to, depth, steps, peerTip)
     yield ()
 
-  /** Everything applied: replace the chain, persist, announce and tell the mempool. */
+  /** Everything applied: persist, replace the chain, announce and tell the mempool.
+    *
+    * The order is the point. The blocks are persisted before the new chain is published, as the
+    * reference's ChainDB writes a block to its VolatileDB before chain selection moves the tip
+    * (`Storage/ChainDB/Impl/ChainSel.hs` of ouroboros-consensus main, line 455
+    * `VolatileDB.putBlock`, line 932 `writeTVar cdbChain`): a failure of the storage leaves the
+    * chain that was published as it was, and what is on disk is a prefix of the new chain, which
+    * the next start reads. A failure after the chain is published (announcing it, telling the
+    * mempool) finds the chain and the disk in step. In neither case does a published tip outrun
+    * what is stored; the node stops on a storage failure (issue 154: `FailurePolicy.disposition`,
+    * as the reference's `consensusRethrowPolicy` does) and recovers from disk.
+    */
   private def commit(
       original: VolatileChain[S],
       to: ChainSync.Point,
@@ -253,6 +264,10 @@ final class Follower[F[_]: Async, S] private (
       peerTip: ChainSync.Tip
   ): F[Unit] =
     for
+      _ <- persistence.traverse_(_.rolledBack(to)).whenA(depth > 0)
+      _ <- steps.traverse_(a =>
+        persistence.traverse_(_.extended(a.ref, a.raw, a.immutable, a.after.anchor))
+      )
       _ <- chain.set(steps.last.after)
       _ <- window.update(
         _.flatMap(l =>
@@ -261,13 +276,11 @@ final class Follower[F[_]: Async, S] private (
           )
         )
       )
-      _ <- persistence.traverse_(_.rolledBack(to)).whenA(depth > 0)
       _ <- events
         .emit(FollowerEvent.RolledBack(original.tip, to, depth))
         .whenA(depth > 0)
       _ <- steps.traverse_ { a =>
         for
-          _ <- persistence.traverse_(_.extended(a.ref, a.raw, a.immutable, a.after.anchor))
           _ <- views.record(a.ref.hash, a.view)
           epoch = epochOf(a.state, a.ref.slot)
           _ <- events.emit(FollowerEvent.Extended(a.ref, epoch, peerTip, a.era))

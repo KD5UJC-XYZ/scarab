@@ -9,7 +9,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.ChainSelection
-import xyz.kd5ujc.scarab.ledger.PeerError
+import xyz.kd5ujc.scarab.ledger.{NodeError, PeerError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, NtNHeader}
@@ -48,6 +48,7 @@ trait Transport[F[_], A]:
   * second one, both under the `supervisor`; the table of links is the only shared state.
   */
 final class OutboundPeers[F[_]: Async, A] private (
+    node: Handle[F, NodeError],
     transport: Transport[F, A],
     manager: ConnectionManager[F],
     config: OutboundPeers.Config,
@@ -58,6 +59,7 @@ final class OutboundPeers[F[_]: Async, A] private (
     table: Ref[F, Map[A, OutboundPeers.Link[F]]]
 ) extends PeerStateActions[F, A]:
   import OutboundPeers.*
+  import Peer.networkAsPeer
   private val F = Async[F]
 
   // ------------------------------------------------------------------ warm
@@ -74,7 +76,8 @@ final class OutboundPeers[F[_]: Async, A] private (
     }
 
   /** The life of one connection: opened, registered, held until the governor lets go of it or the
-    * bearer closes, and released in every case.
+    * bearer closes, and released in every case. It runs in a fiber of its own, in an error scope of
+    * its own: what it meets is a value ([[Fault]]) that it reports, never an exception.
     */
   private def connection(
       peer: A,
@@ -83,30 +86,27 @@ final class OutboundPeers[F[_]: Async, A] private (
   ): F[Unit] =
     (Deferred[F, Unit], Deferred[F, Unit], Ref.of[F, Option[Link[F]]](None)).tupled.flatMap {
       (release, gone, linked) =>
-        val carried = Peer.carrying[F]
-        given Raise[F, NetworkError] = Peer.carryingNetwork[F]
-        given Raise[F, ConnectionError] = new Raise[F, ConnectionError]:
-          def functor = F
-          def raise[E2 <: ConnectionError, B](e: E2): F[B] =
-            carried.raise(PeerError.Unavailable(e.message))
-
-        val open: Resource[F, WarmConnection[F, NtNHeader]] =
-          for
-            slot <- manager.outbound(remote, alongsideInbound = true)
-            bearer <- transport.bearer(peer, remote)
-            warm <- NodeToNode.warmOver[F, NtNHeader](
-              bearer,
-              hot.magic,
-              NtNHeader.codec,
-              hot.network
+        val body: Raise[F, PeerError] ?=> F[Unit] =
+          given Raise[F, ConnectionError] =
+            Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
+              PeerError.Unavailable(e.message)
             )
-            _ <- Resource.eval(
-              slot.connected *> slot.negotiated(ConnectionState.DataFlow.Unidirectional)
-            )
-          yield warm
+          val open: Resource[F, WarmConnection[F, NtNHeader]] =
+            for
+              slot <- manager.outbound(remote, alongsideInbound = true)
+              bearer <- transport.bearer(peer, remote)
+              warm <- NodeToNode.warmOver[F, NtNHeader](
+                bearer,
+                hot.magic,
+                NtNHeader.codec,
+                hot.network
+              )
+              _ <- Resource.eval(
+                slot.connected *> slot.negotiated(ConnectionState.DataFlow.Unidirectional)
+              )
+            yield warm
 
-        open
-          .use { warm =>
+          open.use { warm =>
             for
               phase <- Ref.of[F, Phase[F]](Phase.Warm())
               link = Link(warm, release, gone, phase)
@@ -114,18 +114,26 @@ final class OutboundPeers[F[_]: Async, A] private (
               _ <- table.update(_ + (peer -> link))
               _ <- ready.complete(None)
               closed <- F.race(release.get, warm.mux.closed)
-              _ <- closed.traverse_(reason => lost(peer, link, PeerError.Unavailable(reason)))
+              _ <- closed.traverse_(reason => lost(peer, link, Peer.peerError(reason)))
             yield ()
           }
-          .handleErrorWith { t =>
-            val error = t match
-              case failure: PeerFailure => failure.error
-              case other                => PeerError.Unavailable(InboundGovernor.describe(other))
-            // a connection that was never ready failed to open; one that was ready was lost
-            ready.complete(Some(FailurePolicy.classify(error))).flatMap { opening =>
-              if opening then F.unit
-              else linked.get.flatMap(_.traverse_(lost(peer, _, error)))
-            }
+
+        // a connection that was never ready failed to open; one that was ready was lost
+        def failed(error: PeerError): F[Unit] =
+          ready.complete(Some(FailurePolicy.classify(error))).flatMap { opening =>
+            if opening then F.unit
+            else linked.get.flatMap(_.traverse_(lost(peer, _, error)))
+          }
+
+        Fault
+          .fiber(body)
+          .flatMap {
+            case Right(_)                  => F.unit
+            case Left(Fault.Failed(error)) => failed(error)
+            // not ours: the node stops, and the governor is told the connection is gone
+            case Left(Fault.Defect(cause)) =>
+              val fatal = Fatal.Defect(cause)
+              hot.fatal(fatal) *> failed(PeerError.Unavailable(s"the node stops: ${fatal.message}"))
           }
           .guarantee(table.update(_ - peer) *> gone.complete(()).void)
     }
@@ -187,87 +195,107 @@ final class OutboundPeers[F[_]: Async, A] private (
     case other => hot.observe.traverse_(_(other))
   }
 
-  /** The hot protocols and the session over them, for as long as the session lasts. */
+  /** The hot protocols and the session over them, for as long as the session lasts. The session
+    * runs in an error scope of its own and ends with a [[SessionEnd]], a value: what the peer does,
+    * what our rules and stores raise through the node's scope, and what throws, all become one of
+    * its cases in this fiber, and [[FailurePolicy.disposition]] says what the node does about it.
+    */
   private def hotSession(
       peer: A,
       link: Link[F],
       session: Session[F],
       started: Deferred[F, Option[FailureClass]]
   ): F[Unit] =
-    given Raise[F, NetworkError] = Peer.carryingNetwork[F]
-    val deactivated = PeerError.Unavailable(DeactivatedReason)
-
     def asked: F[Boolean] = session.asked.get
 
-    /** Run the follower session over the peer; stopping it ends it with the sentinel error. */
-    def follow(peer: Peer[F]): F[End] =
-      val gated = new Peer[F]:
-        def intersect(candidates: Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point]) =
-          peer.intersect(candidates)
-        def next = F.race(session.stop.get, peer.next).flatMap {
-          case Left(_)      => Peer.carrying[F].raise[PeerError, SyncEvent](deactivated)
-          case Right(event) => F.pure(event)
-        }
-        def fetch(header: xyz.kd5ujc.scarab.ledger.Header) = peer.fetch(header)
-      Handle
-        .allow[PeerError] {
-          hot
-            .follow(gated, candidate => session.candidate.complete(candidate).void)
-            .as(End.Returned)
-        }
-        .rescue(error => F.pure[End](End.Failed(error)))
-        .handleErrorWith {
-          case failure: PeerFailure => F.pure[End](End.Failed(failure.error))
-          case other =>
-            F.pure[End](End.Failed(PeerError.Unavailable(InboundGovernor.describe(other))))
-        }
-
-    val run: F[End] =
-      Handle
-        .allow[PeerError] {
-          link.warm.activate(hot.transactions).use { connection =>
-            Peer
-              .over(
-                connection,
-                hot.peer,
-                hot.prepare,
-                hot.headers,
-                Some(metered(peer)),
-                Some(hot.pool),
-                hot.fetchMode
-              )
-              .use { peer =>
-                session.connection.complete(connection) *> started.complete(None) *>
-                  follow(peer).flatTap { end =>
-                    // asked to stop: bring the pipeline to rest before the wire is ended
-                    asked.flatMap(a => (peer.quiesce).whenA(a && end == End.Failed(deactivated)))
-                  }
-              }
-              .flatMap {
-                case End.Failed(`deactivated`) =>
-                  connection.finish(config.deactivateTimeout).map(End.Stopped(_))
-                case other => F.pure(other)
-              }
-          }
-        }
-        .rescue(error => F.pure[End](End.Failed(error)))
-        .handleErrorWith {
-          case failure: PeerFailure => F.pure[End](End.Failed(failure.error))
-          case other =>
-            F.pure[End](End.Failed(PeerError.Unavailable(InboundGovernor.describe(other))))
-        }
-
-    run.flatMap { end =>
-      val failure = end match
-        case End.Failed(error) => Some(error)
-        case End.Returned      => Some(PeerError.Unavailable("the session ended"))
-        case End.Stopped(_)    => None
-      // a start that failed tells the governor; a session that ends on its own is a loss
-      started.complete(failure.map(FailurePolicy.classify)).flatMap { startedHere =>
-        session.ended.complete(end) *>
-          asked.flatMap(a => failure.traverse_(lost(peer, link, _)).unlessA(a || startedHere))
+    /** Run the follower session over the peer; stopping it ends it with `Stopped`. */
+    def follow(over: Peer[F]): F[SessionEnd] =
+      SessionEnd.scoped(node) { (scope, _) ?=>
+        val gated = new Peer[F]:
+          def intersect(candidates: Vector[xyz.kd5ujc.scarab.protocol.ChainSync.Point])(using
+              Raise[F, PeerError]
+          ) = over.intersect(candidates)
+          def next(using Raise[F, PeerError]) =
+            F.race(session.stop.get, Fault.fiber(over.next)).flatMap {
+              case Left(_)       => scope.raise[SessionEnd, SyncEvent](SessionEnd.Stopped(false))
+              case Right(result) => Fault.land(result)
+            }
+          def fetch(header: xyz.kd5ujc.scarab.ledger.Header)(using Raise[F, PeerError]) =
+            over.fetch(header)
+        hot
+          .follow(gated, candidate => session.candidate.complete(candidate).void)
+          .as(SessionEnd.Returned)
       }
-    }
+
+    val run: F[SessionEnd] =
+      SessionEnd.scoped(node) { (_, _) ?=>
+        link.warm.activate(hot.transactions).use { connection =>
+          Peer
+            .over(
+              connection,
+              hot.peer,
+              hot.prepare,
+              hot.headers,
+              Some(metered(peer)),
+              Some(hot.pool),
+              hot.fetchMode
+            )
+            .use { over =>
+              session.connection.complete(connection) *> started.complete(None) *>
+                follow(over)
+                  .flatMap {
+                    // the pool is shared: a block that another session delivered and the rules
+                    // refuse is no fault of this peer, which fetches it itself when it tries again
+                    case SessionEnd.Rejected(refusal) =>
+                      over
+                        .refused(refusal)
+                        .map(foreign =>
+                          if foreign then
+                            SessionEnd.Failed(
+                              PeerError
+                                .Diverged(s"a block fetched by another peer: ${refusal.message}")
+                            )
+                          else SessionEnd.Rejected(refusal)
+                        )
+                    case other => F.pure(other)
+                  }
+                  .flatTap {
+                    // asked to stop: bring the pipeline to rest before the wire is ended
+                    case SessionEnd.Stopped(_) => asked.flatMap(a => over.quiesce.whenA(a))
+                    case _                     => F.unit
+                  }
+            }
+            .flatMap {
+              case SessionEnd.Stopped(_) =>
+                connection.finish(config.deactivateTimeout).map(SessionEnd.Stopped(_))
+              case other => F.pure(other)
+            }
+        }
+      }
+
+    // a cancelled session still tells whoever waits for it
+    run
+      .onCancel(
+        started.complete(Some(FailureClass.Transient)).void *>
+          session.ended.complete(SessionEnd.Cancelled).void
+      )
+      .flatMap { end =>
+        val disposition = FailurePolicy.disposition(end)
+        val failure: Option[PeerError] = disposition match
+          case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end)
+          case Disposition.StopNode(fatal) =>
+            Some(PeerError.Unavailable(s"the node stops: ${fatal.message}"))
+          case Disposition.Settled =>
+            Option.when(end == SessionEnd.Returned)(PeerError.Unavailable("the session ended"))
+        val stopNode = disposition match
+          case Disposition.StopNode(fatal) => hot.fatal(fatal)
+          case _                           => F.unit
+        // a start that failed tells the governor; a session that ends on its own is a loss
+        stopNode *> started.complete(failure.map(FailurePolicy.classify)).flatMap { startedHere =>
+          session.ended.complete(end) *>
+            asked.flatMap(a => failure.traverse_(lost(peer, link, _)).unlessA(a || startedHere))
+        }
+      }
 
   def deactivate(peer: A): F[PeerStateActions.Deactivation] =
     table.get.map(_.get(peer)).flatMap {
@@ -284,7 +312,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                 F.pure(None)
               )
               result <- end match
-                case Some(End.Stopped(true)) =>
+                case Some(SessionEnd.Stopped(true)) =>
                   link.phase.set(Phase.Warm()).as(PeerStateActions.Deactivation.Warm)
                 case _ =>
                   close(link).map(released =>
@@ -333,8 +361,6 @@ final class OutboundPeers[F[_]: Async, A] private (
     })
 
 object OutboundPeers:
-  private val DeactivatedReason = "deactivated by the governor"
-
   final case class Config(
       /** How long the hot protocols get to end on the wire (`deactivateTimeout`, `Policies.hs` 31).
         */
@@ -369,6 +395,10 @@ object OutboundPeers:
       versus: ChainSelection.Candidate => F[Gsm.Candidate],
       /** A connection was lost (once per loss): the log's `reconnecting`. */
       lost: PeerError => F[Unit],
+      /** A session ended in a way no peer policy handles (storage, an internal failure, a defect):
+        * the node stops ([[FailurePolicy.disposition]]).
+        */
+      fatal: Fatal => F[Unit],
       /** The fetch mode, which BlockFetch reads to decide whether a block another session has
         * claimed may be requested too.
         */
@@ -397,7 +427,7 @@ object OutboundPeers:
       /** Completed to ask the session to stop between two batches. */
       val stop: Deferred[F, Unit],
       val asked: Ref[F, Boolean],
-      val ended: Deferred[F, End],
+      val ended: Deferred[F, SessionEnd],
       val connection: Deferred[F, NodeToNodeConnection[F, NtNHeader]],
       val candidate: Deferred[F, Ref[F, ChainSelection.Candidate]]
   )
@@ -407,23 +437,10 @@ object OutboundPeers:
       (
         Deferred[F, Unit],
         Ref.of[F, Boolean](false),
-        Deferred[F, End],
+        Deferred[F, SessionEnd],
         Deferred[F, NodeToNodeConnection[F, NtNHeader]],
         Deferred[F, Ref[F, ChainSelection.Candidate]]
       ).mapN(new Session[F](_, _, _, _, _))
-
-  /** How a hot period ended. */
-  private[node] enum End:
-    /** The session returned (the follower never does). */
-    case Returned
-
-    /** The session failed. */
-    case Failed(error: PeerError)
-
-    /** The governor stopped it; `clean` when the protocols ended on the wire and the connection can
-      * be activated again.
-      */
-    case Stopped(clean: Boolean)
 
   def create[F[_]: Async, A](
       transport: Transport[F, A],
@@ -433,7 +450,19 @@ object OutboundPeers:
       supervisor: Supervisor[F],
       report: Event[A] => F[Unit],
       metrics: Stateful[F, PeerMetrics[A]]
-  ): F[OutboundPeers[F, A]] =
+  )(using node: Handle[F, NodeError]): F[OutboundPeers[F, A]] =
     Ref
       .of[F, Map[A, Link[F]]](Map.empty)
-      .map(new OutboundPeers[F, A](transport, manager, config, hot, supervisor, report, metrics, _))
+      .map(
+        new OutboundPeers[F, A](
+          node,
+          transport,
+          manager,
+          config,
+          hot,
+          supervisor,
+          report,
+          metrics,
+          _
+        )
+      )

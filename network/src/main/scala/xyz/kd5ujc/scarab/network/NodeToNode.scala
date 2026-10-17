@@ -26,7 +26,7 @@ final class NodeToNodeConnection[F[_], P](
     * request, waiting up to `within` for it. `false` when a protocol could not be ended (a request
     * is outstanding, or the peer never asked): the connection must be closed, not reused.
     */
-  def finish(within: FiniteDuration)(using Monad[F]): F[Boolean] =
+  def finish(within: FiniteDuration)(using Monad[F], Raise[F, NetworkError]): F[Boolean] =
     (chainSync.idle, blockFetch.idle).tupled.flatMap {
       case (true, true) =>
         chainSync.done *> blockFetch.done *> transactions.fold(true.pure[F])(_.finish(within))
@@ -83,7 +83,19 @@ object NodeToNode:
         */
       maxVersion: NtnVersion = NtnVersion.LatestReleased,
       peerSharing: PeerSharingClient.Settings = PeerSharingClient.Settings()
-  )
+  ):
+    /** The ingress limits for a ChainSync client that pipelines `requests` requests at once: the
+      * reference's high mark of 300 (`chainSyncPipeliningHighMark`) is the least, since the limit
+      * of the ChainSync queue is derived from how many replies a peer may have in flight.
+      */
+    def pipelining(requests: Int): Settings =
+      copy(mux =
+        mux.copy(ingressLimit =
+          IngressLimits.nodeToNode(
+            IngressLimits.Parameters(chainSyncPipeliningHighMark = requests.max(300))
+          )
+        )
+      )
 
   /** Connect over TCP, run the handshake and start the mini-protocols. `P` is the ChainSync header
     * payload, decoded by `codec`.

@@ -392,6 +392,11 @@ object Main extends IOApp:
       measured <- EventMetrics.create[IO]
       // a follower that stops extending its chain while a peer has more says so (issue 130)
       stallExit <- Deferred[IO, Unit]
+      // a session that ends in a way no peer policy handles stops the node ([[Fatal]]): the event
+      // is logged where it happens, and the run ends like a signal does (the stores close, the
+      // shutdown snapshot is taken) with an exit code of its own
+      faulted <- Deferred[IO, Fatal]
+      fatalSink = (fault: Fatal) => logged(NodeEvent.Faulted(fault)) *> faulted.complete(fault).void
       watchdog <- StallWatchdog.create[IO](
         BigInt(0),
         options.stallMinutes.minutes,
@@ -517,7 +522,7 @@ object Main extends IOApp:
               )
           }
       }
-      stalled <- exposed.surround(storage.use {
+      ended <- exposed.surround(storage.use {
         case Storage(anchor, state, resumed, persistence, immutable) =>
           // A chain whose Byron span is derived learns the first Shelley epoch when it enters
           // Shelley; a restored state past that point knows it, a fresh sync learns it on the way
@@ -682,6 +687,7 @@ object Main extends IOApp:
                   SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
                   genesis.networkMagic,
                   readAhead = options.readAhead,
+                  network = NodeToNode.Settings().pipelining(options.readAhead),
                   byronEpochSlots = genesis.geometry.byron.epochSlots
                 ),
                 runClients = options.inboundSync
@@ -690,6 +696,7 @@ object Main extends IOApp:
               // the session of a peer that connected to us runs like one on a connection we opened
               follow = peer => scheduling.compute.within(follower.session(peer)),
               prepare = warm,
+              fatal = fatalSink,
               headers = headerCheck,
               transactions = Some(mempool.source),
               events = Some(loggedInbound.alongside(measured.inbound)),
@@ -716,11 +723,12 @@ object Main extends IOApp:
               network = NodeToNode.Settings(
                 offerPeerSharing = setup.config.settings.peerSharing.contains(true),
                 maxVersion = setup.config.settings.maxNtnVersion
-              ),
+              ).pipelining(options.readAhead),
               peer = Peer.Settings(
                 SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
                 genesis.networkMagic,
                 readAhead = options.readAhead,
+                network = NodeToNode.Settings().pipelining(options.readAhead),
                 byronEpochSlots = genesis.geometry.byron.epochSlots
               ),
               follow = (peer, track) => scheduling.compute.within(follower.session(peer, track)),
@@ -734,6 +742,7 @@ object Main extends IOApp:
                 losses
                   .updateAndGet(_ + 1)
                   .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n))),
+              fatal = fatalSink,
               fetchMode = Some(fetchModeRef.get)
             )
             emitOutput = (out: Output[PeerNetwork.Addr]) =>
@@ -913,20 +922,45 @@ object Main extends IOApp:
             _ <- logged(NodeEvent.started(options.peers, genesis, setup.config, topology))
             // a stall that lasts --stall-exit-after ends the run like a signal does: the stores
             // close and the shutdown snapshot is taken, then the process exits with its own code
-            stalledOut <- IO
+            ended <- IO
               .race(
                 options.seconds.fold(run)(s => run.timeoutTo(s.seconds, IO.unit)),
-                stallExit.get
+                IO.race(stallExit.get, faulted.get)
               )
-              .map(_.isRight)
+              .map {
+                case Left(_)               => RunEnd.Finished
+                case Right(Left(_))        => RunEnd.Stalled
+                case Right(Right(failure)) => RunEnd.Faulted(failure)
+              }
             last <- ref.get
             _ <- logged(NodeEvent.finished(last))
-          yield stalledOut
+          yield ended
       })
-    yield if stalled then StallExitCode else ExitCode.Success
+    yield exitCode(ended)
+
+  /** How a run ended. */
+  private enum RunEnd:
+    case Finished
+    case Stalled
+    case Faulted(fault: Fatal)
+
+  private def exitCode(end: RunEnd): ExitCode = end match
+    case RunEnd.Finished       => ExitCode.Success
+    case RunEnd.Stalled        => StallExitCode
+    case RunEnd.Faulted(fault) => FaultExitCode(fault)
 
   /** The exit code of a run that ended because a stall lasted `--stall-exit-after`. */
   val StallExitCode: ExitCode = ExitCode(4)
+
+  /** The exit code of a run that a session's failure stopped: the storage failed (5), the node
+    * failed itself (6), or something threw that nobody expected (7). A supervisor restarts the node
+    * from its database; a storage failure is the one the reference also ends the node for
+    * (`consensusRethrowPolicy`, `ShutdownNode`).
+    */
+  def FaultExitCode(fault: Fatal): ExitCode = fault match
+    case _: Fatal.Storage  => ExitCode(5)
+    case _: Fatal.Internal => ExitCode(6)
+    case _: Fatal.Defect   => ExitCode(7)
 
   /** `30s`, `10m`, `2h`: a positive whole number of seconds, minutes or hours. */
   private[node] def parseDuration(text: String): Option[FiniteDuration] =

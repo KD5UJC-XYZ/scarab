@@ -30,6 +30,11 @@ enum PeerError extends NodeError:
   /** A header the peer announced breaks a header rule; its block was not fetched (G6). */
   case InvalidHeader(point: ChainSync.Point, error: xyz.kd5ujc.scarab.ledger.HeaderError)
 
+  /** A block the peer sent is refused by our rules (the session ends and nothing of the block was
+    * applied). The same fact as a [[ValidationError]] raised in the session, seen as the peer's.
+    */
+  case InvalidBlock(error: ValidationError)
+
   def message: String = this match
     case Handshake(r)        => s"handshake: $r"
     case Protocol(r)         => s"protocol: $r"
@@ -37,6 +42,7 @@ enum PeerError extends NodeError:
     case NoIntersection      => "the peer's chain shares no point with ours"
     case Diverged(r)         => s"diverged: $r"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
+    case InvalidBlock(e)     => s"invalid block ${e.message}"
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:

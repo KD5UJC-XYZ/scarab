@@ -103,6 +103,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
         VolatileChain.genesis(ForgedChain.geometry.securityParam, forged.genesis)
       )
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
+      given Handle[IO, NodeError] <- NodeScope.forTest
       applied <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       follower <- Handle
         .allow[NodeError] {
@@ -163,6 +164,7 @@ class InboundGovernorSuite extends CatsEffectSuite:
         ),
         follow = peer => follower.session(peer),
         prepare = _ => IO.unit,
+        fatal = _ => IO.unit,
         headers = headerCheck,
         transactions = transactions
       )

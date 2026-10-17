@@ -8,7 +8,7 @@ import munit.CatsEffectSuite
 
 import Peers.*
 
-class HandshakeSuite extends CatsEffectSuite:
+class HandshakeSuite extends FailsOnUncaught:
   private def negotiate(serverOffers: Vector[(Int, Handshake.Data)], clientMagic: Long = 42L) =
     typed {
       linked(protocols = Set(0)).use { (client, server) =>

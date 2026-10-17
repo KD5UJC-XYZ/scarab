@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.storage
 import scala.annotation.unused
 import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.std.Queue
-import cats.mtl.{Ask, Handle, Stateful}
+import cats.mtl.{Ask, Handle, Raise, Stateful}
 import cats.syntax.all.*
 import fs2.io.file.{Files, Path}
 import java.nio.file.Files as JFiles
@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{Block, FileKind, FormatVersion}
 import xyz.kd5ujc.scarab.ledger.Header
 import xyz.kd5ujc.scarab.ledger.NetworkIdentity
 import xyz.kd5ujc.scarab.ledger.NodeError
-import xyz.kd5ujc.scarab.ledger.StorageError
+import xyz.kd5ujc.scarab.ledger.{PeerError, StorageError}
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.node.{MirrorRules, MirrorSteps}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -199,13 +199,14 @@ class ChainStorageSuite extends CatsEffectSuite:
                   offered <- Ref.of[IO, Vector[Vector[ChainSync.Point]]](Vector.empty)
                   bodies = headers.map(_.hash).zip(raws).toMap
                   peer = new Peer[IO]:
-                    def intersect(candidates: Vector[ChainSync.Point]) =
+                    def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                       offered.update(_ :+ candidates).as(candidates.headOption)
-                    def next = queue.tryTake.flatMap {
+                    def next(using Raise[IO, PeerError]) = queue.tryTake.flatMap {
                       case Some(event) => IO.pure(event)
                       case None        => done.complete(()) *> IO.never[SyncEvent]
                     }
-                    def fetch(header: Header) = IO.pure(bodies(header.hash))
+                    def fetch(header: Header)(using Raise[IO, PeerError]) =
+                      IO.pure(bodies(header.hash))
                   follower <- Follower.create[IO, MirrorState](
                     rules,
                     noEvents,
@@ -496,13 +497,15 @@ class ChainStorageSuite extends CatsEffectSuite:
                 count <- Ref.of[IO, Int](0)
                 bodies = headers.map(_.hash).zip(raws).toMap
                 peer = new Peer[IO]:
-                  def intersect(candidates: Vector[ChainSync.Point]) =
+                  def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                     offered.update(_ :+ candidates).as(candidates.headOption)
-                  def next = count.getAndUpdate(_ + 1).flatMap(tap) *> queue.tryTake.flatMap {
-                    case Some(event) => IO.pure(event)
-                    case None        => done.complete(()) *> IO.never[SyncEvent]
-                  }
-                  def fetch(header: Header) = IO.pure(bodies(header.hash))
+                  def next(using Raise[IO, PeerError]) =
+                    count.getAndUpdate(_ + 1).flatMap(tap) *> queue.tryTake.flatMap {
+                      case Some(event) => IO.pure(event)
+                      case None        => done.complete(()) *> IO.never[SyncEvent]
+                    }
+                  def fetch(header: Header)(using Raise[IO, PeerError]) =
+                    IO.pure(bodies(header.hash))
                 follower <- Follower.create[IO, MirrorState](
                   nodeRules,
                   noEvents,

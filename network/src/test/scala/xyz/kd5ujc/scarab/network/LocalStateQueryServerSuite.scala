@@ -13,7 +13,7 @@ import munit.CatsEffectSuite
 /** A node-to-client LocalStateQuery client against the server over an in-memory bearer, with a toy
   * ledger: the "state" is a number, a query answers with it, and the chain has three points.
   */
-class LocalStateQueryServerSuite extends CatsEffectSuite:
+class LocalStateQueryServerSuite extends FailsOnUncaught:
   private val magic = 42L
   private def point(n: Int): Point =
     Point.Block(UInt64.saturating(n), Bytes(Vector.fill(32)(n.toByte)))
@@ -58,7 +58,9 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
       Ref.of[IO, Vector[NtcVersion]](Vector.empty)
     ).mapN(new Toy(_, _, _))
 
-  private def send(ch: MuxChannel[IO], state: State, m: Message): IO[Unit] =
+  private def send(ch: MuxChannel[IO], state: State, m: Message)(using
+      Handle[IO, NetworkError]
+  ): IO[Unit] =
     IO.fromEither(LocalStateQuery.encode(state, Role.Client, m).left.map(RuntimeException(_)))
       .flatMap(ch.send)
 

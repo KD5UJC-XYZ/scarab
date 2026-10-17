@@ -11,7 +11,7 @@ import munit.CatsEffectSuite
 
 import Peers.*
 
-class NodeToNodeSuite extends CatsEffectSuite:
+class NodeToNodeSuite extends FailsOnUncaught:
   private val magic = 42L
   private val script = List(
     List(Message.RollForward(header(1), tip(2))),

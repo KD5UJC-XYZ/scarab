@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import cats.effect.{IO, Ref, Resource}
 import cats.effect.std.Queue
 import cats.effect.testkit.TestControl
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
@@ -63,14 +63,14 @@ class FollowerSuite extends CatsEffectSuite:
         Resource.eval(scripts.tryTake.map(_.getOrElse(Nil))).evalMap { script =>
           Ref.of[IO, List[Either[PeerError, SyncEvent]]](script).map { remaining =>
             new Peer[IO]:
-              def intersect(candidates: Vector[ChainSync.Point]) =
+              def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                 offered.update(_ :+ candidates).as(candidates.headOption)
-              def next = remaining.modify {
+              def next(using Raise[IO, PeerError]) = remaining.modify {
                 case Nil                  => Nil -> IO.never
                 case Left(e) :: _         => Nil -> h.raise(e)
                 case Right(event) :: rest => rest -> IO.pure(event)
               }.flatten
-              def fetch(header: Header) = IO.pure(Bytes.empty)
+              def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
           }
         }
       }
@@ -190,7 +190,7 @@ class FollowerSuite extends CatsEffectSuite:
   private def serving(s: Serving): Resource[IO, Peer[IO]] =
     Resource.eval(IO.sleep(s.startDelay) *> Ref.of[IO, List[SyncEvent]](Nil)).map { pending =>
       new Peer[IO]:
-        def intersect(candidates: Vector[ChainSync.Point]) =
+        def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
           if !s.honest then
             pending.set(s.chain.toList.map(SyncEvent.RollForward(_, tip))).as(candidates.headOption)
           else
@@ -206,11 +206,11 @@ class FollowerSuite extends CatsEffectSuite:
                   after.map(SyncEvent.RollForward(_, tip))
               )
               .as(at)
-        def next = pending.modify {
+        def next(using Raise[IO, PeerError]) = pending.modify {
           case Nil          => Nil -> IO.never[SyncEvent]
           case head :: rest => rest -> IO.sleep(s.pause).as(head)
         }.flatten
-        def fetch(header: Header) = IO.pure(Bytes.empty)
+        def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty)
     }
 
   /** Peers that serve chains, all followed by one follower, on the test clock (nothing here waits
@@ -356,9 +356,9 @@ class FollowerSuite extends CatsEffectSuite:
 
   test("a peer that shares no point with our chain is a peer error, retried and then given up") {
     val strangers: Resource[IO, Peer[IO]] = Resource.pure(new Peer[IO]:
-      def intersect(candidates: Vector[ChainSync.Point]) = IO.pure(None)
-      def next = IO.never
-      def fetch(header: Header) = IO.pure(Bytes.empty))
+      def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) = IO.pure(None)
+      def next(using Raise[IO, PeerError]) = IO.never
+      def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(Bytes.empty))
     for
       ref <- Ref.of[IO, VolatileChain[BigInt]](VolatileChain.genesis(geometry.securityParam, -1))
       given Stateful[IO, VolatileChain[BigInt]] = RefStateful(ref)

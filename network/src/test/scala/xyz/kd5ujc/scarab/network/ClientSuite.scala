@@ -11,7 +11,7 @@ import scala.concurrent.duration.*
 
 import Peers.*
 
-class ClientSuite extends CatsEffectSuite:
+class ClientSuite extends FailsOnUncaught:
   private val Origin = ChainSync.Point.Origin
 
   private def chainSync(
@@ -250,7 +250,7 @@ class ClientSuite extends CatsEffectSuite:
         }
       })
       .map {
-        case Left(NetworkError.BearerClosed(reason)) =>
-          assert(reason.contains("keep-alive timed out"), reason)
-        case other => fail(s"unexpected $other")
+        // the pinger's own failure is the reason the whole connection ends with
+        case Left(NetworkError.Timeout(protocol, _)) => assertEquals(protocol, Protocols.KeepAlive)
+        case other                                   => fail(s"unexpected $other")
       }

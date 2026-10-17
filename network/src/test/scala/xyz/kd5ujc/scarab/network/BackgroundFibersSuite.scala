@@ -38,7 +38,7 @@ class BackgroundFibersSuite extends FailsOnUncaught:
             .pinger(k, client, KeepAliveClient.Settings(responseTimeout = 30.seconds))
             .start
           _ <- IO.sleep(200.millis)
-          _ <- client.abort("connection lost")
+          _ <- client.abort(NetworkError.BearerClosed("connection lost"))
           outcome <- pinger.join
         yield outcome
       }

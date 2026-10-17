@@ -12,7 +12,7 @@ import org.scalacheck.{Gen, Prop}
 import org.scalacheck.Prop.*
 import scala.concurrent.duration.*
 
-class ConnectionManagerSuite extends CatsEffectSuite with ScalaCheckSuite:
+class ConnectionManagerSuite extends FailsOnUncaught with ScalaCheckSuite:
   private def peer(n: Int): SocketAddress[IpAddress] =
     SocketAddress(IpAddress.fromString(s"10.0.0.$n").get, Port.fromInt(3001).get)
 

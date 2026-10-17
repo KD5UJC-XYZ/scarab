@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError}
-import cats.ApplicativeThrow
+import xyz.kd5ujc.scarab.ledger.{Block, Header, PeerError, ValidationError}
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.syntax.all.*
 import cats.effect.std.{Mutex, Queue, Semaphore, Supervisor}
@@ -12,7 +11,6 @@ import cats.syntax.all.*
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{CardanoBlockFetch, ChainSync, NtNHeader}
-import scala.util.control.NoStackTrace
 import xyz.kd5ujc.scarab.network.{
   ChainSyncClient,
   NetworkError,
@@ -22,32 +20,26 @@ import xyz.kd5ujc.scarab.network.{
 }
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Time}
 
-/** A [[PeerError]] on its way from the fiber that met it to the session that handles it. A cats-mtl
-  * `Raise` that comes from `Handle.allow` is valid only in the fibers of its scope: raised in any
-  * other fiber (a background fiber of the connection, a fiber started by the pipeline) it is a
-  * `cats.mtl.Handle$Submarine` that no scope catches, the fiber dies and whatever it held stays
-  * held (issue 130). The code below the session therefore raises through [[Peer.carrying]], which
-  * fails the fiber with this exception, an ordinary value that crosses fibers; the session's own
-  * fiber raises it again through its `Raise` ([[Peer.landed]]).
-  */
-final class PeerFailure(val error: PeerError)
-    extends RuntimeException(error.message)
-    with NoStackTrace
-
 enum SyncEvent:
   case RollForward(header: Header, tip: ChainSync.Tip)
   case RollBackward(point: ChainSync.Point, tip: ChainSync.Tip)
 
-/** Upstream chain source: one ChainSync conversation plus block retrieval. */
+/** Upstream chain source: one ChainSync conversation plus block retrieval. The methods raise
+  * through the `Raise` of the fiber that calls them: a session runs in one fiber, the pipeline
+  * behind it in others, and a capability fixed when the peer is made would belong to the wrong one
+  * (issue 132).
+  */
 trait Peer[F[_]]:
   /** The newest point among `candidates` (ordered newest first) the peer also has, if any. */
-  def intersect(candidates: Vector[ChainSync.Point]): F[Option[ChainSync.Point]]
+  def intersect(candidates: Vector[ChainSync.Point])(using
+      Raise[F, PeerError]
+  ): F[Option[ChainSync.Point]]
 
   /** Next roll-forward or roll-backward instruction, waiting while the peer is at its tip. */
-  def next: F[SyncEvent]
+  def next(using Raise[F, PeerError]): F[SyncEvent]
 
   /** Raw node-to-node block bytes for a header announced by `next`. */
-  def fetch(header: Header): F[Bytes]
+  def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes]
 
 object Peer:
   /** A peer whose request pipeline can be brought to rest between two batches. */
@@ -60,27 +52,25 @@ object Peer:
       */
     def quiesce: F[Unit]
 
-  /** A `Raise` for the fibers of a connection: the error fails the fiber as a [[PeerFailure]]
-    * wherever it is raised, and [[landed]] raises it in the session.
-    */
-  def carrying[F[_]](using F: ApplicativeThrow[F]): Raise[F, PeerError] = new Raise[F, PeerError]:
-    def functor = F
-    def raise[E2 <: PeerError, A](e: E2): F[A] = F.raiseError(new PeerFailure(e))
+    /** The rules refused a block, the last one this session fetched. When another session delivered
+      * it (the pool is shared), the refusal is not this peer's: that session is told (its next
+      * instruction raises [[PeerError.InvalidBlock]]), the blocks it delivered and nobody has taken
+      * are dropped, and the answer is `true`. When this session fetched it, `false`.
+      */
+    def refused(refusal: ValidationError): F[Boolean]
 
-  /** The same for the network layer's failures, classified as peer errors ([[peerError]]). */
-  def carryingNetwork[F[_]](using F: ApplicativeThrow[F]): Raise[F, NetworkError] =
-    new Raise[F, NetworkError]:
-      def functor = F
-      def raise[E2 <: NetworkError, A](e: E2): F[A] = F.raiseError(new PeerFailure(peerError(e)))
+  /** A `Raise` for `E2` over one for `E1`: what is raised is mapped by `f`. */
+  private[node] def contramapped[F[_], E1, E2](scope: Raise[F, E1])(f: E2 => E1): Raise[F, E2] =
+    new Raise[F, E2]:
+      def functor = scope.functor
+      def raise[E3 <: E2, A](e: E3): F[A] = scope.raise[E1, A](f(e))
 
-  /** `fa`, with a [[PeerFailure]] that it fails with raised through `into`: call it in the fiber
-    * that owns `into` 's scope.
+  /** Network failures as peer errors: where a fiber raises a [[PeerError]] it can call the network
+    * layer, and what the network layer raises is classified by [[peerError]]. Import it where the
+    * clients are called.
     */
-  def landed[F[_], A](fa: F[A])(using F: ApplicativeThrow[F], into: Raise[F, PeerError]): F[A] =
-    F.handleErrorWith(fa) {
-      case failure: PeerFailure => into.raise(failure.error)
-      case other                => F.raiseError(other)
-    }
+  given networkAsPeer[F[_]](using peer: Raise[F, PeerError]): Raise[F, NetworkError] =
+    contramapped[F, PeerError, NetworkError](peer)(peerError)
 
   /** What a session measured of its peer, for the log. */
   enum Observation:
@@ -179,7 +169,7 @@ object Peer:
     out.result()
 
   /** Batches the peer keeps in flight: one being applied, the others being fetched. */
-  private val Depth = 3
+  private[node] val Depth = 3
 
   /** Called with each prefetched batch of raw blocks before they are handed to the rules. */
   type Prepare[F[_]] = Vector[Bytes] => F[Unit]
@@ -195,12 +185,12 @@ object Peer:
     case _: NetworkError.HandshakeRefused | _: NetworkError.VersionMismatch =>
       PeerError.Handshake(error.message)
     case _: NetworkError.IngressLimit | _: NetworkError.Decode | _: NetworkError.IllegalTransition |
-        _: NetworkError.QueryRefused =>
+        _: NetworkError.QueryRefused | _: NetworkError.Framing =>
       PeerError.Protocol(error.message)
 
   /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one multiplexed
     * connection (KeepAlive runs in the background). Every network failure surfaces as a typed
-    * [[PeerError]].
+    * [[PeerError]], raised in the fiber that opens the connection or that calls the peer.
     */
   def nodeToNode[F[_]: Async](
       settings: Settings,
@@ -211,12 +201,8 @@ object Peer:
       pool: Option[BlockPool[F]] = None,
       fetchMode: Option[F[FetchMode]] = None
   )(using
-      peerRaise: Raise[F, PeerError]
+      Raise[F, PeerError]
   ): Resource[F, Peer[F]] =
-    // The connection's fibers (multiplexer, KeepAlive, TxSubmission2, the pipeline) raise
-    // [[PeerFailure]]s, which are valid in any fiber; opening the connection happens in the
-    // caller's fiber, where they are raised again through the caller's scope.
-    given Raise[F, NetworkError] = carryingNetwork[F]
     NodeToNode
       .connect[F, NtNHeader](
         settings.address,
@@ -226,11 +212,6 @@ object Peer:
         transactions
       )
       .flatMap(over(_, settings, prepare, headers, observe, pool, fetchMode))
-      .handleErrorWith {
-        case failure: PeerFailure =>
-          Resource.eval(peerRaise.raise[PeerError, Peer[F]](failure.error))
-        case other => Resource.raiseError[F, Peer[F], Throwable](other)
-      }
 
   /** The peer interface over a connection that is already negotiated: one we opened
     * ([[nodeToNode]]) or an inbound duplex connection on which we run our own clients (G2). The
@@ -239,6 +220,10 @@ object Peer:
     * With `headers`, every batch of ChainSync headers is validated before the blocks of the batch
     * are fetched (G6): a header that breaks a rule raises [[PeerError.InvalidHeader]] and no block
     * of its batch is requested.
+    *
+    * The fibers of the pipeline each run in an error scope of their own ([[Fault.fiber]]) and hand
+    * their fault to the session as a value in the queue of batches; the session raises it again in
+    * its own fiber, through the `Raise` it passes to [[Peer.next]].
     */
   def over[F[_]: Async](
       connection: NodeToNodeConnection[F, NtNHeader],
@@ -255,16 +240,11 @@ object Peer:
         * another session has claimed may be requested too ([[BlockPool]]). Bulk sync without it.
         */
       fetchMode: Option[F[FetchMode]] = None
-  )(using
-      peerRaise: Raise[F, PeerError]
   ): Resource[F, Controlled[F]] =
     val F = Async[F]
     val currentMode: F[FetchMode] = fetchMode.getOrElse(F.pure(FetchMode.BulkSync))
-    // Fibers of the pipeline raise through `carried`; the methods of the session's own fiber
-    // (intersect, next, fetch) raise again through `peerRaise`.
-    val carried = carrying[F]
-    def protocol[A](reason: String): F[A] = PeerError.Protocol(reason).raise
-    def protocolIn[A](reason: String): F[A] = carried.raise(PeerError.Protocol(reason))
+    def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
+      PeerError.Protocol(reason).raise[F, A]
 
     // The session's claims on the pool come first, so they are released last: after the supervisor
     // has cancelled and awaited the fibers that fetch, nothing the session claimed is left open.
@@ -272,7 +252,7 @@ object Peer:
       shared <- Resource.eval(pool.fold(BlockPool.create[F])(F.pure))
       claims <- shared.session
       supervisor <- Supervisor[F](await = false)
-    yield (shared, claims, supervisor)).evalMap { (shared, claims, supervisor) =>
+    yield (claims, supervisor)).evalMap { (claims, supervisor) =>
       // Read-ahead: while the peer is far ahead, ChainSync requests are pipelined and the
       // blocks of the whole batch are fetched with one BlockFetch range. A producer fiber
       // keeps up to `Depth` batches in flight: it requests the headers of the next batch while
@@ -280,31 +260,37 @@ object Peer:
       // the batches to `queue` in order. The consumer applies one batch while the network and
       // the (parallel) signature checks work on the following ones. `blocks` holds the
       // prefetched blocks by header hash.
+      //
+      // The queue holds at most `Depth` batches (a permit per batch, returned when the batch is
+      // taken) and the faults of the fibers that did not finish theirs: one per permit still held,
+      // and the producer's own.
       (
-        Queue.unbounded[F, Either[Throwable, Vector[SyncEvent]]],
+        Queue.bounded[F, Either[Fault, Vector[SyncEvent]]](Depth + 1),
         Ref.of[F, Vector[SyncEvent]](Vector.empty),
-        F.pure(shared),
         Ref.of[F, Option[(ChainSync.Tip, BigInt)]](None),
         Ref.of[F, Boolean](false),
         Semaphore[F](Depth.toLong),
         Mutex[F],
         Ref.of[F, HeaderGate[F]](HeaderGate.none[F]),
         Ref.of[F, Boolean](false),
-        Deferred[F, Unit]
+        Deferred[F, Unit],
+        Ref.of[F, Option[(Bytes, BlockPool.Taken)]](None)
       ).mapN {
-        (queue, current, blocks, progress, started, permits, fetchLock, gate, stopping, ended) =>
-          def decode(update: ChainSyncClient.Update[NtNHeader]): F[SyncEvent] = update match
+        (queue, current, progress, started, permits, fetchLock, gate, stopping, ended, last) =>
+          def decode(update: ChainSyncClient.Update[NtNHeader])(using
+              Raise[F, PeerError]
+          ): F[SyncEvent] = update match
             case ChainSyncClient.Update.RollForward(h, tip) =>
               Header
                 .fromNtN(h, settings.byronEpochSlots)
-                .fold(e => protocolIn(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
+                .fold(e => protocol(e.message), h => F.pure(SyncEvent.RollForward(h, tip)))
             case ChainSyncClient.Update.RollBackward(point, tip) =>
               F.pure(SyncEvent.RollBackward(point, tip))
 
           /** Prefetch the blocks announced by the leading roll-forwards of a batch, in ranges the
             * client's per-request limits accept (a batch of full blocks is more than 10 MB).
             */
-          def prefetch(batch: Vector[SyncEvent]): F[Unit] =
+          def prefetch(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
             val headers = batch.takeWhile(_.isInstanceOf[SyncEvent.RollForward]).collect {
               case SyncEvent.RollForward(h, _) => h
             }
@@ -315,7 +301,7 @@ object Peer:
             * a batch go to whichever connection is idle (the reference's bulk-sync decision keeps a
             * block in flight with one peer only).
             */
-          def prefetchRange(headers: Vector[Header]): F[Unit] =
+          def prefetchRange(headers: Vector[Header])(using Raise[F, PeerError]): F[Unit] =
             fetchLock.lock
               .surround(
                 currentMode.flatMap(claims.claim(headers.map(_.hash), _)).flatMap { owned =>
@@ -355,13 +341,15 @@ object Peer:
               })
 
           /** One BlockFetch request for a run, with the time its blocks arrived. */
-          def requestRun(run: Vector[Header]): F[(Option[Vector[Bytes]], Time)] =
+          def requestRun(run: Vector[Header])(using
+              Raise[F, PeerError]
+          ): F[(Option[Vector[Bytes]], Time)] =
             connection.blockFetch.requestRange(run.head.point, run.last.point).flatMap { fetched =>
               F.monotonic.map(fetched -> _)
             }
 
           /** The next batch of ChainSync instructions. */
-          val requestHeaders: F[Vector[SyncEvent]] =
+          def requestHeaders(using Raise[F, PeerError]): F[Vector[SyncEvent]] =
             for
               seen <- progress.get
               ahead = seen.fold(BigInt(0)) { (tip, blockNo) =>
@@ -385,7 +373,7 @@ object Peer:
                   observe.traverse_(_(Peer.Observation.Announced(tip)))
               }
               // header-first: nothing of this batch is fetched before its headers are valid
-              _ <- gate.get.flatMap(_.accept(batch)(using carried))
+              _ <- gate.get.flatMap(_.accept(batch))
               _ <- batch.lastOption.traverse_ {
                 case SyncEvent.RollForward(h, tip) => progress.set(Some(tip -> h.blockNo))
                 case SyncEvent.RollBackward(_, tip) =>
@@ -393,12 +381,18 @@ object Peer:
               }
             yield batch
 
-          def fail(e: Throwable): F[Unit] = queue.offer(Left(e))
+          def fail(fault: Fault): F[Unit] = queue.offer(Left(fault))
+
+          /** A fiber of the pipeline: its body in an error scope of its own, and the fault it ends
+            * with handed to the session through the queue.
+            */
+          def supervised(body: Raise[F, PeerError] ?=> F[Unit]): F[Unit] =
+            supervisor.supervise(Fault.fiber(body).flatMap(_.fold(fail, _ => F.unit))).void
 
           /** Request batches for ever: the blocks of each are fetched in a fiber of its own and the
             * batch is published once the previous one has been, so order is kept.
             */
-          def produce(previous: Deferred[F, Unit]): F[Unit] =
+          def produce(previous: Deferred[F, Unit])(using Raise[F, PeerError]): F[Unit] =
             for
               _ <- permits.acquire
               halt <- stopping.get
@@ -410,9 +404,9 @@ object Peer:
                   for
                     batch <- requestHeaders
                     published <- Deferred[F, Unit]
-                    _ <- supervisor.supervise(
-                      (prefetch(batch) *> previous.get *> queue.offer(Right(batch)) *>
-                        published.complete(()).void).handleErrorWith(fail)
+                    _ <- supervised(
+                      prefetch(batch) *> previous.get *> queue.offer(Right(batch)) *>
+                        published.complete(()).void
                     )
                     _ <- produce(published)
                   yield ()
@@ -422,14 +416,62 @@ object Peer:
             started.getAndSet(true).flatMap {
               case true => F.unit
               case false =>
-                supervisor
-                  .supervise(
-                    Deferred[F, Unit]
-                      .flatTap(_.complete(()))
-                      .flatMap(produce)
-                      .handleErrorWith(fail)
-                  )
-                  .void
+                supervised(Deferred[F, Unit].flatTap(_.complete(())).flatMap(produce))
+            }
+
+          /** The next instruction, raising the fault of a fiber of the pipeline in the calling
+            * fiber: its peer error through `Raise`, an exception that is not ours as it came.
+            */
+          def pull(using Raise[F, PeerError]): F[SyncEvent] =
+            start *> current.modify(q => (q.drop(1), q.headOption)).flatMap {
+              case Some(event) => F.pure(event)
+              case None        =>
+                // a block this session delivered was refused by the rules, wherever it was applied
+                F.race(claims.blamed, queue.take).flatMap {
+                  case Left(refusal) => PeerError.InvalidBlock(refusal).raise[F, SyncEvent]
+                  case Right(Left(Fault.Failed(error))) => error.raise[F, SyncEvent]
+                  case Right(Left(Fault.Defect(cause))) => F.raiseError[SyncEvent](cause)
+                  case Right(Right(batch)) => permits.release *> current.set(batch) *> pull
+                }
+            }
+
+          def fetchBlock(header: Header)(using Raise[F, PeerError]): F[Bytes] =
+            claims.take(header.hash).flatMap {
+              case Some(taken) => last.set(Some(header.hash -> taken)).as(taken.block)
+              case None =>
+                CardanoBlockFetch.SpecificPoint.from(header.point) match
+                  case Left(reason) => protocol(reason)
+                  case Right(specific) =>
+                    fetchLock.lock
+                      .surround(
+                        for
+                          began <- F.monotonic
+                          fetched <- connection.blockFetch
+                            .requestRange(specific.point, specific.point)
+                          arrived <- F.monotonic
+                          took = arrived - began
+                          _ <- observe.traverse_(_(Peer.Observation.Fetched(took.toMillis)))
+                          _ <- observe.traverse_(report =>
+                            fetched.traverse_(
+                              _.traverse_(b =>
+                                report(
+                                  Peer.Observation.BlocksArrived(
+                                    Vector(header.slot.toLong -> b.size.toLong),
+                                    arrived
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        yield fetched
+                      )
+                      .flatMap {
+                        case Some(Vector(block)) => F.pure(block)
+                        case Some(other) =>
+                          protocol(s"expected one block, received ${other.size}")
+                        case None =>
+                          PeerError.Unavailable("peer does not have the announced block").raise
+                      }
             }
 
           new Controlled[F]:
@@ -437,76 +479,31 @@ object Peer:
               stopping.set(true) *> started.getAndSet(true).flatMap {
                 // the producer never ran: it never will
                 case false => ended.complete(()).void
-                // it may wait for a permit that only a consumer returns: consume and drop
+                // it may wait for a permit that only a consumer returns: consume and drop; a fault
+                // met on the way is of no interest, the session is ending
                 case true =>
-                  F.race(ended.get, pull.foreverM[Unit])
-                    .void
-                    .handleError(_ => ())
+                  F.race(ended.get, Fault.fiber(pull.foreverM[Unit])).void
               }
 
-            def intersect(candidates: Vector[ChainSync.Point]) = landed(
+            def intersect(candidates: Vector[ChainSync.Point])(using Raise[F, PeerError]) =
               current.set(Vector.empty) *> progress.set(None) *>
                 connection.chainSync.findIntersect(thin(candidates)).flatMap { found =>
                   found.traverse_ { case (point, _) =>
                     headers.traverse_(_.start(point).flatMap(gate.set))
                   } *> F.pure(found.map(_._1))
                 }
-            )
 
-            def next: F[SyncEvent] = landed(pull)
+            def next(using Raise[F, PeerError]): F[SyncEvent] = pull
 
-            private def pull: F[SyncEvent] =
-              start *> current.modify(q => (q.drop(1), q.headOption)).flatMap {
-                case Some(event) => F.pure(event)
-                case None =>
-                  queue.take.flatMap {
-                    // The producer fibers run in the background; the failure they caught (a
-                    // [[PeerFailure]], or a defect) is handed over unchanged to whoever calls `next`,
-                    // which raises it in its own fiber.
-                    case Left(error)  => F.raiseError[SyncEvent](error)
-                    case Right(batch) => permits.release *> current.set(batch) *> pull
-                  }
+            def refused(refusal: ValidationError): F[Boolean] =
+              last.get.flatMap {
+                case Some((fetched, taken)) if !taken.own && (refusal.point match
+                      case ChainSync.Point.Block(_, hash) => hash == fetched
+                      case ChainSync.Point.Origin => false) =>
+                  claims.distrust(taken.origin, refusal).as(true)
+                case _ => F.pure(false)
               }
 
-            def fetch(header: Header): F[Bytes] = landed(fetchBlock(header))
-
-            private def fetchBlock(header: Header): F[Bytes] =
-              blocks.take(header.hash).flatMap {
-                case Some(block) => F.pure(block)
-                case None =>
-                  CardanoBlockFetch.SpecificPoint.from(header.point) match
-                    case Left(reason) => protocol(reason)
-                    case Right(specific) =>
-                      fetchLock.lock
-                        .surround(
-                          for
-                            began <- F.monotonic
-                            fetched <- connection.blockFetch
-                              .requestRange(specific.point, specific.point)
-                            arrived <- F.monotonic
-                            took = arrived - began
-                            _ <- observe.traverse_(_(Peer.Observation.Fetched(took.toMillis)))
-                            _ <- observe.traverse_(report =>
-                              fetched.traverse_(
-                                _.traverse_(b =>
-                                  report(
-                                    Peer.Observation.BlocksArrived(
-                                      Vector(header.slot.toLong -> b.size.toLong),
-                                      arrived
-                                    )
-                                  )
-                                )
-                              )
-                            )
-                          yield fetched
-                        )
-                        .flatMap {
-                          case Some(Vector(block)) => F.pure(block)
-                          case Some(other) =>
-                            protocol(s"expected one block, received ${other.size}")
-                          case None =>
-                            PeerError.Unavailable("peer does not have the announced block").raise
-                        }
-              }
+            def fetch(header: Header)(using Raise[F, PeerError]): F[Bytes] = fetchBlock(header)
       }
     }

@@ -10,11 +10,16 @@ enum NetworkError:
   case Timeout(protocol: Int, state: String)
   case HandshakeRefused(reason: String)
   case VersionMismatch(offered: Vector[Int], supported: Vector[Int])
-  case IngressLimit(protocol: Int, bytes: Int)
+  case IngressLimit(protocol: Int, bytes: Long)
   case Decode(protocol: Int, reason: String)
   case IllegalTransition(protocol: Int, detail: String)
   case QueryRefused(refusal: LocalStateQueryServer.Refusal)
   case BearerClosed(reason: String)
+
+  /** The peer's bytes are not a well-formed multiplexer frame (a header that cannot be read, a
+    * payload past the limit): the multiplexer cannot tell which protocol was meant.
+    */
+  case Framing(reason: String)
 
   def message: String = this match
     case Connect(a, r)       => s"connect $a: $r"
@@ -28,6 +33,7 @@ enum NetworkError:
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case BearerClosed(r) => s"connection closed: $r"
+    case Framing(r)      => s"multiplexer framing: $r"
 
 /** Mini-protocol numbers: the node-to-node ones and the node-to-client ones (5, 6, 7 and 9). */
 object Protocols:

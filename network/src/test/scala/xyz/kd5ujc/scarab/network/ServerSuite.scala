@@ -20,7 +20,7 @@ import scala.concurrent.duration.*
 import Peers.*
 
 /** Our servers against our own clients over in-memory bearers, in both directions. */
-class ServerSuite extends CatsEffectSuite:
+class ServerSuite extends FailsOnUncaught:
   private val magic = 42L
 
   /** A chain of blocks numbered 1..n, mutable so tests can extend and fork it. */
@@ -359,8 +359,32 @@ class ServerSuite extends CatsEffectSuite:
         yield reason
       }
     }.map {
-      case Right(reason) => assert(reason.contains("mode bit"), reason)
+      case Right(reason) => assert(reason.message.contains("mode bit"), reason.message)
       case other         => fail(other.toString)
+    }
+
+  test("a client that breaks the protocol ends the connection with a typed error, nothing escapes"):
+    // each server fiber runs in an error scope of its own and ends the connection with a value;
+    // the suite runs on a runtime that fails the test on any fiber that dies unobserved
+    typed {
+      linked(
+        protocols = Set(0, 2, 3, 4, 8),
+        server = Mux.Config(role = Mux.Role.Responder)
+      ).use { (client, server) =>
+        NodeToNodeServer
+          .start(server, handlers(Chain(Vector(1, 2, 3))))
+          .use { _ =>
+            for
+              c <- client.channel(2)
+              // not a ChainSync message in the idle state
+              _ <- c.send(Bytes(Vector(0x82.toByte, 0x09, 0x00)))
+              reason <- server.closed.timeout(2.seconds)
+            yield reason
+          }
+      }
+    }.map {
+      case Right(NetworkError.Decode(protocol, _)) => assertEquals(protocol, Protocols.ChainSync)
+      case other                                   => fail(s"unexpected $other")
     }
 
   test("TCP: a node-to-node client connects to the accepting server and syncs"):

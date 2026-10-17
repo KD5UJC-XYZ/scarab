@@ -57,7 +57,7 @@ object LocalTxSubmissionServer:
       .resource(
         bearer,
         Set(Protocols.Handshake, Protocols.LocalTxSubmission),
-        Mux.Config(role = Mux.Role.Responder)
+        Mux.Config(role = Mux.Role.Responder, ingressLimit = IngressLimits.nodeToClient)
       )
       .use { mux =>
         for
@@ -71,8 +71,21 @@ object LocalTxSubmissionServer:
               )
             )
           channel <- mux.channel(Protocols.LocalTxSubmission)
-          // the connection ends when the client finishes the protocol or closes the socket
-          ended <- cats.effect.Async[F].race(run(channel, submit, settings), mux.closed)
-          reason = ended.fold(_ => "client finished", identity)
+          // the connection ends when the client finishes the protocol or closes the socket; the
+          // protocol runs in a fiber of its own and its failure comes back as a value
+          ended <- cats.effect
+            .Async[F]
+            .race(
+              Fibers.scoped[F, NetworkError, Unit](t =>
+                NetworkError.BearerClosed(
+                  s"local-tx-submission: ${Option(t.getMessage).getOrElse(t.toString)}"
+                )
+              )(run(channel, submit, settings)),
+              mux.closed
+            )
+          reason <- ended.fold(
+            result => Fibers.land[F, NetworkError, Unit](result).as("client finished"),
+            closed => cats.effect.Async[F].pure(closed.message)
+          )
         yield reason
       }

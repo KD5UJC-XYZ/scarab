@@ -19,7 +19,7 @@ trait FailsOnUncaught extends CatsEffectSuite:
   // shutting a work-stealing pool down from one of its own threads (munit's afterAll runs there)
   // does not return.
 
-  override lazy val munitIORuntime: IORuntime =
+  override implicit lazy val munitIORuntime: IORuntime =
     IORuntime.builder().setFailureReporter(t => { reported.add(t); () }).build()
 
   override def beforeEach(context: BeforeEach): Unit =

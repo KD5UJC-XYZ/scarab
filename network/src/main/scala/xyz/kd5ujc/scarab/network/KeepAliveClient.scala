@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.network
 
 import cats.effect.{Clock, Ref, Resource, Temporal}
-import cats.mtl.{Handle, Raise}
+import cats.mtl.Raise
 import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.KeepAlive
@@ -11,7 +11,7 @@ import scala.concurrent.duration.*
 /** KeepAlive client on mini-protocol 8. Use from a single fiber. */
 trait KeepAliveClient[F[_]]:
   /** One request/response round trip; returns its duration. */
-  def ping: F[FiniteDuration]
+  def ping(using Raise[F, NetworkError]): F[FiniteDuration]
 
 object KeepAliveClient:
   /** The upstream server drops a client that is silent for 97 seconds, so ping well inside that. */
@@ -21,23 +21,25 @@ object KeepAliveClient:
       limits: KeepAlive.Limits = KeepAlive.Limits()
   )
 
-  def apply[F[_]: Temporal](channel: MuxChannel[F], settings: Settings = Settings())(using
-      Raise[F, NetworkError]
+  def apply[F[_]: Temporal](
+      channel: MuxChannel[F],
+      settings: Settings = Settings()
   ): F[KeepAliveClient[F]] =
     val F = Temporal[F]
     val id = Protocols.KeepAlive
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     Ref.of[F, Int](0).map { counter =>
       new KeepAliveClient[F]:
-        def ping: F[FiniteDuration] =
+        def ping(using Raise[F, NetworkError]): F[FiniteDuration] =
           for
             n <- counter.getAndUpdate(c => (c + 1) % (KeepAlive.Cookie.Max + 1))
-            cookie <- KeepAlive.Cookie.from(n).fold(illegal, F.pure)
+            cookie <- KeepAlive.Cookie.from(n).fold(illegal(_), F.pure)
             request = KeepAlive.Message.Request(cookie)
             bytes <- KeepAlive
               .encode(KeepAlive.State.Client, KeepAlive.Role.Client, request, settings.limits)
-              .fold(illegal, F.pure)
+              .fold(illegal(_), F.pure)
             started <- Clock[F].monotonic
             _ <- channel.send(bytes)
             response <- Timed.within(settings.responseTimeout, id, "server")(
@@ -50,13 +52,13 @@ object KeepAliveClient:
                 )
               )
             )
-            _ <- KeepAlive.matchResponse(Some(cookie), response).fold(illegal, F.pure)
+            _ <- KeepAlive.matchResponse(Some(cookie), response).fold(illegal(_), F.pure)
             finished <- Clock[F].monotonic
           yield finished - started
     }
 
   /** Ping every `interval` for the life of the resource. A failed ping aborts the whole
-    * multiplexer, so pending operations on the other protocols raise `BearerClosed`.
+    * multiplexer, so pending operations on the other protocols raise the reason.
     */
   def background[F[_]: Temporal](
       channel: MuxChannel[F],
@@ -65,23 +67,21 @@ object KeepAliveClient:
   ): Resource[F, Unit] =
     Temporal[F].background(pinger(channel, mux, settings)).void
 
-  /** The pinger fiber. Whatever ends it ends the connection, and nothing escapes it: the channel
-    * raises through the `Raise` of the scope that opened the connection, which is not this fiber's
-    * scope, so a connection lost under a waiting ping raises there as a failure of the fiber (a
-    * `Handle$Submarine` when the scope's `Raise` comes from `Handle.allow`) that this scope's
-    * `rescue` does not catch (issue 130).
+  /** The pinger fiber. Whatever ends it ends the connection. It runs in an error scope of its own
+    * ([[Fibers.scoped]]) and ends with the reason as a value, which it hands to the multiplexer:
+    * the channel raises through the scope of the fiber that calls it, so a connection lost under a
+    * waiting ping is a value here and not a failure of the fiber (issue 130).
     */
   private[network] def pinger[F[_]: Temporal](
       channel: MuxChannel[F],
       mux: Mux[F],
       settings: Settings
   ): F[Unit] =
-    Handle
-      .allow[NetworkError] {
+    Fibers
+      .scoped[F, NetworkError, Unit](t =>
+        NetworkError.BearerClosed(s"keep-alive: ${Option(t.getMessage).getOrElse(t.toString)}")
+      ) {
         apply[F](channel, settings)
           .flatMap(client => (client.ping *> Temporal[F].sleep(settings.interval)).foreverM[Unit])
       }
-      .rescue(error => mux.abort(error.message))
-      .handleErrorWith(t =>
-        mux.abort(s"keep-alive: ${Option(t.getMessage).getOrElse(t.getClass.getSimpleName)}")
-      )
+      .flatMap(_.fold(mux.abort, _ => Temporal[F].unit))

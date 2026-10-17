@@ -69,6 +69,7 @@ enum EventKind(val area: Area, val severity: Severity):
   case StateDumpRefused extends EventKind(Area.Node, Severity.Warning)
   case VerificationCache extends EventKind(Area.Node, Severity.Debug)
   case Error extends EventKind(Area.Node, Severity.Error)
+  case Fatal extends EventKind(Area.Node, Severity.Error)
   case Finished extends EventKind(Area.Node, Severity.Notice)
 
   // following the chain

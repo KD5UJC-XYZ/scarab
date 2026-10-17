@@ -73,3 +73,29 @@ class PeerSuite extends ScalaCheckSuite:
       runs.zip(runs.drop(1)).foreach((a, b) => assert(b.head.blockNo - a.last.blockNo > 1))
     }
   }
+
+  test("what the network layer raises is a peer error, and a peer that broke a rule is forgotten") {
+    import xyz.kd5ujc.scarab.ledger.PeerError
+    import xyz.kd5ujc.scarab.network.NetworkError
+    import xyz.kd5ujc.scarab.network.selection.FailureClass
+    def classified(error: NetworkError) = FailurePolicy.classify(Peer.peerError(error))
+    // a lost or slow connection is tried again
+    assertEquals(classified(NetworkError.Connect("peer", "refused")), FailureClass.Transient)
+    assertEquals(classified(NetworkError.Timeout(2, "StNext")), FailureClass.Transient)
+    assertEquals(classified(NetworkError.BearerClosed("closed by peer")), FailureClass.Transient)
+    assertEquals(
+      classified(NetworkError.VersionMismatch(Vector(14), Vector(13))),
+      FailureClass.Transient
+    )
+    // a peer that sends what the protocol does not allow is forgotten: more unread bytes than the
+    // limit of the protocol, a message that does not decode, a message in the wrong state, a frame
+    // the multiplexer cannot read
+    assertEquals(classified(NetworkError.IngressLimit(2, 462100L)), FailureClass.Misbehaved)
+    assertEquals(classified(NetworkError.Decode(3, "not a block")), FailureClass.Misbehaved)
+    assertEquals(
+      classified(NetworkError.IllegalTransition(2, "pipelined request")),
+      FailureClass.Misbehaved
+    )
+    assertEquals(classified(NetworkError.Framing("EOF in mux payload")), FailureClass.Misbehaved)
+    assert(Peer.peerError(NetworkError.IngressLimit(2, 1L)).isInstanceOf[PeerError.Protocol])
+  }
