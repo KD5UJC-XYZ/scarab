@@ -4,7 +4,8 @@ package xyz.kd5ujc.scarab.node.read
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger as flat
-import xyz.kd5ujc.scarab.ledger.rules.EraLedger
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, Rewards}
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.node.read.LeaderPools.given
 
@@ -182,20 +183,30 @@ final class MirrorEraRead[E <: EraTag](val state: NewEpochState[E])(using
 
   def pd: Read[PoolDistr] = Right(state.pd)
 
-  def rewardsDue: Read[Option[RewardsDue]] = Right(state.ru.flatMap {
-    case PulsingRewUpdate.Complete(u) =>
-      Some(
-        RewardsDue(
-          u.deltaT,
-          u.deltaR,
-          u.deltaF,
-          Sorted.map(u.rs.iterator.map { (c, set) =>
-            c -> set.rewards.iterator.foldLeft(BigInt(0))(_ + _.rewardAmount.value)
-          })
-        )
-      )
-    case PulsingRewUpdate.Pulsing(_, _) => None
-  })
+  /** What each credential is paid (`aggregateRewards`, `Rewards.hs:186`): before Allegra a
+    * credential that earns from several sources gets only the least of its rewards, by the
+    * parameters in force during the epoch the update is for (the previous ones, while the update is
+    * applied); the mirror's update holds every reward.
+    */
+  def rewardsDue: Read[Option[RewardsDue]] =
+    state.ru.flatTraverse {
+      case PulsingRewUpdate.Complete(u) =>
+        Rewards
+          .aggregate(EraLedger.prevPParams(ls.utxo.gov).protocolMajor, u.rs)
+          .left
+          .map(MirrorError.Vocab(_))
+          .map(paid =>
+            Some(
+              RewardsDue(
+                u.deltaT,
+                u.deltaR,
+                u.deltaF,
+                Sorted.map(paid.collect { case (c, n) if n.value.signum != 0 => c -> n.value })
+              )
+            )
+          )
+      case PulsingRewUpdate.Pulsing(_, _) => Right(None)
+    }
 
   def ppup: Read[(Map[Bytes, flat.ParamUpdate], Map[Bytes, flat.ParamUpdate])] =
     Right(era match
