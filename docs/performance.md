@@ -945,3 +945,81 @@ faster, and was not kept.
 **To repeat.** The `BoundaryTickMain` command above, from a test classpath
 (`export node/Test/fullClasspath` in sbt), with `-Xmx12g`. The tool times the new rules alone (J2.9 removed the old); the ratio
 to the old rules is this section's record.
+
+
+## 17. Per-block ledger application in late Alonzo (#133)
+
+**The question.** The mainnet follower in late Alonzo (epoch 327, block 7.0 M) applied about 26 blocks/s on 1.5 of 12 cores:
+`scarab_block_apply_seconds` averaged 31 ms per block (33,520 blocks; 69% between 16 and 32 ms), and the Haskell node does this
+era at about 13 ms per block. Thread dumps had put the one busy thread in `PreConwayRules.apply`.
+
+**Profile** (JFR, 10 minutes, `settings=profile`, 45,793 execution samples, read only on the running follower; the deep
+stacks of the rules are cut at 64 frames, so shares are by the frames that remain; JFR also samples few threads per interval,
+so these are shares of samples, not of wall time). `jdk.ThreadStart` counted 133,584 thread starts in the 600 s.
+
+| share | what | on the apply path |
+|---|---|---|
+| 26.3% | signature checks (`VerificationCache.warm`, Ed25519, VRF) | no, parallel (#125) |
+| 23.0% | the `plutus-evaluator` threads: the Scalus CEK machine | yes, the apply thread joins them |
+| 11.0% | `PreConwayRules`/`TxRules`: 33% of these in `Value.+` (`mergeAssets`), 10% hex-string `TxIn` ordering (`Purpose.all`, three times per transaction with scripts), 8% `ScriptIntegrity` (about 300 cost-model integers encoded as a `Vector[Byte]` per transaction), 10% `Phase2` before the machine (half of it `ScriptContexts.bytesOrder`, which built the `Vector[Byte]` of both operands on every byte of every comparison), the rest UTxO updates and small checks | yes |
+| 10.5% | `Follower.adopt` -> `ChainSelection.decide` -> `Header.point` (`UInt64.saturating`, `BigInt.compare`) | yes, under the follower's lock |
+| 10.4% | the snapshot writer (`LedgerMirror` `Sorted.map`, SHA-256): one 600 MB snapshot every 10 minutes | background |
+| 3.4% | `Follower.commit`, of which `ChainServer.headerOfBlock` decodes and re-hashes the whole block to get its header | yes |
+| 2.4% | epoch boundary (#131, not touched) | yes, once per epoch |
+| 2.0% | UTxO store (`advance`, `settled`); RocksDB `multiGet` is 24 of 28,956 native samples | partly |
+
+What the thread dumps called `PreConwayRules.apply` was the sum of the rules and the machine; the rules alone are a fifth of
+the path. The `new Thread` frames were `ScalusEvaluator.onBigStack`: a `Thread` with a 256 MB stack per script, 220 a second
+(8.5 scripts a block; the log has 5.9 evaluated per block in epoch 328).
+
+**Changes** (each in code the new rules share, none in `PreConwayRules`/`ConwayRules`/`TxRules`):
+
+- `ChainSelection.decide` searched the candidate from the tip and built the `Point` of every header first. The candidate of
+  a peer that is behind us is wholly ours, the answer is `Keep`, and it is never trimmed, so it grows by a header per header
+  and the cost per header grew with it. Now the points are made on demand from the tip: the first probe answers.
+  `DecideBenchMain`, window of 2,160: 5,000 headers 117 us -> 9 us; 50,000 headers 9,200 us -> 35 to 57 us. A property test
+  (`ChainSelectionSuite`) keeps the old definition and compares the decisions on random candidates.
+- `ScalusEvaluator`: the big-stack threads are pooled (daemon, kept 30 s) instead of started per script.
+- `Value.+`/`-` fold the entries of the right operand into the left (a persistent map keeps what it does not touch) instead of
+  rebuilding both over the union; zero quantities and empty policies are dropped as before. `HotPathEquivalenceSuite`
+  compares with the old definition on random values, zeros and negatives included.
+- `TxIn`, `Credential` and withdrawal orders, and `ScriptContexts`' byte order, compare bytes (`Bytes.compareTo`, now also the
+  `Ordering[Bytes]` given) instead of building hex strings or vectors; the same order (properties).
+- `ScriptIntegrity` keeps the encoded language views for the cost models in force.
+- `Value.headSize` no longer builds `2^32` on each call.
+
+**Measured offline** (`ApplyBenchMain`, 400 consecutive mainnet blocks from epoch 320, 17,806 transactions; 4 CPUs, JIT-warm,
+about 10 to 15% noise). The capture does not carry the UTxO set it spends, so the inputs from before it are made up (an
+address of one of the witnesses, the value the transaction needs, ada only): of the transactions 9,788 pass the whole of
+`apply`, the others stop at a check after most of the predicates ran. The checks that are timed read none of the made-up
+values, but real inputs carry tokens and the mainnet share of `Value` was larger than here.
+
+| per transaction | before | after |
+|---|---|---|
+| `PreConwayRules.apply` as a whole | 30.5 us (1.36 ms/block) | 20.3 us (0.90 ms/block) |
+| sum of the inputs and outputs' values | 9.5 us | 2.6 us |
+| sum of the real output values | 4.3 us | 1.2 us |
+| sort of the inputs | 0.5 us | 0.1 us |
+| script integrity hash | 1.9 us | 0.5 us |
+| phase 2 of the 45 recorded Preview cases (90 scripts, median of 40 passes) | 69.9 ms | 55.9 ms |
+
+These are one-tenth of the 31 ms a block costs on mainnet (cold caches, a UTxO diff of 100,000 entries, 12 threads, garbage
+collection, tokens in the inputs), so the offline numbers rank the changes; they do not predict the follower's rate. The
+decisive measurement is a JFR of the follower after a deploy, with the same classification (the script of this section is the
+`an5` classification of the table above) and `scarab_block_apply_seconds` against its 31 ms mean.
+
+**Not done, and why.**
+- The CEK machine itself is 23% of the samples. Inside Scalus 1.3.0 (the latest release) the machine's environment is an
+  `ArraySeq` extended with `:+` (a copy of the whole environment per binding: `Array.copyOf` was 18% of the evaluator's
+  samples) and `CorrectedVm.runtime` was 14% (the `getBuiltinRuntime` call; a per-ordinal memo made no difference on the
+  Preview scripts and was dropped). A faster machine means a change upstream; the redeemers of one transaction are independent,
+  but the owner rule is that transactions stay sequential, and a parallel evaluation of one transaction's few redeemers was
+  not tried.
+- `ChainServer.headerOfBlock` decodes and hashes the whole block (775 of its 1,173 samples are the body hash) to read its
+  header: a header-only read would take about 1 ms off the serial path; not done here.
+- The snapshot writer (10%) sorts every account for the Haskell layout; it is in the background and not the apply path.
+- A lagging peer's candidate is still never trimmed.
+
+**Repeat.** `jcmd 1 JFR.start name=p settings=profile duration=10m filename=/data/p.jfr` on the follower; `jfr print --events
+jdk.ExecutionSample --stack-depth 64` and `jdk.ThreadStart`; offline `xyz.kd5ujc.scarab.ledger.ApplyBenchMain <blocks.hex> 400 6`,
+`ApplyBenchMain plutus 40` and `xyz.kd5ujc.scarab.consensus.DecideBenchMain 50000 20` from the test classpath.
