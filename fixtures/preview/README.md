@@ -10,6 +10,7 @@ with `xyz.kd5ujc.scarab.node.tools.CaptureMain` from the public relay `preview-n
 | `alonzo-txs.hex` | Two single Alonzo blocks (heights 4330 and 8645) that each contain one transaction. Not contiguous. |
 | `babbage-transition.hex` | 30 contiguous blocks starting at height 13011: the last Alonzo block (TPraos) followed by Babbage blocks (tag 6, Praos headers, protocol 8). |
 | `conway.hex` | 30 contiguous Conway blocks (tag 7, Praos headers) starting just after height 2645975, captured with `--from 64195073.f1ce3cbb...`. Includes blocks with transactions. |
+| `pool-relays-ipv6.json` | The relay sequence of a Preview pool registration with an IPv4 (127.0.0.1) and an IPv6 relay address (transaction 1ce619e0..., epoch 1307, pool19h8ak9gu...), the exact CBOR item out of the transaction as the Koios API's `tx_cbor` gives it, beside the addresses `pool_updates` shows (fetched 2026-10-17). `PoolRelaysRegistrationSuite` decodes it with the two mainnet ones of `../mainnet/pool-relays-ipv6.json`. |
 
 Preview has no Byron, Shelley, Allegra or Mary blocks: the chain forks through those eras at
 epoch 0 and the first block is already Alonzo.

@@ -38,15 +38,37 @@ final case class Ipv4(word: Int) extends RelayIp:
   def octets: Bytes = Bytes.fromArray(RelayIp.be(word.toLong & 0xffffffffL, 4))
   def render: String = (3 to 0 by -1).map(i => (word >>> (8 * i)) & 0xff).mkString(".")
 
-/** The sixteen octets, most significant first, as two big-endian 64-bit halves. */
+/** The sixteen octets, most significant first, as two big-endian 64-bit halves.
+  *
+  * A registration does *not* hold them in this order: it holds the four 32-bit words of the address
+  * (the first four octets as one number, and so on), each written little-endian (`ipv6ToBytes`,
+  * cardano-ledger-binary `Encoder.hs:569-575`, `putWord32le` of each word of `fromIPv6w`). So
+  * `2a02:c206:2242:2138::1` is `06c2022a 38214222 00000000 01000000` there, as the registrations of
+  * mainnet pool1zj4h7kc6v53q9r8x3fwzfuayf2frwme8u5k86gu0uzeeuvqxgul show
+  * (`fixtures/mainnet/pool-relays-ipv6.json`). [[wire]] and [[Ipv6.fromWire]] are that form.
+  */
 final case class Ipv6(high: Long, low: Long) extends RelayIp:
   def octets: Bytes = Bytes.fromArray(RelayIp.be(high, 8) ++ RelayIp.be(low, 8))
+
+  /** The registration's form: each four octets reversed. */
+  def wire: Bytes = Bytes.fromArray(Ipv6.swapWords(octets.toArray))
   def render: String =
     val groups = (0 until 8).map { i =>
       val word = if i < 4 then high else low
       ((word >>> (16 * (3 - i % 4))) & 0xffff).toInt
     }.toVector
     RelayIp.compress(groups)
+
+object Ipv6:
+  private[ledger] def swapWords(raw: Array[Byte]): Array[Byte] =
+    Array.tabulate(raw.length)(i => raw((i / 4) * 4 + 3 - i % 4))
+
+  /** The address of the 16 bytes of a registration (four little-endian words); none for any other
+    * length.
+    */
+  def fromWire(b: Bytes): Option[Ipv6] =
+    if b.size != 16 then None
+    else RelayIp.fromOctets(Bytes.fromArray(swapWords(b.toArray))).collect { case v6: Ipv6 => v6 }
 
 object RelayIp:
   /** `n` big-endian bytes of the low bits of `value`. */
@@ -176,14 +198,19 @@ enum PoolRelayError:
   * forms. `port` is a `Word16`; `dns_name` is text of at most 128 bytes (64 before protocol version
   * 9, a registration is checked when it is made, so the larger bound reads both).
   *
-  * An address is `bytes .size 4` or `bytes .size 16` (`shelley.cddl:187-188`) in network order: the
-  * first octet first. cardano-ledger-binary 1.9.1.0 (rev 048b78d) writes the IPv4 word big-endian
-  * (`ipv4ToBytes`, `Encoding/Encoder.hs:563-564`, changelog "Fix IPv4 encoding order to use network
-  * order instead of swapped"; rev f649f97 still has the swapped little-endian write, which the
-  * release corrects), and the real registration in
-  * `fixtures/mainnet/shelley-pool-network-block.hex` carries `03652f85` for a relay of
-  * 3.101.47.133. The IPv6 address is the four host-address words, each little-endian
-  * (`ipv6ToBytes`, `Encoder.hs:569-575`), which is the octets in order.
+  * An address is `bytes .size 4` or `bytes .size 16` (`shelley.cddl:187-188`). An IPv4 address is
+  * in network order, the first octet first; an IPv6 address is not (below). cardano-ledger-binary
+  * 1.9.1.0 (rev 048b78d) writes the IPv4 word big-endian (`ipv4ToBytes`,
+  * `Encoding/Encoder.hs:563-564`, changelog "Fix IPv4 encoding order to use network order instead
+  * of swapped"; rev f649f97 still has the swapped little-endian write, which the release corrects),
+  * and the real registration in `fixtures/mainnet/shelley-pool-network-block.hex` carries
+  * `03652f85` for a relay of 3.101.47.133. The IPv6 address is the four 32-bit words of the
+  * address, each written little-endian (`ipv6ToBytes`, `Encoder.hs:569-575`; `getHostAddress6`,
+  * `Decoder.hs:1363-1368`), so within each four octets the order is reversed, which three real
+  * registrations show (`fixtures/mainnet/pool-relays-ipv6.json`,
+  * `fixtures/preview/pool-relays-ipv6.json`: for `2a02:c206:2242:2138::1` the bytes
+  * `06c2022a 38214222 00000000 01000000`). Reading them as network order, as G1.3a did, gives
+  * `6c2:22a:3821:4222::1`, not an address.
   *
   * No relays at all is the empty `Bytes` (as `NodeTypeCodecs.relays` keeps it) or an empty array.
   */
@@ -275,9 +302,9 @@ object PoolRelays:
     n.value match
       case Value.Null => Right(None)
       case Value.ByteString(b) =>
-        RelayIp.fromOctets(b) match
-          case Some(v6: Ipv6) => Right(Some(v6))
-          case _              => Left(PoolRelayError.BadIpv6(index))
+        Ipv6.fromWire(b) match
+          case Some(v6) => Right(Some(v6))
+          case None     => Left(PoolRelayError.BadIpv6(index))
       case _ => Left(PoolRelayError.BadIpv6(index))
 
   private def dns(n: Node, index: Int): Either[PoolRelayError, String] =
@@ -301,7 +328,7 @@ object PoolRelays:
         head(out, 4, 4); head(out, 0, 0)
         optional(out, p)(x => head(out, 0, x.toInt.toLong))
         optional(out, v4)(x => octets(out, x.octets))
-        optional(out, v6)(x => octets(out, x.octets))
+        optional(out, v6)(x => octets(out, x.wire))
       case PoolRelay.SingleHostName(p, name) =>
         head(out, 4, 3); head(out, 0, 1)
         optional(out, p)(x => head(out, 0, x.toInt.toLong))

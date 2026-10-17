@@ -29,6 +29,8 @@ protocol magic, address roots, value conservation and the minimum fee.
 
 `MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8. `PoolRelaysSuite` reads the relays of that registration (one IPv4 relay, `03652f85`, port 3001), the one real registration with relays in the repository.
 
+`pool-relays-ipv6.json` holds the relay sequences of two mainnet pool registrations with an IPv6 relay (transactions 812dea7e..., epoch 577, pool19yf67fka...; 602f0b7f..., epoch 646, pool1zj4h7kc6...), the exact CBOR items out of the transactions as the Koios API's `tx_cbor` gives them, beside the address the API's `pool_updates` shows (fetched 2026-10-17). `fixtures/preview/pool-relays-ipv6.json` has one Preview registration (1ce619e0..., epoch 1307) in the same form. `PoolRelaysRegistrationSuite` (node tests) decodes them; they pin the byte order of an IPv6 address in a registration: the four 32-bit words of the address, each little-endian (`2a02:c206:2242:2138::1` is `06c2022a 38214222 00000000 01000000`).
+
 `MainnetGarbageAddressSuite` (ledger tests) and `MainnetGarbageAddressStoreSuite` (storage tests) decode the block at slot 39,249,764 and read the address of transaction 369826b2 in each era, and put its output through the UTxO stores and the Haskell UTxO codec.
 
 `MainnetPointerSuite` (ledger tests), `MainnetPointerStoreSuite` (storage tests) and `MainnetPointerSnapshotSuite` (node tests) decode transaction 9a47e091 in each era, put its output through the stores and the Haskell codecs, and write the V4 snapshot of a state that holds it.

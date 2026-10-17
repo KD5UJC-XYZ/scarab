@@ -1,0 +1,26 @@
+{
+  "source": "Koios public API (https://koios.rest): pool_updates for the relays as db-sync decoded them, tx_cbor for the transaction as the chain holds it; fetched 2026-10-17",
+  "network": "mainnet",
+  "registrations": [
+    {
+      "txHash": "812dea7e442852dddae4695cd337b9313e60332bc6da8477f2c7657cafb3da56",
+      "epoch": 577,
+      "slot": 164107423,
+      "pool": "pool19yf67fkanhu30qqdcug4gwfy7gpzy8jhq56llg5ua3g3kufg3s5",
+      "relaysHex": "818400190bb9f65000170026d04a60f60000000030000000",
+      "ipv4": null,
+      "ipv6": "2600:1700:f660:4ad0::30",
+      "port": 3001
+    },
+    {
+      "txHash": "602f0b7fd714c1d5c89053a5d579486c2c52d30bb38c8ff8f44314df1f835ef0",
+      "epoch": 646,
+      "slot": 194007583,
+      "pool": "pool1zj4h7kc6v53q9r8x3fwzfuayf2frwme8u5k86gu0uzeeuvqxgul",
+      "relaysHex": "818400190bb9f65006c2022a382142220000000001000000",
+      "ipv4": null,
+      "ipv6": "2a02:c206:2242:2138::1",
+      "port": 3001
+    }
+  ]
+}

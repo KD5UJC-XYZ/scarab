@@ -46,12 +46,17 @@ class PoolRelaysSuite extends ScalaCheckSuite:
   }
 
   test("a single host address with an IPv6 address and no IPv4 address") {
-    val octets = "20010db8000000000000000000000001"
-    val relay = decoded(s"81 84 00 19ffff f6 50$octets").head
+    // the registration holds the four 32-bit words of the address, each little-endian:
+    // 20010db8 00000000 00000000 00000001 is b80d0120 00000000 00000000 01000000
+    val wire = "b80d012000000000" + "0000000001000000"
+    val relay = decoded(s"81 84 00 19ffff f6 50$wire").head
     val v6 = Ipv6(0x20010db800000000L, 1L)
     assertEquals(relay, PoolRelay.SingleHostAddr(Some(port(65535)), None, Some(v6)))
     assertEquals(v6.render, "2001:db8::1")
-    assertEquals(v6.octets, hex(octets))
+    assertEquals(v6.octets, hex("20010db8000000000000000000000001"))
+    assertEquals(v6.wire, hex(wire))
+    assertEquals(Ipv6.fromWire(hex(wire)), Some(v6))
+    assertEquals(Ipv6.fromWire(hex("2001")), None)
   }
 
   test("a single host name with and without a port; a multi host name") {
@@ -226,6 +231,10 @@ class PoolRelaysSuite extends ScalaCheckSuite:
 
   property("an address is its octets: V4 and V6 round-trip through the bytes of the registration") {
     forAll(Gen.oneOf(ipv4, ipv6))(ip => RelayIp.fromOctets(ip.octets).contains(ip))
+  }
+
+  property("an IPv6 address round-trips through the four little-endian words of a registration") {
+    forAll(ipv6)(ip => Ipv6.fromWire(ip.wire).contains(ip))
   }
 
   property("decoding arbitrary bytes returns a value or a typed error, never an exception") {
