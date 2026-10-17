@@ -6,7 +6,6 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.protocol.Era
-
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
