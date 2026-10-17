@@ -176,6 +176,7 @@ object Corpus:
     val network = Vector(
       s"module network.base base $specs/network.base.cddl overrides/network-base.cddl",
       s"module keep-alive ka $specs/keep-alive.cddl",
+      s"module peer-sharing-v14 ps $specs/peer-sharing-v14.cddl",
       s"module chain-sync cs $specs/chain-sync.cddl",
       s"module block-fetch bf $specs/block-fetch.cddl",
       s"module tx-submission2 ts $specs/tx-submission2.cddl",

@@ -140,6 +140,28 @@ object Targets:
     }
     blocks ++ netCorpus("block-fetch:blockFetchMessage")()
 
+  private val peerSharingSeeds: () => Vector[Array[Byte]] = () =>
+    def word(i: Int) = PeerSharing.Word32.ofBits(i * 0x01010101)
+    def port(i: Int) =
+      PeerSharing.Port.from(i * 257 % 65536).fold(throw new IllegalStateException("port"))(identity)
+    val addresses = Vector(
+      PeerSharing.Address.V4(word(7), port(1)),
+      PeerSharing.Address.V4(word(-1), port(255)),
+      PeerSharing.Address.V6(word(0), word(0), word(0), word(1), port(11)),
+      PeerSharing.Address.V6(word(-3), word(5), word(255), word(65535), port(0))
+    )
+    val replies = (0 to addresses.size).flatMap(n =>
+      PeerSharing
+        .encode(
+          PeerSharing.State.Busy,
+          PeerSharing.Role.Server,
+          PeerSharing.Message.SharePeers(addresses.take(n))
+        )
+        .toOption
+        .map(_.toArray)
+    )
+    replies.toVector ++ netCorpus("peer-sharing-v14:peerSharingMessage")()
+
   private val txSubmissionSeeds: () => Vector[Array[Byte]] = () =>
     val replies = Corpus.transactions.take(6).flatMap { tx =>
       TxSubmission2
@@ -340,6 +362,14 @@ object Targets:
       netCorpus("keep-alive:keepAliveMessage"),
       (s, r, b) => KeepAlive.decodePrefix(s, r, b),
       (s, r, m) => KeepAlive.encode(s, r, m)
+    ),
+    roundTrip(
+      "peersharing",
+      PeerSharing.State.values.toSeq,
+      PeerSharing.Role.values.toSeq,
+      peerSharingSeeds,
+      (s, r, b) => PeerSharing.decoder(s, r)(b),
+      (s, r, m) => PeerSharing.encode(s, r, m).left.map(_.message)
     ),
     roundTrip(
       "local-state-query",
