@@ -108,11 +108,11 @@ object Sum6KesSigning:
       )
 
   /** Load a `kes.skey` payload of any period (a key this node has evolved and written back, see
-    * `KesStore`): the period is read off the key itself, because [[update]] erases the `r1` seed
-    * of a level exactly when the key moves into that level's right half, so the erased seeds, from
-    * the outermost level in, spell the period in binary. The result is checked as in [[fromBytes]],
-    * so a damaged key (or an all-zero, forgotten one) is refused. The cardano-cli file is the
-    * period-0 case.
+    * `KesStore`): the period is read off the key itself, because [[update]] erases the `r1` seed of
+    * a level exactly when the key moves into that level's right half, so the erased seeds, from the
+    * outermost level in, spell the period in binary. The result is checked as in [[fromBytes]], so
+    * a damaged key (or an all-zero, forgotten one) is refused. The cardano-cli file is the period-0
+    * case.
     */
   def fromEvolved(bytes: Bytes): Either[Failure, SigningKey] =
     if bytes == null || bytes.size != KeyBytes then

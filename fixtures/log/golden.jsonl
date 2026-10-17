@@ -48,13 +48,16 @@
 {"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool"}
 {"event":"mempoolAdopted","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
 {"event":"mempoolSynced","at":"2026-10-16T12:00:00Z","count":3,"bytes":900,"dropped":1}
-{"event":"forgeStarted","at":"2026-10-16T12:00:00Z","pool":"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd","vrfKeyHash":"abababababababababababababababababababababababababababababababab","kesStart":0,"kesEvolutions":62}
+{"event":"forgeStarted","at":"2026-10-16T12:00:00Z","pool":"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd","vrfKeyHash":"abababababababababababababababababababababababababababababababab","kesStart":0,"kesEvolutions":62,"opCertCounter":3,"kesPeriod":10,"remainingKesPeriods":52}
 {"event":"forged","at":"2026-10-16T12:00:00Z","slot":4200,"epoch":3,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab","prev":"abababababababababababababababababababababababababababababababab","txs":["abababababababababababababababababababababababababababababababab"],"bodySize":1024,"kesPeriod":32,"relativeKesPeriod":1,"stake":500,"totalStake":1000}
 {"event":"forged","at":"2026-10-16T12:00:00Z","slot":1,"epoch":0,"blockNo":0,"hash":"abababababababababababababababababababababababababababababababab","prev":null,"txs":[],"bodySize":0,"kesPeriod":0,"relativeKesPeriod":0,"stake":0,"totalStake":0}
 {"event":"adopted","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"latencyMs":12}
 {"event":"adopted","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"latencyMs":null}
 {"event":"lost","at":"2026-10-16T12:00:00Z","slot":4200,"hash":"abababababababababababababababababababababababababababababababab","reason":"slot battle"}
 {"event":"kesEvolved","at":"2026-10-16T12:00:00Z","kesPeriod":33,"relativeKesPeriod":2}
+{"event":"kesReloaded","at":"2026-10-16T12:00:00Z","opCertCounter":4,"kesStart":30,"kesEvolutions":62,"kesPeriod":33,"remainingKesPeriods":59}
+{"event":"kesReloadRefused","at":"2026-10-16T12:00:00Z","kind":"Counter","message":"opcert counter 3 below current 5"}
+{"event":"kesPersistFailed","at":"2026-10-16T12:00:00Z","kesPeriod":33,"kind":"KeyFile","message":"key file kes.skey: disk full"}
 {"event":"forgeSkipped","at":"2026-10-16T12:00:00Z","slot":4201,"reason":"busy"}
 {"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KesFailure","message":"KES: bad period"}
 {"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":3,"slotsChecked":100,"leaderSlots":5,"forged":5,"adopted":4,"lostSlotBattles":1,"failed":0,"skipped":3,"skippedByReason":{"busy":2,"tipTooOld":1},"forgeLatencyMs":{"count":4,"mean":12.5,"max":20}}

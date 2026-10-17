@@ -19,6 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ForgeError,
   Header,
   NetworkIdentity,
+  OCertError,
   PeerError,
   PlutusStats,
   StorageError
@@ -34,7 +35,7 @@ import xyz.kd5ujc.scarab.node.differential.{
   Stats,
   TickCost
 }
-import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent, ReloadRefusal}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{
@@ -159,7 +160,7 @@ object LogSamples:
     latencyMaxMs = 20
   )
   val forge: List[ForgeEvent] = List(
-    ForgeEvent.Started(other, hash, BigInt(0), BigInt(62)),
+    ForgeEvent.Started(other, hash, BigInt(0), BigInt(62), BigInt(3), BigInt(10)),
     ForgeEvent.Forged(
       BigInt(4200),
       BigInt(3),
@@ -190,6 +191,9 @@ object LogSamples:
     ForgeEvent.Adopted(block, None),
     ForgeEvent.Lost(BigInt(4200), hash, "slot battle"),
     ForgeEvent.KesEvolved(BigInt(33), 2),
+    ForgeEvent.KesReloaded(BigInt(4), BigInt(30), BigInt(62), BigInt(33)),
+    ForgeEvent.KesReloadRefused(ReloadRefusal.Counter(OCertError.CounterTooSmall(5, 3))),
+    ForgeEvent.KesPersistFailed(BigInt(33), ForgeError.KeyFile("kes.skey", "disk full")),
     ForgeEvent.Skipped(BigInt(4201), "busy"),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KesFailure("bad period")),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),

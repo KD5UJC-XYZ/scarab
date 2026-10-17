@@ -959,7 +959,8 @@ Errors are a closed ADT, `ForgeError`: `KeyFile`, `KeyMismatch`, `KeyPeriodOutOf
 `VrfFailure`, `NotLeader` (the ordinary answer), `LedgerViewUnavailable`, `UnsupportedProtocol`, `Assembly`,
 `SelfRejected`. Log events: `forgeStarted`, `forged` (slot, block number, hash, transaction ids, KES periods,
 stake), `adopted`, `lost` (the block did not join our chain, or was replaced at its height later),
-`kesEvolved`, `forgeSkipped`, `forgeFailed`.
+`kesEvolved`, `kesReloaded`, `kesReloadRefused`, `kesPersistFailed` (see "Rotating the KES key" in
+[running.md](running.md)), `forgeSkipped`, `forgeFailed`.
 
 The slot clock starts at the Byron genesis' `startTime` (whole seconds) when there is a Byron genesis
 file, as the reference's hard-fork combinator does, and at the Shelley `systemStart` otherwise

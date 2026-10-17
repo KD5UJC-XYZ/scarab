@@ -531,11 +531,14 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolDropped` | `Mempool.MempoolDropped` | Info | `tx`, `reason` |
 | `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
-| `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions` |
+| `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions`, `opCertCounter`, `kesPeriod`, `remainingKesPeriods` |
 | `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake` |
 | `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs` |
 | `lost` | `Forge.Lost` | Notice | `slot`, `hash`, `reason` |
 | `kesEvolved` | `Forge.KesEvolved` | Info | `kesPeriod`, `relativeKesPeriod` |
+| `kesReloaded` | `Forge.KesReloaded` | Notice | `opCertCounter`, `kesStart`, `kesEvolutions`, `kesPeriod`, `remainingKesPeriods` |
+| `kesReloadRefused` | `Forge.KesReloadRefused` | Error | `kind`, `message` |
+| `kesPersistFailed` | `Forge.KesPersistFailed` | Error | `kesPeriod`, `kind`, `message` |
 | `forgeSkipped` | `Forge.ForgeSkipped` | Info | `slot`, `reason` |
 | `forgeFailed` | `Forge.ForgeFailed` | Error | `slot`, `kind`, `message` |
 | `forgeEpoch` | `Forge.ForgeEpoch` | Notice | `epoch`, `slotsChecked`, `leaderSlots`, `forged`, `adopted`, `lostSlotBattles`, `failed`, `skipped`, `skippedByReason`, `forgeLatencyMs` |
@@ -679,9 +682,9 @@ of an enum label that never happened are absent, except `scarab_era` (written fo
 - `cardano_node_metrics_connectionManager_{inbound,outbound,duplex}Conns_int` count the connections of our
   connection manager (one per peer address, either direction); the Haskell manager has more states and counts
   all of them.
-- `cardano_node_metrics_currentKESPeriod_int` and `remainingKESPeriods_int` appear with the first block forged or
-  the first key evolution, not at start; `operationalCertificate{Start,Expiry}KESPeriod_int` and
-  `forging_enabled_int` at start.
+- `cardano_node_metrics_currentKESPeriod_int` and `remainingKESPeriods_int` appear at start, and again after every key evolution and every reload;
+  `operationalCertificate{Start,Expiry}KESPeriod_int`, `scarab_opcert_counter` and `forging_enabled_int` at start and
+  after every reload.
 - The Haskell gauges `blocksForged_int`, `nodeIsLeader_int` and the `Forge_*_counter` counters are two views
   of the same counts; both are exported.
 
@@ -755,6 +758,9 @@ section and the catalogue differ.
 | `cardano_node_metrics_remainingKESPeriods_int` | gauge |  | KES periods left before the operational certificate expires. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateStartKESPeriod_int` | gauge |  | The first KES period of the operational certificate. | same name; scraped from 11.1.3 |
 | `cardano_node_metrics_operationalCertificateExpiryKESPeriod_int` | gauge |  | The KES period at which the operational certificate expires. | same name; scraped from 11.1.3 |
+| `scarab_opcert_counter` | gauge |  | The issue counter of the operational certificate in use. | none |
+| `scarab_kes_reloads_total` | counter | `outcome` | Reloads of the KES key and operational certificate (SIGHUP), by outcome. | none |
+| `scarab_kes_persist_failures_total` | counter |  | Evolved KES keys that could not be written back to the key file. | none |
 | `scarab_forge_skipped_total` | counter | `reason` | Slots the forger did not check, by reason. | none |
 | `scarab_forge_adoption_seconds` | histogram |  | Time from the start of the slot to the adoption of the block forged in it. | none |
 

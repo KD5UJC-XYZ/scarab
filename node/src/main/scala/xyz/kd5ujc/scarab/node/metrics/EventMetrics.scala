@@ -65,12 +65,31 @@ final class EventMetrics[F[_]: Sync] private (
           _.traverse_(expiry => metrics.set(remainingKesPeriods, number(expiry - period)))
         )
 
+    /** The operational certificate in force, at start-up and after every reload: where its window
+      * is, its counter, and how many periods are left now.
+      */
+    private def certificate(
+        start: BigInt,
+        evolutions: BigInt,
+        counter: BigInt,
+        period: BigInt
+    ): F[Unit] =
+      kesExpiry.set(Some(start + evolutions)) *>
+        metrics.set(opCertStartKesPeriod, number(start)) *>
+        metrics.set(opCertExpiryKesPeriod, number(start + evolutions)) *>
+        metrics.set(opCertCounter, number(counter)) *>
+        kes(period)
+
     def emit(event: ForgeEvent): F[Unit] = event match
-      case ForgeEvent.Started(_, _, start, evolutions) =>
-        kesExpiry.set(Some(start + evolutions)) *>
-          metrics.set(forgingEnabled, 1.0) *>
-          metrics.set(opCertStartKesPeriod, number(start)) *>
-          metrics.set(opCertExpiryKesPeriod, number(start + evolutions))
+      case ForgeEvent.Started(_, _, start, evolutions, counter, period) =>
+        certificate(start, evolutions, counter, period) *> metrics.set(forgingEnabled, 1.0)
+      case ForgeEvent.KesReloaded(counter, start, evolutions, period) =>
+        certificate(start, evolutions, counter, period) *> metrics.inc(
+          kesReloads,
+          ReloadLabel.Reloaded
+        )
+      case ForgeEvent.KesReloadRefused(_)    => metrics.inc(kesReloads, ReloadLabel.Refused)
+      case ForgeEvent.KesPersistFailed(_, _) => metrics.inc(kesPersistFailures)
       case ForgeEvent.Forged(slot, _, _, _, _, _, _, period, _, _, _) =>
         metrics.set(forgedSlotLast, number(slot)) *> kes(period)
       case ForgeEvent.KesEvolved(period, _) => kes(period)

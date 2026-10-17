@@ -124,7 +124,7 @@ class EventMetricsSuite extends CatsEffectSuite:
   test("the key evolution gives the periods left until the certificate expires") {
     fixture.flatMap { (metrics, em) =>
       for
-        _ <- em.forge.emit(ForgeEvent.Started(hash, hash, 10, 62))
+        _ <- em.forge.emit(ForgeEvent.Started(hash, hash, 10, 62, 2, 12))
         _ <- em.forge.emit(ForgeEvent.KesEvolved(15, 5))
         s <- metrics.snapshot
       yield

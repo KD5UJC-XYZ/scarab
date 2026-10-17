@@ -2,7 +2,9 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.syntax.all.*
+import io.circe.Json
 import io.circe.parser
+import io.circe.syntax.*
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
@@ -11,9 +13,20 @@ import xyz.kd5ujc.scarab.ledger.{ForgeError, Header}
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
-/** The credentials of a block-producing pool: the VRF signing key, the KES signing key (at period
-  * 0, as `cardano-cli` writes it), the operational certificate and the cold verification key that
-  * issued it. The KES key is mutable: forging evolves it.
+/** The part of a pool's credentials that rotation replaces as a unit: the KES signing key, the
+  * operational certificate that names its verification key, and the cold verification key that
+  * signed the certificate.
+  */
+final case class HotCredentials(
+    kes: Sum6KesSigning.SigningKey,
+    opCert: Header.OpCert,
+    coldVkey: Bytes
+)
+
+/** The credentials of a block-producing pool: the VRF signing key, the KES signing key (at period 0
+  * as `cardano-cli` writes it, or at the period this node last evolved and wrote it, see
+  * [[KesFiles]]), the operational certificate and the cold verification key that issued it. The KES
+  * key is mutable: forging evolves it.
   */
 final case class PoolCredentials(
     vrf: Draft03Prover.SigningKey,
@@ -21,6 +34,11 @@ final case class PoolCredentials(
     opCert: Header.OpCert,
     coldVkey: Bytes
 ):
+  def hot: HotCredentials = HotCredentials(kes, opCert, coldVkey)
+
+  def withHot(h: HotCredentials): PoolCredentials =
+    copy(kes = h.kes, opCert = h.opCert, coldVkey = h.coldVkey)
+
   /** The pool id: Blake2b-224 of the cold verification key. */
   lazy val poolId: Bytes = Blake2b.hash224.hash(coldVkey)
 
@@ -91,13 +109,33 @@ object KeyFiles:
         .leftMap(e => ForgeError.KeyFile(file, e.toString))
     yield key
 
-  /** The KES key as `cardano-cli node key-gen-KES` writes it: the 608-byte period-0 key. */
+  /** The KES key as `cardano-cli node key-gen-KES` writes it (the 608-byte period-0 key), or as
+    * [[KesFiles]] writes it back after evolving (the same envelope; the period is read off the
+    * key).
+    */
   def kesSigningKey(file: String, text: String): Either[ForgeError, Sum6KesSigning.SigningKey] =
     for
       raw <- expect(file, text, KesSigningKeyType)
       payload <- byteString(file, raw)
-      key <- Sum6KesSigning.fromBytes(payload).leftMap(e => ForgeError.KeyFile(file, e.toString))
+      key <- Sum6KesSigning
+        .fromEvolved(payload)
+        .leftMap(e => ForgeError.KeyFile(file, e.toString))
     yield key
+
+  /** The text of a KES key file: the cardano-cli envelope around the key at its current period. */
+  def kesEnvelope(file: String, key: Sum6KesSigning.SigningKey): Either[ForgeError, String] =
+    Cbor
+      .encode(Value.ByteString(key.toBytes))
+      .leftMap(ForgeError.KeyFile(file, _))
+      .map(cbor =>
+        Json
+          .obj(
+            "type" -> KesSigningKeyType.asJson,
+            "description" -> "KES Signing Key".asJson,
+            "cborHex" -> cbor.hex.asJson
+          )
+          .spaces2
+      )
 
   /** `[[hotVkey, sequence, kesPeriod, sigma], coldVkey]`. */
   def opCert(file: String, text: String): Either[ForgeError, (Header.OpCert, Bytes)] =
@@ -127,19 +165,20 @@ object KeyFiles:
     case Value.UInt(n) => Right(n)
     case _             => Left(bad("expected an unsigned integer"))
 
-  /** Load and cross-check the three files of a pool. */
+  /** The text of a file, or why it cannot be read. */
+  private[forge] def read(p: Path): Either[ForgeError, String] =
+    Either
+      .catchNonFatal(Files.readString(p))
+      .leftMap(e => ForgeError.KeyFile(p.toString, Option(e.getMessage).getOrElse(e.toString)))
+
+  /** Load and cross-check the three files of a pool (a KES key left half-replaced by a crash is put
+    * right first, see [[KesFiles.recover]]).
+    */
   def load(vrfFile: Path, kesFile: Path, opCertFile: Path): Either[ForgeError, PoolCredentials] =
-    def read(p: Path): Either[ForgeError, String] =
-      Either
-        .catchNonFatal(Files.readString(p))
-        .leftMap(e => ForgeError.KeyFile(p.toString, Option(e.getMessage).getOrElse(e.toString)))
     for
       vrfText <- read(vrfFile)
-      kesText <- read(kesFile)
-      ocText <- read(opCertFile)
       vrf <- vrfSigningKey(vrfFile.toString, vrfText)
-      kes <- kesSigningKey(kesFile.toString, kesText)
-      oc <- opCert(opCertFile.toString, ocText)
-      credentials = PoolCredentials(vrf, kes, oc._1, oc._2)
+      hot <- KesFiles.readHot(kesFile, opCertFile)
+      credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey)
       _ <- PoolCredentials.check(credentials)
     yield credentials

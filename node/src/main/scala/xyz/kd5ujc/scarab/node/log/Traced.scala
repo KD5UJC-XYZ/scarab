@@ -235,12 +235,15 @@ object Traced:
       )
 
   given Traced[ForgeEvent] =
-    case ForgeEvent.Started(pool, vrfHash, start, evolutions) =>
+    case ForgeEvent.Started(pool, vrfHash, start, evolutions, counter, period) =>
       EventKind.ForgeStarted.line(
         "pool" -> pool.hex.asJson,
         "vrfKeyHash" -> vrfHash.hex.asJson,
         "kesStart" -> start.asJson,
-        "kesEvolutions" -> evolutions.asJson
+        "kesEvolutions" -> evolutions.asJson,
+        "opCertCounter" -> counter.asJson,
+        "kesPeriod" -> period.asJson,
+        "remainingKesPeriods" -> (start + evolutions - period).asJson
       )
     case ForgeEvent.Forged(slot, epoch, no, hash, prev, txs, size, kes, rel, stake, total) =>
       EventKind.Forged.line(
@@ -268,6 +271,25 @@ object Traced:
       )
     case ForgeEvent.KesEvolved(period, rel) =>
       EventKind.KesEvolved.line("kesPeriod" -> period.asJson, "relativeKesPeriod" -> rel.asJson)
+    case ForgeEvent.KesReloaded(counter, start, evolutions, period) =>
+      EventKind.KesReloaded.line(
+        "opCertCounter" -> counter.asJson,
+        "kesStart" -> start.asJson,
+        "kesEvolutions" -> evolutions.asJson,
+        "kesPeriod" -> period.asJson,
+        "remainingKesPeriods" -> (start + evolutions - period).asJson
+      )
+    case ForgeEvent.KesReloadRefused(reason) =>
+      EventKind.KesReloadRefused.line(
+        "kind" -> reason.productPrefix.asJson,
+        "message" -> reason.message.asJson
+      )
+    case ForgeEvent.KesPersistFailed(period, error) =>
+      EventKind.KesPersistFailed.line(
+        "kesPeriod" -> period.asJson,
+        "kind" -> error.productPrefix.asJson,
+        "message" -> error.message.asJson
+      )
     case ForgeEvent.Skipped(slot, reason) =>
       EventKind.ForgeSkipped.line("slot" -> slot.asJson, "reason" -> reason.asJson)
     case ForgeEvent.Failed(slot, error) =>

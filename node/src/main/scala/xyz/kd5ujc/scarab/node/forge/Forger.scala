@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.Block
 import xyz.kd5ujc.scarab.ledger.ForgeError
 import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
+import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash}
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.consensus.{Praos, PraosConfig}
 import xyz.kd5ujc.scarab.consensus.state.ProtocolState
@@ -26,8 +27,17 @@ import scala.concurrent.duration.*
 
 /** What the forger reports, for the JSON log and for tests. */
 enum ForgeEvent:
-  /** Forging is on for this pool. */
-  case Started(poolId: Bytes, vrfKeyHash: Bytes, kesStart: BigInt, kesEvolutions: BigInt)
+  /** Forging is on for this pool; `counter` is the operational certificate's issue counter and
+    * `kesPeriod` the KES period now.
+    */
+  case Started(
+      poolId: Bytes,
+      vrfKeyHash: Bytes,
+      kesStart: BigInt,
+      kesEvolutions: BigInt,
+      counter: BigInt,
+      kesPeriod: BigInt
+  )
 
   /** The pool led `slot` and a block was assembled and signed (not yet adopted). */
   case Forged(
@@ -53,6 +63,15 @@ enum ForgeEvent:
   /** The KES key moved to a new period. */
   case KesEvolved(kesPeriod: BigInt, relativeKesPeriod: Int)
 
+  /** The KES key and operational certificate were replaced (SIGHUP), or the same ones confirmed. */
+  case KesReloaded(counter: BigInt, kesStart: BigInt, kesEvolutions: BigInt, kesPeriod: BigInt)
+
+  /** A reload was refused: the credentials in use before it stay in force. */
+  case KesReloadRefused(reason: ReloadRefusal)
+
+  /** The evolved KES key could not be written back; it is tried again at the next slot. */
+  case KesPersistFailed(kesPeriod: BigInt, error: ForgeError)
+
   /** A slot we cannot forge on (the tip is too old to forge from). */
   case Skipped(slot: BigInt, reason: String)
 
@@ -77,7 +96,11 @@ trait ForgeEvents[F[_]]:
 final class Forger[F[_]: Async](
     config: PraosConfig,
     globals: LedgerGlobals,
+    /** The pool's keys as they were at the start; the VRF key and the cold key never change, the
+      * KES key and certificate are those of `hot`.
+      */
     credentials: PoolCredentials,
+    val hot: HotKeys[F],
     follower: Follower[F, NodeState],
     mempool: Mempool[F],
     events: ForgeEvents[F],
@@ -102,14 +125,50 @@ final class Forger[F[_]: Async](
 
   /** Run until cancelled. */
   def run: F[Unit] =
-    events.emit(
-      ForgeEvent.Started(
-        credentials.poolId,
-        credentials.vrfKeyHash,
-        credentials.opCert.kesPeriod,
-        config.maxKesEvolutions
+    for
+      instant <- now
+      current <- hot.current
+      _ <- events.emit(
+        ForgeEvent.Started(
+          credentials.poolId,
+          credentials.vrfKeyHash,
+          current.opCert.kesPeriod,
+          config.maxKesEvolutions,
+          current.opCert.sequence,
+          kesPeriodOf(geometry.slotAt(instant))
+        )
       )
-    ) *> loop(None)
+      _ <- loop(None)
+    yield ()
+
+  private def kesPeriodOf(slot: BigInt): BigInt = slot / config.slotsPerKesPeriod
+
+  /** Switch to the KES key and operational certificate that are in the key files now, if they are
+    * good for this pool at this time and on this chain; otherwise keep the old ones and report a
+    * typed [[ForgeEvent.KesReloadRefused]]. The Haskell node does this on SIGHUP:
+    * `Cardano.Node.Run` `installSigHUPHandler` calls `updateBlockForging`, which reads the
+    * credentials again and hands them to `setBlockForging` (cardano-node 11.1.3, `Run.hs` lines 596
+    * and 626).
+    */
+  def reload: F[Unit] =
+    val attempted =
+      for
+        instant <- now
+        current <- chain.get
+        counter = KeyHash
+          .fromBytes[BlockIssuer](credentials.poolId)
+          .toOption
+          .flatMap(current.state.protocol.counters.get)
+          .map(_.toBigInt)
+        _ <- hot.reload(kesPeriodOf(geometry.slotAt(instant)), counter)
+      yield ()
+    attempted.handleErrorWith(t =>
+      events.emit(
+        ForgeEvent.KesReloadRefused(
+          ReloadRefusal.Unreadable(ForgeError.Assembly(s"${t.getClass.getName}: ${t.getMessage}"))
+        )
+      )
+    )
 
   private def loop(last: Option[BigInt]): F[Unit] =
     for
@@ -143,7 +202,7 @@ final class Forger[F[_]: Async](
 
   /** Everything for one slot; nothing escapes (a failure is reported and the next slot goes on). */
   private[forge] def step(slot: BigInt): F[Unit] =
-    handle
+    hot.advance(kesPeriodOf(slot)) *> handle
       .attempt(attempt(slot))
       .flatMap {
         case Right(_)                      => F.unit
@@ -273,85 +332,83 @@ final class Forger[F[_]: Async](
   ): F[Either[ForgeError, Unit]] =
     val body = BlockBuilder.body(pieces)
     val kesPeriod = slot / config.slotsPerKesPeriod
-    val start = credentials.opCert.kesPeriod
-    val relative = kesPeriod - start
-    val header = for
-      _ <- Either.cond(
-        start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
-        (),
-        ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
-      )
-      _ <- Either.cond(
-        body.size <= ticked.params.maxBlockBodySize,
-        (),
-        ForgeError.Assembly(s"body of ${body.size} bytes exceeds ${ticked.params.maxBlockBodySize}")
-      )
-    yield BlockBuilder.headerBody(
-      tip.fold(BigInt(0))(_.blockNo + 1),
-      slot,
-      tip.map(_.hash),
-      credentials.coldVkey,
-      credentials.vrf.publicKey,
-      cert,
-      body.size,
-      body.hash,
-      credentials.opCert,
-      ticked.params.version
-    )
-    header match
-      case Left(e) => F.pure(Left(e))
-      case Right(headerBody) =>
-        for
-          before <- F.delay(credentials.kes.period)
-          signed <- F.blocking(
-            credentials.kes
-              .evolveTo(relative.toInt)
-              .leftMap(e => ForgeError.KesFailure(e.toString))
-              .map(_ => credentials.kes.sign(headerBody))
+    // the header, the key's evolution and the signature all use the credentials of one moment: a
+    // reload (SIGHUP) waits until the block is signed
+    val assembled: F[Either[ForgeError, (Bytes, Bytes, BigInt)]] = hot.locked { c =>
+      val start = c.opCert.kesPeriod
+      val header = for
+        _ <- Either.cond(
+          start <= kesPeriod && kesPeriod < start + config.maxKesEvolutions,
+          (),
+          ForgeError.KeyPeriodOutOfRange(kesPeriod, start, config.maxKesEvolutions)
+        )
+        _ <- Either.cond(
+          body.size <= ticked.params.maxBlockBodySize,
+          (),
+          ForgeError.Assembly(
+            s"body of ${body.size} bytes exceeds ${ticked.params.maxBlockBodySize}"
           )
-          _ <- events
-            .emit(ForgeEvent.KesEvolved(kesPeriod, relative.toInt))
-            .whenA(before != relative.toInt)
-          result <- signed match
+        )
+      yield BlockBuilder.headerBody(
+        tip.fold(BigInt(0))(_.blockNo + 1),
+        slot,
+        tip.map(_.hash),
+        c.coldVkey,
+        c.vrf.publicKey,
+        cert,
+        body.size,
+        body.hash,
+        c.opCert,
+        ticked.params.version
+      )
+      header match
+        case Left(e)           => F.pure(Left(e))
+        case Right(headerBody) =>
+          // the key is at the slot's period, and written back there, before it signs in it
+          hot.evolved(c, kesPeriod).flatMap {
             case Left(e) => F.pure(Left(e))
-            case Right(signature) =>
-              val raw = BlockBuilder.block(headerBody, signature, body)
-              Block.decode(raw, geometry.byron.epochSlots) match
-                case Left(e) =>
-                  F.pure(
-                    Left(ForgeError.Assembly(s"the block we built does not decode: ${e.message}"))
-                  )
-                case Right(decoded) =>
-                  val h = decoded.header
-                  val forged = ForgeEvent.Forged(
-                    slot,
-                    epoch,
-                    h.blockNo,
-                    h.hash,
-                    h.prevHash,
-                    body.ids,
-                    body.size,
-                    kesPeriod,
-                    relative.toInt,
-                    stake,
-                    totalStake
-                  )
-                  stats.forged(epoch) *> events
-                    .emit(forged) *> follower.adoptForged(h, raw).flatMap {
-                    case Follower.Adoption.Adopted(ref) =>
-                      now.flatMap { at =>
-                        val latency = Duration.between(geometry.slotStart(slot), at).toMillis
-                        stats.adopted(epoch, latency.max(0L)) *>
-                          pending.update(_ :+ Forger.Forged(ref, slot)) *>
-                          events.emit(ForgeEvent.Adopted(ref, Some(latency))).as(Right(()))
-                      }
-                    case Follower.Adoption.Lost(reason) =>
-                      stats.lost(epoch) *>
-                        events.emit(ForgeEvent.Lost(slot, h.hash, reason)).as(Right(()))
-                    case Follower.Adoption.Invalid(e) =>
-                      F.pure(Left(ForgeError.SelfRejected(e.rule, e.reason)))
-                  }
-        yield result
+            case Right(_) =>
+              F.blocking(c.kes.sign(headerBody))
+                .map(signature => Right((headerBody, signature, kesPeriod - start)))
+          }
+    }
+    assembled.flatMap {
+      case Left(e) => F.pure(Left(e))
+      case Right((headerBody, signature, relative)) =>
+        val raw = BlockBuilder.block(headerBody, signature, body)
+        Block.decode(raw, geometry.byron.epochSlots) match
+          case Left(e) =>
+            F.pure(Left(ForgeError.Assembly(s"the block we built does not decode: ${e.message}")))
+          case Right(decoded) =>
+            val h = decoded.header
+            val forged = ForgeEvent.Forged(
+              slot,
+              epoch,
+              h.blockNo,
+              h.hash,
+              h.prevHash,
+              body.ids,
+              body.size,
+              kesPeriod,
+              relative.toInt,
+              stake,
+              totalStake
+            )
+            stats.forged(epoch) *> events.emit(forged) *> follower.adoptForged(h, raw).flatMap {
+              case Follower.Adoption.Adopted(ref) =>
+                now.flatMap { at =>
+                  val latency = Duration.between(geometry.slotStart(slot), at).toMillis
+                  stats.adopted(epoch, latency.max(0L)) *>
+                    pending.update(_ :+ Forger.Forged(ref, slot)) *>
+                    events.emit(ForgeEvent.Adopted(ref, Some(latency))).as(Right(()))
+                }
+              case Follower.Adoption.Lost(reason) =>
+                stats.lost(epoch) *>
+                  events.emit(ForgeEvent.Lost(slot, h.hash, reason)).as(Right(()))
+              case Follower.Adoption.Invalid(e) =>
+                F.pure(Left(ForgeError.SelfRejected(e.rule, e.reason)))
+            }
+    }
 
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
     * boundary is the expensive part and every slot of a new epoch needs it).
@@ -449,17 +506,23 @@ object Forger:
       maxTipAge: Option[BigInt] = None,
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None,
-      utxoStore: Option[UtxoStore[F]] = None
+      utxoStore: Option[UtxoStore[F]] = None,
+      /** Where the KES key is written back after evolving and read from again at a reload; none:
+        * the key is kept in memory only, as the Haskell node does.
+        */
+      source: Option[HotKeySource[F]] = None
   )(using Stateful[F, VolatileChain[NodeState]], Handle[F, NodeError]): F[Forger[F]] =
     (
       Ref.of[F, Option[Crossed]](None),
       Ref.of[F, Vector[Forged]](Vector.empty),
-      ForgeStats.create[F]
-    ).mapN { (cache, pending, stats) =>
+      ForgeStats.create[F],
+      HotKeys.create[F](credentials, source, config, events)
+    ).mapN { (cache, pending, stats, hot) =>
       new Forger[F](
         config,
         globals,
         credentials,
+        hot,
         follower,
         mempool,
         events,

@@ -5,197 +5,23 @@ import scala.annotation.unused
 import cats.effect.{IO, Ref}
 import cats.effect.testkit.TestControl
 import scala.concurrent.duration.*
-import cats.mtl.{Handle, Stateful}
+import cats.mtl.{Handle}
 import cats.syntax.all.*
-import java.time.Instant
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
-import xyz.kd5ujc.scarab.consensus.Anchor
-import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.BootstrapState
-import xyz.kd5ujc.scarab.consensus.NodeState
-import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.Block
-import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.ledger.ForgeError
-import xyz.kd5ujc.scarab.ledger.Header
-import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.ledger.VrfCert
 import xyz.kd5ujc.scarab.node.Follower
-import xyz.kd5ujc.scarab.node.NodeRules
-import xyz.kd5ujc.scarab.node.RefStateful
-import xyz.kd5ujc.scarab.ledger.Nonce
-import xyz.kd5ujc.scarab.consensus.PraosConfig
-import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PraosState, ProtocolExtras, ProtocolState}
-import xyz.kd5ujc.scarab.ledger.state.{BlockIssuer, KeyHash, Sorted, WithOrigin, Word64}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.ledger.TestLedger.Key
-import xyz.kd5ujc.scarab.node.mempool.{Mempool, MempoolEnv, MempoolEvents, TxKit}
+import xyz.kd5ujc.scarab.node.mempool.{TxKit}
 import xyz.kd5ujc.scarab.crypto.vrf.{Draft03Prover, PraosLeaderThreshold as Leader}
 import munit.CatsEffectSuite
 
 /** Forging against the real block rules: whatever the forger builds must pass the same `NodeRules`
   * that validate blocks received from peers, and the follower must adopt it.
   */
-class ForgeSuite extends CatsEffectSuite:
-  private val geometry = EpochGeometry(
-    Instant.EPOCH,
-    1000,
-    epochLength = 1000,
-    securityParam = 5,
-    activeSlotsCoeff = 0.5
-  )
-  private val slotsPerKes = BigInt(100)
-  private val config = PraosConfig(
-    geometry,
-    slotsPerKes,
-    maxKesEvolutions = 62,
-    activeSlotsCoeff = Leader.Fraction.checked(1, 2).toOption.get
-  )
-  private val globals =
-    LedgerGlobals(TestLedger.Supply, 1000, Rational(1, 2), network = 0, updateQuorum = 2)
-  private val epochNonce = Nonce.Hash(Blake2b.hash256.hash(Bytes(Vector(7))))
-
-  private def hex(b: Array[Byte]) = Bytes.fromArray(b)
-
-  /** A pool with all the stake, its keys and an operational certificate starting at `kesStart`. */
-  private final case class Pool(creds: PoolCredentials, cold: Key, stake: Key):
-    def id: Bytes = creds.poolId
-
-  private def pool(kesStart: Int, seed: Int = 1): Pool =
-    val cold = TestLedger.key()
-    val kes = Sum6KesSigning.generate(hex(Array.fill(32)(seed.toByte))).toOption.get
-    val vrf =
-      Draft03Prover.SigningKey.fromSeed(hex(Array.fill(32)((seed + 50).toByte))).toOption.get
-    def be8(n: Long) = Array.tabulate[Byte](8)(i => (n >> (8 * (7 - i))).toByte)
-    val signable = Bytes.fromArray(kes.verificationKey.toArray ++ be8(0) ++ be8(kesStart))
-    val oc = Header.OpCert(kes.verificationKey, 0, kesStart, cold.sign(signable))
-    Pool(PoolCredentials(vrf, kes, oc, cold.vkey), cold, TestLedger.key())
-
-  private def ledgerWith(p: Pool, funds: Int): LedgerState =
-    val base = TxKit.ledger(funds)
-    val cred = p.stake.credential
-    val params = PoolParams(
-      p.id,
-      p.creds.vrfKeyHash,
-      0,
-      0,
-      Rational.zero,
-      RewardAccount(0, cred),
-      Set.empty,
-      Bytes.empty,
-      None
-    )
-    base.copy(
-      poolDistribution = Snapshot(
-        Map(cred -> BigInt(1000000)),
-        Map(cred -> p.id),
-        Map(p.id -> params)
-      )
-    )
-
-  private def nodeState(ledger: LedgerState): NodeState =
-    val lite = LiteLedger(
-      0,
-      LiteParams((10, 0), Rational.zero, Nonce.Neutral, 65536, 16384, 1100),
-      Map.empty,
-      Vector.empty,
-      Map.empty,
-      Map.empty,
-      Map.empty,
-      2
-    )
-    val praos = ProtocolState(
-      ChainDepState.Praos(
-        PraosState(
-          WithOrigin.Origin,
-          Sorted.empty[KeyHash[BlockIssuer], Word64],
-          Nonce.Neutral,
-          Nonce.Neutral,
-          epochNonce,
-          Nonce.Neutral,
-          Nonce.Neutral,
-          Nonce.Neutral
-        )
-      ),
-      ProtocolExtras(5, Nonce.Neutral)
-    )
-    NodeState(praos, ledger, BootstrapState.initial(lite))
-
-  private final class Harness(
-      val follower: Follower[IO, NodeState],
-      val forger: Forger[IO],
-      val ref: Ref[IO, VolatileChain[NodeState]],
-      val mempool: Mempool[IO],
-      val events: Ref[IO, Vector[ForgeEvent]],
-      val raws: Ref[IO, Map[Bytes, Bytes]]
-  ):
-    def chain: IO[VolatileChain[NodeState]] = ref.get
-    def seen: IO[Vector[ForgeEvent]] = events.get
-
-  private def harness(
-      p: Pool,
-      ledger: LedgerState,
-      connected: Boolean = true,
-      maxTipAge: BigInt = 1000000,
-      live: Boolean = false,
-      ready: Option[IO[Boolean]] = None,
-      offsetMillis: Long = 0
-  )(using Handle[IO, NodeError]): IO[Harness] =
-    for
-      ref <- Ref.of[IO, VolatileChain[NodeState]](
-        VolatileChain.genesis(geometry.securityParam, nodeState(ledger))
-      )
-      given Stateful[IO, VolatileChain[NodeState]] = RefStateful(ref)
-      rules = NodeRules[IO](config, globals)
-      mempool <- Mempool.create[IO](
-        ledger,
-        4999,
-        MempoolEnv(globals, geometry),
-        1000000,
-        MempoolEvents.none[IO]
-      )
-      raws <- Ref.of[IO, Map[Bytes, Bytes]](Map.empty)
-      follower <- Follower.create[IO, NodeState](
-        rules,
-        _ => IO.unit,
-        geometry,
-        persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, NodeState]:
-          def extended(
-              ref: BlockRef,
-              raw: Bytes,
-              immutable: Vector[BlockRef],
-              anchor: xyz.kd5ujc.scarab.consensus.Anchor[NodeState]
-          ) = raws.update(_.updated(ref.hash, raw))
-          def rolledBack(to: xyz.kd5ujc.scarab.protocol.ChainSync.Point) = IO.unit),
-        onTip = Some((c, _) => mempool.sync(c.state.ledger, c.tipRef.get.slot, Set.empty).void)
-      )
-      seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
-      forger <- Forger.create[IO](
-        config,
-        globals,
-        p.creds,
-        follower,
-        mempool,
-        e => seen.update(_ :+ e),
-        ready.getOrElse(IO.pure(connected)),
-        maxTipAge = Some(maxTipAge),
-        // `live`: the real loop on the (test) clock, starting at slot 5000; else steps are driven by hand
-        now = Some(
-          if live then IO.realTimeInstant.map(_.plusSeconds(5000).plusMillis(offsetMillis))
-          else IO.pure(Instant.EPOCH)
-        ),
-        sleep = if live then None else Some(_ => IO.unit)
-      )
-    yield new Harness(follower, forger, ref, mempool, seen, raws)
-
-  private def withHandle[A](f: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
-    Handle.allow[NodeError](f).rescue(e => IO.raiseError(new RuntimeException(e.message)))
-
-  private def forgedIn(h: Harness): IO[Vector[ForgeEvent.Forged]] =
-    h.seen.map(_.collect { case f: ForgeEvent.Forged => f })
+class ForgeSuite extends CatsEffectSuite with ForgeFixture:
 
   test("an elected slot yields a block our rules accept, built from the mempool, and adopted") {
     val p = pool(kesStart = 50)

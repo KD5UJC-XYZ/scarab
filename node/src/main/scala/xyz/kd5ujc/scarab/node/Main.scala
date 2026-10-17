@@ -54,7 +54,7 @@ import xyz.kd5ujc.scarab.node.differential.{
   Sampling,
   Shadowed
 }
-import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, Forger, KeyFiles}
+import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents, Forger, HotKeySource, KeyFiles}
 import xyz.kd5ujc.scarab.node.log.{LibraryLogs, Log, LogRouter, LogSettings, NodeEvent, Severity}
 import xyz.kd5ujc.scarab.node.metrics.EventSink.alongside
 import xyz.kd5ujc.scarab.node.metrics.{
@@ -772,6 +772,7 @@ object Main extends IOApp:
                 credentials <- IO
                   .blocking(KeyFiles.load(files.vrfSkey, files.kesSkey, files.opCert))
                   .flatMap(_.fold(fail, IO.pure))
+                source <- HotKeySource.files[IO](files.kesSkey, files.opCert)
                 forger <- Forger.create[IO](
                   setup.praos.copy(geometry = geometry),
                   globals,
@@ -780,12 +781,16 @@ object Main extends IOApp:
                   mempool,
                   Log.sink[ForgeEvents, ForgeEvent, IO].alongside(measured.forge),
                   connected.get,
-                  utxoStore = Some(store)
+                  utxoStore = Some(store),
+                  source = Some(source)
                 )
               yield forger
             }
             _ <- forging.traverse_(f => collectors.add(Collectors.forging(f.stats)))
-            production = forging.fold(Resource.unit[IO])(_.run.background.void)
+            // SIGHUP re-reads the KES key and operational certificate (as the Haskell node does)
+            production = forging.fold(Resource.unit[IO])(f =>
+              Signals.hangup[IO](f.reload).flatMap(_ => f.run.background.void)
+            )
             reporting =
               if options.memoryReportSeconds <= 0 then Resource.unit[IO]
               else

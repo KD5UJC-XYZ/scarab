@@ -72,6 +72,12 @@ object SkipLabel:
     case ForgeEpochStats.NotConnected => NotConnected
     case _                            => Other
 
+/** What became of a reload of the KES key and certificate: the credentials were replaced (or
+  * confirmed), or the reload was refused and the old ones kept.
+  */
+enum ReloadLabel derives LabelValue:
+  case Reloaded, Refused
+
 /** Which snapshot trouble: an unreadable file left alone, a write that failed, a state the format
   * refused.
   */
@@ -226,6 +232,19 @@ object Catalogue:
   val opCertExpiryKesPeriod = GaugeDef(
     MetricName("cardano_node_metrics_operationalCertificateExpiryKESPeriod_int"),
     "The KES period at which the operational certificate expires."
+  )
+  val opCertCounter = GaugeDef(
+    MetricName("scarab_opcert_counter"),
+    "The issue counter of the operational certificate in use."
+  )
+  val kesReloads = CounterDef(
+    MetricName("scarab_kes_reloads_total"),
+    "Reloads of the KES key and operational certificate (SIGHUP), by outcome.",
+    Labels.one[ReloadLabel](LabelName("outcome"))
+  )
+  val kesPersistFailures = CounterDef(
+    MetricName("scarab_kes_persist_failures_total"),
+    "Evolved KES keys that could not be written back to the key file."
   )
   val forgeSkipped = CounterDef(
     MetricName("scarab_forge_skipped_total"),
@@ -545,6 +564,9 @@ object Catalogue:
     remainingKesPeriods,
     opCertStartKesPeriod,
     opCertExpiryKesPeriod,
+    opCertCounter,
+    kesReloads,
+    kesPersistFailures,
     forgeSkipped,
     forgeAdoptionSeconds,
     inboundConns,
