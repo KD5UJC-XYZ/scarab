@@ -84,7 +84,7 @@ object Mempool:
         else Seen(ids + id, grown)
 
   def create[F[_]: Async](
-      ledger: Option[MempoolLedger],
+      ledger: Either[ConwayView.Unavailable, MempoolLedger],
       tipSlot: BigInt,
       env: MempoolEnv,
       capacityBytes: Long,
@@ -108,10 +108,12 @@ object Mempool:
           held <- state.get
           current <- MempoolState.parse(raw) match
             case Right((_, tx)) =>
-              held.current.fold(F.pure(held))(current =>
-                UtxoStore
-                  .complete(utxoStore, current.utxo, UtxoStore.readSet(Some(tx)))
-                  .map(u => held.copy(current = Some(current.withUtxo(u))))
+              held.current.fold(
+                _ => F.pure(held),
+                current =>
+                  UtxoStore
+                    .complete(utxoStore, current.utxo, UtxoStore.readSet(Some(tx)))
+                    .map(u => held.copy(current = Right(current.withUtxo(u))))
               )
             case Left(_) => F.pure(held)
           result <- F.blocking(current.add(raw, env))

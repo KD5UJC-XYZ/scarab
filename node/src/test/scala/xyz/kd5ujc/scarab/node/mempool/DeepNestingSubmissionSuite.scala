@@ -41,7 +41,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
 
   private def pool: IO[Mempool[IO]] =
     Mempool.create[IO](
-      Some(TxKit.conway(PreprodDeepTx.ledger)),
+      Right(TxKit.conway(PreprodDeepTx.ledger)),
       tipSlot,
       env,
       1 << 20,
@@ -54,7 +54,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
   test("the mempool admits it, parsing and validating on a stack too small to recurse over it") {
     val admitted =
       onSmallStack(
-        MempoolState.empty(Some(TxKit.conway(PreprodDeepTx.ledger)), tipSlot, 1 << 20).add(tx, env)
+        MempoolState.empty(Right(TxKit.conway(PreprodDeepTx.ledger)), tipSlot, 1 << 20).add(tx, env)
       )
     assertEquals(admitted.map(_._2.id.hex), Right(PreprodDeepTx.Id))
   }
@@ -64,7 +64,7 @@ class DeepNestingSubmissionSuite extends CatsEffectSuite:
     val cut = tx.slice(0, tx.size - 40)
     assert(
       MempoolState
-        .empty(Some(TxKit.conway(PreprodDeepTx.ledger)), tipSlot, 1 << 20)
+        .empty(Right(TxKit.conway(PreprodDeepTx.ledger)), tipSlot, 1 << 20)
         .add(cut, env)
         .left
         .exists(_.isInstanceOf[Rejection.Malformed])

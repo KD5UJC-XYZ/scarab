@@ -16,8 +16,9 @@ import xyz.kd5ujc.scarab.consensus.state.{
   MirrorState,
   StateMirrorError
 }
-import xyz.kd5ujc.scarab.ledger.rules.EraLedger
-import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, Sorted}
+import xyz.kd5ujc.scarab.consensus.state.MirrorStep
+import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, EraNes}
+import xyz.kd5ujc.scarab.ledger.state.{ShelleyBasedEra, SnapshotBasis, Sorted}
 import xyz.kd5ujc.scarab.ledger.{Block, Header}
 import xyz.kd5ujc.scarab.node.{LegacySeed, MirrorRules, MirrorRun, NodeRules, NodeSetup}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
@@ -145,6 +146,26 @@ class SnapshotMirrorSuite extends CatsEffectSuite:
         val seeded = LegacySeed(back.state)
         assertEquals(seeded.consensus, derived.consensus, at)
         assertEquals(LegacySeed(seeded), seeded, s"seeding is idempotent, $at")
+        // `mark` is the snapshot as it was taken (the old rules' writer reads the accounts as they
+        // were when it wrote), which is what the conversion on that basis gives
+        val taken = MirrorRun
+          .run(
+            env.copy(ledger = env.ledger.copy(snapshots = SnapshotBasis.AsTaken))
+          )(_.toMirror(snapshot.anchor, old(i)))
+          .fold(e => fail(Show[StateMirrorError].show(e)), _.value)
+        (MirrorStep.nesOf(seeded), MirrorStep.nesOf(taken)) match
+          case (Some(a: EraNes.InEra[x]), Some(b: EraNes.InEra[y])) =>
+            assertEquals(
+              a.nes.es.snapshots.mark.pools.toList.map((k, p) => k -> p.numDelegators),
+              b.nes.es.snapshots.mark.pools.toList.map((k, p) => k -> p.numDelegators),
+              s"the delegators of mark, $at"
+            )
+            assertEquals(
+              a.nes.es.snapshots.mark.pools.toList.map((k, p) => k -> p.selfDelegatedOwners),
+              b.nes.es.snapshots.mark.pools.toList.map((k, p) => k -> p.selfDelegatedOwners),
+              s"the owners of mark, $at"
+            )
+          case _ => ()
     }
   }
 

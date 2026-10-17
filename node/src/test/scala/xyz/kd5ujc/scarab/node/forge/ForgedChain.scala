@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.node.Follower
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
+import xyz.kd5ujc.scarab.node.LegacySeed
 import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.MirrorRun
 import xyz.kd5ujc.scarab.node.NodeRules
@@ -155,7 +156,7 @@ object ForgedChain:
     // from the flat state, to give the states the header-rule suites read
     val start = MirrorRun
       .run(env)(_.toMirror(None, genesis))
-      .fold(e => throw new AssertionError(e.toString), _.value)
+      .fold(e => throw new AssertionError(e.toString), m => LegacySeed(m.value))
     Handle
       .allow[NodeError] {
         for
@@ -165,7 +166,7 @@ object ForgedChain:
           given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
           rules = MirrorRules[IO](config, globals, None, None, env.byron)
           mempool <- Mempool.create[IO](
-            MempoolLedger.at(start, None).toOption,
+            MempoolLedger.at(start, None),
             slots.head.toLong - 1,
             MempoolEnv(globals, geometry),
             1000000,

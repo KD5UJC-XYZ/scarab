@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.NodeError
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, MirrorState}
 import xyz.kd5ujc.scarab.ledger.state.{BlocksMade, MirrorEnv, StakePool}
 import xyz.kd5ujc.scarab.node.Follower
+import xyz.kd5ujc.scarab.node.LegacySeed
 import xyz.kd5ujc.scarab.node.MirrorRules
 import xyz.kd5ujc.scarab.node.MirrorRun
 import xyz.kd5ujc.scarab.node.RefStateful
@@ -137,7 +138,7 @@ trait ForgeFixture:
   def mirrorState(ledger: LedgerState): MirrorState =
     MirrorRun
       .run(mirrorEnv)(_.toMirror(None, nodeState(ledger)))
-      .fold(e => throw new AssertionError(e.toString), _.value)
+      .fold(e => throw new AssertionError(e.toString), m => LegacySeed(m.value))
 
   /** The blocks the pool made in the epoch of the tip, in the state's own count. */
   def blocksMade(c: VolatileChain[MirrorState], id: Bytes): Option[BigInt] =
@@ -178,7 +179,7 @@ trait ForgeFixture:
       given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
       rules = MirrorRules[IO](config, globals, None, None, mirrorEnv.byron)
       mempool <- Mempool.create[IO](
-        MempoolLedger.at(start, None).toOption,
+        MempoolLedger.at(start, None),
         4999,
         MempoolEnv(globals, geometry),
         1000000,

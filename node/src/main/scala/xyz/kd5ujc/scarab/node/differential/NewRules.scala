@@ -208,8 +208,11 @@ object NewRules:
               fetched <- store match
                 case Some(s) if wanted.nonEmpty => s.read(wanted)
                 case _                          => Monad[F].pure(Map.empty)
+              // stamped first, as the node's rules do (see `MirrorRules`)
               result = EraBlock(context)(
-                EraNes.InEra(pre.era, withUtxo[e](pre.nes, _.withResident(fetched))(using pre.era)),
+                EraNes.mapUtxo(EraNes.InEra(pre.era, pre.nes))(u =>
+                  u.withResident(fetched).at(header.blockNo.toLong)
+                ),
                 header,
                 block,
                 txs,

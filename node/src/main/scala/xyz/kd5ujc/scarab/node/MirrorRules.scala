@@ -266,7 +266,10 @@ object MirrorRules:
         (),
         BlockFailure.BodyCommitment
       )
-      ticked <- EraBlock.ticked(context)(pre.nes, announced, block)
+      // Stamped first: the tick can change the set (the redeem outputs leave it on entering
+      // Allegra), and a change stamped with the previous block may count as already stored.
+      stamped = EraNes.mapUtxo(pre.nes)(_.at(announced.blockNo.toLong))
+      ticked <- EraBlock.ticked(context)(stamped, announced, block)
       view = ledgerView(ticked, announced.slot)
       validated <- NodeRules.headerChecks(
         pre.protocol,

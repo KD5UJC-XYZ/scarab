@@ -13,7 +13,7 @@ import TxKit.*
 
 /** The mempool as LocalTxMonitor reports it, against the rules the reference's server applies. */
 class LocalMonitorSuite extends CatsEffectSuite with ScalaCheckSuite:
-  private def pool(capacity: Long = 100000) = MempoolState.empty(Some(ledger(4)), 1000, capacity)
+  private def pool(capacity: Long = 100000) = MempoolState.empty(Right(ledger(4)), 1000, capacity)
 
   private def held(raws: Bytes*): MempoolState =
     raws.foldLeft(pool())((s, raw) => s.add(raw, env).fold(r => fail(r.message), _._1))
@@ -106,7 +106,7 @@ class LocalMonitorSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("a client awaiting a new snapshot is woken by a transaction and by a new tip") {
     val (t1, id1) = pay(1)
     for
-      mempool <- Mempool.create[IO](Some(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
       source = LocalMonitor.source(mempool)
       first <- source.acquire
       waiting <- source.awaitChange(first).start
@@ -130,7 +130,7 @@ class LocalMonitorSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("awaiting a snapshot the pool already differs from returns at once") {
     val (t1, _) = pay(1)
     for
-      mempool <- Mempool.create[IO](Some(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, MempoolEvents.none[IO])
       source = LocalMonitor.source(mempool)
       stale <- source.acquire
       _ <- mempool.add(t1)

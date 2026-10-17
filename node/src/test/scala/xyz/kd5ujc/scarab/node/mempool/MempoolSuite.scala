@@ -130,7 +130,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   import TxKit.*
 
   private def pool(ledger: MempoolLedger, capacity: Long = 100000) =
-    MempoolState.empty(Some(ledger), 1000, capacity)
+    MempoolState.empty(Right(ledger), 1000, capacity)
 
   private def add(s: MempoolState, raw: Bytes): Either[Rejection, MempoolState] =
     s.add(raw, env).map(_._1)
@@ -305,7 +305,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   )
 
   private def replay(s: MempoolState): Either[String, MempoolLedger] =
-    val base = s.base.getOrElse(sys.error("no ledger"))
+    val base = s.base.fold(u => sys.error(u.toString), identity)
     s.entries.zipWithIndex.foldLeft[Either[String, MempoolLedger]](Right(base)) {
       case (Right(l), (e, i)) =>
         l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules).left.map(_.message)
@@ -324,7 +324,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
           s = s.remove(Set(candidates(i)._2), env)._1
         case Op.Block(n) =>
           val adopted = s.entries.take(n)
-          val base = s.base.getOrElse(sys.error("no ledger"))
+          val base = s.base.fold(u => sys.error(u.toString), identity)
           val l1 = adopted.foldLeft(base)((l, e) => l.applied(e.tx, s.tipSlot))
           history = base :: history
           s = s.sync(Right(l1), s.tipSlot + 1, env)._1
@@ -335,7 +335,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
               s = s.sync(Right(previous), s.tipSlot - 1, env)._1
             case Nil => ()
       }
-      assertEquals(replay(s).map(_.utxo), Right(s.current.get.utxo))
+      assertEquals(replay(s).map(_.utxo), Right(s.current.toOption.get.utxo))
       assertEquals(s.entries.map(_.id).distinct.size, s.entries.size)
       assertEquals(s.bytes, s.entries.map(_.size.toLong).sum)
       assert(s.bytes <= s.capacityBytes)
@@ -353,7 +353,7 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
   test("Mempool[F]: add, offer to peers by ticket, collect from peers, sync") {
     for
       ev <- events
-      mempool <- Mempool.create[IO](Some(ledger(4)), 1000, env, 100000, ev._1)
+      mempool <- Mempool.create[IO](Right(ledger(4)), 1000, env, 100000, ev._1)
       (t1, id1) = pay(1)
       (t2, id2) = pay(2)
       first <- mempool.add(t1)
@@ -402,7 +402,7 @@ class MempoolStoreSuite extends CatsEffectSuite:
       store <- MemoryUtxoStore[IO]
       _ <- store.write(full.utxo.toVector.map((i, o) => i -> Some(o)), 0L)
       mempool <- Mempool.create[IO](
-        Some(bare),
+        Right(bare),
         1000,
         env,
         100000,

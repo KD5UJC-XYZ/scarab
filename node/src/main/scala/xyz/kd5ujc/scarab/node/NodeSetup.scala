@@ -100,10 +100,12 @@ final case class NodeSetup(
   def byronHistory: EraHistory.ByronParams = mirrorEnv().byron
 
   /** The state the chain starts from, as the mirror: the node's state at the origin, converted
-    * once, at the start.
+    * once, at the start, and taken to the terms of the era-indexed rules ([[LegacySeed]]: the
+    * pulser's parameters without the fields Conway's have no place for, which a state carried over
+    * the hard fork into Conway would adopt).
     */
   def mirrorStart: Either[StateMirrorError, MirrorState] =
-    MirrorRun.run(mirrorEnv())(_.toMirror(None, start)).map(_.value)
+    MirrorRun.run(mirrorEnv())(_.toMirror(None, start)).map(m => LegacySeed(m.value))
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)

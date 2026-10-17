@@ -118,9 +118,9 @@ object MempoolLedger:
   * is a pure function; [[Mempool]] serialises them.
   */
 final case class MempoolState(
-    base: Option[MempoolLedger],
+    base: Either[ConwayView.Unavailable, MempoolLedger],
     tipSlot: BigInt,
-    current: Option[MempoolLedger],
+    current: Either[ConwayView.Unavailable, MempoolLedger],
     entries: Vector[Entry],
     bytes: Long,
     nextTicket: Long,
@@ -136,10 +136,8 @@ final case class MempoolState(
       (id, tx) = parsed
       _ <- Either.cond(!contains(id), (), Rejection.AlreadyHeld(id))
       _ <- Either.cond(raw.size <= free, (), Rejection.Full(raw.size, free))
-      ledger <- current.toRight(
-        Rejection.NoLedger(ConwayView.Unavailable.InByron)
-      )
-      baseLedger <- base.toRight(Rejection.NoLedger(ConwayView.Unavailable.InByron))
+      ledger <- current.leftMap(Rejection.NoLedger(_))
+      baseLedger <- base.leftMap(Rejection.NoLedger(_))
       // The MEMPOOL rule of the ledger (`Rules/Mempool.hs`) runs before LEDGER: a transaction none
       // of whose inputs is unspent is "probably a duplicate" and is refused with that alone. Votes
       // of unelected committee members are refused here, and only here, before protocol version 11;
@@ -172,7 +170,7 @@ final case class MempoolState(
       val entry = Entry(id, raw, tx, nextTicket, MempoolState.refScriptBytes(ledger, tx))
       (
         copy(
-          current = Some(next),
+          current = Right(next),
           entries = entries :+ entry,
           bytes = bytes + raw.size,
           nextTicket = nextTicket + 1
@@ -193,16 +191,28 @@ final case class MempoolState(
       case Left(why) =>
         // no ledger to validate against: nothing is held, and everything held is dropped
         (
-          copy(base = None, tipSlot = slot, current = None, entries = Vector.empty, bytes = 0),
+          copy(
+            base = Left(why),
+            tipSlot = slot,
+            current = Left(why),
+            entries = Vector.empty,
+            bytes = 0
+          ),
           entries.map(_ -> Rejection.NoLedger(why))
         )
       case Right(l) =>
         val start =
-          copy(base = Some(l), tipSlot = slot, current = Some(l), entries = Vector.empty, bytes = 0)
+          copy(
+            base = Right(l),
+            tipSlot = slot,
+            current = Right(l),
+            entries = Vector.empty,
+            bytes = 0
+          )
         entries.foldLeft((start, Vector.empty[(Entry, Rejection)])) {
           case ((state, dropped), entry) =>
             state.current
-              .toRight(Rejection.NoLedger(ConwayView.Unavailable.InByron))
+              .leftMap(Rejection.NoLedger(_))
               .flatMap(
                 _(entry.tx, env.txEnv(slot, l, state.entries.size), env.rules)
                   .leftMap(Rejection.Ledger(_))
@@ -210,7 +220,7 @@ final case class MempoolState(
               case Right(next) =>
                 (
                   state.copy(
-                    current = Some(next),
+                    current = Right(next),
                     entries = state.entries :+ entry,
                     bytes = state.bytes + entry.size
                   ),
@@ -224,7 +234,7 @@ final case class MempoolState(
     */
   def remove(ids: Set[Bytes], env: MempoolEnv): (MempoolState, Vector[(Entry, Rejection)]) =
     copy(entries = entries.filterNot(e => ids(e.id)))
-      .sync(base.toRight(ConwayView.Unavailable.InByron), tipSlot, env)
+      .sync(base, tipSlot, env)
 
   /** The longest prefix of the pool, in order, within `maxBytes`. */
   def forBlock(maxBytes: Long): Vector[Entry] =
@@ -271,7 +281,11 @@ object MempoolState:
       .map(_.referenceScriptSize)
       .sum
 
-  def empty(ledger: Option[MempoolLedger], tipSlot: BigInt, capacityBytes: Long): MempoolState =
+  def empty(
+      ledger: Either[ConwayView.Unavailable, MempoolLedger],
+      tipSlot: BigInt,
+      capacityBytes: Long
+  ): MempoolState =
     MempoolState(ledger, tipSlot, ledger, Vector.empty, 0L, 1L, capacityBytes)
 
   private val limits = Cbor.Limits(

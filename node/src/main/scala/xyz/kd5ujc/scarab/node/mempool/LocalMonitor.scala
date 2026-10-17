@@ -87,7 +87,7 @@ object LocalMonitor:
       state.tipSlot + 1,
       state.entries.map(e => Held(wrapTx(e.raw), measure(e))),
       item => unwrapId(item).exists(held),
-      state.base.fold(TxMeasure(0, 0, 0, 0))(l => capacity(l.params, state.capacityBytes)),
+      state.base.fold(_ => TxMeasure(0, 0, 0, 0), l => capacity(l.params, state.capacityBytes)),
       (state.tipSlot + 1, ids)
     )
 

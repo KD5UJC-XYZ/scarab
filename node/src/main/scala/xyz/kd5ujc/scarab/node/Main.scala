@@ -163,7 +163,9 @@ object Main extends IOApp:
         */
       dumpStateFull: Boolean = false,
       /** `--mirror-check`: at the first block and at every epoch boundary, turn the ledger state
-        * into the mirror of the Haskell state and back, and log the result ([[MirrorCheck]]).
+        * into the mirror of the Haskell state and back, and log the result ([[MirrorCheck]]). It
+        * checks the conversion of the flat state, so it applies to `--rules old` and
+        * `differential`; the state of `--rules new` is the mirror and has nothing to convert.
         */
       mirrorCheck: Boolean = false,
       /** Validate the headers a peer announces before the blocks are fetched (G6). */
@@ -362,13 +364,6 @@ object Main extends IOApp:
           options.rules match
             // the chain's state is the mirror of the Haskell ledger state, and the rules are the
             // era-indexed ones
-            case RulesMode.New if options.mirrorCheck =>
-              fail(
-                ConfigError(
-                  "--mirror-check checks the old rules' conversion to the mirror; the state of " +
-                    "--rules new is the mirror (use --snapshot-check full), or run --rules old"
-                )
-              )
             case RulesMode.New =>
               setup.mirrorStart.fold(
                 e => fail(ConfigError(s"the start state does not mirror: $e")),
@@ -730,12 +725,10 @@ object Main extends IOApp:
                 .extended(r.ref, r.raw, Vector.empty, Anchor(anchor, state))
             )
             mempool <- Mempool.create[IO](
-              MempoolLedger
-                .at(
-                  resumed.lastOption.fold(state)(_.state),
-                  resumed.lastOption.map(_.ref).orElse(anchor)
-                )
-                .toOption,
+              MempoolLedger.at(
+                resumed.lastOption.fold(state)(_.state),
+                resumed.lastOption.map(_.ref).orElse(anchor)
+              ),
               resumed.lastOption.map(_.ref).orElse(anchor).fold(BigInt(0))(_.slot),
               MempoolEnv(globals, geometry),
               options.mempoolBytes.getOrElse(DefaultMempoolBytes),

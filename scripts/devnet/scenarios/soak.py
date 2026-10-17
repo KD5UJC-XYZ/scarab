@@ -86,13 +86,21 @@ def scrape_metrics(name, root):
     return out
 
 
+def mirror_checked(args):
+    """`--mirror-check` checks the conversion of the flat state to the mirror, which only the old rules
+    (and the differential run, whose state is the old one) have: under the default rules the state is the
+    mirror, there is nothing to convert, and the flag is not passed."""
+    rules = getattr(args, "rules", None) or os.environ.get("SCARAB_RULES") or "new"
+    return getattr(args, "mirror_check", False) and rules != "new"
+
+
 def soak(args):
     """Fresh cluster, Scala follower, transaction load and periodic comparison."""
     root = data_root(args.name)
     up(args)
     follower = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "follow",
                                  *(["--dump-state"] if getattr(args, "oracle", False) else []),
-                                 *(["--mirror-check"] if getattr(args, "mirror_check", False) else [])],
+                                 *(["--mirror-check"] if mirror_checked(args) else [])],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     loader = subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, "load", "--seed", str(args.seed)],
                               stdout=(root / "load.log").open("w"), stderr=subprocess.STDOUT)
@@ -139,7 +147,7 @@ def soak(args):
     }
     if scraped:
         summary["metrics"] = scraped
-    mirror = mirror_summary(log) if getattr(args, "mirror_check", False) else None
+    mirror = mirror_summary(log) if mirror_checked(args) else None
     if mirror is not None:
         summary["mirrorCheck"] = mirror
     rules = getattr(args, "rules", None) or os.environ.get("SCARAB_RULES")

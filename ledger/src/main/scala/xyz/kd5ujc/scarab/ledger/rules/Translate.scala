@@ -31,6 +31,23 @@ object EraNes:
     case ShelleyBasedEra.SBabbage => Era.Babbage
     case ShelleyBasedEra.SConway  => Era.Conway
 
+  /** The state with the handle on its UTxO set changed by `f`: the entries a block reads put in,
+    * the stamp of the block, the set settled to what the backing store holds.
+    */
+  def mapUtxo(e: EraNes)(
+      f: xyz.kd5ujc.scarab.ledger.Utxo => xyz.kd5ujc.scarab.ledger.Utxo
+  ): EraNes =
+    e match
+      case i: InEra[x] =>
+        val ls = i.nes.es.ls
+        EraNes.InEra(
+          i.era,
+          i.nes.copy(es =
+            i.nes.es
+              .copy(ls = ls.copy[x](utxo = ls.utxo.copy(utxo = UtxoTables(f(ls.utxo.utxo.utxo)))))
+          )
+        )
+
   extension (e: EraNes)
     def epoch: EpochNo = e match
       case i: InEra[e] => i.nes.epoch
