@@ -752,6 +752,15 @@ object Main extends IOApp:
                         )
                       )
                       .rescue(e => IO.pure(e.message))
+                      // A failure that is not a network error still ends the connection: say so,
+                      // where the listener would drop it unseen.
+                      .attempt
+                      .map(
+                        _.fold(
+                          t => s"failed: ${t.getClass.getSimpleName}: ${t.getMessage}",
+                          identity
+                        )
+                      )
                       .flatMap(reason =>
                         logged(NodeEvent.Inbound(path.toString, InboundEvent.Closed(reason)))
                       )

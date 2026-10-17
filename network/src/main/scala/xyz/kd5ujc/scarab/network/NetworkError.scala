@@ -13,6 +13,7 @@ enum NetworkError:
   case IngressLimit(protocol: Int, bytes: Int)
   case Decode(protocol: Int, reason: String)
   case IllegalTransition(protocol: Int, detail: String)
+  case QueryRefused(refusal: LocalStateQueryServer.Refusal)
   case BearerClosed(reason: String)
 
   def message: String = this match
@@ -24,7 +25,9 @@ enum NetworkError:
     case IngressLimit(p, b)      => s"${Protocols.name(p)} exceeded the ingress limit at $b bytes"
     case Decode(p, r)            => s"${Protocols.name(p)} decode: $r"
     case IllegalTransition(p, d) => s"${Protocols.name(p)} protocol violation: $d"
-    case BearerClosed(r)         => s"connection closed: $r"
+    case QueryRefused(r) =>
+      s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
+    case BearerClosed(r) => s"connection closed: $r"
 
 /** Mini-protocol numbers: the node-to-node ones and the node-to-client ones (5, 6, 7 and 9). */
 object Protocols:

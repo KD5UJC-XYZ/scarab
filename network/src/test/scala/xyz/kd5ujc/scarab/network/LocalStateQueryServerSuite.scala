@@ -38,7 +38,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
               def answer(query: Bytes) =
                 IO.pure(
                   if query == Bytes(Vector(0x01)) then Right(item(state))
-                  else Left("unknown query")
+                  else Left(LocalStateQueryServer.Refusal.Unsupported("unknown query"))
                 )
           }
         }
@@ -160,7 +160,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
     }
   }
 
-  test("a query the source does not answer ends the connection with a protocol error") {
+  test("a query the source does not answer ends the connection, naming the refusal") {
     toy.flatMap { t =>
       session(t) { (ch, _) =>
         for
@@ -169,7 +169,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
           _ <- send(ch, State.Acquired, Message.Query(Bytes(Vector(0x02))))
         yield ()
       }.map { case (_, ended) =>
-        assert(ended.contains("query not answered"), ended)
+        assert(ended.contains("query not answered: unsupported query unknown query"), ended)
       }
     }
   }

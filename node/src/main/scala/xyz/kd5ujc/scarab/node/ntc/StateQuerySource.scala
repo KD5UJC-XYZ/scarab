@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Target}
 import xyz.kd5ujc.scarab.network.LocalStateQueryServer
+import xyz.kd5ujc.scarab.network.LocalStateQueryServer.Refusal
 import xyz.kd5ujc.scarab.consensus.{NodeState, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
 import xyz.kd5ujc.scarab.storage.UtxoStore
@@ -54,22 +55,32 @@ object StateQuerySource:
 
     private def session(view: QueryView): LocalStateQueryServer.Session[F] =
       new LocalStateQueryServer.Session[F]:
-        def answer(raw: Bytes): F[Either[String, Bytes]] =
+        def answer(raw: Bytes): F[Either[Refusal, Bytes]] =
           NtcQuery.decode(raw) match
-            case Left(error) => Sync[F].pure(Left(s"cannot decode ($error): ${raw.hex.take(80)}"))
+            case Left(error) =>
+              Sync[F].pure(Left(Refusal.Undecodable(error, raw.hex.take(80))))
             case Right(query) =>
+              val shown = query.toString.take(120)
               for
                 e <- env
                 entries <- fetch(view, QueryAnswers.utxoNeeds(query))
-              yield QueryAnswers
-                .answer(e, view, entries, query)
-                .toRight(s"unsupported query $query")
+                // A value outside its encoding makes the writer throw; the connection ends with the
+                // query named, never silently.
+                answered <- Sync[F]
+                  .delay(QueryAnswers.answer(e, view, entries, query))
+                  .attempt
+              yield answered match
+                case Right(Some(result)) => Right(result)
+                case Right(None)         => Left(Refusal.Unsupported(shown))
+                case Left(cause)         => Left(Refusal.Unwritable(shown, cause.toString))
 
     private def fetch(view: QueryView, needs: QueryAnswers.UtxoNeeds): F[Map[TxIn, TxOut]] =
       needs match
         case QueryAnswers.UtxoNeeds.Nothing => Sync[F].pure(Map.empty)
         case QueryAnswers.UtxoNeeds.Whole =>
           UtxoStore.materialize(store, view.ledger.utxo)
+        case QueryAnswers.UtxoNeeds.Addresses(addresses) =>
+          UtxoStore.materializeWhere(store, view.ledger.utxo, out => addresses(out.address.raw))
         case QueryAnswers.UtxoNeeds.Inputs(inputs) =>
           UtxoStore.complete(Some(store), view.ledger.utxo, inputs).map { u =>
             inputs.iterator.flatMap(i => u.get(i).map(i -> _)).toMap

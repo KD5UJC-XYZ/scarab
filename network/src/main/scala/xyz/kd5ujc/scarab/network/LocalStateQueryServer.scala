@@ -16,12 +16,29 @@ import scala.concurrent.duration.*
   * answered against that one state, however far the chain has moved meanwhile.
   */
 object LocalStateQueryServer:
+  /** Why a query is not answered. The connection ends, as it does on the reference when its codec
+    * cannot decode a query, and the reason is logged with the close.
+    */
+  enum Refusal:
+    /** The bytes are not a query this node's decoder knows (`detail` says where it stopped). */
+    case Undecodable(detail: String, prefix: String)
+
+    /** The query decodes but this node does not answer it. */
+    case Unsupported(query: String)
+
+    /** Answering failed: the answer cannot be written (a value outside its encoding). */
+    case Unwritable(query: String, cause: String)
+
+    def message: String = this match
+      case Undecodable(detail, prefix) => s"cannot decode ($detail): $prefix"
+      case Unsupported(query)          => s"unsupported query $query"
+      case Unwritable(query, cause)    => s"cannot write the answer to $query: $cause"
+
   /** One acquired ledger state. `answer` gets a query (one CBOR item) and returns the result item,
-    * or the reason the query is not answered, which ends the connection as a codec failure does on
-    * the reference.
+    * or the reason the query is not answered.
     */
   trait Session[F[_]]:
-    def answer(query: Bytes): F[Either[String, Bytes]]
+    def answer(query: Bytes): F[Either[Refusal, Bytes]]
 
   trait Source[F[_]]:
     def acquire(target: Target): F[Either[Failure, Session[F]]]
@@ -61,7 +78,7 @@ object LocalStateQueryServer:
           session.answer(query).flatMap {
             case Right(result) =>
               send(State.Querying, Message.Result(result)) *> acquired(session)
-            case Left(reason) => illegal(s"query not answered: $reason")
+            case Left(refusal) => NetworkError.QueryRefused(refusal).raise[F, Boolean]
           }
         case Message.ReAcquire(target) => acquire(target)
         case Message.Release           => Temporal[F].pure(true)

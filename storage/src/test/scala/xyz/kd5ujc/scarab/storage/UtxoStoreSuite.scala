@@ -188,10 +188,15 @@ class UtxoStoreSuite extends ScalaCheckSuite:
     for
       stored <- store.all
       completed <- chain.utxos.traverse(u => UtxoStore.materialize(store, u))
+      // a query for some addresses reads only the outputs it keeps: the same as filtering the whole
+      keep = (out: TxOut) => out.address.raw.hex.hashCode % 2 == 0
+      kept <- chain.utxos.traverse(u => UtxoStore.materializeWhere(store, u, keep))
     yield
-      val states = chain.utxos.zip(chain.models).zip(completed).forall { case ((u, model), full) =>
-        val (coin, count, stake, ptrs) = recomputed(model)
-        full == model && u.coin == coin && u.count == count && u.stake == stake && u.ptrStake == ptrs
+      val states = chain.utxos.zip(chain.models).zip(completed.zip(kept)).forall {
+        case ((u, model), (full, some)) =>
+          val (coin, count, stake, ptrs) = recomputed(model)
+          some == model.filter((_, out) => keep(out)) &&
+          full == model && u.coin == coin && u.count == count && u.stake == stake && u.ptrStake == ptrs
       }
       val anchor = chain.anchor
       val (coin, count, stake, ptrs) = recomputed(chain.anchorModel)

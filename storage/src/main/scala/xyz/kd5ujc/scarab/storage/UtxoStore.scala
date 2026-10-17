@@ -92,6 +92,21 @@ object UtxoStore:
         utxo.diff.collect { case (in, Utxo.Change(None, _)) => in }
     }
 
+  /** The entries of `utxo` 's set whose output satisfies `keep`: one pass over the backing store
+    * that keeps only those (a query for one address does not hold the whole set in memory), with
+    * the state's changes on top.
+    */
+  def materializeWhere[F[_]: Sync](
+      store: UtxoStore[F],
+      utxo: Utxo,
+      keep: TxOut => Boolean
+  ): F[Map[TxIn, TxOut]] =
+    store.select(keep).map { stored =>
+      (stored -- utxo.diff.keys) ++ utxo.diff.collect {
+        case (in, Utxo.Change(Some(out), _)) if keep(out) => in -> out
+      }
+    }
+
   /** Value encoding shared by the stores: the original CBOR when it round-trips, else the codec. */
   object Coding:
     import NodeCodecs.given

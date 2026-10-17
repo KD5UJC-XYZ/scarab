@@ -115,8 +115,8 @@ object Peer:
       PeerError.Unavailable(error.message)
     case _: NetworkError.HandshakeRefused | _: NetworkError.VersionMismatch =>
       PeerError.Handshake(error.message)
-    case _: NetworkError.IngressLimit | _: NetworkError.Decode |
-        _: NetworkError.IllegalTransition =>
+    case _: NetworkError.IngressLimit | _: NetworkError.Decode | _: NetworkError.IllegalTransition |
+        _: NetworkError.QueryRefused =>
       PeerError.Protocol(error.message)
 
   /** Node-to-node interpreter over `network`: ChainSync and BlockFetch share one multiplexed
