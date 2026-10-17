@@ -223,3 +223,27 @@ object PlutusAvailability:
         s"Plutus Core version ${version._1}.${version._2}.${version._3} is not available in " +
           s"$language at protocol version $protocolMajor"
       )
+
+  /** Header size of a constant's type and fields of a `constr` from protocol 11 (`maxBoundsByPV`:
+    * 32 and 1024); below it the decoder has no bound.
+    */
+  val MaxTypeHeader = 32
+  val MaxConstrFields = 1024
+
+  /** What the reference's decoder refuses that only the bytes show (`FlatScan`): a malformed
+    * `value` constant at every protocol version, and from protocol 11 a constant type header longer
+    * than [[MaxTypeHeader]] tags and a `constr` with more than [[MaxConstrFields]] fields.
+    */
+  def scanFailure(protocolMajor: Int, scan: FlatScan): Option[String] =
+    scan.malformedValue
+      .map(f => s"Value constant: ${f.message}")
+      .orElse(
+        Option.when(protocolMajor >= VanRossem && scan.maxTypeHeader > MaxTypeHeader)(
+          s"Constant of type with ${scan.maxTypeHeader} tags is not available in protocol version $protocolMajor"
+        )
+      )
+      .orElse(
+        Option.when(protocolMajor >= VanRossem && scan.maxConstrFields > MaxConstrFields)(
+          s"constr with ${scan.maxConstrFields} fields is not available in protocol version $protocolMajor"
+        )
+      )

@@ -1,25 +1,26 @@
 # Conformance cases of plutus 1.70.0.0 that fail through ScalusEvaluator (Scalus 1.3.0), one per line:
-# <case><TAB><class><TAB><reason>. Classes: (ii) a Scalus deviation, reproduced in
-# ScalusConformanceReproducersSuite; (iii) a suite feature out of scope for the evaluator path.
-builtin/parser/bls12-381/G1/on-curve-bit3-clear	(iii)	BLS12-381 constants have no flat encoding; Scalus's encoder writes an uncompress application
-builtin/parser/bls12-381/G1/on-curve-bit3-set	(iii)	same
-builtin/parser/bls12-381/G1/zero	(iii)	same
-builtin/parser/bls12-381/G2/on-curve-bit3-clear	(iii)	same
-builtin/parser/bls12-381/G2/on-curve-bit3-set	(iii)	same
-builtin/parser/bls12-381/G2/zero	(iii)	same
-builtin/parser/value/currencyIDs-unordered	(ii)	flat decoding accepts a value with unordered currency symbols
-builtin/parser/value/duplicate-currencyIDs	(ii)	flat decoding accepts a value with a repeated currency symbol
-builtin/parser/value/duplicate-tokenIDs	(ii)	flat decoding accepts a value with a repeated token name
-builtin/parser/value/empty-tokens	(ii)	flat decoding accepts a value with an empty inner map
-builtin/parser/value/tokenIDs-unordered	(ii)	flat decoding accepts a value with unordered token names
-builtin/parser/value/zero-asset	(ii)	flat decoding accepts a value with a zero quantity
-builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst	(ii)	hashToGroup with the 32 byte hash of an oversize DST differs
-builtin/semantics/bls12_381_G1_hashToGroup/hash-dst-len-255	(ii)	hashToGroup with a DST of 255 bytes differs
-builtin/semantics/bls12_381_G2_hashToGroup/hash-dst-len-255	(ii)	same for G2
-builtin/semantics/dropList/dropList-09	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget as the suite says it may
-builtin/semantics/dropList/dropList-10	(iii)	same
-builtin/semantics/dropList/dropList-14	(iii)	same
-builtin/semantics/dropList/dropList-15	(iii)	same
-builtin/semantics/dropList/dropList-16	(iii)	same
-term/constant-case/data/data-01	(ii)	Scalus 1.3.0 applies the branch to the fields as the reference does, but only from protocol 12; the suite runs at protocol 11, where the case is refused
-term/constant-case/data/data-02	(ii)	same
+# <case><TAB><class><TAB><reason>. Classes: (ii) a Scalus deviation that a transaction can reach (reproduced in
+# ScalusConformanceReproducersSuite, handled on the ledger path as docs/plutus-conformance.md says); (iii) a
+# difference of the suite harness, not reachable by a transaction (reasons below; PlutusReachabilitySuite).
+builtin/parser/bls12-381/G1/on-curve-bit3-clear	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
+builtin/parser/bls12-381/G1/on-curve-bit3-set	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
+builtin/parser/bls12-381/G1/zero	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
+builtin/parser/bls12-381/G2/on-curve-bit3-clear	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
+builtin/parser/bls12-381/G2/on-curve-bit3-set	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
+builtin/parser/bls12-381/G2/zero	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
+builtin/parser/value/currencyIDs-unordered	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
+builtin/parser/value/duplicate-currencyIDs	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
+builtin/parser/value/duplicate-tokenIDs	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
+builtin/parser/value/empty-tokens	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
+builtin/parser/value/tokenIDs-unordered	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
+builtin/parser/value/zero-asset	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
+builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst	(ii)	hashToGroup with a tag of non-ASCII bytes: Scalus gives another point; the ledger path refuses it with EvalFailure.Unsupported
+builtin/semantics/bls12_381_G1_hashToGroup/hash-dst-len-255	(ii)	hashToGroup with a tag of non-ASCII bytes: Scalus gives another point; the ledger path refuses it with EvalFailure.Unsupported
+builtin/semantics/bls12_381_G2_hashToGroup/hash-dst-len-255	(ii)	hashToGroup with a tag of non-ASCII bytes: Scalus gives another point; the ledger path refuses it with EvalFailure.Unsupported
+builtin/semantics/dropList/dropList-09	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget in both, and only the units reported after the failure differ (PlutusReachabilitySuite)
+builtin/semantics/dropList/dropList-10	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget in both, and only the units reported after the failure differ (PlutusReachabilitySuite)
+builtin/semantics/dropList/dropList-14	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget in both, and only the units reported after the failure differ (PlutusReachabilitySuite)
+builtin/semantics/dropList/dropList-15	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget in both, and only the units reported after the failure differ (PlutusReachabilitySuite)
+builtin/semantics/dropList/dropList-16	(iii)	the suite counts the budget (saturating at the maximum); the restricting evaluator runs out of budget in both, and only the units reported after the failure differ (PlutusReachabilitySuite)
+term/constant-case/data/data-01	(iii)	the suite evaluates with caseBuiltin (Data included); the ledger uses caseBuiltinNoData below protocol 12 and refuses as Scalus does (PlutusReachabilitySuite)
+term/constant-case/data/data-02	(iii)	the suite evaluates with caseBuiltin (Data included); the ledger uses caseBuiltinNoData below protocol 12 and refuses as Scalus does (PlutusReachabilitySuite)

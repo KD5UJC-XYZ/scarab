@@ -429,6 +429,73 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(check(5, Vector(keccakV2), Vector.empty), "accepted")
   }
 
+  test(
+    "a malformed value constant and the protocol-11 admission limits are phase-1 invalid (AUD-03, #166)"
+  ) {
+    import xyz.kd5ujc.scarab.plutus.FlatProgram as F
+    val v110 = (1, 1, 0)
+    def plutus(kind: ScriptKind, flat: Bytes) = Script.plutus(kind, flat)
+    val a = "a".getBytes("US-ASCII")
+    // a value constant with a zero quantity: the reference refuses to decode it at every protocol version
+    val zeroAsset = plutus(
+      ScriptKind.PlutusV2,
+      F.script((1, 0, 0), F.value(Vector(a -> Vector(a -> BigInt(0)))))
+    )
+    val constr1024 = plutus(
+      ScriptKind.PlutusV3,
+      F.script(v110, F.Ap(F.Lam(F.unit), F.Constr(0, Vector.fill(1024)(F.unit))))
+    )
+    val constr1025 = plutus(
+      ScriptKind.PlutusV3,
+      F.script(v110, F.Ap(F.Lam(F.unit), F.Constr(0, Vector.fill(1025)(F.unit))))
+    )
+    val type31 =
+      plutus(ScriptKind.PlutusV3, F.script(v110, F.Ap(F.Lam(F.unit), F.nestedEmptyList(15))))
+    val type33 =
+      plutus(ScriptKind.PlutusV3, F.script(v110, F.Ap(F.Lam(F.unit), F.nestedEmptyList(16))))
+    def check(protocol: Int, scripts: Vector[Script], referenced: Vector[Script]) =
+      val (s, in) = funded(protocol)
+      val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
+      val b = body("wf", Vector(in), outputs, 200)
+      rule(
+        TxChecks
+          .scriptsWellFormed(
+            s.params,
+            tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
+            env
+          )
+          .map(_ => s)
+      )
+    for pv <- Seq(8, 10, 11) do
+      assertEquals(
+        check(pv, Vector(zeroAsset), Vector.empty),
+        "MalformedScriptWitnesses",
+        s"value $pv"
+      )
+      assertEquals(
+        check(pv, Vector.empty, Vector(zeroAsset)),
+        "MalformedReferenceScripts",
+        s"value $pv"
+      )
+    // the limits apply from protocol 11 only; the boundary values are admitted at 11
+    for pv <- Seq(9, 10, 11) do
+      assertEquals(
+        check(pv, Vector(constr1024, type31), Vector(constr1024, type31)),
+        "accepted",
+        s"$pv"
+      )
+    for pv <- Seq(9, 10) do
+      assertEquals(
+        check(pv, Vector(constr1025, type33), Vector(constr1025, type33)),
+        "accepted",
+        s"$pv"
+      )
+    assertEquals(check(11, Vector(constr1025), Vector.empty), "MalformedScriptWitnesses")
+    assertEquals(check(11, Vector.empty, Vector(constr1025)), "MalformedReferenceScripts")
+    assertEquals(check(11, Vector(type33), Vector.empty), "MalformedScriptWitnesses")
+    assertEquals(check(11, Vector.empty, Vector(type33)), "MalformedReferenceScripts")
+  }
+
   test("Byron outputs are spent with bootstrap witnesses whose address root matches") {
     val spender = key()
     val chainCode = Bytes(Vector.fill(32)(5))

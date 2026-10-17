@@ -41,11 +41,17 @@ enum EvalFailure:
   case OutOfBudget
   case Script(reason: String)
 
+  /** A variable the ledger's scope check refuses, found when the evaluation is set up (a failure of
+    * phase 2, as in the reference's `mkTermToEvaluate`, not of deserialisation).
+    */
+  case OpenTerm(index: BigInt)
+
   def message: String = this match
     case Decode(r)      => s"script does not decode: $r"
     case Unsupported(r) => s"unsupported: $r"
     case OutOfBudget    => "execution budget exceeded"
     case Script(r)      => r
+    case OpenTerm(i)    => s"free variable $i in the script"
 
 /** Outcome of one execution; `used` is what the machine spent, `logs` the `trace` output. */
 enum EvalResult:
