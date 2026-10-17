@@ -129,7 +129,8 @@ fetches and verifies the official release itself. On GitHub, `.github/workflows/
 `check`, the script tests, actionlint, a gitleaks scan of the whole history (`.gitleaks.toml`; a new
 false positive is allowlisted there by path or commit, scoped to its rule, with a reason) and, on
 pull requests, a dependency review; `.github/workflows/e2e.yml` runs
-soak, e2e, relay and pool nightly, on demand and on version tags. Every scenario exits non-zero on
+the expensive devnet scenarios nightly, on demand and on version tags, one parallel job each: soak, e2e
+(also with `SCARAB_RULES=differential`), relay, pool, kes-rotate, ntc and restart. Every scenario exits non-zero on
 any mismatch or error, so run the ones your change touches before opening a pull request.
 
 ## How evidence is recorded
