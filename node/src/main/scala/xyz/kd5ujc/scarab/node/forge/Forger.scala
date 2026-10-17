@@ -51,7 +51,8 @@ enum ForgeEvent:
       kesPeriod: BigInt,
       relativeKesPeriod: Int,
       stake: BigInt,
-      totalStake: BigInt
+      totalStake: BigInt,
+      opCertCounter: BigInt
   )
 
   /** The forged block is now the tip of our chain (and is served to peers). */
@@ -334,7 +335,7 @@ final class Forger[F[_]: Async](
     val kesPeriod = slot / config.slotsPerKesPeriod
     // the header, the key's evolution and the signature all use the credentials of one moment: a
     // reload (SIGHUP) waits until the block is signed
-    val assembled: F[Either[ForgeError, (Bytes, Bytes, BigInt)]] = hot.locked { c =>
+    val assembled: F[Either[ForgeError, (Bytes, Bytes, BigInt, BigInt)]] = hot.locked { c =>
       val start = c.opCert.kesPeriod
       val header = for
         _ <- Either.cond(
@@ -369,12 +370,14 @@ final class Forger[F[_]: Async](
             case Left(e) => F.pure(Left(e))
             case Right(_) =>
               F.blocking(c.kes.sign(headerBody))
-                .map(signature => Right((headerBody, signature, kesPeriod - start)))
+                .map(signature =>
+                  Right((headerBody, signature, kesPeriod - start, c.opCert.sequence))
+                )
           }
     }
     assembled.flatMap {
       case Left(e) => F.pure(Left(e))
-      case Right((headerBody, signature, relative)) =>
+      case Right((headerBody, signature, relative, counter)) =>
         val raw = BlockBuilder.block(headerBody, signature, body)
         Block.decode(raw, geometry.byron.epochSlots) match
           case Left(e) =>
@@ -392,7 +395,8 @@ final class Forger[F[_]: Async](
               kesPeriod,
               relative.toInt,
               stake,
-              totalStake
+              totalStake,
+              counter
             )
             stats.forged(epoch) *> events.emit(forged) *> follower.adoptForged(h, raw).flatMap {
               case Follower.Adoption.Adopted(ref) =>

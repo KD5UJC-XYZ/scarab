@@ -229,7 +229,9 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
     }
   }
 
-  test("a key that cannot be written is reported, tried again at each slot, and forging goes on") {
+  test(
+    "a key that cannot be written is reported once per period, tried again at each slot, and forging goes on"
+  ) {
     val p = pool(kesStart = 50, seed = 4)
     withDir { f =>
       f.install(p.creds.hot)
@@ -254,7 +256,7 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
         yield
           assertEquals(
             events.collect { case ForgeEvent.KesPersistFailed(k, _) => k },
-            Vector(BigInt(51), BigInt(51))
+            Vector(BigInt(51))
           )
           assertEquals(f.onDisk.period, 1)
           assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)

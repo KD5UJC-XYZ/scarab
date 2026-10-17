@@ -89,7 +89,10 @@ final class HotKeys[F[_]: Async] private (
     state: Ref[F, PoolCredentials],
     lock: Mutex[F],
     source: Option[HotKeySource[F]],
-    unwritten: Ref[F, Boolean],
+    /** Some(period) while the key in memory is not on disk: the period a failure was last reported
+      * for, so it is reported once per period and retried at every slot.
+      */
+    unwritten: Ref[F, Option[BigInt]],
     config: PraosConfig,
     events: ForgeEvents[F]
 ):
@@ -101,15 +104,22 @@ final class HotKeys[F[_]: Async] private (
   def locked[A](use: PoolCredentials => F[A]): F[A] =
     lock.lock.surround(state.get.flatMap(use))
 
-  /** The key written back after an evolution; a failure is reported and retried at the next slot.
+  /** The key written back after an evolution; a failure is reported (once per KES period) and
+    * retried at the next slot.
     */
   private def write(c: PoolCredentials, kesPeriod: BigInt): F[Unit] =
     source.traverse_ { s =>
       s.persist(c.kes).flatMap {
         case Persisted.Failed(e) =>
-          unwritten.set(true) *> events.emit(ForgeEvent.KesPersistFailed(kesPeriod, e))
+          unwritten
+            .getAndSet(Some(kesPeriod))
+            .flatMap(last =>
+              events
+                .emit(ForgeEvent.KesPersistFailed(kesPeriod, e))
+                .unlessA(last.contains(kesPeriod))
+            )
         case Persisted.Written | Persisted.Unchanged | Persisted.Superseded =>
-          unwritten.set(false)
+          unwritten.set(None)
       }
     }
 
@@ -137,7 +147,7 @@ final class HotKeys[F[_]: Async] private (
         val inside =
           relative >= 0 && relative < config.maxKesEvolutions && relative < Sum6KesSigning.Periods
         if inside && relative.toInt > c.kes.period then evolved(c, kesPeriod).void
-        else unwritten.get.flatMap(write(c, kesPeriod).whenA)
+        else unwritten.get.flatMap(missing => write(c, kesPeriod).whenA(missing.isDefined))
       }
     )
 
@@ -172,7 +182,7 @@ final class HotKeys[F[_]: Async] private (
     for
       _ <- F.delay(if sameKey then candidate.kes.forget() else cur.kes.forget())
       _ <- state.set(next)
-      _ <- unwritten.set(false)
+      _ <- unwritten.set(None)
       // a key installed at period 0 is brought to the present at once; its file is rewritten
       _ <- evolved(next, kesPeriod).void.whenA(relative.toInt > kes.period)
       _ <- events.emit(
@@ -192,7 +202,7 @@ object HotKeys:
       config: PraosConfig,
       events: ForgeEvents[F]
   ): F[HotKeys[F]] =
-    (Ref.of[F, PoolCredentials](credentials), Mutex[F], Ref.of[F, Boolean](false)).mapN {
+    (Ref.of[F, PoolCredentials](credentials), Mutex[F], Ref.of[F, Option[BigInt]](None)).mapN {
       (state, lock, unwritten) => new HotKeys[F](state, lock, source, unwritten, config, events)
     }
 

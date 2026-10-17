@@ -532,7 +532,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `mempoolAdopted` | `Mempool.MempoolAdopted` | Info | `tx` |
 | `mempoolSynced` | `Mempool.MempoolSynced` | Info | `count`, `bytes`, `dropped` |
 | `forgeStarted` | `Forge.ForgeStarted` | Notice | `pool`, `vrfKeyHash`, `kesStart`, `kesEvolutions`, `opCertCounter`, `kesPeriod`, `remainingKesPeriods` |
-| `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake` |
+| `forged` | `Forge.Forged` | Info | `slot`, `epoch`, `blockNo`, `hash`, `prev`, `txs`, `bodySize`, `kesPeriod`, `relativeKesPeriod`, `stake`, `totalStake`, `opCertCounter` |
 | `adopted` | `Forge.Adopted` | Info | `block`, `latencyMs` |
 | `lost` | `Forge.Lost` | Notice | `slot`, `hash`, `reason` |
 | `kesEvolved` | `Forge.KesEvolved` | Info | `kesPeriod`, `relativeKesPeriod` |

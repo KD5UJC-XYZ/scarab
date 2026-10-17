@@ -90,7 +90,7 @@ final class EventMetrics[F[_]: Sync] private (
         )
       case ForgeEvent.KesReloadRefused(_)    => metrics.inc(kesReloads, ReloadLabel.Refused)
       case ForgeEvent.KesPersistFailed(_, _) => metrics.inc(kesPersistFailures)
-      case ForgeEvent.Forged(slot, _, _, _, _, _, _, period, _, _, _) =>
+      case ForgeEvent.Forged(slot, _, _, _, _, _, _, period, _, _, _, _) =>
         metrics.set(forgedSlotLast, number(slot)) *> kes(period)
       case ForgeEvent.KesEvolved(period, _) => kes(period)
       case ForgeEvent.Adopted(_, latency) =>

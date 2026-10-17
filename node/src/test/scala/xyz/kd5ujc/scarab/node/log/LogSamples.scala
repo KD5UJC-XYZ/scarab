@@ -172,7 +172,8 @@ object LogSamples:
       BigInt(32),
       1,
       BigInt(500),
-      BigInt(1000)
+      BigInt(1000),
+      BigInt(3)
     ),
     ForgeEvent.Forged(
       BigInt(1),
@@ -184,6 +185,7 @@ object LogSamples:
       0L,
       BigInt(0),
       0,
+      BigInt(0),
       BigInt(0),
       BigInt(0)
     ),

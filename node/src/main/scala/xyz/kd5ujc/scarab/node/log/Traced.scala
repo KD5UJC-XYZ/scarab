@@ -245,7 +245,20 @@ object Traced:
         "kesPeriod" -> period.asJson,
         "remainingKesPeriods" -> (start + evolutions - period).asJson
       )
-    case ForgeEvent.Forged(slot, epoch, no, hash, prev, txs, size, kes, rel, stake, total) =>
+    case ForgeEvent.Forged(
+          slot,
+          epoch,
+          no,
+          hash,
+          prev,
+          txs,
+          size,
+          kes,
+          rel,
+          stake,
+          total,
+          counter
+        ) =>
       EventKind.Forged.line(
         "slot" -> slot.asJson,
         "epoch" -> epoch.asJson,
@@ -257,7 +270,8 @@ object Traced:
         "kesPeriod" -> kes.asJson,
         "relativeKesPeriod" -> rel.asJson,
         "stake" -> stake.asJson,
-        "totalStake" -> total.asJson
+        "totalStake" -> total.asJson,
+        "opCertCounter" -> counter.asJson
       )
     case ForgeEvent.Adopted(b, latency) =>
       EventKind.Adopted.line("block" -> block(b), "latencyMs" -> latency.asJson)
