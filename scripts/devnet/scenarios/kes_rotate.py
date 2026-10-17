@@ -16,10 +16,13 @@ import subprocess
 import sys
 import threading
 import time
-from ..util import ENV, MAGIC, REPO, docker, in_ref, put_file, ref
+from ..util import ENV, MAGIC, REFERENCE_IMAGE, REPO, docker, in_ref, put_file, ref
 
 DRIVER = REPO / "scripts" / "pool" / "rotate_kes.py"
-CLI_IMAGE = "ghcr.io/intersectmbo/cardano-node:11.1.3"
+# The driver's cardano-cli container runs from the reference image the scenario already needs: it carries the
+# verified release's `cardano-cli`, and unlike the upstream tag (which the driver runs with --pull=never) it is
+# present on a fresh CI runner, where only the digest-pinned base is pulled.
+CLI_IMAGE = REFERENCE_IMAGE
 FIRST = "gen-000000-00000000"
 
 
