@@ -20,9 +20,14 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
   * not.
   *
   * The first test reproduces both leader rewards from the real inputs of the calculation, the
-  * reserves alone differing; the others check the boundary rule.
+  * reserves alone differing; it runs on both rule sets ([[MainnetAllegraReservesSuite]]). The
+  * others check the boundary rule that returns the redeem outputs and are the old side's by design
+  * ([[MainnetAllegraRedeemOldSuite]]): the new rules get the Byron redeem outputs as the stash the
+  * hand-over from Byron leaves in the new-epoch state (`StashedAVVM`), which the flat state does
+  * not carry, and the entry into Allegra is a translation of that state (J2.6: the first block of
+  * each era stays with the old side).
   */
-class MainnetAllegraReservesSuite extends FunSuite:
+abstract class MainnetAllegraReservesSuite(rs: RuleSet) extends FunSuite:
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e), identity)
 
   // ---- the reward calculation of epoch 236
@@ -96,6 +101,8 @@ class MainnetAllegraReservesSuite extends FunSuite:
       .copy(
         snapshots = Snapshots(Snapshot.empty, Snapshot.empty, go, BigInt("8115520823")),
         blocksPrevious = Map(pool -> BigInt(1), others -> BigInt(14391)),
+        // the new rules pay only the credentials that are registered when the update is made
+        accounts = (members.keySet + filler).map(_ -> Account(0, 0, None, None)).toMap,
         reserves = reserves,
         prevParams = Some(epoch235)
       )
@@ -105,12 +112,16 @@ class MainnetAllegraReservesSuite extends FunSuite:
       activeSlotsCoeff = Rational(1, 20),
       network = 1
     )
-    Rewards.update(state, globals).rewards(owner)
+    rs.rewards(state, globals)(owner)
 
   test("the leader reward of epoch 235 is the reference's only with the AVVM balances returned") {
     assertEquals(leaderReward(nodeReserves), BigInt(351050635)) // the node's balance at stop 5
     assertEquals(leaderReward(nodeReserves + avvmReturned), BigInt(351635274)) // the withdrawal
   }
+
+/** The boundary that enters Allegra on the old rules, over the outputs of the mainnet genesis. */
+class MainnetAllegraRedeemOldSuite extends FunSuite:
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e), identity)
 
   // ---- the boundary that enters Allegra
 
@@ -200,3 +211,6 @@ class MainnetAllegraReservesSuite extends FunSuite:
     assertEquals(after.reserves, shelleyEnd.reserves + avvm._2.value.coin)
     assertEquals(after.total, TestLedger.Supply)
   }
+
+class MainnetAllegraReservesOldSuite extends MainnetAllegraReservesSuite(RuleSet.Old)
+class MainnetAllegraReservesNewSuite extends MainnetAllegraReservesSuite(RuleSet.New)

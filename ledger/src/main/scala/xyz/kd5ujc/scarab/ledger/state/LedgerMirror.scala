@@ -11,6 +11,11 @@ import xyz.kd5ujc.scarab.ledger as node
 // The ledger side of the mirror: the node's flat ledger state to the Haskell-shaped
 // `NewEpochState` of an era and back. Plan sections 2 and 3 of the ledger-state mirror.
 
+/** The node's state of a mirror, with the derived pieces of the mirror that the state's own mirror
+  * does not have (`LedgerMirror.rebuilt`).
+  */
+final case class Rebuilt(state: node.LedgerState, differing: List[Derived])
+
 /** The mirror of the node's ledger state in era `E`: the Haskell-shaped state and the node-only
   * bookkeeping that has no place in it.
   */
@@ -50,15 +55,14 @@ trait LedgerMirror[F[_]]:
       ShelleyBasedEra[E]
   ): F[node.LedgerState]
 
-  /** The node's state of a mirror, without the check that the mirror of the result is the mirror it
-    * came from in what is derived (`from` does it). The rules produce states that are richer than
-    * what the node can derive from its own (the DRep pulser of the governance state, the pool
-    * distribution of a snapshot): a test that reads a rule's result through the flat state asks for
-    * this.
+  /** The node's state of a mirror with every derived piece that differs from what `to` derives of
+    * it (`from` fails on the first). The rules produce states that are richer than what the node
+    * can derive from its own (the DRep pulser of the governance state): a test that reads a rule's
+    * result through the flat state names the pieces it accepts as different and asserts the rest.
     */
-  def rebuild[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
+  def rebuilt[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
       ShelleyBasedEra[E]
-  ): F[node.LedgerState]
+  ): F[Rebuilt]
 
   // The parts of `to`, each on its own. A reader that needs the pool distribution does not pay for
   // the accounts: `to` is the sum of these (and of what the node keeps beside the mirror), and the
@@ -890,11 +894,15 @@ object LedgerMirror:
     def from[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
         era: ShelleyBasedEra[E]
     ): F[node.LedgerState] =
-      rebuild[E](at, image).flatMap(rebuilt => verify(at, image, rebuilt).as(rebuilt))
+      rebuilt[E](at, image).flatMap(r =>
+        r.differing.headOption.fold(monad.pure(r.state))(field =>
+          fail[node.LedgerState](MirrorError.DerivedMismatch(field))
+        )
+      )
 
-    def rebuild[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
+    def rebuilt[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
         era: ShelleyBasedEra[E]
-    ): F[node.LedgerState] =
+    ): F[Rebuilt] =
       val nes = image.nes
       val x = image.extras
       val ls = nes.es.ls
@@ -916,7 +924,13 @@ object LedgerMirror:
                 u.deltaR.value,
                 if u.rs.isEmpty then x.rewardAmounts
                 else
-                  stakeMap(u.rs)(_.rewards.iterator.foldLeft(BigInt(0))(_ + _.rewardAmount.value))
+                  // what each credential is paid (`aggregateRewards`, `Rewards.hs:170-186`): before
+                  // Allegra one that earns from several sources keeps the least of them, the leader
+                  // reward
+                  stakeMap(u.rs)(set =>
+                    (if gov.prev.protocolMajor >= 3 then set.rewards else set.rewards.take(1))
+                      .foldLeft(BigInt(0))(_ + _.rewardAmount.value)
+                  )
                 ,
                 u.deltaF.value
               )
@@ -1012,18 +1026,18 @@ object LedgerMirror:
           donation = ls.utxo.donation.value,
           rewardDraft = x.rewardDraft
         )
-        if pulsing then fail[node.LedgerState](MirrorError.IllFormed(Shape.PulsingRewardUpdate))
-        else monad.pure(rebuilt)
+        if pulsing then fail[Rebuilt](MirrorError.IllFormed(Shape.PulsingRewardUpdate))
+        else differing(at, image, rebuilt).map(Rebuilt(rebuilt, _))
       }
 
-    /** The mirror of the rebuilt state must be the mirror it was rebuilt from, in what is derived:
-      * the first piece that is not, is named.
+    /** The mirror of the rebuilt state should be the mirror it was rebuilt from, in what is
+      * derived: the pieces that are not, in the order of [[Derived]]'s checks.
       */
-    private def verify[E <: EraTag](
+    private def differing[E <: EraTag](
         at: WithOrigin[SlotNo],
         image: LedgerImage[E],
         rebuilt: node.LedgerState
-    )(using era: ShelleyBasedEra[E]): F[Unit] =
+    )(using era: ShelleyBasedEra[E]): F[List[Derived]] =
       to[E](at, rebuilt).flatMap { again =>
         val a = image.nes
         val b = again.value.nes
@@ -1046,7 +1060,5 @@ object LedgerMirror:
           Derived.Snapshot(Derived.Which.Go) -> (a.es.snapshots.go == b.es.snapshots.go),
           Derived.Extras -> (image.extras == again.value.extras)
         )
-        checks.collectFirst { case (field, false) => field } match
-          case Some(field) => fail(MirrorError.DerivedMismatch(field))
-          case None        => monad.unit
+        monad.pure(checks.collect { case (field, false) => field })
       }

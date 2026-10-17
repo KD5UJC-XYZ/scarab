@@ -7,7 +7,29 @@ import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
-class RewardsSuite extends ScalaCheckSuite:
+/** The reward calculation on both rule sets: the formulas (`maxPool`, the leader and member
+  * rewards) as each side has them, and the reward update of a state (`Rewards.update` of the old
+  * rules, RUPD of the new ones).
+  */
+abstract class RewardsSuite(rs: RuleSet) extends ScalaCheckSuite:
+  private def maxPool(a0: Rational, nOpt: BigInt, r: BigInt, sigma: Rational, pledge: Rational) =
+    rs match
+      case RuleSet.Old => Rewards.maxPool(a0, nOpt, r, sigma, pledge)
+      case RuleSet.New =>
+        xyz.kd5ujc.scarab.ledger.rules.Rewards.maxPool(a0, nOpt, r, sigma, pledge)
+
+  private def leaderReward(poolR: BigInt, p: PoolParams, s: Rational, sigma: Rational) =
+    rs match
+      case RuleSet.Old => Rewards.leaderReward(poolR, p, s, sigma)
+      case RuleSet.New =>
+        xyz.kd5ujc.scarab.ledger.rules.Rewards.operatorReward(poolR, p.cost, p.margin, s, sigma)
+
+  private def memberReward(poolR: BigInt, p: PoolParams, t: Rational, sigma: Rational) =
+    rs match
+      case RuleSet.Old => Rewards.memberReward(poolR, p, t, sigma)
+      case RuleSet.New =>
+        xyz.kd5ujc.scarab.ledger.rules.Rewards.memberReward(poolR, p.cost, p.margin, t, sigma)
+
   private def pool(cost: BigInt, margin: Rational) = PoolParams(
     Bytes(Vector.fill(28)(1)),
     Bytes(Vector.fill(32)(2)),
@@ -22,9 +44,9 @@ class RewardsSuite extends ScalaCheckSuite:
 
   test("with no pledge influence the optimal reward is R scaled by capped relative stake") {
     val r = BigInt(1000000000)
-    assertEquals(Rewards.maxPool(Rational.zero, 100, r, Rational(1, 1000), Rational.zero), r / 1000)
+    assertEquals(maxPool(Rational.zero, 100, r, Rational(1, 1000), Rational.zero), r / 1000)
     // Stake above the saturation point 1/nOpt earns no more than a saturated pool.
-    assertEquals(Rewards.maxPool(Rational.zero, 100, r, Rational(1, 3), Rational.zero), r / 100)
+    assertEquals(maxPool(Rational.zero, 100, r, Rational(1, 3), Rational.zero), r / 100)
   }
 
   property("leader and member shares never exceed the pool reward") {
@@ -37,8 +59,8 @@ class RewardsSuite extends ScalaCheckSuite:
       val p = pool(cost, Rational(marginPct, 100))
       val sigma = Rational(1000, 100000)
       val t = Rational(memberShare.min(1000), 100000)
-      val leader = Rewards.leaderReward(poolR, p, Rational.zero, sigma)
-      val member = Rewards.memberReward(poolR, p, t, sigma)
+      val leader = leaderReward(poolR, p, Rational.zero, sigma)
+      val member = memberReward(poolR, p, t, sigma)
       assert(leader >= 0 && member >= 0)
       assert(leader + member <= poolR)
     }
@@ -46,8 +68,8 @@ class RewardsSuite extends ScalaCheckSuite:
 
   test("a pool earning no more than its cost pays it all to the leader") {
     val p = pool(cost = 500, Rational(1, 10))
-    assertEquals(Rewards.leaderReward(400, p, Rational.zero, Rational(1, 10)), BigInt(400))
-    assertEquals(Rewards.memberReward(400, p, Rational(1, 20), Rational(1, 10)), BigInt(0))
+    assertEquals(leaderReward(400, p, Rational.zero, Rational(1, 10)), BigInt(400))
+    assertEquals(memberReward(400, p, Rational(1, 20), Rational(1, 10)), BigInt(0))
   }
 
   test("the pledge counts the owners' stake only where they delegate to the pool") {
@@ -71,6 +93,11 @@ class RewardsSuite extends ScalaCheckSuite:
       val state = TestLedger
         .state(8, Vector.empty)
         .copy(
+          // the new rules pay only the credentials that are registered when the update is made
+          accounts = Map(
+            ownerCredential -> Account(0, 0, None, None),
+            member -> Account(0, 0, None, None)
+          ),
           snapshots = Snapshots(Snapshot.empty, Snapshot.empty, go, 0),
           blocksPrevious = Map(poolId -> BigInt(10), other -> BigInt(10)),
           reserves = BigInt(10) * 1000000000000L
@@ -81,7 +108,7 @@ class RewardsSuite extends ScalaCheckSuite:
         activeSlotsCoeff = Rational(1, 5),
         network = 0
       )
-      Rewards.update(state, globals).rewards
+      rs.rewards(state, globals)
     // Delegating to the pool: the pledge is met, the pool pays its leader and its member.
     val met = rewardsWhenOwnerDelegates(poolId)
     assert(met.get(ownerCredential).exists(_ > 0), met.toString)
@@ -124,12 +151,14 @@ class RewardsSuite extends ScalaCheckSuite:
       val state = TestLedger
         .state(major, Vector.empty)
         .copy(
+          // the new rules pay only the credentials that are registered when the update is made
+          accounts = Seq(aMember, shared, both, twin).map(_ -> Account(0, 0, None, None)).toMap,
           snapshots = Snapshots(Snapshot.empty, Snapshot.empty, go, 0),
           blocksPrevious = Map(poolA -> BigInt(10), poolB -> BigInt(10)),
           reserves = BigInt(10) * 1000000000000L,
           prevParams = Some(TestLedger.params(major))
         )
-      Rewards.update(state, globals).rewards
+      rs.rewards(state, globals)
     val shelley = rewards(2)
     val allegra = rewards(3)
     val member = allegra(twin)
@@ -142,60 +171,71 @@ class RewardsSuite extends ScalaCheckSuite:
     assertEquals(shelley.values.sum, allegra.values.sum - 2 * member)
   }
 
+  /** A member of a pool, registered or not when the reward calculation starts and when the update
+    * is applied: the account of the member, the state after the update is applied, the one with the
+    * update made and the amount it holds for the member.
+    */
   private def prefiltered(
       registeredAtStart: Boolean,
       registeredAtApply: Boolean
-  ): (LedgerState, LedgerState) =
-    val account = Credential.Key(Bytes(Vector.fill(28)(7)))
-    val acc = Account(0, 2000000, None, None)
-    val update = RewardUpdate(
-      deltaTreasury = 10,
-      deltaReserves = -110,
-      rewards = Map(account -> BigInt(100)),
-      deltaFees = 0
+  ): (Credential, BigInt, LedgerState) =
+    val member = Credential.Key(Bytes(Vector.fill(28)(7)))
+    val leader = Credential.Key(Bytes(Vector.fill(28)(3)))
+    val poolId = Bytes(Vector.fill(28)(1))
+    val params = pool(cost = 0, Rational(1, 10)).copy(operator = poolId)
+    val stake = BigInt(10000000000000L)
+    val go = Snapshot(
+      stake = Map(member -> stake, leader -> stake),
+      delegations = Map(member -> poolId, leader -> poolId),
+      pools = Map(poolId -> params)
     )
-    val g = globals.copy(startRewards = 40)
+    // each holds a lovelace, so that the snapshot taken at the boundary has both as delegators
+    val acc = Account(1, 2000000, Some(poolId), None)
+    val g = globals.copy(epochLength = 1000, startRewards = 40)
     val base = TestLedger
       .state(5, Vector.empty)
       .copy(
-        treasury = 0,
-        reserves = 1000,
-        rewardDraft = Some(update),
-        accounts = Map(account -> acc)
+        snapshots = Snapshots(Snapshot.empty, go, Snapshot.empty, 0),
+        blocksCurrent = Map(poolId -> BigInt(10)),
+        reserves = BigInt(10) * 1000000000000L,
+        pools = Map(poolId -> PoolState(params, 500000000)),
+        accounts = Map(member -> acc, leader -> acc)
       )
+    // the boundary begins the epoch whose update this is
+    val first = rs.boundary(base, g)
+    val start = first.epoch * 1000
     // `tick` at the cutoff slot itself does not start the calculation, the next slot does
-    val start = BigInt(500)
-    val atCutoff = Epoch.tick(base, start + 40, start, g)
-    assertEquals(atCutoff.rewardRegistered, None)
+    val atCutoff = rs.tick(first, start + 40, start, g)
+    assertEquals(atCutoff.rewardUpdate, None)
     val between =
-      if registeredAtStart then atCutoff else atCutoff.copy(accounts = Map.empty)
-    val started = Epoch.tick(between, start + 41, start, g)
-    assertEquals(started.rewardRegistered.map(_.contains(account)), Some(registeredAtStart))
-    // the update carries the filtered rewards, the skipped ones went back to the reserves
-    assertEquals(started.rewardUpdate.map(_.rewards.contains(account)), Some(registeredAtStart))
-    assertEquals(
-      started.rewardUpdate.map(_.deltaReserves),
-      Some(BigInt(if registeredAtStart then -110 else -10))
-    )
+      if registeredAtStart then atCutoff else atCutoff.copy(accounts = atCutoff.accounts - member)
+    val started = rs.tick(between, start + 41, start, g)
+    val amount = started.rewardUpdate.flatMap(_.rewards.get(member))
+    // the update carries the member's reward only if the member was registered when it was made
+    assertEquals(amount.isDefined, registeredAtStart, started.rewardUpdate.toString)
     val later =
-      if registeredAtApply then started.copy(accounts = Map(account -> acc))
-      else started.copy(accounts = Map.empty)
-    (started, Epoch.boundary(later, later.epoch + 1, g))
+      if registeredAtApply then started.copy(accounts = started.accounts.updated(member, acc))
+      else started.copy(accounts = started.accounts - member)
+    (member, amount.getOrElse(BigInt(0)), rs.boundary(later, g))
 
   test("before Babbage the reward prefilter uses the accounts registered after the 4k/f slot") {
-    val account = Credential.Key(Bytes(Vector.fill(28)(7)))
     // registered when the calculation starts and still: paid
-    val (_, paid) = prefiltered(registeredAtStart = true, registeredAtApply = true)
-    assertEquals(paid.accounts(account).balance, BigInt(100))
-    assertEquals(paid.treasury, BigInt(10))
+    val (member, amount, paid) = prefiltered(registeredAtStart = true, registeredAtApply = true)
+    assert(amount > 0)
+    assertEquals(paid.accounts(member).balance, amount + 1)
     // registered at the start, gone at the boundary: the reward goes to the treasury
-    val (_, lapsed) = prefiltered(registeredAtStart = true, registeredAtApply = false)
-    assertEquals(lapsed.treasury, BigInt(110))
-    assertEquals(lapsed.reserves, BigInt(890))
+    val (_, lapsedAmount, lapsed) =
+      prefiltered(registeredAtStart = true, registeredAtApply = false)
+    assertEquals(lapsedAmount, amount)
+    assertEquals(lapsed.treasury, paid.treasury + amount)
+    assertEquals(lapsed.reserves, paid.reserves)
     // not registered when the calculation started, registered by the boundary: skipped, it stays in
     // the reserves (the account is not paid)
-    val (_, late) = prefiltered(registeredAtStart = false, registeredAtApply = true)
-    assertEquals(late.accounts(account).balance, BigInt(0))
-    assertEquals(late.treasury, BigInt(10))
-    assertEquals(late.reserves, BigInt(990))
+    val (_, _, late) = prefiltered(registeredAtStart = false, registeredAtApply = true)
+    assertEquals(late.accounts(member).balance, BigInt(1))
+    assertEquals(late.treasury, paid.treasury)
+    assertEquals(late.reserves, paid.reserves + amount)
   }
+
+class RewardsOldSuite extends RewardsSuite(RuleSet.Old)
+class RewardsNewSuite extends RewardsSuite(RuleSet.New)

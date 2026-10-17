@@ -20,7 +20,7 @@ import TestLedger.*
   * the rule are modelled: the pools holding VRF key hashes, the absence of a committee, the
   * protocol version.
   */
-class DevnetRefusedTxSuite extends FunSuite:
+abstract class DevnetRefusedTxSuite(rs: RuleSet) extends FunSuite:
   private final case class Entry(json: Json):
     def str(k: String): String = json.hcursor.get[String](k).fold(e => fail(e.message), identity)
     def opt(k: String): Option[String] = json.hcursor.get[String](k).toOption
@@ -124,7 +124,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     assert(steps.size >= 10, steps.size)
     steps.foldLeft(start) { (s, step) =>
       val (_, tx) = step.tx
-      val result = TxRules(funded(s, tx), tx, env)
+      val result = rs.tx(funded(s, tx), tx, env)
       step.str("outcome") match
         case "accepted" =>
           result.fold(f => fail(s"${step.str("label")}: ${f.message}"), identity)
@@ -145,7 +145,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     scenario("unelected").foreach { e =>
       val (_, tx) = e.tx
       val s11 = funded(withParams(state(11, Vector.empty), 11), tx)
-      val result = TxRules(s11, tx, env)
+      val result = rs.tx(s11, tx, env)
       assertEquals(rule(result), "UnelectedCommitteeVoters", e.str("label"))
       assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
     }
@@ -157,10 +157,13 @@ class DevnetRefusedTxSuite extends FunSuite:
     scenario("refoverlap").foreach { e =>
       val (_, tx) = e.tx
       val s10 = funded(withParams(state(10, Vector.empty), 10), tx)
-      val result = TxRules(s10, tx, env)
+      val result = rs.tx(s10, tx, env)
       assertEquals(rule(result), "BabbageNonDisjointRefInputs", e.str("label"))
       assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
       val s11 = funded(withParams(state(11, Vector.empty), 11), tx)
-      assertEquals(rule(TxRules(s11, tx, env)), "accepted", e.str("label"))
+      assertEquals(rule(rs.tx(s11, tx, env)), "accepted", e.str("label"))
     }
   }
+
+class DevnetRefusedTxOldSuite extends DevnetRefusedTxSuite(RuleSet.Old)
+class DevnetRefusedTxNewSuite extends DevnetRefusedTxSuite(RuleSet.New)

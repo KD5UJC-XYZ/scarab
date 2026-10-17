@@ -50,6 +50,18 @@ enum RuleSet:
         )
       case RuleSet.New => RuleSet.newBoundary(s, g, rewards = true)
 
+  /** What the reward update of the epoch gives each credential, made at the first block past the
+    * reward window of the state's epoch (the old rules' `Rewards.update`, the new rules' RUPD).
+    */
+  def rewards(s: LedgerState, g: LedgerGlobals): Map[xyz.kd5ujc.scarab.ledger.Credential, BigInt] =
+    this match
+      case RuleSet.Old => xyz.kd5ujc.scarab.ledger.Rewards.update(s, g).rewards
+      case RuleSet.New =>
+        RuleSet
+          .newRewards(s, g)
+          .rewardUpdate
+          .fold(throw new AssertionError("the new rules made no reward update"))(_.rewards)
+
   /** The state after the tick to `slot`, the first slot of whose epoch is `epochStart`. */
   def tick(s: LedgerState, slot: BigInt, epochStart: BigInt, g: LedgerGlobals): LedgerState =
     this match
@@ -101,10 +113,15 @@ object RuleSet:
       )
     geometry
 
-  private def representation(field: Derived): Boolean = field match
-    case Derived.PulserPlaceholder | Derived.PoolDistr | Derived.Snapshot(_) | Derived.Extras =>
-      true
-    case _ => false
+  /** The pieces of the mirror that a state the rules made may differ in from the mirror of its flat
+    * state, and nothing else: the pulser. The node's flat state holds the DRep pulser as its
+    * snapshot and ratification result only (`GovState.pulsed`), and the mirror derives a pulser
+    * from them (`PulserPlaceholder`); the pulser the rules leave is the one they made, which holds
+    * the same two and more. Every other derived piece (the VRF key hashes, the delegators, the
+    * pointers, the instant stake, the future parameters, the pool distribution, the snapshots and
+    * the node's extras) must be what the flat state derives.
+    */
+  private val waived: Set[Derived] = Set(Derived.PulserPlaceholder)
 
   private val placeholder: KeyHash[StakePool] =
     KeyHash
@@ -148,6 +165,10 @@ object RuleSet:
       snapshots = SnapshotBasis.AsTaken
     )
     val globals = Globals(g, geometry)
+    if rewards && globals.randomnessStabilisationWindow + 1 >= g.epochLength then
+      broken(
+        s"the reward window ${globals.randomnessStabilisationWindow} leaves no slot of an epoch of ${g.epochLength}"
+      )
     def slot(n: BigInt): SlotNo = SlotNo.fromBigInt(n).fold(v => broken(s"slot: $v"), identity)
     eraOf(s.params.protocolMajor) match
       case e: Of[x] =>
@@ -172,22 +193,41 @@ object RuleSet:
         tick(started, target(globals, epoch)) match
           case r: EraNes.InEra[y] =>
             given ShelleyBasedEra[y] = r.era
-            // the extras are the old state's residue: a state that has been ticked has the pulser
-            // (the boundary makes it) whether or not the old state held one
-            val result = LedgerImage[y](r.nes, image.extras.copy(pulserAbsent = false))
-            mirror.from[y](after, result).run(env) match
-              case Right(back) => back
-              // what the tick makes is richer than what the node derives from its own state: the
-              // pulser of the DReps, the pool distribution, the residue of the snapshots; every
-              // other derived field (the VRF key hashes, the delegators, the pointers, the instant
-              // stake, the future parameters) is still checked
-              case Left(MirrorError.DerivedMismatch(field)) if representation(field) =>
-                mirror
-                  .rebuild[y](after, result)
-                  .run(env)
-                  .fold(m => broken(s"back from the mirror: ${m.show}"), identity)
-              case Left(m) =>
-                broken(s"back from the mirror: ${m.show}")
+            // the extras are the old state's bookkeeping, which a tick makes stale: its reward draft
+            // and registered set (it applies the update or makes its own), the amounts of the
+            // update, the pool distribution it kept apart from the snapshots; a state that has been
+            // ticked has the pulser (the boundary makes it) whether or not the old state held one,
+            // and, past a boundary, previous parameters of its own
+            val crossed = r.nes.epoch.toBigInt > epoch
+            val extras = image.extras.copy(
+              rewardDraft = None,
+              rewardRegistered = None,
+              rewardAmounts = Map.empty,
+              poolDistribution = None,
+              pulserAbsent = false,
+              prevParamsExplicit = image.extras.prevParamsExplicit || crossed
+            )
+            def read(e: NodeExtras): Rebuilt =
+              mirror
+                .rebuilt[y](after, LedgerImage[y](r.nes, e))
+                .run(env)
+                .fold(m => broken(s"back from the mirror: ${m.show}"), identity)
+            // the pool details of the snapshots (owners, relays, metadata) are the old state's own:
+            // the flat state of the result takes them from the state it was ticked from, by pool,
+            // and the extras the result is read with are the ones that flat state gives
+            val first = read(extras)
+            val derived = mirror
+              .to[y](after, first.state)
+              .run(env)
+              .fold(m => broken(s"to the mirror: ${m.show}"), _.value.extras)
+            // and the amounts of the reward update are the sums of its rewards
+            val back = read(
+              extras.copy(snapshots = derived.snapshots, rewardAmounts = derived.rewardAmounts)
+            )
+            val unexpected = back.differing.filterNot(waived)
+            if unexpected.nonEmpty then
+              broken(s"the result differs from its flat state's mirror in: $unexpected")
+            back.state
 
   private def newBoundary(s: LedgerState, g: LedgerGlobals, rewards: Boolean): LedgerState =
     advance(
@@ -196,6 +236,16 @@ object RuleSet:
       rewards,
       (gl, epoch) => gl.firstSlot(epoch + 1) - 1,
       (gl, epoch) => gl.firstSlot(epoch + 1)
+    )
+
+  /** The state after the first block past the reward window (the reward update is made in it). */
+  private def newRewards(s: LedgerState, g: LedgerGlobals): LedgerState =
+    advance(
+      s,
+      g,
+      rewards = true,
+      (gl, epoch) => gl.firstSlot(epoch),
+      (gl, epoch) => gl.firstSlot(epoch) + gl.randomnessStabilisationWindow + 1
     )
 
   private def newTick(s: LedgerState, slot: BigInt, g: LedgerGlobals): LedgerState =
