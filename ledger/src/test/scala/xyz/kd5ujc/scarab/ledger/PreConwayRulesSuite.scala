@@ -12,7 +12,7 @@ import org.scalacheck.Prop.*
 
 import TestLedger.*
 
-class PreConwayRulesSuite extends ScalaCheckSuite:
+abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
   private val alice = key()
   private val bob = key()
   private val ada = BigInt(1000000)
@@ -34,7 +34,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     eras.foreach { pv =>
       val (s, in) = funded(pv)
       val b = transfer(in, 40 * ada, 60 * ada - 200)
-      val after = TxRules(s, tx(b, Vector(alice)), env).fold(f => fail(f.message), identity)
+      val after = rs.tx(s, tx(b, Vector(alice)), env).fold(f => fail(f.message), identity)
       assertEquals(after.total, Supply, s"era $pv")
       assertEquals(after.fees, BigInt(200))
       assert(!after.utxo.contains(in))
@@ -46,7 +46,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     eras.foreach { pv =>
       val (s, in) = funded(pv)
       def run(b: TxBody, signers: Vector[Key] = Vector(alice)) =
-        rule(TxRules(s, tx(b, signers), env))
+        rule(rs.tx(s, tx(b, signers), env))
       assertEquals(run(transfer(in, 40 * ada, 60 * ada - 199)), "ValueNotConservedUTxO")
       assertEquals(run(transfer(in, 40 * ada, 60 * ada - 100, fee = 100)), "FeeTooSmallUTxO")
       assertEquals(
@@ -97,7 +97,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         200,
         certificates = cred.map(k => Certificate.Register(k.credential, None))
       )
-      val s1 = TxRules(s0, tx(reg, Vector(alice)), env).fold(f => fail(f.message), identity)
+      val s1 = rs.tx(s0, tx(reg, Vector(alice)), env).fold(f => fail(f.message), identity)
       assertEquals(s1.total, Supply)
       assertEquals(s1.deposited, deposit)
       assertEquals(s1.accounts.size, regs)
@@ -115,7 +115,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         200,
         certificates = leaving.map(k => Certificate.Unregister(k.credential, None))
       )
-      val s2 = TxRules(s1, tx(dereg, Vector(alice) ++ leaving), env.copy(txIndex = 1))
+      val s2 = rs
+        .tx(s1, tx(dereg, Vector(alice) ++ leaving), env.copy(txIndex = 1))
         .fold(f => fail(f.message), identity)
       assertEquals(s2.total, Supply)
       assertEquals(s2.deposited, s0.params.keyDeposit * (regs - leaving.size))
@@ -133,7 +134,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.Register(stake.credential, None))
     )
-    val s1 = TxRules(s0, tx(reg, Vector(alice)), env).fold(f => fail(f.message), identity)
+    val s1 = rs.tx(s0, tx(reg, Vector(alice)), env).fold(f => fail(f.message), identity)
     val dereg = body(
       "dereg",
       Vector(TxIn(reg.id, 0)),
@@ -141,12 +142,12 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.Unregister(stake.credential, None))
     )
-    assertEquals(rule(TxRules(s1, tx(dereg, Vector(alice)), env)), "MissingVKeyWitnessesUTXOW")
+    assertEquals(rule(rs.tx(s1, tx(dereg, Vector(alice)), env)), "MissingVKeyWitnessesUTXOW")
     val funded1 = s1.copy(accounts =
       s1.accounts.updated(stake.credential, s1.accounts(stake.credential).copy(balance = 5))
     )
     assertEquals(
-      rule(TxRules(funded1, tx(dereg, Vector(alice, stake)), env)),
+      rule(rs.tx(funded1, tx(dereg, Vector(alice, stake)), env)),
       "StakeKeyNonZeroAccountBalanceDELEG"
     )
   }
@@ -181,10 +182,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       certificates = Vector(Certificate.RegisterPool(pool))
     )
     assertEquals(
-      rule(TxRules(rich, tx(registration, Vector(alice, operator)), env)),
+      rule(rs.tx(rich, tx(registration, Vector(alice, operator)), env)),
       "MissingVKeyWitnessesUTXOW"
     )
-    val s1 = TxRules(rich, tx(registration, Vector(alice, operator, owner)), env)
+    val s1 = rs
+      .tx(rich, tx(registration, Vector(alice, operator, owner)), env)
       .fold(f => fail(f.message), identity)
     assertEquals(s1.deposited, s0.params.poolDeposit)
     assertEquals(s1.total, Supply)
@@ -195,7 +197,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = Vector(Certificate.RegisterPool(pool.copy(pledge = 7)))
     )
-    val s2 = TxRules(s1, tx(again, Vector(alice, operator, owner)), env)
+    val s2 = rs
+      .tx(s1, tx(again, Vector(alice, operator, owner)), env)
       .fold(f => fail(f.message), identity)
     assertEquals(s2.deposited, s0.params.poolDeposit)
     assertEquals(s2.futurePools(operator.hash).pledge, BigInt(7))
@@ -223,15 +226,15 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     val withScript = Witnesses(Vector.empty, scripts = Vector(policyScript))
     assertEquals(
-      rule(TxRules(s, tx(b, Vector(alice, signer), withScript), env)),
+      rule(rs.tx(s, tx(b, Vector(alice, signer), withScript), env)),
       "accepted"
     )
     assertEquals(
-      rule(TxRules(s, tx(b, Vector(alice, signer)), env)),
+      rule(rs.tx(s, tx(b, Vector(alice, signer)), env)),
       "MissingScriptWitnessesUTXOW"
     )
     assertEquals(
-      rule(TxRules(s, tx(b, Vector(alice), withScript), env)),
+      rule(rs.tx(s, tx(b, Vector(alice), withScript), env)),
       "ScriptWitnessNotValidatingUTXOW"
     )
     val extra = Witnesses(
@@ -239,10 +242,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       scripts = Vector(policyScript, scriptOf(NativeScript.AnyOf(Vector.empty)))
     )
     assertEquals(
-      rule(TxRules(s, tx(b, Vector(alice, signer), extra), env)),
+      rule(rs.tx(s, tx(b, Vector(alice, signer), extra), env)),
       "ExtraneousScriptWitnessesUTXOW"
     )
-    val burn = TxRules(s, tx(b, Vector(alice, signer), withScript), env).toOption.get
+    val burn = rs.tx(s, tx(b, Vector(alice, signer), withScript), env).toOption.get
     val burnTx = body(
       "burn",
       Vector(TxIn(b.id, 0)),
@@ -250,7 +253,8 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       mint = Map(policy -> Map(asset -> BigInt(-100)))
     )
-    val afterBurn = TxRules(burn, tx(burnTx, Vector(bob, signer), withScript), env)
+    val afterBurn = rs
+      .tx(burn, tx(burnTx, Vector(bob, signer), withScript), env)
       .fold(f => fail(f.message), identity)
     assertEquals(afterBurn.total, Supply)
     assert(afterBurn.utxo.valuesIterator.forall(_.value.assets.isEmpty))
@@ -342,7 +346,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     val b = bodyWith(hash)
     def run(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
-      TxRules(
+      rs.tx(
         s,
         tx(body, Vector(alice), wits, isValid = isValid),
         env.copy(evaluator = scripted(succeeds))
@@ -367,18 +371,18 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
     // a missing datum or redeemer is a phase-1 failure
     assertEquals(
-      rule(TxRules(s, tx(b, Vector(alice), wits.copy(datums = Vector.empty)), env)),
+      rule(rs.tx(s, tx(b, Vector(alice), wits.copy(datums = Vector.empty)), env)),
       "MissingRequiredDatums"
     )
     assertEquals(
-      rule(TxRules(s, tx(b, Vector(alice), wits.copy(redeemers = Vector.empty)), env)),
+      rule(rs.tx(s, tx(b, Vector(alice), wits.copy(redeemers = Vector.empty)), env)),
       "MissingRedeemers"
     )
     // is_valid = false is meaningless when there is no Plutus script that could fail
     val (plain, in) = funded(5)
     assertEquals(
       rule(
-        TxRules(
+        rs.tx(
           plain,
           tx(transfer(in, 40 * ada, 60 * ada - 200), Vector(alice), isValid = false),
           env
@@ -438,11 +442,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val b = transfer(in, 40 * ada, 60 * ada - 200)
     val signed = witness.copy(signature = spender.sign(b.id))
     val ok = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(signed)), 100, true, None)
-    assertEquals(rule(TxRules(s, ok, env)), "accepted")
+    assertEquals(rule(rs.tx(s, ok, env)), "accepted")
     val unsigned = Tx(b, Witnesses.empty, 100, true, None)
-    assertEquals(rule(TxRules(s, unsigned, env)), "MissingVKeyWitnessesUTXOW")
+    assertEquals(rule(rs.tx(s, unsigned, env)), "MissingVKeyWitnessesUTXOW")
     val forged = Tx(b, Witnesses(Vector.empty, bootstrap = Vector(witness)), 100, true, None)
-    assertEquals(rule(TxRules(s, forged, env)), "InvalidWitnessesUTXOW")
+    assertEquals(rule(rs.tx(s, forged, env)), "InvalidWitnessesUTXOW")
   }
 
   test("MIR needs a genesis quorum and moves coin at the next epoch boundary") {
@@ -469,11 +473,11 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       certificates = Vector(cert)
     )
     assertEquals(
-      rule(TxRules(registered, tx(b, Vector(alice, g1)), env)),
+      rule(rs.tx(registered, tx(b, Vector(alice, g1)), env)),
       "MIRInsufficientGenesisSigsUTXOW"
     )
     val s1 =
-      TxRules(registered, tx(b, Vector(alice, g1, g2)), env).fold(f => fail(f.message), identity)
+      rs.tx(registered, tx(b, Vector(alice, g1, g2)), env).fold(f => fail(f.message), identity)
     assertEquals(s1.mir.reserves(stake.credential), 7 * ada)
     val reserves = s1.reserves
     val s2 = Mir(s1)
@@ -483,7 +487,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(s2.total, s1.total)
     // too late in the epoch
     assertEquals(
-      rule(TxRules(registered, tx(b, Vector(alice, g1, g2)), env.copy(slot = 4950))),
+      rule(rs.tx(registered, tx(b, Vector(alice, g1, g2)), env.copy(slot = 4950))),
       "MIRCertificateTooLateinEpochDELEG"
     )
   }
@@ -501,7 +505,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       val u = Update(from.map(i => genesis(i).hash -> newDeposit).toMap, 5)
       val b =
         body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
-      TxRules(s, tx(b, Vector(alice) ++ from.map(delegates)), env)
+      rs.tx(s, tx(b, Vector(alice) ++ from.map(delegates)), env)
         .fold(f => fail(f.message), identity)
     val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
     val adopted = PpupRules.newEpoch(propose(Vector(0, 1)), globals)
@@ -513,10 +517,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val u = Update(Map(genesis(0).hash -> newDeposit), 5)
     val b =
       body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
-    assertEquals(rule(TxRules(s, tx(b, Vector(alice)), env)), "MissingVKeyWitnessesUTXOW")
+    assertEquals(rule(rs.tx(s, tx(b, Vector(alice)), env)), "MissingVKeyWitnessesUTXOW")
     // a proposal for the wrong epoch is refused
     val late = b.copy(update = Some(u.copy(epoch = 9)))
-    assertEquals(rule(TxRules(s, tx(late, Vector(alice, delegates(0))), env)), "PPUpdateWrongEpoch")
+    assertEquals(rule(rs.tx(s, tx(late, Vector(alice, delegates(0))), env)), "PPUpdateWrongEpoch")
   }
 
   test(
@@ -527,8 +531,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val g = Vector(key(), key())
     val s = s0.copy(ppup = Ppup(g.map(_.hash -> pv9).toMap, Map.empty))
     val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
-    val entered =
-      Epoch.boundary(s.copy(rewardUpdate = Some(Rewards.update(s, globals))), s.epoch + 1, globals)
+    val entered = rs.epoch(s, globals)
     assertEquals(entered.params.protocolMajor, BigInt(9))
     assertEquals(entered.dormantEpochs, BigInt(1))
   }
@@ -573,16 +576,12 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
         params = base.params.copy(d = Rational.zero)
       )
       val globals = LedgerGlobals(Supply, 100, Rational(1, 2), 0)
+      // each epoch makes its reward update (a block after the start of rewards creates it) and
+      // the boundary applies it; the pools make the same blocks in the epoch that follows
       val end =
-        (1 to epochs).foldLeft(start.copy(rewardUpdate = Some(Rewards.update(start, globals)))) {
-          (st, _) =>
-            val next = Epoch.boundary(st, st.epoch + 1, globals)
-            // a block after the start of rewards creates the update
-            next.copy(
-              rewardUpdate = next.rewardDraft,
-              rewardDraft = None,
-              blocksCurrent = Map(a.hash -> BigInt(blocksA), b.hash -> BigInt(blocksB))
-            )
+        (1 to epochs).foldLeft(start) { (st, _) =>
+          rs.epoch(st, globals)
+            .copy(blocksCurrent = Map(a.hash -> BigInt(blocksA), b.hash -> BigInt(blocksB)))
         }
       assertEquals(end.total, Supply)
     }
@@ -782,7 +781,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       200,
       certificates = certs
     )
-    TxRules(s, tx(b, alice +: signers), e)
+    rs.tx(s, tx(b, alice +: signers), e)
 
   test("MIR: transfers between pots and negative amounts need protocol 5 (Alonzo)") {
     val (s4, in4, stake4, d4) = mirState(4)
@@ -846,7 +845,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       certificates = Vector(Certificate.Unregister(stake.credential, None))
     )
     val after =
-      TxRules(s, tx(dereg, Vector(alice, stake)), env).fold(f => fail(f.message), identity)
+      rs.tx(s, tx(dereg, Vector(alice, stake)), env).fold(f => fail(f.message), identity)
     assert(!after.accounts.contains(stake.credential))
     // `Unregister` leaves `dsIRewards` alone: the entry stays until the MIR rule filters it
     assertEquals(after.mir.reserves.get(stake.credential), Some(7 * ada))
@@ -854,3 +853,6 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     assertEquals(paid.reserves, after.reserves)
     assertEquals(paid.mir, InstantRewards.empty)
   }
+
+class PreConwayRulesOldSuite extends PreConwayRulesSuite(RuleSet.Old)
+class PreConwayRulesNewSuite extends PreConwayRulesSuite(RuleSet.New)

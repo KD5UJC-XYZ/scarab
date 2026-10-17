@@ -13,7 +13,7 @@ import TestLedger.*
   * `verifyEcdsaSecp256k1Signature` with an all-zero signature; the reference answers `False`,
   * Scalus 1.2.0 and 1.3.0 fail (`Secp256k1`).
   */
-class PreprodSecp256k1RulesSuite extends FunSuite:
+abstract class PreprodSecp256k1RulesSuite(rs: RuleSet) extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-97b31e35.json"))
   private val ada = BigInt(1000000)
 
@@ -60,7 +60,10 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
     "the Conway rules accept it: the script gets False, not an error, for the all-zero signature"
   ) {
     val after =
-      TxRules(world, c.tx, env(ScalusEvaluator.default)).fold(f => fail(f.message), identity)
+      rs.tx(world, c.tx, env(ScalusEvaluator.default)).fold(f => fail(f.message), identity)
     assertEquals(after.plutus.succeeded, 1L)
     assertEquals(after.fees, c.tx.body.fee)
   }
+
+class PreprodSecp256k1RulesOldSuite extends PreprodSecp256k1RulesSuite(RuleSet.Old)
+class PreprodSecp256k1RulesNewSuite extends PreprodSecp256k1RulesSuite(RuleSet.New)

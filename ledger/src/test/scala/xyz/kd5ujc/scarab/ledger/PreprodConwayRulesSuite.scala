@@ -10,7 +10,7 @@ import munit.FunSuite
 
 import TestLedger.*
 
-class PreprodConwayRulesSuite extends FunSuite:
+abstract class PreprodConwayRulesSuite(rs: RuleSet) extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
   private val ada = BigInt(1000000)
 
@@ -58,7 +58,7 @@ class PreprodConwayRulesSuite extends FunSuite:
     "the Conway rules accept it: the fanout script hashes outputs whose datums carry a constructor index of 2^64 - 1"
   ) {
     val s = world
-    val after = TxRules(s, c.tx, env(ScalusEvaluator.default)).fold(f => fail(f.message), identity)
+    val after = rs.tx(s, c.tx, env(ScalusEvaluator.default)).fold(f => fail(f.message), identity)
     assertEquals(after.plutus.succeeded, 1L)
     assertEquals(after.plutus.scripts, 2L)
     assertEquals(after.fees, c.tx.body.fee)
@@ -71,7 +71,7 @@ class PreprodConwayRulesSuite extends FunSuite:
         val res = ScalusEvaluator.default.evaluate(r)
         seen += r.budget -> res
         res
-    TxRules(world, c.tx, env(recording)).fold(f => fail(f.message), identity)
+    rs.tx(world, c.tx, env(recording)).fold(f => fail(f.message), identity)
     assertEquals(seen.size, 2)
     seen.foreach { (budget, res) =>
       assert(res.isSuccess, res)
@@ -81,8 +81,11 @@ class PreprodConwayRulesSuite extends FunSuite:
 
   test("the same transaction marked invalid is refused: its scripts succeed") {
     val invalid = c.tx.copy(isValid = false)
-    TxRules(world, invalid, env(ScalusEvaluator.default)) match
+    rs.tx(world, invalid, env(ScalusEvaluator.default)) match
       case Left(LedgerFailure.Rejected(_, f)) =>
         assert(f.toString.contains("ValidationTagMismatch(false"), f.toString)
       case other => fail(s"$other")
   }
+
+class PreprodConwayRulesOldSuite extends PreprodConwayRulesSuite(RuleSet.Old)
+class PreprodConwayRulesNewSuite extends PreprodConwayRulesSuite(RuleSet.New)

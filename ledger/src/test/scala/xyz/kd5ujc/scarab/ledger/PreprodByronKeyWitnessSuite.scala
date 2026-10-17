@@ -17,7 +17,7 @@ import TestLedger.*
   * witness satisfies it. The first preprod sync of the Scala node stopped here, demanding a
   * bootstrap witness (`MissingBootstrapWitnessesUTXOW`).
   */
-class PreprodByronKeyWitnessSuite extends FunSuite:
+abstract class PreprodByronKeyWitnessSuite(rs: RuleSet) extends FunSuite:
   private val ada = BigInt(1000000)
   private val dir = Path.of("fixtures/preprod")
 
@@ -60,7 +60,7 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
 
   private val conwayEnv = env.copy(slot = 83038792, epoch = 196)
 
-  private def rule(t: Tx): String = TxRules(world, t, conwayEnv) match
+  private def rule(t: Tx): String = rs.tx(world, t, conwayEnv) match
     case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
     case Left(other)                        => other.message
     case Right(_)                           => "accepted"
@@ -98,3 +98,6 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
     val t = tx.copy(witnesses = Witnesses(Vector(other.witness(tx.body.id))))
     assertEquals(rule(t), "MissingVKeyWitnessesUTXOW")
   }
+
+class PreprodByronKeyWitnessOldSuite extends PreprodByronKeyWitnessSuite(RuleSet.Old)
+class PreprodByronKeyWitnessNewSuite extends PreprodByronKeyWitnessSuite(RuleSet.New)

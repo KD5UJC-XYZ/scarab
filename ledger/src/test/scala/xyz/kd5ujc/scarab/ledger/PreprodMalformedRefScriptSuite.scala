@@ -14,7 +14,7 @@ import TestLedger.*
   * (V3 raises `RemainderError`); Scalus's `fromCbor` rejects the trailing input, which made the
   * node report `MalformedReferenceScripts` on a transaction the chain accepted.
   */
-class PreprodMalformedRefScriptSuite extends FunSuite:
+abstract class PreprodMalformedRefScriptSuite(rs: RuleSet) extends FunSuite:
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-aee75c1c.json"))
   private val ada = BigInt(1000000)
   private val decoder = ScalusEvaluator.pureDecoder
@@ -86,7 +86,7 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
 
   test("the Conway rules accept the transaction") {
     assert(c.tx.isValid)
-    val after = TxRules(world, c.tx, env).fold(f => fail(f.message), identity)
+    val after = rs.tx(world, c.tx, env).fold(f => fail(f.message), identity)
     assertEquals(after.fees, c.tx.body.fee)
   }
 
@@ -104,3 +104,6 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val r = PreConwayRules.scriptsWellFormed(world, bad, env)
     assert(r.left.exists(_.message.contains("MalformedReferenceScripts")), r.toString)
   }
+
+class PreprodMalformedRefScriptOldSuite extends PreprodMalformedRefScriptSuite(RuleSet.Old)
+class PreprodMalformedRefScriptNewSuite extends PreprodMalformedRefScriptSuite(RuleSet.New)

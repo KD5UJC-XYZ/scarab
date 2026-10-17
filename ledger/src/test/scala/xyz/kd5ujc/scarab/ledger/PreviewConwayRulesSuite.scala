@@ -16,7 +16,7 @@ import TestLedger.*
   * scripts, the script data hash), UTXO (fee, balance with the proposal deposit, collateral), GOV
   * and phase 2 (the real script against our script context) must accept it.
   */
-class PreviewConwayRulesSuite extends FunSuite:
+abstract class PreviewConwayRulesSuite(rs: RuleSet) extends FunSuite:
   private val ada = BigInt(1000000)
 
   private val cases =
@@ -108,7 +108,7 @@ class PreviewConwayRulesSuite extends FunSuite:
     ) {
       val s = worldOf(c)
       assertEquals(s.total, Supply)
-      val after = TxRules(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
+      val after = rs.tx(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
       val body = c.tx.body
       assertEquals(after.fees, body.fee)
       assertEquals(after.gov.proposals.actions.size, body.proposals.size)
@@ -119,7 +119,7 @@ class PreviewConwayRulesSuite extends FunSuite:
       // and the same transaction with another guardrails script is refused
       val other =
         s.copy(gov = s.gov.copy(constitution = s.gov.constitution.copy(script = Some(body.id))))
-      TxRules(other, c.tx, envOf(c, other)) match
+      rs.tx(other, c.tx, envOf(c, other)) match
         case Left(
               LedgerFailure.Rejected(
                 _,
@@ -138,7 +138,7 @@ class PreviewConwayRulesSuite extends FunSuite:
   spends.foreach { c =>
     test(s"${c.name}: the Conway rules accept the Plutus transaction (${c.kind})") {
       val s = worldOf(c)
-      val after = TxRules(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
+      val after = rs.tx(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
       assertEquals(after.fees, c.tx.body.fee)
       assert(after.plutus.succeeded >= 1)
       assertEquals(after.total, Supply)
@@ -198,10 +198,13 @@ class PreviewConwayRulesSuite extends FunSuite:
         ),
         committeeState = cold.map { case (c, hot) => c -> CommitteeAuth.Hot(hot) }.toMap
       )
-      val after = TxRules(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
+      val after = rs.tx(s, c.tx, envOf(c, s)).fold(f => fail(f.message), identity)
       val recorded = after.gov.proposals.actions.flatMap(_.committeeVotes.values)
       assertEquals(recorded.size, voters.flatMap(_._2).size)
       assert(recorded.forall(_ == Vote.Yes))
       assertEquals(after.total, Supply)
     }
   }
+
+class PreviewConwayRulesOldSuite extends PreviewConwayRulesSuite(RuleSet.Old)
+class PreviewConwayRulesNewSuite extends PreviewConwayRulesSuite(RuleSet.New)

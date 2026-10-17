@@ -18,7 +18,7 @@ import TestLedger.*
   * preprod sync of the Scala node stopped here, demanding an unsigned integer. A slot is a `Word64`
   * (`SlotNo`).
   */
-class PreprodNOfKSuite extends ScalaCheckSuite:
+abstract class PreprodNOfKSuite(rs: RuleSet) extends ScalaCheckSuite:
   private val ada = BigInt(1000000)
   private val dir = Path.of("fixtures/preprod")
   private val Int64Min = -(BigInt(1) << 63)
@@ -64,7 +64,7 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
 
   private val conwayEnv = env.copy(slot = 133902219, epoch = 313)
 
-  private def rule(t: Tx): String = TxRules(world, t, conwayEnv) match
+  private def rule(t: Tx): String = rs.tx(world, t, conwayEnv) match
     case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
     case Left(other)                        => other.message
     case Right(_)                           => "accepted"
@@ -222,3 +222,6 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
     assert(!holds(Int64Max, one, Set(k)))
     assert(!holds(1, Vector.empty, Set.empty))
   }
+
+class PreprodNOfKOldSuite extends PreprodNOfKSuite(RuleSet.Old)
+class PreprodNOfKNewSuite extends PreprodNOfKSuite(RuleSet.New)

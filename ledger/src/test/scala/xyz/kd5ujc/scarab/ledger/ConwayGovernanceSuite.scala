@@ -14,7 +14,7 @@ import TestLedger.*
 /** Constructed governance scenarios: propose, vote, cross epoch boundaries, enact, with the supply
   * and the deposit pot checked after every step.
   */
-class ConwayGovernanceSuite extends ScalaCheckSuite:
+abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
   private val ada = BigInt(1000000)
   private val half = Rational(1, 2)
   private val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
@@ -142,14 +142,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       proposals = proposals,
       donation = donation
     )
-    TxRules(st.s, tx(b, w.payer +: signers), env(st.s, st.nonce)).map(next =>
-      State(next, TxIn(b.id, 0), change, st.nonce + 1)
-    )
+    rs.tx(st.s, tx(b, w.payer +: signers), env(st.s, st.nonce))
+      .map(next => State(next, TxIn(b.id, 0), change, st.nonce + 1))
 
   private def ok[A](r: Either[LedgerFailure, A]): A = r.fold(f => fail(f.message), identity)
 
   private def boundary(st: State): State =
-    val next = Epoch.boundary(st.s, st.s.epoch + 1, globals)
+    val next = rs.boundary(st.s, globals)
     st.copy(s = next)
 
   private def encodedInt(v: BigInt): Bytes =
@@ -539,7 +538,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       currentTreasury = Some(5)
     )
     assertEquals(
-      TxRules(s0.s, tx(b, Vector(w.payer)), env(s0.s, 0)).left.map {
+      rs.tx(s0.s, tx(b, Vector(w.payer)), env(s0.s, 0)).left.map {
         case LedgerFailure.Rejected(_, f) => f.ruleName; case _ => "?"
       },
       Left("ConwayTreasuryValueMismatch")
@@ -551,7 +550,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       200,
       currentTreasury = Some(s0.s.treasury)
     )
-    assert(TxRules(s0.s, tx(right, Vector(w.payer)), env(s0.s, 0)).isRight)
+    assert(rs.tx(s0.s, tx(right, Vector(w.payer)), env(s0.s, 0)).isRight)
   }
 
   test("the reference-script fee grows by 1.2 for every 25 KiB") {
@@ -861,3 +860,6 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     assertEquals(s.s.pools.size, 3)
   }
+
+class ConwayGovernanceOldSuite extends ConwayGovernanceSuite(RuleSet.Old)
+class ConwayGovernanceNewSuite extends ConwayGovernanceSuite(RuleSet.New)

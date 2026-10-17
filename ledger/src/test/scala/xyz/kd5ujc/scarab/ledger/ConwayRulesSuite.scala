@@ -12,7 +12,7 @@ import TestLedger.*
 /** The Conway transaction rules that are not about governance: scripts, minting, reference-script
   * fees, collateral, treasury fields.
   */
-class ConwayRulesSuite extends FunSuite:
+abstract class ConwayRulesSuite(rs: RuleSet) extends FunSuite:
   private val alice = key()
   private val bob = key()
   private val ada = BigInt(1000000)
@@ -69,7 +69,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         mint = token
       )
-      rule(TxRules(s, tx(b, signers, Witnesses(Vector.empty, scripts = scripts)), env))
+      rule(rs.tx(s, tx(b, signers, Witnesses(Vector.empty, scripts = scripts)), env))
     assertEquals(tryMint(Vector(alice), Vector(policy)), "accepted")
     assertEquals(tryMint(Vector(alice), Vector.empty), "MissingScriptWitnessesUTXOW")
     assertEquals(tryMint(Vector(bob), Vector(policy)), "MissingVKeyWitnessesUTXOW")
@@ -101,7 +101,7 @@ class ConwayRulesSuite extends FunSuite:
       mint = burn
     )
     val result =
-      TxRules(s, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))), env)
+      rs.tx(s, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))), env)
     assertEquals(rule(result), "accepted")
     val unbalanced = body(
       "burn2",
@@ -112,7 +112,7 @@ class ConwayRulesSuite extends FunSuite:
     )
     assertEquals(
       rule(
-        TxRules(
+        rs.tx(
           s,
           tx(unbalanced, Vector(alice), Witnesses(Vector.empty, scripts = Vector(policy))),
           env
@@ -140,7 +140,7 @@ class ConwayRulesSuite extends FunSuite:
         fee,
         referenceInputs = Vector(ref)
       )
-      rule(TxRules(s, tx(b, Vector(alice)), env))
+      rule(rs.tx(s, tx(b, Vector(alice)), env))
     assertEquals(run(200), "FeeTooSmallUTxO")
     assertEquals(run(200 + extra - 1), "FeeTooSmallUTxO")
     assertEquals(run(200 + extra), "accepted")
@@ -162,7 +162,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         referenceInputs = referenceInputs
       )
-      rule(TxRules(s, tx(b, Vector(alice)), env))
+      rule(rs.tx(s, tx(b, Vector(alice)), env))
     assertEquals(run(refs.take(1)), "accepted")
     assertEquals(run(refs), "ConwayTxRefScriptsSizeTooBig")
   }
@@ -177,9 +177,9 @@ class ConwayRulesSuite extends FunSuite:
       200,
       referenceInputs = Vector(spend)
     )
-    assertEquals(rule(TxRules(s, tx(b, Vector(alice)), env)), "BabbageNonDisjointRefInputs")
+    assertEquals(rule(rs.tx(s, tx(b, Vector(alice)), env)), "BabbageNonDisjointRefInputs")
     val later = s.copy(params = s.params.copy(protocolMajor = 11))
-    assertEquals(rule(TxRules(later, tx(b, Vector(alice)), env)), "accepted")
+    assertEquals(rule(rs.tx(later, tx(b, Vector(alice)), env)), "accepted")
   }
 
   test(
@@ -230,7 +230,7 @@ class ConwayRulesSuite extends FunSuite:
     )
     val b = bodyWith(hash)
     def run(succeeds: Boolean, isValid: Boolean, body: TxBody = b) =
-      TxRules(
+      rs.tx(
         s,
         tx(body, Vector(alice), wits, isValid = isValid),
         env.copy(
@@ -308,7 +308,7 @@ class ConwayRulesSuite extends FunSuite:
     )
     def run(protocol: Int, refs: Vector[TxIn]) =
       rule(
-        TxRules(
+        rs.tx(
           base.copy(params = base.params.copy(protocolMajor = protocol)),
           tx(bodyWith(hash, refs), Vector(alice), wits),
           // the placeholder script is not well-formed UPLC; this test is about reference inputs
@@ -350,7 +350,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         withdrawals = Vector(account -> amount)
       )
-      rule(TxRules(state, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)), env))
+      rule(rs.tx(state, tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)), env))
     assertEquals(run(5 * ada, Vector(script)), "accepted")
     assertEquals(run(5 * ada, Vector.empty), "MissingScriptWitnessesUTXOW")
     // up to protocol version 10 the CERTS rule reports a withdrawal that does not drain the
@@ -378,7 +378,7 @@ class ConwayRulesSuite extends FunSuite:
       200,
       withdrawals = Vector(RewardAccount(0, staker.credential) -> (3 * ada))
     )
-    def run(s: LedgerState) = rule(TxRules(s, tx(b, Vector(alice, staker)), env))
+    def run(s: LedgerState) = rule(rs.tx(s, tx(b, Vector(alice, staker)), env))
     assertEquals(run(world(None, 9)), "accepted")
     assertEquals(run(world(None, 10)), "ConwayWdrlNotDelegatedToDRep")
     assertEquals(run(world(Some(DRep.AlwaysAbstain), 10)), "accepted")
@@ -403,7 +403,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         proposals = Vector(p)
       )
-      rule(TxRules(s, tx(b, Vector(alice)), env))
+      rule(rs.tx(s, tx(b, Vector(alice)), env))
     assertEquals(propose(100 * ada, staker.credential), "accepted")
     assertEquals(propose(99 * ada, staker.credential), "ProposalDepositIncorrect")
     assertEquals(propose(100 * ada, bob.credential), "ProposalReturnAccountDoesNotExist")
@@ -415,7 +415,7 @@ class ConwayRulesSuite extends FunSuite:
       200,
       votes = Vector(Voter.DRepVoter(bob.credential) -> Vector(ghost -> Vote.Yes))
     )
-    assertEquals(rule(TxRules(s, tx(vote, Vector(alice, bob)), env)), "VotersDoNotExist")
+    assertEquals(rule(rs.tx(s, tx(vote, Vector(alice, bob)), env)), "VotersDoNotExist")
   }
 
   test("committee certificates: unknown members and resigned members are refused") {
@@ -436,7 +436,7 @@ class ConwayRulesSuite extends FunSuite:
         200,
         certificates = Vector(cert)
       )
-      TxRules(s, tx(b, Vector(alice, signer)), env)
+      rs.tx(s, tx(b, Vector(alice, signer)), env)
     assertEquals(
       rule(run(s0, Certificate.CommitteeAuthorize(cold.credential, hot.credential), cold)),
       "ConwayCommitteeIsUnknown"
@@ -468,7 +468,7 @@ class ConwayRulesSuite extends FunSuite:
       reserves = s0.reserves - 502 * ada
     )
     val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
-    val idle = Iterator.iterate(s)(x => Epoch.boundary(x, x.epoch + 1, globals)).drop(3).next()
+    val idle = Iterator.iterate(s)(x => rs.boundary(x, globals)).drop(3).next()
     assertEquals(idle.dormantEpochs, BigInt(3))
     val p = Proposal(100 * ada, RewardAccount(0, staker.credential), GovAction.Info)
     val b = body(
@@ -478,33 +478,42 @@ class ConwayRulesSuite extends FunSuite:
       200,
       proposals = Vector(p)
     )
-    val revived = TxRules(idle, tx(b, Vector(alice)), env.copy(epoch = idle.epoch))
+    val revived = rs
+      .tx(idle, tx(b, Vector(alice)), env.copy(epoch = idle.epoch))
       .fold(f => fail(f.message), identity)
     assertEquals(revived.dormantEpochs, BigInt(0))
     assertEquals(revived.dreps(drep.credential).expiry, BigInt(33))
     // with a proposal open the epochs are not dormant
-    val busy = Epoch.boundary(revived, revived.epoch + 1, globals)
+    val busy = rs.boundary(revived, globals)
     assertEquals(busy.dormantEpochs, BigInt(0))
   }
 
   test("an epoch pays rewards only if a block arrives after the start of rewards") {
-    val globals = LedgerGlobals(Supply, 100, Rational(1, 20), 0, startRewards = 40)
+    // 4k/f = 80 with k = 1 and f = 1/20: the new rules' window is that of the security parameter
+    // (and the epoch is long enough that its point of no return, two stability windows before the
+    // end, is not before its start)
+    val globals = LedgerGlobals(Supply, 1000, Rational(1, 20), 0, startRewards = 80)
     val s0 = conway
     val s = s0.copy(fees = 1000, reserves = s0.reserves - 1000)
-    val first = Epoch.boundary(s, s.epoch + 1, globals)
+    val first = rs.boundary(s, globals)
     assertEquals(first.rewardUpdate, None)
-    assert(first.rewardDraft.isDefined)
-    val start = first.epoch * 100
+    // the old rules compute the update at the boundary and hold it as a draft until the first block
+    // past the window (their way of deferring it); the new rules compute it at that block
+    if rs == RuleSet.Old then assert(first.rewardDraft.isDefined)
+    val start = first.epoch * 1000
     // a block too early does not create the update
-    assertEquals(Epoch.tick(first, start + 40, start, globals).rewardUpdate, None)
-    val created = Epoch.tick(first, start + 41, start, globals)
+    assertEquals(rs.tick(first, start + 80, start, globals).rewardUpdate, None)
+    val created = rs.tick(first, start + 81, start, globals)
     assert(created.rewardUpdate.isDefined && created.rewardDraft.isEmpty)
     // with the update the next boundary pays it and releases the fees of the snapshot
-    val paid = Epoch.boundary(created, created.epoch + 1, globals)
+    val paid = rs.boundary(created, globals)
     assertEquals(paid.fees, BigInt(0))
     assertEquals(paid.total, Supply)
     // without it nothing is paid and the fees stay
-    val skipped = Epoch.boundary(first, first.epoch + 1, globals)
+    val skipped = rs.boundary(first, globals)
     assertEquals(skipped.fees, BigInt(1000))
     assertEquals(skipped.total, Supply)
   }
+
+class ConwayRulesOldSuite extends ConwayRulesSuite(RuleSet.Old)
+class ConwayRulesNewSuite extends ConwayRulesSuite(RuleSet.New)

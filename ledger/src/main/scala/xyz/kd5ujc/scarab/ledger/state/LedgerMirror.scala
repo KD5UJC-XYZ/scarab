@@ -50,6 +50,16 @@ trait LedgerMirror[F[_]]:
       ShelleyBasedEra[E]
   ): F[node.LedgerState]
 
+  /** The node's state of a mirror, without the check that the mirror of the result is the mirror it
+    * came from in what is derived (`from` does it). The rules produce states that are richer than
+    * what the node can derive from its own (the DRep pulser of the governance state, the pool
+    * distribution of a snapshot): a test that reads a rule's result through the flat state asks for
+    * this.
+    */
+  def rebuild[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
+      ShelleyBasedEra[E]
+  ): F[node.LedgerState]
+
   // The parts of `to`, each on its own. A reader that needs the pool distribution does not pay for
   // the accounts: `to` is the sum of these (and of what the node keeps beside the mirror), and the
   // read paths of the node (`node.read`) take the ones they ask for, so that a flat state is read
@@ -880,6 +890,11 @@ object LedgerMirror:
     def from[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
         era: ShelleyBasedEra[E]
     ): F[node.LedgerState] =
+      rebuild[E](at, image).flatMap(rebuilt => verify(at, image, rebuilt).as(rebuilt))
+
+    def rebuild[E <: EraTag](at: WithOrigin[SlotNo], image: LedgerImage[E])(using
+        era: ShelleyBasedEra[E]
+    ): F[node.LedgerState] =
       val nes = image.nes
       val x = image.extras
       val ls = nes.es.ls
@@ -998,7 +1013,7 @@ object LedgerMirror:
           rewardDraft = x.rewardDraft
         )
         if pulsing then fail[node.LedgerState](MirrorError.IllFormed(Shape.PulsingRewardUpdate))
-        else verify(at, image, rebuilt).as(rebuilt)
+        else monad.pure(rebuilt)
       }
 
     /** The mirror of the rebuilt state must be the mirror it was rebuilt from, in what is derived:

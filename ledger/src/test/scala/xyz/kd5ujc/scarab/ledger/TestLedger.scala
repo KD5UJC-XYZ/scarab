@@ -38,7 +38,8 @@ object TestLedger:
       maxTxSize = 16384,
       maxBlockBodySize = 65536,
       maxValueSize = 5000,
-      coinsPerUTxOByte = 4310,
+      coinsPerUTxOByte =
+        if protocolMajor >= 7 then 4310 else 0, // none before Babbage (the mirror holds none)
       keyDeposit = 2000000,
       poolDeposit = 500000000,
       eMax = 18,

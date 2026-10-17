@@ -793,6 +793,46 @@ class ConwayLedgerSuite extends FunSuite:
   }
 
   test(
+    "J2.6-1: re-registering with the pool's own key hash and then another in one epoch drops the key in use (the reference's quirk)"
+  ) {
+    // `Pool.hs:285-293`: a re-registration whose future parameters hold another key hash deletes
+    // that one from the map, whether or not it is also the key of the registered pool. The old
+    // state derives the map from the pools (every key in use), so the two sides differ here by
+    // design, and a suite that carries a state across transactions through the flat state
+    // (`RuleSet.New`) goes on from the derived map.
+    val one = key()
+    val pp11 = pparams.copy(protocolMajor = 11)
+    val s0 = base(fundedBy(alice), pools = Map(one.hash -> poolOf(one)), pp = pp11)
+    val own = poolParams(one).vrfKeyHash
+    val s = s0.copy(futurePools = Map(one.hash -> poolParams(one)))
+    val other = Blake2bHash(Bytes(Vector(7, 8, 9)))
+    val t = pay(
+      "quirk",
+      alice,
+      10000 * ada,
+      200,
+      certificates = Vector(Certificate.RegisterPool(poolParams(one).copy(vrfKeyHash = other))),
+      signers = Vector(one)
+    )
+    val image = run(mirror.to[Conway](at, s)).fold(e => fail(e.show), identity).value
+    val nes = image.nes
+    val after = Sts(Ledger)(
+      globals,
+      LedgerEnv(TestLedger.env, nes.es.chainAccount.treasury),
+      Counted(nes.es.ls, s.plutus),
+      t
+    ).fold(f => fail(f.message), identity)
+    def keys(ps: PState): Set[Bytes] = ps.vrfKeyHashes.keySet.unsorted.map(_.bytes)
+    val ps = ConwayLedgerState.pState.get(after.state)
+    // the reference's map: the new key, and not the one the registered pool still uses
+    assertEquals(keys(ps), Set(other))
+    // what the pools imply: both
+    assertEquals(keys(vrfFromPools(ps)), Set(own, other))
+    // the old rules keep no such map: they accept the same transaction
+    assert(TxRules(s, t, TestLedger.env).isRight)
+  }
+
+  test(
     "entering protocol version 11 populates the VRF key hashes, a key held twice counted twice"
   ) {
     val one = key()
