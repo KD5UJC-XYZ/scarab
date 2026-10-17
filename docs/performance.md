@@ -847,3 +847,90 @@ decisive; the database was the K1 copy mounted read-only.
 The gate fails: +46% at p99, +50% at the mean. Every boundary measured was slower on the new side (ratios 1.4 to 1.7). Heap: the
 harness holds both states, so it is not the new rules' alone; the collector's post-collection heap was a median of 0.95 GB and a
 maximum of 4.4 GB of the 12 GB. The memory gate needs a run of `--memory-report-seconds` on a node, not this harness.
+## 16. The epoch boundary of the era-indexed rules made fast (#131)
+
+Issue #131: at the boundaries of the Preview K1 snapshots 1400 to 1449 (protocol 11, 111,910 accounts, 278,970 instant-stake
+credentials, 75,972 rewards at the largest) the new rules took 1.4 to 1.7 times the old rules, against the +25% p99 gate of
+`ledger-mirror-step2.md` 2.3, and section 15 measured it at 1.46 (p99) at the start of J2.9. The first measurements here (before the change) were the same: 1.47 mean, 1.86 p99.
+
+**Method.** `BoundaryTickMain <db> <genesis> 1400 1449 4` (a test-side tool): each snapshot of the K1 run is taken in the middle
+of an epoch (about 43% in, past the start of the reward update); the tool reads it, finds the first block of the next epoch in
+the ImmutableDB (read only), converts the state to the mirror as the differential harness did and times `Hfc.tick` to that
+block, four times, and the old rules' `NodeRules.tick` of the same block four times, in the same JVM (JDK 21, G1,
+`-Xms4g -Xmx12g`, Linux x86-64 on WSL2). It prints the SHA-256 of the ticked `NewEpochState` written in the Haskell format
+(`HaskellState.encode`). The host was shared and loaded (load 6 to 11 on 24 cores) and the same tick of the same state varies
+between 200 and 900 ms from run to run, so the numbers are paired: the build before and the build after ran at the same time in
+two JVMs, 50 snapshots by 4 ticks, 200 ticks each; the first tick of a snapshot is the one a state just converted meets (cold
+caches), the others a warm one. The old rules measured here have a mean of 480 ms and a p99 of 790 to 870 ms, against 271 and
+389 in section 14 at a lighter load: the ratio is what carries over, not the milliseconds.
+
+| 200 ticks, concurrent runs | before | after | after / before |
+|---|---|---|---|
+| new rules, mean ms | 704 | 497 | 0.71 |
+| median | 696 | 445 | 0.64 |
+| p99 | 1,467 | 974 | 0.66 |
+| the old rules in the same JVM, mean / median / p99 | 479 / 479 / 790 | 481 / 468 / 870 | |
+| **new / old**, mean | 1.47 | **1.03** | |
+| new / old, median | 1.45 | 0.95 | |
+| new / old, p99 | 1.86 | **1.12** | |
+
+Two rounds of the same builds run one after the other (one JVM at a time) agree: new / old mean, median, p99 of 1.38, 1.35, 1.49
+and 1.36, 1.41, 1.74 before; 0.96, 0.87, 1.08 and 1.01, 0.99, 1.23 after (the build of those rounds differs from the final one
+only in the tool). The gate (p99 within +25% of the old rules) holds in all four, with little room in the worst (1.23). The first
+tick of a snapshot is slower than the later ones in both builds (556 against 422 ms best of four after); the best of four is
+0.7 to 0.9 times the old rules.
+
+**Equal results.** The digest of the ticked state is the same before and after for all 50 snapshots (the SHA-256 of the 50 lines
+`<snapshot> <digest>` is `362a1e6d3a26485a0f6d4f40ecf946a694133b3e15b80097bcf53c48f497986b` in the base build and in the
+final one; the intermediate builds agreed too, at every step of the change). `BoundaryDigestSuite` keeps six of them as goldens
+(snapshots 1400, 1410, 1420, 1430, 1440, 1449; it runs when `SCARAB_K1_DB` names the K1 `db` directory, with `-J-Xmx12g`), and
+`EpochBoundarySuite` checks each rewritten step against the straightforward version it replaced on generated data (the order of
+byte strings, a map built from sorted input, the merge of accounts with the instant stake, the crediting of rewards, the cursor),
+including the refusals.
+
+**Profile, before** (JFR `profile` settings, 20 snapshots by 5 ticks, 5,956 samples in `Hfc.tick`; the stack depth of 300 keeps
+the roots): leaf frames: `Bytes.compareTo` 27%, the tree iterator 10%, the lambda of the `Credential` order 8% and `cats`
+`Order.from` 8%, `RedBlackTree.lookup` 4%, hash-map builders 5%. By callee, 48% of the tick compared keys and 43% was `TreeMap.get`
+(a lookup of each account's instant stake, of each reward's account, of each delegator's stake); `ConwayPulser.fresh` 37% (flat
+copies of every account for the ratification, which reads a few), SNAP 42% (30% in `StakeDistribution.resolve`, whose `toList`,
+`traverse` and `SortedMap.from` of the result were another 15%), `applyRewardUpdate` 17% (`partition` of the reward map and a
+`foldM` of `updated`).
+
+**What changed, in the order of the plan.**
+
+1. *No rebuilds, no lookups for what is already in order.* The accounts, the instant stake and the rewards are maps in the same
+   order, so they are walked together (`Sorted.Cursor`: step from the last key, and after eight steps look the key up from the
+   root with `iteratorFrom`) where a lookup of each key compared about seventeen. The active stake is built from its sorted
+   entries once (`Sorted.fromAscending`, which hands `TreeMap.from` a sorted source: `RedBlackTree.fromOrderedEntries`, linear);
+   rewards are split into registered and not in one pass instead of `partition` (two trees built by inserting each entry), and
+   credited by one merge with the accounts and one build (`EraLedger.creditAscending`; a few amounts are still credited one by
+   one: fewer than one in 24 accounts). The pulser's copy of the accounts holds those the pools' reward accounts name, which
+   is all ratification reads; its proposal-deposit scan is skipped when there are no deposits (usual), and the DRep
+   distribution is summed in one pass with the instant stake walked beside the accounts. `Rewards.aggregate` and `total` take
+   any sequence of entries and `aggregate` is a loop where it was `toVector.traverse`.
+2. *Cheaper comparison.* `Bytes.compareTo` is `Arrays.compareUnsigned` (a vectorised intrinsic) after a comparison of the first
+   four bytes kept in the object (`cachedPrefix`, filled on first use, like the cached hash). The object is 32 bytes with
+   compressed references before and after (28 bytes of fields rounded up; 40 either way without them), so the UTxO set's many
+   `Bytes` do not grow. Hashes differ in the first four bytes in all but one comparison in 4 billion, so most comparisons
+   read two objects and no arrays. Every map of one key type now shares one `Ordering` (`SortOrder`, an `Order` that carries its
+   `Ordering`): `Order.toOrdering` made a new one for each map, so `TreeMap.from` never saw two equal orderings and copied sorted
+   maps by insertion. The `Credential` order is a direct match, without the tuple and the closure of `Order.from`.
+3. *Rational arithmetic.* None of the changed code is rational: the reward calculation (`Rewards.update`, once in an epoch at the
+   first slot past 4k/f) is not at the boundary and is not changed here; its 1.1 s of section 10 is a separate tick, to measure
+   and, if it matters, to mirror from `Rewards.hs`' integer steps (a follow-up to track as its own issue).
+4. *The fallback* (hash maps live, a sorted view at encode time) was not needed and is not taken; no decision to record.
+
+**Profile, after** (same setup, 4,537 samples): `Sorted.Cursor` 41% of the tick (the walks of SNAP, the pulser and the rewards,
+bound by the memory they read: 279,000 instant-stake credentials against 112,000 accounts), SNAP 37% (26% resolve, 11% the
+pools' snapshots, which look up each delegator), `ConwayPulser.fresh` 35% (about 4% converting the DReps' delegators),
+`applyRewardUpdate` 23% (10% registration, 11% the merge), `Bytes.compareTo` 13%, `TreeMap.get` 7%. What is left is the walks
+over the three big maps; fusing them across rules (SNAP and the pulser both walk accounts against instant stake) would need the
+rules to share a result, which the rule algebra does not have, and the memory reads would remain.
+
+A change tried and dropped: adding up the stake of an account in unsigned 64-bit arithmetic instead of `BigInt` (the sum of two
+words, with the integers only on a wrap or with pointer stake) was 15 to 20% slower in a paired run than the `BigInt` version, not
+faster, and was not kept.
+
+**To repeat.** The `BoundaryTickMain` command above, from a test classpath
+(`export node/Test/fullClasspath` in sbt), with `-Xmx12g`. The tool names `NodeRules.tick`, which the removal of the old rules
+(J2.9) takes away: from then on only the new side is timed and the ratio to the old rules is this section's record.

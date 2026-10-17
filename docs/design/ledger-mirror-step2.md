@@ -105,6 +105,7 @@ final case class NodeState(ext: ExtLedgerState, extras: ConsensusExtras)
   - `--memory-report-seconds` peak heap within +20%;
   - `VolatileChain` keeps k states, and persistent trees share structure as today.
 - **Fallback (an improvement with a documented reason):** hash maps live, with a sorted view only at encode time. Taken only if the gate fails.
+  - **As built (#131):** the gate was met without the fallback: merges of the maps that are in one order, sorted maps built once from sorted input, one `Ordering` per key type and a cheaper `Bytes` comparison (`performance.md` section 16; new / old at the boundary 1.03 mean and 1.12 p99 against 1.47 and 1.86).
 
 ### 2.4 Persisted format (#83)
 - **Mechanism fix first (J1.2):**
