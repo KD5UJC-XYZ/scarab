@@ -12,10 +12,12 @@ object EraHistory:
   export hfc.EraHistory.{summary, ByronParams}
 
   /** `Serialise (Summary xs)`: an indefinite list of `[start, end, [size, slotLength, safeZone,
-    * genesisWindow]]`.
+    * genesisWindow]]`. A bound is `[time in picoseconds, slot, epoch]`, the time an `Integer`
+    * (`Serialise RelativeTime` writes `toPicoseconds`), so a tag-2 big number once the chain is
+    * older than about 213 days.
     */
   def encode(w: CborOut, eras: Vector[EraSummary]): CborOut =
-    def bound(b: Bound): Unit = w.array(3).uint(b.timePs).uint(b.slot).uint(b.epoch)
+    def bound(b: Bound): Unit = w.array(3).integer(b.timePs).uint(b.slot).uint(b.epoch)
     w.indefiniteArray
     eras.foreach { e =>
       w.array(3)

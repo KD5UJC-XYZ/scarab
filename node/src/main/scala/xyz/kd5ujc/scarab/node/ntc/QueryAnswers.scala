@@ -78,6 +78,7 @@ object QueryAnswers:
   enum UtxoNeeds:
     case Nothing
     case Whole
+    case Addresses(addresses: Set[Bytes])
     case Inputs(inputs: Set[TxIn])
 
   def utxoNeeds(q: NtcQuery): UtxoNeeds = q match
@@ -85,10 +86,17 @@ object QueryAnswers:
     case _                            => UtxoNeeds.Nothing
 
   private def ledgerNeeds(q: LedgerQuery): UtxoNeeds = q match
-    case LedgerQuery.GetUTxOWhole | LedgerQuery.GetUTxOByAddress(_) => UtxoNeeds.Whole
-    case LedgerQuery.GetUTxOByTxIn(ins)                             => UtxoNeeds.Inputs(ins)
-    case LedgerQuery.GetCBOR(inner)                                 => ledgerNeeds(inner)
-    case _                                                          => UtxoNeeds.Nothing
+    case LedgerQuery.GetUTxOWhole           => UtxoNeeds.Whole
+    case LedgerQuery.GetUTxOByAddress(some) => UtxoNeeds.Addresses(some)
+    case LedgerQuery.GetUTxOByTxIn(ins)     => UtxoNeeds.Inputs(ins)
+    case LedgerQuery.GetCBOR(inner)         => ledgerNeeds(inner)
+    case _                                  => UtxoNeeds.Nothing
+
+  /** The era history of the acquired state: a chain that starts in Byron has an open-ended Byron
+    * span in the configuration until it has entered Shelley, and the state knows where it did.
+    */
+  def geometry(env: QueryEnv, view: QueryView): EpochGeometry =
+    view.state.geometry(env.geometry)
 
   def currentEra(env: QueryEnv, view: QueryView): Era =
     view.state.boot.era.getOrElse(
@@ -117,13 +125,19 @@ object QueryAnswers:
       val tipSlot = view.point match
         case Point.Block(slot, _) => slot.value
         case Point.Origin         => BigInt(0)
-      val eras =
-        EraHistory.summary(env.geometry, env.byron, env.forks, env.observedEras, era, tipSlot)
+      val eras = EraHistory.summary(
+        geometry(env, view),
+        env.byron,
+        env.forks,
+        env.observedEras,
+        era,
+        tipSlot
+      )
       Some(CborOut.build(EraHistory.encode(_, eras)))
     case NtcQuery.EraStart(index) =>
       val era = currentEra(env, view)
       val eras = EraHistory.summary(
-        env.geometry,
+        geometry(env, view),
         env.byron,
         env.forks,
         env.observedEras,
@@ -133,7 +147,7 @@ object QueryAnswers:
       Some(CborOut.build { w =>
         eras.lift(index).filter(_ => index <= era.index) match
           case Some(e) =>
-            w.array(1).array(3).uint(e.start.timePs).uint(e.start.slot).uint(e.start.epoch)
+            w.array(1).array(3).integer(e.start.timePs).uint(e.start.slot).uint(e.start.epoch)
           case None => w.array(0)
       })
     case NtcQuery.IfCurrent(index, inner) =>
@@ -388,8 +402,9 @@ object QueryAnswers:
           case Point.Block(s, _) => s.value
           case Point.Origin      => BigInt(0)
         val firstOfEpoch = view.ledger.blocksCurrent.valuesIterator.sum <= 1
+        val chainGeometry = geometry(env, view)
         val pointOfNoReturn =
-          env.geometry.firstSlot(view.ledger.epoch + 1) - 2 * env.geometry.stabilityWindow
+          chainGeometry.firstSlot(view.ledger.epoch + 1) - 2 * chainGeometry.stabilityWindow
         if firstOfEpoch || slot < pointOfNoReturn then FuturePParams.PotentialPParamsUpdate(next)
         else next.fold(FuturePParams.NoPParamsUpdate)(FuturePParams.DefinitePParamsUpdate(_))
 

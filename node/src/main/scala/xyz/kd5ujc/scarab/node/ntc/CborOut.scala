@@ -29,6 +29,14 @@ final class CborOut private ():
 
   def uint(n: BigInt): CborOut = head(0, n)
 
+  /** An unsigned `Integer` as cborg's `encodeInteger` writes it: an integer up to 64 bits, beyond
+    * that a tag-2 big number (the bytes big-endian, without leading zeros). The era history's
+    * times, in picoseconds, pass 2^64 about 213 days after the system start.
+    */
+  def integer(n: BigInt): CborOut =
+    if n.bitLength <= 64 then uint(n)
+    else tag(2).bytes(Bytes.fromArray(n.toByteArray.dropWhile(_ == 0)))
+
   /** A signed integer. */
   def int(n: BigInt): CborOut = if n >= 0 then head(0, n) else head(1, -1 - n)
 
