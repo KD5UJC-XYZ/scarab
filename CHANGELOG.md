@@ -264,6 +264,42 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   (2,646,309 blocks): 0 divergences; devnet `e2e` and `soak` with `SCARAB_RULES=differential` pass. `NewRules.carried` seeds the
   reward update of the state of any era (it did for Conway only).
 
+### Added (ledger-state mirror, step 2, jump 2: the rule suites run on both rule sets, J2.6)
+- **`RuleSet` (`Old | New`) for the rule tests over the flat state** (`ledger/src/test/.../RuleSet.scala`). A suite takes a
+  `RuleSet` and is run once for each: the old side calls the node's rules, the new side converts the test's flat state through
+  the mirror, runs LEDGER of the era the protocol version names (`ShelleyLedger` or `Ledger`), or a tick, and converts the result
+  back, so **every assertion of the suite is a differential test** and refusals are compared as typed values (#121). `tx`, `boundary`
+  (the state one epoch later), `epoch` (the epoch's reward update made by each side and applied at the boundary), `tick`,
+  `rewards` and `registerPool` are what a suite asks of it. The result of a tick is read through `LedgerMirror.rebuilt`
+  (new: the node's state of a mirror with the list of derived pieces that differ from what its own mirror derives, where `from`
+  failed on the first): the test waives the DRep pulser only (the flat state holds the pulser's snapshot and ratification, the
+  rules leave the one they made) and asserts every other piece (VRF key hashes, delegators, pointers, instant stake, future
+  parameters, pool distribution, snapshots, extras) after resetting what a tick makes stale in the old state's bookkeeping.
+- **Suites converted** (an `...OldSuite` and a `...NewSuite` each, 13 files, 26 test classes in all): `PreConwayRulesSuite` (23
+  tests, Shelley to Babbage), `ConwayRulesSuite`, `ConwayGovernanceSuite` (18, with the enactment through real boundaries),
+  `RewardsSuite` (the formulas and the reward update), `MainnetAllegraReservesSuite` (the leader reward of epoch 235, to the
+  lovelace of the mainnet withdrawal), `MainnetPoolNetworkSuite`, `PreprodConwayRulesSuite`, `PreprodSecp256k1RulesSuite`,
+  `PreprodNOfKSuite`, `PreprodByronKeyWitnessSuite`, `PreprodMalformedRefScriptSuite`, `PreviewConwayRulesSuite` and, in `node`,
+  `DevnetRefusedTxSuite` (the reference's refusals, payload included, on both). The deep transaction of `DeepNestingSuite` runs on
+  both on a small stack (ADR 0011). Test builders for the era-indexed state are in `ledger/src/test/.../state/Build.scala`.
+- **Two findings** (`docs/findings.md`): the reference's re-registration of a pool with its own VRF key hash and then another
+  drops the key in use from `psVRFKeyHashes` (`Pool.hs:268-297`; the new rules follow it, asserted in `ConwayLedgerSuite` on a state
+  built with `Build`); `LedgerMirror.from` summed all the rewards of a credential, where before Allegra the reference keeps the
+  least (`Rewards.hs:170-186`), fixed.
+- **Deviations from the old tests, for the record.** The cost per UTxO byte of `TestLedger.params` is zero before Babbage (the eras'
+  parameters have none). `ConwayRulesSuite`'s reward-window test uses an epoch of 1,000 slots and a window of 80 (it was 100 and 40): the
+  new side's window is 4k/f of the security parameter, which at f = 1/20 cannot be 40, and a window of 80 needs an epoch whose point of no
+  return is after its start; the draft of the old rules (`rewardDraft`) is asserted of the old side only. The supply property of
+  `PreConwayRulesSuite` makes each epoch's update with `epoch` (each side its own) in place of threading the old rules' draft. The
+  pre-Babbage prefilter test of `RewardsSuite` makes the update from a pool and its delegators (it injected the old rules' draft with
+  fixed amounts) and asserts the same relations (paid, to the treasury, kept in the reserves); the accounts of the reward tests are
+  registered, because the new rules pay a credential only if it is registered when the update is made (`Rewards.hs`). The three
+  Mainnet Allegra tests of the redeem outputs, which need the stash of the hand-over from Byron, are the old side's by design
+  (`MainnetAllegraRedeemOldSuite`), as are the first block of each era and `PoolMedataHashTooBig` and `OutputBootAddrAttrsTooBig`.
+  Not converted, with the reason: `RatifySuite` (the new rules call the same `Ratify`), `StakeSuite` (the flat state's own
+  derivation; the mirror suites compare the maintained instant stake), `MainnetPointerSuite`, `PreviewConwayGovernanceSuite` and the
+  decoder suites (no rules), the mirror-law suites, `MempoolSuite` (the mempool is on the flat state until J2.8).
+
 ### Added (ledger-state mirror, step 2, jump 2: the read paths from the mirror, J2.7)
 - **The read paths take the ledger state through a type class**, `ChainRead[S]` (`node/read/`), whose ledger part is an
   `EraRead[E]` in the vocabulary of the mirror (`NewEpochState[E]`): the instance for the era-indexed state (`MirrorState`)
