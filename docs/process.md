@@ -85,11 +85,14 @@ At each release milestone, and whenever the list feels stale:
 
 An item is closed as done when all of these hold:
 
-1. The change is on `main`, and the gates for its kind of change passed
-   ([CONTRIBUTING.md](../CONTRIBUTING.md#gates-by-type-of-change)).
-2. Evidence is recorded where a reader will look: a test or fixture, the compatibility matrix and
-   evidence log for anything consensus-relevant, performance numbers in performance.md.
-3. The CHANGELOG has an entry; the roadmap line is marked done (never renumbered or deleted).
+1. The change is on `main`, and the gates for its level passed
+   ([CONTRIBUTING.md](../CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)); the next nightly CI
+   run is green.
+2. Evidence is recorded where its level asks: a test or fixture always; the compatibility matrix for
+   consensus-critical work (level 3); the evidence log for stage-boundary runs (level 4);
+   performance numbers in performance.md.
+3. A changelog fragment in `changes/` if a user could notice; the roadmap line is marked done (never
+   renumbered or deleted).
 4. Every gap the work leaves is tracked: a new issue or roadmap item, linked from the closing comment.
    "Not yet" in a document always points at an item.
 5. The closing comment states what was done, the commit, and the evidence.
@@ -109,5 +112,6 @@ When the code changes what a current document describes, the same change updates
 
 Large items are split into stages or jumps in a design document, each small enough for one session.
 Independent sessions work in separate git worktrees and separate build containers
-([AGENTS.md](../AGENTS.md)), and integrate onto one branch where the full gates run before anything
-reaches `main`.
+([AGENTS.md](../AGENTS.md)), and each lands on its own when its level's gates pass
+([CONTRIBUTING.md](../CONTRIBUTING.md#landing-in-parallel)); nightly CI runs the expensive scenarios
+on what landed.

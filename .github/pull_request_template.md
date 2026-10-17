@@ -2,19 +2,18 @@
 
 <!-- Reference roadmap IDs (e.g. B2, F1) and issues. -->
 
-## Gates run (see CONTRIBUTING.md)
+## Level and gates (see CONTRIBUTING.md, "Gates and ceremony by level of change")
 
-- [ ] `scripts/sbtw check` passes
-- [ ] Ledger/consensus change: `devnet.py soak` and `e2e` run (commit, result):
-- [ ] Network change: `soak` and `relay` run:
-- [ ] Storage change: restart check with `--db` and `soak`:
-- [ ] Forging/mempool change: `pool` and `relay` run:
-- [ ] Not applicable (docs or tooling only)
+- Level: 0 docs / 1 small code / 2 behaviour in one area / 3 consensus-critical / 4 stage boundary
+- [ ] `scripts/sbtw check` passes (level 1 and above)
+- [ ] One scenario per area touched (level 2 and above), with its result:
+- [ ] Persisted format: version bump, migration, a test that reads the previous version (ADR 0006)
 
 ## Evidence and docs
 
 - [ ] New behaviour has tests or properties; bugs found on real data have a regression fixture
-- [ ] Compatibility matrix row updated (docs/compatibility.md), including "explicitly unchecked"; which row: 
+- [ ] Changelog fragment in `changes/` (if a user could notice)
+- [ ] Level 3: compatibility matrix row updated (docs/compatibility.md), including "explicitly unchecked"; which row: 
 - [ ] Roadmap item marked done or updated (docs/roadmap.md); IDs not renumbered
 - [ ] Findings added if something was learned against real data (docs/findings.md)
 - [ ] Relative links in changed docs resolve

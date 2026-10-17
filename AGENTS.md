@@ -53,15 +53,18 @@ scala code … I love the use of type parameters when I can use them"*.
 
 ## Before you hand back
 
-- Run the gates for your kind of change ([CONTRIBUTING.md](CONTRIBUTING.md#gates-by-type-of-change)):
-  at least the full `check` (formatting, `-Werror`, every module's tests) and `scalafixAll --check`.
+- Name the level of your change and run its gates, no more
+  ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): at least `check`
+  (formatting, scalafix, `-Werror`, every module's tests), plus one scenario per area touched.
+  Soak, repeats and the long network replays are nightly CI's, not yours, unless your stage's design
+  names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the
   previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)). The snapshot
   fingerprint golden in `node/src/test/.../storage/CodecSuite.scala` guards this.
 - Record evidence where the [definition of done](docs/process.md#definition-of-done) says, and track
   every gap you leave as an issue or roadmap item.
-- Small, logical commits as CONTRIBUTING describes. Do not push to `main` unless you were asked to;
-  integration runs the full gates first.
+- Small, logical commits as CONTRIBUTING describes. A changelog entry is a fragment in `changes/`,
+  never an edit of `CHANGELOG.md`. Do not push to `main` unless you were asked to.
 - Report: branch and commits, what changed, gate results, deviations from the plan and why, and what
   the next stage needs to know.
 

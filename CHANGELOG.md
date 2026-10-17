@@ -5,6 +5,9 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+New entries are fragments in [changes/](changes/README.md) until the next release folds them in; the
+entries below were written before that.
+
 ### Changed (#113, #114: node-to-client queries)
 - **`GetUTxOByAddress` passes over the outputs it does not want without decoding them.** The on-disk store
   (`RocksUtxoStore.selectAddresses`) reads each stored output's address from the head of its CBOR (`Coding.addressSpan`)

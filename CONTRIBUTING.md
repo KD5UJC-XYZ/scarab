@@ -108,29 +108,70 @@ with a pattern that matches your own shell command line.
   Fixtures must be public chain data or throwaway keys, with provenance and licence recorded in
   the fixture directory's README and `NOTICE`.
 
-## Gates by type of change
+## Gates and ceremony by level of change
 
-| Change | Run before opening a pull request |
+Thoroughness lives in two places: the gates a change passes before it lands, and the nightly CI,
+which runs every expensive scenario. A change runs only what can catch a fault in what it touched;
+everything else is caught within a day by CI. Land in minutes, not hours.
+
+### Levels
+
+| Level | Examples | Before landing | Paperwork |
+|---|---|---|---|
+| **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve | none |
+| **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (it includes scalafix, formatting, `-Werror`, every module's tests and the fuzz suite) | commit message; a changelog fragment only if a user could notice |
+| **2. Behaviour change in one area** | a bug fix, a new query, a new flag or event, a performance change | `check` plus **one** scenario for the area (table below) | changelog fragment; a test that fails without the change; `docs/running.md` if a flag, event or metric changed; a `docs/findings.md` row if it was found on real data |
+| **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
+| **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log row in `docs/compatibility.md` with commit, date and command |
+
+A persisted format change is level 3 and also needs a version bump, a migration and a test that
+reads the previous version ([ADR 0006](docs/adr/0006-versioned-formats-migrate-on-open.md)).
+
+### The one scenario per area
+
+| Area touched | Scenario (`python3 scripts/devnet.py --name <yours> ...`) |
 |---|---|
-| Any | `scripts/sbtw check` (CI runs it on every pull request) |
-| Docs only | check that relative links resolve; no gate beyond review |
-| Scripts (`scripts/devnet/**`) | `python3 -m unittest discover -s scripts/tests` (CI runs it), plus the scenario the change touches |
-| Ledger or consensus (rules, rewards, governance, Plutus, nonces, headers) | `check`, plus `python3 scripts/devnet.py soak --seconds 480` and `e2e`; a Preview regression run through the affected region (use `fixtures/preview` or a `--db` follower) when the change was motivated by Preview data |
-| A decoder (CBOR, a mini-protocol codec, block, header, transaction or address decoding) | `check` (it includes the fuzz suite); add the target to `fuzz/.../Targets.scala` for a new entry point; for a change to a decoder also `scripts/sbtw "fuzz 100000 1 4"` ([running.md](docs/running.md#fuzzing-the-decoders-roadmap-k3)) |
-| Network (mini-protocols, mux, peer, chain selection) | `check`, plus `soak` and `relay` |
-| Storage (stores, snapshots, UTxO set) | `check` with the storage suites, plus a restart check (`follow --db`, stop, restart) and `soak` |
-| Forging or mempool | `check`, plus `pool` and `relay` |
-| KES key handling, certificates or SIGHUP reload (`forge/KesFiles`, `HotKeys`, `scripts/pool`) | `check`, plus `pool`, `kes-rotate` and `python3 -m unittest discover -s scripts/tests` |
-| Node-to-client (LocalStateQuery, LocalTxSubmission, the encoding of rejections) | `check`, plus `ntc` and `relay` |
+| Ledger rules, rewards, governance, Plutus, nonces, headers | `e2e` (add `SCARAB_RULES=differential` while both rule sets exist) |
+| Network: mini-protocols, mux, peers, chain selection, fetch | `relay --seconds 300` |
+| Storage: stores, snapshots, the UTxO set | `restart` |
+| Forging, mempool | `pool` |
+| KES key, certificates, SIGHUP reload, `scripts/pool` | `kes-rotate` |
+| Node-to-client: queries, submission, rejections | `ntc` |
+| A decoder | none beyond `check`; a new entry point gets a fuzz target; a decoder change also runs `scripts/sbtw "fuzz 100000 1 4"` |
+| `scripts/devnet/**` | `python3 -m unittest discover -s scripts/tests` and the scenario the change touches |
+
+Two areas, two scenarios: run them at the same time (distinct `--name`s), at most two devnets at
+once on a shared machine. Repeats (three relays, two ntc runs) and `soak` are flakiness checks and
+belong to nightly CI, not to a change.
+
+### Nightly CI is the safety net
+
+`.github/workflows/e2e.yml` runs soak, e2e, e2e with the differential rules, relay, pool,
+kes-rotate, ntc and restart every night, each scenario in its own job, and on demand and on
+version tags. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
+scan of the whole history (`.gitleaks.toml`; a new false positive is allowlisted there by path or
+commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
+nightly is fixed first, before new work lands: it is the cheapest point at which to find what the
+per-change gates did not cover.
 
 The scenarios need the reference image (see [docs/reference-image.md](docs/reference-image.md))
 and are described in [docs/running.md](docs/running.md). `prepare_reference_image.py --download`
-fetches and verifies the official release itself. On GitHub, `.github/workflows/ci.yml` runs
-`check`, the script tests, actionlint, a gitleaks scan of the whole history (`.gitleaks.toml`; a new
-false positive is allowlisted there by path or commit, scoped to its rule, with a reason) and, on
-pull requests, a dependency review; `.github/workflows/e2e.yml` runs
-soak, e2e, relay and pool nightly, on demand and on version tags. Every scenario exits non-zero on
-any mismatch or error, so run the ones your change touches before opening a pull request.
+fetches and verifies the official release itself. Every scenario exits non-zero on any mismatch or
+error.
+
+### Landing in parallel
+
+Each piece of work lives in its own git worktree with its own build container and lands on its
+own: when its gates pass, rebase onto `main`. If the rebase is clean and touches no file the other
+side changed in code, rerun `check` only and push; otherwise rerun the level's gates. Nobody waits
+for another branch's gates, and there is no shared integration branch that serialises landings.
+
+### Changelog fragments
+
+Each change that needs a changelog entry adds a file `changes/<issue-or-branch>.md` with its entry
+(a `### Added|Changed|Fixed|Removed (...)` heading and the bullets). Nobody edits `CHANGELOG.md`
+between releases, so branches do not conflict there; a release folds the fragments into a version
+section and deletes them ([changes/README.md](changes/README.md)).
 
 ## How evidence is recorded
 
@@ -153,4 +194,4 @@ A claim of compatibility needs evidence a reader can check:
 - Describe the why in the body when it is not obvious; reference roadmap IDs.
 - Do not rewrite shared history. Do not commit generated run data (`/tmp/scarab`
   is outside the checkout on purpose; set `SCARAB_DATA_DIR` to move it; the old name `CSL_DATA_DIR` still works, and an existing `/tmp/cardano-scala-lab` is used while `/tmp/scarab` is absent).
-- Fill in the pull request template; it asks which gates you ran and which compatibility row changes.
+- Fill in the pull request template; it asks for the level of the change and the gates you ran.
