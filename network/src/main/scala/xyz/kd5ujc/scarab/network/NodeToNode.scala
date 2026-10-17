@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import cats.Monad
 import cats.effect.{Async, Resource}
 import cats.mtl.Raise
 import cats.syntax.all.*
@@ -8,15 +9,58 @@ import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Handshake}
 import scala.concurrent.duration.*
 
-/** A negotiated node-to-node connection. All clients share one multiplexed bearer; KeepAlive runs
-  * in the background for the life of the resource.
+/** The hot part of a node-to-node connection: ChainSync, BlockFetch and (with a source of
+  * transactions) TxSubmission2, started by [[WarmConnection.activate]]. All clients share the one
+  * multiplexed bearer of the connection.
   */
 final class NodeToNodeConnection[F[_], P](
     val version: Int,
     val chainSync: ChainSyncClient[F, P],
     val blockFetch: BlockFetchClient[F],
-    val mux: Mux[F]
-)
+    val mux: Mux[F],
+    /** The TxSubmission2 client, when this activation runs one and can end it. */
+    val transactions: Option[TxSubmissionClient.Running[F]] = None
+):
+  /** End the hot protocols on the wire, so the connection can carry a new activation: ChainSync and
+    * BlockFetch say `MsgDone` where they are idle, TxSubmission2 at the peer's next blocking
+    * request, waiting up to `within` for it. `false` when a protocol could not be ended (a request
+    * is outstanding, or the peer never asked): the connection must be closed, not reused.
+    */
+  def finish(within: FiniteDuration)(using Monad[F]): F[Boolean] =
+    (chainSync.idle, blockFetch.idle).tupled.flatMap {
+      case (true, true) =>
+        chainSync.done *> blockFetch.done *> transactions.fold(true.pure[F])(_.finish(within))
+      case _ => false.pure[F]
+    }
+
+/** A connection with its handshake done and KeepAlive running, the temperature the reference calls
+  * warm (`Ouroboros.Network.PeerSelection.PeerStateActions`: established protocols only). The hot
+  * protocols start with [[activate]] and end when its resource is released; a connection can be
+  * activated again after [[NodeToNodeConnection.finish]] ended them cleanly.
+  */
+final class WarmConnection[F[_], P] private[network] (
+    val version: Int,
+    val mux: Mux[F],
+    role: Mux.Role,
+    codec: ChainSync.PayloadCodec[P],
+    settings: NodeToNode.Settings
+):
+  /** Start the hot protocols as the initiator side of each. With `transactions` the node offers
+    * those transactions over TxSubmission2 for the life of the resource.
+    */
+  def activate(transactions: Option[TxSubmissionClient.Source[F]] = None)(using
+      Async[F],
+      Raise[F, NetworkError]
+  ): Resource[F, NodeToNodeConnection[F, P]] =
+    for
+      running <- transactions.traverse(source =>
+        TxSubmissionClient.backgroundFinishing(mux, source, role = Some(role))
+      )
+      chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
+      blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
+      chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
+      blockFetch <- Resource.eval(BlockFetchClient(blockFetchChannel, settings.blockFetch))
+    yield NodeToNodeConnection(version, chainSync, blockFetch, mux, running)
 
 object NodeToNode:
   final case class Settings(
@@ -56,6 +100,30 @@ object NodeToNode:
       transactions: Option[TxSubmissionClient.Source[F]] = None,
       serve: Option[ServerHandlers[F, P]] = None
   )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
+    warmOver(bearer, magic, codec, settings, serve).flatMap(_.activate(transactions))
+
+  /** Connect over TCP and negotiate, leaving the connection warm (KeepAlive only). */
+  def connectWarm[F[_]: Async, P](
+      address: SocketAddress[Host],
+      magic: Long,
+      codec: ChainSync.PayloadCodec[P],
+      settings: Settings = Settings(),
+      serve: Option[ServerHandlers[F, P]] = None
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
+    Bearer
+      .tcp[F](address, settings.connectTimeout)
+      .flatMap(warmOver(_, magic, codec, settings, serve))
+
+  /** The handshake over any bearer, then KeepAlive: the connection is warm and the caller decides
+    * when to [[WarmConnection.activate]] it.
+    */
+  def warmOver[F[_]: Async, P](
+      bearer: Bearer[F],
+      magic: Long,
+      codec: ChainSync.PayloadCodec[P],
+      settings: Settings = Settings(),
+      serve: Option[ServerHandlers[F, P]] = None
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
     val offers = Vector(14 -> Handshake.Data(magic, initiatorOnly = serve.isEmpty))
     for
       mux <- Mux.resource(
@@ -71,8 +139,23 @@ object NodeToNode:
       _ <- serve.filter(_ => !agreed.data.initiatorOnly).traverse_ { handlers =>
         NodeToNodeServer.start(mux, handlers)
       }
-      connection <- clients(mux, settings.mux.role, agreed.version, codec, settings, transactions)
-    yield connection
+      warm <- warm(mux, settings.mux.role, agreed.version, codec, settings)
+    yield warm
+
+  /** KeepAlive on an established multiplexer, as the initiator side: the warm temperature. It lives
+    * as long as the resource; closing it does not close the multiplexer.
+    */
+  def warm[F[_]: Async, P](
+      mux: Mux[F],
+      role: Mux.Role,
+      version: Int,
+      codec: ChainSync.PayloadCodec[P],
+      settings: Settings = Settings()
+  )(using Raise[F, NetworkError]): Resource[F, WarmConnection[F, P]] =
+    for
+      keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
+      _ <- KeepAliveClient.background(keepAliveChannel, mux, settings.keepAlive)
+    yield WarmConnection(version, mux, role, codec, settings)
 
   /** Our own clients (ChainSync, BlockFetch, KeepAlive and, with `transactions`, TxSubmission2) on
     * an established multiplexer, as the initiator side of each mini-protocol. A connection we
@@ -89,14 +172,4 @@ object NodeToNode:
       settings: Settings = Settings(),
       transactions: Option[TxSubmissionClient.Source[F]] = None
   )(using Raise[F, NetworkError]): Resource[F, NodeToNodeConnection[F, P]] =
-    for
-      _ <- transactions.traverse_(source =>
-        TxSubmissionClient.background(mux, source, role = Some(role))
-      )
-      chainSyncChannel <- Resource.eval(mux.channel(Protocols.ChainSync, role))
-      blockFetchChannel <- Resource.eval(mux.channel(Protocols.BlockFetch, role))
-      keepAliveChannel <- Resource.eval(mux.channel(Protocols.KeepAlive, role))
-      _ <- KeepAliveClient.background(keepAliveChannel, mux, settings.keepAlive)
-      chainSync <- Resource.eval(ChainSyncClient(chainSyncChannel, codec, settings.chainSync))
-      blockFetch <- Resource.eval(BlockFetchClient(blockFetchChannel, settings.blockFetch))
-    yield NodeToNodeConnection(version, chainSync, blockFetch, mux)
+    warm(mux, role, version, codec, settings).flatMap(_.activate(transactions))

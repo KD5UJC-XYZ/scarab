@@ -43,7 +43,10 @@ object NodeToNodeServer:
   )
 
   /** Run the servers for the life of the resource. A failed server aborts the multiplexer, which
-    * ends the connection; a client that finishes its protocol (`Done`) just ends that server.
+    * ends the connection; a client that finishes its protocol (`Done`) just ends that conversation,
+    * and the server waits for the next one on the same channel: a peer that demotes us from hot to
+    * warm and promotes us again starts each hot protocol afresh on the one bearer (the reference
+    * restarts its responders on demand the same way).
     */
   def start[F[_]: Async, P](
       mux: Mux[F],
@@ -64,15 +67,15 @@ object NodeToNodeServer:
       txs <- channel(Protocols.TxSubmission2)
       keepAlive <- channel(Protocols.KeepAlive)
       _ <- guarded("chain-sync")(
-        handlers.chainSync.use(
-          ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync)
-        )
+        handlers.chainSync
+          .use(ChainSyncServer.run(chainSync, handlers.codec, _, settings.chainSync))
+          .foreverM[Unit]
       ).background
       _ <- guarded("block-fetch")(
-        BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch)
+        BlockFetchServer.run(blockFetch, handlers.blocks, settings.blockFetch).foreverM[Unit]
       ).background
       _ <- guarded("tx-submission")(
-        TxSubmissionServer.run(txs, handlers.transactions, settings.transactions)
+        TxSubmissionServer.run(txs, handlers.transactions, settings.transactions).foreverM[Unit]
       ).background
       _ <- guarded("keep-alive")(KeepAliveServer.run(keepAlive, settings.keepAlive)).background
     yield ()

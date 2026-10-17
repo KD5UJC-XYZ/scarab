@@ -16,6 +16,12 @@ trait BlockFetchClient[F[_]]:
   /** Raw block bytes for the inclusive range, or `None` when the peer does not have them. */
   def requestRange(from: Point, to: Point): F[Option[Vector[Bytes]]]
 
+  /** Tell the peer we are finished; valid only when no request is outstanding. */
+  def done: F[Unit]
+
+  /** Whether no request is outstanding, so `done` is valid. */
+  def idle: F[Boolean]
+
 object BlockFetchClient:
   final case class Settings(
       limits: BlockFetch.Limits = BlockFetch.Limits(),
@@ -80,6 +86,10 @@ object BlockFetchClient:
         }
 
       new BlockFetchClient[F]:
+        def done: F[Unit] = lock.lock.surround(send(BlockFetch.Message.ClientDone))
+
+        def idle: F[Boolean] = state.get.map(_ == BlockFetch.State.Idle)
+
         def requestRange(from: Point, to: Point): F[Option[Vector[Bytes]]] =
           lock.lock.surround {
             CardanoBlockFetch.InclusiveRange.fromPoints(from, to).fold(illegal, F.pure).flatMap {
