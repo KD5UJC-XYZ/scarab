@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 name: E2E devnet
 
-# The Scala node against the official Haskell cardano-node 11.1.3 in Docker: soak, era walk, relay
-# pool and KES rotation scenarios, run one after the other on a standard 4 vCPU / 16 GB runner.
+# The Scala node against the official Haskell cardano-node 11.1.3 in Docker: the expensive devnet
+# scenarios (soak, era walk, relay, pool, KES rotation, node-to-client, restart), one job per scenario so
+# they run in parallel, each on its own standard 4 vCPU / 16 GB runner. A failing scenario does not stop
+# the others.
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -19,14 +21,27 @@ concurrency:
 
 jobs:
   devnet:
-    name: soak, e2e, relay, pool, kes-rotate
+    name: ${{ matrix.scenario }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {scenario: soak, args: 'soak --seconds 480'}
+          - {scenario: e2e, args: 'e2e'}
+          - {scenario: e2e-differential, args: 'e2e', rules: differential}
+          - {scenario: relay, args: 'relay --seconds 300'}
+          - {scenario: pool, args: 'pool'}
+          - {scenario: kes-rotate, args: 'kes-rotate'}
+          - {scenario: ntc, args: 'ntc'}
+          - {scenario: restart, args: 'restart'}
     defaults:
       run:
         shell: bash
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      SCARAB_RULES: ${{ matrix.rules }}
       SCARAB_DATA_DIR: ${{ github.workspace }}/../scarab-data
     steps:
       - name: Check out source
@@ -58,24 +73,14 @@ jobs:
       - name: Prepare the run directory
         run: mkdir -p "$SCARAB_DATA_DIR" "$RUNNER_TEMP/logs"
 
-      - name: Soak (480 s of load, periodic ledger comparison)
-        run: python3 scripts/devnet.py --name scarab-ci-soak soak --seconds 480 2>&1 | tee "$RUNNER_TEMP/logs/soak.log"
-
-      - name: Era walk (Byron to Conway)
-        if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name scarab-ci-eras e2e 2>&1 | tee "$RUNNER_TEMP/logs/e2e.log"
-
-      - name: Relay (Scala node serving a Haskell relay)
-        if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name scarab-ci-relay relay --seconds 300 2>&1 | tee "$RUNNER_TEMP/logs/relay.log"
-
-      - name: Pool (Scala node forging among Haskell pools)
-        if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name scarab-ci-pool pool 2>&1 | tee "$RUNNER_TEMP/logs/pool.log"
-
-      - name: KES rotation (Scala node forging while the rotation driver replaces its key and certificate)
-        if: ${{ !cancelled() }}
-        run: python3 scripts/devnet.py --name scarab-ci-kes-rotate kes-rotate 2>&1 | tee "$RUNNER_TEMP/logs/kes-rotate.log"
+      - name: Run the scenario
+        env:
+          DEVNET_NAME: scarab-ci-${{ matrix.scenario }}
+          SCENARIO_ARGS: ${{ matrix.args }}
+        run: |
+          set -o pipefail
+          # shellcheck disable=SC2086 # the arguments are words on purpose
+          python3 scripts/devnet.py --name "$DEVNET_NAME" $SCENARIO_ARGS 2>&1 | tee "$RUNNER_TEMP/logs/${{ matrix.scenario }}.log"
 
       - name: Collect summaries and logs
         if: ${{ always() }}
@@ -91,8 +96,9 @@ jobs:
               -not -path '*/classes/*' -not -path '*/genesis/*' -not -path '*/keys/*' \
               -exec cp --parents {} "$RUNNER_TEMP/artifact/$name" \; 2>/dev/null || true
           done
-          for name in scarab-ci-soak scarab-ci-eras scarab-ci-relay scarab-ci-pool scarab-ci-kes-rotate; do
+          for name in scarab-ci-${{ matrix.scenario }}; do
             docker logs "$name-ref" > "$RUNNER_TEMP/artifact/$name-ref.docker.log" 2>&1 || true
+            docker logs "$name-scala" > "$RUNNER_TEMP/artifact/$name-scala.docker.log" 2>&1 || true
           done
           du -sh "$RUNNER_TEMP/artifact"
 
@@ -100,7 +106,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: devnet-${{ github.run_id }}
+          name: devnet-${{ matrix.scenario }}-${{ github.run_id }}
           path: ${{ runner.temp }}/artifact
           retention-days: 14
           if-no-files-found: warn
@@ -108,8 +114,6 @@ jobs:
       - name: Tear down
         if: ${{ always() }}
         run: |
-          for name in scarab-ci-soak scarab-ci-eras scarab-ci-relay scarab-ci-pool scarab-ci-kes-rotate; do
-            python3 scripts/devnet.py --name "$name" down > /dev/null 2>&1 || true
-          done
+          python3 scripts/devnet.py --name "scarab-ci-${{ matrix.scenario }}" down > /dev/null 2>&1 || true
           docker ps -aq | xargs -r docker rm -f > /dev/null 2>&1 || true
           rm -rf "$SCARAB_DATA_DIR"
