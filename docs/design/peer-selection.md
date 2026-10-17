@@ -1161,6 +1161,100 @@ peers) need G1.3, so known stays 1 against a target of 150 and the node is below
 target is therefore exercised only by the properties, `FortyBearersSuite` and the devnet. The catch-up was short (about two and a half days of slots) because
 the newest snapshot was used; a longer catch-up (older snapshot) was not run.
 
+## 7c. G1.3a as built
+
+Branch `g1/3a-ledger-peers`; the pure part of [#137](https://github.com/KD5UJC-XYZ/scarab/issues/137): new files only, nothing of the
+decision function, the governor loop, `Peer` or `Main` is touched. The governor integration (G1.3b) is below.
+
+**Placement.** `ledger/.../PoolRelays.scala`: `PoolRelay` (the reference's `StakePoolRelay`: `SingleHostAddr`, `SingleHostName`,
+`MultiHostName`), `LedgerRelay` (`Address`, `Domain`, `Srv`; `Srv.skipped` is D9), `Ipv4`/`Ipv6`/`RelayIp`, `RelayPort`, `PoolRelayError`
+(ten cases, no strings in control flow), `PoolRelays.decode`/`encode`/`ledgerRelays`/`connectable`/`peerRelays`.
+`network/.../selection/LedgerPeers.scala`: the stake maps (`StakeMap[K, R]` with the phantom kinds `LedgerKind.All`/`Big`, `StakeMaps`),
+the `Kind` type class (weighting, draw scale, which map) and `object LedgerPeerStake` with `recompute`, `weighted`
+(`accPoolStake`), `accumulated`/`accumulate` (`accumulateBigLedgerStake`, the quota), `draw` (`pickPeers`), `answer`,
+`supply` (`getLedgerPeers`), `snapshotBeatsLedger`/`stakeMapWithSlotOverSource`, `lifetime`/`expired`/`refresh` (the worker's cache) and
+the snapshot types (`LedgerPeerSnapshot.V2`/`V23`, `SnapshotPool`, `SnapshotPoint`). The relay type is a parameter `R`, as the peer address
+`A` is, so the governor's tests use strings and the node uses `LedgerRelay`. `node/.../PeerSnapshot.scala`: the JSON reader of
+`peerSnapshotFile` (circe is in `node`, not in `network`), with `PeerSnapshotError` (six cases).
+
+**Facts the reading established** (the reference is the pinned set of section 1.1, plus cardano-ledger-core 1.21.0.0 rev f649f97,
+cardano-ledger-binary 1.9.1.0 rev 048b78d and ouroboros-consensus 4.2.1.0 rev 82ecba3 of the pin file):
+
+1. *Wire format of a relay* (`State/StakePool.hs:389-421`): `[0, port/null, ipv4/null, ipv6/null]`, `[1, port/null, dns_name]`, `[2, dns_name]`;
+   the port is a `Word16`, a DNS name is text of at most 128 bytes (64 before protocol 9, the larger bound reads both).
+2. *IPv4 is four octets in network order.* cardano-ledger-binary 1.9.1.0 writes `putWord32be` and its changelog says "Fix IPv4 encoding
+   order to use network order instead of swapped"; the tree at rev f649f97 still has `putWord32le` of the numeric word (the swapped write),
+   which the release corrects. The registration in `fixtures/mainnet/shelley-pool-network-block.hex` (slot 4,495,760) carries
+   `4403652f85` with port 3001: 3.101.47.133, an address in the cloud range, not 133.47.101.3. The decoder reads network order.
+3. *IPv6 is sixteen octets in network order* by the same reading (the four host-address words, each written little-endian,
+   `Encoder.hs:569-575`), **not pinned by a real registration**: no registration with an IPv6 relay is in the repository. Open item (below).
+4. *The relays a pool offers* (`relayToLedgerRelayAccessPoint`, ouroboros-consensus `PeerSelection.hs:37-66`): with both an IPv4 and an
+   IPv6 address the IPv4 one is the relay; an address without a port, or a `SingleHostAddr` without an address, is unusable; **a
+   `SingleHostName` without a port is an SRV domain** as well as every `MultiHostName`; a pool without a usable relay is no ledger peer.
+   The ledger's list is ordered by stake, largest first, and its relays are the pool's current relays followed by its future relays
+   (`queryStakePoolRelays`, cardano-ledger-api `State/Query.hs:720-736`), with the stake of the pool distribution (`nesPd`, the *set* snapshot).
+5. *SRV pools stay in the maps.* D9 skips SRV relays when connecting, but the reference weighs and accumulates the pools that have them,
+   so the maps keep them (the relay is `LedgerRelay.Srv`, `skipped == true`) and the 90% set is the reference's. A draw can return an SRV
+   relay; G1.3b discards it (the governor asks again after the 5 s `ttl`).
+6. *The snapshot replaces both maps* (`stakeMapWithSlotOverSource`, `LedgerPeers.hs:419-431`): section 1.12 says "for big ledger peers"; the
+   ordinary map is weighted (square root) from the snapshot's pools as well. The snapshot wins when it is at a block (not the origin), at
+   or after the ledger's slot (origin = 0) and at or after `useLedgerAfterSlot` (`Always` = 0); the maps already made from a snapshot are
+   kept while its slot is the cached one.
+7. *The draw* (`LedgerPeers.hs:158-211`): a 64-bit number scaled to `[0, 1]`, or `[0, 0.9]` for big ledger peers, then `lookupGE`. The pool
+   that crosses the 90% line is therefore drawn with only the part of its stake below 0.9 (in `LedgerPeersSuite`: pools of 64, 25 and 11 per
+   cent give 71.1, 27.8 and 1.1 per cent). A number that finds no pool still uses up a draw, draws are with replacement, and the empty
+   *ordinary* map ends a draw of either kind (line 169).
+8. *Cache* (`LedgerPeers.hs:213-223, 270-278`): 30 s only while the ordinary map is empty **and** ledger peers are on, 1847 s otherwise;
+   expired when the age is strictly more.
+
+**Deviations from the reference, in one place.**
+
+1. The object is `LedgerPeerStake`, not `LedgerPeers`: `node/Topology.scala` already has an enum `LedgerPeers` (the setting of
+   `useLedgerAfterSlot`), and `PeerNetwork` imports the package of the governor with a wildcard, so a second `LedgerPeers` breaks it. G1.3b
+   should replace the enum by `UseLedgerPeers` (same cases) and may then rename the object.
+2. The square root goes through a `Double` as the reference's does (`Utils.hs:87`), converted from a 40-digit quotient: it differs from GHC's
+   `fromRational` only for a stake within 1e-40 of a rounding tie. The conversion back is exact.
+3. The random streams are `Rng` (SplitMix64) draws: the Word64 of a draw is the generator's `nextLong`, the relay index is `Rng.between`
+   (the reference's `randomR`). Proportions are the reference's; the byte stream is not.
+4. A total weight of zero gives empty maps (the reference divides by zero and fails: ouroboros-network issue 5091).
+5. The reference wraps a snapshot port outside 0 to 65535 into a `Word16`; the reader refuses it. Stakes are read as exact decimals.
+6. A draw returns the relays in the order drawn (the reference's list is reversed; it is made a set afterwards).
+
+**Tests.** `PoolRelaysSuite` (19: hand-built vectors of each relay shape, ten refusals by case, the 128-byte bound in UTF-8, the mainnet
+registration read back and re-encoded to the same bytes, properties: round trip, the consensus mapping, arbitrary and mutated bytes never
+throw, 2,000 relays on a 256 KiB stack); `LedgerPeersSuite` (34: the quota by example including the exact-90% boundary and by property,
+`recomputeRelativeStake` sums to one, draw proportions over 200,000 draws with a fixed seed against the reference's formulas for both
+weightings (4.5 sigma), `prop_pick100`, `prop_pick`, determinism, the cache lifetimes and the strict comparison, the slot rule by example and
+by property over all slot combinations, a 1,500-pool Zipf distribution checked against an independent count in doubles, and 100,000 pools
+accumulated, weighted and drawn on a 256 KiB stack: ADR 0011); `PeerSnapshotSuite` (8: the Leios testnet file as the official version-23
+example, versions 1 and 2, the relay forms, exact stakes, the refusals by case); two fuzz targets, `pool-relays` and `peer-snapshot`.
+`check` runs all of them.
+
+**Not done, and why.**
+
+- *No real distribution of a large network is in the repository*, so the 90% quota is shown on a synthetic Zipf distribution and a 100,000
+  pool one; a mainnet or Preview pool distribution fixture (from `GetPoolDistr` of a node) is for G1.3b's `LedgerPeersSource` test.
+- *No Preview registration with relays*: the repository has none and the public Preview pools were not fetched. The real registration used
+  is mainnet's (provenance in `fixtures/mainnet/README.md`); the devnet registers its three pools without relays (`relays: []` in the genesis),
+  so the devnet cannot show a non-empty decode until a pool is registered with relays in a scenario.
+- *IPv6 is read from the code, not from a registration* (fact 3): the first real IPv6 relay (a Preview or mainnet registration, or a devnet
+  pool registered with `cardano-cli ... --pool-relay-ipv6`) pins it; tracked on #137.
+
+**What G1.3b must wire.**
+
+1. `node/.../LedgerPeersSource.scala`: read the pool distribution (`nesPd`) and the registered pools' relays (current, then future) from the
+   volatile chain's ledger state through a read interface; build `Vector[LedgerPool[LedgerRelay]]` in stake order from
+   `PoolRelays.decode(relays)` and `PoolRelays.peerRelays`; log and skip a pool whose relays do not decode (`PoolRelayError`), do not fail.
+2. A ledger-peers worker over `LedgerPeersCache`/`LedgerPeerStake.refresh`/`answer`, with the monotonic clock, `UseLedgerPeers` from the
+   topology (replace the enum in `Topology.scala`, `useLedgerAfterSlot` > 0: `After`, 0: `Always`, absent or negative: `Disabled`), the
+   latest slot of the ledger as `WithOrigin`, and `PeerSnapshot.read` of `peerSnapshotFile` (read once at start; a bad file stops the node
+   with the typed error); an `Rng` split from the governor's.
+3. The `RootProvider`: `requestPublicRoots` answers from `answer[All]`, and `Source.Ledger`/`Source.BigLedger` for the peers; drop
+   `LedgerRelay.Srv` picks (`skipped`) and resolve `Domain` at connect time; `ttl` is `LedgerPeerStake.ReRequestInterval`.
+4. In `decide`: the big-ledger families, their targets, the churn steps 1 to 6 (G1.2's `Churn`), and the YoungEnough transition that lets
+   ledger peers replace the bootstrap peers.
+5. The level-4 row of section 7: Preview, official files, no `--peer`, past `useLedgerAfterSlot`, 30 minutes.
+
 ## 8. Open questions for the owner
 
 1. **D3, the meaning of `--peer`.** One local-root group with `hot = warm = n` keeps today's behaviour. Is that

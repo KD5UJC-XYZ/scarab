@@ -27,7 +27,7 @@ protocol magic, address roots, value conservation and the minimum fee.
 
 `ByronHandoverUtxoSuite` (node tests) applies transaction c1092b9c of the block at slot 4,105,943 with the Byron ledger and carries its outputs through the handover to Shelley over a UTxO store.
 
-`MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8.
+`MainnetPoolNetworkSuite` decodes the block at slot 4,495,760 and applies its pool registration at protocol versions 2 to 8. `PoolRelaysSuite` reads the relays of that registration (one IPv4 relay, `03652f85`, port 3001), the one real registration with relays in the repository.
 
 `MainnetGarbageAddressSuite` (ledger tests) and `MainnetGarbageAddressStoreSuite` (storage tests) decode the block at slot 39,249,764 and read the address of transaction 369826b2 in each era, and put its output through the UTxO stores and the Haskell UTxO codec.
 
