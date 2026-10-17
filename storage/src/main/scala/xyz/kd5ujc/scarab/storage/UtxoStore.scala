@@ -37,6 +37,12 @@ trait UtxoStore[F[_]]:
     */
   def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]]
 
+  /** The entries whose output pays to one of `addresses` (the ledger's address bytes), in one pass
+    * that does not decode the outputs it passes over (`GetUTxOByAddress`); the same entries as
+    * `select(out => addresses(out.address.raw))`.
+    */
+  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]]
+
   /** Visit every entry without collecting them (the state digests of `--dump-state`). */
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit]
 
@@ -105,6 +111,20 @@ object UtxoStore:
       }
     }
 
+  /** [[materializeWhere]] for the outputs that pay to one of `addresses`: the store passes over the
+    * others without decoding them, which is what makes a wallet's query fast on a large set.
+    */
+  def materializeAddresses[F[_]: Sync](
+      store: UtxoStore[F],
+      utxo: Utxo,
+      addresses: Set[Bytes]
+  ): F[Map[TxIn, TxOut]] =
+    store.selectAddresses(addresses).map { stored =>
+      (stored -- utxo.diff.keys) ++ utxo.diff.collect {
+        case (in, Utxo.Change(Some(out), _)) if addresses(out.address.raw) => in -> out
+      }
+    }
+
   /** Value encoding shared by the stores: the original CBOR when it round-trips, else the codec. */
   object Coding:
     import NodeCodecs.given
@@ -126,6 +146,50 @@ object UtxoStore:
       else if bytes(0) == 1 then
         TxOut.fromBytes(Bytes.wrap(java.util.Arrays.copyOfRange(bytes, 1, bytes.length)))
       else Codec.decode[TxOut](java.util.Arrays.copyOfRange(bytes, 1, bytes.length))
+
+    /** Where the address of an encoded output lies, read from the head of its CBOR without decoding
+      * the rest: `(offset, length)` in `bytes`, or `None` when the head is not one of the two
+      * output forms in definite-length, short-header shape (the caller then decodes the output). An
+      * output is `[address, value, ...]` or a map whose first entry is `0: address`.
+      */
+    def addressSpan(bytes: Array[Byte]): Option[(Int, Int)] =
+      // bytes(0) is the codec tag; the CBOR starts at 1.
+      def at(i: Int): Int = if i < bytes.length then bytes(i) & 0xff else -1
+      val open = at(1)
+      val start = (open >> 5, open & 0x1f) match
+        case (4, n) if n == 2 || n == 3  => 2 // array(2|3): the address is its first item
+        case (5, n) if n >= 1 && n <= 23 => if at(2) == 0 then 3 else -1 // map: first key is 0
+        case _                           => -1
+      if bytes.length == 0 || bytes(0) != 1 || start < 0 then None
+      else
+        val head = at(start)
+        if head >> 5 != 2 then None
+        else
+          (head & 0x1f) match
+            case n if n < 24              => Some((start + 1, n))
+            case 24 if at(start + 1) >= 0 => Some((start + 2, at(start + 1)))
+            case 25 if at(start + 2) >= 0 =>
+              Some((start + 3, (at(start + 1) << 8) | at(start + 2)))
+            case _ => None
+
+    /** Whether the encoded output may pay to one of `addresses`: a sound over-approximation, so the
+      * output is decoded only when `true`. The address in the output may carry bytes the ledger's
+      * address drops (an era reads it cut), so the test is "starts with", and a pointer address
+      * (its pointer is normalised on decoding) is always a candidate.
+      */
+    def mayPayTo(bytes: Array[Byte], addresses: Array[Array[Byte]]): Boolean =
+      addressSpan(bytes).forall { case (offset, length) =>
+        offset + length > bytes.length || length == 0 ||
+        isPointer(bytes(offset)) ||
+        addresses.exists(a =>
+          a.length <= length && java.util.Arrays
+            .equals(bytes, offset, offset + a.length, a, 0, a.length)
+        )
+      }
+
+    private def isPointer(header: Byte): Boolean =
+      val kind = (header & 0xff) >> 4
+      kind == 4 || kind == 5
 
     /** `id[32] | index` as a big-endian u16, the key of the Haskell node's UTxO-HD tables (`TxIn =
       * txid ++ be16 ix`); an index that does not fit cannot exist in a set.
@@ -169,6 +233,8 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
   def all: F[Map[TxIn, TxOut]] = state.get.map(_.entries)
   def select(keep: TxOut => Boolean): F[Map[TxIn, TxOut]] =
     state.get.map(_.entries.filter((_, out) => keep(out)))
+  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]] =
+    select(out => addresses(out.address.raw))
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit] =
     state.get.map(_.entries.foreach((k, v) => visit(k, v)))
   def size: F[Long] = state.get.map(_.entries.size.toLong)

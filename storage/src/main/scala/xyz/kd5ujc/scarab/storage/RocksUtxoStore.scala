@@ -8,6 +8,7 @@ import cats.syntax.all.*
 import fs2.io.file.Path
 import java.nio.file.{Files, StandardCopyOption}
 import java.util.concurrent.atomic.AtomicReference
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.StorageError
 import xyz.kd5ujc.scarab.ledger.{TxIn, TxOut}
 import org.rocksdb.{
@@ -17,6 +18,7 @@ import org.rocksdb.{
   CompressionType,
   LRUCache,
   Options,
+  ReadOptions,
   RocksDB,
   WriteBatch,
   WriteBufferManager,
@@ -114,6 +116,32 @@ final class RocksUtxoStore[F[_]: Sync] private (
         it.next()
       b.result()
     finally it.close()
+  }
+
+  /** One streaming pass over the raw values: an output is decoded only when the head of its
+    * encoding says it may pay to a wanted address ([[UtxoStore.Coding.mayPayTo]]). The scan does
+    * not fill the block cache, so a wallet query does not evict what the block path reads.
+    */
+  def selectAddresses(addresses: Set[Bytes]): F[Map[TxIn, TxOut]] = guard("utxo scan") {
+    val wanted = addresses.iterator.map(_.toArray).toArray
+    val options = new ReadOptions().setFillCache(false).setReadaheadSize(2L * 1024 * 1024)
+    val it = db.get.newIterator(options)
+    try
+      it.seekToFirst()
+      val b = Map.newBuilder[TxIn, TxOut]
+      while it.isValid do
+        val k = it.key()
+        if k.length == 34 then
+          val v = it.value()
+          if Coding.mayPayTo(v, wanted) then
+            Coding
+              .decodeValue(v)
+              .foreach(out => if addresses(out.address.raw) then b += Coding.decodeKey(k) -> out)
+        it.next()
+      b.result()
+    finally
+      it.close()
+      options.close()
   }
 
   def scan(visit: (TxIn, TxOut) => Unit): F[Unit] = guard("utxo scan") {

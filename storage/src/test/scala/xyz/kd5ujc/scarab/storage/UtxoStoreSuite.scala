@@ -189,19 +189,57 @@ class UtxoStoreSuite extends ScalaCheckSuite:
       stored <- store.all
       completed <- chain.utxos.traverse(u => UtxoStore.materialize(store, u))
       // a query for some addresses reads only the outputs it keeps: the same as filtering the whole
-      keep = (out: TxOut) => out.address.raw.hex.hashCode % 2 == 0
+      keep0 = (a: Bytes) => a.hex.hashCode % 2 == 0
+      keep = (out: TxOut) => keep0(out.address.raw)
       kept <- chain.utxos.traverse(u => UtxoStore.materializeWhere(store, u, keep))
+      // the same through the address path, which passes over the other outputs undecoded
+      addresses = chain.models.flatMap(_.valuesIterator.map(_.address.raw)).filter(keep0).toSet
+      byAddress <- chain.utxos.traverse(u => UtxoStore.materializeAddresses(store, u, addresses))
     yield
       val states = chain.utxos.zip(chain.models).zip(completed.zip(kept)).forall {
         case ((u, model), (full, some)) =>
+
           val (coin, count, stake, ptrs) = recomputed(model)
           some == model.filter((_, out) => keep(out)) &&
           full == model && u.coin == coin && u.count == count && u.stake == stake && u.ptrStake == ptrs
       }
       val anchor = chain.anchor
       val (coin, count, stake, ptrs) = recomputed(chain.anchorModel)
-      states && stored == chain.anchorModel && anchor.coin == coin && anchor.count == count &&
+      val paths = byAddress.zip(chain.models).forall { case (got, model) =>
+        got == model.filter((_, out) => addresses(out.address.raw))
+      }
+      states && paths && stored == chain.anchorModel && anchor.coin == coin && anchor.count == count &&
       anchor.stake == stake && anchor.ptrStake == ptrs
+
+  test("the address of an encoded output is found from the head of its CBOR, or not at all") {
+    def bytes(xs: Int*): Array[Byte] = xs.map(_.toByte).toArray
+    val addr = Array.tabulate[Int](57)(i => if i == 0 then 0x01 else i)
+    // tag 1, array(2), bytes(57) as 0x58 0x39, then a coin
+    val array = bytes((Seq(1, 0x82, 0x58, 57) ++ addr :+ 0x05)*)
+    // tag 1, map(2), key 0, bytes(57), key 1, a coin
+    val map = bytes((Seq(1, 0xa2, 0x00, 0x58, 57) ++ addr ++ Seq(0x01, 0x05))*)
+    // a map whose first key is not 0, an indefinite array and an output in the codec form
+    val reordered = bytes((Seq(1, 0xa2, 0x01, 0x05, 0x00, 0x58, 57) ++ addr)*)
+    val indefinite = bytes((Seq(1, 0x9f, 0x58, 57) ++ addr :+ 0xff)*)
+    val codec = bytes(0, 1, 2, 3)
+    assertEquals(UtxoStore.Coding.addressSpan(array), Some((4, 57)))
+    assertEquals(UtxoStore.Coding.addressSpan(map), Some((5, 57)))
+    assertEquals(UtxoStore.Coding.addressSpan(reordered), None)
+    assertEquals(UtxoStore.Coding.addressSpan(indefinite), None)
+    assertEquals(UtxoStore.Coding.addressSpan(codec), None)
+    val wanted = Array(addr.map(_.toByte))
+    val other = Array(Array.fill[Byte](57)(9))
+    assert(UtxoStore.Coding.mayPayTo(array, wanted))
+    assert(UtxoStore.Coding.mayPayTo(map, wanted))
+    assert(!UtxoStore.Coding.mayPayTo(array, other))
+    assert(!UtxoStore.Coding.mayPayTo(map, other))
+    // not located: decoded, never skipped
+    assert(UtxoStore.Coding.mayPayTo(reordered, other))
+    assert(UtxoStore.Coding.mayPayTo(codec, other))
+    // a pointer address (type 4) is a candidate whatever the wanted set holds
+    val pointer = bytes((Seq(1, 0x82, 0x58, 57, 0x40) ++ addr.tail :+ 0x05)*)
+    assert(UtxoStore.Coding.mayPayTo(pointer, other))
+  }
 
   // -------------------------------------------------------------------------------------------
 
