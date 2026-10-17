@@ -15,7 +15,7 @@ work can be parked and resumed, and nothing goes stale silently.
 | Why is it built this way? | [Architecture decision records](adr/README.md) | a new ADR when a decision is made or reversed |
 | How will a large piece of work be built? | [Design documents](design/README.md): approved plans, with their stages | the plan's owner, as stages land |
 | What is verified, against what? | [compatibility.md](compatibility.md) (matrix and evidence log) | the change that adds evidence |
-| What changed? | [CHANGELOG.md](../CHANGELOG.md) | every change that lands on `main` |
+| What changed? | [CHANGELOG.md](../CHANGELOG.md), and the fragments in [changes/](../changes/README.md) until a release folds them in | every change a user could notice, as a fragment |
 | How fast and how large? | [performance.md](performance.md) | runs that measure |
 
 Working notes, run logs and scratch analysis stay out of the repository (contributors keep them
@@ -45,6 +45,7 @@ flowchart LR
 | blocked | `status:blocked` | waits on another issue or a decision, named in a comment |
 | needs owner | `status:needs-owner` | waits on a decision or an action only the owner can take |
 | parked | `status:parked` | started and paused on purpose; the latest comment says what is done, where the branch is and how to resume |
+| owner review | label `owner-review` | the owner's review feedback; triaged into a fix, a rule with a sweep, a design issue or an answer, each replied to with its commit ([CONTRIBUTING.md](../CONTRIBUTING.md#owner-review-feedback)) |
 | done | closed as completed | the definition of done below holds; the closing comment carries the evidence |
 | not planned | closed as not planned | decided against, with the reason in a comment (and an ADR if it was a design choice) |
 

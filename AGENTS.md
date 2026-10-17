@@ -11,7 +11,12 @@ rules through [CONTRIBUTING.md](CONTRIBUTING.md).
    then any [design document](docs/design/README.md) and [ADRs](docs/adr/README.md) it links.
 2. Check the issue's state. If it is `status:in-progress` and you were not asked to take it over,
    someone else is on it.
-3. Work in your own git worktree on a branch from the integration branch you were given (or `main`).
+3. Work in your own git worktree on a branch from `main` (or the base you were given), and rebase onto
+   `main` before you report: other sessions land in parallel and there is no shared integration branch
+   ([CONTRIBUTING.md](CONTRIBUTING.md#landing-in-parallel)).
+4. Feedback from the owner arrives as inline commit comments and issues labelled `owner-review`; triage
+   it as [CONTRIBUTING.md](CONTRIBUTING.md#owner-review-feedback) says, and a general rule goes into this
+   file together with a sweep of the tree.
 
 ## Build and run: Docker only
 
@@ -55,7 +60,8 @@ scala code … I love the use of type parameters when I can use them"*.
 
 - Name the level of your change and run its gates, no more
   ([CONTRIBUTING.md](CONTRIBUTING.md#gates-and-ceremony-by-level-of-change)): at least `check`
-  (formatting, scalafix, `-Werror`, every module's tests), plus one scenario per area touched.
+  (formatting, `-Werror`, every module's tests) and `scalafixAll --check`, plus one scenario per area touched.
+  A documentation-only change (level 0) needs only that its relative links resolve.
   Soak, repeats and the long network replays are nightly CI's, not yours, unless your stage's design
   names them as its jump gate.
 - A persisted format must not change without a version bump, a migration and a test that reads the

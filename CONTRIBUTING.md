@@ -20,7 +20,7 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
 ```
 
 `check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources and runs the
-tests of all modules, the fuzz suite among them (about a minute); the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+tests of all modules, the fuzz suite among them (about a minute; `scalafixAll --check` is separate, see below); the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -40,6 +40,10 @@ container alive and talk to its sbt server:
 2. Run sbt once inside it with the server enabled (a copy of `scripts/sbtw` without
    `-Dsbt.server.autostart=false`, kept outside the repository).
 3. Send commands with `docker exec scarab-sbt <that launcher> --client "ledger/testOnly xyz.kd5ujc.scarab.ledger.*"`.
+4. Give the server a socket of its own: start the container with `-e SBT_GLOBAL_BASE=/tmp/sbt-global`
+   (`scripts/sbtw` passes it as `sbt.global.base`). Containers that share the dependency cache share one
+   socket path otherwise, and a client reaches whichever server started first, possibly another session's.
+   Remove your container when you are done.
 
 Two traps: a running JVM loads classes lazily from `target/`, so never recompile under a live
 devnet run (`devnet.py` copies the classes it runs from for this reason), and do not `pkill -f`
@@ -69,7 +73,8 @@ with a pattern that matches your own shell command line.
   18 / 61 (read once per chunk at import: 4.76 M entries of the Preview database in 1.8 s against
   0.11 s, small next to hashing the 15 GB). Re-measure before moving a format.
 - **scalafix** (`.scalafix.conf`, OrganizeImports; semanticdb is on): `scalafixAll --check` reports
-  what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards.
+  what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards. It is part of the level 1 gate
+  below, and neither `check` nor CI runs it.
 - **Coverage** is off by default: `coverage; test; coverageReport` (reports under
   `target/scala-3.3.8/scoverage-report`), then `coverageOff`.
 - **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads; the
@@ -119,7 +124,7 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 | Level | Examples | Before landing | Paperwork |
 |---|---|---|---|
 | **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve | none |
-| **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (it includes scalafix, formatting, `-Werror`, every module's tests and the fuzz suite) | commit message; a changelog fragment only if a user could notice |
+| **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (formatting, `-Werror`, every module's tests and the fuzz suite) and `scripts/sbtw scalafixAll --check` (`check` does not run scalafix) | commit message; a changelog fragment only if a user could notice |
 | **2. Behaviour change in one area** | a bug fix, a new query, a new flag or event, a performance change | `check` plus **one** scenario for the area (table below) | changelog fragment; a test that fails without the change; `docs/running.md` if a flag, event or metric changed; a `docs/findings.md` row if it was found on real data |
 | **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
 | **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log row in `docs/compatibility.md` with commit, date and command |
@@ -146,8 +151,8 @@ belong to nightly CI, not to a change.
 
 ### Nightly CI is the safety net
 
-`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job, and on demand and on
-version tags. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
+`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
+version tags; `fuzz.yml` and `cuddle-crosscheck.yml` run the longer fuzzing and the CDDL cross-check. `.github/workflows/ci.yml` runs `check`, the script tests, actionlint, a gitleaks
 scan of the whole history (`.gitleaks.toml`; a new false positive is allowlisted there by path or
 commit, scoped to its rule, with a reason) and, on pull requests, a dependency review. A red
 nightly is fixed first, before new work lands: it is the cheapest point at which to find what the
@@ -160,8 +165,8 @@ error.
 
 ### Landing in parallel
 
-Each piece of work lives in its own git worktree with its own build container and lands on its
-own: when its gates pass, rebase onto `main`. If the rebase is clean and touches no file the other
+Each piece of work lives in its own git worktree (`git worktree add`) with its own build container, devnet
+name and sbt server socket, and lands on its own: when its gates pass, rebase onto `main`. If the rebase is clean and touches no file the other
 side changed in code, rerun `check` only and push; otherwise rerun the level's gates. Nobody waits
 for another branch's gates, and there is no shared integration branch that serialises landings.
 
@@ -171,6 +176,21 @@ Each change that needs a changelog entry adds a file `changes/<issue-or-branch>.
 (a `### Added|Changed|Fixed|Removed (...)` heading and the bullets). Nobody edits `CHANGELOG.md`
 between releases, so branches do not conflict there; a release folds the fragments into a version
 section and deletes them ([changes/README.md](changes/README.md)).
+
+## Owner review feedback
+
+The owner reviews landed work by leaving inline comments on commits and by filing issues labelled
+`owner-review`. Whoever picks them up triages each one into exactly one of these, and always replies on
+the comment or issue with the commit that fixes it (or the answer):
+
+| The feedback is | What to do |
+|---|---|
+| A specific defect or preference in one place | Fix it in that area, in a small commit that names the comment. |
+| A general rule ("never X", "always Y") | Write the rule into [AGENTS.md](AGENTS.md) (and here if humans need it), then sweep the tree for other occurrences and fix them in separate commits per area. A rule with no sweep is only half applied. |
+| A change of design | Open an issue (and an ADR or a design-document stage if it reverses a decision); do not fold it into a fix. |
+| A question | Answer it in the thread. If the answer shows a document is wrong or missing, fix the document too. |
+
+Close the `owner-review` issue only when every point in it has a reply with its commit or answer.
 
 ## How evidence is recorded
 
