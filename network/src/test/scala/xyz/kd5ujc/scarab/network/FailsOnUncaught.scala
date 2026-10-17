@@ -15,6 +15,10 @@ import scala.jdk.CollectionConverters.*
 trait FailsOnUncaught extends CatsEffectSuite:
   private val reported = new ConcurrentLinkedQueue[Throwable]
 
+  // The runtime is not shut down at the end of the suite: its pools are daemon threads, and
+  // shutting a work-stealing pool down from one of its own threads (munit's afterAll runs there)
+  // does not return.
+
   override lazy val munitIORuntime: IORuntime =
     IORuntime.builder().setFailureReporter(t => { reported.add(t); () }).build()
 

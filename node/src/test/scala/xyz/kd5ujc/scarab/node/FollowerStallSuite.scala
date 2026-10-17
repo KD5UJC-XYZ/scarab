@@ -63,8 +63,9 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   private def stalling(
       honest: ServerHandlers[IO, NtNHeader],
       headers: Int
-  ): ServerHandlers[IO, NtNHeader] =
-    new ServerHandlers[IO, NtNHeader](
+  ): (ServerHandlers[IO, NtNHeader], Ref[IO, Int]) =
+    val answered = Ref.unsafe[IO, Int](0)
+    val handlers = new ServerHandlers[IO, NtNHeader](
       honest.codec,
       honest.chainSync.evalMap { inner =>
         Ref.of[IO, Int](0).map { served =>
@@ -77,14 +78,14 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
       },
       new BlockFetchServer.Blocks[IO]:
-        // one counter per peer, kept across connections: only the very first range is answered
-        private val answered = Ref.unsafe[IO, Int](0)
+        // counted across connections: only the very first range is answered
         def range(from: Point, to: Point, max: Int) =
           answered.getAndUpdate(_ + 1).flatMap { n =>
             if n == 0 then honest.blocks.range(from, to, max) else IO.never
           },
       honest.transactions
     )
+    (handlers, answered)
 
   private val tcp: SocketAddress[Host] = SocketAddress(host"127.0.0.1", port"3001")
 
@@ -149,7 +150,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         .rescue(e => IO.raiseError(new RuntimeException(e.message)))
       pool <- BlockPool.create[IO]
-      stalled <- serving(forged.raws).map(stalling(_, headers = 16))
+      stall <- serving(forged.raws).map(stalling(_, headers = 16))
+      (stalled, ranges) = stall
       healthy <- serving(forged.raws)
       retry = Follower.Retry(maxAttempts = 1000, delay = 200.millis)
       last = forged.headers.last
@@ -170,7 +172,12 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               case _                                                       => false
             })
         }
-    yield assert(reconnects.nonEmpty)
+      asked <- ranges.get
+    yield
+      assert(reconnects.nonEmpty)
+      // the stalling peer was asked for a block range it never answered: its ChainSync stall came
+      // while blocks of the batch were being fetched, not before any fetch
+      assert(asked >= 2, s"block ranges asked of the stalling peer: $asked")
   }
 
   test("a peer error raised in a fiber of the connection is raised again in the session's scope") {
