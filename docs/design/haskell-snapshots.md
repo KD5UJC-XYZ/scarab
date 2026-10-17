@@ -1,7 +1,7 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
 **Status**: Proposal (2026-10-17). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
-is built and measured on the branch that adds this document (section 8); S2 to S5 are not started. Tracked in
+is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 to S5 are not started. Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
 ([#69](https://github.com/KD5UJC-XYZ/scarab/issues/69), D9). Part of "Step D" of
@@ -39,7 +39,7 @@ Two facts found while writing this, which change earlier statements:
 |---|---|---|
 | D1 | Which backends | The Mem backend (`utxohd-mem`) for import and export. It is what Mithril ships and what node 11.1.3 reads with its default `V2InMemory`. An LSM snapshot is converted by the operator with `snapshot-converter` (section 2.5); Scarab never reads LSM run files. |
 | D2 | Does V5 stay | Yes. V5 is the per-boundary fast snapshot (sidecar, UTxO as a RocksDB checkpoint, hard-linked, no 1 GB stream). Step D adds `export-ledger-snapshot` and `import-ledger-snapshot` beside it; the node does not write Haskell-layout directories as it runs. A periodic export can be an opt-in flag later. |
-| D3 | The stored UTxO value as MemPack | Decide with the S1 numbers (section 8.4). It is independent of S2 to S5: those work with either value format, converting per entry when the stored value is CBOR. |
+| D3 | The stored UTxO value as MemPack | **Do not adopt it now** (section 8.5): on preprod it is the same size as the stored CBOR value (231.6 against 230.6 bytes an output) and decoding to the node's `TxOut` costs the same (2.66 against 2.55 microseconds), because the original encoding the rules re-read has to be rebuilt. S2 to S5 convert per output at the boundary, about 5 microseconds each way. Revisit when `TxOut` no longer needs `raw` or a mainnet measurement shows a size saving. |
 | D4 | Trust in the ledger part of a Mithril snapshot | The certificate covers the immutable files only. The ledger directory is in the ancillary archive, signed by one Ed25519 key over a manifest of SHA-256 digests (section 3.3). Import verifies that manifest signature with the network's ancillary key (given by the operator) and the file digests, refuses without it unless `--no-verify-ancillary` names the risk, and records in the evidence which of the two was used. |
 | D5 | Framing of `tables` on export | The node's own rule: a definite map head for 23 entries or fewer, an indefinite one above (section 2.2). The reader takes both. `snapshot-converter` always writes an indefinite map; both are accepted by node and converter, so byte-identity with a node-written file is a goal of the test, not a requirement of the format. |
 | D6 | Export while the node runs | No. `export-ledger-snapshot --db <dir>` reads a database directory (copy it if the node runs), from the newest V5 snapshot and its UTxO checkpoint. A snapshot is always at the immutable tip, so nothing is in flight. |
@@ -205,8 +205,61 @@ Sizes (agent-days, single session each): S1 2 (done), S2 2, S3 4, S4 1.5, S5 3. 
 * **`tables` for Byron** is `a0` (an empty map, `Ledger.hs:189-195`); a Byron-tip snapshot is refused in S3/S4 (D7).
 * **Drift**: `tablesCodecVersion` is 1; a newer version changes the format (`enforceVersion`). The reader refuses an unknown version with a typed error; the pin moves with the reference node (ADR 0001).
 
-## 8. Stage 1 as built
+## 8. Stage 1 as built (#143)
 
-Filled in with the commit that lands S1; see the end of this section for the recommendation.
+### 8.1 What exists
 
-(Placeholder until the codec and its measurements are in.)
+`ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/`:
+
+| File | Content |
+|---|---|
+| `MemPack.scala` | the format primitives (`Packer`, `Unpacker`: tag, little-endian words, `VarLen`, byte strings) and the closed `MemPack.Failure` (truncated, trailing bytes, over-long `VarLen`, unknown tag at a named site, a constructor the era lacks, a bad multi-asset representation, a quantity out of range, too many assets to compact, an address or script the node refuses, a script without bytes) |
+| `MultiAssetRep.scala` | the flat multi-asset representation of section 4.1, both directions |
+| `TxOutMemPack.scala` | `encode[E](TxOut)`, `decode[E](Bytes)`, and the lower level `encodeParts`, `decodeParts`, `parts`, `toTxOut` over `TxOutParts(address, value, datum, script)`; `E` is the era (`ShelleyBasedEra[E]`), so a Shelley output with a token, a Babbage output with a Plutus V3 reference script and an Alonzo output with an inline datum are typed refusals |
+| `CanonicalCbor.scala` | the CBOR a decoded output carries as its `raw` (section 8.3) |
+
+Nothing outside `ledger/.../mempack`, the tests, the fuzz target `mempack-txout` and one fixture directory changed; the node stores what it stored.
+
+### 8.2 Evidence, and where each golden comes from
+
+The goldens are bytes written by the reference. Building `cardano-ledger` in a Haskell container for a one-off program was not attempted (hours of dependency builds against the package index, for bytes a running node already wrote; ADR 0001); the node that wrote them is the reference.
+
+* **`fixtures/mempack/preprod-conway-sample.tsv`**: 95 outputs of the UTxO table of the Mithril preprod snapshot at slot 136,511,997, node 11.1.3 (provenance, URL and digests in `fixtures/mempack/README.md`): every constructor (0 to 5), base (key or script credentials), enterprise, pointer and Byron addresses, ada-only and multi-asset, datum hash and inline datum, native, Plutus V1, V2 and V3 reference scripts, values of 24 or more policies, one name under two policies, the empty name with others. Each line also carries what the independent Python decoder (`scripts/oracle/mempack.py`, written before this stage) reads from the bytes; the Scala decoder agrees on all 95, and packing what it decodes gives the bytes back.
+* **The seven devnet snapshots** (`fixtures/haskell-state`, node 11.1.3): the outputs of every era Shelley to Conway decode and pack back. The devnet's genesis outputs show the history dependence of section 4.3 on real bytes: in the Alonzo, Babbage and Conway snapshots they are tag 0 (compact) although they are base-address, ada-only outputs that a fresh build would pack as tag 2. The decoder reads them; the encoder, which chooses the canonical constructor, packs them as tag 2, and the test accepts exactly that difference.
+* **All 4,526,058 outputs of the preprod table** (`MemPackJoin scan`, env-gated suite `MemPackJoinSuite`): every value decodes, and packing the decoded output gives the original bytes for every one (0 differences). Constructor counts: tag 0 2,535,824; 1 88,506; 2 988,407; 3 7,932; 4 838,882; 5 66,507.
+* **The join with this node's own UTxO values** (`MemPackJoin join`): the UTxO checkpoint of the build ce8c438 (preprod, slot 80,177,772, 1,797,769 outputs, key layout of the builds before K6) against the table, both sorted by key and walked together: 1,731,810 outputs are in both (the other 65,959 of the checkpoint have been spent since, the other 2.79 million of the table created since). For every one of them the output decoded from the stored CBOR (what the blocks said) and the output decoded from the node's MemPack bytes are the same output (address, value, datum, script), and **packing the first gives the second's bytes exactly: 0 differences in 1,731,810**. This is the check that matters for export: it shows that the constructor choice, the address normalisation, the multi-asset layout and the script bytes of an output built from block CBOR are those of the reference, not only that the decoder inverts the reference's choices.
+* **Properties** (`TxOutMemPackSuite`, every era): parts pack and unpack to themselves; the canonical CBOR of an output reads back to the same output and gives the same parts; the tag is the one `mkTxOut` chooses; every proper prefix of a valid encoding is a typed failure; arbitrary bytes never throw. **`VarLen`** vectors, including 2^64 - 1 and the refusal of an eleventh group. **Fuzz**: target `mempack-txout`, seeds the 95 real outputs.
+
+### 8.3 `TxOut.raw`, the trap
+
+The node's `TxOut` is the decoded fields **and the original encoding** (`raw`), and four things re-read it: `referenceScript` and `referenceScriptSize` (the reference-script fee, `TxChecks.scala:420, 577`, `Bbody.scala:78`, `Phase2.scala:51`, `MempoolState.scala:281`), `ledgerSize` and `addressExcess` (the minimum-UTxO rule, `TxChecks.scala:123`), `Coding.addressSpan` (the address scan of #113) and `UtxoCodecs.txOut` (the answer to a node-to-client `GetUTxOByAddress`, which writes the datum and script items from `raw`). A MemPack output has no original encoding (the reference's `TxOut` does not either: it re-encodes to size it). `decode` therefore builds the **canonical CBOR** the reference writes for an output it holds only compactly (`EncCBOR (BabbageTxOut era)`: the two- or three-item array when there is no inline datum or script, else the keyed map; a value as a bare coin or `[coin, {policy: {name: quantity}}]`, maps above 23 entries indefinite) and puts it in `raw` with `valueSize`; the equal-sized `ledgerSize` and the script bytes follow from it. A decoded output must never go through `UtxoCodecs.txOut.encode` with an empty `raw` (it would drop the datum and the script silently); with the canonical `raw` it does not. The property tests compare the canonical CBOR with `TxOut.fromBytes` and the parts with `parts`, not case-class equality between an output from blocks (whose `raw` is whatever the transaction carried) and a decoded one.
+
+### 8.4 Size and speed against the stored CBOR value
+
+Input: the joined set of 8.2 (the outputs of the slot-80 M checkpoint that are still unspent in the table: a random sample by key order, since the keys are hashes) and the whole table. Method as in `FormatBenchSuite`: one JVM (JDK 21, one thread), the first 400,000 joined outputs held in memory, three warm-up runs then the median of seven timed runs, the median of three rounds; ns per output. The stored value is `Coding.encodeValue`'s (a tag byte and the output's own CBOR). `MemPackJoin join <tables> <checkpoint> bench` prints it.
+
+| 400,000 joined outputs | stored CBOR value | MemPack |
+|---|---:|---:|
+| bytes per output | 230.6 | 231.6 (x 1.004) |
+| decode to the node's `TxOut` (ns) | 2,545 | 2,664 (of which parts only 562) |
+| encode from the node's `TxOut` (ns) | 2,929 (it re-reads the CBOR to check it round-trips) | 2,017 (from parts 1,632) |
+
+The whole table, one cold pass of 4,526,058 outputs (so slower per output than the warmed figures): 186.1 bytes per output in MemPack against 185.8 for the canonical CBOR value; decode to parts 982 ns, to `TxOut` 2,747 ns, encode 2,339 ns. 31 s for the file including the I/O and the check.
+
+What the numbers say: the MemPack value is **not smaller** than the CBOR value on preprod (parity: the 57-byte base address and the hashes dominate both, and the compact form saves a few bytes only where the CBOR has heads), and **the full decode is not faster** (2.66 against 2.55 microseconds), because rebuilding `raw` and the `Address` costs 2.1 of the 2.66. Only reading the fields without the node's `TxOut` is fast (562 ns, 4.5 times faster).
+
+### 8.5 Recommendation on adopting MemPack as the stored value (decision D3)
+
+**Do not adopt it now.** The reasons: no size gain (issue #143's premise, "more compact than our CBOR values", does not hold on preprod); no decode gain for the rules; a persisted-format change with a migration of every checkpoint (ADR 0006; the snapshot fingerprint golden guards it) and a re-derivation of `raw` on every read, in exchange for the one thing it would save: converting each output once at an import or an export, which at these rates is 2 to 5 microseconds an output, **about 12 s of CPU per 4.5 million outputs** and linear in the size of the set (to be measured on mainnet), next to the minutes the RocksDB bulk load and the 1 GB of I/O take. S2 to S4 convert at the boundary, streamed.
+
+Revisit when one of these holds: (a) `TxOut` stops depending on `raw` (the reference-script size, the minimum-UTxO size and the node-to-client answers computed from the fields, as the reference does), after which the stored value can be the parts and the 562 ns read is the cost; (b) a mainnet measurement (the mainnet UTxO set has far more small ada-only outputs, where the compact forms win) shows a size saving worth a migration; (c) the address scan of #113 needs a faster path than the CBOR head: with MemPack the address of tags 0, 1, 4 and 5 is at a fixed place (tag, `Length`, bytes) and needs no head parsing, but tags 2 and 3 hold the payment hash and the stake credential and no address bytes, so a "starts with" test needs the 57-byte address rebuilt, which `fromRep` does in a few ns.
+
+Cheap improvements found while measuring, not made (the numbers above are before them): `choose` re-decodes the address to find out whether it is a base address (`Address.decode` builds a `Vector[Byte]` of it), and `toTxOut` does it again; building the `Address` of tags 2 and 3 from the fields instead would remove most of the 2.1 microseconds of 8.3's rebuild for the 22% of the outputs that are tags 2 and 3.
+
+### 8.6 What this changes in the Mithril plan (E1 #27, D9 #69)
+
+* The state side is further along than the plan said: the preprod `state` of a Mithril snapshot round-trips today (section 0). S3 is the tables, the bookkeeping the sidecar needs, and wiring.
+* The import converts each output once (MemPack to the stored CBOR value, about 5.5 microseconds in all); it does not need the stored value to change, and the node's rules are untouched.
+* The ledger directory of a Mithril database is unauthenticated by the certificate (section 3.3): E1's acceptance should say whether the import verifies the ancillary signature (D4).
+* The snapshot is behind the certified tip (here by about one chunk), so the first thing a node does after import is replay the chunks after the snapshot's slot; `import-haskell-db` and the follower already do that for the blocks (the `ledger/` directory it ignores is what S3 reads).
+* A mainnet import is a measurement of time and memory (the table is larger than the preprod one by an order of magnitude, to be measured), not a new mechanism; D9's "compare the ledger with the Haskell node's at every epoch boundary crossed" is the K7 comparison on the states of the two nodes after the same replay, and `db-analyser --store-ledger` gives the reference state at a chosen slot from the same database.

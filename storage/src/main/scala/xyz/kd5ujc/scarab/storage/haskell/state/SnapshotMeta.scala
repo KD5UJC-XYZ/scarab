@@ -31,9 +31,11 @@ enum MetaError derives Eq, Show:
   case UnknownTablesCodecVersion(version: BigInt)
 
 /** The `meta` file of a ledger snapshot (`SnapshotMetadata`, `LedgerDB/Snapshots.hs:223-243`): a
-  * JSON object `{"backend": ..., "checksum": <word32>, "tablesCodecVersion": 1}`. The checksum is a
-  * CRC32 of the `state` and `tables` files together (`Util/CRC.hs`); checking it, and writing a
-  * `meta`, belong to the writer of the snapshot, not to this reader.
+  * JSON object `{"backend": ..., "checksum": <word32>, "tablesCodecVersion": 1}`. The checksum is the
+  * CRC32 of the decimal text of the CRC32 of `state` followed by that of `tables`
+  * (`crcOfConcat`, `Util/CRC.hs:20-26`; `V2/InMemory.hs:223`), not the CRC of the two files
+  * together; checking it, and writing a `meta`, belong to the writer of the snapshot, not to this
+  * reader.
   */
 final case class SnapshotMeta(backend: SnapshotBackend, checksum: Long, tablesCodecVersion: Int)
     derives Eq,

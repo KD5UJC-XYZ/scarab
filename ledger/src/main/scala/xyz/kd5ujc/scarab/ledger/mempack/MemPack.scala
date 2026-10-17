@@ -86,21 +86,22 @@ object MemPack:
   enum Quantity:
     case Coin, Asset
 
-  given Show[Failure] = Show.show {
-    case Failure.Truncated(w, r)     => s"MemPack: $w bytes wanted, $r left"
-    case Failure.TrailingBytes(n)    => s"MemPack: $n bytes after the value"
-    case Failure.VarLenTooLong       => "MemPack: VarLen of more than 64 bits"
-    case Failure.LengthOutOfRange(n) => s"MemPack: length $n does not fit"
-    case Failure.UnknownTag(s, t)    => s"MemPack: unknown tag $t of $s"
-    case Failure.NotInEra(f, e)      => s"MemPack: $f is not in $e"
-    case Failure.BadMultiAsset(f)    => s"MemPack: multi-asset representation: $f"
-    case Failure.OutOfRange(q)       => s"MemPack: $q outside [0, 2^64 - 1]"
-    case Failure.MultiAssetTooLarge(a, p) =>
-      s"MemPack: $a assets of $p policies are too many to compact"
-    case Failure.AddressRefused(r)  => s"MemPack: address: $r"
-    case Failure.ScriptRefused(r)   => s"MemPack: script: $r"
-    case Failure.ScriptBytesMissing => "MemPack: reference script without bytes"
-  }
+  object Failure:
+    given Show[Failure] = Show.show {
+      case Failure.Truncated(w, r)     => s"MemPack: $w bytes wanted, $r left"
+      case Failure.TrailingBytes(n)    => s"MemPack: $n bytes after the value"
+      case Failure.VarLenTooLong       => "MemPack: VarLen of more than 64 bits"
+      case Failure.LengthOutOfRange(n) => s"MemPack: length $n does not fit"
+      case Failure.UnknownTag(s, t)    => s"MemPack: unknown tag $t of $s"
+      case Failure.NotInEra(f, e)      => s"MemPack: $f is not in $e"
+      case Failure.BadMultiAsset(f)    => s"MemPack: multi-asset representation: $f"
+      case Failure.OutOfRange(q)       => s"MemPack: $q outside [0, 2^64 - 1]"
+      case Failure.MultiAssetTooLarge(a, p) =>
+        s"MemPack: $a assets of $p policies are too many to compact"
+      case Failure.AddressRefused(r)  => s"MemPack: address: $r"
+      case Failure.ScriptRefused(r)   => s"MemPack: script: $r"
+      case Failure.ScriptBytesMissing => "MemPack: reference script without bytes"
+    }
 
   type Result[A] = Either[Failure, A]
 

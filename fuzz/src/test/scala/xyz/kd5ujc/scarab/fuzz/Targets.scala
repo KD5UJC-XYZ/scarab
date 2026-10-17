@@ -691,4 +691,43 @@ object Targets:
       )
     )
 
-  val all: Vector[Target] = network ++ node ++ ledgerPeers
+  /** The MemPack `TxOut` of a LedgerDB `tables` file (Step D, S1): read from a file the node does not
+    * write (a Mithril snapshot), in every era's grammar. The seeds are the real outputs of the
+    * preprod snapshot in `fixtures/mempack`; an output that decodes must pack and decode again to
+    * itself.
+    */
+  private val mempackTxOut: Vector[Target] =
+    import scala.jdk.CollectionConverters.*
+    import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
+    import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Conway, Mary, Shelley}
+    def seeds: Vector[Array[Byte]] =
+      java.nio.file.Files
+        .readAllLines(java.nio.file.Path.of("fixtures/mempack/preprod-conway-sample.tsv"))
+        .asScala
+        .toVector
+        .flatMap(line => Bytes.fromHex(line.split('\t')(2)).toOption.map(_.toArray))
+    Vector(
+      Target(
+        "mempack-txout",
+        () => seeds ++ Corpus.tricky,
+        probe("mempack-txout") { b =>
+          TxOutMemPack.decodeParts[Conway](b).foreach { p =>
+            hit("mempack-txout")
+            req(
+              TxOutMemPack
+                .encodeParts[Conway](p)
+                .flatMap(TxOutMemPack.decodeParts[Conway]) == Right(p),
+              "a MemPack output does not decode as itself after packing"
+            )
+            TxOutMemPack.toTxOut(p)
+          }
+          // the other eras' grammars read the same bytes without an exception
+          TxOutMemPack.decodeParts[Alonzo](b)
+          TxOutMemPack.decodeParts[Mary](b)
+          TxOutMemPack.decodeParts[Shelley](b)
+          ()
+        }
+      )
+    )
+
+  val all: Vector[Target] = network ++ node ++ ledgerPeers ++ mempackTxOut

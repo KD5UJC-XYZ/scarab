@@ -482,7 +482,7 @@ restarted together for 8 minutes (`MALLOC_ARENA_MAX=2`, 6 CPUs): 25,951, 26,192 
 not been measured. The UTxO key is now the Haskell node's, the 32-byte txid and the index as a big-endian u16
 (34 bytes, it was 36); the snapshot format version is 2, so older snapshots (whose checkpoints hold the old
 keys) are rejected and the node replays. The value is still the output's CBOR, not the Haskell node's
-MemPack `TxOut`; that is not done.
+MemPack `TxOut`: the codec exists and was measured (section 21, #143), and is not adopted.
 
 **The bound.** With two arenas, `RssAnon` is the heap limit plus about 0.8 GB: 3.86 GB at minute 45
 of the profile with `-Xmx3g` (3072 heap, 296 JVM, 260 RocksDB, 230 other). The recommended container
@@ -1237,3 +1237,33 @@ The final build is not slower (the difference, +0.8% to +3.7%, is within the noi
 do not add a cost that can be measured on the apply path. One hot peer is all the public Preview topology offers, so the
 update contends with no other session; the contention of 20 sessions on the one `Ref` was not measured (a compare-and-set that
 retries on a 20-peer value of this size costs microseconds, once per batch).
+
+## 21. The MemPack `TxOut` against the stored CBOR value (#143, Step D stage S1)
+
+Question of #143: is the reference's MemPack `TxOut` a better stored UTxO value than the output's CBOR? The codec is
+`ledger/.../mempack/TxOutMemPack.scala`; the design, the format and the verdict are in
+[design/haskell-snapshots.md](design/haskell-snapshots.md) section 8.
+
+**Setup.** The `tables` file of the Mithril preprod snapshot at slot 136,511,997 (node 11.1.3, 4,526,058 outputs, 1.01 GB) and
+the UTxO checkpoint of build ce8c438 (preprod, slot 80,177,772, 1,797,769 outputs). The two sorted streams are joined by key:
+1,731,810 outputs are in both. `MemPackJoin join <tables> <checkpoint> bench` (storage tests, run in the sbt JVM, JDK 21, one
+thread): the first 400,000 joined outputs in memory, three warm-up runs and the median of seven timed runs, the median of three
+rounds, as `FormatBenchSuite`. The stored value is `UtxoStore.Coding`'s: a tag byte and the output's own CBOR.
+
+**Equality.** All 4,526,058 values of the table decode and pack back to the same bytes; for all 1,731,810 joined outputs the
+stored CBOR and the table's MemPack are the same output and packing the first gives the second's bytes (0 differences).
+
+**Size and cost** (ns per output, 400,000 joined outputs):
+
+| | stored CBOR value | MemPack |
+|---|---:|---:|
+| bytes | 230.6 | 231.6 |
+| decode to the node's `TxOut` | 2,545 | 2,664 |
+| decode to the fields only | | 562 |
+| encode from the node's `TxOut` | 2,929 (with its read-back check) | 2,017 |
+| encode from the fields | | 1,632 |
+
+The whole table in one cold pass: 186.1 bytes an output in MemPack, 185.8 for the canonical CBOR value; to fields 982 ns, to
+`TxOut` 2,747 ns, encode 2,339 ns. The MemPack value is no smaller and decoding to the `TxOut` is no faster, since the
+original encoding that the rules re-read (`raw`) and the `Address` are rebuilt (2.1 of the 2.66 microseconds). Adoption is
+not recommended; converting at an import or an export costs about 5 microseconds an output.
