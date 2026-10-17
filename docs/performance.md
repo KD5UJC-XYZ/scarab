@@ -691,6 +691,45 @@ container received per block applied over the same two minutes of the run (docke
 owned (two peers, 6 minutes, 14,337 headers' worth of ranges): each peer looked at all of them and owned 7,700 and 6,637,
 which add up to 14,337: every block was claimed once, and the ranges were shared 54% to 46% between the two relays.
 
+### Two of those fixed: the chain selection window (#126) and the snapshot policy (#127)
+
+**The window (#126).** `Follower.local` built the 2,160-block window (`ChainSelection.Local`: the anchor, its view, and a
+point and select view per block) for every header that chain selection looked at. It is now kept: `commit` rolls it back to
+the switch point and appends each applied block (`Local.rolledBackTo`, `Local.extended`, an append and at most one drop from
+the front), and `local` rebuilds it only when none is kept or its anchor, length or tip is not the chain's (a restored
+chain). `LocalWindowSuite` checks the kept window against the rebuilt one (`Local.of`, the old code) after every step of
+random extensions and rollbacks of at most `k` (k from 0 to 12, forks from different salts), and once at `k = 2160` over
+5,000 blocks and a rollback of `k`. Cost per header (JIT-warm microbenchmark, `k = 2160`, one core): 45,000 ns to rebuild,
+120 ns to extend. Against the 1 to 3% of the apply thread's samples (twice that with two peers) that is the whole of it; the
+live gain was not re-measured on mainnet (no mainnet follower was started for this change).
+
+**The snapshot policy (#127).** The issue and the notes above assumed the reference node snapshots every `2k` seconds and
+after a bulk-sync threshold of 50,000 blocks; that is the older `DiskPolicy` (`onDiskShouldTakeSnapshot`). The version
+cardano-node 11.1.3 pins, ouroboros-consensus 4.2.0.0, replaced it (`Ouroboros/Consensus/Storage/LedgerDB/Snapshots.hs`):
+`defaultSnapshotPolicyArgs = mithrilSnapshotPolicyArgs` (lines 652-653, 664-675) with `sfaInterval = DefaultSnapshotInterval`,
+`sfaOffset = 0`, `sfaRateLimit = 10 * 60` s, `sfaDelaySnapshotRange = 5 to 10 min` and `spaNum = NumOfDiskSnapshots 2`;
+`resolveSnapshotInterval` makes the default `40 * k` slots (lines 631-642, 86,400 on mainnet: a day); `defaultSnapshotPolicy`
+(lines 689-754) snapshots the immutable slot before every multiple of the interval that the immutable tip passes, and
+returns nothing when the previous request is less than the rate limit old (lines 703-706, 750-753: "useful while
+bulk-syncing"); cardano-node reads `SnapshotInterval`, `NumOfDiskSnapshots`, `SlotOffset`, `RateLimit` and the delay range from
+the configuration (`cardano-node/src/Cardano/Node/Configuration/POM.hs`, lines 489-542). There is no block-count threshold.
+The node now takes that as its default (`SnapshotPolicy.Aligned(40 k, 10 min)`, `SnapshotPolicy.reference`), with 2 snapshots
+kept. A skipped crossing is not postponed, as in the reference; the snapshot is of the immutable tip that crossed the
+boundary, not of the block before it (we do not keep the earlier state), and is written at once, without the reference's random
+delay of 5 to 10 minutes (which spreads the work of a node that is at the tip; ours is in the background already).
+`--snapshot-every` (`SnapshotPolicy.EverySlots`, the distance from the previous snapshot as before) and `--keep-snapshots`
+override. The decision is the pure `SnapshotPolicy.due`, tested in `SnapshotPolicySuite` (the boundary, the rate limit, a
+simulated bulk sync that takes at most one snapshot per rate limit, the override). The graceful stop still writes a snapshot.
+
+Measured on the one fixture at hand, Preprod from genesis to slot 8,596,914 (chunks 0 to 399, 173,304 blocks, 2 CPUs,
+2 GB heap, two runs each): the old default (`--snapshot-every 1epochs`) wrote 19 snapshots and a shutdown snapshot, the new
+default 1 and the shutdown snapshot (the first crossing; the next ones came inside 10 minutes of it). Wall time was 107.7 and
+107.9 s against 108.2 and 106.2 s, no difference, because a Preprod state of that age is 5 to 14 KB and a snapshot takes
+9 to 25 ms. The saving is the mainnet one and is not measured here: the section 13 log has a snapshot of about 50 s of
+background CPU every few minutes of replay (12 to 20% of its wall time); at most one per 10 minutes bounds that at 50 s of
+600 s, 8%, and near the tip one a day replaces one per epoch (five days on mainnet), so the replay after a crash is
+at most a day of blocks, not up to five. The epoch-boundary step is not touched.
+
 ### What is left, ranked by what it should gain
 
 1. **Signature verification is now the largest cost (53% of the samples at 4 CPUs).** In order: remember the decoded and
@@ -700,12 +739,10 @@ which add up to 14,337: every block was claimed once, and the ranges were shared
    (`Ed25519Point`, 8%) the same way. Expected: 1.2 to 1.5 times at 4 CPUs, little on 24.
 2. **The epoch boundary** is one step of 8 to 9 s (`longestStep: epochBoundary` in `epochValidated`) every 21,600 blocks:
    2% of the time at 170,000 blocks an hour, more as the rest gets faster.
-3. **A snapshot every epoch** (about 50 s and 340 MB, in the background): CPU the verification wants; `--snapshot-every
-   4epochs` while syncing costs nothing but a longer replay after a crash.
-4. **Chain selection rebuilds `Local` (the whole volatile window, 2,160 blocks) for every header** (`Follower.local`, 1 to 3%
-   of the samples, doubled with a second peer): keep it incrementally.
+3. **A snapshot every epoch** (about 50 s and 340 MB, in the background): done, see the subsection above (#127).
+4. **Chain selection rebuilds `Local` for every header**: done, see the subsection above (#126).
 5. **Replay** meets the same two hot spots (the pointer scan; the store write is per block in replay too, so it gains from
-   the 128-block step) and writes a snapshot every few minutes (12 to 20% of its wall time in the log above).
+   the 128-block step); its snapshot every few minutes is now at most one per 10 minutes (#127).
 6. **Bytes**: a block of this stretch is 15 to 22 KB; at 255,000 blocks an hour that is 1 to 1.6 MB/s, so one relay is not
    the limit until the node is several times faster.
 

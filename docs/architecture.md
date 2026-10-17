@@ -412,6 +412,7 @@ composition and `Follower` the consumer, both in `node`):
 | `SnapshotMigration[F]` | `SnapshotMigration.scala` | Brings V1 and V2 snapshot files to V3 before they are opened |
 | `VolatileStore[F]` | `VolatileStore.scala` | Append-only log of the volatile chain's updates (blocks, rollback markers); lets a restart continue at the previous tip |
 | `NetworkIdentityFile` | `NetworkIdentityFile.scala`, `NetworkIdentity.scala` | The network the database was created for (`<db>/network-identity`), checked on every open |
+| `SnapshotPolicy` | `SnapshotPolicy.scala` | When the immutable tip is snapshotted: `Aligned` (the Haskell node's default, a multiple of 40 k slots and at most one per 10 minutes) or `EverySlots` (`--snapshot-every`); the pure `due` |
 | `ChainStorage` | `ChainStorage.scala` | Checks the identity, opens the stores, restores the newest usable snapshot, replays the stored blocks after it, rebuilds the volatile chain (`resume`), hands the follower a `ChainPersistence` hook, and snapshots the immutable tip when it is released |
 | `Codec[A]` | `Codec.scala`, `NodeCodecs.scala` | Binary codecs, one per type, composed. Case classes and enums are derived from their `Mirror`, so a field added to `LedgerState` is persisted with no codec change |
 | `StorageError` | `NodeError.scala` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder`, `NetworkMismatch`, `ForeignChain`; raised through `Raise[F, StorageError]`, IO exceptions are mapped at the file boundary only |

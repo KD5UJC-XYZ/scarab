@@ -80,8 +80,8 @@ value except `--forge`, `--dump-state-full` and `--mirror-check`. An unknown fla
 | `--query-port P` | `7071` | loopback port of the HTTP query server (`GET /tip`, `GET /state?slot=&hash=`, `GET /scheduling`, `GET /connections`: the connection table and the inbound sessions, `GET /metrics`: the Prometheus text format, see "Metrics") |
 | `--metrics-listen <host>:<port>` | off | a listener that serves `GET /metrics` and nothing else, for a scraper that is not on loopback (`0.0.0.0:12798` in a container); see "Metrics" |
 | `--db <dir>` | off (in-memory; replay from genesis on every start; `DatabasePath` with `--config`) | persistent chain: `network-identity`, `immutable/`, `volatile/`, `snapshots/`, `utxo/` |
-| `--snapshot-every <N\|Nslots\|Nepochs>` | `1epochs` | snapshot interval; a bare number is slots |
-| `--keep-snapshots N` | `3` | snapshots (and UTxO checkpoints) to keep |
+| `--snapshot-every <N\|Nslots\|Nepochs>` | the reference node's policy (below) | snapshot once the immutable tip is this far past the previous snapshot; a bare number is slots. Given, it replaces the default policy |
+| `--keep-snapshots N` | `2` | snapshots (and UTxO checkpoints) to keep (the reference node keeps 2) |
 | `--snapshot-check structure\|full` | `structure` | what a snapshot write proves before the file is kept: `structure`, that it parses (cheap); `full`, that it reads back to the state written (a second ledger state in memory, 0.84 GB on preprod epoch 188). A file that parses but cannot be restored is skipped at the next start, which restores an older snapshot or replays |
 | `--utxo-store memory\|rocksdb` | `rocksdb` with `--db`, otherwise `memory` | UTxO set interpreter |
 | `--utxo-cache-mb N` | `256` | native-memory budget of the RocksDB store (it holds the UTxO set and the ledger tables): one LRU block cache shared by all tables, holding data, index and filter blocks, to which the memtables are charged, so the store stays near this figure. A smaller cache costs throughput, see [performance.md](performance.md) section 8 |
@@ -125,7 +125,7 @@ Caveats:
   1, 2 or 3 has them rewritten as format 4 the first time this build opens it, before any block is
   replayed: one file at a time, atomically, under the same name, so a crash leaves each snapshot whole
   in either format and the next open finishes. It costs a few seconds per snapshot on a Preview-size
-  state (a Preview database with the default 3 kept snapshots opens in well under a minute); the log says
+  state (a Preview database with 3 kept snapshots opens in well under a minute); the log says
   `formatMigrated` with `kind` `SnapshotFile` and, for a snapshot it could not convert (corrupt, another
   schema, a state the mirror refuses), `snapshotRefused`: that one is left as it was, skipped when the
   snapshots are opened, and the node falls back to an older snapshot or replays. Nothing is replayed
@@ -139,6 +139,15 @@ Caveats:
   previous tip. After `kill -9` the node resumes from the newest periodic snapshot, replays the stored
   blocks after it, and takes the volatile chain from the log as far as the log reached the disk.
   Run the node so that the signal reaches the JVM (`docker stop`, not a shell wrapper that eats it).
+- **When a snapshot is taken** (`SnapshotPolicy`, the Haskell node's default policy: ouroboros-consensus 4.2.0.0,
+  `Storage/LedgerDB/Snapshots.hs` `defaultSnapshotPolicy` and `mithrilSnapshotPolicyArgs`, with `NumOfDiskSnapshots 2`):
+  when the immutable tip passes a multiple of `40 * k` slots (86,400 on mainnet and Preprod, a day on mainnet) and the
+  previous snapshot was taken at least 10 minutes ago, so a replay or a sync far behind the tip writes at most one
+  snapshot per 10 minutes (each costs about 50 s of background CPU on mainnet) and a node at the tip writes one a day;
+  a crossing that falls inside the 10 minutes is skipped. Two snapshots are kept. `--snapshot-every` replaces the
+  policy by "once the tip is this far past the previous snapshot" with no time limit (`--snapshot-every 1epochs` is
+  the earlier default), and `--keep-snapshots` the number kept. The snapshot at a graceful stop is independent of
+  both. Details and numbers: [performance.md](performance.md) section 13.
 
 ### Configuration and topology files
 

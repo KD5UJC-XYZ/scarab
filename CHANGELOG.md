@@ -19,6 +19,18 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `StakePoolParams` (`stakePoolStateToStakePoolParams` drops the delegators) and the CLI fills the field with an empty
   set. Checked on the devnet: the genesis delegator is delegated to pool 58b03728 and the reference prints `[]`.
 
+### Changed (#126, #127: follow-ups of the live-sync profile, #124)
+- **Chain selection keeps its window** (#126): the `k`-block `ChainSelection.Local` is rolled back and appended to by
+  `Follower.commit` instead of being rebuilt from the chain for every header (45 us against 0.12 us at `k = 2160`);
+  it is rebuilt only when missing or out of step with the chain. `LocalWindowSuite` checks the kept window against
+  the rebuilt one over random extensions and rollbacks of at most `k`.
+- **Snapshots follow the reference node's policy by default** (#127): `SnapshotPolicy.Aligned(40 k slots, 10 minutes)`
+  (ouroboros-consensus 4.2.0.0, `Snapshots.hs` `defaultSnapshotPolicy`, `mithrilSnapshotPolicyArgs`): a snapshot when
+  the immutable tip passes a multiple of 40 k slots and at most one per 10 minutes, so far behind the tip there is at
+  most one per 10 minutes and at the tip one a day (it was one per epoch). `--keep-snapshots` defaults to 2 (was 3).
+  `--snapshot-every` still overrides (`SnapshotPolicy.EverySlots`, the earlier rule). The decision is the pure
+  `SnapshotPolicy.due` (`SnapshotPolicySuite`). The shutdown snapshot is unchanged.
+
 ### Added (H2a: unattended KES rotation, #116)
 - **The evolved KES key is written back** (`KesFiles`): when the key moves to a new period, at the first slot of
   the period whether or not the pool leads, it replaces the key in the `--kes-skey` file (stage, overwrite the old
