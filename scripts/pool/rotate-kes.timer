@@ -1,0 +1,14 @@
+# Example only: copy next to rotate-kes.service and `systemctl enable --now rotate-kes.timer`.
+# A KES period is slotsPerKESPeriod slots (129600 slots, 36 hours, on mainnet), so hourly is plenty; on a test
+# network with short periods, check more often than the threshold leaves room for.
+[Unit]
+Description=Check the operational certificate of the Scarab block producer
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

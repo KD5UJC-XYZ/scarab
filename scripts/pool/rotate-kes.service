@@ -1,0 +1,21 @@
+# Example only: copy to /etc/systemd/system/, adjust the paths and the user, `systemctl daemon-reload`.
+# Runs the KES rotation driver once; rotate-kes.timer starts it. The settings come from the environment file
+# (rotate-kes.env.example). The user needs access to the Docker socket (it runs cardano-cli in a container and
+# signals the node's container), to the key directory and to the cold key.
+[Unit]
+Description=Scarab block producer: rotate the KES key when the operational certificate runs low
+Documentation=https://github.com/KD5UJC-XYZ/scarab/blob/main/docs/running.md
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=scarab-rotate
+EnvironmentFile=/etc/scarab/rotate-kes.env
+ExecStart=/usr/bin/python3 /opt/scarab/scripts/pool/rotate_kes.py
+# the exit status says what happened (0 ok, 1 reload refused, 2 not confirmed, 3 node unreachable, 4 setup wrong):
+# a unit that fails is the alert, and the next run of the timer finishes an unconfirmed rotation
+TimeoutStartSec=300
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
