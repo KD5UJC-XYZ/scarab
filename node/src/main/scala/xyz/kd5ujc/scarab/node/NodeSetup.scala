@@ -141,6 +141,17 @@ object NodeSetup:
       setup <- assemble(parsed, read)
     yield setup
 
+  /** [[fromDirectory]] and the flat state at the origin ([[assembleWithStart]]). */
+  private[scarab] def fromDirectoryWithStart(
+      dir: Path
+  ): Either[ConfigError, (NodeSetup, legacy.FlatNodeState)] =
+    def read(name: String): Option[Array[Byte]] =
+      Option.when(Files.exists(dir.resolve(name)))(Files.readAllBytes(dir.resolve(name)))
+    ConfigNames
+      .collectFirst(Function.unlift(n => read(n)))
+      .fold(Right(NodeConfig.empty))(b => NodeConfig.parse(new String(b, "UTF-8")))
+      .flatMap(assembleWithStart(_, read))
+
   def fromFiles(read: String => Option[Array[Byte]]): Either[ConfigError, NodeSetup] =
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
     ConfigNames
@@ -213,7 +224,15 @@ object NodeSetup:
   def assemble(
       config: NodeConfig,
       read: String => Option[Array[Byte]]
-  ): Either[ConfigError, NodeSetup] =
+  ): Either[ConfigError, NodeSetup] = assembleWithStart(config, read).map(_._1)
+
+  /** The setup, and the flat state of the old rules at the origin that its start state and hand-over
+    * were made from: the fixtures of the frozen formats are written from it.
+    */
+  private[scarab] def assembleWithStart(
+      config: NodeConfig,
+      read: String => Option[Array[Byte]]
+  ): Either[ConfigError, (NodeSetup, legacy.FlatNodeState)] =
     val names = config.files
     def required(role: String, name: String): Either[ConfigError, Array[Byte]] =
       read(name).toRight(
@@ -288,7 +307,7 @@ object NodeSetup:
       mirrored <- legacy.Mirroring
         .toMirror(mirrorEnvOf(genesis, globals, praos, byronParams), None, start)
         .leftMap(e => ConfigError(s"the start state does not mirror: ${e.show}"))
-    yield NodeSetup(
+    yield (NodeSetup(
       genesis,
       config,
       byron,
@@ -303,4 +322,4 @@ object NodeSetup:
       ),
       byronParams = byronParams,
       byronConfig = byronRules.map(_._2)
-    )
+    ), start)

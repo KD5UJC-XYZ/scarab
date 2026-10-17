@@ -6,6 +6,8 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import java.security.{KeyPair, KeyPairGenerator, Signature}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, Ledger, LedgerEnv, Sts}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState as EraLedgerState, NewEpochState}
 
 /** Builders for ledger rule tests: parameters per era, funded states, keys that really sign, and
   * transactions assembled as values (no CBOR).
@@ -66,6 +68,34 @@ object TestLedger:
     )
 
   val Supply: BigInt = 45000000000000000L
+
+  /** The era history the rule tests run in: epochs of 100 slots, one second each, k = 2, f = 1/2. */
+  val geometry: EpochGeometry =
+    EpochGeometry
+      .checked(java.time.Instant.EPOCH, 1000L, 100L, 2, BigDecimal("0.5"))
+      .fold(e => sys.error(e.message), identity)
+
+  /** The constants of the rules over [[geometry]]. */
+  val globals: Globals =
+    Globals(
+      LedgerGlobals(Supply, 100, Rational(1, 2), network = 0, updateQuorum = 2),
+      geometry
+    )
+
+  /** The Conway LEDGER rule on one transaction of the state `nes`: the ledger state after it, or
+    * the refusal.
+    */
+  def conwayLedger(
+      nes: NewEpochState[Conway],
+      tx: Tx,
+      env: TxEnv
+  ): Either[LedgerFailure, Counted[EraLedgerState[Conway]]] =
+    Sts(Ledger)(
+      globals,
+      LedgerEnv(env, nes.es.chainAccount.treasury),
+      Counted(nes.es.ls, PlutusStats.zero),
+      tx
+    )
 
   def txIn(n: Int): TxIn = TxIn(Blake2b.hash256.hash(Bytes(Vector(n.toByte))), 0)
 

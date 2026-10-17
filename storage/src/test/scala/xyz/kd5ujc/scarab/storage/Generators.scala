@@ -90,7 +90,6 @@ object Gens extends LowPriorityGens:
   given credential: Gens[Credential] = auto
   given address: Gens[Address] = auto
   given ptr: Gens[Ptr] = auto
-  given ptrMap: Gens[PtrMap] = of(summon[Gens[Map[Ptr, Credential]]].gen.map(PtrMap(_)))
   given rewardAccount: Gens[RewardAccount] = auto
   given value: Gens[Value] = auto
   given datum: Gens[Datum] = auto
@@ -119,12 +118,6 @@ object Gens extends LowPriorityGens:
   given enactState: Gens[EnactState] = auto
   given ratifyState: Gens[RatifyState] = auto
   given pulsingSnapshot: Gens[PulsingSnapshot] = auto
-  given govState: Gens[GovState] = auto
-  given drepState: Gens[DRepState] = auto
-  given account: Gens[Account] = auto
-  given stakeSnapshot: Gens[Snapshot] = auto
-  given rewardUpdate: Gens[RewardUpdate] = auto
-  given ledger: Gens[LedgerState] = auto
   given lite: Gens[LiteLedger] = auto
   given bootstrap: Gens[BootstrapState] = auto
   given byron: Gens[ByronState] = auto

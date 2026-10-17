@@ -75,13 +75,12 @@ class DeepNestingSuite extends FunSuite:
     assert(!onSmallStack(script.eval(Set.empty, None, None)))
   }
 
-  test("the recorded transaction passes the ledger rules, the old ones and the new ones") {
+  test("the recorded transaction passes the ledger rules") {
     val world = PreprodDeepTx.ledger
     val e = env.copy(slot = PreprodDeepTx.Slot, epoch = PreprodDeepTx.Epoch)
-    // ADR 0011: the new rules, which evaluate the script through the same fold, on the small stack
-    for rs <- RuleSet.values do
-      val outcome = onSmallStack(rs.tx(world, parsed, e))
-      assert(outcome.isRight, s"$rs: $outcome")
+    // ADR 0011: the rules evaluate the script through a fold, on the small stack
+    val outcome = onSmallStack(TestLedger.conwayLedger(world, parsed, e))
+    assert(outcome.isRight, outcome.toString)
   }
 
   // --- native scripts ------------------------------------------------------------------------------
