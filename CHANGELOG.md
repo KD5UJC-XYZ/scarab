@@ -5,6 +5,20 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
 
 ## [Unreleased]
 
+### Changed (#113, #114: node-to-client queries)
+- **`GetUTxOByAddress` passes over the outputs it does not want without decoding them.** The on-disk store
+  (`RocksUtxoStore.selectAddresses`) reads each stored output's address from the head of its CBOR (`Coding.addressSpan`)
+  and decodes the output only when that address starts with a wanted one or is a pointer address (whose pointer the
+  ledger normalises); anything it cannot place is decoded as before. The scan no longer fills the block cache. The
+  reference has no address index either: it traverses the whole set in batches and filters each output
+  (`shelleyQFTraverseTablesPredicate`, `answerShelleyTraversingQueries`), so none was added (an index would put a read
+  of the old output on every spend of the hot path, and be a persisted format). On the 4.5 M-entry preprod set,
+  43 addresses, 187,622 outputs: 8.0 s to 1.8 s with the same entries (`UtxoScanBench`).
+- **#114 closed as the reference's own answer.** `spsDelegators: []` in `cardano-cli query pool-params` is what the
+  reference prints for a pool with delegators: the wire answer of `GetStakePoolParams` and `GetPoolState` is
+  `StakePoolParams` (`stakePoolStateToStakePoolParams` drops the delegators) and the CLI fills the field with an empty
+  set. Checked on the devnet: the genesis delegator is delegated to pool 58b03728 and the reference prints `[]`.
+
 ### Added (H2a: unattended KES rotation, #116)
 - **The evolved KES key is written back** (`KesFiles`): when the key moves to a new period, at the first slot of
   the period whether or not the pool leads, it replaces the key in the `--kes-skey` file (stage, overwrite the old

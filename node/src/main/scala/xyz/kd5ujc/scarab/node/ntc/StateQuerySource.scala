@@ -85,7 +85,7 @@ object StateQuerySource:
         case QueryAnswers.UtxoNeeds.Whole =>
           UtxoStore.materialize(store, view.utxo)
         case QueryAnswers.UtxoNeeds.Addresses(addresses) =>
-          UtxoStore.materializeWhere(store, view.utxo, out => addresses(out.address.raw))
+          UtxoStore.materializeAddresses(store, view.utxo, addresses)
         case QueryAnswers.UtxoNeeds.Inputs(inputs) =>
           UtxoStore.complete(Some(store), view.utxo, inputs).map { u =>
             inputs.iterator.flatMap(i => u.get(i).map(i -> _)).toMap

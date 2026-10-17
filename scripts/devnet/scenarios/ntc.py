@@ -50,6 +50,8 @@ CLI_QUERIES = [
     ("utxo --tx-in", "utxo --tx-in {txin}"),
     ("stake-distribution", "stake-distribution"),
     ("stake-pools", "stake-pools"),
+    # the wire answer holds no delegators (`stakePoolStateToStakePoolParams`): both nodes print `"spsDelegators": []`
+    # for pools that have delegators (the genesis delegators), which is #114
     ("pool-params", "pool-params --all-stake-pools"),
     ("pool-state", "pool-state --all-stake-pools"),
     ("stake-snapshot", "stake-snapshot --all-stake-pools"),
