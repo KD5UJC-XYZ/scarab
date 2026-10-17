@@ -210,7 +210,47 @@ G4; N4 needs N3 and a buildable reference Leios node.
 - **O3** [#76](https://github.com/KD5UJC-XYZ/scarab/issues/76) (P2) Operator packaging: container image, compose and Kubernetes manifests.
 - **O4** [#80](https://github.com/KD5UJC-XYZ/scarab/issues/80) (P1) Join the node-diversity conformance and benchmarking efforts (leaderboard, Cardano Blueprint).
 
+## Order of work (set 2026-10-18)
+
+The order inside each milestone, with the reason for it. IDs are the roadmap IDs; the issues carry the
+state. This section is rewritten when the order changes.
+
+**v0.2, reference-grade evidence**
+
+1. *Under way now.* The peer governor stages G1.3b and G1.4b/G1.5 (G1; ledger peers first, peer sharing
+   after, because both edit the decision function); G7 (#132) with the typed failure outcomes of AUD-02
+   (#154); the header wall-clock check AUD-01 (#153, P0); the storage and gate items AUD-04 and AUD-08
+   (#156, #160). The test-network pool: the first block (H1a, H1; the stake becomes active at epoch 321),
+   and the pool monitoring deployment (J3c, #117).
+2. *Security and stability, before any audit candidate.* G5 limits and budgets (#35, after G7), the Plutus
+   conformance triage AUD-03 (#155), AUD-05 to AUD-07 (#157 to #159), the merge-protection decision AUD-09
+   (#161, owner), the monitoring agent's access AUD-10 (#162), the operating envelope K4 (#51) and the
+   frozen evidence bundles K5 (#52).
+3. *Fast start and the long-run evidence.* The MemPack UTxO value (D16, #143) and the Haskell snapshot
+   layout (E2, #140), then Mithril import (E1, #27), then D9 (#69, start from a Mithril snapshot and follow
+   to the tip for a week) with K7 (#68, the ledger compared at every epoch boundary) and D6 (#25, mainnet to
+   the tip); the upstream conformance suites K2 (#49) and the ledger-state projection K8 (#77); O4 (#80)
+   once there is something to publish.
+4. *Throughput, in parallel with 2 and 3.* The checklist of #124: the Plutus machine first (decide I2, #43:
+   an upstream fix is small, our own evaluator is large), then the reward-update pulse (D15, #135), D2
+   (#21) and D8 (#65). Parallel transaction application within a block is excluded.
+
+**v0.3, Leios and audit readiness**
+
+1. *Review readiness first:* the threat model O1 (#74), reproducible signed releases and the SBOM O2 (#75),
+   packaging O3 (#76), and whatever v0.2 audit tickets are still open. The audit candidate is cut after
+   this.
+2. *Protocol:* G4 (#34, handshake v15/v16 and NtC versions; Leios needs it) and Ouroboros Genesis G3
+   (#33, on the G1.5 hooks).
+3. *Leios:* the Dijkstra era L1 (#54: era history, state mirror, ledger rules), then the devnet
+   prototype N4 (#73; its sub-items are the checklist in that issue) and the Leios mempool N5 (#79).
+   Their prerequisites are G4, the mux limits of G7 and a reference Leios build to compare with; the pure
+   parts (headers, blocks, certificates: N1 to N3) are already done.
+
+**Later (no milestone yet):** deterministic simulation K9 (#78); mainnet-pool readiness (#120, the
+offline cold key and a KES agent) and an external audit, both after the v0.3 audit candidate.
+
 ## Milestones
 
 - **v0.2, reference-grade evidence**: ledger-state identity with the Haskell node at every epoch (K1 and K7), full preprod (C4) and mainnet (D6, D9) syncs, upstream conformance suites (K2, I1), fuzzing (K3), public-network block production (H1), bounded memory (K6), fast start (E1), metrics (J3), peer governance and limits (G1, G5).
-- **v0.3, Leios and audit readiness**: Leios (N1 to N4), Dijkstra (L1), Ouroboros Genesis (G3), our own Plutus evaluator decision (I2), KES lifecycle (H2), protocol versions (G4), review readiness and packaging (O1 to O3).
+- **v0.3, Leios and audit readiness**: Leios (N1 to N4), Dijkstra (L1), Ouroboros Genesis (G3), our own Plutus evaluator decision (I2), protocol versions (G4), review readiness and packaging (O1 to O3).
