@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
+import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
+
+
 import cats.arrow.FunctionK
 import cats.syntax.all.*
 import org.scalacheck.{Arbitrary, Prop}
@@ -22,7 +27,7 @@ final case class Tamper[E <: EraTag](
 /** The laws of [[LedgerMirror]] for the era `E`, over any effect `F` that has the capabilities
   * (`run` interprets it, with the environment given).
   *
-  *   - retraction: `from(to(s))` is `s`, up to [[LedgerMirror.normalised]] on `network` (the
+  *   - retraction: `from(to(s))` is `s`, up to [[LedgerMirrorBack.normalised]] on `network` (the
   *     node's, in the environment `run` gives);
   *   - the mirror is stable: `to(from(to(s)))` is `to(s)`;
   *   - the gaps are exactly the ones the mirror itself shows (and no other);
@@ -33,10 +38,14 @@ final class MirrorLaws[F[_], E <: EraTag](
     run: FunctionK[F, [A] =>> Either[MirrorError, A]],
     network: Int,
     tampers: List[Tamper[E]]
-)(using ShelleyBasedEra[E])
-    extends Laws:
+)(using
+    ShelleyBasedEra[E],
+    cats.Monad[F],
+    cats.mtl.Ask[F, MirrorEnv],
+    cats.mtl.Raise[F, MirrorError]
+) extends Laws:
 
-  private def to(at: WithOrigin[SlotNo], s: node.LedgerState) = run(mirror.to[E](at, s))
+  private def to(at: WithOrigin[SlotNo], s: flat.LedgerState) = run(mirror.to[E](at, s))
   private def from(at: WithOrigin[SlotNo], i: LedgerImage[E]) = run(mirror.from[E](at, i))
 
   /** The gaps the mirror shows: counted from the mirror's values, not from the state's. */
@@ -55,17 +64,17 @@ final class MirrorLaws[F[_], E <: EraTag](
       )(Gap.NumDelegatorsLowerBound)
 
   def laws(using
-      states: Arbitrary[node.LedgerState],
+      states: Arbitrary[flat.LedgerState],
       tips: Arbitrary[WithOrigin[SlotNo]]
   ): RuleSet =
     new SimpleRuleSet(
       "ledger mirror",
-      "retraction" -> forAll { (at: WithOrigin[SlotNo], s: node.LedgerState) =>
+      "retraction" -> forAll { (at: WithOrigin[SlotNo], s: flat.LedgerState) =>
         val back = to(at, s).flatMap(m => from(at, m.value))
-        (back == Right(LedgerMirror.normalised(network, s))) :| s"$back"
+        (back == Right(LedgerMirrorBack.normalised(network, s))) :| s"$back"
       },
       "the mirror of the retraction is the mirror" -> forAll {
-        (at: WithOrigin[SlotNo], s: node.LedgerState) =>
+        (at: WithOrigin[SlotNo], s: flat.LedgerState) =>
           val again = for
             m <- to(at, s)
             back <- from(at, m.value)
@@ -74,12 +83,12 @@ final class MirrorLaws[F[_], E <: EraTag](
           again.exists((m, n) => m == n) :| s"$again"
       },
       "the gaps are the ones the mirror shows" -> forAll {
-        (at: WithOrigin[SlotNo], s: node.LedgerState) =>
+        (at: WithOrigin[SlotNo], s: flat.LedgerState) =>
           val result = to(at, s)
           result.exists(m => m.gaps == shown(m.value)) :| s"$result"
       },
       "a mirror with a derived piece changed is refused" -> forAll {
-        (at: WithOrigin[SlotNo], s: node.LedgerState) =>
+        (at: WithOrigin[SlotNo], s: flat.LedgerState) =>
           to(at, s).fold(
             e => Prop.falsified :| s"$e",
             m =>
@@ -262,7 +271,7 @@ object MirrorLaws:
                 i.extras.snapshots.copy(mark =
                   i.extras.snapshots.mark.updated(
                     Bytes.fromArray(Array.fill(28)(0x11.toByte)),
-                    PoolResidue(Set.empty, Bytes.empty, None)
+                    flat.PoolResidue(Set.empty, Bytes.empty, None)
                   )
                 )
               )

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
@@ -9,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.Block
 import munit.FunSuite
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** Preprod tx 0c22edee (block 3,158,876, slot 83,038,792, epoch 196, Conway) spends two Byron
   * outputs whose address root equals the hash of the vkey of its one vkey witness. The ledger puts
@@ -17,7 +21,8 @@ import TestLedger.*
   * witness satisfies it. The first preprod sync of the Scala node stopped here, demanding a
   * bootstrap witness (`MissingBootstrapWitnessesUTXOW`).
   */
-abstract class PreprodByronKeyWitnessSuite(rs: RuleSet) extends FunSuite:
+class PreprodByronKeyWitnessSuite extends FunSuite:
+  private val rs = RuleSet
   private val ada = BigInt(1000000)
   private val dir = Path.of("fixtures/preprod")
 
@@ -99,5 +104,3 @@ abstract class PreprodByronKeyWitnessSuite(rs: RuleSet) extends FunSuite:
     assertEquals(rule(t), "MissingVKeyWitnessesUTXOW")
   }
 
-class PreprodByronKeyWitnessOldSuite extends PreprodByronKeyWitnessSuite(RuleSet.Old)
-class PreprodByronKeyWitnessNewSuite extends PreprodByronKeyWitnessSuite(RuleSet.New)

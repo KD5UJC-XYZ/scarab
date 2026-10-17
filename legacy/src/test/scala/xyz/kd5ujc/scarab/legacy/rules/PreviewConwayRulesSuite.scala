@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -8,6 +11,7 @@ import xyz.kd5ujc.scarab.plutus.ScalusEvaluator
 import munit.FunSuite
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The Conway transaction rules on real Preview transactions: governance proposals that carry the
   * constitution's guardrails script (Plutus V3). The ledger state around each transaction is built
@@ -16,7 +20,8 @@ import TestLedger.*
   * scripts, the script data hash), UTXO (fee, balance with the proposal deposit, collateral), GOV
   * and phase 2 (the real script against our script context) must accept it.
   */
-abstract class PreviewConwayRulesSuite(rs: RuleSet) extends FunSuite:
+class PreviewConwayRulesSuite extends FunSuite:
+  private val rs = RuleSet
   private val ada = BigInt(1000000)
 
   private val cases =
@@ -78,11 +83,11 @@ abstract class PreviewConwayRulesSuite(rs: RuleSet) extends FunSuite:
         proposals = Proposals(Vector.empty, roots)
       )
     )
-    val registered = base.copy(deposited = Epoch.obligation(base))
+    val registered = base.copy(deposited = FlatTestLedger.obligation(base))
     registered.copy(reserves = Supply - (registered.total - registered.reserves))
 
-  private def envOf(c: PlutusCase, @unused s: LedgerState): TxRules.Env =
-    TxRules.Env(
+  private def envOf(c: PlutusCase, @unused s: LedgerState): TxEnv =
+    TxEnv(
       slot = c.slot,
       epoch = c.slot / 86400,
       network = 0,
@@ -206,5 +211,3 @@ abstract class PreviewConwayRulesSuite(rs: RuleSet) extends FunSuite:
     }
   }
 
-class PreviewConwayRulesOldSuite extends PreviewConwayRulesSuite(RuleSet.Old)
-class PreviewConwayRulesNewSuite extends PreviewConwayRulesSuite(RuleSet.New)

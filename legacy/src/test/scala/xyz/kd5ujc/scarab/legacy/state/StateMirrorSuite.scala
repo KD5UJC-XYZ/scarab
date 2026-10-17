@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.consensus.state
+package xyz.kd5ujc.scarab.legacy
 
 import cats.arrow.FunctionK
 import cats.data.Kleisli
@@ -8,11 +8,22 @@ import cats.syntax.all.*
 import munit.DisciplineSuite
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  ConsensusMirrorEnv,
+  HeaderState,
+  MirrorState,
+  PrtclState,
+  StateMirrorError,
+  TPraosLedgerState,
+  TPraosState,
+  TicknState
+}
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.state.{Sorted, WithOrigin}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** The consensus side of the mirror: the laws of the whole conversion on generated states of the
+/** The conversion of the flat node state to the mirror: the laws of the whole conversion on generated states of the
   * three protocols (PBFT in Byron, TPraos from Shelley to Alonzo, Praos from Babbage), and the
   * cases the laws do not reach.
   */
@@ -59,36 +70,6 @@ class StateMirrorSuite extends DisciplineSuite:
     }
   }
 
-  test("every change to a mirror is applied to some mirror, in every protocol") {
-    val applied = List(NodeStateGen.inByron, NodeStateGen.inTPraosEras, NodeStateGen.inPraosEras)
-      .map { gen =>
-        sample(gen, 150).flatMap(l => StateTampers.all(l.state, mirrored(l)).map(_.name)).toSet
-      }
-    val structural = Set(
-      "the telescope bounds, later by a slot",
-      "the annotation of the header tip",
-      "the last slot of the chain-dependent state",
-      "the tip of the ledger state",
-      "the PBFT count of a genesis key",
-      "the header telescope in another era",
-      "extras of the other kind of state"
-    )
-    val seen = applied.reduce(_ ++ _)
-    assertEquals(structural -- seen, Set.empty[String])
-    // the protocols each see their own: PBFT counts in Byron, last slots after it
-    assert(applied.head.contains("the PBFT count of a genesis key"))
-    assert(applied(2).contains("the last slot of the chain-dependent state"))
-    assert(seen.exists(_.startsWith("the ledger side:")))
-  }
-
-  test("the ledger side's refusals come through, wrapped") {
-    val l = sample(NodeStateGen.inPraosEras, 1).head
-    val ledgerTampers =
-      StateTampers.all(l.state, mirrored(l)).filter(_.name.startsWith("the ledger side"))
-    assert(ledgerTampers.nonEmpty)
-    ledgerTampers.foreach(t => assertEquals(run(mirror.fromMirror(t.state)), Left(t.expected)))
-  }
-
   test("Byron has no gaps, a Shelley-based era has the transition") {
     val byron = sample(NodeStateGen.inByron, 3).head
     assertEquals(run(mirror.toMirror(byron.anchor, byron.state)).map(_.gaps), Right(Set.empty))
@@ -109,12 +90,14 @@ class StateMirrorSuite extends DisciplineSuite:
     )
   }
 
-  test("a Byron boundary block comes back as one") {
+  test("a Byron boundary block is the tip of the Byron mirror") {
     val l = sample(NodeStateGen.inByron, 5)
       .flatMap(l => l.anchor.map(a => l.copy(anchor = Some(a.copy(boundary = true)))))
       .head
-    val back = run(mirror.toMirror(l.anchor, l.state).flatMap(m => mirror.fromMirror(m.value)))
-    assertEquals(back.map(_._1), Right(l.anchor))
+    val tip = run(mirror.toMirror(l.anchor, l.state)).map(m =>
+      xyz.kd5ujc.scarab.consensus.state.StateMirror.anchorOf(m.value.ext.headerState.tip)
+    )
+    assertEquals(tip, Right(l.anchor))
   }
 
   test("a state whose chain-dependent state is of another protocol than its era's is refused") {

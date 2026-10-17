@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.Id
@@ -9,8 +12,10 @@ import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
-abstract class PreprodConwayRulesSuite(rs: RuleSet) extends FunSuite:
+class PreprodConwayRulesSuite extends FunSuite:
+  private val rs = RuleSet
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
   private val ada = BigInt(1000000)
 
@@ -37,7 +42,7 @@ abstract class PreprodConwayRulesSuite(rs: RuleSet) extends FunSuite:
     val base = state(c.protocolMajor, utxo.toVector).copy(params = params, epoch = 189)
     base.copy(reserves = Supply - (base.total - base.reserves))
 
-  private def env(evaluator: ScriptEvaluator[Id]) = TxRules.Env(
+  private def env(evaluator: ScriptEvaluator[Id]) = TxEnv(
     slot = c.slot,
     epoch = 189,
     network = 0,
@@ -87,5 +92,3 @@ abstract class PreprodConwayRulesSuite(rs: RuleSet) extends FunSuite:
       case other => fail(s"$other")
   }
 
-class PreprodConwayRulesOldSuite extends PreprodConwayRulesSuite(RuleSet.Old)
-class PreprodConwayRulesNewSuite extends PreprodConwayRulesSuite(RuleSet.New)

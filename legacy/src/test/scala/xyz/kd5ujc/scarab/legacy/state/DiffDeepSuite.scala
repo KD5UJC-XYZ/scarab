@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror}
+
+
 import cats.arrow.FunctionK
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}

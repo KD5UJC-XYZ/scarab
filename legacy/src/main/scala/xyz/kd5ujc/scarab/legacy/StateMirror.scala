@@ -52,14 +52,6 @@ object StateMirror:
         .filter(_ != Era.Byron)
         .getOrElse(env.forks.eraAt(s.ledger.epoch, s.ledger.params.protocolMajor))
 
-  /** What a state becomes through the mirror: a Shelley-based era's through the ledger side's
-    * ([[LedgerMirror.normalised]]), a Byron one's as it is (the flat ledger state is carried
-    * whole).
-    */
-  def normalised(env: ConsensusMirrorEnv, s: FlatNodeState): FlatNodeState =
-    if eraOf(env, s) == Era.Byron then s
-    else s.copy(ledger = LedgerMirror.normalised(env.ledger.network, s.ledger))
-
   /** The gaps of the mirror of `s`, a function of the state alone: the ledger side's, and the
     * Shelley transition that a Shelley-based era's state has and the node does not keep. Byron has
     * no gaps: its state is carried whole.

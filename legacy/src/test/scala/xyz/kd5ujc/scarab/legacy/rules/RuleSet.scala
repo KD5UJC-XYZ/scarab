@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.*
+import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
+
+
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import cats.syntax.all.*
@@ -9,81 +14,54 @@ import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.{LedgerState as _, *}
 
-/** The rule set a ledger test runs against (J2.6): the node's own rules on the flat [[LedgerState]]
-  * (`Old`), or the rules on the era-indexed state (`New`), which the test's flat state is converted
-  * to by the mirror, and the result back from, so that the suite's assertions (written over the
-  * flat state) hold of both. A suite takes a `RuleSet` and is run once for each, which makes every
-  * one of its assertions a differential test.
+/** The era-indexed rules as the ledger suites run them (J2.6 to J2.9): the LEDGER rules on a
+  * transaction, the boundary and the tick, on a state written as the flat [[LedgerState]] the
+  * suites build, which the mirror turns into the state the rules run on and
+  * [[LedgerMirrorBack]] reads the result back from, so that the suites' assertions are written over
+  * the flat state. (Until J2.9 the suites ran against the old rules too, beside these.)
   *
-  * The `New` side runs LEDGER of the era the state's protocol version names, with the checks and
-  * the state the reference has (`ShelleyLedger` before Conway, `Ledger` from it). A refusal is the
-  * typed [[LedgerFailure]] of either side, so a suite compares the rule and its payload as values.
+  * The rules run LEDGER of the era the state's protocol version names, with the checks and the
+  * state the reference has (`ShelleyLedger` before Conway, `Ledger` from it). A refusal is the
+  * typed [[LedgerFailure]], so a suite compares the rule and its payload as values.
   */
-enum RuleSet:
-  case Old, New
-
+object RuleSet:
   /** The LEDGER rules on one transaction: the state after it, or its refusal. */
-  def tx(s: LedgerState, t: Tx, ctx: TxRules.Env): Either[LedgerFailure, LedgerState] =
-    this match
-      case RuleSet.Old => TxRules(s, t, ctx)
-      case RuleSet.New => RuleSet.newTx(s, t, ctx)
+  def tx(s: LedgerState, t: Tx, ctx: TxEnv): Either[LedgerFailure, LedgerState] =
+    newTx(s, t, ctx)
 
   /** Whether POOL accepts the registration of a pool in the state (a certificate of the transaction
-    * `tx`, at index `ix`), or the rule that refuses it. The old side applies the certificate
-    * (`PreConwayCerts`), the new side runs POOL of its certificate state.
+    * `tx`, at index `ix`), or the rule that refuses it.
     */
   def registerPool(
       s: LedgerState,
       cert: Certificate.RegisterPool,
-      ix: Int,
-      ctx: TxRules.Env,
+      @annotation.unused ix: Int,
+      ctx: TxEnv,
       tx: Tx
-  ): Either[LedgerFailure, Unit] =
-    this match
-      case RuleSet.Old => PreConwayCerts(s, cert, ix, ctx, tx).void
-      case RuleSet.New => RuleSet.newRegisterPool(s, cert, ctx, tx)
+  ): Either[LedgerFailure, Unit] = newRegisterPool(s, cert, ctx, tx)
 
   /** The state one epoch later, as the boundary into `s.epoch + 1` makes it. The state's own reward
     * update, if it has one, is applied; none is made.
     */
-  def boundary(s: LedgerState, g: LedgerGlobals): LedgerState =
-    this match
-      case RuleSet.Old => xyz.kd5ujc.scarab.ledger.Epoch.boundary(s, s.epoch + 1, g)
-      case RuleSet.New => RuleSet.newBoundary(s, g, rewards = false)
+  def boundary(s: LedgerState, g: LedgerGlobals): LedgerState = newBoundary(s, g, rewards = false)
 
-  /** The state one epoch later, the epoch's rewards included: each side makes the reward update of
-    * the epoch (the old rules from `Rewards.update` at the start, the new ones at the first tick
-    * past the reward window) and the boundary applies it. The state must not have one already.
+  /** The state one epoch later, the epoch's rewards included: the rules make the reward update of
+    * the epoch at the first tick past the reward window and the boundary applies it. The state must
+    * not have one already.
     */
-  def epoch(s: LedgerState, g: LedgerGlobals): LedgerState =
-    this match
-      case RuleSet.Old =>
-        xyz.kd5ujc.scarab.ledger.Epoch.boundary(
-          s.copy(rewardUpdate = Some(xyz.kd5ujc.scarab.ledger.Rewards.update(s, g))),
-          s.epoch + 1,
-          g
-        )
-      case RuleSet.New => RuleSet.newBoundary(s, g, rewards = true)
+  def epoch(s: LedgerState, g: LedgerGlobals): LedgerState = newBoundary(s, g, rewards = true)
 
   /** What the reward update of the epoch gives each credential, made at the first block past the
-    * reward window of the state's epoch (the old rules' `Rewards.update`, the new rules' RUPD).
+    * reward window of the state's epoch (RUPD).
     */
   def rewards(s: LedgerState, g: LedgerGlobals): Map[xyz.kd5ujc.scarab.ledger.Credential, BigInt] =
-    this match
-      case RuleSet.Old => xyz.kd5ujc.scarab.ledger.Rewards.update(s, g).rewards
-      case RuleSet.New =>
-        RuleSet
-          .newRewards(s, g)
-          .rewardUpdate
-          .fold(throw new AssertionError("the new rules made no reward update"))(_.rewards)
+    newRewards(s, g).rewardUpdate
+      .fold(throw new AssertionError("the rules made no reward update"))(_.rewards)
 
   /** The state after the tick to `slot`, the first slot of whose epoch is `epochStart`. */
-  def tick(s: LedgerState, slot: BigInt, epochStart: BigInt, g: LedgerGlobals): LedgerState =
-    this match
-      case RuleSet.Old => xyz.kd5ujc.scarab.ledger.Epoch.tick(s, slot, epochStart, g)
-      case RuleSet.New => RuleSet.newTick(s, slot, g)
+  def tick(s: LedgerState, slot: BigInt, @annotation.unused epochStart: BigInt, g: LedgerGlobals): LedgerState =
+    newTick(s, slot, g)
 
-object RuleSet:
   type Result[A] = Either[MirrorError, A]
   type M[A] = Kleisli[Result, MirrorEnv, A]
   private val mirror: LedgerMirror[M] = LedgerMirror[M]
@@ -92,7 +70,7 @@ object RuleSet:
   private def newRegisterPool(
       s: LedgerState,
       cert: Certificate.RegisterPool,
-      ctx: TxRules.Env,
+      ctx: TxEnv,
       tx: Tx
   ): Either[LedgerFailure, Unit] =
     val env = FlatStateGen.env.copy(network = ctx.network, quorum = ctx.updateQuorum)
@@ -242,7 +220,7 @@ object RuleSet:
               pulserAbsent = false,
               prevParamsExplicit = image.extras.prevParamsExplicit || crossed
             )
-            def read(e: NodeExtras): Rebuilt =
+            def read(e: flat.NodeExtras): Rebuilt =
               mirror
                 .rebuilt[y](after, LedgerImage[y](r.nes, e))
                 .run(env)
@@ -298,7 +276,7 @@ object RuleSet:
     else if pv <= 8 then Some(Pre(ShelleyBasedEra.SBabbage, summon[PreConway[Babbage]]))
     else None
 
-  private def globalsOf(ctx: TxRules.Env, env: MirrorEnv): Globals =
+  private def globalsOf(ctx: TxEnv, env: MirrorEnv): Globals =
     Globals(
       LedgerGlobals(
         TestLedger.Supply,
@@ -315,7 +293,7 @@ object RuleSet:
     */
   private def broken(why: String): Nothing = throw new AssertionError(why)
 
-  private def newTx(s: LedgerState, t: Tx, ctx: TxRules.Env): Either[LedgerFailure, LedgerState] =
+  private def newTx(s: LedgerState, t: Tx, ctx: TxEnv): Either[LedgerFailure, LedgerState] =
     val env = FlatStateGen.env.copy(network = ctx.network, quorum = ctx.updateQuorum)
     val globals = globalsOf(ctx, env)
     preConway(s.params.protocolMajor) match
@@ -325,7 +303,7 @@ object RuleSet:
   private def shelleyTx[E <: EraTag](
       s: LedgerState,
       t: Tx,
-      ctx: TxRules.Env,
+      ctx: TxEnv,
       env: MirrorEnv,
       globals: Globals
   )(using era: ShelleyBasedEra[E], pre: PreConway[E]): Either[LedgerFailure, LedgerState] =
@@ -353,7 +331,7 @@ object RuleSet:
   private def conwayTx(
       s: LedgerState,
       t: Tx,
-      ctx: TxRules.Env,
+      ctx: TxEnv,
       env: MirrorEnv,
       globals: Globals
   ): Either[LedgerFailure, LedgerState] =

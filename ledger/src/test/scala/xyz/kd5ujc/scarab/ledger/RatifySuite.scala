@@ -50,7 +50,7 @@ class RatifySuite extends ScalaCheckSuite:
   ) =
     EnactState(
       committee,
-      GovState.empty.constitution,
+      ConwayGenesis.noConstitution,
       params,
       params,
       treasury,

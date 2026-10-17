@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger
+import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
+import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
+
+
 import cats.data.Kleisli
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
 import java.nio.file.Path
@@ -23,7 +29,7 @@ class RulesMirrorSuite extends FunSuite:
   private val cases: Vector[node.PlutusCase] =
     node.PlutusCase.all :+ node.PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
 
-  private def world(c: node.PlutusCase): node.LedgerState =
+  private def world(c: node.PlutusCase): flat.LedgerState =
     val conway = c.protocolMajor >= 9
     val withdrawing = c.tx.body.withdrawals.map { (account, amount) =>
       account.credential -> node.Account(
@@ -33,13 +39,12 @@ class RulesMirrorSuite extends FunSuite:
         Option.when(conway)(node.DRep.AlwaysAbstain)
       )
     }
-    node.TestLedger
-      .state(c.protocolMajor, (c.spent ++ c.references ++ c.collateral).toVector)
+    FlatTestLedger.state(c.protocolMajor, (c.spent ++ c.references ++ c.collateral).toVector)
       .copy(params = c.params, epoch = c.slot / 86400, accounts = withdrawing.toMap)
 
-  private def roundTrip[E <: EraTag](s: node.LedgerState)(using
+  private def roundTrip[E <: EraTag](s: flat.LedgerState)(using
       ShelleyBasedEra[E]
-  ): (Result[Mirrored[LedgerImage[E]]], Result[node.LedgerState]) =
+  ): (Result[Mirrored[LedgerImage[E]]], Result[flat.LedgerState]) =
     val image = mirror.to[E](at, s).run(FlatStateGen.env)
     (image, image.flatMap(m => mirror.from[E](at, m.value).run(FlatStateGen.env)))
 
@@ -58,6 +63,6 @@ class RulesMirrorSuite extends FunSuite:
           val (i, b) = roundTrip[Babbage](s)
           (i.map(_.value.extras.residue.isEmpty), b)
       assertEquals(image, Right(true), c.name)
-      assertEquals(back, Right(LedgerMirror.normalised(FlatStateGen.network, s)), c.name)
+      assertEquals(back, Right(LedgerMirrorBack.normalised(FlatStateGen.network, s)), c.name)
     }
   }

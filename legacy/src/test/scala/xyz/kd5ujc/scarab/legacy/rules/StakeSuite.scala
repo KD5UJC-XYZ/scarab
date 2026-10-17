@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
@@ -60,7 +63,7 @@ class StakeSuite extends ScalaCheckSuite:
       balances <- Gen.listOfN(5, Gen.choose(0L, 100000L))
     yield
       val ins = funds.indices.map(i => TestLedger.txIn(i))
-      val base = TestLedger.state(major, Vector.empty)
+      val base = FlatTestLedger.state(major, Vector.empty)
       val start = base.utxo ++ ins.zip(funds)
       val spent = start -- drops.distinct.map(TestLedger.txIn)
       val created = spent ++ more.zipWithIndex.map((o, i) => TestLedger.txIn(100 + i) -> o)

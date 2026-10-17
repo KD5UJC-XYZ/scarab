@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import io.circe.parser
-import java.nio.file.{Files as JFiles, Path as JPath}
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
-import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
 
 /** Mainnet sync from genesis, stop 5: at slot 17,020,941 (epoch 237, Allegra) the node refused
   * transaction 48f567e5 for `WithdrawalsNotInRewardsDELEGS`: it withdraws 351,635,274 lovelace, the
@@ -27,7 +27,8 @@ import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
   * not carry, and the entry into Allegra is a translation of that state (J2.6: the first block of
   * each era stays with the old side).
   */
-abstract class MainnetAllegraReservesSuite(rs: RuleSet) extends FunSuite:
+class MainnetAllegraReservesSuite extends FunSuite:
+  private val rs = RuleSet
   private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e), identity)
 
   // ---- the reward calculation of epoch 236
@@ -96,8 +97,7 @@ abstract class MainnetAllegraReservesSuite(rs: RuleSet) extends FunSuite:
     val epoch235 = TestLedger
       .params(2)
       .copy(nOpt = 500, d = Rational(32, 100), minPoolCost = BigInt(340000000))
-    val state = TestLedger
-      .state(3, Vector.empty)
+    val state = FlatTestLedger.state(3, Vector.empty)
       .copy(
         snapshots = Snapshots(Snapshot.empty, Snapshot.empty, go, BigInt("8115520823")),
         blocksPrevious = Map(pool -> BigInt(1), others -> BigInt(14391)),
@@ -118,99 +118,3 @@ abstract class MainnetAllegraReservesSuite(rs: RuleSet) extends FunSuite:
     assertEquals(leaderReward(nodeReserves), BigInt(351050635)) // the node's balance at stop 5
     assertEquals(leaderReward(nodeReserves + avvmReturned), BigInt(351635274)) // the withdrawal
   }
-
-/** The boundary that enters Allegra on the old rules, over the outputs of the mainnet genesis. */
-class MainnetAllegraRedeemOldSuite extends FunSuite:
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e), identity)
-
-  // ---- the boundary that enters Allegra
-
-  /** The mainnet genesis AVVM balance of `byron-genesis-trimmed.json` at its redeem address. */
-  private val avvm: (TxIn, TxOut) =
-    val json = parser
-      .parse(JFiles.readString(JPath.of("fixtures/mainnet/byron-genesis-trimmed.json")))
-      .fold(e => fail(e.getMessage), identity)
-    val (redeem, nonAvvm) =
-      ByronGenesisFile.genesisBalances(json).fold(e => fail(e.message), identity)
-    val entries = ByronLedger.genesisUtxo(redeem, nonAvvm, None).fold(e => fail(e), identity)
-    val (in, out) = entries.headOption.getOrElse(fail("no AVVM balance"))
-    in -> TxOut(Address.decode(out.address).fold(e => fail(e), identity), Value.coin(out.value))
-
-  /** A Byron output to a verification-key address (`byron-tx-inputs.json`, 044bb83d#0). */
-  private val byronKey: (TxIn, TxOut) =
-    TxIn(bytes("044bb83db45e79fc5e2859c6e6aafdb1d1e87c0e93529badf56685b35dcd7a1b"), 0) ->
-      TxOut(
-        Address
-          .decode(
-            bytes(
-              "82d818584283581c2bc72978cf21e98990ddfc12dc959acb8b53f0992882f74dad3a77baa101581e581cea1425ccdd649b389fa5a87ef50f523fea692c9b8475c22e85aa62fa001aa10b700f"
-            )
-          )
-          .fold(e => fail(e), identity),
-        Value.coin(BigInt("830565873181"))
-      )
-
-  private val shelley: (TxIn, TxOut) =
-    TestLedger.txIn(1) -> TxOut(TestLedger.key().address(1), Value.coin(BigInt(5000000)))
-
-  private val quorum = 2
-  private val globals = LedgerGlobals(
-    maxSupply = TestLedger.Supply,
-    epochLength = 100,
-    activeSlotsCoeff = Rational(1, 5),
-    network = 1,
-    updateQuorum = quorum
-  )
-
-  /** A Shelley state holding the three outputs, whose genesis delegates vote for `major`. */
-  private def shelleyState(major: Int): LedgerState =
-    val version = ParamUpdate(Map(14 -> Bytes(Vector(0x82, major, 0x00).map(_.toByte))))
-    val votes = (1 to quorum).map(n => Bytes(Vector.fill(28)(n.toByte)) -> version).toMap
-    TestLedger
-      .state(2, Vector(avvm, byronKey, shelley))
-      .copy(ppup = Ppup(votes, Map.empty))
-
-  test("the fixture's outputs: one to a redeem address, one to a key address, one Shelley") {
-    assert(Epoch.isRedeemer(avvm._2))
-    assert(!Epoch.isRedeemer(byronKey._2))
-    assert(!Epoch.isRedeemer(shelley._2))
-  }
-
-  test("entering Allegra returns the redeem outputs to the reserves and nothing else") {
-    val before = shelleyState(3)
-    assert(Epoch.entersAllegra(before, before.epoch + 1, globals))
-    val after = Epoch.boundary(before, before.epoch + 1, globals)
-    assertEquals(after.params.protocolMajor, BigInt(3))
-    assertEquals(after.utxo.toMap.keySet, Set(byronKey._1, shelley._1))
-    assertEquals(after.reserves, before.reserves + avvm._2.value.coin)
-    assertEquals(after.utxo.coin, before.utxo.coin - avvm._2.value.coin)
-    assertEquals(after.total, TestLedger.Supply)
-  }
-
-  test("a Shelley boundary that stays in Shelley keeps the redeem outputs") {
-    val before = shelleyState(2)
-    assert(!Epoch.entersAllegra(before, before.epoch + 1, globals))
-    val after = Epoch.boundary(before, before.epoch + 1, globals)
-    assertEquals(after.utxo.toMap.keySet, Set(avvm._1, byronKey._1, shelley._1))
-    assertEquals(after.reserves, before.reserves)
-  }
-
-  test("over a store the rule returns the redeem outputs fetched into the read set") {
-    // A store-backed set: the entries are stored and trimmed from the diff, so the rule sees none of
-    // them; the node fetches the stored redeem outputs into the read set before the block
-    // (`NodeRules`), and the deletion is a change of the diff, stamped with the block.
-    val shelleyEnd = shelleyState(3)
-    val stored = shelleyEnd.utxo.settled(0, force = true).at(7)
-    assert(stored.diff.isEmpty)
-    val unfetched = Epoch.boundary(shelleyEnd.copy(utxo = stored), shelleyEnd.epoch + 1, globals)
-    assertEquals(unfetched.reserves, shelleyEnd.reserves) // what the read set lacks, it cannot see
-    val fetched = shelleyEnd.copy(utxo = stored.withResident(Map(avvm)))
-    val after = Epoch.boundary(fetched, fetched.epoch + 1, globals)
-    assertEquals(after.utxo.diff.get(avvm._1), Some(Utxo.Change(None, 7)))
-    assertEquals(after.utxo.count, 2L)
-    assertEquals(after.reserves, shelleyEnd.reserves + avvm._2.value.coin)
-    assertEquals(after.total, TestLedger.Supply)
-  }
-
-class MainnetAllegraReservesOldSuite extends MainnetAllegraReservesSuite(RuleSet.Old)
-class MainnetAllegraReservesNewSuite extends MainnetAllegraReservesSuite(RuleSet.New)

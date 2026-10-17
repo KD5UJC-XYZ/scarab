@@ -21,7 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo
 }
 import xyz.kd5ujc.scarab.ledger.state.VocabularyGen.given
-import xyz.kd5ujc.scarab.ledger.GovState as NodeGovState
+import xyz.kd5ujc.scarab.ledger.ConwayGenesis
 
 /** Values and generators of the ledger tree. Maps hold a few entries (empty included) so that the
   * order of a `SortedMap` and the sharing of structure between copies are both exercised; the
@@ -32,7 +32,7 @@ object LedgerStateGen:
 
   val enact: EnactState = EnactState(
     Some(Committee(Map.empty, Rational.zero)),
-    Constitution(NodeGovState.noAnchor, None),
+    Constitution(ConwayGenesis.noAnchor, None),
     params,
     params,
     BigInt(0),

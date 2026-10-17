@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror}
+import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
+
+
 import cats.data.Kleisli
 import cats.syntax.all.*
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
@@ -28,31 +33,26 @@ import xyz.kd5ujc.scarab.ledger.{
   ScriptIntegrity,
   ScriptKind,
   TestLedger,
+  TxEnv,
   Tx,
   TxOut,
-  TxRules,
   Update,
   Value,
   Witnesses
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The LEDGER rules of Shelley, Allegra, Mary, Alonzo and Babbage on the era-indexed state
-  * ([[ShelleyLedger]], one instance over the witness) against the node's own (`PreConwayRules`), on
-  * one transaction at a time and in every era: both sides are given the same state (the era-indexed
-  * one is the old state's mirror), and what each does with the transaction is compared: the rule
-  * that refuses it, if it does, and the state after it, if it does not (the new side's state
-  * converted back, which checks what it maintains that the old state derives: the accounts and
-  * their pointers, the pointer stake, the deposits, the instantaneous rewards, the proposed
-  * updates), and the pools' delegators against the accounts.
-  *
-  * Where the reference differs from the old rules the test says so and checks both sides: the
-  * refund of the deposit the account holds, and the two checks of a genesis delegation the old
-  * rules lack. The refusals are compared as values (the typed predicate failure, with its payload),
-  * so the two sides agree on what they found as well as on the rule; the withdrawals that do not
-  * drain their accounts (LEDGER's `ShelleyIncompleteWithdrawals`) and the genesis signatures of a
-  * MIR certificate (UTXOW's) are the reference's on both sides now.
+  * ([[ShelleyLedger]], one instance over the witness), on one transaction at a time and in every
+  * era: the state is a flat fixture, which the mirror turns into the state the rules run on, and what
+  * the rules do with the transaction is checked: the rule that refuses it, if it does, as the typed
+  * predicate failure with its payload, and the state after it, if it does not (converted back, which
+  * checks what the rules maintain that the flat state derives: the accounts and their pointers, the
+  * pointer stake, the deposits, the instantaneous rewards, the proposed updates), and the pools'
+  * delegators against the accounts. (Until J2.9 the suite ran the old rules beside these and
+  * compared the two.)
   */
 class ShelleyLedgerSuite extends FunSuite:
   type Result[A] = Either[MirrorError, A]
@@ -90,17 +90,12 @@ class ShelleyLedgerSuite extends FunSuite:
 
   /** What a side did with a transaction. */
   private enum Out:
-    case Accepted(state: node.LedgerState)
+    case Accepted(state: flat.LedgerState)
     case Refused(failure: LedgerFailure)
     case Broken(why: String)
 
-  private def oldSide(s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out =
-    TxRules(s, t, ctx) match
-      case Right(next) => Out.Accepted(next)
-      case Left(f)     => Out.Refused(f)
-
   /** The new side's ledger state after the transaction, or why it refused it. */
-  private def afterOf[E <: EraTag](s: node.LedgerState, t: Tx, ctx: TxRules.Env)(using
+  private def afterOf[E <: EraTag](s: flat.LedgerState, t: Tx, ctx: TxEnv)(using
       era: ShelleyBasedEra[E],
       pre: PreConway[E]
   ): Either[LedgerFailure, (LedgerImage[E], Counted[LedgerState[E]])] =
@@ -113,7 +108,7 @@ class ShelleyLedgerSuite extends FunSuite:
       t
     ).map(image -> _)
 
-  private def newSideOf[E <: EraTag](s: node.LedgerState, t: Tx, ctx: TxRules.Env)(using
+  private def newSideOf[E <: EraTag](s: flat.LedgerState, t: Tx, ctx: TxEnv)(using
       era: ShelleyBasedEra[E],
       pre: PreConway[E]
   ): Out =
@@ -133,49 +128,39 @@ class ShelleyLedgerSuite extends FunSuite:
             case Left(e)      => Out.Broken(s"back from the mirror: ${e.show}")
             case Right(state) => Out.Accepted(state)
 
-  private def newSide(c: Case[?], s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out = c match
+  private def newSide(c: Case[?], s: flat.LedgerState, t: Tx, ctx: TxEnv): Out = c match
     case k: Case[e] => newSideOf[e](s, t, ctx)(using k.era, k.pre)
 
   /** The new side's governance state after the transaction. */
-  private def govAfter(c: Case[?], s: node.LedgerState, t: Tx, ctx: TxRules.Env): ShelleyGovState =
+  private def govAfter(c: Case[?], s: flat.LedgerState, t: Tx, ctx: TxEnv): ShelleyGovState =
     c match
       case k: Case[e] =>
         afterOf[e](s, t, ctx)(using k.era, k.pre) match
           case Left(f)             => fail(s"${c.name}: ${f.message}")
           case Right((_, counted)) => k.pre.gov.get(counted.state.utxo)
 
-  private def both(c: Case[?], s: node.LedgerState, t: Tx, ctx: TxRules.Env): (Out, Out) =
-    (oldSide(s, t, ctx), newSide(c, s, t, ctx))
-
   private def name(f: LedgerFailure): String = f match
     case LedgerFailure.Rejected(_, p) => p.ruleName
     case other                        => other.message
 
-  /** Both sides on one transaction: they agree on the state, or on the rule that refuses. */
-  private def agree(c: Case[?], s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out =
-    val (o, n) = both(c, s, t, ctx)
-    (o, n) match
-      case (Out.Accepted(a), Out.Accepted(b)) =>
-        assertEquals(LedgerMirror.normalised(0, b), LedgerMirror.normalised(0, a), c.name)
-      case (Out.Refused(a), Out.Refused(b)) => assertEquals(b, a, c.name)
-      case _                                => assertEquals(n, o, c.name)
-    n
+  /** The rules on one transaction: the state after it, or the refusal. */
+  private def agree(c: Case[?], s: flat.LedgerState, t: Tx, ctx: TxEnv): Out = newSide(c, s, t, ctx)
 
   private def accepted(
       c: Case[?],
-      s: node.LedgerState,
+      s: flat.LedgerState,
       t: Tx,
-      ctx: TxRules.Env = TestLedger.env
-  ): node.LedgerState =
+      ctx: TxEnv = TestLedger.env
+  ): flat.LedgerState =
     agree(c, s, t, ctx) match
       case Out.Accepted(next) => next
       case other              => fail(s"${c.name}: expected the transaction to be accepted: $other")
 
   private def refusedWith(
       c: Case[?],
-      s: node.LedgerState,
+      s: flat.LedgerState,
       t: Tx,
-      ctx: TxRules.Env = TestLedger.env
+      ctx: TxEnv = TestLedger.env
   ): String =
     agree(c, s, t, ctx) match
       case Out.Refused(f) => name(f)
@@ -197,7 +182,7 @@ class ShelleyLedgerSuite extends FunSuite:
       pools: Map[Bytes, NodePoolState] = Map.empty,
       genDelegs: Map[Bytes, GenDelegPair] = Map.empty,
       ptrs: Map[node.Ptr, NodeCredential] = Map.empty
-  ): node.LedgerState =
+  ): flat.LedgerState =
     val s = state(c.pv, funds)
     val deposits = accounts.values.map(_.deposit).sum + pools.values.map(_.deposit).sum
     s.copy(
@@ -422,11 +407,8 @@ class ShelleyLedgerSuite extends FunSuite:
         ),
         "DelegateeNotRegisteredDELEG"
       )
-      // the old rules count a refund for the key that is not registered, and refuse the value first
-      val (o, n) =
-        both(c, s, certify(Certificate.Unregister(carol.credential, None), carol), TestLedger.env)
+      val n = newSide(c, s, certify(Certificate.Unregister(carol.credential, None), carol), TestLedger.env)
       assertEquals(refusal(n, c), "StakeKeyNotRegisteredDELEG", c.name)
-      assertEquals(refusal(o, c), "ValueNotConservedUTxO", c.name)
     }
   }
 
@@ -462,11 +444,10 @@ class ShelleyLedgerSuite extends FunSuite:
         certificates = Vector(Certificate.Unregister(carol.credential, None)),
         signers = Vector(carol)
       )
-      val (o, n) = both(c, s, dereg, TestLedger.env)
+      val n = newSide(c, s, dereg, TestLedger.env)
       n match
         case Out.Accepted(next) => assertEquals(next.accounts.get(carol.credential), None, c.name)
         case other              => fail(s"${c.name}: $other")
-      assertEquals(refusal(o, c), "ValueNotConservedUTxO", c.name)
     }
   }
 
@@ -483,16 +464,15 @@ class ShelleyLedgerSuite extends FunSuite:
       assertEquals(next.accounts(bob.credential).balance, BigInt(0), c.name)
       val partial =
         pay("partial", alice, withdrawals = Vector(account -> 3 * ada), signers = Vector(bob))
-      val (o, n) = both(c, s, partial, TestLedger.env)
+      val n = newSide(c, s, partial, TestLedger.env)
       assertEquals(refusal(n, c), "ConwayIncompleteWithdrawals", c.name)
-      assertEquals(refusal(o, c), "ConwayIncompleteWithdrawals", c.name)
       val unknown = pay(
         "unknown",
         alice,
         withdrawals = Vector(RewardAccount(0, carol.credential) -> 1),
         signers = Vector(carol)
       )
-      val (_, missing) = both(c, s, unknown, TestLedger.env)
+      val missing = newSide(c, s, unknown, TestLedger.env)
       assertEquals(refusal(missing, c), "ConwayWithdrawalsMissingAccounts", c.name)
     }
   }
@@ -581,7 +561,7 @@ class ShelleyLedgerSuite extends FunSuite:
       .map { case ((g, d), i) => g.hash -> GenDelegPair(d.hash, Bytes(Vector.fill(32)(i.toByte))) }
       .toMap
 
-  private def withGenesis(c: Case[?]): node.LedgerState =
+  private def withGenesis(c: Case[?]): flat.LedgerState =
     base(
       c,
       fundedBy(alice),
@@ -596,11 +576,10 @@ class ShelleyLedgerSuite extends FunSuite:
       val signed = pay("mir", alice, certificates = Vector(cert), signers = delegates)
       val next = accepted(c, s, signed)
       assertEquals(next.mir.reserves(bob.credential), 7 * ada, c.name)
-      // one signature of two: UTXOW refuses it, on both sides
+      // one signature of two: UTXOW refuses it
       val partial = pay("mir", alice, certificates = Vector(cert), signers = delegates.take(1))
-      val (o, n) = both(c, s, partial, TestLedger.env)
+      val n = newSide(c, s, partial, TestLedger.env)
       assertEquals(refusal(n, c), "MIRInsufficientGenesisSigsUTXOW", c.name)
-      assertEquals(refusal(o, c), "MIRInsufficientGenesisSigsUTXOW", c.name)
       // too late in the epoch: the slot is within 3k/f (100) of the end of the epoch (5000)
       assertEquals(
         refusedWith(c, s, signed, TestLedger.env.copy(slot = 4950)),
@@ -672,15 +651,13 @@ class ShelleyLedgerSuite extends FunSuite:
         refusedWith(c, s, delegation(carol, delegate.hash, vrf)),
         "GenesisKeyNotInMappingDELEG"
       )
-      // the other genesis key's delegate: the old rules accept it
+      // the other genesis key's delegate
       val dup = delegation(genesisKeys(0), delegates(1).hash, vrf)
-      val (o, n) = both(c, s, dup, TestLedger.env)
+      val n = newSide(c, s, dup, TestLedger.env)
       assertEquals(refusal(n, c), "DuplicateGenesisDelegateDELEG", c.name)
-      assert(o.isInstanceOf[Out.Accepted], c.name)
       val dupVrf = delegation(genesisKeys(0), delegate.hash, Bytes(Vector.fill(32)(1.toByte)))
-      val (o2, n2) = both(c, s, dupVrf, TestLedger.env)
+      val n2 = newSide(c, s, dupVrf, TestLedger.env)
       assertEquals(refusal(n2, c), "DuplicateGenesisVRFDELEG", c.name)
-      assert(o2.isInstanceOf[Out.Accepted], c.name)
     }
   }
 
@@ -1009,12 +986,10 @@ class ShelleyLedgerSuite extends FunSuite:
         withdrawals = keys.map(k => RewardAccount(0, k.credential) -> BigInt(1)),
         signers = keys ++ others
       )
-      val (o, n) = onSmallStack(both(c, s, t, TestLedger.env))
-      (o, n) match
-        case (Out.Accepted(a), Out.Accepted(b)) =>
-          assertEquals(LedgerMirror.normalised(0, b), LedgerMirror.normalised(0, a), c.name)
+      onSmallStack(newSide(c, s, t, TestLedger.env)) match
+        case Out.Accepted(b) =>
           assertEquals(b.accounts.size, 2 * width, c.name)
           assertEquals(b.ptrs.size, width, c.name)
-        case _ => fail(s"${c.name}: expected the wide transaction to be accepted: $o $n")
+        case other => fail(s"${c.name}: expected the wide transaction to be accepted: $other")
     }
   }

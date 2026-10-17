@@ -98,34 +98,8 @@ object LedgerMirror:
       errors: Raise[F, MirrorError]
   ): LedgerMirror[F] = Impl[F]
 
-  /** What a state becomes through the mirror, on the node's `network`: the future genesis
-    * delegations are a map in Haskell, ordered by slot and key and with one entry of each, and a
-    * vector with no order in the node; nothing reads their order. The reward account of a
-    * registered pool, and of a pool in a stake snapshot, is on the node's network
-    * ([[node.PoolParams.registeredOn]]): Haskell keeps its credential only, as the rules read it.
-    * The future parameters of a pool keep theirs.
-    */
-  def normalised(network: Int, s: flat.LedgerState): flat.LedgerState =
-    s.copy(
-      futureGenDelegs = s.futureGenDelegs
-        .groupBy(d => (d.slot, d.genesisKey))
-        .values
-        .map(_.last)
-        .toVector
-        .sortWith((a, b) =>
-          a.slot < b.slot || (a.slot == b.slot && (a.genesisKey compareTo b.genesisKey) < 0)
-        ),
-      pools = s.pools.view.mapValues(p => p.copy(params = p.params.registeredOn(network))).toMap,
-      snapshots = s.snapshots.copy(
-        mark = poolsOn(network, s.snapshots.mark),
-        set = poolsOn(network, s.snapshots.set),
-        go = poolsOn(network, s.snapshots.go)
-      ),
-      poolDistribution = poolsOn(network, s.poolDistribution)
-    )
-
   /** The snapshot with its pools' reward accounts on `network`. */
-  private def poolsOn(network: Int, s: flat.Snapshot): flat.Snapshot =
+  private[legacy] def poolsOn(network: Int, s: flat.Snapshot): flat.Snapshot =
     s.copy(pools = s.pools.view.mapValues(_.registeredOn(network)).toMap)
 
   /** The gaps of the mirror of `s` (`Gap`), a function of the state alone. */

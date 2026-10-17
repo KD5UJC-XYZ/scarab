@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.{LedgerImage, LedgerMirror, LedgerMirrorBack}
+import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
+
+
 import cats.arrow.FunctionK
 import cats.data.Kleisli
 import cats.kernel.laws.discipline.EqTests
@@ -67,15 +72,15 @@ class LedgerMirrorSuite extends DisciplineSuite:
 
   private val at: WithOrigin[SlotNo] = WithOrigin.At(SlotNo.fromUnsigned(50L))
 
-  private def toConway(s: node.LedgerState): Result[Mirrored[LedgerImage[Conway]]] =
+  private def toConway(s: flat.LedgerState): Result[Mirrored[LedgerImage[Conway]]] =
     run(mirror.to[Conway](at, s))
 
-  private def sampled(conway: Boolean, seed: Long): node.LedgerState =
+  private def sampled(conway: Boolean, seed: Long): flat.LedgerState =
     FlatStateGen
       .state(conway)
       .pureApply(Gen.Parameters.default.withSize(20), org.scalacheck.rng.Seed(seed))
 
-  private val sample: node.LedgerState = sampled(conway = true, 7L)
+  private val sample: flat.LedgerState = sampled(conway = true, 7L)
 
   private def shown(e: MirrorError): String = e.show
 
@@ -90,7 +95,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
   test("the generator reaches the interesting parts of a state") {
     val states = (1L to 300L).map(sampled(conway = true, _))
     val early = (1L to 300L).map(sampled(conway = false, _))
-    def count(label: String, ss: Seq[node.LedgerState])(p: node.LedgerState => Boolean): Unit =
+    def count(label: String, ss: Seq[flat.LedgerState])(p: flat.LedgerState => Boolean): Unit =
       assert(ss.count(p) >= 10, s"$label: ${ss.count(p)} of ${ss.size}")
     count("pools", states)(_.pools.nonEmpty)
     count("a pool delegation", states)(_.accounts.values.exists(_.pool.isDefined))
@@ -130,7 +135,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
 
   // ---- what a real Haskell state showed (S8)
 
-  private def withPools(s: node.LedgerState): node.LedgerState =
+  private def withPools(s: flat.LedgerState): flat.LedgerState =
     (1L to 200L).iterator.map(sampled(conway = true, _)).find(_.pools.size >= 2).fold(s)(identity)
 
   test("a VRF key two pools share is counted twice in psVRFKeyHashes") {
@@ -146,8 +151,8 @@ class LedgerMirrorSuite extends DisciplineSuite:
     val key = VRFVerKeyHash.fromBytes(shared).fold(e => fail(e.show), identity)
     assertEquals(counts(key).value.toBigInt, BigInt(2))
     assertEquals(
-      run(mirror.from[Conway](at, m.value)).map(LedgerMirror.normalised(FlatStateGen.network, _)),
-      Right(LedgerMirror.normalised(FlatStateGen.network, bad))
+      run(mirror.from[Conway](at, m.value)).map(LedgerMirrorBack.normalised(FlatStateGen.network, _)),
+      Right(LedgerMirrorBack.normalised(FlatStateGen.network, bad))
     )
   }
 
@@ -190,7 +195,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
         val left = s.copy(accounts =
           s.accounts.updated(node.Credential.Key(owner), node.Account(0, 0, None, None))
         )
-        def owners(basis: SnapshotBasis, state: node.LedgerState): Set[Bytes] =
+        def owners(basis: SnapshotBasis, state: flat.LedgerState): Set[Bytes] =
           run(mirror.to[Conway](at, state).local[MirrorEnv](_.copy(snapshots = basis)))
             .fold(
               e => fail(e.show),
@@ -249,7 +254,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
       futurePools = pooled.futurePools.updated(id, moved)
     )
     val back = toConway(odd).flatMap(m => run(mirror.from[Conway](at, m.value)))
-    assertEquals(back, Right(LedgerMirror.normalised(FlatStateGen.network, odd)))
+    assertEquals(back, Right(LedgerMirrorBack.normalised(FlatStateGen.network, odd)))
     assertEquals(
       back.map(s => (s.pools(id).params.rewardAccount.network, s.futurePools(id).rewardAccount)),
       Right((FlatStateGen.network, moved.rewardAccount))
@@ -259,7 +264,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
   test("a snapshot with stake and no delegation is refused") {
     val stake = Map[node.Credential, BigInt](node.Credential.Key(hash(3)) -> BigInt(5))
     val bad = sample.copy(snapshots =
-      sample.snapshots.copy(mark = node.Snapshot(stake, Map.empty, Map.empty))
+      sample.snapshots.copy(mark = flat.Snapshot(stake, Map.empty, Map.empty))
     )
     assertEquals(
       toConway(bad).left.toOption.map(_.show),
@@ -269,7 +274,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
 
   // ---- what is residue, and does not get lost
 
-  private val residual: Gen[node.LedgerState] =
+  private val residual: Gen[flat.LedgerState] =
     val credential = node.Credential.Key(hash(9))
     FlatStateGen
       .state(conway = false)
@@ -280,7 +285,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
           dreps = Map(credential -> node.DRepState(1, 2)),
           committeeState = Map(credential -> node.CommitteeAuth.Resigned(None)),
           dormantEpochs = 3,
-          gov = node.GovState.empty
+          gov = flat.GovState.empty
             .copy(committee = Some(node.Committee(Map(credential -> BigInt(4)), Rational(1, 3))))
         )
       )
@@ -289,7 +294,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
     forAll(residual) { s =>
       val image = run(mirror.to[Babbage](at, s))
       val back = image.flatMap(m => run(mirror.from[Babbage](at, m.value)))
-      back == Right(LedgerMirror.normalised(FlatStateGen.network, s)) &&
+      back == Right(LedgerMirrorBack.normalised(FlatStateGen.network, s)) &&
       image.map(_.value.extras.residue.isEmpty) == Right(false)
     }
   }
@@ -297,11 +302,11 @@ class LedgerMirrorSuite extends DisciplineSuite:
   property("a pointer and a proposal in a Conway state are residue, and survive") {
     forAll(FlatStateGen.state(conway = true)) { s =>
       val ptrs = Map(node.Ptr(7, 0, 0) -> node.Credential.Key(hash(8)))
-      val ppup = node.Ppup(Map.empty, Map(hash(1) -> node.ParamUpdate(Map.empty)))
+      val ppup = flat.Ppup(Map.empty, Map(hash(1) -> node.ParamUpdate(Map.empty)))
       val odd = s.copy(ptrs = node.PtrMap(ptrs), ppup = ppup)
       val image = toConway(odd)
       val back = image.flatMap(m => run(mirror.from[Conway](at, m.value)))
-      back == Right(LedgerMirror.normalised(FlatStateGen.network, odd)) &&
+      back == Right(LedgerMirrorBack.normalised(FlatStateGen.network, odd)) &&
       image.map(_.value.extras.residue.isEmpty) == Right(false)
     }
   }

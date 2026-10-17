@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
@@ -10,6 +13,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** Preprod tx b1db2a41 (block 5,184,855, slot 133,902,219, epoch 313, Conway) carries the native
   * script `[3, -1, [sig, sig]]`. The reference decodes `n` of `script_n_of_k` as an `Int` (the
@@ -18,7 +22,8 @@ import TestLedger.*
   * preprod sync of the Scala node stopped here, demanding an unsigned integer. A slot is a `Word64`
   * (`SlotNo`).
   */
-abstract class PreprodNOfKSuite(rs: RuleSet) extends ScalaCheckSuite:
+class PreprodNOfKSuite extends ScalaCheckSuite:
+  private val rs = RuleSet
   private val ada = BigInt(1000000)
   private val dir = Path.of("fixtures/preprod")
   private val Int64Min = -(BigInt(1) << 63)
@@ -223,5 +228,3 @@ abstract class PreprodNOfKSuite(rs: RuleSet) extends ScalaCheckSuite:
     assert(!holds(1, Vector.empty, Set.empty))
   }
 
-class PreprodNOfKOldSuite extends PreprodNOfKSuite(RuleSet.Old)
-class PreprodNOfKNewSuite extends PreprodNOfKSuite(RuleSet.New)

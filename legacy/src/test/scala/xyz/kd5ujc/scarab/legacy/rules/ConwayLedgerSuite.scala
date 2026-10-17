@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.{LedgerMirror}
+import xyz.kd5ujc.scarab.legacy.LedgerMirrorBack.*
+
+
 import cats.Monad
 import cats.data.{Kleisli, StateT}
 import cats.mtl.Handle.{handleForApplicativeError, handleKleisli}
@@ -22,7 +27,6 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction,
   GovActionId,
   GovActionState,
-  GovState as NodeGovState,
   LedgerFailure,
   PoolParams,
   PoolState as NodePoolState,
@@ -34,8 +38,8 @@ import xyz.kd5ujc.scarab.ledger.{
   ScriptIntegrity,
   ScriptKind,
   TestLedger,
+  TxEnv,
   Tx,
-  TxRules,
   Value,
   Vote,
   Voter,
@@ -43,17 +47,14 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
-/** The Conway LEDGER rules on the era-indexed state against the node's own (`ConwayRules`), on one
-  * transaction at a time: both sides are given the same state (the era-indexed one is the old
-  * state's mirror), and what each does with the transaction is compared: the failure, if it is
-  * refused, and the state after it, if it is not (the new side's state converted back, which checks
-  * the derived fields it maintains: the delegators of each pool and each DRep, the accounts, the
-  * instant stake, the deposits).
-  *
-  * The suites of the old rules (`ConwayRulesSuite`, `ConwayGovernanceSuite`) become differential
-  * tests as a whole at J2.6; this is the part of that for the rules this stage ports, with the
-  * cases that the maintenance of state makes interesting.
+/** The Conway LEDGER rules on the era-indexed state, on one transaction at a time: the state is a
+  * flat fixture, which the mirror turns into the state the rules run on, and what the rules do with
+  * the transaction is checked: the failure, if it is refused, and the state after it, if it is not
+  * (converted back, which checks the derived fields the rules maintain: the delegators of each pool
+  * and each DRep, the accounts, the instant stake, the deposits). (Until J2.9 the suite ran the old
+  * rules beside these and compared the two.)
   */
 class ConwayLedgerSuite extends FunSuite:
   type Result[A] = Either[MirrorError, A]
@@ -76,16 +77,11 @@ class ConwayLedgerSuite extends FunSuite:
 
   /** What a side did with a transaction. */
   private enum Out:
-    case Accepted(state: node.LedgerState)
+    case Accepted(state: flat.LedgerState)
     case Refused(failure: LedgerFailure)
     case Broken(why: String)
 
-  private def oldSide(s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out =
-    TxRules(s, t, ctx) match
-      case Right(next) => Out.Accepted(next)
-      case Left(f)     => Out.Refused(f)
-
-  private def newSide(s: node.LedgerState, t: Tx, ctx: TxRules.Env): Out =
+  private def newSide(s: flat.LedgerState, t: Tx, ctx: TxEnv): Out =
     run(mirror.to[Conway](at, s)) match
       case Left(e) => Out.Broken(s"to the mirror: ${e.show}")
       case Right(image) =>
@@ -127,27 +123,15 @@ class ConwayLedgerSuite extends FunSuite:
       (k, n) => NonZero.from(Word64.fromUnsigned(n)).toOption.map(k -> _)
     }))
 
-  /** Both sides on one transaction. */
-  private def both(
-      s: node.LedgerState,
-      t: Tx,
-      ctx: TxRules.Env = TestLedger.env
-  ): (Out, Out) = (oldSide(s, t, ctx), newSide(s, t, ctx))
+  /** The rules on one transaction. */
+  private def agree(s: flat.LedgerState, t: Tx, ctx: TxEnv = TestLedger.env): Out =
+    newSide(s, t, ctx)
 
-  private def agree(s: node.LedgerState, t: Tx, ctx: TxRules.Env = TestLedger.env): Out =
-    val (o, n) = both(s, t, ctx)
-    (o, n) match
-      case (Out.Accepted(a), Out.Accepted(b)) =>
-        // what the node holds as the same, through the mirror's normal form
-        assertEquals(LedgerMirror.normalised(0, b), LedgerMirror.normalised(0, a))
-      case _ => assertEquals(n, o)
-    n
-
-  private def accepted(s: node.LedgerState, t: Tx): node.LedgerState = agree(s, t) match
+  private def accepted(s: flat.LedgerState, t: Tx): flat.LedgerState = agree(s, t) match
     case Out.Accepted(next) => next
     case other              => fail(s"expected the transaction to be accepted: $other")
 
-  private def refusedWith(s: node.LedgerState, t: Tx): String = agree(s, t) match
+  private def refusedWith(s: flat.LedgerState, t: Tx): String = agree(s, t) match
     case Out.Refused(LedgerFailure.Rejected(_, f)) => f.ruleName
     case other                                     => fail(s"expected a refusal: $other")
 
@@ -189,10 +173,10 @@ class ConwayLedgerSuite extends FunSuite:
       accounts: Map[NodeCredential, Account] = Map.empty,
       pools: Map[Bytes, NodePoolState] = Map.empty,
       dreps: Map[NodeCredential, NodeDRepState] = Map.empty,
-      gov: NodeGovState = NodeGovState.empty,
+      gov: flat.GovState = flat.GovState.empty,
       committeeState: Map[NodeCredential, CommitteeAuth] = Map.empty,
       pp: node.ProtocolParams = pparams
-  ): node.LedgerState =
+  ): flat.LedgerState =
     val s = state(pp.protocolMajor.toInt, funds)
     val deposits = accounts.values.map(_.deposit).sum + pools.values.map(_.deposit).sum +
       dreps.values.map(_.deposit).sum + gov.proposals.totalDeposits
@@ -399,7 +383,7 @@ class ConwayLedgerSuite extends FunSuite:
 
   test("a committee authorisation, a resignation, an authorisation after it is refused") {
     val committee = Committee(Map(cold.credential -> BigInt(100)), Rational(1, 2))
-    val s = base(fundedBy(alice), gov = NodeGovState.empty.copy(committee = Some(committee)))
+    val s = base(fundedBy(alice), gov = flat.GovState.empty.copy(committee = Some(committee)))
     val auth = pay(
       "auth",
       alice,
@@ -439,7 +423,7 @@ class ConwayLedgerSuite extends FunSuite:
     (
       base(
         fundedBy(alice),
-        gov = NodeGovState.empty.copy(
+        gov = flat.GovState.empty.copy(
           proposals = Proposals(Vector(action), node.PrevIds()),
           committee = committee
         ),
@@ -634,7 +618,7 @@ class ConwayLedgerSuite extends FunSuite:
       fundedBy(alice),
       pools = Map(pool.hash -> poolOf(pool)),
       dreps = keys.map(k => k.credential -> NodeDRepState(500 * ada, 30)).toMap,
-      gov = NodeGovState.empty.copy(proposals = Proposals(Vector(action), node.PrevIds()))
+      gov = flat.GovState.empty.copy(proposals = Proposals(Vector(action), node.PrevIds()))
     )
     val registrations =
       keys.map(k => Certificate.Delegate(k.credential, Some(pool.hash), None, Some(2 * ada)))
@@ -648,9 +632,7 @@ class ConwayLedgerSuite extends FunSuite:
       votes = keys.map(k => Voter.DRepVoter(k.credential) -> Vector(action.id -> Vote.Yes)),
       signers = keys
     )
-    val (o, n) = onSmallStack(both(s, t))
-    assertEquals(n, o)
-    n match
+    onSmallStack(agree(s, t)) match
       case Out.Accepted(next) =>
         assertEquals(next.accounts.size, width)
         assertEquals(next.gov.proposals.byId(action.id).drepVotes.size, width)
@@ -796,11 +778,10 @@ class ConwayLedgerSuite extends FunSuite:
     "J2.6-1: re-registering with the pool's own key hash and then another in one epoch drops the key in use (the reference's quirk)"
   ) {
     // `Pool.hs:274-286`: a re-registration whose future parameters hold another key hash deletes
-    // that one from the map, whether or not it is also the key of the registered pool. The old
-    // state derives the map from the pools (every key in use), so the two sides differ here by
-    // design, and a suite that carries a state across transactions through the flat state
-    // (`RuleSet.New`) goes on from the derived map. The new state is built directly: the flat
-    // state cannot say it.
+    // that one from the map, whether or not it is also the key of the registered pool. The flat
+    // state derives the map from the pools (every key in use), and a suite that carries a state
+    // across transactions through it (`RuleSet`) goes on from the derived map. The new state is
+    // built directly: the flat state cannot say it.
     val one = key()
     val pp11 = pparams.copy(protocolMajor = 11)
     val own = poolParams(one).vrfKeyHash
@@ -836,10 +817,6 @@ class ConwayLedgerSuite extends FunSuite:
     assertEquals(keys(ps), Set(other))
     // what the pools imply: both
     assertEquals(keys(vrfFromPools(ps)), Set(own, other))
-    // the old rules keep no such map: they accept the same transaction
-    val flat = base(fundedBy(alice), pools = Map(one.hash -> poolOf(one)), pp = pp11)
-      .copy(futurePools = Map(one.hash -> poolParams(one)))
-    assert(TxRules(flat, t, TestLedger.env).isRight)
   }
 
   test(

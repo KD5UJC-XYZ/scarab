@@ -4,9 +4,9 @@ package xyz.kd5ujc.scarab.ledger
 import io.circe.parser
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.ledger.state.{Build, Conway, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
 
-import TestLedger.*
 
 /** Preprod transaction f90dce57 (block 5,183,974, slot 133,883,340, epoch 313): a native script
   * 5,383 levels deep, 16,383 bytes in all (the maximum is 16,384), and the one output it spends,
@@ -70,8 +70,7 @@ object PreprodDeepTx:
   /** A Conway ledger at epoch 313 with the preprod fee parameters and the output, on which the
     * transaction is valid at [[Slot]].
     */
-  def ledger: LedgerState =
+  def ledger: NewEpochState[Conway] =
     val ada = BigInt(1000000)
     val params = TestLedger.params(10).copy(minFeeA = 44, minFeeB = 155381, keyDeposit = 2 * ada)
-    val base = state(10, Vector(input)).copy(params = params, epoch = Epoch)
-    base.copy(reserves = Supply - (base.total - base.reserves))
+    Build.funded(Build.nes[Conway](Epoch.toLong, params), Map(input))

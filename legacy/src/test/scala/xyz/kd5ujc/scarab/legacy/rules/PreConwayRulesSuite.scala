@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -11,12 +15,15 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
-abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
+class PreConwayRulesSuite extends ScalaCheckSuite:
+  private val rs = RuleSet
   private val alice = key()
   private val bob = key()
   private val ada = BigInt(1000000)
   private val eras = Vector(2, 3, 4, 5, 7)
+  private val boundaryGlobals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
 
   private def funded(pv: Int, coin: BigInt = 100 * ada): (LedgerState, TxIn) =
     val in = txIn(1)
@@ -78,11 +85,11 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
     val dh = Datum.Hash(Bytes(Vector.fill(32)(1)))
     val withDatum = out(bob.address(), 0).copy(datum = dh)
     val alonzo = params(5)
-    assertEquals(PreConwayRules.minUTxO(alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
-    assertEquals(PreConwayRules.minUTxO(alonzo, withDatum), BigInt(39 * 34482))
+    assertEquals(TxChecks.minUTxO(alonzo, out(bob.address(), 0)), BigInt(29 * 34482))
+    assertEquals(TxChecks.minUTxO(alonzo, withDatum), BigInt(39 * 34482))
     val babbage = params(7)
     val sized = out(bob.address(), 0).copy(raw = Bytes(Vector.fill(65)(0)))
-    assertEquals(PreConwayRules.minUTxO(babbage, sized), BigInt(225 * 4310))
+    assertEquals(TxChecks.minUTxO(babbage, sized), BigInt(225 * 4310))
   }
 
   property("stake key deposits and refunds keep the supply and the deposit pot exact") {
@@ -404,9 +411,9 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
       val outputs = referenced.map(r => out(bob.address(), 2 * ada).copy(scriptRef = Some(r)))
       val b = body("wf", Vector(in), outputs, 200)
       rule(
-        PreConwayRules
+        TxChecks
           .scriptsWellFormed(
-            s,
+            s.params,
             tx(b, Vector(alice), Witnesses(Vector.empty, scripts = scripts)),
             env
           )
@@ -480,11 +487,12 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
       rs.tx(registered, tx(b, Vector(alice, g1, g2)), env).fold(f => fail(f.message), identity)
     assertEquals(s1.mir.reserves(stake.credential), 7 * ada)
     val reserves = s1.reserves
-    val s2 = Mir(s1)
+    val s2 = rs.boundary(s1, boundaryGlobals)
     assertEquals(s2.accounts(stake.credential).balance, 7 * ada)
     assertEquals(s2.reserves, reserves - 7 * ada)
     assertEquals(s2.mir, InstantRewards.empty)
-    assertEquals(s2.total, s1.total)
+    // (the boundary recomputes the deposit pot from the accounts, which the fixture did not count)
+    assertEquals(s2.total - s2.deposited, s1.total - s1.deposited)
     // too late in the epoch
     assertEquals(
       rule(rs.tx(registered, tx(b, Vector(alice, g1, g2)), env.copy(slot = 4950))),
@@ -508,10 +516,10 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
       rs.tx(s, tx(b, Vector(alice) ++ from.map(delegates)), env)
         .fold(f => fail(f.message), identity)
     val globals = LedgerGlobals(Supply, 10000, Rational(1, 20), 0, updateQuorum = 2)
-    val adopted = PpupRules.newEpoch(propose(Vector(0, 1)), globals)
+    val adopted = rs.boundary(propose(Vector(0, 1)), globals)
     assertEquals(adopted.params.keyDeposit, BigInt(3000000))
     assertEquals(adopted.ppup, Ppup.empty)
-    val notAdopted = PpupRules.newEpoch(propose(Vector(0)), globals)
+    val notAdopted = rs.boundary(propose(Vector(0)), globals)
     assertEquals(notAdopted.params.keyDeposit, BigInt(2000000))
     // an unsigned proposal is refused
     val u = Update(Map(genesis(0).hash -> newDeposit), 5)
@@ -598,7 +606,7 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
     out(bob.address(), 0).copy(value = v)
 
   private def outputRule(pp: ProtocolParams, o: TxOut): String =
-    PreConwayRules.outputChecks(pp, env, Bytes.empty, Vector(o)) match
+    TxChecks.outputChecks(pp, env, Bytes.empty, Vector(o)) match
       case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
       case Left(other)                        => other.message
       case Right(_)                           => "accepted"
@@ -618,7 +626,7 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
     val mv = BigInt(1000000)
     val expected = (mv / 27) * (27 + 12)
     assertEquals(expected, BigInt(1444443))
-    assertEquals(PreConwayRules.minUTxO(params(4), valued(0, one)), expected)
+    assertEquals(TxChecks.minUTxO(params(4), valued(0, one)), expected)
     assertEquals(outputRule(params(4), valued(expected, one)), "accepted")
     // ... but the Allegra/Mary rule tests `pointwise (<) v (inject min)`, which no value with assets
     // satisfies, so only ada-only outputs can be too small (observed on the 11.1.3 reference too)
@@ -627,20 +635,20 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
     assertEquals(outputRule(params(5), valued(1, one)), "OutputTooSmallUTxO")
     // a small value never goes below the parameter
     assertEquals(
-      PreConwayRules.minUTxO(params(4).copy(minUTxOValue = 40), valued(0, one)),
+      TxChecks.minUTxO(params(4).copy(minUTxOValue = 40), valued(0, one)),
       BigInt(40)
     )
     // Shelley and Allegra do not scale (they cannot hold assets, the rule is the flat parameter)
-    assertEquals(PreConwayRules.minUTxO(params(3), valued(0, one)), mv)
+    assertEquals(TxChecks.minUTxO(params(3), valued(0, one)), mv)
     // the same asset name under two policies counts once: 2 triples, 2 policies, 5 name bytes
     val twice = one.updated(Bytes(Vector.fill(28)(0x22)), Map(assetName("abcde") -> BigInt(1)))
     assertEquals(
-      PreConwayRules.valueWords(valued(0, twice).value),
+      TxChecks.valueWords(valued(0, twice).value),
       BigInt(6 + (24 + 5 + 56 + 7) / 8)
     )
-    assertEquals(PreConwayRules.minUTxO(params(4), valued(0, twice)), (mv / 27) * (27 + 17))
+    assertEquals(TxChecks.minUTxO(params(4), valued(0, twice)), (mv / 27) * (27 + 17))
     // Alonzo divides by the 29 words of an ada-only entry instead
-    assertEquals(PreConwayRules.minUTxO(params(5), valued(0, Map.empty)), BigInt(29 * 34482))
+    assertEquals(TxChecks.minUTxO(params(5), valued(0, Map.empty)), BigInt(29 * 34482))
   }
 
   /** The bytes of `serialize v` as cardano-ledger-binary writes them: minimal heads, and a map of
@@ -738,12 +746,12 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
     assertEquals(withNames(113).value.serializedSize, 3994)
     assertEquals(withNames(114).value.serializedSize, 4029)
     List(3, 4).foreach { pv =>
-      assertEquals(PreConwayRules.maxOutputValueSize(params(pv)), Some(BigInt(4000)))
+      assertEquals(TxChecks.maxOutputValueSize(params(pv)), Some(BigInt(4000)))
     }
     assertEquals(outputRule(params(4), withNames(113)), "accepted")
     assertEquals(outputRule(params(4), withNames(114)), "OutputTooBigUTxO")
     // Shelley has no value size rule; a pre-Mary chain cannot carry such a value anyway
-    assertEquals(PreConwayRules.maxOutputValueSize(params(2)), None)
+    assertEquals(TxChecks.maxOutputValueSize(params(2)), None)
     // Alonzo and later use the maxValueSize parameter (5000 here)
     List(5, 7).foreach { pv =>
       assertEquals(outputRule(params(pv), withNames(114)), "accepted", s"era $pv")
@@ -772,7 +780,7 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
       in: TxIn,
       signers: Vector[Key],
       certs: Vector[Certificate],
-      e: TxRules.Env = env
+      e: TxEnv = env
   ) =
     val b = body(
       "mir",
@@ -849,10 +857,8 @@ abstract class PreConwayRulesSuite(rs: RuleSet) extends ScalaCheckSuite:
     assert(!after.accounts.contains(stake.credential))
     // `Unregister` leaves `dsIRewards` alone: the entry stays until the MIR rule filters it
     assertEquals(after.mir.reserves.get(stake.credential), Some(7 * ada))
-    val paid = Mir(after)
+    val paid = rs.boundary(after, boundaryGlobals)
     assertEquals(paid.reserves, after.reserves)
     assertEquals(paid.mir, InstantRewards.empty)
   }
 
-class PreConwayRulesOldSuite extends PreConwayRulesSuite(RuleSet.Old)
-class PreConwayRulesNewSuite extends PreConwayRulesSuite(RuleSet.New)

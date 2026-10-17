@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** Preprod transaction aee75c1c (block 4,045,972, epoch 248, protocol 10): an output carries a
   * Plutus V2 reference script whose bytes are the CBOR-wrapped flat program twice over. The
@@ -14,7 +18,8 @@ import TestLedger.*
   * (V3 raises `RemainderError`); Scalus's `fromCbor` rejects the trailing input, which made the
   * node report `MalformedReferenceScripts` on a transaction the chain accepted.
   */
-abstract class PreprodMalformedRefScriptSuite(rs: RuleSet) extends FunSuite:
+class PreprodMalformedRefScriptSuite extends FunSuite:
+  private val rs = RuleSet
   private val c = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-aee75c1c.json"))
   private val ada = BigInt(1000000)
   private val decoder = ScalusEvaluator.pureDecoder
@@ -44,7 +49,7 @@ abstract class PreprodMalformedRefScriptSuite(rs: RuleSet) extends FunSuite:
     val base = state(c.protocolMajor, c.spent.toVector).copy(params = params, epoch = 248)
     base.copy(reserves = Supply - (base.total - base.reserves))
 
-  private def env = TxRules.Env(
+  private def env = TxEnv(
     slot = c.slot,
     epoch = 248,
     network = 0,
@@ -101,9 +106,7 @@ abstract class PreprodMalformedRefScriptSuite(rs: RuleSet) extends FunSuite:
     val bad = c.tx.copy(body =
       c.tx.body.copy(outputs = c.tx.body.outputs.updated(at, out.copy(raw = raw3)))
     )
-    val r = PreConwayRules.scriptsWellFormed(world, bad, env)
+    val r = TxChecks.scriptsWellFormed(world.params, bad, env)
     assert(r.left.exists(_.message.contains("MalformedReferenceScripts")), r.toString)
   }
 
-class PreprodMalformedRefScriptOldSuite extends PreprodMalformedRefScriptSuite(RuleSet.Old)
-class PreprodMalformedRefScriptNewSuite extends PreprodMalformedRefScriptSuite(RuleSet.New)

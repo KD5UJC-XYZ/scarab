@@ -1,34 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy as flat
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
-/** The reward calculation on both rule sets: the formulas (`maxPool`, the leader and member
-  * rewards) as each side has them, and the reward update of a state (`Rewards.update` of the old
-  * rules, RUPD of the new ones).
+/** The reward calculation of the era-indexed rules: the formulas (`maxPool`, the operator and member
+  * rewards) and the reward update of a state (RUPD).
   */
-abstract class RewardsSuite(rs: RuleSet) extends ScalaCheckSuite:
+class RewardsSuite extends ScalaCheckSuite:
+  private val rs = RuleSet
   private def maxPool(a0: Rational, nOpt: BigInt, r: BigInt, sigma: Rational, pledge: Rational) =
-    rs match
-      case RuleSet.Old => Rewards.maxPool(a0, nOpt, r, sigma, pledge)
-      case RuleSet.New =>
-        xyz.kd5ujc.scarab.ledger.rules.Rewards.maxPool(a0, nOpt, r, sigma, pledge)
+    xyz.kd5ujc.scarab.ledger.rules.Rewards.maxPool(a0, nOpt, r, sigma, pledge)
 
   private def leaderReward(poolR: BigInt, p: PoolParams, s: Rational, sigma: Rational) =
-    rs match
-      case RuleSet.Old => Rewards.leaderReward(poolR, p, s, sigma)
-      case RuleSet.New =>
-        xyz.kd5ujc.scarab.ledger.rules.Rewards.operatorReward(poolR, p.cost, p.margin, s, sigma)
+    xyz.kd5ujc.scarab.ledger.rules.Rewards.operatorReward(poolR, p.cost, p.margin, s, sigma)
 
   private def memberReward(poolR: BigInt, p: PoolParams, t: Rational, sigma: Rational) =
-    rs match
-      case RuleSet.Old => Rewards.memberReward(poolR, p, t, sigma)
-      case RuleSet.New =>
-        xyz.kd5ujc.scarab.ledger.rules.Rewards.memberReward(poolR, p.cost, p.margin, t, sigma)
+    xyz.kd5ujc.scarab.ledger.rules.Rewards.memberReward(poolR, p.cost, p.margin, t, sigma)
 
   private def pool(cost: BigInt, margin: Rational) = PoolParams(
     Bytes(Vector.fill(28)(1)),
@@ -90,8 +85,7 @@ abstract class RewardsSuite(rs: RuleSet) extends ScalaCheckSuite:
         delegations = Map(ownerCredential -> to, member -> poolId),
         pools = Map(poolId -> params, other -> otherParams)
       )
-      val state = TestLedger
-        .state(8, Vector.empty)
+      val state = FlatTestLedger.state(8, Vector.empty)
         .copy(
           // the new rules pay only the credentials that are registered when the update is made
           accounts = Map(
@@ -148,8 +142,7 @@ abstract class RewardsSuite(rs: RuleSet) extends ScalaCheckSuite:
       pools = Map(poolA -> paramsA, poolB -> paramsB)
     )
     def rewards(major: Int) =
-      val state = TestLedger
-        .state(major, Vector.empty)
+      val state = FlatTestLedger.state(major, Vector.empty)
         .copy(
           // the new rules pay only the credentials that are registered when the update is made
           accounts = Seq(aMember, shared, both, twin).map(_ -> Account(0, 0, None, None)).toMap,
@@ -192,8 +185,7 @@ abstract class RewardsSuite(rs: RuleSet) extends ScalaCheckSuite:
     // each holds a lovelace, so that the snapshot taken at the boundary has both as delegators
     val acc = Account(1, 2000000, Some(poolId), None)
     val g = globals.copy(epochLength = 1000, startRewards = 40)
-    val base = TestLedger
-      .state(5, Vector.empty)
+    val base = FlatTestLedger.state(5, Vector.empty)
       .copy(
         snapshots = Snapshots(Snapshot.empty, go, Snapshot.empty, 0),
         blocksCurrent = Map(poolId -> BigInt(10)),
@@ -237,5 +229,3 @@ abstract class RewardsSuite(rs: RuleSet) extends ScalaCheckSuite:
     assertEquals(late.reserves, paid.reserves + amount)
   }
 
-class RewardsOldSuite extends RewardsSuite(RuleSet.Old)
-class RewardsNewSuite extends RewardsSuite(RuleSet.New)

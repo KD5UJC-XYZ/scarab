@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.legacy as flat
+
+
 import java.time.Instant
 import org.scalacheck.Gen
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -80,7 +83,7 @@ object FlatStateGen:
   /** A flat state of an era: Conway, or one of the earlier ones (which differ in nothing the
     * conversion looks at but the protocol version it reads).
     */
-  def state(conway: Boolean): Gen[node.LedgerState] =
+  def state(conway: Boolean): Gen[flat.LedgerState] =
     for
       registered <- subset(0 until poolCount)
       params <- Gen.sequence[Vector[node.PoolParams], node.PoolParams](
@@ -177,7 +180,7 @@ object FlatStateGen:
         coin = BigInt(1000),
         count = 3L
       )
-      val base = node
+      val base = flat
         .LedgerState(
           epoch = epoch,
           params = protocol,
@@ -193,11 +196,11 @@ object FlatStateGen:
           treasury = treasury,
           reserves = reserves,
           snapshots =
-            node.Snapshots(node.Snapshot.empty, node.Snapshot.empty, node.Snapshot.empty, 3),
+            flat.Snapshots(flat.Snapshot.empty, flat.Snapshot.empty, flat.Snapshot.empty, 3),
           blocksCurrent = blocksNow,
           blocksPrevious = blocksBefore,
           rewardUpdate = update,
-          poolDistribution = node.Snapshot.empty,
+          poolDistribution = flat.Snapshot.empty,
           genDelegs =
             genesisKeys.map(i => genesisKey(i) -> node.GenDelegPair(bytes(28, 8, i), vrf(i))).toMap,
           futureGenDelegs = futureGenesis,
@@ -213,17 +216,17 @@ object FlatStateGen:
           rewardDraft = draft
         )
         .copy(dreps = gov._3)
-      val mark = node.Stake.snapshot(base)
+      val mark = flat.Stake.snapshot(base)
       val set =
-        node.Stake.snapshot(base.copy(accounts = withoutIndices(base, accounts, setDropped)))
-      val go = node.Stake.snapshot(base.copy(accounts = withoutIndices(base, accounts, goDropped)))
+        flat.Stake.snapshot(base.copy(accounts = withoutIndices(base, accounts, setDropped)))
+      val go = flat.Stake.snapshot(base.copy(accounts = withoutIndices(base, accounts, goDropped)))
       base.copy(
-        snapshots = node.Snapshots(mark, set, go, BigInt(3)),
+        snapshots = flat.Snapshots(mark, set, go, BigInt(3)),
         poolDistribution = if distributionIsSet then set else mark
       )
 
   private def withoutIndices(
-      base: node.LedgerState,
+      base: flat.LedgerState,
       accounts: Vector[(node.Credential, node.Account)],
       dropped: Vector[Int]
   ): Map[node.Credential, node.Account] =
@@ -237,40 +240,40 @@ object FlatStateGen:
       )
       .map(_.flatten.toMap)
 
-  private def updateOf(credentials: Vector[node.Credential]): Gen[node.RewardUpdate] =
+  private def updateOf(credentials: Vector[node.Credential]): Gen[flat.RewardUpdate] =
     for
       deltaT <- Gen.choose(0L, 100L)
       deltaR <- Gen.choose(-100L, 0L)
       deltaF <- Gen.choose(-100L, 0L)
       paid <- subset(credentials.indices)
-    yield node.RewardUpdate(
+    yield flat.RewardUpdate(
       deltaT,
       deltaR,
       paid.map(i => credentials(i) -> BigInt(10 + i)).toMap,
       deltaF
     )
 
-  private def instantRewards(credentials: Vector[node.Credential]): Gen[node.InstantRewards] =
+  private def instantRewards(credentials: Vector[node.Credential]): Gen[flat.InstantRewards] =
     for
       reserves <- subset(credentials.indices)
       treasury <- subset(credentials.indices)
       deltaR <- Gen.choose(-5L, 5L)
       deltaT <- Gen.choose(-5L, 5L)
-    yield node.InstantRewards(
+    yield flat.InstantRewards(
       reserves.map(i => credentials(i) -> BigInt(i)).toMap,
       treasury.map(i => credentials(i) -> BigInt(i + 1)).toMap,
       deltaR,
       deltaT
     )
 
-  private def proposals(conway: Boolean): Gen[node.Ppup] =
-    if conway then Gen.const(node.Ppup.empty)
+  private def proposals(conway: Boolean): Gen[flat.Ppup] =
+    if conway then Gen.const(flat.Ppup.empty)
     else
       for
         keys <- subset(0 until 3)
         value <- Gen.choose(0L, 2L)
         future <- Gen.option(Gen.const(genesisKey(2)))
-      yield node.Ppup(
+      yield flat.Ppup(
         keys.map(i => genesisKey(i) -> node.ParamUpdate(Map(0 -> bytes(1, 9, value.toInt)))).toMap,
         future.map(k => k -> node.ParamUpdate(Map.empty)).toMap
       )
@@ -280,9 +283,9 @@ object FlatStateGen:
       conway: Boolean,
       credentials: Vector[node.Credential]
   ): Gen[
-    (node.GovState, Map[node.Credential, node.CommitteeAuth], Map[node.Credential, node.DRepState])
+    (flat.GovState, Map[node.Credential, node.CommitteeAuth], Map[node.Credential, node.DRepState])
   ] =
-    if !conway then Gen.const((node.GovState.empty, Map.empty, Map.empty))
+    if !conway then Gen.const((flat.GovState.empty, Map.empty, Map.empty))
     else
       for
         members <- subset(credentials.indices)
@@ -294,7 +297,7 @@ object FlatStateGen:
         val committee = Some(
           node.Committee(members.map(i => credentials(i) -> BigInt(30 + i)).toMap, Rational(1, 2))
         )
-        val constitution = node.Constitution(node.GovState.noAnchor, None)
+        val constitution = node.Constitution(flat.GovState.noAnchor, None)
         val params = hashedParams(true)
         val ratify = node.RatifyState(
           node.EnactState(
@@ -311,7 +314,7 @@ object FlatStateGen:
           delayed = false
         )
         (
-          node.GovState(
+          flat.GovState(
             node.Proposals.empty,
             committee,
             constitution,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.legacy
 
-import xyz.kd5ujc.scarab.consensus as live
 import xyz.kd5ujc.scarab.ledger.state.KeyHash.bytes
 import xyz.kd5ujc.scarab.ledger.state.SlotNo.toBigInt
 
@@ -9,7 +8,7 @@ import xyz.kd5ujc.scarab.ledger.state.SlotNo.toBigInt
   * the tests that write old snapshot files. The inverse of [[Upgrade.node]] on the states it makes.
   */
 object Downgrade:
-  def node(s: live.NodeState): NodeState =
+  def node(s: FlatNodeState): NodeState =
     val p = s.protocol.view
     NodeState(
       PraosState(

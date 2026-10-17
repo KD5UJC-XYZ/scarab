@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.consensus.state
+package xyz.kd5ujc.scarab.legacy
 
 import org.scalacheck.{Arbitrary, Gen}
 import xyz.kd5ujc.scarab.codec.Rational
@@ -8,16 +8,24 @@ import xyz.kd5ujc.scarab.consensus.{
   BootstrapState,
   ByronState,
   ByronTip,
-  HardForkConfig,
-  NodeState
+  HardForkConfig
+}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ChainDepState,
+  ConsensusMirrorEnv,
+  EraHistory,
+  ProtocolExtras,
+  ProtocolState,
+  StateGen
 }
 import xyz.kd5ujc.scarab.ledger.{LiteLedger, LiteParams, Nonce}
 import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState, ByronTestKit}
 import xyz.kd5ujc.scarab.ledger.state.{FlatStateGen, SlotNo, VocabularyGen, WithOrigin}
+import xyz.kd5ujc.scarab.legacy as flat
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** A state of the node and the block it is after (none: before the first). */
-final case class Located(anchor: Option[BlockRef], state: NodeState)
+final case class Located(anchor: Option[BlockRef], state: FlatNodeState)
 
 /** Generators of the node's whole state, era first: pick the era, then a state that the
   * configuration of [[env]] puts in it (each Shelley-based era starts two epochs after the one
@@ -121,7 +129,7 @@ object NodeStateGen:
       byron <- byronState(inByron)
     yield Located(
       anchor,
-      NodeState(
+      FlatNodeState(
         p,
         ledger.copy(epoch = BigInt(e)),
         BootstrapState(active = false, bootEra, lite, None, None),

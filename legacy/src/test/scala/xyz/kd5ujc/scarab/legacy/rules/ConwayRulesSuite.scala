@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -8,11 +11,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import munit.FunSuite
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The Conway transaction rules that are not about governance: scripts, minting, reference-script
   * fees, collateral, treasury fields.
   */
-abstract class ConwayRulesSuite(rs: RuleSet) extends FunSuite:
+class ConwayRulesSuite extends FunSuite:
+  private val rs = RuleSet
   private val alice = key()
   private val bob = key()
   private val ada = BigInt(1000000)
@@ -497,9 +502,7 @@ abstract class ConwayRulesSuite(rs: RuleSet) extends FunSuite:
     val s = s0.copy(fees = 1000, reserves = s0.reserves - 1000)
     val first = rs.boundary(s, globals)
     assertEquals(first.rewardUpdate, None)
-    // the old rules compute the update at the boundary and hold it as a draft until the first block
-    // past the window (their way of deferring it); the new rules compute it at that block
-    if rs == RuleSet.Old then assert(first.rewardDraft.isDefined)
+    // the rules compute the update at the first block past the window
     val start = first.epoch * 1000
     // a block too early does not create the update
     assertEquals(rs.tick(first, start + 80, start, globals).rewardUpdate, None)
@@ -515,5 +518,3 @@ abstract class ConwayRulesSuite(rs: RuleSet) extends FunSuite:
     assertEquals(skipped.total, Supply)
   }
 
-class ConwayRulesOldSuite extends ConwayRulesSuite(RuleSet.Old)
-class ConwayRulesNewSuite extends ConwayRulesSuite(RuleSet.New)

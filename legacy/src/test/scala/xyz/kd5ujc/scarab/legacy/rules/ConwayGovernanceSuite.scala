@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.legacy.*
+
+
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -10,11 +13,13 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.*
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** Constructed governance scenarios: propose, vote, cross epoch boundaries, enact, with the supply
   * and the deposit pot checked after every step.
   */
-abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
+class ConwayGovernanceSuite extends ScalaCheckSuite:
+  private val rs = RuleSet
   private val ada = BigInt(1000000)
   private val half = Rational(1, 2)
   private val globals = LedgerGlobals(Supply, 100, Rational(1, 20), network = 0)
@@ -92,21 +97,18 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
         epoch = 5,
         gov = GovState.empty.copy(committee = Some(Committee(Map.empty, Rational.zero)))
       )
-      val withObligation = base.copy(deposited = Epoch.obligation(base))
+      val withObligation = base.copy(deposited = FlatTestLedger.obligation(base))
       val marked = withObligation.copy(
         snapshots = Snapshots(Stake.snapshot(withObligation), Snapshot.empty, Snapshot.empty, 0)
       )
       val reserves = Supply - (marked.total - marked.reserves)
       val seeded = marked.copy(reserves = reserves)
-      val withPulser = seeded.copy(gov =
-        seeded.gov.copy(pulsed = Some(ConwayEpoch.freshPulser(seeded, seeded.epoch)))
-      )
-      State(withPulser, fundIn, fundCoin, 0)
+      State(seeded, fundIn, fundCoin, 0)
 
   private final case class State(s: LedgerState, fund: TxIn, fundCoin: BigInt, nonce: Int)
 
-  private def env(s: LedgerState, n: Int): TxRules.Env =
-    TxRules.Env(
+  private def env(s: LedgerState, n: Int): TxEnv =
+    TxEnv(
       slot = s.epoch * 100 + 10,
       epoch = s.epoch,
       network = 0,
@@ -167,7 +169,7 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
 
   private def assertInvariants(st: State, label: String): Unit =
     assertEquals(st.s.total, Supply, s"$label: supply")
-    assertEquals(st.s.deposited, Epoch.obligation(st.s), s"$label: deposit pot")
+    assertEquals(st.s.deposited, FlatTestLedger.obligation(st.s), s"$label: deposit pot")
 
   /** The id of governance action `index` of the last transaction submitted. */
   private def idOf(st: State, index: Int): GovActionId =
@@ -249,7 +251,7 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
     assertEquals(e10.s.epoch, BigInt(10))
     assert(e10.s.gov.proposals.actions.isEmpty, "expired and removed")
     assertEquals(e10.s.accounts(w.stakes(0).credential).balance, 1000 * ada)
-    assertEquals(e10.s.deposited, Epoch.obligation(e10.s))
+    assertEquals(e10.s.deposited, FlatTestLedger.obligation(e10.s))
   }
 
   test("a parameter change is enacted and removes its competitor, refunding both deposits") {
@@ -555,13 +557,13 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
 
   test("the reference-script fee grows by 1.2 for every 25 KiB") {
     val base = Rational(15)
-    assertEquals(ConwayRules.tierRefScriptFee(base, 0), BigInt(0))
-    assertEquals(ConwayRules.tierRefScriptFee(base, 1000), BigInt(15000))
-    assertEquals(ConwayRules.tierRefScriptFee(base, 25600), BigInt(15 * 25600))
+    assertEquals(RefScripts.tierRefScriptFee(base, 0), BigInt(0))
+    assertEquals(RefScripts.tierRefScriptFee(base, 1000), BigInt(15000))
+    assertEquals(RefScripts.tierRefScriptFee(base, 25600), BigInt(15 * 25600))
     // 25600 at 15 plus 400 at 18
-    assertEquals(ConwayRules.tierRefScriptFee(base, 26000), BigInt(15 * 25600 + 400 * 18))
+    assertEquals(RefScripts.tierRefScriptFee(base, 26000), BigInt(15 * 25600 + 400 * 18))
     assertEquals(
-      ConwayRules.tierRefScriptFee(base, 51200),
+      RefScripts.tierRefScriptFee(base, 51200),
       BigInt(15 * 25600 + 18 * 25600)
     )
   }
@@ -595,7 +597,7 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
         )
       )
       val states = Iterator.iterate(s2)(boundary).take(steps + 1).toVector
-      states.forall(st => st.s.total == Supply && st.s.deposited == Epoch.obligation(st.s))
+      states.forall(st => st.s.total == Supply && st.s.deposited == FlatTestLedger.obligation(st.s))
     }
   }
 
@@ -673,7 +675,7 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
           case _ => None
         result.foreach(r => st = ok(r))
         assertEquals(st.s.total, Supply)
-        assertEquals(st.s.deposited, Epoch.obligation(st.s))
+        assertEquals(st.s.deposited, FlatTestLedger.obligation(st.s))
         st.s.accounts.foreach { case (c, a) =>
           a.drep.foreach {
             case DRep.Registered(d) => assert(st.s.dreps(d).delegs.contains(c))
@@ -861,5 +863,3 @@ abstract class ConwayGovernanceSuite(rs: RuleSet) extends ScalaCheckSuite:
     assertEquals(s.s.pools.size, 3)
   }
 
-class ConwayGovernanceOldSuite extends ConwayGovernanceSuite(RuleSet.Old)
-class ConwayGovernanceNewSuite extends ConwayGovernanceSuite(RuleSet.New)

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+
+
 import java.nio.file.{Files, Path}
 import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 
 import TestLedger.*
+import xyz.kd5ujc.scarab.legacy.FlatTestLedger.*
 
 /** The mainnet block at slot 4,495,760 (epoch 208, Shelley, protocol version 2, header hash
   * `fb4e87a00f0eea0d...`) holds transaction 49be5965c31a60c3, a pool registration whose reward
@@ -17,7 +20,8 @@ import TestLedger.*
   * (`poolTransition`). The fixture is the block as the relay sent it
   * (`fixtures/mainnet/README.md`).
   */
-abstract class MainnetPoolNetworkSuite(rs: RuleSet) extends FunSuite:
+class MainnetPoolNetworkSuite extends FunSuite:
+  private val rs = RuleSet
   private val EpochSlots: BigInt = BigInt(21600)
   private val Mainnet = 1
 
@@ -64,5 +68,3 @@ abstract class MainnetPoolNetworkSuite(rs: RuleSet) extends FunSuite:
     List(5, 6, 7, 8).foreach(pv => assertEquals(rule(register(pv)), "WrongNetworkPOOL", s"pv $pv"))
   }
 
-class MainnetPoolNetworkOldSuite extends MainnetPoolNetworkSuite(RuleSet.Old)
-class MainnetPoolNetworkNewSuite extends MainnetPoolNetworkSuite(RuleSet.New)

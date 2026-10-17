@@ -69,32 +69,8 @@ object TestLedger:
 
   def txIn(n: Int): TxIn = TxIn(Blake2b.hash256.hash(Bytes(Vector(n.toByte))), 0)
 
-  /** A state whose UTxO is `funds` and whose reserves make the total equal [[Supply]]. */
-  def state(protocolMajor: Int, funds: Vector[(TxIn, TxOut)]): LedgerState =
-    val utxo = funds.toMap
-    LedgerState(
-      epoch = 5,
-      params = params(protocolMajor),
-      utxo = Utxo(utxo),
-      fees = 0,
-      deposited = 0,
-      accounts = Map.empty,
-      pools = Map.empty,
-      futurePools = Map.empty,
-      retiring = Map.empty,
-      dreps = Map.empty,
-      dormantEpochs = 0,
-      treasury = 0,
-      reserves = Supply - utxo.valuesIterator.map(_.value.coin).sum,
-      snapshots = Snapshots(Snapshot.empty, Snapshot.empty, Snapshot.empty, 0),
-      blocksCurrent = Map.empty,
-      blocksPrevious = Map.empty,
-      rewardUpdate = None,
-      poolDistribution = Snapshot.empty
-    )
-
-  val env: TxRules.Env =
-    TxRules.Env(
+  val env: TxEnv =
+    TxEnv(
       slot = 1000,
       epoch = 5,
       network = 0,
