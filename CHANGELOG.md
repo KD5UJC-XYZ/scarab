@@ -30,6 +30,34 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   match, bad signature, foreign cold key, write failure), `Sum6KesSigningSuite` (the period of every evolved key
   read back), `scripts/tests/test_rotate_kes.py`.
 
+### Changed (ledger: typed predicate failures, #121)
+- **No ledger failure is identified by a string.** `LedgerFailure.Invalid(txId, rule, detail)` and
+  `PredicateFailure.Unmapped` are gone. The failures of the rules before Conway are cases of the closed failure
+  types, with typed fields and the cardano-ledger constructor they mirror: `UtxoFailure.ExpiredUTxO` (Shelley,
+  `Shelley/Rules/Utxo.hs:414-423`), `UtxoFailure.Update` with `PpupFailure` (`Shelley/Rules/Ppup.hs:85-107`),
+  `UtxowFailure.MIRInsufficientGenesisSigs` (`Utxow.hs:449`), fourteen `DelegFailure` cases
+  (`Shelley/Rules/Deleg.hs:89-120`: `StakeKeyAlreadyRegistered`, `StakeDelegationImpossible`, `WrongCertificateType`,
+  `GenesisKeyNotInMapping`, `DuplicateGenesisDelegate`, `DuplicateGenesisVRF`, `InsufficientForInstantaneousRewards`,
+  `MIRCertificateTooLateinEpoch`, `MIRTransferNotCurrentlyAllowed`, `MIRNegativesNotCurrentlyAllowed`,
+  `InsufficientForTransfer`, `MIRProducesNegativeUpdate`, `MIRNegativeTransfer`, `DelegateeNotRegistered`) and
+  `UtxosFailure.CollectErrors` over a closed `TranslationError` (it was a reason string). What a decoded transaction
+  holds that its era's decoder refuses (`DecoderError` in the reference) is `LedgerFailure.Undecodable` with a
+  `TxDefect`. `LedgerFailure.Unsupported` and `Malformed` (strings, never raised by a rule) are gone.
+- **The old and the new rules raise the same value.** `ShelleyLedgerSuite` compares the refusals of the two sides as
+  values, not by rule name. To get there the old rules (`PreConwayRules`) follow the reference where the two differed
+  in what they report (not in what they accept): the output checks report every offending output (wrong network, too
+  small, too big; from Babbage `BabbageOutputTooSmall`), `BadInputsUTxO` names every missing input and reference input,
+  the withdrawals are checked together in LEDGER's way (`WithdrawalsMissingAccounts`, `IncompleteWithdrawals`, after
+  `WrongNetworkWithdrawal`) instead of one by one, and the genesis signatures of a MIR certificate are UTXOW's check
+  (`MIRInsufficientGenesisSigsUTXOW`). A transaction with two faults can report another one first on the old side.
+- **Node-to-client.** `PreConwayFailureCbor` writes these failures as the `EncCBOR` instances of Shelley, Allegra/Mary,
+  Alonzo and Babbage do (their tags and nesting differ from Conway's; a `Mismatch` is one record field, sets are plain
+  arrays below protocol version 9); `PredicateFailureCbor.applyTxError(era, failures)` answers `None` for a failure the
+  era's ledger has no constructor for. Conway sends the failures of the earlier rules, and `CollectErrors`, as its
+  free-text `ConwayMempoolFailure` (text derived from the case). The goldens (`PreConwayFailureCborSuite`) are derived
+  by hand from the pinned instances: no reference node answers a submission of an earlier era. What is not written
+  (`CollectErrors` and its `ContextError`, certifying purposes in `MissingRedeemers`) is [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123).
+
 ### Added (Leios, N3: following the public testnet read-only, #72)
 - **The testnet's published configuration, pinned** (`fixtures/leios/testnet/config`, from
   `book.play.dev.cardano.org/environments-pre/leios`, with SHA-256 and Blake2b-256 of every file in

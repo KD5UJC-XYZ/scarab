@@ -836,9 +836,11 @@ One Unix socket serves four node-to-client mini-protocols: LocalTxSubmission and
 refuse a transaction with a `LedgerFailure.Rejected(txId, PredicateFailure)`: a closed tree that
 mirrors `ConwayLedgerPredFailure` (UTXOW, UTXO, UTXOS, CERTS, CERT, DELEG, POOL, GOVCERT and GOV
 failures and the LEDGER-level ones) with the payload the ledger reports (the offending inputs,
-`Mismatch` pairs, credentials, outputs with their minimum, governance action ids). A rule whose
-payload is not modelled raises `PredicateFailure.Unmapped(rule, detail)`, which is sent as the
-ledger's free-text `ConwayMempoolFailure` so the client still shows the reason. `PredicateFailureCbor`
+`Mismatch` pairs, credentials, outputs with their minimum, governance action ids). The rules of the earlier
+eras raise cases of the same types (`UtxoFailure.ExpiredUTxO`, `PpupFailure`, the Shelley `DelegFailure`s,
+`UtxowFailure.MIRInsufficientGenesisSigs`), which Conway sends as its free-text `ConwayMempoolFailure`
+(text derived from the case) and `PreConwayFailureCbor` writes as each earlier era's own instances do; no
+failure carries a rule name as its identity (`ruleName` is derived from the case). `PredicateFailureCbor`
 writes the shapes of the ledger's `EncCBOR` instances (constructor tag first, a `Mismatch` as two
 fields in line, reversed where the ledger swaps them, sets under tag 258, `StrictMaybe` as an empty or
 one-element list), and `LocalSubmission.reasonItem` wraps the failures as the hard-fork combinator's
