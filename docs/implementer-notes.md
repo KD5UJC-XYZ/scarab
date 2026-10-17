@@ -38,6 +38,10 @@ File and line numbers are as cited in our docs. They refer to the versions named
 1.70.0.0) and may have moved. A "cited" line is not a claim that the current master has the same
 line. Where our docs record no file or line, the entry gives the function name only.
 
+Entry IDs (`IN-n`) are permanent, so they can be cited: a new entry takes the next free number in
+whichever part it belongs to, an entry is never renumbered or its number reused, and an entry found to
+be wrong stays as a short stub that says why it was withdrawn.
+
 ## Agreement and disagreement
 
 If you maintain another node and you have met the same behaviour, or you read the source differently,
