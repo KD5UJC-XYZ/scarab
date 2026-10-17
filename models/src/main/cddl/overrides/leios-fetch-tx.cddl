@@ -1,0 +1,7 @@
+; Local module for the `tx` the Blueprint's LeiosFetch messages.cddl imports (`tx_list = [ *tx.tx ]`).
+; The Blueprint's tx.cddl is the hard-fork-combinator transaction of every era, Dijkstra's included, whose
+; closure holds rules the generator and the sampler do not support (`docs/models.md` section 8), and the
+; Blueprint itself marks `tx` underspecified for this protocol. The codec keeps each transaction as the bytes it
+; came with and does not interpret it (`LeiosFetch.Message.BlockTxs.transactions`), so this module says what the
+; codec checks: one CBOR item. The prototype's own form is open (docs/leios.md section 11.6, X12).
+tx = any

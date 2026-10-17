@@ -41,6 +41,7 @@ object CuddleCrossCheck:
     "chain-sync:chainSyncMessage" -> chainsync.ChainSyncMessage,
     "peer-sharing-v14:peerSharingMessage" -> peersharing.PeerSharingMessage,
     "leios-notify:leiosNotifyMessage" -> leios.notify.LeiosNotifyMessage,
+    "leios-fetch:leiosBlockFetchMessage" -> leios.fetch.LeiosBlockFetchMessage,
     "conway:header" -> conway.Header,
     "conway:block" -> conway.Block,
     "conway:transaction" -> conway.Transaction,

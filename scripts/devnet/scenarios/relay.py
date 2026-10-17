@@ -33,11 +33,16 @@ def start_scala_relay(args, root, peers):
                "--listen", f"127.0.0.1:{SCALA_PORT}", "--db", "/db", "--local-socket", "/sock/node.socket"]
     for port in peers:
         program += ["--peer", f"127.0.0.1:{port}"]
-    if getattr(args, "peer_sharing", True):
+    experimental = getattr(args, "max_ntn_version", 15) > 15
+    if getattr(args, "peer_sharing", True) or experimental:
         # The Scala node takes part in peer sharing, as the Haskell relay does by default (a node
-        # without producer credentials). The pools keep their own configuration.
+        # without producer credentials). With --max-ntn-version 16 it also reads
+        # ExperimentalProtocolsEnabled, which is what makes it offer node-to-node version 16. The pools keep
+        # their own configuration.
         config = json.loads((root / "genesis" / "configuration.yaml").read_text())
-        config["PeerSharing"] = True
+        config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
+        if experimental:
+            config["ExperimentalProtocolsEnabled"] = True
         (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
         program += ["--config", "/genesis/scala-configuration.json"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
@@ -62,6 +67,11 @@ def start_haskell_relay(args):
     # whose genesis file names are relative to it) that turns it on. The pools keep theirs.
     config = read_json(args.name, f"{ENV}/configuration.yaml")
     config["PeerSharing"] = bool(getattr(args, "peer_sharing", True))
+    if getattr(args, "max_ntn_version", 15) > 15:
+        # the reference offers versions above its latest release (15) only with this key (Run.hs 555 to 565)
+        config["ExperimentalProtocolsEnabled"] = True
+    # the relay's handshake traces: the version its connection to the Scala node came out with
+    config.setdefault("TraceOptions", {}).setdefault("Net.Handshake.Remote", {})["severity"] = "Debug"
     # the governor's peer-sharing traces, to see when the relay asks us (after `policyPeerShareActivationDelay`, 300 s)
     config.setdefault("TraceOptions", {}).setdefault("Net.PeerSelection", {})["severity"] = "Debug"
     put_file(args.name, f"{ENV}/relay-configuration.yaml", json.dumps(config, indent=2))

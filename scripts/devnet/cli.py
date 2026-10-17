@@ -184,6 +184,10 @@ def main():
                     help="diffusion mode of the Haskell relay")
     rl.add_argument("--no-peer-sharing", dest="peer_sharing", action="store_false",
                     help="leave PeerSharing off for the Scala node (it is on, as it is for the Haskell relay)")
+    rl.add_argument("--max-ntn-version", type=int, choices=[15, 16], default=15,
+                    help="highest node-to-node version the Scala node and the Haskell relay offer. 15 is the reference's "
+                         "default (latestReleasedNodeVersion of cardano-node 11.1.3); 16 turns ExperimentalProtocolsEnabled on "
+                         "in both configurations, which is how the reference offers it")
     rl.add_argument("--keep", action="store_true", help="leave the cluster running")
     rl.add_argument("--keep-data", action="store_true", help="keep the run directory")
     rl.set_defaults(run=relay)

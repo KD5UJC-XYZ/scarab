@@ -162,6 +162,39 @@ object Targets:
     )
     replies.toVector ++ netCorpus("peer-sharing-v14:peerSharingMessage")()
 
+  /** The Leios codecs return their own closed error; the round-trip probe reads the shared one. */
+  private def leiosResult[M](r: Either[LeiosWireError, (M, Int)]): DecodeResult[M] = r match
+    case Right((message, used))          => DecodeResult.Decoded(message, used)
+    case Left(LeiosWireError.Incomplete) => DecodeResult.NeedMore
+    case Left(e)                         => DecodeResult.Failed(e.toString)
+
+  private val leiosFetchSeeds: () => Vector[Array[Byte]] = () =>
+    val point = EbPoint(371614L, EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte))).get)
+    val bitmaps = TxBitmaps(Vector(0 -> BigInt(1), 3 -> BigInt("ffffffffffffffff", 16)))
+    val seeds = Vector(
+      LeiosFetch.Message.Done,
+      LeiosFetch.Message.BlockRequest(point),
+      LeiosFetch.Message.Block(Vector(point.hash -> 100L, point.hash -> 0xffffffffL)),
+      LeiosFetch.Message.BlockTxsRequest(point, bitmaps),
+      LeiosFetch.Message.BlockTxs(point, bitmaps, Corpus.transactions.take(3).map(Bytes.fromArray))
+    )
+    seeds.flatMap(LeiosFetch.encode(_).toOption.map(_.toArray)) ++
+      netCorpus("leios-fetch:leiosBlockFetchMessage")()
+
+  private val leiosNotifySeeds: () => Vector[Array[Byte]] = () =>
+    val point = EbPoint(371614L, EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte))).get)
+    val seeds = Vector(
+      LeiosNotify.Message.Done,
+      LeiosNotify.Message.Quit,
+      LeiosNotify.Message.Canceled,
+      LeiosNotify.Message.RequestNext,
+      LeiosNotify.Message.BlockOffer(point, 199983L),
+      LeiosNotify.Message.BlockTxsOffer(point)
+    )
+    seeds.flatMap(LeiosNotify.encode(_).toOption.map(_.toArray)) ++
+      Corpus.leiosEnvelopes.take(3).map(e => Array(0x82.toByte, 0x04.toByte) ++ e) ++
+      netCorpus("leios-notify:leiosNotifyMessage")()
+
   private val txSubmissionSeeds: () => Vector[Array[Byte]] = () =>
     val replies = Corpus.transactions.take(6).flatMap { tx =>
       TxSubmission2
@@ -370,6 +403,22 @@ object Targets:
       peerSharingSeeds,
       (s, r, b) => PeerSharing.decoder(s, r)(b),
       (s, r, m) => PeerSharing.encode(s, r, m).left.map(_.message)
+    ),
+    roundTrip(
+      "leios-fetch",
+      LeiosFetch.State.values.toSeq,
+      Seq(()),
+      leiosFetchSeeds,
+      (s, _, b) => leiosResult(LeiosFetch.decodePrefix(s, b)),
+      (_, _, m) => LeiosFetch.encode(m).left.map(_.toString)
+    ),
+    roundTrip(
+      "leios-notify",
+      LeiosNotify.State.values.toSeq,
+      Seq(()),
+      leiosNotifySeeds,
+      (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)),
+      (_, _, m) => LeiosNotify.encode(m).left.map(_.toString)
     ),
     roundTrip(
       "local-state-query",

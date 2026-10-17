@@ -130,6 +130,30 @@ private[protocol] object LeiosWire:
   /** A complete CBOR item, as a node to embed in a message. */
   def embed(item: Bytes): Either[LeiosWireError, Node] =
     Cbor.decode(item).left.map(_ => LeiosWireError.Syntax)
+
+  /** The head of a definite-length array of `n` items. */
+  private def arrayHead(n: Int): Bytes =
+    def be(width: Int): Array[Byte] =
+      Array.tabulate(width)(i => (n >>> (8 * (width - 1 - i))).toByte)
+    if n < 24 then Bytes.fromArray(Array((0x80 | n).toByte))
+    else if n < 256 then Bytes.fromArray(0x98.toByte +: be(1))
+    else if n < 65536 then Bytes.fromArray(0x99.toByte +: be(2))
+    else Bytes.fromArray(0x9a.toByte +: be(4))
+
+  /** The array of the `head` items, encoded, followed by the complete CBOR items of `verbatim`,
+    * written as they came: a transaction or a header that is hashed or signed is never re-encoded
+    * (a non-shortest integer in it would change its bytes, and so its hash). Each of `verbatim`
+    * must be exactly one item.
+    */
+  def arrayWithVerbatim(
+      head: Vector[Value],
+      verbatim: Vector[Bytes]
+  ): Either[LeiosWireError, Bytes] =
+    for
+      heads <- all(head)(v => encode(v))
+      _ <- all(verbatim)(embed)
+    yield (heads ++ verbatim).foldLeft(arrayHead(head.size + verbatim.size))(_ ++ _)
+
   def tagged(tag: Int, rest: Value*): Value =
     Value.Arr((Value.UInt(BigInt(tag)) +: rest.toVector).map(nodeOf))
   def pointValue(p: EbPoint): Value =

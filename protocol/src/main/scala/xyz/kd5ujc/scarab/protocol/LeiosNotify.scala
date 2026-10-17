@@ -59,7 +59,7 @@ object LeiosNotify:
     case Message.Canceled    => LeiosWire.encode(tagged(2))
     case Message.RequestNext => LeiosWire.encode(tagged(3))
     case Message.BlockAnnouncement(h) =>
-      embed(h).flatMap(n => LeiosWire.encode(tagged(4, n.value)))
+      arrayWithVerbatim(Vector(Value.UInt(BigInt(4))), Vector(h))
     case Message.BlockOffer(p, size) =>
       LeiosWire.encode(tagged(5, pointValue(p), Value.UInt(BigInt(size))))
     case Message.BlockTxsOffer(p) => LeiosWire.encode(tagged(6, pointValue(p)))

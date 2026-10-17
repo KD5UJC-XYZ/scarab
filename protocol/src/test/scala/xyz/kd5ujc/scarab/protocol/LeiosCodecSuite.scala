@@ -208,4 +208,45 @@ class LeiosCodecSuite extends ScalaCheckSuite:
     assertEquals(next(State.Block, Message.Done), None)
     assertEquals(decodePrefix(State.Idle, bs(0x82, 0x01)), Left(LeiosWireError.Incomplete))
   }
+  test("LeiosFetch: transactions are written as the bytes they came with, never re-encoded") {
+    import LeiosFetch.*
+    // a non-shortest integer (`18 02`), an indefinite-length array, and a tagged byte string: a hash
+    // over the re-encoded bytes would differ from the hash over these
+    val txs = Vector(bs(0x82, 0x18, 0x02, 0x01), bs(0x9f, 0x01, 0xff), bs(0xd8, 0x18, 0x41, 0x00))
+    val m = Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector(0 -> BigInt(7))), txs)
+    val bytes = ok(encode(m))
+    assert(bytes.hex.contains(txs.map(_.hex).mkString), bytes.hex)
+    assertEquals(decodePrefix(State.BlockTxs, bytes), Right((m, bytes.size)))
+    // the list head is right for every width of the count
+    Vector(0, 1, 23, 24, 255, 256, 1000).foreach { n =>
+      val many =
+        Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector.fill(n)(bs(0xf6)))
+      val enc = ok(encode(many))
+      assertEquals(decodePrefix(State.BlockTxs, enc), Right((many, enc.size)))
+    }
+    // something that is not exactly one item is refused, not spliced into the message
+    assertEquals(
+      encode(
+        Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector(bs(0x01, 0x02)))
+      ),
+      Left(LeiosWireError.Syntax)
+    )
+    assertEquals(
+      encode(
+        Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector(bs(0x82, 0x01)))
+      ),
+      Left(LeiosWireError.Syntax)
+    )
+  }
+
+  test("LeiosNotify: an announced header is written as the bytes it came with") {
+    import LeiosNotify.*
+    val header = bs(0x83, 0x18, 0x02, 0x01, 0x9f, 0xff) // a non-shortest integer inside
+    val bytes = ok(encode(Message.BlockAnnouncement(header)))
+    assertEquals(bytes, bs(0x82, 0x04) ++ header)
+    assertEquals(
+      decodePrefix(State.Busy, bytes),
+      Right((Message.BlockAnnouncement(header), bytes.size))
+    )
+  }
 end LeiosCodecSuite

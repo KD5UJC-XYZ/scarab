@@ -50,8 +50,12 @@ object LeiosFetch:
     case Message.BlockTxsRequest(p, b) =>
       LeiosWire.encode(tagged(3, pointValue(p), bitmapsValue(b)))
     case Message.BlockTxs(p, b, txs) =>
-      all(txs)(embed).flatMap(ns =>
-        LeiosWire.encode(tagged(4, pointValue(p), bitmapsValue(b), Value.Arr(ns)))
+      // the transactions go out as the bytes they came with
+      arrayWithVerbatim(Vector.empty, txs).flatMap(list =>
+        arrayWithVerbatim(
+          Vector(Value.UInt(BigInt(4)), pointValue(p), bitmapsValue(b)),
+          Vector(list)
+        )
       )
 
   def decodePrefix(state: State, bytes: Bytes): Either[LeiosWireError, (Message, Int)] =
