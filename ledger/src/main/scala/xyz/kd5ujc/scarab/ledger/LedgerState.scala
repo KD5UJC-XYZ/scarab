@@ -125,7 +125,7 @@ final case class LedgerState(
     futureGenDelegs: Vector[FutureGenDeleg] = Vector.empty,
     ppup: Ppup = Ppup.empty,
     mir: InstantRewards = InstantRewards.empty,
-    ptrs: Map[Ptr, Credential] = Map.empty,
+    ptrs: PtrMap = PtrMap.empty,
     /** Parameters of the previous epoch (`esPrevPp`), used by the reward calculation. */
     prevParams: Option[ProtocolParams] = None,
     /** Registered credentials when the reward calculation started (pre-Babbage reward prefilter).

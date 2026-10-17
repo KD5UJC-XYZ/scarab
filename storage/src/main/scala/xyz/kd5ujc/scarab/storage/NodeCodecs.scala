@@ -37,6 +37,10 @@ object NodeCodecs:
   given credential: Codec[Credential] = Codec.auto
   given address: Codec[Address] = Codec.auto
   given ptr: Codec[Ptr] = Codec.auto
+  // The pointers keep their persisted form (a map); the reverse index is rebuilt on read.
+  given ptrMap: Codec[PtrMap] =
+    val map = summon[Codec[Map[Ptr, Credential]]]
+    Codec.make[PtrMap](map.shape)((o, p) => map.write(o, p.toMap))(i => PtrMap(map.read(i)))
   given rewardAccount: Codec[RewardAccount] = Codec.auto
   given value: Codec[Value] = Codec.auto
   given datum: Codec[Datum] = Codec.auto

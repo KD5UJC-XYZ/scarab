@@ -69,7 +69,7 @@ class StakeSuite extends ScalaCheckSuite:
         accounts = registered.distinct
           .map(n => Credential.Key(hash(n)) -> Account(balances(n), 0, None, None))
           .toMap,
-        ptrs = pointed.distinct.map(n => Ptr(1, 2, n) -> Credential.Key(hash(n))).toMap
+        ptrs = PtrMap(pointed.distinct.map(n => Ptr(1, 2, n) -> Credential.Key(hash(n))).toMap)
       )
 
   property("incremental stake equals the stake recomputed from the whole UTxO set") {

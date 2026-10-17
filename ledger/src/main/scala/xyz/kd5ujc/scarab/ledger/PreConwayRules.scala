@@ -814,7 +814,7 @@ private[ledger] object PreConwayCerts:
           )
         yield s.copy(
           accounts = s.accounts - c,
-          ptrs = s.ptrs.filterNot(_._2 == c)
+          ptrs = s.ptrs.removedCredential(c)
         )
       case Certificate.Delegate(c, Some(pool), _, _) =>
         for

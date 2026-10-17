@@ -90,6 +90,7 @@ object Gens extends LowPriorityGens:
   given credential: Gens[Credential] = auto
   given address: Gens[Address] = auto
   given ptr: Gens[Ptr] = auto
+  given ptrMap: Gens[PtrMap] = of(summon[Gens[Map[Ptr, Credential]]].gen.map(PtrMap(_)))
   given rewardAccount: Gens[RewardAccount] = auto
   given value: Gens[Value] = auto
   given datum: Gens[Datum] = auto

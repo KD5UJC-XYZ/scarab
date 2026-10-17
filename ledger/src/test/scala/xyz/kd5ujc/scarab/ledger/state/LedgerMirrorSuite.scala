@@ -298,7 +298,7 @@ class LedgerMirrorSuite extends DisciplineSuite:
     forAll(FlatStateGen.state(conway = true)) { s =>
       val ptrs = Map(node.Ptr(7, 0, 0) -> node.Credential.Key(hash(8)))
       val ppup = node.Ppup(Map.empty, Map(hash(1) -> node.ParamUpdate(Map.empty)))
-      val odd = s.copy(ptrs = ptrs, ppup = ppup)
+      val odd = s.copy(ptrs = node.PtrMap(ptrs), ppup = ppup)
       val image = toConway(odd)
       val back = image.flatMap(m => run(mirror.from[Conway](at, m.value)))
       back == Right(LedgerMirror.normalised(FlatStateGen.network, odd)) &&

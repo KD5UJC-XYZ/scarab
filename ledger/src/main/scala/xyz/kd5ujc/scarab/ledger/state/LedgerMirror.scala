@@ -552,7 +552,7 @@ object LedgerMirror:
             ).mapN(ShelleyAccountState(pointer.getOrElse(c, genesisPointer), _, _, _))
           ).tupled
         }
-        ptrs <- sorted(s.ptrs)((p, c) => cred[Staking](c).map(p -> _))
+        ptrs <- sorted(s.ptrs.toMap)((p, c) => cred[Staking](c).map(p -> _))
       yield ShelleyAccounts(states, ptrs)
 
     private def vState(s: node.LedgerState): F[VState] =
@@ -867,7 +867,7 @@ object LedgerMirror:
 
     /** What the era has no place for. */
     private def residue(s: node.LedgerState, conway: Boolean): Residue =
-      if conway then Residue.empty.copy(ppup = s.ppup, ptrs = s.ptrs)
+      if conway then Residue.empty.copy(ppup = s.ppup, ptrs = s.ptrs.toMap)
       else
         Residue.empty.copy(
           gov = s.gov,
@@ -978,7 +978,7 @@ object LedgerMirror:
             cert.iRewards.deltaReserves.value,
             cert.iRewards.deltaTreasury.value
           ),
-          ptrs = if conway then x.residue.ptrs else cert.ptrs,
+          ptrs = node.PtrMap(if conway then x.residue.ptrs else cert.ptrs),
           prevParams = Option.when(x.prevParamsExplicit || prev != cur)(prev),
           rewardRegistered = x.rewardRegistered,
           plutus = x.plutus,

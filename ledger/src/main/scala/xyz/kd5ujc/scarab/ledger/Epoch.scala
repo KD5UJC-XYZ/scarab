@@ -303,7 +303,7 @@ object Translate:
       futureGenDelegs = Vector.empty,
       ppup = Ppup.empty,
       mir = InstantRewards.empty,
-      ptrs = Map.empty,
+      ptrs = PtrMap.empty,
       dreps = Map.empty,
       gov = gov,
       committeeState = Map.empty,

@@ -209,7 +209,7 @@ class ShelleyLedgerSuite extends FunSuite:
       accounts = accounts,
       pools = pools,
       genDelegs = genDelegs,
-      ptrs = ptrs,
+      ptrs = node.PtrMap(ptrs),
       deposited = deposits,
       reserves = s.reserves - deposits,
       epoch = TestLedger.env.epoch

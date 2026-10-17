@@ -203,7 +203,7 @@ object FlatStateGen:
           futureGenDelegs = futureGenesis,
           ppup = ppup,
           mir = mir,
-          ptrs = ptrs,
+          ptrs = node.PtrMap(ptrs),
           prevParams = prev,
           rewardRegistered = rewardRegistered,
           plutus = plutus,
