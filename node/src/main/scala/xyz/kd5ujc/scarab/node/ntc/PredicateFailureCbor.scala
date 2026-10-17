@@ -42,7 +42,7 @@ object PredicateFailureCbor:
   def applyTxError(failures: Vector[PredicateFailure]): Bytes =
     CborOut.build { w =>
       w.array(1).array(2).uint(ConwayIndex)
-      list(w, failures.map(conwayForm))(ledger)
+      list(w, failures)(ledger)
     }
 
   /** The reason item for a refused transaction of `era`, when the era's ledger has a constructor
@@ -178,7 +178,9 @@ object PredicateFailureCbor:
 
   // ---- LEDGER
 
-  def ledger(w: W, f: PredicateFailure): Unit = f match
+  def ledger(w: W, f: PredicateFailure): Unit = conway(w, conwayForm(f))
+
+  private def conway(w: W, f: PredicateFailure): Unit = f match
     case PredicateFailure.Utxow(u) => w.array(2).uint(1); utxow(w, u)
     case PredicateFailure.Certs(c) => w.array(2).uint(2); certs(w, c)
     case PredicateFailure.Gov(g)   => w.array(2).uint(3); gov(w, g)
