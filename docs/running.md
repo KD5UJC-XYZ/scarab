@@ -376,8 +376,10 @@ A KES key signs for at most `maxKESEvolutions` periods (62 on mainnet, one perio
 has to change both before they run out. The node does four things for that; a driver script does the rest.
 
 - **Forward security.** The Haskell node never writes its KES key: it reads the period-0 file at every start
-  and evolves it in memory (`Ouroboros.Consensus.Protocol.Ledger.HotKey.evolveKey` and `forgetSignKeyKES`,
-  ouroboros-consensus-protocol `HotKey.hs` lines 385 to 399 at `main`, 2026-10-17), so the period-0 key stays on
+  and evolves it in memory (`Ouroboros.Consensus.Protocol.Ledger.HotKey.evolveKey`, which calls
+  `forgetSignKeyKES` on the old key: `HotKey.hs` lines 385 to 436 in ouroboros-consensus-protocol at the tag
+  `release-ouroboros-consensus-4.2.1.0`, the release series that cardano-node 11.1.3 requires, `^>= 4.2.0.1`
+  in `cardano-node.cabal` line 179), so the period-0 key stays on
   disk for ever. Scarab takes the improvement ([ADR 0001](adr/0001-haskell-node-as-reference.md): the format is
   unchanged, the behaviour is better): when the key moves to a new period, at the first slot of the period
   whether or not the pool leads in it, the new key is written back to the `--kes-skey` file and the earlier key
@@ -398,16 +400,18 @@ has to change both before they run out. The node does four things for that; a dr
   `cardano-node/src/Cardano/Node/Run.hs` line 596) runs `updateBlockForging` (line 626), which reads the
   credentials with `mkConsensusProtocol` (line 627) and hands them to `setBlockForging` (line 648; the
   consensus side is `NodeKernel.setBlockForging` and `blockForgingController`, ouroboros-consensus-diffusion
-  `NodeKernel.hs` lines 183, 416 and 429 at `main`). The Haskell node switches without looking at the
-  new certificate; a bad one shows up as rejected blocks. Scarab, by a documented improvement, checks first
+  `NodeKernel.hs` lines 194, 416 and 428 at the same tag). The Haskell node checks that the KES key
+  is the one the certificate names (`opCertKesKeyCheck`, `cardano-node/src/Cardano/Node/Protocol/Shelley.hs`
+  line 214) and then switches; it does not check the certificate's signature, its window or its counter, so a
+  bad one shows up as rejected blocks. Scarab, by a documented improvement, checks all of that first
   and switches only when all of these hold, and otherwise keeps the old credentials and logs a typed
   `kesReloadRefused` (`kind` is the case of `ReloadRefusal`) and counts `scarab_kes_reloads_total{outcome="refused"}`:
   the cold verification key hashes to the pool this node forges for (`WrongPool`); the certificate names the
   KES key in the file (`KeyNotCertified`) and carries the cold key's signature (`BadCertificateSignature`); the
   current KES period is inside `[start, start + maxKESEvolutions)` (`NotYetValid`, `Expired`); the key has not
   been evolved past the period it must sign in (`KeyPastPeriod`); and the certificate counter is the pool's
-  counter on the chain or one above it (`Counter`, the rule of `doValidateKESSignature'` in ouroboros-consensus-protocol
-  `PolyPraos.hs` lines 1017 to 1037 at `main`, which the node's header validation shares), so the chain will
+  counter on the chain or one above it (`Counter`, the rule of `doValidateKESSignature` in ouroboros-consensus-protocol
+  `Protocol/Praos.hs` lines 620 to 647 at the tag above, which the node's header validation shares), so the chain will
   take the blocks. A good reload logs `kesReloaded` (`opCertCounter`, `kesStart`, `remainingKesPeriods`),
   erases the old key from memory and brings a period-0 key to the present period at once. Putting the same key
   back (a spurious HUP, or someone restoring the period-0 file) keeps the key in memory, which is further on.

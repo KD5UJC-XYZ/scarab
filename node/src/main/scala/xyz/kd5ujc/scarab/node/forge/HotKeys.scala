@@ -55,12 +55,18 @@ enum ReloadRefusal:
   */
 trait HotKeySource[F[_]]:
   /** The key and certificate the operator installed now. */
-  def read: F[Either[ForgeError, HotCredentials]]
+  def read: F[Either[ForgeError, HotKeySource.Candidate[F]]]
 
   /** Write the key, evolved in memory, back to where it was read from (see [[KesFiles]]). */
   def persist(key: Sum6KesSigning.SigningKey): F[Persisted]
 
 object HotKeySource:
+  /** What a read found: the credentials, and `adopt`, which the node runs once it has switched to
+    * them. Where the evolved key is written back changes only then: a reload that is refused leaves
+    * it where it was, so the pair that stays in force keeps being written to its own files.
+    */
+  final case class Candidate[F[_]](credentials: HotCredentials, adopt: F[Unit])
+
   /** The key and certificate files given with `--kes-skey` and `--opcert`. */
   def files[F[_]: Async](kesFile: Path, opCertFile: Path): F[HotKeySource[F]] =
     val F = Async[F]
@@ -69,7 +75,9 @@ object HotKeySource:
         new HotKeySource[F]:
           def read = F.blocking(KesFiles.readHot(kesFile, opCertFile)).flatMap { r =>
             // the key is written back where it was read from, even if a link moves afterwards
-            F.blocking(KesFiles.resolved(kesFile)).flatMap(_.traverse_(target.set)).as(r)
+            F.blocking(KesFiles.resolved(kesFile)).map { where =>
+              r.map(HotKeySource.Candidate(_, where.traverse_(target.set)))
+            }
           }
           def persist(key: Sum6KesSigning.SigningKey) =
             target.get.flatMap(path => F.blocking(KesFiles.persist(path, key)))
@@ -162,8 +170,8 @@ final class HotKeys[F[_]: Async] private (
         case Right(candidate) =>
           lock.lock.surround(
             state.get.flatMap { cur =>
-              HotKeys.validate(cur, candidate, kesPeriod, counter, config) match
-                case Left(why) => F.delay(candidate.kes.forget()) *> refuse(why)
+              HotKeys.validate(cur, candidate.credentials, kesPeriod, counter, config) match
+                case Left(why) => F.delay(candidate.credentials.kes.forget()) *> refuse(why)
                 case Right(_)  => adopt(cur, candidate, kesPeriod)
             }
           )
@@ -172,9 +180,14 @@ final class HotKeys[F[_]: Async] private (
 
   private def refuse(why: ReloadRefusal): F[Unit] = events.emit(ForgeEvent.KesReloadRefused(why))
 
-  private def adopt(cur: PoolCredentials, candidate: HotCredentials, kesPeriod: BigInt): F[Unit] =
+  private def adopt(
+      cur: PoolCredentials,
+      found: HotKeySource.Candidate[F],
+      kesPeriod: BigInt
+  ): F[Unit] =
     // a certificate re-issued for the key already in use keeps that key, which is further on than
     // the file's copy; a new key replaces it and the old one is erased from memory
+    val candidate = found.credentials
     val sameKey = candidate.kes.verificationKey == cur.kes.verificationKey
     val kes = if sameKey then cur.kes else candidate.kes
     val next = cur.withHot(HotCredentials(kes, candidate.opCert, cur.coldVkey))
@@ -182,7 +195,10 @@ final class HotKeys[F[_]: Async] private (
     for
       _ <- F.delay(if sameKey then candidate.kes.forget() else cur.kes.forget())
       _ <- state.set(next)
+      _ <- found.adopt
       _ <- unwritten.set(None)
+      // the key in use, further on than the file it was read again from, is written there too
+      _ <- write(next, kesPeriod).whenA(sameKey)
       // a key installed at period 0 is brought to the present at once; its file is rewritten
       _ <- evolved(next, kesPeriod).void.whenA(relative.toInt > kes.period)
       _ <- events.emit(
@@ -210,11 +226,11 @@ object HotKeys:
     * issue counter on the chain is `counter` (none: not seen yet)?
     *
     * The same rules the chain applies to the headers it will carry (OCERT, `doValidateKESSignature`
-    * of ouroboros-consensus `Protocol/Praos.hs`), so a certificate that passes here is not refused
-    * there: the cold key is the pool's; the certificate names the KES key and carries the cold
-    * key's signature; the period is inside `[start, start + maxKESEvolutions)`; and the counter is
-    * the on-chain one or the one above ([[OCertRules.checkCounter]], the function the header rules
-    * use).
+    * of ouroboros-consensus-protocol `Protocol/Praos.hs`, tag release-ouroboros-consensus-4.2.1.0,
+    * lines 620 to 647), so a certificate that passes here is not refused there: the cold key is the
+    * pool's; the certificate names the KES key and carries the cold key's signature; the period is
+    * inside `[start, start + maxKESEvolutions)`; and the counter is the on-chain one or the one
+    * above ([[OCertRules.checkCounter]], the function the header rules use).
     */
   def validate(
       current: PoolCredentials,

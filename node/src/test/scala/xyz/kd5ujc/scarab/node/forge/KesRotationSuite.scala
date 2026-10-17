@@ -62,11 +62,15 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
 
   private def withDir[A](body: Files3 => IO[A]): IO[A] =
     IO.blocking(Files3(Files.createTempDirectory("kes-rotation"))).flatMap { files =>
-      body(files).guarantee(IO.blocking {
-        Files.list(files.dir).forEach(p => Files.deleteIfExists(p))
-        Files.deleteIfExists(files.dir)
-      }.void)
+      body(files).guarantee(IO.blocking(removeTree(files.dir)))
     }
+
+  private def removeTree(dir: Path): Unit =
+    if Files.exists(dir) then
+      Files
+        .walk(dir)
+        .sorted(java.util.Comparator.reverseOrder())
+        .forEach(p => Files.deleteIfExists(p))
 
   private def source(files: Files3): IO[HotKeySource[IO]] =
     HotKeySource.files[IO](files.kes, files.cert)
@@ -385,6 +389,62 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             assertEquals(events.collect { case e: ForgeEvent.KesReloaded => e }.size, 1)
             assertEquals(periodAfter, 2)
             assert(!events.exists(_.isInstanceOf[ForgeEvent.Failed]), events.toString)
+        }
+      }
+    )
+  }
+
+  test(
+    "the key is written where it was read: a refused reload changes nothing, a good one moves it"
+  ) {
+    val p = pool(kesStart = 50, seed = 17)
+    TestControl.executeEmbed(
+      withDir { f =>
+        val link = f.dir.resolve("current")
+        val (gen0, gen1) = (f.dir.resolve("gen-0"), f.dir.resolve("gen-1"))
+        def install(gen: Path, h: HotCredentials): Unit =
+          Files.createDirectories(gen)
+          Files.writeString(gen.resolve("kes.skey"), KeyFiles.kesEnvelope("k", h.kes).toOption.get)
+          Files.writeString(gen.resolve("node.cert"), opCertText(h))
+        def point(gen: Path): Unit =
+          val tmp = f.dir.resolve("current.tmp")
+          Files.deleteIfExists(tmp)
+          Files.createSymbolicLink(tmp, gen.getFileName)
+          Files.move(tmp, link, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        def periodIn(gen: Path): Int =
+          KeyFiles.kesSigningKey("k", Files.readString(gen.resolve("kes.skey"))).toOption.get.period
+        install(gen0, p.creds.hot)
+        point(gen0)
+        withHandle {
+          for
+            src <- HotKeySource.files[IO](link.resolve("kes.skey"), link.resolve("node.cert"))
+            h <- harness(p, ledgerWith(p, 1), live = true, source = Some(src))
+            // a rotation the node will refuse (counter 5), as the driver leaves it before the signal
+            _ = install(gen1, hotFor(p.cold, seed = 41, start = 50, sequence = 5))
+            _ = point(gen1)
+            _ <- h.forger.reload
+            refused <- refusals(h)
+            // the driver puts the old pair back and erases the refused one
+            _ = point(gen0)
+            _ = removeTree(gen1)
+            _ <- h.forger.step(5100)
+            afterRefusal = periodIn(gen0)
+            // a good rotation: the new pair is where the key is written from now on
+            _ = install(gen1, hotFor(p.cold, seed = 42, start = 50, sequence = 1))
+            _ = point(gen1)
+            _ <- h.forger.reload
+            _ <- h.forger.step(5200)
+            events <- h.seen
+          yield
+            assertEquals(refused.map(_.productPrefix), Vector("Counter"))
+            assertEquals(afterRefusal, 1, "the evolved key went to the pair still in force")
+            assertEquals(periodIn(gen1), 2, "after the reload the key goes to the new pair")
+            assertEquals(
+              periodIn(gen0),
+              1,
+              "and the old pair is left as it was, for the driver to erase"
+            )
+            assert(!events.exists(_.isInstanceOf[ForgeEvent.KesPersistFailed]), events.toString)
         }
       }
     )

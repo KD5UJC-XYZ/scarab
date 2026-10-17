@@ -7,11 +7,13 @@
 ## Context
 
 The Haskell node reads the period-0 KES key file at every start and evolves the key in memory only
-(ouroboros-consensus-protocol `HotKey.hs`, `evolveKey`); the file is never rewritten, so the period-0 key
+(ouroboros-consensus-protocol `HotKey.hs`, `evolveKey`, at the release
+`release-ouroboros-consensus-4.2.1.0` that cardano-node 11.1.3 requires); the file is never rewritten, so the period-0 key
 stays on disk for ever and the forward security that key-evolving signatures exist for is lost to anyone who
-reads the disk. On SIGHUP it reads the credentials again and hands them to the consensus layer without
-looking at them (cardano-node `Run.hs`, `updateBlockForging` and `setBlockForging`); a certificate that the
-chain will refuse shows up later as rejected blocks. The owner wants KES rotation fully automated for the
+reads the disk. On SIGHUP it reads the credentials again, checks only that the KES key is the one the certificate names
+(`opCertKesKeyCheck`) and hands them to the consensus layer (cardano-node 11.1.3 `Run.hs`,
+`updateBlockForging` and `setBlockForging`); a certificate that the chain will refuse, for its signature,
+window or counter, shows up later as rejected blocks. The owner wants KES rotation fully automated for the
 test-network pool (#116).
 
 ## Decision
