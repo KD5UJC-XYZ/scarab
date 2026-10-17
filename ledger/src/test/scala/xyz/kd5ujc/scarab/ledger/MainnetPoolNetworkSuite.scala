@@ -2,6 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import java.nio.file.{Files, Path}
+import cats.syntax.all.*
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -16,7 +17,7 @@ import TestLedger.*
   * (`poolTransition`). The fixture is the block as the relay sent it
   * (`fixtures/mainnet/README.md`).
   */
-class MainnetPoolNetworkSuite extends FunSuite:
+abstract class MainnetPoolNetworkSuite(rs: RuleSet) extends FunSuite:
   private val EpochSlots: BigInt = BigInt(21600)
   private val Mainnet = 1
 
@@ -35,13 +36,13 @@ class MainnetPoolNetworkSuite extends FunSuite:
   private val registrations: Vector[(Certificate.RegisterPool, Int)] =
     tx.body.certificates.zipWithIndex.collect { case (c: Certificate.RegisterPool, i) => c -> i }
 
-  private def register(pv: Int): Either[LedgerFailure, LedgerState] =
-    registrations.foldLeft[Either[LedgerFailure, LedgerState]](Right(state(pv, Vector.empty))) {
-      case (acc, (cert, ix)) =>
-        acc.flatMap(PreConwayCerts(_, cert, ix, env.copy(network = Mainnet), tx))
+  // the fixture holds one registration, so each is judged on the state it starts from
+  private def register(pv: Int): Either[LedgerFailure, Unit] =
+    registrations.traverse_ { case (cert, ix) =>
+      rs.registerPool(state(pv, Vector.empty), cert, ix, env.copy(network = Mainnet), tx)
     }
 
-  private def rule(r: Either[LedgerFailure, LedgerState]): String = r match
+  private def rule(r: Either[LedgerFailure, Unit]): String = r match
     case Left(LedgerFailure.Rejected(_, f)) => f.ruleName
     case Left(other)                        => other.message
     case Right(_)                           => "accepted"
@@ -62,3 +63,6 @@ class MainnetPoolNetworkSuite extends FunSuite:
   test("protocol version 5 and later reject it with WrongNetworkPOOL") {
     List(5, 6, 7, 8).foreach(pv => assertEquals(rule(register(pv)), "WrongNetworkPOOL", s"pv $pv"))
   }
+
+class MainnetPoolNetworkOldSuite extends MainnetPoolNetworkSuite(RuleSet.Old)
+class MainnetPoolNetworkNewSuite extends MainnetPoolNetworkSuite(RuleSet.New)

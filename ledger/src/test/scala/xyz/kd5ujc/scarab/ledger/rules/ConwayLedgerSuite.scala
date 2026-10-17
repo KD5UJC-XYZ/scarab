@@ -795,7 +795,7 @@ class ConwayLedgerSuite extends FunSuite:
   test(
     "J2.6-1: re-registering with the pool's own key hash and then another in one epoch drops the key in use (the reference's quirk)"
   ) {
-    // `Pool.hs:285-293`: a re-registration whose future parameters hold another key hash deletes
+    // `Pool.hs:274-286`: a re-registration whose future parameters hold another key hash deletes
     // that one from the map, whether or not it is also the key of the registered pool. The old
     // state derives the map from the pools (every key in use), so the two sides differ here by
     // design, and a suite that carries a state across transactions through the flat state

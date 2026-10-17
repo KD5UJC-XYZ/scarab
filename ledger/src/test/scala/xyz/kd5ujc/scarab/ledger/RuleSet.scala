@@ -28,6 +28,21 @@ enum RuleSet:
       case RuleSet.Old => TxRules(s, t, ctx)
       case RuleSet.New => RuleSet.newTx(s, t, ctx)
 
+  /** Whether POOL accepts the registration of a pool in the state (a certificate of the transaction
+    * `tx`, at index `ix`), or the rule that refuses it. The old side applies the certificate
+    * (`PreConwayCerts`), the new side runs POOL of its certificate state.
+    */
+  def registerPool(
+      s: LedgerState,
+      cert: Certificate.RegisterPool,
+      ix: Int,
+      ctx: TxRules.Env,
+      tx: Tx
+  ): Either[LedgerFailure, Unit] =
+    this match
+      case RuleSet.Old => PreConwayCerts(s, cert, ix, ctx, tx).void
+      case RuleSet.New => RuleSet.newRegisterPool(s, cert, ctx, tx)
+
   /** The state one epoch later, as the boundary into `s.epoch + 1` makes it. The state's own reward
     * update, if it has one, is applied; none is made.
     */
@@ -73,6 +88,26 @@ object RuleSet:
   type M[A] = Kleisli[Result, MirrorEnv, A]
   private val mirror: LedgerMirror[M] = LedgerMirror[M]
   private val at: WithOrigin[SlotNo] = WithOrigin.At(SlotNo.fromUnsigned(50L))
+
+  private def newRegisterPool(
+      s: LedgerState,
+      cert: Certificate.RegisterPool,
+      ctx: TxRules.Env,
+      tx: Tx
+  ): Either[LedgerFailure, Unit] =
+    val env = FlatStateGen.env.copy(network = ctx.network, quorum = ctx.updateQuorum)
+    val globals = globalsOf(ctx, env)
+    eraOf(s.params.protocolMajor) match
+      case e: Of[x] =>
+        given ShelleyBasedEra[x] = e.era
+        val image =
+          mirror.to[x](at, s).run(env).fold(m => broken(s"to the mirror: ${m.show}"), _.value)
+        Sts(Pool)(
+          globals,
+          CertEnv(tx.body.id, s.params, ctx.epoch, None, Proposals.empty),
+          xyz.kd5ujc.scarab.ledger.state.LedgerState.pState[x].get(image.nes.es.ls),
+          PoolCert.RegPool(cert.params)
+        ).void
 
   /** An era of the state's protocol version, with its witness. */
   private final class Of[E <: EraTag](val era: ShelleyBasedEra[E])
@@ -335,7 +370,7 @@ object RuleSet:
       // (the hard fork into 11 populates them): the mirror of the old state derives them from
       // version 10, so they are derived here too. From 11 the new side keeps the reference's own
       // map, which is not always the one the pools imply (a re-registration with the pool's own
-      // key and then another in the same epoch drops the key in use, `Pool.hs:285-293`; finding
+      // key and then another in the same epoch drops the key in use, `Pool.hs:274-286`; finding
       // J2.6-1, asserted in `ConwayLedgerSuite`); the old state cannot hold it, so a suite that
       // takes the state on to a next transaction goes on from the derived one
       val ls =
