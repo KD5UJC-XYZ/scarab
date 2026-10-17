@@ -44,6 +44,35 @@ final case class GenesisHashes(
     checkpoints: Option[Bytes] = None
 )
 
+/** The targets of the peer governor a configuration overrides (`TargetNumberOfRootPeers` and the
+  * six that follow, `Cardano.Node.Configuration.POM` 378-391); an absent key leaves the default of
+  * the node's role.
+  */
+final case class PeerTargetOverrides(
+    root: Option[Int] = None,
+    known: Option[Int] = None,
+    established: Option[Int] = None,
+    active: Option[Int] = None,
+    knownBig: Option[Int] = None,
+    establishedBig: Option[Int] = None,
+    activeBig: Option[Int] = None
+):
+  /** The defaults with these replaced, if the result is sane. */
+  def apply(
+      defaults: xyz.kd5ujc.scarab.network.selection.Targets
+  ): Either[ConfigError, xyz.kd5ujc.scarab.network.selection.Targets] =
+    xyz.kd5ujc.scarab.network.selection.Targets
+      .validated(
+        root.getOrElse(defaults.root),
+        known.getOrElse(defaults.known),
+        established.getOrElse(defaults.established),
+        active.getOrElse(defaults.active),
+        knownBig.getOrElse(defaults.knownBig),
+        establishedBig.getOrElse(defaults.establishedBig),
+        activeBig.getOrElse(defaults.activeBig)
+      )
+      .leftMap(p => ConfigError(s"the peer selection targets are not sane: ${p.message}"))
+
 /** The remaining configuration keys the node reads or records. What it does not act on is kept so
   * the log can say what was configured; `unsupported` lists the settings that ask for something the
   * node does not implement.
@@ -64,7 +93,9 @@ final case class ConfigSettings(
     /** `MempoolCapacityBytesOverride` as a number of bytes (`NoOverride` is `None`). */
     mempoolCapacityBytes: Option[Long] = None,
     /** `Test<Era>HardForkAtVersion`: hard forks triggered by a protocol version. */
-    hardForkVersions: Map[Era, BigInt] = Map.empty
+    hardForkVersions: Map[Era, BigInt] = Map.empty,
+    /** `TargetNumberOf...Peers`: the governor's targets, when the file sets any. */
+    peerTargets: PeerTargetOverrides = PeerTargetOverrides()
 ):
   /** Settings that ask for something the node does not implement. */
   def unsupported: List[String] =
@@ -249,6 +280,15 @@ object NodeConfig:
       socket <- k.opt[String]("SocketPath")
       database <- k.opt[String]("DatabasePath")
       mempool <- capacity(k)
+      targets <- (
+        k.opt[Int]("TargetNumberOfRootPeers"),
+        k.opt[Int]("TargetNumberOfKnownPeers"),
+        k.opt[Int]("TargetNumberOfEstablishedPeers"),
+        k.opt[Int]("TargetNumberOfActivePeers"),
+        k.opt[Int]("TargetNumberOfKnownBigLedgerPeers"),
+        k.opt[Int]("TargetNumberOfEstablishedBigLedgerPeers"),
+        k.opt[Int]("TargetNumberOfActiveBigLedgerPeers")
+      ).mapN(PeerTargetOverrides.apply)
       required = (name: String, present: Boolean) =>
         Either.cond(present || !strict, (), ConfigError(s"missing required field $name"))
       _ <- required("ByronGenesisFile (or GenesisFile)", byronFile.isDefined)
@@ -294,6 +334,7 @@ object NodeConfig:
           socket,
           database,
           mempool,
-          versions.flatten.toMap
+          versions.flatten.toMap,
+          targets
         )
       )

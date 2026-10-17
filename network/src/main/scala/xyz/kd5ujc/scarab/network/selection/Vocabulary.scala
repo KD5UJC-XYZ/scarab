@@ -7,10 +7,10 @@ import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 /** How a peer failed, as far as the governor cares (owner decision 8, docs/design/
   * peer-selection.md section 8a): a network failure is retried after a backoff; a peer that broke
   * the protocol, sent an invalid header or an oversize message is forgotten. The node maps each of
-  * its typed peer errors to one of these in a single function (`PeerFailureClass`), which is the
-  * one place to change if the policy does.
+  * its typed peer errors to one of these in a single function (`FailurePolicy`), which is the one
+  * place to change if the policy does.
   */
-enum PeerFailure:
+enum FailureClass:
   case Transient, Misbehaved
 
 /** The temperatures a transition goes between. */
@@ -31,7 +31,7 @@ enum Observation:
     * still holds it (`PeerCooling`) and true once it is gone (`PeerCold`); `delay` is the exit
     * policy's wait before the next attempt.
     */
-  case Lost(failure: PeerFailure, delay: FiniteDuration, released: Boolean)
+  case Lost(failure: FailureClass, delay: FiniteDuration, released: Boolean, reason: String)
 
 /** The peers a request for public roots found: ordinary public roots, and bootstrap peers. */
 final case class PublicRoots[A](ordinary: Set[A], bootstrap: Set[A]):
@@ -43,9 +43,9 @@ final case class PublicRoots[A](ordinary: Set[A], bootstrap: Set[A]):
   */
 enum Outcome[A]:
   case Connected(peer: A)
-  case ConnectFailed(peer: A, failure: PeerFailure)
+  case ConnectFailed(peer: A, failure: FailureClass)
   case Activated(peer: A)
-  case ActivateFailed(peer: A, failure: PeerFailure)
+  case ActivateFailed(peer: A, failure: FailureClass)
   case Deactivated(peer: A)
 
   /** The hot protocols could not be ended cleanly; the connection was closed. */
@@ -93,7 +93,7 @@ enum Trace[A]:
   case PromoteFailed(
       from: Temperature,
       peer: A,
-      failure: PeerFailure,
+      failure: FailureClass,
       retryIn: Option[FiniteDuration],
       forgotten: Boolean
   )
@@ -105,7 +105,12 @@ enum Trace[A]:
   case DemoteFailed(from: Temperature, peer: A, timedOut: Boolean)
 
   /** A change the governor did not ask for: a hot protocol ended, or a connection was lost. */
-  case DemoteAsynchronous(peer: A, to: Temperature, failure: Option[PeerFailure])
+  case DemoteAsynchronous(
+      peer: A,
+      to: Temperature,
+      failure: Option[FailureClass],
+      reason: Option[String]
+  )
   case ForgetCold(target: Int, known: Int, peers: List[A])
   case Forgotten(peers: List[A])
 

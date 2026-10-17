@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.node.metrics
 
 import xyz.kd5ujc.scarab.ledger.BlockRule
 import xyz.kd5ujc.scarab.node.forge.ForgeEpochStats
+import xyz.kd5ujc.scarab.network.selection.GovernorState
 import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, Era}
 
@@ -45,6 +46,25 @@ enum ConnectionEventLabel derives LabelValue:
 /** What the inbound governor did on a connection ([[xyz.kd5ujc.scarab.node.InboundEvent]]). */
 enum InboundEventLabel derives LabelValue:
   case Accepted, Duplex, Unidirectional, Following, SessionEnded, SessionDropped, Closed, Refused
+
+/** What the peer governor did to a peer, or learnt of it
+  * ([[xyz.kd5ujc.scarab.network.selection.Trace]]).
+  */
+enum PeerTransitionLabel derives LabelValue:
+  case PromotedWarm, PromotedHot, DemotedHot, DemotedCold, PromoteFailed, DemoteFailed, Lost,
+    Forgotten
+
+/** The targets of the governor that are exported. */
+enum TargetLabel derives LabelValue:
+  case Root, Known, Established, Active
+
+/** The state of the Genesis State Machine. */
+enum GsmStateLabel derives LabelValue:
+  case PreSyncing, Syncing, CaughtUp
+
+/** The fetch mode. */
+enum FetchModeLabel derives LabelValue:
+  case BulkSync, Deadline
 
 /** Why the mempool refused a transaction ([[xyz.kd5ujc.scarab.node.mempool.Rejection]]). */
 enum RejectionLabel derives LabelValue:
@@ -431,6 +451,327 @@ object Catalogue:
     "What the inbound governor did on accepted connections.",
     Labels.one[InboundEventLabel](LabelName("event"))
   )
+  // the governor's counters, under the Haskell node's names (`peerSelection.*` of the trace
+  // dispatcher, `PeerSelectionCounters.hs`); big ledger peers come with G1.3 and read zero until
+  // then
+  /** Each gauge with the counter it reports. */
+  val peerSelectionGauges: List[(GaugeDef[Unit], GovernorState.Counters => Int)] = List(
+    (
+      GaugeDef(MetricName("cardano_node_metrics_peerSelection_Cold_int"), "Number of cold peers."),
+      _.cold
+    ),
+    (
+      GaugeDef(MetricName("cardano_node_metrics_peerSelection_Warm_int"), "Number of warm peers."),
+      _.warm
+    ),
+    (
+      GaugeDef(MetricName("cardano_node_metrics_peerSelection_Hot_int"), "Number of hot peers."),
+      _.hot
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int"),
+        "Number of cold big ledger peers."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int"),
+        "Number of warm big ledger peers."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_HotBigLedgerPeers_int"),
+        "Number of hot big ledger peers."
+      ),
+      _ => 0
+    ),
+    // the reference reports these two the other way round (warm as the active, hot as the
+    // established beyond the active); both are deprecated there
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmLocalRoots_int"),
+        "Deprecated; as the reference computes it: the active local roots."
+      ),
+      _.activeLocalRoots
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_HotLocalRoots_int"),
+        "Deprecated; as the reference computes it: the local roots established beyond the active."
+      ),
+      _.warmLocalRoots
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_RootPeers_int"),
+        "Number of root peers."
+      ),
+      _.root
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_KnownPeers_int"),
+        "Number of known peers."
+      ),
+      _.known
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ColdPeersPromotions_int"),
+        "Number of cold peers being promoted."
+      ),
+      _.coldPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_EstablishedPeers_int"),
+        "Number of established peers."
+      ),
+      _.established
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmPeersDemotions_int"),
+        "Number of warm peers being demoted."
+      ),
+      _.warmDemotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmPeersPromotions_int"),
+        "Number of warm peers being promoted."
+      ),
+      _.warmPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActivePeers_int"),
+        "Number of active peers."
+      ),
+      _.active
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActivePeersDemotions_int"),
+        "Number of active peers being demoted."
+      ),
+      _.activeDemotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_KnownBigLedgerPeers_int"),
+        "Number of known big ledger peers."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ColdBigLedgerPeersPromotions_int"),
+        "Number of cold big ledger peers being promoted."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers_int"),
+        "Number of established big ledger peers."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmBigLedgerPeersDemotions_int"),
+        "Number of warm big ledger peers being demoted."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmBigLedgerPeersPromotions_int"),
+        "Number of warm big ledger peers being promoted."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveBigLedgerPeers_int"),
+        "Number of active big ledger peers."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveBigLedgerPeersDemotions_int"),
+        "Number of active big ledger peers being demoted."
+      ),
+      _ => 0
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_KnownLocalRootPeers_int"),
+        "Number of known local root peers."
+      ),
+      _.knownLocalRoots
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_EstablishedLocalRootPeers_int"),
+        "Number of established local root peers."
+      ),
+      _.establishedLocalRoots
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmLocalRootPeersPromotions_int"),
+        "Number of warm local root peers being promoted."
+      ),
+      _.warmLocalRootsPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveLocalRootPeers_int"),
+        "Number of active local root peers."
+      ),
+      _.activeLocalRoots
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveLocalRootPeersDemotions_int"),
+        "Number of active local root peers being demoted."
+      ),
+      _.activeLocalRootsDemotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_KnownNonRootPeers_int"),
+        "Number of known peers that are not roots."
+      ),
+      _.knownNonRoot
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ColdNonRootPeersPromotions_int"),
+        "Number of cold non-root peers being promoted."
+      ),
+      _.coldNonRootPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_EstablishedNonRootPeers_int"),
+        "Number of established non-root peers."
+      ),
+      _.establishedNonRoot
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmNonRootPeersDemotions_int"),
+        "Number of warm non-root peers being demoted."
+      ),
+      _.warmNonRootDemotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmNonRootPeersPromotions_int"),
+        "Number of warm non-root peers being promoted."
+      ),
+      _.warmNonRootPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveNonRootPeers_int"),
+        "Number of active non-root peers."
+      ),
+      _.activeNonRoot
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveNonRootPeersDemotions_int"),
+        "Number of active non-root peers being demoted."
+      ),
+      _.activeNonRootDemotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_KnownBootstrapPeers_int"),
+        "Number of known bootstrap peers."
+      ),
+      _.knownBootstrap
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ColdBootstrapPeersPromotions_int"),
+        "Number of cold bootstrap peers being promoted."
+      ),
+      _.coldBootstrapPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_EstablishedBootstrapPeers_int"),
+        "Number of established bootstrap peers."
+      ),
+      _.establishedBootstrap
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmBootstrapPeersDemotions_int"),
+        "Number of warm bootstrap peers being demoted."
+      ),
+      _.warmBootstrapDemotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_WarmBootstrapPeersPromotions_int"),
+        "Number of warm bootstrap peers being promoted."
+      ),
+      _.warmBootstrapPromotions
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveBootstrapPeers_int"),
+        "Number of active bootstrap peers."
+      ),
+      _.activeBootstrap
+    ),
+    (
+      GaugeDef(
+        MetricName("cardano_node_metrics_peerSelection_ActiveBootstrapPeersDemotions_int"),
+        "Number of active bootstrap peers being demoted."
+      ),
+      _.activeBootstrapDemotions
+    )
+  )
+  val peerTransitions = CounterDef(
+    MetricName("scarab_peer_selection_transitions_total"),
+    "What the peer governor did to peers, and what became of it.",
+    Labels.one[PeerTransitionLabel](LabelName("transition"))
+  )
+  val peerTargets = GaugeDef(
+    MetricName("scarab_peer_selection_targets"),
+    "The targets the peer governor works towards (big ledger peers are not exported yet).",
+    Labels.one[TargetLabel](LabelName("target"))
+  )
+  val peerSensitive = GaugeDef(
+    MetricName("scarab_peer_selection_sensitive"),
+    "1 while the node uses only trusted peers because its ledger is too old and bootstrap peers are configured, else 0."
+  )
+  val outboundTrusted = GaugeDef(
+    MetricName("scarab_outbound_connections_trusted"),
+    "1 while the node is connected only to peers it trusts (the Honest Availability Assumption of the Genesis State Machine), else 0."
+  )
+  val gsmState = GaugeDef(
+    MetricName("scarab_gsm_state"),
+    "1 for the state of the Genesis State Machine, 0 for the others.",
+    Labels.one[GsmStateLabel](LabelName("state"))
+  )
+  val fetchModeGauge = GaugeDef(
+    MetricName("scarab_fetch_mode"),
+    "1 for the fetch mode the node is in, 0 for the other.",
+    Labels.one[FetchModeLabel](LabelName("mode"))
+  )
   val chainSyncRounds = CounterDef(
     MetricName("scarab_chainsync_rounds_total"),
     "Pipelined ChainSync rounds."
@@ -614,6 +955,12 @@ object Catalogue:
     connectionsByState,
     connectionEvents,
     inboundEvents,
+    peerTransitions,
+    peerTargets,
+    peerSensitive,
+    outboundTrusted,
+    gsmState,
+    fetchModeGauge,
     chainSyncRounds,
     chainSyncHeaders,
     chainSyncRoundSeconds,
@@ -637,4 +984,4 @@ object Catalogue:
     processResident,
     processOpenFds,
     processStart
-  )
+  ) ++ peerSelectionGauges.map(_._1)

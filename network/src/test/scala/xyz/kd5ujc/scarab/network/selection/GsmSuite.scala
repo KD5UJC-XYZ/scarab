@@ -79,20 +79,40 @@ class GsmSuite extends FunSuite:
   test("caught up leaves when the tip is older than the limit plus the bonus, once per selection") {
     val up = Gsm.step(syncing, reading(), Duration.Zero, config).state
     val at = 21.minutes
-    val first = Gsm.step(up, reading(selection = 1L, age = Some(DurationFromNow.After(3.minutes))), at, config)
+    val first = Gsm.step(
+      up,
+      reading(selection = 1L, age = Some(DurationFromNow.After(3.minutes))),
+      at,
+      config
+    )
     assertEquals(first.events, Nil)
     val deadline = first.state.watching.get._2
     assertEquals(deadline, at + 3.minutes + up.bonus)
     assert(up.bonus >= Duration.Zero && up.bonus <= 300.seconds)
     // before the deadline nothing happens
-    val before = Gsm.step(first.state, reading(selection = 1L, age = Some(DurationFromNow.After(1.minute))), deadline - 1.second, config)
+    val before = Gsm.step(
+      first.state,
+      reading(selection = 1L, age = Some(DurationFromNow.After(1.minute))),
+      deadline - 1.second,
+      config
+    )
     assertEquals(before.events, Nil)
     // a new selection counts down again
-    val moved = Gsm.step(first.state, reading(selection = 2L, age = Some(DurationFromNow.After(3.minutes))), deadline - 1.second, config)
+    val moved = Gsm.step(
+      first.state,
+      reading(selection = 2L, age = Some(DurationFromNow.After(3.minutes))),
+      deadline - 1.second,
+      config
+    )
     assertEquals(moved.state.watching.map(_._1), Some(2L))
     assertEquals(Gsm.step(moved.state, reading(selection = 2L), deadline, config).events, Nil)
     // the unchanged selection ends at its deadline
-    val gone = Gsm.step(first.state, reading(selection = 1L, age = Some(DurationFromNow.After(1.minute))), deadline, config)
+    val gone = Gsm.step(
+      first.state,
+      reading(selection = 1L, age = Some(DurationFromNow.After(1.minute))),
+      deadline,
+      config
+    )
     assertEquals(gone.state.phase, Phase.PreSyncing)
   }
 

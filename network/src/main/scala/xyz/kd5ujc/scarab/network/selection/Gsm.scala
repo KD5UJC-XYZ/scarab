@@ -11,8 +11,8 @@ import scala.concurrent.duration.*
   *   - `Syncing`: the assumption holds (the node is connected only to peers it trusts, with a
   *     bootstrap peer active); the node waits to be caught up.
   *   - `CaughtUp`: every upstream peer is idle and none has a better chain than ours. It stays so
-  *     for at least `minCaughtUpDuration`, then until the tip is older than `maxCaughtUpAge` (plus a
-  *     random bonus of up to five minutes, so that the nodes of a network that stopped producing
+  *     for at least `minCaughtUpDuration`, then until the tip is older than `maxCaughtUpAge` (plus
+  *     a random bonus of up to five minutes, so that the nodes of a network that stopped producing
   *     blocks do not all return to their bootstrap peers at the same moment).
   *
   * [[gsmStateToLedgerJudgement]] gives the judgement the governor follows: `PreSyncing` and
@@ -202,10 +202,9 @@ object FetchMode:
   /** Slots behind the wall clock below which the node uses deadline mode (`maxSlotsBehind`). */
   val MaxSlotsBehind: Long = 1000
 
-  /** When the node requires bootstrap peers it is always in bulk sync; otherwise it is in
-    * deadline mode when its chain is less than 1000 slots behind the current slot, and in bulk
-    * sync when it is further behind or the current slot is unknown. `chainSlot` is none for an
-    * empty chain.
+  /** When the node requires bootstrap peers it is always in bulk sync; otherwise it is in deadline
+    * mode when its chain is less than 1000 slots behind the current slot, and in bulk sync when it
+    * is further behind or the current slot is unknown. `chainSlot` is none for an empty chain.
     */
   def of(
       sensitive: Boolean,

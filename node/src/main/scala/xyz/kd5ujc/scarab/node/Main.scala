@@ -76,6 +76,8 @@ import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
 import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
+import xyz.kd5ujc.scarab.network.NodeToNode
+import xyz.kd5ujc.scarab.network.selection.Targets
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -165,7 +167,11 @@ object Main extends IOApp:
         */
       inboundSync: Boolean = true,
       /** `--log-*`: the log's sinks, thresholds and sampling ([[LogSettings]]). */
-      log: LogSettings = LogSettings.default
+      log: LogSettings = LogSettings.default,
+      /** The roots of the peer governor: `--peer` as one local root group and the topology's
+        * groups, public roots and bootstrap peers; filled in by [[configured]].
+        */
+      roots: Option[PeerNetwork.Roots] = None
   )
 
   val DefaultMempoolBytes: Long = 1048576L
@@ -278,14 +284,16 @@ object Main extends IOApp:
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
       peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
+      roots = PeerNetwork.roots(options.peers, topology)
       _ <- Either.cond(
-        peers.nonEmpty,
+        roots.hasPeers,
         (),
         ConfigError("no peer to follow: the topology names no local root, bootstrap or public root")
       )
     yield (
       options.copy(
         peers = peers,
+        roots = Some(roots),
         db =
           options.db.orElse(Option.when(fromFile)(settings.databasePath).flatten.map(Path.of(_))),
         localSocket = options.localSocket.orElse(
@@ -586,11 +594,6 @@ object Main extends IOApp:
               server.blocks,
               mempool.sink
             )
-            retry = Follower.Retry(
-              // one upstream peer is the whole node: give up when it is gone; with several, keep trying
-              maxAttempts = if options.peers.size > 1 then Int.MaxValue else 30,
-              delay = 2.seconds
-            )
             // header-first validation (G6): signatures are verified through the cache's keeping
             // view, so the block's own validation does not repeat them
             headerCheck = Option.when(options.headerFirst)(
@@ -668,41 +671,65 @@ object Main extends IOApp:
               events = Some(loggedInbound.alongside(measured.inbound)),
               observe = Some(observePeer)
             )
-            // Peer failures are handled by the supervisor; once retries are exhausted they become fatal.
-            sync = Handle
-              .allow[PeerError](
-                options.peers.parTraverse_ { address =>
-                  val settings = Peer.Settings(
-                    address,
-                    genesis.networkMagic,
-                    readAhead = options.readAhead,
-                    byronEpochSlots = genesis.geometry.byron.epochSlots
-                  )
-                  Follower.supervise(
-                    follower,
-                    Outbound.connect[IO](
-                      manager,
-                      address,
-                      Peer.nodeToNode[IO](
-                        settings,
-                        warm,
-                        Some(mempool.source),
-                        headerCheck,
-                        Some(observePeer),
-                        Some(blockPool)
-                      ),
-                      Some { case Outbound.Event.Reused(remote) =>
-                        logged(NodeEvent.Reused(remote, address.toString))
-                      },
-                      reuseInbound = options.inboundSync
-                    ),
-                    events,
-                    retry,
-                    Some(scheduling.compute)
-                  )
-                }
-              )
-              .rescue(error => fail[Unit](error))
+            // The outbound peer network (G1): the governor chooses the peers, moves them between
+            // temperatures and replaces the ones that fail; the Genesis State Machine tells it
+            // whether the ledger is too old.
+            seed <- IO.delay(java.util.concurrent.ThreadLocalRandom.current().nextLong())
+            defaults = if options.forge.isDefined then Targets.blockProducer else Targets.relay
+            targets <- setup.config.settings
+              .peerTargets(defaults)
+              .fold(e => fail[Targets](e), IO.pure)
+            losses <- Ref.of[IO, Int](0)
+            chainView = new PeerNetwork.ChainView[IO]:
+              def tip = ref.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+              def geometry = ref.get.map(_.state.geometry(genesis.geometry))
+            marker = options.db.fold(GsmRunner.Marker.none[IO])(d =>
+              GsmRunner.Marker.file[IO](d.resolve("gsm"))
+            )
+            hot = OutboundPeers.Hot[IO](
+              magic = genesis.networkMagic,
+              network = NodeToNode.Settings(),
+              peer = Peer.Settings(
+                SocketAddress(Host.fromString("0.0.0.0").get, Port.fromInt(0).get),
+                genesis.networkMagic,
+                readAhead = options.readAhead,
+                byronEpochSlots = genesis.geometry.byron.epochSlots
+              ),
+              follow = (peer, track) => scheduling.compute.within(follower.session(peer, track)),
+              prepare = warm,
+              headers = headerCheck,
+              transactions = Some(mempool.source),
+              observe = Some(observePeer),
+              pool = blockPool,
+              versus = candidate => follower.versus(candidate),
+              lost = error =>
+                losses
+                  .updateAndGet(_ + 1)
+                  .flatMap(n => events.emit(FollowerEvent.Reconnecting(error, n)))
+            )
+            emitOutput = (out: Output[PeerNetwork.Addr]) =>
+              measured.peerSelection(out) *> (out match
+                case Output.Traced(trace)  => logged(NodeEvent.PeerSelection(trace))
+                case Output.Counted(c)     => logged(NodeEvent.PeerCounters(c))
+                case Output.Connections(c) => logged(NodeEvent.OutboundConnections(c)))
+            network = PeerNetwork.resource[IO](
+              PeerNetwork.Settings(
+                options.roots.getOrElse(PeerNetwork.Roots(Nil, Set.empty, None, false)),
+                targets,
+                seed = seed
+              ),
+              PeerNetwork.tcp[IO](10.seconds),
+              manager,
+              OutboundPeers.Config(),
+              hot,
+              chainView,
+              emitOutput,
+              (phase, event) =>
+                measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
+              phase => measured.gsm(phase),
+              mode => measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
+              marker
+            )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer
                 .listen[IO](
@@ -810,24 +837,36 @@ object Main extends IOApp:
                   MemoryReport
                     .sample(stores)
                     .flatMap(sample => logged(NodeEvent.Memory(sample)))).foreverM.background.void
-            run = QueryServer
-              .resource[IO, MirrorState](
-                ChainView.fromRef(ref),
-                options.queryPort,
-                Some(store),
-                Some(scheduling.stats.total.map(Reports.schedulingTotal)),
-                Some(
-                  (manager.snapshot, governor.sessions).mapN(InboundGovernor.json)
-                ),
-                forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
-                Some(scrape)
-              )
-              .flatMap(_ => relay)
-              .flatMap(_ => local)
-              .flatMap(_ => production)
-              .flatMap(_ => reporting)
-              .flatMap(_ => watching)
-              .surround(sync)
+            run = network.use { net =>
+              // the governor ends the node only by a fault (an invariant, the bootstrap timeout)
+              val sync: IO[Unit] =
+                IO.race(net.run, net.fatal.get).flatMap(_.fold(identity, fail[Unit]))
+              QueryServer
+                .resource[IO, MirrorState](
+                  ChainView.fromRef(ref),
+                  options.queryPort,
+                  Some(store),
+                  Some(scheduling.stats.total.map(Reports.schedulingTotal)),
+                  Some(
+                    (manager.snapshot, governor.sessions, net.state.get, IO.monotonic).mapN {
+                      (connections, sessions, selection, now) =>
+                        InboundGovernor
+                          .json(connections, sessions)
+                          .deepMerge(
+                            io.circe.Json.obj("peerSelection" -> PeerNetwork.json(selection, now))
+                          )
+                    }
+                  ),
+                  forging.map(_.stats.byEpoch.map(Reports.forgeReport)),
+                  Some(scrape)
+                )
+                .flatMap(_ => relay)
+                .flatMap(_ => local)
+                .flatMap(_ => production)
+                .flatMap(_ => reporting)
+                .flatMap(_ => watching)
+                .surround(sync)
+            }
             _ <- metrics.set(
               Catalogue.buildInfo,
               (BuildInfo.version, BuildInfo.scalaVersion, BuildInfo.gitCommit),

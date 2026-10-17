@@ -5,7 +5,23 @@ import cats.effect.{Ref, Sync}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.consensus.{BlockRef, FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
-import xyz.kd5ujc.scarab.node.{HeaderGate, InboundEvent, InboundEvents, Peer, StallWatchdog}
+import xyz.kd5ujc.scarab.network.selection.{
+  FetchMode,
+  Gsm,
+  LedgerStateJudgement,
+  OutboundConnectionsState,
+  Temperature,
+  Trace
+}
+import xyz.kd5ujc.scarab.node.{
+  HeaderGate,
+  InboundEvent,
+  InboundEvents,
+  Output,
+  Peer,
+  PeerNetwork,
+  StallWatchdog
+}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, MempoolEvents}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
@@ -25,6 +41,8 @@ final class EventMetrics[F[_]: Sync] private (
   import Catalogue.*
 
   private def number(n: BigInt): Double = n.toDouble
+
+  private def flag(on: Boolean): Double = if on then 1.0 else 0.0
 
   private def slot(point: ChainSync.Point): Double = point match
     case ChainSync.Point.Origin         => 0.0
@@ -175,6 +193,51 @@ final class EventMetrics[F[_]: Sync] private (
           if dropped then InboundEventLabel.SessionDropped else InboundEventLabel.SessionEnded
         case InboundEvent.Closed(_)  => InboundEventLabel.Closed
         case InboundEvent.Refused(_) => InboundEventLabel.Refused
+    )
+
+  /** What the peer governor tells: its decisions as counts, its counters as the gauges of the
+    * reference, the outbound connections state.
+    */
+  def peerSelection(out: Output[PeerNetwork.Addr]): F[Unit] = out match
+    case Output.Counted(c) =>
+      peerSelectionGauges.traverse_((gauge, of) => metrics.set(gauge, of(c).toDouble))
+    case Output.Connections(state) =>
+      val trusted = state == OutboundConnectionsState.TrustedStateWithExternalPeers
+      metrics.set(outboundTrusted, flag(trusted))
+    case Output.Traced(trace) =>
+      def count(label: PeerTransitionLabel, by: Int = 1): F[Unit] =
+        metrics.inc(peerTransitions, label, by.toDouble).whenA(by > 0)
+      trace match
+        case Trace.TargetsChanged(t) =>
+          metrics.set(peerTargets, TargetLabel.Root, t.root.toDouble) *>
+            metrics.set(peerTargets, TargetLabel.Known, t.known.toDouble) *>
+            metrics.set(peerTargets, TargetLabel.Established, t.established.toDouble) *>
+            metrics.set(peerTargets, TargetLabel.Active, t.active.toDouble)
+        case Trace.PromoteDone(Temperature.Warm, _, _, _) => count(PeerTransitionLabel.PromotedWarm)
+        case Trace.PromoteDone(_, _, _, _)                => count(PeerTransitionLabel.PromotedHot)
+        case Trace.DemoteDone(Temperature.Hot, _, _)      => count(PeerTransitionLabel.DemotedHot)
+        case Trace.DemoteDone(_, _, _)                    => count(PeerTransitionLabel.DemotedCold)
+        case Trace.PromoteFailed(_, _, _, _, _) => count(PeerTransitionLabel.PromoteFailed)
+        case Trace.DemoteFailed(_, _, _)        => count(PeerTransitionLabel.DemoteFailed)
+        case Trace.DemoteAsynchronous(_, _, failure, _) =>
+          count(
+            if failure.isDefined then PeerTransitionLabel.Lost else PeerTransitionLabel.DemotedHot
+          )
+        case Trace.ForgetCold(_, _, peers) => count(PeerTransitionLabel.Forgotten, peers.size)
+        case Trace.Forgotten(peers)        => count(PeerTransitionLabel.Forgotten, peers.size)
+        case Trace.JudgementChanged(j) =>
+          metrics.set(peerSensitive, flag(j == LedgerStateJudgement.TooOld))
+        case _ => Sync[F].unit
+
+  /** A step of the Genesis State Machine: which state it is in now. */
+  def gsm(phase: Gsm.Phase): F[Unit] =
+    GsmStateLabel.values.toList.traverse_(label =>
+      metrics.set(gsmState, label, if label.ordinal == phase.ordinal then 1.0 else 0.0)
+    )
+
+  def fetchMode(mode: FetchMode): F[Unit] =
+    FetchModeLabel.values.toList.traverse_(label =>
+      metrics.set(fetchModeGauge, label, if label.ordinal == mode.ordinal then 1.0 else 0.0)
     )
 
   /** What a peer session measured of its peer. */

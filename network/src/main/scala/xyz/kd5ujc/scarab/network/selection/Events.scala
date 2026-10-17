@@ -29,7 +29,7 @@ private[selection] object Events:
       st: GovernorState[A],
       peer: A,
       now: Time,
-      failure: PeerFailure,
+      failure: FailureClass,
       policy: Policy,
       delayFor: Int => FiniteDuration
   ): Reported[A] =
@@ -39,14 +39,15 @@ private[selection] object Events:
         val unforgettable = r.origin.unforgettable
         val count = r.failCount + 1
         val forget = failure match
-          case PeerFailure.Misbehaved => !unforgettable
-          case PeerFailure.Transient => r.failCount >= policy.maxConnectionRetries && !unforgettable
+          case FailureClass.Misbehaved => !unforgettable
+          case FailureClass.Transient =>
+            r.failCount >= policy.maxConnectionRetries && !unforgettable
         if forget then Reported(st.copy(peers = st.peers - peer), None, true)
         else
           val delay = failure match
-            case PeerFailure.Misbehaved =>
+            case FailureClass.Misbehaved =>
               (policy.baseColdRetry * (1L << policy.maxColdRetryBackoff.toLong))
-            case PeerFailure.Transient => delayFor(count)
+            case FailureClass.Transient => delayFor(count)
           val moved = r.copy(
             status = Status.Cold(Some(now + delay)),
             failCount = count,
@@ -83,20 +84,22 @@ private[selection] object Events:
             Decision(
               st.updated(peer)(_.copy(status = Status.Warm(readyAt))),
               Nil,
-              List(Trace.DemoteAsynchronous(peer, Temperature.Warm, None))
+              List(Trace.DemoteAsynchronous(peer, Temperature.Warm, None, None))
             )
           // the connection is going: it lingers until the connection manager releases it
-          case Observation.Lost(failure, _, false) =>
+          case Observation.Lost(failure, _, false, reason) =>
             record.status match
               case Status.Warm(_) | Status.Hot | Status.Activating =>
                 Decision(
                   st0.withStatus(peer, Status.Cooling),
                   Nil,
-                  List(Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(failure)))
+                  List(
+                    Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(failure), Some(reason))
+                  )
                 )
               case _ => Decision(st0, Nil, Nil)
           // the connection is gone: back to cold, and the failure counts
-          case Observation.Lost(failure, delay, true) =>
+          case Observation.Lost(failure, delay, true, reason) =>
             record.status match
               case Status.Warm(_) | Status.Hot | Status.Activating | Status.Cooling =>
                 val (extra, st) =
@@ -106,7 +109,7 @@ private[selection] object Events:
                 Decision(
                   result.state,
                   Nil,
-                  Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(failure)) ::
+                  Trace.DemoteAsynchronous(peer, Temperature.Cold, Some(failure), Some(reason)) ::
                     (if result.forgotten then List(Trace.Forgotten(List(peer))) else Nil)
                 )
               // the job that is working on the peer reports how it ends

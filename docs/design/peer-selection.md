@@ -1090,7 +1090,7 @@ Answers to section 8, taken before G1.1 started. They override the proposals abo
 6. Outbound connections stay initiator-only for now (G2).
 8. **Decided by the owner (confirmed 2026-10-17, no longer pending):** a protocol violation, an invalid header or
    an oversize message means the peer is forgotten; a network failure means backoff. The classification is one
-   typed function (`PeerFailureClass.of`), so a later change touches one place.
+   typed function (`FailurePolicy.classify`), so a later change touches one place.
 9. One ADR covers D2 (in-progress states in the peer status) and the module placement.
 10. The G1.1 evidence run is on the development machine: a Preview follower from the official topology and
     config with no `--peer`, 30 minutes, read-only towards the public network.

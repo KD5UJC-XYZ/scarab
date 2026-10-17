@@ -104,12 +104,12 @@ class FollowerSuite extends CatsEffectSuite:
               .allow[PeerError](
                 peers.parTraverse_ { sessions =>
                   scriptedPeers(sessions, offered).flatMap(connect =>
-                    Follower
+                    SessionDriver
                       .supervise(
                         follower,
                         connect,
                         noEvents,
-                        Follower.Retry(retries, 1.milli),
+                        SessionDriver.Retry(retries, 1.milli),
                         compute
                       )
                   )
@@ -230,11 +230,11 @@ class FollowerSuite extends CatsEffectSuite:
             result <- Handle
               .allow[PeerError](
                 servers.parTraverse_(s =>
-                  Follower.supervise(
+                  SessionDriver.supervise(
                     follower,
                     serving(s),
                     noEvents,
-                    Follower.Retry(3, 1.milli),
+                    SessionDriver.Retry(3, 1.milli),
                     None
                   )
                 )
@@ -368,7 +368,8 @@ class FollowerSuite extends CatsEffectSuite:
             follower <- Follower.create[IO, BigInt](rules(), noEvents, geometry)
             result <- Handle
               .allow[PeerError](
-                Follower.supervise(follower, strangers, noEvents, Follower.Retry(2, 1.milli))
+                SessionDriver
+                  .supervise(follower, strangers, noEvents, SessionDriver.Retry(2, 1.milli))
               )
               .rescue(e => Handle[IO, NodeError].raise(e))
           yield result.asRight[NodeError]

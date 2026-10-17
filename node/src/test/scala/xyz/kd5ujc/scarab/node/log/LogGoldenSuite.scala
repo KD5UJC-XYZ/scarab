@@ -55,7 +55,6 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- node(NodeEvent.Listening("0.0.0.0:3001"))
         _ <- node(NodeEvent.HeadersChecked(50000L, 12L, 3L))
         _ <- node(NodeEvent.Inbound("/tmp/node.socket", InboundEvent.Accepted))
-        _ <- node(NodeEvent.Reused("10.0.0.1:3001", "127.0.0.1:3001"))
         _ <- node(NodeEvent.ChainSyncRounds(200L, 25600L, 120L, 900L, 128))
         _ <- node(NodeEvent.SlowFetch(300L))
         _ <- node(NodeEvent.Stalled(10.minutes, BigInt(6809207), BigInt(10200000)))

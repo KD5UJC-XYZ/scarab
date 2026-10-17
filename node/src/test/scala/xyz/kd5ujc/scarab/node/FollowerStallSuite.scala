@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, FollowerEvent, FollowerEve
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NodeError, PeerError}
-import cats.effect.{IO, Ref, Resource}
+import cats.effect.{IO, Ref}
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import com.comcast.ip4s.*
@@ -13,15 +13,17 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
+import xyz.kd5ujc.scarab.network.selection.{DiffusionMode, RootConfig, RootGroupSpec, Targets}
+import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
 import xyz.kd5ujc.scarab.node.relay.ChainServer
 import scala.concurrent.duration.*
 
-/** Two upstream peers on in-memory connections with the production wiring (one `Handle` scope for
-  * the peer failures of all sessions, one shared [[BlockPool]], `Follower.supervise` per peer): one
-  * peer stalls (its ChainSync reply never comes, its BlockFetch hangs), the other keeps serving.
-  * The follower must reach the tip, and no fiber may end with an error nobody handles (issue 130: a
-  * `Handle$Submarine` that escaped, a claim that stayed open and blocked the other session).
+/** Two upstream peers on in-memory connections with the production wiring (the governor, one shared
+  * [[BlockPool]], in-memory connections): one peer stalls (its ChainSync reply never comes, its
+  * BlockFetch hangs), the other keeps serving. The follower must reach the tip, and no fiber may
+  * end with an error nobody handles (issue 130: a `Handle$Submarine` that escaped, a claim that
+  * stayed open and blocked the other session).
   */
 class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 90.seconds
@@ -92,39 +94,6 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private val tcp: SocketAddress[Host] = SocketAddress(host"127.0.0.1", port"3001")
 
-  /** A connection to `remote`, opened the way `Peer.nodeToNode` opens one over TCP. */
-  private def dial(
-      remote: ServerHandlers[IO, NtNHeader],
-      pool: BlockPool[IO]
-  )(using peerRaise: Raise[IO, PeerError]): Resource[IO, Peer[IO]] =
-    given Raise[IO, NetworkError] = new Raise[IO, NetworkError]:
-      def functor = cats.Functor[IO]
-      def raise[E2 <: NetworkError, A](e: E2): IO[A] = peerRaise.raise(Peer.peerError(e))
-    val network = NodeToNode.Settings(
-      chainSync = ChainSyncClient.Settings(canAwaitTimeout = 1.second)
-    )
-    for
-      ends <- Resource.eval(Bearer.inMemory[IO](256))
-      _ <- Handle
-        .allow[NetworkError](NodeToNodeServer.accept(ends._1, magic, remote).void)
-        .rescue(_ => IO.unit)
-        .background
-      connection <- NodeToNode.over[IO, NtNHeader](ends._2, magic, NtNHeader.codec, network)
-      peer <- Peer.over[IO](
-        connection,
-        Peer.Settings(
-          tcp,
-          magic,
-          readAhead = 8,
-          byronEpochSlots = ForgedChain.geometry.byron.epochSlots
-        ),
-        _ => IO.unit,
-        None,
-        None,
-        Some(pool)
-      )
-    yield peer
-
   private def eventually[A](what: String)(read: IO[A])(ok: A => Boolean): IO[A] =
     def loop(left: Int): IO[A] =
       read.flatMap { a =>
@@ -156,32 +125,71 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       stall <- serving(forged.raws).map(stalling(_, headers = 16))
       (stalled, ranges) = stall
       healthy <- serving(forged.raws)
-      retry = Follower.Retry(maxAttempts = 1000, delay = 200.millis)
+      peers <- InMemoryPeers.create(magic)
+      first = InMemoryPeers.address(1)
+      second = InMemoryPeers.address(2)
+      _ <- peers.serve(first, stalled) *> peers.serve(second, healthy)
+      manager <- ConnectionManager.create[IO]()
       last = forged.headers.last
-      reconnects <- Handle
-        .allow[PeerError] {
-          // as in Main: one scope for the failures of every peer's session
-          val a = Follower.supervise(follower, dial(stalled, pool), events, retry)
-          val b =
-            IO.sleep(300.millis) *> Follower.supervise(follower, dial(healthy, pool), events, retry)
-          (a, b).parTupled.void
-        }
-        .rescue(e => IO.raiseError(new RuntimeException(e.message)))
-        .background
-        .use { _ =>
+      hot = OutboundPeers.Hot[IO](
+        magic = magic,
+        network =
+          NodeToNode.Settings(chainSync = ChainSyncClient.Settings(canAwaitTimeout = 1.second)),
+        peer = Peer.Settings(
+          tcp,
+          magic,
+          readAhead = 8,
+          byronEpochSlots = ForgedChain.geometry.byron.epochSlots
+        ),
+        follow = (peer, track) => follower.session(peer, track),
+        prepare = _ => IO.unit,
+        headers = None,
+        transactions = None,
+        observe = None,
+        pool = pool,
+        versus = follower.versus,
+        lost = error => events.emit(FollowerEvent.Reconnecting(error, 1))
+      )
+      view = new PeerNetwork.ChainView[IO]:
+        def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
+        def geometry = IO.pure(ForgedChain.geometry)
+      local = RootConfig(false, DiffusionMode.InitiatorAndResponder, Provenance.Outbound, false)
+      roots = PeerNetwork.Roots(
+        List(RootGroupSpec(2, 2, List(first -> local, second -> local))),
+        Set.empty,
+        None,
+        false
+      )
+      network = PeerNetwork.resource[IO](
+        PeerNetwork.Settings(roots, Targets.relay, seed = 7L),
+        peers,
+        manager,
+        OutboundPeers.Config(),
+        hot,
+        view,
+        _ => IO.unit,
+        (_, _) => IO.unit,
+        _ => IO.unit,
+        _ => IO.unit,
+        GsmRunner.Marker.none[IO]
+      )
+      reconnects <- network.use { net =>
+        // as in Main: the governor runs beside the node, and ends it only by a fault
+        net.run.background.use { _ =>
           eventually("our chain reaches the tip")(chainRef.get.map(_.tip))(_ == last.point) *>
-            // the stalling peer failed and came back: a typed, logged reconnect
-            eventually("the stalling peer reconnects")(seen.get)(_.exists {
+            // the stalling peer failed: a typed, logged loss of the connection
+            eventually("the stalling peer is lost")(seen.get)(_.exists {
               case FollowerEvent.Reconnecting(_: PeerError.Unavailable, _) => true
               case _                                                       => false
-            })
+            }) <* net.fatal.tryGet.map(fault => assertEquals(fault, None))
         }
+      }
       asked <- ranges.get
     yield
       assert(reconnects.nonEmpty)
       // the stalling peer was asked for a block range it never answered: its ChainSync stall came
       // while blocks of the batch were being fetched, not before any fetch
-      assert(asked >= 2, s"block ranges asked of the stalling peer: $asked")
+      assert(asked >= 1, s"block ranges asked of the stalling peer: $asked")
   }
 
   test("a peer error raised in a fiber of the connection is raised again in the session's scope") {

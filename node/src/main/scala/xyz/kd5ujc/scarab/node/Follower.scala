@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ValidationError
 }
 import cats.Monad
-import cats.effect.{Async, Ref, Resource, Temporal}
+import cats.effect.{Async, Ref}
 import cats.effect.std.Mutex
 import cats.mtl.{Handle, Raise, Stateful}
 import cats.mtl.syntax.all.*
@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.{ChainSync, Era}
 import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
 import xyz.kd5ujc.scarab.storage.ChainPersistence
-import scala.concurrent.duration.*
+import xyz.kd5ujc.scarab.network.selection.Gsm
 
 /** Select views of the blocks of the volatile chain, by block hash. Chain selection compares the
   * tip of a candidate with ours, and the volatile chain itself keeps only identities and ledger
@@ -85,8 +85,17 @@ final class Follower[F[_]: Async, S] private (
   private def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
     PeerError.Protocol(reason).raise[F, A]
 
-  /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. */
-  def session(peer: Peer[F])(using Raise[F, PeerError]): F[Unit] =
+  private def diverged[A](reason: String)(using Raise[F, PeerError]): F[A] =
+    PeerError.Diverged(reason).raise[F, A]
+
+  /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. `track` is
+    * handed the session's candidate chain once it exists, for whoever compares it with the
+    * selection ([[versus]]).
+    */
+  def session(
+      peer: Peer[F],
+      track: Ref[F, ChainSelection.Candidate] => F[Unit] = _ => Async[F].unit
+  )(using Raise[F, PeerError]): F[Unit] =
     for
       current <- chain.get
       found <- peer.intersect(current.candidates)
@@ -95,8 +104,23 @@ final class Follower[F[_]: Async, S] private (
       candidate <- Ref.of[F, ChainSelection.Candidate](
         ChainSelection.Candidate(point, Vector.empty)
       )
+      _ <- track(candidate)
       _ <- Monad[F].foreverM(peer.next.flatMap(step(peer, candidate, _)))
     yield ()
+
+  /** How a peer's candidate chain compares with our selection (`CandidateVersusSelection`, GSM.hs
+    * 88-98): whether chain selection would switch to it, or that it does not join ours. A candidate
+    * that announced nothing yet is not preferred.
+    */
+  def versus(candidate: ChainSelection.Candidate): F[Gsm.Candidate] =
+    if candidate.headers.isEmpty then F.pure(Gsm.Candidate.Better(false))
+    else
+      lock.lock.surround(local).map { l =>
+        ChainSelection.decide(tiebreaker(candidate.headers.last.era), l, candidate) match
+          case ChainSelection.Decision.Keep            => Gsm.Candidate.Better(false)
+          case ChainSelection.Decision.Detached        => Gsm.Candidate.DoesNotIntersect
+          case ChainSelection.Decision.Switch(_, _, _) => Gsm.Candidate.Better(true)
+      }
 
   private def step(
       peer: Peer[F],
@@ -111,7 +135,7 @@ final class Follower[F[_]: Async, S] private (
             // Before the join point: the peer's chain below it is ours as long as it is retained.
             lock.lock.surround(local).flatMap { l =>
               if l.contains(point) then candidate.set(ChainSelection.Candidate(point, Vector.empty))
-              else protocol(s"peer rolled back to ${Points.show(point)}, outside our chain")
+              else diverged(s"peer rolled back to ${Points.show(point)}, outside our chain")
             }
       }
     case SyncEvent.RollForward(header, tip) =>
@@ -177,7 +201,7 @@ final class Follower[F[_]: Async, S] private (
         result <- ChainSelection.decide(tiebreaker(candidate.headers.last.era), l, candidate) match
           case ChainSelection.Decision.Keep => F.pure(candidate)
           case ChainSelection.Decision.Detached =>
-            protocol(s"the peer's chain no longer joins ours at ${Points.show(candidate.base)}")
+            diverged(s"the peer's chain no longer joins ours at ${Points.show(candidate.base)}")
           case ChainSelection.Decision.Switch(to, depth, take) =>
             switchTo(peer, to, depth, take, peerTip).as(candidate.rebase(take.last.point))
       yield result
@@ -341,8 +365,6 @@ object Follower:
     case Lost(reason: String)
     case Invalid(error: ValidationError)
 
-  final case class Retry(maxAttempts: Int, delay: FiniteDuration)
-
   def create[F[_]: Async, S](
       rules: BlockRules[F, S],
       events: FollowerEvents[F],
@@ -381,34 +403,3 @@ object Follower:
         window
       )
     }
-
-  /** Run sessions from `connect`, reconnecting after each [[PeerError]] up to `retry.maxAttempts`
-    * consecutive failures. A session that applied at least one block resets the count.
-    */
-  def supervise[F[_]: Temporal, S](
-      follower: Follower[F, S],
-      connect: Resource[F, Peer[F]],
-      events: FollowerEvents[F],
-      retry: Retry,
-      /** Runs the session (header handling, chain selection, applying and persisting blocks) on the
-        * CPU pool, while the connection itself (multiplexer, KeepAlive, the pipelined fetch) stays
-        * on the pool it was opened on, so a long step cannot hold up their timers.
-        */
-      compute: Option[Compute[F]] = None
-  )(using chain: Stateful[F, VolatileChain[S]], handle: Handle[F, PeerError]): F[Unit] =
-    def loop(attempt: Int): F[Unit] =
-      chain.get.map(_.tip).flatMap { before =>
-        connect
-          .use(peer => compute.fold(follower.session(peer))(_.within(follower.session(peer))))
-          .handleWith[PeerError] { error =>
-            chain.get.map(_.tip).flatMap { after =>
-              val next = if after != before then 1 else attempt + 1
-              if next > retry.maxAttempts then error.raise[F, Unit]
-              else
-                events.emit(FollowerEvent.Reconnecting(error, next)) *> Temporal[F].sleep(
-                  retry.delay
-                ) *> loop(next)
-            }
-          }
-      }
-    loop(1)

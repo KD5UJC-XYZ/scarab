@@ -92,6 +92,19 @@ enum EventKind(val area: Area, val severity: Severity):
   case Connection extends EventKind(Area.Net, Severity.Info)
   case Inbound extends EventKind(Area.Net, Severity.Info)
 
+  // the peer governor (G1): the targets, the roots, the moves between temperatures, the sensitive
+  // state, the counters, the Genesis State Machine
+  case PeerSelectionTargets extends EventKind(Area.Net, Severity.Notice)
+  case PeerSelectionRoots extends EventKind(Area.Net, Severity.Info)
+  case PeerSelectionPromote extends EventKind(Area.Net, Severity.Info)
+  case PeerSelectionDemote extends EventKind(Area.Net, Severity.Info)
+  case PeerSelectionForget extends EventKind(Area.Net, Severity.Info)
+  case PeerSelectionSensitive extends EventKind(Area.Net, Severity.Notice)
+  case PeerSelectionCounters extends EventKind(Area.Net, Severity.Info)
+  case OutboundConnections extends EventKind(Area.Net, Severity.Info)
+  case GsmTransition extends EventKind(Area.Net, Severity.Notice)
+  case FetchModeChanged extends EventKind(Area.Net, Severity.Info)
+
   // the mempool
   case MempoolAdded extends EventKind(Area.Mempool, Severity.Info)
   case MempoolRejected extends EventKind(Area.Mempool, Severity.Info)

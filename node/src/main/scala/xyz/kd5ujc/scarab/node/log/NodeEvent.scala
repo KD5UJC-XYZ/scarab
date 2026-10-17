@@ -10,6 +10,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
 import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, NodeConfig, Topology}
+import xyz.kd5ujc.scarab.network.selection.{
+  FetchMode,
+  Gsm,
+  GovernorState,
+  OutboundConnectionsState,
+  Trace
+}
 import xyz.kd5ujc.scarab.protocol.ChainSync
 
 /** What the node itself reports, apart from the event types of its parts (the follower, the chain
@@ -86,8 +93,20 @@ enum NodeEvent:
   /** What the inbound governor (G2) or the node-to-client listener did on a connection. */
   case Inbound(remote: String, event: InboundEvent)
 
-  /** An outbound peer is served by the inbound duplex connection it opened to us (G2). */
-  case Reused(remote: String, outbound: String)
+  /** A decision of the peer governor or what became of one (G1). */
+  case PeerSelection(trace: Trace[SocketAddress[Host]])
+
+  /** The counters of the peer governor changed. */
+  case PeerCounters(counters: GovernorState.Counters)
+
+  /** The governor's outbound connections state changed (trusted, or untrusted). */
+  case OutboundConnections(state: OutboundConnectionsState)
+
+  /** A transition of the Genesis State Machine; `phase` is the state it is in after it. */
+  case GsmTransition(phase: Gsm.Phase, event: Gsm.Event)
+
+  /** The fetch mode changed. */
+  case FetchModeChanged(mode: FetchMode)
 
   /** A line a library logged through SLF4J. */
   case Library(logger: String, severity: Severity, message: String, thrown: Option[String])
@@ -245,8 +264,11 @@ object NodeEvent:
         case InboundEvent.Closed(reason) => inbound(remote, "closed", Some(reason))
         case InboundEvent.Refused(reason) =>
           inbound(remote, "refused", Some(reason)).at(Severity.Warning)
-    case Reused(remote, outbound) =>
-      inbound(remote, "reused", Some(s"outbound $outbound served by the inbound duplex connection"))
+    case PeerSelection(trace)        => PeerSelectionLines.trace(trace)
+    case PeerCounters(counters)      => PeerSelectionLines.counters(counters)
+    case OutboundConnections(state)  => PeerSelectionLines.outbound(state)
+    case GsmTransition(phase, event) => PeerSelectionLines.gsm(phase, event)
+    case FetchModeChanged(mode)      => PeerSelectionLines.fetchMode(mode)
     case Library(logger, severity, message, thrown) =>
       EventKind.Slf4j
         .line(

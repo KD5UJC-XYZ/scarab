@@ -21,6 +21,12 @@ enum PeerError extends NodeError:
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
   case NoIntersection
 
+  /** The peer's chain and ours part ways in a way that is nobody's fault: it rolled back beyond
+    * what we keep, or our chain moved on so that its candidate no longer joins it. The session
+    * starts again; the peer did nothing wrong.
+    */
+  case Diverged(reason: String)
+
   /** A header the peer announced breaks a header rule; its block was not fetched (G6). */
   case InvalidHeader(point: ChainSync.Point, error: xyz.kd5ujc.scarab.ledger.HeaderError)
 
@@ -29,6 +35,7 @@ enum PeerError extends NodeError:
     case Protocol(r)         => s"protocol: $r"
     case Unavailable(r)      => s"unavailable: $r"
     case NoIntersection      => "the peer's chain shares no point with ours"
+    case Diverged(r)         => s"diverged: $r"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
 
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
@@ -171,6 +178,19 @@ enum ForgeError extends NodeError:
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
     case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
+
+/** The peer governor stopped the node, as the reference's `abortGovernor` does: its state broke an
+  * invariant (a bug), or the node did not reach a clean state with only trusted peers in time
+  * (`BootstrapPeersCriticalTimeoutError`, ouroboros-network `Governor/Types.hs` 1863-1869).
+  */
+enum GovernorFault extends NodeError:
+  case InvariantBroken(violations: List[String])
+  case BootstrapPeersCriticalTimeout
+
+  def message: String = this match
+    case InvariantBroken(vs) => s"the peer selection state broke an invariant: ${vs.mkString(", ")}"
+    case BootstrapPeersCriticalTimeout =>
+      "the node did not reach a clean state with only bootstrap peers within 15 minutes"
 
 /** The BLS12-381 library the JVM would load cannot run on this machine, or computes a wrong answer
   * (checked at start-up; ADR 0012). Without the check the JVM dies with SIGILL, without an event.

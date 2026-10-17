@@ -108,7 +108,7 @@ class PeerSelectionSuite extends FunSuite:
                 Job.Connect(7, DiffusionMode.InitiatorAndResponder, Provenance.Outbound)
               )
             )
-            val s2 = complete(s1, Outcome.ConnectFailed(7, PeerFailure.Transient), now)
+            val s2 = complete(s1, Outcome.ConnectFailed(7, FailureClass.Transient), now)
             val Status.Cold(Some(at)) = statusOf(s2, 7): @unchecked
             (s2, delays :+ (at - now), at)
         }
@@ -123,7 +123,7 @@ class PeerSelectionSuite extends FunSuite:
   test("a peer is not connected again before its retry time, and the governor says when to look") {
     val st0 = start(List(group(1, 1, 7)))
     val (st1, _, _) = settle(st0, t0)
-    val st2 = complete(st1, Outcome.ConnectFailed(7, PeerFailure.Transient), t0)
+    val st2 = complete(st1, Outcome.ConnectFailed(7, FailureClass.Transient), t0)
     val Status.Cold(Some(at)) = statusOf(st2, 7): @unchecked
     PeerSelection.decide(st2, 1.second) match
       case Step.Idle(_, wake) => assertEquals(wake, Some(at))
@@ -137,7 +137,7 @@ class PeerSelectionSuite extends FunSuite:
     val withOther = roots.copy(peers = roots.peers.updated(8, PeerRecord.cold(Origin.Other)))
     def fail(st: S, peer: Int, now: Time): S =
       val connecting = st.withStatus(peer, Status.Connecting)
-      complete(connecting, Outcome.ConnectFailed(peer, PeerFailure.Transient), now)
+      complete(connecting, Outcome.ConnectFailed(peer, FailureClass.Transient), now)
     val failed = (1 to 6).foldLeft(withOther)((s, i) => fail(s, 8, i.minutes))
     assert(
       !failed.peers.contains(8),
@@ -156,7 +156,7 @@ class PeerSelectionSuite extends FunSuite:
     val bad = (peer: Int) =>
       complete(
         st.withStatus(peer, Status.Connecting),
-        Outcome.ConnectFailed(peer, PeerFailure.Misbehaved),
+        Outcome.ConnectFailed(peer, FailureClass.Misbehaved),
         t0
       )
     assert(!bad(8).peers.contains(8))
@@ -168,7 +168,7 @@ class PeerSelectionSuite extends FunSuite:
     val st2 = complete(st1, Outcome.Connected(7), t0)
     val (st3, jobs, _) = settle(st2, t0)
     assertEquals(jobs, List(Job.Activate(7)))
-    val st4 = complete(st3, Outcome.ActivateFailed(7, PeerFailure.Transient), 5.seconds)
+    val st4 = complete(st3, Outcome.ActivateFailed(7, FailureClass.Transient), 5.seconds)
     val Status.Cold(Some(at)) = statusOf(st4, 7): @unchecked
     assert(at >= 13.seconds && at <= 17.seconds, at.toString)
     assertEquals(st4.peers(7).failCount, 1)
@@ -197,7 +197,7 @@ class PeerSelectionSuite extends FunSuite:
     val cooling = PeerSelection
       .apply(
         ended,
-        Event.Observed(8, Observation.Lost(PeerFailure.Transient, 5.seconds, false)),
+        Event.Observed(8, Observation.Lost(FailureClass.Transient, 5.seconds, false, "lost")),
         2.minutes
       )
       .state
@@ -205,7 +205,7 @@ class PeerSelectionSuite extends FunSuite:
     val cold = PeerSelection
       .apply(
         cooling,
-        Event.Observed(8, Observation.Lost(PeerFailure.Transient, 5.seconds, true)),
+        Event.Observed(8, Observation.Lost(FailureClass.Transient, 5.seconds, true, "lost")),
         2.minutes + 1.second
       )
       .state
@@ -220,7 +220,7 @@ class PeerSelectionSuite extends FunSuite:
     val lost = PeerSelection
       .apply(
         st3,
-        Event.Observed(7, Observation.Lost(PeerFailure.Transient, 1.second, false)),
+        Event.Observed(7, Observation.Lost(FailureClass.Transient, 1.second, false, "lost")),
         1.second
       )
       .state
