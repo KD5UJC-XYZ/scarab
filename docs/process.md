@@ -115,6 +115,25 @@ Each design or reference document starts with a status line:
 
 When the code changes what a current document describes, the same change updates the document.
 
+## Findings from an independent audit
+
+An audit or independent review of `main` produces tickets, not a side document. Each finding is one
+issue with the label `audit`, a title that starts with its audit ID (`[AUD-01]`, `[AUD-02]`, ...), a
+priority (`P0` consensus safety, `P1` the next stabilisation or audit-preparation work, `P2` a bounded
+follow-up) and a milestone. A finding is checked against the source before its ticket is written, and the
+ticket says which parts are confirmed from source, which come from an earlier reproduction and which are
+consequences still to verify.
+
+Every audit ticket states the **boundary** it concerns, the **trusted assumptions**, the **invariant**
+that must hold, the **acceptance criteria** and the **evidence** required; the fix keeps the
+reproduction as a regression test, and the relevant row of [compatibility.md](compatibility.md)
+is updated. Where a finding concerns something a hostile peer or client could exploit, the public ticket
+describes the missing property and the reference's behaviour, never how to trigger it
+([SECURITY.md](../SECURITY.md)): reproduction details stay in private notes, and a private security
+advisory carries anything that is actually exploitable. Findings that strengthen an existing item go into
+that item as a comment, not as a duplicate. Changes to repository settings (branch protection, reviews)
+are the maintainer's, never an agent's.
+
 ## Parallel work
 
 Large items are split into stages or jumps in a design document, each small enough for one session.
