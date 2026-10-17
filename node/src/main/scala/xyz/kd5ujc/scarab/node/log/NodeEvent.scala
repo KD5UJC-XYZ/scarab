@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.blst.{BlstReport, CpuSupport, LibraryBuild}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.ledger.{NodeError, Points, ShelleyGenesis}
-import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, NodeConfig, Topology}
+import xyz.kd5ujc.scarab.node.{BuildInfo, InboundEvent, LedgerPeersTrace, NodeConfig, Topology}
 import xyz.kd5ujc.scarab.network.selection.{
   Churn,
   FetchMode,
@@ -97,6 +97,10 @@ enum NodeEvent:
   /** A decision of the peer governor or what became of one (G1). */
   case PeerSelection(trace: Trace[SocketAddress[Host]])
   case PeerChurn(trace: Churn.Trace)
+
+  /** The ledger-peers worker (G1.3): the snapshot, the stake maps it rebuilt, the pools it skipped.
+    */
+  case LedgerPeers(trace: LedgerPeersTrace)
 
   /** The counters of the peer governor changed. */
   case PeerCounters(counters: GovernorState.Counters)
@@ -268,6 +272,7 @@ object NodeEvent:
           inbound(remote, "refused", Some(reason)).at(Severity.Warning)
     case PeerSelection(trace)        => PeerSelectionLines.trace(trace)
     case PeerChurn(trace)            => PeerSelectionLines.churn(trace)
+    case LedgerPeers(trace)          => PeerSelectionLines.ledger(trace)
     case PeerCounters(counters)      => PeerSelectionLines.counters(counters)
     case OutboundConnections(state)  => PeerSelectionLines.outbound(state)
     case GsmTransition(phase, event) => PeerSelectionLines.gsm(phase, event)

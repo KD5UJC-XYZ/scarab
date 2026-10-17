@@ -42,11 +42,23 @@
 {"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"asynchronous","to":"cold","peer":"relay.example.org:3001","failure":"Transient","reason":"unavailable: connection closed"}
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"cold","target":150,"known":160,"peers":["relay.example.org:3001"]}
 {"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"forgotten","peers":["10.0.0.1:3001"]}
-{"event":"peerSelectionCounters","at":"2026-10-16T12:00:00Z","root":2,"cold":0,"warm":1,"hot":1,"known":2,"established":2,"active":1,"availableToConnect":0,"coldPromotions":0,"warmPromotions":0,"warmDemotions":0,"activeDemotions":0,"localRoots":{"known":1,"established":1,"active":1},"bootstrap":{"known":1,"established":1,"active":0}}
+{"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"request","bigLedger":true,"target":15,"current":3}
+{"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"results","bigLedger":true,"found":["10.0.0.1:3001","relay.example.org:3001"],"backoffs":0,"retryInSeconds":5.0}
+{"event":"peerSelectionRoots","at":"2026-10-16T12:00:00Z","action":"failure","bigLedger":true,"backoffs":-1,"retryInSeconds":2.0}
+{"event":"peerSelectionForget","at":"2026-10-16T12:00:00Z","action":"cold","bigLedger":true,"target":15,"known":17,"peers":["10.0.0.1:3001"]}
+{"event":"peerSelectionPromote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"cold","peers":["10.0.0.1:3001","relay.example.org:3001"],"target":10,"current":4}
+{"event":"peerSelectionDemote","at":"2026-10-16T12:00:00Z","action":"decided","bigLedger":true,"from":"hot","peers":["relay.example.org:3001"],"target":5,"current":6}
+{"event":"peerSelectionCounters","at":"2026-10-16T12:00:00Z","root":3,"cold":0,"warm":1,"hot":1,"known":2,"established":2,"active":1,"availableToConnect":0,"coldPromotions":0,"warmPromotions":0,"warmDemotions":0,"activeDemotions":0,"localRoots":{"known":1,"established":1,"active":1},"bootstrap":{"known":1,"established":1,"active":0},"bigLedger":{"known":1,"established":1,"active":1},"origins":{"Local":1,"Public":0,"Bootstrap":1,"Ledger":0,"BigLedger":1,"Other":0}}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"round","mode":"Deadline"}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"step","step":"DecreaseActive","number":7,"tookSeconds":1.5,"change":-4}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"timeout","step":"IncreaseKnown","number":11,"tookSeconds":80.0,"change":0}
 {"event":"peerSelectionChurn","at":"2026-10-16T12:00:00Z","action":"wait","delaySeconds":3412.0}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"snapshotLoaded","slot":123624952,"pools":37}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"snapshotIgnored","reason":"Missing(bigLedgerPools)"}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"refreshed","source":"Ledger","pools":612,"bigLedgerPools":118,"ledgerSlot":125430904}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"refreshed","source":"Nothing","pools":0,"bigLedgerPools":0,"ledgerSlot":"origin"}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"poolSkipped","pool":"07070707070707070707070707070707070707070707070707070707","reason":"BadPort(1)"}
+{"event":"ledgerPeers","at":"2026-10-16T12:00:00Z","action":"unreadable","reason":"DerivedMismatch(VrfKeyHashes)"}
 {"event":"outboundConnections","at":"2026-10-16T12:00:00Z","state":"TrustedStateWithExternalPeers","trusted":true}
 {"event":"outboundConnections","at":"2026-10-16T12:00:00Z","state":"UntrustedState","trusted":false}
 {"event":"gsmTransition","at":"2026-10-16T12:00:00Z","transition":"preSyncingToSyncing","state":"Syncing"}

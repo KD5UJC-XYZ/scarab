@@ -62,7 +62,13 @@ object MockEnvironment:
       useBootstrap: Boolean,
       targets: Timed[Targets],
       judgement: Timed[LedgerStateJudgement],
-      seed: Long
+      seed: Long,
+      /** The relays the ledger offers an ordinary request (when there are any, they are offered
+        * instead of the public roots, as the reference's `requestPublicRootPeers` does).
+        */
+      ledgerPeers: Set[Peer] = Set.empty,
+      /** The relays the ledger offers a request for big ledger peers. */
+      bigLedgerPeers: Set[Peer] = Set.empty
   ):
     def script(peer: Peer): PeerScript = scripts.getOrElse(peer, PeerScript.steady)
 
@@ -76,6 +82,8 @@ object MockEnvironment:
     case Demote(demotion: Demotion, peer: Peer)
     case RootsResult(peers: Set[Peer])
     case RootsTtl
+    case BigLedgerResult(peers: Set[Peer])
+    case BigLedgerTtl
     case Establish(peer: Peer)
     case Activate(peer: Peer)
     case Deactivate(peer: Peer)
@@ -92,6 +100,8 @@ object MockEnvironment:
       case Demote(_, _)             => 30
       case RootsResult(_)           => 15
       case RootsTtl                 => 60
+      case BigLedgerResult(_)       => 10
+      case BigLedgerTtl             => 60
       case _                        => 0
 
   /** One thing seen in a run, in order. */
@@ -274,11 +284,21 @@ object MockEnvironment:
           def request(max: Int, bootstrap: Boolean) =
             val found =
               if bootstrap then PublicRoots(Set.empty[Peer], env.bootstrapPeers)
+              else if env.ledgerPeers.nonEmpty then
+                PublicRoots(Set.empty[Peer], Set.empty[Peer], env.ledgerPeers)
               else PublicRoots(env.publicRoots, Set.empty[Peer])
-            note(Seen.Env(EnvEvent.RootsResult(found.ordinary ++ found.bootstrap))) *>
+            note(
+              Seen.Env(EnvEvent.RootsResult(found.ordinary ++ found.bootstrap ++ found.ledger))
+            ) *>
               supervisor
                 .supervise(IO.sleep(60.seconds) *> note(Seen.Env(EnvEvent.RootsTtl)))
                 .as(Some(found -> 60.seconds))
+
+          def requestBigLedger(max: Int) =
+            note(Seen.Env(EnvEvent.BigLedgerResult(env.bigLedgerPeers))) *>
+              supervisor
+                .supervise(IO.sleep(60.seconds) *> note(Seen.Env(EnvEvent.BigLedgerTtl)))
+                .as(Some(env.bigLedgerPeers -> 60.seconds))
 
         given Stateful[IO, GovernorState[Peer]] = new Stateful[IO, GovernorState[Peer]]:
           def monad = cats.Monad[IO]

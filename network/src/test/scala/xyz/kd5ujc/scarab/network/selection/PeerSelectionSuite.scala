@@ -56,11 +56,12 @@ class PeerSelectionSuite extends FunSuite:
       else
         val done = jobs.foldLeft(settled) { (s, job) =>
           val outcome: Outcome[Int] = job match
-            case Job.Connect(p, _, _)   => Outcome.Connected(p)
-            case Job.Activate(p)        => Outcome.Activated(p)
-            case Job.Deactivate(p)      => Outcome.Deactivated(p)
-            case Job.Close(p)           => Outcome.Closed(p)
-            case Job.RequestRoots(_, _) => Outcome.RootsFailed()
+            case Job.Connect(p, _, _)    => Outcome.Connected(p)
+            case Job.Activate(p)         => Outcome.Activated(p)
+            case Job.Deactivate(p)       => Outcome.Deactivated(p)
+            case Job.Close(p)            => Outcome.Closed(p)
+            case Job.RequestRoots(_, _)  => Outcome.RootsFailed()
+            case Job.RequestBigLedger(_) => Outcome.BigLedgerFailed()
           complete(s, outcome, now)
         }
         go(done, traces ++ more, fuel - 1)

@@ -451,15 +451,28 @@ object LedgerPeerStake:
       snapshot: Option[LedgerPeerSnapshot[R]]
   ): LedgerPeersCache[R] =
     if !expired(cache, use, now) then cache
-    else
-      use match
-        case UseLedgerPeers.Disabled => LedgerPeersCache(StakeMaps.empty, None, Some(now))
-        case UseLedgerPeers.Use(after) =>
-          val chosen = stakeMapWithSlotOverSource(
-            ledgerSlot,
-            supply(after, ledgerSlot, ledgerPools),
-            snapshot,
-            cache,
-            after
-          )
-          LedgerPeersCache(chosen.maps, chosen.cachedSlot, Some(now))
+    else rebuild(cache, use, now, ledgerSlot, ledgerPools, snapshot)._1
+
+  /** The cache as it is rebuilt at `now`, and where its maps came from (a lifetime that has passed
+    * is not asked: [[refresh]] asks it).
+    */
+  def rebuild[R](
+      cache: LedgerPeersCache[R],
+      use: UseLedgerPeers,
+      now: FiniteDuration,
+      ledgerSlot: WithOrigin[BigInt],
+      ledgerPools: => Vector[LedgerPool[R]],
+      snapshot: Option[LedgerPeerSnapshot[R]]
+  ): (LedgerPeersCache[R], StakeSource) =
+    use match
+      case UseLedgerPeers.Disabled =>
+        (LedgerPeersCache(StakeMaps.empty, None, Some(now)), StakeSource.Nothing)
+      case UseLedgerPeers.Use(after) =>
+        val chosen = stakeMapWithSlotOverSource(
+          ledgerSlot,
+          supply(after, ledgerSlot, ledgerPools),
+          snapshot,
+          cache,
+          after
+        )
+        (LedgerPeersCache(chosen.maps, chosen.cachedSlot, Some(now)), chosen.source)

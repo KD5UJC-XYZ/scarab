@@ -79,10 +79,24 @@ enum Origin:
   /** A bootstrap peer: trusted, and the only source in the sensitive state. */
   case Bootstrap
 
+  /** A relay of a stake pool taken from the ledger (or from the big ledger peer snapshot), drawn by
+    * its share of the stake (`PublicRootPeers`' ledger peers).
+    */
+  case Ledger
+
+  /** A relay of one of the pools that hold the first 90% of the stake: a population of its own in
+    * every set, with its own targets (`PublicRootPeers`' big ledger peers). A peer is one or the
+    * other, never both.
+    */
+  case BigLedger
+
   /** Known, and no longer a root: a former local root, or a peer learnt from another peer. */
   case Other
 
   def root: Boolean = this != Other
+
+  /** The big ledger peers, which the ordinary views and families leave out. */
+  def big: Boolean = this == BigLedger
 
   /** Kept however often it fails: the operator's own peers and the trusted bootstrap peers
     * (`reportFailures`'s `unforgettable`).

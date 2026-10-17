@@ -26,7 +26,15 @@ import xyz.kd5ujc.scarab.ledger.{
   StorageError
 }
 import xyz.kd5ujc.scarab.network.{ConnectionError, ConnectionEvent}
-import xyz.kd5ujc.scarab.node.{InboundEvent, NodeSetup, Topology}
+import xyz.kd5ujc.scarab.node.{
+  InboundEvent,
+  LedgerPeersTrace,
+  NodeSetup,
+  PeerSnapshotError,
+  Topology
+}
+import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
+import xyz.kd5ujc.scarab.ledger.PoolRelayError
 import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent, ReloadRefusal}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
@@ -80,6 +88,7 @@ object LogSamples:
 
   private val peerA: SocketAddress[Host] = SocketAddress(host"10.0.0.1", port"3001")
   private val peerB: SocketAddress[Host] = SocketAddress(host"relay.example.org", port"3001")
+  private val peerC: SocketAddress[Host] = SocketAddress(host"10.0.0.3", port"3001")
 
   /** Every case of the governor's trace. */
   val peerSelection: List[Trace[SocketAddress[Host]]] = List(
@@ -106,7 +115,24 @@ object LogSamples:
       Some("unavailable: connection closed")
     ),
     Trace.ForgetCold(150, 160, List(peerB)),
-    Trace.Forgotten(List(peerA))
+    Trace.Forgotten(List(peerA)),
+    Trace.BigLedgerRequest(15, 3),
+    Trace.BigLedgerResults(Set(peerB, peerA), 0, 5.seconds),
+    Trace.BigLedgerFailure(-1, 2.seconds),
+    Trace.ForgetBigLedger(15, 17, List(peerA)),
+    Trace.PromoteBigLedger(Temperature.Cold, List(peerA, peerB), 10, 4),
+    Trace.DemoteBigLedger(Temperature.Hot, List(peerB), 5, 6)
+  )
+
+  /** Every case of the ledger-peers worker's trace. */
+  val ledgerPeers: List[LedgerPeersTrace] = List(
+    LedgerPeersTrace.SnapshotLoaded(WithOrigin.At(BigInt(123624952)), 37),
+    LedgerPeersTrace.SnapshotIgnored(PeerSnapshotError.Missing("bigLedgerPools")),
+    LedgerPeersTrace.Refreshed(StakeSource.Ledger, 612, 118, WithOrigin.At(BigInt(125430904))),
+    LedgerPeersTrace.Refreshed(StakeSource.Nothing, 0, 0, WithOrigin.Origin),
+    LedgerPeersTrace
+      .PoolSkipped(Bytes.fromArray(Array.fill(28)(7.toByte)), PoolRelayError.BadPort(1)),
+    LedgerPeersTrace.Unreadable(MirrorError.DerivedMismatch(Derived.VrfKeyHashes))
   )
 
   private val counters: GovernorState.Counters =
@@ -132,7 +158,8 @@ object LogSamples:
       .copy(
         peers = scala.collection.immutable.SortedMap(
           peerA -> PeerRecord.cold(Origin.Local).copy(status = Status.Hot),
-          peerB -> PeerRecord.cold(Origin.Bootstrap).copy(status = Status.Warm(Duration.Zero))
+          peerB -> PeerRecord.cold(Origin.Bootstrap).copy(status = Status.Warm(Duration.Zero)),
+          peerC -> PeerRecord.cold(Origin.BigLedger).copy(status = Status.Hot)
         ),
         localRoots = roots
       )

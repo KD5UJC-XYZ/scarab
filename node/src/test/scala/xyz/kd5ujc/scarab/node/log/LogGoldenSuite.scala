@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.consensus.{FollowerEvent, SchedulingStats, VolatileChai
 import xyz.kd5ujc.scarab.network.{ConnectionEvent, ConnectionEvents}
 import com.comcast.ip4s.{Host, SocketAddress}
 import xyz.kd5ujc.scarab.network.selection.{FetchMode, Gsm, Trace}
-import xyz.kd5ujc.scarab.node.InboundEvent
+import xyz.kd5ujc.scarab.node.{InboundEvent, LedgerPeersTrace}
 import xyz.kd5ujc.scarab.node.forge.{ForgeEvent, ForgeEvents}
 import xyz.kd5ujc.scarab.node.mempool.MempoolEvent
 import xyz.kd5ujc.scarab.storage.{StorageEvent, StorageEvents}
@@ -65,6 +65,7 @@ class LogGoldenSuite extends CatsEffectSuite:
         _ <- peerSelection.traverse_(t => node(NodeEvent.PeerSelection(t)))
         _ <- peerCounters.traverse_(c => node(NodeEvent.PeerCounters(c)))
         _ <- churnTraces.traverse_(t => node(NodeEvent.PeerChurn(t)))
+        _ <- ledgerPeers.traverse_(t => node(NodeEvent.LedgerPeers(t)))
         _ <- outboundStates.traverse_(c => node(NodeEvent.OutboundConnections(c)))
         _ <- gsmEvents.traverse_((phase, e) => node(NodeEvent.GsmTransition(phase, e)))
         _ <- FetchMode.values.toList.traverse_(m => node(NodeEvent.FetchModeChanged(m)))
@@ -123,6 +124,7 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(inbound, cases[InboundEvent])
     covered(peerSelection, cases[Trace[SocketAddress[Host]]])
     covered(gsmEvents.map(_._2), cases[Gsm.Event])
+    covered(ledgerPeers, cases[LedgerPeersTrace])
   }
 
   test("the JSON line is the event, the time and the fields, as JsonLog wrote it") {

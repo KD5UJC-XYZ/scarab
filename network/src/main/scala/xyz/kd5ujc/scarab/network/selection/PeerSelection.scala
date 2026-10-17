@@ -56,13 +56,19 @@ object PeerSelection:
       () => pass.judgement,
       () => pass.targets,
       () => pass.localRoots,
+      () => pass.big.request,
+      () => pass.big.forget,
       () => pass.requestRoots,
       () => pass.forget,
+      () => pass.big.connect,
       () => pass.connectLocal,
       () => pass.connectOther,
+      () => pass.big.close,
       () => pass.closeOther,
+      () => pass.big.activate,
       () => pass.activateLocal,
       () => pass.activateOther,
+      () => pass.big.deactivate,
       () => pass.deactivateLocal,
       () => pass.deactivateOther
     )
@@ -86,7 +92,7 @@ object PeerSelection:
     case (x, None)          => x
     case (None, y)          => y
 
-  private enum Guard[A]:
+  private[selection] enum Guard[A]:
     case Go(decision: Decision[A])
     case Skip(wakeAt: Option[Time])
 
@@ -101,6 +107,9 @@ object PeerSelection:
     private lazy val hotScore: A => HotScore =
       val scores = metrics.hotScores
       peer => scores.getOrElse(peer, HotScore.Unknown)
+
+    /** The decisions about big ledger peers ([[BigLedgerGuards]]). */
+    lazy val big: BigLedgerGuards[A] = BigLedgerGuards(st, view, now, peer => hotScore(peer))
 
     def nextClearFail: Option[Time] = st.peers.values.flatMap(_.clearFailAt).minOption
 
@@ -136,8 +145,11 @@ object PeerSelection:
       val trusted = view.bootstrap ++ st.localRoots.clampToTrustable.keys
       if s.sensitive && !s.hasOnlyBootstrapPeers &&
         st.localRoots.config.values.forall(_.trustable) &&
-        view.known.subsetOf(trusted) &&
-        view.connecting.isEmpty && view.activating.isEmpty && !st.publicRootsInFlight
+        // every known peer, the big ledger peers too (`KnownPeers.toSet`)
+        st.peers.keySet.subsetOf(trusted) &&
+        view.connecting.isEmpty && view.big.connecting.isEmpty &&
+        view.activating.isEmpty && view.big.activating.isEmpty &&
+        !st.publicRootsInFlight && !st.bigLedgerInFlight
       then
         go(
           st.copy(sensitivity = s.copy(hasOnlyBootstrapPeers = true, timeout = None)),

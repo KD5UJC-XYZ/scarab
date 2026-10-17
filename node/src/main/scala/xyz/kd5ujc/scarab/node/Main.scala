@@ -70,7 +70,7 @@ import xyz.kd5ujc.scarab.network.ConnectionEvent
 import xyz.kd5ujc.scarab.node.ntc.{EraHistory, QueryEnv, StateQuerySource}
 import xyz.kd5ujc.scarab.node.read.ChainRead.given
 import xyz.kd5ujc.scarab.network.NodeToNode
-import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, Targets}
+import xyz.kd5ujc.scarab.network.selection.{Churn, FetchMode, Targets, UseLedgerPeers}
 import xyz.kd5ujc.scarab.node.relay.{ChainServer, Persistence}
 import scala.concurrent.duration.*
 
@@ -279,10 +279,22 @@ object Main extends IOApp:
             .toRight(ConfigError("neither --config nor --genesis-dir given"))
             .flatMap(NodeSetup.fromDirectory)
       topology <- options.topologyFile.traverse(Topology.read)
+      // `peerSnapshotFile` is relative to the topology file, as the reference reads it
+      snapshotFile = for
+        file <- options.topologyFile
+        name <- topology.flatMap(_.peerSnapshotFile)
+      yield file.resolveSibling(name)
+      snapshot <- PeerSnapshot
+        .use(
+          snapshotFile,
+          setup.genesis.networkMagic.toLong,
+          topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot)
+        )
+        .leftMap(r => ConfigError(s"topology peerSnapshotFile: ${r.message}"))
       settings = setup.config.settings
       fromFile = options.configFile.isDefined
       peers = (options.peers ++ topology.toList.flatMap(_.peers)).distinct
-      roots = PeerNetwork.roots(options.peers, topology)
+      roots = PeerNetwork.roots(options.peers, topology, snapshot)
       _ <- Either.cond(
         roots.hasPeers,
         (),
@@ -726,13 +738,16 @@ object Main extends IOApp:
             )
             emitOutput = (out: Output[PeerNetwork.Addr]) =>
               measured.peerSelection(out) *> (out match
-                case Output.Traced(trace)  => logged(NodeEvent.PeerSelection(trace))
-                case Output.Churned(trace) => logged(NodeEvent.PeerChurn(trace))
-                case Output.Counted(c)     => logged(NodeEvent.PeerCounters(c))
-                case Output.Connections(c) => logged(NodeEvent.OutboundConnections(c)))
+                case Output.Traced(trace)      => logged(NodeEvent.PeerSelection(trace))
+                case Output.Churned(trace)     => logged(NodeEvent.PeerChurn(trace))
+                case Output.LedgerPeers(trace) => logged(NodeEvent.LedgerPeers(trace))
+                case Output.Counted(c)         => logged(NodeEvent.PeerCounters(c))
+                case Output.Connections(c)     => logged(NodeEvent.OutboundConnections(c)))
             network = PeerNetwork.resource[IO](
               PeerNetwork.Settings(
-                options.roots.getOrElse(PeerNetwork.Roots(Nil, Set.empty, None, false)),
+                options.roots.getOrElse(
+                  PeerNetwork.Roots(Nil, Set.empty, None, UseLedgerPeers.Disabled)
+                ),
                 targets,
                 intervals = options.churnInterval.fold(Churn.Intervals())(Churn.Intervals.every),
                 timeouts = options.churnInterval.fold(Churn.Timeouts())(Churn.Timeouts().within),
@@ -749,7 +764,8 @@ object Main extends IOApp:
                 measured.gsm(phase) *> logged(NodeEvent.GsmTransition(phase, event)),
               phase => measured.gsm(phase),
               mode => measured.fetchMode(mode) *> logged(NodeEvent.FetchModeChanged(mode)),
-              marker
+              marker,
+              LedgerPeersSource.fromChain[IO, MirrorState](ref.get)
             )
             relay = options.listen.fold(Resource.unit[IO])(address =>
               BearerServer

@@ -33,9 +33,12 @@ enum Observation:
     */
   case Lost(failure: FailureClass, delay: FiniteDuration, released: Boolean, reason: String)
 
-/** The peers a request for public roots found: ordinary public roots, and bootstrap peers. */
-final case class PublicRoots[A](ordinary: Set[A], bootstrap: Set[A]):
-  def isEmpty: Boolean = ordinary.isEmpty && bootstrap.isEmpty
+/** The peers a request for public roots found: ordinary public roots, bootstrap peers, and the
+  * ledger peers the ledger answered with (when it answers, the configured public roots are not
+  * offered: `requestPublicRootPeersImpl`, `PeerSelectionActions.hs` 132-184).
+  */
+final case class PublicRoots[A](ordinary: Set[A], bootstrap: Set[A], ledger: Set[A] = Set.empty[A]):
+  def isEmpty: Boolean = ordinary.isEmpty && bootstrap.isEmpty && ledger.isEmpty
 
 /** What a job reports when it ends: the governor applies it to the state *as it is then*, so a job
   * that finished after the world moved on (the peer was lost, the targets changed) is detected and
@@ -59,6 +62,10 @@ enum Outcome[A]:
   case RootsFound(found: PublicRoots[A], ttl: FiniteDuration)
   case RootsFailed()
 
+  /** The request for big ledger peers answered, with the time its answer is good for. */
+  case BigLedgerFound(found: Set[A], ttl: FiniteDuration)
+  case BigLedgerFailed()
+
 /** A piece of work for the effect layer (a job of the reference's `JobPool`). */
 enum Job[A]:
   case Connect(peer: A, mode: DiffusionMode, provenance: Provenance)
@@ -68,6 +75,9 @@ enum Job[A]:
 
   /** Ask for up to `max` public roots; bootstrap peers when `bootstrap` (the sensitive state). */
   case RequestRoots(max: Int, bootstrap: Boolean)
+
+  /** Ask for up to `max` big ledger peers (`jobReqBigLedgerPeers`). */
+  case RequestBigLedger(max: Int)
 
 /** What the governor tells the log: the decision it took or the outcome it applied (the cases of
   * `TracePeerSelection`, `Types.hs` 1646-1840, that G1.1 has).
@@ -113,6 +123,15 @@ enum Trace[A]:
   )
   case ForgetCold(target: Int, known: Int, peers: List[A])
   case Forgotten(peers: List[A])
+
+  // the big ledger families (`TraceBigLedgerPeersRequest` and the other `*BigLedger*` cases of
+  // `TracePeerSelection`, `Types.hs`)
+  case BigLedgerRequest(target: Int, current: Int)
+  case BigLedgerResults(found: Set[A], backoffs: Int, retryIn: FiniteDuration)
+  case BigLedgerFailure(backoffs: Int, retryIn: FiniteDuration)
+  case ForgetBigLedger(target: Int, known: Int, peers: List[A])
+  case PromoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
+  case DemoteBigLedger(from: Temperature, peers: List[A], target: Int, current: Int)
 
 /** The result of one step of the governor: the new state, the work to start, what to log. */
 final case class Decision[A](

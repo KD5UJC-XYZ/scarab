@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.node.metrics
 
 import xyz.kd5ujc.scarab.ledger.BlockRule
 import xyz.kd5ujc.scarab.node.forge.ForgeEpochStats
-import xyz.kd5ujc.scarab.network.selection.{Churn, GovernorState}
+import xyz.kd5ujc.scarab.network.selection.{Churn, GovernorState, Origin}
 import xyz.kd5ujc.scarab.node.mempool.Rejection
 import xyz.kd5ujc.scarab.protocol.{ConnectionState, Era}
 
@@ -56,7 +56,14 @@ enum PeerTransitionLabel derives LabelValue:
 
 /** The targets of the governor that are exported. */
 enum TargetLabel derives LabelValue:
-  case Root, Known, Established, Active
+  case Root, Known, Established, Active, KnownBigLedger, EstablishedBigLedger, ActiveBigLedger
+
+/** Where a known peer came from ([[xyz.kd5ujc.scarab.network.selection.Origin]]). */
+given LabelValue[Origin] = LabelValue.derived
+
+/** The two stake maps of the ledger-peers worker. */
+enum LedgerMapLabel derives LabelValue:
+  case Ordinary, Big
 
 /** A step of the churn governor's round ([[Churn.Step]]), by its name. */
 given LabelValue[Churn.Step] = LabelValue.derived
@@ -484,21 +491,21 @@ object Catalogue:
         MetricName("cardano_node_metrics_peerSelection_ColdBigLedgerPeers_int"),
         "Number of cold big ledger peers."
       ),
-      _ => 0
+      _.coldBigLedger
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_WarmBigLedgerPeers_int"),
         "Number of warm big ledger peers."
       ),
-      _ => 0
+      _.warmBigLedger
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_HotBigLedgerPeers_int"),
         "Number of hot big ledger peers."
       ),
-      _ => 0
+      _.hotBigLedger
     ),
     // the reference reports these two the other way round (warm as the active, hot as the
     // established beyond the active); both are deprecated there
@@ -577,49 +584,49 @@ object Catalogue:
         MetricName("cardano_node_metrics_peerSelection_KnownBigLedgerPeers_int"),
         "Number of known big ledger peers."
       ),
-      _ => 0
+      _.knownBigLedger
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_ColdBigLedgerPeersPromotions_int"),
         "Number of cold big ledger peers being promoted."
       ),
-      _ => 0
+      _.coldBigLedgerPromotions
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_EstablishedBigLedgerPeers_int"),
         "Number of established big ledger peers."
       ),
-      _ => 0
+      _.establishedBigLedger
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_WarmBigLedgerPeersDemotions_int"),
         "Number of warm big ledger peers being demoted."
       ),
-      _ => 0
+      _.warmBigLedgerDemotions
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_WarmBigLedgerPeersPromotions_int"),
         "Number of warm big ledger peers being promoted."
       ),
-      _ => 0
+      _.warmBigLedgerPromotions
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_ActiveBigLedgerPeers_int"),
         "Number of active big ledger peers."
       ),
-      _ => 0
+      _.activeBigLedger
     ),
     (
       GaugeDef(
         MetricName("cardano_node_metrics_peerSelection_ActiveBigLedgerPeersDemotions_int"),
         "Number of active big ledger peers being demoted."
       ),
-      _ => 0
+      _.activeBigLedgerDemotions
     ),
     (
       GaugeDef(
@@ -762,8 +769,18 @@ object Catalogue:
   )
   val peerTargets = GaugeDef(
     MetricName("scarab_peer_selection_targets"),
-    "The targets the peer governor works towards (big ledger peers are not exported yet).",
+    "The targets the peer governor works towards, for the ordinary peers and for the big ledger peers.",
     Labels.one[TargetLabel](LabelName("target"))
+  )
+  val peerOrigins = GaugeDef(
+    MetricName("scarab_peer_selection_peers"),
+    "The known peers by where they came from: a local root, a public root, a bootstrap peer, the ledger, a big ledger pool, or no longer a root.",
+    Labels.one[Origin](LabelName("origin"))
+  )
+  val ledgerPeerPools = GaugeDef(
+    MetricName("scarab_ledger_peers_pools"),
+    "The pools of the ledger-peers worker's stake maps: the ordinary map, and the big ledger peers' (the first 90% of the stake).",
+    Labels.one[LedgerMapLabel](LabelName("map"))
   )
   val peerBackoffSeconds = HistogramDef(
     MetricName("scarab_peer_selection_backoff_seconds"),
@@ -992,6 +1009,8 @@ object Catalogue:
     inboundEvents,
     peerTransitions,
     peerTargets,
+    peerOrigins,
+    ledgerPeerPools,
     peerBackoffSeconds,
     churnRounds,
     churnSteps,

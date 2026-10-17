@@ -6,6 +6,7 @@ import io.circe.Json
 import io.circe.syntax.*
 import scala.concurrent.duration.FiniteDuration
 import xyz.kd5ujc.scarab.network.selection.*
+import xyz.kd5ujc.scarab.node.LedgerPeersTrace
 
 /** The lines of the peer governor (stage G1.1): what it decided and what became of it, in the words
   * of the reference's `TracePeerSelection` (`Governor/Types.hs` 1646-1840), the counters it
@@ -142,6 +143,57 @@ private[log] object PeerSelectionLines:
       )
     case Trace.OnlyBootstrapPeers() =>
       EventKind.PeerSelectionSensitive.line("action" -> "clean".asJson)
+    // the big ledger peers: the same events with `bigLedger` true
+    case Trace.BigLedgerRequest(target, current) =>
+      EventKind.PeerSelectionRoots.line(
+        "action" -> "request".asJson,
+        "bigLedger" -> true.asJson,
+        "target" -> target.asJson,
+        "current" -> current.asJson
+      )
+    case Trace.BigLedgerResults(found, backoffs, retryIn) =>
+      EventKind.PeerSelectionRoots.line(
+        "action" -> "results".asJson,
+        "bigLedger" -> true.asJson,
+        "found" -> peers(found),
+        "backoffs" -> backoffs.asJson,
+        "retryInSeconds" -> seconds(retryIn)
+      )
+    case Trace.BigLedgerFailure(backoffs, retryIn) =>
+      EventKind.PeerSelectionRoots
+        .line(
+          "action" -> "failure".asJson,
+          "bigLedger" -> true.asJson,
+          "backoffs" -> backoffs.asJson,
+          "retryInSeconds" -> seconds(retryIn)
+        )
+        .at(Severity.Warning)
+    case Trace.ForgetBigLedger(target, known, ps) =>
+      EventKind.PeerSelectionForget.line(
+        "action" -> "cold".asJson,
+        "bigLedger" -> true.asJson,
+        "target" -> target.asJson,
+        "known" -> known.asJson,
+        "peers" -> peers(ps)
+      )
+    case Trace.PromoteBigLedger(from, ps, target, current) =>
+      EventKind.PeerSelectionPromote.line(
+        "action" -> "decided".asJson,
+        "bigLedger" -> true.asJson,
+        "from" -> temperature(from),
+        "peers" -> peers(ps),
+        "target" -> target.asJson,
+        "current" -> current.asJson
+      )
+    case Trace.DemoteBigLedger(from, ps, target, current) =>
+      EventKind.PeerSelectionDemote.line(
+        "action" -> "decided".asJson,
+        "bigLedger" -> true.asJson,
+        "from" -> temperature(from),
+        "peers" -> peers(ps),
+        "target" -> target.asJson,
+        "current" -> current.asJson
+      )
 
   def churn(t: Churn.Trace): Line = t match
     case Churn.Trace.Mode(mode) =>
@@ -188,6 +240,14 @@ private[log] object PeerSelectionLines:
         "known" -> c.knownBootstrap.asJson,
         "established" -> c.establishedBootstrap.asJson,
         "active" -> c.activeBootstrap.asJson
+      ),
+      "bigLedger" -> Json.obj(
+        "known" -> c.knownBigLedger.asJson,
+        "established" -> c.establishedBigLedger.asJson,
+        "active" -> c.activeBigLedger.asJson
+      ),
+      "origins" -> Json.fromFields(
+        c.byOrigin.toList.sortBy(_._1.ordinal).map((o, n) => o.toString -> n.asJson)
       )
     )
 
@@ -212,3 +272,42 @@ private[log] object PeerSelectionLines:
 
   def fetchMode(mode: FetchMode): Line =
     EventKind.FetchModeChanged.line("mode" -> mode.toString.asJson)
+
+  /** The ledger-peers worker: the snapshot it was given, its rebuilt stake maps, the pools it left
+    * out and the ledger state it could not read.
+    */
+  def ledger(t: LedgerPeersTrace): Line = t match
+    case LedgerPeersTrace.SnapshotLoaded(slot, pools) =>
+      EventKind.LedgerPeers.line(
+        "action" -> "snapshotLoaded".asJson,
+        "slot" -> slotOrOrigin(slot),
+        "pools" -> pools.asJson
+      )
+    case LedgerPeersTrace.SnapshotIgnored(error) =>
+      EventKind.LedgerPeers
+        .line("action" -> "snapshotIgnored".asJson, "reason" -> error.toString.asJson)
+        .at(Severity.Warning)
+    case LedgerPeersTrace.Refreshed(source, ordinary, big, slot) =>
+      EventKind.LedgerPeers.line(
+        "action" -> "refreshed".asJson,
+        "source" -> source.toString.asJson,
+        "pools" -> ordinary.asJson,
+        "bigLedgerPools" -> big.asJson,
+        "ledgerSlot" -> slotOrOrigin(slot)
+      )
+    case LedgerPeersTrace.PoolSkipped(pool, error) =>
+      EventKind.LedgerPeers
+        .line(
+          "action" -> "poolSkipped".asJson,
+          "pool" -> pool.hex.asJson,
+          "reason" -> error.toString.asJson
+        )
+        .at(Severity.Warning)
+    case LedgerPeersTrace.Unreadable(error) =>
+      EventKind.LedgerPeers
+        .line("action" -> "unreadable".asJson, "reason" -> error.toString.asJson)
+        .at(Severity.Warning)
+
+  private def slotOrOrigin(slot: WithOrigin[BigInt]): Json = slot match
+    case WithOrigin.Origin => "origin".asJson
+    case WithOrigin.At(s)  => s.asJson

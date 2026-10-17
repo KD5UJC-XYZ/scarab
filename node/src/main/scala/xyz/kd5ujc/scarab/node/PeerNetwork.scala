@@ -33,9 +33,13 @@ object PeerNetwork:
       public: Set[Addr],
       /** The bootstrap peers, the only source in the sensitive state; none when not configured. */
       bootstrap: Option[Vector[Addr]],
-      /** Whether the topology enables ledger peers (it matters for the association mode). */
-      ledgerPeers: Boolean
-  )
+      /** `useLedgerAfterSlot`: whether and after which slot the node takes ledger peers. */
+      ledger: UseLedgerPeers,
+      /** The peer snapshot file of the topology, as the node starts with it. */
+      snapshot: SnapshotUse = SnapshotUse.Unused
+  ):
+    /** Whether the topology enables ledger peers (it matters for the association mode). */
+    def ledgerPeers: Boolean = ledger.isEnabled
 
   final case class Settings(
       roots: Roots,
@@ -81,7 +85,11 @@ object PeerNetwork:
     * (owner decision 1), then the groups of the topology with their own valencies, flags and
     * provenance; the public roots and the bootstrap peers of the topology.
     */
-  def roots(peers: List[Addr], topology: Option[Topology]): Roots =
+  def roots(
+      peers: List[Addr],
+      topology: Option[Topology],
+      snapshot: SnapshotUse = SnapshotUse.Unused
+  ): Roots =
     val given_ = RootConfig(
       advertise = false,
       DiffusionMode.InitiatorAndResponder,
@@ -110,7 +118,8 @@ object PeerNetwork:
       public =
         topology.toList.flatMap(_.publicRoots).flatMap(_.accessPoints).map(_.socketAddress).toSet,
       bootstrap = topology.flatMap(_.bootstrapPeers).map(_.map(_.socketAddress)),
-      ledgerPeers = topology.exists(_.useLedgerAfterSlot.isEnabled)
+      ledger = topology.fold[UseLedgerPeers](UseLedgerPeers.Disabled)(_.useLedgerAfterSlot),
+      snapshot = snapshot
     )
 
   /** Whether there is anything to start from: a local root, a public root or a bootstrap peer. */
@@ -177,10 +186,21 @@ object PeerNetwork:
       gsm: (Gsm.Phase, Gsm.Event) => F[Unit],
       gsmInitial: Gsm.Phase => F[Unit],
       fetchModeChanged: FetchMode => F[Unit],
-      marker: GsmRunner.Marker[F]
+      marker: GsmRunner.Marker[F],
+      /** The ledger the ledger peers are taken from. */
+      ledgerSource: LedgerPeersSource[F]
   ): Resource[F, Running[F, Addr]] =
     val F = Async[F]
     val roots = configuredRoots(settings.roots)
+    // Without ledger peers there are no big ledger peers to want: the targets for them are zero,
+    // and the churn governor leaves its six steps for them out (a node that never has any would
+    // only wait out their timeouts). The reference asks all the same and gets the public roots.
+    val base: Targets =
+      if settings.roots.ledgerPeers then settings.targets
+      else
+        settings.targets
+          .revised(knownBig = 0, establishedBig = 0, activeBig = 0)
+          .getOrElse(settings.targets)
     val bootstrapOn = settings.roots.bootstrap.isDefined
     val localHot = roots.groups.map(_.hot.value).sum
     val association = AssociationMode.of(
@@ -199,7 +219,7 @@ object PeerNetwork:
           GovernorState.initial[Addr](
             settings.seed,
             roots,
-            Regime.initial(initialKind, settings.targets, localHot),
+            Regime.initial(initialKind, base, localHot),
             Sensitivity.initial(bootstrapOn)
           )
         )
@@ -209,6 +229,26 @@ object PeerNetwork:
       )
       metrics <- Resource.eval(Ref.of[F, PeerMetrics[Addr]](PeerMetrics.empty[Addr]()))
       judgement <- Resource.eval(Ref.of[F, LedgerStateJudgement](LedgerStateJudgement.TooOld))
+      worker <- Resource.eval {
+        given Tell[F, LedgerPeersTrace] = new Tell[F, LedgerPeersTrace]:
+          def functor = F
+          def tell(l: LedgerPeersTrace): F[Unit] = emit(Output.LedgerPeers(l))
+        val snapshot = settings.roots.snapshot
+        // the worker's generator is split from the governor's seed: a stream of its own
+        val workerRng = Rng(settings.seed).split._1
+        LedgerPeersWorker
+          .create[F](settings.roots.ledger, ledgerSource, snapshot.snapshot, workerRng)
+          .flatTap(_ =>
+            snapshot match
+              case SnapshotUse.Loaded(s) =>
+                emit(
+                  Output.LedgerPeers(LedgerPeersTrace.SnapshotLoaded(s.slot, s.pools.size))
+                )
+              case SnapshotUse.Ignored(error) =>
+                emit(Output.LedgerPeers(LedgerPeersTrace.SnapshotIgnored(error)))
+              case SnapshotUse.Unused => F.unit
+          )
+      }
       outbound <- Resource.eval(
         OutboundPeers.create[F, Addr](
           transport,
@@ -243,18 +283,12 @@ object PeerNetwork:
             case _                     => F.unit
           ) *> emit(l)
 
-      val rootProvider = new RootProvider[F, Addr]:
-        def request(max: Int, bootstrap: Boolean) =
-          F.pure(
-            Some(
-              if bootstrap then
-                PublicRoots(
-                  Set.empty[Addr],
-                  settings.roots.bootstrap.getOrElse(Vector.empty).toSet
-                ) -> 1.hour
-              else PublicRoots(settings.roots.public, Set.empty[Addr]) -> 1.hour
-            )
-          )
+      val rootProvider: RootProvider[F, Addr] =
+        NodeRootProvider[F](
+          settings.roots.public,
+          settings.roots.bootstrap.getOrElse(Vector.empty),
+          worker
+        )
 
       val modeCell: Ref[F, FetchMode] = fetchMode
       // the fetch mode of the node, once a second (the reference reads it from consensus when it needs
@@ -272,8 +306,9 @@ object PeerNetwork:
       val churn: F[Nothing] =
         given Ask[F, ChurnLoop.Config] = Ask.const[F, ChurnLoop.Config](
           ChurnLoop.Config(
-            base = settings.targets,
+            base = base,
             regime = Regime.kind(_, bootstrapOn),
+            bigLedger = settings.roots.ledgerPeers,
             intervals = settings.intervals,
             timeouts = settings.timeouts,
             seed = settings.seed

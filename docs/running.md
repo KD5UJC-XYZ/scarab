@@ -756,13 +756,14 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused`) | `remote`, `what`, `provenance`, `from`, `to`, `reason` |
 | `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused`) | `remote`, `state`, `reason` |
 | `peerSelectionTargets` | `Net.PeerSelectionTargets` | Notice | `root`, `known`, `established`, `active`, `knownBigLedger`, `establishedBigLedger`, `activeBigLedger` |
-| `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds` |
-| `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten` |
-| `peerSelectionDemote` | `Net.PeerSelectionDemote` | Info (Warning when `action` is `failed`, or `asynchronous` with a `failure`) | `action`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `timedOut`, `failure`, `reason` |
-| `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `target`, `known`, `peers` |
+| `peerSelectionRoots` | `Net.PeerSelectionRoots` | Info (Warning when `action` is `failure`) | `action`, `bigLedger`, `before`, `after`, `target`, `current`, `found`, `backoffs`, `retryInSeconds` |
+| `peerSelectionPromote` | `Net.PeerSelectionPromote` | Info (Warning when `action` is `failed`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `failure`, `retryInSeconds`, `forgotten` |
+| `peerSelectionDemote` | `Net.PeerSelectionDemote` | Info (Warning when `action` is `failed`, or `asynchronous` with a `failure`) | `action`, `bigLedger`, `from`, `to`, `peers`, `peer`, `local`, `target`, `current`, `timedOut`, `failure`, `reason` |
+| `peerSelectionForget` | `Net.PeerSelectionForget` | Info | `action`, `bigLedger`, `target`, `known`, `peers` |
 | `peerSelectionSensitive` | `Net.PeerSelectionSensitive` | Notice | `action`, `judgement` |
-| `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap` |
+| `peerSelectionCounters` | `Net.PeerSelectionCounters` | Info | `root`, `cold`, `warm`, `hot`, `known`, `established`, `active`, `availableToConnect`, `coldPromotions`, `warmPromotions`, `warmDemotions`, `activeDemotions`, `localRoots`, `bootstrap`, `bigLedger`, `origins` |
 | `peerSelectionChurn` | `Net.PeerSelectionChurn` | Info | `action` (`round`, `step`, `timeout`, `wait`), `mode`, `step`, `number`, `tookSeconds`, `change`, `delaySeconds` |
+| `ledgerPeers` | `Net.LedgerPeers` | Info (Warning when `action` is `snapshotIgnored`, `poolSkipped` or `unreadable`) | `action`, `slot`, `pools`, `source`, `bigLedgerPools`, `ledgerSlot`, `pool`, `reason` |
 | `outboundConnections` | `Net.OutboundConnections` | Info | `state`, `trusted` |
 | `gsmTransition` | `Net.GsmTransition` | Notice | `transition`, `state`, `peers`, `tipTooOld` |
 | `fetchModeChanged` | `Net.FetchModeChanged` | Info | `mode` |
@@ -1028,7 +1029,9 @@ section and the catalogue differ.
 | Metric | Type | Labels | Meaning | cardano-node 11.1.3 |
 |---|---|---|---|---|
 | `scarab_peer_selection_transitions_total` | counter | `transition` | What the peer governor did to peers, and what became of it. | none |
-| `scarab_peer_selection_targets` | gauge | `target` | The targets the peer governor works towards (big ledger peers are not exported yet). | none |
+| `scarab_peer_selection_targets` | gauge | `target` | The targets the peer governor works towards, for the ordinary peers and for the big ledger peers. | none |
+| `scarab_peer_selection_peers` | gauge | `origin` | The known peers by where they came from: a local root, a public root, a bootstrap peer, the ledger, a big ledger pool, or no longer a root. | none |
+| `scarab_ledger_peers_pools` | gauge | `map` | The pools of the ledger-peers worker's stake maps: the ordinary map, and the big ledger peers' (the first 90% of the stake). | none |
 | `scarab_peer_selection_backoff_seconds` | histogram |  | The wait before a peer whose promotion failed is tried again. | none |
 | `scarab_peer_selection_churn_rounds_total` | counter |  | Rounds of the churn governor begun (`TraceChurnMode`). | none |
 | `scarab_peer_selection_churn_steps_total` | counter | `step`, `result` | Steps of the churn governor's rounds, by step and by whether the node met the targets or the step timed out. | none |

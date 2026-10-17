@@ -108,7 +108,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
       view = new PeerNetwork.ChainView[IO]:
         def tip = chainRef.get.map(c => c.tipRef.map(t => (t.slot, t.hash.hashCode.toLong)))
         def geometry = IO.pure(ForgedChain.geometry)
-      roots = PeerNetwork.Roots(Nil, all.toSet, None, false)
+      roots = PeerNetwork.Roots(Nil, all.toSet, None, UseLedgerPeers.Disabled)
       modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
       network = PeerNetwork.resource[IO](
         PeerNetwork.Settings(roots, Targets.relay, seed = 11L),
@@ -122,7 +122,8 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         (_, _) => IO.unit,
         _ => IO.unit,
         _ => IO.unit,
-        GsmRunner.Marker.none[IO]
+        GsmRunner.Marker.none[IO],
+        LedgerPeersSource.none[IO]
       )
       result <- network.use { net =>
         net.run.background.use { _ =>
@@ -216,7 +217,7 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         def geometry = IO.pure(clock)
       network = PeerNetwork.resource[IO](
         PeerNetwork.Settings(
-          PeerNetwork.Roots(Nil, all.toSet, None, false),
+          PeerNetwork.Roots(Nil, all.toSet, None, UseLedgerPeers.Disabled),
           Targets.relay,
           seed = 3L
         ),
@@ -230,7 +231,8 @@ class FortyBearersSuite extends munit.CatsEffectSuite:
         (_, _) => IO.unit,
         _ => IO.unit,
         _ => IO.unit,
-        GsmRunner.Marker.none[IO]
+        GsmRunner.Marker.none[IO],
+        LedgerPeersSource.none[IO]
       )
       result <- network.use { net =>
         net.run.background.use { _ =>

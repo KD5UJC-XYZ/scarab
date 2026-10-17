@@ -34,7 +34,13 @@ final case class GovernorState[A](
     /** What the Genesis State Machine last said of the ledger; the sensitive state follows it
       * ([[PeerSelection]], `monitorLedgerStateJudgement`).
       */
-    reported: LedgerStateJudgement
+    reported: LedgerStateJudgement,
+    /** The same three as the public roots' (`bigLedgerPeerBackoffs`, `bigLedgerPeerRetryTime`,
+      * `inProgressBigLedgerPeersReq`), for the request for big ledger peers.
+      */
+    bigLedgerBackoffs: Int = 0,
+    bigLedgerRetryAt: Time = Time.Zero,
+    bigLedgerInFlight: Boolean = false
 ):
   def record(peer: A): Option[PeerRecord] = peers.get(peer)
 
@@ -70,43 +76,75 @@ object GovernorState:
   /** The sets the decisions read, derived once from the statuses at one instant
     * (`peerSelectionStateToView`, `Types.hs` 1268-1325). Established peers include those whose
     * connection is closing or lingering; active peers include those being deactivated.
+    *
+    * The ordinary sets (`known`, `established`, `active`, ...) leave the big ledger peers out, as
+    * the reference's do (`viewKnownPeers` is "the known peers excluding big ledger peers",
+    * `Types.hs` 1314-1316): a big ledger peer is a population of its own, with its own targets,
+    * counters and decisions, which are the sets of [[big]]. The roots are the exception: every
+    * public root, the big ledger peers among them, counts towards the root target (`rootPeersSet`,
+    * 1310).
     */
   final class View[A] private[selection] (val state: GovernorState[A], val now: Time):
     given Ordering[A] = state.peers.ordering
 
     private def where(f: (A, PeerRecord) => Boolean): SortedSet[A] =
-      SortedSet.from(state.peers.collect { case (p, r) if f(p, r) => p })
+      SortedSet.from(state.peers.collect { case (p, r) if !r.origin.big && f(p, r) => p })
 
-    lazy val known: SortedSet[A] = SortedSet.from(state.peers.keys)
+    lazy val known: SortedSet[A] = where((_, _) => true)
     lazy val established: SortedSet[A] = where((_, r) => r.status.established)
     lazy val active: SortedSet[A] = where((_, r) => r.status.active)
 
     /** Cold and past its retry time (`availableToConnect`). */
-    lazy val availableToConnect: SortedSet[A] = where { (_, r) =>
-      r.status match
-        case Status.Cold(retry) => retry.forall(_ <= now)
-        case _                  => false
-    }
+    lazy val availableToConnect: SortedSet[A] = where((_, r) => View.available(r, now))
 
     /** Warm and past its activation time (`readyPeers`). */
-    lazy val ready: SortedSet[A] = where { (_, r) =>
-      r.status match
-        case Status.Warm(readyAt) => readyAt <= now
-        case _                    => false
-    }
+    lazy val ready: SortedSet[A] = where((_, r) => View.ready(r, now))
     lazy val connecting: SortedSet[A] = where((_, r) => r.status == Status.Connecting)
     lazy val activating: SortedSet[A] = where((_, r) => r.status == Status.Activating)
     lazy val deactivating: SortedSet[A] = where((_, r) => r.status == Status.Deactivating)
     lazy val closing: SortedSet[A] = where((_, r) => r.status == Status.Closing)
     lazy val cooling: SortedSet[A] = where((_, r) => r.status == Status.Cooling)
     lazy val localRoots: SortedSet[A] = state.localRoots.keys
-    lazy val roots: SortedSet[A] = where((_, r) => r.origin.root)
+    lazy val roots: SortedSet[A] =
+      SortedSet.from(state.peers.collect { case (p, r) if r.origin.root => p })
     lazy val bootstrap: SortedSet[A] = where((_, r) => r.origin == Origin.Bootstrap)
 
     /** The established peers that are not active and not being closed: the warm peers. */
     lazy val warm: SortedSet[A] = established -- active
 
+    /** The big ledger peers, as sets of the same names. */
+    lazy val big: Big[A] = new Big(this)
+
     lazy val counters: Counters = Counters.of(this)
+
+  object View:
+    private[selection] def available(r: PeerRecord, now: Time): Boolean = r.status match
+      case Status.Cold(retry) => retry.forall(_ <= now)
+      case _                  => false
+
+    private[selection] def ready(r: PeerRecord, now: Time): Boolean = r.status match
+      case Status.Warm(readyAt) => readyAt <= now
+      case _                    => false
+
+  /** The sets of the big ledger peers (`viewKnownBigLedgerPeers` and the others of `Types.hs`
+    * 900-920): the peers whose origin is [[Origin.BigLedger]].
+    */
+  final class Big[A] private[selection] (view: View[A]):
+    given Ordering[A] = view.state.peers.ordering
+
+    private def where(f: PeerRecord => Boolean): SortedSet[A] =
+      SortedSet.from(view.state.peers.collect { case (p, r) if r.origin.big && f(r) => p })
+
+    lazy val known: SortedSet[A] = where(_ => true)
+    lazy val established: SortedSet[A] = where(_.status.established)
+    lazy val active: SortedSet[A] = where(_.status.active)
+    lazy val availableToConnect: SortedSet[A] = where(View.available(_, view.now))
+    lazy val ready: SortedSet[A] = where(View.ready(_, view.now))
+    lazy val connecting: SortedSet[A] = where(_.status == Status.Connecting)
+    lazy val activating: SortedSet[A] = where(_.status == Status.Activating)
+    lazy val deactivating: SortedSet[A] = where(_.status == Status.Deactivating)
+    lazy val closing: SortedSet[A] = where(_.status == Status.Closing)
+    lazy val cooling: SortedSet[A] = where(_.status == Status.Cooling)
 
   /** `OutboundConnectionsState` (`Cardano/Network/PeerSelection/Governor/Types.hs` 57-109, Praos
     * mode): trusted when the node is connected only to peers it trusts. In the `LocalRootsOnly`
@@ -160,7 +198,7 @@ object GovernorState:
     case NegativeFailCount
 
   /** The counters of the reference (`PeerSelectionCounters`, `Types.hs` 851-1060), derived from the
-    * view. Big ledger peers are a stage of their own (G1.3), so their counters are zero.
+    * view. The ordinary ones leave the big ledger peers out; theirs are the `*BigLedger*` ones.
     */
   final case class Counters(
       root: Int,
@@ -194,8 +232,17 @@ object GovernorState:
       activeBootstrap: Int,
       activeBootstrapDemotions: Int,
       knownBigLedger: Int,
+      availableToConnectBigLedger: Int,
+      coldBigLedgerPromotions: Int,
       establishedBigLedger: Int,
-      activeBigLedger: Int
+      warmBigLedgerDemotions: Int,
+      warmBigLedgerPromotions: Int,
+      activeBigLedger: Int,
+      activeBigLedgerDemotions: Int,
+      /** The known peers by where they came from (not the reference's; the proof that a peer was
+        * taken from the ledger and not only from the bootstrap list).
+        */
+      byOrigin: Map[Origin, Int]
   ):
     /** `PeerSelectionCountersHWC`: cold, warm and hot are the known beyond the established, the
       * established beyond the active, and the active.
@@ -206,12 +253,16 @@ object GovernorState:
     def coldLocalRoots: Int = knownLocalRoots - establishedLocalRoots
     def warmLocalRoots: Int = establishedLocalRoots - activeLocalRoots
     def hotLocalRoots: Int = activeLocalRoots
+    def coldBigLedger: Int = knownBigLedger - establishedBigLedger
+    def warmBigLedger: Int = establishedBigLedger - activeBigLedger
+    def hotBigLedger: Int = activeBigLedger
 
   object Counters:
     def of[A](view: View[A]): Counters =
       val local = view.localRoots
       val nonRoot = view.known -- view.roots
       val boot = view.bootstrap
+      val big = view.big
       def n(s: Set[A]): Int = s.size
       Counters(
         root = n(view.roots),
@@ -244,11 +295,15 @@ object GovernorState:
         warmBootstrapPromotions = n(view.activating.intersect(boot)),
         activeBootstrap = n(view.active.intersect(boot)),
         activeBootstrapDemotions = n(view.deactivating.intersect(boot)),
-        // big ledger peers are a stage of their own (G1.3): there are none, so the churn steps
-        // that wait for them (steps 1 to 6 of a round) are skipped until then
-        knownBigLedger = 0,
-        establishedBigLedger = 0,
-        activeBigLedger = 0
+        knownBigLedger = n(big.known),
+        availableToConnectBigLedger = n(big.availableToConnect),
+        coldBigLedgerPromotions = n(big.connecting),
+        establishedBigLedger = n(big.established),
+        warmBigLedgerDemotions = n(big.closing),
+        warmBigLedgerPromotions = n(big.activating),
+        activeBigLedger = n(big.active),
+        activeBigLedgerDemotions = n(big.deactivating),
+        byOrigin = Origin.values.map(o => o -> view.state.peers.count(_._2.origin == o)).toMap
       )
 
 object Time:

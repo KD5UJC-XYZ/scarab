@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.node.{
   HeaderGate,
   InboundEvent,
   InboundEvents,
+  LedgerPeersTrace,
   Output,
   Peer,
   PeerNetwork,
@@ -201,7 +202,14 @@ final class EventMetrics[F[_]: Sync] private (
     */
   def peerSelection(out: Output[PeerNetwork.Addr]): F[Unit] = out match
     case Output.Counted(c) =>
-      peerSelectionGauges.traverse_((gauge, of) => metrics.set(gauge, of(c).toDouble))
+      peerSelectionGauges.traverse_((gauge, of) => metrics.set(gauge, of(c).toDouble)) *>
+        c.byOrigin.toList.traverse_((origin, n) => metrics.set(peerOrigins, origin, n.toDouble))
+    case Output.LedgerPeers(trace) =>
+      trace match
+        case LedgerPeersTrace.Refreshed(_, ordinary, big, _) =>
+          metrics.set(ledgerPeerPools, LedgerMapLabel.Ordinary, ordinary.toDouble) *>
+            metrics.set(ledgerPeerPools, LedgerMapLabel.Big, big.toDouble)
+        case _ => Sync[F].unit
     case Output.Connections(state) =>
       val trusted = state == OutboundConnectionsState.TrustedStateWithExternalPeers
       metrics.set(outboundTrusted, flag(trusted))
@@ -221,7 +229,10 @@ final class EventMetrics[F[_]: Sync] private (
           metrics.set(peerTargets, TargetLabel.Root, t.root.toDouble) *>
             metrics.set(peerTargets, TargetLabel.Known, t.known.toDouble) *>
             metrics.set(peerTargets, TargetLabel.Established, t.established.toDouble) *>
-            metrics.set(peerTargets, TargetLabel.Active, t.active.toDouble)
+            metrics.set(peerTargets, TargetLabel.Active, t.active.toDouble) *>
+            metrics.set(peerTargets, TargetLabel.KnownBigLedger, t.knownBig.toDouble) *>
+            metrics.set(peerTargets, TargetLabel.EstablishedBigLedger, t.establishedBig.toDouble) *>
+            metrics.set(peerTargets, TargetLabel.ActiveBigLedger, t.activeBig.toDouble)
         case Trace.PromoteDone(Temperature.Warm, _, _, _) => count(PeerTransitionLabel.PromotedWarm)
         case Trace.PromoteDone(_, _, _, _)                => count(PeerTransitionLabel.PromotedHot)
         case Trace.DemoteDone(Temperature.Hot, _, _)      => count(PeerTransitionLabel.DemotedHot)
@@ -234,8 +245,9 @@ final class EventMetrics[F[_]: Sync] private (
           count(
             if failure.isDefined then PeerTransitionLabel.Lost else PeerTransitionLabel.DemotedHot
           )
-        case Trace.ForgetCold(_, _, peers) => count(PeerTransitionLabel.Forgotten, peers.size)
-        case Trace.Forgotten(peers)        => count(PeerTransitionLabel.Forgotten, peers.size)
+        case Trace.ForgetCold(_, _, peers)      => count(PeerTransitionLabel.Forgotten, peers.size)
+        case Trace.Forgotten(peers)             => count(PeerTransitionLabel.Forgotten, peers.size)
+        case Trace.ForgetBigLedger(_, _, peers) => count(PeerTransitionLabel.Forgotten, peers.size)
         case Trace.JudgementChanged(j) =>
           metrics.set(peerSensitive, flag(j == LedgerStateJudgement.TooOld))
         case _ => Sync[F].unit

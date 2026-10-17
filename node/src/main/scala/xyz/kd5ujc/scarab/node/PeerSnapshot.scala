@@ -10,10 +10,12 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{LedgerRelay, RelayIp, RelayPort}
 import xyz.kd5ujc.scarab.network.selection.{
   AccPoolStake,
+  AfterSlot,
   LedgerPeerSnapshot,
   PoolStake,
   SnapshotPoint,
   SnapshotPool,
+  UseLedgerPeers,
   WithOrigin
 }
 
@@ -33,6 +35,48 @@ enum PeerSnapshotError:
 
   /** Pool `index` has no relay (the reference reads `relays` as a `NonEmpty`). */
   case NoRelays(index: Int)
+
+/** Why the node does not start with the peer snapshot it was given (`updateLedgerPeerSnapshot`,
+  * `cardano-node/src/Cardano/Node/Run.hs` 705-760, at startup: the reference stops with each of
+  * these).
+  */
+enum PeerSnapshotRefusal:
+  /** A version 1 or 2 file: "Unsupported legacy peer snapshot version." */
+  case LegacyVersion
+
+  /** The snapshot is at the origin: "GenesisPoint is not a valid value in the peer snapshot file".
+    */
+  case AtOrigin
+
+  /** The snapshot is of another network. */
+  case WrongMagic(expected: Long, found: Long)
+
+  /** The snapshot is older than `useLedgerAfterSlot` (`LedgerPeerSnapshotTooOld`). */
+  case TooOld(after: BigInt, snapshot: BigInt)
+
+  def message: String = this match
+    case LegacyVersion => "the peer snapshot file is of a legacy version, which is not supported"
+    case AtOrigin      => "the peer snapshot is at the origin, which is not a valid point"
+    case WrongMagic(expected, found) =>
+      s"the network magic $expected differs from the peer snapshot's $found"
+    case TooOld(after, snapshot) =>
+      s"the peer snapshot slot $snapshot is older than useLedgerAfterSlot $after: update the file"
+
+/** What the node does with the peer snapshot file of its topology. */
+enum SnapshotUse:
+  /** No file is named, or ledger peers are off (the reference ignores it, with a warning). */
+  case Unused
+
+  /** The file could not be read; as in the reference's Praos mode the node carries on without it
+    * and says so.
+    */
+  case Ignored(error: PeerSnapshotError)
+
+  case Loaded(file: LedgerPeerSnapshot[LedgerRelay])
+
+  def snapshot: Option[LedgerPeerSnapshot[LedgerRelay]] = this match
+    case Loaded(file) => Some(file)
+    case _            => None
 
 /** The big ledger peer snapshot file named by `peerSnapshotFile` in the topology: the JSON
   * `FromJSON (LedgerPeerSnapshot BigLedgerPeers)` reads
@@ -61,6 +105,34 @@ object PeerSnapshot:
       .catchNonFatal(new String(Files.readAllBytes(path), "UTF-8"))
       .leftMap(e => PeerSnapshotError.Unreadable(path.toString, e.getMessage))
       .flatMap(decode)
+
+  /** The snapshot the node starts with, as `updateLedgerPeerSnapshot` decides it (Praos mode): none
+    * unless ledger peers are on and a file is named; a file that cannot be read is ignored; one
+    * that reads but is of a legacy version, at the origin, of another network, or older than
+    * `useLedgerAfterSlot` stops the node.
+    */
+  def use(
+      file: Option[Path],
+      networkMagic: Long,
+      ledger: UseLedgerPeers
+  ): Either[PeerSnapshotRefusal, SnapshotUse] =
+    (file, ledger) match
+      case (Some(path), UseLedgerPeers.Use(after)) =>
+        read(path) match
+          case Left(error)                        => Right(SnapshotUse.Ignored(error))
+          case Right(LedgerPeerSnapshot.V2(_, _)) => Left(PeerSnapshotRefusal.LegacyVersion)
+          case Right(s @ LedgerPeerSnapshot.V23(point, magic, _)) =>
+            point match
+              case SnapshotPoint.Origin => Left(PeerSnapshotRefusal.AtOrigin)
+              case SnapshotPoint.Block(slot, _) =>
+                if magic != networkMagic then
+                  Left(PeerSnapshotRefusal.WrongMagic(networkMagic, magic))
+                else
+                  after match
+                    case AfterSlot.After(n) if slot < n =>
+                      Left(PeerSnapshotRefusal.TooOld(n, slot))
+                    case _ => Right(SnapshotUse.Loaded(s))
+      case _ => Right(SnapshotUse.Unused)
 
   def decode(text: String): Result[LedgerPeerSnapshot[LedgerRelay]] =
     parser.parse(text).leftMap(e => PeerSnapshotError.NotJson(e.message)).flatMap { json =>

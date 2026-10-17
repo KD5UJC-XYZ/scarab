@@ -18,7 +18,8 @@ import xyz.kd5ujc.scarab.network.selection.{
   FetchMode,
   RootConfig,
   RootGroupSpec,
-  Targets
+  Targets,
+  UseLedgerPeers
 }
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
 import xyz.kd5ujc.scarab.node.forge.ForgedChain
@@ -184,7 +185,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         List(RootGroupSpec(2, 2, List(first -> local, second -> local))),
         Set.empty,
         None,
-        false
+        UseLedgerPeers.Disabled
       )
       modeRef <- Ref.of[IO, FetchMode](FetchMode.BulkSync)
       network = PeerNetwork.resource[IO](
@@ -199,7 +200,8 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         (_, _) => IO.unit,
         _ => IO.unit,
         _ => IO.unit,
-        GsmRunner.Marker.none[IO]
+        GsmRunner.Marker.none[IO],
+        LedgerPeersSource.none[IO]
       )
       reconnects <- network.use { net =>
         // as in Main: the governor runs beside the node, and ends it only by a fault

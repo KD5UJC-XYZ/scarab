@@ -125,8 +125,14 @@ private[selection] object Events:
       policy: Policy
   )(using Ordering[A]): Decision[A] =
     def status(peer: A): Option[Status] = st0.peers.get(peer).map(_.status)
-    def established(st: GovernorState[A]): Int = st.view(now).established.size
-    def active(st: GovernorState[A]): Int = st.view(now).active.size
+    // the count of the population the peer is in: ordinary, or big ledger peers
+    def big(st: GovernorState[A], peer: A): Boolean = st.peers.get(peer).exists(_.origin.big)
+    def established(st: GovernorState[A], peer: A): Int =
+      val v = st.view(now)
+      if big(st, peer) then v.big.established.size else v.established.size
+    def active(st: GovernorState[A], peer: A): Int =
+      val v = st.view(now)
+      if big(st, peer) then v.big.active.size else v.active.size
 
     outcome match
       case Outcome.Connected(peer) if status(peer).contains(Status.Connecting) =>
@@ -136,7 +142,14 @@ private[selection] object Events:
         Decision(
           st,
           Nil,
-          List(Trace.PromoteDone(Temperature.Warm, peer, st.targets.established, established(st)))
+          List(
+            Trace.PromoteDone(
+              Temperature.Warm,
+              peer,
+              if big(st, peer) then st.targets.establishedBig else st.targets.established,
+              established(st, peer)
+            )
+          )
         )
 
       case Outcome.ConnectFailed(peer, failure) if status(peer).contains(Status.Connecting) =>
@@ -158,7 +171,14 @@ private[selection] object Events:
         Decision(
           st,
           Nil,
-          List(Trace.PromoteDone(Temperature.Hot, peer, st.targets.active, active(st)))
+          List(
+            Trace.PromoteDone(
+              Temperature.Hot,
+              peer,
+              if big(st, peer) then st.targets.activeBig else st.targets.active,
+              active(st, peer)
+            )
+          )
         )
 
       case Outcome.ActivateFailed(peer, failure) if status(peer).contains(Status.Activating) =>
@@ -175,7 +195,7 @@ private[selection] object Events:
 
       case Outcome.Deactivated(peer) if status(peer).contains(Status.Deactivating) =>
         val st = st0.updated(peer)(_.copy(status = Status.Warm(now), tepid = true))
-        Decision(st, Nil, List(Trace.DemoteDone(Temperature.Hot, peer, active(st))))
+        Decision(st, Nil, List(Trace.DemoteDone(Temperature.Hot, peer, active(st, peer))))
 
       case Outcome.DeactivateFailed(peer) if status(peer).contains(Status.Deactivating) =>
         // the connection was closed: the peer is cold again, available at once, and tepid
@@ -184,7 +204,7 @@ private[selection] object Events:
 
       case Outcome.Closed(peer) if status(peer).contains(Status.Closing) =>
         val st = st0.updated(peer)(_.copy(status = Status.Cold(None)))
-        Decision(st, Nil, List(Trace.DemoteDone(Temperature.Warm, peer, established(st))))
+        Decision(st, Nil, List(Trace.DemoteDone(Temperature.Warm, peer, established(st, peer))))
 
       case Outcome.CloseTimedOut(peer)
           if status(peer).exists(s => s == Status.Closing || s == Status.Deactivating) =>
@@ -199,10 +219,15 @@ private[selection] object Events:
 
       case Outcome.RootsFound(found, ttl) if st0.publicRootsInFlight =>
         val local = st0.localRoots.keys
-        val offered = found.ordinary ++ found.bootstrap
+        val offered = found.ordinary ++ found.bootstrap ++ found.ledger
+        // new peers only: not a local root, and not a public root of any kind already (the reference
+        // takes them away from the answer, `RootPeers.hs` 163-168), so a big ledger peer stays one
         val fresh = offered.filterNot(p => local(p) || st0.peers.get(p).exists(_.origin.root))
         val peers = fresh.foldLeft(st0.peers) { (m, p) =>
-          val origin = if found.bootstrap(p) then Origin.Bootstrap else Origin.Public
+          val origin =
+            if found.bootstrap(p) then Origin.Bootstrap
+            else if found.ledger(p) then Origin.Ledger
+            else Origin.Public
           m.get(p) match
             case Some(r) => m.updated(p, r.copy(origin = origin))
             case None    => m.updated(p, PeerRecord.cold(origin))
@@ -234,6 +259,44 @@ private[selection] object Events:
           ),
           Nil,
           List(Trace.RootsFailure(backoffs, retryIn))
+        )
+
+      case Outcome.BigLedgerFound(found, ttl) if st0.bigLedgerInFlight =>
+        // as the public roots, but into the big ledger population; a peer that is a local root or
+        // a root of any kind already is left as it is (`BigLedgerPeers.hs` 138-147)
+        val local = st0.localRoots.keys
+        val fresh = found.filterNot(p => local(p) || st0.peers.get(p).exists(_.origin.root))
+        val peers = fresh.foldLeft(st0.peers) { (m, p) =>
+          m.get(p) match
+            case Some(r) => m.updated(p, r.copy(origin = Origin.BigLedger))
+            case None    => m.updated(p, PeerRecord.cold(Origin.BigLedger))
+        }
+        val backoffs = if fresh.isEmpty then st0.bigLedgerBackoffs.max(0) + 1 else 0
+        val retryIn =
+          if backoffs == 0 then ttl
+          else (1L << backoffs.min(policy.maxPublicRootBackoff).toLong).seconds
+        Decision(
+          st0.copy(
+            peers = peers,
+            bigLedgerBackoffs = backoffs,
+            bigLedgerRetryAt = now + retryIn,
+            bigLedgerInFlight = false
+          ),
+          Nil,
+          List(Trace.BigLedgerResults(fresh, backoffs, retryIn))
+        )
+
+      case Outcome.BigLedgerFailed() if st0.bigLedgerInFlight =>
+        val backoffs = st0.bigLedgerBackoffs.min(0) - 1
+        val retryIn = (1L << math.abs(backoffs).min(policy.maxPublicRootBackoff).toLong).seconds
+        Decision(
+          st0.copy(
+            bigLedgerBackoffs = backoffs,
+            bigLedgerRetryAt = now + retryIn,
+            bigLedgerInFlight = false
+          ),
+          Nil,
+          List(Trace.BigLedgerFailure(backoffs, retryIn))
         )
 
       // the world moved on while the job ran: nothing to apply

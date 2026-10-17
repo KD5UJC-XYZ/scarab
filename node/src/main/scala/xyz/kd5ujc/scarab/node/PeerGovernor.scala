@@ -50,6 +50,9 @@ object PeerStateActions:
 trait RootProvider[F[_], A]:
   def request(max: Int, bootstrap: Boolean): F[Option[(PublicRoots[A], FiniteDuration)]]
 
+  /** Ask for up to `max` big ledger peers (`requestPublicRootPeers` for `SingBigLedgerPeers`). */
+  def requestBigLedger(max: Int): F[Option[(Set[A], FiniteDuration)]]
+
 /** What the governor tells the world besides its traces. */
 enum Output[A]:
   case Traced(trace: Trace[A])
@@ -62,6 +65,9 @@ enum Output[A]:
 
   /** The churn governor did something: a round began, a step ended or timed out, it sleeps. */
   case Churned(trace: Churn.Trace)
+
+  /** The ledger-peers worker did something: loaded a snapshot, rebuilt its maps. */
+  case LedgerPeers(trace: LedgerPeersTrace)
 
 /** The settings of the effect loop. */
 final case class GovernorConfig(
@@ -160,6 +166,14 @@ object PeerGovernor:
           .map(
             _.fold[Outcome[A]](Outcome.RootsFailed())((found, ttl) =>
               Outcome.RootsFound(found, ttl)
+            )
+          )
+      case Job.RequestBigLedger(max) =>
+        roots
+          .requestBigLedger(max)
+          .map(
+            _.fold[Outcome[A]](Outcome.BigLedgerFailed())((found, ttl) =>
+              Outcome.BigLedgerFound(found, ttl)
             )
           )
 
