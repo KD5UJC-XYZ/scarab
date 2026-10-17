@@ -403,3 +403,35 @@ class PeerSelectionSuite extends FunSuite:
     assert(!after.sensitivity.sensitive)
     assertEquals(after.targets, Targets.relay)
   }
+
+  test(
+    "the decision, the events and the invariant need no deep stack for thousands of peers (ADR 0011)"
+  ) {
+    val peers = 4000
+    val result =
+      new java.util.concurrent.atomic.AtomicReference[Either[Throwable, (Int, List[String])]]
+    val worker = new Thread(
+      null,
+      () =>
+        result.set(
+          scala.util.Try {
+            val st0 = start(List(group(peers, peers, (1 to peers)*)))
+            val (settled, jobs, _) = settle(st0, t0)
+            val connects = jobs.collect { case Job.Connect(p, _, _) => p }
+            val connected =
+              connects.foldLeft(settled)((s, p) => complete(s, Outcome.Connected(p), t0))
+            val (after, _, _) = settle(connected, t0)
+            (connects.size, GovernorState.invariant(after).toList.map(_.toString))
+          }.toEither
+        ),
+      "small-stack",
+      256L * 1024
+    )
+    worker.start()
+    worker.join()
+    result.get match
+      case Right((connects, broken)) =>
+        assert(connects > 0)
+        assertEquals(broken, Nil)
+      case Left(e) => fail(s"the governor needs a deep stack: $e")
+  }

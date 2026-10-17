@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.network.selection
 
 import munit.FunSuite
 import scala.concurrent.duration.*
+
 import Gsm.*
 
 /** The Genesis State Machine against the transitions of `GSM.hs` (ouroboros-consensus 4.2.1.0). */

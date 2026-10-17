@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.governor
 import org.scalacheck.Gen
 import org.scalacheck.rng.Seed
 import scala.concurrent.duration.*
+
 import MockEnvironment.*
 
 /** A run of the governor in a generated environment, printed (a debugging aid for the properties):

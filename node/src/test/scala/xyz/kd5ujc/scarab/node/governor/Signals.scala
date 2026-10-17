@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.governor
 import scala.collection.immutable.SortedSet
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
+
 import MockEnvironment.*
 
 /** Signals over a recording: the analogue of the reference's `Test.Ouroboros.Network.Signal`

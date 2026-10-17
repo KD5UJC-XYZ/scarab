@@ -5,6 +5,7 @@ import org.scalacheck.Gen
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.network.selection.*
 import xyz.kd5ujc.scarab.protocol.ConnectionState.Provenance
+
 import MockEnvironment.*
 
 /** Generators of the environments the properties run in (`Arbitrary GovernorMockEnvironment`). */

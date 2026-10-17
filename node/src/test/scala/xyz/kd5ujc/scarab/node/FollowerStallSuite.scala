@@ -92,6 +92,26 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     )
     (handlers, answered)
 
+  /** The healthy peer answers block ranges only after the stalling peer was asked for one: on a
+    * loaded machine the healthy peer could otherwise serve the whole chain before the stalling one
+    * is asked, and the test would not exercise the stall in the middle of a fetch.
+    */
+  private def after(
+      asked: Ref[IO, Int],
+      honest: ServerHandlers[IO, NtNHeader]
+  ): ServerHandlers[IO, NtNHeader] =
+    def stalled: IO[Unit] =
+      asked.get.flatMap(n => if n >= 1 then IO.unit else IO.sleep(10.millis) *> stalled)
+    new ServerHandlers[IO, NtNHeader](
+      honest.codec,
+      honest.chainSync,
+      new BlockFetchServer.Blocks[IO]:
+        def range(from: Point, to: Point, max: Int) =
+          stalled.flatMap(_ => honest.blocks.range(from, to, max))
+      ,
+      honest.transactions
+    )
+
   private val tcp: SocketAddress[Host] = SocketAddress(host"127.0.0.1", port"3001")
 
   private def eventually[A](what: String)(read: IO[A])(ok: A => Boolean): IO[A] =
@@ -124,7 +144,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       pool <- BlockPool.create[IO]
       stall <- serving(forged.raws).map(stalling(_, headers = 16))
       (stalled, ranges) = stall
-      healthy <- serving(forged.raws)
+      healthy <- serving(forged.raws).map(after(ranges, _))
       peers <- InMemoryPeers.create(magic)
       first = InMemoryPeers.address(1)
       second = InMemoryPeers.address(2)
