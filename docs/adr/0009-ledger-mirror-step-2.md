@@ -1,6 +1,6 @@
 # 0009. Ledger mirror step 2: three jumps behind a differential harness
 
-- **Status**: Accepted
+- **Status**: Accepted. Jumps 1 and 2 are done; the differential harness and the old rules this record describes were removed in J2.9 (2026-10-17), so the text below is the decision as taken, not the code as it is.
 - **Date**: 2026-10-15
 - **Issue**: [#82](https://github.com/KD5UJC-XYZ/scarab/issues/82)
 - **Design**: [ledger-state mirror, step 2](../design/ledger-mirror-step2.md)

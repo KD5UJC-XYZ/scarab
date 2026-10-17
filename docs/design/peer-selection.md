@@ -1,6 +1,6 @@
 # Peer selection: the P2P governor (G1)
 
-**Status**: Proposal (2026-10-17). Nothing is implemented; the stages in section 7 are not scheduled. Tracked in
+**Status**: Proposal (2026-10-17); stage G1.1 of section 7 is in progress (nothing of it is on `main` yet), the later stages are not scheduled. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
 reference sources named in section 1.1, which were read in full for the governor, the churn governor, the peer
 metrics, ledger peers, PeerSharing and the Cardano configuration; every claim about the reference carries its
