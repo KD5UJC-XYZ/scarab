@@ -1096,13 +1096,70 @@ the hot set is repaired.
 
 **Evidence.** Rows in the evidence log of `docs/compatibility.md`; the cost per hot session in `docs/performance.md` section 18.
 Gates: `check` and `scalafixAll --check`, `devnet.py relay --seconds 300` (3 peers and 1 peer), `peercut`, `pool`.
-**The level-4 acceptance of the plan was not met.** The Preview follower from the official files with no `--peer` ran 30
-minutes, but from genesis: the K1 database could not be replayed by this build ([#145](https://github.com/KD5UJC-XYZ/scarab/issues/145)),
-so the node applied 517,605 blocks (epoch 132) and did not reach the tip; the public network lists one bootstrap peer, so the run
-showed one cold-to-hot promotion, the sensitive state and a clean state, the GSM leaving PreSyncing, and no demotion. Promotions,
-demotions and the targets being met (30 established, 20 hot, repair after losses) are shown by `FortyBearersSuite`, the
-properties, and the devnet scenarios (`peercut` made the silent peer lose its place). A Preview run to the tip needs a
-database this build can open; repeat it then.
+**The level-4 acceptance was not met on the first attempt and was met on the second (section 7b).** The first Preview run from the official files with no `--peer` ran 30
+minutes but from genesis: the K1 database could not be replayed by this build ([#145](https://github.com/KD5UJC-XYZ/scarab/issues/145)),
+so the node applied 517,605 blocks (epoch 132) and did not reach the tip. Promotions, demotions and the targets being met (30 established,
+20 hot, repair after losses) are shown by `FortyBearersSuite`, the properties, and the devnet scenarios (`peercut` made the silent peer
+lose its place).
+
+## 7b. G1.1 acceptance run
+
+The level-4 run of section 7 ("Evidence it must produce"), after the #145 fix: a Preview follower from the official
+`config.json` and `topology.json` with no `--peer`, 30 minutes of wall time, read-only towards the public network.
+Commit 5f3b6174 (G1.1 and the #145 fix), built in the `scarab-jdk:local` image (JDK 21.0.11), the classes frozen and run in a
+container of 3 CPUs, `-Xmx3g`, `MALLOC_ARENA_MAX=2`, `--metrics-listen`. The database was a copy of a Preview database (format 1,
+2026-10-15, immutable tip slot 125,430,904, newest snapshot at slot 125,404,831): immutable chunks hard-linked except the newest
+two, which were copied, the newest snapshot and its UTxO checkpoint copied. The node therefore had to migrate the formats, restore
+the snapshot, replay the immutable tail and then catch up to the tip from the public network. The official topology has
+one bootstrap peer, no local roots, no public roots and a `peerSnapshotFile` (not used before G1.3). The database copy was removed afterwards.
+
+**Catch-up.** Opening the database took 28 s (formats migrated: identity file, 5,807 index files, snapshot to format 5), the
+snapshot was restored and 975 blocks replayed in 3.5 s, and the node started with the governor at +28 s:
+
+| Time after start | Event |
+|---|---|
+| +28.8 s | `peerSelectionTargets` active 2 (the bootstrap regime: the judgement is `TooOld`), `outboundConnections` `UntrustedState`, `peerSelectionSensitive` judgement `TooOld`, then `clean` |
+| +28.8 s | `peerSelectionRoots` asked for 60: the bootstrap peer was found; cold to warm decided and done within 0.3 s, warm to hot within 16 ms; `outboundConnections` `TrustedStateWithExternalPeers` |
+| +29.2 s | ChainSync intersection at slot 125,442,004; at +29.7 s GSM `preSyncingToSyncing` |
+| +29.9 to +46.0 s | 6,653 blocks applied in 16.1 s: 412 blocks/s on average over the catch-up, 618/s at the best second (two epoch boundaries validated on the way, slots 125.45 M and 125.54 M) |
+| +46.0 s | GSM `enterCaughtUp`, `peerSelectionSensitive` judgement `YoungEnough`, the sensitive state ends |
+| +46.7 s | `fetchModeChanged` `Deadline` (the only change event of the run), `peerSelectionTargets` active 20 (the relay regime: established 30, known 150, root 60) |
+
+**Steady state (29 minutes).** One peer, hot, origin `Bootstrap`, fail count 0: cold 0, warm 0, hot 1, known 1, root 1 at every scrape. 70
+further blocks were applied (the tip followed the peer's tip within one block at each scrape). The governor asked for public roots 15
+times with exponential backoff from 2 s doubling to 256 s (found none, as the topology has none) and decided nothing else: no
+demotion, no forgetting, no reconnect, no second promotion. 0 events of severity Error, 0 stalls (`scarab_follower_stalls_total 0`), 0
+reconnects. The shutdown on SIGTERM wrote a snapshot and closed the connection.
+
+**Metrics, scraped every 70 s, three quoted** (`/metrics`, at +1, +13 and +31 minutes):
+
+```
+cardano_node_metrics_peerSelection_Cold_int 0   Warm_int 0   Hot_int 1   RootPeers_int 1
+scarab_peer_selection_targets{target="Root"} 60   {Known} 150   {Established} 30   {Active} 20
+scarab_peer_selection_sensitive 0
+scarab_peer_selection_transitions_total{transition="PromotedWarm"} 1   {PromotedHot} 1
+scarab_gsm_state{state="CaughtUp"} 1      scarab_fetch_mode{mode="Deadline"} 1
+scarab_outbound_connections_trusted 1
+slotNum 125616739 / 125617496 / 125618612   (peer tip slot 125616739 / 125617437 / 125618558)
+```
+
+`GET /connections` at the end: `peerSelection` counters `cold 0, warm 0, hot 1, known 1, root 1`, targets `root 60, known 150, established 30, active 20`,
+judgement `YoungEnough`, `sensitive false`, one peer, `hot`, origin `Bootstrap`, `failCount 0`.
+
+**Cost.** CPU (container, 100% is one CPU): the first minute (restore, replay and catch-up) mean 127%, peak 277%; the 29 minutes after it mean
+5.4%, peak 6.2%; the whole run mean 9.9% (the process's own CPU time was 171 s of 1,890 s). Memory (the container's usage as `docker stats`
+shows it): mean 1.74 GiB, peak 2.50 GiB (during the catch-up), 1.63 GiB anonymous at the end, heap in use 0.84 GB, the process's peak resident 2.55 GiB.
+These are the cost of one hot peer on the tip, not the D5 measurement (20 against 1 active peers, `performance.md` section 18).
+
+**What it shows and what it does not.** Shown: the reference's sequence for a node that starts behind: sensitive state with the bootstrap
+regime of the targets, cold to warm to hot for the bootstrap peer, the GSM leaving PreSyncing and reaching CaughtUp, the judgement
+`TooOld` then `YoungEnough`, the end of the sensitive state, the fetch mode changing to `Deadline`, the targets switching from the
+bootstrap regime (active 2) to the relay regime (active 20), the tip reached from a restored snapshot, and nothing wrong for 29 minutes.
+Not shown: demotions, forgetting, the targets being met, churn, a second source of peers. The public network, for this configuration, offers one
+peer: the official topology lists one bootstrap peer and no roots, and the other peers (the ledger peers and the `peerSnapshotFile` big ledger
+peers) need G1.3, so known stays 1 against a target of 150 and the node is below its targets for the whole run by design. The 20-active
+target is therefore exercised only by the properties, `FortyBearersSuite` and the devnet. The catch-up was short (about two and a half days of slots) because
+the newest snapshot was used; a longer catch-up (older snapshot) was not run.
 
 ## 8. Open questions for the owner
 
