@@ -826,3 +826,22 @@ blocks/s of a late-Alonzo follower needs a mainnet follower at that stage and is
 **Repeat.** `CaptureMain capture --peer backbone.cardano.iog.io:3001 --magic 764824073 --blocks 600 --byron-epoch-slots 21600
 --from <slot>.<hash> --out blocks.hex`, then run `xyz.kd5ujc.scarab.node.tools.WarmBenchMain blocks.hex <batch> <blocks>
 <in flight>` from the test classpath.
+
+## 15. The epoch boundary of the new rules against the old, on the largest real state (J2.9 step 0)
+
+The gate of design `ledger-mirror-step2.md` 2.3 is `epochBoundary` p99 within +25% of the old rules. J2.8 left it unmeasured. A
+copy of the Preview harness (`PreviewDifferentialMain`, snapshots 1400 to 1449 of the K1 run: epochs 1401 on, protocol 11, about
+112,000 accounts, the largest real state held locally) times the tick of the first block of each epoch, which crosses the boundary,
+on the old rules (`NodeRules.tick`, the flat state) and on the new (`NewRules.tick`, the mirror), each from its own state, in one
+JVM (`-Xmx12g`, G1, a host at load 6 to 9 on 24 cores). The run was stopped after 23 of the 50 boundaries because the result was
+decisive; the database was the K1 copy mounted read-only.
+
+| 23 boundaries | old ms | new ms | new / old |
+|---|---|---|---|
+| mean | 271 | 406 | 1.50 |
+| p99 (the maximum at this count) | 389 | 568 | 1.46 |
+| max | 389 | 568 | 1.46 |
+
+The gate fails: +46% at p99, +50% at the mean. Every boundary measured was slower on the new side (ratios 1.4 to 1.7). Heap: the
+harness holds both states, so it is not the new rules' alone; the collector's post-collection heap was a median of 0.95 GB and a
+maximum of 4.4 GB of the 12 GB. The memory gate needs a run of `--memory-report-seconds` on a node, not this harness.
