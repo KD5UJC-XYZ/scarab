@@ -745,9 +745,9 @@ are the ones most in need of a second reading.
 - **Era:** Plutus, protocol 11 and 12
 - **Specification or CDDL says:** The Plutus conformance suite (plutus 1.70.0.0, 1009 evaluation cases) fixes the behaviour of the reference.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 pass the same 987. Differences: (1) the flat decoder accepts `value` constants that `buildValueWith` rejects (unsorted or repeated currency symbols or token names, an empty inner map, a zero quantity); (2) `case` on a `Data.Constr` is enabled from protocol 12 in 1.3.0, so `data-01` and `data-02` fail at protocol 11; (3) `bls12_381_G1/G2_hashToGroup` with a 255-byte DST, and with a 32-byte DST of arbitrary bytes, returns another point; (4) the flat encoder writes a BLS12-381 constant as an application of `uncompress`, and the units spent after an out-of-budget `dropList` with a huge count wrap negative.
-- **Evidence:** Roadmap I1. None of these has been filed upstream yet.
+- **Evidence:** Roadmap I1. Item (1) is filed as scalus3/scalus#396. Triage (AUD-03, [plutus-conformance.md](plutus-conformance.md)): item (1) is reachable by a transaction and handled in the node (`FlatScan`); item (2) is not a divergence (the reference ledger refuses `case` on `Data` below protocol 12 too); item (3) is reachable for a domain separation tag with a byte of 0x80 or more, refused with a typed failure in the node, cause: the tag is handed to blst as a Latin-1 string; item (4) is not reachable (both flat refusal and out-of-budget agree).
 - **Pinned by:** [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala), `PlutusConformanceSuite`.
-- **Suggested upstream action:** Scalus: file the four items (not filed yet).
+- **Suggested upstream action:** Scalus: item (1) is reported as scalus3/scalus#396; item (3) is fixed on Scalus's default branch (unreleased): adopt the release, then remove the refusal and run the reproducer; (2) is fixed in 1.3.0; (4) needs no report. IN-75 to IN-77 are worked around in the node (`Secp256k1`, `PlutusScriptBytes`, `DataSerialiser`) and remain upstream candidates.
 - **Status:** observed
 
 ### IN-75 Scalus: `verifyEcdsaSecp256k1Signature` raises where the reference returns `False`
