@@ -61,6 +61,15 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   (`PreConwayFailureCborSuite`, Babbage among them) are derived by hand from the pinned instances. What is not written
   (`CollectErrors` and its `ContextError`, certifying purposes in `MissingRedeemers`) is [#123](https://github.com/KD5UJC-XYZ/scarab/issues/123).
 
+### Changed (performance, live sync, #124)
+- **A live follower applies blocks up to 2.5 times faster** (`docs/performance.md` section 13): the UTxO store follows the
+  immutable tip every 128 blocks in one walk of the diff instead of three walks per block (`ChainStorage`,
+  `Utxo.changesSince`); deregistering a stake key removes its pointers through a reverse index (`PtrMap`, persisted as
+  the same map, so the snapshot format is unchanged) instead of a scan of every pointer; an Ed25519 witness is verified
+  with one interleaved double-scalar multiplication (230 us to 118 us).
+- **Several peers share the fetching.** The sessions of all `--peer`s claim block ranges from one `BlockPool`, so a block is
+  fetched from one peer only, and a peer whose candidate is not preferred no longer keeps a map of blocks nobody takes.
+
 ### Added (Leios, N3: following the public testnet read-only, #72)
 - **The testnet's published configuration, pinned** (`fixtures/leios/testnet/config`, from
   `book.play.dev.cardano.org/environments-pre/leios`, with SHA-256 and Blake2b-256 of every file in

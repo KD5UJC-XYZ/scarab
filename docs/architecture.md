@@ -698,7 +698,13 @@ the node). The blocks of a preferred candidate are fetched from that peer, valid
 the chain and committed together, so a rule violation leaves the chain at the last valid block
 (still fatal, as before). The headers of a candidate have already passed the header gate (see
 "Header-first validation (G6)" below), so a bad header never reaches the fetch.
-Several sessions can run at once; adoption is serialised.
+Several sessions can run at once; adoption is serialised. The sessions of all peers share one `BlockPool`
+(`BlockPool.scala`): a session claims the blocks of a range when its connection is free to send the request, so a
+block is fetched from one peer only (ouroboros-network `Ouroboros.Network.BlockFetch.Decision`: in bulk sync
+`filterNotAlreadyInFlightWithOtherPeers` removes blocks in flight with another peer), the ranges of a batch go to
+whichever connection is idle, and the session that applies a block takes it from the pool whichever peer delivered
+it (waiting if the claim is still in flight, fetching it itself if the claim was released). The reference limits the
+peers fetching at once with `maxConcurrencyBulkSync`; ours is limited by the number of peers given.
 
 **Wiring** (`Main`). `--peer` may be given several times (with more than one peer a peer that
 keeps failing is retried forever, with one it is fatal after 30 attempts), `--listen` starts the

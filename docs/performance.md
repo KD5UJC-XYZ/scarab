@@ -587,3 +587,149 @@ build and is not a measurement.
 `java -Xmx6g -cp <classpath> xyz.kd5ujc.scarab.node.Memory94Main spam <V4 snapshot> 648752 <out>` and
 `... Memory94Main <ledger|v4|written> <out> [genesis-dir]` (the V4 snapshot of a preprod node, or any other: the spam is
 put into its Conway gov state).
+
+## 13. Live sync against replay on mainnet (#124)
+
+**The question.** A mainnet follower in Mary and Alonzo applied about 58,000 blocks an hour while a replay of stored blocks
+on the same machine had run at about 240,000. Where does the time go, and how much of the gap is the network?
+
+**Short answer.** None of it was the network. Block fetch, header checks and the verification cache had headroom
+(section 7 and the numbers below). The apply thread, which is one thread, spent its time in two places that replay does
+not meet: writing the UTxO store after every block that became immutable (about 32% of the samples) and removing the
+pointers of a deregistered stake key by scanning all of them (about 24%). Both are fixed; with a third change (Ed25519
+witness verification) the same 12,000 blocks apply at 255,000 an hour instead of 70,500 on 4 CPUs, 3.6 times. The
+240,000 of the replay was also a comparison of unlike blocks: the same log shows replay at 113,000 to 145,000 an hour
+from block 6.10 M (Mary, the blocks and the pointer map are larger), against live sync at 40,000 to 90,000 over
+blocks 6.20 M to 6.28 M.
+
+### What was measured, and how
+
+- **The running node (read only).** A 24-core host, a mainnet follower (`--rules old`, one peer, `-Xmx24g`, G1), blocks
+  6,203,514 to 6,277,016 (Mary into Alonzo, epochs 289 to 291). From its log (73,503 `extended` events in 4,405 s):
+  median 33 ms between blocks, 90th percentile 172 ms, 99th 372 ms; the 15% of the blocks that took more than 100 ms
+  between them account for 55% of the time; 316 gaps over 0.5 s (6% of the time: epoch boundaries, snapshots).
+  `chainSyncRounds`: 128 headers per round in 307 to 310 ms on average (737 ms at most); one `slowFetch` in 1.2 hours;
+  `headersChecked`: 50,049 validated, 0 unchecked, 0 waited; verification cache over the live phase: witnesses
+  4,905,775 of 4,906,968 already verified (99.98%), operational certificates 100%, VRF 99.8%; `cpuStarvation`: two
+  warnings (135 and 174 ms) in the live phase. Six thread dumps in 24 s: in each, the 24 workers of the follower pool
+  and all the fetch tasks were parked and **one** thread was running, in `UtxoStore.advance` (four dumps), in
+  `PreConwayCerts` (one) and in the rules (one).
+- **JFR, 10 minutes** (`settings=profile`, 65,047 execution samples on the follower's pools): G1 pauses 9.3 s of 600 s
+  (1.6%, 280 ms at most); the JVM used 3.7 cores on average (user) and 0.3 (system) of 24.
+- **A controlled A/B.** My own container, 4 CPUs, 8 GB, `-Xmx6g`, one fresh copy of the mainnet database truncated at the
+  snapshot of block 6,242,300 (slot 40,045,057, epoch 290), following the public backbone relay from block 6,243,505
+  for 12 minutes; the same 12,000 blocks in each run (the blocks of epochs 290 to 291). The relay and the time of day are
+  not controlled, so a figure is good to about 10%.
+
+### Where the apply thread's time went (JFR of the mainnet follower)
+
+| samples (65,047) | share | what |
+|---|---|---|
+| `UtxoStore.advance`: three walks of the whole diff of the immutable state for every block that became immutable (`exists`, `filter`, `max`) | 32% | live only: in replay each state is immutable at once and its diff is small. The diff of the anchor holds the changes of the last k = 2,160 blocks (about 100,000 entries) |
+| `PreConwayCerts` `Unregister`: `ptrs.filterNot(_._2 == c)`, `Credential.equals` over every pointer | 24% | once per stake key deregistration, over about a million entries (200 ms or so); the blocks that took more than 100 ms are 15% of all and are the ones that carry such a certificate (not checked block by block) |
+| signature verification (witnesses, VRF, operational certificates) in `VerificationCache.warm` | 27% | on the parallel threads, off the apply thread; this is what the first two were hiding |
+| the rules, decoding, chain selection, RocksDB reads | about 15% | |
+
+Allocation (JFR `ObjectAllocationSample`): 18% in iterating the persistent maps (`BitmapIndexedMapNode.getPayload`), 15% in
+Ed25519 lookup tables, 5.5% `UInt64.saturating`, 3.6% `BlockRef.point` (per-header chain selection).
+
+What was ruled out: block fetch (the producer keeps three batches of 128 headers in flight; a 100-block range is 1 round
+trip, and 70,000 blocks an hour is 20 blocks a second), header-first checks (the verdicts are kept; the cache hit rates
+above), GC (1.6%), the timer pool (two starvation warnings), logging and the volatile log (no frame of either in the profile).
+
+### Results (same 12,000 blocks, 4 CPUs, one peer)
+
+| build | blocks per hour | speed-up | change |
+|---|---|---|---|
+| main (1e9b2847) | 70,500 | 1.0 | |
+| + the store follows the immutable tip every 128 blocks, one walk (551b7f1b) | 117,100 | 1.66 | `ChainStorage`, `Utxo.changesSince` |
+| + `PtrMap`, the reverse index of the pointers (00d257da) | 168,600 | 2.39 | persisted as the same map: the snapshot fingerprint is unchanged |
+| + one interleaved double-scalar multiplication per Ed25519 witness, and the shared `BlockPool` (single peer) | 255,200 | 3.62 | 230 to 118 us per verification (200 keys, warmed, one core) |
+
+The whole runs (12 to 14 minutes each, 12,700 to 55,000 blocks): 69,500, 109,100 (533 s), 171,600, 236,000 an hour. The
+median gap between two blocks went from 33 ms to 7 ms and the 90th percentile from 98 ms to 28 ms. A second JFR (5 minutes,
+37,873 samples) after the three changes: 53% of the samples are signature verification on the parallel threads
+(the leaf frames are curve arithmetic: field multiplication and squaring, point-table lookups), 36% the apply thread, which now has no single
+hot spot above 4%. The bottleneck is CPU for signatures: with the 4 CPUs of the test the verification competes with the
+apply thread, and the 24 cores of the mainnet follower have room.
+
+### Several peers, and the reference
+
+`Follower` runs one session per peer, each with its own ChainSync pipeline and a candidate chain; chain selection decides
+which candidate to adopt. Before this change each session's producer also fetched every block its peer announced, whether
+or not its candidate was preferred: with N peers N times the download and N times the verification, and for a session
+whose candidate is never preferred a map of fetched blocks that nothing takes (a leak). A `BlockPool` shared by the
+sessions now holds claims: a session claims the blocks of a range when its connection is free to send the request, so
+each block is fetched from one peer, the ranges of a batch go to whichever connection is idle, and the session that
+applies a block takes it from the pool whichever peer delivered it.
+
+The reference (ouroboros-network, `Ouroboros.Network.BlockFetch.Decision`): `fetchDecisions` filters the candidates
+(`filterPlausibleCandidates`, `selectForkSuffixes`, `filterNotAlreadyFetched`, `filterNotAlreadyInFlightWithPeer`),
+prioritises the peers (`prioritisePeerChains`: in `FetchModeBulkSync` the preferred chain first, then the expected
+response duration from the peer's measured delay and bandwidth, `comparePeerGSV'`; in `FetchModeDeadline` the probability
+band first), removes what other peers have in flight (`filterNotAlreadyInFlightWithOtherPeers`; in bulk sync only: in
+deadline mode the same block may be asked of several peers) and decides per peer (`fetchRequestDecisions`), declining with
+`FetchDeclineConcurrencyLimit` past `maxConcurrencyBulkSync` peers, and past `maxInFlightReqsPerPeer` requests or the
+in-flight byte watermarks (`inFlightBytesLowWatermark`, `inFlightBytesHighWatermark`, from `PeerFetchInFlightLimits`).
+`BlockFetchConfiguration` (`bfcMaxConcurrencyBulkSync`, `bfcMaxConcurrencyDeadline`, `bfcMaxRequestsInflight`) feeds
+`FetchDecisionPolicy`; cardano-node exposes `MaxConcurrencyBulkSync` and `MaxConcurrencyDeadline` in its configuration
+file and takes the library's `defaultBlockFetchConfiguration` when they are absent; `bfcMaxRequestsInflight` is clamped to
+`blockFetchPipeliningMax` of the mini-protocol parameters. I could not retrieve the numeric defaults of
+`defaultBlockFetchConfiguration` here (the names and the structure above are from the sources; the values are not
+asserted). So the reference also fetches in bulk sync from a bounded number of peers at once, with a per-peer window of
+requests and bytes in flight; ours takes a range per idle connection, 100 blocks or 8 MB per request and one request in
+flight per connection (the BlockFetch client of a connection is sequential).
+
+Measured with two peers (the IOG and Cardano Foundation backbone relays; the Emurgo name did not resolve from the test
+host), same 12,000 blocks: 174,400 an hour with the pool and without the Ed25519 change (against 168,600 with one peer
+and no pool), 263,800 with all three (against 255,200). That is no gain and no loss: at 4 CPUs the follower is bound by
+signature verification and the apply thread, not by the one connection. No block is fetched twice: the bytes the
+container received per block applied over the same two minutes of the run (docker stats) were 22.4 KB with one peer and
+22.0 KB with two (a block of this stretch is 15 to 22 KB, headers included).
+
+**Check of the claims.** A debug build that printed, for every range a session looks at, how many of its blocks the session
+owned (two peers, 6 minutes, 14,337 headers' worth of ranges): each peer looked at all of them and owned 7,700 and 6,637,
+which add up to 14,337: every block was claimed once, and the ranges were shared 54% to 46% between the two relays.
+
+### What is left, ranked by what it should gain
+
+1. **Signature verification is now the largest cost (53% of the samples at 4 CPUs).** In order: remember the decoded and
+   checked public key of a witness (the same keys sign again and again; decompress, compress and the small-order check of
+   `A` are about a sixth of a verification, about 17 of 118 us); a native or batched Ed25519 verifier with the same strict
+   profile (the pure Java curve arithmetic is `FieldElement.multiply` and `square`: 40% of the samples); the VRF
+   (`Ed25519Point`, 8%) the same way. Expected: 1.2 to 1.5 times at 4 CPUs, little on 24.
+2. **The epoch boundary** is one step of 8 to 9 s (`longestStep: epochBoundary` in `epochValidated`) every 21,600 blocks:
+   2% of the time at 170,000 blocks an hour, more as the rest gets faster.
+3. **A snapshot every epoch** (about 50 s and 340 MB, in the background): CPU the verification wants; `--snapshot-every
+   4epochs` while syncing costs nothing but a longer replay after a crash.
+4. **Chain selection rebuilds `Local` (the whole volatile window, 2,160 blocks) for every header** (`Follower.local`, 1 to 3%
+   of the samples, doubled with a second peer): keep it incrementally.
+5. **Replay** meets the same two hot spots (the pointer scan; the store write is per block in replay too, so it gains from
+   the 128-block step) and writes a snapshot every few minutes (12 to 20% of its wall time in the log above).
+6. **Bytes**: a block of this stretch is 15 to 22 KB; at 255,000 blocks an hour that is 1 to 1.6 MB/s, so one relay is not
+   the limit until the node is several times faster.
+
+### Flags for the fastest follow
+
+```sh
+follow --genesis-dir <mainnet> --db <dir> \
+  --peer backbone.cardano.iog.io:3001 --peer backbone.mainnet.cardanofoundation.org:3001 \
+  --metrics-listen 0.0.0.0:12798          # defaults kept: --read-ahead 128 --header-first on --cpu-threads <CPUs>
+```
+
+`--header-first on` (the default) costs nothing and keeps the verdicts for the block; `--read-ahead` 64 to 256 made no
+difference in section 7 and none here (the producer is not waiting for headers); `--cpu-threads` sets the workers of the
+pool the single apply thread runs on, not the parallelism of the signature checks (that is the number of CPUs), so more of
+it does not help. A second relay did not change the rate at 4 CPUs (174,400 against 168,600 and 263,800 against 255,200 an
+hour): it is for resilience and for the follower with more cores than the one test; whether it helps on the 24-core
+mainnet follower is the A/B to run. The JVM flags of the running follower (`-Xms8g -Xmx24g`, G1, 50 ms) are not a limit
+(1.6% of the time in pauses).
+
+### To repeat
+
+Truncate a copy of a mainnet database at a snapshot (the chunks up to the snapshot's chunk, the snapshot, its UTxO
+checkpoint, `network-identity`), follow the public relay for 12 minutes with `--log-file`, and read the `extended` events:
+the first 12,000 blocks after `started` are the comparison. A bundle is the classes of each module beside the jars of the
+last one. JFR from inside the container: `jcmd 1 JFR.start settings=profile duration=5m filename=/data/p.jfr`, then
+`jfr print --stack-depth 64 --events jdk.ExecutionSample`; the JFR stack depth of 64 truncates the deep stacks of the rules, so
+the cause is the leaf frames and the thread dumps (`jcmd 1 Thread.print`), not the root.
