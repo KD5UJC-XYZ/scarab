@@ -103,6 +103,38 @@ object ChainSelection:
     def depthTo(point: Point): Int =
       if point == anchor then blocks.size else blocks.size - 1 - blocks.indexWhere(_.point == point)
 
+    /** The window after rolling back to `point` (the anchor or one of the blocks), none if it is
+      * neither.
+      */
+    def rolledBackTo(point: Point): Option[Local] =
+      if point == anchor then Some(copy(blocks = Vector.empty))
+      else
+        blocks.indexWhere(_.point == point) match
+          case -1 => None
+          case i  => Some(copy(blocks = blocks.take(i + 1)))
+
+    /** The window after a block is appended at the tip and the `immutable` oldest blocks (counting
+      * the new one, which only happens for a `k` of zero) become the anchor: the same window
+      * [[Local.of]] builds from the chain that `VolatileChain.extend` returns.
+      */
+    def extended(block: LocalBlock, immutable: Int): Local =
+      val grown = blocks :+ block
+      if immutable <= 0 then copy(blocks = grown)
+      else
+        val (gone, kept) = grown.splitAt(immutable)
+        Local(gone.last.point, gone.last.view, kept)
+
+  object Local:
+    /** Build the window from the whole chain: one pass over its `k` blocks. This is the reference
+      * that the incremental updates [[Local.rolledBackTo]] and [[Local.extended]] must equal.
+      */
+    def of[S](chain: VolatileChain[S], view: BlockRef => SelectView): Local =
+      Local(
+        chain.anchor.point,
+        chain.anchor.block.fold(SelectView(-1, 0, None, 0, None))(view),
+        chain.blocks.map((r, _) => LocalBlock(r.point, view(r)))
+      )
+
   /** What a peer's chain looks like to us: the point where it joined our chain and the headers it
     * announced after it. The headers are contiguous.
     */

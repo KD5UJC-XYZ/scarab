@@ -73,7 +73,9 @@ final class Follower[F[_]: Async, S] private (
     views: SelectViews[F],
     lock: Mutex[F],
     /** Where a block forged by this node is applied (the CPU pool, see [[Compute]]). */
-    cpu: Compute[F]
+    cpu: Compute[F],
+    /** The window chain selection reads, kept in step with the chain by [[commit]]. */
+    window: Ref[F, Option[ChainSelection.Local]]
 )(using
     chain: Stateful[F, VolatileChain[S]],
     raise: Raise[F, ChainError]
@@ -125,19 +127,32 @@ final class Follower[F[_]: Async, S] private (
             candidate.set(grown) *> adopt(peer, grown, tip).flatMap(candidate.set)
       }
 
-  /** Our chain as chain selection sees it. */
+  /** Our chain as chain selection sees it. The window is kept between calls and updated by
+    * [[commit]] (an append and a truncation per change, not the `k` blocks again for every header);
+    * it is rebuilt when it is missing or no longer describes the chain (a restored chain, a state
+    * set from outside).
+    */
   private def local: F[ChainSelection.Local] =
     for
       current <- chain.get
-      known <- views.get
-    yield
-      def view(ref: BlockRef): SelectView =
-        known.getOrElse(ref.hash, SelectView(ref.blockNo, ref.slot, None, 0, None))
-      ChainSelection.Local(
-        current.anchor.point,
-        current.anchor.block.fold(SelectView(-1, 0, None, 0, None))(view),
-        current.blocks.map((r, _) => ChainSelection.LocalBlock(r.point, view(r)))
-      )
+      cached <- window.get
+      result <- cached.filter(describes(_, current)) match
+        case Some(l) => F.pure(l)
+        case None =>
+          views.get.flatMap { known =>
+            val rebuilt = ChainSelection.Local.of(current, viewOf(known))
+            window.set(Some(rebuilt)).as(rebuilt)
+          }
+    yield result
+
+  /** The select view of a block; a block without a recorded one gets its position only. */
+  private def viewOf(known: Map[Bytes, SelectView])(ref: BlockRef): SelectView =
+    known.getOrElse(ref.hash, SelectView(ref.blockNo, ref.slot, None, 0, None))
+
+  /** A cheap check that the kept window is the chain's: anchor, length and tip. */
+  private def describes(l: ChainSelection.Local, current: VolatileChain[S]): Boolean =
+    l.anchor == current.anchor.point && l.blocks.size == current.blocks.size &&
+      l.blocks.lastOption.forall(b => current.blocks.lastOption.exists(_._1.point == b.point))
 
   private final case class Applied(
       ref: BlockRef,
@@ -215,6 +230,13 @@ final class Follower[F[_]: Async, S] private (
   ): F[Unit] =
     for
       _ <- chain.set(steps.last.after)
+      _ <- window.update(
+        _.flatMap(l =>
+          steps.foldLeft(if depth > 0 then l.rolledBackTo(to) else Some(l))((acc, a) =>
+            acc.map(_.extended(ChainSelection.LocalBlock(a.ref.point, a.view), a.immutable.size))
+          )
+        )
+      )
       _ <- persistence.traverse_(_.rolledBack(to)).whenA(depth > 0)
       _ <- events
         .emit(FollowerEvent.RolledBack(original.tip, to, depth))
@@ -340,7 +362,11 @@ object Follower:
       Stateful[F, VolatileChain[S]],
       Raise[F, ChainError]
   ): F[Follower[F, S]] =
-    (SelectViews.create[F](initialViews), Mutex[F]).mapN { (views, lock) =>
+    (
+      SelectViews.create[F](initialViews),
+      Mutex[F],
+      Ref.of[F, Option[ChainSelection.Local]](None)
+    ).mapN { (views, lock, window) =>
       new Follower[F, S](
         rules,
         events,
@@ -351,7 +377,8 @@ object Follower:
         tiebreaker,
         views,
         lock,
-        compute.getOrElse(Compute.inline[F])
+        compute.getOrElse(Compute.inline[F]),
+        window
       )
     }
 
