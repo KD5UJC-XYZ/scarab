@@ -13,7 +13,7 @@ from fractions import Fraction
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
+from devnet import cbor, cluster, compare, encoding, eraload, eratx, eraview, govextra, govview, ntccli, ntclocal, ntcqueries, ntcquery, refused_fixture, util  # noqa: E402
 from devnet.scenarios import ntc  # noqa: E402
 from devnet.scenarios import pool  # noqa: E402
 
@@ -585,3 +585,34 @@ class NtcLocalTest(unittest.TestCase):
         a = self.snapshot(5, [], [("sizes", b"1"), ("measures", b"2")])
         b = self.snapshot(5, [], [("sizes", b"1"), ("measures", b"3")])
         self.assertEqual(ntclocal.compare_snapshots(a, b), (True, [("measures", b"2", b"3")]))
+
+
+class UserCliVerdictTest(unittest.TestCase):
+    """What `ntccli` makes of the results of `cardano-cli latest` against the Scala node."""
+
+    ok_tip = {"exit": 0, "output": "", "era": "Conway", "syncProgress": "100.00"}
+    ok_build = {"buildExit": {"reference": 0, "scala": 0}, "buildOutput": {}, "bodiesEqual": True,
+                "submitExit": 0, "reachedABlock": True}
+
+    def test_all_passing_is_no_failure(self):
+        self.assertEqual(ntccli.failures({"tip": self.ok_tip}, self.ok_build, []), [])
+
+    def test_a_query_that_exits_non_zero_fails(self):
+        failed = {"exit": 1, "output": "cardano-cli: bearer closed"}
+        self.assertEqual(len(ntccli.failures({"tip": failed}, self.ok_build, [])), 1)
+
+    def test_a_tip_that_is_not_conway_at_full_sync_fails(self):
+        behind = {**self.ok_tip, "syncProgress": "99.00"}
+        self.assertEqual(len(ntccli.failures({"tip": behind}, self.ok_build, [])), 1)
+
+    def test_a_build_that_differs_or_a_submit_that_does_not_reach_a_block_fails(self):
+        self.assertEqual(len(ntccli.failures({}, {**self.ok_build, "bodiesEqual": False}, [])), 1)
+        self.assertEqual(len(ntccli.failures({}, {**self.ok_build, "reachedABlock": False}, [])), 1)
+
+    def test_only_a_client_finishing_is_an_expected_close(self):
+        events = [{"event": "inbound", "state": "closed", "reason": r}
+                  for r in ("closed by peer", "client finished", "failed: IllegalArgumentException: boom")]
+        events.append({"event": "inbound", "state": "accepted", "reason": None})
+        self.assertEqual([e["reason"] for e in ntccli.unexpected_closes(events)],
+                         ["failed: IllegalArgumentException: boom"])
+        self.assertEqual(len(ntccli.failures({}, self.ok_build, ntccli.unexpected_closes(events))), 1)

@@ -15,6 +15,11 @@ Three comparisons on one cluster, the Scala node following it with `--local-sock
   4. Local ChainSync, byte for byte: while the load runs, both sockets are followed from Origin (the
      Scala node serves its immutable store and then its volatile chain), then from the tip, and
      again from a recent block (a backlog); the whole blocks (`#6.24(bytes)` items) must be equal.
+  4b. `cardano-cli latest` as a user runs it against the Scala socket (`ntccli`): `query tip` (also with
+     `CARDANO_NODE_SOCKET_PATH`), protocol-parameters, utxo, era-history, slot-number, and a
+     `transaction build` with a change address (the body byte-equal to the reference node's) that is signed,
+     submitted through the Scala socket and must reach a block; no connection may end for another
+     reason than the client finishing.
   5. LocalTxMonitor, byte for byte: bursts of chained transactions are submitted through the Scala
      socket (it forwards them to the reference node); one snapshot of each node is walked (sizes,
      measures, every transaction, membership) and, when both hold the same slot and transactions,
@@ -27,7 +32,7 @@ import subprocess
 import sys
 import time
 
-from .. import gapmask, ntcquery
+from .. import gapmask, ntccli, ntcquery
 from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
 from ..cluster import freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
@@ -480,6 +485,13 @@ def ntc(args):
         sub_results = submissions(args, root)
         valid = valid_submission(args, root)
         print(json.dumps({"validSubmission": valid}), flush=True)
+        # what a user runs against the Scala socket: queries, then build, sign and submit
+        mark = len(read_log(root / "follower.jsonl")[0])
+        user_queries = ntccli.queries(args, info["addr"], info["txin"])
+        user_build = ntccli.build_and_submit(args)
+        user_closes = ntccli.unexpected_closes(read_log(root / "follower.jsonl")[0][mark:])
+        print(json.dumps({"userCli": {"build": user_build, "closes": len(user_closes)}}), flush=True)
+        failures.extend(ntccli.failures(user_queries, user_build, user_closes))
         monitor = {}
         try:
             monitor_comparison(args, root, monitor)
@@ -504,6 +516,8 @@ def ntc(args):
                             "differences": [r for r in sub_results if not (r["rawEqual"] and r["textEqual"])]},
             "ledgerState": {"gaps": list(gapmask.GAPS), "perQuery": masks},
             "validSubmission": valid,
+            "userCli": {"queries": user_queries, "build": user_build,
+                        "unexpectedCloses": [c["reason"] for c in user_closes]},
             "chainSync": chain_sync,
             "txMonitor": monitor,
         }
