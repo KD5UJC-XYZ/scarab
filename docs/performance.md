@@ -972,7 +972,9 @@ What the thread dumps called `PreConwayRules.apply` was the sum of the rules and
 the path. The `new Thread` frames were `ScalusEvaluator.onBigStack`: a `Thread` with a 256 MB stack per script, 220 a second
 (8.5 scripts a block; the log has 5.9 evaluated per block in epoch 328).
 
-**Changes** (each in code the new rules share, none in `PreConwayRules`/`ConwayRules`/`TxRules`):
+**Changes** (each in code the new rules share: `Address.scala`, `Purpose`, `ScriptContexts`, `ScriptIntegrity`, `Bytes`, the
+consensus and the plutus modules; none in the flat rules J2.9 deleted, whose frames in the profile were the shared predicates, now
+`TxChecks`, inlined into them):
 
 - `ChainSelection.decide` searched the candidate from the tip and built the `Point` of every header first. The candidate of
   a peer that is behind us is wholly ours, the answer is `Keep`, and it is never trimmed, so it grows by a header per header
@@ -996,7 +998,7 @@ values, but real inputs carry tokens and the mainnet share of `Value` was larger
 
 | per transaction | before | after |
 |---|---|---|
-| `PreConwayRules.apply` as a whole | 30.5 us (1.36 ms/block) | 20.3 us (0.90 ms/block) |
+| `PreConwayRules.apply` as a whole (measured before J2.9 removed it) | 30.5 us (1.36 ms/block) | 20.3 us (0.90 ms/block) |
 | sum of the inputs and outputs' values | 9.5 us | 2.6 us |
 | sum of the real output values | 4.3 us | 1.2 us |
 | sort of the inputs | 0.5 us | 0.1 us |

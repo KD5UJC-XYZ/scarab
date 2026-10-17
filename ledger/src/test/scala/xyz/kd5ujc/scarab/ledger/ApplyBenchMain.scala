@@ -17,8 +17,8 @@ import xyz.kd5ujc.scarab.crypto.vrf.PraosVrfCertificate as Vrf
   * script; scripts are not run (a script evaluation is another cost, `ScalusEvaluator`). Signatures
   * are not verified (the cache does that off the apply thread, issue 125).
   *
-  * Prints, per pass, microseconds per transaction for `PreConwayRules.apply` as a whole and for
-  * each shared predicate on its own, and the share of the transactions that `apply` accepted.
+  * Prints, per pass, microseconds per transaction for each shared predicate of `TxChecks` on its
+  * own.
   */
 object ApplyBenchMain:
   private object Unverified extends Verdicts:
@@ -118,19 +118,19 @@ object ApplyBenchMain:
     val produced: Map[TxIn, TxOut] = txs.flatMap { case (_, t) =>
       t.body.outputs.zipWithIndex.map((o, i) => TxIn(t.body.id, i) -> o)
     }.toMap
-    val base = TestLedger.state(6, Vector.empty)
-    val pp = base.params.copy(
-      minFeeA = 44,
-      minFeeB = 155381,
-      maxTxSize = 16384,
-      keyDeposit = 2000000,
-      poolDeposit = 500000000,
-      minUTxOValue = 1000000,
-      coinsPerUTxOWord = 34482,
-      maxValueSize = 5000,
-      protocolMajor = 6
-    )
-    val state0 = base.copy(params = pp)
+    val pp = TestLedger
+      .params(6)
+      .copy(
+        minFeeA = 44,
+        minFeeB = 155381,
+        maxTxSize = 16384,
+        keyDeposit = 2000000,
+        poolDeposit = 500000000,
+        minUTxOValue = 1000000,
+        coinsPerUTxOWord = 34482,
+        maxValueSize = 5000,
+        protocolMajor = 6
+      )
     // The inputs from before the capture, with the value the transaction needs on top of what it
     // spends from inside the capture, on the address of one of its witnesses.
     val missing = scala.collection.mutable.Map.empty[TxIn, TxOut]
@@ -165,55 +165,44 @@ object ApplyBenchMain:
         }
     }
     val utxo = produced ++ missing
-    val state = state0.copy(utxo = Utxo(utxo))
+    val ledgerUtxo = Utxo(utxo)
     val env = TestLedger.env.copy(network = 1, verdicts = Unverified)
     println(
       s"blocks=${blocks.size} txs=${txs.size} made-up inputs=${missing.size} utxo=${utxo.size}"
     )
     def run(): Unit =
       val ns = scala.collection.mutable.LinkedHashMap.empty[String, Long].withDefaultValue(0L)
-      var accepted = 0
-      val failures = scala.collection.mutable.Map.empty[String, Int]
       txs.foreach { case (slot, tx) =>
         val e = env.copy(slot = slot, epoch = 320)
         val body = tx.body
         val spent = body.inputs.flatMap(utxo.get)
         val refOuts = body.referenceInputs.flatMap(utxo.get)
-        val (applied, tApply) = time(PreConwayRules(state, tx, e))
-        applied.fold(
-          f =>
-            failures.updateWith(f.message.split(" ").slice(3, 4).mkString(" "))(c =>
-              Some(c.getOrElse(0) + 1)
-            ),
-          _ => accepted += 1
-        )
-        ns("apply (whole)") += tApply
-        ns("outputChecks") += time(PreConwayRules.outputChecks(pp, e, body.id, body.outputs))._2
-        ns("collateralChecks") += time(PreConwayRules.collateralChecks(state.utxo, pp, tx))._2
+        ns("outputChecks") += time(TxChecks.outputChecks(pp, e, body.id, body.outputs))._2
+        ns("collateralChecks") += time(TxChecks.collateralChecks(ledgerUtxo, pp, tx))._2
         val (scripts, tProvided) =
-          time(PreConwayRules.providedScripts(tx.witnesses, spent ++ refOuts))
+          time(TxChecks.providedScripts(tx.witnesses, spent ++ refOuts))
         ns("providedScripts") += tProvided
-        val (needed, tNeeded) = time(PreConwayRules.scriptsNeeded(body, spent))
+        val (needed, tNeeded) = time(TxChecks.scriptsNeeded(body, spent))
         ns("scriptsNeeded") += tNeeded
         val purposes = needed
           .collect { case (h, ps) if scripts.get(h).exists(_.kind.isPlutus) => ps }
           .flatten
           .toSet
-        ns("alonzoChecks") += time(PreConwayRules.alonzoChecks(pp, tx, spent, scripts, purposes))._2
-        ns("auxiliaryChecks") += time(PreConwayRules.auxiliaryChecks(tx))._2
+        ns("alonzoChecks") += time(TxChecks.alonzoChecks(pp, tx, spent, scripts, purposes))._2
+        ns("auxiliaryChecks") += time(TxChecks.auxiliaryChecks(tx))._2
         ns("witnessChecks") += time(
-          PreConwayRules.witnessChecks(
-            state0.genDelegs,
+          TxChecks.witnessChecks(
+            Map.empty,
             tx,
             spent,
-            PreConwayRules.Collateral.none,
+            TxChecks.Collateral.none,
             scripts,
             needed,
             tx.witnesses.vkeys.map(w => e.verdicts.keyHash(w._1)),
             e.verdicts
           )
         )._2
-        ns("scriptsWellFormed") += time(PreConwayRules.scriptsWellFormed(pp, tx, e))._2
+        ns("scriptsWellFormed") += time(TxChecks.scriptsWellFormed(pp, tx, e))._2
         ns("value sums") += time {
           spent.foldLeft(Value.zero)(_ + _.value) == body.outputs.foldLeft(Value.zero)(_ + _.value)
         }._2
@@ -230,8 +219,6 @@ object ApplyBenchMain:
         ns("script integrity") += time(ScriptIntegrity.hash(tx, pp, Set(ScriptKind.PlutusV1)))._2
       }
       val n = txs.size.toDouble
-      println(f"accepted by apply: $accepted of ${txs.size}")
-      failures.toVector.sortBy(-_._2).take(14).foreach((k, v) => println(s"    refused $v: $k"))
       ns.foreach((k, v) =>
         println(f"  $k%-20s ${v / 1000.0 / n}%8.1f us/tx  ${v / 1e6 / blocks.size}%7.2f ms/block")
       )
