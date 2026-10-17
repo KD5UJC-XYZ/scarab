@@ -381,6 +381,6 @@ val modules = Seq(
 addCommandAlias(
   "check",
   (";scalafmtCheckAll" +: (modules.map(m => s"$m/Test/compile") ++ modules
-    .map(m => s"$m/Test/test")))
+    .map(m => s"$m/Test/test")) :+ "scalafixAll --check")
     .mkString(";")
 )

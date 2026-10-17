@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 version=1.10.7
 sha=3cca02818047327a83efde776103a1ef92f76f72c062badbbb062499a3270c07
-base="${LAB_CACHE_DIR:-$PWD/.cache}"
+base="${SCARAB_CACHE_DIR:-${LAB_CACHE_DIR:-$PWD/.cache}}"
 cache="$base/scarab"
 # The cache was `.cache/cardano-scala-lab` before the rename: move it once and leave a symlink, so classpath
 # files and long-running containers that name the old path keep working. (Both layouts are handled.)

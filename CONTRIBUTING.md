@@ -19,8 +19,8 @@ docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/wor
   scarab-jdk:local bash scripts/sbtw check
 ```
 
-`check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources and runs the
-tests of all modules, the fuzz suite among them (about a minute; `scalafixAll --check` is separate, see below); the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
+`check` (an alias in `build.sbt`) runs `scalafmtCheckAll`, compiles all test sources, runs the
+tests of all modules, the fuzz suite among them, and ends with `scalafixAll --check`; the compiler runs with `-Werror` and the unused-code warnings (imports, privates, locals, explicit parameters, pattern variables); a module may only depend on the modules before it in the graph of [docs/architecture.md](docs/architecture.md#modules), and sbt refuses a cycle. Dependencies and the sbt launcher are
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
@@ -73,8 +73,7 @@ with a pattern that matches your own shell command line.
   18 / 61 (read once per chunk at import: 4.76 M entries of the Preview database in 1.8 s against
   0.11 s, small next to hashing the 15 GB). Re-measure before moving a format.
 - **scalafix** (`.scalafix.conf`, OrganizeImports; semanticdb is on): `scalafixAll --check` reports
-  what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards. It is part of the level 1 gate
-  below, and neither `check` nor CI runs it.
+  what would change, `scalafixAll` applies it; run `scalafmtAll` afterwards. `check` ends with it, so CI runs it too.
 - **Coverage** is off by default: `coverage; test; coverageReport` (reports under
   `target/scala-3.3.8/scoverage-report`), then `coverageOff`.
 - **`dependencyUpdates`** lists newer versions of the dependencies and plugins (it only reads; the
@@ -124,7 +123,7 @@ everything else is caught within a day by CI. Land in minutes, not hours.
 | Level | Examples | Before landing | Paperwork |
 |---|---|---|---|
 | **0. Docs, notes, comments** | wording, a typo, a new section of a design doc | relative links resolve | none |
-| **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (formatting, `-Werror`, every module's tests and the fuzz suite) and `scripts/sbtw scalafixAll --check` (`check` does not run scalafix) | commit message; a changelog fragment only if a user could notice |
+| **1. Small code change** | refactor, test-only change, tooling, a local fix with no change in behaviour visible outside the module | `scripts/sbtw check` (formatting, `-Werror`, every module's tests, the fuzz suite and scalafix) | commit message; a changelog fragment only if a user could notice |
 | **2. Behaviour change in one area** | a bug fix, a new query, a new flag or event, a performance change | `check` plus **one** scenario for the area (table below) | changelog fragment; a test that fails without the change; `docs/running.md` if a flag, event or metric changed; a `docs/findings.md` row if it was found on real data |
 | **3. Consensus-critical or cross-cutting** | ledger rules, chain selection, a persisted format, the rules switch, anything forging | `check` plus the area scenarios, run in parallel | as level 2, plus the compatibility matrix row and the design document "as built" |
 | **4. Stage boundary** | the jump gates of a design (all Preview epochs, preprod from genesis), a release | the long runs the design names, once per stage, not per commit | an evidence-log row in `docs/compatibility.md` with commit, date and command |
