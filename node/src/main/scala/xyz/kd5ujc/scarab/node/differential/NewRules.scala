@@ -169,9 +169,7 @@ object NewRules:
         }
 
   /** The new-epoch state of a mirror, with the witness of its era; none for a Byron state. */
-  def nesOf(m: MirrorState): Option[EraNes] = m.ext.ledgerState.state match
-    case i: EraLedgerState.InShelleyEra[e] => Some(EraNes.InEra(i.era, i.state.nes))
-    case EraLedgerState.ByronCurrent(_)    => None
+  def nesOf(m: MirrorState): Option[EraNes] = MirrorStep.nesOf(m)
 
   /** The mirror of the old side's state as the new side carries it on:
     *

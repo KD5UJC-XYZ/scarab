@@ -336,7 +336,11 @@ final class DifferentialRules[F[_]] private (
               amounts,
               b.nes,
               rewardsStarted,
-              handover = state.at.isEmpty,
+              // the hand-over from Byron and the epoch it begins (the first state the harness sees
+              // too): the reference has `NoPParamsUpdate` in the first epoch of a chain, until its
+              // first boundary, and the old mirror derives the prediction from the proposals
+              handover = state.at.isEmpty || state.old.byron.ledger.isDefined ||
+                state.old.byron.firstShelleyEpoch.contains(state.old.ledger.epoch),
               carried = true,
               // the state after the whole block: what the old mirror derives from the accounts is
               // theirs at the end of it, not at the tick that took `mark`, which `Stage.Tick` checks

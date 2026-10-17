@@ -136,7 +136,7 @@ object Translate:
             chainAccount = translated.es.chainAccount.copy(reserves = reserves),
             ls = translated.es.ls.copy[Allegra](utxo =
               translated.es.ls.utxo
-                .copy(utxo = UtxoTables(translated.es.ls.utxo.utxo.utxo -- stash.keys))
+                .copy(utxo = UtxoTables(translated.es.ls.utxo.utxo.utxo.removeKnown(stash.toMap)))
             )
           )
         )

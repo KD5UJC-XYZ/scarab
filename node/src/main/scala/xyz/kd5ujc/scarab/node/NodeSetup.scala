@@ -2,7 +2,14 @@
 package xyz.kd5ujc.scarab.node
 
 import xyz.kd5ujc.scarab.consensus.{BootstrapState, ByronState, NodeState}
-import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraHistory, ProtocolState}
+import xyz.kd5ujc.scarab.consensus.state.{
+  ConsensusMirrorEnv,
+  EraHistory,
+  MirrorState,
+  ProtocolState,
+  StateMirrorError
+}
+import xyz.kd5ujc.scarab.ledger.rules.FromByron
 import xyz.kd5ujc.scarab.ledger.state.MirrorEnv
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.{
@@ -81,6 +88,22 @@ final case class NodeSetup(
     new Ask[F, ConsensusMirrorEnv]:
       val applicative: Applicative[F] = monad
       def ask[E2 >: ConsensusMirrorEnv]: F[E2] = monad.map(observed)(mirrorEnv(_))
+
+  /** What the Shelley genesis gives the ledger state a chain that begins in Byron enters Shelley
+    * with (`FromByronTranslationContext`, `Shelley/Translation.hs:46`): the genesis delegations,
+    * the protocol parameters and the supply. None for a chain that starts in Shelley.
+    */
+  def handOver: Option[FromByron] =
+    byronRules.map(_ => FromByron(start.ledger.genDelegs, start.ledger.params, globals.maxSupply))
+
+  /** The Byron parameters of the era history, where the mirror's telescopes are placed. */
+  def byronHistory: EraHistory.ByronParams = mirrorEnv().byron
+
+  /** The state the chain starts from, as the mirror: the node's state at the origin, converted
+    * once, at the start.
+    */
+  def mirrorStart: Either[StateMirrorError, MirrorState] =
+    MirrorRun.run(mirrorEnv())(_.toMirror(None, start)).map(_.value)
 
   /** The hash the chain's first block must name as its predecessor. */
   def origin: Option[Bytes] = byron.map(_.hash)

@@ -25,8 +25,9 @@ import xyz.kd5ujc.scarab.ledger.LedgerView
 import xyz.kd5ujc.scarab.ledger.StakeView
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
-import xyz.kd5ujc.scarab.ledger.byron.ByronLedger
+import xyz.kd5ujc.scarab.ledger.byron.{ByronLedger, ByronLedgerState}
 import xyz.kd5ujc.scarab.storage.UtxoStore
+import xyz.kd5ujc.scarab.consensus.state.ProtocolState
 import xyz.kd5ujc.scarab.node.read.{ChainRead, InEra}
 
 /** Full block validation: tick the ledger and Praos state to the block's epoch, validate the header
@@ -219,31 +220,56 @@ object NodeRules:
           else applyFull(entered, h, raw, cfg, glob, phase2Observer, prepared)
         }
 
-  /** The first Shelley-based block of a chain that has a Byron prefix: the epoch the chain enters
-    * Shelley is the configured one or, on a public network, the one the Byron ledger's update state
-    * decided; the Shelley ledger is built from the final Byron UTxO. From then on the configuration
-    * and the globals are those of the resolved epoch history. Chains that start in Shelley pass
-    * through untouched.
+  /** How a Shelley-based block meets the chain's Byron prefix, with the configuration and the
+    * constants from then on: the epoch the chain enters Shelley is the configured one or, on a
+    * public network, the one the Byron ledger's update state decided, and the configuration and the
+    * globals are those of the resolved epoch history. Chains that start in Shelley pass through
+    * untouched.
     */
-  private def enterShelley(
-      state: NodeState,
+  enum Entry:
+    /** The chain is in Shelley already, its first epoch known (or it started there). */
+    case Within(config: PraosConfig, globals: LedgerGlobals)
+
+    /** This block is the first of Shelley: the Byron ledger it ends with, the epoch the chain
+      * enters Shelley in, and the configuration and constants from then on.
+      */
+    case Entering(
+        first: BigInt,
+        ledger: ByronLedgerState,
+        config: PraosConfig,
+        globals: LedgerGlobals
+    )
+
+    def configuration: PraosConfig = this match
+      case Within(c, _)         => c
+      case Entering(_, _, c, _) => c
+
+    def constants: LedgerGlobals = this match
+      case Within(_, g)         => g
+      case Entering(_, _, _, g) => g
+
+  /** The entry of the chain into Shelley that the Shelley-based block `header` makes, from the
+    * chain-follow state `byron` (the first Shelley epoch, once learned, and the Byron ledger).
+    */
+  def entry(
+      byron: ByronState,
       header: Header.Shelley,
       config: PraosConfig,
       globals: LedgerGlobals,
-      byron: Option[ByronRules.Config]
-  ): Either[BlockFailure, (NodeState, PraosConfig, LedgerGlobals)] =
+      rules: Option[ByronRules.Config]
+  ): Either[BlockFailure, Entry] =
     def resolve(first: BigInt) =
       (config.copy(geometry = config.geometry.resolved(first)), globals.copy(firstEpoch = first))
-    state.byron.firstShelleyEpoch match
+    byron.firstShelleyEpoch match
       case Some(first) =>
         val (cfg, glob) = resolve(first)
-        Right((state, cfg, glob))
+        Right(Entry.Within(cfg, glob))
       case None =>
-        (byron, state.byron.ledger) match
-          case (Some(rules), Some(ledger)) =>
+        (rules, byron.ledger) match
+          case (Some(r), Some(ledger)) =>
             for
-              first <- rules.configuredShelleyEpoch
-                .orElse(ByronLedger.transition(rules.ledger, ledger))
+              first <- r.configuredShelleyEpoch
+                .orElse(ByronLedger.transition(r.ledger, ledger))
                 .toRight(
                   BlockFailure.TransitionUndecided(header.era)
                 )
@@ -254,15 +280,37 @@ object NodeRules:
                 (),
                 BlockFailure.ShelleyBeforeTransition(epoch, first, ledger.lastSlot)
               )
-              shelley <- rules.handover(ledger, glob).leftMap(BlockFailure.Handover(_))
-            yield (
+            yield Entry.Entering(first, ledger, cfg, glob)
+          case _ => Right(Entry.Within(config, globals))
+
+  /** The first Shelley-based block of a chain that has a Byron prefix: the Shelley ledger is built
+    * from the final Byron UTxO (the old rules' hand-over, whose extras the reference's translation
+    * does not have). Chains that start in Shelley pass through untouched.
+    */
+  private def enterShelley(
+      state: NodeState,
+      header: Header.Shelley,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      byron: Option[ByronRules.Config]
+  ): Either[BlockFailure, (NodeState, PraosConfig, LedgerGlobals)] =
+    entry(state.byron, header, config, globals, byron).flatMap {
+      case Entry.Within(cfg, glob) => Right((state, cfg, glob))
+      case Entry.Entering(first, ledger, cfg, glob) =>
+        byron.fold[Either[BlockFailure, (NodeState, PraosConfig, LedgerGlobals)]](
+          Right((state, cfg, glob))
+        ) { rules =>
+          rules.handover(ledger, glob).leftMap(BlockFailure.Handover(_)).map { shelley =>
+            (
               state
                 .withByron(state.byron.finish.copy(ledger = None, firstShelleyEpoch = Some(first)))
                 .copy(ledger = shelley),
               cfg,
               glob
             )
-          case _ => Right((state, config, globals))
+          }
+        }
+    }
 
   /** Byron: linkage, slot order, the PBFT rules and the ledger rules (see [[ByronRules]]). */
   private def applyByron(
@@ -271,11 +319,25 @@ object NodeRules:
       raw: Bytes,
       byron: Option[ByronRules.Config]
   ): Either[BlockFailure, NodeState] =
+    byronStep(state.byron, state.boot, header, raw, byron).map((next, boot) =>
+      state.withBoot(boot).withByron(next)
+    )
+
+  /** The chain-follow state and the bootstrap state after a Byron block: what the old rules and the
+    * era-indexed ones share (Byron has no new-epoch state).
+    */
+  def byronStep(
+      state: ByronState,
+      boot: BootstrapState,
+      header: Header.Byron,
+      raw: Bytes,
+      byron: Option[ByronRules.Config]
+  ): Either[BlockFailure, (ByronState, BootstrapState)] =
     for
       cfg <- byron.toRight(BlockFailure.NoByronGenesis)
-      ledger <- state.byron.ledger.toRight(BlockFailure.ByronAfterShelley)
+      ledger <- state.ledger.toRight(BlockFailure.ByronAfterShelley)
       _ <- Either.cond(
-        !state.boot.active && state.boot.era.forall(_ == Era.Byron),
+        !boot.active && boot.era.forall(_ == Era.Byron),
         (),
         BlockFailure.ByronAfterShelley
       )
@@ -297,24 +359,23 @@ object NodeRules:
           BlockFailure.ByronAfterTransition(header.epoch, first)
         }
       validated <- ByronRules
-        .update(ByronRules.State(state.byron.tip, ledger, state.byron.pbft), block, cfg)
+        .update(ByronRules.State(state.tip, ledger, state.pbft), block, cfg)
         .leftMap(BlockFailure.Byron(_))
       (next, check) = validated
     yield
-      val sameEpoch = state.byron.stats.filter(_.epoch == header.epoch)
-      val base = if sameEpoch.isEmpty then state.byron.finish else state.byron
-      state
-        .withBoot(state.boot.copy(era = Some(Era.Byron)))
-        .withByron(
-          base.copy(
-            tip = next.tip,
-            ledger = Some(next.ledger),
-            pbft = next.pbft,
-            stats = Some(
-              sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0, 0)).record(check)
-            )
+      val sameEpoch = state.stats.filter(_.epoch == header.epoch)
+      val base = if sameEpoch.isEmpty then state.finish else state
+      (
+        base.copy(
+          tip = next.tip,
+          ledger = Some(next.ledger),
+          pbft = next.pbft,
+          stats = Some(
+            sameEpoch.getOrElse(ByronEpochStats(header.epoch, 0, 0, 0, 0)).record(check)
           )
-        )
+        ),
+        boot.copy(era = Some(Era.Byron))
+      )
 
   /** Pre-Conway eras: body commitment, TPraos or Praos header checks with the ledger-lite view,
     * then the lite effects of the transactions.
@@ -485,6 +546,65 @@ object NodeRules:
           )
         }
 
+  /** The header's own checks against the ledger as the block's slot finds it: the envelope (the
+    * header and body sizes and the protocol version against the hard-fork configuration and the
+    * parameters in force), then the leader check, the VRF, the operational certificate and the KES
+    * signature of TPraos or Praos, with the pool distribution in force and, for TPraos, the overlay
+    * schedule of the genesis delegations. What the old rules and the era-indexed ones share: the
+    * ledger part is read from the state by the caller.
+    */
+  def headerChecks(
+      protocol: ProtocolState,
+      header: Header.Shelley,
+      bodySize: Long,
+      config: PraosConfig,
+      globals: LedgerGlobals,
+      params: ProtocolParams,
+      genDelegs: Map[Bytes, GenDelegPair],
+      pools: PoolDistribution
+  ): Either[BlockFailure, (ProtocolState, LeaderCheck)] =
+    val geometry = config.geometry
+    val epoch = geometry.epochOf(header.slot)
+    val nonceWindow =
+      if header.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
+      else geometry.stabilityWindow
+    for
+      _ <- config.forks
+        .check(
+          header.era,
+          epoch,
+          header.protocolVersion._1,
+          params.protocolMajor,
+          header.raw.size,
+          params.maxBlockHeaderSize,
+          bodySize,
+          params.maxBlockBodySize,
+          mainnet = globals.network == 1
+        )
+        .leftMap(BlockFailure.Envelope(_))
+      validated <-
+        if header.era.usesTPraos then
+          TPraos
+            .update(
+              Praos.tick(protocol, header.era, epoch, params.extraEntropy),
+              header,
+              LedgerView(params.effectiveD, params.extraEntropy, genDelegs, StakeView.Known(pools)),
+              config
+            )
+            .map(v => v.state -> v.leader)
+            .leftMap(BlockFailure.TPraos(_))
+        else
+          Praos
+            .validate(
+              Praos.tick(protocol, header.era, epoch),
+              header,
+              StakeView.Known(pools),
+              config,
+              nonceWindow
+            )
+            .leftMap(BlockFailure.Praos(_))
+    yield validated
+
   /** Full validation for every Shelley-based era: tick the ledger to the block's slot, validate the
     * header against the ticked pool distribution (so the leader threshold is always checked outside
     * the overlay schedule), then apply every transaction.
@@ -501,9 +621,6 @@ object NodeRules:
     val geometry = config.geometry
     val epoch = geometry.epochOf(announced.slot)
     val boot = state.boot
-    val nonceWindow =
-      if announced.era.ordinal >= Era.Conway.ordinal then geometry.randomnessStabilisationWindow
-      else geometry.stabilityWindow
     for
       decoded <- prepared.fold(Block.decodeShelley(raw).leftMap(BlockFailure.Decode(_)))(p =>
         Right(p.block)
@@ -522,47 +639,16 @@ object NodeRules:
         BlockFailure.BodyCommitment
       )
       ticked <- tickLedger(state.ledger, announced, geometry, globals)
-      _ <- config.forks
-        .check(
-          announced.era,
-          epoch,
-          announced.protocolVersion._1,
-          ticked.params.protocolMajor,
-          announced.raw.size,
-          ticked.params.maxBlockHeaderSize,
-          block.bodySize,
-          ticked.params.maxBlockBodySize,
-          mainnet = globals.network == 1
-        )
-        .leftMap(BlockFailure.Envelope(_))
-      pools = ticked.poolDistribution.distribution
-      view = LedgerView(
-        ticked.params.effectiveD,
-        ticked.params.extraEntropy,
+      validated <- headerChecks(
+        state.protocol,
+        announced,
+        block.bodySize,
+        config,
+        globals,
+        ticked.params,
         ticked.genDelegs,
-        StakeView.Known(pools)
+        ticked.poolDistribution.distribution
       )
-      validated <-
-        if announced.era.usesTPraos then
-          TPraos
-            .update(
-              Praos.tick(state.protocol, announced.era, epoch, ticked.params.extraEntropy),
-              announced,
-              view,
-              config
-            )
-            .map(v => v.state -> v.leader)
-            .leftMap(BlockFailure.TPraos(_))
-        else
-          Praos
-            .validate(
-              Praos.tick(state.protocol, announced.era, epoch),
-              announced,
-              StakeView.Known(pools),
-              config,
-              nonceWindow
-            )
-            .leftMap(BlockFailure.Praos(_))
       (praos, leader) = validated
       applied0 <- block.transactions.zipWithIndex.foldLeftM((ticked, 0, ExUnits.zero)) {
         case ((s, refBytes, spent), (t, i)) =>

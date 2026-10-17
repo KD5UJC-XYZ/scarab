@@ -2,15 +2,26 @@
 package xyz.kd5ujc.scarab.consensus.state
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.consensus.{ConsensusExtras, ForkTrigger, HardForkConfig}
-import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, PlutusStats}
+import xyz.kd5ujc.scarab.consensus.{
+  BootstrapState,
+  ByronState,
+  ConsensusExtras,
+  ForkTrigger,
+  HardForkConfig
+}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, Header, PlutusStats, Utxo}
 import xyz.kd5ujc.scarab.ledger.rules.EraNes
 import xyz.kd5ujc.scarab.ledger.state.{
   BlockNo,
   Hash32,
   MirrorError,
+  EpochState,
+  LedgerState,
+  NewEpochState,
   NodeExtras,
   SlotNo,
+  UTxOState,
+  UtxoTables,
   VocabError,
   WithOrigin
 }
@@ -76,7 +87,7 @@ object MirrorStep:
       start: Bound,
       next: A
   ): Either[TelescopeError, Telescope[A]] =
-    if era == t.era then Telescope.make(t.past, t.current.copy(state = next))
+    if era == t.era then Right(t.withState(next))
     else if era.index < t.era.index then Left(TelescopeError.WrongEra(era))
     else
       val skipped = Vector.fill(era.index - t.era.index - 1)(Past(start, start))
@@ -165,3 +176,57 @@ object MirrorStep:
       consensus,
       PlutusStats.zero
     )
+
+  /** The mirror after a Byron block: the chain-follow state with the block applied (the PBFT window
+    * is in it and in the chain-dependent state of the telescope), the bootstrap state, and the tip,
+    * annotated with whether the block is a boundary block.
+    */
+  def byronBlock(
+      m: MirrorState,
+      header: Header.Byron,
+      byron: ByronState,
+      boot: BootstrapState
+  ): Either[StateMirrorError, MirrorState] =
+    m.extras match
+      case _: MirrorExtras.InShelley => Left(StateMirrorError.ExtrasMismatch(m.ext.ledgerState.era))
+      case MirrorExtras.InByron(ledger, pending, _, protocol) =>
+        (
+          vocab(SlotNo.fromBigInt(header.slot)),
+          vocab(BlockNo.fromBigInt(header.blockNo)),
+          vocab(Hash32.fromBytes(header.hash))
+        ).tupled.map { (slot, blockNo, hash) =>
+          val ebb = if header.isBoundary then IsEBB.EBB else IsEBB.NotEBB
+          MirrorState(
+            ExtLedgerState(
+              m.ext.ledgerState.withState(EraLedgerState.ByronCurrent(byron)),
+              HeaderState(
+                WithOrigin.At(AnnTip(slot, blockNo, TipInfo.ByronTip(hash, ebb))),
+                m.ext.headerState.chainDep.withState(ChainDepState.PBft(byron.pbft))
+              )
+            ),
+            MirrorExtras.InByron(ledger, pending, boot, protocol)
+          )
+        }
+
+  /** The mirror with the handle on its UTxO set changed by `f`: the entries a block reads put in,
+    * or the set settled to what the backing store holds. A Byron mirror has no handle (its set is
+    * the Byron ledger's own) and is returned as it is.
+    */
+  def mapUtxo(m: MirrorState)(f: Utxo => Utxo): MirrorState =
+    m.ext.ledgerState.state match
+      case EraLedgerState.ByronCurrent(_) => m
+      case i: EraLedgerState.InShelleyEra[e] =>
+        val table = ShelleyLedgerState
+          .nes[e]
+          .andThen(NewEpochState.es[e])
+          .andThen(EpochState.ls[e])
+          .andThen(LedgerState.utxo[e])
+          .andThen(UTxOState.utxo[e])
+        val next =
+          EraLedgerState.InShelleyEra(i.era, table.modify(t => UtxoTables(f(t.utxo)))(i.state))
+        m.copy(ext = m.ext.copy(ledgerState = m.ext.ledgerState.withState(next)))
+
+  /** The new-epoch state of a mirror, with the witness of its era; none for a Byron state. */
+  def nesOf(m: MirrorState): Option[EraNes] = m.ext.ledgerState.state match
+    case i: EraLedgerState.InShelleyEra[e] => Some(EraNes.InEra(i.era, i.state.nes))
+    case EraLedgerState.ByronCurrent(_)    => None

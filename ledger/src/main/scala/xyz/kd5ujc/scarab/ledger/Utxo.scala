@@ -55,6 +55,21 @@ final case class Utxo(
   /** Remove the entries (absent ones are ignored). */
   def --(ins: IterableOnce[TxIn]): Utxo = ins.iterator.foldLeft(this)(_.remove(_))
 
+  /** Remove entries whose outputs are known although this value may not see them: the backing store
+    * can hold an entry that is neither in the diff nor in the read set, and `--` ignores those
+    * (nothing says what to debit). Here `known` says it, so the deletion is recorded in the diff
+    * (the store's copy is deleted when the changes are flushed) and the totals are debited. An
+    * entry the diff has already deleted is left as it is; one the diff or the read set holds is
+    * removed as `--` removes it.
+    */
+  def removeKnown(known: Map[TxIn, TxOut]): Utxo =
+    known.foldLeft(this) { case (u, (in, out)) =>
+      u.diff.get(in) match
+        case Some(Change(None, _))       => u
+        case Some(Change(Some(held), _)) => u.removed(in, held)
+        case None                        => u.removed(in, u.resident.getOrElse(in, out))
+    }
+
   /** Add the entries, replacing existing ones. */
   def ++(created: IterableOnce[(TxIn, TxOut)]): Utxo =
     created.iterator.foldLeft(this) { case (u, (in, out)) => u.put(in, out) }

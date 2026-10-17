@@ -87,6 +87,12 @@ object EraIndexed:
 final case class Telescope[A] private (era: Era, past: Vector[Past], current: Current[A]):
   def state: A = current.state
 
+  /** The telescope with the state of the current era replaced, the era staying the same: the caller
+    * keeps `next` in the era the telescope is in (use [[Telescope.make]] or [[MirrorStep.into]] to
+    * change the era).
+    */
+  def withState(next: A): Telescope[A] = new Telescope(era, past, current.copy(state = next))
+
   /** The telescope one era later: the current era ends at `end` and `next` starts there
     * (`Telescope.extend`).
     */
