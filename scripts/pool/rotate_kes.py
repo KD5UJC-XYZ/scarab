@@ -243,6 +243,8 @@ class Settings:
     confirm_timeout: float
     poll: float
     state_file: pathlib.Path
+    metrics_file: pathlib.Path | None = None
+    observed: dict = dataclasses.field(default_factory=dict)  # what this run saw: remaining, rotated, busy
 
 
 class Cli:
@@ -457,6 +459,7 @@ def run(s, cli=None, node=None):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             say(step="busy", message="another run holds the lock")
+            s.observed["busy"] = True
             return EXIT_OK
         return rotate(s, cli or Cli(s), node)
 
@@ -471,6 +474,7 @@ def rotate(s, cli, node):
         say(step="resuming", rotation=rotation)
         clean_orphans(key_dir, {rotation["old"], rotation["new"]})
         finish(s, node, key_dir, rotation)
+        s.observed["rotated"] = True
         return EXIT_OK
     if not (key_dir / current).is_dir():
         raise RotationError(EXIT_CONFIG, f"{key_dir / 'current'} points at {current}, which does not exist")
@@ -485,6 +489,7 @@ def rotate(s, cli, node):
     left = periods_left(cert, period, max_evolutions)
     say(step="checked", slot=tip["slot"], kesPeriod=period, counter=cert.counter, start=cert.start_period,
         remaining=left, threshold=s.threshold)
+    s.observed["remaining"] = left
     if left > s.threshold:
         return EXIT_OK
     on_chain = node.on_chain_counter()
@@ -499,7 +504,60 @@ def rotate(s, cli, node):
     write_atomic(key_dir / "rotation.json", json.dumps(rotation))
     say(step="issued", **rotation)
     finish(s, node, key_dir, rotation)
+    s.observed["rotated"] = True
     return EXIT_OK
+
+
+# ---------------------------------------------------------------- metrics (node_exporter textfile collector)
+
+METRIC_PREFIX = "scarab_kes_rotation_"
+LAST_RUN, LAST_SUCCESS, LAST_ROTATION = "last_run_timestamp_seconds", "last_success_timestamp_seconds", \
+    "last_rotation_timestamp_seconds"
+LAST_STATUS, REMAINING = "last_exit_status", "periods_remaining"
+_HELP = {
+    LAST_RUN: "Unix time the driver last finished a run (not counting a run that found another holding the lock).",
+    LAST_SUCCESS: "Unix time of the last run that ended with exit status 0 (checked, or rotated and confirmed).",
+    LAST_ROTATION: "Unix time the node last confirmed credentials this driver put in place.",
+    LAST_STATUS: "Exit status of the last run: 0 ok, 1 reload refused, 2 not confirmed, 3 node unreachable, 4 setup wrong.",
+    REMAINING: "KES periods the certificate in use had left when the driver last looked (before any rotation).",
+}
+
+
+def read_metrics(path):
+    """The values of an earlier metrics file (name without the prefix -> number); {} when there is none."""
+    values = {}
+    try:
+        for line in path.read_text().splitlines():
+            if line.startswith(METRIC_PREFIX):
+                name, _, value = line.partition(" ")
+                values[name[len(METRIC_PREFIX):]] = float(value)
+    except (OSError, ValueError):
+        pass
+    return values
+
+
+def metrics_text(values):
+    lines = []
+    for name in (LAST_RUN, LAST_SUCCESS, LAST_ROTATION, LAST_STATUS, REMAINING):
+        if name in values:
+            lines += [f"# HELP {METRIC_PREFIX}{name} {_HELP[name]}", f"# TYPE {METRIC_PREFIX}{name} gauge",
+                      f"{METRIC_PREFIX}{name} {values[name]:g}"]
+    return "\n".join(lines) + "\n"
+
+
+def write_metrics(s, status, now):
+    """Write the textfile after a run: the time and status of this one, and the times of earlier successes kept."""
+    if s.metrics_file is None or s.observed.get("busy"):
+        return
+    values = read_metrics(s.metrics_file)
+    values[LAST_RUN], values[LAST_STATUS] = now, status
+    if status == EXIT_OK:
+        values[LAST_SUCCESS] = now
+    if s.observed.get("rotated"):
+        values[LAST_ROTATION] = now
+    if "remaining" in s.observed:
+        values[REMAINING] = s.observed["remaining"]
+    write_atomic(s.metrics_file, metrics_text(values), mode=0o644)
 
 
 # ---------------------------------------------------------------- command line
@@ -542,6 +600,8 @@ def parse_args(argv, environ):
     p.add_argument("--confirm-timeout", type=float, default=float(default("CONFIRM_TIMEOUT", 60)), help="seconds to wait for the reload event")
     p.add_argument("--poll", type=float, default=float(default("POLL", 1)), help="seconds between looks at the log")
     p.add_argument("--state-file", default=default("STATE_FILE"), help="the last counter issued (default <key-dir>/last-counter)")
+    p.add_argument("--metrics-file", default=default("METRICS_FILE"),
+                   help="write Prometheus text metrics here after each run (a node_exporter textfile-collector file)")
     args = p.parse_args(argv)
     missing = [n for n in ("key_dir", "cold_skey", "socket", "shelley_genesis") if not getattr(args, n)]
     if missing:
@@ -557,16 +617,22 @@ def parse_args(argv, environ):
         signal_command=shlex.split(args.signal_command) if args.signal_command else [],
         cli_image=args.cli_image, user=args.user, threshold=args.threshold,
         confirm_timeout=args.confirm_timeout, poll=args.poll,
-        state_file=pathlib.Path(args.state_file) if args.state_file else key_dir / "last-counter")
+        state_file=pathlib.Path(args.state_file) if args.state_file else key_dir / "last-counter",
+        metrics_file=pathlib.Path(args.metrics_file) if args.metrics_file else None)
 
 
 def main(argv=None, environ=None):
     settings = parse_args(sys.argv[1:] if argv is None else argv, os.environ if environ is None else environ)
     try:
-        return run(settings)
+        status = run(settings)
     except RotationError as e:
         say(step="failed", status=e.status, message=str(e))
-        return e.status
+        status = e.status
+    try:
+        write_metrics(settings, status, time.time())
+    except OSError as e:  # the metrics are a courtesy: they never change the run's outcome
+        say(step="warning", message=f"could not write the metrics file: {e}")
+    return status
 
 
 if __name__ == "__main__":

@@ -1,0 +1,165 @@
+# SPDX-License-Identifier: Apache-2.0
+# Alerts for a Scarab block producer (docs/running.md, "Pool monitoring"). Labels are Alertmanager-neutral:
+# `severity` is info, warning or critical, and nothing here names a receiver; wire notifications privately
+# (an Alertmanager route on `severity`, or Grafana alerting on the same expressions).
+#
+# The node's series carry `host` and `container` (the agent adds them). The rotation driver's series
+# (scarab_kes_rotation_*) come from the host's node exporter textfile collector and carry `host` only.
+groups:
+  - name: pool-kes
+    rules:
+      - alert: PoolKesPeriodsLow
+        expr: cardano_node_metrics_remainingKESPeriods_int < 10 and cardano_node_metrics_remainingKESPeriods_int >= 3
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.container }}: {{ $value }} KES periods left"
+          description: >-
+            The operational certificate runs out in fewer than 10 KES periods. The rotation driver rotates at its
+            threshold (10 by default), so it has not succeeded; see PoolKesRotationFailing and
+            PoolKesRotationStale. When the certificate expires the pool forges no more blocks.
+      - alert: PoolKesPeriodsCritical
+        expr: cardano_node_metrics_remainingKESPeriods_int < 3
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: {{ $value }} KES periods left"
+          description: >-
+            Fewer than 3 KES periods remain: rotate the key by hand now (docs/running.md, "Rotating the KES key").
+      - alert: PoolKesRotationStale
+        expr: time() - scarab_kes_rotation_last_success_timestamp_seconds > 3 * 3600
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }}: the rotation driver has not succeeded for {{ $value | humanizeDuration }}"
+          description: >-
+            No run of rotate_kes.py ended with exit status 0 for 3 hours: the timer is not running, the driver
+            cannot finish, or the textfile is stale.
+      - alert: PoolKesRotationMetricsMissing
+        expr: absent(scarab_kes_rotation_last_success_timestamp_seconds)
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "the rotation driver's metrics are not scraped"
+          description: >-
+            No scarab_kes_rotation_last_success_timestamp_seconds series for an hour: the driver has no
+            --metrics-file, the node exporter's textfile collector does not read it, or the agent is down.
+      - alert: PoolKesRotationFailing
+        expr: scarab_kes_rotation_last_exit_status != 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: the rotation driver's last run exited with status {{ $value }}"
+          description: >-
+            Exit status 1 the node refused the new credentials, 2 not confirmed in time, 3 the node's socket does
+            not answer, 4 configuration or tools wrong. The timer runs it again; see the unit's journal.
+      - alert: PoolKesPersistFailed
+        expr: increase(scarab_kes_persist_failures_total[15m]) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: an evolved KES key could not be written back"
+          description: >-
+            The node keeps forging with the key in memory but the file still holds an earlier period (kesPersistFailed):
+            check the key directory (permissions, space, mount) before the next restart.
+  - name: pool-forging
+    rules:
+      - alert: PoolForgedBlockNotAdopted
+        expr: >-
+          increase(cardano_node_metrics_Forge_forged_counter[30m])
+          - increase(cardano_node_metrics_Forge_adopted_counter[30m])
+          - increase(cardano_node_metrics_Forge_didnt_adopt_counter[30m]) > 0
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: a forged block has neither been adopted nor lost"
+          description: >-
+            A block was forged and ten minutes later is neither adopted nor counted as lost. Look for `forged`
+            without `adopted` in the node log.
+      - alert: PoolBlockLost
+        expr: increase(cardano_node_metrics_Forge_didnt_adopt_counter[15m]) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.container }}: a forged block did not stay on our chain"
+          description: A slot battle lost, or a block replaced later. Expected now and then; a run of them is not.
+      - alert: PoolForgeFailed
+        expr: delta(cardano_node_metrics_nodeCannotForge_int[15m]) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: the pool led a slot and could not forge in it"
+          description: >-
+            `forgeFailed` in the node log: the leader check passed and the block could not be made (credentials,
+            clock, the KES key). A block was lost.
+      - alert: PoolForgingDisabled
+        expr: cardano_node_metrics_forging_enabled_int == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: the node has no forging credentials"
+          description: The node runs without forging credentials (or they were not loaded).
+      - alert: PoolNotCheckingSlots
+        expr: >-
+          increase(cardano_node_metrics_Forge_about_to_lead_counter[15m]) < 1
+          and on (host, container) scarab_node_phase{phase="Following"} == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.container }}: following, but no slot was checked for leadership in 15 minutes"
+          description: A following node checks about one slot per second; none means the forger is not running.
+      - alert: PoolNoBlocksFor48h
+        expr: >-
+          increase(cardano_node_metrics_Forge_adopted_counter[48h]) < 1
+          and on (host, container) (time() - process_start_time_seconds > 48 * 3600)
+        for: 1h
+        labels: {severity: info}
+        annotations:
+          summary: "{{ $labels.container }}: no block adopted in 48 hours"
+          description: >-
+            At 14 blocks per epoch of 5 days the chance of 48 hours without a block is under 1 percent. It fires
+            until the pool's stake is active (a pool that is not yet leader adopts none) and stays silent for 48
+            hours after a restart.
+  - name: pool-node
+    rules:
+      - alert: PoolNodeDown
+        expr: up{job="scarab"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: /metrics does not answer"
+          description: The node is down, restarting, or its metrics listener is unreachable from the agent.
+      - alert: PoolRestarted
+        expr: changes(process_start_time_seconds[15m]) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.container }}: the process restarted"
+          description: Uptime was reset (a crash, a deploy or a stall exit). It may need to replay before it forges again.
+      - alert: PoolBehindPeers
+        expr: >-
+          max by (host, container) (scarab_peer_tip_slot)
+          - max by (host, container) (cardano_node_metrics_slotNum_int) > 120
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.container }}: {{ $value }} slots behind the peers' tip"
+          description: >-
+            More than 120 slots (2 minutes at 1 s slots, about six blocks at Preprod's density) behind the highest
+            tip a peer announced for 10 minutes: not synced, so any block forged would be on a stale chain.
+      - alert: PoolNoHotPeers
+        expr: cardano_node_metrics_peerSelection_Hot_int == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: no hot peers"
+          description: The node follows no peer and cannot announce its blocks.
+      - alert: PoolFollowerStalled
+        expr: scarab_follower_stalled == 1
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.container }}: the chain has not advanced while a peer is ahead"
+          description: >-
+            The stall watchdog (--stall-minutes) fired and has not cleared for 10 minutes; consider --stall-exit-after
+            so a supervisor restarts it.

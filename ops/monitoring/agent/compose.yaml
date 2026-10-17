@@ -30,6 +30,8 @@ services:
       - /sys:/host/sys:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
       - /:/host/root:ro
+      # *.prom files of the pool's rotation driver (textfile collector); an empty directory is harmless
+      - ${TEXTFILE_DIR:-./textfile}:/host/textfile:ro
       - /var/lib/docker:/var/lib/docker:ro
       # cAdvisor resolves containers through containerd (Docker's containerd image store)
       - /run/containerd:/run/containerd:ro

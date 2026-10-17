@@ -1,0 +1,135 @@
+# SPDX-License-Identifier: Apache-2.0
+# Unit tests of rules/pool.yml:  promtool test rules prometheus/tests/pool.test.yml  (from ops/monitoring/server)
+rule_files:
+  - ../rules/pool.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'cardano_node_metrics_remainingKESPeriods_int{container="n", host="h"}'
+        values: '12+0x10 8+0x10 2+0x10'
+      - series: 'scarab_kes_rotation_last_success_timestamp_seconds{host="h"}'
+        values: '0+0x400'
+      - series: 'scarab_kes_rotation_last_exit_status{host="h"}'
+        values: '0+0x10 3+0x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PoolKesPeriodsLow
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: PoolKesPeriodsLow
+        exp_alerts:
+          - exp_labels: {severity: warning, container: n, host: h}
+            exp_annotations:
+              summary: "n: 8 KES periods left"
+              description: >-
+                The operational certificate runs out in fewer than 10 KES periods. The rotation driver rotates at its
+                threshold (10 by default), so it has not succeeded; see PoolKesRotationFailing and
+                PoolKesRotationStale. When the certificate expires the pool forges no more blocks.
+      - eval_time: 25m
+        alertname: PoolKesPeriodsCritical
+        exp_alerts:
+          - exp_labels: {severity: critical, container: n, host: h}
+            exp_annotations:
+              summary: "n: 2 KES periods left"
+              description: >-
+                Fewer than 3 KES periods remain: rotate the key by hand now (docs/running.md, "Rotating the KES key").
+      - eval_time: 25m
+        alertname: PoolKesPeriodsLow
+        exp_alerts: []
+      # the driver last succeeded at time 0 (it is far in the past once the clock passes 3 hours)
+      - eval_time: 3h10m
+        alertname: PoolKesRotationStale
+        exp_alerts:
+          - exp_labels: {severity: critical, host: h}
+            exp_annotations:
+              summary: "h: the rotation driver has not succeeded for 3h 10m 0s"
+              description: >-
+                No run of rotate_kes.py ended with exit status 0 for 3 hours: the timer is not running, the driver
+                cannot finish, or the textfile is stale.
+      - eval_time: 25m
+        alertname: PoolKesRotationFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, host: h}
+            exp_annotations:
+              summary: "h: the rotation driver's last run exited with status 3"
+              description: >-
+                Exit status 1 the node refused the new credentials, 2 not confirmed in time, 3 the node's socket does
+                not answer, 4 configuration or tools wrong. The timer runs it again; see the unit's journal.
+
+  - interval: 1m
+    input_series:
+      - series: 'scarab_peer_tip_slot{container="n", host="h"}'
+        values: '1000+60x30'
+      - series: 'cardano_node_metrics_slotNum_int{container="n", host="h"}'
+        values: '1000+1x30'
+      - series: 'cardano_node_metrics_peerSelection_Hot_int{container="n", host="h"}'
+        values: '3+0x5 0+0x30'
+      - series: 'scarab_follower_stalled{container="n", host="h"}'
+        values: '0+0x5 1+0x30'
+      - series: 'scarab_kes_persist_failures_total{container="n", host="h"}'
+        values: '0+0x10 1+0x20'
+      - series: 'cardano_node_metrics_Forge_forged_counter{container="n", host="h"}'
+        values: '0+0x10 1+0x40'
+      - series: 'cardano_node_metrics_Forge_adopted_counter{container="n", host="h"}'
+        values: '0+0x40'
+      - series: 'cardano_node_metrics_Forge_didnt_adopt_counter{container="n", host="h"}'
+        values: '0+0x40'
+      - series: 'process_start_time_seconds{container="n", host="h"}'
+        values: '1000+0x10 2000+0x30'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: PoolBehindPeers
+        exp_alerts:
+          - exp_labels: {severity: warning, container: n, host: h}
+            exp_annotations:
+              summary: "n: 1475 slots behind the peers' tip"
+              description: >-
+                More than 120 slots (2 minutes at 1 s slots, about six blocks at Preprod's density) behind the highest
+                tip a peer announced for 10 minutes: not synced, so any block forged would be on a stale chain.
+      - eval_time: 12m
+        alertname: PoolNoHotPeers
+        exp_alerts:
+          - exp_labels: {severity: critical, container: n, host: h}
+            exp_annotations:
+              summary: "n: no hot peers"
+              description: The node follows no peer and cannot announce its blocks.
+      - eval_time: 4m
+        alertname: PoolNoHotPeers
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PoolFollowerStalled
+        exp_alerts:
+          - exp_labels: {severity: critical, container: n, host: h}
+            exp_annotations:
+              summary: "n: the chain has not advanced while a peer is ahead"
+              description: >-
+                The stall watchdog (--stall-minutes) fired and has not cleared for 10 minutes; consider --stall-exit-after
+                so a supervisor restarts it.
+      - eval_time: 12m
+        alertname: PoolKesPersistFailed
+        exp_alerts:
+          - exp_labels: {severity: critical, container: n, host: h}
+            exp_annotations:
+              summary: "n: an evolved KES key could not be written back"
+              description: >-
+                The node keeps forging with the key in memory but the file still holds an earlier period (kesPersistFailed):
+                check the key directory (permissions, space, mount) before the next restart.
+      - eval_time: 25m
+        alertname: PoolForgedBlockNotAdopted
+        exp_alerts:
+          - exp_labels: {severity: critical, container: n, host: h}
+            exp_annotations:
+              summary: "n: a forged block has neither been adopted nor lost"
+              description: >-
+                A block was forged and ten minutes later is neither adopted nor counted as lost. Look for `forged`
+                without `adopted` in the node log.
+      - eval_time: 11m
+        alertname: PoolRestarted
+        exp_alerts:
+          - exp_labels: {severity: warning, container: n, host: h}
+            exp_annotations:
+              summary: "n: the process restarted"
+              description: Uptime was reset (a crash, a deploy or a stall exit). It may need to replay before it forges again.

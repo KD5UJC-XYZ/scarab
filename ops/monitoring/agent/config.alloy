@@ -96,6 +96,11 @@ prometheus.exporter.unix "host" {
   procfs_path = "/host/proc"
   sysfs_path  = "/host/sys"
   rootfs_path = "/host/root"
+  // The KES rotation driver writes *.prom files here (rotate_kes.py --metrics-file; the directory is
+  // mounted from TEXTFILE_DIR, see compose.yaml).
+  textfile {
+    directory = "/host/textfile"
+  }
   filesystem {
     mount_points_exclude = "^/(dev|proc|run|sys|host|var/lib/docker/.+)($|/)"
   }
