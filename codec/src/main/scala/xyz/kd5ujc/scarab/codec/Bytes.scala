@@ -17,6 +17,16 @@ final class Bytes private (
 ) extends Serializable:
   private var cachedHash = 0
 
+  /** The first four bytes, big-endian, with the sign bit flipped so that the signed order of the
+    * `Int` is the unsigned order of the bytes; a shorter value is padded with zeros. Computed on
+    * the first comparison and kept (0 is "not yet", and the one value it could be, the bytes `80 00
+    * 00 00`, is computed again each time). It fills the padding the object has anyway (the header,
+    * the array, the offset, the length and the hash take 28 of 32 bytes), so it costs no memory,
+    * and a comparison that the prefixes settle, which for hashes is nearly every one, reads two
+    * objects and no arrays.
+    */
+  private var cachedPrefix = 0
+
   /** A `Bytes` built from a null vector (programming misuse) fails on first use, as it always did.
     */
   def size: Int =
@@ -81,15 +91,35 @@ final class Bytes private (
       i += 1
     sb.toString
 
-  /** Lexicographic unsigned comparison. */
+  private def prefix: Int =
+    var p = cachedPrefix
+    if p == 0 then
+      var acc = 0
+      var i = 0
+      while i < 4 do
+        acc = (acc << 8) | (if i < size then array(offset + i) & 0xff else 0)
+        i += 1
+      p = acc ^ Int.MinValue
+      cachedPrefix = p
+    p
+
+  /** Lexicographic unsigned comparison: negative, zero or positive. The prefixes settle most
+    * comparisons; the rest is `Arrays.compareUnsigned`, a vectorised intrinsic. It matters to the
+    * sorted maps of the ledger, whose every lookup compares 28 or 32 bytes about seventeen times.
+    */
   def compareTo(other: Bytes): Int =
-    val n = math.min(size, other.size)
-    var i = 0
-    while i < n do
-      val c = (array(offset + i) & 0xff) - (other.array(other.offset + i) & 0xff)
-      if c != 0 then return c
-      i += 1
-    size - other.size
+    val p = prefix
+    val q = other.prefix
+    if p != q then Integer.compare(p, q)
+    else
+      Arrays.compareUnsigned(
+        array,
+        offset,
+        offset + size,
+        other.array,
+        other.offset,
+        other.offset + other.size
+      )
 
   override def equals(that: Any): Boolean = that match
     case o: Bytes =>
