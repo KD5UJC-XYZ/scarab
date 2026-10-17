@@ -745,7 +745,7 @@ are the ones most in need of a second reading.
 - **Era:** Plutus, protocol 11 and 12
 - **Specification or CDDL says:** The Plutus conformance suite (plutus 1.70.0.0, 1009 evaluation cases) fixes the behaviour of the reference.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 pass the same 987. Differences: (1) the flat decoder accepts `value` constants that `buildValueWith` rejects (unsorted or repeated currency symbols or token names, an empty inner map, a zero quantity); (2) `case` on a `Data.Constr` is enabled from protocol 12 in 1.3.0, so `data-01` and `data-02` fail at protocol 11; (3) `bls12_381_G1/G2_hashToGroup` with a 255-byte DST, and with a 32-byte DST of arbitrary bytes, returns another point; (4) the flat encoder writes a BLS12-381 constant as an application of `uncompress`, and the units spent after an out-of-budget `dropList` with a huge count wrap negative.
-- **Evidence:** Roadmap I1. Drafts exist in our private notes; none of these has been filed upstream.
+- **Evidence:** Roadmap I1. None of these has been filed upstream yet.
 - **Pinned by:** [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala), `PlutusConformanceSuite`.
 - **Suggested upstream action:** Scalus: file the four items (not filed yet).
 - **Status:** observed
@@ -755,7 +755,7 @@ are the ones most in need of a second reading.
 - **Era:** Plutus V2 onwards
 - **Specification or CDDL says:** See the Part A entry on secp256k1: zero `r` or `s` and a high `s` give `False`.
 - **Implementation does:** Scalus 1.2.0 and 1.3.0 require `r > 0` and `s > 0` and raise an error.
-- **Evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217). Roadmap B15. Not filed upstream (draft issue F in our notes).
+- **Evidence:** Preprod tx 97b31e35 (slot 92,114,397, epoch 217). Roadmap B15. Not filed upstream yet.
 - **Pinned by:** [`PreprodSecp256k1RulesSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodSecp256k1RulesSuite.scala), [`Secp256k1Suite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/Secp256k1Suite.scala).
 - **Suggested upstream action:** Scalus: change the builtin to the libsecp256k1 semantics (not filed yet).
 - **Status:** confirmed in source
@@ -765,7 +765,7 @@ are the ones most in need of a second reading.
 - **Era:** Babbage onwards
 - **Specification or CDDL says:** See the Part A entry on script bytes: V1 and V2 ignore a remainder.
 - **Implementation does:** `DeBruijnedProgram.fromCbor` fails on any trailing input.
-- **Evidence:** Preprod tx aee75c1c. Roadmap B16. Not filed upstream (draft issue G in our notes).
+- **Evidence:** Preprod tx aee75c1c. Roadmap B16. Not filed upstream yet.
 - **Pinned by:** [`PreprodMalformedRefScriptSuite`](../ledger/src/test/scala/xyz/kd5ujc/scarab/ledger/PreprodMalformedRefScriptSuite.scala).
 - **Suggested upstream action:** Scalus: expose the first-item length or accept a remainder for V1 and V2 (not filed yet).
 - **Status:** confirmed in source
@@ -775,7 +775,7 @@ are the ones most in need of a second reading.
 - **Era:** Plutus V2 onwards
 - **Specification or CDDL says:** See the Part A entry on `serialiseData`: an unsigned 64-bit index, no depth limit.
 - **Implementation does:** Scalus 1.2.0 wrote the index through a `Long` (fixed in 1.3.0). The borer encoder of 1.3.0 still stops at 1000 levels of array nesting (`Exceeded 1000 maximum array/map nesting levels`), where the reference has no limit and a datum can be as deep as a block. The flat codec of `Data` constants shared the truncation in 1.2.0.
-- **Evidence:** Preprod tx 2edd684f (slot 80,239,053, epoch 189). Not filed upstream (draft in our notes).
+- **Evidence:** Preprod tx 2edd684f (slot 80,239,053, epoch 189). Not filed upstream yet.
 - **Pinned by:** [`DataSerialiserSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/DataSerialiserSuite.scala), [`ScalusConformanceReproducersSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/ScalusConformanceReproducersSuite.scala).
 - **Suggested upstream action:** Scalus: remove the nesting limit in the `Data` encoder (not filed yet).
 - **Status:** confirmed in source
