@@ -155,6 +155,29 @@ software; versions mark milestones, not stability. Commit hashes refer to this r
   `blockNum` and epoch between the log's readings before and after, blocks applied equal to the `extended` events,
   every block timed, no validation error); `pool` checks the `Forge_*` series against `GET /forging`.
 
+### Added (ledger-state mirror, step 2, jump 2: the LEDGER rules of Shelley to Babbage, J2.5)
+- **The transaction and block rules of Shelley, Allegra, Mary, Alonzo and Babbage as `Sts` over `LedgerState[E]`, one instance
+  over the era witness** (`ledger/rules/`, each citing its upstream file and line): `ShelleyUtxow`, `ShelleyUtxo` (with PPUP and
+  the instant stake of the **pointer addresses**), UTXOS (the node's phase-2 predicate), `ShelleyDelegs`, `ShelleyDelpl` and
+  `ShelleyDeleg` (registration with its **pointer**, delegation, **genesis delegation**, **MIR**), POOL (the rule Conway has),
+  `ShelleyLedger`, `ShelleyLedgers` and `ShelleyBbody` (the block counted for its pool unless its slot is one of the overlay
+  schedule). `PreConway[E]` is the evidence that an era is one of the five (Haskell's `AtMostEra "Babbage"` with its classes: the
+  records the match types hide, and the witness' order for what the eras add); `ConwayBlock` is now `EraBlock`, the combinator's
+  tick and the BBODY of the era. `NewRules.forEra` answers for every Shelley-based era, and the pair carries the new side's state
+  from block to block.
+- **Where the reference is not the old rules, the reference is followed** (findings): a deregistration refunds the deposit the
+  account holds; the genesis signatures of a MIR certificate are UTXOW's; withdrawals are checked and drained in LEDGER before
+  DELEGS; a genesis delegation to a delegate or VRF key another delegation uses is refused; a proposal for this epoch makes the
+  prediction of the next epoch's parameters at once. The failures of the rules with no closed case are `LedgerFailure.Invalid`
+  of the constructor's name (the node-to-client encoding is Conway's and exhaustive).
+- **Tests and runs.** `ShelleyLedgerSuite` runs the five eras on both sides transaction by transaction (payments, pointers,
+  certificates, withdrawals, pools, MIR, genesis delegation, PPUP, native scripts, Plutus with the collateral, the collateral
+  return, reference inputs, a transaction of 3,000 certificates and 1,500 withdrawals on a 256 KiB stack); `ShelleyBbodySuite`
+  (the overlay, the execution units, 10,000 transactions on a 256 KiB stack). The harness: the eras fixture 675 blocks applied
+  by the new side, 0 divergences; Preview every epoch up to 646 (2,342,760 blocks) and Preprod from genesis to epoch 164
+  (2,646,309 blocks): 0 divergences; devnet `e2e` and `soak` with `SCARAB_RULES=differential` pass. `NewRules.carried` seeds the
+  reward update of the state of any era (it did for Conway only).
+
 ### Added (ledger-state mirror, step 2, jump 2: the Conway LEDGER rules, J2.4)
 - **The transaction rules of Conway as `Sts` over `LedgerState[Conway]`** (`ledger/rules/`, each citing its upstream file and
   line): `Utxow`, `Utxo` and `Utxos` (the checks of the transaction, the evaluation of its scripts, the change of the UTxO

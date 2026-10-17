@@ -52,7 +52,7 @@ final case class PpupEnv(
     genDelegs: SortedMap[KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.GenDelegPair]
 )
 
-/** PPUP (`Shelley/Rules/Ppup.hs:157`, `ppupTransitionNonEmpty`): the update proposals of a
+/** PPUP (`Shelley/Rules/Ppup.hs:146`, `ppupTransitionNonEmpty`): the update proposals of a
   * transaction. The genesis delegates may propose, the proposed protocol version must follow the
   * one in force, and the epoch of the proposal is this one before the point of no return (two
   * stability windows before the end of the epoch) and the next after it. A proposal for this epoch
@@ -113,7 +113,7 @@ object ShelleyPpup extends Sts[PpupEnv, ShelleyGovState, Option[Update], LedgerF
     }
 
 /** What the instant stake becomes as outputs are created and spent (`addShelleyInstantStake`,
-  * `deleteShelleyInstantStake`, `Shelley/State/Stake.hs:100-130`): the lovelace of an output goes
+  * `deleteShelleyInstantStake`, `Shelley/State/Stake.hs:108-146`): the lovelace of an output goes
   * to the entry of the credential of a base address or of the pointer of a pointer address, and an
   * entry that reaches zero is removed. An enterprise address and a Byron address have none.
   */
@@ -192,7 +192,7 @@ object ShelleyDeposits:
       }
     (pp.keyDeposit * keys + pp.poolDeposit * newPools.size, refunds)
 
-/** UTXO (`Shelley/Rules/Utxo.hs:277`, `utxoInductive`, with the rules of the later eras): the
+/** UTXO (`Shelley/Rules/Utxo.hs:336`, `utxoInductive`, with the rules of the later eras): the
   * validity of the transaction against the parameters and the UTxO set, UTXOS (the evaluation of
   * the Plutus scripts, Alonzo on), PPUP for a valid transaction, and then the change of the state
   * (`updateUTxOState`): the set, the instant stake, the fees and the deposits of a valid
@@ -318,7 +318,7 @@ object ShelleyUtxo:
       collateral <- PreConwayRules.collateralChecks(ann.utxo, pp, tx)
     yield collateral
 
-  /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:610`, `Alonzo/Rules/Utxos.hs`): a valid transaction
+  /** `updateUTxOState` (`Shelley/Rules/Utxo.hs:584`, `Alonzo/Rules/Utxos.hs`): a valid transaction
     * spends its inputs and creates its outputs, pays its fee and the deposits less the refunds; one
     * that failed phase 2 spends its collateral and returns what the collateral return says, and its
     * fee is the collateral's.
@@ -361,7 +361,7 @@ object ShelleyUtxo:
         s.copy[E](utxo = UtxoTables(utxo -- body.collateral ++ returned), fees = fees)
       )
 
-/** UTXOW (`Shelley/Rules/Utxow.hs:290`, `transitionRulesUTXOW`, with the Alonzo and Babbage rules
+/** UTXOW (`Shelley/Rules/Utxow.hs:270`, `transitionRulesUTXOW`, with the Alonzo and Babbage rules
   * that extend it): the scripts the transaction provides are the ones it needs, its datums and
   * redeemers match the Plutus scripts, the script integrity hash, the auxiliary data, the
   * signatures, and the genesis delegates' signatures a MIR certificate needs

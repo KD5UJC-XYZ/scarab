@@ -53,9 +53,9 @@ object ShelleyCertLens:
   val iRewards: Lens[ShelleyCertState, InstantaneousRewards] =
     ShelleyCertState.dState.andThen(DState.iRewards[ShelleyAccounts])
 
-/** `DelegsEnv` (`Delegs.hs:60-68`): the block-level context of the transaction (the slot, the
-  * epoch, the position in the block), the parameters in force, the transaction (its identity, for
-  * the failures) and the chain account (the reserves and the treasury a MIR certificate draws on).
+/** `DelegsEnv` (`Delegs.hs`): the block-level context of the transaction (the slot, the epoch, the
+  * position in the block), the parameters in force, the transaction (its identity, for the
+  * failures) and the chain account (the reserves and the treasury a MIR certificate draws on).
   */
 final case class DelegsEnv(
     ctx: TxRules.Env,
@@ -65,7 +65,7 @@ final case class DelegsEnv(
 )
 
 /** `DelegEnv` (`Deleg.hs`, `DelplEnv`): DELEGS' environment, with the pointer of the certificate
-  * that DELEGS builds (`Ptr slot txIx certIx`, `Delegs.hs:160-165`).
+  * that DELEGS builds (`Ptr slot txIx certIx`, `Delegs.hs:169`).
   */
 final case class ShelleyDelegEnv(delegs: DelegsEnv, ptr: Ptr)
 
@@ -125,7 +125,7 @@ object ShelleyCertOps:
       )
     )
 
-/** DELEG (`Shelley/Rules/Deleg.hs:177`, `delegationTransition`): registration, deregistration and
+/** DELEG (`Shelley/Rules/Deleg.hs:252`, `delegationTransition`): registration, deregistration and
   * delegation of stake credentials, the delegation of a genesis key, and the instantaneous rewards.
   *
   * The signatures a MIR certificate needs of the genesis delegates are not this rule's: they are
@@ -216,7 +216,7 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
         (LedgerFailure.Unsupported(id, s"certificate $other before Conway"): LedgerFailure)
           .raise[F, Unit]
 
-  /** The `MIRCert` of a transaction (`Deleg.hs:285-330`): to the reserves' or the treasury's
+  /** The `MIRCert` of a transaction (`Deleg.hs:252-420`): to the reserves' or the treasury's
     * entries, or a transfer between the pots, from the pots as the chain account and the
     * instantaneous rewards so far have them.
     */
@@ -318,7 +318,7 @@ object ShelleyDeleg extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
       _ <- st.set(ShelleyCertLens.iRewards.replace(next)(s))
     yield ()
 
-/** DELPL (`Shelley/Rules/Delpl.hs`, `delplTransition`): a certificate goes to the rule of its
+/** DELPL (`Shelley/Rules/Delpl.hs:174`, `delplTransition`): a certificate goes to the rule of its
   * family: POOL for a pool's registration and retirement (POOL sees the pool state only), DELEG for
   * the rest.
   */
@@ -348,7 +348,7 @@ object ShelleyDelpl extends Sts[ShelleyDelegEnv, ShelleyCertState, Certificate, 
           .flatMap(h => pool(PoolCert.RetirePool(h, e)))
       case _ => ShelleyDeleg.transition[F](env, cert)
 
-/** DELEGS (`Shelley/Rules/Delegs.hs:150`, `delegsTransition`): the certificates of a transaction,
+/** DELEGS (`Shelley/Rules/Delegs.hs:169`, `delegsTransition`): the certificates of a transaction,
   * in order, each with the pointer of its position (`Ptr slot txIx certIx`).
   */
 object ShelleyDelegs extends Sts[DelegsEnv, ShelleyCertState, Vector[Certificate], LedgerFailure]:

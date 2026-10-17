@@ -19,14 +19,14 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // `Bbody.hs`, with `Alonzo/Rules/Ledger.hs`, `Bbody.hs`), on the ledger state counted with the
 // node's phase-2 counters ([[Counted]]).
 
-/** `LedgerEnv` (`Shelley/Rules/Ledger.hs:109-118`): the block-level context of a transaction (slot,
-  * epoch, the position in the block, the evaluator and the clock, `TxRules.Env`) and the chain
-  * account (`esChainAccountState`), which the MIR certificates draw on.
+/** `LedgerEnv` (`Shelley/Rules/Ledger.hs`): the block-level context of a transaction (slot, epoch,
+  * the position in the block, the evaluator and the clock, `TxRules.Env`) and the chain account
+  * (`esChainAccountState`), which the MIR certificates draw on.
   */
 final case class ShelleyLedgerEnv(ctx: TxRules.Env, account: ChainAccountState)
 
-/** LEDGER (`Shelley/Rules/Ledger.hs:317`, `ledgerTransition`, and the Alonzo rule): for a
-  * transaction whose scripts pass (phase-2 valid; every one before Alonzo) the withdrawals are
+/** LEDGER (`Shelley/Rules/Ledger.hs:300`, `ledgerTransition`, and `Alonzo/Rules/Ledger.hs:90`): for
+  * a transaction whose scripts pass (phase-2 valid; every one before Alonzo) the withdrawals are
   * checked against the accounts and drained, and the certificates run (DELEGS); then, for every
   * transaction, UTXOW. The environment of UTXOW holds the certificate state *before* the
   * transaction, which is what its refunds and the genesis delegates it checks signatures of come
@@ -72,7 +72,7 @@ object ShelleyLedger:
                     globals.networkId
                   )(_.balance.toBigInt)
                 )
-                // `testIncompleteAndMissingWithdrawals` (`Ledger.hs:378`)
+                // `testIncompleteAndMissingWithdrawals` (`Ledger.hs:341`)
                 _ <- Sts.check[F, LedgerFailure](
                   view.missing.isEmpty,
                   LedgerFailure.Invalid(
@@ -136,20 +136,20 @@ object ShelleyLedgers:
   */
 final case class ShelleyBbodyEnv(ctx: TxRules.Env, pp: ProtocolParams, account: ChainAccountState)
 
-/** `ShelleyBbodyState` (`Bbody.hs:82`): the ledger state, and the blocks the pools have made in the
-  * epoch (`nesBcur`).
+/** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs`): the ledger state, and the blocks the pools have
+  * made in the epoch (`nesBcur`).
   */
 final case class ShelleyBbodyState[E <: EraTag](
     ledger: Counted[LedgerState[E]],
     blocksMade: BlocksMade
 )
 
-/** BBODY (`Shelley/Rules/Bbody.hs:178`, and `Alonzo/Rules/Bbody.hs`): the body of a block against
-  * what its header says, the execution units of the transactions against the limit of the block
-  * (Alonzo on), LEDGERS, and the block counted for its issuer unless the slot is one of the overlay
-  * schedule (`incrBlocks`, `BlockBody/Internal.hs:295`: a block of the overlay is made by a genesis
-  * delegate, whose count the pool performance does not use). Babbage has no decentralisation
-  * parameter (`ppDG` is zero), so its slots have no overlay.
+/** BBODY (`Shelley/Rules/Bbody.hs:207`, `bbodyTransition`, and `Alonzo/Rules/Bbody.hs:169`): the
+  * body of a block against what its header says, the execution units of the transactions against
+  * the limit of the block (Alonzo on), LEDGERS, and the block counted for its issuer unless the
+  * slot is one of the overlay schedule (`incrBlocks`, `BlockBody/Internal.hs:295`: a block of the
+  * overlay is made by a genesis delegate, whose count the pool performance does not use). Babbage
+  * has no decentralisation parameter (`ppDG` is zero), so its slots have no overlay.
   *
   * The signal is Conway's ([[BbodySignal]]); LEDGERS runs on the ledger part of the state, its
   * failures wrapped as the block's (`BlockFailure.Tx`).
