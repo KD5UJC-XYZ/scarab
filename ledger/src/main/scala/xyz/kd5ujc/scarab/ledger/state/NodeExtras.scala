@@ -137,3 +137,20 @@ object NodeExtras:
   // The node's own records, compared structurally and rendered by their `toString`.
   given Eq[NodeExtras] = Eq.fromUniversalEquals
   given Show[NodeExtras] = Show.fromToString
+
+  /** The bookkeeping of a state the era-indexed rules made: nothing of the old rules', which they
+    * do not keep (the reward draft, the residues, the parameter fields of other eras), and the
+    * phase-2 counters at zero.
+    */
+  val empty: NodeExtras = NodeExtras(
+    node.PlutusStats.zero,
+    None,
+    None,
+    Map.empty,
+    prevParamsExplicit = false,
+    pulserAbsent = false,
+    SnapshotsResidue.empty,
+    None,
+    DroppedParams(ParamFields(0, 0), ParamFields(0, 0)),
+    Residue.empty
+  )

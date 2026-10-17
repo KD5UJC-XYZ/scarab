@@ -9,10 +9,12 @@ import xyz.kd5ujc.scarab.consensus.state.{
   EraLedgerState,
   MirrorExtras,
   MirrorState,
+  MirrorStep,
+  Placement,
   ShelleyLedgerState,
-  ShelleyTip,
   Telescope
 }
+import xyz.kd5ujc.scarab.node.read.ChainRead
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, Header, Prepared, TxIn}
 import xyz.kd5ujc.scarab.ledger.byron.ByronOut
 import xyz.kd5ujc.scarab.ledger.rules.{
@@ -25,10 +27,8 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   TickFailure
 }
 import xyz.kd5ujc.scarab.ledger.state.{
-  BlockNo,
   EpochNo,
   EraTag,
-  Hash32,
   NewEpochState,
   ShelleyBasedEra,
   SlotNo,
@@ -72,13 +72,15 @@ enum NewOutcome:
 /** What the new side is asked of a block: the state before it, as the mirror, the block and its
   * header, and what the rules read of the network ([[EraBlock.Context]]: the constants and the era
   * history of the old side's tick of the block, its configuration's choice of era; none when the
-  * harness has no old tick to take them from, where the rules that need them are not asked).
+  * harness has no old tick to take them from, where the rules that need them are not asked) and
+  * where the telescopes sit on the era history (`placement`, for a block that enters an era).
   */
 final case class BlockInput(
     from: MirrorState,
     header: Header,
     raw: Bytes,
-    context: Option[EraBlock.Context]
+    context: Option[EraBlock.Context],
+    placement: Option[Placement] = None
 )
 
 /** The era-indexed rules, as the harness sees them (design §2.5): given the state before a block,
@@ -206,54 +208,22 @@ object NewRules:
       )
       .fold(m)(next => m.copy(ext = m.ext.copy(ledgerState = next)))
 
-  /** The mirror with the new-epoch state `nes` (a block applied, the tip at it) and the node's
-    * phase-2 counters as the block left them; none where the mirror is not of the era of `nes`.
-    */
-  private def withEra(
-      m: MirrorState,
-      nes: EraNes,
-      header: Header.Shelley,
-      plutus: xyz.kd5ujc.scarab.ledger.PlutusStats
-  ): Option[MirrorState] =
-    val telescope = m.ext.ledgerState
-    val tip: Option[ShelleyTip] =
-      (
-        SlotNo.fromBigInt(header.slot),
-        BlockNo.fromBigInt(header.blockNo),
-        Hash32.fromBytes(header.hash)
-      ).tupled.toOption.map(ShelleyTip(_, _, _))
-    val moved: Option[EraLedgerState] = (telescope.state, nes) match
-      case (i: EraLedgerState.InShelleyEra[e], n: EraNes.InEra[f]) =>
-        NewEpochState
-          .retype(n.era, i.era)(n.nes)
-          .map(same =>
-            EraLedgerState.inEra[e](
-              i.state.copy(tip = tip.fold(i.state.tip)(WithOrigin.At(_)), nes = same)
-            )(using i.era)
-          )
-      case _ => None
-    for
-      state <- moved
-      next <- Telescope.make(telescope.past, telescope.current.copy(state = state)).toOption
-      extras <- m.extras match
-        case MirrorExtras.InShelley(ledger, consensus) =>
-          Some(MirrorExtras.InShelley(ledger.copy(plutus = plutus), consensus))
-        case MirrorExtras.InByron(_, _, _, _) => None
-    yield MirrorState(m.ext.copy(ledgerState = next), extras)
-
   /** The block of a Shelley-based era on the new rules ([[EraBlock]]): decoded, its read set
     * fetched from the store, applied to the new-epoch state of the mirror, the changes to the UTxO
-    * set settled as the old side settles its own. A state of an earlier era than the block's (the
-    * first block of an era) is the old side's to take.
+    * set settled as the old side settles its own. The first block of an era meets the state of the
+    * one before: the combinator's tick translates it ([[EraBlock.ticked]]) and the mirror's
+    * telescopes are extended into the era ([[MirrorStep.block]]), as the node's own rules do. Only
+    * the first Shelley block, whose pre-state is Byron's, is the old side's to take.
     */
   private def shelleyBased[F[_]: Monad](store: Option[UtxoStore[F]]): Apply[F] = input =>
-    (input.header, nesOf(input.from), input.from.extras, input.context) match
+    (input.header, nesOf(input.from), input.from.extras, input.context, input.placement) match
       case (
             header: Header.Shelley,
             Some(pre: EraNes.InEra[e]),
-            MirrorExtras.InShelley(ledger, _),
-            Some(context)
-          ) if EraNes.eraOf(pre.era) == header.era =>
+            MirrorExtras.InShelley(ledger, consensus),
+            Some(context),
+            Some(placement)
+          ) =>
         Block.decodeShelley(input.raw) match
           case Left(error) =>
             Monad[F].pure(NewOutcome.Refused(BlockFailure.Decode(error)))
@@ -280,10 +250,13 @@ object NewRules:
             yield result match
               case EraBlock.Outcome.Applied(applied, plutus) =>
                 val settled = settle(applied, flushed)
-                withEra(input.from, settled, header, plutus)
-                  .fold(NewOutcome.NotPorted)(NewOutcome.Applied(_))
+                val protocol = ChainRead[MirrorState].protocol(input.from).in(header.era)
+                MirrorStep
+                  .block(input.from, placement, header, settled, protocol, consensus, plutus)
+                  .fold(_ => NewOutcome.NotPorted, NewOutcome.Applied(_))
               case EraBlock.Outcome.Refused(failure) => NewOutcome.Refused(failure)
-              case EraBlock.Outcome.NotInEra(_)      => NewOutcome.NotPorted
+              case EraBlock.Outcome.NotInEra(era) =>
+                NewOutcome.Refused(BlockFailure.LedgerEra(era, header.era))
       case _ => Monad[F].pure(NewOutcome.NotPorted)
 
   /** The state with its UTxO set settled as far as the store has flushed. */

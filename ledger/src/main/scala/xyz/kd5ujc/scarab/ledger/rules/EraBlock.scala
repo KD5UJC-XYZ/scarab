@@ -54,6 +54,31 @@ object EraBlock:
     /** The block is refused. */
     case Refused(failure: BlockFailure)
 
+  /** The state at the block's slot: the checks that need no ledger state (the header is the
+    * block's, the era the header announces is the block's, the epoch does not precede the
+    * ledger's), then the hard-fork combinator's tick ([[Hfc.tick]]). The node validates the header
+    * against this state (the envelope, the leader check) before the body is applied to it
+    * ([[body]]).
+    */
+  def ticked(ctx: Context)(
+      from: EraNes,
+      header: Header.Shelley,
+      block: Block.Shelley
+  ): Either[BlockFailure, EraNes] =
+    val globals = ctx.globals
+    val epoch = globals.epochOf(header.slot)
+    for
+      _ <- Either.cond(
+        block.era == header.era,
+        (),
+        BlockFailure.EraAnnounced(block.era, header.era)
+      )
+      _ <- Either.cond(block.header.hash == header.hash, (), BlockFailure.HeaderDiffers)
+      _ <- Either.cond(epoch >= from.epoch.toBigInt, (), BlockFailure.EpochPrecedesLedger(epoch))
+      slot <- SlotNo.fromBigInt(header.slot).leftMap(e => BlockFailure.Tick(TickFailure.Vocab(e)))
+      ticked <- Hfc.tick(globals, ctx.eraAt)(from, slot).leftMap(BlockFailure.Tick(_))
+    yield ticked
+
   /** The block `block` (the decoded `raw`, whose header is `header`) applied to `from`. */
   def apply(ctx: Context)(
       from: EraNes,
@@ -62,34 +87,26 @@ object EraBlock:
       txs: Vector[Either[String, Tx]],
       plutus: PlutusStats
   ): Outcome =
-    val globals = ctx.globals
-    val epoch = globals.epochOf(header.slot)
-    val checked: Either[BlockFailure, (Vector[Tx], SlotNo)] =
-      for
-        _ <- Either.cond(
-          block.era == header.era,
-          (),
-          BlockFailure.EraAnnounced(block.era, header.era)
-        )
-        _ <- Either.cond(block.header.hash == header.hash, (), BlockFailure.HeaderDiffers)
-        _ <- Either.cond(
-          epoch >= from.epoch.toBigInt,
-          (),
-          BlockFailure.EpochPrecedesLedger(epoch)
-        )
-        decoded <- block.transactions.zip(txs).traverse { (t, tx) =>
-          tx.leftMap(BlockFailure.TxDecode(t.id, _))
-        }
-        slot <- SlotNo.fromBigInt(header.slot).leftMap(e => BlockFailure.Tick(TickFailure.Vocab(e)))
-      yield (decoded, slot)
-    checked.flatMap { (decoded, slot) =>
-      Hfc
-        .tick(globals, ctx.eraAt)(from, slot)
-        .leftMap(BlockFailure.Tick(_))
-        .map((decoded, _))
-    } match
+    ticked(ctx)(from, header, block) match
       case Left(failure) => Outcome.Refused(failure)
-      case Right((decoded, ticked)) =>
+      case Right(t)      => body(ctx)(t, header, block, txs, plutus)
+
+  /** BBODY on `ticked`, the state at the block's slot in the era of the block: the transactions of
+    * the block, its commitment and the blocks made. A state of another era than the block's is
+    * [[Outcome.NotInEra]].
+    */
+  def body(ctx: Context)(
+      ticked: EraNes,
+      header: Header.Shelley,
+      block: Block.Shelley,
+      txs: Vector[Either[String, Tx]],
+      plutus: PlutusStats
+  ): Outcome =
+    block.transactions
+      .zip(txs)
+      .traverse((t, tx) => tx.leftMap(BlockFailure.TxDecode(t.id, _))) match
+      case Left(failure) => Outcome.Refused(failure)
+      case Right(decoded) =>
         ticked match
           case i: EraNes.InEra[e] =>
             if EraNes.eraOf(i.era) != header.era then Outcome.NotInEra(EraNes.eraOf(i.era))
@@ -185,13 +202,13 @@ object EraBlock:
       block: Block.Shelley,
       txs: Vector[Tx],
       plutus: PlutusStats
-  ): Outcome = body(ctx, ticked, header, block, txs, plutus) match
+  ): Outcome = conwayBody(ctx, ticked, header, block, txs, plutus) match
     case Left(failure) => Outcome.Refused(failure)
     case Right((nes, counters)) =>
       Outcome.Applied(EraNes.InEra(ShelleyBasedEra.SConway, nes), counters)
 
   /** BBODY on the ticked state of Conway. */
-  private def body(
+  private def conwayBody(
       ctx: Context,
       ticked: NewEpochState[Conway],
       header: Header.Shelley,

@@ -31,6 +31,10 @@ class BlockFailureSuite extends FunSuite:
       "structure" -> "block epoch 7 precedes ledger epoch"
     )
     assertEquals(
+      rendered(BlockFailure.LedgerEra(Era.Alonzo, Era.Babbage)),
+      "structure" -> "the ledger is in Alonzo, the block is of Babbage"
+    )
+    assertEquals(
       rendered(BlockFailure.ByronAfterShelley),
       "structure" -> "Byron block after the Shelley era began"
     )

@@ -137,18 +137,33 @@ class DifferentialErasSuite extends CatsEffectSuite:
     "the blocks of every era of the capture on the new rules: the verdicts and the states agree"
   ) {
     val shelleyBased = blocks.filter(_.era != Era.Byron)
-    val eras = shelleyBased.map(_.era).distinct
     run(blocks.indices, NewRules.current[IO](), Policy.Halt, ticking = true).map { r =>
       assertEquals(r.halted, None)
       assertEquals(r.stats.failures, 0L)
-      // the first block of each era meets a state of the one before (the first, Byron's), which the
-      // new side leaves to the old one; the others are applied and compared with the old side's
-      // state after each
-      assertEquals(r.stats.newBlocks.count, (shelleyBased.size - eras.size).toLong)
+      // the first block of an era meets a state of the one before: the combinator's tick
+      // translates it and the telescopes are extended into the era (J2.8), so only the first
+      // Shelley block, whose pre-state is Byron's, is the old side's to take
+      assertEquals(r.stats.newBlocks.count, (shelleyBased.size - 1).toLong)
       assert(r.paired.neu.isDefined, "the pair carries the new side's own state")
       assertEquals(
         r.stats.notPorted.filter((k, _) => k._2 == Stage.Block && k._1 != Era.Byron),
-        eras.map(e => (e, Stage.Block) -> 1L).toMap
+        Map((Era.Shelley, Stage.Block) -> 1L)
+      )
+      // the telescopes the new side extended into each era are those the old state's mirror has,
+      // from the era history: the same eras, ending and starting where the history puts them
+      val last = blocks.last.header
+      val derived = MirrorRun
+        .run(env)(_.toMirror(Some(ref(last)), r.paired.old))
+        .fold(e => fail(Show[StateMirrorError].show(e)), _.value)
+      val live = r.paired.neu.getOrElse(fail("no state of the new side"))
+      assertEquals(live.ext.ledgerState.era, Era.Conway)
+      assertEquals(live.ext.ledgerState.past, derived.ext.ledgerState.past)
+      assertEquals(live.ext.ledgerState.current.start, derived.ext.ledgerState.current.start)
+      assertEquals(live.ext.headerState.chainDep.era, Era.Conway)
+      assertEquals(live.ext.headerState.chainDep.past, derived.ext.headerState.chainDep.past)
+      assertEquals(
+        live.ext.headerState.chainDep.current.start,
+        derived.ext.headerState.chainDep.current.start
       )
     }
   }

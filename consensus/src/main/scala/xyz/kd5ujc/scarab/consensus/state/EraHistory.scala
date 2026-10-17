@@ -42,6 +42,16 @@ object EraHistory:
   /** The Byron parameters the history needs: epoch size, slot length and the security parameter. */
   final case class ByronParams(epochSlots: BigInt, slotLengthMillis: BigInt, k: BigInt)
 
+  /** The first slot of `epoch` on the era history, with the time since the system start. */
+  def boundAt(geometry: EpochGeometry, byron: ByronParams, epoch: BigInt): Bound =
+    val slot = geometry.firstSlot(epoch)
+    val millis =
+      if slot <= geometry.byron.slots then slot * byron.slotLengthMillis
+      else
+        geometry.byron.slots * byron.slotLengthMillis +
+          (slot - geometry.byron.slots) * BigInt(geometry.slotLengthMillis)
+    Bound(millis * PsPerMilli, slot, epoch)
+
   def summary(
       geometry: EpochGeometry,
       byron: ByronParams,
@@ -65,14 +75,7 @@ object EraHistory:
               case _                            => observed.getOrElse(era, previous)
         acc :+ epoch.max(previous)
       }
-    def bound(epoch: BigInt): Bound =
-      val slot = geometry.firstSlot(epoch)
-      val millis =
-        if slot <= geometry.byron.slots then slot * byron.slotLengthMillis
-        else
-          geometry.byron.slots * byron.slotLengthMillis +
-            (slot - geometry.byron.slots) * BigInt(geometry.slotLengthMillis)
-      Bound(millis * PsPerMilli, slot, epoch)
+    def bound(epoch: BigInt): Bound = boundAt(geometry, byron, epoch)
     val safe = geometry.stabilityWindow
     val byronEra = EraSummary(
       bound(0),

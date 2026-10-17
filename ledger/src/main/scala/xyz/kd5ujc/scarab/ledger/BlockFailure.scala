@@ -49,6 +49,11 @@ enum BlockFailure:
   /** The block's epoch precedes the ledger's. */
   case EpochPrecedesLedger(epoch: BigInt)
 
+  /** The ledger state at the block's slot is of another era than the block's (the hard-fork
+    * combinator has not brought the chain into the era the header announces).
+    */
+  case LedgerEra(ledger: Era, block: Era)
+
   /** A Byron block after the Shelley era began. */
   case ByronAfterShelley
 
@@ -116,7 +121,7 @@ enum BlockFailure:
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
     case HeaderDiffers | BodyCommitment | EraAnnounced(_, _) | EpochPrecedesLedger(_) |
-        ByronAfterShelley | ByronAfterTransition(_, _) =>
+        LedgerEra(_, _) | ByronAfterShelley | ByronAfterTransition(_, _) =>
       BlockRule.Structure
     case Decode(_) | TxDecode(_, _) => BlockRule.Decode
     case NoByronGenesis | TransitionUndecided(_) | ShelleyBeforeTransition(_, _, _) | Byron(_) =>
@@ -134,6 +139,7 @@ enum BlockFailure:
     case BodyCommitment                  => "body does not match the header commitment"
     case EraAnnounced(actual, announced) => s"$actual block announced as $announced"
     case EpochPrecedesLedger(epoch)      => s"block epoch $epoch precedes ledger epoch"
+    case LedgerEra(ledger, block)        => s"the ledger is in $ledger, the block is of $block"
     case ByronAfterShelley               => "Byron block after the Shelley era began"
     case ByronAfterTransition(epoch, first) =>
       s"Byron block in epoch $epoch, the chain enters Shelley in epoch $first"

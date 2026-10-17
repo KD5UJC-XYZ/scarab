@@ -10,6 +10,7 @@ import xyz.kd5ujc.scarab.consensus.state.{
   ConsensusMirrorEnv,
   MirrorExtras,
   MirrorState,
+  Placement,
   StateMirrorError
 }
 import xyz.kd5ujc.scarab.ledger.{BlockFailure, BlockRule, Header, NodeError, ValidationError}
@@ -129,6 +130,8 @@ final class DifferentialRules[F[_]] private (
           EraBlock.Context(Globals(tick.globals, tick.config.geometry), tick.config.forks.eraAt)
         )
         for
+          e <- env
+          placement = ot.map(tick => Placement(tick.config.geometry, e.byron, e.forks))
           pre <- state.neu.fold(convert(state.old, state.at, ot, SnapshotBasis.AsTaken).flatMap {
             case (Right(seeded), _) => F.pure(Option(NewRules.carried(seeded)))
             case (Left(error), _) =>
@@ -136,7 +139,7 @@ final class DifferentialRules[F[_]] private (
                 .as(Option.empty[MirrorState])
           })(m => F.pure(Option(m)))
           began <- F.monotonic
-          outcome <- pre.traverse(m => rules(BlockInput(m, header, raw, context)))
+          outcome <- pre.traverse(m => rules(BlockInput(m, header, raw, context, placement)))
           ended <- F.monotonic
         yield (
           outcome.filter {
@@ -396,7 +399,8 @@ object DifferentialRules:
   def ledgerFailure(verdict: Verdict): Boolean = verdict.fold(
     {
       case BlockFailure.HeaderDiffers | BlockFailure.BodyCommitment |
-          BlockFailure.EraAnnounced(_, _) | BlockFailure.EpochPrecedesLedger(_) =>
+          BlockFailure.EraAnnounced(_, _) | BlockFailure.EpochPrecedesLedger(_) |
+          BlockFailure.LedgerEra(_, _) =>
         true
       case other => other.rule == BlockRule.Ledger || other.rule == BlockRule.Decode
     },
