@@ -18,7 +18,7 @@ body:
     id: verification
     attributes:
       label: How would it be verified?
-      description: Which reference, fixtures or devnet scenario shows it is right (see CONTRIBUTING.md, gates by change type).
+      description: Which reference, fixtures or devnet scenario shows it is right (see CONTRIBUTING.md, "Gates and ceremony by level of change").
     validations:
       required: true
   - type: textarea

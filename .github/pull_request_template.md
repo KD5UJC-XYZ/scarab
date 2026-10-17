@@ -6,6 +6,7 @@
 
 - Level: 0 docs / 1 small code / 2 behaviour in one area / 3 consensus-critical / 4 stage boundary
 - [ ] `scripts/sbtw check` passes (level 1 and above)
+- [ ] Level 0: relative links in the changed documents resolve (nothing else is required)
 - [ ] One scenario per area touched (level 2 and above), with its result:
 - [ ] Persisted format: version bump, migration, a test that reads the previous version (ADR 0006)
 
@@ -14,6 +15,8 @@
 - [ ] New behaviour has tests or properties; bugs found on real data have a regression fixture
 - [ ] Changelog fragment in `changes/` (if a user could notice)
 - [ ] Level 3: compatibility matrix row updated (docs/compatibility.md), including "explicitly unchecked"; which row: 
+- [ ] Level 3: the design document's "as built" section updated, if the change belongs to a design
+- [ ] Level 4: evidence-log row in docs/compatibility.md with commit, date and command
 - [ ] Roadmap item marked done or updated (docs/roadmap.md); IDs not renumbered
 - [ ] Findings added if something was learned against real data (docs/findings.md)
 - [ ] Relative links in changed docs resolve
