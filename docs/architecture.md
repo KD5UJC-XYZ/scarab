@@ -58,7 +58,8 @@ several modules).
 | Errors | `NodeError.scala` | Closed hierarchy, see "Error model" |
 | Peer | `Peer.scala` | `Peer[F]` algebra (intersect / next / fetch) with a node-to-node interpreter over `network`: `Peer.nodeToNode` for a connection we open, `Peer.over` for any negotiated connection (also an inbound duplex one) |
 | Header-first | `HeaderGate.scala`, `HeaderValidation.scala`, `consensus/HeaderRules.scala` | `HeaderCheck`/`HeaderGate` validate each ChainSync batch before its blocks are fetched; the pure `HeaderRules[S, H]` (`NodeHeaderRules`) forecasts the ledger view; `HeaderChain` is the candidate chain's header states (G6) |
-| Connections | `InboundGovernor.scala`, `Outbound.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per peer address, limits, typed refusals), the governor that runs our clients on inbound duplex connections, and the outbound dialler that reuses them (G2) |
+| Connections | `InboundGovernor.scala`, `network/ConnectionManager.scala`, `protocol/ConnectionState.scala` | Pure connection life cycle, the manager's table (one connection per peer address, limits, typed refusals), and the governor that runs our clients on inbound duplex connections (G2) |
+| Peer selection | `network/selection/*.scala`, `PeerGovernor.scala`, `OutboundPeers.scala`, `PeerNetwork.scala`, `GsmRunner.scala`, `FailurePolicy.scala` | The pure peer governor (state, decision, events, targets, local roots, sensitive state, the Genesis State Machine), its loop and its interpreter over the connection manager, the follower and the block pool (G1.1) |
 | Decoding | `Header.scala`, `Block.scala` | Era-aware: `Header.Shelley` (TPraos or Praos `HeaderVrf`) and `Header.Byron`; blocks decoded per era with the body hash recomputed from the original bytes |
 | Chain | `VolatileChain.scala` | Pure last-k chain of `(block, state)`; rollback restores the exact retained state |
 | Follower | `Follower.scala`, `consensus/ChainSelection.scala` | Program over `Stateful[F, VolatileChain[S]]` and `BlockRules[F, S]`: one candidate chain per peer session, Praos chain selection, adoption on a copy of the chain; `supervise` reconnects on `PeerError` |
@@ -116,7 +117,7 @@ Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled 
 
 | ADT | Meaning | Handling |
 |---|---|---|
-| `PeerError` | the peer misbehaved or the connection failed (`Handshake`, `Protocol`, `Unavailable`, `InvalidHeader`: a header broke a header rule, G6); recoverable | `Follower.supervise` reconnects; on an inbound connection the governor drops the peer for `Protocol` and `InvalidHeader` |
+| `PeerError` | the peer misbehaved or the connection failed (`Handshake`, `Protocol`, `Unavailable`, `InvalidHeader`: a header broke a header rule, G6); recoverable | the peer governor classifies it (`FailurePolicy.classify`: forget the peer or back off) and reconnects; on an inbound connection the inbound governor drops the peer for `Protocol` and `InvalidHeader` |
 | `ConnectionError` (`network`) | the connection manager refused: `InboundLimit`, `OutboundLimit`, `AlreadyConnected`, `IllegalTransition` (G2) | a refusal of an inbound connection closes it; an outbound one becomes `PeerError.Unavailable` and is retried |
 | `ChainError` | chain-level inconsistency (for example a candidate that no longer joins our chain) | per-session or fatal |
 | `ValidationError(point, rule, reason)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
@@ -780,6 +781,33 @@ to us over in-memory bearers is followed to its tip and its blocks applied; an i
 served and not followed; a second connection from one address is refused; the table is empty again
 when the peer lets go). The devnet `relay` scenario asserts it against the reference node (see
 [running.md](running.md)).
+
+## Peer selection: the outbound peers (G1.1)
+
+[ADR 0016](adr/0016-peer-states-and-the-governor.md), [design](design/peer-selection.md). The outbound peers are chosen by
+a governor that mirrors `Ouroboros.Network.PeerSelection.Governor`.
+
+**Pure part** (`network/.../selection`, no effects). `Status` (`Cold`, `Connecting`, `Warm`, `Activating`, `Hot`,
+`Deactivating`, `Closing`, `Cooling`) is the state of one `PeerRecord` in `GovernorState`; the known, established and active
+sets of the reference are views of the map (`view`), `invariant` states what must hold. `PeerSelection.decide(state, now)`
+returns `Step.Act(decision)` (jobs and the state with them in progress) or `Step.Idle(state, wakeAt)`, in the reference's
+order; `Events.apply` applies what happened (a job completed, a connection observed, new targets, roots, a judgement, a
+wake-up) and is the only place that does failure accounting. `Rng` is a splittable SplitMix64, so a run is a function of its
+seed. `Targets`, `LocalRoots` (`HotValency`, `WarmValency` opaque), `Sensitivity` (the bootstrap regime and
+`OutboundConnectionsState`), `Regime` and `Gsm` (the Genesis State Machine and `FetchMode`) are pure too.
+
+**Effects** (`node`). `PeerGovernor.run[F]` is the loop on `Stateful[F, GovernorState]`, `Ask` (clock, configuration), `Raise`
+(`GovernorError`) and `Tell` (`Trace`); it waits on its event queue only, timers are fibers that offer `Event.Wake`.
+`PeerStateActions` is its interface to the world; `OutboundPeers` interprets it over the `ConnectionManager`, with one fiber per
+connection and one per hot session, whose `Resource` owns the claims on blocks in the `BlockPool`, so a hot session that ends
+releases them. `NodeToNode.warm` opens the connection with KeepAlive and `activate` starts ChainSync, BlockFetch and
+TxSubmission2 on it; `finish` ends them with `MsgDone` where the protocol allows it. `PeerNetwork.resource` wires the roots, the
+governor, the GSM runner (`GsmRunner`, the marker file) and the fetch mode; `Main` runs it beside the node, and the governor
+ends the node only by a fault.
+
+**Tests.** `PeerSelectionSuite` (the decision by example), `PrimitivesSuite`, `GsmSuite`, `WarmHotSuite` (activate, finish and
+reactivate on one connection), the properties of the reference on `TestControl` against a mock environment
+(`GovernorPropertiesSuite`), 40 in-memory peers (`FortyBearersSuite`), and a 256 KiB thread (ADR 0011).
 
 ## Header-first validation (G6)
 

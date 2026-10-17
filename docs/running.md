@@ -69,8 +69,8 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 |---|---|---|
 | `--genesis-dir <dir>` | required unless `--config` | directory with `shelley-genesis.json`, `alonzo-genesis.json`, `conway-genesis.json`, `byron-genesis.json` (needed when the chain starts in Byron) and optionally a node configuration (`configuration.yaml`, `configuration.json` or `config.json`). Every hash that configuration lists is verified. With `--config` it is where the files the configuration names are looked up |
 | `--config <config.json>` | off | read the Haskell node's configuration as `cardano-node run` does, see "Configuration and topology files" below |
-| `--peer <host>:<port>` | required unless `--topology`, repeatable | node-to-node peer to follow; with several peers each is followed and chain selection picks the best chain. One peer that keeps failing is fatal after 30 attempts, with several it is retried forever |
-| `--topology <topology.json>` | off | the Haskell node's P2P topology: its local roots and bootstrap peers are followed after the `--peer` ones |
+| `--peer <host>:<port>` | required unless `--topology`, repeatable | an outbound peer: all the `--peer` peers form one local-root group with `hotValency = warmValency =` their number (the governor keeps every one of them hot and reconnects with the reference's backoff; a peer that keeps failing is never the end of the node). See "Peer selection" |
+| `--topology <topology.json>` | off | the Haskell node's P2P topology: its local roots (each group with its `hotValency` and `warmValency`), public roots and bootstrap peers, chosen by the peer governor. See "Peer selection" |
 | `--listen <host>:<port>` | off | accept node-to-node connections (versions 14 and 15) and serve our chain; on an inbound connection that agreed duplex the node also follows the peer (see `--inbound-sync`) |
 | `--max-inbound N` | `64` | most inbound connections at once (G2): the connection manager refuses the next one with a typed error and logs `connection` / `inbound` `refused`; one connection per peer address in either direction |
 | `--inbound-sync on\|off` | `on` | run our ChainSync, BlockFetch and KeepAlive clients on inbound duplex connections, so a peer that connected to us is a source of blocks as well as a consumer of ours (G2); `off` only serves them |
@@ -227,18 +227,55 @@ What the configuration does:
 | `RequiresNetworkMagic`, `PBftSignatureThreshold` | the Byron address magic and the PBFT signing threshold |
 | `LastKnownBlockVersion-Major/Minor/Alt`, `MaxKnownMajorProtocolVersion`, `Protocol` (must be `Cardano`), `ExperimentalHardForksEnabled`, `ExperimentalProtocolsEnabled`, `ConsensusMode`, `PeerSharing`, `DiffusionMode` | read, validated and logged (`started`); the node does not act on them. `configUnsupported` in the `started` line lists the ones that ask for something not implemented: experimental hard forks (the Dijkstra era), `GenesisMode` (no Genesis syncing: the configured peers are followed as in Praos mode), `Test<Era>HardForkAtVersion`, peer sharing |
 | `SocketPath`, `DatabasePath`, `MempoolCapacityBytesOverride` (a byte count; `NoOverride` leaves the default) | the defaults of `--local-socket`, `--db` and `--mempool-bytes`, with `--config` only; a flag wins |
-| everything else (`TraceOptions`, `LedgerDB`, peer targets, ...) | ignored |
+| `TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`, and the three `...BigLedgerPeers` | the targets of the peer governor (see "Peer selection"); absent keys leave the reference defaults |
+| everything else (`TraceOptions`, `LedgerDB`, ...) | ignored |
 
 The topology needs `localRoots` and `publicRoots`; `bootstrapPeers` (a list or `null`), `useLedgerAfterSlot`
 (above 0: after that slot, `0`: always, below: never) and `peerSnapshotFile` are optional. An access point is
 `{"address": <name or IP>, "port": <number>}`; an access point without a port (a DNS SRV name), the
 unspecified address, a port that is not a number, the legacy `Producers` format, and an empty
-`bootstrapPeers` with no trustable local root are `ConfigError`s. The peers followed are the access points
-of the local roots, then the bootstrap peers (the public roots when there are none of those), after the
-`--peer` ones and without repeats; the node follows all of them rather than keeping `hotValency` of them
-active. `useLedgerAfterSlot`, `peerSnapshotFile`, `advertise`, `behindFirewall`, `trustable` and the
-valencies are read and logged (`started.topology`), not acted on: there are no ledger peers or peer
-sharing.
+`bootstrapPeers` with no trustable local root are `ConfigError`s. `useLedgerAfterSlot`, `peerSnapshotFile`,
+`advertise` and `behindFirewall` are read and logged (`started.topology`), not acted on: there are no ledger
+peers or peer sharing yet (G1.3, G1.4). `trustable` and the valencies are acted on, as the next section says.
+
+### Peer selection
+
+The outbound peers are chosen by the peer governor (roadmap G1.1, [design](design/peer-selection.md),
+[ADR 0016](adr/0016-peer-states-and-the-governor.md)), which follows the reference
+(`Ouroboros.Network.PeerSelection.Governor`) and runs for the life of the node; there is no switch to turn it off.
+
+- **Peers.** Local roots are the `localRoots` groups of the topology and the `--peer` peers (one group of their own,
+  `hotValency = warmValency =` their number). A group is kept at its `warmValency` established and its `hotValency` hot
+  peers; the governor connects, activates, demotes and reconnects to hold that. The `bootstrapPeers` of the topology
+  are used while the node is behind (below); the public roots are asked for when fewer peers are known than
+  `TargetNumberOfRootPeers`. A peer that is a local root or a bootstrap peer is never forgotten.
+- **Temperatures.** Cold is known, warm is connected with KeepAlive only, hot also runs ChainSync, BlockFetch and
+  TxSubmission2; the transitions in between are states of their own. A warm peer is promoted to hot, and a hot peer is
+  demoted, by starting and ending the hot protocols on the same connection; the blocks a hot session claimed are
+  released when it ends.
+- **Targets.** The relay defaults of the reference (`TargetNumberOfRootPeers` 60, `KnownPeers` 150, `EstablishedPeers` 30,
+  `ActivePeers` 20, and for big ledger peers 15, 10, 5), read from the configuration file by these keys
+  (`TargetNumberOfRootPeers`, `TargetNumberOfKnownPeers`, `TargetNumberOfEstablishedPeers`, `TargetNumberOfActivePeers`,
+  `TargetNumberOfKnownBigLedgerPeers`, `TargetNumberOfEstablishedBigLedgerPeers`, `TargetNumberOfActiveBigLedgerPeers`); a set
+  that breaks the reference's sanity rule (active <= established <= known, root <= known, and at most 100 active, 1000 established, 10000 known) is a `ConfigError`. Big ledger peers need ledger peers (G1.3) and are not used yet.
+- **Failures.** A protocol violation, an invalid header or an oversize message makes the peer forgotten (unless it is a local
+  root or a bootstrap peer); a network failure, a timeout or a refused connection is backed off: 5 s doubling to 160 s
+  (plus or minus 2 s) for connecting, 10 s (plus or minus 2 s) before a peer whose activation failed is activated again. One function decides, `FailurePolicy.classify`
+  (owner decision, design section 8a). The node no longer stops after 30 failed attempts.
+- **Bootstrap peers and the sensitive state.** The Genesis State Machine (`Ouroboros.Consensus.Node.GSM`: PreSyncing,
+  Syncing, CaughtUp, the `caught_up.marker` file in the database directory, a caught-up node falls back after 20 to 25
+  minutes without a block) says whether the ledger is `YoungEnough` or `TooOld`. While it is `TooOld` and the topology
+  has `bootstrapPeers`, the node is in the sensitive state: targets drop to the bootstrap regime, only bootstrap peers
+  are kept, local roots that are not trustable are set aside, and it must reach the clean state (no other peer
+  connected) within 15 minutes or the node stops (`BootstrapPeersCriticalTimeout`). It also sets the fetch mode
+  (`BulkSync` while behind, `Deadline` when caught up; logged as `fetchModeChanged`, gauge `scarab_fetch_mode`).
+- **Where to look.** The log events `peerSelectionTargets`, `peerSelectionRoots`, `peerSelectionPromote`,
+  `peerSelectionDemote`, `peerSelectionForget`, `peerSelectionSensitive`, `peerSelectionCounters`, `outboundConnections`,
+  `gsmTransition` and `fetchModeChanged` (table in "Logging"); the gauges of "Peer selection (G1)" in "Metrics";
+  `GET /connections` has a `peerSelection` object next to the connection table: `counters` (cold, warm, hot, known, root),
+  `targets`, `judgement`, `sensitive` and each `peer` with its `temperature`, `origin` and `failCount`.
+- **Not yet.** Ledger peers and big ledger peers (G1.3), churn (G1.2), peer sharing (G1.4), the Genesis hooks (G1.5), a
+  re-read of the topology on SIGHUP, SRV access points and duplex outbound connections ([#142](https://github.com/KD5UJC-XYZ/scarab/issues/142)).
 
 ### Preview
 

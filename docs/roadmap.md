@@ -99,7 +99,7 @@ Each open item links to its GitHub issue, which carries its state (`status:` lab
 
 ## G. Networking (P1/P2)
 
-- **G1** [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) P2P governor: root, ledger, big-ledger and bootstrap peers; churn; PeerSharing. Design: [peer-selection.md](design/peer-selection.md), in stages G1.1 to G1.5; G1.1 (peer states, local and bootstrap roots) is in progress.
+- **G1** [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) P2P governor: root, ledger, big-ledger and bootstrap peers; churn; PeerSharing. Design: [peer-selection.md](design/peer-selection.md), in stages G1.1 to G1.5; G1.1 (peer states, local and bootstrap roots, the Genesis State Machine and the fetch mode) is built on its branch ("G1.1 as built" in the design, [ADR 0016](adr/0016-peer-states-and-the-governor.md)); its Preview run from a synced database waits for [#145](https://github.com/KD5UJC-XYZ/scarab/issues/145).
   - **G1.2** [#136](https://github.com/KD5UJC-XYZ/scarab/issues/136) (P2, idea) Peer metrics and churn: first-header and first-block counts per peer, the hot-demotion pick, `Churn`, the `peerSelection_*` metrics and a `governor` devnet scenario.
   - **G1.3** [#137](https://github.com/KD5UJC-XYZ/scarab/issues/137) (P2, idea) Ledger peers and big ledger peers: pool relays from the ledger, the 90% stake quota, `useLedgerAfterSlot`, the peer snapshot file.
   - **G1.4** [#138](https://github.com/KD5UJC-XYZ/scarab/issues/138) (P2, idea) PeerSharing mini-protocol (10): codec, client, server and the governor's policy, checked two ways against the Haskell relay.

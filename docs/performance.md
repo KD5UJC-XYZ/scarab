@@ -1025,3 +1025,32 @@ decisive measurement is a JFR of the follower after a deploy, with the same clas
 **Repeat.** `jcmd 1 JFR.start name=p settings=profile duration=10m filename=/data/p.jfr` on the follower; `jfr print --events
 jdk.ExecutionSample --stack-depth 64` and `jdk.ThreadStart`; offline `xyz.kd5ujc.scarab.ledger.ApplyBenchMain <blocks.hex> 400 6`,
 `ApplyBenchMain plutus 40` and `xyz.kd5ujc.scarab.consensus.DecideBenchMain 50000 20` from the test classpath.
+
+
+## 18. The cost of an extra hot session (G1.1)
+
+The design asks what one more hot peer costs (D5): a hot session runs ChainSync, BlockFetch and TxSubmission2, so each one
+is a header-validating client with its own pipelined reads.
+
+**Devnet, steady state.** `devnet.py relay --seconds 300` with the Scala node following 1 and then 3 reference nodes (the
+governor keeps every `--peer` hot), the container sampled every 5 s by `docker stats` (2 CPUs, 2 GB; the first minute dropped):
+
+| hot peers | CPU mean (median) | resident memory mean (max) | blocks applied | relay scenario |
+|---|---|---|---|---|
+| 1 | 8.9% (6.6%) of the container | 275 (279) MiB | 194 | passed |
+| 3 | 7.7% (6.4%) | 279 (291) MiB | 199 | passed |
+
+Two more hot sessions cost about 2 MiB each and no measurable CPU. The devnet makes one block about every 20 s, so this is the
+price of idle sessions and keep-alives, not of fetching: the difference in CPU is below the noise of a shared host.
+
+**Preview, one peer.** The official topology has one bootstrap peer, so one hot session is all the public network gives: a
+30-minute follower from genesis (`config.json` and `topology.json` of the official Preview files, no `--peer`, `-Xmx3g`, 3 CPUs,
+6 GB) applied 517,605 blocks (epoch 132, about 290 blocks/s), the container used a mean of
+204% of one CPU (maximum 295%) and a mean of 1.8 GB (maximum 2.7 GB resident, heap capped at 3 GB). That number is the cost of the
+sync with one hot peer; the extra cost of a second, third or twentieth session against the public network was not measured:
+it needs more reachable relays than the official topology lists. The test of the full target (30 established, 20 hot) is in
+`FortyBearersSuite` (in-memory bearers, no CPU figure).
+
+**Not measured.** Fetching in parallel from several hot peers during a long catch-up (the part the fetch mode will change, issue
+#144). Repeat with `devnet.py relay --peers N` and `docker stats` on the node's container, or on a Preview follower with a
+topology of several local roots.

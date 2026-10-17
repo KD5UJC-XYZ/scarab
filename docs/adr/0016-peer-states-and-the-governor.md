@@ -19,7 +19,7 @@ code that is tested without a network.
 ## Decision
 
 1. **One record per peer, with a closed status.** `Status` is `Cold | Connecting | Warm | Activating | Hot |
-   Deactivating | Cooling` (D2 of the design): the reference's five in-progress sets are the transient states
+   Deactivating | Closing | Cooling` (D2 of the design): the reference's five in-progress sets are the transient states
    of one enum, so a peer is in exactly one state and the invariants that tied the sets together are the type.
    The three nested sets are views computed from the map (`GovernorState.view`); `GovernorState.invariant`
    states what remains (counters add up, local roots are known, targets pass `Targets.validated`) and is
@@ -40,7 +40,7 @@ code that is tested without a network.
    claims on blocks.
 5. **Failure classes are decided in one place.** `FailurePolicy.classify(PeerError): FailureClass` maps a
    protocol violation, an invalid header or an oversize message to *forget the peer* (unless its origin is
-   Local or Bootstrap, which are never forgotten) and a network failure or a timeout to *back off*.
+   Local or Bootstrap, which are never forgotten) and a network failure or a timeout to *back off* (`FailureClass.Misbehaved` and `Transient`).
    Owner decision of 2026-10-17 (design section 8a, item 8), not an open question.
 6. **Placement.** The pure part (state, decision, events, targets, roots, sensitive state, the Genesis
    State Machine and the fetch mode, the random generator) is `network/.../selection`, with no dependency

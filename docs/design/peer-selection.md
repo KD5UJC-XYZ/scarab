@@ -1,6 +1,6 @@
 # Peer selection: the P2P governor (G1)
 
-**Status**: Proposal (2026-10-17); stage G1.1 of section 7 is in progress (nothing of it is on `main` yet), the later stages are not scheduled. Tracked in
+**Status**: G1.1 is built (2026-10-17, section 7a); the other stages in section 7 are not scheduled. Tracked in
 [#31](https://github.com/KD5UJC-XYZ/scarab/issues/31) (roadmap G1). Written against `main` at 6ce5bb77 and the
 reference sources named in section 1.1, which were read in full for the governor, the churn governor, the peer
 metrics, ledger peers, PeerSharing and the Cardano configuration; every claim about the reference carries its
@@ -1028,6 +1028,81 @@ matrix row "Network" gains "outbound peer selection" with the evidence log rows 
 closing comment lists the commits and the evidence of each stage; the architecture chapter gains
 "Peer selection (G1)" next to "Connections" in the same change as each stage; `docs/running.md` loses the
 "the node has no peer selection governor" sentence at line 807.
+
+## 7a. G1.1 as built
+
+Branch `g1/1-governor`, on `main` after J2.9. The decisions of section 8a are all implemented; [ADR 0016](../adr/0016-peer-states-and-the-governor.md)
+records D2 (the in-progress states are cases of `Status`) and the placement. What differs from the plan above:
+
+**Placement.** `network/.../selection/` holds the pure part: `Status`, `Sensitivity`, `GovernorState`, `Policy`, `Vocabulary`
+(`Event`, `Job`, `Outcome`, `Trace`, `Step`), `PeerSelection` (`decide`, `abort`, `apply`), `Events`, `Targets`, `LocalRoots`,
+`Rng`, `Regime`, `Gsm`. `node` holds `PeerGovernor` (the loop and `PeerStateActions`), `OutboundPeers` (the interpreter),
+`PeerNetwork` (roots, settings, the regime loop, `ChainView`), `GsmRunner`, `FailurePolicy`. `Outbound.scala` and
+`Follower.supervise`/`Retry` are gone. The plan's `RootProvider`/`PublicRoots` files are `PeerGovernor.RootProvider` and
+`Vocabulary.PublicRoots`.
+
+**Loop.** The loop waits on its queue only. A wake-up is a timer fiber that offers `Event.Wake`, deduplicated by time in a `Ref`.
+An earlier version raced a sleep against `take` and lost a completed job; a second kept the pending time in the loop state
+and went stale when a drain consumed the wake-up. `Step.Idle` carries `wakeAt`, and `decide` never returns a time in the past
+(a past time made the loop spin).
+
+**Warm and hot.** `NodeToNode.warm` (`WarmConnection`) opens a connection with KeepAlive and the handshake; `activate` starts
+ChainSync, BlockFetch and TxSubmission2; `finish` ends them with `MsgDone` (ChainSync and BlockFetch only when idle, so a
+client in the middle of a request is not finishable and the connection is closed instead; TxSubmission2 at the peer's next
+blocking request). The server loops run `foreverM`, so a second conversation can start on the same bearer. `Peer.Controlled`
+has `quiesce`; a hot session is a `Resource` and the claims on blocks in the `BlockPool` belong to it.
+
+**Failures.** `FailurePolicy.classify` is the one function (decision 8): `Protocol` (a malformed or oversize message, a message
+the state does not allow) and `InvalidHeader` are `Misbehaved`, so the peer is forgotten unless it is a local root or a bootstrap
+peer; `Unavailable`, `Handshake`, `NoIntersection` and `Diverged` (a new `PeerError`: the peer rolled back beyond what we keep, or
+our chain moved on so that its candidate no longer joins it, nobody's fault) are `Transient`, so the peer is backed off.
+"Peer does not have the announced block" used to be a `Protocol` error and is now `Unavailable`.
+
+**Fetch mode.** Derived as the reference does under `PraosMode` (`readFetchModeDefault`: bulk sync in the sensitive state, else by
+the distance of the tip from the wall clock, 1000 slots). `ConsensusMode: GenesisMode` in the official configuration is still
+ignored and logged as unsupported, so the GSM-state-based `readFetchMode` of the Genesis mode is not used; the GSM runs, drives the
+judgement and so the sensitive state, and is published. The mode is published (`fetchModeChanged`, `scarab_fetch_mode`) and picks
+the regime of the targets; **BlockFetch does not read it yet** (follow-up issue).
+
+**Properties.** Ported by name from `Test.Cardano.Network.PeerSelection` (ouroboros-network 1.2.0.0) onto `TestControl`, with a
+mock environment and `Signals` (the reference's `signalProperty`): `prop_peerSelectionView_sizes`, `prop_governor_hasoutput`,
+`prop_governor_nofail`, `prop_governor_nolivelock`, `prop_governor_nobusyness`, `prop_governor_connstatus`,
+`prop_governor_target_root_below`, `_known_above`, `_established_below`, `_established_above`, `_established_local`, `_active_below`,
+`_active_above`, `_active_local_below`, `_active_local_above`, `prop_governor_repromote_delay`,
+`prop_governor_only_bootstrap_peers_in_fallback_state`, `prop_governor_no_non_trustable_peers_before_caught_up_state`,
+`prop_governor_only_bootstrap_peers_in_clean_state`, `prop_governor_association_mode`, and the fixed-environment regressions
+`prop_issue_3233`, `3494`, `3515`, `3550`. Not ported: `prop_governor_stops_using_bootstrap_peers` (as stated in the reference the
+condition reads inverted; "young enough again: the bootstrap peers that were not connected are forgotten" checks what the
+code does at the flip); the properties of big ledger peers, peer sharing and churn (later stages). The suite has a fixed
+ScalaCheck seed: `prop_governor_nobusyness` is a credit heuristic that the doubling cold backoff of one failing peer (5, 10, 20,
+40, 80 s with gaps under 45 s) exceeds by a few seconds in about one environment in 300 (found at tests 10 and 273 of two random
+runs), as it would for the reference, which has the same backoff. A determinism test shows that one seed and one environment
+give one trace (`TestControl` is given the environment's seed). The decision function has 17 examples (`PeerSelectionSuite`), the
+Genesis State Machine 8, the primitives 6; a 256 KiB-stack thread decides, completes and checks the invariant for 4000
+local roots (ADR 0011); `FortyBearersSuite` runs the governor, the connection manager, the interpreter, the follower and the block
+pool against 40 in-memory peers: 30 established and 20 hot reached, the chain reaches the tip, and after 8 hot peers are killed
+the hot set is repaired.
+
+**Deviations, in one place.**
+
+1. Decisions 1 to 12 of section 8a hold; `GovernorFault` and `PeerError.Diverged` are new error cases.
+2. The fetch mode follows the Praos function, not the GSM state (above); no consumer yet.
+3. The node does not stop after 30 failed attempts any more; its only governor stop is `BootstrapPeersCriticalTimeout`.
+4. The big ledger targets are carried and published but nothing uses them (no ledger peers, G1.3). The public roots request returns
+   the bootstrap peers and the configured public roots only.
+5. `GET /connections` has the governor's view in `peerSelection`; the temperature of each connection is there, not in the
+   connection table. `OutboundConnectionsState` is a gauge and a log line (decision 11).
+6. Targets are static: no churn (G1.2).
+
+**Evidence.** Rows in the evidence log of `docs/compatibility.md`; the cost per hot session in `docs/performance.md` section 18.
+Gates: `check` and `scalafixAll --check`, `devnet.py relay --seconds 300` (3 peers and 1 peer), `peercut`, `pool`.
+**The level-4 acceptance of the plan was not met.** The Preview follower from the official files with no `--peer` ran 30
+minutes, but from genesis: the K1 database could not be replayed by this build ([#145](https://github.com/KD5UJC-XYZ/scarab/issues/145)),
+so the node applied 517,605 blocks (epoch 132) and did not reach the tip; the public network lists one bootstrap peer, so the run
+showed one cold-to-hot promotion, the sensitive state and a clean state, the GSM leaving PreSyncing, and no demotion. Promotions,
+demotions and the targets being met (30 established, 20 hot, repair after losses) are shown by `FortyBearersSuite`, the
+properties, and the devnet scenarios (`peercut` made the silent peer lose its place). A Preview run to the tip needs a
+database this build can open; repeat it then.
 
 ## 8. Open questions for the owner
 
