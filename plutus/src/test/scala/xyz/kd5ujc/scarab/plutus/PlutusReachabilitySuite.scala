@@ -9,7 +9,7 @@ import scalus.uplc.eval.{Log, NoBudgetSpender, PlutusVM}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.FlatProgram.*
 
-/** What of the 22 allowlisted conformance cases (and of the protocol-11 admission rules) a
+/** What of the original 22 conformance exceptions (and of the protocol-11 admission rules) a
   * transaction can reach, through the evaluator the ledger rules use. Scripts the reference would
   * refuse are assembled byte by byte ([[FlatProgram]]); the verdicts are those of plutus 1.70.0.0
   * (`docs/plutus-conformance.md` cites the lines). The reference node itself was not run on them.

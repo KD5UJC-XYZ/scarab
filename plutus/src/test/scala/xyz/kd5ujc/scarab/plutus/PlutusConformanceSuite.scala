@@ -16,7 +16,7 @@ import scalus.uplc.eval.{Log, MachineParams, PlutusVM, RestrictingBudgetSpender}
   * 1.70.0.0, vendored under `src/test/resources/plutus-conformance-1.70.0.0`, see the README there)
   * run through [[ScalusEvaluator]].
   *
-  * Each case is a textual UPLC program, the expected result (a program, `evaluation failure` or
+  * Each case is a textual UPLC program (with original Flat sidecars for malformed Value constants), the expected result (a program, `evaluation failure` or
   * `parse/decode error`) and the expected budget. The reference runs them with the default cost
   * model for testing, which is semantics variant E (`defaultCostModelParamsForTesting`), the
   * latest: Plutus V3 at protocol 11 in this node. Here a case passes when
@@ -82,14 +82,27 @@ class PlutusConformanceSuite extends FunSuite:
           root.relativize(dir).toString,
           read(p),
           read(dir.resolve(s"$name.uplc.expected")).trim,
-          budgetOf(read(dir.resolve(s"$name.budget.expected")))
+          budgetOf(read(dir.resolve(s"$name.budget.expected"))),
+          Option.when(Files.exists(dir.resolve(s"$name.flat.cbor.hex"))) {
+            Bytes.fromHex(read(dir.resolve(s"$name.flat.cbor.hex")).trim).fold(fail(_), identity)
+          }
         )
       }
       .toVector
       .sortBy(_.id)
 
   /** Runs one case through the evaluator; `None` when it passes, else why not. */
-  private def check(c: Case): Option[String] =
+  private def check(c: Case): Option[String] = c.originalFlat match
+    case Some(script) =>
+      // Scalus's text parser normalises malformed Value maps. These public corpus literals
+      // must reach the decoder as their original ordered Flat entries, before that parser.
+      assertEquals(c.expected, "parse/decode error", c.id)
+      Option.when(ScalusEvaluator.pureDecoder.validate(language, protocol, script).isRight)(
+        "original malformed Flat constant decoded"
+      )
+    case None => checkParsed(c)
+
+  private def checkParsed(c: Case): Option[String] =
     val parsed = Program.parseUplc(c.program)
     c.expected match
       case "parse/decode error" =>
@@ -283,7 +296,8 @@ object PlutusConformanceSuite:
       id: String,
       program: String,
       expected: String,
-      budget: Option[ExUnits]
+      budget: Option[ExUnits],
+      originalFlat: Option[Bytes]
   )
 
   /** `builtin/semantics`, `builtin/parser`, `term`, ... */

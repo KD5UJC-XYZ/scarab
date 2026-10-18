@@ -2,18 +2,13 @@
 # <case><TAB><class><TAB><reason>. Classes: (ii) a Scalus deviation that a transaction can reach (reproduced in
 # ScalusConformanceReproducersSuite, handled on the ledger path as docs/plutus-conformance.md says); (iii) a
 # difference of the suite harness, not reachable by a transaction (reasons below; PlutusReachabilitySuite).
+# The six malformed Value cases now pass from original Flat-byte sidecars and are no longer exceptions.
 builtin/parser/bls12-381/G1/on-curve-bit3-clear	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
 builtin/parser/bls12-381/G1/on-curve-bit3-set	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
 builtin/parser/bls12-381/G1/zero	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
 builtin/parser/bls12-381/G2/on-curve-bit3-clear	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
 builtin/parser/bls12-381/G2/on-curve-bit3-set	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
 builtin/parser/bls12-381/G2/zero	(iii)	the suite round-trips a BLS12-381 constant through flat, which has no encoding for it; both the reference and Scalus refuse such a flat constant (PlutusReachabilitySuite)
-builtin/parser/value/currencyIDs-unordered	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
-builtin/parser/value/duplicate-currencyIDs	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
-builtin/parser/value/duplicate-tokenIDs	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
-builtin/parser/value/empty-tokens	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
-builtin/parser/value/tokenIDs-unordered	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
-builtin/parser/value/zero-asset	(iii)	Scalus's text parser normalises the value before the suite encodes it, so no flat file carries the malformed constant; the ledger path decodes the original flat bytes and refuses it (FlatScan, PlutusReachabilitySuite)
 builtin/semantics/bls12_381-cardano-crypto-tests/signature/large-dst	(ii)	hashToGroup with a tag of non-ASCII bytes: Scalus gives another point; the ledger path refuses it with EvalFailure.Unsupported
 builtin/semantics/bls12_381_G1_hashToGroup/hash-dst-len-255	(ii)	hashToGroup with a tag of non-ASCII bytes: Scalus gives another point; the ledger path refuses it with EvalFailure.Unsupported
 builtin/semantics/bls12_381_G2_hashToGroup/hash-dst-len-255	(ii)	hashToGroup with a tag of non-ASCII bytes: Scalus gives another point; the ledger path refuses it with EvalFailure.Unsupported
