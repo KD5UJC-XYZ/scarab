@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
 import io.circe.{ACursor, Decoder, Json}
-import xyz.kd5ujc.scarab.codec.{Cbor, Node}
+import xyz.kd5ujc.scarab.codec.{Node}
 import xyz.kd5ujc.scarab.ledger.ConfigError
 import xyz.kd5ujc.scarab.ledger.Nonce
 
@@ -28,11 +28,11 @@ final case class PoolVotingThresholds(
 
 object PoolVotingThresholds:
   val zero: PoolVotingThresholds =
-    Constants.checked("PoolVotingThresholds.zero")(fromVector(Vector.fill(5)(Rational.zero)))
-  def fromVector(xs: Vector[Rational]): Either[String, PoolVotingThresholds] =
+    PoolVotingThresholds(Rational.zero, Rational.zero, Rational.zero, Rational.zero, Rational.zero)
+  def fromVector(xs: Vector[Rational]): Either[LedgerDecodeError, PoolVotingThresholds] =
     xs match
       case Vector(a, b, c, d, e) => Right(PoolVotingThresholds(a, b, c, d, e))
-      case _                     => Left("pool voting thresholds: expected 5 elements")
+      case _ => Left(LedgerDecodeError.ArrayLength("pool voting thresholds", 5, xs.size))
 
 /** Conway DRep voting thresholds, in the order of the protocol-parameter encoding. */
 final case class DRepVotingThresholds(
@@ -62,12 +62,23 @@ final case class DRepVotingThresholds(
 
 object DRepVotingThresholds:
   val zero: DRepVotingThresholds =
-    Constants.checked("DRepVotingThresholds.zero")(fromVector(Vector.fill(10)(Rational.zero)))
-  def fromVector(xs: Vector[Rational]): Either[String, DRepVotingThresholds] =
+    DRepVotingThresholds(
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero,
+      Rational.zero
+    )
+  def fromVector(xs: Vector[Rational]): Either[LedgerDecodeError, DRepVotingThresholds] =
     xs match
       case Vector(a, b, c, d, e, f, g, h, i, j) =>
         Right(DRepVotingThresholds(a, b, c, d, e, f, g, h, i, j))
-      case _ => Left("DRep voting thresholds: expected 10 elements")
+      case _ => Left(LedgerDecodeError.ArrayLength("DRep voting thresholds", 10, xs.size))
 
 /** The protocol parameters the implemented ledger rules consult, for every era. Fields an era does
   * not have keep their genesis or zero value and are not consulted.
@@ -319,11 +330,11 @@ object ProtocolParams:
     * `coinsPerUTxOByte` from the per-word value, rounded down (`upgradeBabbagePParams True`,
     * `Babbage/PParams.hs:389-391`), also when the same update names key 17.
     */
-  def update(p: ProtocolParams, u: ParamUpdate): Either[String, ProtocolParams] =
-    def field(key: Int)(f: (ProtocolParams, Node) => Either[String, ProtocolParams])(
+  def update(p: ProtocolParams, u: ParamUpdate): Either[LedgerDecodeError, ProtocolParams] =
+    def field(key: Int)(f: (ProtocolParams, Node) => Either[LedgerDecodeError, ProtocolParams])(
         p: ProtocolParams
-    ): Either[String, ProtocolParams] =
-      u.fields.get(key).fold(Right(p))(raw => Cbor.decode(raw).flatMap(f(p, _)))
+    ): Either[LedgerDecodeError, ProtocolParams] =
+      u.fields.get(key).fold(Right(p))(raw => CborRead.decode(raw).flatMap(f(p, _)))
     def uint(name: String)(set: (ProtocolParams, BigInt) => ProtocolParams) =
       (p: ProtocolParams, n: Node) => CborRead.uint(n, name).map(set(p, _))
     def rat(name: String)(set: (ProtocolParams, Rational) => ProtocolParams) =
@@ -336,7 +347,7 @@ object ProtocolParams:
             (CborRead.uint(xs(0), name), CborRead.uint(xs(1), name)).mapN(ExUnits(_, _))
           )
           .map(set(p, _))
-    val steps: Vector[ProtocolParams => Either[String, ProtocolParams]] = Vector(
+    val steps: Vector[ProtocolParams => Either[LedgerDecodeError, ProtocolParams]] = Vector(
       field(0)(uint("minFeeA")((p, v) => p.copy(minFeeA = v))),
       field(1)(uint("minFeeB")((p, v) => p.copy(minFeeB = v))),
       field(2)(uint("maxBlockBodySize")((p, v) => p.copy(maxBlockBodySize = v))),
@@ -405,10 +416,10 @@ object ProtocolParams:
         updated.copy(coinsPerUTxOByte = updated.coinsPerUTxOWord / 8)
       else updated
 
-  private def rationals(n: Node, what: String): Either[String, Vector[Rational]] =
+  private def rationals(n: Node, what: String): Either[LedgerDecodeError, Vector[Rational]] =
     CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what)))
 
-  private def costModels(n: Node): Either[String, Map[Int, Vector[BigInt]]] =
+  private def costModels(n: Node): Either[LedgerDecodeError, Map[Int, Vector[BigInt]]] =
     CborRead
       .map(n, "cost models")
       .flatMap(_.traverse { case (k, v) =>
@@ -418,21 +429,17 @@ object ProtocolParams:
         ).tupled
       }.map(_.toMap))
 
-  private def nonce(n: Node): Either[String, Nonce] =
+  private def nonce(n: Node): Either[LedgerDecodeError, Nonce] =
     CborRead.array(n, "nonce").flatMap { xs =>
-      xs.headOption.toRight("nonce: empty").flatMap(CborRead.uint(_, "nonce tag")).flatMap {
-        case t if t == 0                 => Right(Nonce.Neutral)
-        case t if t == 1 && xs.size == 2 => CborRead.bytesN(xs(1), 32, "nonce").map(Nonce.Hash(_))
-        case _                           => Left("nonce: malformed")
-      }
+      xs.headOption
+        .toRight(LedgerDecodeError.Empty("nonce"))
+        .flatMap(CborRead.uint(_, "nonce tag"))
+        .flatMap {
+          case t if t == 0                 => Right(Nonce.Neutral)
+          case t if t == 1 && xs.size == 2 => CborRead.bytesN(xs(1), 32, "nonce").map(Nonce.Hash(_))
+          case t => Left(LedgerDecodeError.TaggedArity("nonce", t, xs.size))
+        }
     }
 
   private def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
     c.downField(name).as[A].leftMap(e => ConfigError(s"protocol parameter $name: ${e.message}"))
-
-private object Constants:
-  /** Unwraps a validated literal. A failure is a programming error in a constant, and surfaces
-    * once, at class initialisation, with the name of the constant.
-    */
-  def checked[A](what: String)(result: Either[String, A]): A =
-    result.fold(reason => throw new ExceptionInInitializerError(s"$what: $reason"), identity)

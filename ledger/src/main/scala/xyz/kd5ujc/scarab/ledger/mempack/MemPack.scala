@@ -50,10 +50,10 @@ object MemPack:
     case MultiAssetTooLarge(assets: Int, policies: Int)
 
     /** The address bytes are not an address the node reads (its own message). */
-    case AddressRefused(reason: String)
+    case AddressRefused(cause: xyz.kd5ujc.scarab.ledger.LedgerDecodeError)
 
     /** The reference script bytes are not a script (its own message). */
-    case ScriptRefused(reason: String)
+    case ScriptRefused(cause: xyz.kd5ujc.scarab.ledger.LedgerDecodeError)
 
     case ReferenceScriptMissing
     case ReferenceScriptWrapper

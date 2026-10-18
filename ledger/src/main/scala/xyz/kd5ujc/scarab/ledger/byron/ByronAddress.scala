@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+
 import cats.syntax.all.*
 import java.util.zip.CRC32
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -107,7 +109,10 @@ object ByronAddress:
     ByronCbor.addressHash(ByronCbor.concat(ByronCbor.of(0x83, addrType), spending, attributes))
 
   /** The attribute map of an address (or a transaction): numeric key to byte string. */
-  private def attributeFields(n: Node, what: String): Either[String, Vector[(BigInt, Bytes)]] =
+  private def attributeFields(
+      n: Node,
+      what: String
+  ): Either[LedgerDecodeError, Vector[(BigInt, Bytes)]] =
     CborRead
       .map(n, what)
       .flatMap(
@@ -119,23 +124,31 @@ object ByronAddress:
     fields.filterNot((k, _) => known.contains(k.toInt)).map(_._2.size).sum
 
   /** Length of the attribute values of a transaction (none of its attributes is interpreted). */
-  def attributesLength(n: Node, what: String): Either[String, Int] =
+  def attributesLength(n: Node, what: String): Either[LedgerDecodeError, Int] =
     attributeFields(n, what).map(unknownLength(_, Set.empty))
 
-  def decode(raw: Bytes): Either[String, ByronAddress] =
+  def decode(raw: Bytes): Either[LedgerDecodeError, ByronAddress] =
     for
-      root <- Cbor.decode(raw, limits)
+      root <- CborRead.decode(raw, limits)
       outer <- CborRead.arrayN(root, 2, "Byron address")
       payload <- outer(0).value match
         case Value.Tag(t, inner) if t == 24 => CborRead.bytes(inner, "Byron address payload")
-        case _                              => Left("Byron address: expected tag 24")
+        case _ => Left(LedgerDecodeError.ExpectedTag("Byron address", 24, outer(0).value))
       crc <- CborRead.uint(outer(1), "Byron address crc")
-      _ <- Either.cond(crc == BigInt(ByronCbor.crc32(payload)), (), "Byron address: bad crc")
-      parts <- Cbor.decode(payload, limits).flatMap(CborRead.arrayN(_, 3, "Byron address body"))
+      _ <- Either.cond(
+        crc == BigInt(ByronCbor.crc32(payload)),
+        (),
+        LedgerDecodeError.CrcMismatch(BigInt(ByronCbor.crc32(payload)), crc)
+      )
+      parts <- CborRead.decode(payload, limits).flatMap(CborRead.arrayN(_, 3, "Byron address body"))
       addrRoot <- CborRead.bytesN(parts(0), 28, "Byron address root")
       fields <- attributeFields(parts(1), "Byron address attributes")
       ty <- CborRead.uint(parts(2), "Byron address type").map(_.toInt)
-      _ <- Either.cond(ty == VerKey || ty == Redeem, (), s"Byron address: unknown type $ty")
+      _ <- Either.cond(
+        ty == VerKey || ty == Redeem,
+        (),
+        LedgerDecodeError.UnknownTag("Byron address", ty)
+      )
       magic <- fields.find(_._1 == 2).traverse { (_, v) =>
         Cbor
           .decode(v, limits)
@@ -145,7 +158,7 @@ object ByronAddress:
       }
       // the derivation path is a byte string, itself the content of the attribute's byte string
       derivationPath <- fields.find(_._1 == 1).traverse { (_, v) =>
-        Cbor.decode(v, limits).flatMap(CborRead.bytes(_, "derivation path")).map(_.size)
+        CborRead.decode(v, limits).flatMap(CborRead.bytes(_, "derivation path")).map(_.size)
       }
     yield ByronAddress(
       raw,

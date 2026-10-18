@@ -10,7 +10,7 @@ import munit.FunSuite
   * minimised form of what the fuzzer found.
   */
 class DecoderRobustnessSuite extends FunSuite:
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(fail(_), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private def filled(n: Int, b: Int): Bytes = Bytes.fromArray(Array.fill(n)(b.toByte))
   private def bytes(xs: Int*): Bytes = Bytes.fromArray(xs.map(_.toByte).toArray)
 

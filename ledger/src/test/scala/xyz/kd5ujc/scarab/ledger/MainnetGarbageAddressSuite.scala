@@ -34,7 +34,8 @@ class MainnetGarbageAddressSuite extends FunSuite:
   private val stake = "5ecf2d283418a60be5a848a2380eb721000da1e0bbf39733134beca4"
   private val garbage = "cb57afb0b35fc89c63061c9914e055001a518c7516"
 
-  private def tx(era: Era): Either[String, Tx] = Tx.fromBlock(transaction, era)
+  private def tx(era: Era): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, Tx] =
+    Tx.fromBlock(transaction, era)
 
   private val mary: Tx = tx(Era.Mary).fold(e => fail(e), identity)
   private val output: TxOut = mary.body.outputs.head
@@ -57,8 +58,8 @@ class MainnetGarbageAddressSuite extends FunSuite:
       output.address.kind,
       Address.Kind.Shelley(
         1,
-        Credential.Key(Bytes.fromHex(payment).fold(fail(_), identity)),
-        Some(Credential.Key(Bytes.fromHex(stake).fold(fail(_), identity))),
+        Credential.Key(Bytes.fromHex(payment).fold(e => fail(e.toString), identity)),
+        Some(Credential.Key(Bytes.fromHex(stake).fold(e => fail(e.toString), identity))),
         None
       )
     )
@@ -84,18 +85,27 @@ class MainnetGarbageAddressSuite extends FunSuite:
 
   test("from Babbage the address must take all its bytes: the same output is refused") {
     List(Era.Babbage, Era.Conway).foreach { era =>
-      assertEquals(tx(era).map(_ => ()), Left("base address length"), era.toString)
+      assertEquals(
+        tx(era).map(_ => ()),
+        Left(LedgerDecodeError.AddressLength("base address length", 57, 78)),
+        era.toString
+      )
     }
   }
 
   test("an output the other way, a base address of 56 bytes, is refused in every era") {
-    val short = Bytes.fromHex(s"01$payment${stake.dropRight(2)}").fold(fail(_), identity)
+    val short =
+      Bytes.fromHex(s"01$payment${stake.dropRight(2)}").fold(e => fail(e.toString), identity)
     Address.Mode.values.foreach { mode =>
-      assertEquals(Address.decode(short, mode).map(_ => ()), Left("short address"), mode.toString)
+      assertEquals(
+        Address.decode(short, mode).map(_ => ()),
+        Left(LedgerDecodeError.AddressLength("payment credential", 57, short.size)),
+        mode.toString
+      )
     }
   }
 
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
 
   test("a pointer address is read up to its three naturals, the bytes after them are dropped") {
     val pointer = bytes(s"41${payment}81010203")
@@ -112,7 +122,9 @@ class MainnetGarbageAddressSuite extends FunSuite:
     assertEquals(Address.decode(pointer, Address.Mode.Backwards).map(_.raw.hex), Right(pointer.hex))
     assertEquals(
       Address.decode(tail, Address.Mode.Rigorous).map(_ => ()),
-      Left("pointer address: trailing bytes")
+      Left(
+        LedgerDecodeError.AddressLength("pointer address: trailing bytes", pointer.size, tail.size)
+      )
     )
   }
 
@@ -124,7 +136,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
     )
     assertEquals(
       Address.decode(enterprise, Address.Mode.Rigorous).map(_ => ()),
-      Left("enterprise address length")
+      Left(LedgerDecodeError.AddressLength("enterprise address length", 29, enterprise.size))
     )
   }
 

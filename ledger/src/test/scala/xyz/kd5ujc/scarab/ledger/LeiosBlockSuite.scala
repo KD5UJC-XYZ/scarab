@@ -94,7 +94,10 @@ class LeiosBlockSuite extends munit.FunSuite:
 
   private def conwayHeader(block: Bytes): Bytes =
     import xyz.kd5ujc.scarab.codec.{Cbor, Value}
-    val root = Cbor.decode(block, Cbor.Limits(2500000, 2048, 1000000, 2500000)).toOption.get
+    val root = xyz.kd5ujc.scarab.ledger.CborRead
+      .decode(block, Cbor.Limits(2500000, 2048, 1000000, 2500000))
+      .toOption
+      .get
     val Value.Arr(Vector(_, body)) = root.value: @unchecked
     val Value.Arr(parts) = body.value: @unchecked
     parts.head.original

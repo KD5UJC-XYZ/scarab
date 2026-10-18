@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.ledger.ConfigError
 final case class Anchor(url: String, hash: Bytes)
 
 object Anchor:
-  def decode(n: Node): Either[String, Anchor] =
+  def decode(n: Node): Either[LedgerDecodeError, Anchor] =
     CborRead
       .arrayN(n, 2, "anchor")
       .flatMap(xs =>
@@ -19,7 +19,7 @@ object Anchor:
           .mapN(Anchor(_, _))
       )
 
-  def optional(n: Node): Either[String, Option[Anchor]] = n.value match
+  def optional(n: Node): Either[LedgerDecodeError, Option[Anchor]] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.Null => Right(None)
     case _                                  => decode(n).map(Some(_))
 

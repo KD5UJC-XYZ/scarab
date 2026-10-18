@@ -12,16 +12,18 @@ class ByronProposalFixtureSuite extends FunSuite:
   private def raw(name: String): Bytes =
     Bytes
       .fromHex(Files.readString(Path.of(s"fixtures/byron-version/$name.hex")).trim)
-      .fold(fail(_), identity)
+      .fold(e => fail(e.toString), identity)
 
-  private def payload(proposal: Bytes): Either[String, UpdatePayload] =
+  private def payload(
+      proposal: Bytes
+  ): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, UpdatePayload] =
     Cbor
       .decode(ByronCbor.of(0x82, 0x81) ++ proposal ++ ByronCbor.of(0x80))
       .flatMap(UpdatePayload.decode)
 
   test("reference-generated maximum-width signed proposal decodes over its original bytes") {
     val bytes = raw("valid")
-    val decoded = payload(bytes).fold(fail(_), identity)
+    val decoded = payload(bytes).fold(e => fail(e.toString), identity)
     val proposal = decoded.proposal.fold(fail("missing proposal"))(identity)
     val expected = ByronVersion.from(65535, 65535, 255).fold(e => fail(e.message), identity)
     assertEquals(proposal.version, expected)
@@ -45,7 +47,8 @@ class ByronProposalFixtureSuite extends FunSuite:
     test(s"$name is rejected before registration, matching the raw reference decoder") {
       val bytes = raw(name)
       assert(payload(bytes).isLeft)
-      val proposal = Cbor.decode(bytes).fold(fail(_), identity)
+      val proposal =
+        xyz.kd5ujc.scarab.ledger.CborRead.decode(bytes).fold(e => fail(e.toString), identity)
       proposal.value match
         case Value.Arr(version +: _) =>
           assertEquals(ByronVersion.decode(version), Left(Error.OutOfRange(field, number)))

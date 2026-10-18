@@ -9,7 +9,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
 final case class GovActionId(txId: Bytes, index: BigInt)
 
 object GovActionId:
-  def decode(n: Node): Either[String, GovActionId] =
+  def decode(n: Node): Either[LedgerDecodeError, GovActionId] =
     CborRead
       .arrayN(n, 2, "governance action id")
       .flatMap(xs =>
@@ -20,9 +20,10 @@ object GovActionId:
           .mapN(GovActionId(_, _))
       )
 
-  private[ledger] def optional(n: Node): Either[String, Option[GovActionId]] = n.value match
-    case CborValue.Null => Right(None)
-    case _              => decode(n).map(Some(_))
+  private[ledger] def optional(n: Node): Either[LedgerDecodeError, Option[GovActionId]] =
+    n.value match
+      case CborValue.Null => Right(None)
+      case _              => decode(n).map(Some(_))
 
 /** Who casts a vote. */
 enum Voter:
@@ -39,7 +40,7 @@ object Voter:
   }
 
   /** `[0, keyhash] / [1, scripthash]` (committee), `[2, ..] / [3, ..]` (DRep), `[4, keyhash]`. */
-  def decode(n: Node): Either[String, Voter] =
+  def decode(n: Node): Either[LedgerDecodeError, Voter] =
     CborRead.arrayN(n, 2, "voter").flatMap { xs =>
       (
         CborRead.uint(xs(0), "voter tag").map(_.toInt),
@@ -51,7 +52,7 @@ object Voter:
           case (2, h) => Right(DRepVoter(Credential.Key(h)))
           case (3, h) => Right(DRepVoter(Credential.Script(h)))
           case (4, h) => Right(Pool(h))
-          case (t, _) => Left(s"voter tag $t")
+          case (t, _) => Left(LedgerDecodeError.UnknownTag("voter", t))
         }
     }
 
@@ -88,11 +89,11 @@ final case class Proposal(
 )
 
 object Proposal:
-  private def optionalHash(n: Node): Either[String, Option[Bytes]] = n.value match
+  private def optionalHash(n: Node): Either[LedgerDecodeError, Option[Bytes]] = n.value match
     case CborValue.Null => Right(None)
     case _              => CborRead.bytesN(n, 28, "policy hash").map(Some(_))
 
-  def decode(n: Node): Either[String, Proposal] =
+  def decode(n: Node): Either[LedgerDecodeError, Proposal] =
     for
       xs <- CborRead.arrayN(n, 4, "proposal procedure")
       deposit <- CborRead.uint(xs(0), "proposal deposit")
@@ -101,11 +102,11 @@ object Proposal:
       anchor <- Anchor.decode(xs(3))
     yield Proposal(deposit, account, action, anchor)
 
-  private def action(n: Node): Either[String, GovAction] =
+  private def action(n: Node): Either[LedgerDecodeError, GovAction] =
     CborRead.array(n, "governance action").flatMap { xs =>
       for
         tag <- xs.headOption
-          .toRight("empty governance action")
+          .toRight(LedgerDecodeError.Empty("governance action"))
           .flatMap(CborRead.uint(_, "action tag"))
         a <- (tag.toInt, xs.size) match
           case (0, 4) =>
@@ -162,7 +163,7 @@ object Proposal:
                 .flatMap(c => (optionalHash(c(1)), Anchor.decode(c(0))).tupled)
             ).mapN((p, c) => GovAction.NewConstitution(p, c._1, c._2))
           case (6, 1) => Right(GovAction.Info)
-          case (t, k) => Left(s"governance action $t with $k elements")
+          case (t, k) => Left(LedgerDecodeError.TaggedArity("governance action", t, k))
       yield a
     }
 
@@ -171,12 +172,12 @@ final case class VotingProcedure(vote: Vote, anchor: Option[Anchor])
 
 object VotingProcedures:
   enum DecodeError:
-    case InvalidStructure(detail: String)
+    case InvalidStructure(cause: LedgerDecodeError)
     case InvalidVote(value: BigInt)
 
     def message: String = this match
-      case InvalidStructure(detail) => detail
-      case InvalidVote(value)       => s"vote $value"
+      case InvalidStructure(cause) => cause.message
+      case InvalidVote(value)      => s"vote $value"
 
   def decode(
       n: Node

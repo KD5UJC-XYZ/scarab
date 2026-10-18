@@ -24,7 +24,7 @@ class BoundaryTransactionsSuite extends FunSuite:
   private def field[A: io.circe.Decoder](json: Json, name: String): A =
     json.hcursor.get[A](name).fold(error => fail(error.message), identity)
   private def obj(json: Json, name: String): Json = field[Json](json, name)
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
 
   private final case class Recorded(json: Json):
     val c: PlutusCase = PlutusCase.fromJson(json)

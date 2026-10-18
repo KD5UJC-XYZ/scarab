@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+
 import cats.syntax.all.*
 import io.circe.ACursor
 import xyz.kd5ujc.scarab.codec.{Cbor, Node, Value}
@@ -129,17 +131,17 @@ object ByronParamsUpdate:
 
   /** A `Maybe` is a list of zero or one element. */
   private def maybe[A](n: Node, what: String)(
-      f: Node => Either[String, A]
-  ): Either[String, Option[A]] =
+      f: Node => Either[LedgerDecodeError, A]
+  ): Either[LedgerDecodeError, Option[A]] =
     CborRead.array(n, what).flatMap {
       case Vector()  => Right(None)
       case Vector(x) => f(x).map(Some(_))
-      case _         => Left(s"$what: expected a list of at most one element")
+      case xs        => Left(LedgerDecodeError.AtMostOne(what, xs.size))
     }
 
   private def uint(what: String)(n: Node) = CborRead.uint(n, what)
 
-  private def softfork(n: Node): Either[String, SoftforkRule] =
+  private def softfork(n: Node): Either[LedgerDecodeError, SoftforkRule] =
     CborRead.arrayN(n, 3, "softfork rule").flatMap { xs =>
       (
         CborRead.uint(xs(0), "initThd"),
@@ -149,21 +151,21 @@ object ByronParamsUpdate:
     }
 
   /** `[0, tag24(bytes([summand, multiplier]))]`. */
-  private def feePolicy(n: Node): Either[String, TxFeePolicy] =
+  private def feePolicy(n: Node): Either[LedgerDecodeError, TxFeePolicy] =
     for
       xs <- CborRead.arrayN(n, 2, "tx fee policy")
       tag <- CborRead.uint(xs(0), "tx fee policy tag")
-      _ <- Either.cond(tag == 0, (), s"tx fee policy: unknown tag $tag")
+      _ <- Either.cond(tag == 0, (), LedgerDecodeError.UnknownTag("tx fee policy", tag))
       inner <- xs(1).value match
         case Value.Tag(t, i) if t == 24 =>
-          CborRead.bytes(i, "tx fee policy").flatMap(Cbor.decode(_, limits))
-        case _ => Left("tx fee policy: expected tag 24")
+          CborRead.bytes(i, "tx fee policy").flatMap(CborRead.decode(_, limits))
+        case _ => Left(LedgerDecodeError.ExpectedTag("tx fee policy", 24, xs(1).value))
       ys <- CborRead.arrayN(inner, 2, "tx size linear")
       a <- CborRead.uint(ys(0), "summand")
       b <- CborRead.uint(ys(1), "multiplier")
     yield TxFeePolicy(a, b)
 
-  def decode(n: Node): Either[String, ByronParamsUpdate] =
+  def decode(n: Node): Either[LedgerDecodeError, ByronParamsUpdate] =
     CborRead.arrayN(n, 14, "protocol parameters update").flatMap { x =>
       (
         maybe(x(0), "scriptVersion")(uint("scriptVersion")),
@@ -185,13 +187,13 @@ object ByronParamsUpdate:
 
 object ByronParams:
   /** `blockVersionData` of the Byron genesis file; numbers are decimal strings (or numbers). */
-  def fromGenesis(c: ACursor): Either[String, ByronParams] =
-    def num(name: String, from: ACursor = c): Either[String, BigInt] =
-      from.downField(name).focus.toRight(s"blockVersionData: missing $name").flatMap { j =>
+  def fromGenesis(c: ACursor): Either[LedgerDecodeError, ByronParams] =
+    def num(name: String, from: ACursor = c): Either[LedgerDecodeError, BigInt] =
+      from.downField(name).focus.toRight(LedgerDecodeError.GenesisMissingField(name)).flatMap { j =>
         j.asString
           .flatMap(s => Either.catchNonFatal(BigInt(s)).toOption)
           .orElse(j.asNumber.flatMap(_.toBigInt))
-          .toRight(s"blockVersionData: $name is not a number")
+          .toRight(LedgerDecodeError.GenesisExpectedNumber(name))
       }
     val soft = c.downField("softforkRule")
     val fee = c.downField("txFeePolicy")

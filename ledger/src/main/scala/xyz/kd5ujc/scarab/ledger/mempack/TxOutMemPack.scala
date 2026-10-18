@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.mempack
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Address,
   CborRead,
@@ -84,14 +84,14 @@ object TxOutMemPack:
     if raw.size == 0 then Left(Failure.ScriptBytesMissing)
     else
       for
-        node <- Cbor.decode(raw).leftMap(Failure.ScriptRefused(_))
+        node <- CborRead.decode(raw).leftMap(Failure.ScriptRefused(_))
         fields <- CborRead.fields(node, "output").leftMap(Failure.ScriptRefused(_))
         wrapped <- fields.get(3).toRight(Failure.ReferenceScriptMissing)
         inner <- wrapped.value match
           case CborValue.Tag(t, i) if t == 24 =>
             CborRead.bytes(i, "reference script").leftMap(Failure.ScriptRefused(_))
           case _ => Left(Failure.ReferenceScriptWrapper)
-        script <- Cbor.decode(inner).leftMap(Failure.ScriptRefused(_))
+        script <- CborRead.decode(inner).leftMap(Failure.ScriptRefused(_))
         two <- CborRead.arrayN(script, 2, "script").leftMap(Failure.ScriptRefused(_))
         tag <- CborRead.uint(two(0), "script type").leftMap(Failure.ScriptRefused(_))
         kind <- ScriptKind.values.find(_.tag == tag).toRight(Failure.UnknownScriptKind(tag))
@@ -120,7 +120,7 @@ object TxOutMemPack:
 
   private def refScript(s: RefScript): Result[Script] = s.kind match
     case ScriptKind.Native =>
-      Cbor
+      CborRead
         .decode(s.bytes)
         .leftMap(Failure.ScriptRefused(_))
         .flatMap(n => Script.native(n).leftMap(Failure.ScriptRefused(_)))

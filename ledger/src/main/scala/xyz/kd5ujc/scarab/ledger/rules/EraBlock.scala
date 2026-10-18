@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.rules
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
@@ -84,7 +86,7 @@ object EraBlock:
       from: EraNes,
       header: Header.Shelley,
       block: Block.Shelley,
-      txs: Vector[Either[String, Tx]],
+      txs: Vector[Either[LedgerDecodeError, Tx]],
       plutus: PlutusStats
   ): Outcome =
     ticked(ctx)(from, header, block) match
@@ -99,7 +101,7 @@ object EraBlock:
       ticked: EraNes,
       header: Header.Shelley,
       block: Block.Shelley,
-      txs: Vector[Either[String, Tx]],
+      txs: Vector[Either[LedgerDecodeError, Tx]],
       plutus: PlutusStats
   ): Outcome =
     block.transactions
@@ -242,5 +244,5 @@ object EraBlock:
       }
 
   /** The transactions of a block, decoded as the node decodes them. */
-  def decode(block: Block.Shelley): Vector[Either[String, Tx]] =
+  def decode(block: Block.Shelley): Vector[Either[LedgerDecodeError, Tx]] =
     block.transactions.map(t => Tx.fromBlock(t, block.era))

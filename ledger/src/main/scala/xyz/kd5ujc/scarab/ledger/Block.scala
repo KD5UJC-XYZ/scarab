@@ -57,16 +57,25 @@ object Block:
 
   private def decodeWith(raw: Bytes, byronEpochSlots: Option[BigInt]): Either[ChainError, Block] =
     for
-      root <- Cbor.decode(raw, limits).leftMap(fail)
+      root <- CborRead.decode(raw, limits).leftMap(fail)
       outer <- array(root, 2)
       tag <- outer(0).value match
         case Value.UInt(t) => Right(t)
-        case _             => Left(fail("expected era tag"))
-      era <- Era.fromBlockTag(tag).toRight(fail(s"unknown era tag $tag"))
+        case _ =>
+          Left(
+            fail(
+              LedgerDecodeError.Expected(
+                "block era",
+                LedgerDecodeError.Shape.Unsigned,
+                outer(0).value
+              )
+            )
+          )
+      era <- Era.fromBlockTag(tag).toRight(fail(LedgerDecodeError.UnknownTag("block era", tag)))
       block <-
         if era == Era.Byron then
           byronEpochSlots
-            .toRight(fail("a Byron block where a Shelley-based block is expected"))
+            .toRight(fail(LedgerDecodeError.ByronBlockUnexpected))
             .flatMap(byron(tag == 0, outer(1), _))
         else shelley(era, outer(1))
     yield block
@@ -108,14 +117,23 @@ object Block:
       _ <- Either.cond(
         bodies.size == witnesses.size,
         (),
-        fail("transaction body/witness counts differ")
+        fail(LedgerDecodeError.BodyWitnessCount(bodies.size, witnesses.size))
       )
       aux <- parts(3).value match
         case Value.Map(entries) =>
           entries
             .traverse { case (k, v) => index(k, bodies.size).map(_ -> v.original) }
             .map(_.toMap)
-        case _ => Left(fail("auxiliary data must be a map"))
+        case _ =>
+          Left(
+            fail(
+              LedgerDecodeError.Expected(
+                "auxiliary data",
+                LedgerDecodeError.Shape.Map,
+                parts(3).value
+              )
+            )
+          )
       invalid <-
         if hasInvalid then list(parts(4)).flatMap(_.traverse(index(_, bodies.size))).map(_.toSet)
         else Right(Set.empty[Int])
@@ -128,13 +146,13 @@ object Block:
       Blake2b.hash256.hash(Bytes(components.flatMap(c => Blake2b.hash256.hash(c).value)))
     )
 
-  private def fail(reason: String): ChainError = ChainError.Decode("block", reason)
-  private def array(n: Node, size: Int): Either[ChainError, Vector[Node]] = n.value match
-    case Value.Arr(xs) if xs.size == size => Right(xs)
-    case _                                => Left(fail(s"expected $size-element array"))
+  private def fail(reason: LedgerDecodeError): ChainError = ChainError.Decode("block", reason)
+  private def array(n: Node, size: Int): Either[ChainError, Vector[Node]] =
+    CborRead.arrayN(n, size, "block").leftMap(fail)
   private def list(n: Node): Either[ChainError, Vector[Node]] = n.value match
     case Value.Arr(xs) => Right(xs)
-    case _             => Left(fail("expected array"))
+    case _ =>
+      Left(fail(LedgerDecodeError.Expected("block", LedgerDecodeError.Shape.Array, n.value)))
   private def index(n: Node, bound: Int): Either[ChainError, Int] = n.value match
     case Value.UInt(i) if i < bound => Right(i.toInt)
-    case _                          => Left(fail("transaction index out of range"))
+    case _ => Left(fail(LedgerDecodeError.TransactionIndex(n.value, bound)))

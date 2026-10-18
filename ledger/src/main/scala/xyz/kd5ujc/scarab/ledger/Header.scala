@@ -113,7 +113,10 @@ object Header:
       envelope: Bytes,
       byronEpochSlots: BigInt
   ): Either[ChainError, Header] =
-    NtNHeader.codec.decode(envelope).leftMap(fail).flatMap(fromNtN(_, byronEpochSlots))
+    NtNHeader.codec
+      .decode(envelope)
+      .leftMap(e => fail(LedgerDecodeError.Protocol(e)))
+      .flatMap(fromNtN(_, byronEpochSlots))
 
   def fromNtN(
       h: NtNHeader,
@@ -126,8 +129,8 @@ object Header:
   /** Decode a Shelley-based raw header `[header_body, kes_signature]` of the given era. */
   def fromRaw(era: Era, raw: Bytes): Either[ChainError, Header.Shelley] =
     for
-      _ <- Either.cond(era != Era.Byron, (), fail("Byron headers have a different layout"))
-      root <- Cbor.decode(raw, headerLimits).leftMap(fail)
+      _ <- Either.cond(era != Era.Byron, (), fail(LedgerDecodeError.ByronLayout))
+      root <- CborRead.decode(raw, headerLimits).leftMap(fail)
       outer <- array(root, 2)
       kes <- bytes(outer(1), 448)
       body <- array(outer(0), if era.usesTPraos then 15 else 10)
@@ -215,7 +218,7 @@ object Header:
       epochSlots: BigInt
   ): Either[ChainError, Header.Byron] =
     for
-      root <- Cbor.decode(raw, headerLimits).leftMap(fail)
+      root <- CborRead.decode(raw, headerLimits).leftMap(fail)
       h <- array(root, 5)
       prev <- bytes(h(1), 32)
       magic <- uint(h(0))
@@ -238,7 +241,9 @@ object Header:
             no <- uint(diff(0))
             signature <- byronSignature(consensus(3))
             extra <- array(h(4), 4)
-            version <- ByronVersion.decode(extra(0)).leftMap(e => fail(e.message))
+            version <- ByronVersion
+              .decode(extra(0))
+              .leftMap(e => fail(LedgerDecodeError.Version(e)))
             signed = Bytes(
               Vector(0x85.toByte) ++ Vector(h(1), h(2), consensus(0), consensus(2), h(4))
                 .flatMap(_.original.value)
@@ -267,7 +272,11 @@ object Header:
     for
       outer <- array(n, 2)
       kind <- uint(outer(0))
-      _ <- Either.cond(kind == 2, (), fail(s"unknown Byron block signature kind $kind"))
+      _ <- Either.cond(
+        kind == 2,
+        (),
+        fail(LedgerDecodeError.UnknownTag("Byron block signature", kind))
+      )
       proxy <- array(outer(1), 2)
       psk <- array(proxy(0), 4)
       epoch <- uint(psk(0))
@@ -281,13 +290,13 @@ object Header:
     case Value.Null => Right(None)
     case _          => bytes(n, 32).map(Some(_))
 
-  private[ledger] def fail(reason: String): ChainError = ChainError.Decode("header", reason)
-  private[ledger] def array(n: Node, size: Int): Either[ChainError, Vector[Node]] = n.value match
-    case Value.Arr(xs) if xs.size == size => Right(xs)
-    case _                                => Left(fail(s"expected $size-element array"))
+  private[ledger] def fail(reason: LedgerDecodeError): ChainError =
+    ChainError.Decode("header", reason)
+  private[ledger] def array(n: Node, size: Int): Either[ChainError, Vector[Node]] =
+    CborRead.arrayN(n, size, "header").leftMap(fail)
   private[ledger] def uint(n: Node): Either[ChainError, BigInt] = n.value match
     case Value.UInt(v) => Right(v)
-    case _             => Left(fail("expected unsigned integer"))
-  private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] = n.value match
-    case Value.ByteString(v) if v.size == size => Right(v)
-    case _                                     => Left(fail(s"expected $size-byte string"))
+    case _ =>
+      Left(fail(LedgerDecodeError.Expected("header", LedgerDecodeError.Shape.Unsigned, n.value)))
+  private[ledger] def bytes(n: Node, size: Int): Either[ChainError, Bytes] =
+    CborRead.bytesN(n, size, "header").leftMap(fail)

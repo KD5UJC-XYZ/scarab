@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{ByronGenesis, Header}
 import xyz.kd5ujc.scarab.ledger.{CborRead, TxIn}
 
@@ -12,7 +14,7 @@ enum ByronError:
   case ProtocolMagicMismatch(block: BigInt, genesis: BigInt)
   case HeaderTooLarge(max: BigInt, actual: BigInt)
   case BlockTooLarge(max: BigInt, actual: BigInt)
-  case Decode(reason: String)
+  case Decode(cause: LedgerDecodeError)
   case ProofMismatch(which: String)
   case Delegation(error: DelegationError)
   case Update(error: UpdateError)
@@ -26,7 +28,7 @@ enum ByronError:
   case LovelaceOutOfRange(what: String)
   case NetworkMagicMismatch(expected: Option[Long], actual: Option[Long])
   case UnknownAttributes(what: String)
-  case Structure(reason: String)
+  case MissingDelegatedSignature
 
   def message: String = this match
     case ProtocolMagicMismatch(b, g) => s"block protocol magic $b differs from the genesis $g"
@@ -46,7 +48,7 @@ enum ByronError:
     case LovelaceOutOfRange(w)      => s"lovelace out of range ($w)"
     case NetworkMagicMismatch(e, a) => s"output network magic $a, expected $e"
     case UnknownAttributes(w)       => s"too many unknown attribute bytes in $w"
-    case Structure(r)               => r
+    case MissingDelegatedSignature  => "main header without a delegated signature"
 
 /** A Byron block's body, decoded: `[tx payload, ssc payload, delegation payload, update payload]`.
   * The SSC payload is not used on these networks and is not interpreted.
@@ -59,9 +61,9 @@ final case class ByronBody(
 )
 
 object ByronBody:
-  def decode(body: Bytes): Either[String, ByronBody] =
+  def decode(body: Bytes): Either[LedgerDecodeError, ByronBody] =
     for
-      root <- Cbor.decode(body, ByronCbor.BodyLimits)
+      root <- CborRead.decode(body, ByronCbor.BodyLimits)
       xs <- CborRead.arrayN(root, 4, "Byron body")
       txs <- CborRead.array(xs(0), "Byron tx payload").flatMap(_.traverse(ByronTx.decodeAux))
       certs <- CborRead
@@ -108,14 +110,14 @@ object ByronLedger:
   def genesisUtxo(
       genesis: ByronGenesis,
       addressMagic: Option[Long]
-  ): Either[String, Map[TxIn, ByronOut]] =
+  ): Either[LedgerDecodeError, Map[TxIn, ByronOut]] =
     genesisUtxo(genesis.avvm, genesis.nonAvvm, addressMagic)
 
   def genesisUtxo(
       avvm: Vector[(Bytes, BigInt)],
       nonAvvm: Vector[(Bytes, BigInt)],
       addressMagic: Option[Long]
-  ): Either[String, Map[TxIn, ByronOut]] =
+  ): Either[LedgerDecodeError, Map[TxIn, ByronOut]] =
     val balances =
       avvm.map((key, coin) => ByronAddress.redeem(key, addressMagic) -> coin) ++ nonAvvm
     balances.foldLeftM(Map.empty[TxIn, ByronOut]) { case (acc, (address, coin)) =>
@@ -123,18 +125,18 @@ object ByronLedger:
       Either.cond(
         !acc.contains(in),
         acc.updated(in, ByronOut(address, coin)),
-        "duplicate genesis address"
+        LedgerDecodeError.DuplicateGenesisAddress
       )
     }
 
-  def initial(config: Config): Either[String, ByronLedgerState] =
+  def initial(config: Config): Either[LedgerDecodeError, ByronLedgerState] =
     val g = config.genesis
     for
       utxo <- genesisUtxo(g, config.addressMagic)
       certs = g.delegations.map(cert)
       delegation <- DelegationRules
         .initial(config.magic, g.genesisKeys, certs)
-        .leftMap(_.message)
+        .leftMap(LedgerDecodeError.Delegation(_))
     yield ByronLedgerState(
       0,
       0,
@@ -198,7 +200,7 @@ object ByronLedger:
       issuerDelegate <- main
         .flatMap(_.signature match
           case d: Header.ByronSignature.Delegated => Some(ByronCbor.keyHash(d.delegate)))
-        .toRight(ByronError.Structure("main header without a delegated signature"))
+        .toRight(ByronError.MissingDelegatedSignature)
       delegation <- DelegationRules
         .update(
           DelegationRules.Env(
@@ -261,7 +263,7 @@ object ByronLedger:
     */
   private[scarab] def checkProofs(header: Header.Byron, body: ByronBody): Either[ByronError, Unit] =
     val expected = for
-      root <- Cbor.decode(header.bodyProof)
+      root <- CborRead.decode(header.bodyProof)
       xs <- CborRead.arrayN(root, 4, "body proof")
       tx <- CborRead.arrayN(xs(0), 3, "tx proof")
       count <- CborRead.uint(tx(0), "tx count")

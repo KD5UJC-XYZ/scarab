@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import io.circe.parser
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.ledger.state.{Build, Conway, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -42,7 +42,7 @@ object PreprodDeepTx:
   val bytes: Bytes = hex(Files.readString(dir.resolve("tx-f90dce57.hex")).trim)
 
   def parsed: Tx =
-    Cbor.decode(bytes).fold(sys.error, identity).value match
+    xyz.kd5ujc.scarab.ledger.CborRead.decode(bytes).fold(sys.error, identity).value match
       case Value.Arr(xs) =>
         Tx.fromBlock(Block.Transaction(xs(0).original, xs(1).original, None, true), Era.Conway)
           .fold(e => sys.error(e.toString), identity)

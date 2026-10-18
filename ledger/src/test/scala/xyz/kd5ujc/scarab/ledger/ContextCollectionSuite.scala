@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value as CborValue}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
@@ -25,7 +25,7 @@ class ContextCollectionSuite extends FunSuite:
           assert(!recorded.collected)
           val expected = Cbor
             .decode(hex(field[String](recorded.oracle, "collectErrorsCbor")))
-            .fold(fail(_), identity)
+            .fold(e => fail(e.toString), identity)
             .value match
             case CborValue.Arr(items) => items.size
             case _                    => fail("not reference collection errors")
@@ -88,7 +88,8 @@ class ContextCollectionSuite extends FunSuite:
       all.find(_.name == "api-collect-none").getOrElse(fail("no missing-redeemer case"))
     val policy = recorded.tx.body.mint.keys.toVector.sorted.headOption.getOrElse(fail("no mint"))
     val script = recorded.scripts.getOrElse(policy, fail("no script"))
-    val address = Address.decode(Bytes(Vector(0x70.toByte)) ++ policy).fold(fail(_), identity)
+    val address =
+      Address.decode(Bytes(Vector(0x70.toByte)) ++ policy).fold(e => fail(e.toString), identity)
     val output = TestLedger.out(address, 1000000)
     val inputs = Vector.tabulate(20000)(i => TxIn(recorded.tx.body.id, BigInt(i)))
     val tx = recorded.tx.copy(

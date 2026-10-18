@@ -23,7 +23,9 @@ class ByronHeaderFixtureSuite extends FunSuite:
 
     test(s"complete public block $name agrees with the executed reference decoder") {
       val raw =
-        Bytes.fromHex(Files.readString(directory.resolve(file)).trim).fold(fail(_), identity)
+        Bytes
+          .fromHex(Files.readString(directory.resolve(file)).trim)
+          .fold(e => fail(e.toString), identity)
       val decoded = Block.decode(raw, 21600)
       if exit == 0 then
         val version = fields match

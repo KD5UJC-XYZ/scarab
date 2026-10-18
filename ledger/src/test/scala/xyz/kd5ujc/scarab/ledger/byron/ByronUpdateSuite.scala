@@ -177,7 +177,10 @@ class ByronUpdateSuite extends ScalaCheckSuite:
 
   private def payload(proposal: Option[Bytes], votes: Seq[Bytes]): UpdatePayload =
     val encoded = Cb.arr(proposal.fold(Cb.arr())(p => Cb.arr(p)), Cb.arr(votes*))
-    Cbor.decode(encoded).flatMap(UpdatePayload.decode).fold(e => fail(e), identity)
+    xyz.kd5ujc.scarab.ledger.CborRead
+      .decode(encoded)
+      .flatMap(UpdatePayload.decode)
+      .fold(e => fail(e), identity)
 
   private def version(major: BigInt, minor: BigInt, alt: BigInt): ByronVersion =
     ByronVersion.from(major, minor, alt).fold(e => fail(e.message), identity)
@@ -404,7 +407,10 @@ class ByronUpdateSuite extends ScalaCheckSuite:
         Cb.arr(Cb.uint(7))
       ))*
     )
-    val decoded = Cbor.decode(update).flatMap(ByronParamsUpdate.decode).fold(e => fail(e), identity)
+    val decoded = xyz.kd5ujc.scarab.ledger.CborRead
+      .decode(update)
+      .flatMap(ByronParamsUpdate.decode)
+      .fold(e => fail(e), identity)
     assertEquals(decoded.scriptVersion, Some(BigInt(1)))
     assertEquals(decoded.softforkRule, Some(SoftforkRule(1, 2, 3)))
     assertEquals(decoded.unlockStakeEpoch, Some(BigInt(7)))

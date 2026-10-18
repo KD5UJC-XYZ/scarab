@@ -35,7 +35,8 @@ class LiteLedgerSuite extends FunSuite:
   }
 
   test("a PPUP proposal in the first part of an epoch is a current-epoch vote") {
-    val effects = LiteLedger.effects(proposalBody(0), Era.Alonzo).fold(fail(_), identity)
+    val effects =
+      LiteLedger.effects(proposalBody(0), Era.Alonzo).fold(e => fail(e.toString), identity)
     assertEquals(effects.size, 1)
     val applied = effects.foldLeft(lite) { (l, e) =>
       e match
@@ -63,7 +64,7 @@ class LiteLedgerSuite extends FunSuite:
     val pool = Bytes(Vector.fill(28)(9.toByte))
     val vrf = Bytes(Vector.fill(32)(7.toByte))
     val reg = hex("a10481" + "83" + "03" + "581c" + pool.hex + "5820" + vrf.hex)
-    val effects = LiteLedger.effects(reg, Era.Babbage).fold(fail(_), identity)
+    val effects = LiteLedger.effects(reg, Era.Babbage).fold(e => fail(e.toString), identity)
     assertEquals(effects, Vector(LiteLedger.Effect.PoolRegistered(pool, vrf)))
     val retire = hex("a10481" + "83" + "04" + "581c" + pool.hex + "05")
     assertEquals(
@@ -77,7 +78,7 @@ class LiteLedgerSuite extends FunSuite:
     val vrf = Bytes(Vector.fill(32)(2.toByte))
     val cert =
       hex("a10481" + "84" + "05" + "581c" + gkey.hex + "581c" + delegate.hex + "5820" + vrf.hex)
-    val effects = LiteLedger.effects(cert, Era.Alonzo).fold(fail(_), identity)
+    val effects = LiteLedger.effects(cert, Era.Alonzo).fold(e => fail(e.toString), identity)
     assertEquals(
       effects,
       Vector(LiteLedger.Effect.GenesisDelegation(gkey, GenDelegPair(delegate, vrf)))
@@ -96,7 +97,7 @@ class LiteLedgerSuite extends FunSuite:
 
   test("applying a parameter update sets only the fields it names") {
     val update = ParamUpdate(Map(14 -> hex("820700"), 12 -> zero))
-    val updated = LiteLedger.applyUpdate(lite.params, update).fold(fail(_), identity)
+    val updated = LiteLedger.applyUpdate(lite.params, update).fold(e => fail(e.toString), identity)
     assertEquals(updated.protocolVersion, (BigInt(7), BigInt(0)))
     assertEquals(updated.d, Rational(0))
     assertEquals(updated.maxBlockBodySize, lite.params.maxBlockBodySize)

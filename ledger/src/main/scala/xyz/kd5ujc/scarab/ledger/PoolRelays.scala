@@ -5,7 +5,7 @@ import cats.data.NonEmptyVector
 import cats.syntax.all.*
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 
 /** A TCP port as a pool registers it: the reference's `Port`, a `Word16`
   * (`Cardano.Ledger.BaseTypes`, `newtype Port = Port {portToWord16 :: Word16}`,
@@ -153,7 +153,7 @@ enum LedgerRelay:
   */
 enum PoolRelayError:
   /** The bytes are not one CBOR item (the message of the CBOR decoder). */
-  case NotCbor(detail: String)
+  case NotCbor(cause: LedgerDecodeError)
 
   /** The item is not an array: the relays of a pool are a sequence. */
   case NotASequence
@@ -222,7 +222,7 @@ object PoolRelays:
   def decode(relays: Bytes): Either[PoolRelayError, Vector[PoolRelay]] =
     if relays.isEmpty then Right(Vector.empty)
     else
-      Cbor.decode(relays).leftMap(PoolRelayError.NotCbor(_)).flatMap { node =>
+      CborRead.decode(relays).leftMap(PoolRelayError.NotCbor(_)).flatMap { node =>
         node.value match
           case Value.Arr(items) => items.zipWithIndex.traverse((n, i) => relay(n, i))
           case _                => Left(PoolRelayError.NotASequence)

@@ -66,7 +66,7 @@ enum BlockFailure:
   case Decode(error: ChainError)
 
   /** A transaction of the block does not decode (`text` is the decoder's text). */
-  case TxDecode(txId: Bytes, text: String)
+  case TxDecode(txId: Bytes, error: LedgerDecodeError)
 
   // ---- byron
 
@@ -96,7 +96,7 @@ enum BlockFailure:
   // ---- ledger
 
   /** The ledger-lite rules of the bootstrap mode refused the block (`text` is their text). */
-  case Lite(text: String)
+  case Lite(error: LedgerDecodeError)
 
   /** The Byron-to-Shelley hand-over refused the final Byron state (`text` is its text). */
   case Handover(text: String)
@@ -160,7 +160,7 @@ enum BlockFailure:
     case Envelope(error) => error.message
     case TPraos(error)   => error.message
     case Praos(error)    => error.message
-    case Lite(text)      => text
+    case Lite(error)     => error.message
     case Handover(text)  => text
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"

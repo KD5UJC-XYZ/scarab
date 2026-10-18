@@ -61,7 +61,9 @@ class TxDecodingSuite extends FunSuite:
 
   test("genesis delegation and instantaneous reward certificates decode") {
     def cert(hex: String) =
-      Certificate.decode(Cbor.decode(Bytes.fromHex(hex).toOption.get).toOption.get)
+      Certificate.decode(
+        xyz.kd5ujc.scarab.ledger.CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get
+      )
     val g = "a" * 56
     val d = "b" * 56
     val v = "c" * 64
@@ -91,7 +93,10 @@ class TxDecodingSuite extends FunSuite:
 
   test("script hashes: native scripts hash their encoding, Plutus scripts their bytes") {
     val key = "e" * 56
-    val node = Cbor.decode(Bytes.fromHex(s"8200581c$key").toOption.get).toOption.get
+    val node = xyz.kd5ujc.scarab.ledger.CborRead
+      .decode(Bytes.fromHex(s"8200581c$key").toOption.get)
+      .toOption
+      .get
     val native = Script.native(node).toOption.get
     assertEquals(
       native.hash,
@@ -124,9 +129,9 @@ class TxDecodingSuite extends FunSuite:
     var results = Vector.empty[Boolean]
     val t = new Thread(() =>
       results = Vector(
-        Cbor.decode(nested(90000), wide).isRight,
-        Cbor.decode(nested(2049), wide.copy(maxDepth = 2048)).isLeft,
-        Cbor.decode(nested(2048), wide.copy(maxDepth = 2048)).isRight
+        xyz.kd5ujc.scarab.ledger.CborRead.decode(nested(90000), wide).isRight,
+        xyz.kd5ujc.scarab.ledger.CborRead.decode(nested(2049), wide.copy(maxDepth = 2048)).isLeft,
+        xyz.kd5ujc.scarab.ledger.CborRead.decode(nested(2048), wide.copy(maxDepth = 2048)).isRight
       )
     )
     t.start()

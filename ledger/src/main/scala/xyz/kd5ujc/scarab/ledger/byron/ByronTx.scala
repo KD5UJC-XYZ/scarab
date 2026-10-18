@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{CborRead, TxIn}
 
 /** A Byron transaction output: the original address encoding and the lovelace value. */
@@ -35,27 +37,33 @@ object ByronTx:
   private val limits = ByronCbor.BodyLimits
 
   /** Two-element `[tag, tag24(bytes(cbor))]` wrappers ("known CBOR data item"). */
-  private def knownItem(n: Node, what: String): Either[String, (Int, Node)] =
+  private def knownItem(n: Node, what: String): Either[LedgerDecodeError, (Int, Node)] =
     for
       xs <- CborRead.arrayN(n, 2, what)
       tag <- CborRead.uint(xs(0), what).map(_.toInt)
       inner <- xs(1).value match
         case Value.Tag(t, i) if t == 24 =>
-          CborRead.bytes(i, what).flatMap(b => Cbor.decode(b, limits))
-        case _ => Left(s"$what: expected tag 24")
+          CborRead.bytes(i, what).flatMap(b => CborRead.decode(b, limits))
+        case _ => Left(LedgerDecodeError.ExpectedTag(what, 24, xs(1).value))
     yield tag -> inner
 
-  private def input(n: Node): Either[String, TxIn] =
+  private def input(n: Node): Either[LedgerDecodeError, TxIn] =
     knownItem(n, "Byron input").flatMap {
       case (0, inner) =>
         CborRead.arrayN(inner, 2, "Byron input").flatMap { xs =>
           (CborRead.bytesN(xs(0), 32, "Byron txid"), CborRead.uint(xs(1), "Byron index")).tupled
-            .flatMap((id, ix) => Either.cond(ix < 65536, TxIn(id, ix), "Byron index too large"))
+            .flatMap((id, ix) =>
+              Either.cond(
+                ix < 65536,
+                TxIn(id, ix),
+                LedgerDecodeError.NumberOutOfRange("Byron input index", ix, 0, 65535)
+              )
+            )
         }
-      case (t, _) => Left(s"Byron input: unknown tag $t")
+      case (t, _) => Left(LedgerDecodeError.UnknownTag("Byron input", t))
     }
 
-  private def output(n: Node): Either[String, ByronOut] =
+  private def output(n: Node): Either[LedgerDecodeError, ByronOut] =
     CborRead.arrayN(n, 2, "Byron output").flatMap { xs =>
       (
         Right(xs(0).original),
@@ -65,16 +73,20 @@ object ByronTx:
       ).tupled.map(ByronOut(_, _))
     }
 
-  def decodeTx(n: Node): Either[String, ByronTx] =
+  def decodeTx(n: Node): Either[LedgerDecodeError, ByronTx] =
     for
       xs <- CborRead.arrayN(n, 3, "Byron tx")
       inputs <- CborRead.array(xs(0), "Byron inputs").flatMap(_.traverse(input))
       outputs <- CborRead.array(xs(1), "Byron outputs").flatMap(_.traverse(output))
-      _ <- Either.cond(inputs.nonEmpty && outputs.nonEmpty, (), "Byron tx: empty inputs or outputs")
+      _ <- Either.cond(
+        inputs.nonEmpty && outputs.nonEmpty,
+        (),
+        LedgerDecodeError.EmptyInputsOrOutputs
+      )
       attrs <- ByronAddress.attributesLength(xs(2), "Byron tx attributes")
     yield ByronTx(n.original, Blake2b.hash256.hash(n.original), inputs, outputs, attrs)
 
-  private def witness(n: Node): Either[String, ByronWitness] =
+  private def witness(n: Node): Either[LedgerDecodeError, ByronWitness] =
     knownItem(n, "Byron witness").flatMap { (tag, inner) =>
       CborRead.arrayN(inner, 2, "Byron witness").flatMap { xs =>
         val keySize = if tag == 0 then 64 else 32
@@ -85,12 +97,12 @@ object ByronTx:
           tag match
             case 0 => Right(ByronWitness.VerKey(k, s))
             case 2 => Right(ByronWitness.Redeem(k, s))
-            case t => Left(s"Byron witness: unknown tag $t")
+            case t => Left(LedgerDecodeError.UnknownTag("Byron witness", t))
         }
       }
     }
 
-  def decodeAux(n: Node): Either[String, ByronTxAux] =
+  def decodeAux(n: Node): Either[LedgerDecodeError, ByronTxAux] =
     for
       xs <- CborRead.arrayN(n, 2, "Byron TxAux")
       tx <- decodeTx(xs(0))
