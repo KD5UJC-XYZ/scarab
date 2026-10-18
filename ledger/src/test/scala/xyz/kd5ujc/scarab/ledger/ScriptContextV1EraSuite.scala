@@ -53,7 +53,7 @@ class ScriptContextV1EraSuite extends FunSuite:
     ).flatten
     TxOut.fromBytes(Bytes.fromHex(head(5, fields.size) + fields.mkString).toOption.get) match
       case Right(o) => o
-      case Left(e)  => fail(e)
+      case Left(e)  => fail(e.toString)
 
   private def in(n: Int) = TxIn(Bytes.fromHex(hash(10 + n, 32)).toOption.get, n)
 

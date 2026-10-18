@@ -39,11 +39,11 @@ object ByronVersion:
     def alt: Int = v._3
     def render: String = s"${v.major}.${v.minor}.${v.alt}"
 
-  private def component(field: Field, n: BigInt): Either[Error, Int] =
+  private def component(field: Field, n: BigInt): Either[Error.OutOfRange, Int] =
     if n >= 0 && n <= field.max then Right(n.toInt)
     else Left(Error.OutOfRange(field, n))
 
-  def from(major: BigInt, minor: BigInt, alt: BigInt): Either[Error, ByronVersion] =
+  def from(major: BigInt, minor: BigInt, alt: BigInt): Either[Error.OutOfRange, ByronVersion] =
     (component(Field.Major, major), component(Field.Minor, minor), component(Field.Alt, alt)).tupled
 
   def decode(n: Node): Either[Error, ByronVersion] =

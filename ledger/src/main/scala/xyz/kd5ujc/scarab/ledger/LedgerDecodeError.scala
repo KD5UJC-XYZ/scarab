@@ -44,7 +44,17 @@ enum LedgerDecodeError:
   case TransactionIndex(actual: Value, bound: Int)
   case LeiosCertificate(cause: xyz.kd5ujc.scarab.crypto.bls.BlsError)
 
-  def message: String = toString
+  def message: String = this match
+    case Syntax(cause)                  => cause.message
+    case Protocol(cause)                => cause.message
+    case Transaction(id, cause)         => s"tx ${id.hex.take(16)}: ${cause.message}"
+    case Expected(context, expected, _) => s"$context: expected $expected"
+    case ExpectedTag(context, tag, _)   => s"$context: expected tag $tag"
+    case NativeScript(cause)            => cause.message
+    case Voting(cause)                  => cause.message
+    case Version(cause)                 => cause.message
+    case Delegation(cause)              => cause.message
+    case _                              => toString
 
 object LedgerDecodeError:
   enum Shape:

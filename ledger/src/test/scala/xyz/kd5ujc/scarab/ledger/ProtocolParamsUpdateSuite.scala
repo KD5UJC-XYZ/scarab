@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * per-word value by 8 (`Babbage/PParams.hs:389-391`).
   */
 class ProtocolParamsUpdateSuite extends FunSuite:
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
 
   private val alonzo = TestLedger
     .params(6)
@@ -21,7 +21,7 @@ class ProtocolParamsUpdateSuite extends FunSuite:
   private val toBabbage = hex("820700") // [7, 0]
 
   private def applied(p: ProtocolParams, fields: (Int, Bytes)*): ProtocolParams =
-    ProtocolParams.update(p, ParamUpdate(fields.toMap)).fold(e => fail(e), identity)
+    ProtocolParams.update(p, ParamUpdate(fields.toMap)).fold(e => fail(e.toString), identity)
 
   test("in Alonzo key 17 sets the lovelace per word, and the per-byte value is not touched") {
     val after = applied(alonzo, 17 -> key17)

@@ -158,7 +158,7 @@ class PoolRelaysSuite extends ScalaCheckSuite:
       case Right(b: Block.Shelley) => b
       case other                   => fail(s"unexpected $other")
     val registered = block.transactions
-      .map(Tx.fromBlock(_, block.era).fold(e => fail(e), identity))
+      .map(Tx.fromBlock(_, block.era).fold(e => fail(e.toString), identity))
       .flatMap(_.body.certificates)
       .collect { case c: Certificate.RegisterPool => c.params }
     assertEquals(registered.size, 1)

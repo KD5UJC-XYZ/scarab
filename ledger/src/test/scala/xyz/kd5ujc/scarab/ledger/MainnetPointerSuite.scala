@@ -37,7 +37,7 @@ class MainnetPointerSuite extends FunSuite:
   private def decoded(era: Era): Either[LedgerDecodeError, TxBody] =
     TxBody.decode(body, Address.Mode.of(era))
 
-  private val mary: TxBody = decoded(Era.Mary).fold(e => fail(e), identity)
+  private val mary: TxBody = decoded(Era.Mary).fold(e => fail(e.toString), identity)
   private val output: TxOut = mary.outputs.head
 
   private def shelley(ptr: Ptr): Address.Kind =
@@ -207,12 +207,12 @@ class MainnetPointerSuite extends FunSuite:
   test("the output size is the one of the address the ledger holds") {
     // [address, 1 ada] with the address of the fixture: 38 bytes as it came, 32 written again
     val came = bytes(s"82582641$payment$original" + "1a000f4240")
-    val out = TxOut.fromBytes(came, Address.Mode.Rigorous).fold(e => fail(e), identity)
+    val out = TxOut.fromBytes(came, Address.Mode.Rigorous).fold(e => fail(e.toString), identity)
     assertEquals(out.address.raw.size, 32)
     assertEquals(out.raw.size - out.ledgerSize, 6)
     // an address already written as the ledger writes it is not changed
     val plain = TxOut(
-      Address.decode(pointer("81010203")).fold(e => fail(e), identity),
+      Address.decode(pointer("81010203")).fold(e => fail(e.toString), identity),
       Value.coin(1000000)
     )
     assertEquals(plain.ledgerSize, plain.raw.size)

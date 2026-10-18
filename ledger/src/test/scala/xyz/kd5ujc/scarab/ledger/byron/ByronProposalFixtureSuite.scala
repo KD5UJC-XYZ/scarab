@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.ledger.CborRead
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 
 /** Raw proposal verdicts executed by release CLI 11.2.3.0, retained with provenance in
   * fixtures/byron-version. This exercises decoding, not reference registration or header rules.
@@ -21,7 +21,7 @@ class ByronProposalFixtureSuite extends FunSuite:
   private def payload(
       proposal: Bytes
   ): Either[LedgerDecodeError, UpdatePayload] =
-    Cbor
+    CborRead
       .decode(ByronCbor.of(0x82, 0x81) ++ proposal ++ ByronCbor.of(0x80))
       .flatMap(UpdatePayload.decode)
 

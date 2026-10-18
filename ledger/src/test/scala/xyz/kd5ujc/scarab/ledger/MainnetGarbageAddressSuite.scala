@@ -21,7 +21,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
 
   private val block: Block.Shelley =
     val hex = Files.readString(Path.of("fixtures/mainnet/mary-garbage-address-block.hex")).trim
-    Block.decode(Bytes.fromHex(hex).fold(e => fail(e), identity), EpochSlots) match
+    Block.decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity), EpochSlots) match
       case Right(b: Block.Shelley) => b
       case other                   => fail(s"unexpected $other")
 
@@ -37,7 +37,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
   private def tx(era: Era): Either[LedgerDecodeError, Tx] =
     Tx.fromBlock(transaction, era)
 
-  private val mary: Tx = tx(Era.Mary).fold(e => fail(e), identity)
+  private val mary: Tx = tx(Era.Mary).fold(e => fail(e.toString), identity)
   private val output: TxOut = mary.body.outputs.head
 
   test("the fixture is the block at slot 39,249,764 in the Mary era") {

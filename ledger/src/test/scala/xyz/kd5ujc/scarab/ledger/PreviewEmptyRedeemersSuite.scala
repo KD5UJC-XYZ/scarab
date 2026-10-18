@@ -29,7 +29,7 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.toString), identity))
       .map(Block.decodeShelley(_).fold(e => fail(e.message), identity))
       .collect { case b: Block.Shelley => b }
 
@@ -42,7 +42,7 @@ class PreviewEmptyRedeemersSuite extends FunSuite:
     for
       b <- blocks
       t <- b.transactions
-      tx = Tx.fromBlock(t, b.era).fold(e => fail(e), identity)
+      tx = Tx.fromBlock(t, b.era).fold(e => fail(e.toString), identity)
       if tx.witnesses.redeemers.isEmpty && tx.body.scriptDataHash.isDefined
     yield b -> tx
 

@@ -362,7 +362,7 @@ class TickRulesSuite extends FunSuite:
     def output(n: Int, lovelace: BigInt): (node.TxIn, node.TxOut) =
       val address = node.Address
         .decode(Bytes.fromArray(0x61.toByte +: Array.fill[Byte](28)(n.toByte)))
-        .fold(e => fail(e), identity)
+        .fold(e => fail(e.toString), identity)
       node.TxIn(bytes(n, 32), BigInt(0)) -> TestLedger.out(address, lovelace)
     val redeem = Vector(output(1, 1000), output(2, 2500))
     val kept = output(3, 7)

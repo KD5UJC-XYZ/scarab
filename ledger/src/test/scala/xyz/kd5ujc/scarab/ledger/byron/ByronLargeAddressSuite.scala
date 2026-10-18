@@ -54,11 +54,11 @@ class ByronLargeAddressSuite extends FunSuite:
 
   private val block: Block.Byron =
     val hex = Files.readString(Path.of("fixtures/mainnet/byron-large-address-block.hex")).trim
-    Block.decode(Bytes.fromHex(hex).fold(e => fail(e), identity), EpochSlots) match
+    Block.decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity), EpochSlots) match
       case Right(b: Block.Byron) => b
       case other                 => fail(s"unexpected $other")
 
-  private lazy val body = ByronBody.decode(block.body).fold(e => fail(e), identity)
+  private lazy val body = ByronBody.decode(block.body).fold(e => fail(e.toString), identity)
 
   /** The outputs whose address is larger than the 4096 bytes the decoder used to accept. */
   private lazy val large =
@@ -72,7 +72,7 @@ class ByronLargeAddressSuite extends FunSuite:
 
   test("an output address of 7,689 bytes with a 7,641-byte derivation path decodes") {
     assertEquals(large.map(_.address.size), Vector(7689))
-    val a = ByronAddress.decode(large.head.address).fold(e => fail(e), identity)
+    val a = ByronAddress.decode(large.head.address).fold(e => fail(e.toString), identity)
     assertEquals(a.unknownAttributesLength, 0) // key 1 is interpreted: it does not count
     assertEquals(a.networkMagic, None)
     assertEquals(a.addrType, ByronAddress.VerKey)
@@ -97,6 +97,11 @@ class ByronLargeAddressSuite extends FunSuite:
     assert(ByronAddress.decode(tooBig).isLeft)
     assertEquals(
       ByronLedger.outputs(config, body.txs.head.tx.copy(outputs = Vector(ByronOut(tooBig, 1)))),
-      Left(ByronError.Decode("input byte limit exceeded"))
+      Left(
+        ByronError.Decode(
+          xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+            .Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.InputLimitExceeded)
+        )
+      )
     )
   }

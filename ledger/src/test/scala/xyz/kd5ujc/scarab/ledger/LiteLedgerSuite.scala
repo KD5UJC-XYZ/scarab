@@ -17,7 +17,7 @@ class LiteLedgerSuite extends FunSuite:
   private val lite = LiteLedger.fromGenesis(genesis.raw).fold(e => fail(e.message), identity)
   private val geometry = genesis.geometry
 
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private val gkey = lite.genDelegs.keys.toVector.sortBy(_.hex).head
   private val zero = hex("d81e820001") // d = 0/1
 

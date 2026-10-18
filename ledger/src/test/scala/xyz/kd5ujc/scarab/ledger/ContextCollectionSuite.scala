@@ -23,7 +23,7 @@ class ContextCollectionSuite extends FunSuite:
           assertEquals(hashes, field[Vector[String]](recorded.oracle, "scriptHashes"))
         case Left(errors) =>
           assert(!recorded.collected)
-          val expected = Cbor
+          val expected = CborRead
             .decode(hex(field[String](recorded.oracle, "collectErrorsCbor")))
             .fold(e => fail(e.toString), identity)
             .value match

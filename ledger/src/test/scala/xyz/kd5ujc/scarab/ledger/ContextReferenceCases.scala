@@ -30,7 +30,7 @@ object ContextReferenceCases extends Assertions:
           .fold(e => fail(e.toString), identity)
       case _ => fail("not a complete transaction")
     val known = field[Vector[Json]](json, "utxo").map { entry =>
-      val input = Cbor
+      val input = CborRead
         .decode(hex(field[String](entry, "input")))
         .flatMap(TxIn.decode)
         .fold(e => fail(e.toString), identity)

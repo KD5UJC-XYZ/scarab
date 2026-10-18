@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.CborRead
+
 import java.security.{KeyPairGenerator, PrivateKey, Signature}
 import java.security.spec.NamedParameterSpec
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{ByronDelegation, ByronGenesis}
 import xyz.kd5ujc.scarab.ledger.TxIn
 
@@ -108,7 +110,7 @@ object ByronTestKit:
     decodeAux(Cb.arr(encoded, Cb.indef(witnesses*)))
 
   def decodeAux(encoded: Bytes): ByronTxAux =
-    Cbor
+    CborRead
       .decode(encoded)
       .flatMap(ByronTx.decodeAux)
       .fold(e => throw new AssertionError(e), identity)

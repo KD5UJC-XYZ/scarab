@@ -64,12 +64,15 @@ class BlockFailureSuite extends FunSuite:
       ),
       "praos" -> "issuer not elected for slot 42: Ineligible"
     )
-    assertEquals(rendered(BlockFailure.Lite("z")), "ledger" -> "z")
+    assertEquals(
+      rendered(BlockFailure.Lite(LedgerDecodeError.Empty("z"))),
+      "ledger" -> LedgerDecodeError.Empty("z").message
+    )
     assertEquals(rendered(BlockFailure.Handover("h")), "ledger" -> "h")
     val id = Bytes.fromHex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
     assertEquals(
-      id.map(i => rendered(BlockFailure.TxDecode(i, "bad"))),
-      Right("decode" -> "tx 0011223344556677: bad")
+      id.map(i => rendered(BlockFailure.TxDecode(i, LedgerDecodeError.Empty("bad")))),
+      Right("decode" -> s"tx 0011223344556677: ${LedgerDecodeError.Empty("bad").message}")
     )
     assertEquals(
       rendered(BlockFailure.SupplyInvariant(BigInt(5), BigInt(10), BigInt(11))),

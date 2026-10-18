@@ -104,7 +104,7 @@ class BbodySuite extends FunSuite:
     val raw = head(5, 3) ++ Vector(0x00.toByte) ++ cborBytes(address.raw.value) ++
       Vector(0x01.toByte) ++ head(0, 5) ++ Vector(0x03.toByte, 0xd8.toByte, 0x18.toByte) ++
       cborBytes(wrapped)
-    TxOut.fromBytes(Bytes(raw)).fold(e => fail(e), identity)
+    TxOut.fromBytes(Bytes(raw)).fold(e => fail(e.toString), identity)
 
   test(
     "the reference scripts of a block: the set as the block meets it to version 10, with the outputs of the transactions before from 11"

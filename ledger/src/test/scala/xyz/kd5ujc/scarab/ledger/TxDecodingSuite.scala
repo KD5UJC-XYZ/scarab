@@ -18,7 +18,7 @@ class TxDecodingSuite extends FunSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.toString), identity))
       .map(Block.decodeShelley(_).fold(e => fail(e.message), identity))
       .collect { case b: Block.Shelley => b }
       .flatMap(b =>
@@ -110,7 +110,7 @@ class TxDecodingSuite extends FunSuite:
     val hash = Vector.fill(28)(1.toByte)
     // slot 300 = 0x82 0x2c, tx index 5, cert index 0
     val raw = Bytes((0x40.toByte +: hash) ++ Vector(0x82, 0x2c, 0x05, 0x00).map(_.toByte))
-    val a = Address.decode(raw).fold(e => fail(e), identity)
+    val a = Address.decode(raw).fold(e => fail(e.toString), identity)
     assertEquals(
       a.kind,
       Address.Kind.Shelley(0, Credential.Key(Bytes(hash)), None, Some(Ptr(300, 5, 0)))
