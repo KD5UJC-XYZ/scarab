@@ -33,7 +33,7 @@ class ByronVersionSuite extends ScalaCheckSuite:
   )
   private val config = ByronLedger.Config(genesis, requiresNetworkMagic = true)
   private val rulesConfig = ByronRulesConfig(config, 0.6, None)
-  private val initial = ByronLedger.initial(config).fold(fail(_), identity)
+  private val initial = ByronLedger.initial(config).fold(e => fail(e.toString), identity)
   private val transaction = aux(
     config,
     Seq((TxIn(Blake2b.hash256.hash(holderAddress), 0), holder, false)),
@@ -138,7 +138,8 @@ class ByronVersionSuite extends ScalaCheckSuite:
       val b = decoded(block(proposed, proposed))
       assertEquals(b.header.blockVersion, version(proposed))
       assertEquals(Header.byronFromRaw(b.header.raw, false, config.epochSlots), Right(b.header))
-      val (after, check) = ByronRules.update(state(adopted), b, rulesConfig).fold(fail(_), identity)
+      val (after, check) =
+        ByronRules.update(state(adopted), b, rulesConfig).fold(e => fail(e.toString), identity)
       assertEquals(
         check,
         ByronCheck.Verified(
@@ -188,7 +189,7 @@ class ByronVersionSuite extends ScalaCheckSuite:
       (65535L, 0L, 0L) -> (0L, 0L, 0L)
     ).foreach { (adopted, proposed) =>
       val b = decoded(block(proposed, proposed))
-      val body = ByronBody.decode(b.body).fold(fail(_), identity)
+      val body = ByronBody.decode(b.body).fold(e => fail(e.toString), identity)
       val ticked = ByronLedger.tick(config, state(adopted).ledger, b.header.slot)
       assertEquals(
         ByronLedger.applyMain(config, ticked, b.header, b.size, body),
@@ -219,7 +220,7 @@ class ByronVersionSuite extends ScalaCheckSuite:
       val result = ByronRules.update(state(adopted), b, rulesConfig)
       if accepted then assert(result.isRight, result.toString)
       else
-        val body = ByronBody.decode(b.body).fold(fail(_), identity)
+        val body = ByronBody.decode(b.body).fold(e => fail(e.toString), identity)
         val ticked = ByronLedger.tick(config, state(adopted).ledger, b.header.slot)
         assertEquals(
           ByronLedger.applyMain(config, ticked, b.header, b.size, body),
@@ -238,16 +239,19 @@ class ByronVersionSuite extends ScalaCheckSuite:
         val from = ByronVersion.from(major, minor, alt)
         val decode = Cbor
           .decode(encodedVersion((major, minor, alt)))
-          .fold(e => fail(e), ByronVersion.decode)
+          .fold(e => fail(e.toString), ByronVersion.decode)
         from == decode && from.isRight == (major <= 65535 && minor <= 65535 && alt <= 255)
     }
   }
 
   test("smart construction rejects negative and arbitrarily large components with closed errors") {
     import ByronVersion.{Error, Field}
-    assertEquals(ByronVersion.from(-1, 0, 0), Left(Error.OutOfRange(Field.Major, -1)))
-    assertEquals(ByronVersion.from(0, -1, 0), Left(Error.OutOfRange(Field.Minor, -1)))
-    assertEquals(ByronVersion.from(0, 0, -1), Left(Error.OutOfRange(Field.Alt, -1)))
+    def rejects(major: BigInt, minor: BigInt, alt: BigInt, field: Field, value: BigInt): Unit =
+      val expected: Either[Error.OutOfRange, ByronVersion] = Left(Error.OutOfRange(field, value))
+      assertEquals(ByronVersion.from(major, minor, alt), expected)
+    rejects(-1, 0, 0, Field.Major, -1)
+    rejects(0, -1, 0, Field.Minor, -1)
+    rejects(0, 0, -1, Field.Alt, -1)
     val huge = (BigInt(1) << 100) + 1
-    assertEquals(ByronVersion.from(huge, 0, 0), Left(Error.OutOfRange(Field.Major, huge)))
+    rejects(huge, 0, 0, Field.Major, huge)
   }
