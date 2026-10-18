@@ -249,9 +249,10 @@ class LedgerFileSuite extends ScalaCheckSuite:
     }
     assert(read(chainDepTelescope, at(5)).isRight)
     val e = failure(chainDepTelescope, at(6))
-    e.kind match
-      case Kind.Violation(v) => assertEquals(v.typeName, "Telescope")
-      case other             => fail(s"expected a violation, got $other")
+    assertEquals(
+      e.kind,
+      Kind.Domain(xyz.kd5ujc.scarab.consensus.state.TelescopeError.Discontinuity(0))
+    )
   }
 
   test(

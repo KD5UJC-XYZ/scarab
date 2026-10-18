@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
-import cats.syntax.show.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.consensus.state.{Bound, Current, EraIndexed, Past, Telescope}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64, WithOrigin}

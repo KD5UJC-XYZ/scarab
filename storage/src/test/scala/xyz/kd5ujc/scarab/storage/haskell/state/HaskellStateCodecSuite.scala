@@ -98,7 +98,12 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
       classOf[Kind.BadSize]
     )
     val zero = bytesOf(_.uint(0L))
-    assert(failure(nonZero[Word64], zero).kind.isInstanceOf[Kind.Violation])
+    assertEquals(
+      failure(nonZero[Word64], zero).kind,
+      Kind.Domain(xyz.kd5ujc.scarab.ledger.state.VocabError.Zero(
+        xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.NonZero
+      ))
+    )
   }
 
   test("pointers are strict from version 9 and normalised before (Credential.hs:360-364)") {

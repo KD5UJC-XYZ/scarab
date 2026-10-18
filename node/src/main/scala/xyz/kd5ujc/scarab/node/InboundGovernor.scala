@@ -210,9 +210,12 @@ final class InboundGovernor[F[_]: Async] private (
         case Disposition.Settled                      => None
       drop = disposition == Disposition.Forget
       _ <- reason.traverse_ { why =>
+        val closure = SessionEnd.peerError(end).fold[NetworkError.Closure](
+          NetworkError.Closure.Aborted
+        )(NetworkError.Closure.AbortedBy(_))
         update(remote)(_.copy(ended = Some(why))) *>
           emit(remote, InboundEvent.SessionEnded(why, drop)) *>
-          mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(end))).whenA(drop)
+          mux.abort(NetworkError.BearerClosed(closure)).whenA(drop)
       }
       _ <- disposition match
         case Disposition.StopNode(f) => fatal(f) *> mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(f)))
