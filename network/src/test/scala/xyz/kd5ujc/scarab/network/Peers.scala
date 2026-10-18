@@ -30,7 +30,8 @@ object Peers:
   def block(n: Int): Bytes = Bytes(Vector.fill(100 + n)(n.toByte))
 
   private def fail[A](reason: String): IO[A] = IO.raiseError(new IllegalStateException(reason))
-  private def lift[A](either: Either[ProtocolError, A]): IO[A] = either.fold(e => fail(e.message), IO.pure)
+  private def lift[A](either: Either[ProtocolError, A]): IO[A] =
+    either.fold(e => fail(e.message), IO.pure)
 
   /** Two multiplexers joined by an in-memory bearer pair. */
   def linked(

@@ -50,10 +50,11 @@ object HandshakeServer:
       timeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
       suite: Handshake.Suite = Handshake.Suite.NodeToNode
   )(using Raise[F, NetworkError]): F[HandshakeClient.Agreed] =
-    def refuse[A](reason: ProtocolError | NetworkError.HandshakeFailure): F[A] = NetworkError.HandshakeRefused(reason match
-      case error: ProtocolError => NetworkError.HandshakeFailure.Local(error)
-      case error: NetworkError.HandshakeFailure => error
-    ).raise[F, A]
+    def refuse[A](reason: ProtocolError | NetworkError.HandshakeFailure): F[A] = NetworkError
+      .HandshakeRefused(reason match
+        case error: ProtocolError                 => NetworkError.HandshakeFailure.Local(error)
+        case error: NetworkError.HandshakeFailure => error)
+      .raise[F, A]
     for
       proposal <- Timed.within(timeout, Protocols.Handshake, "propose")(
         channel.recv(Handshake.MaxMessageBytes)(decodeProposal(suite))

@@ -11,7 +11,7 @@ enum QueryRefusal[+E]:
 
   def message: String = this match
     case Undecodable(cause, prefix) => s"cannot decode ($cause): $prefix"
-    case Unsupported(query) => s"unsupported query $query"
-    case Unwritable(query, cause) => s"cannot write the answer to $query: $cause"
-    case OutOfRange(query) => s"cannot write the answer to $query: the answer is out of range"
+    case Unsupported(query)         => s"unsupported query $query"
+    case Unwritable(query, cause)   => s"cannot write the answer to $query: $cause"
+    case OutOfRange(query)    => s"cannot write the answer to $query: the answer is out of range"
     case Defect(query, cause) => s"cannot write the answer to $query: ${cause.getMessage}"

@@ -15,7 +15,8 @@ object ChainSync:
     val Max: BigInt = (BigInt(1) << 64) - 1
     val Zero: UInt64 = new UInt64(0)
     def from(value: BigInt): Either[ProtocolError, UInt64] =
-      if value < 0 || value > Max then Left(ProtocolError.OutsideUint64(value)) else Right(new UInt64(value))
+      if value < 0 || value > Max then Left(ProtocolError.OutsideUint64(value))
+      else Right(new UInt64(value))
 
     /** Total conversion for values that are unsigned 64-bit by construction (decoded CBOR unsigned
       * integers, slot and block counters). Out-of-range input saturates; it cannot occur for such
@@ -111,8 +112,10 @@ object ChainSync:
         Right(Idle)
       case _ => Left(ProtocolError.ChainSyncAgency(state, sender))
 
-  private[protocol] def bad(error: ProtocolError)(using ProtocolWire.Scope): Nothing = ProtocolWire.bad(error)
-  private[protocol] def get[A](value: Either[ProtocolError,A])(using ProtocolWire.Scope): A = ProtocolWire.get(value)
+  private[protocol] def bad(error: ProtocolError)(using ProtocolWire.Scope): Nothing =
+    ProtocolWire.bad(error)
+  private[protocol] def get[A](value: Either[ProtocolError, A])(using ProtocolWire.Scope): A =
+    ProtocolWire.get(value)
   private def attempt[A](body: ProtocolWire.Scope ?=> A): Either[ProtocolError, A] =
     ProtocolWire.attempt(body)
 

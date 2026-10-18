@@ -66,3 +66,32 @@ class ProtocolErrorSuite extends FunSuite:
       Left(ProtocolError.UnsupportedLogicalVersion)
     )
   }
+
+  test("functional handshake encoding refuses hostile depth on a small stack") {
+    val nested = (0 until 100000).foldLeft[Handshake.Term](Handshake.Term.Integer(0)) {
+      (inner, _) => Handshake.Term.Tag(24, inner)
+    }
+    val completed = new java.util.concurrent.CompletableFuture[Either[ProtocolError, Bytes]]()
+    val thread = new Thread(
+      null,
+      () => {
+        try
+          completed.complete(
+            Handshake.encode(
+              Handshake.Suite.NodeToNode,
+              Handshake.Message.Accept(14, nested)
+            )
+          )
+        catch case cause: Throwable => completed.completeExceptionally(cause)
+        ()
+      },
+      "handshake-small-stack",
+      256 * 1024
+    )
+    thread.start()
+    assertEquals(
+      completed.get(10, java.util.concurrent.TimeUnit.SECONDS),
+      Left(ProtocolError.CBORResourceLimitExceeded)
+    )
+    thread.join()
+  }

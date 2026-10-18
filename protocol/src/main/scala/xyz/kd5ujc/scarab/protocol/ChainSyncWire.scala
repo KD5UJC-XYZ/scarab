@@ -17,4 +17,5 @@ private[protocol] object ChainSyncWire:
     )
   final class Reader(input: Bytes, limits: ChainSync.Limits)(using ProtocolWire.Scope)
       extends ProtocolWire.Reader(input, checked(limits))
-  final class Writer(limits: ChainSync.Limits)(using ProtocolWire.Scope) extends ProtocolWire.Writer(checked(limits))
+  final class Writer(limits: ChainSync.Limits)(using ProtocolWire.Scope)
+      extends ProtocolWire.Writer(checked(limits))

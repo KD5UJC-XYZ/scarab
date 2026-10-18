@@ -61,8 +61,9 @@ class LocalStateQueryServerSuite extends FailsOnUncaught:
   private def send(ch: MuxChannel[IO], state: State, m: Message)(using
       Handle[IO, NetworkError]
   ): IO[Unit] =
-    IO.fromEither(LocalStateQuery.encode(state, Role.Client, m).left.map(e => RuntimeException(e.toString)))
-      .flatMap(ch.send)
+    IO.fromEither(
+      LocalStateQuery.encode(state, Role.Client, m).left.map(e => RuntimeException(e.toString))
+    ).flatMap(ch.send)
 
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
     ch.recv(LocalStateQuery.MaxMessageBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))

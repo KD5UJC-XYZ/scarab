@@ -102,21 +102,26 @@ object HfcHeader:
   def encode(header: HfcHeader): Either[ProtocolError, Bytes] = header match
     case Supported(h) => NtNHeader.codec.encode(h)
     case Dijkstra(raw) =>
-      Cbor.encode(
-        Value.Arr(
-          Vector(
-            Node(Value.UInt(DijkstraIndex), Bytes.empty),
-            Node(
-              Value.Tag(24, Node(Value.ByteString(raw), Bytes.empty)),
-              Bytes.empty
+      Cbor
+        .encode(
+          Value.Arr(
+            Vector(
+              Node(Value.UInt(DijkstraIndex), Bytes.empty),
+              Node(
+                Value.Tag(24, Node(Value.ByteString(raw), Bytes.empty)),
+                Bytes.empty
+              )
             )
           )
         )
-      ).leftMap(ProtocolError.Codec(_))
+        .leftMap(ProtocolError.Codec(_))
     case Unrecognised(index, payload) =>
-      Cbor.decode(payload, limits).flatMap { p =>
-        Cbor.encode(Value.Arr(Vector(Node(Value.UInt(index), Bytes.empty), p)))
-      }.leftMap(ProtocolError.Codec(_))
+      Cbor
+        .decode(payload, limits)
+        .flatMap { p =>
+          Cbor.encode(Value.Arr(Vector(Node(Value.UInt(index), Bytes.empty), p)))
+        }
+        .leftMap(ProtocolError.Codec(_))
 
   /** As a ChainSync payload: a header of any era is accepted; only a malformed envelope is refused
     * (the codec interface carries a diagnostic string, [[HfcHeaderError]] is its typed form).

@@ -88,7 +88,7 @@ object BlockFetchClient:
                 NetworkError.IngressLimit(id, blocks.size + 1).raise[F, Vector[Bytes]]
               case Right(next) => stream(next, blocks :+ block.bytes)
           case BlockFetch.Message.BatchDone => F.pure(blocks)
-          case other => illegal(RuntimeViolation.BlockFetchUnexpected(other))
+          case other                        => illegal(RuntimeViolation.BlockFetchUnexpected(other))
         }
 
       new BlockFetchClient[F]:

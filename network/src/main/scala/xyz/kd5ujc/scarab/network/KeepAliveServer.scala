@@ -23,7 +23,8 @@ object KeepAliveServer:
       Raise[F, NetworkError]
   ): F[Unit] =
     val id = Protocols.KeepAlive
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     val loop: F[Boolean] =
       Timed
         .within(settings.idleTimeout, id, "client")(

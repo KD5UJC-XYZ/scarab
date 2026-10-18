@@ -359,8 +359,15 @@ class ServerSuite extends FailsOnUncaught:
         yield reason
       }
     }.map {
-      case Right(reason) => assertEquals(reason, NetworkError.IllegalTransition(Protocols.ChainSync, NetworkError.RuntimeViolation.WrongModeBit))
-      case other         => fail(other.toString)
+      case Right(reason) =>
+        assertEquals(
+          reason,
+          NetworkError.IllegalTransition(
+            Protocols.ChainSync,
+            NetworkError.RuntimeViolation.WrongModeBit
+          )
+        )
+      case other => fail(other.toString)
     }
 
   test("a client that breaks the protocol ends the connection with a typed error, nothing escapes"):

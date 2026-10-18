@@ -45,7 +45,8 @@ object LocalTxSubmissionServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: LocalTxSubmission.State, message: LocalTxSubmission.Message): F[Unit] =
       LocalTxSubmission.encode(state, Role.Server, message).fold(illegal, channel.send)
     val step: F[Either[Unit, Option[Unavailable]]] =
@@ -66,7 +67,7 @@ object LocalTxSubmissionServer:
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
-          case other                          => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))
+          case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))
         }
     Temporal[F].tailRecM(())(_ => step)
 

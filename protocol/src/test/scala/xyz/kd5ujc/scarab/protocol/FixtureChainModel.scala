@@ -51,20 +51,29 @@ object FixtureChainModel:
           if !offered.contains(point) then Left(Error.UnofferedIntersection)
           else
             val i = history.indexOf(point)
-            Right((if i >= 0 then history.take(i + 1) else Vector(point), Vector.empty, "intersection-found"))
-        case Message.IntersectNotFound(_) => Right((history, Vector.empty, "intersection-not-found"))
+            Right(
+              (
+                if i >= 0 then history.take(i + 1) else Vector(point),
+                Vector.empty,
+                "intersection-found"
+              )
+            )
+        case Message.IntersectNotFound(_) =>
+          Right((history, Vector.empty, "intersection-not-found"))
         case Message.RollBackward(point, _) =>
           val i = history.indexOf(point)
           if i < 0 then Left(Error.UnknownOrPrunedRollbackTargetReintersectionRequired)
           else Right((history.take(i + 1), offered, "roll-backward"))
-        case Message.RollForward(_, _) => forwardPoint match
-          case Some(point @ Point.Block(_, _)) if !history.contains(point) =>
-            if history.size >= MaxHistory then Left(Error.ModelHistoryLimitExceededReintersectionRequired)
-            else Right((history :+ point, offered, "roll-forward"))
-          case _ => Left(Error.ForwardRequiresADistinctExplicitlySyntheticBlockPoint)
+        case Message.RollForward(_, _) =>
+          forwardPoint match
+            case Some(point @ Point.Block(_, _)) if !history.contains(point) =>
+              if history.size >= MaxHistory then
+                Left(Error.ModelHistoryLimitExceededReintersectionRequired)
+              else Right((history :+ point, offered, "roll-forward"))
+            case _ => Left(Error.ForwardRequiresADistinctExplicitlySyntheticBlockPoint)
         case Message.RequestNext => Right((history, offered, "request-next"))
-        case Message.AwaitReply => Right((history, offered, "await-reply"))
-        case Message.Done => Right((history, offered, "done"))
+        case Message.AwaitReply  => Right((history, offered, "await-reply"))
+        case Message.Done        => Right((history, offered, "done"))
       change.map { case (nextHistory, nextOffered, label) =>
         new Model(next, nextHistory, nextOffered, trace :+ label)
       }

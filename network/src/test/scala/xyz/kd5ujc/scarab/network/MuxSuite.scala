@@ -237,8 +237,9 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
         }
       }
     }.map {
-      case Left(NetworkError.BearerClosed(reason)) => assertEquals(reason, NetworkError.Closure.PeerClosed)
-      case other                                   => fail(s"unexpected $other")
+      case Left(NetworkError.BearerClosed(reason)) =>
+        assertEquals(reason, NetworkError.Closure.PeerClosed)
+      case other => fail(s"unexpected $other")
     }
 
   test("sends after the bearer closed raise BearerClosed"):
@@ -294,7 +295,10 @@ class MuxSuite extends FailsOnUncaught with ScalaCheckSuite:
           unknown,
           NetworkError.IllegalTransition(9, NetworkError.RuntimeViolation.UnexpectedProtocol(9))
         )
-        assertEquals(wrongMode, NetworkError.IllegalTransition(2, NetworkError.RuntimeViolation.WrongModeBit))
+        assertEquals(
+          wrongMode,
+          NetworkError.IllegalTransition(2, NetworkError.RuntimeViolation.WrongModeBit)
+        )
       case Left(e) => fail(e.message)
     }
 

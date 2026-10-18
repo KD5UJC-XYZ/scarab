@@ -159,7 +159,12 @@ class PeerSharingSuite extends FailsOnUncaught:
     typed(scripted(_ => sharePeers(Vector(addr(1), addr(2), addr(3)))).use(_.request(amount(2))))
       .map {
         case Left(NetworkError.IllegalTransition(Protocol, detail)) =>
-          assertEquals(detail, NetworkError.RuntimeViolation.PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount(2), 3)))
+          assertEquals(
+            detail,
+            NetworkError.RuntimeViolation.PeerSharingPolicy(
+              PeerSharing.Violation.TooManyPeers(amount(2), 3)
+            )
+          )
         case other => fail(s"unexpected $other")
       }
 

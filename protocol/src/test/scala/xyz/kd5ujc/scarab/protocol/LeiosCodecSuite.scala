@@ -229,13 +229,17 @@ class LeiosCodecSuite extends ScalaCheckSuite:
       encode(
         Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector(bs(0x01, 0x02)))
       ),
-      Left(LeiosWireError.Syntax(ProtocolError.Codec(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes)))
+      Left(
+        LeiosWireError.Syntax(ProtocolError.Codec(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes))
+      )
     )
     assertEquals(
       encode(
         Message.BlockTxs(EbPoint(5, hash(3)), TxBitmaps(Vector.empty), Vector(bs(0x82, 0x01)))
       ),
-      Left(LeiosWireError.Syntax(ProtocolError.Codec(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)))
+      Left(
+        LeiosWireError.Syntax(ProtocolError.Codec(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd))
+      )
     )
   }
 

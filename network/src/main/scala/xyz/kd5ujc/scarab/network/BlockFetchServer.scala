@@ -40,7 +40,8 @@ object BlockFetchServer:
     val id = Protocols.BlockFetch
     val codec = CardanoBlockFetch.payloadCodec()
     type Msg = BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: BlockFetch.State, message: Msg): F[Unit] =
       BlockFetch

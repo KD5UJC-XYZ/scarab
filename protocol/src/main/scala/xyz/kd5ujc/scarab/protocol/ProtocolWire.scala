@@ -42,9 +42,9 @@ private[protocol] object ProtocolWire:
   def attempt[A](body: Scope ?=> A): Either[ProtocolError, A] = boundary { Right(body) }
   def prefix[A](body: Scope ?=> ChainSync.DecodeResult[A]): ChainSync.DecodeResult[A] =
     attempt(body) match
-      case Right(value) => value
+      case Right(value)                    => value
       case Left(error) if error.incomplete => ChainSync.DecodeResult.NeedMore
-      case Left(error) => ChainSync.DecodeResult.Failed(error)
+      case Left(error)                     => ChainSync.DecodeResult.Failed(error)
   def validateItem(bytes: Bytes, limits: Limits): Either[ProtocolError, Unit] = attempt {
     val reader = new Reader(bytes, limits)
     reader.skip(0)
@@ -101,7 +101,11 @@ private[protocol] object ProtocolWire:
     def bytes(max: Int): Bytes =
       val h = read()
       if h / 32 != 2 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteByteString)
-      val n = bounded(argument(h & 31), math.min(max, limits.maxStringBytes), ProtocolError.StringLimitExceeded)
+      val n = bounded(
+        argument(h & 31),
+        math.min(max, limits.maxStringBytes),
+        ProtocolError.StringLimitExceeded
+      )
       need(n)
       val value = input.slice(pos, pos + n).compact
       pos += n
@@ -117,7 +121,11 @@ private[protocol] object ProtocolWire:
     def text(max: Int): String =
       val h = read()
       if h / 32 != 3 || (h & 31) == 31 then bad(ProtocolError.ExpectedDefiniteTextString)
-      val n = bounded(argument(h & 31), math.min(max, limits.maxStringBytes), ProtocolError.StringLimitExceeded)
+      val n = bounded(
+        argument(h & 31),
+        math.min(max, limits.maxStringBytes),
+        ProtocolError.StringLimitExceeded
+      )
       need(n)
       val decoded =
         try
@@ -149,7 +157,8 @@ private[protocol] object ProtocolWire:
           n += 1
         read()
       else
-        val n = bounded(argument(h & 31), limits.maxCandidates, ProtocolError.CandidateLimitExceeded)
+        val n =
+          bounded(argument(h & 31), limits.maxCandidates, ProtocolError.CandidateLimitExceeded)
         var i = 0
         while i < n do
           out += point()
@@ -216,7 +225,8 @@ private[protocol] object ProtocolWire:
             while peek != 255 do
               count()
               val chunk = read()
-              if chunk / 32 != major || (chunk & 31) == 31 then bad(ProtocolError.InvalidStringChunk)
+              if chunk / 32 != major || (chunk & 31) == 31 then
+                bad(ProtocolError.InvalidStringChunk)
               total += stringChunk(major, chunk & 31, limits.maxStringBytes - total)
             read(); ()
           Opened.Scalar
@@ -224,15 +234,19 @@ private[protocol] object ProtocolWire:
           val multiplier = if major == 5 then 2 else 1
           if ai == 31 then Opened.Container(if major == 5 then IndefiniteKey else IndefiniteArray)
           else
-            val n = bounded(argument(ai), (limits.maxItems - items) / multiplier, ProtocolError.ItemLimitExceeded)
+            val n = bounded(
+              argument(ai),
+              (limits.maxItems - items) / multiplier,
+              ProtocolError.ItemLimitExceeded
+            )
             Opened.Container(n * multiplier)
         case 6 => argument(ai); Opened.Container(1)
         case _ =>
           ai match
             case 31 | 28 | 29 | 30 => bad(ProtocolError.UnexpectedBreakOrReservedSimpleValue)
-            case 24                => if read() < 32 then bad(ProtocolError.InvalidExtendedSimpleValue)
-            case 25 | 26 | 27      => argument(ai); ()
-            case _                 => ()
+            case 24           => if read() < 32 then bad(ProtocolError.InvalidExtendedSimpleValue)
+            case 25 | 26 | 27 => argument(ai); ()
+            case _            => ()
           Opened.Scalar
     def item(): Bytes =
       val start = pos
@@ -246,7 +260,8 @@ private[protocol] object ProtocolWire:
       if out.size() >= limits.maxMessageBytes then bad(ProtocolError.MessageByteLimitExceeded)
       out.write(b)
     def raw(bytes: Bytes): Unit =
-      if bytes.size > limits.maxMessageBytes - out.size() then bad(ProtocolError.MessageByteLimitExceeded)
+      if bytes.size > limits.maxMessageBytes - out.size() then
+        bad(ProtocolError.MessageByteLimitExceeded)
       bytes.withRange((array, offset, length) => out.write(array, offset, length))
     def head(major: Int, value: BigInt): Unit =
       if value < 0 || value > UInt64.Max then bad(ProtocolError.CBORArgumentOutsideUint64)

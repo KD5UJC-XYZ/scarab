@@ -76,7 +76,8 @@ object TxSubmission2:
     val validity = r.read()
     if validity != 0xf4 && validity != 0xf5 then bad(ProtocolError.TransactionValidityIsNotABoolean)
     r.item()
-    if indefinite && r.read() != 0xff then bad(ProtocolError.ExpectedBreakAfterFourthTransactionMember)
+    if indefinite && r.read() != 0xff then
+      bad(ProtocolError.ExpectedBreakAfterFourthTransactionMember)
     if r.position != original.size then bad(ProtocolError.TrailingOriginalTransactionBytes)
     Blake2b.hash256.hash(body)
   }
@@ -85,9 +86,12 @@ object TxSubmission2:
     if id.size != 32 then bad(ProtocolError.TransactionIDMustBe32Bytes(id.size))
   private def checkOffer(o: RelayOffer)(using ProtocolWire.Scope): Unit =
     checkId(o.transactionId)
-    if o.advertisedSize <= 0 || o.advertisedSize > 0xffffffffL then bad(ProtocolError.SizeOutsideUint32)
-  private def count(n: Int)(using ProtocolWire.Scope): Unit = if n < 0 || n > 65535 then bad(ProtocolError.CountOutsideUint16(BigInt(n)))
-  private def batch(n: Int)(using ProtocolWire.Scope): Unit = if n > MaxBatch then bad(ProtocolError.BatchLimitExceeded(n, MaxBatch))
+    if o.advertisedSize <= 0 || o.advertisedSize > 0xffffffffL then
+      bad(ProtocolError.SizeOutsideUint32)
+  private def count(n: Int)(using ProtocolWire.Scope): Unit =
+    if n < 0 || n > 65535 then bad(ProtocolError.CountOutsideUint16(BigInt(n)))
+  private def batch(n: Int)(using ProtocolWire.Scope): Unit =
+    if n > MaxBatch then bad(ProtocolError.BatchLimitExceeded(n, MaxBatch))
   private def original(bytes: Bytes)(using ProtocolWire.Scope): Unit =
     get(advertisedSize(bytes.size))
     get(ProtocolWire.validateItem(bytes, wire.copy(maxMessageBytes = MaxOriginalBytes)))
@@ -127,19 +131,21 @@ object TxSubmission2:
         bad(ProtocolError.WrongTxSubmission2Agency)
       val r = new ProtocolWire.Reader(bytes, wire.copy(maxMessageBytes = maxMessageBytes(state)))
       def id(): Bytes =
-        if r.arrayLength() != 2 || r.uint().value != 6 then bad(ProtocolError.ExpectedConwayTransactionID)
+        if r.arrayLength() != 2 || r.uint().value != 6 then
+          bad(ProtocolError.ExpectedConwayTransactionID)
         val result = r.bytes(32); checkId(result); result
       def list[A](f: () => A): Vector[A] =
         if r.read() != 0x9f then bad(ProtocolError.ExpectedIndefiniteProtocolList)
-        val out = Vector.newBuilder[A]
-        var n = 0
-        def ended: Boolean =
+        @scala.annotation.tailrec
+        def loop(collected: Vector[A]): Vector[A] =
           if r.position >= bytes.size then bad(ProtocolError.TruncatedList)
-          (bytes(r.position) & 255) == 0xff
-        while !ended do
-          if n >= MaxBatch then bad(ProtocolError.BatchLimitExceeded(n, MaxBatch))
-          out += f(); n += 1
-        r.read(); out.result()
+          else if (bytes(r.position) & 255) == 0xff then
+            r.read()
+            collected
+          else if collected.size >= MaxBatch then
+            bad(ProtocolError.BatchLimitExceeded(collected.size, MaxBatch))
+          else loop(collected :+ f())
+        loop(Vector.empty)
       def uint16(): Int =
         val n = r.uint().value
         if n > 65535 then bad(ProtocolError.CountOutsideUint16(n))
@@ -169,7 +175,7 @@ object TxSubmission2:
             original(value); value
           ))
         case (State.Ids(true), 1, 4) if tag == 4 => Message.Done
-        case _                                   => bad(ProtocolError.UnknownTxSubmission2TagStateArity)
+        case _ => bad(ProtocolError.UnknownTxSubmission2TagStateArity)
       get(transition(state, sender, message))
       DecodeResult.Decoded(message, r.position)
     }
@@ -193,7 +199,8 @@ object TxSubmission2:
         request: Int
     ): Either[ProtocolError, (Inventory, Message, Vector[Bytes])] = attempt {
       count(ack); count(request)
-      if ack > outstanding.size then bad(ProtocolError.AckExceedsOutstandingInventory(ack, outstanding.size))
+      if ack > outstanding.size then
+        bad(ProtocolError.AckExceedsOutstandingInventory(ack, outstanding.size))
       val retained = outstanding.drop(ack)
       if blocking && (request == 0 || retained.nonEmpty) then
         bad(ProtocolError.InvalidBlockingInventoryRequest)
@@ -218,7 +225,8 @@ object TxSubmission2:
   object Inventory:
     def create(offers: Vector[RelayOffer]): Either[ProtocolError, Inventory] = attempt {
       batch(offers.size); offers.foreach(checkOffer)
-      if offers.map(_.transactionId).distinct.size != offers.size then bad(ProtocolError.DuplicateOfferID)
+      if offers.map(_.transactionId).distinct.size != offers.size then
+        bad(ProtocolError.DuplicateOfferID)
       Inventory(offers, Vector.empty, Set.empty)
     }
 

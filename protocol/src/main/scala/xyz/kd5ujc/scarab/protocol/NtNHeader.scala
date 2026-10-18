@@ -29,7 +29,8 @@ object NtNHeader:
           w.head(4, 2)
           w.head(4, 2)
           w.head(0, if info.boundary then 0 else 1)
-          if info.sizeHint < 0 || info.sizeHint > Int.MaxValue then bad(ProtocolError.SizeHint(info.sizeHint))
+          if info.sizeHint < 0 || info.sizeHint > Int.MaxValue then
+            bad(ProtocolError.SizeHint(info.sizeHint))
           w.head(0, info.sizeHint.toLong)
         case (Era.Byron, None) => bad(ProtocolError.ByronHeaderRequiresItsWrapper)
         case (_, None)         => ()

@@ -47,7 +47,8 @@ object LocalStateQueryServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val id = Protocols.LocalStateQuery
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message): F[Unit] =
       LocalStateQuery.encode(state, Role.Server, message).fold(illegal, channel.send)
     def receive(state: State, name: String): F[Message] =

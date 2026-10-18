@@ -45,7 +45,8 @@ object TxSubmissionServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = Protocols.TxSubmission2
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: TxSubmission2.State, message: TxSubmission2.Message): F[Unit] =
       TxSubmission2.encode(state, Role.Server, message).fold(illegal, channel.send)

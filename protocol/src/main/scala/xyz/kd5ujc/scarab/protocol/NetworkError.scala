@@ -40,9 +40,10 @@ enum NetworkError:
     case HandshakeRefused(r) => s"handshake refused: ${r.message}"
     case VersionMismatch(o, s) =>
       s"no common version (offered ${o.mkString(",")}, peer supports ${s.mkString(",")})"
-    case IngressLimit(p, b)      => s"${Protocols.name(p)} exceeded the ingress limit at $b bytes"
-    case Decode(p, r)            => s"${Protocols.name(p)} decode: ${r.message}"
-    case IllegalTransition(p, d) => s"${Protocols.name(p)} protocol violation: ${NetworkError.violationMessage(d)}"
+    case IngressLimit(p, b) => s"${Protocols.name(p)} exceeded the ingress limit at $b bytes"
+    case Decode(p, r)       => s"${Protocols.name(p)} decode: ${r.message}"
+    case IllegalTransition(p, d) =>
+      s"${Protocols.name(p)} protocol violation: ${NetworkError.violationMessage(d)}"
     case QueryRefused(r) =>
       s"${Protocols.name(Protocols.LocalStateQuery)} query not answered: ${r.message}"
     case BearerClosed(r) => s"connection closed: ${r.message}"
@@ -61,8 +62,8 @@ object NetworkError:
     case Aborted
     case Transport(context: String, cause: java.io.IOException)
     def message: String = this match
-      case PeerClosed => "closed by peer"
-      case Aborted => "aborted"
+      case PeerClosed                => "closed by peer"
+      case Aborted                   => "aborted"
       case Transport(context, cause) => s"$context: ${cause.getMessage}"
   enum HandshakeFailure:
     case Local(cause: ProtocolError)
@@ -71,11 +72,11 @@ object NetworkError:
     case QueryAnswered
     case UnexpectedQueryReply
     def message: String = this match
-      case Local(cause) => cause.message
-      case Remote(reason) => reason.toString
+      case Local(cause)                     => cause.message
+      case Remote(reason)                   => reason.toString
       case HandshakeFailure.VersionMismatch => "version mismatch"
-      case QueryAnswered => "version query answered"
-      case UnexpectedQueryReply => "unexpected query reply"
+      case QueryAnswered                    => "version query answered"
+      case UnexpectedQueryReply             => "unexpected query reply"
   enum RuntimeViolation:
     case ReplyNotExpected(state: ChainSync.State | BlockFetch.State)
     case NotRegistered(role: NetworkError.ConnectionRole)
@@ -97,7 +98,7 @@ object NetworkError:
     case LocalStateQueryUnexpected(message: LocalStateQuery.Message)
 
   def violationMessage(cause: Violation): String = cause match
-    case error: ProtocolError => error.message
+    case error: ProtocolError    => error.message
     case error: RuntimeViolation => error.toString
 
   enum SduOperation:

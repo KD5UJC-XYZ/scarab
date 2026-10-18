@@ -183,7 +183,12 @@ object Mux:
             inbound.get((sdu.protocol, receiverOf(sdu.direction))) match
               case None =>
                 F.pure(
-                  Some(NetworkError.IllegalTransition(sdu.protocol, NetworkError.RuntimeViolation.WrongModeBit))
+                  Some(
+                    NetworkError.IllegalTransition(
+                      sdu.protocol,
+                      NetworkError.RuntimeViolation.WrongModeBit
+                    )
+                  )
                 )
               case Some(ingress) =>
                 ingress.offer(sdu.payload).flatMap {
@@ -323,7 +328,12 @@ object Mux:
 
     def send(message: Bytes)(using Raise[F, NetworkError]): F[Unit] =
       if message.size == 0 || message.size > config.maxMessageBytes then
-        NetworkError.IllegalTransition(id, NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.maxMessageBytes)).raise
+        NetworkError
+          .IllegalTransition(
+            id,
+            NetworkError.RuntimeViolation.OutgoingMessageSize(message.size, config.maxMessageBytes)
+          )
+          .raise
       else
         closed.tryGet.flatMap {
           case Some(reason) => reason.raise[F, Unit]

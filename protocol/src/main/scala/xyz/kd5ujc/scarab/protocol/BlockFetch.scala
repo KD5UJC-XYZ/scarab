@@ -78,7 +78,11 @@ object BlockFetch:
   final class Received private (val blocks: Int, val rawBytes: Long)
   object Received:
     val Empty: Received = new Received(0, 0L)
-    def add(previous: Received, bytes: Int, limits: RequestLimits): Either[ProtocolError, Received] =
+    def add(
+        previous: Received,
+        bytes: Int,
+        limits: RequestLimits
+    ): Either[ProtocolError, Received] =
       if !limits.valid || bytes < 0 then Left(ProtocolError.InvalidRequestAccountingLimitsBytes)
       else if previous.blocks >= limits.maxBlocks then Left(ProtocolError.RequestBlockLimitExceeded)
       else if previous.rawBytes > limits.maxRawBytes || bytes.toLong > limits.maxRawBytes - previous.rawBytes
@@ -139,7 +143,8 @@ object BlockFetch:
     ProtocolWire.prefix {
       val bounds = limits.wire(state)
       // Reject impossible agency even with empty input rather than waiting for bytes.
-      if (state == State.Idle) != (sender == Role.Client) then bad(ProtocolError.WrongBlockFetchAgency)
+      if (state == State.Idle) != (sender == Role.Client) then
+        bad(ProtocolError.WrongBlockFetchAgency)
       val r = new ProtocolWire.Reader(bytes, bounds)
       val arity = r.arrayLength()
       val possibleArity = state match

@@ -99,7 +99,8 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
   test("a relay that accepts only 14 and 15 (the released maximum) answers with 15") {
     val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e.toString), identity)._2
     val released = relayOffers.filter(_._1 <= NtnVersion.LatestReleased.number)
-    val (answer, _) = responder(Suite.NodeToNode, released, proposal).fold(e => fail(e.toString), identity)
+    val (answer, _) =
+      responder(Suite.NodeToNode, released, proposal).fold(e => fail(e.toString), identity)
     assertEquals(hexOf(answer), rows.find(_._1 == "accept-15").get._2)
   }
 end LeiosTestnetHandshakeSuite

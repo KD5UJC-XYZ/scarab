@@ -51,7 +51,8 @@ object ChainSyncServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = settings.protocol
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: State, message: Message[P]): F[State] =
       ChainSync

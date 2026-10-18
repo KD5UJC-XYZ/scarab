@@ -26,7 +26,8 @@ object KeepAlive:
     val Max: Int = 65535
     val Zero: Cookie = new Cookie(0)
     def from(value: Int): Either[ProtocolError, Cookie] =
-      if value < 0 || value > Max then Left(ProtocolError.KeepAliveCookieOutsideUint16(BigInt(value)))
+      if value < 0 || value > Max then
+        Left(ProtocolError.KeepAliveCookieOutsideUint16(BigInt(value)))
       else Right(new Cookie(value))
 
   enum State:
@@ -74,7 +75,8 @@ object KeepAlive:
   def matchResponse(expected: Option[Cookie], message: Message): Either[ProtocolError, Unit] =
     (expected, message) match
       case (Some(wanted), Message.Response(actual)) =>
-        if wanted == actual then Right(()) else Left(ProtocolError.KeepAliveCookieMismatch(wanted, actual))
+        if wanted == actual then Right(())
+        else Left(ProtocolError.KeepAliveCookieMismatch(wanted, actual))
       case (None, Message.Response(_)) => Left(ProtocolError.UnsolicitedKeepAliveResponse)
       case _                           => Left(ProtocolError.ExpectedKeepAliveResponse)
 
@@ -109,7 +111,8 @@ object KeepAlive:
     ProtocolWire.prefix {
       val bounds = limits.wire
       if state == State.Done then bad(ProtocolError.KeepAliveIsTerminal)
-      if (state == State.Client) != (sender == Role.Client) then bad(ProtocolError.WrongKeepAliveAgency)
+      if (state == State.Client) != (sender == Role.Client) then
+        bad(ProtocolError.WrongKeepAliveAgency)
       val r = new ProtocolWire.Reader(bytes, bounds)
       val arity = r.arrayLength()
       if (state == State.Client && arity != 1 && arity != 2) ||
@@ -142,4 +145,5 @@ object KeepAlive:
       case DecodeResult.NeedMore      => Left(ProtocolError.TruncatedKeepAliveMessage)
       case DecodeResult.Failed(error) => Left(error)
       case DecodeResult.Decoded(message, consumed) =>
-        if consumed == bytes.size then Right(message) else Left(ProtocolError.TrailingKeepAliveBytes)
+        if consumed == bytes.size then Right(message)
+        else Left(ProtocolError.TrailingKeepAliveBytes)

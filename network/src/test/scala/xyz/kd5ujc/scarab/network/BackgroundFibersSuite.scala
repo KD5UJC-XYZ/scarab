@@ -20,7 +20,11 @@ class BackgroundFibersSuite extends FailsOnUncaught:
       escaped <- cats.effect.Deferred[IO, cats.mtl.Raise[IO, NetworkError]]
       _ <- cats.mtl.Handle.allow[NetworkError](escaped.complete(summon).void).rescue(_ => IO.unit)
       raise <- escaped.get
-      _ <- raise.raise[NetworkError.BearerClosed, Unit](NetworkError.BearerClosed(NetworkError.Closure.Aborted)).start
+      _ <- raise
+        .raise[NetworkError.BearerClosed, Unit](
+          NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+        )
+        .start
       _ <- IO.sleep(300.millis)
       seen = takeUncaught()
     yield

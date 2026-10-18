@@ -202,7 +202,12 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
       .map(result =>
         assertEquals(
           result,
-          Right((NetworkError.BearerClosed(NetworkError.Closure.Transport("bearer failed", cause)), false))
+          Right(
+            (
+              NetworkError.BearerClosed(NetworkError.Closure.Transport("bearer failed", cause)),
+              false
+            )
+          )
         )
       )
 

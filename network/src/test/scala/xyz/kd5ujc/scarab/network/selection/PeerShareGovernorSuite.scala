@@ -176,7 +176,9 @@ class PeerShareGovernorSuite extends FunSuite:
       started.state,
       id,
       List(
-        asked.head -> PeerShare.Result.Failed(NetworkError.BearerClosed(NetworkError.Closure.Aborted)),
+        asked.head -> PeerShare.Result.Failed(
+          NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+        ),
         asked.last -> PeerShare.Result.NotRegistered()
       ),
       305.seconds,

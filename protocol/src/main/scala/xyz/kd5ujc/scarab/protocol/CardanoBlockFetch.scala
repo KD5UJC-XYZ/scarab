@@ -52,8 +52,10 @@ object CardanoBlockFetch:
         bytes: Bytes,
         maxRawBytes: Int = RawLimits().maxRawBytes
     ): Either[ProtocolError, RawNtNBlock] =
-      if maxRawBytes < 0 || maxRawBytes > 2499991 then Left(ProtocolError.InvalidRawBlockLimit(maxRawBytes))
-      else if bytes.size > maxRawBytes then Left(ProtocolError.RawBlockByteLimitExceeded(bytes.size, maxRawBytes))
+      if maxRawBytes < 0 || maxRawBytes > 2499991 then
+        Left(ProtocolError.InvalidRawBlockLimit(maxRawBytes))
+      else if bytes.size > maxRawBytes then
+        Left(ProtocolError.RawBlockByteLimitExceeded(bytes.size, maxRawBytes))
       else Right(new RawNtNBlock(bytes))
 
   /** Default leaves room for the nine-byte canonical Block message wrapper. */
@@ -79,7 +81,9 @@ object CardanoBlockFetch:
         if reader.position != bytes.size then bad(ProtocolError.TrailingSerializedBlockBytes)
         result
       }
-      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): RawNtNBlock =
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using
+          ProtocolWire.Scope
+      ): RawNtNBlock =
         if !limits.valid then bad(ProtocolError.InvalidRawBlockLimit(limits.maxRawBytes))
         if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
         // Reader checks the declared length before checking body availability or slicing.
@@ -89,9 +93,10 @@ object CardanoBlockFetch:
   /** Decode requests through this boundary before a Cardano server/API accepts them. Generic
     * BlockFetch intentionally retains polymorphic point compatibility.
     */
-  def checkedRange(message: BlockFetch.Message[?]): Either[ProtocolError, InclusiveRange] = message match
-    case BlockFetch.Message.RequestRange(from, to) => InclusiveRange.fromPoints(from, to)
-    case _                                         => Left(ProtocolError.ExpectedRequestRange)
+  def checkedRange(message: BlockFetch.Message[?]): Either[ProtocolError, InclusiveRange] =
+    message match
+      case BlockFetch.Message.RequestRange(from, to) => InclusiveRange.fromPoints(from, to)
+      case _                                         => Left(ProtocolError.ExpectedRequestRange)
 
   /** Selected ordered points, supplied by an independent selection/identity layer. Slot
     * monotonicity is necessary but does not establish parent linkage.
@@ -109,7 +114,8 @@ object CardanoBlockFetch:
       if !limits.valid then Left(ProtocolError.InvalidRequestLimits)
       else if expected.isEmpty || expected.size > limits.maxBlocks then
         Left(ProtocolError.ExpectedPointCountOutsideRequestLimits(expected.size, limits.maxBlocks))
-      else if expected.distinct.size != expected.size then Left(ProtocolError.DuplicateExpectedPoints)
+      else if expected.distinct.size != expected.size then
+        Left(ProtocolError.DuplicateExpectedPoints)
       else if expected.zip(expected.drop(1)).exists((a, b) => a.slot.value > b.slot.value) then
         Left(ProtocolError.ReversedExpectedSlotOrder)
       else Right(new FetchPlan(expected, limits))
@@ -146,7 +152,8 @@ object CardanoBlockFetch:
             case Message.NoBlocks =>
               Right(new Batch(plan, next, BatchResult.Unavailable, received, blocks))
             case Message.Block(block) =>
-              if blocks.size >= plan.expected.size then Left(ProtocolError.ExtraBlockInRequestedBatch)
+              if blocks.size >= plan.expected.size then
+                Left(ProtocolError.ExtraBlockInRequestedBatch)
               else
                 for
                   count <- BlockFetch.Received.add(received, block.bytes.size, plan.limits)

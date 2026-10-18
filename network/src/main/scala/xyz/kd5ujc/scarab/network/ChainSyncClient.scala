@@ -83,7 +83,7 @@ object ChainSyncClient:
             case State.Intersect     => F.pure(settings.intersectTimeout)
             case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
             case State.NextMustReply => F.pure(settings.mustReplyTimeout)
-            case other               => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
+            case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
           limit.flatMap { wait =>
             Timed
               .within(wait, id, current.toString)(
@@ -127,7 +127,7 @@ object ChainSyncClient:
                 F.pure(Some(point -> tip))
               case Message.IntersectFound(_, _) => illegal(RuntimeViolation.IntersectionNotOffered)
               case Message.IntersectNotFound(_) => F.pure(None)
-              case other                        => illegal(RuntimeViolation.ChainSyncUnexpected(other))
+              case other => illegal(RuntimeViolation.ChainSyncUnexpected(other))
             }
 
           def requestNext(using Raise[F, NetworkError]): F[Update[P]] = flight(requestNext_)
@@ -169,7 +169,7 @@ object ChainSyncClient:
                     case Message.RollForward(payload, tip) =>
                       F.pure(Update.RollForward(payload, tip))
                     case Message.RollBackward(point, tip) => F.pure(Update.RollBackward(point, tip))
-                    case other                            => illegal(RuntimeViolation.ChainSyncUnexpected(other))
+                    case other => illegal(RuntimeViolation.ChainSyncUnexpected(other))
                 }
               }
             go(State.NextCanAwait)
@@ -179,7 +179,7 @@ object ChainSyncClient:
               case Message.AwaitReply                => collect
               case Message.RollForward(payload, tip) => F.pure(Update.RollForward(payload, tip))
               case Message.RollBackward(point, tip)  => F.pure(Update.RollBackward(point, tip))
-              case other                             => illegal(RuntimeViolation.ChainSyncUnexpected(other))
+              case other => illegal(RuntimeViolation.ChainSyncUnexpected(other))
             }
 
           def done(using Raise[F, NetworkError]) = send(Message.Done)

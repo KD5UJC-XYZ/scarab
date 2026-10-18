@@ -30,10 +30,11 @@ object HandshakeClient:
       timeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
       suite: Handshake.Suite = Handshake.Suite.NodeToNode
   )(using Raise[F, NetworkError]): F[Agreed] =
-    def refuse[A](reason: ProtocolError | NetworkError.HandshakeFailure): F[A] = NetworkError.HandshakeRefused(reason match
-      case error: ProtocolError => NetworkError.HandshakeFailure.Local(error)
-      case error: NetworkError.HandshakeFailure => error
-    ).raise[F, A]
+    def refuse[A](reason: ProtocolError | NetworkError.HandshakeFailure): F[A] = NetworkError
+      .HandshakeRefused(reason match
+        case error: ProtocolError                 => NetworkError.HandshakeFailure.Local(error)
+        case error: NetworkError.HandshakeFailure => error)
+      .raise[F, A]
     for
       start <- Handshake
         .clientStart(suite, offers)
@@ -56,5 +57,6 @@ object HandshakeClient:
           refuse(NetworkError.HandshakeFailure.Remote(Handshake.Reason.DecodeError(v, text)))
         case Handshake.Result.Rejected(Handshake.Reason.Refused(v, text)) =>
           refuse(NetworkError.HandshakeFailure.Remote(Handshake.Reason.Refused(v, text)))
-        case Handshake.Result.QueryResult(_) => refuse(NetworkError.HandshakeFailure.UnexpectedQueryReply)
+        case Handshake.Result.QueryResult(_) =>
+          refuse(NetworkError.HandshakeFailure.UnexpectedQueryReply)
     yield agreed

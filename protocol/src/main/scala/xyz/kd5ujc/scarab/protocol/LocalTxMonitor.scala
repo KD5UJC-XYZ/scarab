@@ -157,7 +157,11 @@ object LocalTxMonitor:
         case (State.Busy(Kind.GetSizes), 2, 10) if tag == 10 =>
           if r.arrayLength() != 3 then bad(ProtocolError.SizesArity)
           Message.ReplyGetSizes(
-            Sizes(word32(ProtocolError.MonitorField.CapacityInBytes), word32(ProtocolError.MonitorField.SizeInBytes), word32(ProtocolError.MonitorField.NumberOfTxs))
+            Sizes(
+              word32(ProtocolError.MonitorField.CapacityInBytes),
+              word32(ProtocolError.MonitorField.SizeInBytes),
+              word32(ProtocolError.MonitorField.NumberOfTxs)
+            )
           )
         case (State.Busy(Kind.GetMeasures), 3, 12) if tag == 12 =>
           val count = word32(ProtocolError.MonitorField.TxCount)
@@ -167,7 +171,8 @@ object LocalTxMonitor:
             if r.arrayLength() != 2 then bad(ProtocolError.MeasureArity)
             name -> Measure(r.uint().value, r.uint().value)
           }
-          if entries.map(_._1).distinct.size != entries.size then bad(ProtocolError.DuplicateMeasureName)
+          if entries.map(_._1).distinct.size != entries.size then
+            bad(ProtocolError.DuplicateMeasureName)
           Message.ReplyGetMeasures(Measures(count, SortedMap.from(entries)))
         case _ => bad(ProtocolError.UnknownLocalTxMonitorTagOrArity)
       get(transition(state, sender, message))

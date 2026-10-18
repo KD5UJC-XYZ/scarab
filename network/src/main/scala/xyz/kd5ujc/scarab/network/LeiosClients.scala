@@ -45,7 +45,8 @@ object LeiosNotifyClient:
       Raise[F, NetworkError]
   ): LeiosNotifyClient[F] =
     val id = Protocols.LeiosNotify
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(m: LeiosNotify.Message): F[Unit] =
       LeiosNotify.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     def receive(state: LeiosNotify.State): F[Observed[LeiosNotify.Message]] =
@@ -72,7 +73,8 @@ object LeiosFetchClient:
       Raise[F, NetworkError]
   ): LeiosFetchClient[F] =
     val id = Protocols.LeiosFetch
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(m: LeiosFetch.Message): F[Unit] =
       LeiosFetch.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     new LeiosFetchClient[F]:

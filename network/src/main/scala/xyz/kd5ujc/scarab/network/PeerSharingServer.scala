@@ -60,7 +60,8 @@ object PeerSharingServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val id = Protocols.PeerSharing
-    def illegal[A](detail: NetworkError.Violation): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     val step: F[Boolean] =
       channel
         .recv(settings.limits.maxMessageBytes)(
@@ -80,6 +81,6 @@ object PeerSharingServer:
                 .as(true)
             }
           case PeerSharing.Message.Done => Temporal[F].pure(false)
-          case other                    => illegal[Boolean](RuntimeViolation.PeerSharingUnexpected(other))
+          case other => illegal[Boolean](RuntimeViolation.PeerSharingUnexpected(other))
         }
     step.iterateWhile(identity).void

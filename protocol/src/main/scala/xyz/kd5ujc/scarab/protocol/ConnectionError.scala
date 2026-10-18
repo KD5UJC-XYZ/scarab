@@ -21,4 +21,3 @@ enum ConnectionError:
     case OutboundLimit(r, l)    => s"refused outbound connection to $r: $l connections open already"
     case AlreadyConnected(r, s) => s"already connected to $r ($s)"
     case IllegalTransition(r, p) => s"$r: ${p.message}"
-

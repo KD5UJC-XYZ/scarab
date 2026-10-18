@@ -67,10 +67,13 @@ object PeerSharingClient:
               peers <- answer match
                 case PeerSharing.Message.SharePeers(peers) if peers.size > amount.value =>
                   illegal[Vector[Address]](
-                    RuntimeViolation.PeerSharingPolicy(PeerSharing.Violation.TooManyPeers(amount, peers.size))
+                    RuntimeViolation.PeerSharingPolicy(
+                      PeerSharing.Violation.TooManyPeers(amount, peers.size)
+                    )
                   )
                 case PeerSharing.Message.SharePeers(peers) => F.pure(peers)
-                case other => illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
+                case other =>
+                  illegal[Vector[Address]](RuntimeViolation.PeerSharingUnexpected(other))
               _ <- state.set(PeerSharing.State.Idle)
             yield peers
           }
