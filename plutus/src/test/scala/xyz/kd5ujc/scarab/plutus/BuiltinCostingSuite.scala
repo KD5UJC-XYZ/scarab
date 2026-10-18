@@ -119,7 +119,10 @@ class BuiltinCostingSuite extends FunSuite:
       s"(lam ctx [ (lam r (con unit ())) [ [ (builtin $builtin) (con integer $a) ] (con integer $b) ] ])"
     // Version 1.0.0 is valid for every language and protocol version (no constr or case).
     val code = Bytes.fromArray(
-      Program.parseUplc(s"(program 1.0.0 $text)").fold(sys.error, identity).cborEncoded
+      Program
+        .parseUplc(s"(program 1.0.0 $text)")
+        .fold(e => sys.error(e.toString), identity)
+        .cborEncoded
     )
     val result = ScalusEvaluator.pure.evaluate(
       EvalRequest(
@@ -190,7 +193,10 @@ class BuiltinCostingSuite extends FunSuite:
         s"(con bytestring ${bytes(32, 1)}) (con bytestring ${bytes(messageBytes, 2)}) " +
         s"(con bytestring ${bytes(64, 3)}) ] ])"
     val code = Bytes.fromArray(
-      Program.parseUplc(s"(program 1.0.0 $text)").fold(sys.error, identity).cborEncoded
+      Program
+        .parseUplc(s"(program 1.0.0 $text)")
+        .fold(e => sys.error(e.toString), identity)
+        .cborEncoded
     )
     val result = ScalusEvaluator.pure.evaluate(
       EvalRequest(

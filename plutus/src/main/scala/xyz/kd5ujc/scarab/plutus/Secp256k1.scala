@@ -16,7 +16,8 @@ import scalus.crypto.{NativeSecp256k1, Secp256k1Context}
   *
   * Scalus 1.2.0 and 1.3.0 fail on `r = 0` or `s = 0` where the reference answers `False`; the
   * preprod transaction 97b31e35 (block 3,498,869) passes an all-zero signature and the chain
-  * accepts the answer `False`. Failures are `IllegalArgumentException`, like Scalus's.
+  * accepts the answer `False`. Failures are typed values; the Scalus callback adapter retains them
+  * in its evaluation log.
   */
 object Secp256k1:
   /** The order `n` of the secp256k1 group. */
@@ -25,14 +26,45 @@ object Secp256k1:
 
   private val HalfOrder: BigInt = Order >> 1
 
-  /** The builtin; throws `IllegalArgumentException` where the reference fails. */
-  def verifyEcdsa(pk: Array[Byte], msg: Array[Byte], sig: Array[Byte]): Boolean =
-    require(Secp256k1Context.isEnabled, "secp256k1 native library not available")
-    require(pk.length == 33 && NativeSecp256k1.isValidPubKey(pk), "Invalid verification key.")
-    require(sig.length == 64, "Invalid signature.")
-    val r = BigInt(1, sig.slice(0, 32))
-    val s = BigInt(1, sig.slice(32, 64))
-    require(r < Order && s < Order, "Invalid signature.")
-    require(msg.length == 32, "Invalid message hash.")
-    if r.signum == 0 || s.signum == 0 || s > HalfOrder then false
-    else NativeSecp256k1.ecdsaVerify(msg, sig, pk)
+  enum Operand:
+    case PublicKey, Message, Signature
+  enum Error:
+    case NativeUnavailable
+    case MissingOperand(operand: Operand)
+    case WrongLength(operand: Operand, expected: Int, actual: Int)
+    case InvalidPublicKey
+    case ScalarOutOfRange
+    case Defect(cause: Throwable)
+    def message: String = this match
+      case NativeUnavailable       => "secp256k1 native library not available"
+      case MissingOperand(operand) => s"missing $operand"
+      case WrongLength(operand, expected, actual) =>
+        s"$operand must have $expected bytes (got $actual)"
+      case InvalidPublicKey => "Invalid verification key."
+      case ScalarOutOfRange => "Invalid signature."
+      case Defect(cause)    => Option(cause.getMessage).getOrElse(cause.getClass.getName)
+
+  /** Input shape failures are distinct from a well-formed signature's false verdict. */
+  def verifyEcdsa(pk: Array[Byte], msg: Array[Byte], sig: Array[Byte]): Either[Error, Boolean] =
+    def length(bytes: Array[Byte], operand: Operand, expected: Int): Either[Error, Unit] =
+      if bytes == null then Left(Error.MissingOperand(operand))
+      else
+        Either.cond(
+          bytes.length == expected,
+          (),
+          Error.WrongLength(operand, expected, bytes.length)
+        )
+    try
+      for
+        _ <- Either.cond(Secp256k1Context.isEnabled, (), Error.NativeUnavailable)
+        _ <- length(pk, Operand.PublicKey, 33)
+        _ <- Either.cond(NativeSecp256k1.isValidPubKey(pk), (), Error.InvalidPublicKey)
+        _ <- length(sig, Operand.Signature, 64)
+        r = BigInt(1, sig.slice(0, 32))
+        s = BigInt(1, sig.slice(32, 64))
+        _ <- Either.cond(r < Order && s < Order, (), Error.ScalarOutOfRange)
+        _ <- length(msg, Operand.Message, 32)
+      yield
+        if r.signum == 0 || s.signum == 0 || s > HalfOrder then false
+        else NativeSecp256k1.ecdsaVerify(msg, sig, pk)
+    catch case scala.util.control.NonFatal(cause) => Left(Error.Defect(cause))

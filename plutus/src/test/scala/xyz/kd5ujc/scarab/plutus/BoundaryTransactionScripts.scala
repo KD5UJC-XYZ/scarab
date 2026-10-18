@@ -89,7 +89,8 @@ object BoundaryTransactionScripts:
     }
   private def field[A: io.circe.Decoder](json: Json, name: String): A =
     json.hcursor.get[A](name).fold(e => sys.error(e.message), identity)
-  private def hex(value: String): Bytes = Bytes.fromHex(value).fold(sys.error, identity)
+  private def hex(value: String): Bytes =
+    Bytes.fromHex(value).fold(e => sys.error(e.toString), identity)
 
   def checked: Vector[Probe] =
     val originals = rows("scripts.jsonl")

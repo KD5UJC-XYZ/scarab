@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import munit.FunSuite
 
 import PlutusData.*
@@ -39,8 +39,16 @@ class PlutusDataSuite extends FunSuite:
   }
 
   test("unknown tags and floats are refused") {
-    assert(decode("c100").isLeft)
-    assert(decode("f93c00").isLeft)
+    assertEquals(decode("c100"), Left(DecodeError.UnexpectedTag(1)))
+    assertEquals(decode("f93c00"), Left(DecodeError.Syntax(Cbor.Error.UnsupportedSimpleValue(25))))
+  }
+
+  test("invalid constructor and big-number shapes preserve their typed CBOR values") {
+    assertEquals(decode("d87900"), Left(DecodeError.ConstructorFields(Value.UInt(0))))
+    assertEquals(decode("c200"), Left(DecodeError.BigNumberBytes(Value.UInt(0))))
+    assertEquals(decode("d866822080"), Left(DecodeError.ConstructorIndex(Value.NInt(-1))))
+    assertEquals(decode("d86600"), Left(DecodeError.ConstructorEnvelope(Value.UInt(0))))
+    assertEquals(decode("f5"), Left(DecodeError.UnexpectedItem(Value.Bool(true))))
   }
 
   test("the unit, Maybe and Bool shapes") {

@@ -165,16 +165,24 @@ class PlutusAvailabilitySuite extends FunSuite:
     // Keccak-256 is not a PlutusV2 builtin before the van Rossem hard fork, protocol 11.
     run(PlutusLanguage.V2, 10, DefaultFun.Keccak_256, (1, 0, 0)) match
       case EvalResult.Failure(EvalFailure.Decode(reason), _, _) =>
-        assert(reason.contains("Keccak_256"), reason)
+        assertEquals(
+          reason,
+          ScriptProblem.Availability(
+            Failure.BuiltinUnavailable(DefaultFun.Keccak_256, PlutusLanguage.V2, 10)
+          )
+        )
       case other => fail(other.toString)
     // The program version is checked too: 1.1.0 is not available to PlutusV1 before protocol 11.
     run(PlutusLanguage.V1, 10, DefaultFun.AddInteger, (1, 1, 0)) match
       case EvalResult.Failure(EvalFailure.Decode(reason), _, _) =>
-        assert(reason.contains("1.1.0"), reason)
+        assertEquals(
+          reason,
+          ScriptProblem.Availability(Failure.VersionUnavailable((1, 1, 0), PlutusLanguage.V1, 10))
+        )
       case other => fail(other.toString)
     // Where the table allows the program it is not a decode failure (it fails later: the script
     // is a bare builtin, not a function of the arguments).
     run(PlutusLanguage.V1, 11, DefaultFun.AddInteger, (1, 1, 0)) match
-      case EvalResult.Failure(EvalFailure.Decode(reason), _, _) => fail(reason)
+      case EvalResult.Failure(EvalFailure.Decode(reason), _, _) => fail(reason.message)
       case _                                                    => ()
   }

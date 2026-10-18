@@ -100,7 +100,7 @@ object PlutusData:
 
   private def constrOf(index: BigInt, fs: Node): Opened = fs.value match
     case Value.Arr(xs) => Right(TreeFold.Step.Branch(xs, ds => Right(Constr(index, ds))))
-    case actual => Left(DecodeError.ConstructorFields(actual))
+    case actual        => Left(DecodeError.ConstructorFields(actual))
 
   private def open(n: Node): Opened = n.value match
     case Value.UInt(v)       => leaf(I(v))
@@ -127,7 +127,7 @@ object PlutusData:
         case Value.Arr(Vector(ix, fs)) =>
           ix.value match
             case Value.UInt(i) => constrOf(i, fs)
-            case actual => Left(DecodeError.ConstructorIndex(actual))
+            case actual        => Left(DecodeError.ConstructorIndex(actual))
         case actual => Left(DecodeError.ConstructorEnvelope(actual))
     case Value.Tag(t, _) => Left(DecodeError.UnexpectedTag(t))
     case other           => Left(DecodeError.UnexpectedItem(other))

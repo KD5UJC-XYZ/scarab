@@ -39,7 +39,10 @@ class ScalusEvaluatorSuite extends FunSuite:
     */
   private def script(uplc: String, version: String = "1.0.0"): Bytes =
     Bytes.fromArray(
-      Program.parseUplc(s"(program $version $uplc)").fold(sys.error, identity).cborEncoded
+      Program
+        .parseUplc(s"(program $version $uplc)")
+        .fold(e => sys.error(e.toString), identity)
+        .cborEncoded
     )
 
   private def run(
@@ -142,7 +145,7 @@ class ScalusEvaluatorSuite extends FunSuite:
         0xff.toByte
       )
     )
-    val datum = PlutusData.decode(wire).fold(sys.error, identity)
+    val datum = PlutusData.decode(wire).fold(e => sys.error(e.toString), identity)
     // 0x9f per level, 0xff per level, 0x00: 2 * levels + 1 bytes
     val expected = 2 * levels + 1
     var outcome: Option[Either[Throwable, EvalResult]] = None
@@ -208,6 +211,6 @@ class ScalusEvaluatorSuite extends FunSuite:
     result match
       case EvalResult.Failure(EvalFailure.Script(reason), _, logs) =>
         assertEquals(logs, Vector("H41"))
-        assert(reason.contains("trace: H41"), reason)
+        assert(reason.message.contains("trace: H41"), reason)
       case other => fail(other.toString)
   }

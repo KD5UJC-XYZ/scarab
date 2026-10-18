@@ -17,6 +17,25 @@ import scalus.uplc.DefaultFun.*
   * phase 2. The program version is checked when the script is evaluated (`mkTermToEvaluate`).
   */
 object PlutusAvailability:
+  enum Failure:
+    case LanguageUnavailable(language: PlutusLanguage, protocolMajor: Int)
+    case BuiltinUnavailable(builtin: DefaultFun, language: PlutusLanguage, protocolMajor: Int)
+    case VersionUnavailable(version: (Int, Int, Int), language: PlutusLanguage, protocolMajor: Int)
+    case MalformedValue(cause: FlatScan.ValueFault)
+    case TypeHeaderTooLarge(actual: Int, protocolMajor: Int)
+    case TooManyConstrFields(actual: Int, protocolMajor: Int)
+    def message: String = this match
+      case LanguageUnavailable(language, pv) =>
+        s"$language is not available in protocol version $pv"
+      case BuiltinUnavailable(f, language, pv) =>
+        s"Builtin function $f is not available in language $language at and protocol version $pv"
+      case VersionUnavailable(v, language, pv) =>
+        s"Plutus Core version ${v._1}.${v._2}.${v._3} is not available in $language at protocol version $pv"
+      case MalformedValue(cause) => s"Value constant: ${cause.message}"
+      case TypeHeaderTooLarge(n, pv) =>
+        s"Constant of type with $n tags is not available in protocol version $pv"
+      case TooManyConstrFields(n, pv) =>
+        s"constr with $n fields is not available in protocol version $pv"
   // The batches as plutus-ledger-api defines them; the order within a batch is the reference's.
   val batch1: Vector[DefaultFun] = Vector(
     AddInteger,
@@ -202,13 +221,13 @@ object PlutusAvailability:
       language: PlutusLanguage,
       protocolMajor: Int,
       builtins: Set[DefaultFun]
-  ): Option[String] =
+  ): Option[Failure] =
     if protocolMajor < languageIntroducedIn(language) then
-      Some(s"$language is not available in protocol version $protocolMajor")
+      Some(Failure.LanguageUnavailable(language, protocolMajor))
     else
       val available = builtinsAvailableIn(language, protocolMajor)
       builtins.filterNot(available).toVector.sortBy(_.ordinal).headOption.map { f =>
-        s"Builtin function $f is not available in language $language at and protocol version $protocolMajor"
+        Failure.BuiltinUnavailable(f, language, protocolMajor)
       }
 
   /** Why a program of this UPLC version cannot be evaluated, if it cannot. */
@@ -216,13 +235,9 @@ object PlutusAvailability:
       language: PlutusLanguage,
       protocolMajor: Int,
       version: (Int, Int, Int)
-  ): Option[String] =
+  ): Option[Failure] =
     if programVersionsAvailableIn(language, protocolMajor).contains(version) then None
-    else
-      Some(
-        s"Plutus Core version ${version._1}.${version._2}.${version._3} is not available in " +
-          s"$language at protocol version $protocolMajor"
-      )
+    else Some(Failure.VersionUnavailable(version, language, protocolMajor))
 
   /** Header size of a constant's type and fields of a `constr` from protocol 11 (`maxBoundsByPV`:
     * 32 and 1024); below it the decoder has no bound.
@@ -234,16 +249,16 @@ object PlutusAvailability:
     * `value` constant at every protocol version, and from protocol 11 a constant type header longer
     * than [[MaxTypeHeader]] tags and a `constr` with more than [[MaxConstrFields]] fields.
     */
-  def scanFailure(protocolMajor: Int, scan: FlatScan): Option[String] =
+  def scanFailure(protocolMajor: Int, scan: FlatScan): Option[Failure] =
     scan.malformedValue
-      .map(f => s"Value constant: ${f.message}")
+      .map(Failure.MalformedValue.apply)
       .orElse(
         Option.when(protocolMajor >= VanRossem && scan.maxTypeHeader > MaxTypeHeader)(
-          s"Constant of type with ${scan.maxTypeHeader} tags is not available in protocol version $protocolMajor"
+          Failure.TypeHeaderTooLarge(scan.maxTypeHeader, protocolMajor)
         )
       )
       .orElse(
         Option.when(protocolMajor >= VanRossem && scan.maxConstrFields > MaxConstrFields)(
-          s"constr with ${scan.maxConstrFields} fields is not available in protocol version $protocolMajor"
+          Failure.TooManyConstrFields(scan.maxConstrFields, protocolMajor)
         )
       )
