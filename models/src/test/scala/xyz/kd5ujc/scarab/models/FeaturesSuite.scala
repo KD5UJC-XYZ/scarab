@@ -16,7 +16,7 @@ import DecodeError.Kind
   */
 class FeaturesSuite extends munit.FunSuite:
   private def hex(s: String): Bytes =
-    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(e => fail(e), identity)
+    Bytes.fromHex(s.filterNot(_.isWhitespace)).fold(e => fail(e.message), identity)
   private val h32 = "58 20" + "11" * 32
   private val h28 = "58 1c" + "22" * 28
 
