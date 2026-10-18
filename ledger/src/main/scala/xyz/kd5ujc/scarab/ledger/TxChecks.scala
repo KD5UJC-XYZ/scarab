@@ -78,6 +78,8 @@ object TxChecks:
             )
           )
           .flatMap {
+            case Phase2.Outcome.Unavailable(_, redeemer, reason) =>
+              Left(LedgerFailure.Unavailable(id, redeemer, reason))
             case Phase2.Outcome.Passed(n) =>
               if tx.isValid then
                 Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))

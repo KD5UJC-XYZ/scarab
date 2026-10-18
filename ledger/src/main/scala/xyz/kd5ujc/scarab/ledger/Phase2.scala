@@ -2,7 +2,9 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.{Id, Monad}
-import cats.syntax.traverse.*
+import cats.data.StateT
+import cats.mtl.Stateful
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.*
 
@@ -32,6 +34,10 @@ object Phase2:
     case Passed(scripts: Int)
     case Failed(scripts: Int, redeemer: Redeemer, reason: EvalFailure)
 
+    /** An implementation limit supplies no script verdict, whichever validity flag the tx carries.
+      */
+    case Unavailable(scripts: Int, redeemer: Redeemer, reason: EvalFailure.Unsupported)
+
     def passed: Boolean = this match
       case Passed(_) => true
       case _         => false
@@ -53,48 +59,62 @@ object Phase2:
         .flatMap(s => s.plutus.map(s.hash -> _))
         .toMap
     val redeemers = tx.witnesses.redeemers.sortBy(r => (r.tag, r.index))
-    // The transaction information is shared by every redeemer of a language.
-    val infos = collection.mutable.Map.empty[PlutusLanguage, Either[TranslationError, PlutusData]]
-    def info(language: PlutusLanguage) =
-      infos.getOrElseUpdate(language, ScriptContexts.txInfo(language, tx, env))
+    // Preparation shares each language's context through a pure, typed state interpreter.
+    type Infos = Map[PlutusLanguage, PlutusData]
+    type Prepared[A] = StateT[Translated, Infos, A]
+    val cache = Stateful[Prepared, Infos]
+    def lift[A](value: Translated[A]): Prepared[A] = StateT.liftF(value)
+    def info(language: PlutusLanguage): Prepared[PlutusData] =
+      cache.get.flatMap { infos =>
+        infos
+          .get(language)
+          .fold(
+            lift(ScriptContexts.txInfo(language, tx, env))
+              .flatTap(value => cache.modify(_.updated(language, value)))
+          )(_.pure[Prepared])
+      }
 
     /** One redeemer against its script: the request to evaluate, or why it cannot be set up. */
-    def prepare(r: Redeemer): Either[TranslationError, (Redeemer, EvalRequest)] =
+    def prepare(r: Redeemer): Prepared[(Redeemer, EvalRequest)] =
       for
-        purpose <- Purpose
-          .resolve(tx.body, spent, r.tag, r.index)
-          .toRight(TranslationError.NoRedeemer(r.tag, r.index))
-        hash <- purpose.scriptHash.toRight(TranslationError.NoRedeemer(r.tag, r.index))
-        script <- scripts.get(hash).toRight(TranslationError.NoWitness(hash))
-        language <- languageOf(script)
-        code <- script.plutus
-          .orElse(referenceScripts.get(hash))
-          .toRight(TranslationError.NoScriptBytes(hash))
-        model <- costModel(pp, language)
+        purpose <- lift(
+          Purpose
+            .resolve(tx.body, spent, r.tag, r.index)
+            .toRight(TranslationError.NoRedeemer(r.tag, r.index))
+        )
+        hash <- lift(purpose.scriptHash.toRight(TranslationError.NoRedeemer(r.tag, r.index)))
+        script <- lift(scripts.get(hash).toRight(TranslationError.NoWitness(hash)))
+        language <- lift(languageOf(script))
+        code <- lift(
+          script.plutus
+            .orElse(referenceScripts.get(hash))
+            .toRight(TranslationError.NoScriptBytes(hash))
+        )
+        model <- lift(costModel(pp, language))
         txInfo <- info(language)
-        args <- ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
+        args <- lift(
+          ScriptContexts.arguments(language, txInfo, tx, r, purpose, pp.protocolMajor.toInt)
+        )
       yield r -> EvalRequest(language, pp.protocolMajor.toInt, code, args, model, r.exUnits)
 
-    // The reference builds the context of every script before it runs any of them
-    // (`collectPlutusScriptsWithContext`, `Alonzo/Plutus/Evaluate.hs:128-185`) and refuses the
-    // transaction on any failure to do so (`Babbage/Rules/Utxos.hs:142-143`, `:205-206`), whatever
-    // the validity flag says. So a script that fails first does not spare a later one whose context
-    // cannot be built.
-    redeemers.traverse(prepare).flatMap { requests =>
-      // A transaction can carry well over a hundred redeemers. The loop is `tailRecM` over a typed
-      // state, so the stack does not grow with their number.
+    // The reference builds every script context before it evaluates any script
+    // (collectPlutusScriptsWithContext, Alonzo/Plutus/Evaluate.hs:128-185). A first script failure
+    // cannot hide a later context error, whichever validity flag the transaction carries.
+    redeemers.traverse(prepare).runA(Map.empty).flatMap { requests =>
       Monad[Translated].tailRecM(Progress(requests.toList, 0)) {
         case Progress(Nil, done) => Right(Right(Outcome.Passed(done)))
-        case Progress((r, request) :: tail, done) =>
+        case Progress((redeemer, request) :: tail, done) =>
           Right(evaluator.evaluate(request) match
-            case EvalResult.Success(_, _)         => Left(Progress(tail, done + 1))
-            case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, r, reason)))
+            case EvalResult.Success(_, _) => Left(Progress(tail, done + 1))
+            case EvalResult.Failure(reason: EvalFailure.Unsupported, _, _) =>
+              Right(Outcome.Unavailable(done, redeemer, reason))
+            case EvalResult.Failure(reason, _, _) => Right(Outcome.Failed(done, redeemer, reason)))
       }
     }
 
   private type Translated[A] = Either[TranslationError, A]
 
-  /** The loop state of [[evaluate]]: the redeemers still to run and how many have passed. */
+  /** Prepared requests still to run, and how many have passed. */
   private final case class Progress(rest: List[(Redeemer, EvalRequest)], done: Int)
 
   private[ledger] def languageOf(script: Script): Either[TranslationError, PlutusLanguage] =

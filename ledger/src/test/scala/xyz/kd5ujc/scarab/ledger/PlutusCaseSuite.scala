@@ -55,7 +55,8 @@ class PlutusCaseSuite extends FunSuite:
           assert(c.tx.isValid, s"all $n scripts passed but the block says is_valid = false")
         case Right(Phase2.Outcome.Failed(_, r, reason)) =>
           assert(!c.tx.isValid, s"redeemer ${r.tag}.${r.index} failed: ${reason.message}")
-        case Left(e) => fail(e.message)
+        case Right(Phase2.Outcome.Unavailable(_, _, why)) => fail(why.message)
+        case Left(e)                                      => fail(e.message)
     }
   }
 

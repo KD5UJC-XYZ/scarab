@@ -49,6 +49,13 @@ enum LedgerFailure:
   /** The transaction holds what its era's decoder would not have admitted (see [[TxDefect]]). */
   case Undecodable(txId: Bytes, defect: TxDefect)
 
+  /** This implementation could not evaluate a script; no consensus verdict exists. */
+  case Unavailable(
+      txId: Bytes,
+      redeemer: Redeemer,
+      reason: xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported
+  )
+
   /** A value of the transaction is not a member of the vocabulary type that the era-indexed state
     * holds it in (a credential of another length, a quantity outside its word). The decoder admits
     * none, so a decoded transaction does not reach it; it is the total form of a conversion the
@@ -60,7 +67,9 @@ enum LedgerFailure:
     case Rejected(id, f) =>
       s"tx ${id.hex.take(16)} violates ${f.detail}"
     case Undecodable(id, d) => s"tx ${id.hex.take(16)} cannot be decoded: ${d.message}"
-    case Vocab(e)           => s"transaction outside the state's vocabulary: $e"
+    case Unavailable(id, r, why) =>
+      s"tx ${id.hex.take(16)} evaluation unavailable at ${r.tag}.${r.index}: ${why.message}"
+    case Vocab(e) => s"transaction outside the state's vocabulary: $e"
 
 /** Block-level context of a transaction. */
 final case class TxEnv(
