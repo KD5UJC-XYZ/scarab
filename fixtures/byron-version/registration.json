@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "scope": "Execution of unchanged pinned pvCanFollow excerpt against exact Word16/Word16/Word8 type; not full reference ledger-registration execution.",
+  "cases": [
+    {
+      "adopted": [
+        65534,
+        0,
+        0
+      ],
+      "proposed": [
+        65535,
+        0,
+        0
+      ],
+      "accepted": true
+    },
+    {
+      "adopted": [
+        0,
+        65534,
+        0
+      ],
+      "proposed": [
+        0,
+        65535,
+        0
+      ],
+      "accepted": true
+    },
+    {
+      "adopted": [
+        0,
+        0,
+        0
+      ],
+      "proposed": [
+        1,
+        0,
+        255
+      ],
+      "accepted": true
+    },
+    {
+      "adopted": [
+        0,
+        0,
+        255
+      ],
+      "proposed": [
+        0,
+        1,
+        0
+      ],
+      "accepted": true
+    },
+    {
+      "adopted": [
+        0,
+        65535,
+        255
+      ],
+      "proposed": [
+        1,
+        0,
+        0
+      ],
+      "accepted": true
+    },
+    {
+      "adopted": [
+        65535,
+        65534,
+        0
+      ],
+      "proposed": [
+        65535,
+        65535,
+        255
+      ],
+      "accepted": true
+    },
+    {
+      "adopted": [
+        0,
+        0,
+        0
+      ],
+      "proposed": [
+        0,
+        0,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "adopted": [
+        0,
+        0,
+        0
+      ],
+      "proposed": [
+        2,
+        0,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "adopted": [
+        0,
+        0,
+        0
+      ],
+      "proposed": [
+        1,
+        1,
+        0
+      ],
+      "accepted": false
+    },
+    {
+      "adopted": [
+        0,
+        65535,
+        0
+      ],
+      "proposed": [
+        0,
+        0,
+        1
+      ],
+      "accepted": false
+    },
+    {
+      "adopted": [
+        65535,
+        0,
+        0
+      ],
+      "proposed": [
+        0,
+        0,
+        0
+      ],
+      "accepted": false
+    }
+  ],
+  "reference": {
+    "haskellImageId": "sha256:4f1f62fec9cea4cbb03e885c9ad45642609cadd3897b1e64a7f61d0862b575b1",
+    "mainSha256": "510665600185ca3081dcc500a62d0fead871b1d74108ae1c435b10556216cdfc",
+    "compileExitCode": 0,
+    "predicateExitCode": 0,
+    "ghc": "9.10.3",
+    "extraction": "scripts/oracle/byron/extraction.json"
+  }
+}

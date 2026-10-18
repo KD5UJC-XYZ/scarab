@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "source": "fixtures/mainnet/byron-main-blocks.hex, first line",
+  "sourceSha256": "3c3d3e22aefd48e6350eccbf6ac2252656d3841064a2a4fcdb4bffb62d056602",
+  "replacementPath": [
+    1,
+    0,
+    4,
+    0
+  ],
+  "cases": [
+    {
+      "name": "original",
+      "version": [
+        0,
+        0,
+        0
+      ],
+      "file": "original.hex",
+      "sha256": "3c3d3e22aefd48e6350eccbf6ac2252656d3841064a2a4fcdb4bffb62d056602",
+      "reference": {
+        "name": "original",
+        "exitCode": 0,
+        "stdout": "Valid Byron block.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "major-max",
+      "version": [
+        65535,
+        0,
+        0
+      ],
+      "file": "major-max.hex",
+      "sha256": "3ffe417878119aa100f3c300d4d8c6744616158e2dd7a2b3e4f78224fdca81e9",
+      "reference": {
+        "name": "major-max",
+        "exitCode": 0,
+        "stdout": "Valid Byron block.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "minor-max",
+      "version": [
+        0,
+        65535,
+        0
+      ],
+      "file": "minor-max.hex",
+      "sha256": "620f4028deebbe64ca0d8250ae3e427f9cc5f9f0ba36d1b107ea71dc3eea782b",
+      "reference": {
+        "name": "minor-max",
+        "exitCode": 0,
+        "stdout": "Valid Byron block.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "alt-max",
+      "version": [
+        0,
+        0,
+        255
+      ],
+      "file": "alt-max.hex",
+      "sha256": "2c6cae9c805545eba4c45fc632e93af24176eb737f20f6c185640a294353c63a",
+      "reference": {
+        "name": "alt-max",
+        "exitCode": 0,
+        "stdout": "Valid Byron block.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "all-max",
+      "version": [
+        65535,
+        65535,
+        255
+      ],
+      "file": "all-max.hex",
+      "sha256": "ad934abef4f5a13769b4414488ae474083abacc0c0b0974632e1f3fa20d11f96",
+      "reference": {
+        "name": "all-max",
+        "exitCode": 0,
+        "stdout": "Valid Byron block.\n",
+        "stderr": ""
+      }
+    },
+    {
+      "name": "major-overflow",
+      "version": [
+        65536,
+        0,
+        0
+      ],
+      "file": "major-overflow.hex",
+      "sha256": "47ee7a78d7a45d2bc4fcd854498157b7478b596bbdf5d2ac0d959a1c3d56d686",
+      "reference": {
+        "name": "major-overflow",
+        "exitCode": 1,
+        "stdout": "",
+        "stderr": "Command failed: \nError: Error with CBOR decoding: DeserialiseFailure 595 \"expected word16\"\nCallStack (from HasCallStack):\n  fromEitherCli, called at src/Cardano/CLI/Byron/Run.hs:93:10 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runValidateCBOR, called at src/Cardano/CLI/Byron/Run.hs:59:35 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runByronClientCommand, called at src/Cardano/CLI/Run.hs:62:5 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Run\n  runClientCommand, called at app/cardano-cli.hs:58:14 in cardano-cli-11.2.3.0-A3ncXYnhV8eIVJcUXK6WfM-cardano-cli:Main\n\n"
+      }
+    },
+    {
+      "name": "minor-overflow",
+      "version": [
+        0,
+        65536,
+        0
+      ],
+      "file": "minor-overflow.hex",
+      "sha256": "afbaa0103a5729ba395fa191ede546de857ab7b8ed4510e99e72038d3d5d3730",
+      "reference": {
+        "name": "minor-overflow",
+        "exitCode": 1,
+        "stdout": "",
+        "stderr": "Command failed: \nError: Error with CBOR decoding: DeserialiseFailure 596 \"expected word16\"\nCallStack (from HasCallStack):\n  fromEitherCli, called at src/Cardano/CLI/Byron/Run.hs:93:10 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runValidateCBOR, called at src/Cardano/CLI/Byron/Run.hs:59:35 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runByronClientCommand, called at src/Cardano/CLI/Run.hs:62:5 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Run\n  runClientCommand, called at app/cardano-cli.hs:58:14 in cardano-cli-11.2.3.0-A3ncXYnhV8eIVJcUXK6WfM-cardano-cli:Main\n\n"
+      }
+    },
+    {
+      "name": "alt-overflow",
+      "version": [
+        0,
+        0,
+        256
+      ],
+      "file": "alt-overflow.hex",
+      "sha256": "6a00108ad41081b46ab568fb8e3795caa4fed983ee2c83e711b8b14c483e0eaa",
+      "reference": {
+        "name": "alt-overflow",
+        "exitCode": 1,
+        "stdout": "",
+        "stderr": "Command failed: \nError: Error with CBOR decoding: DeserialiseFailure 597 \"expected word8\"\nCallStack (from HasCallStack):\n  fromEitherCli, called at src/Cardano/CLI/Byron/Run.hs:93:10 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runValidateCBOR, called at src/Cardano/CLI/Byron/Run.hs:59:35 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runByronClientCommand, called at src/Cardano/CLI/Run.hs:62:5 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Run\n  runClientCommand, called at app/cardano-cli.hs:58:14 in cardano-cli-11.2.3.0-A3ncXYnhV8eIVJcUXK6WfM-cardano-cli:Main\n\n"
+      }
+    },
+    {
+      "name": "major-truncation",
+      "version": [
+        4294967297,
+        0,
+        0
+      ],
+      "file": "major-truncation.hex",
+      "sha256": "001bb91c2c9bb678dbbf255204cb9fbf84c9e89cbe094dbb98268d4e5f0d264c",
+      "reference": {
+        "name": "major-truncation",
+        "exitCode": 1,
+        "stdout": "",
+        "stderr": "Command failed: \nError: Error with CBOR decoding: DeserialiseFailure 595 \"expected word16\"\nCallStack (from HasCallStack):\n  fromEitherCli, called at src/Cardano/CLI/Byron/Run.hs:93:10 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runValidateCBOR, called at src/Cardano/CLI/Byron/Run.hs:59:35 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Byron.Run\n  runByronClientCommand, called at src/Cardano/CLI/Run.hs:62:5 in cardano-cli-11.2.3.0-BwTpBhd2UB15Mdxmvi4AFv:Cardano.CLI.Run\n  runClientCommand, called at app/cardano-cli.hs:58:14 in cardano-cli-11.2.3.0-A3ncXYnhV8eIVJcUXK6WfM-cardano-cli:Main\n\n"
+      }
+    }
+  ],
+  "reference": {
+    "image": "cardano-reference-11.1.3:local",
+    "imageId": "sha256:74e849e1b68e2cf8ba3cdfe3fcda67114f22d9bebc6a34372657cd179e704c4b",
+    "cliVersion": "11.2.3.0",
+    "ghc": "9.6",
+    "releaseRevision": "938cba990357ae7c4b7f95c8f75dd9d31174bbeb",
+    "releaseArchiveSha256": "530fb99986fbdccc46f9ee0dd86cabb1393b015feac9173cb731d89fa748365f",
+    "cliBinarySha256": "0ac45e874599fac4ee6ca4fd9602c0ddb9854a62be5f365dfa425eff9f4bd0ed"
+  },
+  "epochSlots": 21600,
+  "scope": "Complete public Byron main block decoding only. Version-only mutations invalidate the header signature; no reference signature verification or ledger-registration acceptance is claimed."
+}

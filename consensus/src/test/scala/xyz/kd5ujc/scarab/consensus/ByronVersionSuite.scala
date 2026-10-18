@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus
 
+import io.circe.parser.parse
+import java.nio.file.{Files, Path}
 import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
@@ -194,6 +196,39 @@ class ByronVersionSuite extends ScalaCheckSuite:
           ByronError.Update(UpdateError.InvalidProtocolVersion(version(proposed), version(adopted)))
         )
       )
+    }
+  }
+
+  private val referenceTransitions =
+    parse(Files.readString(Path.of("fixtures/byron-version/registration.json")))
+      .flatMap(_.hcursor.get[Vector[io.circe.Json]]("cases"))
+      .fold(e => fail(e.getMessage), identity)
+
+  referenceTransitions.foreach { json =>
+    val row = json.hcursor
+    def components(field: String): Version =
+      row.get[Vector[Long]](field).fold(e => fail(e.message), identity) match
+        case Vector(major, minor, alt) => (major, minor, alt)
+        case _                         => fail("fixture version must have three components")
+    val adopted = components("adopted")
+    val proposed = components("proposed")
+    val accepted = row.get[Boolean]("accepted").fold(e => fail(e.message), identity)
+
+    test(s"signed registration $adopted -> $proposed agrees with executed Haskell predicate") {
+      val b = decoded(block(proposed, proposed))
+      val result = ByronRules.update(state(adopted), b, rulesConfig)
+      if accepted then assert(result.isRight, result.toString)
+      else
+        val body = ByronBody.decode(b.body).fold(fail(_), identity)
+        val ticked = ByronLedger.tick(config, state(adopted).ledger, b.header.slot)
+        assertEquals(
+          ByronLedger.applyMain(config, ticked, b.header, b.size, body),
+          Left(
+            ByronError.Update(
+              UpdateError.InvalidProtocolVersion(version(proposed), version(adopted))
+            )
+          )
+        )
     }
   }
 

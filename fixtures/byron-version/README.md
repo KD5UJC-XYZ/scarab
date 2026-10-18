@@ -13,8 +13,8 @@ absent socket. A socket failure is evidence of decoding, not ledger acceptance.
 The CLI is bundled with node release **11.1.3**; these are different component versions.
 `manifest.json` records the CLI identity, binary and release-archive SHA-256, local image ID, raw
 fixture hashes, command, exit codes, decoder error offsets and stderr categories. No node was
-contacted by these probes. This does not execute reference header decoding or proposal-registration
-rules; those remain distinct reference work under [#175](https://github.com/KD5UJC-XYZ/scarab/issues/175).
+contacted by these probes. The follow-up below separately executes full-block header decoding
+and an unchanged registration-predicate excerpt; it does not execute full reference registration.
 
 Creation used `byron key keygen --secret <temporary-key>` and `byron governance
 create-update-proposal --testnet-magic 4242 --signing-key <temporary-key>
@@ -56,3 +56,27 @@ transaction and registration paths. Source cross-check: ledger f649f97,
 These synthetic test fixtures are Apache-2.0, like this repository. The reference ledger's
 Apache-2.0 notices are retained in [fixtures/licenses](../licenses); no CLI implementation source
 is vendored. No signing key is included.
+
+## Complete-block header decoder and registration predicate
+
+`headers/` retains the first existing public mainnet block from
+`fixtures/mainnet/byron-main-blocks.hex` unchanged as a control, plus eight copies replacing only
+the protocol-version item at CBOR path `[1,0,4,0]`. Its manifest binds the original block and every
+complete variant to their SHA-256. No surrounding item is re-encoded. All four legal variants
+(major 65535, minor 65535, alt 255, and all three maxima together), plus the unchanged block,
+were accepted by the actual reference CLI block decoder. Major/minor 65536, alt 256, and major
+4294967297 failed at the corresponding header field before any signature or ledger validation.
+`ByronHeaderFixtureSuite` checks these same complete bytes in Scala.
+
+The mutated blocks' signatures do not verify. A CLI message `Valid Byron block` means decoding
+only; these fixtures are not claimed to be valid chain blocks. Public source-block provenance
+and licensing are documented in [fixtures/mainnet](../mainnet/README.md).
+
+`registration.json` records eleven actual executions of the unchanged pinned Haskell
+`pvCanFollow` predicate with its original bounded type: six accepted transitions and five refused.
+It distinguishes next major/minor at the maximum from wrapping and invalid succession. The
+signed `ByronVersionSuite` now consumes these results through Scala's full rules. This is
+predicate-excerpt evidence, **not full reference ledger-registration execution**; broader
+reference execution remains [#175](https://github.com/KD5UJC-XYZ/scarab/issues/175).
+The source/extraction hashes, exact scope and one-command offline reproduction are in
+[scripts/oracle/byron](../../scripts/oracle/byron/README.md). No new network capture was needed.

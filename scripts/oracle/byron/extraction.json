@@ -1,0 +1,22 @@
+{
+  "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "scope": "Unchanged predicate and Word16/Word16/Word8 data declaration only; not full ledger-registration execution. NFData and NoThunks derivation omitted because neither participates in this predicate.",
+  "excerpts": [
+    {
+      "path": "Cardano/Chain/Update/ProtocolVersion.hs",
+      "lines": [
+        27,
+        33
+      ],
+      "sha256": "ac54ad6aa15052479aeb9d7b7f1efafc64ab57095f8af5a8ae64bffda818f68e"
+    },
+    {
+      "path": "Cardano/Chain/Update/Validation/Registration.hs",
+      "lines": [
+        489,
+        497
+      ],
+      "sha256": "c87fc63bddd6b908dee7e50fc7a0153bf42c7f05e6176dc8258a7bce00726044"
+    }
+  ]
+}

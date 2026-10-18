@@ -131,3 +131,9 @@ Portable libblst (blst-native): blst-native/src/main/resources/supranational/bls
 is a binary built from supranational/blst v0.3.15 (commit 6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c,
 Apache-2.0) with `-D__BLST_PORTABLE__` and its SWIG-generated JNI glue, by
 docker/blst.Dockerfile; the licence text is blst-native/LICENSE-blst. See docs/adr/0012-portable-blst.md.
+
+The unchanged Haskell protocol-version declaration and pvCanFollow predicate excerpts in
+scripts/oracle/byron/Main.hs originate in cardano-ledger (Intersect), revision
+f649f9751074d2ab3de033fc3912f29c9862c1f5, under Apache-2.0. Original notices and
+licence are retained as fixtures/licenses/cardano-ledger-NOTICE and cardano-ledger-LICENSE.
+These excerpts are an optional reference oracle, not production code.
