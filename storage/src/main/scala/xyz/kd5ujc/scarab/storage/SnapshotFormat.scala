@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import cats.Show
 import xyz.kd5ujc.scarab.consensus.state.StateMirrorError
 import xyz.kd5ujc.scarab.ledger.StorageError
@@ -36,7 +38,7 @@ object SnapshotCheck:
   * snapshot is an optimisation (a restart without one replays the immutable blocks), so a refusal
   * is a typed event and the snapshot is skipped, never an error of the node.
   */
-enum SnapshotRefusal:
+enum SnapshotRefusal extends DomainError:
   /** The ledger-state mirror refused the state (it does not convert, or not into a telescope). */
   case Mirror(error: StateMirrorError)
 

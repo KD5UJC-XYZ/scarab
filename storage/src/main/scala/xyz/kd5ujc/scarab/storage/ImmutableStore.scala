@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{Async, Ref, Resource, Sync}
 import cats.effect.std.Mutex
@@ -556,5 +558,5 @@ object FileImmutableStore:
     }
 
 /** A persisted immutable record that cannot be trusted. */
-private[storage] enum ImmutableReadError:
+private[storage] enum ImmutableReadError extends DomainError:
   case BlockChecksum(offset: Long)
