@@ -25,6 +25,15 @@ enum PlutusData:
   override def toString: String = this.treeString
 
 object PlutusData:
+  enum DecodeError:
+    case Syntax(cause: Cbor.Error)
+    case ConstructorFields(actual: Value)
+    case BigNumberBytes(actual: Value)
+    case ConstructorIndex(actual: Value)
+    case ConstructorEnvelope(actual: Value)
+    case UnexpectedTag(tag: BigInt)
+    case UnexpectedItem(actual: Value)
+
   given Tree[PlutusData] with
     def children(d: PlutusData): IndexedSeq[PlutusData] = d match
       case Constr(_, fs) => fs
@@ -74,24 +83,24 @@ object PlutusData:
       maxStringBytes = 1 << 24
     )
 
-  def decode(bytes: Bytes): Either[String, PlutusData] =
-    Cbor.stackSafe(Cbor.decode(bytes, limits).flatMap(fromNode))
+  def decode(bytes: Bytes): Either[DecodeError, PlutusData] =
+    Cbor.decode(bytes, limits).left.map(DecodeError.Syntax.apply).flatMap(fromNode)
 
   /** `plutus_data` of the Conway CDDL: constructors in tags 121 to 127, 1280 to 1400 and 102,
     * integers (with tag 2 and 3 big numbers), byte strings, lists and maps. Nesting is unlimited,
     * as in the reference (`PlutusCore.Data.decodeData` has only the 64-byte limit on leaves), and
     * walked on the heap.
     */
-  def fromNode(n: Node): Either[String, PlutusData] =
-    TreeFold.foldE[Node, PlutusData, String](n)(open)
+  def fromNode(n: Node): Either[DecodeError, PlutusData] =
+    TreeFold.foldE[Node, PlutusData, DecodeError](n)(open)
 
-  private type Opened = Either[String, TreeFold.Step[Node, PlutusData, String]]
+  private type Opened = Either[DecodeError, TreeFold.Step[Node, PlutusData, DecodeError]]
 
   private def leaf(d: PlutusData): Opened = Right(TreeFold.Step.Leaf(d))
 
   private def constrOf(index: BigInt, fs: Node): Opened = fs.value match
     case Value.Arr(xs) => Right(TreeFold.Step.Branch(xs, ds => Right(Constr(index, ds))))
-    case _             => Left("plutus data: constructor fields must be a list")
+    case actual => Left(DecodeError.ConstructorFields(actual))
 
   private def open(n: Node): Opened = n.value match
     case Value.UInt(v)       => leaf(I(v))
@@ -110,7 +119,7 @@ object PlutusData:
         case Value.ByteString(b) =>
           val magnitude = BigInt(1, b.toArray)
           leaf(I(if t == 2 then magnitude else -1 - magnitude))
-        case _ => Left("plutus data: big number without bytes")
+        case actual => Left(DecodeError.BigNumberBytes(actual))
     case Value.Tag(t, inner) if t >= 121 && t <= 127   => constrOf(t - 121, inner)
     case Value.Tag(t, inner) if t >= 1280 && t <= 1400 => constrOf(t - 1280 + 7, inner)
     case Value.Tag(t, inner) if t == 102 =>
@@ -118,7 +127,7 @@ object PlutusData:
         case Value.Arr(Vector(ix, fs)) =>
           ix.value match
             case Value.UInt(i) => constrOf(i, fs)
-            case _             => Left("plutus data: constructor index")
-        case _ => Left("plutus data: tag 102 expects [index, fields]")
-    case Value.Tag(t, _) => Left(s"plutus data: unexpected tag $t")
-    case other           => Left(s"plutus data: unexpected CBOR item $other")
+            case actual => Left(DecodeError.ConstructorIndex(actual))
+        case actual => Left(DecodeError.ConstructorEnvelope(actual))
+    case Value.Tag(t, _) => Left(DecodeError.UnexpectedTag(t))
+    case other           => Left(DecodeError.UnexpectedItem(other))

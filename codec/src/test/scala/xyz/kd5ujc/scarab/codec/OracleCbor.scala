@@ -4,27 +4,27 @@ package xyz.kd5ujc.scarab.codec
 import java.nio.ByteBuffer
 import java.nio.charset.{CodingErrorAction, StandardCharsets}
 import scala.util.control.NonFatal
+import scala.util.boundary
+import scala.util.boundary.{Label, break}
 
 /** The tree builder of `Cbor.decode` as it was before the indexed `Node` (issue #94), kept as the
   * oracle of the differential tests: one `Node`, `Bytes` window and `Value` per item, built
   * eagerly. Copied verbatim except for its name and its entry point; do not "improve" it.
   */
 object OracleCbor:
-  import Cbor.Limits
-  private final case class Failure(message: String) extends RuntimeException(message)
-  private def fail(message: String): Nothing = throw Failure(message)
+  import Cbor.{Error, Limits}
 
-  def decode(bytes: Bytes, limits: Limits = Limits()): Either[String, Node] =
+  def decode(bytes: Bytes, limits: Limits = Limits()): Either[Error, Node] = boundary:
     if limits.maxInputBytes < 0 || limits.maxDepth < 0 || limits.maxItems < 0 || limits.maxStringBytes < 0
-    then Left("limits must be nonnegative")
-    else if bytes.size > limits.maxInputBytes then Left("input byte limit exceeded")
+    then Left(Error.InvalidLimits)
+    else if bytes.size > limits.maxInputBytes then Left(Error.InputLimitExceeded)
     else
       try Right(new Decoder(bytes, limits).run())
       catch
-        case Failure(message)      => Left(message)
         case _: StackOverflowError => Left(Cbor.TooDeep)
 
-  private final class Decoder(input: Bytes, limits: Limits):
+  private final class Decoder(input: Bytes, limits: Limits)(using Label[Either[Error, Node]]):
+    private def fail(error: Error): Nothing = break(Left(error))
     // Read-only view of the input: nodes keep zero-copy windows onto it as their `original`.
     private val data = input.unsafeArray
     private val base = input.unsafeOffset
@@ -32,7 +32,7 @@ object OracleCbor:
     private var pos = base
     private var items = 0
     private def read(): Int =
-      if pos >= end then fail("unexpected end of input")
+      if pos >= end then fail(Error.UnexpectedEnd)
       val result = data(pos) & 0xff
       pos += 1
       result
@@ -45,7 +45,7 @@ object OracleCbor:
           case 25 => 2
           case 26 => 4
           case 27 => 8
-          case _  => fail("reserved additional information or invalid indefinite item")
+          case _  => fail(Error.InvalidAdditionalInformation)
         if count < 8 then
           var n = 0L
           var i = 0
@@ -69,11 +69,11 @@ object OracleCbor:
         n = (n << 8) | read().toLong
         i += 1
       n
-    private def bounded(n: BigInt, bound: Int, what: String): Int =
-      if n > BigInt(bound) then fail(s"$what limit exceeded")
+    private def bounded(n: BigInt, bound: Int, what: Error): Int =
+      if n > BigInt(bound) then fail(what)
       n.toInt
     private def payload(size: Int): Array[Byte] =
-      if size > end - pos then fail("truncated string payload")
+      if size > end - pos then fail(Error.TruncatedString)
       val result = java.util.Arrays.copyOfRange(data, pos, pos + size)
       pos += size
       result
@@ -85,13 +85,13 @@ object OracleCbor:
           .onUnmappableCharacter(CodingErrorAction.REPORT)
           .decode(ByteBuffer.wrap(bytes))
           .toString
-      catch case NonFatal(_) => fail("invalid UTF-8 text")
+      catch case NonFatal(_) => fail(Error.InvalidUtf8)
     private def consumeItem(): Unit =
-      if items >= limits.maxItems then fail("item limit exceeded")
+      if items >= limits.maxItems then fail(Error.ItemLimitExceeded)
       items += 1
     private def string(major: Int, ai: Int): Value =
       if ai != 31 then
-        val raw = payload(bounded(argument(ai), limits.maxStringBytes, "string byte"))
+        val raw = payload(bounded(argument(ai), limits.maxStringBytes, Error.StringLimitExceeded))
         if major == 2 then Value.ByteString(Bytes.wrap(raw)) else Value.Text(utf8(raw))
       else
         val chunks = new java.io.ByteArrayOutputStream()
@@ -101,8 +101,8 @@ object OracleCbor:
           consumeItem()
           val h = read()
           if h / 32 != major || (h & 31) == 31 then
-            fail("indefinite strings require definite chunks of the same type")
-          val length = bounded(argument(h & 31), limits.maxStringBytes - total, "string byte")
+            fail(Error.InvalidStringChunk)
+          val length = bounded(argument(h & 31), limits.maxStringBytes - total, Error.StringLimitExceeded)
           val raw = payload(length)
           total += length
           if major == 2 then chunks.write(raw, 0, raw.length) else text.append(utf8(raw))
@@ -158,13 +158,13 @@ object OracleCbor:
           stack.pop()
           produced = finish(top)
         else if top != null && top.remaining < 0 && isBreak then
-          if top.major == 5 && top.count % 2 == 1 then fail("map has an unmatched key")
+          if top.major == 5 && top.count % 2 == 1 then fail(Error.UnmatchedMapKey)
           read()
           stack.pop()
           produced = finish(top)
         else
           if top != null && top.remaining > 0 then top.remaining -= 1
-          if stack.size > limits.maxDepth then fail("depth limit exceeded")
+          if stack.size > limits.maxDepth then fail(Error.DepthLimitExceeded)
           consumeItem()
           val start = pos
           val h = read()
@@ -177,12 +177,12 @@ object OracleCbor:
             case 4 =>
               val remaining =
                 if ai == 31 then -1L
-                else bounded(argument(ai), limits.maxItems - items, "item").toLong
+                else bounded(argument(ai), limits.maxItems - items, Error.ItemLimitExceeded).toLong
               stack.push(new Frame(4, start, null, remaining))
             case 5 =>
               val remaining =
                 if ai == 31 then -1L
-                else 2L * bounded(argument(ai), (limits.maxItems - items) / 2, "map pair")
+                else 2L * bounded(argument(ai), (limits.maxItems - items) / 2, Error.MapPairLimitExceeded)
               stack.push(new Frame(5, start, null, remaining))
             case 6 => stack.push(new Frame(6, start, argument(ai), 1L))
             case _ =>
@@ -199,9 +199,9 @@ object OracleCbor:
                   )
                 case 27 if limits.allowFloats =>
                   Value.Float(java.lang.Double.longBitsToDouble(floatBits(8)), FloatWidth.Double)
-                case _ => fail("unsupported simple value, float, or unexpected break")
+                case _ => fail(Error.UnsupportedSimpleValue)
               produced = Node(value, window(start))
         if produced != null then
           if stack.isEmpty then result = produced else stack.peek().add(produced)
-      if pos != end then fail("trailing bytes after CBOR item")
+      if pos != end then fail(Error.TrailingBytes)
       result
