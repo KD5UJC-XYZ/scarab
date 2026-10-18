@@ -47,13 +47,14 @@ rules refused, a storage failure and a bug in the node were all retried like a l
    Whichever fiber meets the close raises the original cause, so an ingress overrun is classified as the
    peer's protocol violation wherever it is seen.
 5. **A session ends with a closed set of outcomes.** `SessionEnd` is `Returned | Failed(PeerError) |
-   Rejected(ValidationError) | Storage(StorageError) | Internal(NodeError) | Defect(Throwable) | Cancelled
+   Rejected(ValidationError) | Unavailable(EvaluationUnavailable) | Storage(StorageError) | Internal(NodeError) | Defect(Throwable) | Cancelled
    | Stopped`. What the node's own scope raises (the rules, the stores, the follower's capabilities, which
    are fixed when the node is built) is caught in the session's fiber by `Handle#attempt` on that scope
    and placed by `SessionEnd.of`, which has no default case. An exception that is not ours is `Defect`,
    never an unavailable peer. `FailurePolicy.disposition` gives each a policy: a peer that broke the
    protocol, sent an invalid header or an invalid block is forgotten; a failed connection is tried again
-   after a delay; storage, an internal failure and a defect stop the node with exit codes 5, 6 and 7, as
+   after a delay; storage, an internal failure, a defect and implementation unavailability stop the node
+   with exit codes 5, 6, 7 and 8, as
    the reference stops its node for a storage failure (`consensusRethrowPolicy`, `ShutdownNode`).
 6. **The tip is published after the blocks are stored.** `Follower.commit` persists, then replaces the
    chain, as the reference writes a block to the VolatileDB before chain selection moves the tip. A
@@ -77,4 +78,30 @@ rules refused, a storage failure and a bug in the node were all retried like a l
 - Not done, and tracked: the capabilities of the rules and the stores are still fixed when the node is
   built (`Raise` of `Main`'s scope); the session catches them with the scope's own `Handle`, which is
   sound while the scope lives, the whole run. Passing them per call, as for the network, needs a change
-  to the rule algebras and is left to an issue.
+  to the rule algebras: [#180 G7-F1](https://github.com/KD5UJC-XYZ/scarab/issues/180).
+  The same issue tracks typed snapshot failures (G7-F2), forging defects (G7-F3), listener callbacks
+  (G7-F4), and attribution after the originating session ends (G7-F5).
+
+- An evaluator or decoder implementation limit is `Unavailable`, carrying the closed ledger failure,
+  not a consensus rejection. It stops the node with exit 8, bypassing peer blame and reconnect policy.
+  Expected transport `IOException`s remain connection failures; every unexpected network exception
+  preserves its cause as `NetworkError.Defect` until the node's `Fatal.Defect` boundary (exit 7).
+  A fatal outcome marks and releases the connection before reporting the fatal event; it produces no
+  `Lost` observation or `Transient` projection. Exits 5 (storage) and 6 (internal) are unchanged.
+- A candidate that no longer intersects the retained local window currently ends as transient
+  `Diverged`. The reference drains and restarts `findIntersectionTop` on the same connection
+  (`ouroboros-consensus` `MiniProtocol/ChainSync/Client.hs:1490–1515`, pinned source). Same-connection
+  reintersection is [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152); it is distinct from error
+  ownership. The peercut gate asserts the closed asynchronous governor policy rather than a log prefix.
+
+- External local submissions use a closed `Response` and `End` value. An implementation limit has no
+  `ApplyTxErr`/predicate-failure encoding: only that submission connection closes, and a fresh client
+  can still use the listener. The adapter keeps `LedgerFailure.Unavailable` typed until the transport
+  boundary; the server hands its service outcome to its owner as a value, without a captured `Raise`.
+  Stopping the whole node for an external request would permit a process-wide denial of service. This
+  differs from block adoption, which must stop when no consensus verdict can be obtained.
+  Mempool add and revalidation exclude typed `Unavailable` from recently refused IDs; a refreshed
+  caller-provided `Ask[F, MempoolEnv]` can supply recovered decoder/evaluator capabilities and retry.
+- `FatalReporter` atomically claims the first terminal outcome. It logs before signalling shutdown,
+  suppresses duplicate observations of a failing connection, and guarantees the shutdown signal even
+  if logging fails or is cancelled.

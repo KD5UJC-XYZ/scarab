@@ -1268,6 +1268,37 @@ The whole table in one cold pass: 186.1 bytes an output in MemPack, 185.8 for th
 original encoding that the rules re-read (`raw`) and the `Address` are rebuilt (2.1 of the 2.66 microseconds). Adoption is
 not recommended; converting at an import or an export costs about 5 microseconds an output.
 
+## 22. Channel ingress and fiber boundaries (#132, #154)
+
+The multiplexer replaces an SDU-counted blocking ingress queue with a byte-counted queue that fails an
+oversized peer without blocking unrelated protocols. Each background fiber returns a closed outcome to
+its owner. `network/Test/runMain xyz.kd5ujc.scarab.network.MuxThroughputBench` measures messages over an
+in-memory bearer with a bounded credit window; `node/Test/runMain
+xyz.kd5ujc.scarab.node.FiberBoundaryBench` measures the error scope and pool-attribution race.
+
+Docker JDK 21.0.11, four active processors, shared loaded host, October 18 2026. The same benchmark source
+ran on baseline `bea81d57` and the preserved fiber implementation `3f5a479c`; baseline source was injected
+as an additional test source without changing its checkout. After the initial cold rounds, sequential
+warmed runs gave these medians per message (one baseline sample, two fiber samples):
+
+| payload / credit window | baseline | fiber implementation |
+|---|---:|---:|
+| 1,400 bytes / 64 | 6.04 us | 7.71–8.62 us |
+| 400 bytes / 64 | 5.23 us | 6.92–7.03 us |
+| 65,000 bytes / 8 | 211.58 us | 202.73–223.06 us |
+
+Small messages cost about 1–3 additional microseconds in this benchmark. Large-message differences are
+within the observed run variation. This is an in-memory channel measurement, not end-to-end validation
+throughput. Fiber start/join measured 496 ns without a scope and 808 ns with `Fault.fiber`; inline
+`Handle.allow` was 73 ns. Queue offer/take measured 523 ns, and racing it against pool attribution measured
+1,957 ns. Decoding the benchmark block took 4,936 ns. The added cost buys explicit ownership of errors
+and bounded ingress without head-of-line blocking; these measurements do not claim it is free.
+
+Original implementation `1c4d6806` versus parent `ee19ac38` also had two 330-second paired Preview
+comparisons, recording a 0.4% reduction in applied blocks and no errors. These are historical stage
+observations, supporting rather than replacing the channel measurements. Current regression gates use
+local tests and private devnets.
+
 
 ## 23. Ledger peers at the Preview tip (G1.3b, #137)
 

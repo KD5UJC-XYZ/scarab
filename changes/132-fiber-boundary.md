@@ -27,12 +27,12 @@
 ### Fixed (session outcomes and the tip, #154)
 - **A session ends with a closed set of outcomes, and none of them defaults to "the peer is unavailable".** The
   catch-all around the hot session classified a block our rules refused, a storage failure and a bug in the node as a
-  lost connection, tried again like any other. `SessionEnd` is `Returned | Failed | Rejected | Storage | Internal |
+  lost connection, tried again like any other. `SessionEnd` is `Returned | Failed | Rejected | Unavailable | Storage | Internal |
   Defect | Cancelled | Stopped`; what the node's own scope raises (rules, stores) is caught in the session's fiber and
   placed by `SessionEnd.of`; `FailurePolicy.disposition` gives each a policy. A peer that sent a block our rules
   refuse is forgotten (`PeerError.InvalidBlock`); storage, an internal failure and an exception that is not ours
   stop the node with a `fatal` event (`Node.Fatal`, severity Error), after the shutdown snapshot, with exit code 5
-  (storage), 6 (internal) or 7 (defect), as the reference stops its node for a storage failure
+  (storage), 6 (internal), 7 (defect) or 8 (evaluation unavailable), as the reference stops its node for a storage failure
   (`consensusRethrowPolicy`, `ShutdownNode`). A restarting supervisor resumes from the database.
 - **The tip is published after the blocks are stored.** `Follower.commit` wrote the chain, then the storage; a
   storage failure left a published tip that was not on disk. It persists first, as the reference's ChainDB writes to
@@ -42,3 +42,24 @@
   now remembers who delivered each block; the session that took a refused block ends as `Diverged` (tried again, it
   fetches the block itself), the blocks that the deliverer left in the pool are dropped, and the deliverer is told
   and ends as `InvalidBlock`.
+
+- **An implementation limit supplies no ledger verdict.** `LedgerFailure.Unavailable` ends the session as
+  `Unavailable` and stops the node with exit 8. It cannot blame the peer, discard its cached blocks or
+  reconnect. Unexpected network exceptions retain their original cause as `NetworkError.Defect` and
+  stop with exit 7; an expected transport `IOException` remains a recoverable closure. Fatal outcomes
+  release the connection before reporting the fatal event and never enter the governor's peer-failure policy.
+- **The peercut gate observes the closed governor policy.** A slow candidate can leave the retained
+  intersection window before the proxy is silenced, ending as transient `Diverged` instead of a timeout.
+  The gate requires the proxy's asynchronous `Transient` demotion and continued healthy advancement,
+  retaining all error and stall checks. Same-connection reintersection remains tracked in
+  [#152](https://github.com/KD5UJC-XYZ/scarab/issues/152).
+- Further boundary and attribution work is tracked by
+  [#180](https://github.com/KD5UJC-XYZ/scarab/issues/180), G7-F1 through G7-F5. Channel and fiber costs are
+  recorded in [performance.md](../docs/performance.md) section 22.
+
+- **An unavailable local submission closes only its connection.** The local adapter has no rejection
+  bytes for `LedgerFailure.Unavailable`; its closed service outcome reaches the connection owner as
+  a value. The node and fresh clients continue. An adopted block still requires a verdict and stops
+  with exit 8. Racing terminal observers report one fatal event; failed or cancelled logging still
+  signals shutdown. Unavailable add and revalidation outcomes are excluded from the recent-refusal
+  cache, allowing admission after the decoder/evaluator capability recovers.

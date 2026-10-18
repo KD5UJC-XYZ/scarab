@@ -648,6 +648,13 @@ the reference leaves out too (`map(0)`). Not answered yet
 Conway (roadmap F1). A transaction refused over the socket carries the ledger's predicate failure, so `cardano-cli
 transaction submit` prints the same error as against the Haskell node.
 
+If this build cannot decode or evaluate a script, it has no ledger rejection to return. Local submission
+ends that connection with a typed service-unavailable outcome and sends no `ApplyTxErr` bytes. The
+listener and node continue serving fresh clients. Unavailable validations are not remembered in the
+recent-refusal cache, so recovery of the backend permits a fresh admission attempt. This differs from adopting a block: the node cannot
+continue its chain without that block's consensus verdict, so the same implementation limit there stops
+it with exit 8 (see "Failures that stop the node").
+
 LocalTxMonitor (mini-protocol 9) gives `cardano-cli conway query tx-mempool info | next-tx | tx-exists` and
 the protocol's `GetMeasures` (no CLI command): a client acquires a snapshot of the mempool (the slot after
 the tip, the transactions in arrival order), walks it with `NextTx`, asks `HasTx`, `GetSizes` and
@@ -763,7 +770,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `stateDumpRefused` | `Node.StateDumpRefused` | Warning | `slot`, `hash`, `epoch`, `error` |
 | `verificationCache` | `Node.VerificationCache` | Debug | `summary` |
 | `error` | `Node.Error` | Error | `kind`, `message` |
-| `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal` or `defect`), `message`, `exitCode` |
+| `fatal` | `Node.Fatal` | Error | `kind` (`storage`, `internal`, `defect` or `unavailable`), `message`, `exitCode` |
 | `finished` | `Node.Finished` | Notice | `tip`, `retained` |
 | `connected` | `Chain.Connected` | Info | `intersection` |
 | `extended` | `Chain.Extended` | Info | `block`, `epoch`, `era`, `peerTip` |
@@ -1180,18 +1187,22 @@ node does something different for each. A peer that breaks the protocol, sends a
 block (a block our rules refuse) or more unread bytes on a mini-protocol than its ingress limit allows is
 forgotten by the governor (`reconnecting` with a `protocol:` or `invalid block` reason, `peerSelectionDemote`
 with `forgotten`). A lost connection, a timeout, a peer behind us and a block that another peer delivered and our
-rules refuse are tried again after the exit policy's delay. Three outcomes are not the peer's and stop the node:
+rules refuse are tried again after the exit policy's delay. Four outcomes stop the node without attributing a failure to the peer:
 
 | Outcome | `fatal` kind | Exit code |
 |---|---|---|
 | the storage failed under the session (a write, a read, a corrupt file) | `storage` | 5 |
 | the node failed itself (a local chain model that does not hold, a forging fault, ...) | `internal` | 6 |
 | an exception nobody expected (a bug, a library that threw) | `defect` | 7 |
+| this build cannot evaluate a script or its encoding; no ledger verdict exists | `unavailable` | 8 |
 
 The run closes down as it does for a stall (the stores close, the shutdown snapshot is taken), logs one `fatal`
 event, and exits with the code; a supervisor that restarts the node (Docker `unless-stopped`) brings it back from
 the database, where the storage layer recovers as the reference's does (`consensusRethrowPolicy` makes a storage
-failure `ShutdownNode`). Exit code 4 stays the stall's, 1 an error, 2 a bad command line.
+failure `ShutdownNode`). Exit code 4 stays the stall's, 1 an error, 2 a bad command line. Fatal outcomes release the link and do not
+produce peer-loss observations or reconnects. Exit 8 requires an implementation or configuration that can
+evaluate the script; a restart alone does not add that capability. Expected transport `IOException`s remain
+recoverable connection closures; unexpected network exceptions stop with exit 7.
 
 The multiplexer's ingress limits are the reference's and are not configurable
 (`IngressLimits`, ouroboros-network 1.2.0.0, network-mux 0.11.0.0): ChainSync 462,000 bytes, BlockFetch
