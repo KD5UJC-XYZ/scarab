@@ -6,8 +6,8 @@
 # every hit is public data that merely looks like a key to an entropy check: Ed25519 verification
 # keys, key hashes and SHA-256 file digests in committed fixtures and in manifests. A manual scan of
 # the whole history before v0.1.0 found 182 such hits and nothing else. The allowlist below is
-# scoped to that one rule, and to named paths and named commits, so every other rule still applies
-# everywhere and a real secret in any other file is reported.
+# scoped to that one rule, and to named paths, commits and exact public values. Every other rule
+# still applies everywhere; the exact-value exception does not hide different tokens in the same file.
 #
 # Do not add `.skey`, `.key` or other signing material here. Those are never committed
 # (see CONTRIBUTING.md and .gitignore).
@@ -21,7 +21,11 @@ useDefault = true
 id = "generic-api-key"
 
 [rules.allowlist]
-description = "public key hashes, verification keys and SHA-256 digests (fixtures, manifests, historical scripts)"
+description = "public key hashes, verification keys, SHA-256 digests and exact CHaP trust root"
+# CHaP's public repository trust root, published in its README at pinned metadata b2f313b6.
+# Match only the complete extracted public value; other generic tokens in the same file still scan.
+regexTarget = "secret"
+regexes = ['''^3e0cce471cf09815f930210f7827266fd09045445d65923e6d0238a6cd15126f$''']
 paths = [
   # Fixtures are public chain data or throwaway keys (fixtures/*/README.md and NOTICE record provenance).
   '''^fixtures/''',
