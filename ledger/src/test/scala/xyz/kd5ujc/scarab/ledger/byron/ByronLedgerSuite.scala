@@ -110,8 +110,8 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     assert(apply(exact).isRight)
     val short = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> (change + 1)))
     assertEquals(
-      apply(short).left.map(_.getClass.getSimpleName),
-      Left("FeeTooSmall")
+      apply(short).map(_ => ()),
+      Left(ByronError.FeeTooSmall(BigInt(min), BigInt(min - 1)))
     )
   }
 

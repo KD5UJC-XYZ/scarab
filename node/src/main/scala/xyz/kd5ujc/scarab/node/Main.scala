@@ -1037,7 +1037,7 @@ object Main extends IOApp:
     case ReproDir extends RemovedFlag("repro-dir", "the differential rules are gone; drop the flag")
 
     def refusal(usage: String): ConfigError =
-      ConfigError(ConfigProblem.WithUsage(ConfigProblem.RemovedFlag(flag), usage))
+      ConfigError(ConfigProblem.WithUsage(ConfigProblem.RemovedFlag(flag), s"$instead\n$usage"))
 
   private object RemovedFlag:
     def named(argument: String): Option[RemovedFlag] =

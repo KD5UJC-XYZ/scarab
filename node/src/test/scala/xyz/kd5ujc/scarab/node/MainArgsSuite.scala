@@ -58,10 +58,13 @@ class MainArgsSuite extends munit.FunSuite:
     ).foreach { (flags, name) =>
       val result = Main.parse(base ++ flags)
       assert(
-        result.left.exists(e =>
-          e.problem == xyz.kd5ujc.scarab.ledger.ConfigProblem.RemovedFlag(name) &&
-            e.message.contains(s"--$name was removed")
-        ),
+        result.left.exists { e =>
+          e.problem match
+            case xyz.kd5ujc.scarab.ledger.ConfigProblem
+                  .WithUsage(xyz.kd5ujc.scarab.ledger.ConfigProblem.RemovedFlag(flag), _) =>
+              flag == name && e.message.contains(s"--$name was removed")
+            case _ => false
+        },
         s"$flags: $result"
       )
     }

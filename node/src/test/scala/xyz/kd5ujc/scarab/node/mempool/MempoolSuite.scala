@@ -216,14 +216,29 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
     def attempt(protocol: Int) =
       val l = ledger(1)
-      add(pool(l.withProtocol(protocol)), raw).left
-        .map {
-          case Rejection.Ledger(LedgerFailure.Rejected(`id`, f)) => f.ruleName
-          case other                                             => other.message
-        }
-        .map(_ => "accepted")
-    assertEquals(attempt(10), Left("ConwayMempoolFailure"))
-    assertEquals(attempt(11), Left("UnelectedCommitteeVoters"))
+      add(pool(l.withProtocol(protocol)), raw).map(_ => ())
+    assertEquals(
+      attempt(10),
+      Left(
+        Rejection.Ledger(
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector(hot.credential)))
+          )
+        )
+      )
+    )
+    assertEquals(
+      attempt(11),
+      Left(
+        Rejection.Ledger(
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.UnelectedCommitteeVoters(Vector(hot.credential))
+          )
+        )
+      )
+    )
   }
 
   test("capacity is counted in bytes and refuses what does not fit") {

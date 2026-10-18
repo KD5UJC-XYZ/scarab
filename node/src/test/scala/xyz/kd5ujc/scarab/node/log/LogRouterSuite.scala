@@ -60,12 +60,27 @@ class LogRouterSuite extends CatsEffectSuite:
   }
 
   test("a namespace, a sink, a severity or a size that does not exist is refused") {
-    assertEquals(refused("log-severity" -> "Chain.Extnded=Info"), ConfigProblem.LogNamespace("Chain.Extnded"))
+    assertEquals(
+      refused("log-severity" -> "Chain.Extnded=Info"),
+      ConfigProblem.LogNamespace("Chain.Extnded")
+    )
     assertEquals(refused("log-severity" -> "disk:Chain=Info"), ConfigProblem.LogSink("disk"))
-    assertEquals(refused("log-severity" -> "Chain=Loud"), ConfigProblem.FlagValue("log-severity", "Loud"))
+    assertEquals(
+      refused("log-severity" -> "Chain=Loud"),
+      ConfigProblem.FlagValue("log-severity", "Loud")
+    )
     assertEquals(refused("log-every" -> "Chain=0"), ConfigProblem.FlagValue("log-every", "0"))
-    assertEquals(refused("log-file-keep" -> "3"), ConfigProblem.FlagDependency(Set("log-file-format", "log-file-size", "log-file-keep"), "log-file"))
-    assertEquals(refused("log-file" -> "x", "log-file-size" -> "12"), ConfigProblem.FlagValue("log-file-size", "12"))
+    assertEquals(
+      refused("log-file-keep" -> "3"),
+      ConfigProblem.FlagDependency(
+        Set("log-file-format", "log-file-size", "log-file-keep"),
+        "log-file"
+      )
+    )
+    assertEquals(
+      refused("log-file" -> "x", "log-file-size" -> "12"),
+      ConfigProblem.FlagValue("log-file-size", "12")
+    )
     assertEquals(refused("log-stdout" -> "xml"), ConfigProblem.FlagValue("log-stdout", "xml"))
   }
 

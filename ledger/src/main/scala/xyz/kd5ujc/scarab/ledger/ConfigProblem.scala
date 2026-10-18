@@ -71,23 +71,25 @@ enum ConfigProblem:
   case AncillaryKeyRequired
 
   def message: String = this match
-    case ActiveSlotsCoefficient(e) => e.message
-    case JsonSyntax(context, cause) => s"$context is not JSON: ${cause.message}"
+    case ActiveSlotsCoefficient(e)        => e.message
+    case JsonSyntax(context, cause)       => s"$context is not JSON: ${cause.message}"
     case JsonField(context, field, cause) => s"$context $field: ${cause.message}"
-    case MissingField(context, field) => s"$context: missing required field $field"
-    case FileMissing(role, file) => s"missing $role file $file"
-    case FileRead(file, cause) => s"cannot read $file: ${cause.getMessage}"
-    case UnknownFlag(flag) => s"unknown flag $flag"
-    case DuplicateFlag(flag) => s"duplicate flag $flag"
-    case MissingFlagValue(flag) => s"flag $flag needs a value"
-    case UnexpectedArgument(value) => s"unexpected argument $value"
-    case MissingFlag(flag) => s"$flag is required"
-    case RemovedFlag(flag) => s"--$flag was removed"
-    case FlagValue(flag, value) => s"--${flag.stripPrefix("--")}: cannot use $value"
-    case FlagDependency(flags, required) => s"${flags.toVector.sorted.mkString(", ")} need --$required"
-    case LogSink(value) => s"no sink $value (stdout, stderr, file)"
+    case MissingField(context, field)     => s"$context: missing required field $field"
+    case FileMissing(role, file)          => s"missing $role file $file"
+    case FileRead(file, cause)            => s"cannot read $file: ${cause.getMessage}"
+    case UnknownFlag(flag)                => s"unknown flag $flag"
+    case DuplicateFlag(flag)              => s"duplicate flag $flag"
+    case MissingFlagValue(flag)           => s"flag $flag needs a value"
+    case UnexpectedArgument(value)        => s"unexpected argument $value"
+    case MissingFlag(flag)                => s"$flag is required"
+    case RemovedFlag(flag)                => s"--$flag was removed"
+    case FlagValue(flag, value)           => s"--${flag.stripPrefix("--")}: cannot use $value"
+    case FlagDependency(flags, required) =>
+      s"${flags.toVector.sorted.mkString(", ")} need --$required"
+    case LogSink(value)      => s"no sink $value (stdout, stderr, file)"
     case LogNamespace(value) => s"no namespace $value"
-    case ConflictingFields(fields) => s"specify one of ${fields.toVector.sorted.mkString(", ")}, not both"
+    case ConflictingFields(fields) =>
+      s"specify one of ${fields.toVector.sorted.mkString(", ")}, not both"
     case NoPeers => "no peer to follow: the topology names no local root, bootstrap or public root"
     case WithUsage(cause, usage) => s"${cause.message}\n$usage"
-    case _ => toString
+    case _                       => toString
