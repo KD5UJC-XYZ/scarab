@@ -418,6 +418,49 @@ blocks (slots 0 to 863,996, 46 MB) imported in 2 s; `follow` then replayed them 
 with the intersection at the imported tip (slot 863,996), and went on to slot 3.33 M (epoch 38) in
 the following 6.5 minutes.
 
+### `import-mithril`: certified bootstrap into a fresh database
+
+Build the reviewed Linux amd64 verifier with Docker (an existing clean pinned upstream clone can
+be supplied with `--source`; otherwise the script fetches it):
+
+```sh
+python3 scripts/prepare_mithril_client.py --out /tmp/scarab/mithril-client
+```
+
+The script verifies source, Cargo lockfile, immutable Docker image, integration patch and resulting
+executable digest. Mount that executable, configuration and two trusted verification-key files into
+the JDK container. Mount the destination's parent writable so its sibling ownership lease and staging
+directory share the same filesystem. Then run inside the container:
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-mithril \
+  --artifact <exact lowercase artifact hash> --aggregator <https aggregator URL> \
+  --genesis-verification-key <trusted genesis.vkey> \
+  --ancillary-verification-key <trusted ancillary.vkey> \
+  --mithril-client <pinned executable> --db <fresh database> --config <config.json>
+```
+
+`--genesis-dir <directory>` can replace `--config`. The destination must not exist. The default is
+an official full download including ancillary files; `--source-db <Haskell database>` instead copies
+an offline cache into private staging and runs full certification verification there. Metadata and
+certificate retrieval still use the configured aggregator. An isolated loopback HTTP aggregator is
+accepted for recorded offline fixtures; public endpoints require HTTPS. No implicit `latest`, range,
+overwrite or missing-file acceptance is available. `--timeout-seconds N` bounds the verifier process
+(default 1,800 seconds).
+
+Certification and ancillary trust are separate: the genesis key verifies the Mithril certificate
+chain and immutable proof; the ancillary key authenticates the ledger snapshot and unfinished trio.
+This command requires both. The generic snapshot command below retains the explicit unauthenticated
+opt-out. The bootstrap records these distinctions in `mithril-bootstrap.json` and refuses certificate
+network or artifact substitution before ledger import. Byron and non-Mem snapshots are refused.
+
+Successful JSON `importMithril` output names the artifact and ledger anchor. A subsequent ordinary
+`follow --db <database>` restores its checkpoint and replays recorded or newly received blocks.
+Failure leaves staging subject to best-effort cleanup and never overwrites an existing database;
+a failed parent sync with denied rollback may retain the complete owned destination. Inspect the
+reported error before retrying. [The design](design/mithril-bootstrap.md) records exact proof scope,
+executable provenance, typed refusals and acceptance evidence.
+
 ### `import-ledger-snapshot`: start from a reference ledger snapshot
 
 Run offline in the JDK container, with the extracted ancillary archive and configuration mounted
@@ -448,7 +491,7 @@ existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnaps
 restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
 are refused. Import/export details and recovery of an interrupted staged import are in
 [the accepted design](design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
-cross-node acceptance remain Step D S4/S5 (#140).
+cross-node acceptance are recorded in Step D S4/S5 (#140).
 
 ### `export-ledger-snapshot`: write a reference ledger directory
 
@@ -475,7 +518,7 @@ atomically. An existing destination is refused, and the output must be outside t
 database. Failure or cancellation removes staging. JSON `exportLedgerSnapshot` events report
 `done` with the point, output count and directory, or a typed `error`.
 
-Reference replay and epoch-boundary acceptance remain #140; the command alone does not prove
+Reference replay and epoch-boundary acceptance are recorded in #140; the command alone does not prove
 that acceptance. It preserves V5 and the node's stored CBOR values.
 
 ### Preprod

@@ -224,6 +224,8 @@ object Main extends IOApp:
   def run(args: List[String]): IO[ExitCode] =
     if args.headOption.contains("import-haskell-db") then
       xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(args.tail)
+    else if args.headOption.contains("import-mithril") then
+      xyz.kd5ujc.scarab.node.tools.MithrilBootstrapCommand.run(args.tail)
     else if args.headOption.contains("import-ledger-snapshot") then
       xyz.kd5ujc.scarab.node.tools.LedgerSnapshotImportCommand.run(args.tail)
     else if args.headOption.contains("export-ledger-snapshot") then

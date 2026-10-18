@@ -901,5 +901,25 @@ object Targets:
       )
     )
 
+  private val mithril: Vector[Target] =
+    import xyz.kd5ujc.scarab.storage.mithril.MithrilClient
+    val seed =
+      """{"verified_db_directory":"/owned/db","certificate_network":"preview","certificate_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","certificate_epoch":1454,"certificate_merkle_root":"b84de351111675b2636e0f4b7a1dfadb2c55d89c8f7cb4137777f185e59fcba3"}"""
+    Vector(
+      Target(
+        "mithril-receipt",
+        () => Vector(seed.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+        probe("mithril-receipt") { bytes =>
+          MithrilClient.ReceiptKind.values.foreach { kind =>
+            MithrilClient.receipt(new String(bytes.toArray, "UTF-8"), kind).foreach { receipt =>
+              hit("mithril-receipt")
+              req(receipt.artifact.text.length == 64, "verified artifact is not a SHA256 identity")
+              req(receipt.certificate.text.length == 64, "certificate is not a SHA256 identity")
+            }
+          }
+        }
+      )
+    )
+
   val all: Vector[Target] =
-    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotTables ++ ancillary
+    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotTables ++ ancillary ++ mithril

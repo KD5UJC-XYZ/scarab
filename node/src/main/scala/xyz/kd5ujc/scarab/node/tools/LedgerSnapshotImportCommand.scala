@@ -86,7 +86,7 @@ object LedgerSnapshotImportCommand:
       unverified
     )
 
-  private def inputs(
+  private[tools] def inputs(
       options: Options
   ): Either[ConfigError, (NodeSetup, LedgerSnapshotImport.Config)] =
     for

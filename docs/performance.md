@@ -1380,3 +1380,23 @@ section 12. Reproduce with a fresh authenticated import, the verified original-b
 `follow --dump-state-at <boundary>,<endpoint>` in a network-disabled JDK container and
 `db-analyser --analyse-from <anchor> --store-ledger <target> --full-ledger-validation` in the
 network-disabled reference image, then compare with the unchanged oracle.
+
+## 27. Certified Preview bootstrap (#27)
+
+Recorded on 2026-10-18 with Docker JDK21, a 6 GiB heap and four active processors for the bootstrap.
+The pinned official Mithril CLI is 0.13.28 at 769d862 plus the reviewed receipt/manifest-preservation patch.
+The preserved Preview epoch 1454/i29089 artifact contains 16.0 GB of uncompressed database data and
+3,192,290 ledger outputs. An owned loopback server serves genuine retained certified file bytes and certificates; unsigned tar
+wrappers for reused trios are regenerated locally. These intervals do not measure public network throughput. A full check was running concurrently.
+
+| Operation | Wall interval | Result/scope |
+|---|---:|---|
+| Production full download, full certification, immutable conversion, authenticated ledger import and atomic publication | 247.896 s | fresh 125,660,129 database, 3,192,290 outputs |
+| Restore untouched imported V5/checkpoint and write existing state/UTxO digest | 20.716 s | genuine Haskell-supported projection 0diff |
+| Ordinary bootstrap follower startup, 345-block recorded replay, endpoint dump and graceful shutdown | 28.206 s | replay 20.467 s including 18.378 s projection; endpoint 125,669,042 |
+| Production cached-copy/full verification with an artifact-substitution descriptor | 42.504 s | typed refusal, no publication/staging left |
+
+The independent genesis-derived continuation reaches the same anchor and recorded endpoint. Exact raw
+Scala dumps retain two inactive Conway parameter differences; every field represented by Haskell's
+Conway projection agrees (see [trust and acceptance scope](design/mithril-bootstrap.md#acceptance)).
+No heap/RSS sampling, ongoing public following or mainnet performance claim is made.
