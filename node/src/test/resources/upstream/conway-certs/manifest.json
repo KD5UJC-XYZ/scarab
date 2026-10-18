@@ -1,0 +1,71 @@
+{
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "upstream": "cardano-ledger",
+  "upstreamCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "suite": "cardano-ledger-conformance / Conway CERTS",
+  "observerPatch": "scripts/oracle/ledger-govcert/exporter.patch",
+  "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+  "sourceBlobs": {
+    "ExecSpecRuleConwayCerts": "c937942e5ba3fad417957f45624d23f0f444a8cf",
+    "SpecTranslateConwayCerts": "9114d3fada55b71a19454eb99eaa9a899cd4d32b",
+    "ConstrainedConwayCertsGenerator": "7f2e296e15612a8d99ca9037f4529b88aa784e07"
+  },
+  "sampleContract": {
+    "generated": 1,
+    "upstreamImplementationAccepted": 1,
+    "agdaAccepted": 1,
+    "scarabTypedRuleMatched": 0,
+    "failed": 0,
+    "unsupported": 1,
+    "missing": 0,
+    "scope": "one generated empty certificate vector preserved; no typed match claimed"
+  },
+  "unsupportedReason": "The exact CERTS translation exposes epoch, parameters, votes, withdrawals and cold committee credentials; Scarab Certs currently requires transaction proposal procedures for its dormancy/expiry base case. The exported CERTS judgment does not carry those proposal procedures, so the complete typed Scarab input cannot be reconstructed without fabricating a field or narrowing/refactoring the rule boundary.",
+  "runner": {
+    "executable": "cardano-ledger-conformance:test:tests",
+    "args": [
+      "--match",
+      "Conformance/Conway/Constrained Generators/Blocks transition graph/CERTS/",
+      "--seed=494101",
+      "--qc-max-success=1",
+      "--qc-max-size=30"
+    ]
+  },
+  "cases": [
+    {
+      "seed": 494101,
+      "family": "CERTS",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "adapterStatus": "unsupported",
+      "files": {
+        "context.cbor": {
+          "bytes": 3,
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29"
+        },
+        "environment.cbor": {
+          "bytes": 394,
+          "sha256": "0e64c928c41a469695d8ae0df8b26b6cbf9973d3a3b9870e841f3e131832557a"
+        },
+        "implementation-state.cbor": {
+          "bytes": 1419,
+          "sha256": "e641745ee3e99f3dfe48168fe4e01dba6c0aa8e4fcdd369cbc47d693ce06f2c1"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 1,
+          "sha256": "76be8b528d0075f7aae98d6fa57a6d3c83ae480a8469e668d7b0af968995ac71"
+        },
+        "state.cbor": {
+          "bytes": 1419,
+          "sha256": "e641745ee3e99f3dfe48168fe4e01dba6c0aa8e4fcdd369cbc47d693ce06f2c1"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,830 @@
+{
+  "format": "scarab-upstream-govcert-v1",
+  "upstream": {
+    "repository": "https://github.com/IntersectMBO/cardano-ledger",
+    "commit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "suitePath": "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs",
+    "suiteBlob": "0ace12d82bb6d21457d49bfee619e2b0e69c41d9",
+    "eraRulePath": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Conformance/Spec.hs",
+    "formalSuitePath": "libs/cardano-ledger-conformance/test/Test/Cardano/Ledger/Conformance/Spec/Conway.hs",
+    "formalSuiteBlob": "c6f29c3ba95eb29a2eda6dee57a9c576f81e8801",
+    "ruleAdapterPath": "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Conway/GovCert.hs",
+    "ruleAdapterBlob": "0be9649123bf6525ed6814146f782ef05bb05a63",
+    "haskellRulePath": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/GovCert.hs",
+    "haskellRuleBlob": "99ac21b7b0fd8c065e2e612dbbf59f6f14e0c44b"
+  },
+  "exporter": {
+    "kind": "observer-only patch after actual runConformance",
+    "path": "libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs",
+    "patchedSha256": "5bdab4187383b0e006897c2200c5b2fb9a391b8316626122fdf334de0c2edaa6",
+    "generatorSemanticsChanged": false,
+    "testSemanticsChanged": false,
+    "command": "tests -m GOVCERT --seed=<seed> --qc-max-success=1 --qc-max-size=30 --strict",
+    "toolchain": "GHC 9.10.3",
+    "originalCoreBlob": "0ace12d82bb6d21457d49bfee619e2b0e69c41d9",
+    "patchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31"
+  },
+  "selection": {
+    "seeds": [
+      490049,
+      490050,
+      490051,
+      490052,
+      490053,
+      490054,
+      490055,
+      490056,
+      490057,
+      490058,
+      490059,
+      490060,
+      490061,
+      490062,
+      490063,
+      490064,
+      490065,
+      490066,
+      490067,
+      490068,
+      490069
+    ],
+    "qcMaxSuccess": 1,
+    "qcMaxSize": 30,
+    "strict": true,
+    "selectedTestExamples": 29,
+    "exportedGeneratedCases": 21
+  },
+  "counts": {
+    "upstreamPassed": 21,
+    "implementationAccepted": 21,
+    "agdaAccepted": 21,
+    "adapterMatched": 21,
+    "drepRuleMatched": 7,
+    "committeeRuleMatched": 14,
+    "upstreamFailed": 0,
+    "missing": 0
+  },
+  "cases": [
+    {
+      "seed": 490049,
+      "tag": 18,
+      "family": "drep-update",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "984b09033744296398919e19c50a5e4ab95c22e32423fdfa38c945feec6fb8d4",
+          "bytes": 847
+        },
+        "state.cbor": {
+          "sha256": "c0566318d0a9c9d02f2edcb1c6c8969591377168be205b02adffc7f813a379da",
+          "bytes": 680
+        },
+        "signal.cbor": {
+          "sha256": "0668a0a038058ae922f3386bba70571bfca36667d4e2515fa87e9a3cdeab1023",
+          "bytes": 108
+        },
+        "implementation-state.cbor": {
+          "sha256": "7bf76abb6faa337071fb77a0845df161e8e47a358332d753dbebad749535bc9d",
+          "bytes": 702
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    },
+    {
+      "seed": 490050,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "424e2d52771af4e4a1299741a47d21d19eed0d24283d6bb3e338a6253687cc44",
+          "bytes": 933
+        },
+        "state.cbor": {
+          "sha256": "c6a11920d8feb418a0b2725f1480f15cdee8ff037e04c9047ada27e7a9465205",
+          "bytes": 984
+        },
+        "signal.cbor": {
+          "sha256": "0de162ca2a7ea1dd0491c3505846e9cc0ad43ea64ecc7e258994f52b95c6540a",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "11eb5b5ba2db12cfcb878a8c30227129da087f19363bc46fd891e981ccef1907",
+          "bytes": 1019
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490051,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "c96300e30023d3b3c2a3f6afee421b2d85d5aa16ea064fac8a805685af079b84",
+          "bytes": 821
+        },
+        "state.cbor": {
+          "sha256": "53e7cac99141482635a2bf7f275d6af7d59033020a888d35529386611a935728",
+          "bytes": 670
+        },
+        "signal.cbor": {
+          "sha256": "8886bffeb1dffbeac775f4fcc95c8eff2d4eda0a79bf2dc74cebfc59a03610ce",
+          "bytes": 115
+        },
+        "implementation-state.cbor": {
+          "sha256": "4d2b2c659498c8a88bad98ec99e1a96cb1ddce92c94f717c30a5f0256d9d76be",
+          "bytes": 786
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490052,
+      "tag": 16,
+      "family": "drep-register",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "84b33a731ee52a0223de5a16c82b2dd146047f6e8fc6c9111d56ea9fd26e325b",
+          "bytes": 1167
+        },
+        "state.cbor": {
+          "sha256": "6391f5735b12cdd921501ae5f1a4373717c30786bdb4fe45b3c3241b0597a223",
+          "bytes": 809
+        },
+        "signal.cbor": {
+          "sha256": "91bb60247627b4c43d8c3bdcbc79f42833234eefcc533334c1c1e8d28b711dda",
+          "bytes": 90
+        },
+        "implementation-state.cbor": {
+          "sha256": "6a78278671d454c06a580182503c4697fc59065adc3e35a3e10ede64d8dcaed0",
+          "bytes": 904
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    },
+    {
+      "seed": 490053,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "353c80839e2c100b66ef551bb767e6915ba104c99c81bf00d889dee5fd582125",
+          "bytes": 866
+        },
+        "state.cbor": {
+          "sha256": "8364bc4413869f8d3d9f78c4e8f983946b94913b3fdde091a98b59f39fa43521",
+          "bytes": 718
+        },
+        "signal.cbor": {
+          "sha256": "16b295eb105a74bf1f9535843ea8854499fe2343c13f59a46299ad42460a1122",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "4a7381d0c4447471e5cb088991309b2befc2cc6d2ebe73f3e539b5927a7408d4",
+          "bytes": 784
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490054,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "d63a37e1beb82d8439937d77f47fc9b013cd2e65b153660c459981d72e5bf5e3",
+          "bytes": 924
+        },
+        "state.cbor": {
+          "sha256": "e82d8b5cf3cbf90b1af0d9f351eac8c96758b679f41350593dbb86776fe2e9ae",
+          "bytes": 910
+        },
+        "signal.cbor": {
+          "sha256": "b6852cb228824949299018697c3df2d5efeb3d803ee0cb41dc668837910de466",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "3cbd9a4cae1b9f569998c4335e903767dbfb467b342d0a555ec0248b95183bab",
+          "bytes": 945
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490055,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "5fa474721daf011c0e33bc22784cb22b4a09a101b4bd39f640ef34d98ab75e33",
+          "bytes": 961
+        },
+        "state.cbor": {
+          "sha256": "dd651efca1ed63d7cf6f3e550e35c0a596df7ae684ddc3c217d4bd850cf4a961",
+          "bytes": 927
+        },
+        "signal.cbor": {
+          "sha256": "58d0da3d1c29c95c4b5ca3ef6ba09a7a2f30dd7d22d9a93fbfb9dddf00dbf404",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "fecd7631292e8731651f237fc92198ff8ed72693cc24c762d023d5fa2f8099f5",
+          "bytes": 993
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490056,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "6f6937621177ccf4c775170616420bc1a5604c1dbb7c20c7d90bb7e178a45adc",
+          "bytes": 993
+        },
+        "state.cbor": {
+          "sha256": "fe21a5541c7bb338a5250f171fff080dd47c0680c8138c86178345bf303dd245",
+          "bytes": 851
+        },
+        "signal.cbor": {
+          "sha256": "934e5ad625108182e41813f42846e3b1331ded1bb9ea396bd26fa6a47169b3c8",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "ad67b366e676a93cf2501e53b90c6708ecd825a5e3ef5648a9c3898f003d4432",
+          "bytes": 917
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490057,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "08b132267df95d341b1a1958da59337a53e84eb529bd015438e0f4daf8c6dd90",
+          "bytes": 909
+        },
+        "state.cbor": {
+          "sha256": "11bbafb59919e54be8f7726b6321314b40f673de73fec93824c61d70102a3999",
+          "bytes": 867
+        },
+        "signal.cbor": {
+          "sha256": "3fb7f5a448a3649a147f28e930a74b7f6ed4954b9f449340762422273d765a11",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "7682dfd92c4ec9a8885c4cdc0306c8a62c5b82a629d4b4ff827cba0fceaa4aee",
+          "bytes": 933
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490058,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "30792b7ad2206c031f008d08609dc09440c1299a656033cfd6245b9f98e616dd",
+          "bytes": 930
+        },
+        "state.cbor": {
+          "sha256": "77056b8fc773846764f6315b0baf1bf6b748c55776f4d3c9e5ac5545edf49c39",
+          "bytes": 779
+        },
+        "signal.cbor": {
+          "sha256": "96d5621b44826cd087243bfba7637a4c523e2ebd44603acc204d4d39774f739a",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "fb0277459baafa24a71e2049cb43f88384cb4b2124a6380a9263673d2ee7c900",
+          "bytes": 814
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490059,
+      "tag": 18,
+      "family": "drep-update",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "ca5bc4f1ff0749702b9224e375c363a5525e932e3aa61b83fb7dd11ff72a3855",
+          "bytes": 884
+        },
+        "state.cbor": {
+          "sha256": "97bb0d79f62dba2345aa0586f3446206e0b3cf5b9f3101d59a829aaa7f7ad45c",
+          "bytes": 564
+        },
+        "signal.cbor": {
+          "sha256": "df43b923f45d1f71220dcbbe6af393a741d387b3082da5dd33c4d5a0837e6421",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "97bb0d79f62dba2345aa0586f3446206e0b3cf5b9f3101d59a829aaa7f7ad45c",
+          "bytes": 564
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    },
+    {
+      "seed": 490060,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "a587324488337c1f3d4ed16ff7983572ddc243b3149895b8e975422efed51485",
+          "bytes": 904
+        },
+        "state.cbor": {
+          "sha256": "0be31d033a4438179edaeb447f456c28596aac50de6a988753356a853aaab2ae",
+          "bytes": 661
+        },
+        "signal.cbor": {
+          "sha256": "461fd8355e01cfcd7e2f947e541b3c978513b6d70a74e6260a7e3750d4f5489b",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "b4a4586a4b811f0cb02ac99755707ad7799a6462555ed3250e62c3be02dfa450",
+          "bytes": 696
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490061,
+      "tag": 18,
+      "family": "drep-update",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "e5245262eebd89fd6dbaaefb99ad71f2c2d825a958c96ad3554402eb88425e79",
+          "bytes": 893
+        },
+        "state.cbor": {
+          "sha256": "0d059dc3bc06151722c885a21d9337815a25e49ce2b4e5138e5dfffb4574a286",
+          "bytes": 667
+        },
+        "signal.cbor": {
+          "sha256": "61696da197018af775275793d7cbc0bf06f6064e05c13c7dbe66feadd932772f",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "0d059dc3bc06151722c885a21d9337815a25e49ce2b4e5138e5dfffb4574a286",
+          "bytes": 667
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    },
+    {
+      "seed": 490062,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "71a8be7e5daac582822d3907d2f7bbdcccf56eb05aa227e414d6dc8aa65e3f65",
+          "bytes": 1263
+        },
+        "state.cbor": {
+          "sha256": "9806c8f67025f87791889d9767deca294210e790cd63b57d07aaac471e581eee",
+          "bytes": 728
+        },
+        "signal.cbor": {
+          "sha256": "2327e56c273327d5a503a235c792eccd5bd5d26e42e674766f148a044d1e04bc",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "13c0deb174c7d968f00299ab73967a3b887c37447341ec8c7215fe6314585a2f",
+          "bytes": 763
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490063,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "f87fda853a2eee66769152af6ca331c52fc678fb8329fdab1983de785c88781a",
+          "bytes": 954
+        },
+        "state.cbor": {
+          "sha256": "763f4b9a2b0240e0bd67730125e3559ef46b03bf908512b75fd05e95ac56c5f4",
+          "bytes": 865
+        },
+        "signal.cbor": {
+          "sha256": "ca36f753ad2ebb5fd812883d3691537f2c62e84c402d1998ff8bf191ddbbf423",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "1c6172c8d571f4e10e96687d4403f865cb8ddbd2faa0b93e60edb3a2be836255",
+          "bytes": 931
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490064,
+      "tag": 18,
+      "family": "drep-update",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "0500144d1c0cdea4cfd97baed38d4c3a34e5d1787c1554d8d90d67f181a331b7",
+          "bytes": 885
+        },
+        "state.cbor": {
+          "sha256": "4ac6480cf960d96d0f3d780076bebb85f9dd5508c6186fe448582bb0ee828a76",
+          "bytes": 695
+        },
+        "signal.cbor": {
+          "sha256": "8d401a2c813fefd0c366064ea23bb9595acb25c230cd6cf99399de9ce8a4d740",
+          "bytes": 115
+        },
+        "implementation-state.cbor": {
+          "sha256": "17c4dc98c4ee4868fc3b7aad0b57c21ea2f3d0096457220e0116d9ba29a6feee",
+          "bytes": 776
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    },
+    {
+      "seed": 490065,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "ae454c3f33f6ff113a8133f9956fd0819e420c92a08cf5563268d097fb40dcd8",
+          "bytes": 926
+        },
+        "state.cbor": {
+          "sha256": "f49068c921abd5c63f9181b9ff8a65673404353069abe94a07b17e3d09f684bd",
+          "bytes": 780
+        },
+        "signal.cbor": {
+          "sha256": "ad8e0090f7775c8326060fafebad4e17408dfbcb548e8f6dff0a3ebc8fa2779e",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "0fa61a6d7af3ac269bea7c6f2d1354663b5b8c9b4c6c436ad234527b072c72d4",
+          "bytes": 846
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490066,
+      "tag": 15,
+      "family": "committee-resign",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "37e3b59d71d320752c73fa40ff38113dc0df657d32e2cb430188545228e87c5d",
+          "bytes": 928
+        },
+        "state.cbor": {
+          "sha256": "1c266e1f1822d268681564028ba67037aa23be1c4b43313bb04c6eb9eef17546",
+          "bytes": 682
+        },
+        "signal.cbor": {
+          "sha256": "2af6802473c4d9849283d25d2f0639c74556a7f51ad7a5304d197b169f3cfd13",
+          "bytes": 35
+        },
+        "implementation-state.cbor": {
+          "sha256": "27bfebf08ade9c6d3901831ff8fe69be433b5607c80008df915d1729e2329741",
+          "bytes": 717
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490067,
+      "tag": 14,
+      "family": "committee-auth",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "045ab79f28c0f739bdcb8d67ff60526a6a385fe710041d5c42087e0af7982540",
+          "bytes": 901
+        },
+        "state.cbor": {
+          "sha256": "69ffa532e31493af44d11f736e7b0483e0b48fdf6dcb096bceb886f658e25015",
+          "bytes": 844
+        },
+        "signal.cbor": {
+          "sha256": "1b2e06c83a03926b80b01a99c0cbad115493db5e634aabaf07400546cf3916b7",
+          "bytes": 66
+        },
+        "implementation-state.cbor": {
+          "sha256": "10d36b130d1d19fea0475087904c138cc767bb75eff1f2f286a597548ab2afaa",
+          "bytes": 910
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "Committee"
+    },
+    {
+      "seed": 490068,
+      "tag": 16,
+      "family": "drep-register",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "9bcb24d6d78319db2addbc173382a56ad21cd3ab97a0b92fb437395732a83903",
+          "bytes": 1054
+        },
+        "state.cbor": {
+          "sha256": "23641dee3d7e680d6f88ba75fc46dc563b6753387fd9ec457cdb6e52a09d9c8d",
+          "bytes": 892
+        },
+        "signal.cbor": {
+          "sha256": "93711233f27a08c27660e58fc2745ce804ea906272641e450b589e565da59efc",
+          "bytes": 36
+        },
+        "implementation-state.cbor": {
+          "sha256": "a371c79cc8333d60d27b772ce3693f79206da250cbe4d5850ffe7b976c6d1914",
+          "bytes": 932
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    },
+    {
+      "seed": 490069,
+      "tag": 16,
+      "family": "drep-register",
+      "upstream": "passed",
+      "implementation": "accepted",
+      "agda": "accepted",
+      "adapter": "matched",
+      "files": {
+        "context.cbor": {
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29",
+          "bytes": 3
+        },
+        "environment.cbor": {
+          "sha256": "b984d2d6ea1f0143b00db69172e971b05f259c6ad14da9a2cb51d9039a2fdff1",
+          "bytes": 891
+        },
+        "state.cbor": {
+          "sha256": "2023471ea680f75c7105165d7d8e9d169871e5821fff93a6b400865c71d2213d",
+          "bytes": 977
+        },
+        "signal.cbor": {
+          "sha256": "e4daf63b9d650a30f6cfba9d0e0535d2194befac3cec088b4afe46c41ed5acdf",
+          "bytes": 108
+        },
+        "implementation-state.cbor": {
+          "sha256": "7b0722b99876449b2097d24a2441a1e803aac1bc151ab0f98bef2700bb025507",
+          "bytes": 1090
+        },
+        "result.txt": {
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563",
+          "bytes": 38
+        }
+      },
+      "adapterRule": "DRep"
+    }
+  ],
+  "dependencies": {
+    "formal-ledger-specifications": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+    "constrained-generators": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+    "cardano-cls": "8e2bba9442cb388089f53d708cc4aedcb47726ea"
+  }
+}

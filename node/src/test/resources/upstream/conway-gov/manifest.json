@@ -1,0 +1,68 @@
+{
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "upstream": "cardano-ledger",
+  "upstreamCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "suite": "cardano-ledger-conformance / Conway GOV",
+  "observerPatch": "scripts/oracle/ledger-govcert/exporter.patch",
+  "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+  "sourceBlobs": {
+    "ExecSpecRuleConwayGov": "4b5a997ac56bdaaa0397b7f7857015babfd838f0",
+    "SpecTranslateConwayGov": "6d746778c29cf2fb8bc156ab387ababed92db448",
+    "ConstrainedConwayGovGenerator": "f28d2f173797411c0049b22657d7fe17ac649562"
+  },
+  "sampleContract": {
+    "generated": 1,
+    "upstreamImplementationAccepted": 1,
+    "agdaAccepted": 1,
+    "scarabTypedRuleMatched": 1,
+    "failed": 0,
+    "missing": 0,
+    "scope": "single deterministic generated Conway GOV case; generated empty-signal no-op only; not full property coverage"
+  },
+  "runner": {
+    "executable": "cardano-ledger-conformance:test:tests",
+    "args": [
+      "--match",
+      "Conformance/Conway/Constrained Generators/Blocks transition graph/GOV/",
+      "--seed=495101",
+      "--qc-max-success=1",
+      "--qc-max-size=30"
+    ]
+  },
+  "cases": [
+    {
+      "seed": 495101,
+      "family": "GOV",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 1840,
+          "sha256": "5f85796e3cb2288d13521dc6ca89bcf6c51c9840a3571028117d89041f14bb6d"
+        },
+        "environment.cbor": {
+          "bytes": 369,
+          "sha256": "d7c5175ce1dc14290ec263ed9439e0f46da4a36265917b8043177b45df8b3665"
+        },
+        "implementation-state.cbor": {
+          "bytes": 7,
+          "sha256": "a4fde5bdbe8fbfc8649f72ec1bed3c310dac70a094d946a95ce62c1e508c5347"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        },
+        "signal.cbor": {
+          "bytes": 7,
+          "sha256": "69142e709e6cdae61dd2781a45ddafdd4235857b26c9446bbc9baf3b178f2cd9"
+        },
+        "state.cbor": {
+          "bytes": 7,
+          "sha256": "a4fde5bdbe8fbfc8649f72ec1bed3c310dac70a094d946a95ce62c1e508c5347"
+        }
+      }
+    }
+  ]
+}

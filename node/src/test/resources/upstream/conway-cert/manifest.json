@@ -1,0 +1,68 @@
+{
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "upstream": "cardano-ledger",
+  "upstreamCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "suite": "cardano-ledger-conformance / Conway CERT",
+  "observerPatch": "scripts/oracle/ledger-govcert/exporter.patch",
+  "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+  "sourceBlobs": {
+    "ExecSpecRuleConwayCert": "987b12f601cc42f68a0922859c0b477431a711a6",
+    "ConwayCertRule": "0f7f4c99abcc1ebb46f2ee38792919c7ab645007",
+    "ConstrainedConwayCertGenerator": "04c99d30287083d269670a171360f3cca64db8bd"
+  },
+  "sampleContract": {
+    "generated": 1,
+    "upstreamImplementationAccepted": 1,
+    "agdaAccepted": 1,
+    "scarabTypedSubruleMatched": 1,
+    "failed": 0,
+    "missing": 0,
+    "scope": "single deterministic generated Conway CERT case; not full property coverage"
+  },
+  "runner": {
+    "executable": "cardano-ledger-conformance:test:tests",
+    "args": [
+      "--match",
+      "Conformance/Conway/Constrained Generators/Blocks transition graph/CERT/",
+      "--seed=493101",
+      "--qc-max-success=1",
+      "--qc-max-size=30"
+    ]
+  },
+  "cases": [
+    {
+      "seed": 493101,
+      "family": "CERT",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 3,
+          "sha256": "f0bdb9347cf113cb8c803752ff06c669c048d0f545a3707908e3c93a264daf29"
+        },
+        "environment.cbor": {
+          "bytes": 326,
+          "sha256": "6d5d516bd13faf0ba2bc5dc192068e28e1397e7949d53a11690482ec6ecb4500"
+        },
+        "state.cbor": {
+          "bytes": 783,
+          "sha256": "c469f3ba01cabd474eedaf2daa01c828c2de667a7b808fd1a51e7cfc932d48f0"
+        },
+        "signal.cbor": {
+          "bytes": 144,
+          "sha256": "5bb04b152bf865c0f762deb2b190d44e4a0739c41c2c57efd1a0f664db94e503"
+        },
+        "implementation-state.cbor": {
+          "bytes": 932,
+          "sha256": "a842f89cb2de8fd6add262e65f263942142c7ff037e04a72d24b97f8de74b671"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    }
+  ]
+}

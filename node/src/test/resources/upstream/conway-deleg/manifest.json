@@ -1,0 +1,197 @@
+{
+  "schema": "scarab-upstream-ledger-conformance-v1",
+  "upstream": "cardano-ledger",
+  "upstreamCommit": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+  "formalCommit": "b3a4fd47a1144ff1fb994f89b1045e78159e07ae",
+  "generatorCommit": "966f65f3c28cb22fc45220dbd1408baea93b53d8",
+  "suite": "cardano-ledger-conformance / Conway DELEG",
+  "observerPatch": "scripts/oracle/ledger-govcert/exporter.patch",
+  "contextMeaning": "Set of DRep delegatees in the transaction (ExecSpecRule/Conway/Deleg.hs)",
+  "cases": [
+    {
+      "seed": 491101,
+      "family": "DELEG",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 324,
+          "sha256": "c16690434e3264dda8233ff65d12f8fe8a395cf5e1ff39e46e01e9f6957f5a83"
+        },
+        "environment.cbor": {
+          "bytes": 376,
+          "sha256": "862ce4832fa97b1b63cf09d9137ac0098dc5eb9fdfbd6e423082b34c89769970"
+        },
+        "state.cbor": {
+          "bytes": 811,
+          "sha256": "179939dffba217866dbb4500c9df512a761be444b3211906da04e9b757cd9396"
+        },
+        "signal.cbor": {
+          "bytes": 67,
+          "sha256": "75af5a20de2846bb4fe8e50798b0156305f337bc2060175e09335c18825319ae"
+        },
+        "implementation-state.cbor": {
+          "bytes": 911,
+          "sha256": "fb1a35dca87bca482b8167c93ec817b85a20ccb3a5a595b108ea4241a1e90739"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 491102,
+      "family": "DELEG",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 324,
+          "sha256": "1a4655ed8393ac7ab4eb07500a4743279b5ba64fcf36e8544a37ee900579799a"
+        },
+        "environment.cbor": {
+          "bytes": 399,
+          "sha256": "d5ae7627b7d27f22012678afc696aa4f85418e8364da592d6834cec7b9e177ef"
+        },
+        "state.cbor": {
+          "bytes": 938,
+          "sha256": "48b7abb2e6f38c81a5bff3f7f2ef67726c9a34cdac6c0c4543090b69a7a9e391"
+        },
+        "signal.cbor": {
+          "bytes": 67,
+          "sha256": "a02c656c69490f4d98941c6b898adb41e0e046e46a909d72108ca68bd5733e23"
+        },
+        "implementation-state.cbor": {
+          "bytes": 1038,
+          "sha256": "226455ab99b4a20541ec362462a4ebd4710f658f15cbecfcd531bbb574c6b21f"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 491103,
+      "family": "DELEG",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 324,
+          "sha256": "32366a8af9ce47b5050d06a99f809c28ccb7ce73499e51d87904b89599879862"
+        },
+        "environment.cbor": {
+          "bytes": 356,
+          "sha256": "212f58cc9a460b26ed4e29d0ab9d0e8edc56c9d84a800820cc51c12bda10a958"
+        },
+        "state.cbor": {
+          "bytes": 747,
+          "sha256": "27344b842508726b0406d7a2dbdbae0b64ebc7886422ed1928a19980e4e97102"
+        },
+        "signal.cbor": {
+          "bytes": 67,
+          "sha256": "40f13637eb5b285ba0b1621eaa03494bc1e15416588e5b25b9638f4e5e54eea4"
+        },
+        "implementation-state.cbor": {
+          "bytes": 847,
+          "sha256": "66e93395cdd896278165fdd4bca3d648136c662a8b8fd52cb2f13bec0ea25701"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 491104,
+      "family": "DELEG",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 324,
+          "sha256": "bca7ba93390b26811d95f999a6fd2d4b8791b6d1128433940646ea3db71b4160"
+        },
+        "environment.cbor": {
+          "bytes": 342,
+          "sha256": "bf7100cb1106120a70483ca579f5777fe89f5841c34ef5f27e0c8de6243203df"
+        },
+        "state.cbor": {
+          "bytes": 772,
+          "sha256": "d9eef8cdf634f53595022481703296f36a71525d5757d2b0d94d736b67b7c172"
+        },
+        "signal.cbor": {
+          "bytes": 67,
+          "sha256": "2a733641a6c5aaed06ed78e687c5a7e97c300d544db1bde355fd369b0bc75c81"
+        },
+        "implementation-state.cbor": {
+          "bytes": 872,
+          "sha256": "d8b72d149802b4b93ac8d67bfcc9566e91bb8eeeadcd232aa1eca6ff22f00a4a"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    },
+    {
+      "seed": 491105,
+      "family": "DELEG",
+      "upstreamStatus": "implementation-accepted",
+      "agdaStatus": "agda-accepted",
+      "files": {
+        "context.cbor": {
+          "bytes": 324,
+          "sha256": "1cdd3ed4f2464bc682e3da25c897acc2bf4debfc240be223c3572679a21a99a4"
+        },
+        "environment.cbor": {
+          "bytes": 337,
+          "sha256": "f68b6ff7fdbb5b580532ee9bf75dfa57f0220c7e759854656ce72a84b26511a8"
+        },
+        "state.cbor": {
+          "bytes": 939,
+          "sha256": "d8e1d6aaa996fbcc9a65bc02acaf7380d12ea657b26b857068eeb294c201f90b"
+        },
+        "signal.cbor": {
+          "bytes": 35,
+          "sha256": "023f800a7335f1454ecd584abfbc8516a18a307b18e0c44a296d3b98f0d0f874"
+        },
+        "implementation-state.cbor": {
+          "bytes": 976,
+          "sha256": "d4cbe5d372e5927f543fadef5a8a2e36ae0d759ed713beb44898b00c56eca3c2"
+        },
+        "result.txt": {
+          "bytes": 38,
+          "sha256": "8b78d106e5394be5f1b4c2802709dfd92ef50a4a9385162bcc6b5ce292f66563"
+        }
+      }
+    }
+  ],
+  "observerPatchSha256": "7130e6e9c1b055f27a2f1a60984af5d58446e9441f088fea724b0dbcba165e31",
+  "sourceBlobs": {
+    "ExecSpecRuleConwayDeleg": "1620c42a1f7ee8bd0e1151674825e3f7b362ebb5",
+    "ConwayDelegRule": "19ab37b320f5ca20539ac91e9f996011415e701b"
+  },
+  "sampleContract": {
+    "generated": 5,
+    "upstreamImplementationAccepted": 5,
+    "agdaAccepted": 5,
+    "scarabAdapterMatched": 5,
+    "failed": 0,
+    "missing": 0,
+    "scope": "deterministic seed probe; not complete upstream property coverage"
+  },
+  "runner": {
+    "executable": "cardano-ledger-conformance:test:tests",
+    "argsTemplate": [
+      "-m",
+      "DELEG",
+      "--seed=<seed>",
+      "--qc-max-success=1",
+      "--qc-max-size=30",
+      "--strict"
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+diff --git a/cabal.project b/cabal.project
+index 9e97308..59b102a 100644
+--- a/cabal.project
++++ b/cabal.project
+@@ -12,7 +12,7 @@ repository cardano-haskell-packages
+ 
+ source-repository-package
+   type: git
+-  location: https://github.com/IntersectMBO/formal-ledger-specifications.git
++  location: file:///formal
+   subdir: hs
+   -- !WARNING!:
+   -- MAKE SURE THIS POINTS TO A COMMIT IN `*-artifacts` BEFORE MERGE!
+@@ -20,7 +20,7 @@ source-repository-package
+ 
+ source-repository-package
+   type: git
+-  location: https://github.com/input-output-hk/constrained-generators.git
++  location: file:///constrained
+   --sha256: sha256-h0bJTwdfJG84XrERJJoBBi5ZzRHgeVoZWS2yW/z7LiU=
+   tag: 966f65f3c28cb22fc45220dbd1408baea93b53d8
+ 
+@@ -101,12 +101,13 @@ if impl(ghc >=9.12)
+     -- Unique: https://github.com/kapralVV/Unique/issues/11
+     , Unique:hashable
+ 
+-source-repository-package
+-  type: git
+-  location: https://github.com/tweag/cardano-cls.git
+-  subdir: merkle-tree-incremental mempack-scls scls-cbor scls-cardano scls-format scls-core
+-  --sha256: sha256-3rAc99T2/MZk7Rd2gb9zq7iUM9hMDOzNvehOq/8hpfs=
+-  tag: 8e2bba9442cb388089f53d708cc4aedcb47726ea
++packages:
++  /clssrc/merkle-tree-incremental
++  /clssrc/mempack-scls
++  /clssrc/scls-cbor
++  /clssrc/scls-cardano
++  /clssrc/scls-format
++  /clssrc/scls-core
+ 
+ constraints:
+   -- Happy version 2.2.1 fails to compile haskell-src-exts
+diff --git a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+index 0ace12d..03bcf7d 100644
+--- a/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
++++ b/libs/cardano-ledger-conformance/src/Test/Cardano/Ledger/Conformance/ExecSpecRule/Core.hs
+@@ -71,7 +71,7 @@ import Test.Cardano.Ledger.Shelley.ImpTest (
+   logDoc,
+   tryRunImpRule,
+  )
+-import UnliftIO (evaluateDeep)
++import UnliftIO (evaluateDeep, liftIO)
+ import UnliftIO.Directory (makeAbsolute)
+ import UnliftIO.Environment (lookupEnv)
+ 
+@@ -299,6 +299,25 @@ testConformance ::
+   Property
+ testConformance ctx trc = property $ do
+   ConformanceResult implResTest agdaResTest implRes <- runConformance @rule @era ctx trc
++  -- Optional observer used by Scarab's disposable pinned-source adapter. It records the
++  -- generated upstream input and the implementation result after the ordinary conformance
++  -- computation; it does not change generation, translation, execution, or checking.
++  exportDir <- liftIO $ lookupEnv "SCARAB_CONFORMANCE_EXPORT_DIR"
++  case exportDir of
++    Nothing -> pure ()
++    Just path -> do
++      let TRC (env, st, sig) = trc
++      dumpCbor @era path ctx "context"
++      dumpCbor @era path env "environment"
++      dumpCbor @era path st "state"
++      dumpCbor @era path sig "signal"
++      implStatus <- case implRes of
++        Right (implState, _) -> do
++          dumpCbor @era path implState "implementation-state"
++          pure "implementation-accepted"
++        Left _ -> pure "implementation-rejected"
++      let agdaStatus = either (const "agda-rejected") (const "agda-accepted") agdaResTest
++      liftIO $ writeFile (path <> "/result.txt") (implStatus <> "\n" <> agdaStatus <> "\n")
+   globals <- use impGlobalsL
+   logDoc $ extraInfo @rule @era globals ctx trc (first (T.pack . show) implRes)
+   checkConformance @rule @_ ctx trc (first (T.pack . show) implResTest) agdaResTest

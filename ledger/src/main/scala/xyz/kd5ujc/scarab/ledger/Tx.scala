@@ -210,7 +210,9 @@ object Certificate:
       margin,
       account,
       owners.toSet,
-      xs(7).original,
+      // Match the ledger-state codec's typed representation: the empty relay sequence is the
+      // empty value (Bytes.empty), while non-empty relay sequences retain their original wire.
+      if xs(7).original == Bytes(Vector(0x80.toByte)) then Bytes.empty else xs(7).original,
       metadata
     )
 
