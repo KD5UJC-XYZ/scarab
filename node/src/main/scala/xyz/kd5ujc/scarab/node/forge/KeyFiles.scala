@@ -119,7 +119,7 @@ object KeyFiles:
       payload <- byteString(file, raw)
       key <- Sum6KesSigning
         .fromEvolved(payload)
-        .leftMap(e => ForgeError.KeyFile(file, e.toString))
+        .leftMap(ForgeError.KesKey(file, _))
     yield key
 
   /** The text of a KES key file: the cardano-cli envelope around the key at its current period. */

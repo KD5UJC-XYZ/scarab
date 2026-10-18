@@ -137,7 +137,7 @@ final class HotKeys[F[_]: Async] private (
   private[forge] def evolved(c: PoolCredentials, kesPeriod: BigInt): F[Either[ForgeError, Unit]] =
     val relative = (kesPeriod - c.opCert.kesPeriod).toInt
     F.delay(c.kes.period).flatMap { before =>
-      F.blocking(c.kes.evolveTo(relative).leftMap(e => ForgeError.KesFailure(e.toString)))
+      F.blocking(c.kes.evolveTo(relative).leftMap(ForgeError.KesEvolution(_)))
         .flatTap(_.traverse_ { _ =>
           (write(c, kesPeriod) *> events.emit(ForgeEvent.KesEvolved(kesPeriod, relative)))
             .whenA(before != relative)

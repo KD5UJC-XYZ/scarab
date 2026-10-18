@@ -51,7 +51,7 @@ class KeyFilesSuite extends munit.FunSuite:
     )
   }
 
-  test("wrong types, bad JSON and damaged keys are typed KeyFile errors") {
+  test("wrong types and bad JSON are typed KeyFile errors") {
     def isKeyFile(e: Either[ForgeError, ?]) = e.left.exists(_.isInstanceOf[ForgeError.KeyFile])
     val kes = Sum6KesSigning.generate(hex("02" * 32)).toOption.get
     assert(
@@ -65,12 +65,21 @@ class KeyFilesSuite extends munit.FunSuite:
         KeyFiles.vrfSigningKey("f", envelope(KeyFiles.VrfSigningKeyType, "5840" + "00" * 64))
       )
     )
-    assert(
-      isKeyFile(
-        KeyFiles.kesSigningKey("f", envelope(KeyFiles.KesSigningKeyType, bstr(hex("00" * 608))))
-      )
-    )
     assert(isKeyFile(KeyFiles.opCert("f", envelope(KeyFiles.OpCertType, "8200"))))
+  }
+
+  test("KES key-file errors preserve the crypto cause until presentation") {
+    val cases = Vector(
+      Bytes.empty -> Sum6KesSigning.Failure.InvalidKeyLength(0),
+      hex("00" * 608) -> Sum6KesSigning.Failure.VerificationKeyMismatch(Sum6KesSigning.Depth)
+    )
+    cases.foreach { case (bytes, cause) =>
+      val result =
+        KeyFiles.kesSigningKey("kes.skey", envelope(KeyFiles.KesSigningKeyType, bstr(bytes)))
+      val expected = ForgeError.KesKey("kes.skey", cause)
+      assertEquals(result, Left(expected))
+      assertEquals(expected.message, s"key file kes.skey: ${cause.message}")
+    }
   }
 
   test("credentials whose certificate names another KES key are refused") {

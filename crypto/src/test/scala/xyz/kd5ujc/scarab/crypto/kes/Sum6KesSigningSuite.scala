@@ -86,8 +86,48 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     loaded.evolve()
     assert(verified(k.verificationKey, 38, msg, loaded.sign(msg)))
     // the same bytes do not load at another half
-    assert(fromBytes(k.toBytes, 3).isLeft)
-    assert(fromBytes(fresh.toBytes, 40).isLeft)
+    assertEquals(
+      fromBytes(k.toBytes, 3),
+      Left(Failure.SeedStateMismatch(Depth, 3, SeedState.Erased))
+    )
+    assertEquals(
+      fromBytes(fresh.toBytes, 40),
+      Left(Failure.SeedStateMismatch(Depth, 40, SeedState.Present))
+    )
+  }
+
+  test("missing material, invalid lengths and periods have distinct error cases") {
+    assertEquals(generate(null), Left(Failure.MissingSeed))
+    Vector(0, SeedBytes - 1, SeedBytes + 1).foreach { n =>
+      assertEquals(
+        generate(Bytes.fromArray(new Array[Byte](n))),
+        Left(Failure.InvalidSeedLength(n))
+      )
+    }
+    assertEquals(fromBytes(null), Left(Failure.MissingKey))
+    assertEquals(fromEvolved(null), Left(Failure.MissingKey))
+    Vector(0, KeyBytes - 1, KeyBytes + 1).foreach { n =>
+      val bytes = Bytes.fromArray(new Array[Byte](n))
+      assertEquals(fromBytes(bytes), Left(Failure.InvalidKeyLength(n)))
+      assertEquals(fromEvolved(bytes), Left(Failure.InvalidKeyLength(n)))
+    }
+    val bytes = fresh.toBytes
+    Vector(-1, Periods).foreach { p =>
+      assertEquals(fromBytes(bytes, p), Left(Failure.PeriodOutOfRange(p)))
+    }
+  }
+
+  test("key consistency errors retain the failing tree depth and kind") {
+    val bytes = fresh.toBytes
+    def flipped(at: Int): Bytes =
+      Bytes.fromArray(bytes.toArray.updated(at, (bytes(at) ^ 1).toByte))
+
+    // Layout: leaf seed; level 1's r1/vk0/vk1; ...; level 6's r1/vk0/vk1.
+    assertEquals(fromBytes(flipped(0)), Left(Failure.VerificationKeyMismatch(1)))
+    assertEquals(fromBytes(flipped(544)), Left(Failure.VerificationKeyMismatch(Depth)))
+    assertEquals(fromBytes(flipped(512)), Left(Failure.RightSeedMismatch(Depth)))
+    assertEquals(fromBytes(flipped(576)), Left(Failure.RightSeedMismatch(Depth)))
+    assertEquals(bytes, fresh.toBytes, "refusing a key does not erase the caller's bytes")
   }
 
   test("a period-0 key evolved by loading equals one evolved in place") {
