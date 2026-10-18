@@ -58,7 +58,7 @@ object ApplyBenchMain:
     val (header, hash) = credential match
       case Credential.Key(h)    => (0x61, h)
       case Credential.Script(h) => (0x71, h)
-    Address.decode(Bytes(header.toByte +: hash.value)).fold(e => sys.error(e), identity)
+    Address.decode(Bytes(header.toByte +: hash.value)).fold(e => sys.error(e.toString), identity)
 
   private def made(address: Address, value: Value): TxOut =
     TxOut(Bytes.empty, address, value, Datum.NoDatum, None, 0)
@@ -108,8 +108,8 @@ object ApplyBenchMain:
       .iterator
       .filter(_.nonEmpty)
       .take(total)
-      .map(l => Bytes.fromHex(l).flatMap(Block.decodeShelley(_).left.map(_.toString)))
-      .map(_.fold(e => sys.error(e), identity))
+      .map(l => Bytes.fromHex(l).flatMap(Block.decodeShelley(_)))
+      .map(_.fold(e => sys.error(e.toString), identity))
       .collect { case b: Block.Shelley => b }
       .toVector
     val txs: Vector[(BigInt, Tx)] = blocks.flatMap(b =>

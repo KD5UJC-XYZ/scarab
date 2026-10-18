@@ -30,7 +30,7 @@ class PreviewConwayGovernanceSuite extends FunSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.toString), identity))
       .map(Block.decodeShelley(_).fold(e => fail(e.message), identity))
       .collect { case b: Block.Shelley => b }
 

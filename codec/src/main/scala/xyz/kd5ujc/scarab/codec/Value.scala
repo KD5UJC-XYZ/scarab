@@ -165,7 +165,14 @@ object Value:
     def name(v: Value): String = Value.name(v)
 
 trait Encoder[A]:
-  def encode(value: A): Either[String, Bytes]
+  type Error <: DomainError
+  def encode(value: A): Either[Error, Bytes]
+
+object Encoder:
+  type Aux[A, E <: DomainError] = Encoder[A] { type Error = E }
 
 trait Serde[A] extends Encoder[A]:
-  def decode(bytes: Bytes): Either[String, A]
+  def decode(bytes: Bytes): Either[Error, A]
+
+object Serde:
+  type Aux[A, E <: DomainError] = Serde[A] { type Error = E }

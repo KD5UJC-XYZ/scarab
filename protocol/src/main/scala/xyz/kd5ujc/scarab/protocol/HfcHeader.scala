@@ -31,7 +31,7 @@ enum HfcHeader:
 /** Closed set of reasons an envelope is not a header. */
 enum HfcHeaderError:
   /** Not CBOR within the local limits. */
-  case Syntax
+  case Syntax(cause: Cbor.Error)
 
   /** Not a two-element array, or the first element is not an unsigned integer. */
   case NotAnEnvelope
@@ -40,7 +40,7 @@ enum HfcHeaderError:
   case NotEmbeddedCbor
 
   /** The envelope of a supported era fails [[NtNHeader]]'s decoder (`reason` is its diagnostic). */
-  case Supported(era: Era, reason: String)
+  case Supported(era: Era, cause: ProtocolError)
 
 object HfcHeader:
   /** The index of Dijkstra in the hard-fork combinator's list of eras, after Conway's 6. */
@@ -57,7 +57,7 @@ object HfcHeader:
 
   def decode(bytes: Bytes): Either[HfcHeaderError, HfcHeader] =
     for
-      root <- Cbor.decode(bytes, limits).leftMap(_ => HfcHeaderError.Syntax)
+      root <- Cbor.decode(bytes, limits).leftMap(HfcHeaderError.Syntax(_))
       parts <- root.value match
         // `decodeListLen` of the reference reads a definite length only (see `definite`)
         case Value.Arr(Vector(index, payload)) if definite(root) => Right((index, payload))
@@ -99,30 +99,35 @@ object HfcHeader:
     * with its payload as received. A decoded envelope that used longer-than-shortest heads (which
     * the reference reads) is written in the shortest form: `decode(encode(h)) == h`.
     */
-  def encode(header: HfcHeader): Either[String, Bytes] = header match
+  def encode(header: HfcHeader): Either[ProtocolError, Bytes] = header match
     case Supported(h) => NtNHeader.codec.encode(h)
     case Dijkstra(raw) =>
-      Cbor.encode(
-        Value.Arr(
-          Vector(
-            Node(Value.UInt(DijkstraIndex), Bytes.empty),
-            Node(
-              Value.Tag(24, Node(Value.ByteString(raw), Bytes.empty)),
-              Bytes.empty
+      Cbor
+        .encode(
+          Value.Arr(
+            Vector(
+              Node(Value.UInt(DijkstraIndex), Bytes.empty),
+              Node(
+                Value.Tag(24, Node(Value.ByteString(raw), Bytes.empty)),
+                Bytes.empty
+              )
             )
           )
         )
-      )
+        .leftMap(ProtocolError.Codec(_))
     case Unrecognised(index, payload) =>
-      Cbor.decode(payload, limits).flatMap { p =>
-        Cbor.encode(Value.Arr(Vector(Node(Value.UInt(index), Bytes.empty), p)))
-      }
+      Cbor
+        .decode(payload, limits)
+        .flatMap { p =>
+          Cbor.encode(Value.Arr(Vector(Node(Value.UInt(index), Bytes.empty), p)))
+        }
+        .leftMap(ProtocolError.Codec(_))
 
   /** As a ChainSync payload: a header of any era is accepted; only a malformed envelope is refused
     * (the codec interface carries a diagnostic string, [[HfcHeaderError]] is its typed form).
     */
   val codec: ChainSync.PayloadCodec[HfcHeader] = new ChainSync.PayloadCodec[HfcHeader]:
-    def encode(value: HfcHeader): Either[String, Bytes] = HfcHeader.encode(value)
-    def decode(bytes: Bytes): Either[String, HfcHeader] =
-      HfcHeader.decode(bytes).leftMap(_.toString)
+    def encode(value: HfcHeader): Either[ProtocolError, Bytes] = HfcHeader.encode(value)
+    def decode(bytes: Bytes): Either[ProtocolError, HfcHeader] =
+      HfcHeader.decode(bytes).leftMap(ProtocolError.HfcHeader(_))
 end HfcHeader

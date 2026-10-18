@@ -29,15 +29,15 @@ object LocalTxSubmission:
     case RejectTx(reason: Bytes)
     case Done
 
-  def transition(state: State, sender: Role, message: Message): Either[String, State] =
+  def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     (state, sender, message) match
       case (State.Idle, Role.Client, Message.SubmitTx(_)) => Right(State.Busy)
       case (State.Idle, Role.Client, Message.Done)        => Right(State.Done)
       case (State.Busy, Role.Server, Message.AcceptTx)    => Right(State.Idle)
       case (State.Busy, Role.Server, Message.RejectTx(_)) => Right(State.Idle)
-      case _ => Left(s"illegal LocalTxSubmission message/agency in $state from $sender")
+      case _ => Left(ProtocolError.LocalTxSubmissionAgency(state, sender))
 
-  def encode(state: State, sender: Role, message: Message): Either[String, Bytes] = attempt {
+  def encode(state: State, sender: Role, message: Message): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val w = new ProtocolWire.Writer(wire)
     def outer(n: Int, tag: Int): Unit = { w.head(4, n); w.head(0, tag) }
@@ -52,9 +52,9 @@ object LocalTxSubmission:
   }
 
   def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
-    try
+    ProtocolWire.prefix {
       if state == State.Done || (state == State.Idle) != (sender == Role.Client) then
-        bad("wrong LocalTxSubmission agency")
+        bad(ProtocolError.WrongLocalTxSubmissionAgency)
       val r = new ProtocolWire.Reader(bytes, wire)
       val arity = r.arrayLength()
       val tag = r.uint().value
@@ -63,9 +63,7 @@ object LocalTxSubmission:
         case (1, 1) if tag == 1 => Message.AcceptTx
         case (2, 2) if tag == 2 => Message.RejectTx(r.item())
         case (1, 3) if tag == 3 => Message.Done
-        case _                  => bad("unknown LocalTxSubmission tag or arity")
+        case _                  => bad(ProtocolError.UnknownLocalTxSubmissionTagOrArity)
       get(transition(state, sender, message))
       DecodeResult.Decoded(message, r.position)
-    catch
-      case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore
-      case ProtocolWire.Failure(error, false) => DecodeResult.Failed(error)
+    }

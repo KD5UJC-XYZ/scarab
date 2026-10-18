@@ -197,7 +197,10 @@ class HeaderRulesSuite extends ScalaCheckSuite:
     )
     assertEquals(
       rules.validate(forged.genesis, None, forged.genesis.protocol, h),
-      Outcome.Unchecked("Byron header: validated with its block", Some(forged.genesis.protocol))
+      Outcome.Unchecked(
+        xyz.kd5ujc.scarab.consensus.HeaderRules.UncheckedReason.Byron,
+        Some(forged.genesis.protocol)
+      )
     )
   }
 

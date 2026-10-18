@@ -152,7 +152,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     st.copy(s = next)
 
   private def encodedInt(v: BigInt): Bytes =
-    Cbor.encode(CborValue.UInt(v)).fold(e => fail(e), identity)
+    Cbor.encode(CborValue.UInt(v)).fold(e => fail(e.toString), identity)
 
   @unused private def returnAccount(w: World, i: Int): RewardAccount =
     RewardAccount(0, w.stakes(i).credential)

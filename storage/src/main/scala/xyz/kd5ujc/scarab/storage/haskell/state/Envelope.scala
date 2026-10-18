@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.storage.haskell.state
 
 import cats.Order
-import cats.syntax.show.*
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.consensus.state.{Bound, Current, EraIndexed, Past, Telescope}
 import xyz.kd5ujc.scarab.ledger.state.{ProtVer, Word64, WithOrigin}
@@ -141,7 +140,7 @@ object Envelope:
   private def refused(n: Node, e: xyz.kd5ujc.scarab.consensus.state.TelescopeError): DecodeError =
     DecodeError.at(
       n,
-      Kind.Violation(ConstraintViolation("Telescope", "a consistent telescope", e.show))
+      Kind.Domain(e)
     )
 
   /** `HardForkState` (`Serialisation/Common.hs:371-390`): an array of one `Past` per finished era

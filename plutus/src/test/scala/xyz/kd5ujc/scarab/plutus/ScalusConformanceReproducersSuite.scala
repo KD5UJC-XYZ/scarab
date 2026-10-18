@@ -20,7 +20,7 @@ class ScalusConformanceReproducersSuite extends FunSuite:
   private lazy val vm = PlutusVM.makePlutusV3VM(MajorProtocolVersion(11))
 
   private def evaluate(text: String): Try[Term] =
-    val program = Program.parseUplc(text).fold(sys.error, identity)
+    val program = Program.parseUplc(text).fold(e => sys.error(e.toString), identity)
     Try(vm.evaluateDeBruijnedTerm(program.deBruijnedProgram.term, NoBudgetSpender, Log(), false))
 
   private def bytes(term: Try[Term]): String = term.get match
@@ -33,7 +33,9 @@ class ScalusConformanceReproducersSuite extends FunSuite:
   test("flat decoding accepts a malformed value constant (reference: decode failure)") {
     def accepted(constant: String): Boolean =
       val program =
-        Program.parseUplc(s"(program 1.0.0 (con value $constant))").fold(sys.error, identity)
+        Program
+          .parseUplc(s"(program 1.0.0 (con value $constant))")
+          .fold(e => sys.error(e.toString), identity)
       ScalusEvaluator.pureDecoder
         .validate(PlutusLanguage.V3, 11, Bytes.fromArray(program.cborEncoded))
         .isRight
@@ -93,7 +95,7 @@ class ScalusConformanceReproducersSuite extends FunSuite:
   // `data-02` stay in the known-failure list until the suite runs at protocol 12.
   test("case on a Data.Constr is refused below protocol 12 and applies the fields from 12") {
     val text = "(program 1.1.0 (case (con data (Constr 0 [])) (lam fields (con integer 42))))"
-    val program = Program.parseUplc(text).fold(sys.error, identity)
+    val program = Program.parseUplc(text).fold(e => sys.error(e.toString), identity)
     def at(pv: Int) = Try(
       PlutusVM
         .makePlutusV3VM(MajorProtocolVersion(pv))
@@ -114,7 +116,7 @@ class ScalusConformanceReproducersSuite extends FunSuite:
     val program =
       Program
         .parseUplc(s"(program 1.0.0 (con bls12_381_G1_element 0x$zero))")
-        .fold(sys.error, identity)
+        .fold(e => sys.error(e.toString), identity)
     DeBruijnedProgram.fromCbor(program.cborEncoded).term match
       case Term.Apply(Term.Builtin(DefaultFun.Bls12_381_G1_uncompress, _), Term.Const(_, _), _) =>
         ()
@@ -130,7 +132,7 @@ class ScalusConformanceReproducersSuite extends FunSuite:
       .parseUplc(
         "(program 1.0.0 [ [ (force (builtin dropList)) (con integer 10000000000000000000) ] (con (list integer) [1, 2]) ])"
       )
-      .fold(sys.error, identity)
+      .fold(e => sys.error(e.toString), identity)
     val result = ScalusEvaluator.pure.evaluate(
       EvalRequest(
         PlutusLanguage.V3,
@@ -163,7 +165,7 @@ class ScalusConformanceReproducersSuite extends FunSuite:
     assertNotEquals(serialised("18446744073709551816"), serialised("200"))
     val program = Program
       .parseUplc("(program 1.0.0 (con data (Constr 18446744073709551615 [])))")
-      .fold(sys.error, identity)
+      .fold(e => sys.error(e.toString), identity)
     assertEquals(
       DeBruijnedProgram.fromCbor(program.cborEncoded).term,
       program.deBruijnedProgram.term

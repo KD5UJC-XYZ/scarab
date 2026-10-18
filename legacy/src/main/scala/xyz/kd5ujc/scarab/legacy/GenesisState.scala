@@ -55,7 +55,9 @@ object GenesisState:
         ByronGenesisFile
           .genesisBalances(files.byron)
           .flatMap((avvm, nonAvvm) =>
-            ByronLedger.genesisUtxo(avvm, nonAvvm, files.byronNetworkMagic).leftMap(ConfigError(_))
+            ByronLedger
+              .genesisUtxo(avvm, nonAvvm, files.byronNetworkMagic)
+              .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
           )
       )(Right(_))
       // Some testnets (Preview) inject Byron outputs of zero lovelace; the ledger's Byron to Shelley
@@ -63,7 +65,7 @@ object GenesisState:
       byronFunds <- byronEntries.toVector.filter(_._2.value != 0).traverse { (in, out) =>
         Address
           .decode(out.address)
-          .leftMap(ConfigError(_))
+          .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
           .map(a => in -> TxOut(a, Value.coin(out.value)))
       }
       stakeCreds <- injection[String](s, extra, "stakeCredentials")
@@ -79,7 +81,7 @@ object GenesisState:
         .downField("initialDReps")
         .downField("data")
         .as[Option[Map[String, Json]]]
-        .leftMap(e => ConfigError(s"initialDReps: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", "initialDReps", e)))
         .map(_.getOrElse(Map.empty))
       dreps <- drepJson.toVector.traverse { case (k, j) =>
         for
@@ -92,12 +94,18 @@ object GenesisState:
         .downField("delegs")
         .downField("data")
         .as[Option[Map[String, Json]]]
-        .leftMap(e => ConfigError(s"delegs: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", "delegs", e)))
         .map(_.getOrElse(Map.empty))
       votes <- voteJson.toVector.traverse { case (k, j) =>
         (
           credential(k),
-          j.hcursor.downField("dRep").as[String].leftMap(e => ConfigError(e.message)).flatMap(drep)
+          j.hcursor
+            .downField("dRep")
+            .as[String]
+            .leftMap(e =>
+              ConfigError(ConfigProblem.JsonField("genesis vote delegation", "dRep", e))
+            )
+            .flatMap(drep)
         ).tupled
       }
     yield

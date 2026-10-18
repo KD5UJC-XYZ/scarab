@@ -23,7 +23,13 @@ final class InMemoryPeers private (
   def resolve(peer: PeerNetwork.Addr) = IO.pure(
     peer.host match
       case ip: IpAddress => Right(SocketAddress(ip, peer.port))
-      case other         => Left(PeerError.Unavailable(s"cannot resolve $other"))
+      case other =>
+        Left(
+          PeerError.Unavailable(
+            PeerError.Unavailability
+              .Resolution(other.toString, new java.net.UnknownHostException(other.toString))
+          )
+        )
   )
 
   def bearer(peer: PeerNetwork.Addr, remote: SocketAddress[IpAddress])(using
@@ -32,7 +38,9 @@ final class InMemoryPeers private (
     Resource.eval(servers.get.map(_.get(peer))).flatMap {
       case None =>
         Resource.eval(
-          raise.raise[NetworkError, Bearer[IO]](NetworkError.Connect(peer.toString, "refused"))
+          raise.raise[NetworkError, Bearer[IO]](
+            NetworkError.Connect(peer.toString, new java.io.IOException("refused"))
+          )
         )
       case Some(handlers) =>
         for

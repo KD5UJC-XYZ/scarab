@@ -38,7 +38,7 @@ class HandshakeNegotiationSuite extends munit.FunSuite:
       v.number -> Data(magic, f.initiatorOnly, f.peerSharing, f.query, f.peras && v.carriesPeras)
     )
 
-  private def right[A](e: Either[String, A]): A = e.fold(fail(_), identity)
+  private def right[E, A](e: Either[E, A]): A = e.fold(e => fail(e.toString), identity)
 
   private def expected(client: Vector[NtnVersion], server: Vector[NtnVersion], c: Flags, s: Flags) =
     client.intersect(server).lastOption.map { v =>

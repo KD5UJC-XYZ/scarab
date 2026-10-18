@@ -9,6 +9,8 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Message, Point, State, Tip}
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** Non-pipelined ChainSync client. Every message is checked against the pure state machine. Use
   * from a single fiber.
   */
@@ -61,7 +63,7 @@ object ChainSyncClient:
   ): F[ChainSyncClient[F, P]] =
     val F = Temporal[F]
     val id = Protocols.ChainSync
-    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+    def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     (Ref.of[F, State](State.Idle), Ref.of[F, Boolean](false), Ref.of[F, Boolean](false)).mapN {
@@ -81,7 +83,7 @@ object ChainSyncClient:
             case State.Intersect     => F.pure(settings.intersectTimeout)
             case State.NextCanAwait  => F.pure(settings.canAwaitTimeout)
             case State.NextMustReply => F.pure(settings.mustReplyTimeout)
-            case other               => illegal[FiniteDuration](s"no reply is expected in $other")
+            case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
           limit.flatMap { wait =>
             Timed
               .within(wait, id, current.toString)(
@@ -123,9 +125,9 @@ object ChainSyncClient:
             send(Message.FindIntersect(points)) *> receive.flatMap {
               case Message.IntersectFound(point, tip) if points.contains(point) =>
                 F.pure(Some(point -> tip))
-              case Message.IntersectFound(_, _) => illegal("intersection was not offered")
+              case Message.IntersectFound(_, _) => illegal(RuntimeViolation.IntersectionNotOffered)
               case Message.IntersectNotFound(_) => F.pure(None)
-              case other                        => illegal(s"unexpected intersect reply $other")
+              case other => illegal(RuntimeViolation.ChainSyncUnexpected(other))
             }
 
           def requestNext(using Raise[F, NetworkError]): F[Update[P]] = flight(requestNext_)
@@ -154,7 +156,7 @@ object ChainSyncClient:
                     .fold(illegal(_), bytes => List.fill(n)(bytes).traverse_(channel.send))
                     .productR(List.fill(n)(()).traverse(_ => collectOne))
                     .map(_.toVector)
-                case other => illegal(s"pipelined request in $other")
+                case other => illegal(RuntimeViolation.PipelinedRequest(other))
               }
 
           // One reply to an outstanding request: waits out AwaitReply; the state returns to Idle.
@@ -167,7 +169,7 @@ object ChainSyncClient:
                     case Message.RollForward(payload, tip) =>
                       F.pure(Update.RollForward(payload, tip))
                     case Message.RollBackward(point, tip) => F.pure(Update.RollBackward(point, tip))
-                    case other                            => illegal(s"unexpected reply $other")
+                    case other => illegal(RuntimeViolation.ChainSyncUnexpected(other))
                 }
               }
             go(State.NextCanAwait)
@@ -177,7 +179,7 @@ object ChainSyncClient:
               case Message.AwaitReply                => collect
               case Message.RollForward(payload, tip) => F.pure(Update.RollForward(payload, tip))
               case Message.RollBackward(point, tip)  => F.pure(Update.RollBackward(point, tip))
-              case other                             => illegal(s"unexpected reply $other")
+              case other => illegal(RuntimeViolation.ChainSyncUnexpected(other))
             }
 
           def done(using Raise[F, NetworkError]) = send(Message.Done)

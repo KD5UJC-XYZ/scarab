@@ -20,7 +20,7 @@ class EraDecodingSuite extends FunSuite:
 
   private def hexLines(path: String): Vector[Bytes] =
     Files.readAllLines(Path.of(path)).asScala.toVector.filter(_.nonEmpty).map { l =>
-      Bytes.fromHex(l).fold(e => fail(e), identity)
+      Bytes.fromHex(l).fold(e => fail(e.toString), identity)
     }
 
   private def blocks(path: String): Vector[Block.Shelley] =
@@ -93,7 +93,7 @@ class EraDecodingSuite extends FunSuite:
     do
       val wire = NtNHeader.codec
         .encode(NtNHeader(b.era, b.header.raw, None))
-        .fold(e => fail(e), identity)
+        .fold(e => fail(e.toString), identity)
       assertEquals(Header.fromEnvelope(wire, MainnetEpochSlots).toOption, Some(b.header))
   }
 

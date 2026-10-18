@@ -63,7 +63,9 @@ object LiteLedger:
   def fromGenesis(shelley: Json, startEpoch: BigInt = 0): Either[ConfigError, LiteLedger] =
     val c = shelley.hcursor
     val pp = c.downField("protocolParams")
-    def err(what: String, e: io.circe.DecodingFailure) = ConfigError(s"genesis $what: ${e.message}")
+    def err(what: String, e: io.circe.DecodingFailure) = ConfigError(
+      ConfigProblem.JsonField("genesis", what, e)
+    )
     for
       major <- pp
         .downField("protocolVersion")
@@ -88,7 +90,9 @@ object LiteLedger:
             .downField("contents")
             .as[String]
             .leftMap(err("entropy", _))
-            .flatMap(h => Bytes.fromHex(h).leftMap(ConfigError(_)).map(Nonce.Hash(_)))
+            .flatMap(h =>
+              Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))).map(Nonce.Hash(_))
+            )
       maxBB <- pp.downField("maxBlockBodySize").as[BigInt].leftMap(err("maxBlockBodySize", _))
       maxTx <- pp.downField("maxTxSize").as[BigInt].leftMap(err("maxTxSize", _))
       maxBH <- pp.downField("maxBlockHeaderSize").as[BigInt].leftMap(err("maxBlockHeaderSize", _))
@@ -99,15 +103,15 @@ object LiteLedger:
         .leftMap(err("genDelegs", _))
         .flatMap(_.getOrElse(Map.empty).toVector.traverse { case (g, m) =>
           for
-            gk <- Bytes.fromHex(g).leftMap(ConfigError(_))
+            gk <- Bytes.fromHex(g).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
             dk <- m
               .get("delegate")
-              .toRight(ConfigError("genDeleg delegate"))
-              .flatMap(Bytes.fromHex(_).leftMap(ConfigError(_)))
+              .toRight(ConfigError(ConfigProblem.MissingField("genDeleg", "delegate")))
+              .flatMap(Bytes.fromHex(_).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
             vk <- m
               .get("vrf")
-              .toRight(ConfigError("genDeleg vrf"))
-              .flatMap(Bytes.fromHex(_).leftMap(ConfigError(_)))
+              .toRight(ConfigError(ConfigProblem.MissingField("genDeleg", "vrf")))
+              .flatMap(Bytes.fromHex(_).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
           yield gk -> GenDelegPair(dk, vk)
         })
     yield LiteLedger(
@@ -124,7 +128,11 @@ object LiteLedger:
   /** Advance to the block's slot: every epoch boundary on the way, then genesis delegation adoption
     * for the slot.
     */
-  def tick(l: LiteLedger, slot: BigInt, geometry: EpochGeometry): Either[String, LiteLedger] =
+  def tick(
+      l: LiteLedger,
+      slot: BigInt,
+      geometry: EpochGeometry
+  ): Either[LedgerDecodeError, LiteLedger] =
     val epoch = geometry.epochOf(slot)
     for crossed <- (l.epoch + 1 to epoch).toVector.foldLeftM(l)(boundary)
     yield adopt(crossed, slot)
@@ -143,7 +151,7 @@ object LiteLedger:
   /** NEWPP/UPEC at the start of `epoch`: adopt the voted update, rotate proposals, drop pools
     * retired long enough ago.
     */
-  private def boundary(l: LiteLedger, epoch: BigInt): Either[String, LiteLedger] =
+  private def boundary(l: LiteLedger, epoch: BigInt): Either[LedgerDecodeError, LiteLedger] =
     for
       voted <- voted(l.curProposals, l.params, l.quorum)
       params = voted.getOrElse(l.params)
@@ -165,7 +173,7 @@ object LiteLedger:
       proposals: Map[Bytes, ParamUpdate],
       params: LiteParams,
       quorum: Int
-  ): Either[String, Option[LiteParams]] =
+  ): Either[LedgerDecodeError, Option[LiteParams]] =
     val winners = proposals.values.toVector
       .groupBy(identity)
       .collect {
@@ -179,23 +187,30 @@ object LiteLedger:
         )
       case _ => Right(None)
 
-  private def parseVersion(n: Node): Either[String, (BigInt, BigInt)] =
+  private def parseVersion(n: Node): Either[LedgerDecodeError, (BigInt, BigInt)] =
     CborRead
       .arrayN(n, 2, "protocol version")
       .flatMap(xs => (CborRead.uint(xs(0), "major"), CborRead.uint(xs(1), "minor")).tupled)
 
-  private def legalProtocolVersion(params: LiteParams, u: ParamUpdate): Either[String, Boolean] =
+  private def legalProtocolVersion(
+      params: LiteParams,
+      u: ParamUpdate
+  ): Either[LedgerDecodeError, Boolean] =
     u.fields.get(14) match
       case None => Right(true)
       case Some(raw) =>
-        Cbor.decode(raw).flatMap(parseVersion).map { (major, minor) =>
+        CborRead.decode(raw).flatMap(parseVersion).map { (major, minor) =>
           val (cm, cn) = params.protocolVersion
           (major == cm + 1 && minor == 0) || (major == cm && minor == cn + 1)
         }
 
-  def applyUpdate(params: LiteParams, u: ParamUpdate): Either[String, LiteParams] =
-    def field[A](key: Int, p: LiteParams, f: (LiteParams, Node) => Either[String, LiteParams]) =
-      u.fields.get(key).fold(Right(p))(raw => Cbor.decode(raw).flatMap(f(p, _)))
+  def applyUpdate(params: LiteParams, u: ParamUpdate): Either[LedgerDecodeError, LiteParams] =
+    def field[A](
+        key: Int,
+        p: LiteParams,
+        f: (LiteParams, Node) => Either[LedgerDecodeError, LiteParams]
+    ) =
+      u.fields.get(key).fold(Right(p))(raw => CborRead.decode(raw).flatMap(f(p, _)))
     for
       p1 <- field(
         2,
@@ -213,13 +228,16 @@ object LiteLedger:
       p6 <- field(14, p5, (p, n) => parseVersion(n).map(v => p.copy(protocolVersion = v)))
     yield p6
 
-  private def nonce(n: Node): Either[String, Nonce] =
+  private def nonce(n: Node): Either[LedgerDecodeError, Nonce] =
     CborRead.array(n, "nonce").flatMap { xs =>
-      xs.headOption.toRight("nonce: empty").flatMap(CborRead.uint(_, "nonce tag")).flatMap {
-        case t if t == 0                 => Right(Nonce.Neutral)
-        case t if t == 1 && xs.size == 2 => CborRead.bytesN(xs(1), 32, "nonce").map(Nonce.Hash(_))
-        case _                           => Left("nonce: malformed")
-      }
+      xs.headOption
+        .toRight(LedgerDecodeError.Empty("nonce"))
+        .flatMap(CborRead.uint(_, "nonce tag"))
+        .flatMap {
+          case t if t == 0                 => Right(Nonce.Neutral)
+          case t if t == 1 && xs.size == 2 => CborRead.bytesN(xs(1), 32, "nonce").map(Nonce.Hash(_))
+          case t => Left(LedgerDecodeError.TaggedArity("nonce", t, xs.size))
+        }
     }
 
   /** What a transaction does to the bootstrap ledger. */
@@ -232,19 +250,19 @@ object LiteLedger:
   private val bodyLimits = Cbor.Limits(2500000, 64, 1000000, 2500000)
 
   /** The effects of a transaction body. Update proposals (key 6) exist up to Babbage only. */
-  def effects(body: Bytes, era: Era): Either[String, Vector[Effect]] =
+  def effects(body: Bytes, era: Era): Either[LedgerDecodeError, Vector[Effect]] =
     for
-      root <- Cbor.decode(body, bodyLimits)
+      root <- CborRead.decode(body, bodyLimits)
       fields <- CborRead.fields(root, "transaction body")
       proposal <- fields.get(6).filter(_ => era.ordinal <= Era.Babbage.ordinal).traverse(proposal)
       certs <- fields.get(4).traverse(n => certificates(n).flatMap(_.flatTraverse(cert)))
     yield proposal.toVector ++ certs.getOrElse(Vector.empty)
 
-  private def certificates(n: Node): Either[String, Vector[Node]] = n.value match
+  private def certificates(n: Node): Either[LedgerDecodeError, Vector[Node]] = n.value match
     case Value.Tag(t, inner) if t == 258 => CborRead.array(inner, "certificates")
     case _                               => CborRead.array(n, "certificates")
 
-  private def proposal(n: Node): Either[String, Effect] =
+  private def proposal(n: Node): Either[LedgerDecodeError, Effect] =
     for
       xs <- CborRead.arrayN(n, 2, "update")
       kvs <- CborRead.map(xs(0), "proposed updates")
@@ -261,10 +279,10 @@ object LiteLedger:
       epoch <- CborRead.uint(xs(1), "update epoch")
     yield Effect.Proposal(updates.toMap, epoch)
 
-  private def cert(n: Node): Either[String, Vector[Effect]] =
+  private def cert(n: Node): Either[LedgerDecodeError, Vector[Effect]] =
     CborRead.array(n, "certificate").flatMap { xs =>
       xs.headOption
-        .toRight("certificate: empty")
+        .toRight(LedgerDecodeError.Empty("certificate"))
         .flatMap(CborRead.uint(_, "certificate tag"))
         .flatMap {
           case t if t == 3 && xs.size >= 3 =>
@@ -288,11 +306,11 @@ object LiteLedger:
       l: LiteLedger,
       block: Block.Shelley,
       geometry: EpochGeometry
-  ): Either[String, LiteLedger] =
+  ): Either[LedgerDecodeError, LiteLedger] =
     val slot = block.header.slot
     block.transactions.filter(_.isValid).foldLeftM(l) { (s, tx) =>
       effects(tx.body, block.era)
-        .leftMap(r => s"tx ${tx.id.hex.take(16)}: $r")
+        .leftMap(LedgerDecodeError.Transaction(tx.id, _))
         .flatMap(_.foldLeftM(s)(apply(_, _, slot, geometry)))
     }
 
@@ -301,20 +319,20 @@ object LiteLedger:
       e: Effect,
       slot: BigInt,
       geometry: EpochGeometry
-  ): Either[String, LiteLedger] = e match
+  ): Either[LedgerDecodeError, LiteLedger] = e match
     case Effect.Proposal(updates, target) =>
       val tooLate = geometry.firstSlot(l.epoch + 1) - 2 * geometry.stabilityWindow
       if slot < tooLate then
         Either.cond(
           target == l.epoch,
           l.copy(curProposals = l.curProposals ++ updates),
-          s"update proposal for epoch $target in epoch ${l.epoch}, before the point of no return"
+          LedgerDecodeError.ProposalEpochMismatch(target, l.epoch, true)
         )
       else
         Either.cond(
           target == l.epoch + 1,
           l.copy(futureProposals = l.futureProposals ++ updates),
-          s"update proposal for epoch $target in epoch ${l.epoch}, after the point of no return"
+          LedgerDecodeError.ProposalEpochMismatch(target, l.epoch, false)
         )
     case Effect.PoolRegistered(pool, vrf) =>
       Right(l.copy(pools = l.pools.updatedWith(pool) {

@@ -14,7 +14,7 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosNotify, LeiosWireError}
   * case, and both refuse the same malformed ones, including more than sixteen votes.
   */
 class LeiosNotifyCddlSuite extends munit.FunSuite:
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   private val vote: Vote =
     Vote

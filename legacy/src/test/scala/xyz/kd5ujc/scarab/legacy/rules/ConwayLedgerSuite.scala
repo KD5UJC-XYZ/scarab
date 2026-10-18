@@ -855,7 +855,9 @@ class ConwayLedgerSuite extends FunSuite:
   ):
     val plutus = Script.plutus(ScriptKind.PlutusV3, Bytes(Vector.fill(10)(7)))
     val scriptAddress =
-      node.Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+      node.Address
+        .decode(Bytes(0x70.toByte +: plutus.hash.value))
+        .fold(e => fail(e.toString), identity)
     val datum = Bytes(Vector(0x01))
     val locked = node
       .TxOut(scriptAddress, Value.coin(50 * ada))
@@ -1014,7 +1016,7 @@ class ConwayLedgerSuite extends FunSuite:
         case other                                     => fail(s"$what: expected a refusal: $other")
     val otherNetwork = node.Address
       .decode(Bytes(0x61.toByte +: alice.hash.value))
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.toString), identity)
     // a returned collateral output on another network, a collateral input that does not exist,
     // more collateral inputs than allowed (three), outputs that do not balance
     assertEquals(
@@ -1099,7 +1101,7 @@ class ConwayLedgerSuite extends FunSuite:
           ByronCbor.uint(ByronCbor.crc32(body))
         )
     def paying(raw: Bytes) =
-      val to = node.Address.decode(raw).fold(e => fail(e), identity)
+      val to = node.Address.decode(raw).fold(e => fail(e.toString), identity)
       tx(
         body(
           "byron",

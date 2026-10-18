@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.{Resource, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -62,13 +63,14 @@ final class RocksUtxoStore[F[_]: Sync] private (
   private val writeOptions = new WriteOptions().setDisableWAL(true)
 
   /** A failure of the database as a typed error: a checksum or format failure the library reports
-    * is damaged data ([[StorageError.Corrupt]]), anything else an I/O error ([[StorageError.Io]]).
+    * is damaged data ([[StorageError.Corrupt[?]]]), anything else an I/O error
+    * ([[StorageError.Io]]).
     */
   private def failure(what: String, e: Throwable): StorageError = e match
     case r: RocksDBException
         if r.getStatus != null && r.getStatus.getCode == Status.Code.Corruption =>
-      StorageError.Corrupt(what, String.valueOf(e))
-    case _ => StorageError.Io(what, String.valueOf(e))
+      StorageError.Corrupt(what, StorageStructureError.RocksFailure(e))
+    case _ => StorageError.Io(what, e)
 
   private def guard[A](what: String)(body: => A): F[A] =
     F.blocking(body).attempt.flatMap {
@@ -84,8 +86,8 @@ final class RocksUtxoStore[F[_]: Sync] private (
     }
 
   /** The error for the entry at `key` whose value does not decode, the same as a direct read's. */
-  private def corruptEntry(key: Array[Byte], reason: String): StorageError =
-    StorageError.Corrupt("utxo entry", s"${Coding.decodeKey(key).render}: $reason")
+  private def corruptEntry(key: Array[Byte], reason: Coding.ValueError): StorageError =
+    StorageError.Corrupt("utxo entry", Coding.EntryError(Coding.decodeKey(key), reason))
 
   /** One pass over every entry of the store, which either visits all of them or fails.
     *
@@ -107,7 +109,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
       val k = it.key()
       if k.length == RocksUtxoStore.KeyLength then stopped = entry(k, it)
       else if !(k.length == RocksUtxoStore.StampKeyLength && k(0) == 0) then
-        stopped = Some(StorageError.Corrupt("utxo key", s"a key of ${k.length} bytes"))
+        stopped = Some(StorageError.Corrupt("utxo key", StorageStructureError.KeyLength(k.length)))
       it.next()
     it.status()
     stopped.toLeft(())
@@ -126,7 +128,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
           .map { case ((in, key), v) => in -> (if v != null then v else db.get.get(key)) }
           .collect { case (in, v) if v != null => in -> v }
           .map { case (in, bytes) =>
-            Coding.decodeValue(bytes).bimap(e => s"${in.render}: $e", out => in -> out)
+            Coding.decodeValue(bytes).bimap(e => Coding.EntryError(in, e), out => in -> out)
           }
           .toVector
           .sequence
@@ -156,7 +158,7 @@ final class RocksUtxoStore[F[_]: Sync] private (
     val v = db.get.get(StampKey)
     if v == null then Right(-1L)
     else if v.length == 8 then Right(java.nio.ByteBuffer.wrap(v).getLong)
-    else Left(StorageError.Corrupt("utxo stamp", s"a value of ${v.length} bytes"))
+    else Left(StorageError.Corrupt("utxo stamp", StorageStructureError.StampLength(v.length)))
   }
 
   def all: F[Map[TxIn, TxOut]] = select(_ => true)
@@ -237,7 +239,9 @@ final class RocksUtxoStore[F[_]: Sync] private (
                   it.next()
                   next()
                 else if key.length != RocksUtxoStore.KeyLength then
-                  Left(StorageError.Corrupt("utxo key", s"a key of ${key.length} bytes"))
+                  Left(
+                    StorageError.Corrupt("utxo key", StorageStructureError.KeyLength(key.length))
+                  )
                 else
                   val value = Coding.decodeValue(it.value()).left.map(corruptEntry(key, _))
                   it.next()
@@ -489,6 +493,6 @@ object RocksUtxoStore:
           case Right((shared, ref)) =>
             Sync[F].pure(new RocksUtxoStore[F](dir.toNioPath, shared, ref))
           case Left(e) =>
-            StorageError.Io(dir.toString, String.valueOf(e)).raise[F, RocksUtxoStore[F]]
+            StorageError.Io(dir.toString, e).raise[F, RocksUtxoStore[F]]
         }
     )(s => Sync[F].blocking(s.close()))

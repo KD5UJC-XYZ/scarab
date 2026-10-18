@@ -42,7 +42,7 @@ class QueryVersionSuite extends FunSuite:
   }
 
   test("legacy pool and ledger-peer query constructors retain their exact Haskell shapes") {
-    def hex(s: String) = Bytes.fromHex(s).fold(fail(_), identity)
+    def hex(s: String) = Bytes.fromHex(s).fold(e => fail(e.message), identity)
     val pools = hex("820082008206821580") // QueryIfCurrent Conway (GetPoolDistr Nothing)
     assertEquals(NtcQuery.decode(pools, V20), Right(query(GetPoolDistr(None))))
     assertEquals(NtcQuery.decode(pools, V21), Left(NtcQuery.Error.UnsupportedVersion(V21)))
@@ -98,7 +98,7 @@ class QueryVersionSuite extends FunSuite:
     def array(n: Node): Vector[Node] = n.value match
       case Value.Arr(xs) => xs
       case _             => fail("not an array")
-    def fields(b: Bytes) = array(Cbor.decode(b).fold(fail(_), identity))
+    def fields(b: Bytes) = array(Cbor.decode(b).fold(e => fail(e.message), identity))
     val before = fields(old)
     val after = fields(current)
     assertEquals(before.size, 15)
@@ -146,7 +146,7 @@ class QueryVersionSuite extends FunSuite:
     val current = QueryAnswers
       .answerOrWhy(NtcGolden.queryEnv, view, Map.empty, query(GetPoolDistr2(None)), V21)
       .fold(e => fail(e.toString), identity)
-    def parsed(b: Bytes) = Cbor.decode(b).fold(fail(_), identity)
+    def parsed(b: Bytes) = Cbor.decode(b).fold(e => fail(e.message), identity)
     def array(n: Node): Vector[Node] = n.value match
       case Value.Arr(xs) => xs
       case _             => fail("expected array")

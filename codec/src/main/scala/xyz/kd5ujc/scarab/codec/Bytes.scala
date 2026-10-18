@@ -173,12 +173,18 @@ object Bytes:
   def wrap(bytes: Array[Byte], from: Int, length: Int): Bytes =
     if length == 0 then empty else new Bytes(bytes, from, length)
 
-  def fromHex(hex: String): Either[String, Bytes] =
-    if hex.length % 2 != 0 then Left("hex must have an even number of characters")
-    else if !hex.forall(c =>
-        (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-      )
-    then Left("invalid hex character")
+  enum HexError:
+    case OddLength(length: Int)
+    case InvalidCharacter(index: Int, character: Char)
+    def message: String = this match
+      case OddLength(length) => s"hex must have an even number of characters (got $length)"
+      case InvalidCharacter(index, character) => s"invalid hex character '$character' at $index"
+
+  def fromHex(hex: String): Either[HexError, Bytes] =
+    if hex.length % 2 != 0 then Left(HexError.OddLength(hex.length))
+    else if hex.exists(c => Character.digit(c, 16) < 0 || c > 127) then
+      val index = hex.indexWhere(c => Character.digit(c, 16) < 0 || c > 127)
+      Left(HexError.InvalidCharacter(index, hex.charAt(index)))
     else
       val out = new Array[Byte](hex.length / 2)
       var i = 0

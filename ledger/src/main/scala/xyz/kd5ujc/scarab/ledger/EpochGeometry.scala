@@ -100,11 +100,14 @@ object EpochGeometry:
   ): Either[ConfigError, EpochGeometry] =
     val g =
       EpochGeometry(systemStart, slotLengthMillis, epochLength, securityParam, activeSlotsCoeff)
-    if slotLengthMillis <= 0 then Left(ConfigError("slot length must be positive"))
-    else if epochLength <= 0 then Left(ConfigError("epoch length must be positive"))
-    else if securityParam <= 0 then Left(ConfigError("security parameter must be positive"))
+    if slotLengthMillis <= 0 then
+      Left(ConfigError(ConfigProblem.NonPositive("slot length", BigDecimal(slotLengthMillis))))
+    else if epochLength <= 0 then
+      Left(ConfigError(ConfigProblem.NonPositive("epoch length", BigDecimal(epochLength))))
+    else if securityParam <= 0 then
+      Left(ConfigError(ConfigProblem.NonPositive("security parameter", BigDecimal(securityParam))))
     else if activeSlotsCoeff <= 0 || activeSlotsCoeff > 1 then
-      Left(ConfigError("active slot coefficient must be in (0, 1]"))
+      Left(ConfigError(ConfigProblem.ActiveSlotRange(activeSlotsCoeff)))
     else if g.randomnessStabilisationWindow >= epochLength then
-      Left(ConfigError("epoch shorter than the randomness stabilisation window (4k/f)"))
+      Left(ConfigError(ConfigProblem.EpochTooShort(epochLength, g.randomnessStabilisationWindow)))
     else Right(g)

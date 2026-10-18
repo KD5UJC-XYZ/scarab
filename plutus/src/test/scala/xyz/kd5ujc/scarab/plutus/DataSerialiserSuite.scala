@@ -21,7 +21,7 @@ class DataSerialiserSuite extends ScalaCheckSuite:
   private def hex(h: String): Bytes = Bytes.fromHex(h).toOption.get
 
   private def decode(b: Bytes): PlutusData =
-    PlutusData.decode(b).fold(e => fail(e), identity)
+    PlutusData.decode(b).fold(e => fail(e.toString), identity)
 
   private val chainDatums = Vector(
     // outputs of preprod 2edd684f: constructor indices 2^64 - 1, 1313480702 and 2025506762 in
@@ -158,7 +158,7 @@ class DataSerialiserSuite extends ScalaCheckSuite:
              |    (delay (con unit ()))
              |    (delay (error)) ]))""".stripMargin
         )
-        .fold(sys.error, identity)
+        .fold(e => sys.error(e.toString), identity)
       ScalusEvaluator.pure.evaluate(
         EvalRequest(
           PlutusLanguage.V2,

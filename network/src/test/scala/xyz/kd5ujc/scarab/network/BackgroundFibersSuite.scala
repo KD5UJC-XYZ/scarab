@@ -20,7 +20,11 @@ class BackgroundFibersSuite extends FailsOnUncaught:
       escaped <- cats.effect.Deferred[IO, cats.mtl.Raise[IO, NetworkError]]
       _ <- cats.mtl.Handle.allow[NetworkError](escaped.complete(summon).void).rescue(_ => IO.unit)
       raise <- escaped.get
-      _ <- raise.raise[NetworkError.BearerClosed, Unit](NetworkError.BearerClosed("late")).start
+      _ <- raise
+        .raise[NetworkError.BearerClosed, Unit](
+          NetworkError.BearerClosed(NetworkError.Closure.Aborted)
+        )
+        .start
       _ <- IO.sleep(300.millis)
       seen = takeUncaught()
     yield
@@ -38,7 +42,7 @@ class BackgroundFibersSuite extends FailsOnUncaught:
             .pinger(k, client, KeepAliveClient.Settings(responseTimeout = 30.seconds))
             .start
           _ <- IO.sleep(200.millis)
-          _ <- client.abort(NetworkError.BearerClosed("connection lost"))
+          _ <- client.abort(NetworkError.BearerClosed(NetworkError.Closure.Aborted))
           outcome <- pinger.join
         yield outcome
       }

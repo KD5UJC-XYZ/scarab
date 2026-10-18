@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** BlockFetch server: answers inclusive range requests from a [[BlockFetchServer.Blocks]] source,
   * one request at a time (a client that pipelines is served in order).
   */
@@ -38,7 +40,8 @@ object BlockFetchServer:
     val id = Protocols.BlockFetch
     val codec = CardanoBlockFetch.payloadCodec()
     type Msg = BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: BlockFetch.State, message: Msg): F[Unit] =
       BlockFetch
@@ -84,6 +87,6 @@ object BlockFetchServer:
                     send(BlockFetch.State.Streaming, BlockFetch.Message.BatchDone).as(true)
               }
             }
-          case other => illegal(s"unexpected client message $other")
+          case other => illegal(RuntimeViolation.BlockFetchUnexpected(other))
         }
     step.iterateWhile(identity).void

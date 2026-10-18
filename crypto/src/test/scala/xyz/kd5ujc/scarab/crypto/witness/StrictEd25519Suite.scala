@@ -169,10 +169,9 @@ class StrictEd25519Suite extends munit.FunSuite:
     val v = vector("sodium-valid-0")
     // Deliberate programming misuse, not an adversarial byte-input conformance case.
     val result = StrictEd25519.verifyEd25519(null, v.witness.signature, v.message)
-    assertEquals(
-      result,
-      Left(VerificationError.ImplementationFailure("java.lang.NullPointerException"))
-    )
+    result match
+      case Left(VerificationError.ImplementationFailure(_: NullPointerException)) => ()
+      case other => fail(s"expected retained programming defect, got $other")
   }
 
   /** The verification equation as two separate multiplications, as the verifier was written before

@@ -22,7 +22,7 @@ class LeiosBlockSuite extends munit.FunSuite:
       .filterNot(l => l.startsWith("#") || l.isEmpty)
       .map(_.split('\t'))
 
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
 
   /** Headers by label: the envelope is unwrapped to the raw header. */
   private val headers: Map[String, (String, Bytes)] =
@@ -84,7 +84,7 @@ class LeiosBlockSuite extends munit.FunSuite:
   test("a header of the Conway layout is not a Leios header, and a truncated one is refused") {
     val conway = Bytes
       .fromHex(Files.readAllLines(Path.of("fixtures", "preview", "conway.hex")).get(0).trim)
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.toString), identity)
     val ten = conwayHeader(conway)
     assert(Header.fromRaw(Era.Conway, ten).isRight)
     assert(LeiosHeader.decode(ten).isLeft)
@@ -94,7 +94,10 @@ class LeiosBlockSuite extends munit.FunSuite:
 
   private def conwayHeader(block: Bytes): Bytes =
     import xyz.kd5ujc.scarab.codec.{Cbor, Value}
-    val root = Cbor.decode(block, Cbor.Limits(2500000, 2048, 1000000, 2500000)).toOption.get
+    val root = CborRead
+      .decode(block, Cbor.Limits(2500000, 2048, 1000000, 2500000))
+      .toOption
+      .get
     val Value.Arr(Vector(_, body)) = root.value: @unchecked
     val Value.Arr(parts) = body.value: @unchecked
     parts.head.original
@@ -188,7 +191,10 @@ class LeiosBlockSuite extends munit.FunSuite:
     val raw = blocks("dijkstra-certificate")._2
     // tag 8 -> 9
     val otherTag = raw.take(1) ++ Bytes(Vector(0x09.toByte)) ++ raw.drop(2)
-    assert(LeiosBlock.decode(otherTag).left.exists(_.message.contains("block tag")))
+    assert(LeiosBlock.decode(otherTag).left.exists {
+      case ChainError.Decode(_, LedgerDecodeError.UnknownTag("Leios block tag", _)) => true
+      case _                                                                        => false
+    })
     (1 until raw.size by 13).foreach(n => assert(LeiosBlock.decode(raw.take(n)).isLeft, s"$n"))
   }
 end LeiosBlockSuite

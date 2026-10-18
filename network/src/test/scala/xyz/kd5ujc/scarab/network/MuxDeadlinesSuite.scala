@@ -50,7 +50,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
         read(Stream.sleep_[IO](90.seconds) ++ bytes(frame(1)))
       )
       .map { (reason, elapsed, released) =>
-        assertEquals(reason, NetworkError.BearerClosed("closed by peer"))
+        assertEquals(reason, NetworkError.BearerClosed(NetworkError.Closure.PeerClosed))
         assertEquals(elapsed, 90.seconds)
         assert(released)
       }
@@ -181,7 +181,7 @@ class MuxDeadlinesSuite extends FailsOnUncaught:
             result <- read(input)
             worker <- thread.get
           yield
-            assertEquals(result._1, NetworkError.BearerClosed("closed by peer"))
+            assertEquals(result._1, NetworkError.BearerClosed(NetworkError.Closure.PeerClosed))
             assert(result._3)
             assertEquals(worker, "mux-small-stack"))
           .evalOn(executor)

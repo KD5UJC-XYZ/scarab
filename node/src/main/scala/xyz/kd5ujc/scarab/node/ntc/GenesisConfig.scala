@@ -22,16 +22,16 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
   */
 object GenesisConfig:
   enum Error:
-    case InvalidField(field: String, detail: String)
-    case InvalidHex(field: String, detail: String)
+    case InvalidField(field: String, cause: io.circe.DecodingFailure)
+    case InvalidHex(field: String, cause: Bytes.HexError)
     case InvalidDecimal(field: String)
-    case InvalidSystemStart(value: String)
+    case InvalidSystemStart(value: String, cause: Throwable)
 
     def message: String = this match
-      case InvalidField(field, detail) => s"genesis $field: $detail"
-      case InvalidHex(field, detail)   => s"genesis $field: $detail"
-      case InvalidDecimal(field)       => s"genesis $field"
-      case InvalidSystemStart(value)   => s"systemStart $value"
+      case InvalidField(field, detail)  => s"genesis $field: $detail"
+      case InvalidHex(field, detail)    => s"genesis $field: $detail"
+      case InvalidDecimal(field)        => s"genesis $field"
+      case InvalidSystemStart(value, _) => s"systemStart $value"
 
   private type R[A] = Either[Error, A]
 
@@ -50,7 +50,7 @@ object GenesisConfig:
   )
 
   private def get[A: io.circe.Decoder](c: ACursor, name: String): R[A] =
-    c.downField(name).as[A].leftMap(e => Error.InvalidField(name, e.message))
+    c.downField(name).as[A].leftMap(e => Error.InvalidField(name, e))
 
   private def hex(c: ACursor, name: String): R[Bytes] =
     get[String](c, name).flatMap(s => Bytes.fromHex(s).leftMap(Error.InvalidHex(name, _)))
@@ -67,7 +67,7 @@ object GenesisConfig:
     val p = c.downField("protocolParams")
     for
       start <- get[String](c, "systemStart").flatMap(s =>
-        Either.catchNonFatal(Instant.parse(s)).leftMap(_ => Error.InvalidSystemStart(s))
+        Either.catchNonFatal(Instant.parse(s)).leftMap(e => Error.InvalidSystemStart(s, e))
       )
       magic <- get[BigInt](c, "networkMagic")
       network <- get[String](c, "networkId")
@@ -82,7 +82,7 @@ object GenesisConfig:
       delegates <- c
         .downField("genDelegs")
         .as[Option[Map[String, Json]]]
-        .leftMap(e => Error.InvalidField("genDelegs", e.message))
+        .leftMap(e => Error.InvalidField("genDelegs", e))
         .flatMap(
           _.getOrElse(Map.empty).toVector.traverse { case (g, j) =>
             for
@@ -131,7 +131,7 @@ object GenesisConfig:
         .downField("extraEntropy")
         .downField("tag")
         .as[Option[String]]
-        .leftMap(e => Error.InvalidField("extraEntropy", e.message))
+        .leftMap(e => Error.InvalidField("extraEntropy", e))
         .flatMap {
           case None | Some("NeutralNonce") => Right(None)
           case Some(_) => hex(p.downField("extraEntropy"), "contents").map(Some(_))

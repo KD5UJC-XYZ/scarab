@@ -145,7 +145,7 @@ object MirrorRules:
         else "block"
 
   private def mirror(error: StateMirrorError): BlockFailure =
-    BlockFailure.Mirror(summon[cats.Show[StateMirrorError]].show(error))
+    BlockFailure.Mirror(error)
 
   /** The state of a Shelley-based block's chain before it: the new-epoch state of whichever era the
     * chain is in (the Byron hand-over's state for the first Shelley block), the chain-dependent
@@ -171,7 +171,7 @@ object MirrorRules:
       case NodeRules.Entry.Entering(first, ledger, _, _) =>
         for
           context <- handOver.toRight(
-            BlockFailure.Handover("the Shelley genesis gives no hand-over context")
+            BlockFailure.Handover(xyz.kd5ujc.scarab.ledger.HandoverProblem.MissingShelleyContext)
           )
           epoch <- EpochNo.fromBigInt(first).leftMap(v => BlockFailure.Tick(TickFailure.Vocab(v)))
           nes <- Handover.toShelley(context, epoch, ledger.utxo).leftMap(BlockFailure.Tick(_))
@@ -188,7 +188,9 @@ object MirrorRules:
       case NodeRules.Entry.Within(_, _) =>
         MirrorStep
           .nesOf(state)
-          .toRight(BlockFailure.Handover("a Byron state, and no Byron rules to leave it"))
+          .toRight(
+            BlockFailure.Handover(xyz.kd5ujc.scarab.ledger.HandoverProblem.MissingByronRules)
+          )
           .map(nes => Pre(nes, state.protocol, state.consensus, state.plutus, false))
 
   /** The state after `header` and its block, or why it is refused: a Byron block by the Byron

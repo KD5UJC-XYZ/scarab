@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -10,15 +11,17 @@ import xyz.kd5ujc.scarab.protocol.LocalTxSubmission
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** Node-to-client transaction submission. Replies distinguish admission from a ledger rejection and
   * from service unavailability, which closes the connection without a consensus verdict.
   */
 object LocalTxSubmissionServer:
   enum Unavailable:
-    case ScriptEvaluation(diagnostic: String)
+    case ScriptEvaluation[E <: DomainError](cause: E)
 
     def message: String = this match
-      case ScriptEvaluation(diagnostic) => s"script evaluation unavailable: $diagnostic"
+      case ScriptEvaluation(cause) => s"script evaluation unavailable: $cause"
 
   enum Response:
     case Accepted
@@ -43,7 +46,8 @@ object LocalTxSubmissionServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Option[Unavailable]] =
     val id = Protocols.LocalTxSubmission
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: LocalTxSubmission.State, message: LocalTxSubmission.Message): F[Unit] =
       LocalTxSubmission.encode(state, Role.Server, message).fold(illegal, channel.send)
     val step: F[Either[Unit, Option[Unavailable]]] =
@@ -64,7 +68,7 @@ object LocalTxSubmissionServer:
               case Response.ServiceUnavailable(error) => Temporal[F].pure(Right(Some(error)))
             }
           case LocalTxSubmission.Message.Done => Temporal[F].pure(Right(None))
-          case other                          => illegal(s"unexpected client message $other")
+          case other => illegal(RuntimeViolation.LocalTxSubmissionUnexpected(other))
         }
     Temporal[F].tailRecM(())(_ => step)
 

@@ -26,6 +26,26 @@ trait HeaderRules[S, H]:
   def validate(anchor: S, tip: Option[BlockRef], prev: H, header: Header): HeaderRules.Outcome[H]
 
 object HeaderRules:
+  enum ForecastReason:
+    case ShelleyLedgerNotReady
+    case Horizon(slot: BigInt, tipSlot: BigInt)
+    case ParentStateUnknown
+    def message: String = this match
+      case ShelleyLedgerNotReady =>
+        "the Shelley ledger exists once the first Shelley block is applied"
+      case Horizon(slot, tip) =>
+        s"slot $slot is beyond the forecast horizon of the ledger at slot $tip"
+      case ParentStateUnknown => "the parent's header state is not known yet"
+  enum UncheckedReason:
+    case Byron, FirstShelley, ParentInBatch, NoCommonLedger
+    case ForecastFallback(cause: ForecastReason)
+    def message: String = this match
+      case Byron          => "Byron header: validated with its block"
+      case FirstShelley   => "first Shelley block after the Byron era: validated with its block"
+      case ParentInBatch  => "the parent is in the same batch and was not validated header-first"
+      case NoCommonLedger => "no common ledger state"
+      case ForecastFallback(cause) =>
+        s"not validated header-first, nothing left to wait for: ${cause.message}"
   enum Outcome[+H]:
     /** Every header rule holds; the header state after the header. */
     case Valid(next: H)
@@ -34,7 +54,7 @@ object HeaderRules:
       * header of a chain with a Byron prefix): its block's own validation is the only check. The
       * header state after it, when it is still known.
       */
-    case Unchecked(reason: String, next: Option[H])
+    case Unchecked(reason: UncheckedReason, next: Option[H])
 
     /** A rule is violated. */
     case Invalid(error: HeaderError)
@@ -42,7 +62,7 @@ object HeaderRules:
     /** The ledger view of the header's slot cannot be forecast from this anchor yet: ask again once
       * the node's chain has advanced.
       */
-    case Later(reason: String)
+    case Later(reason: ForecastReason)
 
 /** The candidate chain of one peer as header validation sees it: the point where it joined ours,
   * the header state there and every header announced since with the state after it (`None` where
@@ -81,11 +101,11 @@ final case class HeaderChain[H](
     header.prevHash == tipHash || (base == ChainSync.Point.Origin && entries.isEmpty)
 
   /** Append a header that extends the tip. */
-  def extend(header: Header, state: Option[H]): Either[String, HeaderChain[H]] =
+  def extend(header: Header, state: Option[H]): Either[HeaderChain.Error, HeaderChain[H]] =
     Either.cond(
       canExtend(header),
       copy(entries = entries :+ HeaderChain.Entry(header, state)),
-      s"header ${header.hash.hex.take(16)} does not extend the candidate chain"
+      HeaderChain.Error.DoesNotExtend(header.hash, tipPoint)
     )
 
   /** The chain as it was at `point` (the base or one of the headers), if the chain passes there. */
@@ -103,6 +123,11 @@ final case class HeaderChain[H](
       copy(base = dropped.last.header.point, baseState = dropped.last.state, entries = kept)
 
 object HeaderChain:
+  enum Error:
+    case DoesNotExtend(header: Bytes, tip: ChainSync.Point)
+    def message: String = this match
+      case DoesNotExtend(h, _) => s"header ${h.hex.take(16)} does not extend the candidate chain"
+
   final case class Entry[H](header: Header, state: Option[H])
 
   def at[H](base: ChainSync.Point, state: Option[H]): HeaderChain[H] =

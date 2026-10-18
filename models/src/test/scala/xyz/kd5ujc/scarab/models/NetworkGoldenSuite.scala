@@ -77,7 +77,7 @@ class NetworkGoldenSuite extends munit.FunSuite:
   private def normHand(bytes: Bytes): Norm =
     val suite = Handshake.Suite.NodeToNode
     def dataOf(v: Int, t: Handshake.Term) =
-      Handshake.decodeData(suite, v, t).fold(e => fail(e), identity)
+      Handshake.decodeData(suite, v, t).fold(e => fail(e.message), identity)
     Handshake
       .decode(suite, Handshake.State.Confirm, bytes)
       .fold(e => fail(e.message), identity) match
@@ -119,20 +119,22 @@ class NetworkGoldenSuite extends munit.FunSuite:
       15 -> Handshake.Data(764824073, initiatorOnly = false, peerSharing = true, query = false),
       16 -> Handshake.Data(1, initiatorOnly = true, peerSharing = false, query = true, peras = true)
     )
-    val propose = Handshake.proposal(suite, offers).fold(e => fail(e), identity)
-    checkHandshake(Handshake.encode(suite, propose).fold(e => fail(e), identity))
+    val propose = Handshake.proposal(suite, offers).fold(e => fail(e.message), identity)
+    checkHandshake(Handshake.encode(suite, propose).fold(e => fail(e.message), identity))
     val local = Handshake.proposal(suite, offers).toOption.get
     val Handshake.Message.Propose(vs) = local: @unchecked
     checkHandshake(
-      Handshake.encode(suite, Handshake.Message.QueryReply(vs)).fold(e => fail(e), identity)
+      Handshake.encode(suite, Handshake.Message.QueryReply(vs)).fold(e => fail(e.message), identity)
     )
     val accept = Handshake.Message.Accept(
       16,
-      Handshake.dataTerm(suite, 16, Handshake.Data(1, peras = true)).fold(e => fail(e), identity)
+      Handshake
+        .dataTerm(suite, 16, Handshake.Data(1, peras = true))
+        .fold(e => fail(e.message), identity)
     )
-    checkHandshake(Handshake.encode(suite, accept).fold(e => fail(e), identity))
+    checkHandshake(Handshake.encode(suite, accept).fold(e => fail(e.message), identity))
     val decodeError = Handshake.Message.Refuse(Handshake.Reason.DecodeError(14, "bad data"))
-    checkHandshake(Handshake.encode(suite, decodeError).fold(e => fail(e), identity))
+    checkHandshake(Handshake.encode(suite, decodeError).fold(e => fail(e.message), identity))
   }
 
   test("handshake: an unknown version number is a typed error naming the version and its place") {
@@ -153,7 +155,7 @@ class NetworkGoldenSuite extends munit.FunSuite:
     conwayBlocks.map(b => NtNHeader(Era.Conway, Fixtures.headerBytes(b), None))
 
   private def handBytes(state: State, sender: Role, msg: ChainSync.Message[NtNHeader]): Bytes =
-    ChainSync.encode(state, sender, msg, NtNHeader.codec).fold(e => fail(e), identity)
+    ChainSync.encode(state, sender, msg, NtNHeader.codec).fold(e => fail(e.message), identity)
 
   private def point(slot: BigInt, hash: Bytes): HandPoint =
     HandPoint.Block(UInt64.saturating(slot), hash)

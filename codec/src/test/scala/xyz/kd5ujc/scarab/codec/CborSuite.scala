@@ -2,16 +2,16 @@
 package xyz.kd5ujc.scarab.codec
 
 class CborSuite extends munit.FunSuite:
-  def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  def decoded(hex: String): Node = Cbor.decode(bytes(hex)).fold(fail(_), identity)
-  def encoded(value: Value): String = Cbor.encode(value).fold(fail(_), _.hex)
+  def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
+  def decoded(hex: String): Node = Cbor.decode(bytes(hex)).fold(e => fail(e.toString), identity)
+  def encoded(value: Value): String = Cbor.encode(value).fold(e => fail(e.toString), _.hex)
   def n(value: Value): Node = Node(value, Bytes.empty)
 
   test("bytes validate strict hex and isolate mutable arrays") {
     assertEquals(bytes("aB00").hex, "ab00")
-    assert(Bytes.fromHex("0").isLeft)
-    assert(Bytes.fromHex(" 0").isLeft)
-    assert(Bytes.fromHex("zz").isLeft)
+    assertEquals(Bytes.fromHex("0"), Left(Bytes.HexError.OddLength(1)))
+    assertEquals(Bytes.fromHex(" 0"), Left(Bytes.HexError.InvalidCharacter(0, ' ')))
+    assertEquals(Bytes.fromHex("zz"), Left(Bytes.HexError.InvalidCharacter(0, 'z')))
     val a = Array[Byte](1, 2)
     val b = Bytes.fromArray(a)
     a(0) = 9
@@ -25,9 +25,9 @@ class CborSuite extends munit.FunSuite:
     assertEquals(decoded("3bffffffffffffffff").value, Value.NInt(-max - 1))
     assertEquals(encoded(Value.UInt(max)), "1bffffffffffffffff")
     assertEquals(encoded(Value.NInt(-max - 1)), "3bffffffffffffffff")
-    assert(Cbor.encode(Value.UInt(max + 1)).isLeft)
-    assert(Cbor.encode(Value.UInt(-1)).isLeft)
-    assert(Cbor.encode(Value.NInt(0)).isLeft)
+    assertEquals(Cbor.encode(Value.UInt(max + 1)), Left(Cbor.Error.ArgumentOutOfRange(max + 1)))
+    assertEquals(Cbor.encode(Value.UInt(-1)), Left(Cbor.Error.ArgumentOutOfRange(-1)))
+    assertEquals(Cbor.encode(Value.NInt(0)), Left(Cbor.Error.NonNegativeNInt(0)))
     assert(Cbor.encode(Value.NInt(-max - 2)).isLeft)
   }
   test("shortest integer widths at boundaries") {
@@ -155,7 +155,7 @@ class CborSuite extends munit.FunSuite:
   }
   test("wire bytes are independent of source and exported arrays") {
     val input = Array[Byte](0x81.toByte, 0x18.toByte, 0x01.toByte)
-    val result = Cbor.decode(Bytes.fromArray(input)).fold(fail(_), identity)
+    val result = Cbor.decode(Bytes.fromArray(input)).fold(e => fail(e.toString), identity)
     input(2) = 9
     val exported = result.original.toArray
     exported(2) = 7
@@ -193,7 +193,7 @@ class CborSuite extends munit.FunSuite:
     val outcome = onSmallStack(
       Cbor.decode(nested, Wide).flatMap(node => Cbor.encode(node.value).map(node -> _))
     )
-    val (node, again) = outcome.fold(fail(_), identity)
+    val (node, again) = outcome.fold(e => fail(e.toString), identity)
     assertEquals(node.original, nested)
     assertEquals(again, nested)
   }
@@ -202,7 +202,7 @@ class CborSuite extends munit.FunSuite:
     val nested = bytes(repeat("81", 5000) + "00")
     assertEquals(
       Cbor.decode(nested, Wide.copy(maxDepth = 4000)),
-      Left("depth limit exceeded")
+      Left(Cbor.Error.DepthLimitExceeded)
     )
     assert(Cbor.decode(nested, Wide.copy(maxDepth = 5000)).isRight)
   }
@@ -238,13 +238,13 @@ class CborSuite extends munit.FunSuite:
       val (text, definiteOnly) = nesting(random, levels)
       val wire = bytes(text)
       onSmallStack {
-        val node = Cbor.decode(wire, Wide).fold(fail(_), identity)
+        val node = Cbor.decode(wire, Wide).fold(e => fail(e.toString), identity)
         assertEquals(node.original, wire)
-        val once = Cbor.encode(node.value).fold(fail(_), identity)
+        val once = Cbor.encode(node.value).fold(e => fail(e.toString), identity)
         if definiteOnly then
           // shortest widths: only a non-shortest input differs; this generator writes shortest
           assertEquals(once, wire)
-        val reread = Cbor.decode(once, Wide).fold(fail(_), identity)
+        val reread = Cbor.decode(once, Wide).fold(e => fail(e.toString), identity)
         assertEquals(reread.original, once)
         assertEquals(Cbor.encode(reread.value), Right(once))
       }
@@ -255,7 +255,7 @@ class CborSuite extends munit.FunSuite:
     onSmallStack {
       assertEquals(
         Cbor.decode(bytes(repeat("9f", 20000) + "bf00ff" + repeat("ff", 20000)), Wide),
-        Left("map has an unmatched key")
+        Left(Cbor.Error.UnmatchedMapKey)
       )
       assert(Cbor.decode(bytes(repeat("c1", 50000)), Wide).isLeft)
       assert(Cbor.decode(bytes(repeat("81", 50000) + "00" + "00"), Wide).isLeft)
@@ -264,21 +264,21 @@ class CborSuite extends munit.FunSuite:
   }
 
   test("a few bytes that claim huge lengths fail at once, without allocating for the claim") {
-    def timed(hex: String, limits: Cbor.Limits = Cbor.Limits()): Either[String, Node] =
+    def timed(hex: String, limits: Cbor.Limits = Cbor.Limits()): Either[Cbor.Error, Node] =
       val started = System.nanoTime()
       val result = Cbor.decode(bytes(hex), limits)
       assert((System.nanoTime() - started) / 1000000 < 500)
       result
     // arrays and maps claiming 2^64 - 1, 2^32 - 1 and 90,000 elements in at most 10 bytes
-    assertEquals(timed("9bffffffffffffffff"), Left("item limit exceeded"))
-    assertEquals(timed("ba7fffffff"), Left("map pair limit exceeded"))
-    assertEquals(timed("9a00015f90" + "00"), Left("unexpected end of input"))
-    assertEquals(timed("9a00015f90", Wide), Left("unexpected end of input"))
-    assertEquals(timed("5bffffffffffffffff"), Left("string byte limit exceeded"))
-    assertEquals(timed("7a7fffffff" + "00"), Left("string byte limit exceeded"))
-    assertEquals(timed("5a000fffff00"), Left("truncated string payload"))
+    assertEquals(timed("9bffffffffffffffff"), Left(Cbor.Error.ItemLimitExceeded))
+    assertEquals(timed("ba7fffffff"), Left(Cbor.Error.MapPairLimitExceeded))
+    assertEquals(timed("9a00015f90" + "00"), Left(Cbor.Error.UnexpectedEnd))
+    assertEquals(timed("9a00015f90", Wide), Left(Cbor.Error.UnexpectedEnd))
+    assertEquals(timed("5bffffffffffffffff"), Left(Cbor.Error.StringLimitExceeded))
+    assertEquals(timed("7a7fffffff" + "00"), Left(Cbor.Error.StringLimitExceeded))
+    assertEquals(timed("5a000fffff00"), Left(Cbor.Error.TruncatedString))
     // nested claims: each level asks for the whole remaining budget
-    assertEquals(timed("9a0001869f" * 2), Left("item limit exceeded"))
+    assertEquals(timed("9a0001869f" * 2), Left(Cbor.Error.ItemLimitExceeded))
   }
 
   test("regression (fuzz K3): the guard that turns a stack overflow into an error value") {
@@ -290,7 +290,7 @@ class CborSuite extends munit.FunSuite:
 
   private val Floats = Cbor.Limits(allowFloats = true)
   private def floatDecoded(hex: String): Value =
-    Cbor.decode(bytes(hex), Floats).fold(fail(_), _.value)
+    Cbor.decode(bytes(hex), Floats).fold(e => fail(e.toString), _.value)
 
   test("floats are refused by default and read in all three widths when allowed") {
     // RFC 8949 appendix A: 1.0 and 1.5 as halves, 100000.0 as a single, 1.1 as a double

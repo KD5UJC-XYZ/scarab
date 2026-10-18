@@ -84,7 +84,9 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               anchor: Anchor[BigInt]
           ) =
             if breakStorage.contains(block.blockNo.toInt) then
-              node.raise[NodeError, Unit](StorageError.Io("volatile", "disk full"))
+              node.raise[NodeError, Unit](
+                StorageError.Io("volatile", new java.io.IOException("disk full"))
+              )
             else stored.update(_ :+ block)
           def rolledBack(to: ChainSync.Point) = IO.unit
         rules: BlockRules[IO, BigInt] = (_, header, _) =>
@@ -99,7 +101,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     Bytes.empty,
                     ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                     EvalFailure
-                      .Unsupported("injected implementation limit")
+                      .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.BinaryDstUnavailable)
                   )
                 )
               )
@@ -212,10 +214,16 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       broken <- session(script =
         List(
           Right(SyncEvent.RollForward(headers(0), tip)),
-          Left(PeerError.Protocol("a message the protocol does not allow"))
+          Left(
+            PeerError.Protocol(
+              xyz.kd5ujc.scarab.protocol.ProtocolError.UnknownTagOrWrongExactOuterArity
+            )
+          )
         )
       )
-      lost <- session(script = List(Left(PeerError.Unavailable("timed out"))))
+      lost <- session(script =
+        List(Left(PeerError.Unavailable(PeerError.Unavailability.SessionEnded)))
+      )
     yield
       assertEquals(FailurePolicy.disposition(broken.end), Disposition.Forget)
       assertEquals(FailurePolicy.disposition(lost.end), Disposition.Backoff)

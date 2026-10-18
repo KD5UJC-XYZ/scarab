@@ -8,6 +8,8 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.protocol.KeepAlive
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** KeepAlive responder: echoes every cookie until the client says Done. A client silent for
   * `idleTimeout` (the upstream bound is 97 s) ends the conversation with a timeout.
   */
@@ -21,7 +23,8 @@ object KeepAliveServer:
       Raise[F, NetworkError]
   ): F[Unit] =
     val id = Protocols.KeepAlive
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     val loop: F[Boolean] =
       Timed
         .within(settings.idleTimeout, id, "client")(
@@ -46,6 +49,6 @@ object KeepAliveServer:
               .fold(illegal, channel.send)
               .as(true)
           case KeepAlive.Message.Done => Temporal[F].pure(false)
-          case other                  => illegal(s"unexpected $other")
+          case other                  => illegal(RuntimeViolation.KeepAliveUnexpected(other))
         }
     loop.iterateWhile(identity).void

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -20,7 +21,7 @@ object HandshakeClient:
     Handshake.decodePrefix(suite, Handshake.State.Confirm, bytes) match
       case Right((message, rest))  => DecodeResult.Decoded(message, bytes.size - rest.size)
       case Left(e) if e.incomplete => DecodeResult.NeedMore
-      case Left(e)                 => DecodeResult.Failed(e.message)
+      case Left(e)                 => DecodeResult.Failed(e.cause)
 
   def run[F[_]: Temporal](
       channel: MuxChannel[F],
@@ -28,7 +29,11 @@ object HandshakeClient:
       timeout: FiniteDuration = Handshake.DefaultPhaseTimeout,
       suite: Handshake.Suite = Handshake.Suite.NodeToNode
   )(using Raise[F, NetworkError]): F[Agreed] =
-    def refuse[A](reason: String): F[A] = NetworkError.HandshakeRefused(reason).raise[F, A]
+    def refuse[A](reason: ProtocolError | NetworkError.HandshakeFailure): F[A] = NetworkError
+      .HandshakeRefused(reason match
+        case error: ProtocolError                 => NetworkError.HandshakeFailure.Local(error)
+        case error: NetworkError.HandshakeFailure => error)
+      .raise[F, A]
     for
       start <- Handshake
         .clientStart(suite, offers)
@@ -48,8 +53,9 @@ object HandshakeClient:
         case Handshake.Result.Rejected(Handshake.Reason.VersionMismatch(supported, _)) =>
           NetworkError.VersionMismatch(offers.map(_._1), supported).raise[F, Agreed]
         case Handshake.Result.Rejected(Handshake.Reason.DecodeError(v, text)) =>
-          refuse(s"peer could not decode version $v data: $text")
+          refuse(NetworkError.HandshakeFailure.Remote(Handshake.Reason.DecodeError(v, text)))
         case Handshake.Result.Rejected(Handshake.Reason.Refused(v, text)) =>
-          refuse(s"peer refused version $v: $text")
-        case Handshake.Result.QueryResult(_) => refuse("unexpected query reply")
+          refuse(NetworkError.HandshakeFailure.Remote(Handshake.Reason.Refused(v, text)))
+        case Handshake.Result.QueryResult(_) =>
+          refuse(NetworkError.HandshakeFailure.UnexpectedQueryReply)
     yield agreed

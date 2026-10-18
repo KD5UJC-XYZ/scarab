@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.CborRead
@@ -54,7 +55,7 @@ final case class ByronCert(
     ByronSig.verify(issuer, signature, ByronSig.tag(ByronSig.SignCertificate, magic) ++ signed)
 
 object ByronCert:
-  def decode(n: Node): Either[String, ByronCert] =
+  def decode(n: Node): Either[LedgerDecodeError, ByronCert] =
     CborRead.arrayN(n, 4, "delegation certificate").flatMap { xs =>
       (
         CborRead.uint(xs(0), "certificate epoch"),

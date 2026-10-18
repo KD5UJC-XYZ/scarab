@@ -40,7 +40,7 @@ enum BlsError:
   case ProofOfPossessionInvalid
 
   /** The native library failed unexpectedly (should be unreachable on validated operands). */
-  case Backend(kind: String)
+  case Backend(cause: Throwable)
 
   /** A seat index above the 16-bit range of `voter_id`. */
   case SeatOutOfRange(index: Int)
@@ -75,7 +75,8 @@ enum BlsError:
 /** Why a CBOR value is not a well-formed `leios_vote` or `leios_certificate`. */
 enum CborFault:
   /** Not decodable CBOR, or bytes remain after the item. */
-  case Syntax
+  case Syntax(cause: xyz.kd5ujc.scarab.codec.Cbor.Error)
+  case NonCanonicalEncoding
   case NotAnArray
   case WrongArity(expected: Int, actual: Int)
   case FieldNotBytes(index: Int)

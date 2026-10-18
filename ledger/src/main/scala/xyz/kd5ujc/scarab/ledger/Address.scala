@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import cats.syntax.order.*
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.state.Word64
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -30,12 +30,12 @@ object Credential:
     if kinds != 0 then kinds else a.hash.compareTo(b.hash)
 
   /** Conway credential encoding `[0, keyhash] / [1, scripthash]`. */
-  def decode(n: Node, what: String): Either[String, Credential] =
+  def decode(n: Node, what: String): Either[LedgerDecodeError, Credential] =
     CborRead.arrayN(n, 2, what).flatMap { xs =>
       (CborRead.uint(xs(0), what).map(_.toInt), CborRead.bytesN(xs(1), 28, what)).tupled.flatMap {
         case (0, h) => Right(Key(h))
         case (1, h) => Right(Script(h))
-        case (t, _) => Left(s"$what: credential tag $t")
+        case (t, _) => Left(LedgerDecodeError.UnknownTag(what, t))
       }
     }
 
@@ -182,8 +182,8 @@ object Address:
     * reference keeps it in the UTxO (`UnsafeCompactAddr sbsCropped`); the output that carried it
     * keeps its own bytes. A pointer address is kept as the normalised pointer, written again.
     */
-  def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[String, Address] =
-    if raw.size == 0 then Left("empty address")
+  def decode(raw: Bytes, mode: Mode = Mode.Rigorous): Either[LedgerDecodeError, Address] =
+    if raw.size == 0 then Left(LedgerDecodeError.Empty("address"))
     else
       val header = raw.value(0) & 0xff
       val kind = header >> 4
@@ -192,15 +192,15 @@ object Address:
         Either.cond(
           raw.size >= offset + 28,
           Bytes(raw.value.slice(offset, offset + 28)),
-          "short address"
+          LedgerDecodeError.AddressLength("payment credential", offset + 28, raw.size)
         )
       def payment =
         hash(1).map(h => if (kind & 1) == 0 then Credential.Key(h) else Credential.Script(h))
       // The address of `length` bytes; the bytes after it are dropped if the era allows them.
-      def own(length: Int, otherwise: String): Either[String, Bytes] =
+      def own(length: Int, context: String): Either[LedgerDecodeError, Bytes] =
         if raw.size == length then Right(raw)
         else if raw.size > length && mode == Mode.Backwards then Right(raw.take(length))
-        else Left(otherwise)
+        else Left(LedgerDecodeError.AddressLength(context, length, raw.size))
       kind match
         case 0 | 1 | 2 | 3 =>
           for
@@ -219,7 +219,10 @@ object Address:
         case 4 | 5 =>
           for
             p <- payment
-            read <- Ptr.read(raw.value.drop(29), mode.pointers).left.map(_.message)
+            read <- Ptr
+              .read(raw.value.drop(29), mode.pointers)
+              .left
+              .map(LedgerDecodeError.Pointer(_))
             _ <- own(29 + read._2, "pointer address: trailing bytes")
           yield
             // `putAddr`: the header from its fields, the payment credential, the pointer written again
@@ -234,20 +237,22 @@ object Address:
             p <- payment
           yield Address(kept, Kind.Shelley(network, p, None, None))
         case 8 => Right(Address(raw, Kind.Byron(byronRoot(raw))))
-        case _ => Left(s"address header $header is not a payment address")
+        case _ => Left(LedgerDecodeError.AddressHeader(header))
 
   /** `[#6.24(bytes .cbor [root, attributes, type]), crc32]`: the root, or empty if malformed. */
   private def byronRoot(raw: Bytes): Bytes =
     val parsed = for
-      outer <- Cbor.decode(raw)
+      outer <- CborRead.decode(raw)
       parts <- CborRead.arrayN(outer, 2, "byron address")
       payload <- parts(0).value match
         case xyz.kd5ujc.scarab.codec.Value.Tag(t, inner) if t == 24 =>
           CborRead.bytes(inner, "byron payload")
-        case _ => Left("byron payload")
-      body <- Cbor.decode(payload)
+        case _ => Left(LedgerDecodeError.ExpectedTag("byron payload", 24, parts(0).value))
+      body <- CborRead.decode(payload)
       fields <- CborRead.array(body, "byron address payload")
-      root <- fields.headOption.toRight("empty").flatMap(CborRead.bytesN(_, 28, "byron root"))
+      root <- fields.headOption
+        .toRight(LedgerDecodeError.Empty("byron address payload"))
+        .flatMap(CborRead.bytesN(_, 28, "byron root"))
     yield root
     parsed.getOrElse(Bytes.empty)
 
@@ -258,15 +263,15 @@ object Address:
 final case class RewardAccount(network: Int, credential: Credential)
 
 object RewardAccount:
-  def decode(raw: Bytes): Either[String, RewardAccount] =
-    if raw.size != 29 then Left("reward account length")
+  def decode(raw: Bytes): Either[LedgerDecodeError, RewardAccount] =
+    if raw.size != 29 then Left(LedgerDecodeError.AddressLength("reward account", 29, raw.size))
     else
       val header = raw.value(0) & 0xff
       val h = Bytes(raw.value.drop(1))
       header >> 4 match
         case 14 => Right(RewardAccount(header & 0x0f, Credential.Key(h)))
         case 15 => Right(RewardAccount(header & 0x0f, Credential.Script(h)))
-        case _  => Left(s"reward account header $header")
+        case _  => Left(LedgerDecodeError.RewardAccountHeader(header))
 
 /** Lovelace plus native assets. Mint values may be negative; UTxO values never are. */
 final case class Value(coin: BigInt, assets: Map[Bytes, Map[Bytes, BigInt]]):
@@ -347,7 +352,7 @@ object Value:
         .toMap
 
   /** `coin / [coin, multiasset<uint>]`; zero quantities are rejected as in Conway. */
-  def decode(n: Node, what: String): Either[String, Value] = n.value match
+  def decode(n: Node, what: String): Either[LedgerDecodeError, Value] = n.value match
     case xyz.kd5ujc.scarab.codec.Value.UInt(c) => Right(coin(c))
     case _ =>
       for
@@ -360,7 +365,7 @@ object Value:
       n: Node,
       what: String,
       signed: Boolean
-  ): Either[String, Map[Bytes, Map[Bytes, BigInt]]] =
+  ): Either[LedgerDecodeError, Map[Bytes, Map[Bytes, BigInt]]] =
     CborRead
       .map(n, what)
       .flatMap(_.traverse { case (p, inner) =>
@@ -370,7 +375,11 @@ object Value:
           quantities <- names.traverse { case (name, q) =>
             for
               assetName <- CborRead.bytes(name, s"$what asset name")
-              _ <- Either.cond(assetName.size <= 32, (), s"$what: asset name too long")
+              _ <- Either.cond(
+                assetName.size <= 32,
+                (),
+                LedgerDecodeError.AssetNameLength(what, assetName.size)
+              )
               quantity <- if signed then CborRead.int(q, what) else CborRead.uint(q, what)
             yield assetName -> quantity
           }
@@ -404,9 +413,9 @@ final case class TxOut(
   def referenceScript: Option[Script] =
     scriptRef.flatMap { kept =>
       val reread = for
-        node <- Cbor.decode(raw)
+        node <- CborRead.decode(raw)
         f <- CborRead.fields(node, "output")
-        field <- f.get(3).toRight("output: no reference script")
+        field <- f.get(3).toRight(LedgerDecodeError.MissingField("output", "reference script"))
         script <- Script.decodeWrappedWithBytes(field)
       yield script
       reread.toOption.orElse(Some(kept))
@@ -419,14 +428,14 @@ final case class TxOut(
     if scriptRef.isEmpty then 0
     else
       val size = for
-        node <- Cbor.decode(raw)
+        node <- CborRead.decode(raw)
         f <- CborRead.fields(node, "output")
-        field <- f.get(3).toRight("output: no reference script")
+        field <- f.get(3).toRight(LedgerDecodeError.MissingField("output", "reference script"))
         inner <- field.value match
           case xyz.kd5ujc.scarab.codec.Value.Tag(t, i) if t == 24 =>
             CborRead.bytes(i, "reference script")
-          case _ => Left("reference script: expected tag 24")
-        script <- Cbor.decode(inner)
+          case _ => Left(LedgerDecodeError.ExpectedTag("reference script", 24, field.value))
+        script <- CborRead.decode(inner)
         parts <- CborRead.arrayN(script, 2, "script")
         tag <- CborRead.uint(parts(0), "script type")
         payload <-
@@ -457,7 +466,7 @@ final case class TxOut(
       case Address.Kind.Shelley(_, _, None, Some(_)) =>
         def encoded(n: Int): Int = Value.headSize(n) + n
         val came = for
-          node <- Cbor.decode(raw).toOption
+          node <- CborRead.decode(raw).toOption
           field <- node.value match
             case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs.headOption
             case _ => CborRead.fields(node, "output").toOption.flatMap(_.get(0))
@@ -470,7 +479,10 @@ object TxOut:
   def apply(address: Address, value: Value): TxOut =
     TxOut(Bytes.empty, address, value, Datum.NoDatum, None, 0)
 
-  def decode(n: Node, mode: Address.Mode = Address.Mode.Rigorous): Either[String, TxOut] =
+  def decode(
+      n: Node,
+      mode: Address.Mode = Address.Mode.Rigorous
+  ): Either[LedgerDecodeError, TxOut] =
     n.value match
       case xyz.kd5ujc.scarab.codec.Value.Arr(xs) if xs.size == 2 || xs.size == 3 =>
         for
@@ -485,19 +497,24 @@ object TxOut:
           f <- CborRead.fields(n, "output")
           a <- f
             .get(0)
-            .toRight("output: missing address")
+            .toRight(LedgerDecodeError.MissingField("output", "address"))
             .flatMap(CborRead.bytes(_, "output address"))
             .flatMap(Address.decode(_, mode))
-          vn <- f.get(1).toRight("output: missing value")
+          vn <- f.get(1).toRight(LedgerDecodeError.MissingField("output", "value"))
           v <- Value.decode(vn, "output value")
-          _ <- Either.cond(f.keySet.subsetOf(Set(0, 1, 2, 3)), (), "output: unknown field")
+          _ <- Either.cond(
+            f.keySet.subsetOf(Set(0, 1, 2, 3)),
+            (),
+            LedgerDecodeError.UnknownFields("output", f.keySet -- Set(0, 1, 2, 3))
+          )
           d <- f.get(2).traverse(datumOption)
           s <- f.get(3).traverse(Script.decodeWrapped)
         yield TxOut(n.original, a, v, d.getOrElse(Datum.NoDatum), s, vn.original.size)
-      case _ => Left("output: expected legacy array or map")
+      case _ =>
+        Left(LedgerDecodeError.Expected("output", LedgerDecodeError.Shape.ArrayOrMap, n.value))
 
   /** `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]` */
-  private def datumOption(n: Node): Either[String, Datum] =
+  private def datumOption(n: Node): Either[LedgerDecodeError, Datum] =
     CborRead.arrayN(n, 2, "datum option").flatMap { xs =>
       CborRead.uint(xs(0), "datum option tag").flatMap {
         case t if t == 0 => CborRead.bytesN(xs(1), 32, "datum hash").map(Datum.Hash(_))
@@ -505,13 +522,16 @@ object TxOut:
           xs(1).value match
             case xyz.kd5ujc.scarab.codec.Value.Tag(g, inner) if g == 24 =>
               CborRead.bytes(inner, "inline datum").map(Datum.Inline(_))
-            case _ => Left("inline datum: expected tag 24")
-        case t => Left(s"datum option tag $t")
+            case _ => Left(LedgerDecodeError.ExpectedTag("inline datum", 24, xs(1).value))
+        case t => Left(LedgerDecodeError.UnknownTag("datum option", t))
       }
     }
 
-  def fromBytes(raw: Bytes, mode: Address.Mode = Address.Mode.Rigorous): Either[String, TxOut] =
-    Cbor.decode(raw).flatMap(decode(_, mode))
+  def fromBytes(
+      raw: Bytes,
+      mode: Address.Mode = Address.Mode.Rigorous
+  ): Either[LedgerDecodeError, TxOut] =
+    CborRead.decode(raw).flatMap(decode(_, mode))
 
 /** `[transaction_id, index]` */
 final case class TxIn(id: Bytes, index: BigInt):
@@ -525,7 +545,7 @@ object TxIn:
   given Ordering[TxIn] = (a, b) =>
     val ids = a.id.compareTo(b.id)
     if ids != 0 then ids else a.index.compare(b.index)
-  def decode(n: Node): Either[String, TxIn] =
+  def decode(n: Node): Either[LedgerDecodeError, TxIn] =
     CborRead
       .arrayN(n, 2, "input")
       .flatMap(xs =>

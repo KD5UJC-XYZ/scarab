@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 
 class BlockFetchGoldenSuite extends munit.FunSuite:
-  private def right[A](value: Either[String, A]): A = value.fold(fail(_), identity)
+  private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private def digest(bytes: Bytes): String =
     Bytes.fromArray(MessageDigest.getInstance("SHA-256").digest(bytes.toArray)).hex
 

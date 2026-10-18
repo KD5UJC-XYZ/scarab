@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import io.circe.parser
 import java.nio.file.{Files, Path}
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Value}
 import xyz.kd5ujc.scarab.ledger.state.{Build, Conway, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
 
@@ -17,7 +17,7 @@ object PreprodDeepTx:
   val Id = "f90dce5765108da976abdbb9fc618f9a6ffd9fa4d93b2f288eed1808545424c9"
 
   private val dir = Path.of("fixtures/preprod")
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(sys.error, identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => sys.error(e.toString), identity)
 
   /** Run `body` on a thread whose stack (256 KiB) is far too small for a recursion over this
     * transaction's depth.
@@ -42,7 +42,7 @@ object PreprodDeepTx:
   val bytes: Bytes = hex(Files.readString(dir.resolve("tx-f90dce57.hex")).trim)
 
   def parsed: Tx =
-    Cbor.decode(bytes).fold(sys.error, identity).value match
+    CborRead.decode(bytes).fold(e => sys.error(e.toString), identity).value match
       case Value.Arr(xs) =>
         Tx.fromBlock(Block.Transaction(xs(0).original, xs(1).original, None, true), Era.Conway)
           .fold(e => sys.error(e.toString), identity)
@@ -64,7 +64,7 @@ object PreprodDeepTx:
         Vector(0x1a, lovelace >> 24, lovelace >> 16, lovelace >> 8, lovelace).map(_.toByte)
     )
     TxIn(hex(e.get[String]("txHash").toOption.get), BigInt(e.get[Int]("index").toOption.get)) ->
-      TxOut.fromBytes(legacy).fold(sys.error, identity)
+      TxOut.fromBytes(legacy).fold(e => sys.error(e.toString), identity)
 
   /** A Conway ledger at epoch 313 with the preprod fee parameters and the output, on which the
     * transaction is valid at [[Slot]].

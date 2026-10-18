@@ -5,6 +5,18 @@ import ChainSync.*
 
 /** Deterministic synthetic follower history. No consensus chain selection or ledger rollback. */
 object FixtureChainModel:
+  enum Error:
+    case Protocol(cause: ProtocolError)
+    case CandidateLimitExceeded
+    case UnofferedIntersection
+    case UnknownOrPrunedRollbackTargetReintersectionRequired
+    case ModelHistoryLimitExceededReintersectionRequired
+    case ForwardRequiresADistinctExplicitlySyntheticBlockPoint
+    case ModelRequiresBoundedCardanoWidthSyntheticPoints
+    case ModelRequiresNonemptyBoundedDistinctSyntheticHistory
+    case IntersectionModelBoundExceeded
+    case ModelTraceLimitExceeded
+
   val MaxHistory = 256
   val MaxTrace = 1024
   final class Model private[FixtureChainModel] (
@@ -18,11 +30,11 @@ object FixtureChainModel:
         sender: Role,
         message: Message[P],
         forwardPoint: Option[Point] = None
-    ): Either[String, Model] =
+    ): Either[Error, Model] =
       for
-        next <- transition(state, sender, message)
+        next <- transition(state, sender, message).left.map(Error.Protocol(_))
         _ <- validateMessage(message, forwardPoint)
-        _ <- Either.cond(trace.size < MaxTrace, (), "model trace limit exceeded")
+        _ <- Either.cond(trace.size < MaxTrace, (), Error.ModelTraceLimitExceeded)
         result <- applyMessage(next, message, forwardPoint)
       yield result
 
@@ -30,44 +42,47 @@ object FixtureChainModel:
         next: State,
         message: Message[P],
         forwardPoint: Option[Point]
-    ): Either[String, Model] =
-      var nextHistory = history
-      var nextOffered = offered
-      val change: Either[String, String] = message match
+    ): Either[Error, Model] =
+      val change: Either[Error, (Vector[Point], Vector[Point], String)] = message match
         case Message.FindIntersect(points) =>
-          if points.size > Limits().maxCandidates then Left("candidate limit exceeded")
-          else { nextOffered = points; Right("find-intersect") }
+          if points.size > Limits().maxCandidates then Left(Error.CandidateLimitExceeded)
+          else Right((history, points, "find-intersect"))
         case Message.IntersectFound(point, _) =>
-          if !offered.contains(point) then Left("unoffered intersection")
+          if !offered.contains(point) then Left(Error.UnofferedIntersection)
           else
             val i = history.indexOf(point)
-            nextHistory = if i >= 0 then history.take(i + 1) else Vector(point)
-            nextOffered = Vector.empty
-            Right("intersection-found")
+            Right(
+              (
+                if i >= 0 then history.take(i + 1) else Vector(point),
+                Vector.empty,
+                "intersection-found"
+              )
+            )
         case Message.IntersectNotFound(_) =>
-          nextOffered = Vector.empty
-          Right("intersection-not-found") // Deliberately preserves follower cursor/history.
+          Right((history, Vector.empty, "intersection-not-found"))
         case Message.RollBackward(point, _) =>
           val i = history.indexOf(point)
-          if i < 0 then Left("unknown or pruned rollback target: reintersection required")
-          else { nextHistory = history.take(i + 1); Right("roll-backward") }
+          if i < 0 then Left(Error.UnknownOrPrunedRollbackTargetReintersectionRequired)
+          else Right((history.take(i + 1), offered, "roll-backward"))
         case Message.RollForward(_, _) =>
           forwardPoint match
             case Some(point @ Point.Block(_, _)) if !history.contains(point) =>
               if history.size >= MaxHistory then
-                Left("model history limit exceeded: reintersection required")
-              else { nextHistory = history :+ point; Right("roll-forward") }
-            case _ => Left("forward requires a distinct explicitly synthetic block point")
-        case Message.RequestNext => Right("request-next")
-        case Message.AwaitReply  => Right("await-reply")
-        case Message.Done        => Right("done")
-      change.map(label => new Model(next, nextHistory, nextOffered, trace :+ label))
+                Left(Error.ModelHistoryLimitExceededReintersectionRequired)
+              else Right((history :+ point, offered, "roll-forward"))
+            case _ => Left(Error.ForwardRequiresADistinctExplicitlySyntheticBlockPoint)
+        case Message.RequestNext => Right((history, offered, "request-next"))
+        case Message.AwaitReply  => Right((history, offered, "await-reply"))
+        case Message.Done        => Right((history, offered, "done"))
+      change.map { case (nextHistory, nextOffered, label) =>
+        new Model(next, nextHistory, nextOffered, trace :+ label)
+      }
 
   private def validPoint(point: Point): Boolean = ChainSyncFixtures.cardanoPoint(point).isRight
   private def validateMessage[P](
       message: Message[P],
       forward: Option[Point]
-  ): Either[String, Unit] =
+  ): Either[Error, Unit] =
     val points = message match
       case Message.FindIntersect(ps)      => ps
       case Message.RollForward(_, tip)    => Vector(tip.point) ++ forward.toVector
@@ -76,27 +91,27 @@ object FixtureChainModel:
       case Message.IntersectNotFound(tip) => Vector(tip.point)
       case _                              => Vector.empty
     if points.size > Limits().maxCandidates || !points.forall(validPoint) then
-      Left("model requires bounded Cardano-width synthetic points")
+      Left(Error.ModelRequiresBoundedCardanoWidthSyntheticPoints)
     else Right(())
 
-  def start(history: Vector[Point] = Vector(Point.Origin)): Either[String, Model] =
+  def start(history: Vector[Point] = Vector(Point.Origin)): Either[Error, Model] =
     if history.isEmpty || history.size > MaxHistory || history.distinct.size != history.size || !history
         .forall(validPoint)
-    then Left("model requires nonempty bounded distinct synthetic history")
+    then Left(Error.ModelRequiresNonemptyBoundedDistinctSyntheticHistory)
     else Right(new Model(State.Idle, history, Vector.empty, Vector.empty))
 
   /** First matching candidate in client preference order; never sorts by slot. */
   def intersect(
       candidates: Vector[Point],
       serverHistory: Vector[Point]
-  ): Either[String, Option[Point]] =
+  ): Either[Error, Option[Point]] =
     if candidates.size > Limits().maxCandidates || serverHistory.size > MaxHistory || !candidates
         .forall(validPoint) || !serverHistory.forall(validPoint)
-    then Left("intersection model bound exceeded")
+    then Left(Error.IntersectionModelBoundExceeded)
     else Right(candidates.find(serverHistory.contains))
 
   /** A finite fork script exercising both server reply paths and an explicit terminal Done. */
-  def demo(): Either[String, Model] =
+  def demo(): Either[Error, Model] =
     def p(slot: Int, hash: Int): Point =
       Point.Block(
         UInt64.saturating(BigInt(slot)),

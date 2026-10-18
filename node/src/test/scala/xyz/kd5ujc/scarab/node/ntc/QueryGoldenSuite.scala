@@ -21,7 +21,7 @@ class QueryGoldenSuite extends FunSuite:
     .fold(e => fail(e.message), identity)
     .hcursor
 
-  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e), identity)
+  private def hex(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.message), identity)
   private val slot = golden.get[BigInt]("slot").fold(e => fail(e.message), identity)
   private val point =
     Point.Block(UInt64.saturating(slot), hex(golden.get[String]("hash").toOption.get))

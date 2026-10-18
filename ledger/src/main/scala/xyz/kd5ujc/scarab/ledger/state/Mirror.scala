@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Functor, Show}
 import cats.derived.*
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
@@ -115,7 +116,7 @@ enum Shape derives Show:
   case PulsingRewardUpdate
 
 /** Why a conversion refused. Closed: nothing here is a message to match on. */
-enum MirrorError derives Show:
+enum MirrorError extends DomainError derives Show:
   /** A value outside a vocabulary type (a hash of the wrong length, a negative coin, ...). */
   case Vocab(error: VocabError)
 

@@ -35,7 +35,7 @@ class CodecSuite extends ScalaCheckSuite:
       forAll(g.gen) { a =>
         Codec.decode[A](Codec.encode(a)) match
           case Right(back) => Eq.fromUniversalEquals[A].eqv(a, back) :| s"decoded $back"
-          case Left(error) => Prop.falsified :| error
+          case Left(error) => Prop.falsified :| error.message
       }
     }
 
@@ -93,7 +93,7 @@ class CodecSuite extends ScalaCheckSuite:
       val tail = Array.fill[Byte](40)(0x5a)
       val stream = java.io.ByteArrayInputStream(payload ++ tail)
       val in = In(stream, payload.length.toLong)
-      assertEquals(summon[Codec[Bytes]].read(in), value)
+      assertEquals(summon[Codec[Bytes]].read(in), Right(value))
       assertEquals(stream.available(), tail.length, s"size $size")
     }
   }

@@ -12,12 +12,12 @@ class VotingProceduresSuite extends FunSuite:
   private val voter = "8202581c" + "11" * 28
   private def action(index: Int): String = "825820" + "22" * 32 + head(0, index)
   private def decode(raw: String) =
-    val node = Cbor
+    val node = CborRead
       .decode(
-        Bytes.fromHex(raw).fold(fail(_), identity),
+        Bytes.fromHex(raw).fold(e => fail(e.toString), identity),
         Cbor.Limits(maxInputBytes = 2500000, maxItems = 1000000)
       )
-      .fold(fail(_), identity)
+      .fold(e => fail(e.toString), identity)
     VotingProcedures.decode(node)
 
   test("an invalid ballot is a typed value failure, independent of the optional anchor") {

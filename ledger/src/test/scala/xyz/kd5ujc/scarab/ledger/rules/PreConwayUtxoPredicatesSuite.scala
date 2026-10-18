@@ -45,7 +45,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       ByronCbor.bytes(body),
       ByronCbor.uint(ByronCbor.crc32(body))
     )
-    Address.decode(raw).fold(e => fail(e), identity)
+    Address.decode(raw).fold(e => fail(e.toString), identity)
 
   private def transaction(
       outputs: Vector[TxOut],
@@ -113,10 +113,10 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         .getOrElse(fail("semantic collateral fixture"))
       def read[A: io.circe.Decoder](field: String): A =
         row.hcursor.get[A](field).fold(e => fail(e.message), identity)
-      val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e), identity)
+      val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e.toString), identity)
       val body = TxBody
         .decode(raw, Address.Mode.of(if major == 5 then Era.Alonzo else Era.Babbage))
-        .fold(e => fail(e), identity)
+        .fold(e => fail(e.toString), identity)
       assertEquals(body.collateral.size, 4)
       assertEquals(body.collateral.toSet.size, read[Int]("collateralCount"))
       val out = body.outputs.head.copy(address = alice.baseAddress(alice))
@@ -204,9 +204,9 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
     def read[A: io.circe.Decoder](field: String): A =
       row.hcursor.get[A](field).fold(e => fail(e.message), identity)
     assertEquals(row.hcursor.downField("conwayCollateral").get[Boolean]("accepted"), Right(true))
-    val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e), identity)
+    val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e.toString), identity)
     // The reference Conway API takes the same decoded Set, not these pre-Conway wire bytes.
-    val body = TxBody.decode(raw, Address.Mode.of(Era.Alonzo)).fold(e => fail(e), identity)
+    val body = TxBody.decode(raw, Address.Mode.of(Era.Alonzo)).fold(e => fail(e.toString), identity)
     val pp = TestLedger.params(9)
     val empty = Empty.ledgerState[Conway](pp)
     val out = body.outputs.head.copy(address = alice.baseAddress(alice))
@@ -255,10 +255,10 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
         .get[Boolean]("accepted")
         .fold(e => fail(e.message), identity)
       val major = read[Int]("protocolMajor")
-      val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e), identity)
+      val raw = Bytes.fromHex(read[String]("body")).fold(e => fail(e.toString), identity)
       val body = TxBody
         .decode(raw, Address.Mode.of(if major == 5 then Era.Alonzo else Era.Babbage))
-        .fold(e => fail(e), identity)
+        .fold(e => fail(e.toString), identity)
       val tx = Tx(body, Witnesses.empty, 100, isValid = true, auxiliary = None)
       val outputs = body.outputs ++ body.collateralReturn.toVector
       val bootstrap = outputs.flatMap(out =>
@@ -266,7 +266,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           case Address.Kind.Byron(_) =>
             ByronAddress
               .decode(out.address.raw)
-              .fold(e => fail(e), address => Some(out -> address))
+              .fold(e => fail(e.toString), address => Some(out -> address))
           case _ => None
       )
       val network = read[Int]("network")

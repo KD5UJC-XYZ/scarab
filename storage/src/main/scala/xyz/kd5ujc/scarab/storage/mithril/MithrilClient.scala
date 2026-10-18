@@ -36,7 +36,7 @@ object MithrilClient:
     case InvalidArtifact, InvalidEndpoint, InvalidKey
     case NotRegular(path: String)
     case ExecutableDigest(expected: String, actual: String)
-    case Launch(detail: String)
+    case Launch(cause: IOException)
     case Defect(cause: Throwable)
     case TimedOut, OutputLimit
     case Exit(code: Int)
@@ -178,7 +178,7 @@ object MithrilClient:
     private val files = Files.forAsync[F]
     private def boundary[A](action: F[A])(using Raise[F, Error]): F[A] =
       action.handleErrorWith {
-        case e: IOException => Error.Launch(e.toString).raise[F, A]
+        case e: IOException => Error.Launch(e).raise[F, A]
         case e              => Error.Defect(e).raise[F, A]
       }
 

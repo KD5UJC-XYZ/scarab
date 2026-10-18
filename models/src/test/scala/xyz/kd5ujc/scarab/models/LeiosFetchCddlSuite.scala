@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.protocol.{EbHash, EbPoint, LeiosFetch, TxBitmaps}
   */
 class LeiosFetchCddlSuite extends munit.FunSuite:
   private def big(x: Any): BigInt = BigInt(x.toString)
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
   private def hash(n: Int): EbHash =
     EbHash.fromBytes(Bytes.wrap(Array.fill[Byte](32)(n.toByte))).getOrElse(fail("hash"))
   private val point = EbPoint(371614L, hash(7))

@@ -118,7 +118,7 @@ class ConfigSuite extends FunSuite:
               else b :+ ' '.toByte
             )
           NodeSetup.verifyHashes(config, altered) match
-            case Left(ConfigError(_, ConfigProblem.GenesisHashMismatch(r, f, expected, actual))) =>
+            case Left(ConfigError(ConfigProblem.GenesisHashMismatch(r, f, expected, actual))) =>
               assertEquals((r, f), (role, file))
               assertNotEquals(expected, actual)
             case other => fail(s"$network $role: $other")
@@ -146,7 +146,10 @@ class ConfigSuite extends FunSuite:
       Left(ConfigProblem.FileMissing("Alonzo", "alonzo-genesis.json"))
     )
     val short = text("preview", "config.json").replace(config.hashes.shelley.get.hex, "abcd")
-    assert(NodeConfig.parse(short).left.exists(_.message.contains("ShelleyGenesisHash")))
+    assertEquals(
+      NodeConfig.parse(short).left.map(_.problem),
+      Left(ConfigProblem.ByteLength("ShelleyGenesisHash", 32, 2))
+    )
   }
 
   test("the setup from the preview configuration is the setup from its directory") {
@@ -205,7 +208,11 @@ class ConfigSuite extends FunSuite:
       "LastKnownBlockVersion-Minor"
     ).foreach { key =>
       assert(
-        NodeConfig.parse(without(key), strict = true).left.exists(_.message.contains(key.take(12))),
+        NodeConfig.parse(without(key), strict = true).left.exists {
+          case ConfigError(ConfigProblem.MissingField("configuration", field)) =>
+            field == key || field == s"$key (or GenesisFile)"
+          case _ => false
+        },
         key
       )
       // the directory mode takes the standard name instead
@@ -218,7 +225,10 @@ class ConfigSuite extends FunSuite:
       .toOption
       .get
       .deepMerge(Json.obj("GenesisFile" -> Json.fromString("g.json")))
-    assert(NodeConfig.parse(both.noSpaces).left.exists(_.message.contains("not both")))
+    assertEquals(
+      NodeConfig.parse(both.noSpaces).left.map(_.problem),
+      Left(ConfigProblem.ConflictingFields(Set("ByronGenesisFile", "GenesisFile")))
+    )
     val old = Json.obj(
       "GenesisFile" -> Json.fromString("shelley-genesis.json"),
       "AlonzoGenesisFile" -> Json.fromString("a"),
@@ -247,7 +257,7 @@ class ConfigSuite extends FunSuite:
       NodeConfig
         .parse(enabled, strict = true)
         .left
-        .exists(_.message.contains("DijkstraGenesisFile"))
+        .exists(_.problem == ConfigProblem.MissingField("configuration", "DijkstraGenesisFile"))
     )
     val dijkstra = base
       .deepMerge(
@@ -377,7 +387,7 @@ class ConfigSuite extends FunSuite:
     // an address without a port is an SRV name
     assertEquals(
       topology(group("""{"address": "_cardano._tcp.example"}""")).left.map(_.problem),
-      Left(ConfigProblem.UnsupportedTopology)
+      Left(ConfigProblem.SrvAccessPoint("_cardano._tcp.example"))
     )
     assert(topology(group("""{"address": "relay.example", "port": 70000}""")).isLeft)
     assert(topology(group("""{"address": "relay.example", "port": "3001"}""")).isLeft)
@@ -401,14 +411,13 @@ class ConfigSuite extends FunSuite:
     )
   }
 
-  test("an unreadable topology file is a typed FileMissing") {
-    assertEquals(
-      Topology
-        .read(Path.of("/nonexistent/topology.json"))
-        .left
-        .map(_.problem.getClass.getSimpleName),
-      Left("FileMissing")
-    )
+  test("an unreadable topology retains the path and original file-system cause") {
+    val path = Path.of("/nonexistent/topology.json")
+    assert(Topology.read(path).left.exists {
+      case ConfigError(ConfigProblem.FileRead(file, cause: java.nio.file.NoSuchFileException)) =>
+        file == path.toString && cause.getFile == path.toString
+      case _ => false
+    })
   }
 
   test(
@@ -505,7 +514,7 @@ class ConfigSuite extends FunSuite:
       .parse(List("follow", "--config", config.toString, "--topology", empty.toString))
       .toOption
       .get
-    assert(Main.configured(nobody).left.exists(_.message.contains("no peer to follow")))
+    assertEquals(Main.configured(nobody).left.map(_.problem), Left(ConfigProblem.NoPeers))
     // the same settings in a genesis directory's configuration are not applied
     val directoryMode = Main
       .parse(List("follow", "--genesis-dir", withSettings.toString, "--peer", "127.0.0.1:9"))

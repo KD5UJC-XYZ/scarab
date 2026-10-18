@@ -148,7 +148,7 @@ class CollectorsSuite extends CatsEffectSuite:
         List(metrics.set(Catalogue.blockNum, 7.0), metrics.inc(Catalogue.rollbacks))
       )
     yield
-      val parsed = TextFormat.parse(text).fold(fail(_), identity)
+      val parsed = TextFormat.parse(text).fold(e => fail(e.toString), identity)
       assert(
         parsed.samples.exists(s => s.name == "cardano_node_metrics_blockNum_int" && s.value == 7.0)
       )

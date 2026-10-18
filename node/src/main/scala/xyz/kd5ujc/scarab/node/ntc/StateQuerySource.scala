@@ -64,7 +64,7 @@ object StateQuerySource:
         def answer(raw: Bytes): F[Either[Refusal, Bytes]] =
           NtcQuery.decode(raw, version) match
             case Left(error) =>
-              Sync[F].pure(Left(Refusal.Undecodable(error.message, raw.hex.take(80))))
+              Sync[F].pure(Left(Refusal.Undecodable(error, raw.hex.take(80))))
             case Right(query) =>
               val shown = NtcQuery.describe(query)
               for
@@ -79,10 +79,10 @@ object StateQuerySource:
                 case Right(Right(result))                => Right(result)
                 case Right(Left(Unanswered.Unsupported)) => Left(Refusal.Unsupported(shown))
                 case Right(Left(Unanswered.Refused(error))) =>
-                  Left(Refusal.Unwritable(shown, s"the state cannot be read: $error"))
+                  Left(Refusal.Unwritable(shown, error))
                 case Right(Left(Unanswered.Unwritable)) =>
-                  Left(Refusal.Unwritable(shown, "the answer is out of range"))
-                case Left(cause) => Left(Refusal.Unwritable(shown, cause.toString))
+                  Left(Refusal.OutOfRange(shown))
+                case Left(cause) => Left(Refusal.Defect(shown, cause))
 
     private def fetch(view: QueryView[S], needs: QueryAnswers.UtxoNeeds): F[Map[TxIn, TxOut]] =
       needs match

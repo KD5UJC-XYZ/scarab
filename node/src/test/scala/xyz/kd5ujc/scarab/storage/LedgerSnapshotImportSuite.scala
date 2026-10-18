@@ -32,7 +32,7 @@ class LedgerSnapshotImportSuite extends CatsEffectSuite:
     .asScala
     .toVector
     .filter(_.nonEmpty)
-    .map(s => Bytes.fromHex(s).fold(fail(_), identity))
+    .map(s => Bytes.fromHex(s).fold(e => fail(e.message), identity))
   private val blocks = raws.map(raw =>
     Block.decode(raw, setup.geometry.byron.epochSlots).fold(e => fail(e.message), identity)
   )

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import xyz.kd5ujc.scarab.blst.BlstProblem
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
@@ -10,24 +11,24 @@ import xyz.kd5ujc.scarab.crypto.vrf.{
   PraosLeaderThreshold as Leader,
   PraosVrfCertificate as Vrf
 }
-import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux}
+import xyz.kd5ujc.scarab.protocol.{ChainSync, Mux as WireMux, NetworkError, ProtocolError}
 
 /** Closed hierarchy of node failures. Algebras raise the narrowest subtype; because cats-mtl
   * `Raise` is contravariant in its error, one `Raise[F, NodeError]` serves them all.
   */
-sealed trait NodeError extends Product with Serializable:
+sealed trait NodeError extends DomainError:
   def message: String
 
 /** Failures attributable to the remote peer or the connection. These are recoverable by
   * reconnecting and re-intersecting.
   */
 enum PeerError extends NodeError:
-  case Handshake(reason: String)
-  case Protocol(reason: String)
+  case Handshake(cause: NetworkError.HandshakeRefused | NetworkError.VersionMismatch)
+  case Protocol(cause: PeerError.ProtocolFailure)
   case Framing(cause: WireMux.Error)
   case MuxSetup(cause: WireMux.Error)
   case MuxWrite(cause: WireMux.Error)
-  case Unavailable(reason: String)
+  case Unavailable(cause: PeerError.Unavailability)
 
   /** The peer's chain shares no point with ours (it is behind, or on another network). */
   case NoIntersection
@@ -36,7 +37,7 @@ enum PeerError extends NodeError:
     * what we keep, or our chain moved on so that its candidate no longer joins it. The session
     * starts again; the peer did nothing wrong.
     */
-  case Diverged(reason: String)
+  case Diverged(cause: PeerError.Divergence)
 
   /** A header the peer announced breaks a header rule; its block was not fetched (G6). */
   case InvalidHeader(point: ChainSync.Point, error: xyz.kd5ujc.scarab.ledger.HeaderError)
@@ -47,20 +48,65 @@ enum PeerError extends NodeError:
   case InvalidBlock(error: ValidationError)
 
   def message: String = this match
-    case Handshake(r)        => s"handshake: $r"
-    case Protocol(r)         => s"protocol: $r"
+    case Handshake(r)        => s"handshake: ${r.message}"
+    case Protocol(r)         => s"protocol: ${PeerError.protocolMessage(r)}"
     case Framing(e)          => s"protocol: multiplexer framing: ${e.message}"
     case MuxSetup(e)         => s"multiplexer setup: ${e.message}"
     case MuxWrite(e)         => s"multiplexer write: ${e.message}"
-    case Unavailable(r)      => s"unavailable: $r"
+    case Unavailable(r)      => s"unavailable: ${r.message}"
     case NoIntersection      => "the peer's chain shares no point with ours"
-    case Diverged(r)         => s"diverged: $r"
+    case Diverged(r)         => s"diverged: ${r.message}"
     case InvalidHeader(p, e) => s"invalid header ${Points.show(p)}: ${e.message}"
     case InvalidBlock(e)     => s"invalid block ${e.message}"
 
+object PeerError:
+  type ProtocolFailure = ProtocolError | ProtocolProblem | NetworkError.IngressLimit |
+    NetworkError.Decode | NetworkError.IllegalTransition | NetworkError.QueryRefused |
+    NetworkError.TxSubmission
+  enum ProtocolProblem:
+    case HeaderDecode(cause: ChainError)
+    case HeaderDoesNotExtend(point: ChainSync.Point, tip: ChainSync.Point)
+    case HeaderValidationDidNotSettle
+    case BlockCount(expected: Int, actual: Int)
+    def message: String = this match
+      case HeaderDecode(cause) => cause.message
+      case HeaderDoesNotExtend(point, _) =>
+        s"header ${Points.show(point)} does not extend the peer's chain"
+      case HeaderValidationDidNotSettle => "header validation did not settle"
+      case BlockCount(expected, actual) => s"expected $expected block, received $actual"
+  enum Unavailability:
+    case Network(
+        cause: NetworkError.Connect | NetworkError.Timeout | NetworkError.SduTimeout |
+          NetworkError.BearerClosed
+    )
+    case Connection(cause: xyz.kd5ujc.scarab.protocol.ConnectionError)
+    case Resolution(host: String, cause: java.io.IOException)
+    case SessionEnded
+    case MissingAnnouncedBlock(point: ChainSync.Point)
+    def message: String = this match
+      case Network(cause)           => cause.message
+      case Connection(cause)        => cause.message
+      case Resolution(host, cause)  => s"cannot resolve $host: ${cause.getMessage}"
+      case SessionEnded             => "the session ended"
+      case MissingAnnouncedBlock(_) => "peer does not have the announced block"
+  enum Divergence:
+    case RollbackOutsideChain(point: ChainSync.Point)
+    case DetachedCandidate(base: ChainSync.Point)
+    case ForeignBlock(cause: ValidationError)
+    def message: String = this match
+      case RollbackOutsideChain(point) =>
+        s"peer rolled back to ${Points.show(point)}, outside our chain"
+      case DetachedCandidate(base) =>
+        s"the peer's chain no longer joins ours at ${Points.show(base)}"
+      case ForeignBlock(cause) => s"a block fetched by another peer: ${cause.message}"
+  def protocolMessage(cause: ProtocolFailure): String = cause match
+    case error: ProtocolError   => error.message
+    case error: ProtocolProblem => error.message
+    case error: NetworkError    => error.message
+
 /** Failures of the local chain model. These are not recoverable by reconnecting. */
 enum ChainError extends NodeError:
-  case Decode(what: String, reason: String)
+  case Decode(what: String, cause: LedgerDecodeError)
   case NotConnected(point: ChainSync.Point, tip: ChainSync.Point)
   case RollbackBeyondAnchor(target: ChainSync.Point, anchor: ChainSync.Point)
   case NoIntersection
@@ -112,10 +158,10 @@ enum StorageError extends NodeError:
   case DatabaseInUse(database: String)
 
   /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
-  case Corrupt(what: String, reason: String)
+  case Corrupt[E <: DomainError](what: String, cause: E) extends StorageError
 
   /** An operating-system failure reading or writing `what`. */
-  case Io(what: String, reason: String)
+  case Io(what: String, cause: Throwable)
 
   /** The data was written by an incompatible format or schema version. */
   case VersionMismatch(what: String, found: String, expected: String)
@@ -129,7 +175,7 @@ enum StorageError extends NodeError:
   case Missing(what: String)
 
   /** An append that does not extend the stored chain. */
-  case OutOfOrder(reason: String)
+  case OutOfOrder(cause: StorageStructureError)
 
   /** The database was created for another network than the one this node is configured for. */
   case NetworkMismatch(found: NetworkIdentity, expected: NetworkIdentity)
@@ -165,7 +211,7 @@ enum StorageError extends NodeError:
   */
 enum ForgeError extends NodeError:
   /** A key or certificate file is missing, malformed or of the wrong type. */
-  case KeyFile(file: String, reason: String)
+  case KeyFile(file: String, cause: ForgeKeyProblem)
 
   /** A failure at one of the durability boundaries for an evolved KES key. */
   case KesFileFailure(file: String, operation: KesFileOperation, cause: KesFileFailureCause)
@@ -186,7 +232,7 @@ enum ForgeError extends NodeError:
   case KeyPeriodOutOfRange(period: BigInt, start: BigInt, evolutions: BigInt)
 
   /** Legacy unexpected forger-step failure; infrastructure/defect classification is #180 G7-F3. */
-  case KesFailure(reason: String)
+  case KesFailure(cause: Throwable)
 
   /** The KES key could not be evolved to the slot's period (it has already moved past it). */
   case KesEvolution(cause: Sum6KesSigning.Failure)
@@ -200,16 +246,19 @@ enum ForgeError extends NodeError:
 
   /** The slot's pool distribution cannot be derived from the tip (tip too old or ledger not ready).
     */
-  case LedgerViewUnavailable(slot: BigInt, reason: String)
+  case LedgerViewUnavailable(slot: BigInt, cause: ForgeLedgerProblem)
 
   /** Forging is only implemented for Praos (Conway) on a fully validated ledger. */
-  case UnsupportedProtocol(reason: String)
+  case UnsupportedProtocol(cause: ForgeProtocolProblem)
 
   /** The block body or header could not be assembled within the protocol limits. */
-  case Assembly(reason: String)
+  case Assembly(cause: ForgeAssemblyProblem)
 
   /** Our own block rules refuse the block we built. */
-  case SelfRejected(rule: String, reason: String)
+  case SelfRejected(error: ValidationError)
+
+  case ServiceFailure(error: NodeError)
+  case Defect(cause: Throwable)
 
   def message: String = this match
     case KeyFile(f, r) => s"key file $f: $r"
@@ -232,7 +281,9 @@ enum ForgeError extends NodeError:
     case LedgerViewUnavailable(slot, r) => s"no ledger view for slot $slot: $r"
     case UnsupportedProtocol(r)         => s"cannot forge: $r"
     case Assembly(r)                    => s"block assembly: $r"
-    case SelfRejected(rule, r)          => s"our own $rule rules refuse the forged block: $r"
+    case SelfRejected(e)   => s"our own ${e.rule} rules refuse the forged block: ${e.reason}"
+    case ServiceFailure(e) => e.message
+    case Defect(cause)     => s"forger defect: $cause"
 
 enum KesFileOperation:
   case StageWrite, StageSync, StageReadback, DirectorySyncBeforeErase
@@ -267,7 +318,7 @@ enum KesStageMismatch:
   * (`BootstrapPeersCriticalTimeoutError`, ouroboros-network `Governor/Types.hs` 1863-1869).
   */
 enum GovernorFault extends NodeError:
-  case InvariantBroken(violations: List[String])
+  case InvariantBroken[E <: DomainError](violations: List[E]) extends GovernorFault
   case BootstrapPeersCriticalTimeout
 
   def message: String = this match
@@ -285,34 +336,9 @@ final case class NativeLibraryError(problem: BlstProblem) extends NodeError:
   * whose hash differs from the configured one, a topology the node cannot follow); `reason` is the
   * text.
   */
-final case class ConfigError(reason: String, problem: ConfigProblem = ConfigProblem.Invalid)
-    extends NodeError:
-  def message: String = problem match
-    case ConfigProblem.ActiveSlotsCoefficient(e) => s"config: ${e.message}"
-    case _                                       => s"config: $reason"
-
-/** What kind of configuration failure a [[ConfigError]] is. */
-enum ConfigProblem:
-  case ActiveSlotsCoefficient(cause: Leader.Error)
-
-  /** Anything else: a malformed file, a missing or invalid field, a bad flag. */
-  case Invalid
-
-  /** A file the configuration lists could not be read. */
-  case FileMissing(role: String, file: String)
-
-  /** The blake2b-256 of a genesis file differs from the hash the configuration lists. */
-  case GenesisHashMismatch(role: String, file: String, expected: String, actual: String)
-
-  /** A topology in a format this node does not read (the legacy `Producers` one) or an access point
-    * it cannot connect to.
-    */
-  case UnsupportedTopology
-
-  /** A flag of an earlier build that this one no longer has (the rule sets and the differential
-    * harness, removed at J2.9): the node is not started.
-    */
-  case RemovedFlag(flag: String)
+final case class ConfigError(problem: ConfigProblem) extends NodeError:
+  def reason: String = problem.message
+  def message: String = s"config: ${problem.message}"
 
 object Points:
   def show(point: ChainSync.Point): String = point match

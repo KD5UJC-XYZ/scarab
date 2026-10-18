@@ -27,7 +27,7 @@ object ErasStates:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => sys.error(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => sys.error(e.message), identity))
 
   val blocks: Vector[Block] =
     raws.map(

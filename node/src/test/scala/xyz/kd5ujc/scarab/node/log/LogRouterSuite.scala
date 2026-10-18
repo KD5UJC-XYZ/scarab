@@ -8,6 +8,7 @@ import cats.effect.IO
 import scala.concurrent.duration.*
 import cats.syntax.all.*
 import io.circe.parser.parse
+import xyz.kd5ujc.scarab.ledger.ConfigProblem
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.consensus.FollowerEvent
 import xyz.kd5ujc.scarab.ledger.PeerError
@@ -21,11 +22,11 @@ class LogRouterSuite extends CatsEffectSuite:
     val many = flags.groupMap(_._1)(_._2).view.mapValues(_.toList).toMap
     LogSettings.parse(many.view.mapValues(_.last).toMap, many).fold(e => fail(e.message), identity)
 
-  private def refused(flags: (String, String)*): String =
+  private def refused(flags: (String, String)*): ConfigProblem =
     val many = flags.groupMap(_._1)(_._2).view.mapValues(_.toList).toMap
     LogSettings
       .parse(many.view.mapValues(_.last).toMap, many)
-      .fold(_.message, s => fail(s"accepted: $s"))
+      .fold(_.problem, s => fail(s"accepted: $s"))
 
   test("no flag: every line as JSON on stdout, nothing else") {
     val s = settings()
@@ -59,13 +60,28 @@ class LogRouterSuite extends CatsEffectSuite:
   }
 
   test("a namespace, a sink, a severity or a size that does not exist is refused") {
-    assert(refused("log-severity" -> "Chain.Extnded=Info").contains("no namespace Chain.Extnded"))
-    assert(refused("log-severity" -> "disk:Chain=Info").contains("no sink disk"))
-    assert(refused("log-severity" -> "Chain=Loud").contains("cannot use Loud"))
-    assert(refused("log-every" -> "Chain=0").contains("cannot use 0"))
-    assert(refused("log-file-keep" -> "3").contains("need --log-file"))
-    assert(refused("log-file" -> "x", "log-file-size" -> "12").contains("--log-file-size"))
-    assert(refused("log-stdout" -> "xml").contains("--log-stdout"))
+    assertEquals(
+      refused("log-severity" -> "Chain.Extnded=Info"),
+      ConfigProblem.LogNamespace("Chain.Extnded")
+    )
+    assertEquals(refused("log-severity" -> "disk:Chain=Info"), ConfigProblem.LogSink("disk"))
+    assertEquals(
+      refused("log-severity" -> "Chain=Loud"),
+      ConfigProblem.FlagValue("log-severity", "Loud")
+    )
+    assertEquals(refused("log-every" -> "Chain=0"), ConfigProblem.FlagValue("log-every", "0"))
+    assertEquals(
+      refused("log-file-keep" -> "3"),
+      ConfigProblem.FlagDependency(
+        Set("log-file-format", "log-file-size", "log-file-keep"),
+        "log-file"
+      )
+    )
+    assertEquals(
+      refused("log-file" -> "x", "log-file-size" -> "12"),
+      ConfigProblem.FlagValue("log-file-size", "12")
+    )
+    assertEquals(refused("log-stdout" -> "xml"), ConfigProblem.FlagValue("log-stdout", "xml"))
   }
 
   test("sizes in bytes, K, M and G") {

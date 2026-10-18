@@ -13,7 +13,7 @@ import xyz.kd5ujc.scarab.ledger.PreprodDeepTx.onSmallStack
 class SnapshotTablesSuite extends FunSuite:
   import SnapshotTables.*
 
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(fail(_), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
   private def right[A](e: Either[Error, A]): A = e.fold(e => fail(e.toString), identity)
   private def referenceCrc(bytes: Bytes): Long =
     val crc = new CRC32()

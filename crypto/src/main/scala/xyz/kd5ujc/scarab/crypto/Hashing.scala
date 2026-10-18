@@ -7,7 +7,7 @@ import org.bouncycastle.crypto.digests.Blake2bDigest
 /** A byte-first hash: serialization is an explicit, separate operation. */
 trait Hasher:
   def hash(bytes: Bytes): Bytes
-  final def encoded[A](value: A, encoder: Encoder[A]): Either[String, Bytes] =
+  final def encoded[A](value: A, encoder: Encoder[A]): Either[encoder.Error, Bytes] =
     encoder.encode(value).map(hash)
 
 object Blake2b:
@@ -28,22 +28,27 @@ object Blake2b:
 
 /** Only structural extraction and transaction-id hashing, never ledger validity. */
 object TransactionId:
-  def bodyBytes(transaction: Bytes): Either[String, Bytes] =
-    Cbor.decode(transaction).flatMap { node =>
+  enum Error:
+    case Syntax(cause: Cbor.Error)
+    case ExpectedBodyMap(actual: Value)
+    case ExpectedEnvelope(actual: Value)
+
+  def bodyBytes(transaction: Bytes): Either[Error, Bytes] =
+    Cbor.decode(transaction).left.map(Error.Syntax.apply).flatMap { node =>
       node.value match
         case Value.Arr(items) if items.size == 4 =>
           items.head.value match
             case Value.Map(_) => Right(items.head.original)
-            case _            => Left("transaction body must be a CBOR map")
-        case _ => Left("expected four-element Conway transaction envelope")
+            case actual       => Left(Error.ExpectedBodyMap(actual))
+        case actual => Left(Error.ExpectedEnvelope(actual))
     }
 
-  def fromBody(body: Bytes): Either[String, Bytes] =
-    Cbor.decode(body).flatMap { node =>
+  def fromBody(body: Bytes): Either[Error, Bytes] =
+    Cbor.decode(body).left.map(Error.Syntax.apply).flatMap { node =>
       node.value match
         case Value.Map(_) => Right(Blake2b.hash256.hash(node.original))
-        case _            => Left("transaction body must be a CBOR map")
+        case actual       => Left(Error.ExpectedBodyMap(actual))
     }
 
-  def fromEnvelope(transaction: Bytes): Either[String, Bytes] =
+  def fromEnvelope(transaction: Bytes): Either[Error, Bytes] =
     bodyBytes(transaction).flatMap(fromBody)

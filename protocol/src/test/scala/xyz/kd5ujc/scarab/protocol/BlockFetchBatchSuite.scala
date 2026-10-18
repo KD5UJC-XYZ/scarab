@@ -7,7 +7,7 @@ import CardanoBlockFetch.*
 import BlockFetch.Message
 
 class BlockFetchBatchSuite extends munit.FunSuite:
-  private def right[A](e: Either[String, A]): A = e.fold(fail(_), identity)
+  private def right[E, A](e: Either[E, A]): A = e.fold(e => fail(e.toString), identity)
   private def point(slot: Int, hash: Int): SpecificPoint = right(
     SpecificPoint.from(
       ChainSync.Point.Block(right(ChainSync.UInt64.from(slot)), Bytes(Vector.fill(32)(hash.toByte)))
@@ -36,7 +36,7 @@ class BlockFetchBatchSuite extends munit.FunSuite:
   test("same slot distinct points remain ordered; duplicates wrong order and short batch fail") {
     val stream = next(Batch.begin(plan(p, q)), Message.StartBatch, p)
     assert(stream.accept(Message.Block(raw))(_ => Right(q)).isLeft)
-    assert(stream.accept(Message.Block(raw))(_ => Left("identity extraction failed")).isLeft)
+    assert(stream.accept(Message.Block(raw))(_ => Left(ProtocolError.ExpectedTag24Header)).isLeft)
     val one = next(stream, Message.Block(raw), p)
     assert(one.accept(Message.Block(raw))(_ => Right(p)).isLeft)
     assert(one.accept(Message.BatchDone)(_ => Right(q)).isLeft)

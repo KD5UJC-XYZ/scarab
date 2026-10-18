@@ -12,7 +12,7 @@ object GovChecks:
     def value(key: Int): Option[BigInt] =
       u.fields
         .get(key)
-        .flatMap(raw => xyz.kd5ujc.scarab.codec.Cbor.decode(raw).toOption)
+        .flatMap(raw => CborRead.decode(raw).toOption)
         .flatMap(n => CborRead.uint(n, "value").toOption)
     val nonZero = Vector(2, 3, 4, 22, 23, 28, 29, 6, 30, 31) ++
       (if pp.protocolMajor == 9 then Vector.empty else Vector(17)) ++

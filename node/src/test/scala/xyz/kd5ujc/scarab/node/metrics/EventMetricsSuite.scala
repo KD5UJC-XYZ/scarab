@@ -142,7 +142,15 @@ class EventMetricsSuite extends CatsEffectSuite:
     fixture.flatMap { (metrics, em) =>
       for
         _ <- em.mempool.emit(MempoolEvent.Added(hash, 100, 1, 100L))
-        _ <- em.mempool.emit(MempoolEvent.Rejected(None, Rejection.Malformed("x")))
+        _ <- em.mempool.emit(
+          MempoolEvent.Rejected(
+            None,
+            Rejection.Malformed(
+              xyz.kd5ujc.scarab.ledger.TransactionDecodeProblem
+                .Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
+            )
+          )
+        )
         _ <- em.mempool.emit(MempoolEvent.Rejected(Some(hash), Rejection.Full(10, 5)))
         _ <- em.mempool.emit(MempoolEvent.Rejected(Some(hash), Rejection.Full(10, 5)))
         s <- metrics.snapshot
@@ -157,7 +165,7 @@ class EventMetricsSuite extends CatsEffectSuite:
     fixture.flatMap { (metrics, em) =>
       for
         _ <- em.storage.emit(StorageEvent.SnapshotWritten("a", Some(block(1)), 2048L, 1500L))
-        _ <- em.storage.emit(StorageEvent.SnapshotFailed("disk"))
+        _ <- em.storage.emit(StorageEvent.SnapshotFailed(new java.io.IOException("disk")))
         s <- metrics.snapshot
       yield
         assertEquals(counter(s, Catalogue.snapshotsWritten, ()), Some(1.0))

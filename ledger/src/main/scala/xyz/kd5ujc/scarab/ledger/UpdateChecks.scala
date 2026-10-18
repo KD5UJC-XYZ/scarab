@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.Bytes
 
 /** Pre-Conway protocol-parameter update proposals: what PPUP refuses and how many genesis delegates
   * must agree (the era-indexed rules, `ShelleyUtxo` and `Upec`, call these).
@@ -28,7 +28,7 @@ object UpdateChecks:
       case None => Right(())
       case Some(raw) =>
         for
-          n <- Cbor.decode(raw).leftMap(_ => Refusal.Unreadable)
+          n <- CborRead.decode(raw).leftMap(_ => Refusal.Unreadable)
           xs <- CborRead.arrayN(n, 2, "protocol version").leftMap(_ => Refusal.Unreadable)
           major <- CborRead.uint(xs(0), "major").leftMap(_ => Refusal.Unreadable)
           minor <- CborRead.uint(xs(1), "minor").leftMap(_ => Refusal.Unreadable)

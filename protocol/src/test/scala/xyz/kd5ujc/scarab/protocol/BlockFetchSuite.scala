@@ -9,8 +9,8 @@ import BlockFetch.*
 import CardanoBlockFetch.*
 
 class BlockFetchSuite extends munit.FunSuite:
-  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  private def right[A](value: Either[String, A]): A = value.fold(fail(_), identity)
+  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
+  private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private def failed[A](value: DecodeResult[A]): Unit = value match
     case DecodeResult.Failed(_) => ()
     case other                  => fail(s"expected Failed, got $other")
@@ -242,8 +242,8 @@ class BlockFetchSuite extends munit.FunSuite:
 
   test("generic payload seam validates one bounded item independently of Cardano tag24") {
     val generic = new PayloadCodec[Bytes]:
-      def encode(value: Bytes): Either[String, Bytes] = Right(value)
-      def decode(value: Bytes): Either[String, Bytes] = Right(value)
+      def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+      def decode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
     assertEquals(
       right(decode(State.Streaming, Role.Server, b("82041800"), generic)),
       Message.Block(b("1800"))

@@ -20,7 +20,7 @@ enum HeaderError:
   case TPraos(error: TPraosError)
 
   /** The header cannot belong to the chain it claims to extend. */
-  case Structure(reason: String)
+  case Structure(cause: HeaderStructureProblem)
 
   /** The header's slot begins further ahead of our clock, at the moment it arrived, than the
     * tolerable clock skew (`FarFutureHeaderException`). Its issuer minted it before its slot, or
@@ -137,3 +137,8 @@ enum TPraosError:
     case WrongGenesisVrfKey(g, e) =>
       s"VRF key hash ${g.hex} is not the genesis delegate's ${e.hex}"
     case OCert(e) => e.message
+
+/** Structural header failures with their original ledger-read cause. */
+enum HeaderStructureProblem:
+  case LedgerRead(cause: xyz.kd5ujc.scarab.ledger.state.MirrorError)
+  case EpochPrecedes(epoch: BigInt, ledgerEpoch: BigInt)

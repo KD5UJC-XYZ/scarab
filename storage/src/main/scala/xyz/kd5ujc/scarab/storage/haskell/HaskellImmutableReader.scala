@@ -67,7 +67,7 @@ object HaskellImmutableReader:
 
     private def guard[A](what: Path)(fa: F[A]): F[A] =
       fa.attempt.flatMap(
-        _.fold(e => fail(HaskellImmutableError.Io(what.toString, String.valueOf(e))), F.pure)
+        _.fold(e => fail(HaskellImmutableError.Io(what.toString, e)), F.pure)
       )
 
     private def present(chunk: ChunkNo, kind: FileKind): Path =

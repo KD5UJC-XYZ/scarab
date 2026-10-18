@@ -17,7 +17,8 @@ object PlutusBoundaryCorpus:
   val budget: ExUnits = ExUnits(BigInt(14000000), BigInt(10000000000L))
   private val v100 = (1, 0, 0)
   private val v110 = (1, 1, 0)
-  private def hex(s: String): Array[Byte] = Bytes.fromHex(s).fold(sys.error, _.toArray)
+  private def hex(s: String): Array[Byte] =
+    Bytes.fromHex(s).fold(e => sys.error(e.toString), _.toArray)
   private def tokens(xs: (String, Int)*): Vector[(Array[Byte], BigInt)] =
     xs.toVector.map((k, n) => hex(k) -> BigInt(n))
   private def values(xs: (String, Vector[(Array[Byte], BigInt)])*): Tm =
@@ -25,7 +26,11 @@ object PlutusBoundaryCorpus:
   private def raw(id: String, term: Tm, version: (Int, Int, Int) = v100): Probe =
     Probe(id, script(version, term))
   private def text(id: String, program: String, crypto: Boolean = false): Probe =
-    Probe(id, Bytes.fromArray(Program.parseUplc(program).fold(sys.error, _.cborEncoded)), crypto)
+    Probe(
+      id,
+      Bytes.fromArray(Program.parseUplc(program).fold(e => sys.error(e.toString), _.cborEncoded)),
+      crypto
+    )
 
   val malformedValues: Vector[Probe] = Vector(
     raw(
@@ -119,8 +124,11 @@ object PlutusBoundaryCorpus:
   ).map { id =>
     val name = id.split('/').last
     val base = s"/${PlutusConformanceSuite.Directory}/$id/$name"
-    val actual = Program.parseUplc(resource(base + ".uplc")).fold(sys.error, identity)
-    val expected = Program.parseUplc(resource(base + ".uplc.expected")).fold(sys.error, identity)
+    val actual =
+      Program.parseUplc(resource(base + ".uplc")).fold(e => sys.error(e.toString), identity)
+    val expected = Program
+      .parseUplc(resource(base + ".uplc.expected"))
+      .fold(e => sys.error(e.toString), identity)
     val equal = expected.term match
       case Term.Const(Constant.Bool(true), _) => actual.term
       case _ =>

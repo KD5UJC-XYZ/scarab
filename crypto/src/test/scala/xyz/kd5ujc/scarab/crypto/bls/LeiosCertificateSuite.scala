@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.crypto.bls
 
 import xyz.kd5ujc.scarab.crypto.bls.BlsFixtures.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.{Gen, Test}
@@ -302,18 +302,24 @@ class LeiosCertificateSuite extends ScalaCheckSuite:
     assertEquals(Vote.decode(Bytes.wrap(enc)), Right(vote))
     assertEquals(
       Vote.decode(Bytes.wrap(enc :+ 0.toByte)),
-      Left(BlsError.MalformedCbor(CborFault.Syntax))
+      Left(BlsError.MalformedCbor(CborFault.Syntax(Cbor.Error.TrailingBytes)))
     )
     assertEquals(
       Vote.decode(Bytes.wrap(enc.take(enc.length - 1))),
-      Left(BlsError.MalformedCbor(CborFault.Syntax))
+      Left(BlsError.MalformedCbor(CborFault.Syntax(Cbor.Error.TruncatedString)))
     )
     // voter id 5 written in the two-byte form 0x18 0x05 instead of 0x05
     val longForm = enc.take(35) ++ Array(0x18.toByte, 0x05.toByte) ++ enc.drop(36)
-    assertEquals(Vote.decode(Bytes.wrap(longForm)), Left(BlsError.MalformedCbor(CborFault.Syntax)))
+    assertEquals(
+      Vote.decode(Bytes.wrap(longForm)),
+      Left(BlsError.MalformedCbor(CborFault.NonCanonicalEncoding))
+    )
     // an indefinite-length array
     val indef = Array(0x9f.toByte) ++ enc.drop(1) ++ Array(0xff.toByte)
-    assertEquals(Vote.decode(Bytes.wrap(indef)), Left(BlsError.MalformedCbor(CborFault.Syntax)))
+    assertEquals(
+      Vote.decode(Bytes.wrap(indef)),
+      Left(BlsError.MalformedCbor(CborFault.NonCanonicalEncoding))
+    )
     // wrong arity and wrong types
     assertEquals(
       Vote.decode(Bytes.wrap(Array(0x82.toByte, 0x01, 0x02))),

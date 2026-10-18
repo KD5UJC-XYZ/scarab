@@ -26,5 +26,5 @@ object LegacySnapshots:
           .node(s.state, forks, s.anchor)
           .map(StateSnapshot(s.anchor, _))
           .left
-          .map(e => StorageError.Corrupt(file.toString, e.toString))
+          .map(e => StorageError.Corrupt(file.toString, e))
       )

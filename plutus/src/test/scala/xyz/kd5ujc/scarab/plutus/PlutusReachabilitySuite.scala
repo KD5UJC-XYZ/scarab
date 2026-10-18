@@ -106,7 +106,7 @@ class PlutusReachabilitySuite extends FunSuite:
   // ---- the two case-on-Data cases: the ledger refuses them below protocol 12 --------------------
 
   private def evalText(pv: Int, text: String): Try[UplcTerm] =
-    val program = Program.parseUplc(text).fold(sys.error, identity)
+    val program = Program.parseUplc(text).fold(e => sys.error(e.toString), identity)
     Try(
       PlutusVM
         .makePlutusV3VM(MajorProtocolVersion(pv))
@@ -129,7 +129,7 @@ class PlutusReachabilitySuite extends FunSuite:
     def dropped(n: BigInt) =
       val text =
         s"(program 1.0.0 [ [ (force (builtin dropList)) (con integer $n) ] (con (list integer) [1, 2]) ])"
-      val program = Program.parseUplc(text).fold(sys.error, identity)
+      val program = Program.parseUplc(text).fold(e => sys.error(e.toString), identity)
       ScalusEvaluator.pure.evaluate(
         EvalRequest(
           PlutusLanguage.V3,
@@ -159,7 +159,7 @@ class PlutusReachabilitySuite extends FunSuite:
   private def hashed(dstHex: String): EvalResult =
     val text =
       s"(program 1.0.0 [ (builtin bls12_381_G1_compress) [ [ (builtin bls12_381_G1_hashToGroup) (con bytestring #3f) ] (con bytestring #$dstHex) ] ])"
-    val program = Program.parseUplc(text).fold(sys.error, identity)
+    val program = Program.parseUplc(text).fold(e => sys.error(e.toString), identity)
     ScalusEvaluator.pure.evaluate(
       EvalRequest(
         PlutusLanguage.V3,

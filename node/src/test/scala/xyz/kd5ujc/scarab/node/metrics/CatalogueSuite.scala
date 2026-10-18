@@ -75,7 +75,7 @@ class CatalogueSuite extends FunSuite:
   test("a fresh registry renders every counter and histogram, and parses") {
     val text =
       Exposition.render(Metrics.create[SyncIO](Catalogue.all).flatMap(_.snapshot).unsafeRunSync())
-    val parsed = TextFormat.parse(text).fold(fail(_), identity)
+    val parsed = TextFormat.parse(text).fold(e => fail(e.toString), identity)
     assertEquals(parsed.order.toSet, Catalogue.all.map(_.name.value).toSet)
     assert(parsed.samples.exists(_.name == "scarab_rollbacks_total"))
     assert(parsed.samples.exists(_.name == "scarab_block_apply_seconds_count"))

@@ -28,7 +28,7 @@ class UtxoCheckpointLayoutSuite extends CatsEffectSuite:
     val cbor =
       Array[Byte](0x82.toByte, 0x58.toByte, address.length.toByte) ++ address ++
         Array[Byte](0x1a.toByte) ++ be(1000L + seed, 4)
-    TxOut.fromBytes(Bytes.wrap(cbor)).fold(e => fail(e), identity)
+    TxOut.fromBytes(Bytes.wrap(cbor)).fold(e => fail(e.toString), identity)
 
   /** A set of outputs of 120 transactions with up to five outputs each, the larger indexes among
     * them.
@@ -141,10 +141,10 @@ class UtxoCheckpointLayoutSuite extends CatsEffectSuite:
   private val legacyOnly = entries.take(5)
 
   /** The problem a refused restore names, from the typed error. */
-  private def problemOf(refused: Either[StorageError, Boolean]): Either[String, CheckpointProblem] =
+  private def problemOf(refused: Either[StorageError, Boolean]): Option[CheckpointProblem] =
     refused match
-      case Left(StorageError.UtxoCheckpoint(_, p)) => Right(p)
-      case other                                   => Left(other.toString)
+      case Left(StorageError.UtxoCheckpoint(_, p)) => Some(p)
+      case _                                       => None
 
   /** Restore `checkpoint` into a fresh live store, which must refuse it; then reopen the live store
     * to see what the refusal left in it.
@@ -169,7 +169,7 @@ class UtxoCheckpointLayoutSuite extends CatsEffectSuite:
         extra = List(Array.fill[Byte](34)(7))
       )
       refusal(dir, checkpoint).map { (refused, size, at) =>
-        assertEquals(problemOf(refused), Right(CheckpointProblem.MixedKeyLayouts))
+        assertEquals(problemOf(refused), Some(CheckpointProblem.MixedKeyLayouts))
         assert(refused.left.exists(_.message.contains("replay from the immutable chunks")))
         assertEquals(size, 0L)
         assertEquals(at, -1L)
@@ -185,7 +185,7 @@ class UtxoCheckpointLayoutSuite extends CatsEffectSuite:
       big(35) = 1
       LegacyUtxoCheckpoint.write(checkpoint.toNioPath, legacyOnly, stamp, extra = List(big))
       refusal(dir, checkpoint).map((refused, _, _) =>
-        assertEquals(problemOf(refused), Right(CheckpointProblem.IndexTooLarge(0x10001L)))
+        assertEquals(problemOf(refused), Some(CheckpointProblem.IndexTooLarge(0x10001L)))
       )
     }
   }
@@ -200,7 +200,7 @@ class UtxoCheckpointLayoutSuite extends CatsEffectSuite:
         extra = List(Array.fill[Byte](35)(9))
       )
       refusal(dir, checkpoint).map((refused, _, _) =>
-        assertEquals(problemOf(refused), Right(CheckpointProblem.UnknownKeyLength(35)))
+        assertEquals(problemOf(refused), Some(CheckpointProblem.UnknownKeyLength(35)))
       )
     }
   }

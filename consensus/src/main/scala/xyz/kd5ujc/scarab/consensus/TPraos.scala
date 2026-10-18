@@ -166,7 +166,7 @@ object TPraos:
                   )
                 yield LeaderCheck.Threshold
               case StakeView.Unknown(_) =>
-                Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
+                Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
           yield check
         else
           for

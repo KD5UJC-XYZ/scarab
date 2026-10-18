@@ -45,19 +45,21 @@ class Secp256k1Suite extends FunSuite:
   private def ecdsa(pk: Array[Byte] = pk, msg: Array[Byte] = msg, sig: Array[Byte] = sig(r, s)) =
     Secp256k1.verifyEcdsa(pk, msg, sig)
 
-  private def fails(body: => Any, label: String)(using munit.Location): Unit =
-    val _ = intercept[IllegalArgumentException](clue(label) match { case _ => body })
+  private def fails(body: => Either[Secp256k1.Error, Boolean], label: String)(using
+      munit.Location
+  ): Unit =
+    assert(body.isLeft, label)
 
   test("a valid signature verifies, a signature on another message does not") {
-    assert(ecdsa())
-    assert(!ecdsa(msg = msg.updated(0, (msg(0) ^ 1).toByte)))
-    assert(!ecdsa(sig = sig(r, s + 1)))
+    assertEquals(ecdsa(), Right(true))
+    assertEquals(ecdsa(msg = msg.updated(0, (msg(0) ^ 1).toByte)), Right(false))
+    assertEquals(ecdsa(sig = sig(r, s + 1)), Right(false))
   }
 
   test("r = 0 or s = 0 parse and verify to False (the case of preprod 97b31e35)") {
-    assert(!ecdsa(sig = Array.fill(64)(0.toByte)))
-    assert(!ecdsa(sig = sig(0, s)))
-    assert(!ecdsa(sig = sig(r, 0)))
+    assertEquals(ecdsa(sig = Array.fill(64)(0.toByte)), Right(false))
+    assertEquals(ecdsa(sig = sig(0, s)), Right(false))
+    assertEquals(ecdsa(sig = sig(r, 0)), Right(false))
   }
 
   test("r or s at least n do not parse: the builtin fails") {
@@ -66,14 +68,14 @@ class Secp256k1Suite extends FunSuite:
     fails(ecdsa(sig = sig(n + 1, s)), "r = n + 1")
     fails(ecdsa(sig = Array.fill(64)(0xff.toByte)), "all ones")
     // n - 1 does parse
-    assert(!ecdsa(sig = sig(n - 1, s)))
+    assertEquals(ecdsa(sig = sig(n - 1, s)), Right(false))
   }
 
   test(
     "a high s is False: libsecp256k1 verifies only normalised signatures and Plutus does not normalise"
   ) {
-    assert(ecdsa(sig = sig(r, s)))
-    assert(!ecdsa(sig = sig(r, n - s)))
+    assertEquals(ecdsa(sig = sig(r, s)), Right(true))
+    assertEquals(ecdsa(sig = sig(r, n - s)), Right(false))
   }
 
   test("key: 33 bytes, prefix 02 or 03, a point on the curve; anything else fails") {
@@ -89,7 +91,7 @@ class Secp256k1Suite extends FunSuite:
       .get
     fails(ecdsa(pk = offCurve), "x off the curve")
     // the other parity of a valid key is a different valid key: a verdict
-    assert(!ecdsa(pk = pk.updated(0, (pk(0) ^ 1).toByte)))
+    assertEquals(ecdsa(pk = pk.updated(0, (pk(0) ^ 1).toByte)), Right(false))
   }
 
   test("lengths: key 33, message 32, signature 64; anything else fails") {

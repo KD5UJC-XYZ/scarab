@@ -37,7 +37,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   private def addrIn(address: Bytes) =
     TxIn(xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(address), 0)
   private val utxo0: Map[TxIn, ByronOut] =
-    ByronLedger.genesisUtxo(genesis, config.addressMagic).fold(e => fail(e), identity)
+    ByronLedger.genesisUtxo(genesis, config.addressMagic).fold(e => fail(e.toString), identity)
 
   test("the genesis UTxO holds the AVVM balance at its redeem address and the ordinary balances") {
     assertEquals(utxo0.size, 3)
@@ -63,7 +63,7 @@ class ByronLedgerSuite extends ScalaCheckSuite:
   }
 
   test("the initial ledger activates the genesis delegation") {
-    val ledger = ByronLedger.initial(config).fold(e => fail(e), identity)
+    val ledger = ByronLedger.initial(config).fold(e => fail(e.toString), identity)
     assertEquals(
       ledger.delegation.delegationMap,
       gKeys.zip(dKeys).map((g, d) => g.keyHash -> d.keyHash).toMap
@@ -110,8 +110,8 @@ class ByronLedgerSuite extends ScalaCheckSuite:
     assert(apply(exact).isRight)
     val short = spendAlice(Seq(bobAddr -> 1000000, aliceAddr -> (change + 1)))
     assertEquals(
-      apply(short).left.map(_.getClass.getSimpleName),
-      Left("FeeTooSmall")
+      apply(short).map(_ => ()),
+      Left(ByronError.FeeTooSmall(BigInt(min), BigInt(min - 1)))
     )
   }
 

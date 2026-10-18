@@ -14,7 +14,7 @@ class Phase2UnavailableSuite extends FunSuite:
       .flatMap(_.referenceScript)
       .map(script => script.hash -> script)
       .toMap ++ c.tx.witnesses.scriptsByHash
-  private val limit = EvalFailure.Unsupported("test interpreter has no implementation")
+  private val limit = EvalFailure.Unsupported(BackendFailure.NoResult)
   private val unavailable: ScriptEvaluator[Id] = _ =>
     EvalResult.Failure(limit, ExUnits.zero, Vector.empty)
 
@@ -69,7 +69,7 @@ class Phase2UnavailableSuite extends FunSuite:
     val script =
       scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
     val decoder: ScriptDecoder[Id] =
-      (_, _, _) => Left(ScriptDecodeFailure.Unavailable("backend stopped"))
+      (_, _, _) => Left(ScriptDecodeFailure.Unavailable(BackendFailure.NoResult))
     for valid <- Vector(true, false); witness <- Vector(true, false) do
       val base = c.tx.copy(isValid = valid, witnesses = c.tx.witnesses.copy(scripts = Vector.empty))
       val tx =
@@ -88,7 +88,7 @@ class Phase2UnavailableSuite extends FunSuite:
     val script =
       scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
     val decoder: ScriptDecoder[Id] =
-      (_, _, _) => Left(ScriptDecodeFailure.Malformed("bad encoding"))
+      (_, _, _) => Left(ScriptDecodeFailure.Malformed(ScriptProblem.CborByteStringExpected))
     for valid <- Vector(true, false) do
       val tx = c.tx.copy(isValid = valid, witnesses = c.tx.witnesses.copy(scripts = Vector(script)))
       val expected = LedgerFailure.Rejected(

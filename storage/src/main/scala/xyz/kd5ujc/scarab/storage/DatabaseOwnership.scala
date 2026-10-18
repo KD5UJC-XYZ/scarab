@@ -38,12 +38,12 @@ object DatabaseOwnership:
         catch
           case scala.util.control.NonFatal(e) =>
             channel.close()
-            Left(StorageError.Io(lock.toString, e.toString))
+            Left(StorageError.Io(lock.toString, e))
       }
       .attempt
       .flatMap {
         case Right(result) => result.fold(_.raise[F, (FileChannel, FileLock)], F.pure)
-        case Left(e) => StorageError.Io(db.toString, e.toString).raise[F, (FileChannel, FileLock)]
+        case Left(e)       => StorageError.Io(db.toString, e).raise[F, (FileChannel, FileLock)]
       }
     Resource
       .make(acquire) { (channel, lease) =>

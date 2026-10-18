@@ -178,7 +178,7 @@ object Praos:
               PraosError.NotElected(header.slot, decision)
             )
           yield LeaderCheck.Threshold
-        case None => Right(LeaderCheck.Unchecked("stake distribution unknown (bootstrap)"))
+        case None => Right(LeaderCheck.Unchecked(LeaderCheck.UncheckedReason.BootstrapStakeUnknown))
       _ <- config.verdicts
         .opCert(header, config.slotsPerKesPeriod, config.maxKesEvolutions)
         .leftMap(PraosError.OCert(_))

@@ -579,7 +579,16 @@ class KesRotationSuite extends CatsEffectSuite with ForgeFixture:
             def read = inner.read
             def persist(key: Sum6KesSigning.SigningKey) =
               failing.get.flatMap(down =>
-                if down then IO.pure(Persisted.Failed(ForgeError.KeyFile("kes.skey", "disk full")))
+                if down then
+                  IO.pure(
+                    Persisted.Failed(
+                      ForgeError.KeyFile(
+                        "kes.skey",
+                        xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
+                          .Io(new java.io.IOException("disk full"))
+                      )
+                    )
+                  )
                 else inner.persist(key)
               )
           h <- harness(p, ledgerWith(p, 1), source = Some(flaky))

@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger
 
 import java.nio.file.{Files, Path}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Transaction 9a47e091709e4fe1 (mainnet block 5,567,164, slot 26,366,727, epoch 258, Mary,
@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.protocol.Era
   * (`fixtures/mainnet/README.md`).
   */
 class MainnetPointerSuite extends FunSuite:
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
 
   private val payment = "2813b99a80cfb4024374bd0f502959485aa56e0648564ff805f2e51b"
   private val original = "bcd9819561bddc6614"
@@ -28,12 +28,16 @@ class MainnetPointerSuite extends FunSuite:
   private val body: Bytes =
     val hex = Files.readString(Path.of("fixtures/mainnet/mary-pointer-tx-9a47e091.hex")).trim
     val tx =
-      Cbor.decode(bytes(hex)).flatMap(CborRead.array(_, "transaction")).fold(fail(_), identity)
+      CborRead
+        .decode(bytes(hex))
+        .flatMap(CborRead.array(_, "transaction"))
+        .fold(e => fail(e.toString), identity)
     tx.head.original
 
-  private def decoded(era: Era): Either[String, TxBody] = TxBody.decode(body, Address.Mode.of(era))
+  private def decoded(era: Era): Either[LedgerDecodeError, TxBody] =
+    TxBody.decode(body, Address.Mode.of(era))
 
-  private val mary: TxBody = decoded(Era.Mary).fold(e => fail(e), identity)
+  private val mary: TxBody = decoded(Era.Mary).fold(e => fail(e.toString), identity)
   private val output: TxOut = mary.outputs.head
 
   private def shelley(ptr: Ptr): Address.Kind =
@@ -78,7 +82,10 @@ class MainnetPointerSuite extends FunSuite:
   }
 
   test("Conway refuses it, as the strict decoder of version 9 does") {
-    assertEquals(decoded(Era.Conway).map(_ => ()), Left("pointer address: pointer out of range"))
+    assertEquals(
+      decoded(Era.Conway).map(_ => ()),
+      Left(LedgerDecodeError.Pointer(Ptr.Failure.OutOfRange))
+    )
   }
 
   test("the stake of the output is counted under Ptr 0 0 0, which names no account") {
@@ -106,7 +113,10 @@ class MainnetPointerSuite extends FunSuite:
   // The addresses below are tested in every mode.
   private def pointer(groups: String): Bytes = bytes(s"41$payment$groups")
 
-  private def read(groups: String, mode: Address.Mode): Either[String, (String, Address.Kind)] =
+  private def read(
+      groups: String,
+      mode: Address.Mode
+  ): Either[LedgerDecodeError, (String, Address.Kind)] =
     Address.decode(pointer(groups), mode).map(a => (a.raw.hex, a.kind))
 
   test("a pointer that fits is the same in every mode") {
@@ -156,7 +166,7 @@ class MainnetPointerSuite extends FunSuite:
 
   test("Conway reads the naturals with the bounds of the strict decoder") {
     def strict(groups: String) = read(groups, Address.Mode.Strict).map(_._2)
-    val refused = Left("pointer address: pointer out of range")
+    val refused = Left(LedgerDecodeError.Pointer(Ptr.Failure.OutOfRange))
     assertEquals(strict("8fffffff7f" + "0101"), Right(shelley(Ptr(BigInt(4294967295L), 1, 1))))
     // six groups for a value that fits a Word32 are too many bytes
     assertEquals(strict("808080808001" + "0101"), refused)
@@ -170,8 +180,14 @@ class MainnetPointerSuite extends FunSuite:
 
   test("a truncated pointer is refused in every mode") {
     Address.Mode.values.foreach { mode =>
-      assertEquals(read("8101", mode).map(_ => ()), Left("pointer address: truncated natural"))
-      assertEquals(read("81018102", mode).map(_ => ()), Left("pointer address: truncated natural"))
+      assertEquals(
+        read("8101", mode).map(_ => ()),
+        Left(LedgerDecodeError.Pointer(Ptr.Failure.Truncated))
+      )
+      assertEquals(
+        read("81018102", mode).map(_ => ()),
+        Left(LedgerDecodeError.Pointer(Ptr.Failure.Truncated))
+      )
     }
   }
 
@@ -181,19 +197,22 @@ class MainnetPointerSuite extends FunSuite:
       Right(s"41${payment}81010203")
     )
     List(Address.Mode.Rigorous, Address.Mode.Strict).foreach { mode =>
-      assertEquals(read("81010203ff", mode).map(_ => ()), Left("pointer address: trailing bytes"))
+      assertEquals(
+        read("81010203ff", mode).map(_ => ()),
+        Left(LedgerDecodeError.AddressLength("pointer address: trailing bytes", 33, 34))
+      )
     }
   }
 
   test("the output size is the one of the address the ledger holds") {
     // [address, 1 ada] with the address of the fixture: 38 bytes as it came, 32 written again
     val came = bytes(s"82582641$payment$original" + "1a000f4240")
-    val out = TxOut.fromBytes(came, Address.Mode.Rigorous).fold(e => fail(e), identity)
+    val out = TxOut.fromBytes(came, Address.Mode.Rigorous).fold(e => fail(e.toString), identity)
     assertEquals(out.address.raw.size, 32)
     assertEquals(out.raw.size - out.ledgerSize, 6)
     // an address already written as the ledger writes it is not changed
     val plain = TxOut(
-      Address.decode(pointer("81010203")).fold(e => fail(e), identity),
+      Address.decode(pointer("81010203")).fold(e => fail(e.toString), identity),
       Value.coin(1000000)
     )
     assertEquals(plain.ledgerSize, plain.raw.size)

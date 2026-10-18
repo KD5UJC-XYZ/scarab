@@ -34,7 +34,7 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
   private val Mainnet = 1
   private val EpochSlots = BigInt(21600)
 
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.message), identity)
 
   /** The registration of pool `ff5181ba`, as the mainnet block holds it. */
   private val registration: PoolParams =
@@ -46,7 +46,7 @@ class MainnetPoolNetworkSnapshotSuite extends CatsEffectSuite:
         case Right(b: Block.Shelley) => b
         case other                   => fail(s"unexpected $other")
     block.transactions
-      .map(Tx.fromBlock(_, block.era).fold(e => fail(e), identity))
+      .map(Tx.fromBlock(_, block.era).fold(e => fail(e.message), identity))
       .find(_.body.id.hex.startsWith("49be5965c31a60c3"))
       .flatMap(_.body.certificates.collectFirst { case Certificate.RegisterPool(p) => p })
       .getOrElse(fail("no pool registration in transaction 49be5965c31a60c3"))

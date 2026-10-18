@@ -26,7 +26,7 @@ class VerificationCacheSuite extends ScalaCheckSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
 
   private val prepared: Vector[Prepared] = raws.flatMap(NodeRules.decodeShelley)
 

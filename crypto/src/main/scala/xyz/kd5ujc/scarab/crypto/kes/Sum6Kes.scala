@@ -8,7 +8,8 @@ import xyz.kd5ujc.scarab.crypto.witness.{
   Signature64,
   StrictEd25519,
   VerificationError,
-  VerificationResult
+  VerificationResult,
+  WitnessInputError
 }
 import scala.util.control.NonFatal
 
@@ -19,9 +20,19 @@ import scala.util.control.NonFatal
 object Sum6Kes:
   val MaxMessageBytes: Int = 65536 // Local resource policy, not a Cardano protocol limit.
 
+  enum Component:
+    case Root, Signature, Message, Period
   enum Failure:
-    case Malformed(reason: String)
-    case InternalFailure(kind: String)
+    case MissingComponent(component: Component)
+    case InvalidLength(component: Component, actual: Int, expected: Int)
+    case PeriodOutOfRange(actual: Int)
+    case MessageTooLarge(actual: Int)
+    case HashContractViolation(actual: Option[Int])
+    case PeriodInvariant(residual: Int)
+    case LeafInput(cause: WitnessInputError)
+    case LeafFailure(cause: VerificationError)
+    case LeafContractViolation
+    case Defect(cause: Throwable)
   enum Result:
     case SignatureRejected, SuppliedMessageSignatureVerified
 
@@ -29,44 +40,43 @@ object Sum6Kes:
     def toArray: Array[Byte] = bytes.toArray
   object Root32:
     def fromBytes(bytes: Bytes): Either[Failure, Root32] =
-      checked(bytes, 32, "root").map(new Root32(_))
+      checked(bytes, 32, Component.Root).map(new Root32(_))
     def fromArray(bytes: Array[Byte]): Either[Failure, Root32] =
-      array(bytes, 32, "root").flatMap(fromBytes)
+      array(bytes, 32, Component.Root).flatMap(fromBytes)
 
   final class Signature448 private (val bytes: Bytes):
     def toArray: Array[Byte] = bytes.toArray
   object Signature448:
     def fromBytes(bytes: Bytes): Either[Failure, Signature448] =
-      checked(bytes, 448, "signature").map(new Signature448(_))
+      checked(bytes, 448, Component.Signature).map(new Signature448(_))
     def fromArray(bytes: Array[Byte]): Either[Failure, Signature448] =
-      array(bytes, 448, "signature").flatMap(fromBytes)
+      array(bytes, 448, Component.Signature).flatMap(fromBytes)
 
   final class RelativePeriod private (val value: Int)
   object RelativePeriod:
     def create(value: Int): Either[Failure, RelativePeriod] =
-      if value < 0 || value > 63 then Left(Failure.Malformed("relative period must be 0..63"))
+      if value < 0 || value > 63 then Left(Failure.PeriodOutOfRange(value))
       else Right(new RelativePeriod(value))
 
   final class SuppliedMessage private (val bytes: Bytes):
     def toArray: Array[Byte] = bytes.toArray
   object SuppliedMessage:
     def fromBytes(bytes: Bytes): Either[Failure, SuppliedMessage] =
-      if bytes == null || bytes.value == null || bytes.size > MaxMessageBytes then
-        Left(Failure.Malformed("supplied message must contain 0..65536 bytes"))
+      if bytes == null || bytes.value == null then Left(Failure.MissingComponent(Component.Message))
+      else if bytes.size > MaxMessageBytes then Left(Failure.MessageTooLarge(bytes.size))
       else Right(new SuppliedMessage(bytes))
     def fromArray(bytes: Array[Byte]): Either[Failure, SuppliedMessage] =
-      // Enforce the cap before copying caller-owned storage.
-      if bytes == null || bytes.length > MaxMessageBytes then
-        Left(Failure.Malformed("supplied message must contain 0..65536 bytes"))
+      if bytes == null then Left(Failure.MissingComponent(Component.Message))
+      else if bytes.length > MaxMessageBytes then Left(Failure.MessageTooLarge(bytes.length))
       else fromBytes(Bytes.fromArray(bytes))
 
-  private def checked(bytes: Bytes, size: Int, name: String): Either[Failure, Bytes] =
-    if bytes == null || bytes.value == null || bytes.size != size then
-      Left(Failure.Malformed(s"$name must contain $size bytes"))
+  private def checked(bytes: Bytes, size: Int, component: Component): Either[Failure, Bytes] =
+    if bytes == null || bytes.value == null then Left(Failure.MissingComponent(component))
+    else if bytes.size != size then Left(Failure.InvalidLength(component, bytes.size, size))
     else Right(bytes)
-  private def array(bytes: Array[Byte], size: Int, name: String): Either[Failure, Bytes] =
-    if bytes == null || bytes.length != size then
-      Left(Failure.Malformed(s"$name must contain $size bytes"))
+  private def array(bytes: Array[Byte], size: Int, component: Component): Either[Failure, Bytes] =
+    if bytes == null then Left(Failure.MissingComponent(component))
+    else if bytes.length != size then Left(Failure.InvalidLength(component, bytes.length, size))
     else Right(Bytes.fromArray(bytes))
 
   def verify(
@@ -100,42 +110,50 @@ object Sum6Kes:
       hash: Bytes => Bytes,
       leaf: (PublicKey32, Signature64, Bytes) => Either[VerificationError, VerificationResult]
   ): Either[Failure, Result] =
-    if root == null || period == null || message == null || signature == null then
-      Left(Failure.Malformed("null checked component"))
+    if root == null then Left(Failure.MissingComponent(Component.Root))
+    else if period == null then Left(Failure.MissingComponent(Component.Period))
+    else if message == null then Left(Failure.MissingComponent(Component.Message))
+    else if signature == null then Left(Failure.MissingComponent(Component.Signature))
     else
       try
-        var current = root.bytes
-        var residual = period.value
-        var depth = 6
-        var mismatch = false
-        while depth > 0 && !mismatch do
-          val offset = 64 + 64 * (depth - 1)
-          val pair = Bytes(signature.bytes.value.slice(offset, offset + 64))
-          val digest = hash(pair)
-          if digest == null || digest.value == null || digest.size != 32 then
-            throw new IllegalStateException("hash-contract")
-          mismatch = digest != current
-          if !mismatch then
-            val half = 1 << (depth - 1)
-            val selected = if residual < half then 0 else 32
-            if selected == 32 then residual -= half
-            current = Bytes(pair.value.slice(selected, selected + 32))
-          depth -= 1
-        if mismatch then Right(Result.SignatureRejected)
-        else if residual != 0 then Left(Failure.InternalFailure("period-invariant"))
-        else
-          val checked = for
-            key <- PublicKey32.create(current)
-            sig <- Signature64.create(Bytes(signature.bytes.value.take(64)))
-          yield (key, sig)
-          checked match
-            case Left(_) => Left(Failure.InternalFailure("leaf-contract"))
-            case Right((key, sig)) =>
-              leaf(key, sig, message.bytes) match
-                case Right(VerificationResult.SignatureVerified) =>
-                  Right(Result.SuppliedMessageSignatureVerified)
-                case Right(VerificationResult.SignatureRejected) => Right(Result.SignatureRejected)
-                case Left(VerificationError.ImplementationFailure(kind)) =>
-                  Left(Failure.InternalFailure(kind))
-                case _ => Left(Failure.InternalFailure("leaf-contract"))
-      catch case NonFatal(e) => Left(Failure.InternalFailure(e.getClass.getName))
+        final case class Level(current: Bytes, residual: Int, rejected: Boolean)
+        val descended = (6 to 1 by -1).foldLeft[Either[Failure, Level]](
+          Right(Level(root.bytes, period.value, false))
+        ) { (acc, depth) =>
+          acc.flatMap { state =>
+            if state.rejected then Right(state)
+            else
+              val offset = 64 + 64 * (depth - 1)
+              val pair = signature.bytes.slice(offset, offset + 64)
+              val digest = hash(pair)
+              if digest == null || digest.value == null then
+                Left(Failure.HashContractViolation(None))
+              else if digest.size != 32 then Left(Failure.HashContractViolation(Some(digest.size)))
+              else if digest != state.current then Right(state.copy(rejected = true))
+              else
+                val half = 1 << (depth - 1)
+                val selected = if state.residual < half then 0 else 32
+                val residual = if selected == 32 then state.residual - half else state.residual
+                Right(Level(pair.slice(selected, selected + 32), residual, false))
+          }
+        }
+        descended.flatMap { state =>
+          if state.rejected then Right(Result.SignatureRejected)
+          else if state.residual != 0 then Left(Failure.PeriodInvariant(state.residual))
+          else
+            for
+              key <- PublicKey32.create(state.current).left.map(Failure.LeafInput.apply)
+              sig <- Signature64.create(signature.bytes.take(64)).left.map(Failure.LeafInput.apply)
+              result <- Option(leaf(key, sig, message.bytes))
+                .toRight(Failure.LeafContractViolation)
+                .flatMap {
+                  case Right(VerificationResult.SignatureVerified) =>
+                    Right(Result.SuppliedMessageSignatureVerified)
+                  case Right(VerificationResult.SignatureRejected) =>
+                    Right(Result.SignatureRejected)
+                  case Left(error) if error != null => Left(Failure.LeafFailure(error))
+                  case _                            => Left(Failure.LeafContractViolation)
+                }
+            yield result
+        }
+      catch case NonFatal(e) => Left(Failure.Defect(e))

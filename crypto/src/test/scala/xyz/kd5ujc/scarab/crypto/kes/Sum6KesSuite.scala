@@ -134,19 +134,35 @@ class Sum6KesSuite extends munit.FunSuite:
   }
 
   test("checked sizes ranges null storage and local message cap") {
-    Vector(null, Bytes(null), Bytes.empty, b("00" * 31), b("00" * 33)).foreach(x =>
-      assert(Root32.fromBytes(x).swap.toOption.get.isInstanceOf[Failure.Malformed])
+    Vector(null, Bytes(null)).foreach { x =>
+      assertEquals(Root32.fromBytes(x), Left(Failure.MissingComponent(Component.Root)))
+      assertEquals(Signature448.fromBytes(x), Left(Failure.MissingComponent(Component.Signature)))
+      assertEquals(SuppliedMessage.fromBytes(x), Left(Failure.MissingComponent(Component.Message)))
+    }
+    Vector(0, 31, 33).foreach(n =>
+      assertEquals(
+        Root32.fromBytes(b("00" * n)),
+        Left(Failure.InvalidLength(Component.Root, n, 32))
+      )
     )
-    Vector(null, Bytes(null), Bytes.empty, b("00" * 447), b("00" * 449)).foreach(x =>
-      assert(Signature448.fromBytes(x).swap.toOption.get.isInstanceOf[Failure.Malformed])
+    Vector(0, 447, 449).foreach(n =>
+      assertEquals(
+        Signature448.fromBytes(b("00" * n)),
+        Left(Failure.InvalidLength(Component.Signature, n, 448))
+      )
     )
-    Vector(Int.MinValue, -1, 64, Int.MaxValue).foreach(p => assert(RelativePeriod.create(p).isLeft))
+    Vector(Int.MinValue, -1, 64, Int.MaxValue).foreach(p =>
+      assertEquals(RelativePeriod.create(p), Left(Failure.PeriodOutOfRange(p)))
+    )
     (0 to 63).foreach(p => assertEquals(RelativePeriod.create(p).toOption.get.value, p))
     Vector(null, Bytes(null), Bytes(Vector.fill(MaxMessageBytes + 1)(0.toByte))).foreach(x =>
-      assert(SuppliedMessage.fromBytes(x).swap.toOption.get.isInstanceOf[Failure.Malformed])
+      assert(SuppliedMessage.fromBytes(x).isLeft)
     )
     assert(SuppliedMessage.fromArray(null).isLeft)
-    assert(SuppliedMessage.fromArray(new Array[Byte](MaxMessageBytes + 1)).isLeft)
+    assertEquals(
+      SuppliedMessage.fromArray(new Array[Byte](MaxMessageBytes + 1)),
+      Left(Failure.MessageTooLarge(MaxMessageBytes + 1))
+    )
     assertEquals(
       SuppliedMessage.fromArray(new Array[Byte](MaxMessageBytes)).toOption.get.bytes.size,
       MaxMessageBytes
@@ -251,24 +267,27 @@ class Sum6KesSuite extends munit.FunSuite:
       case (root, period, message, signature) =>
         val result =
           verifyWith(root, period, message, signature, _ => fail("hash"), (_, _, _) => fail("leaf"))
-        assert(result.swap.toOption.get.isInstanceOf[Failure.Malformed])
+        assert(result.isLeft)
     }
     Vector(
       verify(null, 0, Bytes.empty, s.bytes),
       verify(r.bytes, 64, m.bytes, s.bytes),
       verify(r.bytes, 0, null, s.bytes),
       verify(r.bytes, 0, m.bytes, null)
-    ).foreach(x => assert(x.swap.toOption.get.isInstanceOf[Failure.Malformed]))
+    ).foreach(x => assert(x.isLeft))
   }
 
   test("dependency nonfatal failures stay typed; fatal errors propagate; rejection is distinct") {
     val (r, p, m, s) = args(originals.head)
     val reject: (PublicKey32, Signature64, Bytes) => Either[VerificationError, VerificationResult] =
       (_, _, _) => Right(VerificationResult.SignatureRejected)
-    val brokenHash: Bytes => Bytes = _ => throw new IllegalArgumentException("injected")
+    val hashDefect = new IllegalArgumentException("injected")
+    val leafDefect = new IllegalStateException("injected")
+    val providerDefect = new IllegalStateException("provider")
+    val brokenHash: Bytes => Bytes = _ => throw hashDefect
     assertEquals(
       verifyWith(r, p, m, s, brokenHash, reject),
-      Left(Failure.InternalFailure("java.lang.IllegalArgumentException"))
+      Left(Failure.Defect(hashDefect))
     )
     assertEquals(
       verifyWith(
@@ -277,9 +296,9 @@ class Sum6KesSuite extends munit.FunSuite:
         m,
         s,
         Blake2b.hash256.hash,
-        (_, _, _) => throw new IllegalStateException("injected")
+        (_, _, _) => throw leafDefect
       ),
-      Left(Failure.InternalFailure("java.lang.IllegalStateException"))
+      Left(Failure.Defect(leafDefect))
     )
     assertEquals(
       verifyWith(
@@ -288,15 +307,15 @@ class Sum6KesSuite extends munit.FunSuite:
         m,
         s,
         Blake2b.hash256.hash,
-        (_, _, _) => Left(VerificationError.ImplementationFailure("injected"))
+        (_, _, _) => Left(VerificationError.ImplementationFailure(providerDefect))
       ),
-      Left(Failure.InternalFailure("injected"))
+      Left(Failure.LeafFailure(VerificationError.ImplementationFailure(providerDefect)))
     )
     assertEquals(verifyWith(r, p, m, s, Blake2b.hash256.hash, reject), rejected)
     Vector(null, Bytes(null), Bytes.empty).foreach(x =>
       assert(
         verifyWith(r, p, m, s, _ => x, reject).swap.toOption.get
-          .isInstanceOf[Failure.InternalFailure]
+          .isInstanceOf[Failure.HashContractViolation]
       )
     )
     assert(verifyWith(r, p, m, s, Blake2b.hash256.hash, (_, _, _) => null).isLeft)

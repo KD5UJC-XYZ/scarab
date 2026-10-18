@@ -12,6 +12,8 @@ import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Targ
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** Node-to-client LocalStateQuery server. The interpreter of the ledger sits behind [[Source]]:
   * `acquire` fixes a state (a [[Session]]) for as long as the client keeps it, and each query is
   * answered against that one state, however far the chain has moved meanwhile.
@@ -20,20 +22,8 @@ object LocalStateQueryServer:
   /** Why a query is not answered. The connection ends, as it does on the reference when its codec
     * cannot decode a query, and the reason is logged with the close.
     */
-  enum Refusal:
-    /** The bytes are not a query this node's decoder knows (`detail` says where it stopped). */
-    case Undecodable(detail: String, prefix: String)
-
-    /** The query decodes but this node does not answer it. */
-    case Unsupported(query: String)
-
-    /** Answering failed: the answer cannot be written (a value outside its encoding). */
-    case Unwritable(query: String, cause: String)
-
-    def message: String = this match
-      case Undecodable(detail, prefix) => s"cannot decode ($detail): $prefix"
-      case Unsupported(query)          => s"unsupported query $query"
-      case Unwritable(query, cause)    => s"cannot write the answer to $query: $cause"
+  type Refusal = xyz.kd5ujc.scarab.protocol.QueryRefusal[?]
+  val Refusal = xyz.kd5ujc.scarab.protocol.QueryRefusal
 
   /** One acquired ledger state. `answer` gets a query (one CBOR item) and returns the result item,
     * or the reason the query is not answered.
@@ -57,7 +47,8 @@ object LocalStateQueryServer:
       settings: Settings = Settings()
   )(using Raise[F, NetworkError]): F[Unit] =
     val id = Protocols.LocalStateQuery
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message): F[Unit] =
       LocalStateQuery.encode(state, Role.Server, message).fold(illegal, channel.send)
     def receive(state: State, name: String): F[Message] =
@@ -88,13 +79,13 @@ object LocalStateQueryServer:
           }
         case Message.ReAcquire(target) => acquire(target)
         case Message.Release           => Temporal[F].pure(true)
-        case other                     => illegal(s"unexpected client message $other")
+        case other                     => illegal(RuntimeViolation.LocalStateQueryUnexpected(other))
       }
 
     val idle: F[Boolean] =
       receive(State.Idle, "idle").flatMap {
         case Message.Acquire(target) => acquire(target)
         case Message.Done            => Temporal[F].pure(false)
-        case other                   => illegal(s"unexpected client message $other")
+        case other                   => illegal(RuntimeViolation.LocalStateQueryUnexpected(other))
       }
     idle.iterateWhile(identity).void

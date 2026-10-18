@@ -4,7 +4,7 @@
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"Other","cpu":{"features":null},"library":{"build":"other","sha256":"00ff"}}
 {"event":"blst","at":"2026-10-16T12:00:00Z","platform":"LinuxAmd64","cpu":{"features":[]},"library":{"build":"library-path"}}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"NoIntersection","message":"the peer's chain shares no point with ours"}
-{"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: truncated"}
+{"event":"error","at":"2026-10-16T12:00:00Z","kind":"Decode","message":"decode block: Syntax(UnexpectedEnd)"}
 {"event":"error","at":"2026-10-16T12:00:00Z","kind":"Missing","message":"missing immutable/format"}
 {"event":"memory","at":"2026-10-16T12:00:00Z","sample":{"heapUsed":1024,"rssAnon":null}}
 {"event":"cpuStarvation","at":"2026-10-16T12:00:00Z","clockDriftMs":250,"threshold":0.1,"intervalMs":1000}
@@ -15,7 +15,7 @@
 {"event":"slowFetch","at":"2026-10-16T12:00:00Z","millis":300}
 {"event":"stalled","at":"2026-10-16T12:00:00Z","idleSeconds":600,"ourBlock":6809207,"peerBlock":10200000}
 {"event":"stallExit","at":"2026-10-16T12:00:00Z","idleSeconds":1800,"ourBlock":6809207,"peerBlock":10200000}
-{"event":"fatal","at":"2026-10-16T12:00:00Z","kind":"storage","message":"storage: io volatile: disk full","exitCode":5}
+{"event":"fatal","at":"2026-10-16T12:00:00Z","kind":"storage","message":"storage: io volatile: java.io.IOException: disk full","exitCode":5}
 {"event":"fatal","at":"2026-10-16T12:00:00Z","kind":"internal","message":"internal: peer shares no point with the local chain","exitCode":6}
 {"event":"fatal","at":"2026-10-16T12:00:00Z","kind":"defect","message":"defect: a bug in the rules","exitCode":7}
 {"event":"inbound","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","state":"accepted","reason":null}
@@ -79,7 +79,7 @@
 {"event":"connection","at":"2026-10-16T12:00:00Z","what":"refused","reason":"refused inbound connection from 10.0.0.2:4000: 64 connections accepted already"}
 {"event":"connection","at":"2026-10-16T12:00:00Z","remote":"10.0.0.1:3001","what":"closed","provenance":"Inbound","reason":"eof"}
 {"event":"mempoolAdded","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","size":300,"count":2,"bytes":600}
-{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: not a transaction"}
+{"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":null,"reason":"malformed transaction: expected [body, witnesses, is_valid, auxiliary_data]"}
 {"event":"mempoolRejected","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"mempool full: 300 bytes needed, 100 free"}
 {"event":"mempoolDropped","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab","reason":"tx abababababababab is already in the mempool"}
 {"event":"mempoolAdopted","at":"2026-10-16T12:00:00Z","tx":"abababababababababababababababababababababababababababababababab"}
@@ -93,9 +93,9 @@
 {"event":"kesEvolved","at":"2026-10-16T12:00:00Z","kesPeriod":33,"relativeKesPeriod":2}
 {"event":"kesReloaded","at":"2026-10-16T12:00:00Z","opCertCounter":4,"kesStart":30,"kesEvolutions":62,"kesPeriod":33,"remainingKesPeriods":59}
 {"event":"kesReloadRefused","at":"2026-10-16T12:00:00Z","kind":"Counter","message":"opcert counter 3 below current 5"}
-{"event":"kesPersistFailed","at":"2026-10-16T12:00:00Z","kesPeriod":33,"kind":"KeyFile","message":"key file kes.skey: disk full"}
+{"event":"kesPersistFailed","at":"2026-10-16T12:00:00Z","kesPeriod":33,"kind":"KeyFile","message":"key file kes.skey: Io(java.io.IOException: disk full)"}
 {"event":"forgeSkipped","at":"2026-10-16T12:00:00Z","slot":4201,"reason":"busy"}
-{"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KesFailure","message":"KES: bad period"}
+{"event":"forgeFailed","at":"2026-10-16T12:00:00Z","slot":4202,"kind":"KeyPeriodOutOfRange","message":"KES period 33 outside the operational certificate window [0, 32)"}
 {"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":3,"slotsChecked":100,"leaderSlots":5,"forged":5,"adopted":4,"lostSlotBattles":1,"failed":0,"skipped":3,"skippedByReason":{"busy":2,"tipTooOld":1},"forgeLatencyMs":{"count":4,"mean":12.5,"max":20}}
 {"event":"forgeEpoch","at":"2026-10-16T12:00:00Z","epoch":4,"slotsChecked":0,"leaderSlots":0,"forged":0,"adopted":0,"lostSlotBattles":0,"failed":0,"skipped":0,"skippedByReason":{},"forgeLatencyMs":{"count":0,"mean":null,"max":null}}
 {"event":"connected","at":"2026-10-16T12:00:00Z","intersection":{"origin":true}}
@@ -103,7 +103,7 @@
 {"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
 {"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
-{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connection refused","attempt":3}
+{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: connection refused","attempt":3}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":"Babbage","to":"Conway","epoch":5,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Shelley","epoch":2,"headers":33,"thresholdChecked":10,"overlay":20,"leaderUnchecked":3,"scheduling":{"timerSamples":1,"maxTimerLatenessMs":70,"timersLateOver50Ms":1,"timersLateOver100Ms":0,"cpuSteps":1,"longestStepMs":40,"longestStep":"rules"}}
@@ -114,7 +114,7 @@
 {"event":"extended","at":"2026-10-16T12:00:00Z","block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"epoch":3,"era":"Conway","peerTip":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"rolledBack","at":"2026-10-16T12:00:00Z","from":{"slot":4200,"hash":"abababababababababababababababababababababababababababababababab"},"to":{"origin":true},"depth":2}
 {"event":"epoch","at":"2026-10-16T12:00:00Z","epoch":4,"first":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
-{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connection refused","attempt":3}
+{"event":"reconnecting","at":"2026-10-16T12:00:00Z","reason":"unavailable: connect 10.0.0.1:3001: connection refused","attempt":3}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":null,"to":"Byron","epoch":0,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"eraTransition","at":"2026-10-16T12:00:00Z","from":"Babbage","to":"Conway","epoch":5,"slot":4200,"block":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"epochValidated","at":"2026-10-16T12:00:00Z","era":"Shelley","epoch":2,"headers":33,"thresholdChecked":10,"overlay":20,"leaderUnchecked":3}
@@ -123,11 +123,11 @@
 {"event":"immutableOpened","at":"2026-10-16T12:00:00Z","tip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"blocks":100,"chunks":2,"truncatedEntries":1,"truncatedBytes":64}
 {"event":"immutableOpened","at":"2026-10-16T12:00:00Z","tip":null,"blocks":0,"chunks":0,"truncatedEntries":0,"truncatedBytes":0}
 {"event":"formatMigrated","at":"2026-10-16T12:00:00Z","kind":"SnapshotFile","from":"V3","to":"V4","count":3}
-{"event":"snapshotSkipped","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"corrupt snapshot: short read"}
+{"event":"snapshotSkipped","at":"2026-10-16T12:00:00Z","file":"4200-abab","reason":"corrupt snapshot: UnexpectedEnd(0)"}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"snapshotRestored","at":"2026-10-16T12:00:00Z","file":"genesis","anchor":null}
 {"event":"snapshotWritten","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"bytes":2048,"millis":15}
-{"event":"snapshotFailed","at":"2026-10-16T12:00:00Z","reason":"disk full"}
+{"event":"snapshotFailed","at":"2026-10-16T12:00:00Z","reason":"java.io.IOException: disk full"}
 {"event":"snapshotRefused","at":"2026-10-16T12:00:00Z","file":"4200-abab","anchor":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"reason":"the mirror refused the state: MissingEra(era = Conway)"}
 {"event":"replayStarted","at":"2026-10-16T12:00:00Z","from":null,"immutableTip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"}}
 {"event":"replayProgress","at":"2026-10-16T12:00:00Z","tip":{"slot":4200,"blockNo":17,"hash":"abababababababababababababababababababababababababababababababab"},"replayed":1000,"millis":2000}

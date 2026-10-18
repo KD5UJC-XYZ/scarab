@@ -26,6 +26,16 @@ import xyz.kd5ujc.scarab.protocol.HfcHeader
   * established.
   */
 object LeiosCheckMain extends IOApp:
+  private enum DecodeProblem:
+    case Hex(cause: Bytes.HexError)
+    case Envelope(cause: xyz.kd5ujc.scarab.protocol.HfcHeaderError)
+    case UnrecognisedEra(index: BigInt)
+    case Header(cause: xyz.kd5ujc.scarab.ledger.ChainError)
+    def message: String = this match
+      case Hex(cause)             => s"bad hex: ${cause.message}"
+      case Envelope(cause)        => s"envelope: $cause"
+      case UnrecognisedEra(index) => s"unrecognised era index $index"
+      case Header(cause)          => cause.message
   def run(args: List[String]): IO[ExitCode] =
     val flags = args.drop(1).grouped(2).collect { case List(k, v) => k.drop(2) -> v }.toMap
     (flags.get("headers").map(Path.of(_)), flags.get("config").map(Path.of(_))) match
@@ -82,16 +92,17 @@ object LeiosCheckMain extends IOApp:
     else
       val cols = line.split('\t')
       val decoded = for
-        envelope <- Bytes.fromHex(cols(4)).left.map(e => s"bad hex: $e")
-        hfc <- HfcHeader.decode(envelope).left.map(e => s"envelope: $e")
+        envelope <- Bytes.fromHex(cols(4)).left.map(DecodeProblem.Hex(_))
+        hfc <- HfcHeader.decode(envelope).left.map(DecodeProblem.Envelope(_))
         raw <- hfc match
           case HfcHeader.Supported(h)       => Right(h.raw)
           case HfcHeader.Dijkstra(r)        => Right(r)
-          case HfcHeader.Unrecognised(i, _) => Left(s"unrecognised era index $i")
-        header <- LeiosHeader.decode(raw).left.map(_.message)
+          case HfcHeader.Unrecognised(i, _) => Left(DecodeProblem.UnrecognisedEra(i))
+        header <- LeiosHeader.decode(raw).left.map(DecodeProblem.Header(_))
       yield header
       decoded match
-        case Left(reason) => summary(state, kinds, s"block ${cols(1)}: cannot decode: $reason")
+        case Left(reason) =>
+          summary(state, kinds, s"block ${cols(1)}: cannot decode: ${reason.message}")
         case Right(header) =>
           LeiosHeaderChain.step(config, policy)(state, header) match
             case Left(fault) =>

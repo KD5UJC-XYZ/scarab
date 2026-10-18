@@ -90,7 +90,7 @@ final class OutboundPeers[F[_]: Async, A] private (
         val body: Raise[F, PeerError] ?=> F[Unit] =
           given Raise[F, ConnectionError] =
             Peer.contramapped[F, PeerError, ConnectionError](summon)(e =>
-              PeerError.Unavailable(e.message)
+              PeerError.Unavailable(PeerError.Unavailability.Connection(e))
             )
           val open: Resource[F, WarmConnection[F, NtNHeader]] =
             for
@@ -291,7 +291,7 @@ final class OutboundPeers[F[_]: Async, A] private (
                           if foreign then
                             SessionEnd.Failed(
                               PeerError
-                                .Diverged(s"a block fetched by another peer: ${refusal.message}")
+                                .Diverged(PeerError.Divergence.ForeignBlock(refusal))
                             )
                           else SessionEnd.Rejected(refusal)
                         )
@@ -325,7 +325,9 @@ final class OutboundPeers[F[_]: Async, A] private (
           case Disposition.Forget | Disposition.Backoff => SessionEnd.peerError(end)
           case Disposition.StopNode(_)                  => None
           case Disposition.Settled =>
-            Option.when(end == SessionEnd.Returned)(PeerError.Unavailable("the session ended"))
+            Option.when(end == SessionEnd.Returned)(
+              PeerError.Unavailable(PeerError.Unavailability.SessionEnded)
+            )
         val stopNode = disposition match
           case Disposition.StopNode(fatal) => stop(link, fatal)
           case _                           => F.unit

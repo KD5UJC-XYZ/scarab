@@ -53,7 +53,7 @@ object LocalStateQuery:
     case ReAcquire(target: Target)
     case Done
 
-  def transition(state: State, sender: Role, message: Message): Either[String, State] =
+  def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     (state, sender, message) match
       case (State.Idle, Role.Client, Message.Acquire(_))       => Right(State.Acquiring)
       case (State.Idle, Role.Client, Message.Done)             => Right(State.Done)
@@ -63,9 +63,9 @@ object LocalStateQuery:
       case (State.Acquired, Role.Client, Message.ReAcquire(_)) => Right(State.Acquiring)
       case (State.Acquired, Role.Client, Message.Release)      => Right(State.Idle)
       case (State.Querying, Role.Server, Message.Result(_))    => Right(State.Acquired)
-      case _ => Left(s"illegal LocalStateQuery message/agency in $state from $sender")
+      case _ => Left(ProtocolError.LocalStateQueryAgency(state, sender))
 
-  def encode(state: State, sender: Role, message: Message): Either[String, Bytes] = attempt {
+  def encode(state: State, sender: Role, message: Message): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val w = new ProtocolWire.Writer(wire)
     def outer(n: Int, tag: Int): Unit = { w.head(4, n); w.head(0, tag) }
@@ -96,10 +96,10 @@ object LocalStateQuery:
 
   /** The client's messages in `Idle` and `Acquired`, the server's in `Acquiring` and `Querying`. */
   def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
-    try
+    ProtocolWire.prefix {
       val clientTurn = state == State.Idle || state == State.Acquired
       if state == State.Done || clientTurn != (sender == Role.Client) then
-        bad("wrong LocalStateQuery agency")
+        bad(ProtocolError.WrongLocalStateQueryAgency)
       val r = new ProtocolWire.Reader(bytes, wire)
       val arity = r.arrayLength()
       val tag = r.uint().value
@@ -112,7 +112,7 @@ object LocalStateQuery:
           r.uint().value.toInt match
             case 0 => Message.Failed(Failure.PointTooOld)
             case 1 => Message.Failed(Failure.PointNotOnChain)
-            case _ => bad("unknown LocalStateQuery failure")
+            case _ => bad(ProtocolError.UnknownLocalStateQueryFailure)
         case (2, 3) if tag == 3   => Message.Query(r.item())
         case (2, 4) if tag == 4   => Message.Result(r.item())
         case (1, 5) if tag == 5   => Message.Release
@@ -120,9 +120,7 @@ object LocalStateQuery:
         case (1, 9) if tag == 9   => Message.ReAcquire(Target.VolatileTip)
         case (1, 11) if tag == 11 => Message.ReAcquire(Target.ImmutableTip)
         case (1, 7) if tag == 7   => Message.Done
-        case _                    => bad("unknown LocalStateQuery tag or arity")
+        case _                    => bad(ProtocolError.UnknownLocalStateQueryTagOrArity)
       get(transition(state, sender, message))
       DecodeResult.Decoded(message, r.position)
-    catch
-      case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore
-      case ProtocolWire.Failure(error, false) => DecodeResult.Failed(error)
+    }

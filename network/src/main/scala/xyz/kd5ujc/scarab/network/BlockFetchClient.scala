@@ -11,6 +11,8 @@ import xyz.kd5ujc.scarab.protocol.{BlockFetch, CardanoBlockFetch}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** Non-pipelined BlockFetch client: one range request at a time. */
 trait BlockFetchClient[F[_]]:
   /** Raw block bytes for the inclusive range, or `None` when the peer does not have them. */
@@ -37,7 +39,7 @@ object BlockFetchClient:
     val id = Protocols.BlockFetch
     val codec = CardanoBlockFetch.payloadCodec()
     type Msg = BlockFetch.Message[CardanoBlockFetch.RawNtNBlock]
-    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+    def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     (Ref.of[F, BlockFetch.State](BlockFetch.State.Idle), Mutex[F]).mapN { (state, lock) =>
@@ -58,7 +60,7 @@ object BlockFetchClient:
           val wait = current match
             case BlockFetch.State.Busy      => F.pure(settings.timeLimits.busy)
             case BlockFetch.State.Streaming => F.pure(settings.timeLimits.streaming)
-            case other => illegal[FiniteDuration](s"no reply is expected in $other")
+            case other => illegal[FiniteDuration](RuntimeViolation.ReplyNotExpected(other))
           wait.flatMap { limit =>
             Timed
               .within(limit, id, current.toString)(
@@ -86,7 +88,7 @@ object BlockFetchClient:
                 NetworkError.IngressLimit(id, blocks.size + 1).raise[F, Vector[Bytes]]
               case Right(next) => stream(next, blocks :+ block.bytes)
           case BlockFetch.Message.BatchDone => F.pure(blocks)
-          case other => illegal(s"unexpected message while streaming: $other")
+          case other                        => illegal(RuntimeViolation.BlockFetchUnexpected(other))
         }
 
       new BlockFetchClient[F]:
@@ -106,7 +108,7 @@ object BlockFetchClient:
                     case BlockFetch.Message.NoBlocks => F.pure(None)
                     case BlockFetch.Message.StartBatch =>
                       stream(BlockFetch.Received.Empty, Vector.empty).map(Some(_))
-                    case other => illegal(s"unexpected reply to a range request: $other")
+                    case other => illegal(RuntimeViolation.BlockFetchUnexpected(other))
                   }
                 )
             }

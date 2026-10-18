@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
 
@@ -22,22 +22,22 @@ enum DRep:
     case AlwaysNoConfidence               => "drep-alwaysNoConfidence"
 
 object DRep:
-  def decode(n: Node): Either[String, DRep] =
+  def decode(n: Node): Either[LedgerDecodeError, DRep] =
     CborRead.array(n, "drep").flatMap {
       case Vector(t, h) =>
         (CborRead.uint(t, "drep").map(_.toInt), CborRead.bytesN(h, 28, "drep hash")).tupled
           .flatMap {
             case (0, hash) => Right(Registered(Credential.Key(hash)))
             case (1, hash) => Right(Registered(Credential.Script(hash)))
-            case (tag, _)  => Left(s"drep tag $tag")
+            case (tag, _)  => Left(LedgerDecodeError.UnknownTag("drep", tag))
           }
       case Vector(t) =>
         CborRead.uint(t, "drep").map(_.toInt).flatMap {
           case 2   => Right(AlwaysAbstain)
           case 3   => Right(AlwaysNoConfidence)
-          case tag => Left(s"drep tag $tag")
+          case tag => Left(LedgerDecodeError.UnknownTag("drep", tag))
         }
-      case _ => Left("drep: malformed")
+      case _ => Left(LedgerDecodeError.Expected("drep", LedgerDecodeError.Shape.Array, n.value))
     }
 
 final case class PoolParams(
@@ -95,7 +95,7 @@ enum Pot:
   case Treasury
 
 object Certificate:
-  def decode(n: Node): Either[String, Certificate] =
+  def decode(n: Node): Either[LedgerDecodeError, Certificate] =
     def cred(i: Int, xs: Vector[Node]) = Credential.decode(xs(i), "certificate credential")
     def pool(i: Int, xs: Vector[Node]) = CborRead.bytesN(xs(i), 28, "pool id")
     def coin(i: Int, xs: Vector[Node]) = CborRead.uint(xs(i), "certificate coin")
@@ -103,7 +103,7 @@ object Certificate:
     CborRead.array(n, "certificate").flatMap { xs =>
       for
         tag <- xs.headOption
-          .toRight("empty certificate")
+          .toRight(LedgerDecodeError.Empty("certificate"))
           .flatMap(CborRead.uint(_, "certificate tag"))
         arity = Map(
           0 -> 2,
@@ -129,7 +129,7 @@ object Certificate:
         _ <- arity
           .get(tag.toInt)
           .filter(_ == xs.size)
-          .toRight(s"certificate $tag with ${xs.size} fields")
+          .toRight(LedgerDecodeError.TaggedArity("certificate", tag, xs.size))
         cert <- tag.toInt match
           case 0 => cred(1, xs).map(Register(_, None))
           case 1 => cred(1, xs).map(Unregister(_, None))
@@ -164,17 +164,17 @@ object Certificate:
             (cred(1, xs), coin(2, xs), Anchor.optional(xs(3))).mapN(RegisterDRep(_, _, _))
           case 17 => (cred(1, xs), coin(2, xs)).mapN(UnregisterDRep(_, _))
           case 18 => (cred(1, xs), Anchor.optional(xs(2))).mapN(UpdateDRep(_, _))
-          case t  => Left(s"certificate tag $t")
+          case t  => Left(LedgerDecodeError.UnknownTag("certificate", t))
       yield cert
     }
 
-  private def moveRewards(n: Node): Either[String, Certificate] =
+  private def moveRewards(n: Node): Either[LedgerDecodeError, Certificate] =
     CborRead.arrayN(n, 2, "move instantaneous rewards").flatMap { xs =>
       for
         pot <- CborRead.uint(xs(0), "MIR pot").flatMap {
           case p if p == 0 => Right(Pot.Reserves)
           case p if p == 1 => Right(Pot.Treasury)
-          case p           => Left(s"MIR pot $p")
+          case p           => Left(LedgerDecodeError.UnknownTag("MIR pot", p))
         }
         transfer <- xs(1).value match
           case xyz.kd5ujc.scarab.codec.Value.Map(_) =>
@@ -188,7 +188,7 @@ object Certificate:
       yield MoveRewards(pot, transfer)
     }
 
-  private def poolParams(xs: Vector[Node]): Either[String, PoolParams] =
+  private def poolParams(xs: Vector[Node]): Either[LedgerDecodeError, PoolParams] =
     for
       operator <- CborRead.bytesN(xs(0), 28, "pool operator")
       vrf <- CborRead.bytesN(xs(1), 32, "pool vrf")
@@ -251,7 +251,7 @@ final case class TxBody(
 object TxBody:
   private val Known = Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
-  private def update(n: Node): Either[String, Update] =
+  private def update(n: Node): Either[LedgerDecodeError, Update] =
     for
       xs <- CborRead.arrayN(n, 2, "update")
       kvs <- CborRead.map(xs(0), "proposed updates")
@@ -268,26 +268,29 @@ object TxBody:
       epoch <- CborRead.uint(xs(1), "update epoch")
     yield Update(proposals.toMap, epoch)
 
-  def decode(raw: Bytes, mode: Address.Mode): Either[String, TxBody] =
+  def decode(raw: Bytes, mode: Address.Mode): Either[LedgerDecodeError, TxBody] =
     for
-      root <- Cbor.decode(raw)
+      root <- CborRead.decode(raw)
       f <- CborRead.fields(root, "transaction body")
       _ <- Either.cond(
         f.keySet.subsetOf(Known),
         (),
-        s"transaction body: unknown fields ${f.keySet -- Known}"
+        LedgerDecodeError.UnknownFields("transaction body", f.keySet -- Known)
       )
       inputs <- f
         .get(0)
-        .toRight("missing inputs")
+        .toRight(LedgerDecodeError.MissingField("transaction body", "inputs"))
         .flatMap(CborRead.set(_, "inputs"))
         .flatMap(_.traverse(TxIn.decode))
       outputs <- f
         .get(1)
-        .toRight("missing outputs")
+        .toRight(LedgerDecodeError.MissingField("transaction body", "outputs"))
         .flatMap(CborRead.array(_, "outputs"))
         .flatMap(_.traverse(TxOut.decode(_, mode)))
-      fee <- f.get(2).toRight("missing fee").flatMap(CborRead.uint(_, "fee"))
+      fee <- f
+        .get(2)
+        .toRight(LedgerDecodeError.MissingField("transaction body", "fee"))
+        .flatMap(CborRead.uint(_, "fee"))
       ttl <- f.get(3).traverse(CborRead.uint(_, "ttl"))
       start <- f.get(8).traverse(CborRead.uint(_, "validity start"))
       certs <- f
@@ -323,7 +326,7 @@ object TxBody:
       refs <- f
         .get(18)
         .traverse(CborRead.set(_, "reference inputs").flatMap(_.traverse(TxIn.decode)))
-      votes <- f.get(19).traverse(VotingProcedures.decode(_).leftMap(_.message))
+      votes <- f.get(19).traverse(VotingProcedures.decode(_).leftMap(LedgerDecodeError.Voting(_)))
       proposals <- f
         .get(20)
         .traverse(CborRead.list(_, "proposal procedures").flatMap(_.traverse(Proposal.decode)))
@@ -396,11 +399,15 @@ final case class Witnesses(
 object Witnesses:
   val empty: Witnesses = Witnesses(Vector.empty)
 
-  def decode(raw: Bytes): Either[String, Witnesses] =
+  def decode(raw: Bytes): Either[LedgerDecodeError, Witnesses] =
     for
-      root <- Cbor.decode(raw)
+      root <- CborRead.decode(raw)
       f <- CborRead.fields(root, "witness set")
-      _ <- Either.cond(f.keySet.subsetOf(Set(0, 1, 2, 3, 4, 5, 6, 7)), (), "witness set: unknown")
+      _ <- Either.cond(
+        f.keySet.subsetOf(Set(0, 1, 2, 3, 4, 5, 6, 7)),
+        (),
+        LedgerDecodeError.UnknownFields("witness set", f.keySet -- Set(0, 1, 2, 3, 4, 5, 6, 7))
+      )
       vkeys <- f
         .get(0)
         .traverse(
@@ -460,7 +467,7 @@ object Witnesses:
       Some(raw)
     )
 
-  private def exUnits(n: Node): Either[String, ExUnits] =
+  private def exUnits(n: Node): Either[LedgerDecodeError, ExUnits] =
     CborRead
       .arrayN(n, 2, "ex units")
       .flatMap(xs =>
@@ -472,8 +479,8 @@ object Witnesses:
     * `(tag, index)`, in either form, the last one counts (seen on Preview: slot 12924758, six
     * entries for one mint with different data; slot 62567517, one entry twice).
     */
-  private def redeemerList(n: Node): Either[String, Vector[Redeemer]] =
-    val all: Either[String, Vector[Redeemer]] = n.value match
+  private def redeemerList(n: Node): Either[LedgerDecodeError, Vector[Redeemer]] =
+    val all: Either[LedgerDecodeError, Vector[Redeemer]] = n.value match
       case xyz.kd5ujc.scarab.codec.Value.Map(kvs) =>
         kvs.traverse { case (k, v) =>
           for
@@ -514,7 +521,7 @@ object Tx:
   /** Ledger size is the size of the serialized transaction: `[body, witnesses, isValid, aux]` from
     * Alonzo, `[body, witnesses, aux]` before.
     */
-  def fromBlock(t: Block.Transaction, era: Era): Either[String, Tx] =
+  def fromBlock(t: Block.Transaction, era: Era): Either[LedgerDecodeError, Tx] =
     for
       body <- TxBody.decode(t.body, Address.Mode.of(era))
       witnesses <- Witnesses.decode(t.witnesses)

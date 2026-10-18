@@ -25,13 +25,13 @@ class MainnetPoolNetworkSuite extends FunSuite:
 
   private val block: Block.Shelley =
     val hex = Files.readString(Path.of("fixtures/mainnet/shelley-pool-network-block.hex")).trim
-    Block.decode(Bytes.fromHex(hex).fold(e => fail(e), identity), EpochSlots) match
+    Block.decode(Bytes.fromHex(hex).fold(e => fail(e.toString), identity), EpochSlots) match
       case Right(b: Block.Shelley) => b
       case other                   => fail(s"unexpected $other")
 
   private val tx: Tx =
     block.transactions
-      .map(Tx.fromBlock(_, block.era).fold(e => fail(e), identity))
+      .map(Tx.fromBlock(_, block.era).fold(e => fail(e.toString), identity))
       .find(_.body.id.hex.startsWith("49be5965c31a60c3"))
       .getOrElse(fail("transaction 49be5965c31a60c3 is not in the block"))
 

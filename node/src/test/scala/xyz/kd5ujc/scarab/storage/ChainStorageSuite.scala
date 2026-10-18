@@ -66,7 +66,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.message), identity))
   private val headers: Vector[Header] =
     raws.map(Block.decode(_, geometry.byron.epochSlots).fold(e => fail(e.message), _.header))
   private def ref(i: Int) =
@@ -319,7 +319,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                       LedgerFailure.Unavailable(
                         Bytes.empty,
                         location,
-                        EvalFailure.Unsupported("injected replay outage")
+                        EvalFailure.Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.NoResult)
                       )
                     )
                   )
@@ -375,7 +375,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         e2 <- log2.get
         skipped = e2.collect { case e: StorageEvent.SnapshotSkipped => e }
         _ <- IO(assertEquals(skipped.map(_.name).toList, List(newest.fileName.toString)))
-        _ <- IO(assert(skipped.head.error.isInstanceOf[StorageError.Corrupt]))
+        _ <- IO(assert(skipped.head.error.isInstanceOf[StorageError.Corrupt[?]]))
         restored = e2.collect { case e: StorageEvent.SnapshotRestored => e.name }
         _ <- IO(assertEquals(restored.toList, List(snaps(1).fileName.toString)))
         _ <- IO(assertState(chain.state, states(650)))

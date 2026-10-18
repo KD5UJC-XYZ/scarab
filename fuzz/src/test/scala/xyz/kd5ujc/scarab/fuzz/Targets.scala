@@ -67,13 +67,13 @@ object Targets:
 
   // --- network -------------------------------------------------------------------------------------
 
-  private def roundTrip[S, R, M](
+  private def roundTrip[S, R, M, E](
       name: String,
       states: Seq[S],
       roles: Seq[R],
       corpus: () => Vector[Array[Byte]],
       decode: (S, R, Bytes) => DecodeResult[M],
-      encode: (S, R, M) => Either[String, Bytes]
+      encode: (S, R, M) => Either[E, Bytes]
   ): Target =
     Target(
       name,
@@ -168,7 +168,7 @@ object Targets:
   private def leiosResult[M](r: Either[LeiosWireError, (M, Int)]): DecodeResult[M] = r match
     case Right((message, used))          => DecodeResult.Decoded(message, used)
     case Left(LeiosWireError.Incomplete) => DecodeResult.NeedMore
-    case Left(e)                         => DecodeResult.Failed(e.toString)
+    case Left(e)                         => DecodeResult.Failed(ProtocolError.Leios(e))
 
   private val leiosFetchSeeds: () => Vector[Array[Byte]] = () =>
     val point = EbPoint(371614L, EbHash.fromBytes(Bytes.fromArray(Array.fill(32)(7.toByte))).get)
@@ -232,8 +232,8 @@ object Targets:
     * blocks.
     */
   private val anyItem: ChainSync.PayloadCodec[Bytes] = new ChainSync.PayloadCodec[Bytes]:
-    def encode(value: Bytes): Either[String, Bytes] = Right(value)
-    def decode(bytes: Bytes): Either[String, Bytes] = Right(bytes)
+    def encode(value: Bytes): Either[ProtocolError, Bytes] = Right(value)
+    def decode(bytes: Bytes): Either[ProtocolError, Bytes] = Right(bytes)
 
   private def handshake(name: String, suite: Handshake.Suite, rule: String): Target =
     Target(
@@ -404,7 +404,7 @@ object Targets:
       PeerSharing.Role.values.toSeq,
       peerSharingSeeds,
       (s, r, b) => PeerSharing.decoder(s, r)(b),
-      (s, r, m) => PeerSharing.encode(s, r, m).left.map(_.message)
+      (s, r, m) => PeerSharing.encode(s, r, m)
     ),
     roundTrip(
       "leios-fetch",
@@ -412,7 +412,7 @@ object Targets:
       Seq(()),
       leiosFetchSeeds,
       (s, _, b) => leiosResult(LeiosFetch.decodePrefix(s, b)),
-      (_, _, m) => LeiosFetch.encode(m).left.map(_.toString)
+      (_, _, m) => LeiosFetch.encode(m)
     ),
     roundTrip(
       "leios-notify",
@@ -420,7 +420,7 @@ object Targets:
       Seq(()),
       leiosNotifySeeds,
       (s, _, b) => leiosResult(LeiosNotify.decodePrefix(s, b)),
-      (_, _, m) => LeiosNotify.encode(m).left.map(_.toString)
+      (_, _, m) => LeiosNotify.encode(m)
     ),
     roundTrip(
       "local-state-query",

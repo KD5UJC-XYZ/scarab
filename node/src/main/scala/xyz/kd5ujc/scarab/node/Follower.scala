@@ -82,10 +82,10 @@ final class Follower[F[_]: Async, S] private (
 ):
   private val F = Async[F]
 
-  private def protocol[A](reason: String)(using Raise[F, PeerError]): F[A] =
+  private def protocol[A](reason: PeerError.ProtocolFailure)(using Raise[F, PeerError]): F[A] =
     PeerError.Protocol(reason).raise[F, A]
 
-  private def diverged[A](reason: String)(using Raise[F, PeerError]): F[A] =
+  private def diverged[A](reason: PeerError.Divergence)(using Raise[F, PeerError]): F[A] =
     PeerError.Diverged(reason).raise[F, A]
 
   /** Run one peer session until the peer fails (a raised [[PeerError]]) or forever. `track` is
@@ -135,7 +135,7 @@ final class Follower[F[_]: Async, S] private (
             // Before the join point: the peer's chain below it is ours as long as it is retained.
             lock.lock.surround(local).flatMap { l =>
               if l.contains(point) then candidate.set(ChainSelection.Candidate(point, Vector.empty))
-              else diverged(s"peer rolled back to ${Points.show(point)}, outside our chain")
+              else diverged(PeerError.Divergence.RollbackOutsideChain(point))
             }
       }
     case SyncEvent.RollForward(header, tip) =>
@@ -146,7 +146,7 @@ final class Follower[F[_]: Async, S] private (
           else c.extend(header)
         extended match
           case None =>
-            protocol(s"header ${Points.show(header.point)} does not extend the peer's chain")
+            protocol(PeerError.ProtocolProblem.HeaderDoesNotExtend(header.point, c.tip))
           case Some(grown) =>
             candidate.set(grown) *> adopt(peer, grown, tip).flatMap(candidate.set)
       }
@@ -201,7 +201,7 @@ final class Follower[F[_]: Async, S] private (
         result <- ChainSelection.decide(tiebreaker(candidate.headers.last.era), l, candidate) match
           case ChainSelection.Decision.Keep => F.pure(candidate)
           case ChainSelection.Decision.Detached =>
-            diverged(s"the peer's chain no longer joins ours at ${Points.show(candidate.base)}")
+            diverged(PeerError.Divergence.DetachedCandidate(candidate.base))
           case ChainSelection.Decision.Switch(to, depth, take) =>
             switchTo(peer, to, depth, take, peerTip).as(candidate.rebase(take.last.point))
       yield result
@@ -312,7 +312,7 @@ final class Follower[F[_]: Async, S] private (
         l <- local
         known = before.blocks.map(_._1) ++ before.anchor.block
         // where the block would attach, and how many blocks of ours that replaces
-        plan: Either[String, (ChainSync.Point, Int)] =
+        plan: Either[Follower.AdoptionLoss, (ChainSync.Point, Int)] =
           if before.tipRef.map(_.hash) == header.prevHash then Right((before.tip, 0))
           else
             header.prevHash.fold(Option(ChainSync.Point.Origin: ChainSync.Point))(h =>
@@ -320,7 +320,7 @@ final class Follower[F[_]: Async, S] private (
             ) match
               case None =>
                 Left(
-                  s"the tip moved to ${Points.show(before.tip)} and the block's predecessor is not on our chain"
+                  Follower.AdoptionLoss.DetachedPredecessor(before.tip, header.prevHash)
                 )
               case Some(base) =>
                 ChainSelection.decide(
@@ -331,7 +331,7 @@ final class Follower[F[_]: Async, S] private (
                   case ChainSelection.Decision.Switch(to, depth, _) => Right((to, depth))
                   case _ =>
                     Left(
-                      s"the tip moved to ${Points.show(before.tip)}, which chain selection prefers to the block"
+                      Follower.AdoptionLoss.SelectionPrefersTip(before.tip)
                     )
         result <- plan match
           case Left(reason) => F.pure(Follower.Adoption.Lost(reason))
@@ -373,9 +373,18 @@ final class Follower[F[_]: Async, S] private (
 
 object Follower:
   /** What happened to a forged block offered to [[Follower.adoptForged]]. */
+  enum AdoptionLoss:
+    case DetachedPredecessor(tip: ChainSync.Point, predecessor: Option[Bytes])
+    case SelectionPrefersTip(tip: ChainSync.Point)
+    def message: String = this match
+      case DetachedPredecessor(tip, _) =>
+        s"the tip moved to ${Points.show(tip)} and the block's predecessor is not on our chain"
+      case SelectionPrefersTip(tip) =>
+        s"the tip moved to ${Points.show(tip)}, which chain selection prefers to the block"
+
   enum Adoption:
     case Adopted(block: BlockRef)
-    case Lost(reason: String)
+    case Lost(reason: Follower.AdoptionLoss)
     case Invalid(error: ValidationError)
 
   def create[F[_]: Async, S](

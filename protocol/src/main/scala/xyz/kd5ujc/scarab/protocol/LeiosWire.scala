@@ -15,7 +15,7 @@ enum LeiosWireError:
   case Incomplete
 
   /** Not decodable CBOR within the local limits. */
-  case Syntax
+  case Syntax(cause: ProtocolError)
   case NotAnArray
   case EmptyMessage
   case UnknownTag(tag: BigInt)
@@ -54,20 +54,27 @@ private[protocol] object LeiosWire:
 
   /** The extent of the first complete CBOR item of `bytes`, if any. */
   def extent(bytes: Bytes): Either[LeiosWireError, Int] =
-    try
-      val reader = new ProtocolWire.Reader(bytes, limits)
-      reader.skip(0)
-      Right(reader.position)
-    catch
-      case ProtocolWire.Failure(_, true)  => Left(LeiosWireError.Incomplete)
-      case ProtocolWire.Failure(_, false) => Left(LeiosWireError.Syntax)
+    ProtocolWire
+      .attempt {
+        val reader = new ProtocolWire.Reader(bytes, limits)
+        reader.skip(0)
+        reader.position
+      }
+      .left
+      .map {
+        case error if error.incomplete => LeiosWireError.Incomplete
+        case cause                     => LeiosWireError.Syntax(cause)
+      }
 
   /** The tag and the remaining fields (with their original bytes) of the first message in `bytes`.
     */
   def split(bytes: Bytes): Either[LeiosWireError, (Int, Vector[Node], Int)] =
     for
       n <- extent(bytes)
-      node <- Cbor.decode(bytes.take(n)).left.map(_ => LeiosWireError.Syntax)
+      node <- Cbor
+        .decode(bytes.take(n))
+        .left
+        .map(e => LeiosWireError.Syntax(ProtocolError.Codec(e)))
       parts <- node.value match
         case Value.Arr(xs) => Right(xs)
         case _             => Left(LeiosWireError.NotAnArray)
@@ -129,7 +136,7 @@ private[protocol] object LeiosWire:
 
   /** A complete CBOR item, as a node to embed in a message. */
   def embed(item: Bytes): Either[LeiosWireError, Node] =
-    Cbor.decode(item).left.map(_ => LeiosWireError.Syntax)
+    Cbor.decode(item).left.map(e => LeiosWireError.Syntax(ProtocolError.Codec(e)))
 
   /** The head of a definite-length array of `n` items. */
   private def arrayHead(n: Int): Bytes =

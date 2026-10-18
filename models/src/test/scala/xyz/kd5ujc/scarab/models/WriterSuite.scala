@@ -55,7 +55,7 @@ class WriterSuite extends munit.FunSuite:
     assertEquals(map(23), "b7" + "0001" * 23)
     assertEquals(map(24), "bf" + "0001" * 24 + "ff")
     Vector(array(24), map(24)).foreach(h =>
-      assert(Cbor.decode(Bytes.fromHex(h).fold(fail(_), identity)).isRight)
+      assert(Cbor.decode(Bytes.fromHex(h).fold(e => fail(e.message), identity)).isRight)
     )
   }
 
@@ -68,7 +68,7 @@ class WriterSuite extends munit.FunSuite:
     assertEquals(written(_.integer(-two64 - 1)), "c349010000000000000000")
     assertEquals(written(_.integer(two64 * 256 + 5)), "c24a" + "01" + "00" * 8 + "05")
     val decoded = Cbor
-      .decode(Bytes.fromHex("c249010000000000000000").fold(fail(_), identity))
+      .decode(Bytes.fromHex("c249010000000000000000").fold(e => fail(e.message), identity))
       .map(_.value)
     assert(decoded.exists(_.isInstanceOf[Value.Tag]))
   }

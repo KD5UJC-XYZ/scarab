@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.witness
 
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import com.weavechain.curve25519.{
   CompressedEdwardsY,
   EdwardsPoint,
@@ -16,15 +16,15 @@ enum WitnessInputError:
   case MalformedPublicKeyLength(actual: Int)
   case MalformedSignatureLength(actual: Int)
   case MalformedBodyHashLength(actual: Int)
-  case MalformedCbor(detail: String)
-  case UnsupportedShape(detail: String)
+  case MalformedCbor(cause: Cbor.Error)
+  case UnsupportedShape(actual: Value)
 
 enum VerificationResult:
   case SignatureVerified, SignatureRejected
 
 /** Provider/programming failures are never reported as an invalid signature. */
 enum VerificationError:
-  case ImplementationFailure(exceptionClass: String)
+  case ImplementationFailure(cause: Throwable)
 
 /** Owned immutable public input. No secret-key operations are exposed. */
 final class PublicKey32 private (val bytes: Bytes):
@@ -96,7 +96,7 @@ object StrictEd25519:
     // Only the two narrowly scoped decoding sites below classify invalid input.
     // Any unexpected failure elsewhere remains a typed implementation failure.
     try Right(evaluate(publicKey, signature, message))
-    catch case NonFatal(e) => Left(VerificationError.ImplementationFailure(e.getClass.getName))
+    catch case NonFatal(e) => Left(VerificationError.ImplementationFailure(e))
 
   /** Whether the 255-bit little-endian `y` of a point encoding is below p = 2^255 - 19, the
     * encoding being canonical (bit 255, the sign of x, is ignored).

@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import PeerSharing.*
 
 class PeerSharingSuite extends munit.ScalaCheckSuite:
-  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
   private def amount(n: Int): Amount = Amount.from(n).getOrElse(fail(s"amount $n"))
   private def word(n: Long): Word32 = Word32.from(n).getOrElse(fail(s"word $n"))
   private def port(n: Int): Port = Port.from(n).getOrElse(fail(s"port $n"))

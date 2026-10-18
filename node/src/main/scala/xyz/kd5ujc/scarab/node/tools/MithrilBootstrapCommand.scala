@@ -9,7 +9,7 @@ import io.circe.Json
 import java.nio.file.{Files, Path}
 import scala.concurrent.duration.*
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
-import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.storage.haskell.{ChunkSlots, HaskellImport}
 import xyz.kd5ujc.scarab.storage.mithril.{MithrilBootstrap, MithrilClient}
@@ -129,11 +129,15 @@ object MithrilBootstrapCommand:
     for
       genesis <- Either
         .catchNonFatal(Files.readString(options.genesisKey))
-        .leftMap(e => Problem.Setup(ConfigError(e.toString)))
+        .leftMap(e =>
+          Problem.Setup(ConfigError(ConfigProblem.FileRead("Mithril verification key", e)))
+        )
         .flatMap(MithrilClient.VerificationKey.parse(_).leftMap(Problem.InvalidClient(_)))
       ancillary <- Either
         .catchNonFatal(Files.readString(options.ancillaryKey))
-        .leftMap(e => Problem.Setup(ConfigError(e.toString)))
+        .leftMap(e =>
+          Problem.Setup(ConfigError(ConfigProblem.FileRead("Mithril verification key", e)))
+        )
         .flatMap(MithrilClient.VerificationKey.parse(_).leftMap(Problem.InvalidClient(_)))
       imported <- LedgerSnapshotImportCommand
         .inputs(

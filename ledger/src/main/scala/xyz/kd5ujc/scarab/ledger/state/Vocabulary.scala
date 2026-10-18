@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.state
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Order, Show}
 import cats.derived.*
 import cats.syntax.show.*
@@ -15,7 +16,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 // and so encodes, in the order of its key.
 
 /** Why a raw value is not a member of a vocabulary type. */
-enum VocabError derives Show:
+enum VocabError extends DomainError derives Show:
   case Negative(what: VocabError.Kind, value: BigInt)
   case OutOfRange(what: VocabError.Kind, value: BigInt)
   case WrongHashLength(what: VocabError.Kind, expected: Int, actual: Int)

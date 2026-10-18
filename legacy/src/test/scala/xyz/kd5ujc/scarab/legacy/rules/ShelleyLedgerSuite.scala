@@ -293,7 +293,7 @@ class ShelleyLedgerSuite extends FunSuite:
   ) {
     val pointer = Address
       .decode(Bytes(0x40.toByte +: (alice.hash.value ++ Vector(7, 1, 0).map(_.toByte))))
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.toString), identity)
     forEras { c =>
       val s = base(c, fundedBy(alice, 100 * ada))
       val t = tx(
@@ -764,7 +764,7 @@ class ShelleyLedgerSuite extends FunSuite:
     xyz.kd5ujc.scarab.codec.Cbor
       .decode(Bytes(go(s)))
       .flatMap(Script.native)
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.toString), identity)
 
   test("from Mary a native script mints: it must be provided, hold and be needed") {
     val signer = key()
@@ -819,7 +819,7 @@ class ShelleyLedgerSuite extends FunSuite:
       )
     )
     val scriptAddress =
-      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e.toString), identity)
     val datum = Bytes(Vector(0x01))
     val locked = TxOut(scriptAddress, Value.coin(50 * ada))
       .copy(datum = Datum.Hash(Blake2b.hash256.hash(datum)))

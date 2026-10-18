@@ -18,8 +18,10 @@ import scala.util.control.NonFatal
   */
 object Draft03Prover:
   enum Failure:
-    case Malformed(reason: String)
-    case InternalFailure(kind: String, detail: String)
+    case MissingSeed, MissingSigningKey, PublicKeyMismatch
+    case SeedLength(actual: Int)
+    case SigningKeyLength(actual: Int)
+    case InternalFailure(cause: Throwable)
 
   /** A proof and the 64-byte VRF output it certifies. */
   final case class Proved(proof: Bytes, output: Bytes)
@@ -60,11 +62,12 @@ object Draft03Prover:
         Right(Proved(Bytes.fromArray(proof), Bytes.fromArray(Draft03Math.output(gamma))))
       catch
         case NonFatal(e) =>
-          Left(Failure.InternalFailure(e.getClass.getName, Option(e.getMessage).getOrElse("")))
+          Left(Failure.InternalFailure(e))
 
   object SigningKey:
     def fromSeed(seed: Bytes): Either[Failure, SigningKey] =
-      if seed == null || seed.size != 32 then Left(Failure.Malformed("VRF seed must be 32 bytes"))
+      if seed == null then Left(Failure.MissingSeed)
+      else if seed.size != 32 then Left(Failure.SeedLength(seed.size))
       else
         try
           val s = seed.toArray
@@ -73,18 +76,18 @@ object Draft03Prover:
           Right(new SigningKey(s, Bytes.fromArray(pk)))
         catch
           case NonFatal(e) =>
-            Left(Failure.InternalFailure(e.getClass.getName, Option(e.getMessage).getOrElse("")))
+            Left(Failure.InternalFailure(e))
 
     /** The 64-byte `vrf.skey` payload; the stored public key must be the seed's. */
     def fromBytes(bytes: Bytes): Either[Failure, SigningKey] =
-      if bytes == null || bytes.size != 64 then
-        Left(Failure.Malformed("VRF signing key must be 64 bytes"))
+      if bytes == null then Left(Failure.MissingSigningKey)
+      else if bytes.size != 64 then Left(Failure.SigningKeyLength(bytes.size))
       else
         fromSeed(Bytes.fromArray(bytes.toArray.take(32))).flatMap { key =>
           if key.publicKey.toArray.sameElements(bytes.toArray.drop(32)) then Right(key)
           else
             key.forget()
-            Left(Failure.Malformed("VRF signing key: public half does not match the seed"))
+            Left(Failure.PublicKeyMismatch)
         }
 
   private def sha512(pieces: Array[Byte]*): Array[Byte] =

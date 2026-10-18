@@ -245,7 +245,7 @@ class ServerSuite extends FailsOnUncaught:
               KeepAlive.Role.Client,
               KeepAlive.Message.Done
             )
-            .fold(e => IO.raiseError(RuntimeException(e)), IO.pure)
+            .fold(e => IO.raiseError(RuntimeException(e.toString)), IO.pure)
           _ <- c.send(done)
           ended <- serving.joinWithNever
         yield (a >= Duration.Zero, b >= Duration.Zero, ended)
@@ -359,8 +359,15 @@ class ServerSuite extends FailsOnUncaught:
         yield reason
       }
     }.map {
-      case Right(reason) => assert(reason.message.contains("mode bit"), reason.message)
-      case other         => fail(other.toString)
+      case Right(reason) =>
+        assertEquals(
+          reason,
+          NetworkError.IllegalTransition(
+            Protocols.ChainSync,
+            NetworkError.RuntimeViolation.WrongModeBit
+          )
+        )
+      case other => fail(other.toString)
     }
 
   test("a client that breaks the protocol ends the connection with a typed error, nothing escapes"):

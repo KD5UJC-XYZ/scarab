@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.ledger.StorageStructureError
 import cats.effect.IO
 import cats.syntax.all.*
 import fs2.io.file.Path
@@ -34,7 +35,7 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
     val cbor =
       Array[Byte](0x82.toByte, 0x58.toByte, address.length.toByte) ++ address ++
         Array[Byte](0x1a.toByte) ++ be(1000L + seed, 4)
-    TxOut.fromBytes(Bytes.wrap(cbor)).fold(e => fail(e), identity)
+    TxOut.fromBytes(Bytes.wrap(cbor)).fold(e => fail(e.toString), identity)
 
   private val entries: Map[TxIn, TxOut] = (0 until 50).map(n => txIn(n) -> output(n)).toMap
   private val stamp = 77L
@@ -148,8 +149,8 @@ class UtxoEnumerationFaultSuite extends CatsEffectSuite:
       results.map(_.foreach { case (length, rs) =>
         (enumerations :+ "size").foreach { name =>
           failureOf(rs, name) match
-            case Left(StorageError.Corrupt("utxo key", reason)) =>
-              assert(reason.contains(s"$length bytes"), clue(reason))
+            case Left(StorageError.Corrupt("utxo key", StorageStructureError.KeyLength(found))) =>
+              assertEquals(found, length)
             case other => fail(s"key of $length bytes, $name: $other")
         }
         // a direct read of an existing key is unaffected by another key's layout

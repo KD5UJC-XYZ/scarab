@@ -12,6 +12,8 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.collection.immutable.SortedMap
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** Node-to-client LocalTxMonitor server: a client acquires a snapshot of the mempool and walks it.
   * The snapshot is fixed for as long as the client holds it, whatever the pool does meanwhile; a
   * client that wants the next one asks to `AwaitAcquire`, which waits until the pool differs.
@@ -91,7 +93,8 @@ object LocalTxMonitorServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = Protocols.LocalTxMonitor
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(state: State, message: Message): F[Unit] =
       LocalTxMonitor.encode(state, Role.Server, message).fold(illegal, channel.send)
     def receive(state: State, name: String): F[Message] =
@@ -123,13 +126,13 @@ object LocalTxMonitorServer:
           ) *> serving(snapshot, remaining)
         case Message.AwaitAcquire => source.awaitChange(snapshot).flatMap(acquired)
         case Message.Release      => F.pure(true)
-        case other                => illegal(s"unexpected client message $other")
+        case other                => illegal(RuntimeViolation.LocalTxMonitorUnexpected(other))
       }
 
     val idle: F[Boolean] =
       receive(State.Idle, "idle").flatMap {
         case Message.Acquire => source.acquire.flatMap(acquired)
         case Message.Done    => F.pure(false)
-        case other           => illegal(s"unexpected client message $other")
+        case other           => illegal(RuntimeViolation.LocalTxMonitorUnexpected(other))
       }
     idle.iterateWhile(identity).void

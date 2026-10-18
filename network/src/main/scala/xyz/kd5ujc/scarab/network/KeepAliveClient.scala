@@ -27,7 +27,7 @@ object KeepAliveClient:
   ): F[KeepAliveClient[F]] =
     val F = Temporal[F]
     val id = Protocols.KeepAlive
-    def illegal[A](detail: String)(using Raise[F, NetworkError]): F[A] =
+    def illegal[A](detail: NetworkError.Violation)(using Raise[F, NetworkError]): F[A] =
       NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     Ref.of[F, Int](0).map { counter =>

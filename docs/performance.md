@@ -335,6 +335,17 @@ more than the 8 MB range budget to do so. Preview's blocks are small (Koios samp
 epoch from epoch 8 to 1450 average 0.2 to 5 KB, with a burst of 63 KB blocks around epoch 7), which is why the runs above never came
 near it; a chain with large blocks (mainnet during busy epochs) does.
 
+### Typed failures on the measured receive path
+
+The domain-error migration retains local mutable cursors, framing buffers and explicit heap
+stacks on these critical receive paths and the indexed CBOR path. The measurements above and
+[the indexed-decoding spike](design/memory-lean-decoding.md#2-what-was-measured) are the existing evidence
+for those exceptions to functional composition. CBOR and wire loops now leave their lexical
+`scala.util.boundary` scope with typed `Left` values, rather than domain exceptions. This records
+the retained implementation choices; it adds no post-migration throughput or allocation result
+and does not justify imperative patterns elsewhere. The Scalus callback signal is a separate
+[foreign ABI limitation](design/domain-errors.md#preserved-behavior-and-deliberate-seams).
+
 ### Depth against throughput
 
 15 minutes from genesis, `--cpus 6`, `-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`, fresh

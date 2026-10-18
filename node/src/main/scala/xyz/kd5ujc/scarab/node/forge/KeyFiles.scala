@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
-import xyz.kd5ujc.scarab.ledger.{ForgeError, Header}
+import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem, Header, KeyShape}
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
@@ -75,13 +75,13 @@ object KeyFiles:
 
   /** The type and the decoded CBOR of an envelope's text. */
   def envelope(file: String, text: String): Either[ForgeError, (String, Bytes)] =
-    def bad(reason: String) = ForgeError.KeyFile(file, reason)
+    def bad(reason: ForgeKeyProblem) = ForgeError.KeyFile(file, reason)
     for
-      json <- parser.parse(text).leftMap(e => bad(s"not JSON: ${e.message}"))
+      json <- parser.parse(text).leftMap(e => bad(ForgeKeyProblem.Json(e)))
       cursor = json.hcursor
-      typ <- cursor.get[String]("type").leftMap(_ => bad("no \"type\""))
-      hex <- cursor.get[String]("cborHex").leftMap(_ => bad("no \"cborHex\""))
-      raw <- Bytes.fromHex(hex).leftMap(e => bad(s"cborHex: $e"))
+      typ <- cursor.get[String]("type").leftMap(e => bad(ForgeKeyProblem.Field("type", e)))
+      hex <- cursor.get[String]("cborHex").leftMap(e => bad(ForgeKeyProblem.Field("cborHex", e)))
+      raw <- Bytes.fromHex(hex).leftMap(e => bad(ForgeKeyProblem.Hex(e)))
     yield (typ, raw)
 
   private def expect(file: String, text: String, typ: String): Either[ForgeError, Bytes] =
@@ -89,15 +89,16 @@ object KeyFiles:
       Either.cond(
         found == typ,
         raw,
-        ForgeError.KeyFile(file, s"expected type $typ, found $found")
+        ForgeError.KeyFile(file, ForgeKeyProblem.EnvelopeType(typ, found))
       )
     }
 
   private def byteString(file: String, raw: Bytes): Either[ForgeError, Bytes] =
-    Cbor.decode(raw).leftMap(ForgeError.KeyFile(file, _)).flatMap { n =>
+    Cbor.decode(raw).leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Cbor(e))).flatMap { n =>
       n.value match
         case Value.ByteString(b) => Right(b)
-        case _ => Left(ForgeError.KeyFile(file, "payload is not a CBOR byte string"))
+        case _ =>
+          Left(ForgeError.KeyFile(file, ForgeKeyProblem.ExpectedByteString(KeyShape.of(n.value))))
     }
 
   def vrfSigningKey(file: String, text: String): Either[ForgeError, Draft03Prover.SigningKey] =
@@ -106,7 +107,7 @@ object KeyFiles:
       payload <- byteString(file, raw)
       key <- Draft03Prover.SigningKey
         .fromBytes(payload)
-        .leftMap(e => ForgeError.KeyFile(file, e.toString))
+        .leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Vrf(e)))
     yield key
 
   /** The KES key as `cardano-cli node key-gen-KES` writes it (the 608-byte period-0 key), or as
@@ -126,7 +127,7 @@ object KeyFiles:
   def kesEnvelope(file: String, key: Sum6KesSigning.SigningKey): Either[ForgeError, String] =
     Cbor
       .encode(Value.ByteString(key.toBytes))
-      .leftMap(ForgeError.KeyFile(file, _))
+      .leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Cbor(e)))
       .map(cbor =>
         Json
           .obj(
@@ -139,16 +140,16 @@ object KeyFiles:
 
   /** `[[hotVkey, sequence, kesPeriod, sigma], coldVkey]`. */
   def opCert(file: String, text: String): Either[ForgeError, (Header.OpCert, Bytes)] =
-    def bad(reason: String) = ForgeError.KeyFile(file, reason)
+    def bad(reason: ForgeKeyProblem) = ForgeError.KeyFile(file, reason)
     for
       raw <- expect(file, text, OpCertType)
-      root <- Cbor.decode(raw).leftMap(bad)
+      root <- Cbor.decode(raw).leftMap(e => bad(ForgeKeyProblem.Cbor(e)))
       outer <- root.value match
         case Value.Arr(xs) if xs.size == 2 => Right(xs)
-        case _ => Left(bad("expected [certificate, cold verification key]"))
+        case _ => Left(bad(ForgeKeyProblem.CertificateEnvelope(KeyShape.of(root.value))))
       parts <- outer(0).value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
-        case _ => Left(bad("expected [hot vkey, counter, KES period, signature]"))
+        case _ => Left(bad(ForgeKeyProblem.CertificateFields(KeyShape.of(outer(0).value))))
       hot <- fixed(parts(0).value, 32, bad)
       sequence <- uint(parts(1).value, bad)
       period <- uint(parts(2).value, bad)
@@ -156,20 +157,25 @@ object KeyFiles:
       cold <- fixed(outer(1).value, 32, bad)
     yield (Header.OpCert(hot, sequence, period, sigma), cold)
 
-  private def fixed(v: Value, size: Int, bad: String => ForgeError): Either[ForgeError, Bytes] =
+  private def fixed(
+      v: Value,
+      size: Int,
+      bad: ForgeKeyProblem => ForgeError
+  ): Either[ForgeError, Bytes] =
     v match
       case Value.ByteString(b) if b.size == size => Right(b)
-      case _                                     => Left(bad(s"expected a $size-byte string"))
+      case _ => Left(bad(ForgeKeyProblem.FixedBytes(size, KeyShape.of(v))))
 
-  private def uint(v: Value, bad: String => ForgeError): Either[ForgeError, BigInt] = v match
-    case Value.UInt(n) => Right(n)
-    case _             => Left(bad("expected an unsigned integer"))
+  private def uint(v: Value, bad: ForgeKeyProblem => ForgeError): Either[ForgeError, BigInt] =
+    v match
+      case Value.UInt(n) => Right(n)
+      case _             => Left(bad(ForgeKeyProblem.UnsignedInteger(KeyShape.of(v))))
 
   /** The text of a file, or why it cannot be read. */
   private[forge] def read(p: Path): Either[ForgeError, String] =
     Either
       .catchNonFatal(Files.readString(p))
-      .leftMap(e => ForgeError.KeyFile(p.toString, Option(e.getMessage).getOrElse(e.toString)))
+      .leftMap(e => ForgeError.KeyFile(p.toString, ForgeKeyProblem.Io(e)))
 
   /** Load and cross-check the three files of a pool (a KES key left half-replaced by a crash is put
     * right first, see [[KesFiles.recover]]).

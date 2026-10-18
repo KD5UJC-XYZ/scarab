@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.{ForgeAssemblyProblem, ForgeLedgerProblem, ForgeProtocolProblem}
 import scala.annotation.unused
 import cats.effect.{Async, Clock, Ref}
 import cats.mtl.{Handle, Stateful}
@@ -173,7 +174,7 @@ final class Forger[F[_]: Async, S](
     attempted.handleErrorWith(t =>
       events.emit(
         ForgeEvent.KesReloadRefused(
-          ReloadRefusal.Unreadable(ForgeError.Assembly(s"${t.getClass.getName}: ${t.getMessage}"))
+          ReloadRefusal.Unreadable(ForgeError.Defect(t))
         )
       )
     )
@@ -212,19 +213,15 @@ final class Forger[F[_]: Async, S](
   private[forge] def step(slot: BigInt): F[Unit] =
     hot
       .advance(kesPeriodOf(slot))
-      .handleErrorWith(t =>
-        failed(slot, ForgeError.KesFailure(s"${t.getClass.getName}: ${t.getMessage}"))
-      ) *> handle
+      .handleErrorWith(t => failed(slot, ForgeError.KesFailure(t))) *> handle
       .attempt(attempt(slot))
       .flatMap {
         case Right(_)                      => F.unit
         case Left(_: ForgeError.NotLeader) => F.unit
         case Left(e: ForgeError)           => failed(slot, e)
-        case Left(other)                   => failed(slot, ForgeError.Assembly(other.message))
+        case Left(other)                   => failed(slot, ForgeError.ServiceFailure(other))
       }
-      .handleErrorWith(t =>
-        failed(slot, ForgeError.Assembly(s"${t.getClass.getName}: ${t.getMessage}"))
-      ) *> watch
+      .handleErrorWith(t => failed(slot, ForgeError.Defect(t))) *> watch
 
   private def failed(slot: BigInt, error: ForgeError): F[Unit] =
     stats.failed(geometry.epochOf(slot)) *> events.emit(ForgeEvent.Failed(slot, error))
@@ -285,7 +282,7 @@ final class Forger[F[_]: Async, S](
           ticked.params.protocolMajor >= 9,
           (),
           ForgeError.UnsupportedProtocol(
-            s"protocol version ${ticked.params.protocolMajor} is not Praos with Conway transactions"
+            ForgeProtocolProblem.Version(ticked.params.protocolMajor)
           )
         )
       )
@@ -322,7 +319,7 @@ final class Forger[F[_]: Async, S](
         pools.total
       )
       _ <- outcome match
-        case Left(e @ ForgeError.SelfRejected(rule, reason)) if chosen.nonEmpty =>
+        case Left(e: ForgeError.SelfRejected) if chosen.nonEmpty =>
           // never let a transaction we mis-judged cost the block: try again without any
           failed(slot, e) *>
             build(current, tip, slot, epoch, ticked, cert, Vector.empty, stake, pools.total)
@@ -358,7 +355,7 @@ final class Forger[F[_]: Async, S](
           body.size <= ticked.params.maxBlockBodySize,
           (),
           ForgeError.Assembly(
-            s"body of ${body.size} bytes exceeds ${ticked.params.maxBlockBodySize}"
+            ForgeAssemblyProblem.BodySize(body.size, ticked.params.maxBlockBodySize)
           )
         )
       yield BlockBuilder.headerBody(
@@ -392,7 +389,7 @@ final class Forger[F[_]: Async, S](
         val raw = BlockBuilder.block(headerBody, signature, body)
         Block.decode(raw, geometry.byron.epochSlots) match
           case Left(e) =>
-            F.pure(Left(ForgeError.Assembly(s"the block we built does not decode: ${e.message}")))
+            F.pure(Left(ForgeError.Assembly(ForgeAssemblyProblem.BlockDecode(e))))
           case Right(decoded) =>
             val h = decoded.header
             val forged = ForgeEvent.Forged(
@@ -419,9 +416,9 @@ final class Forger[F[_]: Async, S](
                 }
               case Follower.Adoption.Lost(reason) =>
                 stats.lost(epoch) *>
-                  events.emit(ForgeEvent.Lost(slot, h.hash, reason)).as(Right(()))
+                  events.emit(ForgeEvent.Lost(slot, h.hash, reason.message)).as(Right(()))
               case Follower.Adoption.Invalid(e) =>
-                F.pure(Left(ForgeError.SelfRejected(e.rule, e.reason)))
+                F.pure(Left(ForgeError.SelfRejected(e)))
             }
     }
 
@@ -443,15 +440,17 @@ final class Forger[F[_]: Async, S](
       target <- SlotNo
         .fromBigInt(slot)
         .left
-        .map(e => ForgeError.LedgerViewUnavailable(slot, s"slot: $e"))
+        .map(e => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Vocabulary(e)))
       state <- Hfc
         .tick(Globals(globals, geometry), config.forks.eraAt)(
           EraNes.InEra(ShelleyBasedEra.SConway, nes),
           target
         )
         .left
-        .map(f => ForgeError.LedgerViewUnavailable(slot, s"the tick refuses: $f"))
-      conway <- ConwayView.of(state).toRight(ForgeError.UnsupportedProtocol("the tick left Conway"))
+        .map(f => ForgeError.LedgerViewUnavailable(slot, ForgeLedgerProblem.Tick(f)))
+      conway <- ConwayView
+        .of(state)
+        .toRight(ForgeError.UnsupportedProtocol(ForgeProtocolProblem.LeftConway))
     yield conway
 
   /** The ledger and Praos state of the tip carried to `epoch` (cached per tip and epoch: the epoch
@@ -472,12 +471,15 @@ final class Forger[F[_]: Async, S](
             Either.cond(
               !state.consensus.boot.active,
               (),
-              ForgeError.UnsupportedProtocol("the ledger is in bootstrap mode")
+              ForgeError.UnsupportedProtocol(ForgeProtocolProblem.Bootstrap)
             )
           )
           nes <- lift(
             ConwayView(state, current.tipRef).left.map(why =>
-              ForgeError.UnsupportedProtocol(cats.Show[ConwayView.Unavailable].show(why))
+              ForgeError.UnsupportedProtocol(why match
+                case ConwayView.Unavailable.InByron        => ForgeProtocolProblem.InByron
+                case ConwayView.Unavailable.InEarlier(era) => ForgeProtocolProblem.Earlier(era)
+                case ConwayView.Unavailable.Refused(e)     => ForgeProtocolProblem.Mirror(e))
             )
           )
           _ <- lift(
@@ -486,7 +488,7 @@ final class Forger[F[_]: Async, S](
               (),
               ForgeError.LedgerViewUnavailable(
                 slot,
-                s"epoch $epoch precedes the ledger's ${nes.epoch.toBigInt}"
+                ForgeLedgerProblem.EpochPrecedes(epoch, nes.epoch.toBigInt)
               )
             )
           )

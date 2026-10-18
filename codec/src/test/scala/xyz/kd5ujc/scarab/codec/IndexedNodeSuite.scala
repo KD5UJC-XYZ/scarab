@@ -10,7 +10,7 @@ import scala.util.Random
   * offset at every node, and the original bytes are windows of the input.
   */
 class IndexedNodeSuite extends munit.FunSuite:
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
 
   private val Wide = Cbor.Limits(maxInputBytes = 1 << 24, maxItems = 1 << 22, allowFloats = true)
 
@@ -249,7 +249,9 @@ class IndexedNodeSuite extends munit.FunSuite:
 
   test("the items of an array are found one at a time, definite or not, and of nothing else") {
     def items(hex: String): Option[Vector[String]] =
-      Cbor.decode(bytes(hex)).fold(fail(_), _.items.map(_.map(_.original.hex).toVector))
+      Cbor
+        .decode(bytes(hex))
+        .fold(e => fail(e.toString), _.items.map(_.map(_.original.hex).toVector))
     assertEquals(items("80"), Some(Vector.empty))
     assertEquals(items("83010203"), Some(Vector("01", "02", "03")))
     assertEquals(items("9f0102ff"), Some(Vector("01", "02")))
@@ -265,13 +267,13 @@ class IndexedNodeSuite extends munit.FunSuite:
     val n = 100000
     val text = "9a" + f"$n%08x" + "01" * n
     val count = onSmallStack(
-      Cbor.decode(bytes(text), Wide).fold(fail(_), _.items.fold(0)(_.size))
+      Cbor.decode(bytes(text), Wide).fold(e => fail(e.toString), _.items.fold(0)(_.size))
     )
     assertEquals(count, n)
   }
 
   test("a node's value is read from the index at each call, never kept") {
-    val node = Cbor.decode(bytes("83010203")).fold(fail(_), identity)
+    val node = Cbor.decode(bytes("83010203")).fold(e => fail(e.toString), identity)
     assert(node.value ne node.value)
     node.value match
       case Value.Arr(items) => assert(items.head.value ne items.head.value)
@@ -283,7 +285,7 @@ class IndexedNodeSuite extends munit.FunSuite:
     val flat = bytes("99" + f"$n%04x" + "1a000186a0" * n)
     val pairs = bytes("b9" + f"$n%04x" + ("01" + "820102") * n)
     Seq(flat, pairs).foreach(agree(_))
-    Cbor.decode(flat).fold(fail(_), identity).value match
+    Cbor.decode(flat).fold(e => fail(e.toString), identity).value match
       case Value.Arr(items) =>
         assertEquals(items.size, n)
         assertEquals(items(n - 1).original.hex, "1a000186a0")

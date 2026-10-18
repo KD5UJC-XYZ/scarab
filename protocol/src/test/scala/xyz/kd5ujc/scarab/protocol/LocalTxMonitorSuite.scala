@@ -179,7 +179,7 @@ class LocalTxMonitorSuite extends ScalaCheckSuite:
         messages(state).flatMap { case (role, message) =>
           transition(state, role, message) match
             case Right(next) => go(next, left - 1, acc :+ ((state, role, message)))
-            case Left(error) => Gen.fail.label(error)
+            case Left(error) => Gen.fail.label(error.message)
         }
     go(State.Idle, 60, Vector.empty)
 

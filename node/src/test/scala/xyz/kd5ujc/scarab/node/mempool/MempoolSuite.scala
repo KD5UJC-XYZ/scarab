@@ -216,14 +216,29 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
     def attempt(protocol: Int) =
       val l = ledger(1)
-      add(pool(l.withProtocol(protocol)), raw).left
-        .map {
-          case Rejection.Ledger(LedgerFailure.Rejected(`id`, f)) => f.ruleName
-          case other                                             => other.message
-        }
-        .map(_ => "accepted")
-    assertEquals(attempt(10), Left("ConwayMempoolFailure"))
-    assertEquals(attempt(11), Left("UnelectedCommitteeVoters"))
+      add(pool(l.withProtocol(protocol)), raw).map(_ => ())
+    assertEquals(
+      attempt(10),
+      Left(
+        Rejection.Ledger(
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.Mempool(MempoolProblem.UnelectedCommittee(Vector(hot.credential)))
+          )
+        )
+      )
+    )
+    assertEquals(
+      attempt(11),
+      Left(
+        Rejection.Ledger(
+          LedgerFailure.Rejected(
+            id,
+            PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential)))
+          )
+        )
+      )
+    )
   }
 
   test("capacity is counted in bytes and refuses what does not fit") {
@@ -318,11 +333,11 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
     )
   )
 
-  private def replay(s: MempoolState): Either[String, MempoolLedger] =
+  private def replay(s: MempoolState): Either[LedgerFailure, MempoolLedger] =
     val base = s.base.fold(u => sys.error(u.toString), identity)
-    s.entries.zipWithIndex.foldLeft[Either[String, MempoolLedger]](Right(base)) {
+    s.entries.zipWithIndex.foldLeft[Either[LedgerFailure, MempoolLedger]](Right(base)) {
       case (Right(l), (e, i)) =>
-        l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules).left.map(_.message)
+        l(e.tx, env.txEnv(s.tipSlot, base, i), env.rules)
       case (left, _) => left
     }
 
@@ -415,7 +430,10 @@ class MempoolSuite extends CatsEffectSuite with ScalaCheckSuite:
       referenceScript = Some(script.kind -> code)
     )
     val stopped: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (_, _, _) =>
-      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable("backend recovering"))
+      Left(
+        xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure
+          .Unavailable(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
+      )
     val unavailableEnv = env.copy(decoder = stopped)
     val base = ledger(2)
     for

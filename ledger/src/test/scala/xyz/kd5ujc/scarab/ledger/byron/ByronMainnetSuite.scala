@@ -42,7 +42,7 @@ class ByronMainnetSuite extends FunSuite:
       .toVector
       .filter(_.nonEmpty)
       .map { l =>
-        Block.decode(Bytes.fromHex(l).fold(e => fail(e), identity), EpochSlots) match
+        Block.decode(Bytes.fromHex(l).fold(e => fail(e.toString), identity), EpochSlots) match
           case Right(b: Block.Byron) => b
           case other                 => fail(s"unexpected $other")
       }
@@ -62,7 +62,8 @@ class ByronMainnetSuite extends FunSuite:
       )
     }.toMap
 
-  private val genesisUtxo = ByronLedger.genesisUtxo(genesis, None).fold(e => fail(e), identity)
+  private val genesisUtxo =
+    ByronLedger.genesisUtxo(genesis, None).fold(e => fail(e.toString), identity)
 
   test("the fixture is three Byron main blocks with transactions") {
     assertEquals(blocks.size, 3)
@@ -80,7 +81,7 @@ class ByronMainnetSuite extends FunSuite:
 
   test("body proofs: the Merkle root, the witnesses hash, the delegation and update hashes") {
     blocks.foreach { b =>
-      val body = ByronBody.decode(b.body).fold(e => fail(e), identity)
+      val body = ByronBody.decode(b.body).fold(e => fail(e.toString), identity)
       assertEquals(ByronLedger.checkProofs(b.header, body), Right(()), s"slot ${b.header.slot}")
     }
   }

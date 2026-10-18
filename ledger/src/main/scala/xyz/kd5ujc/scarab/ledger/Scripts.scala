@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Tree, TreeFold, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Tree, TreeFold, Value}
 import xyz.kd5ujc.scarab.codec.Tree.{treeEquals, treeHash, treeString}
 
 /** Allegra timelock script; Shelley multi-signature scripts are the subset without the two time
@@ -116,7 +116,7 @@ object NativeScript:
   /** Why bytes are not a native script. */
   enum DecodeError:
     /** The shape is wrong: a tag, an arity, a type, or a key hash of the wrong length. */
-    case Malformed(reason: String)
+    case Malformed(cause: LedgerDecodeError)
 
     /** `n` of `script_n_of_k` is an `Int` in the reference: 64-bit signed, negative allowed. */
     case RequiredOutOfRange(value: BigInt)
@@ -125,7 +125,7 @@ object NativeScript:
     case SlotOutOfRange(what: String, value: BigInt)
 
     def message: String = this match
-      case Malformed(r)            => r
+      case Malformed(r)            => r.message
       case RequiredOutOfRange(v)   => s"script n: $v does not fit a signed 64-bit integer"
       case SlotOutOfRange(what, v) => s"$what: $v does not fit an unsigned 64-bit integer"
 
@@ -133,7 +133,7 @@ object NativeScript:
   private val MaxInt64 = (BigInt(1) << 63) - 1
   private val MaxWord64 = (BigInt(1) << 64) - 1
 
-  private def malformed[A](r: Either[String, A]): Either[DecodeError, A] =
+  private def malformed[A](r: Either[LedgerDecodeError, A]): Either[DecodeError, A] =
     r.left.map(DecodeError.Malformed(_))
 
   private def slot(n: Node, what: String): Either[DecodeError, BigInt] =
@@ -150,11 +150,15 @@ object NativeScript:
     import TreeFold.Step
     malformed(CborRead.array(n, "native script")).flatMap { xs =>
       malformed(
-        xs.headOption.toRight("native script: empty").flatMap(CborRead.uint(_, "script tag"))
+        xs.headOption
+          .toRight(LedgerDecodeError.Empty("native script"))
+          .flatMap(CborRead.uint(_, "script tag"))
       ).flatMap { tag =>
         def list(i: Int): Either[DecodeError, Vector[Node]] =
           malformed(
-            xs.lift(i).toRight("native script: short").flatMap(CborRead.array(_, "scripts"))
+            xs.lift(i)
+              .toRight(LedgerDecodeError.MissingField("native script", i.toString))
+              .flatMap(CborRead.array(_, "scripts"))
           )
         (tag.toInt, xs.size) match
           case (0, 2) =>
@@ -165,7 +169,8 @@ object NativeScript:
             required(xs(1)).flatMap(k => list(2).map(Step.Branch(_, ss => Right(NOfK(k, ss)))))
           case (4, 2) => slot(xs(1), "invalid before").map(s => Step.Leaf(InvalidBefore(s)))
           case (5, 2) => slot(xs(1), "invalid hereafter").map(s => Step.Leaf(InvalidHereafter(s)))
-          case (t, k) => Left(DecodeError.Malformed(s"native script tag $t with $k elements"))
+          case (t, k) =>
+            Left(DecodeError.Malformed(LedgerDecodeError.TaggedArity("native script", t, k)))
       }
     }
 
@@ -193,36 +198,36 @@ object Script:
   private def hashOf(kind: ScriptKind, payload: Bytes): Bytes =
     Blake2b.hash224.hash(Bytes(kind.tag.toByte +: payload.value))
 
-  def native(n: Node): Either[String, Script] =
+  def native(n: Node): Either[LedgerDecodeError, Script] =
     NativeScript
       .decode(n)
       .left
-      .map(_.message)
+      .map(LedgerDecodeError.NativeScript(_))
       .map(s => Script(ScriptKind.Native, hashOf(ScriptKind.Native, n.original), Some(s)))
 
   def plutus(kind: ScriptKind, bytes: Bytes): Script =
     Script(kind, hashOf(kind, bytes), None, Some(bytes))
 
   /** `script = [0, native_script] / [1, plutus_v1] / [2, plutus_v2] / [3, plutus_v3]`. */
-  def decode(n: Node): Either[String, Script] =
+  def decode(n: Node): Either[LedgerDecodeError, Script] =
     CborRead.arrayN(n, 2, "script").flatMap { xs =>
       CborRead.uint(xs(0), "script type").flatMap {
         case t if t == 0 => native(xs(1))
         case t if t == 1 => CborRead.bytes(xs(1), "plutus v1").map(plutus(ScriptKind.PlutusV1, _))
         case t if t == 2 => CborRead.bytes(xs(1), "plutus v2").map(plutus(ScriptKind.PlutusV2, _))
         case t if t == 3 => CborRead.bytes(xs(1), "plutus v3").map(plutus(ScriptKind.PlutusV3, _))
-        case t           => Left(s"script type $t")
+        case t           => Left(LedgerDecodeError.UnknownTag("script type", t))
       }
     }
 
   /** `#6.24(bytes .cbor script)` as stored in an output's reference-script field; the Plutus bytes
     * are dropped so the ledger state keeps one copy (the output's own encoding).
     */
-  def decodeWrapped(n: Node): Either[String, Script] =
+  def decodeWrapped(n: Node): Either[LedgerDecodeError, Script] =
     decodeWrappedWithBytes(n).map(_.copy(plutus = None))
 
   /** As [[decodeWrapped]], keeping the Plutus bytes. */
-  def decodeWrappedWithBytes(n: Node): Either[String, Script] = n.value match
+  def decodeWrappedWithBytes(n: Node): Either[LedgerDecodeError, Script] = n.value match
     case Value.Tag(t, inner) if t == 24 =>
-      CborRead.bytes(inner, "reference script").flatMap(Cbor.decode(_)).flatMap(decode)
-    case _ => Left("reference script: expected tag 24")
+      CborRead.bytes(inner, "reference script").flatMap(CborRead.decode(_)).flatMap(decode)
+    case _ => Left(LedgerDecodeError.ExpectedTag("reference script", 24, n.value))

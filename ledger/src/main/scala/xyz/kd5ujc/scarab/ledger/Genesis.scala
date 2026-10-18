@@ -24,11 +24,13 @@ object Genesis:
     for
       json <- parser
         .parse(text)
-        .leftMap(e => ConfigError(s"shelley genesis is not JSON: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("shelley genesis", e)))
       c = json.hcursor
       magic <- field[Long](c, "networkMagic")
       start <- field[String](c, "systemStart").flatMap(s =>
-        Either.catchNonFatal(Instant.parse(s)).leftMap(_ => ConfigError(s"invalid systemStart $s"))
+        Either
+          .catchNonFatal(Instant.parse(s))
+          .leftMap(e => ConfigError(ConfigProblem.InvalidTimestamp(s, e)))
       )
       slotLength <- field[BigDecimal](c, "slotLength")
       epochLength <- field[Long](c, "epochLength")
@@ -37,7 +39,7 @@ object Genesis:
       millis <- Either.cond(
         (slotLength * 1000).isWhole,
         (slotLength * 1000).toLongExact,
-        ConfigError(s"slot length $slotLength is not a whole number of milliseconds")
+        ConfigError(ConfigProblem.FractionalSlotMilliseconds(slotLength))
       )
       geometry <- EpochGeometry.checked(start, millis, epochLength, k, f)
       kesPeriod <- field[BigInt](c, "slotsPerKESPeriod")
@@ -56,7 +58,7 @@ object Genesis:
     if firstShelleyEpoch.contains(BigInt(0)) then Right(genesis)
     else
       byron
-        .toRight(ConfigError("a chain with a Byron prefix needs byron-genesis.json"))
+        .toRight(ConfigError(ConfigProblem.ByronGenesisRequired))
         .map(b =>
           genesis.copy(geometry =
             genesis.geometry.copy(byron =
@@ -83,7 +85,7 @@ object Genesis:
       )
 
   private[scarab] def field[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
-    c.downField(name).as[A].leftMap(e => ConfigError(s"genesis field $name: ${e.message}"))
+    c.downField(name).as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", name, e)))
 
 /** A Byron heavy-delegation entry of the Byron genesis: the genesis key (extended public key)
   * delegates block signing from `epoch` on to `delegate`; `cert` is the genesis key's signature.
@@ -134,7 +136,7 @@ object ByronGenesisFile:
   def parse(text: String, configuredHash: Option[Bytes]): Either[ConfigError, ByronGenesis] =
     parser
       .parse(text)
-      .leftMap(e => ConfigError(s"byron genesis is not JSON: ${e.message}"))
+      .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("byron genesis", e)))
       .flatMap(fromJson(_, configuredHash))
 
   def fromJson(json: Json, configuredHash: Option[Bytes]): Either[ConfigError, ByronGenesis] =
@@ -146,7 +148,6 @@ object ByronGenesisFile:
           h == computed,
           h,
           ConfigError(
-            s"ByronGenesisHash ${h.hex} differs from the genesis file's ${computed.hex}",
             ConfigProblem.GenesisHashMismatch("Byron", "byron genesis", h.hex, computed.hex)
           )
         )
@@ -155,23 +156,30 @@ object ByronGenesisFile:
       k <- Genesis.field[Int](c.downField("protocolConsts"), "k")
       slot <- Genesis
         .field[String](c.downField("blockVersionData"), "slotDuration")
-        .flatMap(s => s.toLongOption.toRight(ConfigError(s"slotDuration $s")))
-      params <- ByronParams.fromGenesis(c.downField("blockVersionData")).leftMap(ConfigError(_))
+        .flatMap(s =>
+          s.toLongOption.toRight(ConfigError(ConfigProblem.IntegerText("slotDuration", s)))
+        )
+      params <- ByronParams
+        .fromGenesis(c.downField("blockVersionData"))
+        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
       delegations <- c
         .downField("heavyDelegation")
         .as[Option[Map[String, Json]]]
-        .leftMap(e => ConfigError(s"heavyDelegation: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", "heavyDelegation", e)))
         .flatMap(_.getOrElse(Map.empty).toVector.sortBy(_._1).traverse((_, j) => delegation(j)))
       stakeholders <- c
         .downField("bootStakeholders")
         .as[Map[String, Json]]
-        .leftMap(e => ConfigError(s"bootStakeholders: ${e.message}"))
-        .flatMap(_.keys.toVector.sorted.traverse(h => Bytes.fromHex(h).leftMap(ConfigError(_))))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", "bootStakeholders", e)))
+        .flatMap(
+          _.keys.toVector.sorted
+            .traverse(h => Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
+        )
       balances <- genesisBalances(json)
       start <- c
         .downField("startTime")
         .as[Option[Long]]
-        .leftMap(e => ConfigError(s"startTime: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", "startTime", e)))
     yield ByronGenesis(
       hash,
       magic,
@@ -195,14 +203,16 @@ object ByronGenesisFile:
     def balances(name: String)(key: String => Either[ConfigError, Bytes]) =
       c.downField(name)
         .as[Option[Map[String, String]]]
-        .leftMap(e => ConfigError(s"byron $name: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("byron genesis", name, e)))
         .flatMap(
           _.getOrElse(Map.empty).toVector
             .sortBy(_._1)
             .traverse { (k, v) =>
               (
                 key(k),
-                Either.catchNonFatal(BigInt(v)).leftMap(_ => ConfigError(s"byron balance $v"))
+                Either
+                  .catchNonFatal(BigInt(v))
+                  .leftMap(_ => ConfigError(ConfigProblem.IntegerText("byron balance", v)))
               ).tupled
             }
         )
@@ -210,11 +220,16 @@ object ByronGenesisFile:
       balances("avvmDistr")(k =>
         Either
           .catchNonFatal(Bytes.fromArray(java.util.Base64.getUrlDecoder.decode(k)))
-          .leftMap(_ => ConfigError(s"avvm key $k"))
-          .filterOrElse(_.size == 32, ConfigError(s"avvm key $k is not 32 bytes"))
+          .leftMap(e => ConfigError(ConfigProblem.Base64("avvm key", k, e)))
+          .flatMap(b =>
+            Either
+              .cond(b.size == 32, b, ConfigError(ConfigProblem.ByteLength("avvm key", 32, b.size)))
+          )
       ),
       balances("nonAvvmBalances")(k =>
-        xyz.kd5ujc.scarab.ledger.Base58.decode(k).toRight(ConfigError(s"byron address $k"))
+        xyz.kd5ujc.scarab.ledger.Base58
+          .decode(k)
+          .toRight(ConfigError(ConfigProblem.Base58Address(k)))
       )
     ).tupled
 
@@ -226,7 +241,7 @@ object ByronGenesisFile:
         .flatMap(b64 =>
           Either
             .catchNonFatal(java.util.Base64.getDecoder.decode(b64))
-            .leftMap(_ => ConfigError(s"$name is not base64"))
+            .leftMap(e => ConfigError(ConfigProblem.Base64(name, b64, e)))
         )
         .map(Bytes.fromArray)
     for
@@ -235,5 +250,5 @@ object ByronGenesisFile:
       delegate <- key("delegatePk")
       cert <- Genesis
         .field[String](c, "cert")
-        .flatMap(h => Bytes.fromHex(h).leftMap(ConfigError(_)))
+        .flatMap(h => Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
     yield ByronDelegation(omega, issuer, delegate, cert)

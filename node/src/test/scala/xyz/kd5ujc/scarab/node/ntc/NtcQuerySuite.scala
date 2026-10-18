@@ -167,6 +167,6 @@ class NtcQuerySuite extends FunSuite:
       "82008100",
       "820083008206810000"
     ).foreach { raw =>
-      assert(decode(Bytes.fromHex(raw).fold(fail(_), identity)).isLeft, raw)
+      assert(decode(Bytes.fromHex(raw).fold(e => fail(e.message), identity)).isLeft, raw)
     }
   }

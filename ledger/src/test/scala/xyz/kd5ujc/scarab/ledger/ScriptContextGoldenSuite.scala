@@ -299,14 +299,14 @@ class ScriptContextGoldenSuite extends FunSuite:
   private def txOf(language: PlutusLanguage): Tx =
     val parts = fullTxParts(language)
     Tx.fromBlock(Block.Transaction(parts._1, parts._2, None, true), Era.Conway)
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.toString), identity)
 
   private def fullTxParts(language: PlutusLanguage) =
     (bytesOf(body(language)), bytesOf(witnesses(language)))
 
   private def outputsOf(language: PlutusLanguage): Map[TxIn, TxOut] =
     resolved(language).map { case ((id, ix), hex) =>
-      TxIn(bytesOf(id), ix) -> TxOut.fromBytes(bytesOf(hex)).fold(e => fail(e), identity)
+      TxIn(bytesOf(id), ix) -> TxOut.fromBytes(bytesOf(hex)).fold(e => fail(e.toString), identity)
     }
 
   private def clock(slot: BigInt): Either[TranslationError, BigInt] = Right(
@@ -435,7 +435,7 @@ class ScriptContextGoldenSuite extends FunSuite:
 
   test("a plain V2 transaction has the documented TxInfo shape") {
     val key = hash28(7)
-    val addr = Address.decode(bytesOf("60" + key)).fold(e => fail(e), identity)
+    val addr = Address.decode(bytesOf("60" + key)).fold(e => fail(e.toString), identity)
     val spentIn = TxIn(bytesOf(hash32(1)), 2)
     val b = TestLedger
       .body("shape", Vector(spentIn), Vector(TxOut(addr, Value.coin(1500000))), 200000)
@@ -478,7 +478,7 @@ class ScriptContextGoldenSuite extends FunSuite:
   }
 
   test("Plutus V1 rejects reference inputs, inline datums and reference scripts") {
-    val addr = Address.decode(bytesOf("60" + hash28(7))).fold(e => fail(e), identity)
+    val addr = Address.decode(bytesOf("60" + hash28(7))).fold(e => fail(e.toString), identity)
     val in = TxIn(bytesOf(hash32(1)), 0)
     val plain = TxOut(addr, Value.coin(1))
     def info(body: TxBody, spent: Map[TxIn, TxOut], refs: Map[TxIn, TxOut] = Map.empty) =
@@ -496,7 +496,7 @@ class ScriptContextGoldenSuite extends FunSuite:
   }
 
   test("the same output is a valid input for V2 and the spent datum is passed to the script") {
-    val addr = Address.decode(bytesOf("70" + scriptHash)).fold(e => fail(e), identity)
+    val addr = Address.decode(bytesOf("70" + scriptHash)).fold(e => fail(e.toString), identity)
     val in = TxIn(bytesOf(hash32(1)), 0)
     val datum = bytesOf(datumA)
     val out = TxOut(addr, Value.coin(5)).copy(datum = Datum.Inline(datum))

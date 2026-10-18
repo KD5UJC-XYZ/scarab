@@ -16,7 +16,7 @@ class QueryServerSuite extends CatsEffectSuite:
     .fromDirectory(Path.of("fixtures/devnet/lsq/genesis"))
     .fold(e => fail(e.message), identity)
   private val hash = "ab" * 32
-  private val bytes = Bytes.fromHex(hash).fold(fail(_), identity)
+  private val bytes = Bytes.fromHex(hash).fold(e => fail(e.message), identity)
   private val retained = Point.Block(UInt64.saturating(17), bytes)
 
   private case class Reads(tips: Int, points: Vector[Point])

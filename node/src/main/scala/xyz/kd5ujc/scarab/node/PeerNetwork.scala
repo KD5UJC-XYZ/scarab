@@ -303,7 +303,7 @@ object PeerNetwork:
         def raise[E2 <: GovernorError, B](e: E2): F[B] =
           val fault = e match
             case GovernorError.InvariantBroken(vs) =>
-              GovernorFault.InvariantBroken(vs.map(_.toString))
+              GovernorFault.InvariantBroken(vs)
             case GovernorError.BootstrapPeersCriticalTimeout =>
               GovernorFault.BootstrapPeersCriticalTimeout
           fatal.complete(fault) *> F.never[B]
@@ -431,17 +431,26 @@ object PeerNetwork:
   /** The oldest tip a caught up node tolerates (`llrnMaxCaughtUpAge`, `Node.hs` 1106). */
   val MaxCaughtUpAge: FiniteDuration = 20.minutes
 
-  /** The reason text of a failed resolution. */
-  def unresolved(host: Host, t: Throwable): PeerError =
-    PeerError.Unavailable(s"cannot resolve $host: ${Option(t.getMessage).getOrElse(t.toString)}")
+  /** A failed DNS resolution, retaining its operating-system cause. */
+  def unresolved(host: Host, t: java.io.IOException): PeerError =
+    PeerError.Unavailable(PeerError.Unavailability.Resolution(host.toString, t))
+
+  /** Only DNS/operating-system failures are recoverable peer failures. The caller's worker owns
+    * every unexpected defect; keep its original throwable for that boundary.
+    */
+  private[node] def resolve[F[_]: cats.MonadThrow, A](
+      host: Host,
+      result: F[A]
+  ): F[Either[PeerError, A]] =
+    result.attempt.flatMap {
+      case Right(value)                     => value.asRight[PeerError].pure[F]
+      case Left(cause: java.io.IOException) => unresolved(host, cause).asLeft[A].pure[F]
+      case Left(cause)                      => cats.MonadThrow[F].raiseError(cause)
+    }
 
   /** The TCP transport: the first address a name resolves to, and a plain connection to it. */
   def tcp[F[_]: Async](connectTimeout: FiniteDuration): Transport[F, Addr] = new Transport[F, Addr]:
-    def resolve(peer: Addr) =
-      ConnectionManager
-        .resolve[F](peer)
-        .map(_.asRight[PeerError])
-        .handleError(t => unresolved(peer.host, t).asLeft[SocketAddress[IpAddress]])
+    def resolve(peer: Addr) = PeerNetwork.resolve(peer.host, ConnectionManager.resolve[F](peer))
 
     def bearer(peer: Addr, remote: SocketAddress[IpAddress])(using Raise[F, NetworkError]) =
       Bearer.tcp[F](SocketAddress[Host](remote.host, remote.port), connectTimeout)

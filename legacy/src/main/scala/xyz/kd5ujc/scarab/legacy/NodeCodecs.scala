@@ -2,6 +2,8 @@
 package xyz.kd5ujc.scarab.legacy
 
 import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState}
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.BinaryError
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
@@ -21,7 +23,7 @@ object NodeCodecs:
   // The pointers keep their persisted form (a map); the reverse index is rebuilt on read.
   given ptrMap: Codec[PtrMap] =
     val map = summon[Codec[Map[Ptr, Credential]]]
-    Codec.make[PtrMap](map.shape)((o, p) => map.write(o, p.toMap))(i => PtrMap(map.read(i)))
+    Codec.make[PtrMap](map.shape)((o, p) => map.write(o, p.toMap))(i => map.read(i).map(PtrMap(_)))
   given rewardAccount: Codec[RewardAccount] = Codec.auto
   given value: Codec[Value] = Codec.auto
   given datum: Codec[Datum] = Codec.auto
@@ -75,9 +77,15 @@ object NodeCodecs:
       number.write(out, BigInt(version.minor))
       number.write(out, BigInt(version.alt))
     )(in =>
-      ByronVersion
-        .from(number.read(in), number.read(in), number.read(in))
-        .fold(e => throw CodecException(e.message), identity)
+      for
+        major <- number.read(in)
+        minor <- number.read(in)
+        alt <- number.read(in)
+        version <- ByronVersion.from(major, minor, alt).leftMap {
+          case ByronVersion.Error.OutOfRange(field, value) =>
+            BinaryError.InvalidByronVersion(field.toString, value)
+        }
+      yield version
     )
   given byron: Codec[ByronState] = Codec.auto
 

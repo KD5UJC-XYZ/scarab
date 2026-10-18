@@ -7,7 +7,7 @@ import munit.ScalaCheckSuite
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{CborRead, Datum, ScriptKind, TxOut, Value}
 import xyz.kd5ujc.scarab.ledger.state.{
   Allegra,
@@ -33,7 +33,7 @@ import MemPack.{Failure, Feature, MultiAssetFault, Packer, Quantity, TagSite, Un
   * decoder throw.
   */
 class TxOutMemPackSuite extends ScalaCheckSuite:
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(fail(_), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
 
   private def right[A](e: Either[Failure, A]): A = e.fold(f => fail(f.toString), identity)
 
@@ -177,13 +177,15 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
 
   /** Entries of a `tables` file read whole: `[ {key bytes: value bytes} ]`. */
   private def tableEntries(path: Path): Vector[(Bytes, Bytes)] =
-    val node = Cbor.decode(Bytes.fromArray(Files.readAllBytes(path))).fold(fail(_), identity)
-    val items = CborRead.array(node, "tables").fold(fail(_), identity)
+    val node = CborRead
+      .decode(Bytes.fromArray(Files.readAllBytes(path)))
+      .fold(e => fail(e.toString), identity)
+    val items = CborRead.array(node, "tables").fold(e => fail(e.toString), identity)
     assertEquals(items.size, 1)
-    CborRead.map(items.head, "tables").fold(fail(_), identity).map { (k, v) =>
+    CborRead.map(items.head, "tables").fold(e => fail(e.toString), identity).map { (k, v) =>
       (
-        CborRead.bytes(k, "key").fold(fail(_), identity),
-        CborRead.bytes(v, "value").fold(fail(_), identity)
+        CborRead.bytes(k, "key").fold(e => fail(e.toString), identity),
+        CborRead.bytes(v, "value").fold(e => fail(e.toString), identity)
       )
     }
 

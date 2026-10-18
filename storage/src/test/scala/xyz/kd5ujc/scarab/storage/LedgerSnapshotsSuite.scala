@@ -133,7 +133,7 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
             _ <- IO(assertEquals(restored.skipped.map(_.name), Vector(name), label))
             _ <- IO(
               assert(
-                restored.skipped.head.error.isInstanceOf[StorageError.Corrupt],
+                restored.skipped.head.error.isInstanceOf[StorageError.Corrupt[?]],
                 label + restored.skipped
               )
             )
@@ -185,7 +185,13 @@ class LedgerSnapshotsSuite extends CatsEffectSuite:
       private val inner = ToyFormat.format[IO, Toy]
       def encode(snapshot: StateSnapshot[Toy]) =
         if snapshot.state.counter == 2000 then
-          IO.pure(Left(SnapshotRefusal.WouldNotRead(StorageError.Corrupt("test", "refused"))))
+          IO.pure(
+            Left(
+              SnapshotRefusal.WouldNotRead(
+                StorageError.Corrupt("test", xyz.kd5ujc.scarab.codec.BinaryError.BadMagic)
+              )
+            )
+          )
         else inner.encode(snapshot)
       def decode(content: Array[Byte]) = inner.decode(content)
     tempDir.use { dir =>

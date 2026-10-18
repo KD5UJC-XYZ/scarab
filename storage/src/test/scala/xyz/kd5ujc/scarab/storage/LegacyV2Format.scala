@@ -33,6 +33,6 @@ object LegacyV2Format:
             legacy.Upgrade
               .node(s.state, forks, s.anchor)
               .map(StateSnapshot(s.anchor, _))
-              .leftMap(e => StorageError.Corrupt("snapshot", e.toString))
+              .leftMap(e => StorageError.Corrupt("snapshot", e))
           )
           .pure[F]

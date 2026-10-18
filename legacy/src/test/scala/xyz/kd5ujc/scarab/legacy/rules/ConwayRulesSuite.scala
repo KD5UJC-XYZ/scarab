@@ -52,7 +52,7 @@ class ConwayRulesSuite extends FunSuite:
     val raw = head(5, 3) ++ Vector(0x00.toByte) ++ cborBytes(address.raw.value) ++
       Vector(0x01.toByte) ++ head(0, coin.toInt) ++ Vector(0x03.toByte, 0xd8.toByte, 0x18.toByte) ++
       cborBytes(wrapped)
-    TxOut.fromBytes(Bytes(raw)).fold(e => fail(e), identity)
+    TxOut.fromBytes(Bytes(raw)).fold(e => fail(e.toString), identity)
 
   test("minting under a native script: the policy script must be provided, needed and hold") {
     val policy = Script(
@@ -190,7 +190,7 @@ class ConwayRulesSuite extends FunSuite:
   ) {
     val plutus = Script.plutus(ScriptKind.PlutusV3, Bytes(Vector.fill(10)(7)))
     val scriptAddress =
-      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e.toString), identity)
     val datum = Bytes(Vector(0x01))
     val locked = TxOut(scriptAddress, Value.coin(50 * ada))
       .copy(datum = Datum.Hash(Blake2b.hash256.hash(datum)))
@@ -266,7 +266,7 @@ class ConwayRulesSuite extends FunSuite:
   test("Plutus V3: a reference input that is also an input is refused from protocol version 11") {
     val plutus = Script.plutus(ScriptKind.PlutusV3, Bytes(Vector.fill(10)(7)))
     val scriptAddress =
-      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e.toString), identity)
     val locked = TxOut(scriptAddress, Value.coin(50 * ada))
       .copy(datum = Datum.Inline(Bytes(Vector(0x01))))
     val collateralIn = txIn(2)

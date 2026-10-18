@@ -54,7 +54,7 @@ object PredicateFailureCbor:
 
   /** The failure as Conway's ledger reports it: itself, or its text (`ConwayMempoolFailure`). */
   private def conwayForm(f: PredicateFailure): PredicateFailure =
-    if inConway(f) then f else PredicateFailure.Mempool(f.detail)
+    if inConway(f) then f else PredicateFailure.Mempool(MempoolProblem.Rule(f))
 
   /** Whether Conway's ledger has a constructor for the failure that this encoding writes. The
     * failures of the rules of the earlier eras (`ExpiredUTxO`, PPUP, `MIRInsufficientGenesisSigs`,
@@ -189,7 +189,7 @@ object PredicateFailureCbor:
       w.array(3).uint(5); swapped(w, m)(coin)
     case PredicateFailure.TxRefScriptsSizeTooBig(m) =>
       w.array(3).uint(6); group(w, m)(small)
-    case PredicateFailure.Mempool(text) => w.array(2).uint(7).text(text)
+    case PredicateFailure.Mempool(text) => w.array(2).uint(7).text(text.message)
     case PredicateFailure.WithdrawalsMissingAccounts(ws) =>
       w.array(2).uint(8)
       map(w, ws)(rewardAccount, coin)

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.legacy.v4
 
+import xyz.kd5ujc.scarab.codec.DomainError
+import xyz.kd5ujc.scarab.codec.BinaryError
+import xyz.kd5ujc.scarab.legacy.SnapshotFramingError
 import cats.syntax.all.*
 import java.nio.ByteBuffer
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -41,15 +44,17 @@ object SnapshotV4:
     * fingerprint have been checked.
     */
   def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Bytes)] =
-    def corrupt(reason: String) = StorageError.Corrupt("snapshot", reason)
+    def corrupt[E <: DomainError](cause: E): StorageError = StorageError.Corrupt("snapshot", cause)
     if content.length < HeaderSize || !content.startsWith(Magic) then
-      Left(corrupt("bad magic or too short"))
+      Left(corrupt(BinaryError.BadMagic))
     else
       val length = ByteBuffer.wrap(content, Magic.length, 4).getInt
       val fingerprint = SnapshotSidecar.fingerprint
       val end = HeaderSize.toLong + length
       if length < fingerprint.length || end > content.length then
-        Left(corrupt(s"sidecar of $length bytes in a file of ${content.length}"))
+        Left(
+          corrupt(SnapshotFramingError.SidecarLength(length, content.length, fingerprint.length))
+        )
       else
         val found = content.slice(HeaderSize, HeaderSize + fingerprint.length)
         if !java.util.Arrays.equals(found, fingerprint) then

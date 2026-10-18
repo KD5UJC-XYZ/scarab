@@ -42,7 +42,7 @@ class SharingSuite extends munit.FunSuite:
     case other           => Node(other, n.original)
 
   private def decodedBoth[A](codec: Codec[A], bytes: Bytes): (A, A) =
-    val root = Cbor.decode(bytes, HaskellState.limits).fold(fail(_), identity)
+    val root = Cbor.decode(bytes, HaskellState.limits).fold(e => fail(e.toString), identity)
     def run(n: Node): A = codec.decode(n).fold(e => fail(e.render), identity)
     (run(root), run(unshared(root)))
 
@@ -86,10 +86,11 @@ class SharingSuite extends munit.FunSuite:
       "82" + "82" + "8200581c" + "00" * 28 + "8200581c" + "01" * 28 + "83" +
         "8200581c" + "02" * 28 + "8200581c" + "03" * 28 + "820042" + "0000"
     )
-    codec.decodeBytes(bad.fold(fail(_), identity), HaskellState.limits) match
+    codec.decodeBytes(bad.fold(e => fail(e.toString), identity), HaskellState.limits) match
       case Left(e)  => assert(e.render.contains("[1]") && e.render.contains("[2]"), e.render)
       case Right(a) => fail(s"decoded $a")
-    val pairs = Bytes.fromHex("a1" + "8200581c" + "00" * 28 + "09").fold(fail(_), identity)
+    val pairs =
+      Bytes.fromHex("a1" + "8200581c" + "00" * 28 + "09").fold(e => fail(e.toString), identity)
     mapOf(nodeCredential, vote).decodeBytes(pairs, HaskellState.limits) match
       case Left(e)  => assert(e.render.contains("value[0]"), e.render)
       case Right(a) => fail(s"decoded $a")
@@ -102,7 +103,7 @@ class SharingSuite extends munit.FunSuite:
         "83" + "8200581c" + "00" * 27 + "01" + "8200581c" + "00" * 27 + "01" +
           "8200581c" + "00" * 27 + "01"
       )
-      .fold(fail(_), identity)
+      .fold(e => fail(e.toString), identity)
     assertEquals(c.hash.hex, "00" * 27 + "01")
     setOf(nodeCredential).decodeBytes(twice, HaskellState.limits) match
       case Left(e)  => assertEquals(e.kind, Kind.DuplicateElement("2 repeated"))

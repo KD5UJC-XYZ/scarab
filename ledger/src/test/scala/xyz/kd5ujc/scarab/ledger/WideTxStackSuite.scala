@@ -33,13 +33,23 @@ class WideTxStackSuite extends FunSuite:
   test("traversals over 100,000 elements in Either and Option, the shape of the decoders") {
     val xs = Vector.range(0, 100000)
     PreprodDeepTx.onSmallStack {
-      assertEquals(xs.traverse(i => Right(i): Either[String, Int]).map(_.size), Right(xs.size))
-      assertEquals(xs.traverse_(i => Right(i): Either[String, Int]), Right(()))
       assertEquals(
-        xs.flatTraverse(i => Right(Vector(i)): Either[String, Vector[Int]]).map(_.size),
+        xs.traverse(i => Right(i): Either[LedgerDecodeError, Int])
+          .map(_.size),
         Right(xs.size)
       )
-      assertEquals(xs.foldLeftM(0)((a, i) => Right(a + i): Either[String, Int]), Right(xs.sum))
+      assertEquals(
+        xs.traverse_(i => Right(i): Either[LedgerDecodeError, Int]),
+        Right(())
+      )
+      assertEquals(
+        xs.flatTraverse(i => Right(Vector(i)): Either[LedgerDecodeError, Vector[Int]]).map(_.size),
+        Right(xs.size)
+      )
+      assertEquals(
+        xs.foldLeftM(0)((a, i) => Right(a + i): Either[LedgerDecodeError, Int]),
+        Right(xs.sum)
+      )
       assertEquals(xs.traverse(i => Some(i): Option[Int]).map(_.size), Some(xs.size))
     }
   }

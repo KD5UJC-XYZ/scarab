@@ -35,7 +35,7 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
     root.value match
       case C.Arr(xs) =>
         val block = Block.Transaction(xs(0).original, xs(1).original, None, true)
-        Tx.fromBlock(block, Era.Babbage).fold(e => fail(e), identity)
+        Tx.fromBlock(block, Era.Babbage).fold(e => fail(e.toString), identity)
       case other => fail(s"not a transaction: $other")
 
   private val inputs: Map[TxIn, TxOut] =
@@ -56,7 +56,7 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
             Vector(0x1a, lovelace >> 24, lovelace >> 16, lovelace >> 8, lovelace).map(_.toByte)
         )
         TxIn(hex(c.get[String]("txHash").toOption.get), BigInt(c.get[Int]("index").toOption.get)) ->
-          TxOut.fromBytes(raw).fold(e => fail(e), identity)
+          TxOut.fromBytes(raw).fold(e => fail(e.toString), identity)
       }
       .toMap
 

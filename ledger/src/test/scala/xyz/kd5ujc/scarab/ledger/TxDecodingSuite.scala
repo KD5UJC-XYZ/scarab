@@ -18,7 +18,7 @@ class TxDecodingSuite extends FunSuite:
       .asScala
       .toVector
       .filter(_.nonEmpty)
-      .map(l => Bytes.fromHex(l).fold(e => fail(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => fail(e.toString), identity))
       .map(Block.decodeShelley(_).fold(e => fail(e.message), identity))
       .collect { case b: Block.Shelley => b }
       .flatMap(b =>
@@ -61,7 +61,9 @@ class TxDecodingSuite extends FunSuite:
 
   test("genesis delegation and instantaneous reward certificates decode") {
     def cert(hex: String) =
-      Certificate.decode(Cbor.decode(Bytes.fromHex(hex).toOption.get).toOption.get)
+      Certificate.decode(
+        CborRead.decode(Bytes.fromHex(hex).toOption.get).toOption.get
+      )
     val g = "a" * 56
     val d = "b" * 56
     val v = "c" * 64
@@ -91,7 +93,10 @@ class TxDecodingSuite extends FunSuite:
 
   test("script hashes: native scripts hash their encoding, Plutus scripts their bytes") {
     val key = "e" * 56
-    val node = Cbor.decode(Bytes.fromHex(s"8200581c$key").toOption.get).toOption.get
+    val node = CborRead
+      .decode(Bytes.fromHex(s"8200581c$key").toOption.get)
+      .toOption
+      .get
     val native = Script.native(node).toOption.get
     assertEquals(
       native.hash,
@@ -105,7 +110,7 @@ class TxDecodingSuite extends FunSuite:
     val hash = Vector.fill(28)(1.toByte)
     // slot 300 = 0x82 0x2c, tx index 5, cert index 0
     val raw = Bytes((0x40.toByte +: hash) ++ Vector(0x82, 0x2c, 0x05, 0x00).map(_.toByte))
-    val a = Address.decode(raw).fold(e => fail(e), identity)
+    val a = Address.decode(raw).fold(e => fail(e.toString), identity)
     assertEquals(
       a.kind,
       Address.Kind.Shelley(0, Credential.Key(Bytes(hash)), None, Some(Ptr(300, 5, 0)))
@@ -124,9 +129,9 @@ class TxDecodingSuite extends FunSuite:
     var results = Vector.empty[Boolean]
     val t = new Thread(() =>
       results = Vector(
-        Cbor.decode(nested(90000), wide).isRight,
-        Cbor.decode(nested(2049), wide.copy(maxDepth = 2048)).isLeft,
-        Cbor.decode(nested(2048), wide.copy(maxDepth = 2048)).isRight
+        CborRead.decode(nested(90000), wide).isRight,
+        CborRead.decode(nested(2049), wide.copy(maxDepth = 2048)).isLeft,
+        CborRead.decode(nested(2048), wide.copy(maxDepth = 2048)).isRight
       )
     )
     t.start()

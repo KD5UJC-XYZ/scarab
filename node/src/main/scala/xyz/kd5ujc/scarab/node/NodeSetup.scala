@@ -133,12 +133,7 @@ object NodeSetup:
     for
       bytes <- Either
         .catchNonFatal(Files.readAllBytes(config))
-        .leftMap(e =>
-          ConfigError(
-            s"cannot read the configuration $config: ${e.getMessage}",
-            ConfigProblem.FileMissing("configuration", config.toString)
-          )
-        )
+        .leftMap(e => ConfigError(ConfigProblem.FileRead(config.toString, e)))
       parsed <- NodeConfig.parse(new String(bytes, "UTF-8"), strict = true)
       base = genesisDir.getOrElse(Option(config.toAbsolutePath.getParent).getOrElse(Path.of(".")))
       read = (name: String) =>
@@ -186,10 +181,7 @@ object NodeSetup:
           Either.cond(
             !required,
             (),
-            ConfigError(
-              s"missing $role genesis file $file",
-              ConfigProblem.FileMissing(role, file)
-            )
+            ConfigError(ConfigProblem.FileMissing(role, file))
           )
         case Some(bytes) =>
           expected.traverse_ { want =>
@@ -197,17 +189,14 @@ object NodeSetup:
               Either.cond(
                 got == want,
                 (),
-                ConfigError(
-                  s"$role genesis file $file has hash ${got.hex}, the configuration lists ${want.hex}",
-                  ConfigProblem.GenesisHashMismatch(role, file, want.hex, got.hex)
-                )
+                ConfigError(ConfigProblem.GenesisHashMismatch(role, file, want.hex, got.hex))
               )
             }
           }
     val byron = (bytes: Array[Byte]) =>
       parser
         .parse(new String(bytes, "UTF-8"))
-        .leftMap(e => ConfigError(s"byron genesis is not JSON: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonSyntax("byron genesis", e)))
         .map(j => hashOf(ByronGenesisFile.canonical(j).getBytes("UTF-8")))
     val plain = (bytes: Array[Byte]) => Right(hashOf(bytes))
     val files = config.files
@@ -241,11 +230,11 @@ object NodeSetup:
     val names = config.files
     def required(role: String, name: String): Either[ConfigError, Array[Byte]] =
       read(name).toRight(
-        ConfigError(s"missing $name", ConfigProblem.FileMissing(role, name))
+        ConfigError(ConfigProblem.FileMissing(role, name))
       )
     def text(bytes: Array[Byte]) = new String(bytes, "UTF-8")
     def json(name: String, bytes: Array[Byte]): Either[ConfigError, Json] =
-      parser.parse(text(bytes)).leftMap(e => ConfigError(s"$name: ${e.message}"))
+      parser.parse(text(bytes)).leftMap(e => ConfigError(ConfigProblem.JsonSyntax(name, e)))
     for
       _ <- verifyHashes(config, read)
       shelleyBytes <- required("Shelley", names.shelley)
@@ -279,9 +268,7 @@ object NodeSetup:
       f = genesis.geometry.activeSlotsCoeff
       active <- PraosLeaderThreshold.Fraction
         .checked(BigInt(f.bigDecimal.unscaledValue), BigInt(10).pow(f.bigDecimal.scale.max(0)))
-        .leftMap(e =>
-          ConfigError("active slots coefficient", ConfigProblem.ActiveSlotsCoefficient(e))
-        )
+        .leftMap(e => ConfigError(ConfigProblem.ActiveSlotsCoefficient(e)))
       praos = PraosConfig(
         genesis.geometry,
         genesis.slotsPerKesPeriod,
@@ -292,13 +279,16 @@ object NodeSetup:
       lite <- LiteLedger.fromGenesis(files.shelley, firstShelley.getOrElse(BigInt(0)))
       byronRules <- byron.traverse { b =>
         val ledgerConfig = ByronLedger.Config(b, requiresMagic)
-        ByronLedger.initial(ledgerConfig).leftMap(ConfigError(_)).map { ledger =>
-          ledger -> ByronRulesConfig(
-            ledgerConfig,
-            config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold),
-            firstShelley
-          )
-        }
+        ByronLedger
+          .initial(ledgerConfig)
+          .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+          .map { ledger =>
+            ledger -> ByronRulesConfig(
+              ledgerConfig,
+              config.pbftSignatureThreshold.getOrElse(NodeConfig.DefaultPBftSignatureThreshold),
+              firstShelley
+            )
+          }
       }
       start = legacy.FlatNodeState(
         // the protocol of the era the chain starts in (a Byron start holds the state Shelley starts from)
@@ -313,7 +303,7 @@ object NodeSetup:
       )
       mirrored <- legacy.Mirroring
         .toMirror(mirrorEnvOf(genesis, globals, praos, byronParams), None, start)
-        .leftMap(e => ConfigError(s"the start state does not mirror: ${e.show}"))
+        .leftMap(e => ConfigError(ConfigProblem.StateMirror(e)))
     yield (
       NodeSetup(
         genesis,

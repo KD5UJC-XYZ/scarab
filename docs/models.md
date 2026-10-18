@@ -179,8 +179,10 @@ No `Either[String, _]` in generated or runtime code. `Decoded[A] = Either[Decode
 
 ```scala
 final case class DecodeError(kind: Kind, path: List[String], offset: Int, rooted: Boolean)
-enum Kind: Syntax, TypeMismatch, BadSize, OutOfRange, LiteralMismatch, BadArity, BadTag,
-           MissingKey, DuplicateKey, UnexpectedKey, NoAlternative(causes: Vector[DecodeError]), Internal
+enum Kind: Syntax(cause: Cbor.Error), Domain[E <: DomainError](cause: E),
+           TypeMismatch, BadSize, OutOfRange, LiteralMismatch, BadArity, BadTag,
+           MissingKey, DuplicateKey, UnexpectedKey, NoAlternative(causes: Vector[DecodeError]),
+           DuplicateElement, Violation, Unsupported, Internal(cause: Throwable)
 ```
 
 - `path` lists CDDL member names outermost first (`transaction_witness_sets/[5]/5`); only built on failure.
@@ -188,9 +190,12 @@ enum Kind: Syntax, TypeMismatch, BadSize, OutOfRange, LiteralMismatch, BadArity,
   string of an enclosing `.cbor`. It is free, since `xyz.kd5ujc.scarab.codec` nodes are zero-copy windows.
 - A choice reports **all** alternatives it tried (`NoAlternative`); `deepest` picks the cause that got furthest.
 - `decodeBytes` catches anything a decoder throws and returns `Kind.Internal`; the fuzz tests assert it never appears.
-- Limitation: `xyz.kd5ujc.scarab.codec.Cbor.decode` still returns `Either[String, _]`, so a malformed-CBOR error is `Syntax(message)` with
-  offset 0. Making `Cbor` return a typed error would improve this at no cost to the generator; it is not done and is part of the
-  adoption proposal (section 11, M14).
+- `Cbor.decode` returns `Either[Cbor.Error, _]`; `Syntax(cause)` retains its semantic CBOR failure.
+  Syntax errors still have offset 0 because that API does not supply a location.
+- `Kind.Domain[E <: DomainError](cause)` retains a downstream service's typed cause without a
+  reverse module dependency. The marker is an intent contract, not proof of a closed error family.
+- The build-time generator's `GenError`/`GenException` cleanup remains M11-E; it is independent of
+  generated-model node adoption (M14). See [the runtime error design](design/domain-errors.md).
 
 ## 7. Modelling eras
 

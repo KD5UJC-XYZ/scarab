@@ -9,6 +9,8 @@ import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Message, Point, State, Tip}
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** ChainSync server for one client. The chain is reached through a [[ChainSyncServer.Source]] that
   * holds this client's read pointer, so the protocol driver knows nothing about storage. Requests
   * are answered strictly in order, which also serves clients that pipeline.
@@ -49,7 +51,8 @@ object ChainSyncServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = settings.protocol
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: State, message: Message[P]): F[State] =
       ChainSync
@@ -86,6 +89,6 @@ object ChainSyncServer:
                 )
             }
           case Message.Done => F.pure(false)
-          case other        => illegal(s"unexpected client message $other")
+          case other        => illegal(RuntimeViolation.ChainSyncUnexpected(other))
         }
     step.iterateWhile(identity).void

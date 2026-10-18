@@ -66,7 +66,7 @@ object LegacyUtxoCheckpoint:
           while it.isValid do
             if it.key().length == 34 then
               b += UtxoStore.Coding.decodeKey(it.key()) ->
-                UtxoStore.Coding.decodeValue(it.value()).fold(e => sys.error(e), identity)
+                UtxoStore.Coding.decodeValue(it.value()).fold(e => sys.error(e.toString), identity)
             it.next()
           b.result() -> java.nio.ByteBuffer.wrap(db.get(StampKey)).getLong
         finally it.close()

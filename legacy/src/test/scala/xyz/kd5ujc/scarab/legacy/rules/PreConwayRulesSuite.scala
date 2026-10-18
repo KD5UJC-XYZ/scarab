@@ -268,7 +268,10 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   private def scriptOf(s: NativeScript): Script =
     // The hash is over the CBOR of the script; encode through the ledger's own decoder inputs.
     val encoded = encode(s)
-    xyz.kd5ujc.scarab.codec.Cbor.decode(encoded).flatMap(Script.native).fold(e => fail(e), identity)
+    xyz.kd5ujc.scarab.codec.Cbor
+      .decode(encoded)
+      .flatMap(Script.native)
+      .fold(e => fail(e.toString), identity)
 
   private def encode(s: NativeScript): Bytes =
     def head(major: Int, n: Int): Vector[Byte] = Vector(((major << 5) | n).toByte)
@@ -306,7 +309,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   test("Plutus transactions: the evaluation verdict must equal the is_valid flag") {
     val plutus = Script.plutus(ScriptKind.PlutusV1, Bytes(Vector.fill(10)(7)))
     val scriptAddress =
-      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e), identity)
+      Address.decode(Bytes(0x70.toByte +: plutus.hash.value)).fold(e => fail(e.toString), identity)
     val datum = Bytes(Vector(0x01))
     val datumHash = Blake2b.hash256.hash(datum)
     val locked = TxOut(scriptAddress, Value.coin(50 * ada)).copy(datum = Datum.Hash(datumHash))
@@ -507,7 +510,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
       Vector(0x82, 0xd8, 0x18, 0x58, payload.size).map(_.toByte) ++ payload ++
         Vector(0x1a, 0, 0, 0, 0).map(_.toByte)
     )
-    val address = Address.decode(byron).fold(e => fail(e), identity)
+    val address = Address.decode(byron).fold(e => fail(e.toString), identity)
     assertEquals(address.kind, Address.Kind.Byron(witness.addressRoot))
     val in = txIn(4)
     val s = state(5, Vector(in -> TxOut(address, Value.coin(100 * ada))))
@@ -783,7 +786,9 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val tx = Cbor.decode(Bytes.fromHex(hex).toOption.get).toOption.get
     val body = tx.value match
       case C.Arr(items) =>
-        TxBody.decode(items.head.original, Address.Mode.Rigorous).fold(e => fail(e), identity)
+        TxBody
+          .decode(items.head.original, Address.Mode.Rigorous)
+          .fold(e => fail(e.toString), identity)
       case other => fail(s"not a transaction: $other")
     assertEquals(
       Blake2b.hash256.hash(body.raw).hex,

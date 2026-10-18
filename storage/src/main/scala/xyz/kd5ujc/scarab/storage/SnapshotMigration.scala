@@ -104,8 +104,7 @@ object SnapshotMigration:
       else
         convert(file).flatMap(
           _.fold(
-            r =>
-              StorageError.Corrupt(file.toString, s"cannot be migrated: ${r.show}").raise[F, Unit],
+            r => StorageError.Corrupt(file.toString, r).raise[F, Unit],
             F.pure
           )
         )

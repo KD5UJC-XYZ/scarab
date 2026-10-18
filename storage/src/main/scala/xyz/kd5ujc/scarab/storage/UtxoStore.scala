@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.storage
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.effect.{Ref, Sync}
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -133,6 +134,11 @@ object UtxoStore:
 
   /** Value encoding shared by the stores: the original CBOR when it round-trips, else the codec. */
   object Coding:
+    enum ValueError extends DomainError:
+      case Empty
+      case Cbor(cause: xyz.kd5ujc.scarab.ledger.LedgerDecodeError)
+      case Binary(cause: xyz.kd5ujc.scarab.codec.BinaryError)
+    final case class EntryError(input: TxIn, cause: ValueError) extends DomainError
     import NodeCodecs.given
 
     def encodeValue(out: TxOut): Array[Byte] =
@@ -147,11 +153,16 @@ object UtxoStore:
         System.arraycopy(body, 0, a, 1, body.length)
         a
 
-    def decodeValue(bytes: Array[Byte]): Either[String, TxOut] =
-      if bytes.isEmpty then Left("empty value")
+    def decodeValue(bytes: Array[Byte]): Either[ValueError, TxOut] =
+      if bytes.isEmpty then Left(ValueError.Empty)
       else if bytes(0) == 1 then
-        TxOut.fromBytes(Bytes.wrap(java.util.Arrays.copyOfRange(bytes, 1, bytes.length)))
-      else Codec.decode[TxOut](java.util.Arrays.copyOfRange(bytes, 1, bytes.length))
+        TxOut
+          .fromBytes(Bytes.wrap(java.util.Arrays.copyOfRange(bytes, 1, bytes.length)))
+          .leftMap(ValueError.Cbor(_))
+      else
+        Codec
+          .decode[TxOut](java.util.Arrays.copyOfRange(bytes, 1, bytes.length))
+          .leftMap(ValueError.Binary(_))
 
     /** Where the address of an encoded output lies, read from the head of its CBOR without decoding
       * the rest: `(offset, length)` in `bytes`, or `None` when the head is not one of the two
@@ -258,7 +269,7 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
   private def guard[A](what: String)(fa: => A): F[A] =
     F.blocking(fa).attempt.flatMap {
       case Right(a) => F.pure(a)
-      case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
+      case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
   def checkpoint(dir: Path): F[Unit] =
@@ -288,10 +299,15 @@ final class MemoryUtxoStore[F[_]: Sync] private (state: Ref[F, MemoryUtxoStore.C
           try
             val in = In(is, size)
             import NodeCodecs.given
-            val entries = Codec[Map[TxIn, TxOut]].read(in)
-            Contents(entries, in.fixed64())
+            for
+              entries <- Codec[Map[TxIn, TxOut]].read(in)
+              stamp <- in.fixed64()
+            yield Contents(entries, stamp)
           finally is.close()
-        }.flatMap(c => state.set(c).as(true))
+        }.flatMap(
+          _.leftMap(e => StorageError.Corrupt(file.toString, e))
+            .fold(_.raise[F, Boolean], c => state.set(c).as(true))
+        )
     }
 
 object MemoryUtxoStore:

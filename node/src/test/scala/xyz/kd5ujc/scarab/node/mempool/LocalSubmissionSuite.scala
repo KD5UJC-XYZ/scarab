@@ -39,7 +39,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
             LocalTxSubmission.Message.SubmitTx(item)
           )
           .left
-          .map(RuntimeException(_))
+          .map(e => RuntimeException(e.message))
       )
       _ <- channel.send(bytes)
       reply <- channel.recv(LocalTxSubmission.MaxMessageBytes)(
@@ -175,11 +175,15 @@ class LocalSubmissionSuite extends CatsEffectSuite:
       referenceScript = Some(script.kind -> code)
     )
     val decoder: xyz.kd5ujc.scarab.plutus.ScriptDecoder[cats.Id] = (_, _, _) =>
-      Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable("injected backend limit"))
+      Left(
+        xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure
+          .Unavailable(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
+      )
     val failure = xyz.kd5ujc.scarab.ledger.LedgerFailure.Unavailable(
       id,
       xyz.kd5ujc.scarab.ledger.ScriptLocation.Phase1(script.hash),
-      xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported("injected backend limit")
+      xyz.kd5ujc.scarab.plutus.EvalFailure
+        .Unsupported(xyz.kd5ujc.scarab.plutus.BackendFailure.StackExhausted)
     )
     LocalSubmission
       .reasonItem(Rejection.Ledger(failure))
@@ -249,7 +253,7 @@ class LocalSubmissionSuite extends CatsEffectSuite:
             case other => fail(s"expected connection closure without rejection bytes, got $other")
           endedAs match
             case LocalTxSubmissionServer.End.ServiceUnavailable(
-                  _: LocalTxSubmissionServer.Unavailable.ScriptEvaluation
+                  _: LocalTxSubmissionServer.Unavailable.ScriptEvaluation[?]
                 ) =>
               ()
             case other => fail(s"unexpected service end $other")

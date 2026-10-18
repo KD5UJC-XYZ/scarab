@@ -25,7 +25,7 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
   private def send(channel: MuxChannel[IO], state: State, role: Role, message: Message)(using
       Net
   ): IO[Unit] =
-    TxSubmission2.encode(state, role, message).fold(e => fail(e), channel.send)
+    TxSubmission2.encode(state, role, message).fold(e => fail(e.toString), channel.send)
 
   private def receive(channel: MuxChannel[IO], state: State, role: Role)(using Net): IO[Message] =
     channel.recv(TxSubmission2.maxMessageBytes(state))(TxSubmission2.decodePrefix(state, role, _))
@@ -202,7 +202,12 @@ class TxSubmissionLimitsSuite extends FailsOnUncaught with ScalaCheckSuite:
       .map(result =>
         assertEquals(
           result,
-          Right((NetworkError.BearerClosed("bearer failed: injected transport closure"), false))
+          Right(
+            (
+              NetworkError.BearerClosed(NetworkError.Closure.Transport("bearer failed", cause)),
+              false
+            )
+          )
         )
       )
 

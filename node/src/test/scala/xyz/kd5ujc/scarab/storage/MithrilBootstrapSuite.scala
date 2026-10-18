@@ -288,7 +288,9 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       type F[A] = EitherT[IO, Bootstrap.Error, A]
       val stage = root / "stage"
       val destination = root / "published"
-      val primary = Bootstrap.Error.Storage(StorageError.Io("parent", "injected sync failure"))
+      val primary = Bootstrap.Error.Storage(
+        StorageError.Io("parent", new java.io.IOException("injected sync failure"))
+      )
       val sync = new Bootstrap.DirectorySync[F]:
         def apply(path: Path): F[Unit] =
           if path == stage then EitherT.rightT(()) else EitherT.leftT(primary)
@@ -310,7 +312,9 @@ class MithrilBootstrapSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       type F[A] = EitherT[IO, Bootstrap.Error, A]
       val stage = root / "stage"
       val destination = root / "published"
-      val primary = Bootstrap.Error.Storage(StorageError.Io("parent", "injected sync failure"))
+      val primary = Bootstrap.Error.Storage(
+        StorageError.Io("parent", new java.io.IOException("injected sync failure"))
+      )
       val sync = new Bootstrap.DirectorySync[F]:
         def apply(path: Path): F[Unit] =
           if path == stage then EitherT.rightT(())

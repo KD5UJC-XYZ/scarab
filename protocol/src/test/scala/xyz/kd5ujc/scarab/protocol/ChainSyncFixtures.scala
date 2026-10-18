@@ -12,29 +12,29 @@ import ChainSync.*
 object ChainSyncFixtures:
   final class OpaqueNtCBlockFixture private[ChainSyncFixtures] (val bytes: Bytes)
 
-  private def envelope(bytes: Bytes): Either[String, Unit] =
+  private def envelope(bytes: Bytes): Either[ProtocolError, Unit] =
     validateItem(bytes).flatMap { _ =>
-      try
+      ProtocolWire.attempt {
         val r = new ChainSyncWire.Reader(bytes, Limits())
-        if r.tag() != 24 then bad("fixture requires tag24")
+        if r.tag() != 24 then bad(ProtocolError.ExpectedTag24Header)
         r.bytes(65535)
-        if r.position != bytes.size then bad("trailing fixture bytes")
-        Right(())
-      catch case Failure(message, _) => Left(message)
+        if r.position != bytes.size then bad(ProtocolError.TrailingHeaderBytes)
+        ()
+      }
     }
 
   val ntcBlock: PayloadCodec[OpaqueNtCBlockFixture] = new PayloadCodec[OpaqueNtCBlockFixture]:
-    def encode(value: OpaqueNtCBlockFixture): Either[String, Bytes] = Right(value.bytes)
-    def decode(bytes: Bytes): Either[String, OpaqueNtCBlockFixture] =
+    def encode(value: OpaqueNtCBlockFixture): Either[ProtocolError, Bytes] = Right(value.bytes)
+    def decode(bytes: Bytes): Either[ProtocolError, OpaqueNtCBlockFixture] =
       envelope(bytes).map(_ => new OpaqueNtCBlockFixture(bytes))
 
   /** Generic test payload, still checked as exactly one bounded CBOR item. */
   val rawItem: PayloadCodec[Bytes] = new PayloadCodec[Bytes]:
-    def encode(value: Bytes): Either[String, Bytes] = validateItem(value).map(_ => value)
-    def decode(bytes: Bytes): Either[String, Bytes] = validateItem(bytes).map(_ => bytes)
+    def encode(value: Bytes): Either[ProtocolError, Bytes] = validateItem(value).map(_ => value)
+    def decode(bytes: Bytes): Either[ProtocolError, Bytes] = validateItem(bytes).map(_ => bytes)
 
   /** Cardano fixture hash width is local adapter policy, not generic Point wire syntax. */
-  def cardanoPoint(point: Point): Either[String, Point] = point match
+  def cardanoPoint(point: Point): Either[ProtocolError, Point] = point match
     case Point.Origin                            => Right(point)
     case Point.Block(_, hash) if hash.size == 32 => Right(point)
-    case _ => Left("Cardano fixture point requires 32-byte hash")
+    case Point.Block(_, hash) => Left(ProtocolError.CardanoPointHashMustContain32Bytes(hash.size))

@@ -67,7 +67,7 @@ object AtomicFile:
   def guard[F[_]: Sync, A](what: String)(body: => A)(using Raise[F, StorageError]): F[A] =
     Sync[F].blocking(body).attempt.flatMap {
       case Right(a) => Sync[F].pure(a)
-      case Left(e)  => StorageError.Io(what, String.valueOf(e)).raise[F, A]
+      case Left(e)  => StorageError.Io(what, e).raise[F, A]
     }
 
   /** Replace `file` by `bytes`: a temporary file next to it (the same directory, so the rename

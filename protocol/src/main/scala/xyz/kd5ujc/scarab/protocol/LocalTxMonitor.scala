@@ -69,7 +69,7 @@ object LocalTxMonitor:
     case Release
     case Done
 
-  def transition(state: State, sender: Role, message: Message): Either[String, State] =
+  def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     import State.Busy
     (state, sender, message) match
       case (State.Idle, Role.Client, Message.Acquire)               => Right(State.Acquiring)
@@ -86,16 +86,16 @@ object LocalTxMonitor:
       case (Busy(Kind.GetSizes), Role.Server, Message.ReplyGetSizes(_)) => Right(State.Acquired)
       case (Busy(Kind.GetMeasures), Role.Server, Message.ReplyGetMeasures(_)) =>
         Right(State.Acquired)
-      case _ => Left(s"illegal LocalTxMonitor message/agency in $state from $sender")
+      case _ => Left(ProtocolError.LocalTxMonitorAgency(state, sender))
 
   private def clientTurn(state: State): Boolean = state == State.Idle || state == State.Acquired
 
-  def encode(state: State, sender: Role, message: Message): Either[String, Bytes] = attempt {
+  def encode(state: State, sender: Role, message: Message): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val w = new ProtocolWire.Writer(wire)
     def outer(n: Int, tag: Int): Unit = { w.head(4, n); w.head(0, tag) }
-    def word32(name: String, value: Long): Unit =
-      if value < 0 || value > 0xffffffffL then bad(s"$name does not fit a Word32")
+    def word32(name: ProtocolError.MonitorField, value: Long): Unit =
+      if value < 0 || value > 0xffffffffL then bad(ProtocolError.Word32Range(name, BigInt(value)))
       w.head(0, value)
     message match
       case Message.Done         => outer(1, 0)
@@ -116,12 +116,12 @@ object LocalTxMonitor:
       case Message.ReplyGetSizes(sizes) =>
         outer(2, 10)
         w.head(4, 3)
-        word32("capacityInBytes", sizes.capacityInBytes)
-        word32("sizeInBytes", sizes.sizeInBytes)
-        word32("numberOfTxs", sizes.numberOfTxs)
+        word32(ProtocolError.MonitorField.CapacityInBytes, sizes.capacityInBytes)
+        word32(ProtocolError.MonitorField.SizeInBytes, sizes.sizeInBytes)
+        word32(ProtocolError.MonitorField.NumberOfTxs, sizes.numberOfTxs)
       case Message.ReplyGetMeasures(measures) =>
         outer(3, 12)
-        word32("txCount", measures.txCount)
+        word32(ProtocolError.MonitorField.TxCount, measures.txCount)
         w.head(5, measures.byName.size)
         measures.byName.foreach { (name, m) =>
           w.text(name); w.head(4, 2); w.head(0, m.size); w.head(0, m.capacity)
@@ -131,15 +131,15 @@ object LocalTxMonitor:
 
   /** The client's messages in `Idle` and `Acquired`, the server's in the other states. */
   def decodePrefix(state: State, sender: Role, bytes: Bytes): DecodeResult[Message] =
-    try
+    ProtocolWire.prefix {
       if state == State.Done || clientTurn(state) != (sender == Role.Client) then
-        bad("wrong LocalTxMonitor agency")
+        bad(ProtocolError.WrongLocalTxMonitorAgency)
       val r = new ProtocolWire.Reader(bytes, wire)
       val arity = r.arrayLength()
       val tag = r.uint().value
-      def word32(name: String): Long =
+      def word32(name: ProtocolError.MonitorField): Long =
         val v = r.uint().value
-        if v > MaxWord32 then bad(s"$name does not fit a Word32")
+        if v > MaxWord32 then bad(ProtocolError.Word32Range(name, v))
         v.toLong
       val message: Message = (state, arity, tag.toInt) match
         case (State.Idle, 1, 0) if tag == 0              => Message.Done
@@ -155,23 +155,26 @@ object LocalTxMonitor:
         case (State.Busy(Kind.NextTx), 2, 6) if tag == 6 => Message.ReplyNextTx(Some(r.item()))
         case (State.Busy(Kind.HasTx), 2, 8) if tag == 8  => Message.ReplyHasTx(r.bool())
         case (State.Busy(Kind.GetSizes), 2, 10) if tag == 10 =>
-          if r.arrayLength() != 3 then bad("sizes arity")
+          if r.arrayLength() != 3 then bad(ProtocolError.SizesArity)
           Message.ReplyGetSizes(
-            Sizes(word32("capacityInBytes"), word32("sizeInBytes"), word32("numberOfTxs"))
+            Sizes(
+              word32(ProtocolError.MonitorField.CapacityInBytes),
+              word32(ProtocolError.MonitorField.SizeInBytes),
+              word32(ProtocolError.MonitorField.NumberOfTxs)
+            )
           )
         case (State.Busy(Kind.GetMeasures), 3, 12) if tag == 12 =>
-          val count = word32("txCount")
+          val count = word32(ProtocolError.MonitorField.TxCount)
           val n = r.mapLength()
           val entries = (0 until n).toVector.map { _ =>
             val name = r.text(MaxMessageBytes)
-            if r.arrayLength() != 2 then bad("measure arity")
+            if r.arrayLength() != 2 then bad(ProtocolError.MeasureArity)
             name -> Measure(r.uint().value, r.uint().value)
           }
-          if entries.map(_._1).distinct.size != entries.size then bad("duplicate measure name")
+          if entries.map(_._1).distinct.size != entries.size then
+            bad(ProtocolError.DuplicateMeasureName)
           Message.ReplyGetMeasures(Measures(count, SortedMap.from(entries)))
-        case _ => bad("unknown LocalTxMonitor tag or arity")
+        case _ => bad(ProtocolError.UnknownLocalTxMonitorTagOrArity)
       get(transition(state, sender, message))
       DecodeResult.Decoded(message, r.position)
-    catch
-      case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore
-      case ProtocolWire.Failure(error, false) => DecodeResult.Failed(error)
+    }

@@ -34,12 +34,48 @@ final case class EvalRequest(
     budget: ExUnits
 )
 
+/** Admission and VM failures retain the provider's typed cause at the interpreter boundary. */
+enum ScriptProblem:
+  case CborByteStringExpected
+  case Flat(cause: FlatScan.Failure)
+  case FlatDecoding(cause: scalus.serialization.flat.FlatDecodingError)
+  case Availability(cause: PlutusAvailability.Failure)
+  case TrailingBytes(count: Int)
+  def message: String = this match
+    case CborByteStringExpected => "script is not a CBOR byte string"
+    case Flat(cause)            => cause.message
+    case FlatDecoding(cause)    => Option(cause.getMessage).getOrElse(cause.getClass.getName)
+    case Availability(cause)    => cause.message
+    case TrailingBytes(count)   => s"$count bytes remain after the script (RemainderError)"
+
+enum BackendFailure:
+  case NoResult, StackExhausted, BinaryDstUnavailable, NativeHashToGroupUnavailable
+  case BudgetOutOfRange(budget: ExUnits)
+  case Defect(cause: Throwable)
+  case BuiltinUnavailable(builtin: scalus.uplc.DefaultFun)
+  def message: String = this match
+    case BinaryDstUnavailable =>
+      "hashToGroup binary DST has no byte-array implementation on this platform"
+    case NativeHashToGroupUnavailable => "byte-array hashToGroup JNI entry point unavailable"
+    case NoResult                     => "backend did not return a result"
+    case StackExhausted               => "backend stack exhausted"
+    case BudgetOutOfRange(_)          => "execution budget exceeds 64 bits"
+    case Defect(cause)                => Option(cause.getMessage).getOrElse(cause.getClass.getName)
+    case BuiltinUnavailable(builtin)  => s"builtin $builtin unavailable"
+
+final case class ScriptFailure(cause: Throwable | Secp256k1.Error, logs: Vector[String]):
+  def message: String =
+    val detail = cause match
+      case error: Throwable       => Option(error.getMessage).getOrElse(error.getClass.getName)
+      case error: Secp256k1.Error => error.message
+    if logs.isEmpty then detail else s"$detail; trace: ${logs.mkString(" | ")}"
+
 /** Why a script did not validate. */
 enum EvalFailure:
-  case Decode(reason: String)
-  case Unsupported(reason: String)
+  case Decode(reason: ScriptProblem)
+  case Unsupported(reason: BackendFailure)
   case OutOfBudget
-  case Script(reason: String)
+  case Script(reason: ScriptFailure)
 
   /** A variable the ledger's scope check refuses, found when the evaluation is set up (a failure of
     * phase 2, as in the reference's `mkTermToEvaluate`, not of deserialisation).
@@ -47,10 +83,10 @@ enum EvalFailure:
   case OpenTerm(index: BigInt)
 
   def message: String = this match
-    case Decode(r)      => s"script does not decode: $r"
-    case Unsupported(r) => s"unsupported: $r"
+    case Decode(r)      => s"script does not decode: ${r.message}"
+    case Unsupported(r) => s"unsupported: ${r.message}"
     case OutOfBudget    => "execution budget exceeded"
-    case Script(r)      => r
+    case Script(r)      => r.message
     case OpenTerm(i)    => s"free variable $i in the script"
 
 /** Outcome of one execution; `used` is what the machine spent, `logs` the `trace` output. */
@@ -90,12 +126,12 @@ trait ScriptDecoder[F[_]]:
 
 /** A proven admission failure is distinct from an implementation that could not answer. */
 enum ScriptDecodeFailure:
-  case Malformed(diagnostic: String)
-  case Unavailable(diagnostic: String)
+  case Malformed(cause: ScriptProblem)
+  case Unavailable(cause: BackendFailure)
 
   def message: String = this match
-    case Malformed(diagnostic)   => diagnostic
-    case Unavailable(diagnostic) => diagnostic
+    case Malformed(cause)   => cause.message
+    case Unavailable(cause) => cause.message
 
 object ScriptDecodeFailure:
   private[plutus] def cacheable[A](result: Either[ScriptDecodeFailure, A]): Boolean = result match

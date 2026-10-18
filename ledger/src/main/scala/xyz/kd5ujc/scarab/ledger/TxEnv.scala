@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.Id
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.VocabError
@@ -47,7 +48,7 @@ enum ScriptLocation:
   case Phase2(redeemer: Redeemer)
 
 /** Why the ledger refused a transaction. */
-enum LedgerFailure:
+enum LedgerFailure extends DomainError:
   /** A rule refused the transaction; `failure` is the ledger's predicate failure for it. */
   case Rejected(txId: Bytes, failure: PredicateFailure)
 

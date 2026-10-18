@@ -31,7 +31,7 @@ class ByronRegistrationFixtureSuite extends FunSuite:
   private def field[A: Decoder](cursor: HCursor, name: String): A =
     cursor.get[A](name).fold(e => fail(e.message), identity)
   private def bytes(cursor: HCursor, name: String): Bytes =
-    Bytes.fromHex(field[String](cursor, name)).fold(fail(_), identity)
+    Bytes.fromHex(field[String](cursor, name)).fold(e => fail(e.toString), identity)
   private def verdict(cursor: HCursor, name: String): Verdict =
     cursor.downField(name).get[Verdict]("verdict").fold(e => fail(e.message), identity)
   private def version(parts: Vector[BigInt]): ByronVersion = parts match
@@ -49,7 +49,7 @@ class ByronRegistrationFixtureSuite extends FunSuite:
     .parse(Files.readString(directory.resolve("genesis.json")), None)
     .fold(e => fail(e.toString), identity)
   private val config = ByronLedger.Config(genesis, requiresNetworkMagic = true)
-  private val initial = ByronLedger.initial(config).fold(fail(_), identity)
+  private val initial = ByronLedger.initial(config).fold(e => fail(e.toString), identity)
   private val rules = ByronRulesConfig(config, 0.6, None)
 
   test(
@@ -98,7 +98,10 @@ class ByronRegistrationFixtureSuite extends FunSuite:
       if verdict(reference, "proposalDecode") == Verdict.DecodeFailure then assert(decoded.isLeft)
       else
         val proposal =
-          decoded.fold(fail(_), identity).proposal.fold(fail("missing proposal"))(identity)
+          decoded
+            .fold(e => fail(e.toString), identity)
+            .proposal
+            .fold(fail("missing proposal"))(identity)
         assertEquals(proposal.raw, rawProposal)
         assertEquals(proposal.id, Blake2b.hash256.hash(rawProposal))
         assertEquals(
@@ -186,6 +189,7 @@ class ByronRegistrationFixtureSuite extends FunSuite:
         val composite = ByronRules.update(state, block, rules)
         assertEquals(composite.isRight, verdict(reference, "compositeBlock") == Verdict.Accepted)
         if name == "invalid-header-signature" then
+          assertEquals(composite, Left(xyz.kd5ujc.scarab.ledger.ByronChainError.SignatureRejected))
           assertEquals(field[Boolean](reference, "headerSignature"), false)
           assertEquals(field[Boolean](reference, "certificateSignature"), true)
           assertEquals(verdict(reference, "ledgerBlock"), Verdict.Accepted)

@@ -11,7 +11,14 @@ import fs2.io.file.Path
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, VolatileChain}
-import xyz.kd5ujc.scarab.ledger.{Block, ChainError, NetworkIdentity, NodeError, StorageError}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  ChainError,
+  NetworkIdentity,
+  NodeError,
+  StorageError,
+  StorageStructureError
+}
 import xyz.kd5ujc.scarab.consensus.Compute
 import xyz.kd5ujc.scarab.consensus.SelectView
 import scala.concurrent.duration.*
@@ -27,7 +34,7 @@ enum StorageEvent:
   case SnapshotSkipped(name: String, error: StorageError)
   case SnapshotRestored(name: String, anchor: Option[BlockRef])
   case SnapshotWritten(name: String, anchor: Option[BlockRef], bytes: Long, millis: Long)
-  case SnapshotFailed(reason: String)
+  case SnapshotFailed(cause: Throwable)
 
   /** A snapshot that was not written, or an old one not brought to the current format, because the
     * format refused the state (`name` is the file; `anchor` the block of a write, none for a
@@ -283,7 +290,7 @@ object ChainStorage:
           case Right(b) => Async[F].pure(Some(b.header.prevHash))
           case Left(e) =>
             StorageError
-              .Corrupt("first immutable block", e.message)
+              .Corrupt("first immutable block", e)
               .raise[F, Option[Option[Bytes]]]
     }
 
@@ -444,7 +451,7 @@ object ChainStorage:
               batch <- pending.modify(p => (p.drop(immutable.size), p.take(immutable.size)))
               _ <- F.unlessA(batch.map(_._1) == immutable)(
                 StorageError
-                  .OutOfOrder("volatile blocks do not match the new immutable ones")
+                  .OutOfOrder(StorageStructureError.VolatileImmutableMismatch)
                   .raise[F, Unit]
               )
               _ <- batch.traverse_((r, b) => store.append(r, b))
@@ -558,7 +565,7 @@ object ChainStorage:
         )
       yield done).attempt.flatMap {
         case Right(done) => F.pure(done)
-        case Left(e)     => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e))).as(false)
+        case Left(e)     => events.emit(StorageEvent.SnapshotFailed(e)).as(false)
       }
 
     /** On release: wait for a snapshot in flight, then snapshot the immutable tip unless the newest
@@ -578,7 +585,7 @@ object ChainStorage:
               _ <- events.emit(StorageEvent.ShutdownSnapshot(Some(ref), ok))
             yield ()).attempt.flatMap {
               case Right(_) => F.unit
-              case Left(e)  => events.emit(StorageEvent.SnapshotFailed(String.valueOf(e)))
+              case Left(e)  => events.emit(StorageEvent.SnapshotFailed(e))
             }
           case (_, done) => events.emit(StorageEvent.ShutdownSnapshot(done, false))
         }

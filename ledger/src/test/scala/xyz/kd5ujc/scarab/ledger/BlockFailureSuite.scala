@@ -54,7 +54,10 @@ class BlockFailureSuite extends FunSuite:
       rendered(BlockFailure.ShelleyBeforeTransition(BigInt(2), BigInt(3), BigInt(99))),
       "byron" -> "Shelley block in epoch 2, the transition is to epoch 3 after Byron slot 99"
     )
-    assertEquals(rendered(BlockFailure.Byron("x")), "byron" -> "x")
+    assertEquals(
+      rendered(BlockFailure.Byron(ByronChainError.SignatureRejected)),
+      "byron" -> "block signature rejected"
+    )
     assertEquals(
       rendered(
         BlockFailure.Praos(
@@ -64,12 +67,18 @@ class BlockFailureSuite extends FunSuite:
       ),
       "praos" -> "issuer not elected for slot 42: Ineligible"
     )
-    assertEquals(rendered(BlockFailure.Lite("z")), "ledger" -> "z")
-    assertEquals(rendered(BlockFailure.Handover("h")), "ledger" -> "h")
+    assertEquals(
+      rendered(BlockFailure.Lite(LedgerDecodeError.Empty("z"))),
+      "ledger" -> LedgerDecodeError.Empty("z").message
+    )
+    assertEquals(
+      rendered(BlockFailure.Handover(HandoverProblem.MissingByronRules)),
+      "ledger" -> "a Byron state, and no Byron rules to leave it"
+    )
     val id = Bytes.fromHex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
     assertEquals(
-      id.map(i => rendered(BlockFailure.TxDecode(i, "bad"))),
-      Right("decode" -> "tx 0011223344556677: bad")
+      id.map(i => rendered(BlockFailure.TxDecode(i, LedgerDecodeError.Empty("bad")))),
+      Right("decode" -> s"tx 0011223344556677: ${LedgerDecodeError.Empty("bad").message}")
     )
     assertEquals(
       rendered(BlockFailure.SupplyInvariant(BigInt(5), BigInt(10), BigInt(11))),

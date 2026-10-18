@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.ledger.CborRead
+import xyz.kd5ujc.scarab.codec.Bytes
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
 import org.scalacheck.Gen
@@ -29,12 +30,12 @@ class ByronUpdateSuite extends ScalaCheckSuite:
       ByronCbor.bytes(ByronCbor.concat(ByronCbor.of(0x30, 0x30), delegate.extended, epochBytes))
     val sig = issuer.sign(ByronSig.tag(ByronSig.SignCertificate, magic) ++ signed)
     val s = if tamper then Bytes(sig.value.updated(0, (sig.value(0) ^ 1).toByte)) else sig
-    Cbor
+    CborRead
       .decode(
         Cb.arr(Cb.uint(epoch), Cb.bytes(issuer.extended), Cb.bytes(delegate.extended), Cb.bytes(s))
       )
       .flatMap(ByronCert.decode)
-      .fold(e => fail(e), identity)
+      .fold(e => fail(e.toString), identity)
 
   private def delegationEnv(epoch: Long, slot: Long) =
     DelegationRules.Env(magic, genesisKeys.toSet, epoch, slot, k)
@@ -177,7 +178,10 @@ class ByronUpdateSuite extends ScalaCheckSuite:
 
   private def payload(proposal: Option[Bytes], votes: Seq[Bytes]): UpdatePayload =
     val encoded = Cb.arr(proposal.fold(Cb.arr())(p => Cb.arr(p)), Cb.arr(votes*))
-    Cbor.decode(encoded).flatMap(UpdatePayload.decode).fold(e => fail(e), identity)
+    CborRead
+      .decode(encoded)
+      .flatMap(UpdatePayload.decode)
+      .fold(e => fail(e.toString), identity)
 
   private def version(major: BigInt, minor: BigInt, alt: BigInt): ByronVersion =
     ByronVersion.from(major, minor, alt).fold(e => fail(e.message), identity)
@@ -404,7 +408,10 @@ class ByronUpdateSuite extends ScalaCheckSuite:
         Cb.arr(Cb.uint(7))
       ))*
     )
-    val decoded = Cbor.decode(update).flatMap(ByronParamsUpdate.decode).fold(e => fail(e), identity)
+    val decoded = CborRead
+      .decode(update)
+      .flatMap(ByronParamsUpdate.decode)
+      .fold(e => fail(e.toString), identity)
     assertEquals(decoded.scriptVersion, Some(BigInt(1)))
     assertEquals(decoded.softforkRule, Some(SoftforkRule(1, 2, 3)))
     assertEquals(decoded.unlockStakeEpoch, Some(BigInt(7)))

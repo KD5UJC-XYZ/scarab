@@ -11,7 +11,7 @@ class RetryingMemoSuite extends FunSuite:
     val calls = AtomicInteger(0)
     val recovered = new Object
     def build: Either[EvalFailure.Unsupported, Object] =
-      if calls.incrementAndGet() == 1 then Left(EvalFailure.Unsupported("backend unavailable"))
+      if calls.incrementAndGet() == 1 then Left(EvalFailure.Unsupported(BackendFailure.NoResult))
       else Right(recovered)
     assert(memo.getOrElseUpdate("model")(build).isLeft)
     assertEquals(memo.getOrElseUpdate("model")(build), Right(recovered))
@@ -28,7 +28,7 @@ class RetryingMemoSuite extends FunSuite:
     val recovered = new Object
     val results = Vector.fill(8)(
       AtomicReference[Either[EvalFailure.Unsupported, Object]](
-        Left(EvalFailure.Unsupported("not completed"))
+        Left(EvalFailure.Unsupported(BackendFailure.NoResult))
       )
     )
     val workers = results.map { result =>
@@ -37,7 +37,7 @@ class RetryingMemoSuite extends FunSuite:
           calls.incrementAndGet()
           constructing.countDown()
           if finish.await(5, TimeUnit.SECONDS) then Right(recovered)
-          else Left(EvalFailure.Unsupported("construction did not finish"))
+          else Left(EvalFailure.Unsupported(BackendFailure.NoResult))
         })
         done.countDown()
       )
@@ -60,10 +60,10 @@ class RetryingMemoSuite extends FunSuite:
     def lookup(key: String)(value: Result): Result =
       cache.getOrElseUpdate(key, { calls.incrementAndGet(); value })(ScriptDecodeFailure.cacheable)
     assertEquals(lookup("valid")(Right(1)), Right(1))
-    assert(lookup("retry")(Left(ScriptDecodeFailure.Unavailable("backend stopped"))).isLeft)
+    assert(lookup("retry")(Left(ScriptDecodeFailure.Unavailable(BackendFailure.NoResult))).isLeft)
     // An unavailable attempt did not consume the single cache slot or evict the known program.
     assertEquals(lookup("valid")(Right(2)), Right(1))
-    val malformed = Left(ScriptDecodeFailure.Malformed("invalid Flat"))
+    val malformed = Left(ScriptDecodeFailure.Malformed(ScriptProblem.CborByteStringExpected))
     assertEquals(lookup("bad")(malformed), malformed)
     assertEquals(lookup("bad")(Right(3)), malformed)
     assertEquals(lookup("retry")(Right(4)), Right(4))

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
+import xyz.kd5ujc.scarab.ledger.ForgeKeyProblem
 import cats.syntax.all.*
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -67,7 +68,7 @@ object KesFiles:
   private def io[A](file: Path)(body: => A): Either[ForgeError, A] =
     Either
       .catchNonFatal(body)
-      .leftMap(e => ForgeError.KeyFile(file.toString, Option(e.getMessage).getOrElse(e.toString)))
+      .leftMap(e => ForgeError.KeyFile(file.toString, ForgeKeyProblem.Io(e)))
 
   private def at[A](file: Path, operation: KesFileOperation)(body: => A): Either[ForgeError, A] =
     Either

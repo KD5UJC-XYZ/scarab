@@ -2,7 +2,8 @@
 package xyz.kd5ujc.scarab.plutus
 
 import scala.collection.mutable.ArrayDeque
-import scala.util.control.ControlThrowable
+import scala.util.boundary
+import scala.util.boundary.{Label, break}
 
 /** What one pass over the flat bytes of a script sees and the decoded term no longer holds.
   *
@@ -84,8 +85,6 @@ object FlatScan:
   private val QuantityMin = -(BigInt(1) << 127)
   private val QuantityMax = (BigInt(1) << 127) - 1
 
-  private final class Abort(val failure: Failure) extends ControlThrowable
-
   /** A constant's type: tags 0 to 4, 8 to 13 are atoms, `Apply` (tag 7) builds the rest. */
   private sealed trait Ty
   private final case class Atom(tag: Int) extends Ty
@@ -101,11 +100,10 @@ object FlatScan:
   private final class Count(var n: Int)
 
   /** Walks the flat bytes (the program, without its CBOR wrapper). */
-  def scan(flat: Array[Byte]): Either[Failure, FlatScan] =
-    try Right(new Walker(flat).run())
-    catch case a: Abort => Left(a.failure)
+  def scan(flat: Array[Byte]): Either[Failure, FlatScan] = boundary:
+    Right(new Walker(flat).run())
 
-  private final class Walker(bytes: Array[Byte]):
+  private final class Walker(bytes: Array[Byte])(using Label[Either[Failure, FlatScan]]):
     private var position = 0L // in bits
     private var malformed: Option[ValueFault] = None
     private var typeHeader = 0
@@ -116,7 +114,7 @@ object FlatScan:
     private var constrCaseAllowed = false
     private val tasks = ArrayDeque.empty[Task]
 
-    private def abort(failure: Failure): Nothing = throw Abort(failure)
+    private def abort(failure: Failure): Nothing = break(Left(failure))
 
     private def bit(): Int =
       val at = (position >> 3).toInt

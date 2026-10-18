@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.state
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Show}
 import cats.derived.*
 import cats.syntax.all.*
@@ -37,7 +38,7 @@ final case class ConsensusMirrorEnv(
   * extension of it: the consensus cases name types (`TelescopeError`) that the ledger module, where
   * [[MirrorError]] is, cannot see.
   */
-enum StateMirrorError derives Show:
+enum StateMirrorError extends DomainError derives Show:
   /** The ledger side refused. */
   case Ledger(error: MirrorError)
 

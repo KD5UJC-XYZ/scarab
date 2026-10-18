@@ -31,7 +31,9 @@ class GuardSuite extends FunSuite:
     assertEquals(cold.toList, Nil, "targets that accepted none of their seeds")
   }
 
-  private def hex(s: String): Input = new Input(Bytes.fromHex(s).fold(e => fail(e), _.toArray))
+  private def hex(s: String): Input = new Input(
+    Bytes.fromHex(s).fold(e => fail(e.toString), _.toArray)
+  )
 
   test(
     "wide snapshot tables keep the fuzz round-trip property within its linear allocation budget"

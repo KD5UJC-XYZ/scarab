@@ -27,8 +27,7 @@ trait Codec[A]:
       case Left(message) => Left(DecodeError(Kind.Syntax(message), Nil, 0, rooted = true))
       case Right(root) =>
         try decode(root).left.map(_.rebased(root.offset))
-        catch
-          case NonFatal(e) => Left(DecodeError(Kind.Internal(e.toString), Nil, 0, rooted = true))
+        catch case NonFatal(e) => Left(DecodeError(Kind.Internal(e), Nil, 0, rooted = true))
 
   /** The bytes of `a`, or the constraint it violates: a value that [[check]] refuses is never
     * written. This is the way to write a value of unknown origin.

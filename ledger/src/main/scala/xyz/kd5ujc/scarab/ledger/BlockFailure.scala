@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
+import xyz.kd5ujc.scarab.codec.DomainError
 import cats.{Eq, Show}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.ExUnits
@@ -66,7 +67,7 @@ enum BlockFailure:
   case Decode(error: ChainError)
 
   /** A transaction of the block does not decode (`text` is the decoder's text). */
-  case TxDecode(txId: Bytes, text: String)
+  case TxDecode(txId: Bytes, error: LedgerDecodeError)
 
   // ---- byron
 
@@ -80,7 +81,7 @@ enum BlockFailure:
   case ShelleyBeforeTransition(epoch: BigInt, first: BigInt, lastByronSlot: BigInt)
 
   /** The Byron rules refused the block (`text` is their text). */
-  case Byron(text: String)
+  case Byron(cause: ByronChainError)
 
   // ---- envelope, headers
 
@@ -96,10 +97,10 @@ enum BlockFailure:
   // ---- ledger
 
   /** The ledger-lite rules of the bootstrap mode refused the block (`text` is their text). */
-  case Lite(text: String)
+  case Lite(error: LedgerDecodeError)
 
   /** The Byron-to-Shelley hand-over refused the final Byron state (`text` is its text). */
-  case Handover(text: String)
+  case Handover(cause: HandoverProblem)
 
   /** The total supply is not the maximum entering an epoch (before Conway). */
   case SupplyInvariant(epoch: BigInt, total: BigInt, maximum: BigInt)
@@ -122,7 +123,7 @@ enum BlockFailure:
     * be extended into the era, a value is outside the range of the Haskell type). A total refusal:
     * a state the rules made is always in the range, and the era history is consistent with it.
     */
-  case Mirror(text: String)
+  case Mirror[E <: DomainError](cause: E) extends BlockFailure
 
   /** The rule family, as the log names it. */
   def rule: BlockRule = this match
@@ -156,12 +157,12 @@ enum BlockFailure:
       s"$era block, but the Byron ledger has not decided on the transition to Shelley"
     case ShelleyBeforeTransition(epoch, first, last) =>
       s"Shelley block in epoch $epoch, the transition is to epoch $first after Byron slot $last"
-    case Byron(text)     => text
+    case Byron(error)    => error.message
     case Envelope(error) => error.message
     case TPraos(error)   => error.message
     case Praos(error)    => error.message
-    case Lite(text)      => text
-    case Handover(text)  => text
+    case Lite(error)     => error.message
+    case Handover(error) => error.message
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"
     case RefScriptsTooLarge(limit) => s"reference scripts of the block exceed $limit bytes"
@@ -175,3 +176,11 @@ object BlockFailure:
   // Plain data all through (Bytes and the ledger's failure records compare structurally).
   given Eq[BlockFailure] = Eq.fromUniversalEquals
   given Show[BlockFailure] = Show.show(f => s"${f.rule.name}: ${f.reason}")
+
+/** Missing configuration contexts at the Byron to Shelley transition. */
+enum HandoverProblem:
+  case MissingShelleyContext
+  case MissingByronRules
+  def message: String = this match
+    case MissingShelleyContext => "the Shelley genesis gives no hand-over context"
+    case MissingByronRules     => "a Byron state, and no Byron rules to leave it"

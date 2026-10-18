@@ -8,7 +8,7 @@ import fs2.io.file.Path as FsPath
 import io.circe.Json
 import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.consensus.state.{ConsensusMirrorEnv, EraLedgerState, MirrorExtras}
-import xyz.kd5ujc.scarab.ledger.ConfigError
+import xyz.kd5ujc.scarab.ledger.{ConfigError, ConfigProblem}
 import xyz.kd5ujc.scarab.ledger.rules.EraLedger
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.storage.LedgerSnapshotImport
@@ -36,7 +36,9 @@ object LedgerSnapshotImportCommand:
   )
 
   def parse(args: List[String]): Either[ConfigError, Options] =
-    def bad[A](detail: String): Either[ConfigError, A] = Left(ConfigError(s"$detail\n$Usage"))
+    def bad[A](problem: ConfigProblem): Either[ConfigError, A] = Left(
+      ConfigError(ConfigProblem.WithUsage(problem, Usage))
+    )
     @annotation.tailrec
     def loop(
         rest: List[String],
@@ -49,32 +51,43 @@ object LedgerSnapshotImportCommand:
           if flags.contains(flag.stripPrefix("--")) && flag
             .startsWith("--") && !value.startsWith("--") =>
         val name = flag.drop(2)
-        if values.contains(name) then bad(s"duplicate $flag")
+        if values.contains(name) then bad(ConfigProblem.DuplicateFlag(flag))
         else loop(tail, values.updated(name, value), unverified)
-      case flag :: _ => bad(s"unknown, duplicate or incomplete argument $flag")
+      case flag :: _ if values.contains(flag.stripPrefix("--")) =>
+        bad(ConfigProblem.DuplicateFlag(flag))
+      case flag :: _ if flags.contains(flag.stripPrefix("--")) =>
+        bad(ConfigProblem.MissingFlagValue(flag))
+      case flag :: _ => bad(ConfigProblem.UnknownFlag(flag))
     for
       parsed <- loop(args, Map.empty, false)
       (values, unverified) = parsed
       ledger <- values
         .get("haskell-ledger")
-        .toRight(ConfigError(s"--haskell-ledger is required\n$Usage"))
-      db <- values.get("db").toRight(ConfigError(s"--db is required\n$Usage"))
+        .toRight(
+          ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlag("--haskell-ledger"), Usage))
+        )
+      db <- values
+        .get("db")
+        .toRight(ConfigError(ConfigProblem.WithUsage(ConfigProblem.MissingFlag("--db"), Usage)))
       _ <- Either.cond(
         values.contains("config") || values.contains("genesis-dir"),
         (),
-        ConfigError(s"--config or --genesis-dir is required\n$Usage")
+        ConfigError(
+          ConfigProblem.WithUsage(
+            ConfigProblem.RequiredOneOf(Set("--config", "--genesis-dir")),
+            Usage
+          )
+        )
       )
       _ <- Either.cond(
         unverified != values.contains("ancillary-verification-key"),
         (),
-        ConfigError(
-          s"supply an ancillary verification key, or explicitly accept an unauthenticated ledger with --no-verify-ancillary\n$Usage"
-        )
+        ConfigError(ConfigProblem.WithUsage(ConfigProblem.AncillaryKeyRequired, Usage))
       )
       _ <- Either.cond(
         !unverified || !values.contains("ancillary-manifest"),
         (),
-        ConfigError("--ancillary-manifest requires verification")
+        ConfigError(ConfigProblem.AncillaryVerificationRequired)
       )
     yield Options(
       Path.of(ledger),
@@ -92,7 +105,7 @@ object LedgerSnapshotImportCommand:
     for
       setup <- options.config.fold(
         options.genesis
-          .toRight(ConfigError("no genesis"))
+          .toRight(ConfigError(ConfigProblem.MissingGenesis))
           .flatMap(NodeSetup.fromDirectory)
       )(NodeSetup.fromConfigFile(_, options.genesis))
       params <- setup.handOver
@@ -102,7 +115,7 @@ object LedgerSnapshotImportCommand:
             given xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra[e] = i.era
             Some(EraLedger.curPParams(i.state.nes.es.ls.utxo.gov))
           case _ => None)
-        .toRight(ConfigError("no genesis protocol parameters"))
+        .toRight(ConfigError(ConfigProblem.MissingGenesisParameters))
       boot = setup.mirrorStart.extras match
         case MirrorExtras.InByron(_, b, _) => b
         case MirrorExtras.InShelley(_, c)  => c.boot
@@ -111,9 +124,11 @@ object LedgerSnapshotImportCommand:
         case Some(path) =>
           Either
             .catchNonFatal(Files.readString(path))
-            .leftMap(e => ConfigError(s"cannot read ancillary key: ${e.getMessage}"))
+            .leftMap(e => ConfigError(ConfigProblem.FileRead(path.toString, e)))
             .flatMap(text =>
-              AncillaryManifest.verificationKey(text).leftMap(e => ConfigError(e.toString))
+              AncillaryManifest
+                .verificationKey(text)
+                .leftMap(e => ConfigError(ConfigProblem.Ancillary(e)))
             )
             .flatMap { key =>
               val manifest = options.manifest.orElse(
@@ -122,7 +137,7 @@ object LedgerSnapshotImportCommand:
                   .map(_.resolve("ancillary_manifest.json"))
               )
               manifest
-                .toRight(ConfigError("--ancillary-manifest is required for this snapshot path"))
+                .toRight(ConfigError(ConfigProblem.MissingFlag("--ancillary-manifest")))
                 .map(path => LedgerSnapshotImport.Trust.Verify(FsPath.fromNioPath(path), key))
             }
     yield setup -> LedgerSnapshotImport.Config(

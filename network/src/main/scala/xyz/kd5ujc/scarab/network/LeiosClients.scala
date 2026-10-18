@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.network
 
+import xyz.kd5ujc.scarab.protocol.ProtocolError
 import cats.effect.Temporal
 import cats.mtl.Raise
 import cats.mtl.syntax.all.*
@@ -22,7 +23,7 @@ private object LeiosDecode:
       case Right((message, consumed)) =>
         DecodeResult.Decoded(Observed(message, bytes.take(consumed).compact), consumed)
       case Left(LeiosWireError.Incomplete) => DecodeResult.NeedMore
-      case Left(error)                     => DecodeResult.Failed(error.toString)
+      case Left(error)                     => DecodeResult.Failed(ProtocolError.Leios(error))
 
 /** LeiosNotify client (mini-protocol 18): pull one notification at a time. Single fiber. */
 trait LeiosNotifyClient[F[_]]:
@@ -43,9 +44,10 @@ object LeiosNotifyClient:
       Raise[F, NetworkError]
   ): LeiosNotifyClient[F] =
     val id = Protocols.LeiosNotify
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(m: LeiosNotify.Message): F[Unit] =
-      LeiosNotify.encode(m).fold(e => illegal(e.toString), channel.send)
+      LeiosNotify.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     def receive(state: LeiosNotify.State): F[Observed[LeiosNotify.Message]] =
       Timed.within(settings.busyTimeout, id, state.toString)(
         channel.recv(settings.maxMessageBytes)(bytes =>
@@ -70,9 +72,10 @@ object LeiosFetchClient:
       Raise[F, NetworkError]
   ): LeiosFetchClient[F] =
     val id = Protocols.LeiosFetch
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
     def send(m: LeiosFetch.Message): F[Unit] =
-      LeiosFetch.encode(m).fold(e => illegal(e.toString), channel.send)
+      LeiosFetch.encode(m).fold(e => illegal(ProtocolError.Leios(e)), channel.send)
     new LeiosFetchClient[F]:
       def block(point: EbPoint): F[Observed[LeiosFetch.Message]] =
         send(LeiosFetch.Message.BlockRequest(point)) *>

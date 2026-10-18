@@ -10,6 +10,8 @@ import xyz.kd5ujc.scarab.protocol.{RelayOffer, TxSubmission2}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** TxSubmission2 as the side that owns transactions (the protocol's client, which is the initiator
   * of the outbound connection): it offers the transactions of a [[Source]] and hands out bodies on
   * request. The server drives; this side only answers.
@@ -49,7 +51,8 @@ object TxSubmissionClient:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = Protocols.TxSubmission2
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: TxSubmission2.State, message: TxSubmission2.Message): F[Unit] =
       TxSubmission2.encode(state, Role.Client, message).fold(illegal, channel.send)
@@ -120,7 +123,7 @@ object TxSubmissionClient:
         case TxSubmission2.Message.RequestIds(blocking, ack, request) =>
           answerIds(window, blocking, ack, request).flatMap(_.fold(F.unit)(loop))
         case TxSubmission2.Message.RequestTxs(ids) => answerTxs(window, ids) *> loop(window)
-        case other                                 => illegal(s"unexpected server message $other")
+        case other => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
       }
 
     send(TxSubmission2.State.Init, TxSubmission2.Message.Init) *>

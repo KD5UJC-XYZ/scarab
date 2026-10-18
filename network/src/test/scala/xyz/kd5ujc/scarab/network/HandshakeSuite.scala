@@ -33,8 +33,14 @@ class HandshakeSuite extends FailsOnUncaught:
 
   test("a different network magic is refused with the peer's reason"):
     negotiate(Handshake.defaultNodeToNode(7L)).map {
-      case Left(NetworkError.HandshakeRefused(reason)) => assert(reason.contains("magic"), reason)
-      case other                                       => fail(s"unexpected $other")
+      case Left(NetworkError.HandshakeRefused(reason)) =>
+        assertEquals(
+          reason,
+          NetworkError.HandshakeFailure.Remote(
+            Handshake.Reason.Refused(15, "network magic mismatch")
+          )
+        )
+      case other => fail(s"unexpected $other")
     }
 
   test("disjoint versions are a typed version mismatch"):

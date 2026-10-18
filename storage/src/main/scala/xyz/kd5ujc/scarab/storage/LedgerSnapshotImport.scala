@@ -279,7 +279,7 @@ object LedgerSnapshotImport:
       }
       .handleErrorWith {
         case e: java.io.IOException =>
-          Error.Storage(StorageError.Io(config.db.toString, e.toString)).raise[F, Report]
+          Error.Storage(StorageError.Io(config.db.toString, e)).raise[F, Report]
         case e => F.raiseError(e)
       }
 

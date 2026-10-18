@@ -84,7 +84,9 @@ class PlutusConformanceSuite extends FunSuite:
           read(dir.resolve(s"$name.uplc.expected")).trim,
           budgetOf(read(dir.resolve(s"$name.budget.expected"))),
           Option.when(Files.exists(dir.resolve(s"$name.flat.cbor.hex"))) {
-            Bytes.fromHex(read(dir.resolve(s"$name.flat.cbor.hex")).trim).fold(fail(_), identity)
+            Bytes
+              .fromHex(read(dir.resolve(s"$name.flat.cbor.hex")).trim)
+              .fold(e => fail(e.toString), identity)
           }
         )
       }
@@ -198,9 +200,10 @@ class PlutusConformanceSuite extends FunSuite:
     val request =
       EvalRequest(language, protocol, Bytes.fromArray(wrap), Vector.empty, costModel, Unlimited)
     ScalusEvaluator.pure.evaluate(request) match
-      case EvalResult.Failure(EvalFailure.Unsupported(reason), _, _) => Outcome.Unavailable(reason)
-      case EvalResult.Failure(EvalFailure.Decode(r), _, _)           => Outcome.Undecodable(r)
-      case EvalResult.Failure(r, spent, _)                           =>
+      case EvalResult.Failure(EvalFailure.Unsupported(reason), _, _) =>
+        Outcome.Unavailable(reason.message)
+      case EvalResult.Failure(EvalFailure.Decode(r), _, _) => Outcome.Undecodable(r.message)
+      case EvalResult.Failure(r, spent, _)                 =>
         // the failure happened inside the program, after the wrapper's application and lambda
         Outcome.Failed(minus(spent, 2), r.message)
       case EvalResult.Success(spent, _) =>

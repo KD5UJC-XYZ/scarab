@@ -10,6 +10,8 @@ import xyz.kd5ujc.scarab.protocol.TxSubmission2
 import xyz.kd5ujc.scarab.protocol.ChainSync.Role
 import scala.concurrent.duration.*
 
+import NetworkError.RuntimeViolation
+
 /** TxSubmission2 as the side that collects transactions (the protocol's server, which is the
   * responder of an inbound connection): it asks the peer for transaction ids, fetches the bodies it
   * does not know and passes them to a [[Sink]].
@@ -43,7 +45,8 @@ object TxSubmissionServer:
   )(using Raise[F, NetworkError]): F[Unit] =
     val F = Temporal[F]
     val id = Protocols.TxSubmission2
-    def illegal[A](detail: String): F[A] = NetworkError.IllegalTransition(id, detail).raise[F, A]
+    def illegal[A](detail: NetworkError.Violation): F[A] =
+      NetworkError.IllegalTransition(id, detail).raise[F, A]
 
     def send(state: TxSubmission2.State, message: TxSubmission2.Message): F[Unit] =
       TxSubmission2.encode(state, Role.Server, message).fold(illegal, channel.send)
@@ -70,11 +73,11 @@ object TxSubmissionServer:
                   .traverse(o =>
                     TxSubmission2.bodyId(o).fold(illegal[Bytes], F.pure).flatMap { txId =>
                       if group.contains(txId) then F.pure(o)
-                      else illegal("received a transaction that was not requested")
+                      else illegal(RuntimeViolation.TransactionNotRequested)
                     }
                   )
                   .flatMap(sink.submit)
-              case other => illegal(s"unexpected $other")
+              case other => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
             }
         }
 
@@ -93,10 +96,10 @@ object TxSubmissionServer:
             )
             .flatMap(fetch) *> loop(offers.size)
         case TxSubmission2.Message.Done => F.unit
-        case other                      => illegal(s"unexpected $other")
+        case other                      => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
       }
 
     receive(TxSubmission2.State.Init, Some(settings.initTimeout)).flatMap {
       case TxSubmission2.Message.Init => loop(0)
-      case other                      => illegal(s"expected Init, got $other")
+      case other                      => illegal(RuntimeViolation.TxSubmissionUnexpected(other))
     }

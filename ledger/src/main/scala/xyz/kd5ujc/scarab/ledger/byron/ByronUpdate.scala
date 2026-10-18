@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Node}
@@ -34,10 +35,10 @@ final case class UpdatePayload(
 object UpdatePayload:
   val empty: UpdatePayload = UpdatePayload(Bytes.empty, None, Vector.empty)
 
-  private def proposal(n: Node): Either[String, ByronProposal] =
+  private def proposal(n: Node): Either[LedgerDecodeError, ByronProposal] =
     CborRead.arrayN(n, 7, "update proposal").flatMap { xs =>
       for
-        version <- ByronVersion.decode(xs(0)).leftMap(_.message)
+        version <- ByronVersion.decode(xs(0)).leftMap(LedgerDecodeError.Version(_))
         update <- ByronParamsUpdate.decode(xs(1))
         sv <- CborRead.arrayN(xs(2), 2, "software version")
         name <- CborRead.text(sv(0), "software name")
@@ -59,7 +60,7 @@ object UpdatePayload:
       )
     }
 
-  private def vote(n: Node): Either[String, ByronVote] =
+  private def vote(n: Node): Either[LedgerDecodeError, ByronVote] =
     CborRead.arrayN(n, 4, "update vote").flatMap { xs =>
       (
         CborRead.bytesN(xs(0), 64, "voter"),
@@ -69,14 +70,14 @@ object UpdatePayload:
       ).mapN((voter, id, _, sig) => ByronVote(voter, id, xs(1).original, sig))
     }
 
-  def decode(n: Node): Either[String, UpdatePayload] =
+  def decode(n: Node): Either[LedgerDecodeError, UpdatePayload] =
     CborRead.arrayN(n, 2, "update payload").flatMap { xs =>
       for
         maybe <- CborRead.array(xs(0), "update proposal")
         p <- maybe match
           case Vector()  => Right(None)
           case Vector(x) => proposal(x).map(Some(_))
-          case _         => Left("update payload: more than one proposal")
+          case _         => Left(LedgerDecodeError.AtMostOne("update proposals", maybe.size))
         votes <- CborRead.array(xs(1), "update votes").flatMap(_.traverse(vote))
       yield UpdatePayload(n.original, p, votes)
     }

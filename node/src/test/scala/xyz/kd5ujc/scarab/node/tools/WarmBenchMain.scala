@@ -68,7 +68,7 @@ object WarmBenchMain:
       .iterator
       .filter(_.nonEmpty)
       .take(total)
-      .map(l => Bytes.fromHex(l).fold(e => sys.error(e), identity))
+      .map(l => Bytes.fromHex(l).fold(e => sys.error(e.message), identity))
       .toVector
     val batches = raws.grouped(batch).toVector
     val decoded = raws.flatMap(r => NodeRules.decodeShelley(r))
