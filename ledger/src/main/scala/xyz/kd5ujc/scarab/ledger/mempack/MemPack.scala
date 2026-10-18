@@ -55,6 +55,10 @@ object MemPack:
     /** The reference script bytes are not a script (its own message). */
     case ScriptRefused(reason: String)
 
+    case ReferenceScriptMissing
+    case ReferenceScriptWrapper
+    case UnknownScriptKind(tag: BigInt)
+
     /** The output has a reference script but no bytes to pack it from: an output that was not read
       * from an encoding (built in a test or from genesis), whose script the node did not keep.
       */
@@ -98,9 +102,12 @@ object MemPack:
       case Failure.OutOfRange(q)       => s"MemPack: $q outside [0, 2^64 - 1]"
       case Failure.MultiAssetTooLarge(a, p) =>
         s"MemPack: $a assets of $p policies are too many to compact"
-      case Failure.AddressRefused(r)  => s"MemPack: address: $r"
-      case Failure.ScriptRefused(r)   => s"MemPack: script: $r"
-      case Failure.ScriptBytesMissing => "MemPack: reference script without bytes"
+      case Failure.AddressRefused(r)      => s"MemPack: address: $r"
+      case Failure.ScriptRefused(r)       => s"MemPack: script: $r"
+      case Failure.ReferenceScriptMissing => "MemPack: output has no reference-script field"
+      case Failure.ReferenceScriptWrapper => "MemPack: reference script requires tag 24"
+      case Failure.UnknownScriptKind(t)   => s"MemPack: unknown reference-script kind $t"
+      case Failure.ScriptBytesMissing     => "MemPack: reference script without bytes"
     }
 
   type Result[A] = Either[Failure, A]

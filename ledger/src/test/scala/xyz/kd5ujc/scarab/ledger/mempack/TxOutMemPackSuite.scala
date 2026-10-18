@@ -168,8 +168,8 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
       Left(Failure.NotInEra(Feature.ReferenceScript, xyz.kd5ujc.scarab.protocol.Era.Alonzo))
     )
     assertEquals(
-      TxOutMemPack.decode[Babbage](ref).left.map(_.getClass.getSimpleName.takeWhile(_ != '$')),
-      Left("NotInEra")
+      TxOutMemPack.decode[Babbage](ref),
+      Left(Failure.NotInEra(Feature.PlutusV3, xyz.kd5ujc.scarab.protocol.Era.Babbage))
     )
   }
 

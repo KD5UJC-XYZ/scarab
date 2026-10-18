@@ -83,22 +83,22 @@ object TxOutMemPack:
   private def scriptOf(raw: Bytes): Result[RefScript] =
     if raw.size == 0 then Left(Failure.ScriptBytesMissing)
     else
-      val read = for
-        node <- Cbor.decode(raw)
-        fields <- CborRead.fields(node, "output")
-        wrapped <- fields.get(3).toRight("output: no reference script")
+      for
+        node <- Cbor.decode(raw).leftMap(Failure.ScriptRefused(_))
+        fields <- CborRead.fields(node, "output").leftMap(Failure.ScriptRefused(_))
+        wrapped <- fields.get(3).toRight(Failure.ReferenceScriptMissing)
         inner <- wrapped.value match
-          case CborValue.Tag(t, i) if t == 24 => CborRead.bytes(i, "reference script")
-          case _                              => Left("reference script: expected tag 24")
-        script <- Cbor.decode(inner)
-        two <- CborRead.arrayN(script, 2, "script")
-        tag <- CborRead.uint(two(0), "script type")
-        kind <- ScriptKind.values.find(_.tag == tag).toRight(s"script type $tag")
+          case CborValue.Tag(t, i) if t == 24 =>
+            CborRead.bytes(i, "reference script").leftMap(Failure.ScriptRefused(_))
+          case _ => Left(Failure.ReferenceScriptWrapper)
+        script <- Cbor.decode(inner).leftMap(Failure.ScriptRefused(_))
+        two <- CborRead.arrayN(script, 2, "script").leftMap(Failure.ScriptRefused(_))
+        tag <- CborRead.uint(two(0), "script type").leftMap(Failure.ScriptRefused(_))
+        kind <- ScriptKind.values.find(_.tag == tag).toRight(Failure.UnknownScriptKind(tag))
         bytes <-
           if kind == ScriptKind.Native then Right(two(1).original)
-          else CborRead.bytes(two(1), "plutus script")
+          else CborRead.bytes(two(1), "plutus script").leftMap(Failure.ScriptRefused(_))
       yield RefScript(kind, bytes)
-      read.left.map(Failure.ScriptRefused(_))
 
   /** The node's output for `p`, with the canonical encoding (the legacy array without an inline
     * datum or a script, else the keyed map) as its original bytes.
@@ -122,9 +122,8 @@ object TxOutMemPack:
     case ScriptKind.Native =>
       Cbor
         .decode(s.bytes)
-        .flatMap(Script.native)
-        .left
-        .map(Failure.ScriptRefused(_))
+        .leftMap(Failure.ScriptRefused(_))
+        .flatMap(n => Script.native(n).leftMap(Failure.ScriptRefused(_)))
     case plutus => Right(Script.plutus(plutus, s.bytes).copy(plutus = None))
 
   // ---- the constructors
