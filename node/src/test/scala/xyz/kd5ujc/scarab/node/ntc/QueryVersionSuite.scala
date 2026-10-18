@@ -88,9 +88,13 @@ class QueryVersionSuite extends FunSuite:
   }
 
   test("genesis protocol parameters flatten the protocol version before V21") {
-    val old = GenesisConfig.encode(NtcGolden.queryEnv.shelleyGenesis, V20).fold(fail(_), identity)
+    val old = GenesisConfig
+      .encode(NtcGolden.queryEnv.shelleyGenesis, V20)
+      .fold(e => fail(e.message), identity)
     val current =
-      GenesisConfig.encode(NtcGolden.queryEnv.shelleyGenesis, V21).fold(fail(_), identity)
+      GenesisConfig
+        .encode(NtcGolden.queryEnv.shelleyGenesis, V21)
+        .fold(e => fail(e.message), identity)
     def array(n: Node): Vector[Node] = n.value match
       case Value.Arr(xs) => xs
       case _             => fail("not an array")
@@ -118,7 +122,9 @@ class QueryVersionSuite extends FunSuite:
       state
     )
     val latest =
-      GenesisConfig.encode(NtcGolden.queryEnv.shelleyGenesis, V23).fold(fail(_), identity)
+      GenesisConfig
+        .encode(NtcGolden.queryEnv.shelleyGenesis, V23)
+        .fold(e => fail(e.message), identity)
     val expected = CborOut.build(_.array(1).tag(24).bytes(latest))
     assertEquals(
       QueryAnswers

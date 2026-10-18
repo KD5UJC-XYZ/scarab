@@ -21,7 +21,19 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions, Wire}
   * 82ecba329d7d054340bf707d44fe6e9ac27cec40).
   */
 object GenesisConfig:
-  private type R[A] = Either[String, A]
+  enum Error:
+    case InvalidField(field: String, detail: String)
+    case InvalidHex(field: String, detail: String)
+    case InvalidDecimal(field: String)
+    case InvalidSystemStart(value: String)
+
+    def message: String = this match
+      case InvalidField(field, detail) => s"genesis $field: $detail"
+      case InvalidHex(field, detail)   => s"genesis $field: $detail"
+      case InvalidDecimal(field)       => s"genesis $field"
+      case InvalidSystemStart(value)   => s"systemStart $value"
+
+  private type R[A] = Either[Error, A]
 
   /** The version the answer is written at: the lowest of the Conway era (`Versions.eraLow`). */
   private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
@@ -38,13 +50,16 @@ object GenesisConfig:
   )
 
   private def get[A: io.circe.Decoder](c: ACursor, name: String): R[A] =
-    c.downField(name).as[A].leftMap(e => s"genesis $name: ${e.message}")
+    c.downField(name).as[A].leftMap(e => Error.InvalidField(name, e.message))
 
   private def hex(c: ACursor, name: String): R[Bytes] =
-    get[String](c, name).flatMap(Bytes.fromHex)
+    get[String](c, name).flatMap(s => Bytes.fromHex(s).leftMap(Error.InvalidHex(name, _)))
 
   private def decimal(c: ACursor, name: String): R[Rational] =
-    c.downField(name).as[BigDecimal].map(Rational.fromDecimal).leftMap(_ => s"genesis $name")
+    c.downField(name)
+      .as[BigDecimal]
+      .map(Rational.fromDecimal)
+      .leftMap(_ => Error.InvalidDecimal(name))
 
   /** The result item, from the Shelley genesis JSON. */
   def encode(shelley: Json, version: NtcVersion = NtcVersion.LatestReleased): R[Bytes] =
@@ -52,7 +67,7 @@ object GenesisConfig:
     val p = c.downField("protocolParams")
     for
       start <- get[String](c, "systemStart").flatMap(s =>
-        Either.catchNonFatal(Instant.parse(s)).leftMap(_ => s"systemStart $s")
+        Either.catchNonFatal(Instant.parse(s)).leftMap(_ => Error.InvalidSystemStart(s))
       )
       magic <- get[BigInt](c, "networkMagic")
       network <- get[String](c, "networkId")
@@ -67,11 +82,11 @@ object GenesisConfig:
       delegates <- c
         .downField("genDelegs")
         .as[Option[Map[String, Json]]]
-        .leftMap(_ => "genDelegs")
+        .leftMap(e => Error.InvalidField("genDelegs", e.message))
         .flatMap(
           _.getOrElse(Map.empty).toVector.traverse { case (g, j) =>
             for
-              genesis <- Bytes.fromHex(g)
+              genesis <- Bytes.fromHex(g).leftMap(Error.InvalidHex("genesis key", _))
               delegate <- hex(j.hcursor, "delegate")
               vrf <- hex(j.hcursor, "vrf")
             yield genesis -> (delegate, vrf)
@@ -116,7 +131,7 @@ object GenesisConfig:
         .downField("extraEntropy")
         .downField("tag")
         .as[Option[String]]
-        .leftMap(_ => "extraEntropy")
+        .leftMap(e => Error.InvalidField("extraEntropy", e.message))
         .flatMap {
           case None | Some("NeutralNonce") => Right(None)
           case Some(_) => hex(p.downField("extraEntropy"), "contents").map(Some(_))

@@ -8,3 +8,5 @@
 - The `ntc` scenario explicitly negotiates every supported version, compares supported answers
   byte for byte and separately verifies refusals outside the supported query contract. Scarab
   enforces that contract on its server boundary; the reference enforces it on its client encoder.
+- Genesis-query configuration parsing returns a closed error ADT for field, hexadecimal, decimal
+  and system-start failures; the valid legacy/current answer bytes remain unchanged.
