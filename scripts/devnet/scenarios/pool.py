@@ -10,7 +10,7 @@ import sys
 import time
 from .. import metrics as node_metrics
 from . import kes_rotate
-from ..cluster import freeze_classes, scala_container, start_nodes, start_reference
+from ..cluster import database_mounts, freeze_classes, scala_container, start_nodes, start_reference
 from ..compare import compare_once
 from ..scenarios.relay import SCALA_PORT, log_counts, tip_at
 from .. import util
@@ -267,7 +267,7 @@ def pool(args):
             program += ["--peer", f"127.0.0.1:{ports[n]}"]
         program += args.scala_flags.split()
         command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
-                                  mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{root / 'keys'}:/keys",
+                                  mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{root / 'keys'}:/keys",
                                           *([f"{root / 'ipc'}:/ipc"] if rotate else [])], name=f"{args.name}-scala")
         log = root / "follower.jsonl"
         scala = subprocess.Popen(["docker", *command], stdout=log.open("a"), stderr=subprocess.STDOUT, text=True)

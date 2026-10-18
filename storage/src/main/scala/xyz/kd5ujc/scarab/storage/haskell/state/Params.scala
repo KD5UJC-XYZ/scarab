@@ -47,6 +47,7 @@ object Params:
       codec.decode(n).map(set(p, _)).at(name)
     def refuses(p: ProtocolParams): Option[ConstraintViolation] =
       codec.check(get(p)).map(_.at(name))
+    def copyValue(from: ProtocolParams, into: ProtocolParams): ProtocolParams = set(into, get(from))
 
   private def param[A](name: String, codec: Codec[A])(
       get: ProtocolParams => A
@@ -343,6 +344,22 @@ object Params:
     case ShelleyBasedEra.SAlonzo                                                     => alonzo
     case ShelleyBasedEra.SBabbage                                                    => babbage
     case ShelleyBasedEra.SConway                                                     => conway
+
+  /** Preserve every field encoded by this era, including zero; only fields the era lacks come from
+    * genesis. Comparing values with zero would lose legitimate zero-valued parameters.
+    */
+  def complete[E <: EraTag](
+      era: ShelleyBasedEra[E],
+      read: ProtocolParams,
+      genesis: ProtocolParams
+  ): ProtocolParams =
+    val fields = era match
+      case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary =>
+        shelleyList
+      case ShelleyBasedEra.SAlonzo  => alonzoList
+      case ShelleyBasedEra.SBabbage => babbageList
+      case ShelleyBasedEra.SConway  => conwayList
+    fields.foldLeft(genesis)((full, field) => field.copyValue(read, full))
 
   /** The Conway `PParams` codec: the parameters of the governance state and of its enact state. */
   val conwayCodec: Codec[ProtocolParams] = conway

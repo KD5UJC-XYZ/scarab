@@ -95,6 +95,8 @@ enum CheckpointProblem:
   * to [[Io]] at the file boundary only.
   */
 enum StorageError extends NodeError:
+  case DatabaseInUse(database: String)
+
   /** The stored bytes fail validation (bad checksum, truncation, impossible structure). */
   case Corrupt(what: String, reason: String)
 
@@ -129,8 +131,9 @@ enum StorageError extends NodeError:
   case UtxoCheckpoint(dir: String, problem: CheckpointProblem)
 
   def message: String = this match
-    case Corrupt(w, r)            => s"corrupt $w: $r"
-    case Io(w, r)                 => s"io $w: $r"
+    case DatabaseInUse(db) => s"database $db is already owned by a follower or offline command"
+    case Corrupt(w, r)     => s"corrupt $w: $r"
+    case Io(w, r)          => s"io $w: $r"
     case VersionMismatch(w, f, e) => s"$w version $f, expected $e"
     case UnknownVersion(w, k, f) =>
       s"$w: unknown ${k.label} format '$f' (this build reads '${k.identifier(FormatVersion.V1)}' and '${k.identifier(k.current)}'); it was probably written by a newer build"

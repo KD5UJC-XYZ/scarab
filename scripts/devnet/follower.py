@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from .cluster import freeze_classes, scala_container
+from .cluster import database_mounts, freeze_classes, scala_container
 from .metrics import METRICS_PORT
 from .util import ENTRY, QUERY_PORT, data_root, read_log
 
@@ -32,7 +32,7 @@ def follow(args):
         # the chain database lives in the run directory, so a later `follow --db` restarts from its snapshot
         (root / "db").mkdir(exist_ok=True)
         program += ["--db", "/db", "--snapshot-every", getattr(args, "snapshot_every", None) or "1epochs"]
-        mounts.append(f"{root / 'db'}:/db")
+        mounts.extend(database_mounts(root / "db"))
     if getattr(args, "dump_state", False):
         # state digests at every epoch boundary for the db-analyser comparison (`devnet.py oracle`)
         (root / "dump").mkdir(exist_ok=True)

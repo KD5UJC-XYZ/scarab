@@ -35,7 +35,7 @@ import time
 
 from .. import cborspan, gapmask, ntccli, ntcquery, ntcsafety
 from ..ntclocal import Session, compare_follow, live_follow, monitor_rounds, await_wakes, tx_id
-from ..cluster import freeze_classes, scala_container, up
+from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..ntccases import CLI, Builder, corpus
 from ..ntcqueries import compare_round
 from ..ntcversions import compare_versions
@@ -100,7 +100,7 @@ def start_scala(args, root):
                "--mempool-bytes", str(mempool_bytes(args)),
                "--local-socket", "/sock/node.socket", "--peer", f"127.0.0.1:{ports['1']}"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
-                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
+                              mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{sock}:/sock"],
                               name=f"{args.name}-scala")
     log = (root / "follower.jsonl").open("a")
     return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)

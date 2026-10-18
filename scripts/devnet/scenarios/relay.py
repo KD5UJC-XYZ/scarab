@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
-from ..cluster import freeze_classes, scala_container, up
+from ..cluster import database_mounts, freeze_classes, scala_container, up
 from ..util import (CLI, ENTRY, ENV, MAGIC, QUERY_PORT, REFERENCE_IMAGE, USER, data_root, docker, in_ref, put_file,
                     read_json, read_log, ref)
 
@@ -43,7 +43,7 @@ def start_scala_relay(args, root, peers):
     (root / "genesis" / "scala-configuration.json").write_text(json.dumps(config, indent=2))
     program += ["--config", "/genesis/scala-configuration.json"]
     command = scala_container(args, root, classpath, "xyz.kd5ujc.scarab.node.Main", program,
-                              mounts=[f"{root / 'genesis'}:/genesis:ro", f"{db}:/db", f"{sock}:/sock"],
+                              mounts=[f"{root / 'genesis'}:/genesis:ro", *database_mounts(db), f"{sock}:/sock"],
                               name=f"{args.name}-scala")
     log = (root / "follower.jsonl").open("a")
     return subprocess.Popen(["docker", *command], stdout=log, stderr=subprocess.STDOUT, text=True)

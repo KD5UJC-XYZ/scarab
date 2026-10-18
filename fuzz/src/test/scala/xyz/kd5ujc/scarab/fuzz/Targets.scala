@@ -852,4 +852,54 @@ object Targets:
       )
     )
 
-  val all: Vector[Target] = network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotTables
+  private val ancillary: Vector[Target] =
+    import xyz.kd5ujc.scarab.storage.haskell.state.AncillaryManifest
+    Vector(
+      Target(
+        "ancillary-manifest",
+        () =>
+          val seeds = Vector(
+            java.nio.file.Files.readAllBytes(
+              java.nio.file.Path.of("fixtures/mempack/ancillary/preprod-manifest.json")
+            )
+          )
+          seeds.foreach(b => AncillaryManifest.parse(new String(b, "UTF-8")).foreach(_.hash))
+          seeds
+        ,
+        probe("ancillary-manifest") { bytes =>
+          AncillaryManifest.parse(new String(bytes.toArray, "UTF-8")).foreach { manifest =>
+            hit("ancillary-manifest")
+            val again = AncillaryManifest.parse(AncillaryManifest.encode(manifest))
+            req(again == Right(manifest), "manifest canonical JSON changes signed data")
+            req(
+              again.map(_.hash) == Right(manifest.hash),
+              "manifest re-encoding changes the signed hash"
+            )
+            req(
+              manifest.files.forall(f => AncillaryManifest.safePath(f.path)),
+              "manifest admits an unsafe path"
+            )
+          }
+        }
+      ),
+      Target(
+        "ancillary-key",
+        () =>
+          val seeds = Vector(
+            java.nio.file.Files
+              .readAllBytes(java.nio.file.Path.of("fixtures/mempack/ancillary/preprod.vkey"))
+          )
+          seeds.foreach(b => AncillaryManifest.verificationKey(new String(b, "UTF-8")))
+          seeds
+        ,
+        probe("ancillary-key") { bytes =>
+          AncillaryManifest.verificationKey(new String(bytes.toArray, "UTF-8")).foreach { key =>
+            hit("ancillary-key")
+            req(key.bytes.size == 32, "ancillary key does not contain 32 octets")
+          }
+        }
+      )
+    )
+
+  val all: Vector[Target] =
+    network ++ node ++ ledgerPeers ++ mempackTxOut ++ snapshotTables ++ ancillary

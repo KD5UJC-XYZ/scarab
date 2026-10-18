@@ -1318,3 +1318,65 @@ One twelve-step churn round ran. Steps1–10 met their targets; steps11/12 timed
 known/established targets. Long-duration behavior and repeated churn remain broader G1/K4 coverage.
 Source selection, traces, exact pool counts and remaining differences are in the
 [peer-selection design](design/peer-selection.md), sections7d/7e.
+
+
+## 24. Authenticated offline preprod ledger import (Step D S3, #140)
+
+The pinned node 11.1.3 preprod ancillary snapshot at slot 136,511,997 imports in **57.1 seconds**
+(2026-10-18, Docker JDK21). It contains 4,526,058 outputs in a 1,014,553,955-byte table and a
+32,511,416-byte state. The command copies and verifies all six manifest files, checks the original
+CRC/meta and exact locally recorded immutable point, loads 1,024-entry RocksDB batches, recomputes
+instant stake and writes the V5/checkpoint pair. The resulting count is 4,526,058 and lovelace total
+30,022,461,204,412,072. V5/checkpoint readback is included in the 60.3-second test case, outside the
+57.1-second import interval. Heap/RSS were not sampled, so this run makes no memory-size claim.
+
+Inputs were already cached: the public SHA-pinned ancillary and recorded immutable chunks. No
+network follower or new public sync was started. The full table is streamed; batch memory is bounded,
+while the bookkeeping maps scale with distinct stake credentials. This measures import; S4
+export is measured below. S5 recorded-chain replay measurements are in section 26.
+Reproduce with `SCARAB_IMPORT_FIXTURE` naming a read-only cache containing the extracted ancillary
+and `recorded-db/`, then `node/testOnly *PreprodSnapshotImportSuite` in the JDK container. Optional
+`SCARAB_IMPORT_DB` names a fresh external destination to preserve for later offline export/replay.
+
+## 25. Offline preprod ledger export (Step D S4, #140)
+
+The authenticated S3 checkpoint at slot 136,511,997 exports in **30.8 seconds** (2026-10-18,
+Docker JDK21, core `b633bc50`), reusing the preserved 4,526,058-output RocksDB checkpoint. It reads the exact V5
+Haskell section, streams sorted CBOR values to canonical MemPack `tables`, computes metadata,
+forces the staged files and atomically publishes the fresh suffixed directory. The 32.7-second
+test also compares original `state` and `tables` with `Files.mismatch` and checks every source
+database file's SHA-256 before/after. Both files are byte-identical to the pinned originals;
+parsed metadata is equal. Heap/RSS were not sampled.
+
+This is one cached offline run, not a cold-I/O benchmark or the S5 replay/epoch acceptance. No
+new import or public sync was performed. Reproduce using `SCARAB_EXPORT_DB` for a preserved
+authenticated S3 database and `SCARAB_EXPORT_FIXTURE` for the pinned extracted ancillary, then
+`node/testOnly *PreprodSnapshotExportSuite` in the JDK container. `SCARAB_EXPORT_OUT` optionally
+preserves the new external output for offline reference acceptance.
+
+
+## 26. Recorded preprod snapshot replay (Step D S5, #140)
+
+These cached offline runs use pre-integration source `0b2efe56`, Docker JDK21 and reference
+node 11.1.3 on 2026-10-18. Every Scala run starts from a fresh copy of the authenticated slot
+136,511,997 checkpoint; Haskell starts from the original gap-free S4 export. No new public
+sync or source-node restart is involved. Original database file hashes remain unchanged.
+
+| Recorded target | Post-import blocks | Scala replay interval | Projection work included | Haskell full-validation/store interval |
+|---|---:|---:|---:|---:|
+| Epoch-320 first block 136,598,413 and immutable endpoint 136,602,570 | 3,980 | 66.307 s | 22.911 s + 22.526 s | 27.010 s to boundary, then 16.207 s to endpoint |
+| Point reported 100% synced: 136,651,599 / block 5,307,009 | 6,141 | 55.148 s | 23.402 s | 37.821 s from imported anchor |
+
+Both boundary/immutable projections and the captured synced-point projection have zero
+differences under the existing oracle. Scala replay intervals exclude initial checkpoint restore
+and final shutdown snapshot, but include the listed UTxO/projection work. The reference intervals
+include reference state loading and snapshot storage. These are different measured intervals,
+not a throughput comparison between implementations. Heap/RSS were not sampled.
+
+The latter point comes from verified copied immutable and volatile records, with all recorded
+rollbacks applied; it is the exact point reported at query time, not evidence of ongoing live
+following. Input reconstruction/proof scope and retained mirror limits are in the snapshot design,
+section 12. Reproduce with a fresh authenticated import, the verified original-byte recorded tail,
+`follow --dump-state-at <boundary>,<endpoint>` in a network-disabled JDK container and
+`db-analyser --analyse-from <anchor> --store-ledger <target> --full-ledger-validation` in the
+network-disabled reference image, then compare with the unchanged oracle.

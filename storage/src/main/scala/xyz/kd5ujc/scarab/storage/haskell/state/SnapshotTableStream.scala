@@ -130,17 +130,22 @@ object SnapshotTableStream:
   def writeStore[F[_]: Sync, E <: EraTag: ShelleyBasedEra](store: UtxoStore[F])(
       emit: Bytes => F[Unit]
   )(using Raise[F, Error]): F[Summary] =
-    store.size.flatMap { count =>
-      val packed = store.entries.evalMap { (key, out) =>
-        for
-          encodedKey <- lift(
-            UtxoStore.Coding
-              .encodeKey(key)
-              .map(Bytes.wrap)
-              .toRight(Error.InvalidKey(key))
-          )
-          bytes <- lift(TxOutMemPack.encode[E](out).leftMap(Error.InvalidValue(encodedKey, _)))
-        yield Entry(encodedKey, bytes)
-      }
-      write(count, packed)(emit)
+    store.size.flatMap(count => writeOutputs[F, E](count, store.entries)(emit))
+
+  /** A read-only checkpoint supplies its snapshot's exact count without a second scan. */
+  def writeOutputs[F[_]: Sync, E <: EraTag: ShelleyBasedEra](
+      count: Long,
+      entries: Stream[F, (TxIn, TxOut)]
+  )(emit: Bytes => F[Unit])(using Raise[F, Error]): F[Summary] =
+    val packed = entries.evalMap { (key, out) =>
+      for
+        encodedKey <- lift(
+          UtxoStore.Coding
+            .encodeKey(key)
+            .map(Bytes.wrap)
+            .toRight(Error.InvalidKey(key))
+        )
+        bytes <- lift(TxOutMemPack.encode[E](out).leftMap(Error.InvalidValue(encodedKey, _)))
+      yield Entry(encodedKey, bytes)
     }
+    write(count, packed)(emit)

@@ -372,6 +372,19 @@ def freeze_classes(root, previous=None):
     return ":".join(entries)
 
 
+def database_mounts(db):
+    """Bind the database and the same stable sibling lease used by host-side commands.
+
+    `/db` has an unwritable container parent; binding the lease explicitly preserves coordination
+    with an offline tool that opens the host database path without granting access to its parent.
+    """
+    canonical = db.resolve()
+    lock = canonical.with_name(f".{canonical.name}.scarab-lock")
+    with lock.open("a"):
+        pass
+    return [f"{db}:/db", f"{lock}:/.db.scarab-lock"]
+
+
 def scala_container(args, root, classpath, main_class, program_args, mounts=(), name=None, cpus=None):
     """`docker run` arguments for a JVM of the frozen classes in the reference network namespace.
 

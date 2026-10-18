@@ -11,7 +11,12 @@ import fs2.io.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Block, NetworkIdentity, StorageError}
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.storage.{FileImmutableStore, ImmutableStore, NetworkIdentityFile}
+import xyz.kd5ujc.scarab.storage.{
+  DatabaseOwnership,
+  FileImmutableStore,
+  ImmutableStore,
+  NetworkIdentityFile
+}
 import scala.concurrent.duration.FiniteDuration
 
 /** Why a Haskell ImmutableDB was not imported. */
@@ -165,98 +170,108 @@ object HaskellImport:
                 .raise[F, Option[Option[Bytes]]]
       }
 
-    for
-      began <- Clock[F].monotonic
-      magic <- readMagic
-      _ <- F.unlessA(magic == config.identity.magic)(
-        fail[Unit](HaskellImportError.MagicMismatch(magic, config.identity.magic))
-      )
-      recorded <- NetworkIdentityFile.verify[F](config.db, config.identity)
-      reader = HaskellImmutableReader[F](config.haskellDb / "immutable", config.chunkSlots)
-      truncation <- cats.effect.Ref.of[F, Option[(ChunkNo, Truncation)]](None)
-      chunkCount <- cats.effect.Ref.of[F, Int](0)
-      beyond <- cats.effect.Ref.of[F, Boolean](false)
-      result <- FileImmutableStore.open[F](config.db / "immutable").use { (store, _) =>
-        def step(st: State, b: HaskellBlock): F[State] =
-          decode(b).flatMap { (block, ref) =>
-            val h = block.header
-            st.phase match
-              case Phase.Skipping(tip) =>
-                if ref.hash == tip.hash then
-                  F.pure(st.copy(phase = Phase.Linking(Some(tip)), skipped = st.skipped + 1))
-                else if ref.slot > tip.slot then
-                  fail(HaskellImportError.TargetNotInSource(tip.slot, tip.hash.hex))
-                else F.pure(st.copy(skipped = st.skipped + 1))
-              case Phase.Linking(previous) =>
-                val link: F[Unit] = previous match
-                  case None =>
-                    F.unlessA(h.prevHash == expectedPrevious)(
-                      fail[Unit](
-                        HaskellImportError
-                          .ForeignGenesis(show(h.prevHash), show(expectedPrevious))
+    DatabaseOwnership.resource[F](config.db).use { _ =>
+      for
+        began <- Clock[F].monotonic
+        magic <- readMagic
+        _ <- F.unlessA(magic == config.identity.magic)(
+          fail[Unit](HaskellImportError.MagicMismatch(magic, config.identity.magic))
+        )
+        recorded <- NetworkIdentityFile.verify[F](config.db, config.identity)
+        reader = HaskellImmutableReader[F](config.haskellDb / "immutable", config.chunkSlots)
+        truncation <- cats.effect.Ref.of[F, Option[(ChunkNo, Truncation)]](None)
+        chunkCount <- cats.effect.Ref.of[F, Int](0)
+        beyond <- cats.effect.Ref.of[F, Boolean](false)
+        result <- FileImmutableStore.open[F](config.db / "immutable").use { (store, _) =>
+          def step(st: State, b: HaskellBlock): F[State] =
+            decode(b).flatMap { (block, ref) =>
+              val h = block.header
+              st.phase match
+                case Phase.Skipping(tip) =>
+                  if ref.hash == tip.hash then
+                    F.pure(st.copy(phase = Phase.Linking(Some(tip)), skipped = st.skipped + 1))
+                  else if ref.slot > tip.slot then
+                    fail(HaskellImportError.TargetNotInSource(tip.slot, tip.hash.hex))
+                  else F.pure(st.copy(skipped = st.skipped + 1))
+                case Phase.Linking(previous) =>
+                  val link: F[Unit] = previous match
+                    case None =>
+                      F.unlessA(h.prevHash == expectedPrevious)(
+                        fail[Unit](
+                          HaskellImportError
+                            .ForeignGenesis(show(h.prevHash), show(expectedPrevious))
+                        )
                       )
-                    )
-                  case Some(p) =>
-                    val number = if h.isBoundary then p.blockNo else p.blockNo + 1
-                    F.unlessA(h.prevHash.contains(p.hash))(
-                      fail[Unit](
-                        HaskellImportError.BrokenLink(b.slot, p.hash.hex, show(h.prevHash))
+                    case Some(p) =>
+                      val number = if h.isBoundary then p.blockNo else p.blockNo + 1
+                      F.unlessA(h.prevHash.contains(p.hash))(
+                        fail[Unit](
+                          HaskellImportError.BrokenLink(b.slot, p.hash.hex, show(h.prevHash))
+                        )
+                      ) *> F.unlessA(h.blockNo == number)(
+                        fail[Unit](HaskellImportError.BlockNumberJump(b.slot, number, h.blockNo))
                       )
-                    ) *> F.unlessA(h.blockNo == number)(
-                      fail[Unit](HaskellImportError.BlockNumberJump(b.slot, number, h.blockNo))
+                  for
+                    _ <- link
+                    // The identity is recorded once the first block is known to fit the genesis.
+                    _ <- F.unlessA(st.identityKnown || recorded)(
+                      NetworkIdentityFile.write[F](config.db, config.identity)
                     )
-                for
-                  _ <- link
-                  // The identity is recorded once the first block is known to fit the genesis.
-                  _ <- F.unlessA(st.identityKnown || recorded)(
-                    NetworkIdentityFile.write[F](config.db, config.identity)
+                    _ <- store.append(ref, b.bytes)
+                    n = st.appended + 1
+                    _ <- F.whenA(n % config.batch == 0)(
+                      store.sync *> chunkCount.get
+                        .flatMap(c => progress(Progress(n, st.skipped, c, b.slot)))
+                    )
+                  yield st.copy(
+                    phase = Phase.Linking(Some(ref)),
+                    appended = n,
+                    identityKnown = true
                   )
-                  _ <- store.append(ref, b.bytes)
-                  n = st.appended + 1
-                  _ <- F.whenA(n % config.batch == 0)(
-                    store.sync *> chunkCount.get
-                      .flatMap(c => progress(Progress(n, st.skipped, c, b.slot)))
-                  )
-                yield st.copy(
-                  phase = Phase.Linking(Some(ref)),
-                  appended = n,
-                  identityKnown = true
-                )
-          }
-
-        for
-          tip <- store.tip
-          // A store that holds blocks but no identity file is adopted if it fits the genesis.
-          _ <- F.whenA(!recorded && tip.isDefined)(
-            NetworkIdentityFile.adopt[F](config.db, config.identity, firstPredecessor(store))
-          )
-          initial = State(
-            tip.fold[Phase](Phase.Linking(None))(Phase.Skipping(_)),
-            0L,
-            0L,
-            recorded || tip.isDefined
-          )
-          source = reader
-            .contents()
-            .evalTap { c =>
-              chunkCount.update(_ + 1) *>
-                F.whenA(c.mostRecent)(truncation.set(c.dropped.map(c.chunk -> _)))
             }
-            .flatMap(c => Stream.emits(c.blocks))
-            .evalTap(b => F.whenA(config.stopSlot.exists(b.slot > _))(beyond.set(true)))
-            .takeWhile(b => config.stopSlot.forall(b.slot <= _))
-          last <- source.evalScan(initial)(step).compile.last.map(_.getOrElse(initial))
-          _ <- last.phase match
-            case Phase.Skipping(t) =>
-              fail[Unit](HaskellImportError.TargetNotInSource(t.slot, t.hash.hex))
-            case _ => F.unit
-          _ <- store.sync
-          newTip <- store.tip
-        yield (last, newTip)
-      }
-      (state, newTip) = result
-      finished <- Clock[F].monotonic
-      dropped <- truncation.get
-      chunks <- chunkCount.get
-      stopped <- beyond.get
-    yield Report(state.appended, state.skipped, chunks, newTip, stopped, dropped, finished - began)
+
+          for
+            tip <- store.tip
+            // A store that holds blocks but no identity file is adopted if it fits the genesis.
+            _ <- F.whenA(!recorded && tip.isDefined)(
+              NetworkIdentityFile.adopt[F](config.db, config.identity, firstPredecessor(store))
+            )
+            initial = State(
+              tip.fold[Phase](Phase.Linking(None))(Phase.Skipping(_)),
+              0L,
+              0L,
+              recorded || tip.isDefined
+            )
+            source = reader
+              .contents()
+              .evalTap { c =>
+                chunkCount.update(_ + 1) *>
+                  F.whenA(c.mostRecent)(truncation.set(c.dropped.map(c.chunk -> _)))
+              }
+              .flatMap(c => Stream.emits(c.blocks))
+              .evalTap(b => F.whenA(config.stopSlot.exists(b.slot > _))(beyond.set(true)))
+              .takeWhile(b => config.stopSlot.forall(b.slot <= _))
+            last <- source.evalScan(initial)(step).compile.last.map(_.getOrElse(initial))
+            _ <- last.phase match
+              case Phase.Skipping(t) =>
+                fail[Unit](HaskellImportError.TargetNotInSource(t.slot, t.hash.hex))
+              case _ => F.unit
+            _ <- store.sync
+            newTip <- store.tip
+          yield (last, newTip)
+        }
+        (state, newTip) = result
+        finished <- Clock[F].monotonic
+        dropped <- truncation.get
+        chunks <- chunkCount.get
+        stopped <- beyond.get
+      yield Report(
+        state.appended,
+        state.skipped,
+        chunks,
+        newTip,
+        stopped,
+        dropped,
+        finished - began
+      )
+    }

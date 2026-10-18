@@ -224,6 +224,10 @@ object Main extends IOApp:
   def run(args: List[String]): IO[ExitCode] =
     if args.headOption.contains("import-haskell-db") then
       xyz.kd5ujc.scarab.node.tools.HaskellImportCommand.run(args.tail)
+    else if args.headOption.contains("import-ledger-snapshot") then
+      xyz.kd5ujc.scarab.node.tools.LedgerSnapshotImportCommand.run(args.tail)
+    else if args.headOption.contains("export-ledger-snapshot") then
+      xyz.kd5ujc.scarab.node.tools.LedgerSnapshotExportCommand.run(args.tail)
     else runFollow(args)
 
   private def runFollow(args: List[String]): IO[ExitCode] =
@@ -354,11 +358,14 @@ object Main extends IOApp:
         )
       )
       .flatMap { (options, setup, topology) =>
-        (
+        val ownership = options.db.fold(Resource.unit[IO])(db =>
+          xyz.kd5ujc.scarab.storage.DatabaseOwnership.resource[IO](fs2.io.file.Path.fromNioPath(db))
+        )
+        (ownership *> (
           utxoBacking(options),
           VerificationCache.resource[IO](),
           Scheduling.resource[IO](options.cpuThreads)
-        ).tupled.use { case ((store, checkpoints), cache, scheduling) =>
+        ).tupled).use { case ((store, checkpoints), cache, scheduling) =>
           followWith(
             options,
             setup,

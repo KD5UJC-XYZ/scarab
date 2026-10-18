@@ -1,7 +1,7 @@
 # Ledger snapshots in the Haskell node's directory layout (Step D)
 
 **Status**: Accepted (owner approved D1-D9, 2026-10-18). Stage S1 (the MemPack `TxOut` codec, [#143](https://github.com/KD5UJC-XYZ/scarab/issues/143))
-is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 to S5 are not started. Tracked in
+is built and measured (section 8: the codec is checked against the 4,526,058 outputs of a real preprod table and 1,731,810 of this node's own stored outputs, and is not adopted as the stored value); S2 is implemented and reference-checked (section 9); S3 import is implemented (section 10); S4 export is implemented and reference-byte-checked (section 11); S5 is reference-checked on six private epoch boundaries, preprod epoch 320 and the captured point reported by an existing synced preprod node (section 12). Tracked in
 [#140](https://github.com/KD5UJC-XYZ/scarab/issues/140) (roadmap E2, D16); the first consumer is the Mithril import
 ([#27](https://github.com/KD5UJC-XYZ/scarab/issues/27), E1), then mainnet from a Mithril snapshot
 ([#69](https://github.com/KD5UJC-XYZ/scarab/issues/69), D9). Part of "Step D" of
@@ -322,3 +322,216 @@ framing target and its wide-input allocation guard. A private `restart` run stop
 writes both shutdown snapshots, restores the snapshot and retains V5 throughout. The fixture
 comparison verifies the committed SHA-256 pins; actual snapshot authentication remains the S3/D4
 requirement.
+
+
+## 10. Stage 3 as built: offline import
+
+`import-ledger-snapshot --haskell-ledger <ledger/slot> --db <database>` reads the Mem backend
+and publishes a V5 snapshot with its RocksDB checkpoint. The existing immutable chunks and network
+identity are read-only inputs. The exact snapshot block, including its hash, number and era, must be
+present in the local immutable index and data; its stored CRC and decoded header are checked without
+opening the recovering/migrating ImmutableStore. Import refuses Byron, origin, a foreign network,
+an unavailable point, unknown state/codec shapes, unsupported backend, wrong-era MemPack outputs,
+metadata damage and inconsistent instant stake through closed errors.
+
+D4 is enforced by default: the operator supplies `--ancillary-verification-key <file>` in Mithril's
+published `ancillary.vkey` format (hex-encoded JSON containing 32 octets). The manifest defaults to
+`ancillary_manifest.json` at the archive root above `ledger/<slot>`; `--ancillary-manifest <file>`
+can name it explicitly. Every listed file must exist and match, and `state`, `tables` and `meta`
+must all be listed. The complete extracted ancillary archive is needed, including its unfinished
+immutable trio. `--no-verify-ancillary` explicitly selects an unauthenticated ledger; the JSON report
+records `ancillaryVerified: false`. It cannot be combined with verification arguments.
+
+The signature implementation follows Mithril 769d862's
+`internal/cardano-node/mithril-cardano-node-internal-database/src/entities/ancillary_files_manifest.rs:153-160`
+and `mithril-client/src/utils/ancillary_verifier.rs:59-86`: SHA-256 over ordered UTF-8 path bytes
+followed by ASCII lowercase digest text, signed as the raw 32-byte hash, excluding the signature.
+This is neither JSON bytes nor the hex representation of the hash. Mithril's
+`mithril-common/src/crypto_helper/ed25519.rs:100-111` uses `verify_strict`; Scarab reuses its typed
+strict public-input verifier. It also requires canonical point encodings, a deliberately stricter
+local trust boundary for operator-supplied keys and signatures. The pinned preprod signature passes.
+
+Local input safety additionally refuses duplicate JSON object fields; paths that are absolute,
+traverse parents or normalize ambiguously; invalid UTF-8 names; and symlinks. These restrictions prevent a local manifest from
+selecting files outside its root. Files are copied to an owned sibling staging directory while their
+actual consumed bytes are hashed; decoding subsequently reads only those staged copies. Verification
+therefore does not authorize a later second read of mutable source bytes.
+
+The typed era selects the S2 MemPack codec and era-low binary version. The full-map decoder
+(`Shelley/Ledger/Ledger.hs:376-387`, consensus 82ecba3) uses `eraDecoder`, independently of the current
+protocol-parameter major: Conway rejects duplicate keys, and earlier eras retain the last value.
+The sink uses batches of 1,024 entries, checks prior keys in the staged RocksDB and handles duplicates
+inside a batch too. Input need not be sorted. Bookkeeping tracks unique count, lovelace total and
+stake by credential/pointer; the final instant stake must equal the original state. Batch memory is
+bounded; the stake maps remain proportional to distinct stake credentials, as the node's UTxO handle
+requires.
+
+The Haskell state section is retained byte for byte. The sidecar has empty gaps because these are
+reference state fields, observed era bounds from the original telescope, `NodeExtras.empty`, and
+reconstructed offline bookkeeping. Parameter completion copies every field actually encoded by the
+era, including zero, and fills only absent fields from genesis. Protocol bookkeeping starts at the
+state's epoch; the TPraos-only previous nonce, which the reference state does not contain, starts
+neutral. TPraos validation uses its actual chain-dependent nonces, the next epoch tick replaces that
+bookkeeping value, and TPraos-to-Praos translation uses the current epoch nonce. No Haskell field or
+gap is synthesized for that node-only default.
+
+`utxo/`, `snapshots/`, `volatile/` or `ledger/` collisions are refused. Staged store/checkpoint
+resources close before publication. Parent directories are forced to disk, the fresh UTxO artifacts
+move first and the snapshot moves last; caught failures roll back only artifacts this import moved, using `Handle[F, Error]` scopes rather than the throwable channel. A real second-rename failure under `EitherT[IO, Error, *]` proves this cleanup after the UTxO move.
+Cleanup is best effort: if the filesystem also refuses removal, the original publication error is preserved and an orphan may remain for inspection. Cancellation attempts staging cleanup and releases ownership. A process crash can leave an unreferenced staged
+or UTxO directory; it cannot publish a snapshot before its checkpoint. Inspect and remove that orphan
+before retrying; import never replaces existing artifacts. The V5 schema, fingerprint and stored CBOR
+remain unchanged.
+
+A retained sibling lock inode coordinates the new `follow`, `import-haskell-db` and
+`import-ledger-snapshot` commands, before writable stores open. Canonical database aliases share it.
+It does not interoperate with older Scarab builds or Haskell node locks: the operator must keep both
+input and destination offline and stable. No lock is acquired by opening an existing RocksDB, and a
+failed import leaves preexisting database file bytes unchanged.
+
+Tests cover the six original Haskell fixture tables and their exact instant stake, captured-state
+imports in all six eras, original state bytes, V5/checkpoint readback, signature/digest/coverage faults,
+unsorted and duplicate maps across disk batches, cancellation, alias ownership and refusal invariants.
+The authenticated preprod import loads all 4,526,058 outputs in 57.1 s, verifies all six signed file
+digests and CRC/metadata, retains the original 32,511,416-byte state and restores its V5 checkpoint.
+Its inputs are the pinned ancillary archive and previously recorded local immutable chunks; no public
+follower was started. S4 export is described below; S5 reference replay, cross-node startup and
+preprod epoch/captured-point comparisons are recorded in section 12. The import result alone
+does not establish those later acceptance claims.
+
+S3 validation includes the full Docker `check` and scalafix, 66 decoder targets with 400,000 cases
+each, 159 script tests, and a private restart on the shared ownership path: 16 blocks, two graceful
+stops of 0.6 seconds, two shutdown snapshots, one restore, no errors and only V5 snapshot files.
+The container runtime binds the same host sibling lease inode beside `/db`; the unwritable root
+of a non-root container is not used as a different ownership namespace.
+
+The initial preprod recording permits 2,377 post-import blocks, ending at slot 136,565,931 /
+block 5,303,245. A later read-only capture from an existing synced node supplies epoch 320
+and its reported synced point. Section 12 records those comparisons and their fixed-capture
+scope; no new public-network synchronization is part of this work.
+
+## 11. Stage 4 as built: offline export
+
+`export-ledger-snapshot --db <dir> --out <ledger dir> [--slot N]` selects the newest existing
+snapshot or an exact unsigned-64-bit slot. It verifies the file checksum, V5 magic/schema and
+header/sidecar anchor, refuses Byron, gaps, embedded tables and unsettled bookkeeping, and opens
+only the checkpoint with the snapshot's exact stem and persisted stamp. Missing source paths are
+refused before taking a lease or creating a parent directory. No older format is migrated.
+
+`UtxoCheckpoint` exposes only its stamp and sorted entries. Its RocksDB handle is read-only, with
+native diagnostic files directed to staging outside the source. `SnapshotTableStream.writeOutputs`
+converts each existing CBOR value to the era's MemPack type and checks the exact expected count
+and ascending keys. The Haskell section becomes `state` unchanged; `meta` is computed from the
+original written CRCs. V5, the sidecar schema and internal UTxO value encoding are unchanged.
+
+The output must be outside the source database. The command closes and forces staged files,
+removes closed-reader diagnostic logs before publication, forces the directory and publishes the
+whole owned stage as `<slot>_scarab` by atomic directory rename. Successful publication leaves no
+owned stage for a later finalizer to clean. An existing target is refused. Cancellation or failure
+runs best-effort staging cleanup; a caught failure after rename rolls back the fresh output through
+the typed error channel.
+If the operating system also refuses rollback, the fresh directory can remain for offline inspection;
+the original publication error is retained and existing outputs are never overwritten.
+Required diagnostic deletion, file flush/force/close and directory persistence run in the normal
+effect before publication, so their typed errors propagate. Resource fallback cleanup is best
+effort on an existing failure or cancellation; an operating-system refusal can leave owned staging
+for offline inspection. `Resource[EitherT]` discards a domain `Left` raised only by a finalizer,
+which the native regressions establish; it is not used to report required persistence errors.
+The shared sibling lease coordinates participating new Scarab commands; older/Haskell writers
+still require the source to be offline.
+
+All six original node 11.1.3 Shelley-based fixtures export with exact `state` bytes, equal decoded
+outputs and valid metadata while source files/directories are read-only; every source file's
+hash and path remains unchanged. Regressions cover missing sources, gaps, Byron, old formats,
+checksum corruption, absent/exact slots, output collisions/ancestry, mismatched checkpoint count
+and stamp, ownership refusal and cancellation while streaming a 100,000-entry table.
+
+The preserved authenticated preprod S3 checkpoint exports all 4,526,058 entries in **30.8 s**.
+Both `state` (32,511,416 bytes) and `tables` (1,014,553,955 bytes) are byte-identical to the
+pinned Haskell originals, and metadata is equal. This byte claim is for this canonical table;
+noncanonical historical constructors are compared as decoded outputs, as D5 requires. Every
+source database file's SHA-256 remains unchanged. The full Docker check, including scalafix, and
+21 focused export/publication/CLI tests pass. This export alone does not close #140.
+
+
+## 12. Stage 5: reference acceptance from recorded inputs
+
+The recorded inputs permit bounded comparisons without a new public-network synchronization.
+On pre-integration source `0b2efe56`, the reference is `cardano-node` 11.1.3; every reference tool runs with
+Docker networking disabled. The Scala follower reads a fresh copy of existing immutable blocks,
+with an unreachable loopback peer and an isolated local socket. Original import/export artifacts
+and configuration files are preserved; tools that can write receive separate working copies.
+
+A previously recorded private chain contains 176 blocks through slot **3,436**, block **175**,
+hash `97c8eb26a29ee8f2183fcad7c2dfb907be28a82464026da87ad35f9044c0e9f9`.
+The reference analyser creates an authentic nine-output snapshot at slot 7. S3 imports that
+locally produced snapshot with the explicit unverified-ancillary option, and S4 exports it as
+`7_scarab`. `db-analyser --analyse-from 7 --count-blocks` accepts the export and counts the
+175 following blocks. Full-ledger-validation snapshots at slots **570, 1,002, 1,523, 2,053,
+2,525 and 3,010** match the existing Scala oracle projection at all six epoch boundaries, with
+zero differences. The Scala run starts from a fresh imported slot-7 checkpoint, replays all
+175 blocks and shuts down successfully. An earlier run replayed correctly but failed because its
+relative local-socket parent did not exist; it is not counted as a successful startup.
+
+A real reference node also starts with `7_scarab`, logs `ReplayFromSnapshot` at slot 7,
+replays the recorded immutable tail and closes at slot 3,436 with exit status zero using
+`--shutdown-on-slot-synced 3436`. No additional cluster or downloaded blocks are involved.
+At the mid-epoch endpoint, every existing projected field except `rewardUpdate` agrees:
+Haskell still holds `Pulsing`, which the Python projection presents as null, while Scala holds
+its eager `Complete` result. The as-built eager behavior is documented in
+[ledger-mirror step 2](ledger-mirror-step2.md), section 4 J2.3; the deferred representation
+work is J3.5/M11. This is not a claim that the unfinished reference rewards already equal
+Scala's complete result, and no field is masked to obtain a whole-endpoint pass.
+
+For preprod, the authenticated S3 checkpoint and exact S4 export are at slot **136,511,997**,
+block **5,300,868**. The initial immutable recording contains **2,377** later blocks, ending at
+slot **136,565,931**, block **5,303,245**, hash
+`deb213bccc724597e8e5e9ce1ed109a42277bf06088910398a10809233b2aa9f`.
+Haskell fully validates that tail from the S4 export, and Scala restores a fresh copy of the
+authenticated import and replays it. The unchanged oracle reports zero differences at the endpoint.
+
+A read-only capture from an existing synced preprod node extends the recording across epoch
+320. The copied immutable files are bound by SHA-256, each block CRC is checked, and the old
+chunk/index prefixes are identical. The first epoch-320 block is slot **136,598,413**, block
+**5,304,663**, hash
+`cc080f9770e2d1da687685e2b04366c3f062a96a09a72c63bcfca546299463dd`.
+The captured immutable endpoint is slot **136,602,570**, block **5,304,848**, hash
+`af06340f3a01364be13b3f17a0553c5f273ddf9706833ded2f82ee33a5098bdc`.
+A fresh authenticated-import copy replays **3,980** post-import blocks. Haskell independently
+loads the original gap-free S4 export and fully validates the same chain. Both the first boundary
+block and immutable endpoint match the existing oracle projection with **zero differences**.
+
+The node's immutable tip lags its selected chain by the stability window, so it is not labelled the
+live tip. A separate read-only capture of its volatile records supplies the selected chain through
+the exact point the node reported as **100% synced** at query time: slot **136,651,599**,
+block **5,307,009**, hash
+`ba5a197afa446662805cee82b483b9dc4e5c570c14b7015a6c43ae192826133f`.
+All **3,279** volatile-record CRCs are checked; **33** recorded rollbacks are applied, and
+**2,161** selected blocks extend the captured immutable anchor. Independent verification checks
+all **7,109** reconstructed source entries, original payloads, header hashes, slots, block numbers,
+previous-header links and rollback targets. Only copied records are reconstructed; the source node
+is not restarted or opened through a writable database API.
+
+A separate fresh authenticated-import copy replays **6,141** post-import blocks to this reported
+point, and Haskell fully validates the same raw chain from the original S4 export. The unchanged
+oracle again reports **zero differences**, including the UTxO digest, rewards, governance and
+consensus fields. Both Scala runs start from the original imported checkpoint, finish at the
+specified point and shut down successfully. Original authenticated database file hashes remain
+unchanged. The reference ImmutableDB indexes are made by the existing `oracle.export` helper
+from original raw blocks; missing earlier chunks are not fabricated. An attempted use of
+`import-haskell-db` on this sparse recording is correctly refused because chunk zero is absent;
+that attempt is not counted as replay acceptance. The corrected fixture copies only verified
+current-format immutable files into fresh local working databases.
+
+These results compare the existing oracle projection at exact points; they do not assert equality
+of arbitrary hidden/internal state. Catching up to a point an already synced node reported is a
+fixed-capture acceptance result. It does not establish ongoing public-network following or
+continuous comparison at later epochs, which remains K7/[#68](https://github.com/KD5UJC-XYZ/scarab/issues/68).
+No new public-network follower or synchronization is used for these runs.
+
+The earlier private and preprod replay snapshots acquire the existing `NonMyopic` and
+`ShelleyTransition` mirror gap flags. S4 correctly refuses to export them, so there is no
+post-replay endpoint table/CRC export claim; the gap-free imported baseline retains its earlier
+byte-identical preprod table proof and successful Haskell load/replay. Gap tracking remains
+J3.1/[#129](https://github.com/KD5UJC-XYZ/scarab/issues/129), and the private pending-versus-eager
+reward representation remains J3.5/M11. Those limits are neither masked nor relaxed by #140.

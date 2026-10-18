@@ -105,6 +105,23 @@ value except `--forge` and `--dump-state-full`. An unknown flag, a repeated flag
 
 Caveats:
 
+- A persistent Scarab writer owns a stable sibling file `.<database name>.scarab-lock` in the
+  database's parent. The process needs write access to that parent or to the existing lease file.
+  A container running as a non-root user with only `-v <host database>:/db` must also bind the same
+  host lease inode at `/.db.scarab-lock`; do not create an unrelated container-local lease. For example:
+
+  ```sh
+  DB=/absolute/path/to/db
+  LEASE="$(dirname "$DB")/.$(basename "$DB").scarab-lock"
+  touch "$LEASE"
+  docker run --rm --user "$(id -u):$(id -g)" \
+    -v "$DB":/db -v "$LEASE":/.db.scarab-lock ... follow --db /db ...
+  ```
+
+  Mounting a writable parent instead (for example `/data` with `--db /data/db`) also works. Keep the
+  lease file in place after the process exits: unlinking it can split ownership between two inodes.
+  This coordinates new Scarab followers and import commands, not older Scarab or Haskell writers.
+
 - A `--db` records the network it was created for (`<db>/network-identity`: magic and the Shelley and
   Byron genesis hashes) and refuses to open with another genesis directory: `error` event `kind`
   `NetworkMismatch`, "the database belongs to another network: it was created for magic ..., this node
@@ -193,7 +210,10 @@ way the node runs (the replay takes place before any peer is contacted, so a pee
 does not matter), and stop it when enough blocks have gone through:
 
 ```sh
-docker run -d --name check-old-db ... follow --genesis-dir /config --peer <relay> --db /db --keep-snapshots 2000 > node.log
+LEASE="$(dirname "$C")/.$(basename "$C").scarab-lock"
+touch "$LEASE"
+docker run -d --name check-old-db -v "$C":/db -v "$LEASE":/.db.scarab-lock ... \
+  follow --genesis-dir /config --peer <relay> --db /db --keep-snapshots 2000 > node.log
 until [ "$(grep -c '"event":"replayProgress"' node.log)" -ge 5 ] || grep -q '"event":"error"' node.log; do sleep 10; done
 docker stop -t 120 check-old-db                                 # a graceful stop writes a snapshot
 grep -E '"event":"(formatMigrated|snapshotRestored|replayStarted|replayProgress|snapshotRefused|snapshotSkipped|error|shutdownSnapshot)"' node.log | cut -c1-300
@@ -387,6 +407,66 @@ Measured (2026-10-15, 3 CPUs, 200 Preview chunks copied from the Haskell node's 
 blocks (slots 0 to 863,996, 46 MB) imported in 2 s; `follow` then replayed them in 42.7 s, connected
 with the intersection at the imported tip (slot 863,996), and went on to slot 3.33 M (epoch 38) in
 the following 6.5 minutes.
+
+### `import-ledger-snapshot`: start from a reference ledger snapshot
+
+Run offline in the JDK container, with the extracted ancillary archive and configuration mounted
+read-only, and the destination database and its sibling ownership lease mounted writable (as above):
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-ledger-snapshot \
+  --haskell-ledger <archive>/ledger/<slot> --db <database> --config <config.json> \
+  --ancillary-verification-key <trusted-ancillary.vkey>
+```
+
+First import the immutable blocks with `import-haskell-db` (above). The destination must contain the
+configured network identity and the exact snapshot point in its current-format immutable chunks,
+and no existing `utxo/`, `snapshots/`, `volatile/` or `ledger/` artifacts. Copy a database if its node
+is running. The new follower and both import commands share an ownership lease; older Scarab builds
+and Haskell nodes do not participate, so keep their inputs offline too.
+
+Verification is required by default. Supply the network's trusted Mithril ancillary verification key
+in its native hex-encoded JSON format. The default manifest is `<archive>/ancillary_manifest.json`;
+`--ancillary-manifest <file>` overrides its location. All listed files, including the unfinished
+immutable chunk trio, must be extracted and match their digests. `--no-verify-ancillary` explicitly
+accepts an unauthenticated ledger instead; the result records `ancillaryVerified: false`.
+
+The command checks metadata, era, exact immutable block and recomputed instant stake, builds a fresh
+RocksDB checkpoint and V5 snapshot in staging, and publishes only after validation. It never changes
+existing immutable files or overwrites ledger artifacts. JSON `importLedgerSnapshot` events report
+`done` with slot/hash, era, output count, lovelace and trust, or a typed `error`. A following `follow`
+restores that checkpoint and replays local blocks after the snapshot. Byron and non-Mem snapshots
+are refused. Import/export details and recovery of an interrupted staged import are in
+[the accepted design](design/haskell-snapshots.md#10-stage-3-as-built-offline-import); export and
+cross-node acceptance remain Step D S4/S5 (#140).
+
+### `export-ledger-snapshot`: write a reference ledger directory
+
+Run offline in the JDK container, with the source database readable and the output directory
+writable. The source's sibling ownership lease must be writable too (see the Docker lease
+example above); source database files can remain read-only.
+
+```sh
+java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-ledger-snapshot \
+  --db <database> --out <ledger directory> [--slot N]
+```
+
+The default is the newest snapshot; `--slot` selects an exact stored snapshot slot, an unsigned
+64-bit number. The command checks the existing V5 file's checksum and schema, preserves its
+Haskell state bytes, and reads its matching checkpoint without recovery or migration. A state
+with recorded gaps, a Byron state, an unsettled checkpoint or a missing selection is refused.
+This means an imported reference state can be exported; a state whose recorded gaps have not
+been resolved cannot be exported by inventing those fields.
+
+The fresh directory `<ledger directory>/<slot>_scarab` contains `state`, `tables` and `meta`.
+The suffix prevents the Haskell node's temporary-snapshot policy from deleting it. The command
+streams sorted MemPack outputs, closes and forces staged files, then publishes the directory
+atomically. An existing destination is refused, and the output must be outside the source
+database. Failure or cancellation removes staging. JSON `exportLedgerSnapshot` events report
+`done` with the point, output count and directory, or a typed `error`.
+
+Reference replay and epoch-boundary acceptance remain #140; the command alone does not prove
+that acceptance. It preserves V5 and the node's stored CBOR values.
 
 ### Preprod
 

@@ -264,7 +264,9 @@ object SnapshotV5:
   /** The sidecar and the Haskell bytes of a file, after the magic, the length and the fingerprint
     * have been checked.
     */
-  private def sections(content: Array[Byte]): Either[StorageError, (SnapshotSidecar, Bytes)] =
+  private[storage] def sections(
+      content: Array[Byte]
+  ): Either[StorageError, (SnapshotSidecar, Bytes)] =
     val kind = FileKind.SnapshotFile
     if content.length < HeaderSize || !content.startsWith(Magic) then
       val older =

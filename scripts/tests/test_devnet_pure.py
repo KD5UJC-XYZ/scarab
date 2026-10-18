@@ -517,6 +517,22 @@ class SchedulingSummaryTest(unittest.TestCase):
         self.assertEqual(s["timersLateOver100Ms"], 1)
         self.assertEqual((s["longestStepMs"], s["longestStep"]), (310, "epochBoundary"))
 
+    def test_database_mounts_reuse_the_host_sibling_lease_inode(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = pathlib.Path(d) / "db"
+            db.mkdir()
+            lock = db.parent / ".db.scarab-lock"
+            mounts = cluster.database_mounts(db)
+            inode = lock.stat().st_ino
+            self.assertEqual(mounts, [f"{db}:/db", f"{lock}:/.db.scarab-lock"])
+            self.assertEqual(cluster.database_mounts(db), mounts)
+            self.assertEqual(lock.stat().st_ino, inode)
+            self.assertEqual(list(db.iterdir()), [])
+            alias = db.parent / "alias"
+            alias.symlink_to(db, target_is_directory=True)
+            self.assertEqual(cluster.database_mounts(alias)[1], mounts[1])
+
+
     def test_scala_container_uses_the_scenario_cpus(self):
         import argparse
         args = argparse.Namespace(name="n", scala_cpus=1.0)
