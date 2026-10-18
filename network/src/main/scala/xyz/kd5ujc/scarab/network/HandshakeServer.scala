@@ -7,7 +7,7 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync.DecodeResult
-import xyz.kd5ujc.scarab.protocol.Handshake
+import xyz.kd5ujc.scarab.protocol.{Handshake, NodeToClientVersion}
 import scala.concurrent.duration.*
 
 /** Node-to-node handshake, responder side: reads the client's proposal, answers through the pure
@@ -29,7 +29,7 @@ object HandshakeServer:
 
   /** The node-to-client versions this node accepts (no query). */
   def localOffers(magic: Long): Vector[(Int, Handshake.Data)] =
-    (16 to 23).toVector.map(v => v -> Handshake.Data(magic))
+    NodeToClientVersion.values.toVector.map(v => v.number -> Handshake.Data(magic))
 
   private def decodeProposal(suite: Handshake.Suite)(
       bytes: Bytes

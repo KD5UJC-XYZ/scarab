@@ -3,10 +3,12 @@ package xyz.kd5ujc.scarab.network
 
 import cats.effect.Async
 import cats.mtl.Raise
+import cats.mtl.syntax.all.*
 import cats.effect.implicits.*
 import cats.syntax.all.*
 import cats.effect.Resource
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.protocol.NodeToClientVersion
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch
 import xyz.kd5ujc.scarab.protocol.CardanoBlockFetch.RawNtNBlock
 
@@ -35,7 +37,7 @@ object NodeToClientServer:
       .resource(bearer, protocols, Mux.Config(role = Mux.Role.Responder))
       .use { mux =>
         for
-          _ <- mux
+          agreed <- mux
             .channel(Protocols.Handshake)
             .flatMap(
               HandshakeServer.run(
@@ -44,13 +46,24 @@ object NodeToClientServer:
                 suite = xyz.kd5ujc.scarab.protocol.Handshake.Suite.NodeToClient
               )
             )
+          version <- NodeToClientVersion
+            .fromNumber(agreed.version)
+            .fold(
+              NetworkError
+                .IllegalTransition(Protocols.Handshake, "unoffered node-to-client version")
+                .raise[F, NodeToClientVersion]
+            )(Async[F].pure)
           submission <- mux.channel(Protocols.LocalTxSubmission)
           querying <- stateQuery.traverse(source =>
             mux
               .channel(Protocols.LocalStateQuery)
               .map(c =>
                 LocalStateQueryServer
-                  .run(c, source, LocalStateQueryServer.Settings(settings.idleTimeout))
+                  .run(
+                    c,
+                    source.forVersion(version),
+                    LocalStateQueryServer.Settings(settings.idleTimeout)
+                  )
               )
           )
           following <- chainSync.traverse(source =>

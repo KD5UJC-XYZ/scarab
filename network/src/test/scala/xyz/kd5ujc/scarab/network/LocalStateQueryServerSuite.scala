@@ -5,7 +5,7 @@ import cats.effect.{IO, Ref, Resource}
 import cats.mtl.Handle
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, LocalTxSubmission}
+import xyz.kd5ujc.scarab.protocol.{Handshake, LocalStateQuery, LocalTxSubmission, NodeToClientVersion}
 import xyz.kd5ujc.scarab.protocol.ChainSync.{Point, Role, UInt64}
 import xyz.kd5ujc.scarab.protocol.LocalStateQuery.{Failure, Message, State, Target}
 import munit.CatsEffectSuite
@@ -22,8 +22,16 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
   /** The chain `point(1)`, `point(2)`, `point(3)` (tip); the immutable tip is `point(1)`; the state
     * at a point is its number. `acquired` records the targets asked for.
     */
-  private final class Toy(val acquired: Ref[IO, Vector[Target]], val tip: Ref[IO, Int]):
+  private final class Toy(
+      val acquired: Ref[IO, Vector[Target]],
+      val tip: Ref[IO, Int],
+      val versions: Ref[IO, Vector[NodeToClientVersion]]
+  ):
     val source: LocalStateQueryServer.Source[IO] = new LocalStateQueryServer.Source[IO]:
+      override def forVersion(version: NodeToClientVersion): LocalStateQueryServer.Source[IO] =
+        new LocalStateQueryServer.Source[IO]:
+          def acquire(target: Target) = versions.update(_ :+ version) *> source.acquire(target)
+
       def acquire(target: Target) =
         acquired.update(_ :+ target) *> tip.get.map { current =>
           val chosen: Either[Failure, Int] = target match
@@ -44,7 +52,11 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
         }
 
   private def toy: IO[Toy] =
-    (Ref.of[IO, Vector[Target]](Vector.empty), Ref.of[IO, Int](3)).mapN(new Toy(_, _))
+    (
+      Ref.of[IO, Vector[Target]](Vector.empty),
+      Ref.of[IO, Int](3),
+      Ref.of[IO, Vector[NodeToClientVersion]](Vector.empty)
+    ).mapN(new Toy(_, _, _))
 
   private def send(ch: MuxChannel[IO], state: State, m: Message): IO[Unit] =
     IO.fromEither(LocalStateQuery.encode(state, Role.Client, m).left.map(RuntimeException(_)))
@@ -53,7 +65,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
   private def receive(ch: MuxChannel[IO], state: State)(using Handle[IO, NetworkError]) =
     ch.recv(LocalStateQuery.MaxMessageBytes)(LocalStateQuery.decodePrefix(state, Role.Server, _))
 
-  private def session[A](t: Toy)(
+  private def session[A](t: Toy, versions: Vector[Int] = Vector(16, 23))(
       body: (MuxChannel[IO], MuxChannel[IO]) => Handle[IO, NetworkError] ?=> IO[A]
   ): IO[(A, String)] =
     Resource.eval(Bearer.inMemory[IO]()).use { (clientEnd, serverEnd) =>
@@ -71,7 +83,7 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
                   hs <- mux.channel(0)
                   _ <- HandshakeClient.run(
                     hs,
-                    Vector(16, 23).map(v => v -> Handshake.Data(magic)),
+                    versions.map(v => v -> Handshake.Data(magic)),
                     suite = Handshake.Suite.NodeToClient
                   )
                   lsq <- mux.channel(7)
@@ -170,6 +182,23 @@ class LocalStateQueryServerSuite extends CatsEffectSuite:
         yield ()
       }.map { case (_, ended) =>
         assert(ended.contains("query not answered: unsupported query unknown query"), ended)
+      }
+    }
+  }
+
+  NodeToClientVersion.values.foreach { version =>
+    test(s"the negotiated ${version.number} governs every acquired session") {
+      toy.flatMap { t =>
+        session(t, Vector(version.number)) { (ch, _) =>
+          for
+            _ <- send(ch, State.Idle, Message.Acquire(Target.VolatileTip))
+            _ <- receive(ch, State.Acquiring)
+            _ <- send(ch, State.Acquired, Message.ReAcquire(Target.ImmutableTip))
+            _ <- receive(ch, State.Acquiring)
+            _ <- send(ch, State.Acquired, Message.Release)
+            _ <- send(ch, State.Idle, Message.Done)
+          yield ()
+        } *> t.versions.get.map(vs => assertEquals(vs, Vector(version, version)))
       }
     }
   }
