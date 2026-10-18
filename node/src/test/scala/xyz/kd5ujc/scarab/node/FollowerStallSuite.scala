@@ -21,7 +21,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer, ScriptLocation}
 import xyz.kd5ujc.scarab.protocol.NtNHeader
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.network.*
@@ -357,7 +357,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   private enum FatalCase:
-    case Storage, Unavailable, Defect, NetworkDefect
+    case Storage, Unavailable, UnavailablePhase1, Defect, NetworkDefect
 
   for injected <- FatalCase.values.toList
   do
@@ -386,10 +386,12 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     summon[Handle[IO, NodeError]].raise[NodeError, Unit](
                       StorageError.Io("volatile", "injected")
                     )
-                  case FatalCase.Unavailable =>
+                  case FatalCase.Unavailable | FatalCase.UnavailablePhase1 =>
                     val failure = LedgerFailure.Unavailable(
                       Bytes.empty,
-                      Redeemer(0, 0, Bytes.empty, ExUnits.zero),
+                      if injected == FatalCase.UnavailablePhase1 then
+                        ScriptLocation.Phase1(Bytes.empty)
+                      else ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                       EvalFailure.Unsupported("injected")
                     )
                     summon[Handle[IO, NodeError]].raise[NodeError, Unit](
@@ -488,7 +490,10 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             case Vector(Fatal.Storage(StorageError.Io("volatile", "injected")))
                 if injected == FatalCase.Storage =>
               ()
-            case Vector(Fatal.Unavailable(_)) if injected == FatalCase.Unavailable => ()
+            case Vector(Fatal.Unavailable(error))
+                if injected == FatalCase.Unavailable || injected == FatalCase.UnavailablePhase1 =>
+              val phase1 = error.failure.location.isInstanceOf[ScriptLocation.Phase1]
+              assertEquals(phase1, injected == FatalCase.UnavailablePhase1)
             case Vector(Fatal.Defect(cause)) if injected == FatalCase.Defect =>
               assertEquals(cause.getMessage, "injected")
             case Vector(Fatal.Defect(cause)) if injected == FatalCase.NetworkDefect =>

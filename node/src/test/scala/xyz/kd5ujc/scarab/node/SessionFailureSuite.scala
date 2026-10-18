@@ -7,7 +7,7 @@ import cats.mtl.{Handle, Raise, Stateful}
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits}
-import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer}
+import xyz.kd5ujc.scarab.ledger.{LedgerFailure, Redeemer, ScriptLocation}
 import xyz.kd5ujc.scarab.consensus.{Anchor, BlockRef, BlockRules, FollowerEvents, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
@@ -97,7 +97,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 BlockFailure.Tx(
                   LedgerFailure.Unavailable(
                     Bytes.empty,
-                    Redeemer(0, 0, Bytes.empty, ExUnits.zero),
+                    ScriptLocation.Phase2(Redeemer(0, 0, Bytes.empty, ExUnits.zero)),
                     EvalFailure
                       .Unsupported("injected implementation limit")
                   )
