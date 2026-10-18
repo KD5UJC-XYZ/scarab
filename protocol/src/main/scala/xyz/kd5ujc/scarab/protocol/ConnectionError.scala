@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.protocol
 
+import xyz.kd5ujc.scarab.codec.DomainError
+
 /** Why the connection manager refuses or cannot do something. Closed; raised through `Raise`. */
-enum ConnectionError:
+enum ConnectionError extends DomainError:
   /** The hard limit of accepted (inbound) connections is reached. */
   case InboundLimit(remote: String, limit: Int)
 
