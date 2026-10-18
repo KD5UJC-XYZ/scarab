@@ -63,7 +63,9 @@ object LiteLedger:
   def fromGenesis(shelley: Json, startEpoch: BigInt = 0): Either[ConfigError, LiteLedger] =
     val c = shelley.hcursor
     val pp = c.downField("protocolParams")
-    def err(what: String, e: io.circe.DecodingFailure) = ConfigError(s"genesis $what: ${e.message}")
+    def err(what: String, e: io.circe.DecodingFailure) = ConfigError(
+      ConfigProblem.JsonField("genesis", what, e)
+    )
     for
       major <- pp
         .downField("protocolVersion")
@@ -88,7 +90,9 @@ object LiteLedger:
             .downField("contents")
             .as[String]
             .leftMap(err("entropy", _))
-            .flatMap(h => Bytes.fromHex(h).leftMap(ConfigError(_)).map(Nonce.Hash(_)))
+            .flatMap(h =>
+              Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e))).map(Nonce.Hash(_))
+            )
       maxBB <- pp.downField("maxBlockBodySize").as[BigInt].leftMap(err("maxBlockBodySize", _))
       maxTx <- pp.downField("maxTxSize").as[BigInt].leftMap(err("maxTxSize", _))
       maxBH <- pp.downField("maxBlockHeaderSize").as[BigInt].leftMap(err("maxBlockHeaderSize", _))
@@ -99,15 +103,15 @@ object LiteLedger:
         .leftMap(err("genDelegs", _))
         .flatMap(_.getOrElse(Map.empty).toVector.traverse { case (g, m) =>
           for
-            gk <- Bytes.fromHex(g).leftMap(ConfigError(_))
+            gk <- Bytes.fromHex(g).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
             dk <- m
               .get("delegate")
-              .toRight(ConfigError("genDeleg delegate"))
-              .flatMap(Bytes.fromHex(_).leftMap(ConfigError(_)))
+              .toRight(ConfigError(ConfigProblem.MissingField("genDeleg", "delegate")))
+              .flatMap(Bytes.fromHex(_).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
             vk <- m
               .get("vrf")
-              .toRight(ConfigError("genDeleg vrf"))
-              .flatMap(Bytes.fromHex(_).leftMap(ConfigError(_)))
+              .toRight(ConfigError(ConfigProblem.MissingField("genDeleg", "vrf")))
+              .flatMap(Bytes.fromHex(_).leftMap(e => ConfigError(ConfigProblem.Hex(e))))
           yield gk -> GenDelegPair(dk, vk)
         })
     yield LiteLedger(

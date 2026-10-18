@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.CborRead
+
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
@@ -177,7 +179,7 @@ class ByronUpdateSuite extends ScalaCheckSuite:
 
   private def payload(proposal: Option[Bytes], votes: Seq[Bytes]): UpdatePayload =
     val encoded = Cb.arr(proposal.fold(Cb.arr())(p => Cb.arr(p)), Cb.arr(votes*))
-    xyz.kd5ujc.scarab.ledger.CborRead
+    CborRead
       .decode(encoded)
       .flatMap(UpdatePayload.decode)
       .fold(e => fail(e), identity)
@@ -407,7 +409,7 @@ class ByronUpdateSuite extends ScalaCheckSuite:
         Cb.arr(Cb.uint(7))
       ))*
     )
-    val decoded = xyz.kd5ujc.scarab.ledger.CborRead
+    val decoded = CborRead
       .decode(update)
       .flatMap(ByronParamsUpdate.decode)
       .fold(e => fail(e), identity)

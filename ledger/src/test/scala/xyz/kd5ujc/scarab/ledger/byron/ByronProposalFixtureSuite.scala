@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.byron
 
+import xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+
+import xyz.kd5ujc.scarab.ledger.CborRead
+
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
@@ -16,7 +20,7 @@ class ByronProposalFixtureSuite extends FunSuite:
 
   private def payload(
       proposal: Bytes
-  ): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, UpdatePayload] =
+  ): Either[LedgerDecodeError, UpdatePayload] =
     Cbor
       .decode(ByronCbor.of(0x82, 0x81) ++ proposal ++ ByronCbor.of(0x80))
       .flatMap(UpdatePayload.decode)
@@ -48,7 +52,7 @@ class ByronProposalFixtureSuite extends FunSuite:
       val bytes = raw(name)
       assert(payload(bytes).isLeft)
       val proposal =
-        xyz.kd5ujc.scarab.ledger.CborRead.decode(bytes).fold(e => fail(e.toString), identity)
+        CborRead.decode(bytes).fold(e => fail(e.toString), identity)
       proposal.value match
         case Value.Arr(version +: _) =>
           assertEquals(ByronVersion.decode(version), Left(Error.OutOfRange(field, number)))

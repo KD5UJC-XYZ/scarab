@@ -233,7 +233,7 @@ object ConwayGenesis:
         (c.downField("numerator").as[BigInt], c.downField("denominator").as[BigInt])
           .mapN((n, d) => Rational(n, d))
       )
-      .leftMap(e => ConfigError(s"genesis rational: ${e.message}"))
+      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", "rational", e)))
 
   def votingParams(
       c: ACursor
@@ -268,24 +268,31 @@ object ConwayGenesis:
           "treasuryWithdrawal"
         )
       )
-      p <- PoolVotingThresholds.fromVector(pool).leftMap(ConfigError(_))
-      d <- DRepVotingThresholds.fromVector(drep).leftMap(ConfigError(_))
+      p <- PoolVotingThresholds
+        .fromVector(pool)
+        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
+      d <- DRepVotingThresholds
+        .fromVector(drep)
+        .leftMap(e => ConfigError(ConfigProblem.LedgerValue(e)))
       minSize <- c
         .downField("committeeMinSize")
         .as[Option[BigInt]]
-        .leftMap(e => ConfigError(e.message))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
       maxTerm <- c
         .downField("committeeMaxTermLength")
         .as[Option[BigInt]]
-        .leftMap(e => ConfigError(e.message))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
     yield (p, d, minSize.getOrElse(BigInt(0)), maxTerm.getOrElse(BigInt(0)))
 
   private def credential(s: String): Either[ConfigError, Credential] =
     def hex(h: String) =
-      Bytes.fromHex(h).leftMap(ConfigError(_)).filterOrElse(_.size == 28, ConfigError(s"hash $h"))
+      Bytes
+        .fromHex(h)
+        .leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+        .filterOrElse(_.size == 28, ConfigError(ConfigProblem.ByteLength("hash", 28, h.length / 2)))
     if s.startsWith("keyHash-") then hex(s.drop(8)).map(Credential.Key(_))
     else if s.startsWith("scriptHash-") then hex(s.drop(11)).map(Credential.Script(_))
-    else Left(ConfigError(s"credential $s"))
+    else Left(ConfigError(ConfigProblem.Credential(s)))
 
   /** The genesis committee and constitution; absent entries give an empty committee and
     * constitution with an empty anchor, as the genesis defaults do.
@@ -298,7 +305,9 @@ object ConwayGenesis:
         .downField("committee")
         .downField("members")
         .as[Option[Map[String, BigInt]]]
-        .leftMap(e => ConfigError(s"committee members: ${e.message}"))
+        .leftMap(e =>
+          ConfigError(ConfigProblem.JsonField("conway genesis", "committee members", e))
+        )
       parsed <- members.getOrElse(Map.empty).toVector.traverse { case (k, v) =>
         credential(k).map(_ -> v)
       }
@@ -310,20 +319,24 @@ object ConwayGenesis:
         .downField("anchor")
         .downField("url")
         .as[Option[String]]
-        .leftMap(e => ConfigError(e.message))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
       hash <- c
         .downField("constitution")
         .downField("anchor")
         .downField("dataHash")
         .as[Option[String]]
-        .leftMap(e => ConfigError(e.message))
-      hashBytes <- hash.traverse(h => Bytes.fromHex(h).leftMap(ConfigError(_)))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
+      hashBytes <- hash.traverse(h =>
+        Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+      )
       script <- c
         .downField("constitution")
         .downField("script")
         .as[Option[String]]
-        .leftMap(e => ConfigError(e.message))
-      scriptBytes <- script.traverse(h => Bytes.fromHex(h).leftMap(ConfigError(_)))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("conway genesis", "governance", e)))
+      scriptBytes <- script.traverse(h =>
+        Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+      )
     yield (
       // The ledger always has a committee after the Conway translation, possibly with no members.
       Some(Committee(parsed.toMap, threshold)),

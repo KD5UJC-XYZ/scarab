@@ -42,7 +42,7 @@ object PreprodDeepTx:
   val bytes: Bytes = hex(Files.readString(dir.resolve("tx-f90dce57.hex")).trim)
 
   def parsed: Tx =
-    xyz.kd5ujc.scarab.ledger.CborRead.decode(bytes).fold(sys.error, identity).value match
+    CborRead.decode(bytes).fold(sys.error, identity).value match
       case Value.Arr(xs) =>
         Tx.fromBlock(Block.Transaction(xs(0).original, xs(1).original, None, true), Era.Conway)
           .fold(e => sys.error(e.toString), identity)

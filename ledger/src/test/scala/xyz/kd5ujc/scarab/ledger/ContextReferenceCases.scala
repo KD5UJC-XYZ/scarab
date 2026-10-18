@@ -17,7 +17,7 @@ object ContextReferenceCases extends Assertions:
   final case class Recorded(json: Json):
     val name = field[String](json, "name")
     val original = hex(field[String](json, "transaction"))
-    val tx = xyz.kd5ujc.scarab.ledger.CborRead
+    val tx = CborRead
       .decode(original)
       .fold(e => fail(e.toString), identity)
       .value match

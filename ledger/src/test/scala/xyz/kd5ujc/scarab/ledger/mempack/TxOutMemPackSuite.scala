@@ -177,7 +177,7 @@ class TxOutMemPackSuite extends ScalaCheckSuite:
 
   /** Entries of a `tables` file read whole: `[ {key bytes: value bytes} ]`. */
   private def tableEntries(path: Path): Vector[(Bytes, Bytes)] =
-    val node = xyz.kd5ujc.scarab.ledger.CborRead
+    val node = CborRead
       .decode(Bytes.fromArray(Files.readAllBytes(path)))
       .fold(e => fail(e.toString), identity)
     val items = CborRead.array(node, "tables").fold(e => fail(e.toString), identity)

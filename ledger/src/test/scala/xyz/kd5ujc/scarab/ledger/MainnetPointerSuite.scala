@@ -28,13 +28,13 @@ class MainnetPointerSuite extends FunSuite:
   private val body: Bytes =
     val hex = Files.readString(Path.of("fixtures/mainnet/mary-pointer-tx-9a47e091.hex")).trim
     val tx =
-      xyz.kd5ujc.scarab.ledger.CborRead
+      CborRead
         .decode(bytes(hex))
         .flatMap(CborRead.array(_, "transaction"))
         .fold(e => fail(e.toString), identity)
     tx.head.original
 
-  private def decoded(era: Era): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, TxBody] =
+  private def decoded(era: Era): Either[LedgerDecodeError, TxBody] =
     TxBody.decode(body, Address.Mode.of(era))
 
   private val mary: TxBody = decoded(Era.Mary).fold(e => fail(e), identity)
@@ -116,7 +116,7 @@ class MainnetPointerSuite extends FunSuite:
   private def read(
       groups: String,
       mode: Address.Mode
-  ): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, (String, Address.Kind)] =
+  ): Either[LedgerDecodeError, (String, Address.Kind)] =
     Address.decode(pointer(groups), mode).map(a => (a.raw.hex, a.kind))
 
   test("a pointer that fits is the same in every mode") {

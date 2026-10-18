@@ -34,7 +34,7 @@ class MainnetGarbageAddressSuite extends FunSuite:
   private val stake = "5ecf2d283418a60be5a848a2380eb721000da1e0bbf39733134beca4"
   private val garbage = "cb57afb0b35fc89c63061c9914e055001a518c7516"
 
-  private def tx(era: Era): Either[xyz.kd5ujc.scarab.ledger.LedgerDecodeError, Tx] =
+  private def tx(era: Era): Either[LedgerDecodeError, Tx] =
     Tx.fromBlock(transaction, era)
 
   private val mary: Tx = tx(Era.Mary).fold(e => fail(e), identity)

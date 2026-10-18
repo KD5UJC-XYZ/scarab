@@ -172,7 +172,7 @@ object ProtocolParams:
       cur
         .downField(name)
         .as[Option[A]]
-        .leftMap(e => ConfigError(s"protocol parameter $name: ${e.message}"))
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("protocol parameters", name, e)))
     // Alonzo genesis files differ in key names; absent values are zero.
     def anyInt(cur: ACursor, names: String*): Either[ConfigError, BigInt] =
       Right(
@@ -288,9 +288,12 @@ object ProtocolParams:
       case Right(None) | Right(Some("NeutralNonce")) => Right(Nonce.Neutral)
       case Right(Some(_)) =>
         get[String](s.downField("extraEntropy"), "contents")
-          .flatMap(h => xyz.kd5ujc.scarab.codec.Bytes.fromHex(h).leftMap(ConfigError(_)))
+          .flatMap(h =>
+            xyz.kd5ujc.scarab.codec.Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+          )
           .map(Nonce.Hash(_))
-      case Left(e) => Left(ConfigError(s"extraEntropy: ${e.message}"))
+      case Left(e) =>
+        Left(ConfigError(ConfigProblem.JsonField("protocol parameters", "extraEntropy", e)))
 
   /** Genesis cost models are objects of named integers, canonically ordered by parameter name. */
   private def costModelsOf(c: ACursor): Either[ConfigError, Map[Int, Vector[BigInt]]] =
@@ -303,7 +306,7 @@ object ProtocolParams:
               case "PlutusV1" => Right(0)
               case "PlutusV2" => Right(1)
               case "PlutusV3" => Right(2)
-              case other      => Left(ConfigError(s"cost model language $other"))
+              case other      => Left(ConfigError(ConfigProblem.CostModelLanguage(other)))
             // The ledger reads named parameters into a map ordered by name; that order is the
             // canonical parameter order, whatever the order of the genesis file.
             val values = model.asObject match
@@ -312,12 +315,16 @@ object ProtocolParams:
                   .sortBy(_._1)
                   .map(_._2)
                   .traverse(
-                    _.as[BigInt].leftMap(e => ConfigError(s"cost model: ${e.message}"))
+                    _.as[BigInt].leftMap(e =>
+                      ConfigError(ConfigProblem.JsonField("protocol parameters", "cost model", e))
+                    )
                   )
               case None =>
                 model
                   .as[Vector[BigInt]]
-                  .leftMap(e => ConfigError(s"cost model: ${e.message}"))
+                  .leftMap(e =>
+                    ConfigError(ConfigProblem.JsonField("protocol parameters", "cost model", e))
+                  )
             (tag, values).tupled
           }
           .map(_.toMap)
@@ -442,4 +449,6 @@ object ProtocolParams:
     }
 
   private def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
-    c.downField(name).as[A].leftMap(e => ConfigError(s"protocol parameter $name: ${e.message}"))
+    c.downField(name)
+      .as[A]
+      .leftMap(e => ConfigError(ConfigProblem.JsonField("protocol parameters", name, e)))

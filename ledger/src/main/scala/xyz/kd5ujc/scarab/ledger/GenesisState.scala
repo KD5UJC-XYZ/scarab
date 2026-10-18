@@ -56,7 +56,7 @@ object GenesisState:
     files.shelley.hcursor
       .downField("updateQuorum")
       .as[Option[Int]]
-      .leftMap(e => ConfigError(s"updateQuorum: ${e.message}"))
+      .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", "updateQuorum", e)))
       .product(get[BigInt](files.alonzo.hcursor, "lovelacePerUTxOWord"))
       .map { (quorum, perWord) =>
         LedgerGlobals(
@@ -74,11 +74,11 @@ object GenesisState:
       }
 
   def output(hex: String, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
-    Bytes.fromHex(hex).leftMap(ConfigError(_)).flatMap(outputBytes(_, coin))
+    Bytes.fromHex(hex).leftMap(e => ConfigError(ConfigProblem.Hex(e))).flatMap(outputBytes(_, coin))
 
   /** Genesis outputs are spent from the pseudo transaction whose id is the address hash. */
   def outputBytes(raw: Bytes, coin: BigInt): Either[ConfigError, (TxIn, TxOut)] =
-    Address.decode(raw).leftMap(ConfigError(_)).map { address =>
+    Address.decode(raw).leftMap(e => ConfigError(ConfigProblem.LedgerValue(e))).map { address =>
       // Genesis outputs have no transaction encoding; `raw` is only consulted for new outputs.
       TxIn(Blake2b.hash256.hash(raw), 0) -> TxOut(address, Value.coin(coin))
     }
@@ -87,7 +87,9 @@ object GenesisState:
     val c = j.hcursor
     for
       operator <- hex28(id)
-      vrf <- get[String](c, "vrf").flatMap(h => Bytes.fromHex(h).leftMap(ConfigError(_)))
+      vrf <- get[String](c, "vrf").flatMap(h =>
+        Bytes.fromHex(h).leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+      )
       pledge <- get[BigInt](c, "pledge")
       cost <- get[BigInt](c, "cost")
       margin <- get[BigDecimal](c, "margin").map(Rational.fromDecimal)
@@ -110,20 +112,23 @@ object GenesisState:
   def credential(s: String): Either[ConfigError, Credential] =
     if s.startsWith("keyHash-") then hex28(s.drop(8)).map(Credential.Key(_))
     else if s.startsWith("scriptHash-") then hex28(s.drop(11)).map(Credential.Script(_))
-    else Left(ConfigError(s"credential $s"))
+    else Left(ConfigError(ConfigProblem.Credential(s)))
 
   def drep(s: String): Either[ConfigError, DRep] =
     s match
       case "drep-alwaysAbstain"       => Right(DRep.AlwaysAbstain)
       case "drep-alwaysNoConfidence"  => Right(DRep.AlwaysNoConfidence)
       case _ if s.startsWith("drep-") => credential(s.drop(5)).map(DRep.Registered(_))
-      case _                          => Left(ConfigError(s"drep $s"))
+      case _                          => Left(ConfigError(ConfigProblem.DRep(s)))
 
   def hex28(h: String): Either[ConfigError, Bytes] =
     Bytes
       .fromHex(h)
-      .leftMap(ConfigError(_))
-      .flatMap(b => Either.cond(b.size == 28, b, ConfigError(s"hash $h")))
+      .leftMap(e => ConfigError(ConfigProblem.Hex(e)))
+      .flatMap(b =>
+        Either
+          .cond(b.size == 28, b, ConfigError(ConfigProblem.ByteLength("hash", 28, h.length / 2)))
+      )
 
   /** Genesis injections live under `extraConfig.<name>.data`; older files use a top-level map. */
   def injection[V: Decoder](
@@ -132,15 +137,16 @@ object GenesisState:
       name: String
   ): Either[ConfigError, Map[String, V]] =
     def at(c: ACursor) =
-      c.as[Option[Map[String, V]]].leftMap(e => ConfigError(s"$name: ${e.message}"))
+      c.as[Option[Map[String, V]]]
+        .leftMap(e => ConfigError(ConfigProblem.JsonField("genesis injection", name, e)))
     (at(extra.downField(name).downField("data")), at(top.downField(name))).tupled.flatMap {
       case (Some(a), legacy) if legacy.forall(_.isEmpty) => Right(a)
       case (None, legacy)                                => Right(legacy.getOrElse(Map.empty))
-      case _                                             => Left(ConfigError(s"$name given twice"))
+      case _ => Left(ConfigError(ConfigProblem.DuplicateInjection(name)))
     }
 
   def get[A: Decoder](c: ACursor, name: String): Either[ConfigError, A] =
-    c.downField(name).as[A].leftMap(e => ConfigError(s"genesis $name: ${e.message}"))
+    c.downField(name).as[A].leftMap(e => ConfigError(ConfigProblem.JsonField("genesis", name, e)))
 
 /** Bitcoin-alphabet base58, as used by Byron addresses. */
 object Base58:
