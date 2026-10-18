@@ -15,7 +15,7 @@ enforced by sbt: a cycle does not load.
 | `blst-native` | The portable libblst (ADR 0012) at the resource path blst-java loads, and `Blst`, the start-up check of the library and the CPU (sbt project `blstNative`) | `F[_]` with `Sync`/`Raise` |
 | `codec` | CBOR with original-bytes preservation (`Cbor`, `Node`, `Value`), `Bytes`, `Rational` | Pure |
 | `crypto` | Blake2b, Ed25519 (strict profile), VRF draft-03 verify and prove, Sum6 KES verify, sign and evolve, BLS12-381 (Leios), operational certificates | Pure |
-| `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`) | Pure |
+| `protocol` | Ouroboros mini-protocol codecs and state machines: handshake, mux framing, ChainSync, BlockFetch, KeepAlive, TxSubmission2, LocalTxSubmission, LocalStateQuery, LocalTxMonitor, Leios, era and header tags (`Era`, `NtNHeader`), pure network error vocabulary | Pure |
 | `network` | fs2 bearer, multiplexer (duplex), handshake, client and server roles of every mini-protocol over one connection | `F[_]` with `Async`/`Raise` |
 | `plutus` | `ScriptEvaluator[F]` algebra, the Scalus adapter, `PlutusData`, `ExUnits` | `F[_]` at the evaluator, pure otherwise |
 | `ledger` | Blocks, headers, genesis files, transactions, scripts, the Shelley to Conway rules, the Byron ledger, `Verdicts`, `OCertRules`, the node error hierarchy, `Nonce`, `LedgerView` | Pure |
@@ -39,7 +39,9 @@ codec <- crypto <- protocol <- network ------------------------.
 `models` (which stands on `codec` and `crypto`; the Haskell ledger-state codec reuses the models runtime; `models` itself sees `ledger` only in
 its tests); `node` on `storage` and `network`. The ledger cannot import the network runtime, and storage cannot
 import the node. Note that `protocol/Mux.scala` (the pure framing) and `network/Mux.scala` (the
-effectful multiplexer) are different files.
+effectful multiplexer) are different files. The pure `NetworkError` vocabulary lives in `protocol`;
+`network.NetworkError` aliases it. This lets ledger and node adapters retain transport causes
+without making the ledger depend on the effectful network runtime.
 
 Cycles that the old layout hid, and how they were cut (types moved down, nothing redesigned):
 the header error enums (`HeaderError`, `EnvelopeError`, `TPraosError`, `OCertError`) and `Nonce`,
@@ -112,21 +114,32 @@ store). Rules run without a cache use `Verdicts.Direct`.
 
 ## Error model
 
-Domain errors are closed ADTs raised through cats-mtl `Raise[F, E]` and handled at lexically scoped
-`Handle.allow` sites; `raiseError` is not used for domain errors.
+Pure operations return `Either` with a closed domain/service error ADT. Effectful interpreters
+raise their declared errors through cats-mtl `Raise[F, E]` and handle them at lexically scoped
+`Handle.allow` sites; `raiseError` is not used for domain errors. Cases retain semantic inputs and
+nested causes; messages are presentation, not control flow.
+
+`Encoder[A]` declares `type Error <: DomainError`; both its `encode` and `Serde[A].decode`
+return that family. `Encoder.Aux[A, E]`/`Serde.Aux[A, E]` name a particular family, and generic
+consumers such as `Hasher.encoded` preserve `encoder.Error`. The open `DomainError` marker admits
+closed families to generic cross-module bridges such as `StorageError.Corrupt[E]`; it does not
+replace their narrow API types or prove their semantics. See [the error design](design/domain-errors.md).
 
 | ADT | Meaning | Handling |
 |---|---|---|
 | `PeerError` | the peer misbehaved or the connection failed (`Handshake`, `Protocol`, `Unavailable`, `InvalidHeader`: a header broke a header rule, G6); recoverable | the peer governor classifies it (`FailurePolicy.classify`: forget the peer or back off) and reconnects; on an inbound connection the inbound governor drops the peer for `Protocol` and `InvalidHeader` |
 | `ConnectionError` (`network`) | the connection manager refused: `InboundLimit`, `OutboundLimit`, `AlreadyConnected`, `IllegalTransition` (G2) | a refusal of an inbound connection closes it; an outbound one becomes `PeerError.Unavailable` and is retried |
 | `ChainError` | chain-level inconsistency (for example a candidate that no longer joins our chain) | per-session or fatal |
-| `ValidationError(point, rule, reason)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
-| `StorageError` | `Corrupt`, `Io`, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
+| `ValidationError(point, failure: BlockFailure)` | a block broke a consensus or ledger rule | fatal for the sync (the chain stays at the last valid block) |
+| `StorageError` | typed `Corrupt` causes, `Io` with its exception, `VersionMismatch`, `Missing`, `OutOfOrder` | IO exceptions are mapped at the file boundary only |
 | `ForgeError` | key-file, KES, VRF, ledger-view and assembly failures | the forger logs and skips the slot |
-| `ConfigError(reason, problem)` | bad genesis, configuration or topology; `problem` is `Invalid`, `FileMissing`, `GenesisHashMismatch` (role, file, listed and actual hash) or `UnsupportedTopology` | fatal at start |
+| `ConfigError(problem: ConfigProblem)` | configuration, CLI, topology and genesis failures retain fields, input values and typed JSON, codec or service causes | fatal at start |
 
-A few programmer-error guards still throw (`Bytes`, the `Sum6Kes` hash contract, `Constants.checked` at class init); the
-audit that removed the others is M2 in the [roadmap](roadmap.md).
+Programmer preconditions are distinct from domain rejection. The retained Scalus callback
+`BuiltinException` signal is an explicit foreign ABI seam: the adapter records and recovers a
+typed evaluator failure because the upstream callback cannot return one. The error design records
+that limitation and the separate generator and compiler-guard follow-ups under M11-E; fiber
+ownership remains G7 / #180.
 
 ## Data flow
 
