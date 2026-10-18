@@ -77,6 +77,6 @@ and licensing are documented in [fixtures/mainnet](../mainnet/README.md).
 It distinguishes next major/minor at the maximum from wrapping and invalid succession. The
 signed `ByronVersionSuite` now consumes these results through Scala's full rules. This is
 predicate-excerpt evidence, **not full reference ledger-registration execution**; broader
-reference execution remains [#175](https://github.com/KD5UJC-XYZ/scarab/issues/175).
+reference execution remains [#171](https://github.com/KD5UJC-XYZ/scarab/issues/171).
 The source/extraction hashes, exact scope and one-command offline reproduction are in
 [scripts/oracle/byron](../../scripts/oracle/byron/README.md). No new network capture was needed.
