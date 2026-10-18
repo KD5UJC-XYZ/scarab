@@ -128,7 +128,9 @@ class NetworkGoldenSuite extends munit.FunSuite:
     )
     val accept = Handshake.Message.Accept(
       16,
-      Handshake.dataTerm(suite, 16, Handshake.Data(1, peras = true)).fold(e => fail(e.message), identity)
+      Handshake
+        .dataTerm(suite, 16, Handshake.Data(1, peras = true))
+        .fold(e => fail(e.message), identity)
     )
     checkHandshake(Handshake.encode(suite, accept).fold(e => fail(e.message), identity))
     val decodeError = Handshake.Message.Refuse(Handshake.Reason.DecodeError(14, "bad data"))
