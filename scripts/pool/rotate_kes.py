@@ -541,7 +541,7 @@ def metrics_text(values):
     for name in (LAST_RUN, LAST_SUCCESS, LAST_ROTATION, LAST_STATUS, REMAINING):
         if name in values:
             lines += [f"# HELP {METRIC_PREFIX}{name} {_HELP[name]}", f"# TYPE {METRIC_PREFIX}{name} gauge",
-                      f"{METRIC_PREFIX}{name} {values[name]:g}"]
+                      f"{METRIC_PREFIX}{name} {values[name]:.17g}"]
     return "\n".join(lines) + "\n"
 
 

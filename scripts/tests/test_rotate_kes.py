@@ -113,6 +113,30 @@ class DriverTest(unittest.TestCase):
         return sorted(p.name for p in self.keys.iterdir() if p.name.startswith(("gen-", ".staging")))
 
 
+class MetricsTest(DriverTest):
+    def test_metrics_keep_current_timestamp_precision(self):
+        path = self.keys / "rotate-kes.prom"
+        settings = rk.dataclasses.replace(self.settings, metrics_file=path)
+        now = 1792292758.125
+        rk.write_metrics(settings, rk.EXIT_OK, now)
+        values = rk.read_metrics(path)
+        self.assertEqual(values[rk.LAST_RUN], now)
+        self.assertEqual(values[rk.LAST_SUCCESS], now)
+        self.assertEqual(values[rk.LAST_STATUS], rk.EXIT_OK)
+
+    def test_failed_run_preserves_the_exact_last_success_timestamp(self):
+        path = self.keys / "rotate-kes.prom"
+        settings = rk.dataclasses.replace(self.settings, metrics_file=path)
+        success = 1792292758.125
+        failed = success + 3600.25
+        rk.write_metrics(settings, rk.EXIT_OK, success)
+        rk.write_metrics(settings, rk.EXIT_NODE_DOWN, failed)
+        values = rk.read_metrics(path)
+        self.assertEqual(values[rk.LAST_SUCCESS], success)
+        self.assertEqual(values[rk.LAST_RUN], failed)
+        self.assertEqual(values[rk.LAST_STATUS], rk.EXIT_NODE_DOWN)
+
+
 class ParseTest(unittest.TestCase):
     def test_a_certificate_written_by_cardano_cli(self):
         cert = rk.parse_opcert(REAL_CERT)
