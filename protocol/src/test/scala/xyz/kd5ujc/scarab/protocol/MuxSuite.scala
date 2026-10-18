@@ -204,6 +204,28 @@ class MuxSuite extends munit.FunSuite:
     )
   }
 
+  test("bounded message-limit errors retain their own ceiling and validation precedence") {
+    val payload = bytes("00")
+    Vector(0, -1, Int.MinValue).foreach { messageLimit =>
+      assertEquals(
+        segmentBounded(payload, -1, Direction.Initiator, 256, -1, messageLimit),
+        Left(Error.InvalidMessageLimit(messageLimit, WireMaxPayloadBytes))
+      )
+      Vector(0, -1, WireMaxPayloadBytes + 1).foreach { payloadLimit =>
+        assertEquals(
+          segmentBounded(payload, -1, Direction.Initiator, payloadLimit, -1, messageLimit),
+          Left(Error.InvalidPayloadLimit(payloadLimit))
+        )
+      }
+    }
+    Vector(WireMaxPayloadBytes + 1, Int.MaxValue).foreach { messageLimit =>
+      assertEquals(
+        segmentBounded(Bytes.empty, -1, Direction.Initiator, 0, -1, messageLimit),
+        Left(Error.InvalidMessageLimit(messageLimit, WireMaxPayloadBytes))
+      )
+    }
+  }
+
   test("header length and local payload limit retain their validation precedence") {
     assertEquals(decodeHeader(proposal.take(7), 0), Left(Error.HeaderLength(7)))
     assertEquals(decodeHeader(proposal.take(8), 0), Left(Error.InvalidPayloadLimit(0)))

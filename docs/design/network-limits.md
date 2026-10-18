@@ -97,7 +97,9 @@ session/storage/listener work remains tracked by [#180](https://github.com/KD5UJ
 The framing codec returns `Either[Mux.Error, A]`, with distinct cases and numeric payloads for
 header fields, local limits, exact frame lengths and partial-header/payload EOF. Stream failures
 publish neither a new decoder nor partially decoded output. Wire bytes, limit values, validation
-precedence and the existing per-frame implementation are unchanged.
+precedence and the existing per-frame implementation are unchanged. `segmentBounded` reports its
+65535-byte ceiling for nonpositive message limits too. For those inputs an invalid SDU limit still
+wins; a message ceiling above 65535 is refused before checking the SDU limit.
 
 The reader retains that cause in `NetworkError.Framing`; local decoder setup and writer encoding
 retain it in `MuxSetup` and `MuxWrite`. The node carries the same value in the corresponding

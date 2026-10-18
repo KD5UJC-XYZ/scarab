@@ -190,7 +190,11 @@ object Mux:
         maxPayloadBytes,
         protocol,
         maxMessageBytes
-      )
+      ).left.map {
+        case Error.InvalidMessageLimit(actual, _) =>
+          Error.InvalidMessageLimit(actual, WireMaxPayloadBytes)
+        case error => error
+      }
 
   /** Protocol messages may span SDUs. The SDU limit is still uint16; this ceiling bounds the
     * aggregate payload before allocating the finite segment vector.
