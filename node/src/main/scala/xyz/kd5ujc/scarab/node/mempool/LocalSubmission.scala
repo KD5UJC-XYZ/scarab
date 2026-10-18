@@ -55,6 +55,7 @@ object LocalSubmission:
       )
     case Rejection.Ledger(LedgerFailure.Rejected(_, failure)) =>
       Right(PredicateFailureCbor.applyTxError(Vector(failure)))
+    case Rejection.Ledger(error) => Right(text(MempoolProblem.Ledger(error)))
     case Rejection.AlreadyHeld(_) =>
       Right(text(MempoolProblem.AllInputsSpent))
     case Rejection.Malformed(cause) => Right(text(MempoolProblem.Malformed(cause)))

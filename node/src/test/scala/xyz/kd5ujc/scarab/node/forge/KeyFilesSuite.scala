@@ -68,6 +68,24 @@ class KeyFilesSuite extends munit.FunSuite:
     assert(isKeyFile(KeyFiles.opCert("f", envelope(KeyFiles.OpCertType, "8200"))))
   }
 
+  test("malformed key envelopes retain shape without retaining payload bytes") {
+    val payload = hex("ab" * 32)
+    val result = KeyFiles.vrfSigningKey(
+      "synthetic.skey",
+      envelope(KeyFiles.VrfSigningKeyType, "81" + bstr(payload))
+    )
+    assertEquals(
+      result,
+      Left(ForgeError.KeyFile(
+        "synthetic.skey",
+        xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.ExpectedByteString(
+          xyz.kd5ujc.scarab.ledger.KeyShape.Array(1)
+        )
+      ))
+    )
+    assert(!result.toString.contains(payload.hex))
+  }
+
   test("KES key-file errors preserve the crypto cause until presentation") {
     val cases = Vector(
       Bytes.empty -> Sum6KesSigning.Failure.InvalidKeyLength(0),

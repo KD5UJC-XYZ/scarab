@@ -9,7 +9,7 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
-import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem, Header}
+import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem, Header, KeyShape}
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
@@ -97,7 +97,7 @@ object KeyFiles:
     Cbor.decode(raw).leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Cbor(e))).flatMap { n =>
       n.value match
         case Value.ByteString(b) => Right(b)
-        case _ => Left(ForgeError.KeyFile(file, ForgeKeyProblem.ExpectedByteString(n.value)))
+        case _ => Left(ForgeError.KeyFile(file, ForgeKeyProblem.ExpectedByteString(KeyShape.of(n.value))))
     }
 
   def vrfSigningKey(file: String, text: String): Either[ForgeError, Draft03Prover.SigningKey] =
@@ -145,10 +145,10 @@ object KeyFiles:
       root <- Cbor.decode(raw).leftMap(e => bad(ForgeKeyProblem.Cbor(e)))
       outer <- root.value match
         case Value.Arr(xs) if xs.size == 2 => Right(xs)
-        case _ => Left(bad(ForgeKeyProblem.CertificateEnvelope(root.value)))
+        case _ => Left(bad(ForgeKeyProblem.CertificateEnvelope(KeyShape.of(root.value))))
       parts <- outer(0).value match
         case Value.Arr(xs) if xs.size == 4 => Right(xs)
-        case _ => Left(bad(ForgeKeyProblem.CertificateFields(outer(0).value)))
+        case _ => Left(bad(ForgeKeyProblem.CertificateFields(KeyShape.of(outer(0).value))))
       hot <- fixed(parts(0).value, 32, bad)
       sequence <- uint(parts(1).value, bad)
       period <- uint(parts(2).value, bad)
@@ -159,11 +159,11 @@ object KeyFiles:
   private def fixed(v: Value, size: Int, bad: ForgeKeyProblem => ForgeError): Either[ForgeError, Bytes] =
     v match
       case Value.ByteString(b) if b.size == size => Right(b)
-      case _                                     => Left(bad(ForgeKeyProblem.FixedBytes(size, v)))
+      case _                                     => Left(bad(ForgeKeyProblem.FixedBytes(size, KeyShape.of(v))))
 
   private def uint(v: Value, bad: ForgeKeyProblem => ForgeError): Either[ForgeError, BigInt] = v match
     case Value.UInt(n) => Right(n)
-    case _             => Left(bad(ForgeKeyProblem.UnsignedInteger(v)))
+    case _             => Left(bad(ForgeKeyProblem.UnsignedInteger(KeyShape.of(v))))
 
   /** The text of a file, or why it cannot be read. */
   private[forge] def read(p: Path): Either[ForgeError, String] =

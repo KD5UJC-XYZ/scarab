@@ -137,7 +137,7 @@ final class InboundGovernor[F[_]: Async] private (
               )
               .as(true)
           }
-          .rescue(error => mux.abort(NetworkError.BearerClosed(error.message)).as(false))
+          .rescue(error => mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(error))).as(false))
       )
       .flatMap { admitted =>
         if !admitted then Resource.unit[F]
@@ -212,10 +212,10 @@ final class InboundGovernor[F[_]: Async] private (
       _ <- reason.traverse_ { why =>
         update(remote)(_.copy(ended = Some(why))) *>
           emit(remote, InboundEvent.SessionEnded(why, drop)) *>
-          mux.abort(NetworkError.BearerClosed(s"dropped: $why")).whenA(drop)
+          mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(end))).whenA(drop)
       }
       _ <- disposition match
-        case Disposition.StopNode(f) => fatal(f) *> mux.abort(NetworkError.BearerClosed(f.message))
+        case Disposition.StopNode(f) => fatal(f) *> mux.abort(NetworkError.BearerClosed(NetworkError.Closure.AbortedBy(f)))
         case _                       => F.unit
     yield ()
 

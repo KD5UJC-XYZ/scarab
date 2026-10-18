@@ -27,6 +27,7 @@ enum TransactionDecodeProblem:
 enum MempoolProblem:
   case AllInputsSpent
   case UnelectedCommittee(voters: Vector[Credential])
+  case Ledger(cause: LedgerFailure)
   case Rule(cause: PredicateFailure)
   case Malformed(cause: TransactionDecodeProblem)
   case Capacity(size: Int, free: Long)
@@ -39,6 +40,7 @@ enum MempoolProblem:
         case Credential.Key(h) => s"KeyHashObj (KeyHash {unKeyHash = \"${h.hex}\"})"
         case Credential.Script(h) => s"ScriptHashObj (ScriptHash \"${h.hex}\")"
       "Unelected committee members are not allowed to cast votes: " + voters.map(credential).mkString("[", ",", "]")
+    case Ledger(cause) => cause.message
     case Rule(cause) => cause.detail
     case Malformed(cause) => s"malformed transaction: ${cause.message}"
     case Capacity(size, free) => s"mempool full: $size bytes needed, $free free"
