@@ -8,8 +8,8 @@ import ChainSync.DecodeResult
 import KeepAlive.*
 
 class KeepAliveSuite extends munit.FunSuite:
-  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  private def right[A](value: Either[String, A]): A = value.fold(fail(_), identity)
+  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
+  private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private def cookie(value: Int): Cookie = right(Cookie.from(value))
   private def failed[A](result: DecodeResult[A]): Unit = result match
     case DecodeResult.Failed(_) => ()

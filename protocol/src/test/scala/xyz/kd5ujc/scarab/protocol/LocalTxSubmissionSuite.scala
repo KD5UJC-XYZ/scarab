@@ -82,7 +82,7 @@ class LocalTxSubmissionSuite extends FunSuite:
     def nested(levels: Int) =
       Bytes.fromArray(Array.fill(levels)(0x81.toByte) :+ 0x00.toByte)
     def roundTrip(item: Bytes) =
-      var result: Option[Either[String, Boolean]] = None
+      var result: Option[Either[ProtocolError, Boolean]] = None
       val thread = new Thread(
         null,
         () =>

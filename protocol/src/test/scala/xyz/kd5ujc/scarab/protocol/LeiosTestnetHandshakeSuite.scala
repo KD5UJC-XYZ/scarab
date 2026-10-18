@@ -23,7 +23,7 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
       .toVector
 
   private def read(hex: String): Message =
-    val bytes = Bytes.fromHex(hex).fold(e => fail(e), identity)
+    val bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
     decode(Suite.NodeToNode, State.Confirm, bytes).fold(e => fail(e.message), identity)
 
   test("the recorded replies decode") {
@@ -42,9 +42,9 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
     rows.filter(_._1.startsWith("accept")).foreach { (label, hex, _) =>
       val version = label.stripPrefix("accept-").toInt
       val client = clientStart(Suite.NodeToNode, Vector(version -> Data(164, initiatorOnly = true)))
-        .fold(e => fail(e), identity)
+        .fold(e => fail(e.toString), identity)
         ._1
-      client.receive(read(hex)).fold(e => fail(e), identity)._2 match
+      client.receive(read(hex)).fold(e => fail(e.toString), identity)._2 match
         case Result.Negotiated(v, d) =>
           assertEquals(v, version)
           assertEquals(d.magic, 164L)
@@ -53,7 +53,7 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
   }
 
   private def hexOf(m: Message): String =
-    encode(Suite.NodeToNode, m).fold(e => fail(e), identity).hex
+    encode(Suite.NodeToNode, m).fold(e => fail(e.toString), identity).hex
 
   private val relayOffers: Vector[(Int, Data)] =
     Vector(14, 15, 16).map(_ -> Data(164, initiatorOnly = false, peerSharing = true))
@@ -64,7 +64,7 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
   test(
     "our proposal of 14 to 16 for the testnet is the bytes below (the relay's data per version)"
   ) {
-    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e), identity)._2
+    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e.toString), identity)._2
     assertEquals(
       hexOf(proposal),
       "8200a3" + "0e8418a4f500f4" + "0f8418a4f500f4" + "108518a4f500f4f4"
@@ -87,9 +87,9 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
   }
 
   test("a relay offering 14 to 16 answers our proposal with version 16, as the recorded bytes") {
-    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e), identity)._2
+    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e.toString), identity)._2
     val (answer, result) =
-      responder(Suite.NodeToNode, relayOffers, proposal).fold(e => fail(e), identity)
+      responder(Suite.NodeToNode, relayOffers, proposal).fold(e => fail(e.toString), identity)
     // the agreed data: initiator only (the smaller diffusion mode), no peer sharing (we do not
     // offer it), no Peras; byte for byte what the relay sent for version 16
     assertEquals(hexOf(answer), rows.find(_._1 == "accept-16").get._2)
@@ -97,9 +97,9 @@ class LeiosTestnetHandshakeSuite extends munit.FunSuite:
   }
 
   test("a relay that accepts only 14 and 15 (the released maximum) answers with 15") {
-    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e), identity)._2
+    val proposal = clientStart(Suite.NodeToNode, ours).fold(e => fail(e.toString), identity)._2
     val released = relayOffers.filter(_._1 <= NtnVersion.LatestReleased.number)
-    val (answer, _) = responder(Suite.NodeToNode, released, proposal).fold(e => fail(e), identity)
+    val (answer, _) = responder(Suite.NodeToNode, released, proposal).fold(e => fail(e.toString), identity)
     assertEquals(hexOf(answer), rows.find(_._1 == "accept-15").get._2)
   }
 end LeiosTestnetHandshakeSuite

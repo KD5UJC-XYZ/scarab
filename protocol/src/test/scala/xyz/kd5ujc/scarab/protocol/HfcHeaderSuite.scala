@@ -11,7 +11,7 @@ import xyz.kd5ujc.scarab.crypto.Blake2b
   * `fixtures/leios/README.md`).
   */
 class HfcHeaderSuite extends munit.FunSuite:
-  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e), identity)
+  private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
 
   private val dir = Path.of("fixtures", "leios", "testnet")
 
@@ -31,7 +31,7 @@ class HfcHeaderSuite extends munit.FunSuite:
           if labelled then p(0) else p(o + 1),
           p(o),
           p(o + 3),
-          Bytes.fromHex(p(o + 4)).fold(e => fail(e), identity)
+          Bytes.fromHex(p(o + 4)).fold(e => fail(e.toString), identity)
         )
       }
 
@@ -76,11 +76,11 @@ class HfcHeaderSuite extends munit.FunSuite:
 
   test("an index no era has is kept with its payload, not refused") {
     // [9, h'abcd']
-    val bytes = Bytes.fromHex("8209" + "42abcd").fold(e => fail(e), identity)
+    val bytes = Bytes.fromHex("8209" + "42abcd").fold(e => fail(e.toString), identity)
     assertEquals(
       HfcHeader.decode(bytes),
       Right(
-        HfcHeader.Unrecognised(BigInt(9), Bytes.fromHex("42abcd").fold(e => fail(e), identity))
+        HfcHeader.Unrecognised(BigInt(9), Bytes.fromHex("42abcd").fold(e => fail(e.toString), identity))
       )
     )
     assertEquals(HfcHeader.encode(HfcHeader.decode(bytes).toOption.get), Right(bytes))
@@ -88,7 +88,7 @@ class HfcHeaderSuite extends munit.FunSuite:
 
   test("malformed envelopes have their own typed reasons") {
     // not CBOR (a break outside an indefinite item)
-    assertEquals(HfcHeader.decode(hex("ff")), Left(HfcHeaderError.Syntax))
+    assertEquals(HfcHeader.decode(hex("ff")), Left(HfcHeaderError.Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.UnsupportedSimpleValue(31))))
     // not a pair
     assertEquals(HfcHeader.decode(hex("83010203")), Left(HfcHeaderError.NotAnEnvelope))
     assertEquals(HfcHeader.decode(hex("a0")), Left(HfcHeaderError.NotAnEnvelope))
@@ -99,7 +99,7 @@ class HfcHeaderSuite extends munit.FunSuite:
     assertEquals(HfcHeader.decode(hex("8207d81801")), Left(HfcHeaderError.NotEmbeddedCbor))
     // trailing bytes after the envelope
     val good = row("first-dijkstra-tag").envelope
-    assertEquals(HfcHeader.decode(good ++ hex("00")), Left(HfcHeaderError.Syntax))
+    assertEquals(HfcHeader.decode(good ++ hex("00")), Left(HfcHeaderError.Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes)))
     // a supported era whose payload is not an embedded header
     assert(HfcHeader.decode(hex("820641" + "00")).left.exists {
       case HfcHeaderError.Supported(Era.Conway, _) => true

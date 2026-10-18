@@ -6,7 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import ChainSync.*
 
 class FixtureChainModelSuite extends munit.FunSuite:
-  private def right[A](e: Either[String, A]): A = e.fold(fail(_), identity)
+  private def right[E, A](e: Either[E, A]): A = e.fold(e => fail(e.toString), identity)
   private def p(slot: Int, hash: Int): Point =
     Point.Block(right(UInt64.from(slot)), Bytes(Vector.fill(32)(hash.toByte)))
   private val a = p(1, 1)
@@ -50,13 +50,9 @@ class FixtureChainModelSuite extends munit.FunSuite:
   test("unknown/pruned rollback requires reintersection and never resets Origin") {
     val initial = right(FixtureChainModel.start(Vector(b, c)))
     val next = right(initial.step(Role.Client, Message.RequestNext))
-    assert(
-      next
-        .step(Role.Server, Message.RollBackward(a, tip))
-        .swap
-        .toOption
-        .get
-        .contains("reintersection")
+    assertEquals(
+      next.step(Role.Server, Message.RollBackward(a, tip)).left.toOption,
+      Some(FixtureChainModel.Error.UnknownOrPrunedRollbackTargetReintersectionRequired)
     )
     assertEquals(next.history, Vector(b, c))
     assert(next.step(Role.Server, Message.RollBackward(Point.Origin, tip)).isLeft)

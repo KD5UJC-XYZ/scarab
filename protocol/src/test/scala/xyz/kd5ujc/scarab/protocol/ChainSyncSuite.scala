@@ -6,8 +6,8 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import ChainSync.*
 
 class ChainSyncSuite extends munit.FunSuite:
-  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  private def right[A](value: Either[String, A]): A = value.fold(fail(_), identity)
+  private def b(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
+  private def right[E, A](value: Either[E, A]): A = value.fold(e => fail(e.toString), identity)
   private val payload = ChainSyncFixtures.rawItem
   private def decoded[A](value: DecodeResult[A]): A = value match
     case DecodeResult.Decoded(v, _) => v

@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.Mux.*
 
 class MuxSuite extends munit.FunSuite:
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
   private def right[A](value: Either[Error, A]): A = value.fold(e => fail(e.message), identity)
   private def decoder(limits: Limits = Limits()): Decoder = right(Decoder.create(limits))
   private def join(left: Bytes, right: Bytes): Bytes = Bytes(left.value ++ right.value)

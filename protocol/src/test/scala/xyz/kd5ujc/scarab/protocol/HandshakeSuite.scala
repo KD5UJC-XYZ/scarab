@@ -8,8 +8,8 @@ import Handshake.*
 class HandshakeSuite extends munit.FunSuite:
   private val ntn = Suite.NodeToNode
   private val ntc = Suite.NodeToClient
-  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(fail(_), identity)
-  private def right[A](e: Either[String, A]): A = e.fold(fail(_), identity)
+  private def bytes(hex: String): Bytes = Bytes.fromHex(hex).fold(e => fail(e.toString), identity)
+  private def right[E, A](e: Either[E, A]): A = e.fold(e => fail(e.toString), identity)
   private def read(hex: String, suite: Suite = ntn, state: State = State.Confirm): Message =
     decode(suite, state, bytes(hex)).fold(e => fail(e.message), identity)
   private def data(v: Int, d: Data = Data(2), suite: Suite = ntn): Term = right(
