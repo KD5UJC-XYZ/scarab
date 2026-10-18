@@ -75,8 +75,8 @@ trait Mux[F[_]]:
   def abort(reason: NetworkError): F[Unit]
 
 object Mux:
-  enum Role:
-    case Initiator, Responder
+  type Role = NetworkError.ConnectionRole
+  val Role = NetworkError.ConnectionRole
 
   /** `role` is the side of the connection (who opened it) and the default side of every
     * mini-protocol. With `duplex` both sides of every mini-protocol are available on the one

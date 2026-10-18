@@ -22,20 +22,8 @@ object LocalStateQueryServer:
   /** Why a query is not answered. The connection ends, as it does on the reference when its codec
     * cannot decode a query, and the reason is logged with the close.
     */
-  enum Refusal:
-    /** The bytes are not a query this node's decoder knows (`detail` says where it stopped). */
-    case Undecodable(detail: NetworkError.Violation, prefix: String)
-
-    /** The query decodes but this node does not answer it. */
-    case Unsupported(query: String)
-
-    /** Answering failed: the answer cannot be written (a value outside its encoding). */
-    case Unwritable(query: String, cause: String)
-
-    def message: String = this match
-      case Undecodable(detail, prefix) => s"cannot decode ($detail): $prefix"
-      case Unsupported(query)          => s"unsupported query $query"
-      case Unwritable(query, cause)    => s"cannot write the answer to $query: $cause"
+  type Refusal = xyz.kd5ujc.scarab.protocol.QueryRefusal[?]
+  val Refusal = xyz.kd5ujc.scarab.protocol.QueryRefusal
 
   /** One acquired ledger state. `answer` gets a query (one CBOR item) and returns the result item,
     * or the reason the query is not answered.
