@@ -153,9 +153,9 @@ class ForgeSuite extends CatsEffectSuite with ForgeFixture:
         _ <- (5000 until 5003).toList.traverse_(s => h2.forger.step(s))
         old <- h2.forger.stats.total
       yield
-        assertEquals(offline.skipped, Map(ForgeEpochStats.NotConnected -> 40L))
+        assertEquals(offline.skipped, Map(ForgeSkip.Kind.NotConnected -> 40L))
         assertEquals(offline.slotsChecked, 0L)
-        assertEquals(old.skipped, Map(ForgeEpochStats.TipTooOld -> 3L))
+        assertEquals(old.skipped, Map(ForgeSkip.Kind.TipTooOld -> 3L))
     }
   }
 

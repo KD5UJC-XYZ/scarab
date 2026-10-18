@@ -117,7 +117,7 @@ object Collectors:
     import Catalogue.*
     stats.total.flatMap { t =>
       val skipped =
-        t.skipped.toList.groupMapReduce((reason, _) => SkipLabel.parse(reason))(_._2)(_ + _)
+        t.skipped.toList.groupMapReduce((reason, _) => SkipLabel.of(reason))(_._2)(_ + _)
       metrics.advance(forgeAboutToLead, t.slotsChecked.toDouble) *>
         metrics.advance(forgeNodeIsLeader, t.leaderSlots.toDouble) *>
         metrics.advance(forgeNodeNotLeader, (t.slotsChecked - t.leaderSlots).toDouble) *>

@@ -108,7 +108,7 @@ class CollectorsSuite extends CatsEffectSuite:
       _ <- (1 to 5).toList.traverse_(_ => stats.checked(0))
       _ <- stats.leader(0) *> stats.leader(0) *> stats.forged(0) *> stats.forged(0)
       _ <- stats.adopted(0, 100) *> stats.lost(0) *> stats.failed(0)
-      _ <- stats.skipped(0, "busy") *> stats.skipped(0, "tipTooOld") *> stats.skipped(0, "other?")
+      _ <- xyz.kd5ujc.scarab.node.forge.ForgeSkip.Kind.values.toList.traverse_(stats.skipped(0, _))
       s <- {
         given Metrics[IO] = metrics
         Collectors.forging(stats) *> metrics.snapshot
@@ -123,8 +123,8 @@ class CollectorsSuite extends CatsEffectSuite:
       assertEquals(gauge(s, Catalogue.nodeCannotForge, ()), Some(1.0))
       assertEquals(gauge(s, Catalogue.slotsMissed, ()), Some(1.0))
       assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.TipTooOld), Some(1.0))
-      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.Other), Some(1.0))
-      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.SlotOccupied), Some(0.0))
+      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.Other), Some(0.0))
+      assertEquals(counter(s, Catalogue.forgeSkipped, SkipLabel.SlotOccupied), Some(1.0))
   }
 
   test("the JVM collector reads the memory, the threads and the process") {

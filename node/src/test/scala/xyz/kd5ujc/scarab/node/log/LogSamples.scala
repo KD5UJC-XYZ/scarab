@@ -35,7 +35,7 @@ import xyz.kd5ujc.scarab.node.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{Derived, MirrorError}
 import xyz.kd5ujc.scarab.ledger.PoolRelayError
-import xyz.kd5ujc.scarab.node.forge.{ForgeEpochStats, ForgeEvent, ReloadRefusal}
+import xyz.kd5ujc.scarab.node.forge.{ForgeSkip, ForgeEpochStats, ForgeEvent, ReloadRefusal}
 import xyz.kd5ujc.scarab.node.mempool.{MempoolEvent, Rejection}
 import xyz.kd5ujc.scarab.protocol.{ChainSync, ConnectionState, Era}
 import xyz.kd5ujc.scarab.storage.{
@@ -233,7 +233,7 @@ object LogSamples:
     adopted = 4,
     lost = 1,
     failed = 0,
-    skipped = Map("busy" -> 2L, "tipTooOld" -> 1L),
+    skipped = Map(ForgeSkip.Kind.Busy -> 2L, ForgeSkip.Kind.TipTooOld -> 1L),
     latencyCount = 4,
     latencyTotalMs = 50,
     latencyMaxMs = 20
@@ -281,7 +281,7 @@ object LogSamples:
         xyz.kd5ujc.scarab.ledger.ForgeKeyProblem.Io(new java.io.IOException("disk full"))
       )
     ),
-    ForgeEvent.Skipped(BigInt(4201), "busy"),
+    ForgeEvent.Skipped(BigInt(4201), ForgeSkip.Busy),
     ForgeEvent.Failed(BigInt(4202), ForgeError.KeyPeriodOutOfRange(33, 0, 32)),
     ForgeEvent.EpochSummary(BigInt(3), forgeStats),
     ForgeEvent.EpochSummary(BigInt(4), ForgeEpochStats())
