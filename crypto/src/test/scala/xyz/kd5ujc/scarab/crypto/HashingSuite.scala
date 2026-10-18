@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto
 
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Encoder, Value}
 
 class HashingSuite extends munit.FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).toOption.get
@@ -38,4 +38,29 @@ class HashingSuite extends munit.FunSuite:
       assert(TransactionId.fromEnvelope(hex(s)).isLeft)
     }
     assert(TransactionId.fromBody(hex("80")).isLeft)
+  }
+
+  test("transaction extraction retains syntax and envelope causes") {
+    assertEquals(
+      TransactionId.fromBody(hex("80")),
+      Left(TransactionId.Error.ExpectedBodyMap(Value.Arr(Vector.empty)))
+    )
+    assertEquals(
+      TransactionId.bodyBytes(hex("00")),
+      Left(TransactionId.Error.ExpectedEnvelope(Value.UInt(0)))
+    )
+    assertEquals(
+      TransactionId.fromBody(Bytes.empty),
+      Left(TransactionId.Error.Syntax(Cbor.Error.UnexpectedEnd))
+    )
+  }
+
+  test("hashing an encoded value preserves the encoder's error type and value") {
+    enum EncodingError:
+      case Rejected(value: Int)
+    val encoder = new Encoder[Int]:
+      type Error = EncodingError
+      def encode(value: Int): Either[EncodingError, Bytes] = Left(EncodingError.Rejected(value))
+    val result: Either[EncodingError, Bytes] = Blake2b.hash256.encoded(7, encoder)
+    assertEquals(result, Left(EncodingError.Rejected(7)))
   }

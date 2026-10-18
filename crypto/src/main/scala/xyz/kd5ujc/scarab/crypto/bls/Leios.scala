@@ -187,9 +187,16 @@ private object Wire:
   /** The fields of a definite array of `arity` items, rejecting anything not in shortest form. */
   def array(bytes: Bytes, arity: Int): Either[BlsError, Vector[Value]] =
     for
-      n <- Cbor.decode(bytes).left.map(_ => BlsError.MalformedCbor(CborFault.Syntax))
-      canonical <- Cbor.encode(n.value).left.map(_ => BlsError.MalformedCbor(CborFault.Syntax))
-      _ <- Either.cond(canonical == bytes, (), BlsError.MalformedCbor(CborFault.Syntax))
+      n <- Cbor.decode(bytes).left.map(cause => BlsError.MalformedCbor(CborFault.Syntax(cause)))
+      canonical <- Cbor
+        .encode(n.value)
+        .left
+        .map(cause => BlsError.MalformedCbor(CborFault.Syntax(cause)))
+      _ <- Either.cond(
+        canonical == bytes,
+        (),
+        BlsError.MalformedCbor(CborFault.NonCanonicalEncoding)
+      )
       items <- n.value match
         case Value.Arr(xs) => Right(xs.map(_.value))
         case _             => Left(BlsError.MalformedCbor(CborFault.NotAnArray))

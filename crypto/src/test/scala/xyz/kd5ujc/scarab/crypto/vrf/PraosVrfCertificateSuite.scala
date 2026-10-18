@@ -112,21 +112,24 @@ class PraosVrfCertificateSuite extends munit.FunSuite:
     val r = row
     def run(result: StrictDraft03.Result) =
       verifyWith(input(r(1), r(2)), bytes(r(3)), bytes(r(4)), bytes(r(5)), (_, _, _) => result)
-    assertEquals(run(StrictDraft03.Result.Rejected("x")), Result.ProofRejected("x"))
-    assertEquals(run(StrictDraft03.Result.MalformedEnvelope("x")), Result.Malformed("x"))
     assertEquals(
-      run(StrictDraft03.Result.InternalFailure("k", "d")),
-      Result.InternalFailure("k", "d")
+      run(StrictDraft03.Result.Rejected(StrictDraft03.Rejection.ChallengeMismatch)),
+      Result.ProofRejected(StrictDraft03.Rejection.ChallengeMismatch)
     )
-    Vector(
-      null,
-      Bytes.empty,
-      Bytes(Vector.fill(63)(0.toByte)),
-      Bytes(Vector.fill(65)(0.toByte)),
-      Bytes(null)
-    ).foreach(o =>
-      assert(run(StrictDraft03.Result.Verified(o)).isInstanceOf[Result.InternalFailure])
+    assertEquals(
+      run(StrictDraft03.Result.MalformedEnvelope(StrictDraft03.EnvelopeError.MissingAlpha)),
+      Result.Malformed(Failure.Envelope(StrictDraft03.EnvelopeError.MissingAlpha))
     )
+    val defect = new IllegalStateException("provider")
+    assertEquals(run(StrictDraft03.Result.InternalFailure(defect)), Result.InternalFailure(defect))
+    Vector(null, Bytes.empty, Bytes(Vector.fill(63)(0.toByte)), Bytes(Vector.fill(65)(0.toByte)))
+      .foreach(o =>
+        assertEquals(
+          run(StrictDraft03.Result.Verified(o)),
+          Result.PrimitiveContractViolation(Option(o).map(_.size))
+        )
+      )
+    assert(run(StrictDraft03.Result.Verified(Bytes(null))).isInstanceOf[Result.InternalFailure])
     assert(run(null).isInstanceOf[Result.InternalFailure])
   }
   test("unexpected nonfatal failure maps internally and fatal JVM errors propagate") {

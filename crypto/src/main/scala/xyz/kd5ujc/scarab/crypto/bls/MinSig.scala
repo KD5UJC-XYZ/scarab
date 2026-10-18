@@ -132,7 +132,7 @@ object MinSig:
   /** The only place that turns a native failure (an exception) into a value. */
   private[bls] def guard[A](body: => A): Either[BlsError, A] =
     try Right(body)
-    catch case NonFatal(e) => Left(BlsError.Backend(e.getClass.getName))
+    catch case NonFatal(e) => Left(BlsError.Backend(e))
 
   private def compressed(operand: Operand, bytes: Bytes, size: Int): Either[BlsError, Unit] =
     if bytes.size != size then Left(BlsError.WrongLength(operand, size, bytes.size))

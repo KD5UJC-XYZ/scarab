@@ -39,7 +39,7 @@ object TransactionId:
         case Value.Arr(items) if items.size == 4 =>
           items.head.value match
             case Value.Map(_) => Right(items.head.original)
-            case actual => Left(Error.ExpectedBodyMap(actual))
+            case actual       => Left(Error.ExpectedBodyMap(actual))
         case actual => Left(Error.ExpectedEnvelope(actual))
     }
 
@@ -47,7 +47,7 @@ object TransactionId:
     Cbor.decode(body).left.map(Error.Syntax.apply).flatMap { node =>
       node.value match
         case Value.Map(_) => Right(Blake2b.hash256.hash(node.original))
-        case actual => Left(Error.ExpectedBodyMap(actual))
+        case actual       => Left(Error.ExpectedBodyMap(actual))
     }
 
   def fromEnvelope(transaction: Bytes): Either[Error, Bytes] =

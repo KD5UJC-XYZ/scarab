@@ -122,8 +122,10 @@ class StrictDraft03Suite extends munit.FunSuite:
   }
   test("canonical scalar boundary L is rejected, L-1 reaches challenge") {
     for (s, reason) <- Vector(
-        Draft03Math.L -> "noncanonical scalar",
-        Draft03Math.L.subtract(java.math.BigInteger.ONE) -> "challenge mismatch"
+        Draft03Math.L -> StrictDraft03.Rejection.NoncanonicalScalar,
+        Draft03Math.L.subtract(
+          java.math.BigInteger.ONE
+        ) -> StrictDraft03.Rejection.ChallengeMismatch
       )
     do
       val proof = Bytes(vector(1).value.take(48) ++ Draft03Math.scalar(s).toVector)
@@ -140,7 +142,10 @@ class StrictDraft03Suite extends munit.FunSuite:
         .equals(Draft03Math.challenge(b, raw, b, b), Draft03Math.challenge(b, gamma.encode(), b, b))
     )
     val proof = Bytes(raw.toVector ++ vector(1).value.drop(32))
-    assertEquals(StrictDraft03.verify(vector(0), proof, vector(2)), Rejected("challenge mismatch"))
+    assertEquals(
+      StrictDraft03.verify(vector(0), proof, vector(2)),
+      Rejected(StrictDraft03.Rejection.ChallengeMismatch)
+    )
   }
   test("mixed-order scalar-negation multiplication differs from naive point subtraction") {
     val p = Ed25519Point.decode(bytes("95" + "99" * 31).toArray)
@@ -150,14 +155,15 @@ class StrictDraft03Suite extends munit.FunSuite:
     assert(!java.util.Arrays.equals(cn.encode(), p.negate().encode()))
   }
   test("unexpected nonfatal provider error stays InternalFailure") {
+    val defect = new IllegalStateException("injected")
     assertEquals(
       StrictDraft03.verifyWith(
         vector(0),
         vector(1),
         vector(2),
-        (_, _) => throw new IllegalStateException("injected")
+        (_, _) => throw defect
       ),
-      InternalFailure("java.lang.IllegalStateException", "injected")
+      InternalFailure(defect)
     )
   }
   test("fatal provider errors are never disguised as rejection") {

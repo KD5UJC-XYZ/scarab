@@ -142,13 +142,14 @@ class OperationalCertificateSuite extends munit.FunSuite:
       verifyWith(key(r), cert(r), (_, _, _) => Right(VerificationResult.SignatureRejected)),
       Right(Result.SignatureRejected)
     )
+    val provider = new IllegalStateException("provider")
     assertEquals(
       verifyWith(
         key(r),
         cert(r),
-        (_, _, _) => Left(VerificationError.ImplementationFailure("provider"))
+        (_, _, _) => Left(VerificationError.ImplementationFailure(provider))
       ),
-      Left(Failure.PrimitiveFailure(VerificationError.ImplementationFailure("provider")))
+      Left(Failure.PrimitiveFailure(VerificationError.ImplementationFailure(provider)))
     )
     Vector(
       (null, PrimitiveReply.MissingResult),

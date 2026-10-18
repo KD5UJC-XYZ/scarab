@@ -10,15 +10,20 @@ import scala.util.control.NonFatal
   */
 object PraosVrfCertificate:
   enum Failure:
-    case Malformed(reason: String)
-    case InternalFailure(kind: String, detail: String)
+    case MissingSlot, MissingNonce, MissingInput, MissingNonceHash
+    case SlotOutOfRange(actual: BigInt)
+    case NonceHashLength(actual: Int)
+    case Envelope(cause: StrictDraft03.EnvelopeError)
+    case MissingClaimedOutput
+    case ClaimedOutputLength(actual: Int)
+    case InternalFailure(cause: Throwable)
 
   final class Slot private (val value: BigInt)
   object Slot:
     val MaxValue: BigInt = (BigInt(1) << 64) - 1
     def fromBigInt(value: BigInt): Either[Failure, Slot] =
-      if value == null || value < 0 || value > MaxValue then
-        Left(Failure.Malformed("slot must be unsigned Word64"))
+      if value == null then Left(Failure.MissingSlot)
+      else if value < 0 || value > MaxValue then Left(Failure.SlotOutOfRange(value))
       else Right(new Slot(value))
 
   sealed trait EpochNonce
@@ -26,33 +31,35 @@ object PraosVrfCertificate:
   final class Hash32 private (val bytes: Bytes) extends EpochNonce
   object Hash32:
     def fromBytes(bytes: Bytes): Either[Failure, Hash32] = protect {
-      if bytes == null || bytes.size != 32 then
-        Left(Failure.Malformed("nonce hash must be 32 bytes"))
+      if bytes == null then Left(Failure.MissingNonceHash)
+      else if bytes.size != 32 then Left(Failure.NonceHashLength(bytes.size))
       else Right(new Hash32(bytes))
     }
 
   final class Input private (val slot: Slot, val nonce: EpochNonce)
   object Input:
     def create(slot: Slot, nonce: EpochNonce): Either[Failure, Input] =
-      if slot == null || nonce == null then Left(Failure.Malformed("null slot or nonce"))
+      if slot == null then Left(Failure.MissingSlot)
+      else if nonce == null then Left(Failure.MissingNonce)
       else Right(new Input(slot, nonce))
 
   enum Result:
-    case Malformed(reason: String)
-    case ProofRejected(reason: String)
+    case Malformed(cause: Failure)
+    case ProofRejected(cause: StrictDraft03.Rejection)
     case OutputMismatch
-    case InternalFailure(kind: String, detail: String)
+    case InternalFailure(cause: Throwable)
+    case PrimitiveContractViolation(actual: Option[Int])
     case VerifiedCertificate(output: Bytes)
 
   private def protect[A](body: => Either[Failure, A]): Either[Failure, A] =
     try body
     catch
       case NonFatal(e) =>
-        Left(Failure.InternalFailure(e.getClass.getName, Option(e.getMessage).getOrElse("")))
+        Left(Failure.InternalFailure(e))
 
   /** Raw Blake2b-256(BE8(slot) || nonce bytes); neutral contributes zero bytes, not 32 zeros. */
   def alpha(input: Input): Either[Failure, Bytes] = protect {
-    if input == null then Left(Failure.Malformed("null Praos input"))
+    if input == null then Left(Failure.MissingInput)
     else
       val slot = Array.tabulate[Byte](8)(i => ((input.slot.value >> (8 * (7 - i))) & 255).toByte)
       val nonce = input.nonce match
@@ -78,37 +85,47 @@ object PraosVrfCertificate:
       primitive: (Bytes, Bytes, Bytes) => StrictDraft03.Result
   ): Result =
     try
-      if publicKey == null || publicKey.size != 32 then
-        return Result.Malformed("public key must be 32 bytes")
-      if proof == null || proof.size != 80 then return Result.Malformed("proof must be 80 bytes")
-      if claimedOutput == null || claimedOutput.size != 64 then
-        return Result.Malformed("claimed output must be 64 bytes")
-      alpha(input) match
-        case Left(Failure.Malformed(reason))             => Result.Malformed(reason)
-        case Left(Failure.InternalFailure(kind, detail)) => Result.InternalFailure(kind, detail)
-        case Right(message) => classify(primitive(publicKey, proof, message), claimedOutput)
-    catch
-      case NonFatal(e) =>
-        Result.InternalFailure(e.getClass.getName, Option(e.getMessage).getOrElse(""))
+      validateEnvelope(publicKey, proof, claimedOutput) match
+        case Left(error) => Result.Malformed(error)
+        case Right(_) =>
+          alpha(input) match
+            case Left(Failure.InternalFailure(cause)) => Result.InternalFailure(cause)
+            case Left(error)                          => Result.Malformed(error)
+            case Right(message) => classify(primitive(publicKey, proof, message), claimedOutput)
+    catch case NonFatal(e) => Result.InternalFailure(e)
+
+  private def validateEnvelope(
+      publicKey: Bytes,
+      proof: Bytes,
+      claimedOutput: Bytes
+  ): Either[Failure, Unit] =
+    import StrictDraft03.EnvelopeError
+    if publicKey == null then Left(Failure.Envelope(EnvelopeError.MissingPublicKey))
+    else if publicKey.size != 32 then
+      Left(Failure.Envelope(EnvelopeError.PublicKeyLength(publicKey.size)))
+    else if proof == null then Left(Failure.Envelope(EnvelopeError.MissingProof))
+    else if proof.size != 80 then Left(Failure.Envelope(EnvelopeError.ProofLength(proof.size)))
+    else if claimedOutput == null then Left(Failure.MissingClaimedOutput)
+    else if claimedOutput.size != 64 then Left(Failure.ClaimedOutputLength(claimedOutput.size))
+    else Right(())
 
   /** Verify a certificate over an arbitrary, already derived alpha string (TPraos builds its own
     * seeds). Same draft-03 verifier and output binding as [[verify]].
     */
   def verifyAlpha(alpha: Bytes, publicKey: Bytes, proof: Bytes, claimedOutput: Bytes): Result =
-    if publicKey == null || publicKey.size != 32 then
-      Result.Malformed("public key must be 32 bytes")
-    else if proof == null || proof.size != 80 then Result.Malformed("proof must be 80 bytes")
-    else if claimedOutput == null || claimedOutput.size != 64 then
-      Result.Malformed("claimed output must be 64 bytes")
-    else classify(StrictDraft03.verify(publicKey, proof, alpha), claimedOutput)
+    validateEnvelope(publicKey, proof, claimedOutput).fold(
+      Result.Malformed.apply,
+      _ => classify(StrictDraft03.verify(publicKey, proof, alpha), claimedOutput)
+    )
 
   private def classify(r: StrictDraft03.Result, claimedOutput: Bytes): Result = r match
     case StrictDraft03.Result.Verified(output) =>
       if output == null || output.size != 64 then
-        Result.InternalFailure("primitive-contract", "verified output must be 64 bytes")
+        Result.PrimitiveContractViolation(Option(output).map(_.size))
       else if output == claimedOutput then Result.VerifiedCertificate(output)
       else Result.OutputMismatch
-    case StrictDraft03.Result.MalformedEnvelope(reason) => Result.Malformed(reason)
-    case StrictDraft03.Result.Rejected(reason)          => Result.ProofRejected(reason)
-    case StrictDraft03.Result.InternalFailure(kind, detail) =>
-      Result.InternalFailure(kind, detail)
+    case StrictDraft03.Result.MalformedEnvelope(reason) =>
+      Result.Malformed(Failure.Envelope(reason))
+    case StrictDraft03.Result.Rejected(reason) => Result.ProofRejected(reason)
+    case StrictDraft03.Result.InternalFailure(cause) =>
+      Result.InternalFailure(cause)
