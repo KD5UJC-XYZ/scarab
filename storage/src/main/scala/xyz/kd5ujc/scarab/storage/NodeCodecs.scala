@@ -25,6 +25,7 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 
 /** The codec of everything a snapshot holds, one codec per type, composed. Case classes and enums
   * are derived from their `Mirror` ([[Codec.auto]]); the instances below exist so each shared type
@@ -102,6 +103,18 @@ object NodeCodecs:
   // Consensus and bootstrap.
   given lite: Codec[LiteLedger] = Codec.auto
   given bootstrap: Codec[BootstrapState] = Codec.auto
+  // Keep the historical case-class layout and fingerprint as the domain becomes bounded.
+  given byronVersion: Codec[ByronVersion] =
+    val number = summon[Codec[BigInt]]
+    Codec.make[ByronVersion]("ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)")((out, version) =>
+      number.write(out, BigInt(version.major))
+      number.write(out, BigInt(version.minor))
+      number.write(out, BigInt(version.alt))
+    )(in =>
+      ByronVersion
+        .from(number.read(in), number.read(in), number.read(in))
+        .fold(e => throw CodecException(e.message), identity)
+    )
   given byron: Codec[ByronState] = Codec.auto
   given consensusExtras: Codec[ConsensusExtras] = Codec.auto
   given mirrorInShelley: Codec[MirrorExtras.InShelley] = Codec.auto

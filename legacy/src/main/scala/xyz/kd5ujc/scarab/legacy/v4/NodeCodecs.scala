@@ -134,6 +134,9 @@ object NodeCodecs:
   // Consensus and bootstrap.
   given lite: Codec[LiteLedger] = Codec.auto
   given bootstrap: Codec[BootstrapState] = Codec.auto
+  // V4 uses the same three-BigInt Byron version layout as V1-V3.
+  given byronVersion: Codec[xyz.kd5ujc.scarab.ledger.byron.ByronVersion] =
+    xyz.kd5ujc.scarab.legacy.NodeCodecs.byronVersion
   given byron: Codec[ByronState] = Codec.auto
   given consensusExtras: Codec[ConsensusExtras] = Codec.auto
   given mirrorInShelley: Codec[MirrorExtras.InShelley] = Codec.auto

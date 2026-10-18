@@ -109,9 +109,15 @@ class ByronPreprodSuite extends CatsEffectSuite:
     val versions =
       (0 to byronCount).flatMap(i => states(i).consensus.byron.ledger.map(_.update.adoptedVersion))
     assertEquals(versions.head, ByronVersion.zero)
-    assertEquals(versions.distinct, Vector(ByronVersion.zero, ByronVersion(1, 0, 0)))
+    assertEquals(
+      versions.distinct,
+      Vector(ByronVersion.zero, ByronVersion.from(1, 0, 0).fold(e => fail(e.message), identity))
+    )
     val last = states(byronCount).consensus.byron.ledger.get
-    assertEquals(last.update.candidates.map(_.version), Vector(ByronVersion(2, 0, 0)))
+    assertEquals(
+      last.update.candidates.map(_.version),
+      Vector(ByronVersion.from(2, 0, 0).fold(e => fail(e.message), identity))
+    )
   }
 
   test("the transition to Shelley is derived from the update state: epoch 4, as on the network") {

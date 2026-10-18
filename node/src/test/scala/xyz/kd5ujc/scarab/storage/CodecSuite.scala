@@ -110,6 +110,37 @@ class CodecSuite extends ScalaCheckSuite:
 
   private val hash32 = Bytes(Vector.tabulate(32)(i => (i + 1).toByte))
 
+  test("Byron versions retain the previous three-BigInt layout and schema") {
+    import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
+    val oldBytes = Codec.encode(BigInt(65535)) ++ Codec.encode(BigInt(65535)) ++
+      Codec.encode(BigInt(255))
+    val expected = ByronVersion.from(65535, 65535, 255).fold(e => fail(e.message), identity)
+    assertEquals(Codec.decode[ByronVersion](oldBytes), Right(expected))
+    assertEquals(Codec.encode(expected).toVector, oldBytes.toVector)
+    assertEquals(Codec[ByronVersion].shape, "ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)")
+    val legacy = xyz.kd5ujc.scarab.legacy.NodeCodecs.byronVersion
+    assertEquals(xyz.kd5ujc.scarab.legacy.Codec.decode(oldBytes)(using legacy), Right(expected))
+    assertEquals(
+      xyz.kd5ujc.scarab.legacy.Codec.encode(expected)(using legacy).toVector,
+      oldBytes.toVector
+    )
+    assertEquals(legacy.shape, Codec[ByronVersion].shape)
+  }
+
+  test("Byron version snapshot readers reject values outside the reference widths") {
+    import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
+    Vector((65536, 0, 0), (0, 65536, 0), (0, 0, 256), (-1, 0, 0)).foreach { (major, minor, alt) =>
+      val bytes =
+        Codec.encode(BigInt(major)) ++ Codec.encode(BigInt(minor)) ++ Codec.encode(BigInt(alt))
+      assert(Codec.decode[ByronVersion](bytes).isLeft)
+      assert(
+        xyz.kd5ujc.scarab.legacy.Codec
+          .decode(bytes)(using xyz.kd5ujc.scarab.legacy.NodeCodecs.byronVersion)
+          .isLeft
+      )
+    }
+  }
+
   test("golden: primitives and containers") {
     assertEquals(hex(Codec.encode(BigInt(0))), "0100")
     assertEquals(hex(Codec.encode(BigInt(-1))), "01ff")

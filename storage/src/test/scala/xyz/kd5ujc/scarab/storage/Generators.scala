@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.consensus.state.{ChainDepState, PBftState, ProtocolExtr
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.Nonce
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 import xyz.kd5ujc.scarab.codec.Rational
 import org.scalacheck.Gen
 import scala.compiletime.{erasedValue, summonInline}
@@ -120,6 +121,12 @@ object Gens extends LowPriorityGens:
   given pulsingSnapshot: Gens[PulsingSnapshot] = auto
   given lite: Gens[LiteLedger] = auto
   given bootstrap: Gens[BootstrapState] = auto
+  given byronVersion: Gens[ByronVersion] = of(for
+    major <- Gen.choose(0, 65535)
+    minor <- Gen.choose(0, 65535)
+    alt <- Gen.choose(0, 255)
+    version <- ByronVersion.from(major, minor, alt).fold(_ => Gen.fail, Gen.const)
+  yield version)
   given byron: Gens[ByronState] = auto
   given blockRef: Gens[BlockRef] = auto
   given pbftState: Gens[PBftState] = of(StateGen.pbftState)

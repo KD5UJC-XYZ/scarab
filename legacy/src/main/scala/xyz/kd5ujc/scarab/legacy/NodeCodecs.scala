@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.legacy
 import xyz.kd5ujc.scarab.consensus.{BlockRef, BootstrapState}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.*
+import xyz.kd5ujc.scarab.ledger.byron.ByronVersion
 
 /** FROZEN. The codec of everything a V1 to V3 snapshot holds, one codec per type, composed. Case
   * classes and enums are derived from their `Mirror` ([[Codec.auto]]); the instances below exist so
@@ -66,6 +67,18 @@ object NodeCodecs:
   given praos: Codec[PraosState] = Codec.auto
   given lite: Codec[LiteLedger] = Codec.auto
   given bootstrap: Codec[BootstrapState] = Codec.auto
+  // Keep the historical case-class layout and fingerprint as the domain becomes bounded.
+  given byronVersion: Codec[ByronVersion] =
+    val number = summon[Codec[BigInt]]
+    Codec.make[ByronVersion]("ByronVersion(major:BigInt,minor:BigInt,alt:BigInt)")((out, version) =>
+      number.write(out, BigInt(version.major))
+      number.write(out, BigInt(version.minor))
+      number.write(out, BigInt(version.alt))
+    )(in =>
+      ByronVersion
+        .from(number.read(in), number.read(in), number.read(in))
+        .fold(e => throw CodecException(e.message), identity)
+    )
   given byron: Codec[ByronState] = Codec.auto
 
   // Roots.

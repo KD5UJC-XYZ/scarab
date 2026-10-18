@@ -238,7 +238,7 @@ object Header:
             no <- uint(diff(0))
             signature <- byronSignature(consensus(3))
             extra <- array(h(4), 4)
-            version <- ByronVersion.decode(extra(0)).leftMap(fail)
+            version <- ByronVersion.decode(extra(0)).leftMap(e => fail(e.message))
             signed = Bytes(
               Vector(0x85.toByte) ++ Vector(h(1), h(2), consensus(0), consensus(2), h(4))
                 .flatMap(_.original.value)

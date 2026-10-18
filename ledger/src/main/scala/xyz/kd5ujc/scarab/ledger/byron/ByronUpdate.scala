@@ -37,7 +37,7 @@ object UpdatePayload:
   private def proposal(n: Node): Either[String, ByronProposal] =
     CborRead.arrayN(n, 7, "update proposal").flatMap { xs =>
       for
-        version <- ByronVersion.decode(xs(0))
+        version <- ByronVersion.decode(xs(0)).leftMap(_.message)
         update <- ByronParamsUpdate.decode(xs(1))
         sv <- CborRead.arrayN(xs(2), 2, "software version")
         name <- CborRead.text(sv(0), "software name")
@@ -212,10 +212,11 @@ object ByronUpdate:
   ): Either[UpdateError, Map[Bytes, ProtocolProposal]] =
     val adopted = st.adoptedParams
     val proposed = p.update(adopted)
+    // pvCanFollow, Validation/Registration.hs:489-499 (ledger f649f97). Components are bounded.
     val canFollow =
       val a = st.adoptedVersion
       val v = p.version
-      Ordering[ByronVersion].lt(a, v) && ((v.major - a.major).toInt match
+      Ordering[ByronVersion].lt(a, v) && ((v.major - a.major) match
         case 0 => v.minor == a.minor + 1
         case 1 => v.minor == 0
         case _ => false)

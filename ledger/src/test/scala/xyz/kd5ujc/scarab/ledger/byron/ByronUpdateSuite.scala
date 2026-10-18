@@ -179,8 +179,11 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     val encoded = Cb.arr(proposal.fold(Cb.arr())(p => Cb.arr(p)), Cb.arr(votes*))
     Cbor.decode(encoded).flatMap(UpdatePayload.decode).fold(e => fail(e), identity)
 
-  private val v1 = ByronVersion(1, 0, 0)
-  private val v2 = ByronVersion(2, 0, 0)
+  private def version(major: BigInt, minor: BigInt, alt: BigInt): ByronVersion =
+    ByronVersion.from(major, minor, alt).fold(e => fail(e.message), identity)
+
+  private val v1 = version(1, 0, 0)
+  private val v2 = version(2, 0, 0)
 
   private def register(
       st: UpdateState,
@@ -203,8 +206,15 @@ class ByronUpdateSuite extends ScalaCheckSuite:
     val pb = proposalBytes(dKeys(0), version, update, software = ("cardano-sl", software))
     val p = payload(Some(pb), Nil)
     val id = p.proposal.get.id
-    val v = ByronVersion(version._1, version._2, version._3)
-    val s1 = register(st, from, p, ByronVersion.zero.copy(major = v.major - 1), dKeys(0))
+    val v =
+      ByronVersion.from(version._1, version._2, version._3).fold(e => fail(e.message), identity)
+    val s1 = register(
+      st,
+      from,
+      p,
+      ByronVersion.from(v.major - 1, 0, 0).fold(e => fail(e.message), identity),
+      dKeys(0)
+    )
       .fold(e => fail(e.message), identity)
     assertEquals(s1.registeredProtocol.keySet, Set(id))
     val s2 = register(
