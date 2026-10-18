@@ -64,6 +64,7 @@ re-runs on tagged builds are not done yet (K5).
 
 | Run | Result | Commit | Environment |
 |---|---|---|---|
+| Loopback HTTP state requests ([REF-06, #170](https://github.com/KD5UJC-XYZ/scarab/issues/170)): `node/testOnly *QueryServerSuite` | all three route tests pass: 13 malformed, partial or duplicate point requests return 400 without reading state; bare `/state` and a retained explicit point return 200; well-formed unavailable points return 404, including slot 2^64-1. This API is Scarab-specific; no Haskell REST parity is claimed | `dd7e2d34` | 2026-10-18, JDK 21 Docker image |
 | `devnet.py soak --seconds 480` | 24/24 comparisons matched, epochs 0 to 9, no error | 788f51c | reference 11.1.3 image, `cardano-scala-jdk` (then named `cardano-public-v023-check:local`) |
 | `devnet.py soak --seconds 900` | 41/41 matched, epochs 0 to 18, through the hard fork to protocol 11, a no-confidence action and a committee election | 788f51c | same |
 | `devnet.py soak --seconds 900 --governance-extended` | 44/44 comparisons matched, epochs 0 to 18; all nine stages reached; 9 transactions refused by the reference with the expected predicate failure (2 reference-input, 2 unelected-voter, 5 VRF), 0 unexpected; the reference's ratification enacted the second hard fork only, no-confidence on default pool votes, one of three committee updates, then a parameter change and a withdrawal together, and never the withdrawal proposed after the member expired | 08fb267 | same |
