@@ -219,7 +219,7 @@ object PeerSharing:
   ): DecodeResult[Message] =
     decodePrefix(state, sender, bytes, limits) match
       case Decoding.NeedMore              => DecodeResult.NeedMore
-      case Decoding.Failed(error)         => DecodeResult.Failed(error.message)
+      case Decoding.Failed(error)         => DecodeResult.Failed(ProtocolError.PeerSharing(error))
       case Decoding.Decoded(value, taken) => DecodeResult.Decoded(value, taken)
 
   // --- encoding ---------------------------------------------------------------------------------

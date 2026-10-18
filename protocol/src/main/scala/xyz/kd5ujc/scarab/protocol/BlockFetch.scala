@@ -28,7 +28,7 @@ object BlockFetch:
     * lengths before waiting for the body. Generic adapters receive one CBOR item.
     */
   trait PayloadCodec[P] extends ChainSync.PayloadCodec[P]:
-    private[protocol] def readFrom(reader: ProtocolWire.Reader): P =
+    private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): P =
       get(this.decode(reader.item()))
 
   /** Per-state receive bounds, independent of ChainSync and mux SDU bounds. */
@@ -53,9 +53,9 @@ object BlockFetch:
       case State.Busy      => busyMessageBytes
       case State.Streaming => streamingMessageBytes
       case State.Done      => 0
-    private[protocol] def wire(state: State): ProtocolWire.Limits =
-      if !valid then bad("invalid BlockFetch limits")
-      if state == State.Done then bad("BlockFetch is terminal")
+    private[protocol] def wire(state: State)(using ProtocolWire.Scope): ProtocolWire.Limits =
+      if !valid then bad(ProtocolError.InvalidBlockFetchLimits)
+      if state == State.Done then bad(ProtocolError.BlockFetchIsTerminal)
       val size = messageBytes(state)
       val strings = math.min(maxStringBytes, size)
       ProtocolWire.Limits(size, strings, math.min(maxHashBytes, strings), maxDepth, maxItems)
@@ -78,18 +78,18 @@ object BlockFetch:
   final class Received private (val blocks: Int, val rawBytes: Long)
   object Received:
     val Empty: Received = new Received(0, 0L)
-    def add(previous: Received, bytes: Int, limits: RequestLimits): Either[String, Received] =
-      if !limits.valid || bytes < 0 then Left("invalid request accounting limits/bytes")
-      else if previous.blocks >= limits.maxBlocks then Left("request block limit exceeded")
+    def add(previous: Received, bytes: Int, limits: RequestLimits): Either[ProtocolError, Received] =
+      if !limits.valid || bytes < 0 then Left(ProtocolError.InvalidRequestAccountingLimitsBytes)
+      else if previous.blocks >= limits.maxBlocks then Left(ProtocolError.RequestBlockLimitExceeded)
       else if previous.rawBytes > limits.maxRawBytes || bytes.toLong > limits.maxRawBytes - previous.rawBytes
-      then Left("request aggregate raw byte limit exceeded")
+      then Left(ProtocolError.RequestAggregateRawByteLimitExceeded)
       else Right(new Received(previous.blocks + 1, previous.rawBytes + bytes.toLong))
 
   def direction(sender: Role): Mux.Direction = sender match
     case Role.Client => Mux.Direction.Initiator
     case Role.Server => Mux.Direction.Responder
 
-  def transition[P](state: State, sender: Role, message: Message[P]): Either[String, State] =
+  def transition[P](state: State, sender: Role, message: Message[P]): Either[ProtocolError, State] =
     (state, sender, message) match
       case (State.Idle, Role.Client, Message.RequestRange(_, _)) => Right(State.Busy)
       case (State.Idle, Role.Client, Message.ClientDone)         => Right(State.Done)
@@ -97,7 +97,7 @@ object BlockFetch:
       case (State.Busy, Role.Server, Message.NoBlocks)           => Right(State.Idle)
       case (State.Streaming, Role.Server, Message.Block(_))      => Right(State.Streaming)
       case (State.Streaming, Role.Server, Message.BatchDone)     => Right(State.Idle)
-      case _ => Left(s"illegal BlockFetch message/agency in $state from $sender")
+      case _ => Left(ProtocolError.BlockFetchAgency(state, sender))
 
   def encode[P](
       state: State,
@@ -105,7 +105,7 @@ object BlockFetch:
       message: Message[P],
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): Either[String, Bytes] = attempt {
+  ): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val bounds = limits.wire(state)
     val w = new ProtocolWire.Writer(bounds)
@@ -136,10 +136,10 @@ object BlockFetch:
       payload: PayloadCodec[P],
       limits: Limits = Limits()
   ): DecodeResult[Message[P]] =
-    try
+    ProtocolWire.prefix {
       val bounds = limits.wire(state)
       // Reject impossible agency even with empty input rather than waiting for bytes.
-      if (state == State.Idle) != (sender == Role.Client) then bad("wrong BlockFetch agency")
+      if (state == State.Idle) != (sender == Role.Client) then bad(ProtocolError.WrongBlockFetchAgency)
       val r = new ProtocolWire.Reader(bytes, bounds)
       val arity = r.arrayLength()
       val possibleArity = state match
@@ -147,19 +147,19 @@ object BlockFetch:
         case State.Busy      => arity == 1
         case State.Streaming => arity == 1 || arity == 2
         case State.Done      => false
-      if !possibleArity then bad("wrong BlockFetch outer arity for state")
+      if !possibleArity then bad(ProtocolError.WrongBlockFetchOuterArityForState)
       val tag = r.uint().value
       val expected = tag match
         case n if n == 0                               => 3
         case n if n == 4                               => 2
         case n if n == 1 || n == 2 || n == 3 || n == 5 => 1
-        case _                                         => bad("unknown BlockFetch tag")
-      if arity != expected then bad("wrong exact BlockFetch outer arity")
+        case _                                         => bad(ProtocolError.UnknownBlockFetchTag)
+      if arity != expected then bad(ProtocolError.WrongExactBlockFetchOuterArity)
       // Header-only state validation happens before any untrusted payload decode.
       val legal = (state, tag.toInt) match
         case (State.Idle, 0 | 1) | (State.Busy, 2 | 3) | (State.Streaming, 4 | 5) => true
         case _                                                                    => false
-      if !legal then bad("wrong BlockFetch state")
+      if !legal then bad(ProtocolError.WrongBlockFetchState)
       val message: Message[P] = tag.toInt match
         case 0 => Message.RequestRange(r.point(), r.point())
         case 1 => Message.ClientDone
@@ -167,13 +167,11 @@ object BlockFetch:
         case 3 => Message.NoBlocks
         case 4 => Message.Block(payload.readFrom(r))
         case 5 => Message.BatchDone
-        case _ => bad("unknown BlockFetch tag")
+        case _ => bad(ProtocolError.UnknownBlockFetchTag)
       get(transition(state, sender, message))
       get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
       DecodeResult.Decoded(message, r.position)
-    catch
-      case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore
-      case ProtocolWire.Failure(error, false) => DecodeResult.Failed(error)
+    }
 
   /** End-of-input/exact-message boundary: incomplete input is an explicit failure, never success.
     */
@@ -183,9 +181,9 @@ object BlockFetch:
       bytes: Bytes,
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): Either[String, Message[P]] =
+  ): Either[ProtocolError, Message[P]] =
     decodePrefix(state, sender, bytes, payload, limits) match
-      case DecodeResult.NeedMore      => Left("truncated BlockFetch message")
+      case DecodeResult.NeedMore      => Left(ProtocolError.TruncatedBlockFetchMessage)
       case DecodeResult.Failed(error) => Left(error)
       case DecodeResult.Decoded(value, consumed) =>
-        if consumed == bytes.size then Right(value) else Left("trailing BlockFetch bytes")
+        if consumed == bytes.size then Right(value) else Left(ProtocolError.TrailingBlockFetchBytes)

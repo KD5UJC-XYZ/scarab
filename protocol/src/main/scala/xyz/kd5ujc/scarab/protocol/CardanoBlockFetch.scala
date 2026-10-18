@@ -20,10 +20,10 @@ object CardanoBlockFetch:
       case _                => false
     override def hashCode: Int = (slot, hash).hashCode
   object SpecificPoint:
-    def from(point: Point): Either[String, SpecificPoint] = point match
-      case Point.Origin => Left("Origin is not an addressable Cardano block")
+    def from(point: Point): Either[ProtocolError, SpecificPoint] = point match
+      case Point.Origin => Left(ProtocolError.OriginIsNotAnAddressableCardanoBlock)
       case Point.Block(slot, hash) =>
-        if hash.size != 32 then Left("Cardano point hash must contain 32 bytes")
+        if hash.size != 32 then Left(ProtocolError.CardanoPointHashMustContain32Bytes(hash.size))
         else Right(new SpecificPoint(slot, hash))
 
   /** Endpoints are inclusive. Equal endpoints request one block. Slot ordering alone cannot prove
@@ -32,7 +32,7 @@ object CardanoBlockFetch:
   final case class InclusiveRange(from: SpecificPoint, to: SpecificPoint):
     def request: BlockFetch.Message[Nothing] = BlockFetch.Message.RequestRange(from.point, to.point)
   object InclusiveRange:
-    def fromPoints(from: Point, to: Point): Either[String, InclusiveRange] =
+    def fromPoints(from: Point, to: Point): Either[ProtocolError, InclusiveRange] =
       for
         first <- SpecificPoint.from(from)
         last <- SpecificPoint.from(to)
@@ -51,9 +51,9 @@ object CardanoBlockFetch:
     def from(
         bytes: Bytes,
         maxRawBytes: Int = RawLimits().maxRawBytes
-    ): Either[String, RawNtNBlock] =
-      if maxRawBytes < 0 || maxRawBytes > 2499991 then Left("invalid raw block limit")
-      else if bytes.size > maxRawBytes then Left("raw block byte limit exceeded")
+    ): Either[ProtocolError, RawNtNBlock] =
+      if maxRawBytes < 0 || maxRawBytes > 2499991 then Left(ProtocolError.InvalidRawBlockLimit(maxRawBytes))
+      else if bytes.size > maxRawBytes then Left(ProtocolError.RawBlockByteLimitExceeded(bytes.size, maxRawBytes))
       else Right(new RawNtNBlock(bytes))
 
   /** Default leaves room for the nine-byte canonical Block message wrapper. */
@@ -62,10 +62,10 @@ object CardanoBlockFetch:
 
   def payloadCodec(limits: RawLimits = RawLimits()): BlockFetch.PayloadCodec[RawNtNBlock] =
     new BlockFetch.PayloadCodec[RawNtNBlock]:
-      private def bounds: ProtocolWire.Limits =
-        if !limits.valid then bad("invalid raw block limit")
+      private def bounds(using ProtocolWire.Scope): ProtocolWire.Limits =
+        if !limits.valid then bad(ProtocolError.InvalidRawBlockLimit(limits.maxRawBytes))
         ProtocolWire.Limits(2500000, 2500000, 64)
-      def encode(block: RawNtNBlock): Either[String, Bytes] = attempt {
+      def encode(block: RawNtNBlock): Either[ProtocolError, Bytes] = attempt {
         val writer = new ProtocolWire.Writer(bounds)
         get(RawNtNBlock.from(block.bytes, limits.maxRawBytes))
         writer.head(6, 24)
@@ -73,15 +73,15 @@ object CardanoBlockFetch:
         writer.raw(block.bytes)
         writer.result
       }
-      def decode(bytes: Bytes): Either[String, RawNtNBlock] = attempt {
+      def decode(bytes: Bytes): Either[ProtocolError, RawNtNBlock] = attempt {
         val reader = new ProtocolWire.Reader(bytes, bounds)
         val result = readFrom(reader)
-        if reader.position != bytes.size then bad("trailing serialized block bytes")
+        if reader.position != bytes.size then bad(ProtocolError.TrailingSerializedBlockBytes)
         result
       }
-      override private[protocol] def readFrom(reader: ProtocolWire.Reader): RawNtNBlock =
-        if !limits.valid then bad("invalid raw block limit")
-        if reader.tag() != 24 then bad("expected serialized block tag24")
+      override private[protocol] def readFrom(reader: ProtocolWire.Reader)(using ProtocolWire.Scope): RawNtNBlock =
+        if !limits.valid then bad(ProtocolError.InvalidRawBlockLimit(limits.maxRawBytes))
+        if reader.tag() != 24 then bad(ProtocolError.ExpectedSerializedBlockTag24)
         // Reader checks the declared length before checking body availability or slicing.
         // Thus a huge incomplete advertised bstr is Failed, not NeedMore.
         get(RawNtNBlock.from(reader.bytes(limits.maxRawBytes), limits.maxRawBytes))
@@ -89,9 +89,9 @@ object CardanoBlockFetch:
   /** Decode requests through this boundary before a Cardano server/API accepts them. Generic
     * BlockFetch intentionally retains polymorphic point compatibility.
     */
-  def checkedRange(message: BlockFetch.Message[?]): Either[String, InclusiveRange] = message match
+  def checkedRange(message: BlockFetch.Message[?]): Either[ProtocolError, InclusiveRange] = message match
     case BlockFetch.Message.RequestRange(from, to) => InclusiveRange.fromPoints(from, to)
-    case _                                         => Left("expected RequestRange")
+    case _                                         => Left(ProtocolError.ExpectedRequestRange)
 
   /** Selected ordered points, supplied by an independent selection/identity layer. Slot
     * monotonicity is necessary but does not establish parent linkage.
@@ -105,13 +105,13 @@ object CardanoBlockFetch:
     def from(
         expected: Vector[SpecificPoint],
         limits: BlockFetch.RequestLimits = BlockFetch.RequestLimits()
-    ): Either[String, FetchPlan] =
-      if !limits.valid then Left("invalid request limits")
+    ): Either[ProtocolError, FetchPlan] =
+      if !limits.valid then Left(ProtocolError.InvalidRequestLimits)
       else if expected.isEmpty || expected.size > limits.maxBlocks then
-        Left("expected point count outside request limits")
-      else if expected.distinct.size != expected.size then Left("duplicate expected points")
+        Left(ProtocolError.ExpectedPointCountOutsideRequestLimits(expected.size, limits.maxBlocks))
+      else if expected.distinct.size != expected.size then Left(ProtocolError.DuplicateExpectedPoints)
       else if expected.zip(expected.drop(1)).exists((a, b) => a.slot.value > b.slot.value) then
-        Left("reversed expected slot order")
+        Left(ProtocolError.ReversedExpectedSlotOrder)
       else Right(new FetchPlan(expected, limits))
 
   enum BatchResult:
@@ -135,10 +135,10 @@ object CardanoBlockFetch:
       private val blocks: Vector[RawNtNBlock]
   ):
     def accept(message: BlockFetch.Message[RawNtNBlock])(
-        identify: RawNtNBlock => Either[String, SpecificPoint]
-    ): Either[String, Batch] =
+        identify: RawNtNBlock => Either[ProtocolError, SpecificPoint]
+    ): Either[ProtocolError, Batch] =
       import BlockFetch.{Message, Role}
-      if result != BatchResult.Pending then Left("request already completed")
+      if result != BatchResult.Pending then Left(ProtocolError.RequestAlreadyCompleted)
       else
         BlockFetch.transition(state, Role.Server, message).flatMap { next =>
           message match
@@ -146,7 +146,7 @@ object CardanoBlockFetch:
             case Message.NoBlocks =>
               Right(new Batch(plan, next, BatchResult.Unavailable, received, blocks))
             case Message.Block(block) =>
-              if blocks.size >= plan.expected.size then Left("extra block in requested batch")
+              if blocks.size >= plan.expected.size then Left(ProtocolError.ExtraBlockInRequestedBatch)
               else
                 for
                   count <- BlockFetch.Received.add(received, block.bytes.size, plan.limits)
@@ -154,17 +154,17 @@ object CardanoBlockFetch:
                   _ <- Either.cond(
                     point == plan.expected(blocks.size),
                     (),
-                    "block point/order mismatch"
+                    ProtocolError.BlockPointOrderMismatch
                   )
                 yield new Batch(plan, next, result, count, blocks :+ block)
             case Message.BatchDone =>
               if blocks.size != plan.expected.size then
-                Left("early BatchDone: incomplete requested range")
+                Left(ProtocolError.EarlyBatchDoneIncompleteRequestedRange)
               else Right(new Batch(plan, next, BatchResult.Complete(blocks), received, blocks))
-            case _ => Left("unexpected client message in server batch")
+            case _ => Left(ProtocolError.UnexpectedClientMessageInServerBatch)
         }
-    def endOfInput: Either[String, BatchResult] = result match
-      case BatchResult.Pending => Left("incomplete BlockFetch request at end of input")
+    def endOfInput: Either[ProtocolError, BatchResult] = result match
+      case BatchResult.Pending => Left(ProtocolError.IncompleteBlockFetchRequestAtEndOfInput)
       case value               => Right(value)
   object Batch:
     /** The returned Busy state models a RequestRange already accepted by the pure model; it does

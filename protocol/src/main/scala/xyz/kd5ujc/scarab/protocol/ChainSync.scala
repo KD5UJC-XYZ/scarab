@@ -14,8 +14,8 @@ object ChainSync:
   object UInt64:
     val Max: BigInt = (BigInt(1) << 64) - 1
     val Zero: UInt64 = new UInt64(0)
-    def from(value: BigInt): Either[String, UInt64] =
-      if value < 0 || value > Max then Left("outside uint64") else Right(new UInt64(value))
+    def from(value: BigInt): Either[ProtocolError, UInt64] =
+      if value < 0 || value > Max then Left(ProtocolError.OutsideUint64(value)) else Right(new UInt64(value))
 
     /** Total conversion for values that are unsigned 64-bit by construction (decoded CBOR unsigned
       * integers, slot and block counters). Out-of-range input saturates; it cannot occur for such
@@ -54,7 +54,7 @@ object ChainSync:
     case Done
   enum DecodeResult[+A]:
     case NeedMore
-    case Failed(error: String)
+    case Failed(error: ProtocolError)
     case Decoded(value: A, consumed: Int)
 
   /** Bounds are local policy. 65535 is the pinned network smallByteLimit per message on
@@ -90,10 +90,10 @@ object ChainSync:
 
   /** A payload adapter receives exactly one bounded syntactically valid CBOR item. */
   trait PayloadCodec[P]:
-    def encode(value: P): Either[String, Bytes]
-    def decode(bytes: Bytes): Either[String, P]
+    def encode(value: P): Either[ProtocolError, Bytes]
+    def decode(bytes: Bytes): Either[ProtocolError, P]
 
-  def transition[P](state: State, sender: Role, message: Message[P]): Either[String, State] =
+  def transition[P](state: State, sender: Role, message: Message[P]): Either[ProtocolError, State] =
     import State.*
     import Role.*
     (state, sender, message) match
@@ -109,24 +109,21 @@ object ChainSync:
         Right(Idle)
       case (Intersect, Server, Message.IntersectFound(_, _) | Message.IntersectNotFound(_)) =>
         Right(Idle)
-      case _ => Left(s"illegal ChainSync message/agency in $state from $sender")
+      case _ => Left(ProtocolError.ChainSyncAgency(state, sender))
 
-  private[protocol] type Failure = ProtocolWire.Failure
-  private[protocol] val Failure = ProtocolWire.Failure
-  private[protocol] def bad(message: String): Nothing = throw Failure(message)
-  private[protocol] def get[A](value: Either[String, A]): A = value.fold(bad, identity)
-  private def attempt[A](body: => A): Either[String, A] =
-    try Right(body)
-    catch case Failure(message, _) => Left(message)
+  private[protocol] def bad(error: ProtocolError)(using ProtocolWire.Scope): Nothing = ProtocolWire.bad(error)
+  private[protocol] def get[A](value: Either[ProtocolError,A])(using ProtocolWire.Scope): A = ProtocolWire.get(value)
+  private def attempt[A](body: ProtocolWire.Scope ?=> A): Either[ProtocolError, A] =
+    ProtocolWire.attempt(body)
 
-  def encodePoint(point: Point, limits: Limits = Limits()): Either[String, Bytes] = attempt {
+  def encodePoint(point: Point, limits: Limits = Limits()): Either[ProtocolError, Bytes] = attempt {
     val writer = new ChainSyncWire.Writer(limits)
     writer.point(point)
     val result = writer.result
     get(validateItem(result, limits))
     result
   }
-  def encodeTip(tip: Tip, limits: Limits = Limits()): Either[String, Bytes] = attempt {
+  def encodeTip(tip: Tip, limits: Limits = Limits()): Either[ProtocolError, Bytes] = attempt {
     val writer = new ChainSyncWire.Writer(limits)
     writer.tip(tip)
     val result = writer.result
@@ -139,16 +136,14 @@ object ChainSync:
     parse(bytes, limits)(_.tip())
 
   private def parse[A](bytes: Bytes, limits: Limits)(
-      body: ChainSyncWire.Reader => A
+      body: ProtocolWire.Scope ?=> ChainSyncWire.Reader => A
   ): DecodeResult[A] =
-    try
+    ProtocolWire.prefix {
       val reader = new ChainSyncWire.Reader(bytes, limits)
       val value = body(reader)
       get(validateItem(bytes.take(reader.position), limits))
       DecodeResult.Decoded(value, reader.position)
-    catch
-      case Failure(_, true)        => DecodeResult.NeedMore
-      case Failure(message, false) => DecodeResult.Failed(message)
+    }
 
   def encode[P](
       state: State,
@@ -156,7 +151,7 @@ object ChainSync:
       message: Message[P],
       payload: PayloadCodec[P],
       limits: Limits = Limits()
-  ): Either[String, Bytes] = attempt {
+  ): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val w = new ChainSyncWire.Writer(limits)
     def outer(n: Int, tag: Int): Unit = { w.head(4, n); w.head(0, tag) }
@@ -170,7 +165,7 @@ object ChainSync:
         w.raw(raw); w.tip(tip)
       case Message.RollBackward(point, tip) => outer(3, 3); w.point(point); w.tip(tip)
       case Message.FindIntersect(points) =>
-        if points.size > limits.maxCandidates then bad("candidate limit exceeded")
+        if points.size > limits.maxCandidates then bad(ProtocolError.CandidateLimitExceeded)
         outer(2, 4)
         if points.isEmpty then w.head(4, 0)
         else { w.byte(159); points.foreach(w.point); w.byte(255) }
@@ -201,7 +196,7 @@ object ChainSync:
       case 5 if tag == 5 && arity == 3 => Message.IntersectFound(Point.Origin, Tip.Origin)
       case 6 if tag == 6 && arity == 2 => Message.IntersectNotFound(Tip.Origin)
       case 7 if tag == 7 && arity == 1 => Message.Done
-      case _                           => bad("unknown tag or wrong exact outer arity")
+      case _                           => bad(ProtocolError.UnknownTagOrWrongExactOuterArity)
     get(transition(state, sender, skeleton))
     val message: Message[P] = tag.toInt match
       case 2 => Message.RollForward(get(payload.decode(r.item())), r.tip())
@@ -213,8 +208,8 @@ object ChainSync:
     message
   }
 
-  def validateItem(bytes: Bytes, limits: Limits = Limits()): Either[String, Unit] = attempt {
+  def validateItem(bytes: Bytes, limits: Limits = Limits()): Either[ProtocolError, Unit] = attempt {
     val r = new ChainSyncWire.Reader(bytes, limits)
     r.skip(0)
-    if r.position != bytes.size then bad("trailing payload bytes")
+    if r.position != bytes.size then bad(ProtocolError.TrailingPayloadBytes)
   }

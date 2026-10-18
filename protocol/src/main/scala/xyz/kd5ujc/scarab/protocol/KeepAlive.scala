@@ -25,8 +25,8 @@ object KeepAlive:
   object Cookie:
     val Max: Int = 65535
     val Zero: Cookie = new Cookie(0)
-    def from(value: Int): Either[String, Cookie] =
-      if value < 0 || value > Max then Left("KeepAlive cookie outside uint16")
+    def from(value: Int): Either[ProtocolError, Cookie] =
+      if value < 0 || value > Max then Left(ProtocolError.KeepAliveCookieOutsideUint16(BigInt(value)))
       else Right(new Cookie(value))
 
   enum State:
@@ -48,8 +48,8 @@ object KeepAlive:
   ):
     def valid: Boolean = maxMessageBytes > 0 && maxMessageBytes <= UpstreamMessageBytes &&
       maxDepth >= 0 && maxDepth <= 64 && maxItems > 0 && maxItems <= 65535
-    private[protocol] def wire: ProtocolWire.Limits =
-      if !valid then bad("invalid KeepAlive limits")
+    private[protocol] def wire(using ProtocolWire.Scope): ProtocolWire.Limits =
+      if !valid then bad(ProtocolError.InvalidKeepAliveLimits)
       ProtocolWire.Limits(maxMessageBytes, 0, 0, maxDepth, maxItems, 0)
 
   /** Reference state deadlines used by the runtime; the keep-alive interval is separate policy. */
@@ -61,29 +61,29 @@ object KeepAlive:
     case Role.Client => Mux.Direction.Initiator
     case Role.Server => Mux.Direction.Responder
 
-  def transition(state: State, sender: Role, message: Message): Either[String, State] =
+  def transition(state: State, sender: Role, message: Message): Either[ProtocolError, State] =
     (state, sender, message) match
       case (State.Client, Role.Client, Message.Request(_))  => Right(State.Server)
       case (State.Server, Role.Server, Message.Response(_)) => Right(State.Client)
       case (State.Client, Role.Client, Message.Done)        => Right(State.Done)
-      case _ => Left(s"illegal KeepAlive message/agency in $state from $sender")
+      case _ => Left(ProtocolError.KeepAliveAgency(state, sender))
 
   /** Runtime must retain one outstanding cookie and clear it only after this check succeeds. A
     * duplicate response is unsolicited once the caller has cleared that outstanding cookie.
     */
-  def matchResponse(expected: Option[Cookie], message: Message): Either[String, Unit] =
+  def matchResponse(expected: Option[Cookie], message: Message): Either[ProtocolError, Unit] =
     (expected, message) match
       case (Some(wanted), Message.Response(actual)) =>
-        if wanted == actual then Right(()) else Left("KeepAlive cookie mismatch")
-      case (None, Message.Response(_)) => Left("unsolicited KeepAlive response")
-      case _                           => Left("expected KeepAlive response")
+        if wanted == actual then Right(()) else Left(ProtocolError.KeepAliveCookieMismatch(wanted, actual))
+      case (None, Message.Response(_)) => Left(ProtocolError.UnsolicitedKeepAliveResponse)
+      case _                           => Left(ProtocolError.ExpectedKeepAliveResponse)
 
   def encode(
       state: State,
       sender: Role,
       message: Message,
       limits: Limits = Limits()
-  ): Either[String, Bytes] = attempt {
+  ): Either[ProtocolError, Bytes] = attempt {
     get(transition(state, sender, message))
     val bounds = limits.wire
     val w = new ProtocolWire.Writer(bounds)
@@ -106,42 +106,40 @@ object KeepAlive:
       bytes: Bytes,
       limits: Limits = Limits()
   ): DecodeResult[Message] =
-    try
+    ProtocolWire.prefix {
       val bounds = limits.wire
-      if state == State.Done then bad("KeepAlive is terminal")
-      if (state == State.Client) != (sender == Role.Client) then bad("wrong KeepAlive agency")
+      if state == State.Done then bad(ProtocolError.KeepAliveIsTerminal)
+      if (state == State.Client) != (sender == Role.Client) then bad(ProtocolError.WrongKeepAliveAgency)
       val r = new ProtocolWire.Reader(bytes, bounds)
       val arity = r.arrayLength()
       if (state == State.Client && arity != 1 && arity != 2) ||
         (state == State.Server && arity != 2)
-      then bad("wrong KeepAlive outer arity for state")
+      then bad(ProtocolError.WrongKeepAliveOuterArityForState)
       val tag = r.uint().value
       val request = state == State.Client && arity == 2 && tag == 0
       val response = state == State.Server && arity == 2 && tag == 1
       val done = state == State.Client && arity == 1 && tag == 2
-      if !request && !response && !done then bad("unknown KeepAlive tag, state or exact arity")
+      if !request && !response && !done then bad(ProtocolError.UnknownKeepAliveTagStateOrExactArity)
       val message =
         if done then Message.Done
         else
           val value = r.uint().value
-          if value > Cookie.Max then bad("KeepAlive cookie outside uint16")
+          if value > Cookie.Max then bad(ProtocolError.KeepAliveCookieOutsideUint16(value))
           val cookie = get(Cookie.from(value.toInt))
           if request then Message.Request(cookie) else Message.Response(cookie)
       get(transition(state, sender, message))
       get(ProtocolWire.validateItem(bytes.take(r.position), bounds))
       DecodeResult.Decoded(message, r.position)
-    catch
-      case ProtocolWire.Failure(_, true)      => DecodeResult.NeedMore
-      case ProtocolWire.Failure(error, false) => DecodeResult.Failed(error)
+    }
 
   def decode(
       state: State,
       sender: Role,
       bytes: Bytes,
       limits: Limits = Limits()
-  ): Either[String, Message] =
+  ): Either[ProtocolError, Message] =
     decodePrefix(state, sender, bytes, limits) match
-      case DecodeResult.NeedMore      => Left("truncated KeepAlive message")
+      case DecodeResult.NeedMore      => Left(ProtocolError.TruncatedKeepAliveMessage)
       case DecodeResult.Failed(error) => Left(error)
       case DecodeResult.Decoded(message, consumed) =>
-        if consumed == bytes.size then Right(message) else Left("trailing KeepAlive bytes")
+        if consumed == bytes.size then Right(message) else Left(ProtocolError.TrailingKeepAliveBytes)
