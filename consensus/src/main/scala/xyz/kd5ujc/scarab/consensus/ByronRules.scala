@@ -193,5 +193,6 @@ object ByronRules:
     for _ <- StrictEd25519.verify(d.delegate.take(32), d.signature, message) match
         case Right(VerificationResult.SignatureVerified) => Right(())
         case Right(VerificationResult.SignatureRejected) => Left(ByronChainError.SignatureRejected)
-        case Left(other)                                 => Left(ByronChainError.SignatureFailure(other))
+        case Left(input: xyz.kd5ujc.scarab.crypto.witness.WitnessInputError) => Left(ByronChainError.SignatureInput(input))
+        case Left(other: xyz.kd5ujc.scarab.crypto.witness.VerificationError) => Left(ByronChainError.SignatureFailure(other))
     yield ()

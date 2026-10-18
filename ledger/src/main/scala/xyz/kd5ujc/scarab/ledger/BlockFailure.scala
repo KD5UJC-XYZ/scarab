@@ -156,12 +156,12 @@ enum BlockFailure:
       s"$era block, but the Byron ledger has not decided on the transition to Shelley"
     case ShelleyBeforeTransition(epoch, first, last) =>
       s"Shelley block in epoch $epoch, the transition is to epoch $first after Byron slot $last"
-    case Byron(text)     => text
+    case Byron(error)    => error.message
     case Envelope(error) => error.message
     case TPraos(error)   => error.message
     case Praos(error)    => error.message
     case Lite(error)     => error.message
-    case Handover(text)  => text
+    case Handover(error) => error.message
     case SupplyInvariant(epoch, total, maximum) =>
       s"supply invariant broken entering epoch $epoch: $total != $maximum"
     case RefScriptsTooLarge(limit) => s"reference scripts of the block exceed $limit bytes"
@@ -180,3 +180,6 @@ object BlockFailure:
 enum HandoverProblem:
   case MissingShelleyContext
   case MissingByronRules
+  def message: String = this match
+    case MissingShelleyContext => "the Shelley genesis gives no hand-over context"
+    case MissingByronRules => "a Byron state, and no Byron rules to leave it"
