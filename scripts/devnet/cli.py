@@ -57,6 +57,7 @@ from .scenarios.peercut import peercut
 from .scenarios.pool import kes_rotate_scenario, pool
 from .scenarios.relay import relay
 from .scenarios.restart import restart
+from .scenarios.v1context import v1_context
 from .scenarios.soak import soak
 from .util import REPO
 
@@ -263,6 +264,23 @@ def main():
                     help="first run the build whose classes are in this directory (the `classes` of an earlier run) and "
                          "stop it; this build must then migrate the snapshots that build wrote (V4 to V5 for 6ce5bb77, the last build with V4 files)")
     rs.set_defaults(run=restart)
+    vc = sub.add_parser("v1-context", help="the Plutus V1 script context case by case against the reference "
+                                           "(reference inputs, reference scripts, inline datums, Byron addresses, "
+                                           "both validity tags); writes v1-context-cases.json")
+    vc.add_argument("--no-up", action="store_true", help="use the cluster that is already up under this name")
+    vc.add_argument("--eras", action="store_true",
+                    help="the cluster that walks Byron to Conway (no follower), the cases in every Alonzo, Babbage "
+                         "and Conway protocol version")
+    for opt, default, text in (("--epoch-length", 500, "slots per epoch"),
+                               ("--active-slots-coeff", 0.2, "Praos active slot coefficient f"),
+                               ("--byron-epochs", 1, "epochs spent in Byron"),
+                               ("--byron-slot-ms", 1000, "Byron slot length in milliseconds"),
+                               ("--stall-seconds", 90, "fail when the chain does not grow for this long"),
+                               ("--shelley-epochs", 1, "epochs at protocol 2"),
+                               ("--min-utxo-value", 0, "Shelley genesis minUTxOValue"),
+                               ("--pool-margin", "0", "margin of the three pools")):
+        vc.add_argument(opt, type=type(default), default=default, help=f"with --eras: {text}")
+    vc.set_defaults(run=v1_context)
     sub.add_parser("oracle", help="compare Scala state digests with db-analyser states of the reference node"
                    ).set_defaults(run=oracle)
     sub.add_parser("down", help="remove the containers and the run directory").set_defaults(run=down)

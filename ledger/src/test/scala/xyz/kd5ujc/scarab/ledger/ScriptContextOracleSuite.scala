@@ -60,7 +60,8 @@ class ScriptContextOracleSuite extends FunSuite:
     test(s"${c.name} (${c.kind}): contexts equal Scalus's translation") {
       // Scalus translates for protocol 10: its open-lower validity interval has an exclusive upper
       // bound, which the ledger had only from protocol 9 (see ScriptContextGoldenSuite for the
-      // earlier, inclusive form). Everything else is protocol independent.
+      // earlier, inclusive form). Everything else shown here is protocol independent; what a V1
+      // context refuses per era is not Scalus's to say (ScriptContextV1EraSuite, V1ContextSuite).
       val env = ScriptContexts.Environment(10, c.spent, c.references, c.posix)
       val tx = scalusTx(c)
       val utxos = scalusUtxos(c)

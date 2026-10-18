@@ -337,6 +337,15 @@ def tx_out(era, address, coin, assets=None, datum_hash=None, inline_datum=None, 
     return [address, v] + ([datum_hash] if datum_hash is not None else [])
 
 
+def redeemers_cbor(era, redeemers):
+    """The redeemers as the witness set holds them: the map form {[tag, index]: [data, [mem, steps]]} from
+    Conway, the list form [[tag, index, data, [mem, steps]], ...] before. (The script data hash covers
+    these very bytes, `enc(redeemers_cbor(...))`.)"""
+    if ERA_INDEX[era] >= ERA_INDEX["conway"]:
+        return {(t, i): [d, list(u)] for t, i, d, u in redeemers}
+    return [[t, i, d, list(u)] for t, i, d, u in redeemers]
+
+
 def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, certs=None, withdrawals=None,
              update=None, mint=None, native_scripts=(), collateral=None, required_signers=None,
              collateral_return=None, total_collateral=None, reference_inputs=None, metadata=None, network_id=None,
@@ -404,8 +413,8 @@ def build_tx(era, inputs, outputs, fee, signers, ttl=None, valid_from=None, cert
             witnesses[key] = [Raw(enc(bytes_)) for bytes_ in plutus[language]]
     if datums:
         witnesses[4] = list(datums)
-    if redeemers:  # the Conway map form {[tag, index]: [data, [mem, steps]]}
-        witnesses[5] = {(t, i): [d, list(u)] for t, i, d, u in redeemers}
+    if redeemers:
+        witnesses[5] = redeemers_cbor(era, redeemers)
     witness_bytes = enc(witnesses)
     if index >= ERA_INDEX["alonzo"]:
         tx = b"\x84" + body_bytes + witness_bytes + enc(is_valid) + enc(aux)

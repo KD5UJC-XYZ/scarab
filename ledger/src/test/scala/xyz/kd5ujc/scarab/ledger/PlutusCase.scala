@@ -49,8 +49,12 @@ object PlutusCase:
 
   private def hex(j: Json): Bytes = Bytes.fromHex(j.asString.get).toOption.get
 
-  def load(path: Path): PlutusCase =
-    val j = parse(Files.readString(path)).toOption.get
+  def load(path: Path): PlutusCase = fromJson(parse(Files.readString(path)).toOption.get)
+
+  /** The case a JSON object describes (the file of a recorded case, or one element of the arrays
+    * `devnet.py v1-context` writes).
+    */
+  def fromJson(j: Json): PlutusCase =
     val c = j.hcursor
     def text(f: String) = c.get[String](f).toOption.get
     def utxo(f: String) =
@@ -76,7 +80,11 @@ object PlutusCase:
       text("kind"),
       BigInt(text("slot")),
       pv,
-      Tx.fromBlock(block, if pv >= 7 then Era.Babbage else Era.Alonzo).toOption.get,
+      Tx.fromBlock(
+        block,
+        if pv >= 9 then Era.Conway else if pv >= 7 then Era.Babbage else Era.Alonzo
+      ).toOption
+        .get,
       utxo("spent"),
       utxo("references"),
       c.downField("costModels").focus.get.asObject.get.toMap.map { case (k, v) =>
