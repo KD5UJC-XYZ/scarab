@@ -79,7 +79,7 @@ object TxChecks:
           )
           .flatMap {
             case Phase2.Outcome.Unavailable(_, redeemer, reason) =>
-              Left(LedgerFailure.Unavailable(id, redeemer, reason))
+              Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase2(redeemer), reason))
             case Phase2.Outcome.Passed(n) =>
               if tx.isValid then
                 Right(stats.copy(succeeded = stats.succeeded + 1, scripts = stats.scripts + n))
@@ -404,15 +404,28 @@ object TxChecks:
   private[ledger] def scriptsWellFormed(pp: ProtocolParams, tx: Tx, env: Env): Result[Unit] =
     val pv = pp.protocolMajor.toInt
     def malformed(failure: Set[Bytes] => UtxowFailure, scripts: Vector[Script]): Result[Unit] =
-      val bad = scripts.filter(_.kind.isPlutus).flatMap { s =>
-        for
-          language <- Phase2.languageOf(s).toOption.toVector
-          code <- s.plutus.toVector
-          _ <- env.decoder.validate(language, pv, code).left.toOption.toVector
-        yield s.hash
+      val bad = scripts.filter(_.kind.isPlutus).traverse { script =>
+        (Phase2.languageOf(script).toOption, script.plutus) match
+          case (Some(language), Some(code)) =>
+            env.decoder.validate(language, pv, code) match
+              case Right(()) => Right(Option.empty[Bytes])
+              case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Malformed(_)) =>
+                Right(Some(script.hash))
+              case Left(xyz.kd5ujc.scarab.plutus.ScriptDecodeFailure.Unavailable(why)) =>
+                Left(
+                  LedgerFailure.Unavailable(
+                    tx.body.id,
+                    ScriptLocation.Phase1(script.hash),
+                    xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported(why)
+                  )
+                )
+          case _ => Right(Option.empty[Bytes])
       }
-      if bad.isEmpty then Right(())
-      else Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxow(failure(bad.toSet))))
+      bad.flatMap { hashes =>
+        val malformed = hashes.flatten.toSet
+        if malformed.isEmpty then Right(())
+        else Left(LedgerFailure.Rejected(tx.body.id, PredicateFailure.utxow(failure(malformed))))
+      }
     if pv < 7 then Right(())
     else
       for

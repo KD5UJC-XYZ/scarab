@@ -29,9 +29,17 @@ RUN git init -q blst \
  && test "$(git rev-parse HEAD)" = "${BLST_COMMIT}"
 WORKDIR /src/blst/bindings/java
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+COPY blst-native/native/raw-dst.c /src/raw-dst.c
 # The Java build.sh hands its arguments to the top-level build.sh, which compiles libblst.a with
 # them; it then links the SWIG JNI glue into libblst.so, as blst-java's workflow does.
 RUN CXX=g++ ./build.sh ${BLST_FLAGS} \
+ && gcc -c -fPIC -fvisibility=hidden -O -Wall -Werror \
+      -I"${JAVA_HOME}/include" -I"${JAVA_HOME}/include/linux" -I.. \
+      /src/raw-dst.c -o raw-dst.o \
+ && g++ -shared -fPIC -fvisibility=hidden -O -Wall -Wno-unused-function \
+      -I"${JAVA_HOME}/include" -I"${JAVA_HOME}/include/linux" -I.. \
+      blst_wrap.cpp raw-dst.o libblst.a -Wl,-Bsymbolic \
+      -o supranational/blst/Linux/amd64/libblst.so \
  && g++ --version | head -1 && swig -version | sed -n 2p \
  && dpkg-query -W -f='${Package} ${Version}\n' openjdk-17-jdk-headless binutils \
  && mkdir /out \

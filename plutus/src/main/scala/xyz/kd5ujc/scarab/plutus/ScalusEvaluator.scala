@@ -17,8 +17,16 @@ import scala.util.control.NonFatal
 import scalus.cardano.ledger.{CostModels, ExUnits as ScalusExUnits, Language, MajorProtocolVersion}
 import scalus.cardano.onchain.plutus.prelude.List as PList
 import scalus.uplc.builtin.{ByteString, Data, platform}
+import scalus.serialization.flat.FlatDecodingError
+import scalus.uplc.builtin.bls12_381.{G1Element, G2Element}
+import xyz.kd5ujc.scarab.blst.{Platform, RawDst}
 import scalus.uplc.eval.{
   BudgetSpender,
+  BuiltinError,
+  BuiltinException,
+  InvalidReturnValue,
+  MachineError,
+  UnknownBuiltin,
   CekMachine,
   CekValue,
   Logger,
@@ -106,11 +114,17 @@ object ScalusEvaluator:
     // `default` shares one): `evaluate` is a pure function of its request, and the caches only memoise
     // PlutusVM construction and program decoding. ConcurrentHashMap.computeIfAbsent is atomic and
     // BoundedCache is synchronized, so concurrent evaluations are safe and results are unaffected.
-    private val vms = ConcurrentHashMap[VmKey, Either[String, PlutusVM]]()
-    private val programs = BoundedCache[Bytes, Either[String, Decoded]](512)
+    private val vms = ConcurrentHashMap[VmKey, Either[EvalFailure.Unsupported, PlutusVM]]()
+    private val programs = BoundedCache[Bytes, Either[ScriptDecodeFailure, Decoded]](512)
 
     def evaluate(request: EvalRequest): EvalResult =
-      onBigStack(EvalResult.Failure(EvalFailure.Script("not run"), ExUnits.zero, Vector.empty))(
+      onBigStack(
+        EvalResult.Failure(
+          EvalFailure.Unsupported("evaluator did not return a result"),
+          ExUnits.zero,
+          Vector.empty
+        )
+      )(
         run(request)
       )
 
@@ -118,11 +132,13 @@ object ScalusEvaluator:
         language: PlutusLanguage,
         protocolMajor: Int,
         script: Bytes
-    ): Either[String, Unit] =
+    ): Either[ScriptDecodeFailure, Unit] =
       cached(script) match
         case Some(d) => d.flatMap(available(_, language, protocolMajor))
         case None =>
-          onBigStack[Either[String, Unit]](Left("not run"))(
+          onBigStack[Either[ScriptDecodeFailure, Unit]](
+            Left(ScriptDecodeFailure.Unavailable("decoder did not return a result"))
+          )(
             program(script).flatMap(available(_, language, protocolMajor))
           )
 
@@ -132,11 +148,15 @@ object ScalusEvaluator:
       catch case _: ExecutionException => initial
 
     /** The checks of the ledger's deserialisation and of `mkTermToEvaluate`, in that order. */
-    private def admitted(decoded: Decoded, request: EvalRequest): Either[String, Decoded] =
+    private def admitted(
+        decoded: Decoded,
+        request: EvalRequest
+    ): Either[ScriptDecodeFailure, Decoded] =
       for
         _ <- available(decoded, request.language, request.protocolMajor)
         _ <- PlutusAvailability
           .versionFailure(request.language, request.protocolMajor, decoded.program.version)
+          .map(ScriptDecodeFailure.Malformed(_))
           .toLeft(())
       yield decoded
 
@@ -144,7 +164,7 @@ object ScalusEvaluator:
         decoded: Decoded,
         language: PlutusLanguage,
         protocolMajor: Int
-    ): Either[String, Unit] =
+    ): Either[ScriptDecodeFailure, Unit] =
       PlutusAvailability
         .decodeFailure(language, protocolMajor, decoded.builtins)
         .orElse(PlutusAvailability.scanFailure(protocolMajor, decoded.scan))
@@ -154,13 +174,14 @@ object ScalusEvaluator:
             s"${decoded.remainder} bytes remain after the script (RemainderError)"
           )
         )
+        .map(ScriptDecodeFailure.Malformed(_))
         .toLeft(())
 
-    private def vm(request: EvalRequest): Either[String, PlutusVM] =
+    private def vm(request: EvalRequest): Either[EvalFailure.Unsupported, PlutusVM] =
       val key = VmKey(request.language, request.protocolMajor, request.costModel)
       vms.computeIfAbsent(key, _ => buildVm(key))
 
-    private def buildVm(key: VmKey): Either[String, PlutusVM] =
+    private def buildVm(key: VmKey): Either[EvalFailure.Unsupported, PlutusVM] =
       try
         val language = Language.fromId(key.language.id)
         val protocol = MajorProtocolVersion(key.protocolMajor)
@@ -178,7 +199,9 @@ object ScalusEvaluator:
             protocol
           )
         )
-      catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
+      catch
+        case NonFatal(e) =>
+          Left(EvalFailure.Unsupported(Option(e.getMessage).getOrElse(e.getClass.getName)))
 
     /** Costing the on-chain parameters cannot express and Scalus gets wrong. Semantics variant A
       * (Plutus V1/V2 before protocol 9) prices `verifyEd25519Signature` by the size of its third
@@ -206,31 +229,40 @@ object ScalusEvaluator:
           case _ => params
         )
 
-    private def cached(script: Bytes): Option[Either[String, Decoded]] = programs.get(script)
+    private def cached(script: Bytes): Option[Either[ScriptDecodeFailure, Decoded]] =
+      programs.get(script)
 
     /** Must run on a big stack ([[onBigStack]]): the flat decoder recurses on the term. */
-    private def program(script: Bytes): Either[String, Decoded] =
+    private def program(script: Bytes): Either[ScriptDecodeFailure, Decoded] =
       programs.getOrElseUpdate(
         script,
         try
           val bytes = script.toArray
           // Scalus rejects bytes after the CBOR item, the reference keeps them as a remainder
           val used = PlutusScriptBytes.cborItemLength(bytes)
-          val p = DeBruijnedProgram.fromCbor(bytes.take(used))
-          // what the decoded term no longer holds: the original value constants and variable indices,
-          // the protocol-11 limits (`FlatScan`)
           PlutusScriptBytes
             .flatOf(bytes)
-            .toRight("script is not a CBOR byte string")
-            .flatMap(flat => FlatScan.scan(flat).left.map(_.message))
-            .map { scan =>
-              val preserved = scalus.uplc.ScarabProgramView.withTerm(
-                p,
-                WideIndices.repair(p.term, scan.wideVariables)
-              )
-              Decoded(preserved, builtinsOf(preserved.term), bytes.length - used, scan)
+            .toRight(ScriptDecodeFailure.Malformed("script is not a CBOR byte string"))
+            .flatMap { flat =>
+              FlatScan
+                .scan(flat)
+                .left
+                .map(failure => ScriptDecodeFailure.Malformed(failure.message))
+                .map { scan =>
+                  val program = DeBruijnedProgram.fromFlatEncoded(flat)
+                  val preserved = scalus.uplc.ScarabProgramView.withTerm(
+                    program,
+                    WideIndices.repair(program.term, scan.wideVariables)
+                  )
+                  Decoded(preserved, builtinsOf(preserved.term), bytes.length - used, scan)
+                }
             }
-        catch case NonFatal(e) => Left(Option(e.getMessage).getOrElse(e.getClass.getName))
+        catch
+          // Flat.decode's documented malformed-input contract (Scalus1.3.0 Flat.scala:35-74).
+          case error: FlatDecodingError => Left(ScriptDecodeFailure.Malformed(diagnostic(error)))
+          case _: StackOverflowError =>
+            Left(ScriptDecodeFailure.Unavailable("decoder stack exhausted"))
+          case NonFatal(error) => Left(ScriptDecodeFailure.Unavailable(diagnostic(error)))
       )
 
     /** The builtins a term mentions (iterative: terms can be deeply nested). */
@@ -260,8 +292,11 @@ object ScalusEvaluator:
         failure(EvalFailure.Unsupported("execution budget exceeds 64 bits"))
       else
         (vm(request), program(request.script).flatMap(admitted(_, request))) match
-          case (Left(reason), _) => failure(EvalFailure.Unsupported(reason))
-          case (_, Left(reason)) => failure(EvalFailure.Decode(reason))
+          case (Left(reason), _) => failure(reason)
+          case (_, Left(ScriptDecodeFailure.Malformed(reason))) =>
+            failure(EvalFailure.Decode(reason))
+          case (_, Left(ScriptDecodeFailure.Unavailable(reason))) =>
+            failure(EvalFailure.Unsupported(reason))
           case (Right(_), Right(Decoded(_, _, _, FlatScan(_, _, _, Some(index), _)))) =>
             // `mkTermToEvaluate` checks the scope of the applied term before the machine starts
             failure(EvalFailure.OpenTerm(index))
@@ -278,37 +313,82 @@ object ScalusEvaluator:
             catch
               case _: OutOfExBudgetError =>
                 failure(EvalFailure.OutOfBudget, spent, log.getLogs.toVector)
-              case _: Exception if log.refused.isDefined =>
+              case NonFatal(error) =>
+                val logs = log.getLogs.toVector
+                val cause = diagnostic(error)
+                val traced =
+                  if logs.isEmpty then cause else s"$cause; trace: ${logs.mkString(" | ")}"
+                val reason = log.refused.getOrElse(
+                  if referenceFailure(error) then EvalFailure.Script(traced)
+                  else EvalFailure.Unsupported(traced)
+                )
+                failure(reason, spent, logs)
+              case _: StackOverflowError =>
                 failure(
-                  EvalFailure.Unsupported(log.refused.getOrElse("")),
+                  EvalFailure.Unsupported("evaluator stack exhausted"),
                   spent,
                   log.getLogs.toVector
                 )
-              case NonFatal(e) =>
-                val logs = log.getLogs.toVector
-                val cause = Option(e.getMessage).getOrElse(e.getClass.getName)
-                // the trace tells an operator which of the script's checks failed
-                val traced =
-                  if logs.isEmpty then cause else s"$cause; trace: ${logs.mkString(" | ")}"
-                failure(EvalFailure.Script(traced), spent, logs)
-              case _: StackOverflowError =>
-                failure(EvalFailure.Script("stack overflow"), spent, log.getLogs.toVector)
 
-  /** An input a builtin of Scalus would answer differently from the reference; the evaluation stops
-    * with [[EvalFailure.Unsupported]] instead of a verdict that may be wrong.
+  private def diagnostic(error: Throwable): String =
+    Option(error.getMessage).getOrElse(error.getClass.getName)
+
+  /** The vendor's typed CEK failures are reference script failures. BuiltinError also wraps backend
+    * defects, so its cause is accepted only for the documented builtin/input combinations.
     */
-  private[plutus] object UnsupportedBuiltinInput:
-    case object NonAsciiDst
-        extends RuntimeException("hashToGroup with a domain separation tag of non-ASCII bytes")
-        with scala.util.control.NoStackTrace
+  private[plutus] def referenceFailure(error: Throwable): Boolean = error match
+    case _: UnknownBuiltin => false
+    case builtin: BuiltinError =>
+      builtin.cause match
+        case _: BuiltinException => true
+        case _: ArithmeticException =>
+          Set(
+            DefaultFun.DivideInteger,
+            DefaultFun.QuotientInteger,
+            DefaultFun.ModInteger,
+            DefaultFun.RemainderInteger,
+            DefaultFun.ExpModInteger
+          )(builtin.builtin)
+        case _: IndexOutOfBoundsException => builtin.builtin == DefaultFun.IndexByteString
+        case _: NoSuchElementException =>
+          Set(DefaultFun.HeadList, DefaultFun.TailList)(builtin.builtin)
+        case _: UnsupportedOperationException => builtin.builtin == DefaultFun.TailList
+        case _: IllegalArgumentException =>
+          Set(
+            DefaultFun.DecodeUtf8,
+            DefaultFun.VerifyEd25519Signature,
+            DefaultFun.VerifyEcdsaSecp256k1Signature,
+            DefaultFun.VerifySchnorrSecp256k1Signature,
+            DefaultFun.Bls12_381_G1_uncompress,
+            DefaultFun.Bls12_381_G2_uncompress,
+            DefaultFun.Bls12_381_G1_hashToGroup,
+            DefaultFun.Bls12_381_G2_hashToGroup
+          )(builtin.builtin)
+        // blst0.3.15 bindings/blst.swg maps its BLST_ERROR to exactly java.lang.RuntimeException
+        // for these two uncompression operations; subclasses remain backend defects.
+        case cause if cause.getClass == classOf[RuntimeException] =>
+          Set(DefaultFun.Bls12_381_G1_uncompress, DefaultFun.Bls12_381_G2_uncompress)(
+            builtin.builtin
+          )
+        case _ => false
+    case _: MachineError | _: InvalidReturnValue => true
+    case _                                       => false
 
-  /** The log of one evaluation. The machine wraps what a builtin throws into a text, so a refusal
-    * is recorded here, on the evaluation's own log, for [[Interpreter.run]] to read.
+  /** Scalus BuiltinRuntime.f returns CekValue, not Either, and Cek.scala1647-1660 catches callback
+    * exceptions into BuiltinError. There is no failure-value path. Keep the typed refusal in the
+    * evaluation-local log and signal only with its documented BuiltinException. The interpreter
+    * translates it to EvalResult before leaving its worker; no custom domain exception is used.
     */
   private final class EvaluationLog extends Log:
-    var refused: Option[String] = None
+    var refused: Option[EvalFailure.Unsupported] = None
 
-  /** A [[PlutusVM]] with two builtins whose meaning Scalus gets wrong replaced. This is
+  private def unavailable(logger: Logger, reason: EvalFailure.Unsupported): Nothing =
+    logger match
+      case log: EvaluationLog => log.refused = Some(reason)
+      case _                  => ()
+    throw new BuiltinException("builtin evaluation unavailable")
+
+  /** A [[PlutusVM]] with builtins whose meaning Scalus gets wrong replaced. This is
     * `PlutusVM.evaluateDeBruijnedTerm` with those meanings swapped in: the typing scheme and
     * costing function of Scalus's builtins are kept, so the budget is unchanged.
     *
@@ -324,7 +404,7 @@ object ScalusEvaluator:
     * Reproducers: `DataSerialiserSuite`, `Secp256k1Suite`; regressions: `PreprodConwayRulesSuite`,
     * `PreprodSecp256k1RulesSuite`.
     */
-  private final class CorrectedVm(
+  private[plutus] final class CorrectedVm(
       language: Language,
       params: MachineParams,
       variant: BuiltinSemanticsVariant,
@@ -339,49 +419,82 @@ object ScalusEvaluator:
           )
       )
     private val verifyEcdsa: BuiltinRuntime =
-      cardano.VerifyEcdsaSecp256k1Signature.copy(f =
-        (_, args) =>
-          CekValue.VCon(
-            Constant.Bool(
-              Secp256k1.verifyEcdsa(
-                args(0).asByteString.bytes,
-                args(1).asByteString.bytes,
-                args(2).asByteString.bytes
-              )
+      cardano.VerifyEcdsaSecp256k1Signature.copy(f = (logger, args) =>
+        if !scalus.crypto.Secp256k1Context.isEnabled then
+          unavailable(logger, EvalFailure.Unsupported("secp256k1 native backend unavailable"))
+        CekValue.VCon(
+          Constant.Bool(
+            Secp256k1.verifyEcdsa(
+              args(0).asByteString.bytes,
+              args(1).asByteString.bytes,
+              args(2).asByteString.bytes
             )
           )
-      )
+        ))
 
     /** Scalus hands the domain separation tag of `hashToGroup` to blst as a Latin-1 `String`, which
       * the native layer reads as (modified) UTF-8: a byte of 0x80 or above, or 0, makes another tag
       * and another point than the reference computes (conformance cases `hash-dst-len-255` and
       * `large-dst`). The blst-java API has no byte-level entry, so these tags are refused with a
-      * typed failure rather than answered wrongly; ASCII tags (all that real protocols use) are
-      * served as before. Reproducer: `PlutusReachabilitySuite`.
+      * typed failure on platforms without the raw-byte JNI adapter. ASCII tags are served as before
+      * there; Linux/amd64 uses the byte-array adapter for every tag.
       */
     private def asciiDstOnly(base: BuiltinRuntime): BuiltinRuntime =
       base.copy(f =
         (logger, args) =>
           if args(1).asByteString.bytes.exists(_ <= 0) then
-            logger match
-              case l: EvaluationLog =>
-                l.refused = Some(UnsupportedBuiltinInput.NonAsciiDst.getMessage)
-              case _ => ()
-            throw UnsupportedBuiltinInput.NonAsciiDst
+            unavailable(
+              logger,
+              EvalFailure.Unsupported(
+                "hashToGroup binary DST has no byte-array implementation on this platform"
+              )
+            )
           else base.f(logger, args)
       )
-    private val hashToGroupG1 = asciiDstOnly(cardano.Bls12_381_G1_hashToGroup)
-    private val hashToGroupG2 = asciiDstOnly(cardano.Bls12_381_G2_hashToGroup)
+
+    /** Upstream's binary-DST fix, pinned in blst-native/native/README.md. Preserve the original
+      * runtime's typing, costing and >255-byte rejection; only the native byte-array entry differs.
+      * Other platforms retain the typed refusal until an equivalent portable artifact is supplied.
+      */
+    private def rawDst(base: BuiltinRuntime)(
+        hash: (Array[Byte], Array[Byte]) => Constant
+    ): BuiltinRuntime =
+      base.copy(f = (logger, args) =>
+        val message = args(0).asByteString.bytes
+        val dst = args(1).asByteString.bytes
+        if dst.length > 255 then base.f(logger, args)
+        else if Platform.current != Platform.LinuxAmd64 then asciiDstOnly(base).f(logger, args)
+        else
+          try CekValue.VCon(hash(message, dst))
+          catch
+            case _: LinkageError =>
+              unavailable(
+                logger,
+                EvalFailure.Unsupported("byte-array hashToGroup JNI entry point unavailable")
+              ))
+    private val hashToGroupG1 = rawDst(cardano.Bls12_381_G1_hashToGroup) { (message, dst) =>
+      Constant.BLS12_381_G1_Element(G1Element(ByteString.fromArray(RawDst.hashG1(message, dst))))
+    }
+    private val hashToGroupG2 = rawDst(cardano.Bls12_381_G2_hashToGroup) { (message, dst) =>
+      Constant.BLS12_381_G2_Element(G2Element(ByteString.fromArray(RawDst.hashG2(message, dst))))
+    }
+    private val verifySchnorr = cardano.VerifySchnorrSecp256k1Signature.copy(f =
+      (logger, args) =>
+        if !scalus.crypto.Secp256k1Context.isEnabled then
+          unavailable(logger, EvalFailure.Unsupported("secp256k1 native backend unavailable"))
+        else cardano.VerifySchnorrSecp256k1Signature.f(logger, args)
+    )
     private val caseOnBuiltins =
       protocol >= MajorProtocolVersion.vanRossemPV || language == Language.PlutusV4
 
     private def runtime(fun: DefaultFun): BuiltinRuntime =
       fun match
-        case DefaultFun.SerialiseData                 => serialiseData
-        case DefaultFun.VerifyEcdsaSecp256k1Signature => verifyEcdsa
-        case DefaultFun.Bls12_381_G1_hashToGroup      => hashToGroupG1
-        case DefaultFun.Bls12_381_G2_hashToGroup      => hashToGroupG2
-        case _                                        => cardano.getBuiltinRuntime(fun)
+        case DefaultFun.SerialiseData                   => serialiseData
+        case DefaultFun.VerifyEcdsaSecp256k1Signature   => verifyEcdsa
+        case DefaultFun.VerifySchnorrSecp256k1Signature => verifySchnorr
+        case DefaultFun.Bls12_381_G1_hashToGroup        => hashToGroupG1
+        case DefaultFun.Bls12_381_G2_hashToGroup        => hashToGroupG2
+        case _                                          => cardano.getBuiltinRuntime(fun)
 
     override def evaluateDeBruijnedTerm(
         term: Term,

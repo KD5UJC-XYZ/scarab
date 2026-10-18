@@ -9,7 +9,6 @@ import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import scalus.cardano.ledger.{CostModels, Language, MajorProtocolVersion}
 import scalus.uplc.{BuiltinSemanticsVariant, Constant, DeBruijnedProgram, Program, Term}
-import scalus.uplc.builtin.platform
 import scalus.uplc.eval.{Log, MachineParams, PlutusVM, RestrictingBudgetSpender}
 
 /** The upstream Plutus conformance suite (`plutus-conformance/test-cases/uplc/evaluation` of plutus
@@ -57,7 +56,7 @@ class PlutusConformanceSuite extends FunSuite:
       scalusLanguage,
       major
     )
-    PlutusVM(scalusLanguage, params, variant, platform, major)
+    ScalusEvaluator.CorrectedVm(scalusLanguage, params, variant, major)
 
   private val Unlimited = ExUnits(BigInt(1) << 60, BigInt(1) << 60)
 
@@ -126,7 +125,8 @@ class PlutusConformanceSuite extends FunSuite:
                   // the suite records no budget for a failing evaluation or an undecodable program
                   Option.when(c.expected != "evaluation failure")("the suite records no budget")
             (c.expected, outcome) match
-              case (_, Outcome.Undecodable(r))                      => Some(s"decode failure: $r")
+              case (_, Outcome.Unavailable(reason)) => Some(s"implementation unavailable: $reason")
+              case (_, Outcome.Undecodable(r))      => Some(s"decode failure: $r")
               case ("evaluation failure", Outcome.Failed(spent, _)) => budgetOk(spent)
               case ("evaluation failure", Outcome.Succeeded(spent, _)) =>
                 Some(s"expected an evaluation failure, evaluated (${spent.show})")
@@ -159,6 +159,7 @@ class PlutusConformanceSuite extends FunSuite:
 
   private enum Outcome:
     case Undecodable(reason: String)
+    case Unavailable(reason: String)
     case Failed(spent: ExUnits, reason: String)
     case Succeeded(spent: ExUnits, term: scalus.uplc.Term)
 
@@ -197,8 +198,9 @@ class PlutusConformanceSuite extends FunSuite:
     val request =
       EvalRequest(language, protocol, Bytes.fromArray(wrap), Vector.empty, costModel, Unlimited)
     ScalusEvaluator.pure.evaluate(request) match
-      case EvalResult.Failure(EvalFailure.Decode(r), _, _) => Outcome.Undecodable(r)
-      case EvalResult.Failure(r, spent, _)                 =>
+      case EvalResult.Failure(EvalFailure.Unsupported(reason), _, _) => Outcome.Unavailable(reason)
+      case EvalResult.Failure(EvalFailure.Decode(r), _, _)           => Outcome.Undecodable(r)
+      case EvalResult.Failure(r, spent, _)                           =>
         // the failure happened inside the program, after the wrapper's application and lambda
         Outcome.Failed(minus(spent, 2), r.message)
       case EvalResult.Success(spent, _) =>

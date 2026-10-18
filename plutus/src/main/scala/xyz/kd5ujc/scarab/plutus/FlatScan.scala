@@ -67,14 +67,16 @@ object FlatScan:
     case NoFlatConstant(tag: Int)
     case IllFormedType
     case WordOverflow
+    case ConstrCaseBefore110
 
     def message: String = this match
-      case Truncated         => "flat input ends inside a term"
-      case BadTermTag(t)     => s"unknown term tag $t"
-      case BadTypeTag(t)     => s"unknown type tag $t"
-      case NoFlatConstant(t) => s"constant type tag $t has no flat encoding"
-      case IllFormedType     => "ill-formed constant type"
-      case WordOverflow      => "natural does not fit 64 bits"
+      case Truncated           => "flat input ends inside a term"
+      case BadTermTag(t)       => s"unknown term tag $t"
+      case BadTypeTag(t)       => s"unknown type tag $t"
+      case NoFlatConstant(t)   => s"constant type tag $t has no flat encoding"
+      case IllFormedType       => "ill-formed constant type"
+      case WordOverflow        => "natural does not fit 64 bits"
+      case ConstrCaseBefore110 => "UPLC program version below 1.1.0 cannot carry constr/case"
 
   /** The largest variable index Scalus keeps without narrowing. */
   private val IntIndexLimit = BigInt(Int.MaxValue) + 1
@@ -111,6 +113,7 @@ object FlatScan:
     private var open: Option[BigInt] = None
     private var variableOrdinal = 0
     private var wideVariables = Set.empty[Int]
+    private var constrCaseAllowed = false
     private val tasks = ArrayDeque.empty[Task]
 
     private def abort(failure: Failure): Nothing = throw Abort(failure)
@@ -133,15 +136,26 @@ object FlatScan:
     /** A flat natural: groups of seven bits, least significant first, each behind a continue bit.
       */
     private def natural(): BigInt =
-      var acc = BigInt(0)
-      var shift = 0
+      val chunks = Array.newBuilder[Byte]
       var more = true
       while more do
         val group = bits(8)
-        acc = acc | (BigInt(group & 0x7f) << shift)
-        shift += 7
+        chunks += (group & 0x7f).toByte
         more = (group & 0x80) != 0
-      acc
+      // Construct BigInt once: extending one per seven-bit group allocates quadratically for a
+      // long untrusted natural. Pack little-endian groups into its big-endian magnitude instead.
+      val groups = chunks.result()
+      val magnitude = new Array[Byte](((groups.length.toLong * 7 + 7) / 8).toInt)
+      groups.indices.foreach { index =>
+        val offset = index.toLong * 7
+        val at = magnitude.length - 1 - (offset / 8).toInt
+        val shift = (offset % 8).toInt
+        val group = groups(index) & 0x7f
+        magnitude(at) = (magnitude(at) | (group << shift)).toByte
+        if shift > 1 && at > 0 then
+          magnitude(at - 1) = (magnitude(at - 1) | (group >>> (8 - shift))).toByte
+      }
+      BigInt(1, magnitude)
 
     private def word64(): BigInt =
       val n = natural()
@@ -224,7 +238,8 @@ object FlatScan:
       variableOrdinal += 1
 
     def run(): FlatScan =
-      natural(); natural(); natural() // the program version
+      val version = (natural(), natural(), natural())
+      constrCaseAllowed = summon[Ordering[(BigInt, BigInt, BigInt)]].gteq(version, (1, 1, 0))
       tasks.append(Term(0L, checked = true))
       while tasks.nonEmpty do step(tasks.removeLast())
       FlatScan(malformed, typeHeader, constrFields, open, wideVariables)
@@ -244,9 +259,11 @@ object FlatScan:
           case 6 => ()
           case 7 => bits(7)
           case 8 =>
+            if !constrCaseAllowed then abort(Failure.ConstrCaseBefore110)
             word64() // the constructor tag
             tasks.append(Fields(depth, Count(0), isConstr = true))
           case 9 =>
+            if !constrCaseAllowed then abort(Failure.ConstrCaseBefore110)
             tasks.append(Fields(depth, Count(0), isConstr = false))
             tasks.append(Term(depth, checked = false))
           case tag => abort(Failure.BadTermTag(tag))

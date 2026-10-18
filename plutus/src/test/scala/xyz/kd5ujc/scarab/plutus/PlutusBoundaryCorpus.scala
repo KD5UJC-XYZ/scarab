@@ -5,6 +5,7 @@ import io.circe.Json
 import java.nio.file.{Files, Path}
 import scalus.uplc.{Constant, DefaultFun, Program, Term}
 import xyz.kd5ujc.scarab.codec.Bytes
+
 import FlatProgram.*
 
 /** Original-byte boundary probes for the pinned ledger API, independent of Scalus's text parser for
@@ -137,11 +138,15 @@ object PlutusBoundaryCorpus:
       )
     )
     Probe(id, Bytes.fromArray(Program(actual.version, asserted).cborEncoded), true)
-  } ++ Vector("41", "90", "4100", "1234567890" * 51).flatMap { dst =>
+  } ++ hashVectors.flatMap { vector =>
+    val dst = vector.hcursor.get[String]("dst").fold(throw _, identity)
     Vector("G1", "G2").map { group =>
+      val expected = vector.hcursor.get[String](group.toLowerCase).fold(throw _, identity)
+      val equal =
+        s"[[(builtin equalsByteString) [(builtin bls12_381_${group}_compress) [[(builtin bls12_381_${group}_hashToGroup) (con bytestring #3f)] (con bytestring #$dst)]]] (con bytestring #$expected)]"
       text(
-        s"hash-$group-${if dst.length > 8 then "255" else dst}",
-        s"(program 1.0.0 [(lam ignored (con unit ())) [(builtin bls12_381_${group}_compress) [[(builtin bls12_381_${group}_hashToGroup) (con bytestring #3f)] (con bytestring #$dst)]]])",
+        s"hash-$group-${if dst.isEmpty then "empty" else if dst.length > 8 then "255" else dst}",
+        s"(program 1.0.0 (force [[[(force (builtin ifThenElse)) $equal] (delay (con unit ()))] (delay (error))]))",
         true
       )
     }
@@ -154,6 +159,14 @@ object PlutusBoundaryCorpus:
         finally in.close()
       text(name, program)
   }
+
+  private lazy val hashVectors: Vector[Json] =
+    import scala.jdk.CollectionConverters.*
+    Files
+      .readAllLines(Path.of("fixtures/reference/plutus-boundaries/hash-vectors.jsonl"))
+      .asScala
+      .toVector
+      .map(line => io.circe.parser.parse(line).fold(throw _, identity))
 
   private def resource(name: String): String =
     val in = getClass.getResourceAsStream(name)

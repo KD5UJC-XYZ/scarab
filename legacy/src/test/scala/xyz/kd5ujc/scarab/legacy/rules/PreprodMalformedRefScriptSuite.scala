@@ -68,7 +68,9 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
   }
 
   test("the same bytes are a RemainderError as Plutus V3") {
-    assert(decoder.validate(PlutusLanguage.V3, 10, script).left.exists(_.contains("remain")))
+    assert(
+      decoder.validate(PlutusLanguage.V3, 10, script).left.exists(_.message.contains("remain"))
+    )
   }
 
   test("a script without the remainder is well formed for every language") {

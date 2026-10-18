@@ -41,6 +41,11 @@ enum TxDefect:
     case PlutusFieldsBeforeAlonzo     => "Plutus fields before Alonzo"
     case UnreadableProtocolVersion    => "an update with an unreadable protocol version"
 
+/** Where this implementation could not supply a script verdict. */
+enum ScriptLocation:
+  case Phase1(scriptHash: Bytes)
+  case Phase2(redeemer: Redeemer)
+
 /** Why the ledger refused a transaction. */
 enum LedgerFailure:
   /** A rule refused the transaction; `failure` is the ledger's predicate failure for it. */
@@ -52,7 +57,7 @@ enum LedgerFailure:
   /** This implementation could not evaluate a script; no consensus verdict exists. */
   case Unavailable(
       txId: Bytes,
-      redeemer: Redeemer,
+      location: ScriptLocation,
       reason: xyz.kd5ujc.scarab.plutus.EvalFailure.Unsupported
   )
 
@@ -67,8 +72,11 @@ enum LedgerFailure:
     case Rejected(id, f) =>
       s"tx ${id.hex.take(16)} violates ${f.detail}"
     case Undecodable(id, d) => s"tx ${id.hex.take(16)} cannot be decoded: ${d.message}"
-    case Unavailable(id, r, why) =>
-      s"tx ${id.hex.take(16)} evaluation unavailable at ${r.tag}.${r.index}: ${why.message}"
+    case Unavailable(id, location, why) =>
+      val where = location match
+        case ScriptLocation.Phase1(hash) => s"phase 1 script ${hash.hex.take(16)}"
+        case ScriptLocation.Phase2(r)    => s"phase 2 redeemer ${r.tag}.${r.index}"
+      s"tx ${id.hex.take(16)} evaluation unavailable at $where: ${why.message}"
     case Vocab(e) => s"transaction outside the state's vocabulary: $e"
 
 /** Block-level context of a transaction. */

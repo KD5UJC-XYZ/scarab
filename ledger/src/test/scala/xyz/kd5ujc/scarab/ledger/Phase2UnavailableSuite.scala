@@ -64,3 +64,39 @@ class Phase2UnavailableSuite extends FunSuite:
       case Left(LedgerFailure.Rejected(_, _)) => ()
       case other                              => fail(s"unexpected script-failure outcome: $other")
   }
+
+  test("phase-1 backend unavailability never becomes malformed scripts, for either validity flag") {
+    val script =
+      scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
+    val decoder: ScriptDecoder[Id] =
+      (_, _, _) => Left(ScriptDecodeFailure.Unavailable("backend stopped"))
+    for valid <- Vector(true, false); witness <- Vector(true, false) do
+      val base = c.tx.copy(isValid = valid, witnesses = c.tx.witnesses.copy(scripts = Vector.empty))
+      val tx =
+        if witness then base.copy(witnesses = base.witnesses.copy(scripts = Vector(script)))
+        else
+          val output = base.body.outputs.headOption.getOrElse(fail("fixture has no output"))
+          base.copy(body = base.body.copy(outputs = Vector(output.copy(scriptRef = Some(script)))))
+      TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder)) match
+        case Left(LedgerFailure.Unavailable(id, ScriptLocation.Phase1(hash), _)) =>
+          assertEquals(id, tx.body.id)
+          assertEquals(hash, script.hash)
+        case other => fail(s"unexpected phase-1 outcome: $other")
+  }
+
+  test("a proven decoder admission failure remains a malformed-script predicate failure") {
+    val script =
+      scripts.values.find(_.kind.isPlutus).getOrElse(fail("fixture has no Plutus script"))
+    val decoder: ScriptDecoder[Id] =
+      (_, _, _) => Left(ScriptDecodeFailure.Malformed("bad encoding"))
+    for valid <- Vector(true, false) do
+      val tx = c.tx.copy(isValid = valid, witnesses = c.tx.witnesses.copy(scripts = Vector(script)))
+      val expected = LedgerFailure.Rejected(
+        tx.body.id,
+        PredicateFailure.utxow(UtxowFailure.MalformedScriptWitnesses(Set(script.hash)))
+      )
+      assertEquals(
+        TxChecks.scriptsWellFormed(c.params, tx, TxEnv(c.slot, 189, 0, decoder = decoder)),
+        Left(expected)
+      )
+  }

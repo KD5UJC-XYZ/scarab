@@ -81,8 +81,21 @@ trait ScriptEvaluator[F[_]]:
   * pure function of the arguments.
   */
 trait ScriptDecoder[F[_]]:
-  /** `Right(())` when the script deserialises, else the reason it does not. */
-  def validate(language: PlutusLanguage, protocolMajor: Int, script: Bytes): F[Either[String, Unit]]
+  /** An unavailable backend supplies no script-admission verdict. */
+  def validate(
+      language: PlutusLanguage,
+      protocolMajor: Int,
+      script: Bytes
+  ): F[Either[ScriptDecodeFailure, Unit]]
+
+/** A proven admission failure is distinct from an implementation that could not answer. */
+enum ScriptDecodeFailure:
+  case Malformed(diagnostic: String)
+  case Unavailable(diagnostic: String)
+
+  def message: String = this match
+    case Malformed(diagnostic)   => diagnostic
+    case Unavailable(diagnostic) => diagnostic
 
 object ScriptDecoder:
   /** Accepts every script; for tests whose scripts are placeholders. */

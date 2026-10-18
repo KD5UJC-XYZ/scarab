@@ -113,7 +113,7 @@ class PlutusAvailabilitySuite extends FunSuite:
         if builtins(f) then assertEquals(result, Right(()), s"$f in $language @ $pv")
         else
           assert(
-            result.left.exists(_.contains(s"Builtin function $f is not available")),
+            result.left.exists(_.message.contains(s"Builtin function $f is not available")),
             s"$f in $language @ $pv: $result"
           )
       }
@@ -146,7 +146,9 @@ class PlutusAvailabilitySuite extends FunSuite:
       decoder.validate(PlutusLanguage.V2, 8, Bytes(Vector(0x43, 1, 2, 3).map(_.toByte))).isLeft
     )
     val ok = scriptOf(DefaultFun.AddInteger)
-    assert(decoder.validate(PlutusLanguage.V3, 8, ok).left.exists(_.contains("not available")))
+    assert(
+      decoder.validate(PlutusLanguage.V3, 8, ok).left.exists(_.message.contains("not available"))
+    )
     assertEquals(decoder.validate(PlutusLanguage.V3, 9, ok), Right(()))
   }
 

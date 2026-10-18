@@ -172,15 +172,15 @@ class PlutusReachabilitySuite extends FunSuite:
     )
 
   test(
-    "hashToGroup with an ASCII tag is evaluated, a tag with a byte of 0x80 or more or 0 is refused"
+    "hashToGroup evaluates original ASCII, high-bit and zero-containing byte-array tags"
   ) {
     // the tag is data; the other branch of the result is a non-unit value, hence a script failure
     def verdict(hex: String): EvalFailure = hashed(hex) match
       case EvalResult.Failure(f, _, _) => f
       case other                       => fail(s"unexpected $other")
     // a conformance case's tag (`hash-dst-len-255`: bytes of 0x90 and above) and a plain one
-    assert(verdict("90").isInstanceOf[EvalFailure.Unsupported])
-    assert(verdict("4100").isInstanceOf[EvalFailure.Unsupported])
+    assert(verdict("90").isInstanceOf[EvalFailure.Script])
+    assert(verdict("4100").isInstanceOf[EvalFailure.Script])
     assert(
       verdict("41").isInstanceOf[EvalFailure.Script],
       "ASCII tag: evaluated, a bytestring is no unit"
@@ -269,19 +269,20 @@ class PlutusReachabilitySuite extends FunSuite:
     )
     val worker = new Thread(
       null,
-      () => result.set(
-        try
-          val repaired = WideIndices.repair(deep, Set(0))
-          val inner = (0 until 20000).foldLeft(repaired) { (term, _) =>
-            term match
-              case UplcTerm.Delay(body, _) => body
-              case _ => term
-          }
-          Right(inner match
-            case UplcTerm.Var(name, _) => name.index == -1
-            case _ => false)
-        catch case error: Throwable => Left(error)
-      ),
+      () =>
+        result.set(
+          try
+            val repaired = WideIndices.repair(deep, Set(0))
+            val inner = (0 until 20000).foldLeft(repaired) { (term, _) =>
+              term match
+                case UplcTerm.Delay(body, _) => body
+                case _                       => term
+            }
+            Right(inner match
+              case UplcTerm.Var(name, _) => name.index == -1
+              case _                     => false)
+          catch case error: Throwable => Left(error)
+        ),
       "wide-index-small-stack",
       256 * 1024
     )
@@ -289,5 +290,5 @@ class PlutusReachabilitySuite extends FunSuite:
     worker.join()
     result.get() match
       case Right(correct) => assert(correct)
-      case Left(error) => throw error
+      case Left(error)    => throw error
   }

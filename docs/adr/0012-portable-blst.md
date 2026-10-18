@@ -97,9 +97,9 @@ without ADX.
 | What | Value |
 |---|---|
 | blst source | supranational/blst v0.3.15, commit `6d960cd05d6fe2b5bc9ba161edf0c1a131b87c4c` (2025-06-06), Apache-2.0 |
-| Recipe | `bindings/java/build.sh -D__BLST_PORTABLE__` (compiles `cc -O2 -fno-builtin -fPIC -D__ADX__ -fvisibility=hidden -D__BLST_PORTABLE__`, links the SWIG glue with `g++ -shared ... -Wl,-Bsymbolic`) |
+| Recipe | `bindings/java/build.sh -D__BLST_PORTABLE__` (compiles `cc -O2 -fno-builtin -fPIC -D__ADX__ -fvisibility=hidden -D__BLST_PORTABLE__`, links the SWIG glue and the pinned raw-byte DST adapter with `g++ -shared ... -Wl,-Bsymbolic`) |
 | Toolchain | `ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401` (22.04), g++ 11.4.0-1ubuntu1~22.04.3, SWIG 4.0.2, openjdk-17-jdk-headless 17.0.20.1+1-1~22.04, binutils 2.38-4ubuntu2.12 |
-| Result | `blst-native/src/main/resources/supranational/blst/Linux/amd64/libblst.so`, 310,200 bytes, sha-256 `8d158308ec8179a2e33eb1b26c3e09621307031715877867b46af11ebf884235`; `__blst_platform_cap` present; 754 `mulx`/`adcx` instructions behind the run-time switch |
+| Result | `blst-native/src/main/resources/supranational/blst/Linux/amd64/libblst.so`, 310,400 bytes, sha-256 `5e5176a1056c0fcf5b253315fefb997466187f79977a0f65e1ee78e74c569e21`; `__blst_platform_cap` present; 754 `mulx`/`adcx` instructions behind the run-time switch |
 | The library it replaces | `foundation.icon:blst-java:0.3.2` (jar sha-256 `f668af639696199e8b9f47e17a9ede4426c888fbc300aec84689f56f39ed6238`), `Linux/amd64/libblst.so` sha-256 `bd250731c0805cab213c1db860dbcd3bb8848955aa1da7a6fc81a11235b92817`, blst v0.3.10 from the workflow, gcc 11.4.0, built with `-D__ADX__` and no portable switch |
 | JNI exports | every `Java_supranational_blst_blstJNI_*` symbol of the jar's library is in ours (`blst-native/src/test/resources/blst-exports.txt` is the export list of the shipped library) |
 
@@ -111,6 +111,13 @@ To update blst: change `BLST_COMMIT` in `docker/blst.Dockerfile`, run
 licence, and run `check`, the Plutus conformance suite (it contains the BLS12-381 cases) and
 `BlstCheckMain` on a CPU without ADX. When blst-java changes its `blstJNI` (a new release of
 Scalus), the export test says whether the library still has every native method it calls.
+
+The 2026-10-18 raw-DST adapter update (#175) preserves the blst source, portable flags, existing JNI
+exports and curve arithmetic. It adds two byte-array hash/compress entry points, pinned to the
+upstream Scalus fix; [adapter provenance](../../blst-native/native/README.md) and
+[executed Haskell vectors](../../fixtures/reference/plutus-boundaries/README.md) record the ABI and
+new known answers. The earlier three-answer no-ADX performance measurements below concern the prior
+artifact; the new artifact's no-ADX gate must be recorded separately.
 
 ## Consequences
 
