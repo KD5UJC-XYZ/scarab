@@ -1,4 +1,4 @@
-# Plutus conformance: the reference evaluator and the 22 allowlisted cases
+# Plutus conformance: executed reference boundaries
 
 Triage of [#155](https://github.com/KD5UJC-XYZ/scarab/issues/155) (AUD-03). The question for each
 case that [`PlutusConformanceSuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusConformanceSuite.scala)
@@ -67,16 +67,19 @@ Counts: **9 are reachable** by a transaction (6 `value` constants, 3 `hashToGrou
 divergence** (`case` on `Data`), **11 are artefacts of the suite harness** (6 BLS12-381 constants,
 5 `dropList`). This agrees with the second audit's split. "Reachable" means that the ledger-level
 checks above admit a script that behaves differently from the reference; every reachable script fits
-the transaction and block size limits (a few hundred bytes). The reference node itself was not run
-on these scripts: the verdicts below are read from the pinned sources and from the reference's own
-conformance expectations, and the Scalus side is executed
-([`PlutusReachabilitySuite`](../plutus/src/test/scala/xyz/kd5ujc/scarab/plutus/PlutusReachabilitySuite.scala),
-`PreConwayRulesSuite`).
+the transaction and block size limits (a few hundred bytes). The pinned Haskell ledger API has now executed every documented boundary at protocols 9, 10 and
+11 in V1, V2 and V3: 53 original-byte probes, 477 decoder/evaluator verdicts. Its complete crypto
+backend is enabled; no crypto stubs supply evidence. The retained
+[oracle recipe and provenance](../scripts/oracle/plutus/README.md),
+[original scripts and verdicts](../fixtures/reference/plutus-boundaries/README.md), and
+`PlutusBoundaryOracleSuite` bind each row to its script bytes and cost model. All rows agree on
+admission and evaluation stage. This is the reference's ledger API, not a whole-transaction node
+submission; transaction-level reference context evidence is recorded separately.
 
 | Case(s) | Class | Scalus 1.3.0 against the reference | Protocols where it exists | Reachable from a transaction? | Effect | Handling |
 |---|---|---|---|---|---|---|
-| `parser/value/` `currencyIDs-unordered`, `duplicate-currencyIDs`, `duplicate-tokenIDs`, `empty-tokens`, `tokenIDs-unordered`, `zero-asset` (6) | (ii), now (iii) in the suite | Scalus rebuilds a `value` constant as a normalised map when it decodes, so the malformed constant is accepted (and changed); the reference fails decoding (`PlutusCore/Value.hs` 637-694) | every protocol and language where a script exists: type tag 13 has no protocol gate, only the header size is checked (`SerialisedScript.hs` 199-215, `Versions.hs` 394-399) | yes: any Plutus script in a witness set or an output, whether or not it runs | decode: the reference makes the transaction invalid in phase 1 (Babbage on) or fails phase 2 (Alonzo); we accepted it | fixed on the ledger path by `FlatScan`, which validates the original flat bytes (also a key over 32 bytes and a quantity beyond 127 bits); tests `PlutusReachabilitySuite`, `PreConwayRulesSuite`; the suite keeps them in the allowlist because Scalus's text parser normalises before encoding |
-| `semantics/bls12_381_G1_hashToGroup/hash-dst-len-255`, `..._G2_...`, `bls12_381-cardano-crypto-tests/signature/large-dst` (3) | (ii) | the domain separation tag reaches blst as a Latin-1 `String`; a tag with a byte of 0x80 or more (or 0) yields another point (the cases' tags are such bytes: the length 255 is not the cause) | batch 4 builtin: V3 from 9, V1 and V2 from 11 | yes, by a script that hashes with a tag it builds or is given; ASCII tags (all that real protocols use) are right | result: a different point, so a different verdict if the script compares it | typed refusal: `EvalFailure.Unsupported` on the ledger path; a correct implementation (hash to curve over the field, which blst-java does not expose at byte level) is a follow-up; an upstream report is drafted privately |
+| `parser/value/` `currencyIDs-unordered`, `duplicate-currencyIDs`, `duplicate-tokenIDs`, `empty-tokens`, `tokenIDs-unordered`, `zero-asset` (6) | (ii), now (iii) in the suite | Scalus rebuilds a `value` constant as a normalised map when it decodes, so the malformed constant is accepted (and changed); the reference fails decoding (`PlutusCore/Value.hs` 637-694) | every protocol and language where a script exists: type tag 13 has no protocol gate, only the header size is checked (`SerialisedScript.hs` 199-215, `Versions.hs` 394-399) | yes: any Plutus script in a witness set or an output, whether or not it runs | decode: the reference makes the transaction invalid in phase 1 (Babbage on) or fails phase 2 (Alonzo); we accepted it | fixed on the ledger path by `FlatScan`, which validates the original flat bytes (also a key over 32 bytes and a quantity beyond 127 bits); tests `PlutusReachabilitySuite`, `PreConwayRulesSuite`; the suite now uses original Flat sidecars and removes these six exceptions |
+| `semantics/bls12_381_G1_hashToGroup/hash-dst-len-255`, `..._G2_...`, `bls12_381-cardano-crypto-tests/signature/large-dst` (3) | (ii) | the domain separation tag reaches blst as a Latin-1 `String`; a tag with a byte of 0x80 or more (or 0) yields another point (the cases' tags are such bytes: the length 255 is not the cause) | batch 4 builtin: V3 from 9, V1 and V2 from 11 | yes, by a script that hashes with a tag it builds or is given; ASCII tags are right | result: a different point, so a different verdict if the script compares it | fixed on Linux/amd64 by the pinned upstream byte-array JNI backport into portable blst; the three exceptions are removed; other platforms retain explicit unavailable evaluation |
 | `term/constant-case/data/data-01`, `data-02` (2) | (ii), now (iii) | Scalus refuses `case` on `Data` below protocol 12 and applies the fields from 12, as the reference ledger does; the suite's executable uses `caseBuiltin` with `Data` | `Data` case from 12 only | no: the reference ledger uses `caseBuiltinNoData` at 11 and refuses too | none at protocols 5 to 11 | none; regression test of the protocol boundaries |
 | `parser/bls12-381/{G1,G2}/{zero,on-curve-bit3-clear,on-curve-bit3-set}` (6) | (iii) | the suite round-trips a BLS12-381 constant through flat; flat has no such constant, and Scalus's encoder writes an application of `uncompress`; a flat byte string that does carry the constant tag is refused by the reference (`Flat Element` instances) and by Scalus alike | batch 4 | no: the decode failure is the same | none | none; regression test |
 | `semantics/dropList/dropList-09`, `-10`, `-14`, `-15`, `-16` (5) | (iii) | the suite counts the budget with saturating arithmetic (the maximum); in restricting mode both run out of budget; only the units reported after the failure wrap negative in Scalus; the cost never wraps to a small value | batch 6: V3, V1, V2 at 11 | the script fails in both; phase 2 failure ignores the units spent | none on the verdict; the reported units on a failure | none; regression test over counts that would wrap in 64-bit arithmetic |
@@ -93,16 +96,29 @@ flat bytes that handles the `value` constants:
   against 33.
 - The scope check is phase 2 (`EvalFailure.OpenTerm`) and mirrors `checkScope`: it applies to
   variables, lambdas, applications, `force` and `delay`, and does not look inside `constr` fields or
-  `case` terms. A variable index that Scalus would narrow to an `Int` is refused wherever it occurs.
-  Known gap: a wide index that the reference would only fail on if it were evaluated, inside a
-  `constr` or `case`, is refused at setup here.
+  `case` terms. Original variable indices are checked as Word64 values: 65-bit naturals fail decoding. Wide
+  indices under the checked syntax fail scope setup. Under skipped `constr`/`case` subterms, an
+  internal open-variable view preserves deferred evaluation: ignored variables succeed, evaluated
+  ones fail at runtime, exactly as measured in the reference. Original bytes still supply hashes
+  and the scope check. The repair walks 20,000 levels on a 256 KiB stack.
 
-## 5. Open items
+## 5. Implementation and remaining scope
 
-- A correct `hashToGroup` for arbitrary tags (pure field arithmetic, validated against blst for ASCII
-  tags and against the reference's conformance outputs), then remove the refusal.
-- Run the reference on every boundary case of this note (a devnet transaction at protocols 10 and 11,
-  or the `uplc` executable of plutus 1.70.0.0): the Scala side is exercised, the Haskell side is read
-  from source.
-- IN-74 to IN-77 are decided in [implementer-notes.md](implementer-notes.md); filing upstream is the
-  owner's.
+The portable native artifact backports the released dependency's upstream raw-byte DST fix from
+Scalus commit `c132a2c8615db9cd27b464b7863863cd576d23be`; see
+[`blst-native/native/README.md`](../blst-native/native/README.md). Scalus 1.3.0 remains the latest
+Maven release checked on 2026-10-18, and this fix is unreleased. No unpublished Scalus dependency
+is adopted. The adapter delegates hashing and compression to the same pinned portable blst0.3.15,
+retains costing and the DST length check, and passes original upstream conformance assertions plus
+independently exported G1/G2 point vectors. Library startup checks both new JNI entries against
+reference known answers. The suite now passes996/1009 cases, with13 documented harness exceptions.
+
+An implementation limit is `Phase2.Outcome.Unavailable` and `LedgerFailure.Unavailable`, regardless
+of the transaction validity flag. It supplies no script verdict and no consensus predicate failure.
+The node's supervision boundary handles it as unavailable validation. This remains distinct from
+reference-proven setup, scope, budget and runtime script failures.
+
+Whole-transaction context findings REF-01/02/03 have their own recorded reference transactions and
+regressions. The malformed Byron reference transaction gap in #171 belongs to that separate oracle;
+this Plutus API matrix does not claim to resolve it. IN-74 to IN-77 are decided in
+[implementer-notes.md](implementer-notes.md); filing upstream remains the owner's decision.

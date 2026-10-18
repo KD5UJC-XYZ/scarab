@@ -270,6 +270,20 @@ object Corpus:
   lazy val plutusData: Vector[Array[Byte]] =
     lines("fixtures/preview/deeply-nested-datum.hex") ++ sampled("conway:plutus_data", 60)
 
+  lazy val plutusFlat: Vector[Array[Byte]] =
+    Files
+      .readAllLines(Path.of("fixtures/reference/plutus-boundaries/scripts.jsonl"))
+      .asScala
+      .toVector
+      .flatMap { line =>
+        val script = io.circe.parser
+          .parse(line)
+          .flatMap(_.hcursor.get[String]("script"))
+          .fold(throw _, identity)
+        val bytes = Bytes.fromHex(script).fold(sys.error, _.toArray)
+        xyz.kd5ujc.scarab.plutus.PlutusScriptBytes.flatOf(bytes).toVector
+      }
+
   /** Node-to-client queries in the envelope `cardano-cli` writes: `[0, [0, [6, query]]]`. */
   lazy val ntcQueries: Vector[Array[Byte]] =
     def h(n: Int) = Array((0x58).toByte, n.toByte) ++ Array.fill(n)(0xab.toByte)

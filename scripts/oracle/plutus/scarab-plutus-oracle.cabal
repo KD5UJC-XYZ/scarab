@@ -1,0 +1,10 @@
+cabal-version: 3.0
+-- SPDX-License-Identifier: Apache-2.0
+name: scarab-plutus-oracle
+version: 0.1.0.0
+build-type: Simple
+executable scarab-plutus-oracle
+  main-is: Main.hs
+  default-language: GHC2021
+  ghc-options: -Wall -Werror -O0
+  build-depends: base, aeson, bytestring, base16-bytestring, text, mtl, plutus-ledger-api, plutus-core

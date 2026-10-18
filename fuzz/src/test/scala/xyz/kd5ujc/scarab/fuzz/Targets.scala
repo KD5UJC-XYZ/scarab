@@ -592,6 +592,13 @@ object Targets:
         probe("plutus-data") { b => seen("plutus-data", PlutusData.decode(b).isRight) }
       ),
       Target(
+        "plutus-flat-scan",
+        () => Corpus.plutusFlat ++ Corpus.tricky,
+        probe("plutus-flat-scan") { b =>
+          seen("plutus-flat-scan", xyz.kd5ujc.scarab.plutus.FlatScan.scan(b.toArray).isRight)
+        }
+      ),
+      Target(
         "address-and-output",
         () => Corpus.addresses ++ Corpus.sampled("conway:transaction_output", 60) ++ Corpus.tricky,
         probe("address-and-output") { b =>
